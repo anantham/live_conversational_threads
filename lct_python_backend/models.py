@@ -494,3 +494,70 @@ class FrameAnalysis(Base):
         CheckConstraint('strength >= 0.0 AND strength <= 1.0', name='check_frame_strength'),
         CheckConstraint('confidence >= 0.0 AND confidence <= 1.0', name='check_frame_confidence'),
     )
+
+
+class Claim(Base):
+    """Three-layer claim taxonomy: factual, normative, and worldview claims"""
+    __tablename__ = "claims"
+
+    # Identity
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+    node_id = Column(UUID(as_uuid=True), ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
+
+    # Claim Content
+    claim_text = Column(Text, nullable=False)
+    claim_type = Column(Text, nullable=False)  # 'factual', 'normative', 'worldview'
+
+    # For semantic search - OpenAI text-embedding-3-small produces 1536 dimensions
+    embedding = Column(ARRAY(Float))  # Vector embedding for similarity search
+
+    # Source
+    utterance_ids = Column(ARRAY(UUID(as_uuid=True)), nullable=False)
+    speaker_name = Column(Text)
+
+    # Classification Confidence
+    strength = Column(Float, nullable=False)  # How central is this claim? (0-1)
+    confidence = Column(Float, nullable=False)  # Confidence in classification (0-1)
+
+    # Factual Claims
+    is_verifiable = Column(Boolean)  # Can this be fact-checked?
+    verification_status = Column(Text)  # 'verified', 'false', 'misleading', 'unverifiable', 'pending'
+    fact_check_result = Column(JSONB)  # Full Perplexity fact-check result
+    fact_checked_at = Column(DateTime(timezone=True))
+
+    # Normative Claims
+    normative_type = Column(Text)  # 'prescription', 'evaluation', 'obligation', 'preference'
+    implicit_values = Column(ARRAY(Text))  # e.g., ['efficiency', 'fairness', 'growth']
+
+    # Worldview Claims
+    worldview_category = Column(Text)  # e.g., 'economic_neoliberal', 'moral_utilitarian'
+    hidden_premises = Column(ARRAY(Text))  # Unstated assumptions
+    ideological_markers = Column(ARRAY(Text))  # Phrases that signal ideology
+
+    # Relationships (for argument mapping)
+    supports_claim_ids = Column(ARRAY(UUID(as_uuid=True)))  # Claims this supports
+    contradicts_claim_ids = Column(ARRAY(UUID(as_uuid=True)))  # Claims this contradicts
+    depends_on_claim_ids = Column(ARRAY(UUID(as_uuid=True)))  # Premises this depends on
+
+    # Metadata
+    analyzed_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index('idx_claims_conversation', 'conversation_id'),
+        Index('idx_claims_node', 'node_id'),
+        Index('idx_claims_type', 'claim_type'),
+        Index('idx_claims_speaker', 'conversation_id', 'speaker_name'),
+        CheckConstraint("claim_type IN ('factual', 'normative', 'worldview')", name='check_claim_type'),
+        CheckConstraint('strength >= 0.0 AND strength <= 1.0', name='check_claim_strength'),
+        CheckConstraint('confidence >= 0.0 AND confidence <= 1.0', name='check_claim_confidence'),
+        CheckConstraint(
+            "verification_status IS NULL OR verification_status IN ('verified', 'false', 'misleading', 'unverifiable', 'pending')",
+            name='check_verification_status'
+        ),
+        CheckConstraint(
+            "normative_type IS NULL OR normative_type IN ('prescription', 'evaluation', 'obligation', 'preference')",
+            name='check_normative_type'
+        ),
+    )
