@@ -464,6 +464,55 @@ Charlie ~: Third
         sequence_numbers = [u.sequence_number for u in transcript.utterances]
         assert len(sequence_numbers) == len(set(sequence_numbers))  # All unique
 
+    def test_all_timestamped_utterances_have_end_time(self):
+        """
+        Test that when every utterance has a timestamp, all get proper end_time.
+
+        This tests the fix for the bug where timestamped utterances had start_time
+        but end_time remained None, breaking speaker statistics.
+        """
+        parser = GoogleMeetParser()
+
+        # Create transcript where every utterance has a timestamp (common Google Meet format)
+        text = """
+00:00:00
+Alice ~: First utterance
+00:00:05
+Bob ~: Second utterance
+00:00:12
+Alice ~: Third utterance
+00:00:20
+Charlie ~: Fourth utterance
+"""
+
+        transcript = parser.parse_text(text)
+
+        # Verify all utterances have both start_time and end_time
+        for i, utt in enumerate(transcript.utterances):
+            assert utt.start_time is not None, f"Utterance {i} missing start_time"
+            assert utt.end_time is not None, f"Utterance {i} missing end_time"
+            assert utt.end_time > utt.start_time, f"Utterance {i} has invalid time range"
+
+        # Verify speaker statistics work correctly (not returning 0.0)
+        stats = parser.get_speaker_statistics(transcript)
+
+        assert "Alice" in stats
+        assert "Bob" in stats
+        assert "Charlie" in stats
+
+        # All speakers should have non-zero speaking time
+        assert stats["Alice"]["speaking_time_seconds"] > 0, "Alice speaking time is 0"
+        assert stats["Bob"]["speaking_time_seconds"] > 0, "Bob speaking time is 0"
+        assert stats["Charlie"]["speaking_time_seconds"] > 0, "Charlie speaking time is 0"
+
+        # Verify the time calculations are reasonable
+        # Alice has 2 utterances: 0-5 (5s) and 12-20 (8s) = 13s total
+        assert stats["Alice"]["speaking_time_seconds"] == 13.0
+        # Bob has 1 utterance: 5-12 (7s)
+        assert stats["Bob"]["speaking_time_seconds"] == 7.0
+        # Charlie has 1 utterance: 20-22 (2s estimated)
+        assert stats["Charlie"]["speaking_time_seconds"] == 2.0
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
