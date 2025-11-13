@@ -349,13 +349,17 @@ class GoogleMeetParser:
                             utterances[j].start_time = round(start, 2)
                             utterances[j].end_time = round(end, 2)
 
+                    # Set end_time for the previous timestamped utterance
+                    if last_timestamp_index >= 0:
+                        utterances[last_timestamp_index].end_time = round(timestamp_seconds, 2)
+
                     current_time = timestamp_seconds
                     last_timestamp_time = timestamp_seconds
                     last_timestamp_index = i
                     utterances_since_timestamp = 0
 
                     utterance.start_time = round(current_time, 2)
-                    # End time will be set when we see next timestamp or estimate at end
+                    # End time will be set when we see next timestamp or at end
 
             else:
                 utterances_since_timestamp += 1
@@ -370,6 +374,16 @@ class GoogleMeetParser:
                 end = start + estimated_time_per_utterance
                 utterances[j].start_time = round(start, 2)
                 utterances[j].end_time = round(end, 2)
+
+        # Set end_time for the final timestamped utterance if it doesn't have one
+        if last_timestamp_index >= 0 and utterances[last_timestamp_index].end_time is None:
+            # Estimate end time based on either the last utterance's end_time or add 2 seconds
+            if utterances_since_timestamp > 0:
+                # There are utterances after, use the last one's end_time
+                utterances[last_timestamp_index].end_time = utterances[-1].end_time
+            else:
+                # This is the last utterance, estimate 2 seconds
+                utterances[last_timestamp_index].end_time = round(last_timestamp_time + 2.0, 2)
 
         # If no timestamps at all, estimate times
         if last_timestamp_index == -1:
