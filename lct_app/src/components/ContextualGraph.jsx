@@ -499,13 +499,31 @@ export default function ContextualGraph({
         const transcriptLines = transcript.split('\n');
         const selectedLines = selectedTurnText.split('\n');
 
-        // Find starting line index
+        // Find which occurrence this turn is (to handle duplicate text)
+        const currentNodeIndex = latestChunk.findIndex(n => n.id === selectedNode);
+        let occurrenceNumber = 0;
+
+        // Count how many previous turns have the same text
+        for (let i = 0; i < currentNodeIndex; i++) {
+          if (latestChunk[i].full_text === selectedTurnText) {
+            occurrenceNumber++;
+          }
+        }
+
+        // Find the Nth occurrence of this text in the transcript
         let startIndex = -1;
+        let foundOccurrences = 0;
         if (selectedLines.length > 0 && selectedLines[0].trim()) {
+          const searchPattern = selectedLines[0].trim().substring(0, 30);
+
           for (let i = 0; i < transcriptLines.length; i++) {
-            if (transcriptLines[i].includes(selectedLines[0].trim().substring(0, 30))) {
-              startIndex = i;
-              break;
+            if (transcriptLines[i].includes(searchPattern)) {
+              if (foundOccurrences === occurrenceNumber) {
+                // This is the correct occurrence!
+                startIndex = i;
+                break;
+              }
+              foundOccurrences++;
             }
           }
         }
