@@ -101,10 +101,35 @@ class GoogleMeetParser:
     SPEAKER_PATTERN = r'^(.+?)\s*~?\s*:\s*(.+)$'
     SPEAKER_ONLY_PATTERN = r'^(.+?)\s*~?\s*:?\s*$'
 
+    # Metadata patterns to ignore (Google Meet specific)
+    METADATA_PATTERNS = [
+        r'^Transcription\s+(ended|started)',  # "Transcription ended after..."
+        r'^This\s+editable\s+transcript',      # "This editable transcript was..."
+        r'^People\s+can\s+also\s+change',      # "People can also change the text..."
+        r'^\s*---\s*$',                        # Separator lines "---"
+        r'^Saved\s+to\s+',                     # "Saved to Drive" messages
+        r'^Recording\s+(started|stopped)',     # Recording status
+    ]
+
     def __init__(self):
         """Initialize the parser."""
         self.current_timestamp = None
         self.total_duration = 0.0
+
+    def _is_metadata_line(self, line: str) -> bool:
+        """
+        Check if a line is Google Meet metadata (not actual speech).
+
+        Args:
+            line: Line to check
+
+        Returns:
+            True if line is metadata and should be ignored
+        """
+        for pattern in self.METADATA_PATTERNS:
+            if re.match(pattern, line, re.IGNORECASE):
+                return True
+        return False
 
     def parse_file(self, file_path: str) -> ParsedTranscript:
         """
@@ -228,6 +253,11 @@ class GoogleMeetParser:
                     sequence_number += 1
                     current_text_parts = []
                     current_line_numbers = []
+                continue
+
+            # Skip metadata lines (Google Meet specific)
+            if self._is_metadata_line(line):
+                logger.debug(f"Skipping metadata line: {line[:50]}...")
                 continue
 
             # Check if this is a timestamp line
