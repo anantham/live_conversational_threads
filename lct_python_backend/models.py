@@ -561,3 +561,88 @@ class Claim(Base):
             name='check_normative_type'
         ),
     )
+
+
+class ArgumentTree(Base):
+    """Argument structure mapping: premises → conclusions"""
+    __tablename__ = "argument_trees"
+
+    # Identity
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+    node_id = Column(UUID(as_uuid=True), ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
+
+    # Tree Structure
+    root_claim_id = Column(UUID(as_uuid=True), ForeignKey('claims.id'), nullable=False)
+    tree_structure = Column(JSONB, nullable=False)  # Nested JSON tree
+
+    # Metadata
+    title = Column(Text)
+    summary = Column(Text)
+
+    # Analysis
+    argument_type = Column(Text)  # 'deductive', 'inductive', 'abductive'
+    is_valid = Column(Boolean)  # Logically valid structure?
+    is_sound = Column(Boolean)  # Valid + true premises?
+    confidence = Column(Float)
+    identified_fallacies = Column(ARRAY(Text))
+    circular_dependencies = Column(ARRAY(UUID(as_uuid=True)))
+
+    # Relationships
+    premise_claim_ids = Column(ARRAY(UUID(as_uuid=True)))
+    conclusion_claim_ids = Column(ARRAY(UUID(as_uuid=True)))
+
+    # Display
+    visualization_data = Column(JSONB)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index('idx_argument_trees_conversation', 'conversation_id'),
+        Index('idx_argument_trees_node', 'node_id'),
+        Index('idx_argument_trees_root_claim', 'root_claim_id'),
+        CheckConstraint("argument_type IS NULL OR argument_type IN ('deductive', 'inductive', 'abductive')", name='check_argument_type'),
+        CheckConstraint('confidence IS NULL OR (confidence >= 0.0 AND confidence <= 1.0)', name='check_argument_confidence'),
+    )
+
+
+class IsOughtConflation(Base):
+    """Naturalistic fallacies: jumping from 'is' to 'ought'"""
+    __tablename__ = "is_ought_conflations"
+
+    # Identity
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+    node_id = Column(UUID(as_uuid=True), ForeignKey('nodes.id', ondelete='CASCADE'), nullable=False)
+
+    # The Conflation
+    descriptive_claim_id = Column(UUID(as_uuid=True), ForeignKey('claims.id'), nullable=False)
+    normative_claim_id = Column(UUID(as_uuid=True), ForeignKey('claims.id'), nullable=False)
+
+    # Analysis
+    conflation_text = Column(Text, nullable=False)
+    explanation = Column(Text, nullable=False)
+    fallacy_type = Column(Text)  # 'naturalistic_fallacy', 'appeal_to_nature', etc.
+
+    # Evidence
+    utterance_ids = Column(ARRAY(UUID(as_uuid=True)), nullable=False)
+    speaker_name = Column(Text)
+
+    # Confidence
+    strength = Column(Float, nullable=False)
+    confidence = Column(Float, nullable=False)
+
+    # Timestamp
+    detected_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_is_ought_conversation', 'conversation_id'),
+        Index('idx_is_ought_node', 'node_id'),
+        Index('idx_is_ought_descriptive', 'descriptive_claim_id'),
+        Index('idx_is_ought_normative', 'normative_claim_id'),
+        CheckConstraint("fallacy_type IS NULL OR fallacy_type IN ('naturalistic_fallacy', 'appeal_to_nature', 'appeal_to_tradition', 'appeal_to_popularity')", name='check_fallacy_type'),
+        CheckConstraint('strength >= 0.0 AND strength <= 1.0', name='check_is_ought_strength'),
+        CheckConstraint('confidence >= 0.0 AND confidence <= 1.0', name='check_is_ought_confidence'),
+    )
