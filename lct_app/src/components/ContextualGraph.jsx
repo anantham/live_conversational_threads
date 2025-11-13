@@ -4,6 +4,10 @@ import ReactFlow, { Controls, Background } from "reactflow";
 import dagre from "dagre"; // Import Dagre for auto-layout
 import "reactflow/dist/style.css";
 
+// Define outside component to prevent ReactFlow warnings
+const NODE_TYPES = {};
+const EDGE_TYPES = {};
+
 export default function ContextualGraph({
   conversationId,
   graphData,
@@ -185,10 +189,6 @@ export default function ContextualGraph({
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setGraph({ rankdir: "LR", nodesep: 50, ranksep: 100 }); // Left-to-right layout
   dagreGraph.setDefaultEdgeLabel(() => ({}));
-
-  // Memoize nodeTypes and edgeTypes to prevent ReactFlow warnings
-  const nodeTypes = useMemo(() => ({}), []);
-  const edgeTypes = useMemo(() => ({}), []);
 
   // Generate speaker colors
   const speakerColors = useMemo(() => {
@@ -645,8 +645,8 @@ export default function ContextualGraph({
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
+            nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
             fitView
              // 🔍 Zoom Controls
             zoomOnPinch={true}
