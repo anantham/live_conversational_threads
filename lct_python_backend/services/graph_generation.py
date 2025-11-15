@@ -12,9 +12,9 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 import asyncio
 
-from instrumentation import track_api_call
-from parsers import ParsedTranscript, Utterance as ParserUtterance
-from models import Node, Relationship, Conversation
+from lct_python_backend.instrumentation import track_api_call
+from lct_python_backend.parsers import ParsedTranscript, Utterance as ParserUtterance
+from lct_python_backend.models import Node, Relationship, Conversation
 from .prompt_manager import get_prompt_manager
 
 

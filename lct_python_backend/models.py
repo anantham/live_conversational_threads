@@ -646,3 +646,34 @@ class IsOughtConflation(Base):
         CheckConstraint('strength >= 0.0 AND strength <= 1.0', name='check_is_ought_strength'),
         CheckConstraint('confidence >= 0.0 AND confidence <= 1.0', name='check_is_ought_confidence'),
     )
+
+
+class Bookmark(Base):
+    """User bookmarks for conversation turns/nodes"""
+    __tablename__ = "bookmarks"
+
+    # Identity
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+
+    # What's bookmarked
+    utterance_ids = Column(ARRAY(UUID(as_uuid=True)))  # Array of utterance UUIDs in this turn
+    turn_id = Column(Text)  # Ephemeral turn ID (e.g., "turn_5")
+    speaker_id = Column(Text)  # Who spoke in this turn
+
+    # Content
+    turn_summary = Column(Text)  # Short preview of the turn
+    full_text = Column(Text)  # Full text of the bookmarked turn
+    notes = Column(Text)  # User's notes about this bookmark
+
+    # Metadata
+    created_by = Column(Text, default='anonymous')
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index('idx_bookmark_conversation', 'conversation_id'),
+        Index('idx_bookmark_speaker', 'speaker_id'),
+        Index('idx_bookmark_created_by', 'created_by'),
+        Index('idx_bookmark_created_at', 'created_at'),
+    )

@@ -20,8 +20,8 @@ from datetime import datetime
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from models import Node, FrameAnalysis
-from services.prompt_manager import get_prompt_manager
+from lct_python_backend.models import Node, FrameAnalysis
+from lct_python_backend.services.prompt_manager import get_prompt_manager
 import anthropic
 import os
 
