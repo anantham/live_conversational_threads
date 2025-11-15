@@ -166,3 +166,7 @@ ENV/
 # Project specific
 /saved_json/
 /prompts_and_transcripts/
+
+# Test results
+test-results/
+playwright-report/
