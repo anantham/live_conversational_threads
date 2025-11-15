@@ -1523,9 +1523,11 @@ async def list_saved_conversations(db: AsyncSession = Depends(get_async_session)
         from sqlalchemy import select
         from lct_python_backend.models import Conversation
 
-        # Query conversations using SQLAlchemy ORM
+        # Query conversations using SQLAlchemy ORM (exclude soft-deleted)
         result = await db.execute(
-            select(Conversation).order_by(Conversation.created_at.desc())
+            select(Conversation)
+            .where(Conversation.deleted_at.is_(None))  # Filter out soft-deleted conversations
+            .order_by(Conversation.created_at.desc())
         )
         conversations_db = result.scalars().all()
 
@@ -1856,8 +1858,80 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
 #     except Exception as e:
 #         print(f"[FATAL] Error fetching {conversation_id} from GCS: {e}")
 #         raise HTTPException(status_code=500, detail=f"GCS error: {str(e)}")
-    
-    
+
+
+# Delete conversation endpoint
+@lct_app.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: str,
+    hard_delete: bool = False,
+    db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Delete a conversation (soft or hard delete).
+
+    Args:
+        conversation_id: UUID of conversation to delete
+        hard_delete: If True, permanently delete from DB and GCS; if False, soft delete (set deleted_at)
+
+    Returns:
+        Success message with conversation_id
+    """
+    try:
+        from sqlalchemy import select, update
+        from lct_python_backend.models import Conversation
+        import uuid as uuid_lib
+
+        # Fetch conversation
+        result = await db.execute(
+            select(Conversation).where(Conversation.id == uuid_lib.UUID(conversation_id))
+        )
+        conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        if hard_delete:
+            # Delete from GCS if path exists
+            if conversation.gcs_path:
+                try:
+                    client = storage.Client()
+                    bucket = client.bucket(GCS_BUCKET_NAME)
+                    blob = bucket.blob(conversation.gcs_path)
+                    if blob.exists():
+                        blob.delete()
+                        print(f"[INFO] Deleted GCS file: {conversation.gcs_path}")
+                    else:
+                        print(f"[WARNING] GCS file not found: {conversation.gcs_path}")
+                except Exception as gcs_error:
+                    print(f"[WARNING] Failed to delete GCS file: {gcs_error}")
+
+            # Hard delete from DB (CASCADE will handle related tables)
+            await db.delete(conversation)
+            await db.commit()
+            message = "Conversation permanently deleted"
+            print(f"[INFO] Hard deleted conversation: {conversation_id}")
+        else:
+            # Soft delete
+            await db.execute(
+                update(Conversation)
+                .where(Conversation.id == uuid_lib.UUID(conversation_id))
+                .values(deleted_at=func.now())
+            )
+            await db.commit()
+            message = "Conversation deleted"
+            print(f"[INFO] Soft deleted conversation: {conversation_id}")
+
+        return {"message": message, "conversation_id": conversation_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Failed to delete conversation: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Deletion failed: {str(e)}")
+
 # Endpoint to get transcript chunks
 @lct_app.post("/get_chunks/", response_model=ChunkedTranscript)
 async def get_chunks(request: TranscriptRequest):

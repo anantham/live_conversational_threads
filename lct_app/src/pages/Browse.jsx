@@ -8,11 +8,37 @@ export default function Browse() {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [deleting, setDeleting] = useState(null);
 
   const navigate = useNavigate();
   const handleView = (conversationId) => {
     navigate(`/conversation/${conversationId}`);
     };
+
+  const handleDelete = async (conversationId, conversationName) => {
+    setDeleting(conversationId);
+    try {
+      const response = await fetch(`${API_URL}/conversations/${conversationId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Failed to delete conversation');
+      }
+
+      // Remove from local state
+      setConversations(prev => prev.filter(c => c.file_id !== conversationId));
+      setDeleteConfirm(null);
+      console.log(`[INFO] Successfully deleted conversation: ${conversationName}`);
+    } catch (err) {
+      console.error('Error deleting conversation:', err);
+      alert(`Failed to delete: ${err.message}`);
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   useEffect(() => {
     const fetchConversations = async () => {
@@ -83,16 +109,54 @@ export default function Browse() {
               <p className="text-sm text-green-600">{conv.message}</p>
               <p className="text-sm text-gray-400">  Created at: {new Date(conv.created_at).toLocaleString()} </p>
 
-              <button
-                className="mt-4 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
-                onClick={() => {
-                  handleView(conv.file_id)
-                }}
-              >
-                View
-              </button>
+              <div className="flex gap-2 mt-4">
+                <button
+                  className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
+                  onClick={() => handleView(conv.file_id)}
+                >
+                  View
+                </button>
+                <button
+                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => setDeleteConfirm({ id: conv.file_id, name: conv.file_name })}
+                  disabled={deleting === conv.file_id}
+                  title="Delete conversation"
+                >
+                  {deleting === conv.file_id ? '⏳' : '🗑️'}
+                </button>
+              </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md mx-4">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">
+              Delete Conversation?
+            </h3>
+            <p className="text-gray-700 mb-6">
+              Are you sure you want to delete <strong>"{deleteConfirm.name}"</strong>?
+              <br />
+              <span className="text-sm text-red-600">This action cannot be undone.</span>
+            </p>
+            <div className="flex gap-3">
+              <button
+                className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition"
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition"
+                onClick={() => handleDelete(deleteConfirm.id, deleteConfirm.name)}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
