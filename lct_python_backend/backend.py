@@ -1,7 +1,7 @@
 import anthropic
 import os
 import json
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.staticfiles import StaticFiles
 from websockets.exceptions import ConnectionClosedError
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +23,10 @@ from datetime import datetime
 # from db_helpers import get_all_conversations, insert_conversation_metadata, get_conversation_gcs_path
 from lct_python_backend.db import db
 from lct_python_backend.db_helpers import get_all_conversations, insert_conversation_metadata, get_conversation_gcs_path
+from lct_python_backend.import_api import router as import_router
+from lct_python_backend.bookmarks_api import router as bookmarks_router
+from lct_python_backend.db_session import get_async_session
+from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
 # from dotenv import load_dotenv
 
@@ -58,11 +62,21 @@ lct_app = FastAPI(lifespan=lifespan)
 # Configure CORS
 lct_app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Allow requests from Vite frontend
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:5176",
+        "http://localhost:5177"
+    ],  # Allow requests from Vite frontend (any port)
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
     allow_headers=["*"],  # Allow all headers
 )
+
+# Include routers
+lct_app.include_router(import_router)
+lct_app.include_router(bookmarks_router)
 
 # Serve JS/CSS/assets from Vite build folder
 # lct_app.mount("/assets", StaticFiles(directory="frontend_dist/assets"), name="assets")
@@ -1504,18 +1518,25 @@ def generate_formalism(chunks: dict, graph_data: dict, user_pref: str) -> List:
 
 # all conversations
 @lct_app.get("/conversations/", response_model=List[SaveJsonResponseExtended])
-async def list_saved_conversations():
+async def list_saved_conversations(db: AsyncSession = Depends(get_async_session)):
     try:
-        rows = await get_all_conversations()
-        conversations = []
+        from sqlalchemy import select
+        from lct_python_backend.models import Conversation
 
-        for row in rows:
+        # Query conversations using SQLAlchemy ORM
+        result = await db.execute(
+            select(Conversation).order_by(Conversation.created_at.desc())
+        )
+        conversations_db = result.scalars().all()
+
+        conversations = []
+        for conv in conversations_db:
             conversations.append({
-                "file_id": str(row["id"]),
-                "file_name": row["file_name"],
+                "file_id": str(conv.id),
+                "file_name": conv.conversation_name,
                 "message": "Loaded from database",
-                "no_of_nodes": row["no_of_nodes"],
-                "created_at": row["created_at"].isoformat() if isinstance(row["created_at"], datetime) else row["created_at"]
+                "no_of_nodes": conv.total_nodes or 0,
+                "created_at": conv.created_at.isoformat() if conv.created_at else None
             })
 
         print(f"[INFO] Loaded {len(conversations)} conversations from DB")
@@ -1523,6 +1544,8 @@ async def list_saved_conversations():
 
     except Exception as e:
         print(f"[FATAL] Error fetching from DB: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Database access error: {str(e)}")
 # def list_saved_conversations():
 #     try:
@@ -1577,20 +1600,230 @@ async def list_saved_conversations():
 #         print(f"[FATAL] Unexpected error in /conversations/: {e}")
 #         raise HTTPException(status_code=500, detail=f"GCS access error: {str(e)}")
   
-# get individual conversations 
+# get individual conversations
 @lct_app.get("/conversations/{conversation_id}", response_model=ConversationResponse)
-async def get_conversation(conversation_id: str):
+async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_async_session)):
     try:
-        gcs_path = await get_conversation_gcs_path(conversation_id)
-        if not gcs_path:
-            raise HTTPException(status_code=404, detail="Conversation metadata not found in DB.")
+        print(f"[INFO] Fetching conversation: {conversation_id}")
 
-        return load_conversation_from_gcs(gcs_path)
+        from sqlalchemy import select
+        from lct_python_backend.models import Conversation, Node, Utterance
+        import uuid
+
+        # Fetch conversation
+        print(f"[INFO] Querying conversation from database...")
+        result = await db.execute(
+            select(Conversation).where(Conversation.id == uuid.UUID(conversation_id))
+        )
+        conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            print(f"[ERROR] Conversation not found: {conversation_id}")
+            raise HTTPException(status_code=404, detail="Conversation not found in database.")
+
+        print(f"[INFO] Found conversation: {conversation.conversation_name}")
+
+        # Fetch all nodes for this conversation
+        print(f"[INFO] Querying nodes...")
+        nodes_result = await db.execute(
+            select(Node).where(Node.conversation_id == uuid.UUID(conversation_id))
+        )
+        nodes = list(nodes_result.scalars().all())
+        print(f"[INFO] Found {len(nodes)} nodes")
+
+        # Fetch all utterances for this conversation
+        print(f"[INFO] Querying utterances...")
+        utterances_result = await db.execute(
+            select(Utterance)
+            .where(Utterance.conversation_id == uuid.UUID(conversation_id))
+            .order_by(Utterance.sequence_number)
+        )
+        utterances = list(utterances_result.scalars().all())
+        print(f"[INFO] Found {len(utterances)} utterances")
+
+        # Build graph_data from nodes
+        graph_data = []
+
+        if nodes:
+            # Use actual analyzed nodes if they exist
+            for node in nodes:
+                node_data = {
+                    "id": str(node.id),
+                    "node_name": node.node_name,
+                    "summary": node.summary,
+                    "claims": node.claims or [],
+                    "key_points": node.key_points or [],
+                    "predecessor": node.predecessor,
+                    "successor": node.successor,
+                    "contextual_relation": node.contextual_relation or {},
+                    "linked_nodes": node.linked_nodes or [],
+                    "is_bookmark": node.is_bookmark,
+                    "is_contextual_progress": node.is_contextual_progress,
+                    "chunk_id": node.chunk_id,
+                    "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])]
+                }
+                graph_data.append(node_data)
+
+        elif utterances:
+            # Generate turn-based graph by grouping consecutive utterances by same speaker
+            print(f"[INFO] No nodes found - generating turn-based graph from {len(utterances)} utterances")
+
+            # Helper function to create intelligent node labels
+            def create_node_label(speaker_name: str, text: str, max_length: int = 60) -> str:
+                """Create a concise, meaningful label for a graph node."""
+                # Clean up text
+                text = text.strip()
+
+                # Try to get first complete sentence
+                sentence_endings = ['. ', '? ', '! ', '.\n', '?\n', '!\n']
+                first_sentence_end = len(text)
+                for ending in sentence_endings:
+                    pos = text.find(ending)
+                    if pos != -1 and pos < first_sentence_end:
+                        first_sentence_end = pos + 1
+
+                # Use first sentence if it's not too long
+                if first_sentence_end < max_length:
+                    summary = text[:first_sentence_end].strip()
+                else:
+                    # Otherwise, truncate at word boundary
+                    if len(text) > max_length:
+                        summary = text[:max_length].rsplit(' ', 1)[0] + "..."
+                    else:
+                        summary = text
+
+                # Get speaker initial(s)
+                speaker_parts = speaker_name.split()
+                if len(speaker_parts) >= 2:
+                    initials = ''.join([p[0].upper() for p in speaker_parts[:2]])
+                else:
+                    initials = speaker_name[:2].upper()
+
+                return f"[{initials}] {summary}"
+
+            if utterances:
+                current_speaker = None
+                current_turn = []
+                turn_nodes = []
+                turn_number = 0
+
+                for idx, utt in enumerate(utterances):
+                    # Check if this is a new speaker turn
+                    if utt.speaker_id != current_speaker:
+                        # Save previous turn if it exists
+                        if current_turn:
+                            turn_number += 1
+                            combined_text = "\n".join([u.text for u in current_turn])
+                            first_utt = current_turn[0]
+                            last_utt = current_turn[-1]
+
+                            turn_node = {
+                                "id": f"turn_{turn_number}",
+                                "node_name": create_node_label(current_speaker, combined_text),
+                                "summary": combined_text[:150] + "..." if len(combined_text) > 150 else combined_text,
+                                "full_text": combined_text,
+                                "speaker_id": current_speaker,
+                                "utterance_count": len(current_turn),
+                                "sequence_number": first_utt.sequence_number,
+                                "timestamp_start": first_utt.timestamp_start,
+                                "timestamp_end": last_utt.timestamp_end,
+                                "claims": [],
+                                "key_points": [],
+                                "predecessor": f"turn_{turn_number - 1}" if turn_number > 1 else None,
+                                "successor": None,  # Will be set when next turn is created
+                                "contextual_relation": {},
+                                "linked_nodes": [],
+                                "is_bookmark": False,
+                                "is_contextual_progress": False,
+                                "chunk_id": "default_chunk",
+                                "utterance_ids": [str(u.id) for u in current_turn],
+                                "is_utterance_node": True
+                            }
+
+                            # Set predecessor's successor
+                            if turn_nodes:
+                                turn_nodes[-1]["successor"] = turn_node["id"]
+
+                            turn_nodes.append(turn_node)
+
+                        # Start new turn
+                        current_speaker = utt.speaker_id
+                        current_turn = [utt]
+                    else:
+                        # Same speaker, add to current turn
+                        current_turn.append(utt)
+
+                # Add final turn
+                if current_turn:
+                    turn_number += 1
+                    combined_text = "\n".join([u.text for u in current_turn])
+                    first_utt = current_turn[0]
+                    last_utt = current_turn[-1]
+
+                    turn_node = {
+                        "id": f"turn_{turn_number}",
+                        "node_name": create_node_label(current_speaker, combined_text),
+                        "summary": combined_text[:150] + "..." if len(combined_text) > 150 else combined_text,
+                        "full_text": combined_text,
+                        "speaker_id": current_speaker,
+                        "utterance_count": len(current_turn),
+                        "sequence_number": first_utt.sequence_number,
+                        "timestamp_start": first_utt.timestamp_start,
+                        "timestamp_end": last_utt.timestamp_end,
+                        "claims": [],
+                        "key_points": [],
+                        "predecessor": f"turn_{turn_number - 1}" if turn_number > 1 else None,
+                        "successor": None,
+                        "contextual_relation": {},
+                        "linked_nodes": [],
+                        "is_bookmark": False,
+                        "is_contextual_progress": False,
+                        "chunk_id": "default_chunk",
+                        "utterance_ids": [str(u.id) for u in current_turn],
+                        "is_utterance_node": True
+                    }
+
+                    if turn_nodes:
+                        turn_nodes[-1]["successor"] = turn_node["id"]
+
+                    turn_nodes.append(turn_node)
+
+                graph_data = turn_nodes
+                print(f"[INFO] Generated {len(graph_data)} speaker turns from {len(utterances)} utterances")
+
+        # Build chunk_dict from utterances
+        # Group utterances by chunk_id if available, otherwise create a default chunk
+        chunk_dict = {}
+        if utterances:
+            # For now, create a single chunk with all utterances
+            default_chunk_id = "default_chunk"
+            chunk_text = "\n".join([f"{utt.speaker_id}: {utt.text}" for utt in utterances])
+            chunk_dict[default_chunk_id] = chunk_text
+            print(f"[INFO] Created chunk with {len(utterances)} utterances")
+
+        print(f"[INFO] Successfully built response with {len(graph_data)} nodes and {len(chunk_dict)} chunks")
+
+        # Wrap graph_data in an array to match expected nested structure
+        # Frontend expects [[node1, node2], [node3, node4]] (array of chunks)
+        # We send all nodes as a single chunk: [[node1, node2, node3]]
+        if graph_data:
+            graph_data_nested = [graph_data]  # Wrap in array
+        else:
+            graph_data_nested = []  # Empty array for no nodes
+
+        print(f"[INFO] Returning nested graph_data structure with {len(graph_data_nested)} chunks")
+
+        return ConversationResponse(
+            graph_data=graph_data_nested,
+            chunk_dict=chunk_dict
+        )
 
     except HTTPException:
         raise
     except Exception as e:
         print(f"[FATAL] Error loading conversation '{conversation_id}': {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}") 
 # @lct_app.get("/conversations/{conversation_id}", response_model=ConversationResponse)
 # def get_conversation(conversation_id: str):
@@ -1688,7 +1921,7 @@ async def save_json_call(request: SaveJsonRequest):
         metadata = {
             "id": result["file_id"],
             "file_name": result["file_name"],
-            "no_of_nodes": number_of_nodes,
+            "total_nodes": number_of_nodes,
             "gcs_path": result["gcs_path"],
             "created_at": datetime.utcnow()
         }
@@ -2523,7 +2756,7 @@ async def import_from_obsidian_canvas(request: CanvasImportRequest):
         metadata = {
             "id": result["file_id"],
             "file_name": result["file_name"],
-            "no_of_nodes": number_of_nodes,
+            "total_nodes": number_of_nodes,
             "gcs_path": result["gcs_path"],
             "created_at": datetime.utcnow()
         }
@@ -2550,7 +2783,7 @@ async def import_from_obsidian_canvas(request: CanvasImportRequest):
 # ANALYTICS ENDPOINTS (Week 8)
 # ============================================================================
 
-from services.speaker_analytics import SpeakerAnalytics
+from lct_python_backend.services.speaker_analytics import SpeakerAnalytics
 
 @lct_app.get("/api/analytics/conversations/{conversation_id}/analytics")
 async def get_conversation_analytics(conversation_id: str):
@@ -2686,7 +2919,7 @@ async def get_speaker_roles(conversation_id: str):
 # PROMPTS CONFIGURATION ENDPOINTS (Week 9)
 # ============================================================================
 
-from services.prompt_manager import get_prompt_manager
+from lct_python_backend.services.prompt_manager import get_prompt_manager
 from pydantic import BaseModel
 
 class PromptConfigUpdate(BaseModel):
@@ -2939,8 +3172,8 @@ async def reload_prompts():
 # EDIT HISTORY & TRAINING DATA EXPORT ENDPOINTS (Week 10)
 # ============================================================================
 
-from services.edit_logger import EditLogger
-from services.training_data_export import TrainingDataExporter
+from lct_python_backend.services.edit_logger import EditLogger
+from lct_python_backend.services.training_data_export import TrainingDataExporter
 
 class NodeUpdateRequest(BaseModel):
     """Request model for updating a node"""
