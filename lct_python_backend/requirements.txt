@@ -1,4 +1,5 @@
 fastapi==0.115.12
+python-multipart==0.0.20  # Required for FastAPI file uploads
 uvicorn==0.34.2
 websockets==15.0.1
 anthropic==0.52.1
