@@ -1995,11 +1995,12 @@ async def save_json_call(request: SaveJsonRequest):
         print("number of nodes: ", len(request.graph_data[0]) if request.graph_data and isinstance(request.graph_data[0], list) else 0)
         metadata = {
             "id": result["file_id"],
-            "file_name": result["file_name"],
+            "conversation_name": result["file_name"],  # Database column is conversation_name
             "total_nodes": number_of_nodes,
             "gcs_path": result["gcs_path"],
             "created_at": datetime.utcnow()
         }
+        print(f"[DEBUG] Inserting metadata: conversation_name={result['file_name']}, total_nodes={number_of_nodes}")
 
         await insert_conversation_metadata(metadata)
 
@@ -2830,11 +2831,12 @@ async def import_from_obsidian_canvas(request: CanvasImportRequest):
         number_of_nodes = len(graph_data[0])
         metadata = {
             "id": result["file_id"],
-            "file_name": result["file_name"],
+            "conversation_name": result["file_name"],  # Database column is conversation_name
             "total_nodes": number_of_nodes,
             "gcs_path": result["gcs_path"],
             "created_at": datetime.utcnow()
         }
+        print(f"[DEBUG] Canvas import - Inserting metadata: conversation_name={result['file_name']}, total_nodes={number_of_nodes}")
 
         await insert_conversation_metadata(metadata)
 
