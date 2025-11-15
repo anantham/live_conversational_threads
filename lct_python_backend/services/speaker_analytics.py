@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 import statistics
 
-from models import Conversation, Utterance, Node
+from lct_python_backend.models import Conversation, Utterance, Node
 
 
 class SpeakerAnalytics:

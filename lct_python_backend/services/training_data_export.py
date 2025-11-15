@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
 
-from models import EditsLog, Node, Conversation
+from lct_python_backend.models import EditsLog, Node, Conversation
 
 
 class TrainingDataExporter:

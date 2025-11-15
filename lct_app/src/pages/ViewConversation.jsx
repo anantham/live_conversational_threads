@@ -32,28 +32,46 @@ const API_URL = import.meta.env.VITE_API_URL || "";
 useEffect(() => {
   if (!conversationId) return;
 
+  console.log("[ViewConversation] Loading conversation:", conversationId);
+
   // Load conversation data
   fetch(`${API_URL}/conversations/${conversationId}`)
-    .then((res) => res.json())
+    .then((res) => {
+      console.log("[ViewConversation] Fetch response status:", res.status);
+      return res.json();
+    })
     .then((data) => {
-      if (data.graph_data) setGraphData(data.graph_data);
-      if (data.chunk_dict) setChunkDict(data.chunk_dict);
+      console.log("[ViewConversation] Received data:", data);
+      console.log("[ViewConversation] graph_data:", data.graph_data);
+      console.log("[ViewConversation] chunk_dict:", data.chunk_dict);
+
+      if (data.graph_data) {
+        console.log("[ViewConversation] Setting graphData with", data.graph_data.length, "nodes");
+        setGraphData(data.graph_data);
+      }
+      if (data.chunk_dict) {
+        console.log("[ViewConversation] Setting chunkDict with", Object.keys(data.chunk_dict).length, "chunks");
+        setChunkDict(data.chunk_dict);
+      }
     })
     .catch((err) => {
-      console.error("Failed to load conversation:", err);
+      console.error("[ViewConversation] Failed to load conversation:", err);
     });
 
   // Load conversation metadata for name
   fetch(`${API_URL}/conversations/`)
     .then((res) => res.json())
     .then((conversations) => {
-      const conversation = conversations.find((c) => c.id === conversationId);
+      console.log("[ViewConversation] Loaded conversations list:", conversations);
+      // FIX: Backend returns 'file_id', not 'id'
+      const conversation = conversations.find((c) => c.file_id === conversationId);
+      console.log("[ViewConversation] Found conversation:", conversation);
       if (conversation) {
         setConversationName(conversation.file_name);
       }
     })
     .catch((err) => {
-      console.error("Failed to load conversation metadata:", err);
+      console.error("[ViewConversation] Failed to load conversation metadata:", err);
     });
 }, [conversationId]);
 
@@ -154,6 +172,7 @@ useEffect(() => {
           {/* 🟣 Contextual Flow - 3/4 height */}
           <div className="flex-grow-[4] bg-white rounded-lg shadow-lg p-4 w-full overflow-hidden flex flex-col">
             <ContextualGraph
+                conversationId={conversationId}
                 graphData={graphData}
                 chunkDict={chunkDict}
                 setGraphData={setGraphData}
@@ -195,6 +214,7 @@ useEffect(() => {
             {/* Top Right - Contextual Graph */}
             <div className="hidden md:block w-full md:w-1/2 bg-white rounded-lg shadow-lg p-4">
               <ContextualGraph
+                conversationId={conversationId}
                 graphData={graphData}
                 chunkDict={chunkDict}
                 setGraphData={setGraphData}

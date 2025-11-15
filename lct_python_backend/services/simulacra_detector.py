@@ -18,8 +18,8 @@ from datetime import datetime
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from models import Node, SimulacraAnalysis
-from services.prompt_manager import get_prompt_manager
+from lct_python_backend.models import Node, SimulacraAnalysis
+from lct_python_backend.services.prompt_manager import get_prompt_manager
 import anthropic
 import os
 

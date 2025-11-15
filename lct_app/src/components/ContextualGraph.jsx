@@ -8,6 +8,13 @@ import "reactflow/dist/style.css";
 const NODE_TYPES = {};
 const EDGE_TYPES = {};
 
+// Track reference stability
+console.log("[ContextualGraph] Module loaded - NODE_TYPES ref:", NODE_TYPES);
+console.log("[ContextualGraph] Module loaded - EDGE_TYPES ref:", EDGE_TYPES);
+
+// Counter to track renders
+let renderCount = 0;
+
 export default function ContextualGraph({
   conversationId,
   graphData,
@@ -25,6 +32,36 @@ export default function ContextualGraph({
   const [factCheckResults, setFactCheckResults] = useState(null);
   const [isFactChecking, setIsFactChecking] = useState(false);
 
+  const renderCountRef = useRef(0);
+  const prevPropsRef = useRef({ graphData, selectedNode, isFullScreen });
+
+  // Increment render counter
+  renderCount++;
+  renderCountRef.current++;
+
+  console.log(`[ContextualGraph RENDER #${renderCount}] Component rendering`);
+  console.log(`[ContextualGraph RENDER #${renderCount}] Props:`, {
+    conversationId,
+    graphDataLength: graphData?.length,
+    selectedNode,
+    isFullScreen,
+    graphDataRef: graphData,
+  });
+
+  // Check if props changed
+  const propsChanged = {
+    graphData: prevPropsRef.current.graphData !== graphData,
+    selectedNode: prevPropsRef.current.selectedNode !== selectedNode,
+    isFullScreen: prevPropsRef.current.isFullScreen !== isFullScreen,
+  };
+  console.log(`[ContextualGraph RENDER #${renderCount}] Props changed:`, propsChanged);
+
+  // Check NODE_TYPES and EDGE_TYPES stability
+  console.log(`[ContextualGraph RENDER #${renderCount}] NODE_TYPES ref:`, NODE_TYPES);
+  console.log(`[ContextualGraph RENDER #${renderCount}] EDGE_TYPES ref:`, EDGE_TYPES);
+
+  prevPropsRef.current = { graphData, selectedNode, isFullScreen };
+
   const latestChunk = graphData?.[graphData.length - 1] || [];
 
   const API_URL = import.meta.env.VITE_API_URL || "";
@@ -41,8 +78,13 @@ export default function ContextualGraph({
 
   // logging
   useEffect(() => {
+    console.log("[ContextualGraph MOUNT/UPDATE] Component mounted or updated");
     console.log("Full Graph Data(contextual):", graphData);
     console.log("Latest Chunk Data(contextual):", latestChunk);
+
+    return () => {
+      console.log("[ContextualGraph CLEANUP] Component cleanup/unmount");
+    };
   }, [graphData]);
 
   const handleFactCheck = async () => {

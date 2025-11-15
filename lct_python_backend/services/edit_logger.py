@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 import uuid
 
-from models import EditsLog
+from lct_python_backend.models import EditsLog
 
 
 class EditLogger:
