@@ -27,6 +27,7 @@ from lct_python_backend.import_api import router as import_router
 from lct_python_backend.bookmarks_api import router as bookmarks_router
 from lct_python_backend.db_session import get_async_session
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import func
 from contextlib import asynccontextmanager
 # from dotenv import load_dotenv
 
