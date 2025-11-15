@@ -3,6 +3,10 @@ import ReactFlow, { Controls, Background } from "reactflow";
 import dagre from "dagre"; // Import Dagre for auto-layout
 import "reactflow/dist/style.css";
 
+// Define outside component to prevent ReactFlow warnings
+const NODE_TYPES = {};
+const EDGE_TYPES = {};
+
 export default function StructuralGraph({
   graphData,
   selectedNode,
@@ -147,13 +151,15 @@ export default function StructuralGraph({
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
           fitView
           // 🔍 Zoom Controls
           zoomOnPinch={true}
           zoomOnScroll={true}
 
           // 🖱️ Pan Controls
-          panOnDrag={true} 
+          panOnDrag={true}
           panOnScroll={false}
           onNodeClick={(_, node) =>
             setSelectedNode((prevSelected) =>
