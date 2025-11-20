@@ -2438,10 +2438,11 @@ def convert_conversation_to_canvas(graph_data: List, chunk_dict: Dict[str, str],
     root_nodes = [node for node in conversation_nodes if not node.get("predecessor")]
 
     # Simple hierarchical layout algorithm
-    HORIZONTAL_SPACING = 400
-    VERTICAL_SPACING = 250
     NODE_WIDTH = 350
     NODE_HEIGHT = 200
+    # Spacing: horizontal = 2x node width, vertical = 3x node height
+    HORIZONTAL_SPACING = 2 * NODE_WIDTH  # 700px = 350px gap between nodes
+    VERTICAL_SPACING = 3 * NODE_HEIGHT   # 600px = 400px gap between nodes
 
     def calculate_positions(current_node, x, y, visited):
         """Recursively calculate positions for nodes"""
