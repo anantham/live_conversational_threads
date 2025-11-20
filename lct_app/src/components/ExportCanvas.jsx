@@ -18,22 +18,46 @@ export default function ExportCanvas({ graphData, fileName }) {
 
     setIsExporting(true);
 
+    const exportUrl = `${API_URL}/export/obsidian-canvas/${conversationId}?include_chunks=${includeChunks}`;
+    console.log('[ExportCanvas] Starting export...');
+    console.log('[ExportCanvas] URL:', exportUrl);
+    console.log('[ExportCanvas] conversationId:', conversationId);
+    console.log('[ExportCanvas] includeChunks:', includeChunks);
+
     try {
-      const response = await fetch(
-        `${API_URL}/export/obsidian-canvas/${conversationId}?include_chunks=${includeChunks}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      const response = await fetch(exportUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      console.log('[ExportCanvas] Response status:', response.status);
+      console.log('[ExportCanvas] Response statusText:', response.statusText);
+      console.log('[ExportCanvas] Response ok:', response.ok);
 
       if (!response.ok) {
-        throw new Error(`Export failed: ${response.statusText}`);
+        // Try to get error details from response body
+        let errorDetails;
+        try {
+          errorDetails = await response.json();
+          console.error('[ExportCanvas] Backend error details:', errorDetails);
+        } catch (jsonError) {
+          // Response might not be JSON
+          const textError = await response.text();
+          console.error('[ExportCanvas] Backend error (text):', textError);
+          errorDetails = { message: textError };
+        }
+
+        throw new Error(
+          `Export failed (${response.status} ${response.statusText}): ${
+            errorDetails?.detail || errorDetails?.message || 'Unknown error'
+          }`
+        );
       }
 
       const canvasData = await response.json();
+      console.log('[ExportCanvas] Canvas data received, keys:', Object.keys(canvasData));
 
       // Download as .canvas file
       const blob = new Blob([JSON.stringify(canvasData, null, 2)], {
@@ -48,10 +72,17 @@ export default function ExportCanvas({ graphData, fileName }) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      console.log("Canvas exported successfully");
+      console.log("[ExportCanvas] ✅ Canvas exported successfully");
+      alert("Canvas exported successfully!");
     } catch (error) {
-      console.error("Failed to export canvas:", error);
-      alert(`Failed to export canvas: ${error.message}`);
+      console.error("[ExportCanvas] ❌ Export failed:");
+      console.error("[ExportCanvas] Error type:", error.constructor.name);
+      console.error("[ExportCanvas] Error message:", error.message);
+      console.error("[ExportCanvas] Full error object:", error);
+      console.error("[ExportCanvas] Stack trace:", error.stack);
+
+      // Show detailed error to user
+      alert(`Failed to export canvas:\n\n${error.message}\n\nCheck the browser console for more details.`);
     } finally {
       setIsExporting(false);
     }
