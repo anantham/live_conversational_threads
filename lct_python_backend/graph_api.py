@@ -13,8 +13,8 @@ from typing import Optional, List
 from pydantic import BaseModel
 import uuid
 
-from services import GraphGenerationService
-from parsers import GoogleMeetParser
+from lct_python_backend.services import GraphGenerationService
+from lct_python_backend.parsers import GoogleMeetParser
 
 
 # Pydantic models for API responses
