@@ -103,7 +103,8 @@ class GoogleMeetParser:
 
     # Metadata patterns to ignore (Google Meet specific)
     METADATA_PATTERNS = [
-        r'^Transcription\s+(ended|started)',  # "Transcription ended after..."
+        r'^Transcription\s+ended\s+after',     # "Transcription ended after 01:34:31" (must come before general pattern)
+        r'^Transcription\s+(ended|started)',   # "Transcription ended" or "Transcription started"
         r'^This\s+editable\s+transcript',      # "This editable transcript was..."
         r'^People\s+can\s+also\s+change',      # "People can also change the text..."
         r'^\s*---\s*$',                        # Separator lines "---"
