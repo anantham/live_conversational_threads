@@ -1654,15 +1654,15 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
                     "id": str(node.id),
                     "node_name": node.node_name,
                     "summary": node.summary,
-                    "claims": node.claims or [],
+                    "claims": [str(cid) for cid in (node.claim_ids or [])],
                     "key_points": node.key_points or [],
-                    "predecessor": node.predecessor,
-                    "successor": node.successor,
-                    "contextual_relation": node.contextual_relation or {},
-                    "linked_nodes": node.linked_nodes or [],
+                    "predecessor": str(node.predecessor_id) if node.predecessor_id else None,
+                    "successor": str(node.successor_id) if node.successor_id else None,
+                    "contextual_relation": {},  # TODO: Need to fetch relationships from Relationship table
+                    "linked_nodes": [],  # TODO: Need to fetch from Relationship table
                     "is_bookmark": node.is_bookmark,
                     "is_contextual_progress": node.is_contextual_progress,
-                    "chunk_id": node.chunk_id,
+                    "chunk_id": str(node.chunk_ids[0]) if node.chunk_ids else None,
                     "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])]
                 }
                 graph_data.append(node_data)
@@ -2615,7 +2615,11 @@ def convert_conversation_to_canvas(graph_data: List, chunk_dict: Dict[str, str],
 
 
 @lct_app.post("/export/obsidian-canvas/{conversation_id}")
-async def export_to_obsidian_canvas(conversation_id: str, include_chunks: bool = False):
+async def export_to_obsidian_canvas(
+    conversation_id: str,
+    include_chunks: bool = False,
+    db: AsyncSession = Depends(get_async_session)
+):
     """
     Export a conversation to Obsidian Canvas format.
 
@@ -2627,23 +2631,121 @@ async def export_to_obsidian_canvas(conversation_id: str, include_chunks: bool =
         JSON response with Canvas format that can be saved as .canvas file
     """
     try:
-        # Load conversation from GCS
-        gcs_path = await get_conversation_gcs_path(conversation_id)
-        if not gcs_path:
+        print(f"[INFO] Exporting conversation {conversation_id} to Obsidian Canvas (include_chunks={include_chunks})")
+
+        from sqlalchemy import select
+        from lct_python_backend.models import Conversation, Node, Utterance, Relationship
+        import uuid
+
+        # Fetch conversation from PostgreSQL
+        result = await db.execute(
+            select(Conversation).where(Conversation.id == uuid.UUID(conversation_id))
+        )
+        conversation = result.scalar_one_or_none()
+
+        if not conversation:
+            print(f"[ERROR] Conversation not found: {conversation_id}")
             raise HTTPException(status_code=404, detail="Conversation not found")
 
-        conversation_data = load_conversation_from_gcs(gcs_path)
-        graph_data = conversation_data.get("graph_data")
-        chunk_dict = conversation_data.get("chunk_dict", {})
+        print(f"[INFO] Found conversation: {conversation.conversation_name}")
 
-        # Get conversation metadata for file name
-        conversations = await get_all_conversations()
-        conversation_meta = next((c for c in conversations if c["id"] == conversation_id), None)
-        file_name = conversation_meta.get("file_name", "Untitled Conversation") if conversation_meta else "Untitled Conversation"
+        # Fetch all nodes for this conversation
+        nodes_result = await db.execute(
+            select(Node).where(Node.conversation_id == uuid.UUID(conversation_id))
+        )
+        nodes = list(nodes_result.scalars().all())
+        print(f"[INFO] Found {len(nodes)} nodes")
+
+        # Fetch all relationships for this conversation
+        relationships_result = await db.execute(
+            select(Relationship).where(Relationship.conversation_id == uuid.UUID(conversation_id))
+        )
+        relationships = list(relationships_result.scalars().all())
+        print(f"[INFO] Found {len(relationships)} relationships")
+
+        # Fetch all utterances for this conversation
+        utterances_result = await db.execute(
+            select(Utterance)
+            .where(Utterance.conversation_id == uuid.UUID(conversation_id))
+            .order_by(Utterance.sequence_number)
+        )
+        utterances = list(utterances_result.scalars().all())
+        print(f"[INFO] Found {len(utterances)} utterances")
+
+        # Build graph_data from nodes
+        graph_data = []
+        chunk_dict = {}
+
+        # Create mapping from node ID to node name
+        id_to_name = {node.id: node.node_name for node in nodes}
+
+        # Build relationship data structures
+        # successor_map: node_id -> successor_node_name
+        successor_map = {}
+        # contextual_map: node_id -> {related_node_name: relationship_type}
+        contextual_map = {}
+
+        for rel in relationships:
+            from_name = id_to_name.get(rel.from_node_id)
+            to_name = id_to_name.get(rel.to_node_id)
+
+            if not from_name or not to_name:
+                continue
+
+            # Check relationship type to determine if it's temporal (successor) or contextual
+            if rel.relationship_type in ['leads_to', 'next', 'follows']:
+                # Temporal relationship - use as successor
+                successor_map[rel.from_node_id] = to_name
+            else:
+                # Contextual relationship
+                if rel.from_node_id not in contextual_map:
+                    contextual_map[rel.from_node_id] = {}
+                contextual_map[rel.from_node_id][to_name] = rel.relationship_type
+
+        for node in nodes:
+            node_data = {
+                "id": str(node.id),
+                "node_name": node.node_name,
+                "summary": node.summary,
+                "claims": [str(cid) for cid in (node.claim_ids or [])],
+                "key_points": node.key_points or [],
+                "predecessor": None,  # Will be computed from successor relationships
+                "successor": successor_map.get(node.id),
+                "contextual_relation": contextual_map.get(node.id, {}),
+                "linked_nodes": [],
+                "is_bookmark": node.is_bookmark,
+                "is_contextual_progress": node.is_contextual_progress,
+                "chunk_id": str(node.chunk_ids[0]) if node.chunk_ids else None,
+                "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])]
+            }
+            graph_data.append(node_data)
+
+            # Build chunk_dict if including chunks
+            if include_chunks and node.chunk_ids:
+                for chunk_id in node.chunk_ids:
+                    chunk_id_str = str(chunk_id)
+                    if chunk_id_str not in chunk_dict:
+                        # Get utterances for this chunk
+                        chunk_utterances = [
+                            utt for utt in utterances
+                            if utt.chunk_id and str(utt.chunk_id) == chunk_id_str
+                        ]
+                        # Combine utterance texts
+                        chunk_text = "\n".join([utt.text for utt in chunk_utterances])
+                        chunk_dict[chunk_id_str] = chunk_text
+
+        print(f"[INFO] Built graph_data with {len(graph_data)} nodes and {len(chunk_dict)} chunks")
+
+        # Use conversation name as file name
+        file_name = conversation.conversation_name or "Untitled Conversation"
+
+        # Wrap graph_data in a list for the expected format [[nodes]]
+        wrapped_graph_data = [graph_data]
 
         # Convert to Canvas format
-        canvas = convert_conversation_to_canvas(graph_data, chunk_dict, file_name, include_chunks)
+        canvas = convert_conversation_to_canvas(wrapped_graph_data, chunk_dict, file_name, include_chunks)
 
+        print(f"[INFO] ✅ Successfully exported conversation to Canvas")
         # Return as JSON (user can save as .canvas file)
         return canvas.model_dump()
 
@@ -3708,6 +3810,159 @@ async def get_node_frames(node_id: str):
 
     except Exception as e:
         print(f"[ERROR] Failed to get node frames: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Thematic Analysis (Hierarchical Coarse-Graining)
+# ============================================================================
+
+@lct_app.post("/api/conversations/{conversation_id}/themes/generate")
+async def generate_thematic_structure(
+    conversation_id: str,
+    max_themes: int = 50,
+    model: str = "anthropic/claude-3.5-sonnet",
+    force_reanalysis: bool = False,
+    db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Generate thematic structure for a conversation using AI
+
+    AI analyzes conversation complexity and determines the appropriate number
+    of thematic nodes (typically 3-20) with relationships between them.
+
+    Args:
+        conversation_id: UUID of conversation
+        max_themes: Maximum number of thematic nodes (soft limit, default 50)
+        model: OpenRouter model ID (default claude-3.5-sonnet)
+        force_reanalysis: Re-analyze even if thematic nodes exist
+
+    Returns:
+        {
+            "thematic_nodes": [...],
+            "edges": [...],
+            "summary": {...}
+        }
+    """
+    try:
+        from lct_python_backend.services.thematic_analyzer import ThematicAnalyzer
+
+        analyzer = ThematicAnalyzer(db, model=model)
+        results = await analyzer.analyze_conversation(
+            conversation_id,
+            max_themes=max_themes,
+            force_reanalysis=force_reanalysis
+        )
+
+        return results
+
+    except ValueError as e:
+        # Missing API key or validation error
+        print(f"[ERROR] Thematic analysis validation error: {e}")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        print(f"[ERROR] Thematic analysis failed: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@lct_app.get("/api/conversations/{conversation_id}/themes")
+async def get_thematic_structure(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Get existing thematic structure for a conversation
+
+    Returns thematic nodes and edges if they exist, otherwise empty.
+    """
+    try:
+        from lct_python_backend.services.thematic_analyzer import ThematicAnalyzer
+
+        # Create analyzer with default model (not used for retrieval)
+        analyzer = ThematicAnalyzer(db)
+
+        # Check if thematic nodes exist
+        from lct_python_backend.models import Node, Relationship
+        from sqlalchemy import select, and_
+        import uuid
+
+        result = await db.execute(
+            select(Node).where(
+                and_(
+                    Node.conversation_id == uuid.UUID(conversation_id),
+                    Node.level == 2  # Level 2 = thematic
+                )
+            )
+        )
+        nodes = result.scalars().all()
+
+        if not nodes:
+            return {
+                "thematic_nodes": [],
+                "edges": [],
+                "summary": {"total_themes": 0, "exists": False}
+            }
+
+        # Serialize existing structure
+        structure = await analyzer._serialize_existing_structure(nodes, conversation_id)
+        structure["summary"]["exists"] = True
+
+        return structure
+
+    except Exception as e:
+        print(f"[ERROR] Failed to get thematic structure: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@lct_app.get("/api/conversations/{conversation_id}/utterances")
+async def get_conversation_utterances(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Get all utterances for a conversation
+
+    Returns utterances ordered by sequence number for timeline display.
+    """
+    try:
+        from lct_python_backend.models import Utterance
+        from sqlalchemy import select
+        import uuid
+
+        result = await db.execute(
+            select(Utterance)
+            .where(Utterance.conversation_id == uuid.UUID(conversation_id))
+            .order_by(Utterance.sequence_number)
+        )
+        utterances = result.scalars().all()
+
+        # Serialize utterances
+        utterances_data = [
+            {
+                "id": str(utt.id),
+                "conversation_id": str(utt.conversation_id),
+                "sequence_number": utt.sequence_number,
+                "speaker_id": utt.speaker_id,
+                "speaker_name": utt.speaker_name,
+                "text": utt.text,
+                "timestamp_start": utt.timestamp_start,
+                "timestamp_end": utt.timestamp_end,
+                "duration_seconds": utt.duration_seconds,
+            }
+            for utt in utterances
+        ]
+
+        return {
+            "utterances": utterances_data,
+            "total": len(utterances_data)
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Failed to get utterances: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
