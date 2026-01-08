@@ -21,6 +21,34 @@ export default function Home() {
         >
           Browse Conversations
         </button>
+
+        <button
+          onClick={() => navigate("/import")}
+          className="w-full px-6 py-3 bg-teal-500 hover:bg-teal-700 active:bg-teal-800 rounded-2xl shadow-lg text-white text-lg transition-all duration-200"
+        >
+          📥 Import Transcript
+        </button>
+
+        <button
+          onClick={() => navigate("/bookmarks")}
+          className="w-full px-6 py-3 bg-pink-500 hover:bg-pink-700 active:bg-pink-800 rounded-2xl shadow-lg text-white text-lg transition-all duration-200"
+        >
+          🔖 My Bookmarks
+        </button>
+
+        <button
+          onClick={() => navigate("/cost-dashboard")}
+          className="w-full px-6 py-3 bg-indigo-500 hover:bg-indigo-700 active:bg-indigo-800 rounded-2xl shadow-lg text-white text-lg transition-all duration-200"
+        >
+          💰 Cost Dashboard
+        </button>
+
+        <button
+          onClick={() => navigate("/settings")}
+          className="w-full px-6 py-3 bg-gray-500 hover:bg-gray-700 active:bg-gray-800 rounded-2xl shadow-lg text-white text-lg transition-all duration-200"
+        >
+          ⚙️ Settings
+        </button>
       </div>
     </div>
   );
