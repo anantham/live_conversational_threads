@@ -1,7 +1,52 @@
 import anthropic
 import os
 import json
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
+import logging
+from logging.handlers import RotatingFileHandler
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, BackgroundTasks, Query
+
+# ============================================================================
+# LOGGING CONFIGURATION - Persistent file-based logging
+# ============================================================================
+LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# Create logger
+logger = logging.getLogger("lct_backend")
+logger.setLevel(logging.DEBUG)
+
+# File handler - rotates at 10MB, keeps 5 backups
+file_handler = RotatingFileHandler(
+    os.path.join(LOG_DIR, "backend.log"),
+    maxBytes=10*1024*1024,  # 10MB
+    backupCount=5,
+    encoding='utf-8'
+)
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s | %(levelname)-8s | %(name)s | %(funcName)s:%(lineno)d | %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Console handler for immediate visibility
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter(
+    '%(asctime)s | %(levelname)-8s | %(message)s',
+    datefmt='%H:%M:%S'
+))
+
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+# Also capture uvicorn logs
+logging.getLogger("uvicorn").addHandler(file_handler)
+logging.getLogger("uvicorn.access").addHandler(file_handler)
+
+logger.info("=" * 60)
+logger.info("LCT Backend Starting - Logging initialized")
+logger.info(f"Log file: {os.path.join(LOG_DIR, 'backend.log')}")
+logger.info("=" * 60)
 from fastapi.staticfiles import StaticFiles
 from websockets.exceptions import ConnectionClosedError
 from fastapi.middleware.cors import CORSMiddleware
@@ -19,6 +64,9 @@ from google.genai import types
 from pathlib import Path
 from google.cloud import storage
 from datetime import datetime
+import wave
+import subprocess
+import shutil
 # from db import db
 # from db_helpers import get_all_conversations, insert_conversation_metadata, get_conversation_gcs_path
 from lct_python_backend.db import db
@@ -26,6 +74,13 @@ from lct_python_backend.db_helpers import get_all_conversations, insert_conversa
 from lct_python_backend.import_api import router as import_router
 from lct_python_backend.bookmarks_api import router as bookmarks_router
 from lct_python_backend.db_session import get_async_session
+
+# Audio retention config
+AUDIO_RECORDING_ENABLED = os.getenv("AUDIO_RECORDING_ENABLED", "true").lower() == "true"
+AUDIO_RECORDINGS_DIR = os.getenv("AUDIO_RECORDINGS_DIR", "./lct_python_backend/recordings")
+AUDIO_DOWNLOAD_TOKEN = os.getenv("AUDIO_DOWNLOAD_TOKEN", None)
+
+os.makedirs(AUDIO_RECORDINGS_DIR, exist_ok=True)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 from contextlib import asynccontextmanager
@@ -68,7 +123,12 @@ lct_app.add_middleware(
         "http://localhost:5174",
         "http://localhost:5175",
         "http://localhost:5176",
-        "http://localhost:5177"
+        "http://localhost:5177",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
+        "http://127.0.0.1:5176",
+        "http://127.0.0.1:5177",
     ],  # Allow requests from Vite frontend (any port)
     allow_credentials=True,
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
@@ -2061,10 +2121,101 @@ async def generate_formalism_call(request: generateFormalismRequest):
 async def websocket_audio_endpoint(client_websocket: WebSocket):
 
     shared_state = {
-                    "accumulator": [],
-                    "existing_json": [],
-                    "chunk_dict": {},
-                }
+        "accumulator": [],
+        "existing_json": [],
+        "chunk_dict": {},
+        "audio": {
+            "record": AUDIO_RECORDING_ENABLED,
+            "conversation_id": None,
+            "wav_path": None,
+            "flac_path": None,
+            "wav_writer": None,
+            "bytes_written": 0,
+        },
+    }
+
+    def ensure_audio_writer():
+        """Open a WAV writer lazily once we have a conversation_id."""
+        audio_state = shared_state["audio"]
+        if not audio_state["record"]:
+            return
+        if audio_state["wav_writer"]:
+            return
+
+        conversation_id = audio_state["conversation_id"] or str(uuid.uuid4())
+        audio_state["conversation_id"] = conversation_id
+
+        os.makedirs(AUDIO_RECORDINGS_DIR, exist_ok=True)
+        wav_path = os.path.join(AUDIO_RECORDINGS_DIR, f"{conversation_id}.wav")
+        audio_state["wav_path"] = wav_path
+
+        wav_file = wave.open(wav_path, "wb")
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)  # 16-bit PCM
+        wav_file.setframerate(16000)
+        audio_state["wav_writer"] = wav_file
+        print(f"[AUDIO] Recording enabled. Writing WAV to: {wav_path}")
+
+    def write_audio(pcm_bytes: bytes):
+        audio_state = shared_state["audio"]
+        if not audio_state["record"]:
+            return
+        if not pcm_bytes:
+            return
+        ensure_audio_writer()
+        if audio_state["wav_writer"]:
+            audio_state["wav_writer"].writeframes(pcm_bytes)
+            audio_state["bytes_written"] += len(pcm_bytes)
+
+    def finalize_audio():
+        audio_state = shared_state["audio"]
+        if not audio_state["record"]:
+            return
+
+        # Close WAV writer
+        try:
+            if audio_state["wav_writer"]:
+                audio_state["wav_writer"].close()
+                audio_state["wav_writer"] = None
+                print(f"[AUDIO] WAV saved: {audio_state['wav_path']} ({audio_state['bytes_written']} bytes raw PCM)")
+        except Exception as e:
+            print(f"[AUDIO] Error closing WAV: {e}")
+
+        # Convert to FLAC if possible
+        if audio_state.get("wav_path"):
+            wav_path = audio_state["wav_path"]
+            flac_path = wav_path.replace(".wav", ".flac")
+            audio_state["flac_path"] = flac_path
+
+            ffmpeg_path = shutil.which("ffmpeg")
+            if not ffmpeg_path:
+                print("[AUDIO] ffmpeg not found; skipping FLAC conversion.")
+                return
+
+            try:
+                result = subprocess.run(
+                    [
+                        ffmpeg_path,
+                        "-y",
+                        "-f",
+                        "s16le",
+                        "-ar",
+                        "16000",
+                        "-ac",
+                        "1",
+                        "-i",
+                        wav_path,
+                        "-compression_level",
+                        "12",
+                        flac_path,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                print(f"[AUDIO] FLAC saved: {flac_path}")
+            except subprocess.CalledProcessError as e:
+                print(f"[AUDIO] FLAC conversion failed: {e.stderr}")
     
     async def should_continue_processing(text_batch, stop_accumulating_flag= False):
         # Replace with your actual decision logic or API call
@@ -2140,6 +2291,8 @@ async def websocket_audio_endpoint(client_websocket: WebSocket):
                     # This is binary audio data
                     print("[AAI WS] Sending audio to AssemblyAI...")
                     pcm_data = message["bytes"]
+                    # Save audio locally if enabled
+                    write_audio(pcm_data)
                     await aai_ws.send(pcm_data)
 
                 elif "text" in message:
@@ -2147,6 +2300,21 @@ async def websocket_audio_endpoint(client_websocket: WebSocket):
                     # This is a JSON control message
                     try:
                         msg = json.loads(message["text"])
+                        
+                        if msg.get("type") == "session_meta":
+                            # client can supply conversation_id and toggle recording
+                            if msg.get("conversation_id"):
+                                shared_state["audio"]["conversation_id"] = msg["conversation_id"]
+                            if "record_audio" in msg:
+                                shared_state["audio"]["record"] = bool(msg["record_audio"]) and AUDIO_RECORDING_ENABLED
+
+                            await client_websocket.send_text(json.dumps({
+                                "type": "session_ack",
+                                "conversation_id": shared_state["audio"]["conversation_id"],
+                                "recording": shared_state["audio"]["record"],
+                                "wav_path": shared_state["audio"].get("wav_path"),
+                            }))
+                            continue
                         
                         #client log
                         if msg.get("type") == "client_log":
@@ -2170,6 +2338,9 @@ async def websocket_audio_endpoint(client_websocket: WebSocket):
                                         "detail": f"Flush failed: {str(e)}"
                                     }))
 
+                            # finalize audio recording before closing
+                            finalize_audio()
+
                             await client_websocket.send_text(json.dumps({ "type": "flush_ack" }))
                             print("[INFO]: Flush ack sent, sleeping briefly...")
                             await asyncio.sleep(0.5)
@@ -2181,6 +2352,7 @@ async def websocket_audio_endpoint(client_websocket: WebSocket):
 
             except WebSocketDisconnect:
                 print("[INFO]: WebSocket client disconnected.")
+                finalize_audio()
                 break
             
             except Exception as e:
@@ -2280,6 +2452,7 @@ async def websocket_audio_endpoint(client_websocket: WebSocket):
                             task.cancel()
                         await asyncio.gather(*tasks, return_exceptions=True)
                         print("[CLIENT WS] All tasks cleaned up")
+                        finalize_audio()
 
             except ConnectionClosedError as aai_err:
                 print(f"[AAI WS] Connection closed unexpectedly: {aai_err}")
@@ -2338,6 +2511,22 @@ async def fact_check_claims_call(request: FactCheckRequest):
         raise http_err
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
+# Download recorded audio (token gated)
+@lct_app.get("/api/conversations/{conversation_id}/audio")
+async def download_audio(conversation_id: str, token: Optional[str] = Query(None)):
+    if AUDIO_DOWNLOAD_TOKEN and token != AUDIO_DOWNLOAD_TOKEN:
+        raise HTTPException(status_code=401, detail="Invalid or missing token")
+
+    wav_path = Path(AUDIO_RECORDINGS_DIR) / f"{conversation_id}.wav"
+    flac_path = Path(AUDIO_RECORDINGS_DIR) / f"{conversation_id}.flac"
+
+    if wav_path.exists():
+        return FileResponse(wav_path, media_type="audio/wav", filename=wav_path.name)
+    if flac_path.exists():
+        return FileResponse(flac_path, media_type="audio/flac", filename=flac_path.name)
+
+    raise HTTPException(status_code=404, detail="Recording not found")
 
 # @lct_app.post("/save_fact_check/")
 # async def save_fact_check_call(request: SaveFactCheckRequest):
@@ -2408,7 +2597,13 @@ class CanvasImportRequest(BaseModel):
     preserve_positions: bool = True
 
 
-def convert_conversation_to_canvas(graph_data: List, chunk_dict: Dict[str, str], file_name: str, include_chunks: bool = False) -> ObsidianCanvas:
+def convert_conversation_to_canvas(
+    graph_data: List,
+    chunk_dict: Dict[str, str],
+    file_name: str,
+    include_chunks: bool = False,
+    edge_records: Optional[List[Dict[str, str]]] = None,
+) -> ObsidianCanvas:
     """
     Convert conversation tree format to Obsidian Canvas format.
 
@@ -2417,12 +2612,13 @@ def convert_conversation_to_canvas(graph_data: List, chunk_dict: Dict[str, str],
         chunk_dict: Dictionary mapping chunk IDs to text content
         file_name: Name of the conversation (used for title node)
         include_chunks: Whether to include chunk content as separate nodes
+        edge_records: Optional list of precomputed edges to inject (from relationships)
 
     Returns:
         ObsidianCanvas object with nodes and edges
     """
-    nodes = []
-    edges = []
+    nodes: List[CanvasNode] = []
+    edges: List[CanvasEdge] = []
 
     # Extract nodes from graph_data (format is [[nodes]])
     conversation_nodes = graph_data[0] if graph_data and isinstance(graph_data[0], list) else []
@@ -2521,57 +2717,56 @@ def convert_conversation_to_canvas(graph_data: List, chunk_dict: Dict[str, str],
         )
         nodes.append(canvas_node)
 
-    # Create edges for temporal relationships (predecessor/successor)
+    # Create edges: first from supplied edge_records (relationships), then fallback temporal/contextual
     edge_counter = 0
-    created_edges = set()  # Track created edges to avoid duplicates
+    created_edges = set()
 
+    def add_edge(from_id: str, to_id: str, label: str, color: str, from_side=None, to_side=None, from_end="none", to_end="arrow"):
+        nonlocal edge_counter
+        edge_key = f"{from_id}->{to_id}:{label}:{color}"
+        if edge_key in created_edges:
+            return
+        edges.append(
+            CanvasEdge(
+                id=f"edge_{edge_counter}",
+                fromNode=from_id,
+                toNode=to_id,
+                fromSide=from_side,
+                toSide=to_side,
+                fromEnd=from_end,
+                toEnd=to_end,
+                color=color,
+                label=label,
+            )
+        )
+        created_edges.add(edge_key)
+        edge_counter += 1
+
+    # Inject edges provided via edge_records (relationships)
+    if edge_records:
+        for rec in edge_records:
+            source = rec.get("fromNode") or rec.get("from") or rec.get("source")
+            target = rec.get("toNode") or rec.get("to") or rec.get("target")
+            label = rec.get("label") or rec.get("type") or "related"
+            color = rec.get("color") or "3"
+            if source and target:
+                add_edge(source, target, label, color, from_end="none", to_end="arrow")
+
+    # Fallback: temporal/contextual relationships derived from graph_data
     for node in conversation_nodes:
         node_id = node["node_name"].replace(" ", "_")
 
         # Temporal edge (successor)
         if node.get("successor"):
             successor_id = node["successor"].replace(" ", "_")
-            edge_key = f"{node_id}->{successor_id}"
-            if edge_key not in created_edges:
-                edge = CanvasEdge(
-                    id=f"edge_{edge_counter}",
-                    fromNode=node_id,
-                    toNode=successor_id,
-                    fromSide="right",
-                    toSide="left",
-                    fromEnd="none",
-                    toEnd="arrow",
-                    color="1",  # Red for temporal flow
-                    label="next"
-                )
-                edges.append(edge)
-                created_edges.add(edge_key)
-                edge_counter += 1
+            add_edge(node_id, successor_id, "next", "1", from_side="right", to_side="left", to_end="arrow")
 
         # Contextual relationships
         if node.get("contextual_relation"):
             for related_node_name, explanation in node["contextual_relation"].items():
                 related_id = related_node_name.replace(" ", "_")
-                edge_key = f"{node_id}~{related_id}"
-                reverse_edge_key = f"{related_id}~{node_id}"
-
-                # Only create edge if it doesn't already exist (avoid duplicates)
-                if edge_key not in created_edges and reverse_edge_key not in created_edges:
-                    # Truncate long explanations for edge labels
-                    label = explanation[:50] + "..." if len(explanation) > 50 else explanation
-
-                    edge = CanvasEdge(
-                        id=f"edge_{edge_counter}",
-                        fromNode=node_id,
-                        toNode=related_id,
-                        fromEnd="none",
-                        toEnd="none",
-                        color="3",  # Yellow for contextual relationships
-                        label=label
-                    )
-                    edges.append(edge)
-                    created_edges.add(edge_key)
-                    edge_counter += 1
+                label = explanation[:50] + "..." if len(explanation) > 50 else explanation
+                add_edge(node_id, related_id, label or "related", "3", from_end="none", to_end="none")
 
     # Add chunk nodes if requested
     if include_chunks:
@@ -2680,11 +2875,10 @@ async def export_to_obsidian_canvas(
         # Create mapping from node ID to node name
         id_to_name = {node.id: node.node_name for node in nodes}
 
-        # Build relationship data structures
-        # successor_map: node_id -> successor_node_name
-        successor_map = {}
-        # contextual_map: node_id -> {related_node_name: relationship_type}
-        contextual_map = {}
+        # Build relationship data structures (and collect edges for Canvas)
+        successor_map = {}           # node_id -> successor_node_name
+        contextual_map = {}          # node_id -> {related_node_name: relationship_type}
+        canvas_edges = []            # edges to emit in canvas
 
         for rel in relationships:
             from_name = id_to_name.get(rel.from_node_id)
@@ -2693,15 +2887,34 @@ async def export_to_obsidian_canvas(
             if not from_name or not to_name:
                 continue
 
+            rel_type = rel.relationship_type or "related"
+            rel_type_lower = rel_type.lower()
+
             # Check relationship type to determine if it's temporal (successor) or contextual
-            if rel.relationship_type in ['leads_to', 'next', 'follows']:
-                # Temporal relationship - use as successor
+            if rel_type_lower in ['leads_to', 'next', 'follows']:
                 successor_map[rel.from_node_id] = to_name
             else:
-                # Contextual relationship
                 if rel.from_node_id not in contextual_map:
                     contextual_map[rel.from_node_id] = {}
-                contextual_map[rel.from_node_id][to_name] = rel.relationship_type
+                contextual_map[rel.from_node_id][to_name] = rel_type
+
+            # Map to Canvas edge color: 1=red (temporal here unused), 2=orange (chunks), 3=neutral, 4=green
+            if rel_type_lower in ["supports", "informs", "builds_on", "enables", "affirms"]:
+                color = "4"  # green
+            elif rel_type_lower in ["contradicts", "opposes", "refutes", "challenges", "conflicts", "disagrees"]:
+                color = "1"  # red
+            elif rel_type_lower in ["leads_to", "next", "follows"]:
+                color = "3"  # neutral for temporal
+            else:
+                color = "3"  # neutral/default
+
+            canvas_edges.append({
+                "id": f"edge_{rel.id}",
+                "fromNode": str(rel.from_node_id),
+                "toNode": str(rel.to_node_id),
+                "label": rel_type,
+                "color": color,
+            })
 
         for node in nodes:
             node_data = {
@@ -2743,8 +2956,14 @@ async def export_to_obsidian_canvas(
         # Wrap graph_data in a list for the expected format [[nodes]]
         wrapped_graph_data = [graph_data]
 
-        # Convert to Canvas format
-        canvas = convert_conversation_to_canvas(wrapped_graph_data, chunk_dict, file_name, include_chunks)
+        # Convert to Canvas format (with edges)
+        canvas = convert_conversation_to_canvas(
+            wrapped_graph_data,
+            chunk_dict,
+            file_name,
+            include_chunks,
+            edge_records=canvas_edges
+        )
 
         print(f"[INFO] ✅ Successfully exported conversation to Canvas")
         # Return as JSON (user can save as .canvas file)
@@ -3818,82 +4037,365 @@ async def get_node_frames(node_id: str):
 # Thematic Analysis (Hierarchical Coarse-Graining)
 # ============================================================================
 
-@lct_app.post("/api/conversations/{conversation_id}/themes/generate")
-async def generate_thematic_structure(
+async def delete_all_thematic_nodes(conversation_id: str, db: AsyncSession) -> int:
+    """
+    Delete all thematic nodes (levels 1-5) and their relationships for a conversation.
+    Used before regenerating themes to ensure clean state.
+
+    Returns: Total count of deleted nodes
+    """
+    from sqlalchemy import delete, and_, or_, select
+    from lct_python_backend.models import Node, Relationship
+
+    conv_uuid = uuid.UUID(conversation_id)
+
+    # Get all node IDs for levels 1-5
+    existing_result = await db.execute(
+        select(Node.id).where(
+            and_(
+                Node.conversation_id == conv_uuid,
+                Node.level >= 1,
+                Node.level <= 5
+            )
+        )
+    )
+    node_ids = [row[0] for row in existing_result.fetchall()]
+
+    if not node_ids:
+        return 0
+
+    # Delete relationships involving these nodes
+    await db.execute(
+        delete(Relationship).where(
+            and_(
+                Relationship.conversation_id == conv_uuid,
+                or_(
+                    Relationship.from_node_id.in_(node_ids),
+                    Relationship.to_node_id.in_(node_ids)
+                )
+            )
+        )
+    )
+
+    # Delete the nodes
+    await db.execute(
+        delete(Node).where(
+            and_(
+                Node.conversation_id == conv_uuid,
+                Node.level >= 1,
+                Node.level <= 5
+            )
+        )
+    )
+
+    await db.commit()
+    logger.info(f"[CLEANUP] Deleted {len(node_ids)} thematic nodes for conversation {conversation_id}")
+    return len(node_ids)
+
+
+async def generate_hierarchical_levels_background(
     conversation_id: str,
-    max_themes: int = 50,
     model: str = "anthropic/claude-3.5-sonnet",
-    force_reanalysis: bool = False,
-    db: AsyncSession = Depends(get_async_session)
+    utterances_per_atomic_theme: int = 5,
+    clustering_ratio: float = 2.5,
+    force_regenerate: bool = True
 ):
     """
-    Generate thematic structure for a conversation using AI
+    Background task: Generate all thematic levels L5 → L4 → L3 → L2 → L1.
 
-    AI analyzes conversation complexity and determines the appropriate number
-    of thematic nodes (typically 3-20) with relationships between them.
+    Single bottom-up tree generation:
+    - L5: Generate atomic themes from utterances (~1 theme per 5 utterances)
+    - L4: Cluster L5 → fine themes
+    - L3: Cluster L4 → medium themes
+    - L2: Cluster L3 → themes (major topics)
+    - L1: Cluster L2 → mega-themes (big picture)
 
     Args:
         conversation_id: UUID of conversation
-        max_themes: Maximum number of thematic nodes (soft limit, default 50)
+        model: OpenRouter model ID
+        utterances_per_atomic_theme: Target utterances per L5 node (default: 5)
+        clustering_ratio: How many children per parent (default: 2.5)
+        force_regenerate: If True, delete existing nodes first (default: True)
+    """
+    logger.info("=" * 50)
+    logger.info(f"[BACKGROUND] === HIERARCHICAL GENERATION STARTED ===")
+    logger.info(f"[BACKGROUND] conversation_id: {conversation_id}")
+    logger.info(f"[BACKGROUND] model: {model}")
+    logger.info(f"[BACKGROUND] utterances_per_atomic_theme: {utterances_per_atomic_theme}")
+    logger.info(f"[BACKGROUND] clustering_ratio: {clustering_ratio}")
+    logger.info("=" * 50)
+
+    try:
+        from lct_python_backend.db_session import get_async_session_context
+        from lct_python_backend.services.hierarchical_themes import (
+            Level5AtomicGenerator,
+            Level4Clusterer,
+            Level3Clusterer,
+            Level2Clusterer,
+            Level1Clusterer
+        )
+        from lct_python_backend.models import Utterance
+        from sqlalchemy import select
+        logger.info("[BACKGROUND] Imports successful")
+    except Exception as e:
+        logger.error(f"[BACKGROUND] Import failed: {e}", exc_info=True)
+        return
+
+    try:
+        async with get_async_session_context() as db:
+            # Clean up if force regenerate
+            if force_regenerate:
+                deleted = await delete_all_thematic_nodes(conversation_id, db)
+                logger.info(f"[BACKGROUND] Cleaned up {deleted} existing nodes")
+
+            # Fetch utterances
+            result = await db.execute(
+                select(Utterance).where(
+                    Utterance.conversation_id == uuid.UUID(conversation_id)
+                ).order_by(Utterance.sequence_number)
+            )
+            utterances = list(result.scalars().all())
+
+            if not utterances:
+                logger.warning(f"[BACKGROUND] No utterances found for conversation {conversation_id}")
+                return
+
+            logger.info(f"[BACKGROUND] Found {len(utterances)} utterances")
+
+            # L5: Generate atomic themes from utterances
+            logger.info("[BACKGROUND] Step 1/5: Generating Level 5 (atomic themes)...")
+            l5_generator = Level5AtomicGenerator(
+                db, model=model,
+                utterances_per_theme=utterances_per_atomic_theme
+            )
+            l5_nodes = await l5_generator.get_or_generate(
+                conversation_id=conversation_id,
+                utterances=utterances,
+                force_regenerate=False  # Already cleaned up
+            )
+            logger.info(f"[BACKGROUND] Level 5 complete: {len(l5_nodes)} atomic themes")
+
+            # L4: Cluster L5 → L4
+            logger.info("[BACKGROUND] Step 2/5: Generating Level 4 (fine themes)...")
+            l4_clusterer = Level4Clusterer(db, model=model, clustering_ratio=clustering_ratio)
+            l4_nodes = await l4_clusterer.get_or_generate(
+                conversation_id=conversation_id,
+                parent_nodes=l5_nodes,
+                utterances=utterances,
+                force_regenerate=False
+            )
+            logger.info(f"[BACKGROUND] Level 4 complete: {len(l4_nodes)} fine themes")
+
+            # L3: Cluster L4 → L3
+            logger.info("[BACKGROUND] Step 3/5: Generating Level 3 (medium themes)...")
+            l3_clusterer = Level3Clusterer(db, model=model, clustering_ratio=clustering_ratio)
+            l3_nodes = await l3_clusterer.get_or_generate(
+                conversation_id=conversation_id,
+                parent_nodes=l4_nodes,
+                utterances=utterances,
+                force_regenerate=False
+            )
+            logger.info(f"[BACKGROUND] Level 3 complete: {len(l3_nodes)} medium themes")
+
+            # L2: Cluster L3 → L2 (NEW - was independent before)
+            logger.info("[BACKGROUND] Step 4/5: Generating Level 2 (themes)...")
+            l2_clusterer = Level2Clusterer(db, model=model, clustering_ratio=clustering_ratio)
+            l2_nodes = await l2_clusterer.get_or_generate(
+                conversation_id=conversation_id,
+                parent_nodes=l3_nodes,
+                utterances=utterances,
+                force_regenerate=False
+            )
+            logger.info(f"[BACKGROUND] Level 2 complete: {len(l2_nodes)} themes")
+
+            # L1: Cluster L2 → L1
+            logger.info("[BACKGROUND] Step 5/5: Generating Level 1 (mega-themes)...")
+            l1_clusterer = Level1Clusterer(db, model=model, clustering_ratio=clustering_ratio)
+            l1_nodes = await l1_clusterer.get_or_generate(
+                conversation_id=conversation_id,
+                parent_nodes=l2_nodes,
+                utterances=utterances,
+                force_regenerate=False
+            )
+            logger.info(f"[BACKGROUND] Level 1 complete: {len(l1_nodes)} mega-themes")
+
+            logger.info("=" * 50)
+            logger.info(f"[BACKGROUND] === HIERARCHICAL GENERATION COMPLETE ===")
+            logger.info(f"[BACKGROUND] L5: {len(l5_nodes)} | L4: {len(l4_nodes)} | L3: {len(l3_nodes)} | L2: {len(l2_nodes)} | L1: {len(l1_nodes)}")
+            logger.info("=" * 50)
+
+    except Exception as e:
+        logger.error(f"[BACKGROUND] Failed to generate hierarchical levels: {e}", exc_info=True)
+
+@lct_app.post("/api/conversations/{conversation_id}/themes/generate")
+async def generate_thematic_structure(
+    conversation_id: str,
+    background_tasks: BackgroundTasks,
+    model: str = "anthropic/claude-3.5-sonnet",
+    utterances_per_atomic_theme: int = 5,
+    clustering_ratio: float = 2.5,
+    force_regenerate: bool = True,
+    db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Generate thematic structure for a conversation using AI.
+
+    Kicks off background generation of all hierarchical levels:
+    L5 (atomic) → L4 (fine) → L3 (medium) → L2 (themes) → L1 (mega)
+
+    All levels form a single coherent tree where each level clusters its children.
+
+    Args:
+        conversation_id: UUID of conversation
         model: OpenRouter model ID (default claude-3.5-sonnet)
-        force_reanalysis: Re-analyze even if thematic nodes exist
+        utterances_per_atomic_theme: Target utterances per L5 node (default: 5)
+        clustering_ratio: How many children per parent node (default: 2.5)
+        force_regenerate: Delete existing themes and regenerate (default: True)
 
     Returns:
         {
-            "thematic_nodes": [...],
-            "edges": [...],
-            "summary": {...}
+            "status": "generating",
+            "message": "Background generation started",
+            "levels_generating": [5, 4, 3, 2, 1],
+            "config": {...}
         }
     """
     try:
-        from lct_python_backend.services.thematic_analyzer import ThematicAnalyzer
+        from sqlalchemy import select
+        from lct_python_backend.models import Conversation, Utterance
 
-        analyzer = ThematicAnalyzer(db, model=model)
-        results = await analyzer.analyze_conversation(
-            conversation_id,
-            max_themes=max_themes,
-            force_reanalysis=force_reanalysis
+        # Validate conversation exists
+        conv_result = await db.execute(
+            select(Conversation).where(Conversation.id == uuid.UUID(conversation_id))
+        )
+        conversation = conv_result.scalar_one_or_none()
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        # Check utterance count
+        utt_result = await db.execute(
+            select(func.count(Utterance.id)).where(
+                Utterance.conversation_id == uuid.UUID(conversation_id)
+            )
+        )
+        utterance_count = utt_result.scalar()
+
+        if utterance_count == 0:
+            raise HTTPException(status_code=400, detail="Conversation has no utterances")
+
+        # Kick off background task
+        background_tasks.add_task(
+            generate_hierarchical_levels_background,
+            conversation_id=conversation_id,
+            model=model,
+            utterances_per_atomic_theme=utterances_per_atomic_theme,
+            clustering_ratio=clustering_ratio,
+            force_regenerate=force_regenerate
         )
 
-        return results
+        logger.info(f"[GENERATE] Started background generation for {conversation_id}")
 
-    except ValueError as e:
-        # Missing API key or validation error
-        print(f"[ERROR] Thematic analysis validation error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
+        return {
+            "status": "generating",
+            "message": "Background generation started for all hierarchical levels",
+            "levels_generating": [5, 4, 3, 2, 1],
+            "utterance_count": utterance_count,
+            "config": {
+                "model": model,
+                "utterances_per_atomic_theme": utterances_per_atomic_theme,
+                "clustering_ratio": clustering_ratio,
+                "force_regenerate": force_regenerate
+            }
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"[ERROR] Thematic analysis failed: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"[ERROR] Failed to start thematic generation: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @lct_app.get("/api/conversations/{conversation_id}/themes")
 async def get_thematic_structure(
     conversation_id: str,
+    level: Optional[int] = 2,
     db: AsyncSession = Depends(get_async_session)
 ):
     """
-    Get existing thematic structure for a conversation
+    Get existing thematic structure for a conversation at a specific level
+
+    Args:
+        conversation_id: UUID of conversation
+        level: Which hierarchical level to fetch (0-5, default 2)
+            - 0: Utterances (raw transcript)
+            - 1: Mega-themes (3-5 nodes)
+            - 2: Themes (10-15 nodes) - default
+            - 3: Medium detail (20-30 nodes)
+            - 4: Fine detail (40-60 nodes)
+            - 5: Atomic themes (60-120 nodes)
 
     Returns thematic nodes and edges if they exist, otherwise empty.
     """
     try:
         from lct_python_backend.services.thematic_analyzer import ThematicAnalyzer
-
-        # Create analyzer with default model (not used for retrieval)
-        analyzer = ThematicAnalyzer(db)
-
-        # Check if thematic nodes exist
-        from lct_python_backend.models import Node, Relationship
+        from lct_python_backend.models import Node, Relationship, Utterance
         from sqlalchemy import select, and_
         import uuid
 
+        conv_uuid = uuid.UUID(conversation_id)
+
+        # Validate level
+        if level not in [0, 1, 2, 3, 4, 5]:
+            raise HTTPException(status_code=400, detail="Level must be 0, 1, 2, 3, 4, or 5")
+
+        # Level 0: Return utterances as nodes
+        if level == 0:
+            result = await db.execute(
+                select(Utterance)
+                .where(Utterance.conversation_id == conv_uuid)
+                .order_by(Utterance.sequence_number)
+            )
+            utterances = result.scalars().all()
+
+            # Format utterances as thematic nodes for consistent display
+            thematic_nodes = []
+            for utt in utterances:
+                thematic_nodes.append({
+                    "id": str(utt.id),
+                    "label": f"[{utt.sequence_number}] {utt.speaker_name or utt.speaker_id}",
+                    "summary": utt.text[:500] if utt.text else "",
+                    "node_type": "utterance",
+                    "utterance_ids": [str(utt.id)],
+                    "timestamp_start": utt.timestamp_start,
+                    "timestamp_end": utt.timestamp_end,
+                })
+
+            # Create sequential edges between consecutive utterances
+            edges = []
+            for i in range(len(thematic_nodes) - 1):
+                edges.append({
+                    "source": thematic_nodes[i]["id"],
+                    "target": thematic_nodes[i + 1]["id"],
+                    "type": "follows",
+                })
+
+            return {
+                "thematic_nodes": thematic_nodes,
+                "edges": edges,
+                "summary": {
+                    "total_themes": len(thematic_nodes),
+                    "exists": True,
+                    "level": 0,
+                    "description": "Raw utterances"
+                }
+            }
+
+        # Fetch nodes for requested level (1-5)
         result = await db.execute(
             select(Node).where(
                 and_(
-                    Node.conversation_id == uuid.UUID(conversation_id),
-                    Node.level == 2  # Level 2 = thematic
+                    Node.conversation_id == conv_uuid,
+                    Node.level == level
                 )
             )
         )
@@ -3903,17 +4405,100 @@ async def get_thematic_structure(
             return {
                 "thematic_nodes": [],
                 "edges": [],
-                "summary": {"total_themes": 0, "exists": False}
+                "summary": {
+                    "total_themes": 0,
+                    "exists": False,
+                    "level": level
+                }
             }
 
         # Serialize existing structure
+        analyzer = ThematicAnalyzer(db)
         structure = await analyzer._serialize_existing_structure(nodes, conversation_id)
         structure["summary"]["exists"] = True
+        structure["summary"]["level"] = level
 
         return structure
 
     except Exception as e:
         print(f"[ERROR] Failed to get thematic structure: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@lct_app.get("/api/conversations/{conversation_id}/themes/levels")
+async def get_available_levels(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session)
+):
+    """
+    Check which hierarchical levels have been generated for this conversation
+
+    Used by frontend to poll for availability of levels during background generation.
+
+    Returns:
+        {
+            "available_levels": [2, 5],  # Levels that exist
+            "generating": [1, 3, 4],     # Levels presumably being generated
+            "level_counts": {
+                "1": 0,
+                "2": 12,
+                "3": 0,
+                "4": 0,
+                "5": 87
+            }
+        }
+    """
+    try:
+        from lct_python_backend.models import Node, Utterance
+        from sqlalchemy import select, and_, func
+        import uuid
+
+        conv_uuid = uuid.UUID(conversation_id)
+
+        # Query for count of nodes at each level (1-5)
+        result = await db.execute(
+            select(
+                Node.level,
+                func.count(Node.id).label('count')
+            ).where(
+                Node.conversation_id == conv_uuid
+            ).group_by(Node.level)
+        )
+
+        level_counts = {row.level: row.count for row in result}
+
+        # Query for utterance count (Level 0)
+        utt_result = await db.execute(
+            select(func.count(Utterance.id)).where(
+                Utterance.conversation_id == conv_uuid
+            )
+        )
+        utterance_count = utt_result.scalar() or 0
+
+        # Add Level 0 (utterances) to counts
+        level_counts[0] = utterance_count
+
+        # Determine available levels (those with nodes)
+        # Level 0 is always available if there are utterances
+        available_levels = sorted([level for level, count in level_counts.items() if count > 0])
+
+        # Infer which levels are being generated
+        # If L5 exists but not all levels 1-5, assume background generation is in progress
+        thematic_levels = [1, 2, 3, 4, 5]
+        thematic_available = [l for l in available_levels if l in thematic_levels]
+        if 5 in thematic_available and set(thematic_available) != set(thematic_levels):
+            generating = [level for level in thematic_levels if level not in thematic_available]
+        else:
+            generating = []
+
+        return {
+            "available_levels": available_levels,
+            "generating": generating,
+            "level_counts": {str(k): v for k, v in level_counts.items()}
+        }
+
+    except Exception as e:
+        print(f"[ERROR] Failed to get available levels: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
