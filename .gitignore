@@ -166,3 +166,20 @@ ENV/
 # Project specific
 /saved_json/
 /prompts_and_transcripts/
+
+# Test results
+test-results/
+playwright-report/
+
+# macOS
+.DS_Store
+
+# PostgreSQL data
+.postgres_data/
+
+# Local data directories
+inputdata/
+outputs/
+
+# Virtual environment (additional patterns)
+.venv/

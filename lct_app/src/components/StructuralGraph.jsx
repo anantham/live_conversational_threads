@@ -1,7 +1,18 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import ReactFlow, { Controls, Background } from "reactflow";
 import dagre from "dagre"; // Import Dagre for auto-layout
 import "reactflow/dist/style.css";
+
+// Define outside component to prevent ReactFlow warnings
+const NODE_TYPES = {};
+const EDGE_TYPES = {};
+
+// Track reference stability
+console.log("[StructuralGraph] Module loaded - NODE_TYPES ref:", NODE_TYPES);
+console.log("[StructuralGraph] Module loaded - EDGE_TYPES ref:", EDGE_TYPES);
+
+// Counter to track renders
+let renderCount = 0;
 
 export default function StructuralGraph({
   graphData,
@@ -9,14 +20,45 @@ export default function StructuralGraph({
   setSelectedNode,
 }) {
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const renderCountRef = useRef(0);
+  const prevPropsRef = useRef({ graphData, selectedNode });
+
+  // Increment render counter
+  renderCount++;
+  renderCountRef.current++;
+
+  console.log(`[StructuralGraph RENDER #${renderCount}] Component rendering`);
+  console.log(`[StructuralGraph RENDER #${renderCount}] Props:`, {
+    graphDataLength: graphData?.length,
+    selectedNode,
+    graphDataRef: graphData,
+  });
+
+  // Check if props changed
+  const propsChanged = {
+    graphData: prevPropsRef.current.graphData !== graphData,
+    selectedNode: prevPropsRef.current.selectedNode !== selectedNode,
+  };
+  console.log(`[StructuralGraph RENDER #${renderCount}] Props changed:`, propsChanged);
+
+  // Check NODE_TYPES and EDGE_TYPES stability
+  console.log(`[StructuralGraph RENDER #${renderCount}] NODE_TYPES ref:`, NODE_TYPES);
+  console.log(`[StructuralGraph RENDER #${renderCount}] EDGE_TYPES ref:`, EDGE_TYPES);
+
+  prevPropsRef.current = { graphData, selectedNode };
 
   const latestChunk = graphData?.[graphData.length - 1] || [];
   // const jsonData = latestChunk.existing_json || [];
 
   useEffect(() => {
+    console.log("[StructuralGraph MOUNT/UPDATE] Component mounted or updated");
     console.log("Full Graph Data(Structural):", graphData);
     console.log("Latest Chunk Data(Structural):", latestChunk);
     // console.log("Extracted JSON Data:", jsonData);
+
+    return () => {
+      console.log("[StructuralGraph CLEANUP] Component cleanup/unmount");
+    };
   }, [graphData]);
 
   // Dagre Graph Configuration
@@ -147,13 +189,15 @@ export default function StructuralGraph({
         <ReactFlow
           nodes={nodes}
           edges={edges}
+          nodeTypes={NODE_TYPES}
+          edgeTypes={EDGE_TYPES}
           fitView
           // 🔍 Zoom Controls
           zoomOnPinch={true}
           zoomOnScroll={true}
 
           // 🖱️ Pan Controls
-          panOnDrag={true} 
+          panOnDrag={true}
           panOnScroll={false}
           onNodeClick={(_, node) =>
             setSelectedNode((prevSelected) =>
