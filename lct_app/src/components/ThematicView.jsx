@@ -26,6 +26,8 @@ const API_TO_DISPLAY_LEVEL = { 1: 0, 2: 1, 3: 2, 4: 3, 5: 4, 0: 5 };
  * - isFullScreen: Boolean for fullscreen mode
  * - setIsFullScreen: Function to toggle fullscreen mode
  * - conversationId: UUID of conversation (for fetching hierarchical levels)
+ * - utterances: Array of all utterances (for displaying in detail panel)
+ * - onUtteranceClick: Callback when an utterance is clicked in the detail panel
  */
 export default function ThematicView({
   thematicData,
@@ -35,6 +37,8 @@ export default function ThematicView({
   isFullScreen,
   setIsFullScreen,
   conversationId,
+  utterances = [],
+  onUtteranceClick,
 }) {
   const [hoveredNode, setHoveredNode] = useState(null);
   const [currentLevel, setCurrentLevel] = useState(1); // Default to Display Level 1 (Themes)
@@ -46,6 +50,7 @@ export default function ThematicView({
   // Settings panel state
   const [showSettings, setShowSettings] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [showUtterancePanel, setShowUtterancePanel] = useState(true); // Utterance detail panel visible by default
   const [settings, setSettings] = useState({
     fontSize: 'normal', // 'small', 'normal', 'large'
     utterancesPerTheme: 5,
@@ -553,6 +558,21 @@ export default function ThematicView({
     return { nodes: positionedNodes, edges };
   }, [activeData, currentLevel, selectedThematicNode, hoveredNode, highlightedUtterances, isNodeHighlightedByUtterance, settings.fontSize, fontSizeClasses]);
 
+  // Get selected node and its utterances
+  const selectedNodeData = useMemo(() => {
+    if (!selectedThematicNode || !activeData?.thematic_nodes) return null;
+    return activeData.thematic_nodes.find(n => n.id === selectedThematicNode);
+  }, [selectedThematicNode, activeData]);
+
+  const selectedNodeUtterances = useMemo(() => {
+    if (!selectedNodeData?.utterance_ids || !utterances.length) return [];
+    const uttMap = new Map(utterances.map(u => [u.id, u]));
+    return selectedNodeData.utterance_ids
+      .map(id => uttMap.get(id))
+      .filter(Boolean)
+      .sort((a, b) => (a.timestamp_start || 0) - (b.timestamp_start || 0));
+  }, [selectedNodeData, utterances]);
+
   // Handle node click
   const handleNodeClick = useCallback(
     (event, node) => {
@@ -842,7 +862,7 @@ export default function ThematicView({
       </div>
 
       {/* ReactFlow Graph */}
-      <div className="flex-grow border rounded-lg overflow-hidden bg-gray-50">
+      <div className={`${selectedNodeData && showUtterancePanel ? 'flex-[3]' : 'flex-grow'} border rounded-lg overflow-hidden bg-gray-50 min-h-0`}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -873,6 +893,84 @@ export default function ThematicView({
           />
         </ReactFlow>
       </div>
+
+      {/* Utterance Detail Panel - Shows when a node is selected */}
+      {selectedNodeData && showUtterancePanel && (
+        <div className="flex-1 min-h-[120px] max-h-[200px] border rounded-lg bg-white shadow-sm overflow-hidden flex flex-col mt-2">
+          {/* Panel Header */}
+          <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold text-gray-700">
+                📝 Utterances in "{selectedNodeData.label}"
+              </span>
+              <span className="text-xs text-gray-500 bg-white px-2 py-0.5 rounded">
+                {selectedNodeUtterances.length} utterances
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">
+                {formatTimestamp(selectedNodeData.timestamp_start)} - {formatTimestamp(selectedNodeData.timestamp_end)}
+              </span>
+              <button
+                onClick={() => setShowUtterancePanel(false)}
+                className="text-gray-400 hover:text-gray-600 px-1"
+                title="Hide panel"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Utterance List */}
+          <div className="flex-1 overflow-y-auto px-2 py-1">
+            {selectedNodeUtterances.length === 0 ? (
+              <div className="text-center text-gray-400 text-sm py-4">
+                No utterance data available
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {selectedNodeUtterances.map((utt) => (
+                  <div
+                    key={utt.id}
+                    onClick={() => onUtteranceClick && onUtteranceClick(utt)}
+                    className="flex items-start gap-2 p-2 rounded-lg hover:bg-blue-50 cursor-pointer transition group"
+                  >
+                    {/* Timestamp Badge */}
+                    <span className="flex-shrink-0 text-xs font-mono bg-blue-100 text-blue-700 px-2 py-1 rounded group-hover:bg-blue-200">
+                      {formatTimestamp(utt.timestamp_start)}
+                    </span>
+
+                    {/* Speaker */}
+                    <span className="flex-shrink-0 text-xs font-semibold text-purple-600 min-w-[60px]">
+                      {utt.speaker_name || utt.speaker_id || 'Speaker'}:
+                    </span>
+
+                    {/* Text */}
+                    <span className="text-sm text-gray-700 flex-grow line-clamp-2">
+                      {utt.text}
+                    </span>
+
+                    {/* Click indicator */}
+                    <span className="flex-shrink-0 text-gray-300 group-hover:text-blue-500 text-xs">
+                      →
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Show panel button when hidden */}
+      {selectedNodeData && !showUtterancePanel && (
+        <button
+          onClick={() => setShowUtterancePanel(true)}
+          className="mt-2 px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition"
+        >
+          📝 Show {selectedNodeUtterances.length} utterances for "{selectedNodeData.label}"
+        </button>
+      )}
     </div>
   );
 }

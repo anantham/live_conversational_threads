@@ -334,6 +334,9 @@ const handleUtteranceClick = (utterance) => {
                 highlightedUtterances={selectedUtteranceIds}
                 isFullScreen={isFullScreen}
                 setIsFullScreen={setIsFullScreen}
+                conversationId={conversationId}
+                utterances={utterances}
+                onUtteranceClick={handleUtteranceClick}
               />
             </div>
 
@@ -449,9 +452,9 @@ const handleUtteranceClick = (utterance) => {
       {!isFormalismView && (
         <>
 
-          {/* Legend */}
-          <div className="hidden md:block absolute bottom-4 right-4">
-            <Legend />
+          {/* Legend - moved to bottom-left, collapsible */}
+          <div className="hidden md:block">
+            <Legend position="bottom-left" />
           </div>
         </>
       )}
