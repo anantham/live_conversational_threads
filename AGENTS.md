@@ -10,7 +10,7 @@ PHILOSOPHY: We are computational peers collaborating with human developers. Oper
 
 1. **Hypothesis Before Action:** Never jump to conclusions. Form hypotheses, design minimal diagnostics, validate with humans, then implement. 
 2. **Tests Are Signal:** Failing tests are valuable information about system state. Never "goodhart" by hacking around failures. Investigate root causes with diagnostic logging. 
-3. **Modularity Is Mandatory:** Files approaching ~300 LOC must be split. Large monoliths break agent workflows and context windows. 
+3. **Modularity Is Mandatory:** Files approaching ~300 LOC should be evaluated for decomposition. 300 LOC is a heuristic; prioritize software quality. When touching a large file, assess whether it is a monolith and log refactor candidates in `docs/TECH_DEBT.md`.
 4. **Human Gates Are Sacred:** Architectural changes, solution selection, and root cause confirmation require explicit human validation. The goal is to keep humans in the loop with interfaces designed to make it easy for humans to give feedback frictionlessly.
 5. **Documentation Is Design:** Every feature needs intent documentation. Use ADRs for significant decisions. 
 6. **Don't be trigger happy** - When I ask you a question, just answer, don't assume the implicit request is for you to fix it immediately you can offer to fix it with precise plans and I may approve but do not proactively edit files and patch code.
@@ -125,8 +125,8 @@ Human picks one for writing to files, testing is done manually and then if it is
 
 ## FILE_SIZE_MANAGEMENT 
 
-Decomposition protocol for files > 300 LOC  
-Plan: identify file that is monolithic and bloated and inform human that it needs refactoring to split into smaller modular pieces
+Decomposition protocol for large or mixed-concern files  
+Plan: when touching a large file, assess whether it is a monolith; document refactor candidates in `docs/TECH_DEBT.md` with the rationale and suggested split. The 300 LOC threshold is a heuristic, not a hard gate.
 
 
 ---
@@ -143,13 +143,11 @@ Every leg of your roadmap, todo list, uncertainties, discoveries, antipatterns d
     
 2. context overflow (> 80% of window) prepare to make best use of remaining tokens
     
-3. file > 300 LOC without having warned human user 
+3. security risk (auth/crypto/sanitization/secrets)
     
-4. security risk (auth/crypto/sanitization/secrets)
+4. destructive operation detected (rm/drop/truncate to evade or goodhart tests)
     
-5. destructive operation detected (rm/drop/truncate to evade or goodhart tests)
-    
-6. If you notice a general quick hacky fix to bypass the slow careful principled solution
+5. If you notice a general quick hacky fix to bypass the slow careful principled solution
     
 
 ### STOP_MESSAGE_TEMPLATE  

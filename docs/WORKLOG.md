@@ -93,3 +93,7 @@
 
 ## 2026-01-14T08:55:50Z
 - lct_python_backend/tests/integration/test_transcripts_websocket.py (lines 12-107): Stubbed transcript processor import to avoid optional `google-genai` dependency during WebSocket test setup.
+
+## 2026-01-14T12:02:25Z
+- AGENTS.md (lines 11-150): Reframed the large-file heuristic to focus on quality, added tech-debt logging guidance, and removed the stop condition tied to file length.
+- docs/TECH_DEBT.md (lines 1-14): Added initial tech-debt register for large/mixed-concern files.
