@@ -677,3 +677,38 @@ class Bookmark(Base):
         Index('idx_bookmark_created_by', 'created_by'),
         Index('idx_bookmark_created_at', 'created_at'),
     )
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    key = Column(Text, unique=True, nullable=False)
+    value = Column(JSONB, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class TranscriptEvent(Base):
+    __tablename__ = "transcript_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+    utterance_id = Column(UUID(as_uuid=True), ForeignKey('utterances.id', ondelete='CASCADE'), nullable=True)
+    provider = Column(Text, nullable=False)
+    event_type = Column(Text, nullable=False)  # 'partial' | 'final'
+    text = Column(Text, nullable=False)
+    word_timestamps = Column(JSONB)
+    segment_timestamps = Column(JSONB)
+    speaker_id = Column(Text)
+    sequence_number = Column(Integer, nullable=False)
+    event_metadata = Column("metadata", JSONB)
+    received_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_transcript_events_conversation', 'conversation_id'),
+        Index('idx_transcript_events_provider', 'provider'),
+        Index('idx_transcript_events_event_type', 'event_type'),
+        Index('idx_transcript_events_utterance', 'utterance_id'),
+        CheckConstraint("event_type IN ('partial', 'final')", name='check_event_type'),
+    )

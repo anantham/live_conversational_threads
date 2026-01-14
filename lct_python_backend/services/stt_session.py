@@ -141,7 +141,7 @@ async def persist_transcript_event(
         segment_timestamps=segment_timestamps,
         speaker_id=state.speaker_id,
         sequence_number=sequence,
-        metadata=metadata,
+        event_metadata=metadata,
     )
     session.add(event)
     return event
