@@ -1,8 +1,8 @@
 # 5-Level Zoom System
 
-**Version:** 2.0 (Week 6)
+**Version:** 2.1 (Week 6 addendum)
 **Status:** Implemented
-**Last Updated:** 2025-11-11
+**Last Updated:** 2025-11-29
 
 ## Overview
 
@@ -13,6 +13,18 @@ Week 6 enhances the basic zoom functionality from Week 5 with:
 - **Quantized zoom enforcement** (prevents intermediate states)
 - **Enhanced keyboard shortcuts** (Ctrl+1-5 to jump, Alt+arrows for history)
 - **Transition animations** for nodes appearing/disappearing
+
+## Addendum (2025-11-29): Explicit Semantic Level Selector
+
+The current Thematic View implementation (see `src/components/ThematicView.jsx`) decouples semantic level switching from ReactFlow zoom:
+
+- **Semantic levels are explicit.** Level changes are driven by the on-screen level selector (five color-coded buttons + Less/More) and keyboard shortcuts, not by mouse-wheel/pinch zoom.
+- **ReactFlow zoom is visual only.** Zoom gestures just resize the canvas; they no longer trigger semantic-level switches.
+- **Availability-aware controls.** Buttons and shortcuts only move to levels returned by `/themes/levels`; unavailable levels stay disabled and show counts as `—`.
+- **On-demand loading & caching.** Each level fetches once (`/themes?level=n`) and is cached; loading is indicated inline near the header.
+- **Keyboard shortcuts updated.** `1-5` jump directly (when available); `+`/`=` and `-`/`_` navigate more/less detail; input fields remain exempt.
+- **UI hints.** A keyboard-hints badge sits beside the level description bar to reinforce the shortcut mapping.
+- **Fallback guidance.** If you want zoom-driven semantic switching again, re-enable it in `ThematicView`’s `handleMove` (currently commented/log-only) and ensure data for the target level is available before toggling.
 
 ---
 
@@ -348,33 +360,37 @@ Visual indicator showing all 5 zoom levels.
 
 ## Keyboard Shortcuts
 
-### Basic Zoom
+### Current Thematic View (explicit levels, 2025-11-29)
+
+- Shortcuts are ignored while typing in inputs/textarea fields.
+- Level changes only execute if the target level is available from `/themes/levels`.
+- ReactFlow zoom gestures no longer trigger semantic changes.
+
+| Shortcut | Action | Notes |
+|----------|--------|-------|
+| `1` `2` `3` `4` `5` | Jump to that level | Skips if level not yet available |
+| `+` or `=` | More detail (higher level number) | Stops at highest available level |
+| `-` or `_` | Less detail (lower level number) | Stops at lowest available level |
+
+### Legacy ZoomControls (Week 6 experimental)
+
+If you are using the older zoom-driven controls (not the current Thematic View), the legacy mapping still applies:
 
 | Shortcut | Action | Description |
 |----------|--------|-------------|
 | `+` or `=` | Zoom In | Increase granularity (5→4→3→2→1) |
 | `-` or `_` | Zoom Out | Decrease granularity (1→2→3→4→5) |
-
-### Jump to Level
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl + 1` (or `Cmd + 1` on Mac) | Jump to SENTENCE |
+| `Ctrl + 1` / `Cmd + 1` | Jump to SENTENCE |
 | `Ctrl + 2` | Jump to TURN |
 | `Ctrl + 3` | Jump to TOPIC |
 | `Ctrl + 4` | Jump to THEME |
 | `Ctrl + 5` | Jump to ARC |
-
-### History Navigation
-
-| Shortcut | Action |
-|----------|--------|
 | `Alt + ←` | Zoom history back |
 | `Alt + →` | Zoom history forward |
 
-### Implementation
+#### Legacy Implementation Snippet
 
-Keyboard shortcuts are automatically registered by the ZoomControls component. They work globally unless user is typing in an input field.
+Keyboard shortcuts above are registered by the ZoomControls component when that component is mounted. They work globally unless the user is typing in an input field.
 
 ```javascript
 // Shortcuts are handled automatically:
@@ -737,6 +753,17 @@ function autoZoom() {
 ---
 
 ## Changelog
+
+### Version 2.1 (2025-11-29)
+
+**Added:**
+- Addendum documenting the explicit semantic level selector in `ThematicView` (level buttons, Less/More, availability-aware fetch/cache).
+- Current keyboard mapping (`1-5`, `+/-`) and zoom/level decoupling notes.
+- Guidance on re-enabling zoom-driven level switching if desired.
+
+**Changed:**
+- Clarified shortcut scope (ignores focused inputs) and availability gating.
+- Documented that ReactFlow zoom is purely visual in the current implementation.
 
 ### Version 2.0 (Week 6) - 2025-11-11
 
