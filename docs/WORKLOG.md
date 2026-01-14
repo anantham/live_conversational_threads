@@ -77,3 +77,7 @@
 - lct_app/src/components/audio/useSttSettings.js (lines 1-27): Extracted STT settings fetch + error state hook.
 - lct_python_backend/services/stt_session.py (lines 1-147): Moved transcript session persistence helpers out of the router.
 - lct_python_backend/stt_api.py (lines 1-199): Simplified router to use shared STT session helpers.
+
+## 2026-01-14T05:57:58Z
+- lct_python_backend/services/audio_storage.py (lines 58-107): Guarded PCM cleanup behind successful WAV writes and corrected FFmpeg invocation to treat WAV as input.
+- .gitignore (lines 185-186): Restored `.venv/` ignore to avoid committing local virtual environments.
