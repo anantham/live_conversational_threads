@@ -73,7 +73,6 @@ export default function ExportCanvas({ graphData, fileName }) {
       URL.revokeObjectURL(url);
 
       console.log("[ExportCanvas] ✅ Canvas exported successfully");
-      alert("Canvas exported successfully!");
     } catch (error) {
       console.error("[ExportCanvas] ❌ Export failed:");
       console.error("[ExportCanvas] Error type:", error.constructor.name);
