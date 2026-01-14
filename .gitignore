@@ -184,3 +184,12 @@ outputs/
 
 # Virtual environment (additional patterns)
 .venv/
+
+# Local artifacts
+/.claude/
+/TheWhisper/
+/diagnostic_db_check.py
+/.coverage
+/lct_python_backend/.coverage
+/test_reactflow_warnings.js
+/test_transcript.txt
