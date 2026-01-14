@@ -14,6 +14,8 @@ from typing import List, Dict, Any
 import uuid
 
 from lct_python_backend.models import Node, Utterance
+from lct_python_backend.services.llm_config import load_llm_config
+from lct_python_backend.services.local_llm_client import local_chat_json
 from .base_clusterer import BaseClusterer
 
 
@@ -28,8 +30,7 @@ class Level5AtomicGenerator(BaseClusterer):
         super().__init__(db, model, level=5)
         self.utterances_per_theme = utterances_per_theme
         self.api_key = os.getenv("OPENROUTER_API_KEY")
-        if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY not found in environment variables")
+        print(f"[DEBUG] Level5AtomicGenerator initialized with API key: {self.api_key[:30] if self.api_key else 'NONE'}...")
 
     async def generate_level(
         self,
@@ -113,6 +114,29 @@ class Level5AtomicGenerator(BaseClusterer):
 
         # Build prompt
         prompt = self._build_atomic_themes_prompt(utterance_data)
+
+        config = await load_llm_config(self.db)
+        if config.get("mode") == "local":
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You analyze conversations and return valid JSON only.",
+                },
+                {"role": "user", "content": prompt},
+            ]
+            parsed = await local_chat_json(
+                config,
+                messages,
+                temperature=0.3,
+                max_tokens=3000,
+            )
+            return {
+                "atomic_themes": parsed.get("atomic_themes", []) if isinstance(parsed, dict) else [],
+                "relationships": parsed.get("relationships", []) if isinstance(parsed, dict) else [],
+            }
+
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY not found in environment variables")
 
         # Make API request
         request_body = {
@@ -202,6 +226,18 @@ Example atomic themes (for illustration):
 CRITICAL: You MUST analyze the ENTIRE conversation and create themes for ALL utterances (0 to {len(utterances)-1}).
 Do NOT stop partway through. Do NOT add notes or commentary after the JSON.
 
+RELATIONSHIPS (REQUIRED):
+Generate relationships between atomic themes that are meaningfully connected. Aim for at least {max(3, target_count // 4)} relationships.
+
+Relationship types to use:
+- "leads_to": One theme naturally transitions into another
+- "builds_on": One theme extends or elaborates on another
+- "contrasts": Themes present opposing viewpoints or alternatives
+- "references": One theme explicitly mentions content from another
+- "responds_to": One theme is a direct response to another (e.g., answer to question)
+- "parallel": Themes discuss similar concepts but from different angles
+- "digresses_from": A tangent or aside from the main topic
+
 Return ONLY valid JSON in this EXACT format (no text before or after):
 {{
   "atomic_themes": [
@@ -219,7 +255,7 @@ Return ONLY valid JSON in this EXACT format (no text before or after):
       "source_label": "Project Timeline Discussion",
       "target_label": "Budget and Resource Planning",
       "relationship_type": "leads_to",
-      "description": "Explain why these micro-themes connect",
+      "description": "Timeline discussion raises resource concerns that lead to budget talk",
       "confidence": 0.8
     }}
   ]

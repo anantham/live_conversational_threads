@@ -7,9 +7,12 @@ to enable cross-conversation semantic search.
 
 import os
 import asyncio
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import openai
 from openai import AsyncOpenAI
+
+from lct_python_backend.services.llm_config import get_env_llm_defaults
+from lct_python_backend.services.local_llm_client import get_local_client
 
 
 class EmbeddingService:
@@ -27,17 +30,11 @@ class EmbeddingService:
     MAX_BATCH_SIZE = 100  # OpenAI limit
 
     def __init__(self):
-        """Initialize embedding service with OpenAI client."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError(
-                "OPENAI_API_KEY not found in environment. "
-                "Please set it to use embedding service."
-            )
+        """Initialize embedding service with lazy client setup."""
+        self._openai_client: Optional[AsyncOpenAI] = None
+        self._openai_key: Optional[str] = None
 
-        self.client = AsyncOpenAI(api_key=api_key)
-
-    async def embed_text(self, text: str) -> List[float]:
+    async def embed_text(self, text: str, config: Optional[Dict[str, Any]] = None) -> List[float]:
         """
         Generate embedding for a single text.
 
@@ -53,9 +50,32 @@ class EmbeddingService:
         if not text or not text.strip():
             raise ValueError("Cannot embed empty text")
 
+        resolved = config or get_env_llm_defaults()
+        model = resolved.get("embedding_model", self.MODEL)
+
         try:
-            response = await self.client.embeddings.create(
-                model=self.MODEL,
+            if resolved.get("mode") == "local":
+                client = get_local_client(resolved)
+                response = await client.embeddings(
+                    model=model,
+                    input_data=text,
+                    encoding_format="float",
+                )
+                return response["data"][0]["embedding"]
+
+            api_key = os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError(
+                    "OPENAI_API_KEY not found in environment. "
+                    "Please set it to use embedding service."
+                )
+
+            if self._openai_client is None or api_key != self._openai_key:
+                self._openai_key = api_key
+                self._openai_client = AsyncOpenAI(api_key=api_key)
+
+            response = await self._openai_client.embeddings.create(
+                model=model,
                 input=text,
                 encoding_format="float"
             )
@@ -70,7 +90,8 @@ class EmbeddingService:
     async def embed_batch(
         self,
         texts: List[str],
-        batch_size: int = 50
+        batch_size: int = 50,
+        config: Optional[Dict[str, Any]] = None,
     ) -> List[List[float]]:
         """
         Generate embeddings for multiple texts efficiently.
@@ -93,9 +114,47 @@ class EmbeddingService:
         if not valid_texts:
             raise ValueError("All texts are empty")
 
+        resolved = config or get_env_llm_defaults()
+        model = resolved.get("embedding_model", self.MODEL)
+
         # Process in batches
         all_embeddings = [None] * len(texts)
         batch_size = min(batch_size, self.MAX_BATCH_SIZE)
+
+        if resolved.get("mode") == "local":
+            client = get_local_client(resolved)
+            for i in range(0, len(valid_texts), batch_size):
+                batch = valid_texts[i:i + batch_size]
+                batch_texts = [text for _, text in batch]
+                batch_indices = [idx for idx, _ in batch]
+
+                try:
+                    response = await client.embeddings(
+                        model=model,
+                        input_data=batch_texts,
+                        encoding_format="float",
+                    )
+
+                    for j, embedding_obj in enumerate(response["data"]):
+                        original_idx = batch_indices[j]
+                        all_embeddings[original_idx] = embedding_obj["embedding"]
+
+                except Exception as e:
+                    print(f"Error generating batch embeddings: {e}")
+                    raise
+
+            return all_embeddings
+
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OPENAI_API_KEY not found in environment. "
+                "Please set it to use embedding service."
+            )
+
+        if self._openai_client is None or api_key != self._openai_key:
+            self._openai_key = api_key
+            self._openai_client = AsyncOpenAI(api_key=api_key)
 
         for i in range(0, len(valid_texts), batch_size):
             batch = valid_texts[i:i + batch_size]
@@ -103,8 +162,8 @@ class EmbeddingService:
             batch_indices = [idx for idx, _ in batch]
 
             try:
-                response = await self.client.embeddings.create(
-                    model=self.MODEL,
+                response = await self._openai_client.embeddings.create(
+                    model=model,
                     input=batch_texts,
                     encoding_format="float"
                 )
@@ -124,7 +183,12 @@ class EmbeddingService:
 
         return all_embeddings
 
-    async def embed_claim(self, claim_text: str, claim_type: str) -> List[float]:
+    async def embed_claim(
+        self,
+        claim_text: str,
+        claim_type: str,
+        config: Optional[Dict[str, Any]] = None,
+    ) -> List[float]:
         """
         Generate embedding for a claim with type context.
 
@@ -139,11 +203,12 @@ class EmbeddingService:
         """
         # Add type context for better semantic representation
         contextualized_text = f"[{claim_type.upper()}] {claim_text}"
-        return await self.embed_text(contextualized_text)
+        return await self.embed_text(contextualized_text, config=config)
 
     async def embed_claims_batch(
         self,
-        claims: List[Dict[str, str]]
+        claims: List[Dict[str, str]],
+        config: Optional[Dict[str, Any]] = None,
     ) -> List[List[float]]:
         """
         Generate embeddings for multiple claims with type context.
@@ -159,7 +224,7 @@ class EmbeddingService:
             for claim in claims
         ]
 
-        return await self.embed_batch(contextualized_texts)
+        return await self.embed_batch(contextualized_texts, config=config)
 
     def cosine_similarity(
         self,

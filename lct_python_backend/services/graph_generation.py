@@ -16,6 +16,8 @@ from lct_python_backend.instrumentation import track_api_call
 from lct_python_backend.parsers import ParsedTranscript, Utterance as ParserUtterance
 from lct_python_backend.models import Node, Relationship, Conversation
 from .prompt_manager import get_prompt_manager
+from lct_python_backend.services.llm_config import get_env_llm_defaults, load_llm_config
+from lct_python_backend.services.local_llm_client import get_local_client
 
 
 class GraphGenerationService:
@@ -176,7 +178,24 @@ class GraphGenerationService:
             LLM response
         """
         if self.llm_client is None:
-            raise ValueError("LLM client not configured")
+            config = get_env_llm_defaults()
+            if self.db is not None:
+                config = await load_llm_config(self.db)
+
+            if config.get("mode") == "local":
+                client = get_local_client(config)
+                response = await client.chat(
+                    model=config.get("chat_model", model),
+                    messages=[
+                        {"role": "system", "content": "You are a conversation analysis expert."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return response
+
+            raise ValueError("LLM client not configured for online mode")
 
         # This is a placeholder - actual implementation depends on LLM provider
         # For now, assume OpenAI-compatible interface
@@ -234,7 +253,9 @@ class GraphGenerationService:
             List of node data dicts
         """
         # Extract text from response (handles both OpenAI and Anthropic)
-        if hasattr(response, 'choices'):
+        if isinstance(response, dict) and "choices" in response:
+            text = response["choices"][0]["message"]["content"]
+        elif hasattr(response, 'choices'):
             # OpenAI format
             text = response.choices[0].message.content
         elif hasattr(response, 'content'):

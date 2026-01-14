@@ -18,6 +18,8 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
 from lct_python_backend.models import Utterance, Node, Relationship
+from lct_python_backend.services.llm_config import load_llm_config
+from lct_python_backend.services.local_llm_client import local_chat_json
 
 
 class ThematicAnalyzer:
@@ -27,8 +29,6 @@ class ThematicAnalyzer:
         self.db = db_session
         self.model = model
         self.api_key = os.getenv("OPENROUTER_API_KEY")
-        if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY not found in environment variables")
 
     async def analyze_conversation(
         self,
@@ -154,6 +154,25 @@ class ThematicAnalyzer:
             },
             "required": ["thematic_nodes", "edges"]
         }
+
+        config = await load_llm_config(self.db)
+        if config.get("mode") == "local":
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You analyze conversations and return valid JSON only.",
+                },
+                {"role": "user", "content": prompt},
+            ]
+            return await local_chat_json(
+                config,
+                messages,
+                temperature=0.3,
+                max_tokens=3000,
+            )
+
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY not found in environment variables")
 
         # Try with strict schema first (for models that support it)
         request_body = {

@@ -12,6 +12,8 @@ from typing import List, Dict, Any
 import uuid
 
 from lct_python_backend.models import Node, Utterance
+from lct_python_backend.services.llm_config import load_llm_config
+from lct_python_backend.services.local_llm_client import local_chat_json
 from .base_clusterer import BaseClusterer
 
 
@@ -26,8 +28,6 @@ class Level4Clusterer(BaseClusterer):
         super().__init__(db, model, level=4)
         self.clustering_ratio = clustering_ratio
         self.api_key = os.getenv("OPENROUTER_API_KEY")
-        if not self.api_key:
-            raise ValueError("OPENROUTER_API_KEY not found in environment variables")
 
     async def generate_level(
         self,
@@ -150,6 +150,29 @@ class Level4Clusterer(BaseClusterer):
 
         # Build prompt
         prompt = self._build_clustering_prompt(themes_data, transcript_text)
+
+        config = await load_llm_config(self.db)
+        if config.get("mode") == "local":
+            messages = [
+                {
+                    "role": "system",
+                    "content": "You identify patterns and return valid JSON only.",
+                },
+                {"role": "user", "content": prompt},
+            ]
+            parsed = await local_chat_json(
+                config,
+                messages,
+                temperature=0.3,
+                max_tokens=2400,
+            )
+            return {
+                "clusters": parsed.get("clusters", []) if isinstance(parsed, dict) else [],
+                "relationships": parsed.get("relationships", []) if isinstance(parsed, dict) else [],
+            }
+
+        if not self.api_key:
+            raise ValueError("OPENROUTER_API_KEY not found in environment variables")
 
         # Make API request
         request_body = {
