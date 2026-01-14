@@ -22,6 +22,8 @@ import {
   validatePrompt,
   reloadPrompts
 } from '../services/promptsApi';
+import LlmSettingsPanel from '../components/LlmSettingsPanel';
+import SttSettingsPanel from '../components/SttSettingsPanel';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -471,6 +473,8 @@ export default function Settings() {
             </div>
           </div>
         )}
+        <LlmSettingsPanel />
+        <SttSettingsPanel />
       </div>
     </div>
   );
