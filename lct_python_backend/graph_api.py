@@ -13,7 +13,7 @@ from typing import Optional, List
 from pydantic import BaseModel
 import uuid
 
-from lct_python_backend.services import GraphGenerationService
+from lct_python_backend.services.graph_generation import GraphGenerationService
 from lct_python_backend.parsers import GoogleMeetParser
 
 

@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from lct_python_backend.models import Node, SimulacraAnalysis
 from lct_python_backend.services.prompt_manager import get_prompt_manager
+from lct_python_backend.services.llm_config import load_llm_config
+from lct_python_backend.services.local_llm_client import local_chat_json
 import anthropic
 import os
 
@@ -30,7 +32,7 @@ class SimulacraDetector:
     def __init__(self, db_session: AsyncSession):
         self.db = db_session
         self.prompt_manager = get_prompt_manager()
-        self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        self.client = None
 
     async def analyze_conversation(
         self,
@@ -158,6 +160,37 @@ class SimulacraDetector:
 
         # Call LLM for analysis
         try:
+            config = await load_llm_config(self.db)
+            if config.get("mode") == "local":
+                messages = [
+                    {
+                        "role": "system",
+                        "content": "Detect simulacra levels and return valid JSON only.",
+                    },
+                    {"role": "user", "content": prompt_text},
+                ]
+                result = await local_chat_json(
+                    config,
+                    messages,
+                    temperature=0.2,
+                    max_tokens=1024,
+                )
+                if isinstance(result, dict):
+                    return {
+                        "level": result.get("level", 2),
+                        "confidence": result.get("confidence", 0.5),
+                        "reasoning": result.get("reasoning", "Unable to determine"),
+                        "examples": result.get("examples", []),
+                    }
+                raise ValueError("Local LLM response not a dict")
+
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY not found in environment")
+
+            if self.client is None:
+                self.client = anthropic.Anthropic(api_key=api_key)
+
             message = self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=1024,

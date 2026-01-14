@@ -22,6 +22,8 @@ import os
 
 from models import ArgumentTree, Claim, Node
 from services.prompt_manager import get_prompt_manager
+from services.llm_config import load_llm_config
+from services.local_llm_client import local_chat_json
 
 
 class ArgumentMapper:
@@ -41,12 +43,7 @@ class ArgumentMapper:
         self.db = db_session
         self.prompt_manager = get_prompt_manager()
 
-        # Initialize Anthropic client
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not found in environment")
-
-        self.client = anthropic.Anthropic(api_key=api_key)
+        self.client = None
 
     async def analyze_node(
         self,
@@ -158,7 +155,35 @@ class ArgumentMapper:
             {"claims": claims_text}
         )
 
+        config = await load_llm_config(self.db)
+        if config.get("mode") == "local":
+            try:
+                messages = [
+                    {
+                        "role": "system",
+                        "content": "You analyze claims and return valid JSON only.",
+                    },
+                    {"role": "user", "content": prompt_text},
+                ]
+                data = await local_chat_json(
+                    config,
+                    messages,
+                    temperature=0.3,
+                    max_tokens=4000,
+                )
+                return data
+            except Exception as e:
+                print(f"Error calling local LLM: {e}")
+                return {"has_argument": False, "reason": str(e)}
+
         try:
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY not found in environment")
+
+            if self.client is None:
+                self.client = anthropic.Anthropic(api_key=api_key)
+
             response = self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=4000,

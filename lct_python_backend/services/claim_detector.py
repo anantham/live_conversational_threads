@@ -21,6 +21,8 @@ import os
 from models import Claim, Node, Utterance
 from services.prompt_manager import get_prompt_manager
 from services.embedding_service import get_embedding_service
+from services.llm_config import load_llm_config
+from services.local_llm_client import local_chat_json
 
 
 class ClaimDetector:
@@ -43,13 +45,7 @@ class ClaimDetector:
         self.db = db_session
         self.prompt_manager = get_prompt_manager()
         self.embedding_service = get_embedding_service()
-
-        # Initialize Anthropic client
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY not found in environment")
-
-        self.client = anthropic.Anthropic(api_key=api_key)
+        self.client = None
 
     async def analyze_conversation(
         self,
@@ -124,7 +120,11 @@ class ClaimDetector:
 
         # Generate embeddings for claims
         if claims_data:
-            embeddings = await self.embedding_service.embed_claims_batch(claims_data)
+            config = await load_llm_config(self.db)
+            embeddings = await self.embedding_service.embed_claims_batch(
+                claims_data,
+                config=config,
+            )
 
             for i, claim_data in enumerate(claims_data):
                 claim_data["embedding"] = embeddings[i]
@@ -190,6 +190,30 @@ class ClaimDetector:
         )
 
         try:
+            config = await load_llm_config(self.db)
+            if config.get("mode") == "local":
+                messages = [
+                    {
+                        "role": "system",
+                        "content": "Extract claims and return valid JSON only.",
+                    },
+                    {"role": "user", "content": prompt_text},
+                ]
+                data = await local_chat_json(
+                    config,
+                    messages,
+                    temperature=0.3,
+                    max_tokens=4000,
+                )
+                return data if isinstance(data, dict) else {"claims": []}
+
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise ValueError("ANTHROPIC_API_KEY not found in environment")
+
+            if self.client is None:
+                self.client = anthropic.Anthropic(api_key=api_key)
+
             response = self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
                 max_tokens=4000,
