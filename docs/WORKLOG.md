@@ -97,3 +97,10 @@
 ## 2026-01-14T12:02:25Z
 - AGENTS.md (lines 11-150): Reframed the large-file heuristic to focus on quality, added tech-debt logging guidance, and removed the stop condition tied to file length.
 - docs/TECH_DEBT.md (lines 1-14): Added initial tech-debt register for large/mixed-concern files.
+
+## 2026-01-14T12:24:47Z
+- lct_python_backend/backend.py (lines 68-130, 655): Wired local transcript processing imports, routed `/ws/transcripts`, and switched graph generation to `generate_lct_json`.
+- lct_python_backend/db_session.py (lines 51-60): Added async session context helper for background tasks.
+- lct_python_backend/services/stt_config.py (lines 1-41): Added STT configuration defaults and override merge logic.
+- lct_python_backend/services/transcript_processing.py (lines 1-534): Added transcript segmentation, accumulation, and local LLM processing helpers.
+- lct_python_backend/alembic/versions/add_transcript_events_and_settings.py (lines 1-57): Added migrations for `app_settings` and `transcript_events`.
