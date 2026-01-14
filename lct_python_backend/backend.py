@@ -74,6 +74,7 @@ from lct_python_backend.db_helpers import get_all_conversations, insert_conversa
 from lct_python_backend.import_api import router as import_router
 from lct_python_backend.bookmarks_api import router as bookmarks_router
 from lct_python_backend.db_session import get_async_session
+from lct_python_backend.llm_api import router as llm_router
 
 # Audio retention config
 AUDIO_RECORDING_ENABLED = os.getenv("AUDIO_RECORDING_ENABLED", "true").lower() == "true"
@@ -138,6 +139,7 @@ lct_app.add_middleware(
 # Include routers
 lct_app.include_router(import_router)
 lct_app.include_router(bookmarks_router)
+lct_app.include_router(llm_router)
 
 # Serve JS/CSS/assets from Vite build folder
 # lct_app.mount("/assets", StaticFiles(directory="frontend_dist/assets"), name="assets")

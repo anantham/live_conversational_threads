@@ -82,6 +82,31 @@ MODEL_PRICING: Dict[str, ModelPricing] = {
         provider="anthropic",
         model_name="claude-3-haiku"
     ),
+    # Local models (no per-token cost)
+    "glm-4.6v-flash": ModelPricing(
+        input_cost_per_1k=Decimal("0"),
+        output_cost_per_1k=Decimal("0"),
+        provider="local",
+        model_name="glm-4.6v-flash"
+    ),
+    "text-embedding-qwen3-embedding-8b": ModelPricing(
+        input_cost_per_1k=Decimal("0"),
+        output_cost_per_1k=Decimal("0"),
+        provider="local",
+        model_name="text-embedding-qwen3-embedding-8b"
+    ),
+    "text-embedding-multilingual-e5-large-instruct": ModelPricing(
+        input_cost_per_1k=Decimal("0"),
+        output_cost_per_1k=Decimal("0"),
+        provider="local",
+        model_name="text-embedding-multilingual-e5-large-instruct"
+    ),
+    "text-embedding-nomic-embed-text-v1.5": ModelPricing(
+        input_cost_per_1k=Decimal("0"),
+        output_cost_per_1k=Decimal("0"),
+        provider="local",
+        model_name="text-embedding-nomic-embed-text-v1.5"
+    ),
 }
 
 
@@ -119,6 +144,14 @@ def get_model_pricing(model: str) -> Optional[ModelPricing]:
         return MODEL_PRICING["claude-sonnet-4-5-20250929"]
     elif "haiku" in model_lower:
         return MODEL_PRICING["claude-3-haiku-20240307"]
+
+    if model_lower.startswith("glm-") or "embedding" in model_lower:
+        return ModelPricing(
+            input_cost_per_1k=Decimal("0"),
+            output_cost_per_1k=Decimal("0"),
+            provider="local",
+            model_name=model,
+        )
 
     return None
 
