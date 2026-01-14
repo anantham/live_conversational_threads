@@ -81,3 +81,15 @@
 ## 2026-01-14T05:57:58Z
 - lct_python_backend/services/audio_storage.py (lines 58-107): Guarded PCM cleanup behind successful WAV writes and corrected FFmpeg invocation to treat WAV as input.
 - .gitignore (lines 185-186): Restored `.venv/` ignore to avoid committing local virtual environments.
+
+## 2026-01-14T06:25:37Z
+- lct_python_backend/tests/unit/test_audio_storage.py (lines 1-52): Added async coverage for WAV failure cleanup and FFmpeg WAV input usage.
+- lct_python_backend/tests/unit/test_llm_config.py (lines 1-28): Added LLM env default + merge sanitization tests.
+- lct_python_backend/tests/integration/test_transcripts_websocket.py (lines 1-89): Added WebSocket test to confirm partial/final transcript persistence and flush ack.
+
+## 2026-01-14T08:55:11Z
+- lct_python_backend/models.py (line 705): Renamed `TranscriptEvent.metadata` to `event_metadata` while preserving the `metadata` column name to satisfy SQLAlchemy reserved attribute rules.
+- lct_python_backend/services/stt_session.py (line 144): Updated transcript event persistence to use `event_metadata`.
+
+## 2026-01-14T08:55:50Z
+- lct_python_backend/tests/integration/test_transcripts_websocket.py (lines 12-107): Stubbed transcript processor import to avoid optional `google-genai` dependency during WebSocket test setup.
