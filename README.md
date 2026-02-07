@@ -199,9 +199,9 @@ live_conversational_threads/
 
 ## Prerequisites
 
-- **Python 3.11+** (with `venv` or Conda)
+- **Python 3.9+** (with `venv` or Conda)
 - **Node.js 18+** and **npm 9+**
-- **PostgreSQL 14+**
+- **PostgreSQL 15+** (or Docker via `docker compose up -d`)
 - **API Keys**:
   - OpenAI API key (for GPT-4, GPT-3.5-turbo)
   - Anthropic API key (for Claude Sonnet-4)
@@ -303,14 +303,14 @@ From the project root (with Python environment activated):
 
 ```bash
 cd lct_python_backend
-uvicorn backend:lct_app --reload --port 8080
+uvicorn lct_python_backend.backend:lct_app --reload --port 8000
 ```
 
-The backend API will be available at [http://localhost:8080](http://localhost:8080)
+The backend API will be available at [http://localhost:8000](http://localhost:8000)
 
 **Verify backend is running:**
-- Visit [http://localhost:8080/docs](http://localhost:8080/docs) for Swagger UI
-- Check [http://localhost:8080/health](http://localhost:8080/health) for health status
+- Visit [http://localhost:8000/docs](http://localhost:8000/docs) for Swagger UI
+- Check [http://localhost:8000/health](http://localhost:8000/health) for health status
 
 ### 2. Start the Frontend Development Server
 
@@ -521,6 +521,12 @@ GET    /cost-dashboard              # View cost tracking metrics
 | **[ADR-003](docs/adr/ADR-003-observability-and-storage-foundation.md)** | Observability, Metrics, and Storage Baseline | Proposed |
 | **[ADR-004](docs/adr/ADR-004-dual-view-architecture.md)** | Dual-View Architecture (Timeline + Contextual Network) | Approved |
 | **[ADR-005](docs/adr/ADR-005-prompts-configuration-system.md)** | Externalized Prompts Configuration System | Approved |
+| **[ADR-006](docs/adr/ADR-006-testing-strategy-quality-assurance.md)** | Testing Strategy & Quality Assurance | Proposed |
+| **[ADR-007](docs/adr/ADR-007-system-invariants-data-integrity.md)** | System Invariants & Data Integrity | Proposed |
+| **[ADR-008](docs/adr/ADR-008-local-stt-transcripts.md)** | Local STT & Append-Only Transcript Events | Approved |
+| **[ADR-009](docs/adr/ADR-009-local-llm-defaults.md)** | Local-First LLM Defaults | Proposed |
+
+See [docs/adr/INDEX.md](docs/adr/INDEX.md) for the complete ADR index.
 
 ---
 
@@ -742,5 +748,5 @@ If you would like to use this software in a **closed-source or commercial produc
 
 ---
 
-**Last Updated**: 2025-11-11
-**Version**: 2.0.0 (Major redesign with Google Meet support)
+**Last Updated**: 2026-02-08
+**Version**: 2.1.0 (Local STT, local-first LLM, security hardening)
