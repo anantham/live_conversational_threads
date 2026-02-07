@@ -27,6 +27,7 @@ from lct_python_backend.services.stt_config import (
 )
 from lct_python_backend.services.stt_session import SessionState, persist_transcript_event
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
+from lct_python_backend.middleware import check_ws_auth
 
 logger = logging.getLogger("lct_backend")
 
@@ -126,6 +127,9 @@ async def get_audio_ws_fallback():
 
 @router.websocket("/ws/transcripts")
 async def transcripts_websocket(websocket: WebSocket):
+    if not check_ws_auth(websocket):
+        await websocket.close(code=4401, reason="Unauthorized")
+        return
     await websocket.accept()
     state = SessionState(metadata={})
 
@@ -199,7 +203,7 @@ async def transcripts_websocket(websocket: WebSocket):
             logger.info("[WS] Client disconnected")
         except Exception as exc:
             logger.exception("[WS] Error processing transcript websocket: %s", exc)
-            await websocket.send_json({"type": "error", "detail": str(exc)})
+            await websocket.send_json({"type": "error", "detail": "Internal server error"})
             await websocket.close(code=1011)
 
 
