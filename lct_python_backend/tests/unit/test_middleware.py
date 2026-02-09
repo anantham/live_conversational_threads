@@ -9,6 +9,7 @@ import os
 import pytest
 from unittest.mock import patch
 from fastapi import FastAPI, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
@@ -37,6 +38,13 @@ def _make_app(env_overrides: dict = None):
         importlib.reload(mw)
 
         app = FastAPI()
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["http://localhost:5173"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
 
         @app.get("/health")
         async def health():
@@ -140,6 +148,18 @@ class TestAuthMiddleware:
             ws.send_text("hello")
             data = ws.receive_text()
             assert data == "echo: hello"
+
+    def test_cors_preflight_bypasses_auth(self):
+        app = _make_app({"AUTH_TOKEN": "secret123"})
+        client = TestClient(app)
+        resp = client.options(
+            "/api/conversations",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
