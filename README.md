@@ -288,10 +288,11 @@ npm install
 The frontend uses environment variables for API endpoints. Create `lct_app/.env`:
 
 ```
-VITE_API_BASE_URL=http://localhost:8080
+VITE_API_URL=http://localhost:8000
+VITE_BACKEND_API_URL=http://localhost:8000
 ```
 
-Default is `http://localhost:8080`, so this step is optional for local development.
+Default is `http://localhost:8000`, so this step is optional for local development.
 
 ---
 
@@ -359,7 +360,8 @@ The frontend will be available at [http://localhost:5173](http://localhost:5173)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `VITE_API_BASE_URL` | Backend API base URL | `http://localhost:8080` |
+| `VITE_API_URL` | Backend API base URL (window-origin fallback clients) | `http://localhost:8000` |
+| `VITE_BACKEND_API_URL` | Backend API base URL (service clients) | `http://localhost:8000` |
 
 ---
 
@@ -480,8 +482,8 @@ CREATE TABLE api_calls_log (
 
 Once the backend server is running:
 
-- **Swagger UI**: [http://localhost:8080/docs](http://localhost:8080/docs)
-- **ReDoc**: [http://localhost:8080/redoc](http://localhost:8080/redoc)
+- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
 ### Key Endpoints
 
