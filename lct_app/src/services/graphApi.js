@@ -5,7 +5,7 @@
  * Handles fetching graph data, nodes, edges, and managing zoom levels.
  */
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
+import { apiFetch } from './apiClient';
 
 /**
  * Fetch complete graph for a conversation
@@ -23,9 +23,9 @@ export async function fetchGraph(conversationId, zoomLevel = null, includeEdges 
     params.append('include_edges', 'false');
   }
 
-  const url = `${API_BASE_URL}/api/graph/${conversationId}?${params.toString()}`;
+  const url = `/api/graph/${conversationId}?${params.toString()}`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch graph: ${response.statusText}`);
   }
@@ -45,9 +45,9 @@ export async function fetchNodes(conversationId, zoomLevel = null) {
     params.append('zoom_level', zoomLevel);
   }
 
-  const url = `${API_BASE_URL}/api/graph/${conversationId}/nodes?${params.toString()}`;
+  const url = `/api/graph/${conversationId}/nodes?${params.toString()}`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch nodes: ${response.statusText}`);
   }
@@ -67,9 +67,9 @@ export async function fetchEdges(conversationId, relationshipType = null) {
     params.append('relationship_type', relationshipType);
   }
 
-  const url = `${API_BASE_URL}/api/graph/${conversationId}/edges?${params.toString()}`;
+  const url = `/api/graph/${conversationId}/edges?${params.toString()}`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch edges: ${response.statusText}`);
   }
@@ -91,9 +91,9 @@ export async function generateGraph(
   model = 'gpt-4',
   detectRelationships = true
 ) {
-  const url = `${API_BASE_URL}/api/graph/generate`;
+  const url = `/api/graph/generate`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -119,9 +119,9 @@ export async function generateGraph(
  * @returns {Promise<Object>} Deletion status
  */
 export async function deleteGraph(conversationId) {
-  const url = `${API_BASE_URL}/api/graph/${conversationId}`;
+  const url = `/api/graph/${conversationId}`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'DELETE',
   });
 
@@ -256,9 +256,9 @@ export function calculateZoomDistribution(nodes) {
  * @returns {Promise<Object>} Updated node data
  */
 export async function saveNode(nodeId, updatedNode, diff) {
-  const url = `${API_BASE_URL}/api/nodes/${nodeId}`;
+  const url = `/api/nodes/${nodeId}`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',

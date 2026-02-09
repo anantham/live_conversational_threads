@@ -1,5 +1,6 @@
-const API_BASE = (import.meta.env.VITE_API_URL || window.location.origin).replace(/\/$/, "");
-const SETTINGS_URL = `${API_BASE}/api/settings/stt`;
+import { apiFetch } from './apiClient';
+
+const SETTINGS_PATH = '/api/settings/stt';
 
 async function handleResponse(response) {
   if (!response.ok) {
@@ -10,14 +11,14 @@ async function handleResponse(response) {
 }
 
 export async function getSttSettings() {
-  const response = await fetch(SETTINGS_URL, {
+  const response = await apiFetch(SETTINGS_PATH, {
     headers: { "Cache-Control": "no-cache" },
   });
   return handleResponse(response);
 }
 
 export async function updateSttSettings(payload) {
-  const response = await fetch(SETTINGS_URL, {
+  const response = await apiFetch(SETTINGS_PATH, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
