@@ -5,7 +5,7 @@
  * Client for interacting with Simulacra level detection endpoints
  */
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:8000";
+import { apiFetch } from './apiClient';
 
 /**
  * Analyze all nodes in a conversation for Simulacra levels
@@ -20,9 +20,9 @@ const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:8
  * }>}
  */
 export async function analyzeSimulacraLevels(conversationId, forceReanalysis = false) {
-  const url = `${API_BASE_URL}/api/conversations/${conversationId}/simulacra/analyze?force_reanalysis=${forceReanalysis}`;
+  const url = `/api/conversations/${conversationId}/simulacra/analyze?force_reanalysis=${forceReanalysis}`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -49,9 +49,9 @@ export async function analyzeSimulacraLevels(conversationId, forceReanalysis = f
  * }>}
  */
 export async function getSimulacraResults(conversationId) {
-  const url = `${API_BASE_URL}/api/conversations/${conversationId}/simulacra`;
+  const url = `/api/conversations/${conversationId}/simulacra`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json'
@@ -79,9 +79,9 @@ export async function getSimulacraResults(conversationId) {
  * }>}
  */
 export async function getNodeSimulacra(nodeId) {
-  const url = `${API_BASE_URL}/api/nodes/${nodeId}/simulacra`;
+  const url = `/api/nodes/${nodeId}/simulacra`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json'
