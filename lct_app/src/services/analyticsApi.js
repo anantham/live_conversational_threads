@@ -5,7 +5,7 @@
  * Handles fetching speaker statistics, timeline, and role detection.
  */
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
+import { apiFetch } from './apiClient';
 
 /**
  * Fetch complete analytics for a conversation
@@ -13,9 +13,9 @@ const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8
  * @returns {Promise<Object>} Analytics data with speakers, timeline, roles, and summary
  */
 export async function fetchConversationAnalytics(conversationId) {
-  const url = `${API_BASE_URL}/api/analytics/conversations/${conversationId}/analytics`;
+  const url = `/api/analytics/conversations/${conversationId}/analytics`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail || `Failed to fetch analytics: ${response.statusText}`);
@@ -31,9 +31,9 @@ export async function fetchConversationAnalytics(conversationId) {
  * @returns {Promise<Object>} Speaker statistics
  */
 export async function fetchSpeakerStats(conversationId, speakerId) {
-  const url = `${API_BASE_URL}/api/analytics/conversations/${conversationId}/speakers/${speakerId}`;
+  const url = `/api/analytics/conversations/${conversationId}/speakers/${speakerId}`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail || `Failed to fetch speaker stats: ${response.statusText}`);
@@ -48,9 +48,9 @@ export async function fetchSpeakerStats(conversationId, speakerId) {
  * @returns {Promise<Array>} Timeline segments
  */
 export async function fetchSpeakerTimeline(conversationId) {
-  const url = `${API_BASE_URL}/api/analytics/conversations/${conversationId}/timeline`;
+  const url = `/api/analytics/conversations/${conversationId}/timeline`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail || `Failed to fetch timeline: ${response.statusText}`);
@@ -65,9 +65,9 @@ export async function fetchSpeakerTimeline(conversationId) {
  * @returns {Promise<Object>} Role assignments (speaker_id -> role)
  */
 export async function fetchSpeakerRoles(conversationId) {
-  const url = `${API_BASE_URL}/api/analytics/conversations/${conversationId}/roles`;
+  const url = `/api/analytics/conversations/${conversationId}/roles`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail || `Failed to fetch roles: ${response.statusText}`);
