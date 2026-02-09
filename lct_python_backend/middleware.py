@@ -85,6 +85,10 @@ def _is_mutating(method: str) -> bool:
     return method in {"POST", "PUT", "DELETE", "PATCH"}
 
 
+def _is_cors_preflight(request: Request) -> bool:
+    return request.method == "OPTIONS" and "access-control-request-method" in request.headers
+
+
 def _check_bearer_token(auth_header: Optional[str]) -> bool:
     """Validate Authorization header against AUTH_TOKEN."""
     if not AUTH_TOKEN:
@@ -111,6 +115,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable):
         path = _normalize_path(request.url.path)
+
+        # Let browser CORS preflight pass to CORS middleware without auth.
+        if _is_cors_preflight(request):
+            return await call_next(request)
 
         if _is_health(path):
             return await call_next(request)
@@ -254,7 +262,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         path = _normalize_path(request.url.path)
         method = request.method
 
-        if _is_health(path):
+        if _is_health(path) or _is_cors_preflight(request):
             return await call_next(request)
 
         ip = request.client.host if request.client else "unknown"
