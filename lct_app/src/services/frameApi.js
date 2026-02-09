@@ -5,7 +5,7 @@
  * Client for interacting with implicit frame detection endpoints
  */
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:8000";
+import { apiFetch } from './apiClient';
 
 /**
  * Analyze all nodes in a conversation for implicit frames
@@ -23,9 +23,9 @@ const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:8
  * }>}
  */
 export async function analyzeImplicitFrames(conversationId, forceReanalysis = false) {
-  const url = `${API_BASE_URL}/api/conversations/${conversationId}/frames/analyze?force_reanalysis=${forceReanalysis}`;
+  const url = `/api/conversations/${conversationId}/frames/analyze?force_reanalysis=${forceReanalysis}`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -44,9 +44,9 @@ export async function analyzeImplicitFrames(conversationId, forceReanalysis = fa
  * Get existing implicit frame analysis results for a conversation
  */
 export async function getFrameResults(conversationId) {
-  const url = `${API_BASE_URL}/api/conversations/${conversationId}/frames`;
+  const url = `/api/conversations/${conversationId}/frames`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json'
@@ -65,9 +65,9 @@ export async function getFrameResults(conversationId) {
  * Get implicit frame analyses for a specific node
  */
 export async function getNodeFrames(nodeId) {
-  const url = `${API_BASE_URL}/api/nodes/${nodeId}/frames`;
+  const url = `/api/nodes/${nodeId}/frames`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json'

@@ -5,16 +5,16 @@
  * Handles managing, editing, and versioning prompts.
  */
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
+import { apiFetch } from './apiClient';
 
 /**
  * List all available prompts
  * @returns {Promise<Object>} List of prompt names
  */
 export async function listPrompts() {
-  const url = `${API_BASE_URL}/api/prompts`;
+  const url = `/api/prompts`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     throw new Error(`Failed to list prompts: ${response.statusText}`);
   }
@@ -27,9 +27,9 @@ export async function listPrompts() {
  * @returns {Promise<Object>} Full prompts.json content
  */
 export async function getPromptsConfig() {
-  const url = `${API_BASE_URL}/api/prompts/config`;
+  const url = `/api/prompts/config`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     throw new Error(`Failed to get prompts config: ${response.statusText}`);
   }
@@ -43,9 +43,9 @@ export async function getPromptsConfig() {
  * @returns {Promise<Object>} Prompt configuration
  */
 export async function getPrompt(promptName) {
-  const url = `${API_BASE_URL}/api/prompts/${promptName}`;
+  const url = `/api/prompts/${promptName}`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail || `Failed to get prompt: ${response.statusText}`);
@@ -60,9 +60,9 @@ export async function getPrompt(promptName) {
  * @returns {Promise<Object>} Prompt metadata
  */
 export async function getPromptMetadata(promptName) {
-  const url = `${API_BASE_URL}/api/prompts/${promptName}/metadata`;
+  const url = `/api/prompts/${promptName}/metadata`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail || `Failed to get metadata: ${response.statusText}`);
@@ -80,9 +80,9 @@ export async function getPromptMetadata(promptName) {
  * @returns {Promise<Object>} Success status
  */
 export async function updatePrompt(promptName, promptConfig, userId = 'anonymous', comment = '') {
-  const url = `${API_BASE_URL}/api/prompts/${promptName}`;
+  const url = `/api/prompts/${promptName}`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -110,9 +110,9 @@ export async function updatePrompt(promptName, promptConfig, userId = 'anonymous
  * @returns {Promise<Object>} Success status
  */
 export async function deletePrompt(promptName, userId = 'anonymous', comment = '') {
-  const url = `${API_BASE_URL}/api/prompts/${promptName}?user_id=${encodeURIComponent(userId)}&comment=${encodeURIComponent(comment)}`;
+  const url = `/api/prompts/${promptName}?user_id=${encodeURIComponent(userId)}&comment=${encodeURIComponent(comment)}`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'DELETE',
   });
 
@@ -131,9 +131,9 @@ export async function deletePrompt(promptName, userId = 'anonymous', comment = '
  * @returns {Promise<Object>} Version history
  */
 export async function getPromptHistory(promptName, limit = 10) {
-  const url = `${API_BASE_URL}/api/prompts/${promptName}/history?limit=${limit}`;
+  const url = `/api/prompts/${promptName}/history?limit=${limit}`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     throw new Error(`Failed to get history: ${response.statusText}`);
   }
@@ -149,9 +149,9 @@ export async function getPromptHistory(promptName, limit = 10) {
  * @returns {Promise<Object>} Success status
  */
 export async function restorePromptVersion(promptName, versionTimestamp, userId = 'anonymous') {
-  const url = `${API_BASE_URL}/api/prompts/${promptName}/restore`;
+  const url = `/api/prompts/${promptName}/restore`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -177,9 +177,9 @@ export async function restorePromptVersion(promptName, versionTimestamp, userId 
  * @returns {Promise<Object>} Validation result
  */
 export async function validatePrompt(promptName, promptConfig) {
-  const url = `${API_BASE_URL}/api/prompts/${promptName}/validate`;
+  const url = `/api/prompts/${promptName}/validate`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -199,9 +199,9 @@ export async function validatePrompt(promptName, promptConfig) {
  * @returns {Promise<Object>} Success status
  */
 export async function reloadPrompts() {
-  const url = `${API_BASE_URL}/api/prompts/reload`;
+  const url = `/api/prompts/reload`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'POST',
   });
 
