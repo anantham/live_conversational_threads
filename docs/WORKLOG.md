@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-02-09T17:00:00Z — refactor: split backend.py monolith (3549 → 140 LOC)
+- **lct_python_backend/backend.py** (3549 → 140 LOC): Reduced to app shell — logging, app creation, CORS, middleware, 13 router mounts. All inline route handlers, Pydantic models, and helper functions extracted.
+- **lct_python_backend/config.py** (20 LOC): New — env constants (API keys, GCS, audio paths) extracted from backend.py.
+- **lct_python_backend/schemas.py** (71 LOC): New — 16 shared Pydantic models extracted from backend.py.
+- **lct_python_backend/services/gcs_helpers.py** (76 LOC): New — `save_json_to_gcs`, `load_conversation_from_gcs` extracted from backend.py.
+- **lct_python_backend/services/llm_helpers.py** (501 LOC): New — `claude_llm_call`, `generate_lct_json_claude`, `stream_generate_context_json`, `sliding_window_chunking`, `generate_formalism`, etc.
+- **lct_python_backend/conversations_api.py** (397 LOC): New — 4 routes: list/get/delete conversations, get utterances.
+- **lct_python_backend/generation_api.py** (122 LOC): New — 4 routes: chunks, stream, save_json, formalism.
+- **lct_python_backend/canvas_api.py** (647 LOC): New — 2 routes + 5 Pydantic models + 2 converter functions for Obsidian Canvas export/import.
+- **lct_python_backend/thematic_api.py** (485 LOC): New — 3 routes + 2 background task helpers for hierarchical thematic analysis.
+- **lct_python_backend/prompts_api.py** (256 LOC): New — 10 routes for prompts CRUD.
+- **lct_python_backend/edit_history_api.py** (259 LOC): New — 5 routes for node updates, edits, training data export.
+- **lct_python_backend/factcheck_api.py** (127 LOC): New — 3 routes for fact-check, audio download, cost stats.
+- **lct_python_backend/analysis_api.py** (220 LOC): New — 9 routes for simulacra/bias/frame analysis. **Bug fix**: replaced broken `get_session()` with `get_async_session_context()` (routes were previously non-functional).
+- **lct_python_backend/analytics_api.py** (157 LOC): Fixed broken imports, now mounted.
+- ~240 LOC of commented-out dead code removed from backend.py.
+- docs/TECH_DEBT.md: Marked backend.py entry as resolved.
+
 ## 2025-11-29T20:12:50Z
 - lct_app/ZOOM_SYSTEM.md (lines 3-5): Bumped version to 2.1 and refreshed Last Updated to reflect the semantic-level selector addendum.
 - lct_app/ZOOM_SYSTEM.md (lines 17-27): Added addendum documenting the explicit semantic level selector, availability-aware controls, and decoupled zoom behavior in Thematic View.
@@ -147,3 +165,7 @@
 
 ## 2026-02-09T08:59:24Z
 - README.md (lines 291-295, 362-364, 483-484): Corrected stale frontend env variable examples from `VITE_API_BASE_URL` on port 8080 to `VITE_API_URL` + `VITE_BACKEND_API_URL` on port 8000, and aligned API docs links to port 8000.
+
+## 2026-02-09T16:03:38Z
+- /Users/aditya/Documents/Ongoing Local/SHARED_AI_SERVICES.md (lines 1-74): Created cross-project registry for STT/AI endpoints, runtime ownership, startup + health commands, venv/package snapshots, and redundancy-avoidance protocol so multiple projects can reuse shared services instead of reinstalling blindly.
+- LOCAL_STT_SERVICES.md (lines 10-15): Added a canonical pointer to `/Users/aditya/Documents/Ongoing Local/SHARED_AI_SERVICES.md` and clarified this file remains the project-local companion.

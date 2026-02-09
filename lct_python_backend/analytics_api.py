@@ -8,8 +8,8 @@ from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 from uuid import UUID
 
-from db import db
-from services.speaker_analytics import SpeakerAnalytics
+from lct_python_backend.db import db
+from lct_python_backend.services.speaker_analytics import SpeakerAnalytics
 
 
 router = APIRouter(prefix="/api/analytics", tags=["analytics"])
