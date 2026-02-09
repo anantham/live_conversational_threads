@@ -13,7 +13,7 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 # Create logger
 logger = logging.getLogger("lct_backend")
-logger.setLevel(logging.DEBUG)
+logger.setLevel(getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO))
 
 # File handler - rotates at 10MB, keeps 5 backups
 file_handler = RotatingFileHandler(
@@ -68,6 +68,7 @@ from lct_python_backend.db_session import get_async_session
 from lct_python_backend.services.transcript_processing import generate_lct_json
 from lct_python_backend.stt_api import router as stt_router
 from lct_python_backend.llm_api import router as llm_router
+from lct_python_backend.middleware import configure_p0_security
 
 # Audio retention config
 AUDIO_RECORDINGS_DIR = os.getenv("AUDIO_RECORDINGS_DIR", "./lct_python_backend/recordings")
@@ -123,6 +124,9 @@ lct_app.add_middleware(
     allow_methods=["*"],  # Allow all HTTP methods (GET, POST, etc.)
     allow_headers=["*"],  # Allow all headers
 )
+
+# P0 Security middleware (auth, rate limits, body size limits, SSRF gate)
+configure_p0_security(lct_app)
 
 # Include routers
 lct_app.include_router(import_router)

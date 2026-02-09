@@ -5,7 +5,7 @@
  * Handles fetching edits, statistics, and exporting training data.
  */
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
+import { apiFetch } from './apiClient';
 
 /**
  * Get all edits for a conversation
@@ -27,9 +27,9 @@ export async function getConversationEdits(conversationId, options = {}) {
   if (targetType) params.append('target_type', targetType);
   if (unexportedOnly) params.append('unexported_only', 'true');
 
-  const url = `${API_BASE_URL}/api/conversations/${conversationId}/edits?${params.toString()}`;
+  const url = `/api/conversations/${conversationId}/edits?${params.toString()}`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch edits: ${response.statusText}`);
   }
@@ -43,9 +43,9 @@ export async function getConversationEdits(conversationId, options = {}) {
  * @returns {Promise<Object>} Edit statistics
  */
 export async function getEditStatistics(conversationId) {
-  const url = `${API_BASE_URL}/api/conversations/${conversationId}/edits/statistics`;
+  const url = `/api/conversations/${conversationId}/edits/statistics`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch statistics: ${response.statusText}`);
   }
@@ -65,9 +65,9 @@ export async function exportTrainingData(conversationId, format = 'jsonl', unexp
   params.append('format', format);
   if (unexportedOnly) params.append('unexported_only', 'true');
 
-  const url = `${API_BASE_URL}/api/conversations/${conversationId}/training-data?${params.toString()}`;
+  const url = `/api/conversations/${conversationId}/training-data?${params.toString()}`;
 
-  const response = await fetch(url);
+  const response = await apiFetch(url);
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.detail || `Failed to export training data: ${response.statusText}`);
@@ -115,9 +115,9 @@ export async function downloadTrainingData(conversationId, format = 'jsonl', une
  * @returns {Promise<Object>} Success status
  */
 export async function addEditFeedback(editId, feedbackText) {
-  const url = `${API_BASE_URL}/api/edits/${editId}/feedback`;
+  const url = `/api/edits/${editId}/feedback`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

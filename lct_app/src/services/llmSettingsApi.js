@@ -1,7 +1,7 @@
-const API_URL = import.meta.env.VITE_API_URL || "";
+import { apiFetch } from './apiClient';
 
 export async function getLlmSettings() {
-  const response = await fetch(`${API_URL}/api/settings/llm`);
+  const response = await apiFetch('/api/settings/llm');
   if (!response.ok) {
     throw new Error("Failed to load LLM settings");
   }
@@ -9,7 +9,7 @@ export async function getLlmSettings() {
 }
 
 export async function updateLlmSettings(payload) {
-  const response = await fetch(`${API_URL}/api/settings/llm`, {
+  const response = await apiFetch('/api/settings/llm', {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),

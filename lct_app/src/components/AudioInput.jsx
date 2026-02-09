@@ -5,7 +5,8 @@ import { Mic } from "lucide-react";
 import { downsampleBuffer, convertFloat32ToInt16 } from "./audio/pcm";
 import {
   BACKEND_WS_URL,
-  DEFAULT_STT_WS,
+  normalizeSttSettings,
+  resolveProviderWsUrl,
 } from "./audio/sttUtils";
 import { finalizeAudioUpload as finalizeAudioUploadHelper, queueAudioChunkUpload } from "./audio/audioUpload";
 import { createBackendMessageHandler, createProviderMessageHandler } from "./audio/audioMessages";
@@ -40,6 +41,11 @@ export default function AudioInput({
   const sessionIdRef = useRef(null);
   const flushResolveRef = useRef(null);
   const chunkQueueRef = useRef(Promise.resolve());
+  const telemetryRef = useRef({
+    audioSendStartedAtMs: null,
+    firstPartialAtMs: null,
+    firstFinalAtMs: null,
+  });
   const graphDataFromSocket = useRef(false);
   const fileNameWasReset = useRef(false);
   const lastAutoSaveRef = useRef({ graphData: null, chunkDict: null });
@@ -108,7 +114,10 @@ export default function AudioInput({
     });
   };
 
-  const handleProviderMessage = createProviderMessageHandler(backendWsRef);
+  const handleProviderMessage = createProviderMessageHandler({
+    backendWsRef,
+    telemetryRef,
+  });
   const handleBackendMessage = createBackendMessageHandler({
     onDataReceived,
     onChunksReceived,
@@ -117,8 +126,7 @@ export default function AudioInput({
     graphDataFromSocket,
   });
 
-  const connectProviderSocket = () => {
-    const providerUrl = sttSettings?.ws_url || DEFAULT_STT_WS;
+  const connectProviderSocket = (providerUrl) => {
     if (!providerUrl) {
       setSettingsError("STT provider URL is missing.");
       return;
@@ -132,7 +140,7 @@ export default function AudioInput({
     providerWsRef.current = ws;
   };
 
-  const connectBackendSocket = (sessionId, providerId, conversationParam) => {
+  const connectBackendSocket = (sessionId, sttConfig, conversationParam, providerUrl) => {
     const ws = new WebSocket(BACKEND_WS_URL);
     ws.onopen = () => {
       setRecording(true);
@@ -142,10 +150,14 @@ export default function AudioInput({
           type: "session_meta",
           conversation_id: convoId,
           session_id: sessionId,
-          provider: providerId,
-          store_audio: Boolean(sttSettings?.store_audio),
-          speaker_id: sttSettings?.speaker_id || "speaker_1",
-          metadata: { source: "web_client" },
+          provider: sttConfig?.provider || "whisper",
+          store_audio: Boolean(sttConfig?.store_audio),
+          speaker_id: sttConfig?.speaker_id || "speaker_1",
+          metadata: {
+            source: "web_client",
+            local_only: sttConfig?.local_only !== false,
+            provider_ws_url: providerUrl,
+          },
         })
       );
     };
@@ -186,13 +198,25 @@ export default function AudioInput({
     await cleanupAudioNodes();
     providerWsRef.current = null;
     backendWsRef.current = null;
+    telemetryRef.current = {
+      audioSendStartedAtMs: null,
+      firstPartialAtMs: null,
+      firstFinalAtMs: null,
+    };
   };
 
   const startRecording = async () => {
     if (recording) return;
     sessionIdRef.current = crypto.randomUUID();
     chunkQueueRef.current = Promise.resolve();
+    telemetryRef.current = {
+      audioSendStartedAtMs: null,
+      firstPartialAtMs: null,
+      firstFinalAtMs: null,
+    };
     try {
+      const activeSettings = normalizeSttSettings(sttSettings || {});
+      const providerUrl = resolveProviderWsUrl(activeSettings);
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const audioContext = new AudioContext({ sampleRate: 16000 });
       audioContextRef.current = audioContext;
@@ -208,6 +232,9 @@ export default function AudioInput({
           const inputBuffer = event.inputBuffer.getChannelData(0);
           const downsampled = downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000);
           const pcmData = convertFloat32ToInt16(downsampled);
+          if (!telemetryRef.current.audioSendStartedAtMs) {
+            telemetryRef.current.audioSendStartedAtMs = Date.now();
+          }
           providerWsRef.current.send(pcmData.buffer);
           uploadChunk(pcmData.buffer);
         } catch (error) {
@@ -222,11 +249,12 @@ export default function AudioInput({
       conversationRef.current = newConversationId;
       setFileName?.("");
       fileNameWasReset.current = true;
-      connectProviderSocket();
+      connectProviderSocket(providerUrl);
       connectBackendSocket(
         sessionIdRef.current,
-        sttSettings?.provider || "local",
-        newConversationId
+        activeSettings,
+        newConversationId,
+        providerUrl
       );
     } catch (error) {
       console.error("Failed to start recording:", error);
@@ -259,6 +287,11 @@ export default function AudioInput({
     backendWsRef.current?.close();
     providerWsRef.current = null;
     backendWsRef.current = null;
+    telemetryRef.current = {
+      audioSendStartedAtMs: null,
+      firstPartialAtMs: null,
+      firstFinalAtMs: null,
+    };
     setRecording(false);
   };
 
