@@ -5,7 +5,7 @@
  * Client for interacting with cognitive bias detection endpoints
  */
 
-const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:8000";
+import { apiFetch } from './apiClient';
 
 /**
  * Analyze all nodes in a conversation for cognitive biases
@@ -23,9 +23,9 @@ const API_BASE_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:8
  * }>}
  */
 export async function analyzeCognitiveBiases(conversationId, forceReanalysis = false) {
-  const url = `${API_BASE_URL}/api/conversations/${conversationId}/biases/analyze?force_reanalysis=${forceReanalysis}`;
+  const url = `/api/conversations/${conversationId}/biases/analyze?force_reanalysis=${forceReanalysis}`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -44,9 +44,9 @@ export async function analyzeCognitiveBiases(conversationId, forceReanalysis = f
  * Get existing cognitive bias analysis results for a conversation
  */
 export async function getBiasResults(conversationId) {
-  const url = `${API_BASE_URL}/api/conversations/${conversationId}/biases`;
+  const url = `/api/conversations/${conversationId}/biases`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json'
@@ -65,9 +65,9 @@ export async function getBiasResults(conversationId) {
  * Get cognitive bias analyses for a specific node
  */
 export async function getNodeBiases(nodeId) {
-  const url = `${API_BASE_URL}/api/nodes/${nodeId}/biases`;
+  const url = `/api/nodes/${nodeId}/biases`;
 
-  const response = await fetch(url, {
+  const response = await apiFetch(url, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json'
