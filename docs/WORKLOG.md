@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-02-10T09:00:00Z — refactor: decompose ThematicView.jsx (976 → 267 LOC)
+
+**Target:** `lct_app/src/components/ThematicView.jsx` — 976 LOC with 8 tangled concerns (level conversion, polling, graph generation, settings UI, utterance panel, keyboard shortcuts, node interaction, formatting).
+
+**Extracted files (all in `components/thematic/`):**
+- `thematicConstants.js` (80 LOC): Level maps, colors, node type colors, font size classes, available models, `formatTimestamp()`, `getDetailLevelFromZoom()`
+- `useThematicLevels.js` (170 LOC): Level state, polling `/themes/levels` every 5s, data fetching, navigation (prev/next/jump), `clearLevelCache()` for regeneration
+- `useThematicGraph.jsx` (265 LOC): Dagre layout + ReactFlow node/edge generation (~224 LOC useMemo), `selectedNodeData` and `selectedNodeUtterances` memos, utterance-highlight matching
+- `useThematicKeyboard.js` (48 LOC): Keys 0-5 jump, +/- navigate, input/textarea guard
+- `LevelSelector.jsx` (91 LOC): Level navigation bar with prev/next buttons and numbered level buttons
+- `ThematicSettingsPanel.jsx` (108 LOC): Font size, granularity slider, model selection, regenerate button
+- `UtteranceDetailPanel.jsx` (93 LOC): Bottom panel showing utterances for selected thematic node
+
+**Root `ThematicView.jsx` (267 LOC):** Thin orchestrator importing hooks + subcomponents. Keeps: local UI state (`hoveredNode`, `showSettings`, `isRegenerating`, `showUtterancePanel`, `settings`), `handleRegenerate`, node click/hover handlers, ReactFlow JSX, empty state check.
+
+**Validation:** `npx vite build` — clean build (2158 modules, 7.97s). No consumer changes needed (`ViewConversation.jsx` unchanged).
+
+**Note:** `useThematicGraph` required `.jsx` extension (contains JSX node labels inside useMemo — standard ReactFlow data pattern, but Vite requires explicit JSX extension).
+
 ## 2026-02-10T06:00:00Z — refactor: split stt_api.py, AudioInput.jsx, SttSettingsPanel.jsx
 
 **Phase A — Backend `stt_api.py` (426 → 264 LOC)**
