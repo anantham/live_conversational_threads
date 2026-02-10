@@ -14,6 +14,7 @@ from typing import Optional, List
 from datetime import date, datetime, timedelta
 from pydantic import BaseModel, ConfigDict
 
+from lct_python_backend.db_session import get_async_session
 from instrumentation import (
     CostAggregator,
     CostReporter,
@@ -72,19 +73,12 @@ class TopConversationCostResponse(BaseModel):
 router = APIRouter(prefix="/api/costs", tags=["costs"])
 
 
-# Dependency to get database session
-# This should be replaced with your actual database session dependency
-async def get_db() -> AsyncSession:
-    """Get database session."""
-    # TODO: Replace with actual database session
-    # For now, return None - the aggregator will handle gracefully
-    return None
 
 
 @router.get("/daily", response_model=CostAggregationResponse)
 async def get_daily_cost(
     target_date: Optional[date] = Query(None, description="Date to query (default: today)"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """
     Get daily cost aggregation.
@@ -111,7 +105,7 @@ async def get_daily_cost(
 @router.get("/weekly", response_model=CostAggregationResponse)
 async def get_weekly_cost(
     week_start: Optional[date] = Query(None, description="Start of week (Monday)"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """
     Get weekly cost aggregation.
@@ -141,7 +135,7 @@ async def get_weekly_cost(
 async def get_monthly_cost(
     year: Optional[int] = Query(None, description="Year (default: current year)"),
     month: Optional[int] = Query(None, description="Month (1-12, default: current month)"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """
     Get monthly cost aggregation.
@@ -174,7 +168,7 @@ async def get_monthly_cost(
 @router.get("/conversation/{conversation_id}", response_model=ConversationCostResponse)
 async def get_conversation_cost(
     conversation_id: str,
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """
     Get cost breakdown for a specific conversation.
@@ -206,7 +200,7 @@ async def get_conversation_cost(
 @router.get("/trend", response_model=List[CostTrendResponse])
 async def get_cost_trend(
     days: int = Query(30, ge=1, le=365, description="Number of days to look back"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """
     Get daily cost trend.
@@ -235,7 +229,7 @@ async def get_top_conversations_by_cost(
     limit: int = Query(10, ge=1, le=100, description="Number of conversations to return"),
     period_start: Optional[datetime] = Query(None, description="Start of period filter"),
     period_end: Optional[datetime] = Query(None, description="End of period filter"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """
     Get most expensive conversations.
@@ -274,7 +268,7 @@ async def get_top_conversations_by_cost(
 @router.get("/report/daily")
 async def get_daily_report(
     target_date: Optional[date] = Query(None, description="Date to report on (default: today)"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """
     Get human-readable daily cost report.
@@ -303,7 +297,7 @@ async def get_daily_report(
 async def get_monthly_report(
     year: Optional[int] = Query(None, description="Year (default: current year)"),
     month: Optional[int] = Query(None, description="Month (1-12, default: current month)"),
-    db: AsyncSession = Depends(get_db),
+    db: AsyncSession = Depends(get_async_session),
 ):
     """
     Get human-readable monthly cost report.
