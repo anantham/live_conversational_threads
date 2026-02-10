@@ -1,5 +1,7 @@
-const API_BASE = import.meta.env.VITE_API_URL || window.location.origin;
-const BACKEND_WS_URL = `${API_BASE.replace(/^http/, "ws")}/ws/transcripts`;
+import { API_BASE_URL, wsUrl } from "../../services/apiClient";
+
+const API_BASE = API_BASE_URL;
+const BACKEND_WS_URL = wsUrl("/ws/transcripts");
 const STT_PROVIDER_OPTIONS = ["senko", "parakeet", "whisper", "ofc"];
 const DEFAULT_STT_PROVIDER = (import.meta.env.VITE_DEFAULT_STT_PROVIDER || "whisper").toLowerCase();
 const DEFAULT_STT_WS = import.meta.env.VITE_DEFAULT_STT_WS || "ws://localhost:43001/stream";

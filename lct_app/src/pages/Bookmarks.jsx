@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../services/apiClient";
 
 export default function Bookmarks() {
   const [bookmarks, setBookmarks] = useState([]);
@@ -8,7 +9,6 @@ export default function Bookmarks() {
   const [conversations, setConversations] = useState({});
 
   const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL || "";
 
   useEffect(() => {
     loadBookmarks();
@@ -18,7 +18,7 @@ export default function Bookmarks() {
   const loadBookmarks = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/bookmarks`);
+      const response = await apiFetch("/api/bookmarks");
 
       if (!response.ok) {
         throw new Error(`Failed to load bookmarks: ${response.statusText}`);
@@ -38,7 +38,7 @@ export default function Bookmarks() {
 
   const loadConversations = async () => {
     try {
-      const response = await fetch(`${API_URL}/conversations/`);
+      const response = await apiFetch("/conversations/");
       if (!response.ok) return;
 
       const data = await response.json();
@@ -59,7 +59,7 @@ export default function Bookmarks() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/bookmarks/${bookmarkId}`, {
+      const response = await apiFetch(`/api/bookmarks/${bookmarkId}`, {
         method: "DELETE",
       });
 
@@ -78,7 +78,7 @@ export default function Bookmarks() {
   const handleNavigateToBookmark = (bookmark) => {
     // Navigate to the conversation page
     // The conversation viewer will need to highlight or scroll to the bookmarked turn
-    navigate(`/view/${bookmark.conversation_id}`);
+    navigate(`/conversation/${bookmark.conversation_id}`);
   };
 
   if (loading) {

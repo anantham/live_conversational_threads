@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import ReactFlow, { Controls, Background, MiniMap } from "reactflow";
 import dagre from "dagre";
 import "reactflow/dist/style.css";
+import { apiFetch } from "../services/apiClient";
 
 // Define outside component to prevent ReactFlow warnings
 const NODE_TYPES = {};
@@ -102,9 +103,7 @@ export default function ThematicView({
     const pollLevels = async () => {
       const startTime = performance.now();
       try {
-        const response = await fetch(
-          `http://localhost:8000/api/conversations/${conversationId}/themes/levels`
-        );
+        const response = await apiFetch(`/api/conversations/${conversationId}/themes/levels`);
         const endTime = performance.now();
         const duration = (endTime - startTime).toFixed(0);
 
@@ -146,9 +145,7 @@ export default function ThematicView({
     const startTime = performance.now();
     try {
       console.log(`[ThematicView] Fetching display level ${displayLevel} (API level ${apiLevel})...`);
-      const response = await fetch(
-        `http://localhost:8000/api/conversations/${conversationId}/themes?level=${apiLevel}`
-      );
+      const response = await apiFetch(`/api/conversations/${conversationId}/themes?level=${apiLevel}`);
       const endTime = performance.now();
       const duration = (endTime - startTime).toFixed(0);
 
@@ -262,8 +259,8 @@ export default function ThematicView({
         force_regenerate: 'true',
       });
 
-      const response = await fetch(
-        `http://localhost:8000/api/conversations/${conversationId}/themes/generate?${params}`,
+      const response = await apiFetch(
+        `/api/conversations/${conversationId}/themes/generate?${params}`,
         { method: 'POST' }
       );
 
