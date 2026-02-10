@@ -56,9 +56,9 @@ export default function AudioInput({
   });
 
   // --- Capture hook ---
-  const { startCapture, stopCapture, cleanupNodes } = useAudioCapture({
+  const { startCapture, stopCapture } = useAudioCapture({
     onPCMFrame,
-    onError: (err) => {
+    onError: () => {
       setMessage?.("Microphone access denied or unavailable.");
       socketsCleanup();
       setRecording(false);
@@ -87,14 +87,21 @@ export default function AudioInput({
     if (recording) return;
     const activeSettings = normalizeSttSettings(sttSettings || {});
     const providerUrl = resolveProviderWsUrl(activeSettings);
+    if (!providerUrl) {
+      setSettingsError("STT provider URL is missing.");
+      return;
+    }
+    const captureStarted = await startCapture();
+    if (!captureStarted) {
+      return;
+    }
+
     const sessionId = crypto.randomUUID();
     const newConversationId = crypto.randomUUID();
     setConversationId?.(newConversationId);
     setFileName?.("");
     fileNameWasReset.current = true;
-
     startSession({ providerUrl, activeSettings, newConversationId, sessionId });
-    await startCapture();
   };
 
   const stopRecording = async () => {

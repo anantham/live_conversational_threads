@@ -55,9 +55,11 @@ export default function useAudioCapture({ onPCMFrame, onError }) {
 
       source.connect(processor);
       processor.connect(audioContext.destination);
+      return true;
     } catch (error) {
       console.error("Failed to start audio capture:", error);
       onError?.(error);
+      return false;
     }
   }, [onPCMFrame, onError]);
 

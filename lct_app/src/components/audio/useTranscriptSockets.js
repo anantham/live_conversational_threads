@@ -108,6 +108,22 @@ export default function useTranscriptSockets({
   const connectBackendSocket = useCallback(
     (sessionId, sttConfig, conversationParam, providerUrl) => {
       const ws = new WebSocket(BACKEND_WS_URL);
+      const failSession = () => {
+        if (backendWsRef.current !== ws) return;
+        flushResolveRef.current?.();
+        flushResolveRef.current = null;
+        providerWsRef.current?.close();
+        backendWsRef.current?.close();
+        providerWsRef.current = null;
+        backendWsRef.current = null;
+        telemetryRef.current = {
+          audioSendStartedAtMs: null,
+          firstPartialAtMs: null,
+          firstFinalAtMs: null,
+        };
+        onFatalError?.();
+      };
+
       ws.onopen = () => {
         const convoId = conversationParam || conversationRef.current;
         ws.send(
@@ -130,11 +146,11 @@ export default function useTranscriptSockets({
       ws.onmessage = handleBackendMessage;
       ws.onerror = (err) => {
         console.error("Backend WS error:", err);
-        onFatalError?.();
+        failSession();
       };
       ws.onclose = () => {
         logToServer("Backend socket closed.");
-        onFatalError?.();
+        failSession();
       };
       backendWsRef.current = ws;
     },
