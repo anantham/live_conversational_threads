@@ -10,7 +10,7 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_python_backend/services/llm_helpers.py | 501 | Extracted from backend.py; large LLM prompt inline | Consider moving prompt to separate file if it grows further |
 | lct_python_backend/models.py | 714 | All ORM models in a single file | Split by domain (core, analysis, instrumentation, settings) |
 | lct_python_backend/services/transcript_processing.py | 534 | Prompts, segmentation, and LLM IO coupled | Split into prompts, accumulator/decision, processor |
-| lct_app/src/components/ThematicView.jsx | 976 | Large UI + data logic | Split into view layout, hooks, and subcomponents |
+| ~~lct_app/src/components/ThematicView.jsx~~ | ~~976~~ → 267 | **RESOLVED** — Extracted 3 hooks (`useThematicLevels`, `useThematicGraph`, `useThematicKeyboard`), 3 subcomponents (`LevelSelector`, `ThematicSettingsPanel`, `UtteranceDetailPanel`), and shared constants into `components/thematic/`. Root is now a thin orchestrator. |
 | lct_app/src/pages/Settings.jsx | 481 | Multiple settings panels in one file | Split into settings sections + shared layout |
 | lct_app/src/pages/ViewConversation.jsx | 463 | Data fetching + UI composition mixed | Extract data hooks + presentational components |
 | ~~lct_app/src/components/AudioInput.jsx~~ | ~~329~~ → 137 | **RESOLVED** — Extracted `useTranscriptSockets` (233 LOC) and `useAudioCapture` (69 LOC) hooks; AudioInput is now a thin orchestrator. |
