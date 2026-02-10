@@ -2,14 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Mic } from "lucide-react";
 
-import { downsampleBuffer, convertFloat32ToInt16 } from "./audio/pcm";
-import {
-  BACKEND_WS_URL,
-  normalizeSttSettings,
-  resolveProviderWsUrl,
-} from "./audio/sttUtils";
-import { finalizeAudioUpload as finalizeAudioUploadHelper, queueAudioChunkUpload } from "./audio/audioUpload";
-import { createBackendMessageHandler, createProviderMessageHandler } from "./audio/audioMessages";
+import { normalizeSttSettings, resolveProviderWsUrl } from "./audio/sttUtils";
 import {
   useAutoSaveConversation,
   useFilenameFromGraph,
@@ -17,6 +10,8 @@ import {
   useMessageDismissOnClick,
 } from "./audio/useAudioInputEffects";
 import { useSttSettings } from "./audio/useSttSettings";
+import useTranscriptSockets from "./audio/useTranscriptSockets";
+import useAudioCapture from "./audio/useAudioCapture";
 
 export default function AudioInput({
   onDataReceived,
@@ -33,59 +28,52 @@ export default function AudioInput({
   const [recording, setRecording] = useState(false);
   const { sttSettings, settingsError, setSettingsError } = useSttSettings();
 
-  const backendWsRef = useRef(null);
-  const providerWsRef = useRef(null);
-  const audioContextRef = useRef(null);
-  const processorRef = useRef(null);
-  const sourceRef = useRef(null);
-  const sessionIdRef = useRef(null);
-  const flushResolveRef = useRef(null);
-  const chunkQueueRef = useRef(Promise.resolve());
-  const telemetryRef = useRef({
-    audioSendStartedAtMs: null,
-    firstPartialAtMs: null,
-    firstFinalAtMs: null,
-  });
   const graphDataFromSocket = useRef(false);
   const fileNameWasReset = useRef(false);
   const lastAutoSaveRef = useRef({ graphData: null, chunkDict: null });
   const wasRecording = useRef(false);
-  const conversationRef = useRef(conversationId);
 
-  const logToServer = useCallback((text) => {
-    console.log("[Client Log]", text);
-    if (backendWsRef.current?.readyState === WebSocket.OPEN) {
-      backendWsRef.current.send(JSON.stringify({ type: "client_log", message: text }));
-    }
-  }, [backendWsRef]);
-
-  useFilenameFromGraph({
-    graphData,
-    fileNameWasReset,
-    lastAutoSaveRef,
-    setFileName,
-  });
-
-  useGraphDataSync({
-    graphData,
-    graphDataFromSocket,
+  // --- Transport hook ---
+  const {
     backendWsRef,
+    conversationRef,
     logToServer,
+    startSession,
+    stopSession,
+    cleanup: socketsCleanup,
+    onPCMFrame,
+  } = useTranscriptSockets({
+    sttSettings,
+    onDataReceived,
+    onChunksReceived,
+    setMessage,
+    setSettingsError,
+    graphDataFromSocket,
+    onSessionReady: () => setRecording(true),
+    onFatalError: useCallback(() => {
+      setRecording(false);
+    }, []),
   });
 
-  useAutoSaveConversation({
-    graphData,
-    chunkDict,
-    fileName,
-    conversationId,
-    lastAutoSaveRef,
+  // --- Capture hook ---
+  const { startCapture, stopCapture } = useAudioCapture({
+    onPCMFrame,
+    onError: () => {
+      setMessage?.("Microphone access denied or unavailable.");
+      socketsCleanup();
+      setRecording(false);
+    },
   });
 
+  // --- Existing extracted effects (unchanged interfaces) ---
+  useFilenameFromGraph({ graphData, fileNameWasReset, lastAutoSaveRef, setFileName });
+  useGraphDataSync({ graphData, graphDataFromSocket, backendWsRef, logToServer });
+  useAutoSaveConversation({ graphData, chunkDict, fileName, conversationId, lastAutoSaveRef });
   useMessageDismissOnClick({ message, setMessage });
 
   useEffect(() => {
     conversationRef.current = conversationId;
-  }, [conversationId]);
+  }, [conversationId, conversationRef]);
 
   useEffect(() => {
     if (wasRecording.current && !recording) {
@@ -94,204 +82,31 @@ export default function AudioInput({
     wasRecording.current = recording;
   }, [recording]);
 
-  const finalizeAudioUpload = async () => {
-    await finalizeAudioUploadHelper({
-      sttSettings,
-      sessionIdRef,
-      conversationRef,
-      chunkQueueRef,
-      setMessage,
-    });
-  };
-
-  const uploadChunk = (buffer) => {
-    queueAudioChunkUpload({
-      buffer,
-      sttSettings,
-      sessionIdRef,
-      conversationRef,
-      chunkQueueRef,
-    });
-  };
-
-  const handleProviderMessage = createProviderMessageHandler({
-    backendWsRef,
-    telemetryRef,
-  });
-  const handleBackendMessage = createBackendMessageHandler({
-    onDataReceived,
-    onChunksReceived,
-    logToServer,
-    flushResolveRef,
-    graphDataFromSocket,
-  });
-
-  const connectProviderSocket = (providerUrl) => {
+  // --- Orchestration ---
+  const startRecording = async () => {
+    if (recording) return;
+    const activeSettings = normalizeSttSettings(sttSettings || {});
+    const providerUrl = resolveProviderWsUrl(activeSettings);
     if (!providerUrl) {
       setSettingsError("STT provider URL is missing.");
       return;
     }
-    const ws = new WebSocket(providerUrl);
-    ws.binaryType = "arraybuffer";
-    ws.onopen = () => logToServer("Provider socket connected.");
-    ws.onmessage = (event) => handleProviderMessage(event.data);
-    ws.onerror = (err) => console.error("Provider WS error:", err);
-    ws.onclose = () => logToServer("Provider socket closed.");
-    providerWsRef.current = ws;
-  };
-
-  const connectBackendSocket = (sessionId, sttConfig, conversationParam, providerUrl) => {
-    const ws = new WebSocket(BACKEND_WS_URL);
-    ws.onopen = () => {
-      setRecording(true);
-      const convoId = conversationParam || conversationRef.current;
-      ws.send(
-        JSON.stringify({
-          type: "session_meta",
-          conversation_id: convoId,
-          session_id: sessionId,
-          provider: sttConfig?.provider || "whisper",
-          store_audio: Boolean(sttConfig?.store_audio),
-          speaker_id: sttConfig?.speaker_id || "speaker_1",
-          metadata: {
-            source: "web_client",
-            local_only: sttConfig?.local_only !== false,
-            provider_ws_url: providerUrl,
-          },
-        })
-      );
-    };
-    ws.onmessage = handleBackendMessage;
-    ws.onerror = (err) => {
-      console.error("Backend WS error:", err);
-      handleFatalError();
-    };
-    ws.onclose = () => {
-      logToServer("Backend socket closed.");
-      handleFatalError();
-    };
-    backendWsRef.current = ws;
-  };
-
-  const cleanupAudioNodes = async () => {
-    try {
-      processorRef.current?.disconnect();
-      sourceRef.current?.disconnect();
-      if (audioContextRef.current?.state !== "closed") {
-        await audioContextRef.current?.close();
-      }
-    } catch (error) {
-      console.warn("Error during audio cleanup:", error);
-    } finally {
-      processorRef.current = null;
-      sourceRef.current = null;
-      audioContextRef.current = null;
+    const captureStarted = await startCapture();
+    if (!captureStarted) {
+      return;
     }
-  };
 
-  const handleFatalError = async () => {
-    setRecording(false);
-    flushResolveRef.current?.();
-    flushResolveRef.current = null;
-    providerWsRef.current?.close();
-    backendWsRef.current?.close();
-    await cleanupAudioNodes();
-    providerWsRef.current = null;
-    backendWsRef.current = null;
-    telemetryRef.current = {
-      audioSendStartedAtMs: null,
-      firstPartialAtMs: null,
-      firstFinalAtMs: null,
-    };
-  };
-
-  const startRecording = async () => {
-    if (recording) return;
-    sessionIdRef.current = crypto.randomUUID();
-    chunkQueueRef.current = Promise.resolve();
-    telemetryRef.current = {
-      audioSendStartedAtMs: null,
-      firstPartialAtMs: null,
-      firstFinalAtMs: null,
-    };
-    try {
-      const activeSettings = normalizeSttSettings(sttSettings || {});
-      const providerUrl = resolveProviderWsUrl(activeSettings);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const audioContext = new AudioContext({ sampleRate: 16000 });
-      audioContextRef.current = audioContext;
-      const source = audioContext.createMediaStreamSource(stream);
-      const processor = audioContext.createScriptProcessor(8192, 1, 1);
-      sourceRef.current = source;
-      processorRef.current = processor;
-      processor.onaudioprocess = (event) => {
-        if (!providerWsRef.current || providerWsRef.current.readyState !== WebSocket.OPEN) {
-          return;
-        }
-        try {
-          const inputBuffer = event.inputBuffer.getChannelData(0);
-          const downsampled = downsampleBuffer(inputBuffer, audioContext.sampleRate, 16000);
-          const pcmData = convertFloat32ToInt16(downsampled);
-          if (!telemetryRef.current.audioSendStartedAtMs) {
-            telemetryRef.current.audioSendStartedAtMs = Date.now();
-          }
-          providerWsRef.current.send(pcmData.buffer);
-          uploadChunk(pcmData.buffer);
-        } catch (error) {
-          console.error("Audio processing error:", error);
-          logToServer(`Audio processing error: ${error.message}`);
-        }
-      };
-      source.connect(processor);
-      processor.connect(audioContext.destination);
-      const newConversationId = crypto.randomUUID();
-      setConversationId?.(newConversationId);
-      conversationRef.current = newConversationId;
-      setFileName?.("");
-      fileNameWasReset.current = true;
-      connectProviderSocket(providerUrl);
-      connectBackendSocket(
-        sessionIdRef.current,
-        activeSettings,
-        newConversationId,
-        providerUrl
-      );
-    } catch (error) {
-      console.error("Failed to start recording:", error);
-      setMessage?.("Microphone access denied or unavailable.");
-      handleFatalError();
-    }
+    const sessionId = crypto.randomUUID();
+    const newConversationId = crypto.randomUUID();
+    setConversationId?.(newConversationId);
+    setFileName?.("");
+    fileNameWasReset.current = true;
+    startSession({ providerUrl, activeSettings, newConversationId, sessionId });
   };
 
   const stopRecording = async () => {
-    if (!backendWsRef.current) return;
-    if (flushResolveRef.current) {
-      flushResolveRef.current();
-    }
-    const flushPromise = new Promise((resolve) => {
-      flushResolveRef.current = resolve;
-    });
-
-    backendWsRef.current.send(JSON.stringify({ type: "final_flush" }));
-    try {
-      await Promise.race([flushPromise, new Promise((_, reject) => setTimeout(() => reject(new Error("Flush timeout")), 5000))]);
-    } catch (error) {
-      console.warn("Flush timeout:", error);
-    } finally {
-      flushResolveRef.current = null;
-    }
-
-    await finalizeAudioUpload();
-    await cleanupAudioNodes();
-    providerWsRef.current?.close();
-    backendWsRef.current?.close();
-    providerWsRef.current = null;
-    backendWsRef.current = null;
-    telemetryRef.current = {
-      audioSendStartedAtMs: null,
-      firstPartialAtMs: null,
-      firstFinalAtMs: null,
-    };
+    await stopCapture();
+    await stopSession();
     setRecording(false);
   };
 
