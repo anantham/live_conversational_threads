@@ -1,16 +1,13 @@
 import { useState, useEffect } from "react";
 
-import {
-  checkSttProviderHealth,
-  getSttSettings,
-  getSttTelemetry,
-  updateSttSettings,
-} from "../services/sttSettingsApi";
+import { getSttSettings, updateSttSettings } from "../services/sttSettingsApi";
 import {
   STT_PROVIDER_OPTIONS,
   normalizeProvider,
   normalizeSttSettings,
 } from "./audio/sttUtils";
+import useSttTelemetry from "./audio/useSttTelemetry";
+import useProviderHealthChecks from "./audio/useProviderHealthChecks";
 
 const formatMs = (value) => (Number.isFinite(value) ? `${Math.round(value)} ms` : "—");
 
@@ -27,10 +24,10 @@ export default function SttSettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [telemetry, setTelemetry] = useState(null);
-  const [telemetryLoading, setTelemetryLoading] = useState(false);
-  const [telemetryError, setTelemetryError] = useState(null);
-  const [healthByProvider, setHealthByProvider] = useState({});
+
+  const { telemetry, loading: telemetryLoading, error: telemetryError, refresh: refreshTelemetry } =
+    useSttTelemetry({ autoRefreshMs: 5000 });
+  const { healthByProvider, checkHealth } = useProviderHealthChecks();
 
   const load = async () => {
     setLoading(true);
@@ -50,11 +47,6 @@ export default function SttSettingsPanel() {
 
   useEffect(() => {
     load();
-    loadTelemetry();
-    const intervalId = setInterval(() => {
-      loadTelemetry({ silent: true });
-    }, 5000);
-    return () => clearInterval(intervalId);
   }, []);
 
   const handleSave = async () => {
@@ -105,58 +97,6 @@ export default function SttSettingsPanel() {
           ? value
           : prev?.ws_url || "",
     }));
-  };
-
-  const loadTelemetry = async ({ silent = false } = {}) => {
-    if (!silent) {
-      setTelemetryLoading(true);
-    }
-    setTelemetryError(null);
-    try {
-      const data = await getSttTelemetry(500);
-      setTelemetry(data);
-    } catch (err) {
-      console.error("Failed to load STT telemetry:", err);
-      setTelemetryError("Unable to load STT telemetry.");
-    } finally {
-      if (!silent) {
-        setTelemetryLoading(false);
-      }
-    }
-  };
-
-  const handleHealthCheck = async (providerId) => {
-    const wsUrl = form?.provider_urls?.[providerId] || "";
-    setHealthByProvider((prev) => ({
-      ...prev,
-      [providerId]: {
-        ...(prev?.[providerId] || {}),
-        checking: true,
-        error: null,
-      },
-    }));
-    try {
-      const result = await checkSttProviderHealth({ provider: providerId, ws_url: wsUrl });
-      setHealthByProvider((prev) => ({
-        ...prev,
-        [providerId]: {
-          ...result,
-          checking: false,
-        },
-      }));
-    } catch (err) {
-      const message = err?.message || "Health check failed.";
-      setHealthByProvider((prev) => ({
-        ...prev,
-        [providerId]: {
-          ...(prev?.[providerId] || {}),
-          checking: false,
-          ok: false,
-          error: message,
-          checked_at: new Date().toISOString(),
-        },
-      }));
-    }
   };
 
   if (loading) {
@@ -246,7 +186,7 @@ export default function SttSettingsPanel() {
               <span className="font-medium">{providerId} WS URL</span>
               <button
                 type="button"
-                onClick={() => handleHealthCheck(providerId)}
+                onClick={() => checkHealth(providerId, form?.provider_urls?.[providerId] || "")}
                 disabled={Boolean(healthByProvider?.[providerId]?.checking)}
                 className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-60"
               >
@@ -291,7 +231,7 @@ export default function SttSettingsPanel() {
           </div>
           <button
             type="button"
-            onClick={() => loadTelemetry({ silent: false })}
+            onClick={() => refreshTelemetry({ silent: false })}
             className="text-xs px-3 py-1 border border-blue-300 rounded text-blue-700 hover:bg-blue-100"
           >
             {telemetryLoading ? "Refreshing…" : "Refresh"}

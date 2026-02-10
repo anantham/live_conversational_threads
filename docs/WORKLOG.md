@@ -1,5 +1,31 @@
 # WORKLOG
 
+## 2026-02-10T06:00:00Z — refactor: split stt_api.py, AudioInput.jsx, SttSettingsPanel.jsx
+
+**Phase A — Backend `stt_api.py` (426 → 264 LOC)**
+- `lct_python_backend/services/stt_settings_service.py` (38 LOC, NEW): Extracted `load_stt_settings()` and `save_stt_settings()` from inline DB logic in `stt_api.py`.
+- `lct_python_backend/services/stt_telemetry_service.py` (107 LOC, NEW): Extracted `aggregate_telemetry()` with helpers `_to_float()`, `_utc_iso_now()`, `_empty_provider_bucket()` from `read_stt_telemetry` route body.
+- `lct_python_backend/services/stt_health_service.py` (72 LOC, NEW): Extracted `derive_health_url()` and `probe_health_url()` with all `urllib` imports from router.
+- `lct_python_backend/stt_api.py` (264 LOC): Thin router with audio upload, websocket handler, and backward-compat wrappers (`_load_stt_settings`, `_probe_health_url`) preserving existing monkeypatch targets in `test_stt_api_settings.py`.
+- Validation: `pytest tests/unit/test_stt_api_settings.py tests/unit/test_stt_config.py` — 7 passed.
+
+**Phase B — Frontend `AudioInput.jsx` (329 → 137 LOC)**
+- `lct_app/src/components/audio/useTranscriptSockets.js` (233 LOC, NEW): Owns all WebSocket refs, telemetry tracking, chunk queue, `logToServer()`, `startSession()`, `stopSession()`, `onPCMFrame()` callback.
+- `lct_app/src/components/audio/useAudioCapture.js` (69 LOC, NEW): Owns MediaStream/AudioContext/ScriptProcessor lifecycle, `startCapture()`, `stopCapture()`.
+- `lct_app/src/components/AudioInput.jsx` (137 LOC): Thin orchestrator connecting `useTranscriptSockets` + `useAudioCapture` + existing `useAudioInputEffects` hooks. Renders mic button.
+- Validation: `npm run build` — passed.
+
+**Phase C — Frontend `SttSettingsPanel.jsx` (370 → 310 LOC)**
+- `lct_app/src/components/audio/useSttTelemetry.js` (35 LOC, NEW): Owns telemetry state, polling interval, loading/error state.
+- `lct_app/src/components/audio/useProviderHealthChecks.js` (46 LOC, NEW): Owns per-provider health check state with checking/result/error.
+- `lct_app/src/components/SttSettingsPanel.jsx` (310 LOC): Keeps form state + JSX rendering, consumes extracted hooks.
+- Validation: `npm run build` — passed.
+
+**Full suite validation:**
+- Backend: `pytest -q` — 186 passed, 3 skipped (pre-existing `test_graph_generation.py` import error unrelated to this work).
+- Frontend: `npm run build` — passed.
+- `docs/TECH_DEBT.md`: Marked all 3 entries as resolved with LOC before/after.
+
 ## 2026-02-10T02:24:31Z — refactor: fact-check + graph router decomposition, warning-debt cleanup
 - `lct_python_backend/factcheck_api.py` (lines 1-89): Reduced to thin router adapter with compatibility wrappers (`_parse_time_range_to_start`, `_aggregate_cost_logs`, `generate_fact_check_json_perplexity`) to preserve existing test and import behavior.
 - `lct_python_backend/services/factcheck_service.py` (lines 1-202): Extracted Perplexity integration, response JSON extraction, verdict/citation normalization, and unverified fallback shaping.

@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-02-09
+Last updated: 2026-02-10
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -13,9 +13,9 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_app/src/components/ThematicView.jsx | 976 | Large UI + data logic | Split into view layout, hooks, and subcomponents |
 | lct_app/src/pages/Settings.jsx | 481 | Multiple settings panels in one file | Split into settings sections + shared layout |
 | lct_app/src/pages/ViewConversation.jsx | 463 | Data fetching + UI composition mixed | Extract data hooks + presentational components |
-| lct_app/src/components/AudioInput.jsx | 329 | Device capture, websocket transport, telemetry, and UI controls in one component | Split into `useAudioCapture`, `useTranscriptSockets`, and a thin presentational mic control |
-| lct_python_backend/stt_api.py | 426 | Settings routes, telemetry aggregation, health probes, and websocket handling mixed together | Split into `stt_settings_router.py`, `stt_telemetry_service.py`, and `stt_stream_router.py` |
-| lct_app/src/components/SttSettingsPanel.jsx | 370 | Form state, telemetry polling, health checks, and rendering tightly coupled | Extract `useSttTelemetry`, `useProviderHealthChecks`, and presentational subcomponents |
+| ~~lct_app/src/components/AudioInput.jsx~~ | ~~329~~ → 137 | **RESOLVED** — Extracted `useTranscriptSockets` (233 LOC) and `useAudioCapture` (69 LOC) hooks; AudioInput is now a thin orchestrator. |
+| ~~lct_python_backend/stt_api.py~~ | ~~426~~ → 264 | **RESOLVED** — Extracted `stt_settings_service.py` (38 LOC), `stt_telemetry_service.py` (107 LOC), and `stt_health_service.py` (72 LOC); router keeps audio upload + websocket + backward-compat wrappers. |
+| ~~lct_app/src/components/SttSettingsPanel.jsx~~ | ~~370~~ → 310 | **RESOLVED** — Extracted `useSttTelemetry` (35 LOC) and `useProviderHealthChecks` (46 LOC) hooks; panel keeps form state + JSX rendering. |
 | lct_python_backend/import_api.py | 386 | URL/file import orchestration, parse/preview flow, and route adaptation still share one module after helper extraction | Further split parser/preview orchestration into a dedicated service and keep router as a thin adapter |
 | ~~lct_python_backend/conversations_api.py~~ | ~~434~~ → 193 | **RESOLVED** — Extracted conversation read/serialization and turn synthesis into `conversation_reader.py` + `turn_synthesizer.py`, leaving a thin API adapter. |
 | ~~lct_python_backend/factcheck_api.py~~ | ~~355~~ → 89 | **RESOLVED** — Extracted provider normalization/orchestration and cost aggregation into `factcheck_service.py` + `cost_stats_service.py`; router is now a thin adapter. |
