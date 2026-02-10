@@ -1,10 +1,10 @@
-const API_URL = import.meta.env.VITE_API_URL || "";
+import { apiFetch } from "../services/apiClient";
 
 export async function saveConversationToServer({ fileName, chunkDict, graphData, conversationId }) {
   if (!fileName || !chunkDict || !graphData) return { success: false, message: "Missing data" };
 
   try {
-    const response = await fetch(`${API_URL}/save_json/`, {
+    const response = await apiFetch("/save_json/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -20,7 +20,7 @@ export async function saveConversationToServer({ fileName, chunkDict, graphData,
 
     try {
       result = text ? JSON.parse(text) : {};
-    } catch (e) {
+    } catch {
       console.warn("Invalid JSON response:", text);
     }
 

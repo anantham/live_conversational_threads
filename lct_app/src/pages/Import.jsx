@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../services/apiClient";
 
 export default function Import() {
   const navigate = useNavigate();
@@ -11,6 +12,35 @@ export default function Import() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+  const [urlImportEnabled, setUrlImportEnabled] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadImportCapabilities = async () => {
+      try {
+        const response = await apiFetch("/api/import/health");
+        if (!response.ok) {
+          throw new Error("Failed to load import capabilities");
+        }
+        const data = await response.json();
+        const enabled = Boolean(data.url_import_enabled);
+        if (!isMounted) {
+          return;
+        }
+        setUrlImportEnabled(enabled);
+        setImportMethod((prev) => (enabled || prev !== "url" ? prev : "file"));
+      } catch (loadError) {
+        console.warn("[Import] Unable to load import capabilities:", loadError);
+      }
+    };
+
+    loadImportCapabilities();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -46,13 +76,18 @@ export default function Import() {
         formData.append("file", file);
         if (conversationName) formData.append("conversation_name", conversationName);
 
-        response = await fetch("http://localhost:8000/api/import/google-meet", {
+        response = await apiFetch("/api/import/google-meet", {
           method: "POST",
           body: formData,
         });
       } else if (importMethod === "url" && url) {
+        if (!urlImportEnabled) {
+          setError("URL import is disabled on this deployment. Use File Upload or Paste Text.");
+          setUploading(false);
+          return;
+        }
         // URL import
-        response = await fetch("http://localhost:8000/api/import/from-url", {
+        response = await apiFetch("/api/import/from-url", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -62,7 +97,7 @@ export default function Import() {
         });
       } else if (importMethod === "paste" && pastedText) {
         // Pasted text import
-        response = await fetch("http://localhost:8000/api/import/from-text", {
+        response = await apiFetch("/api/import/from-text", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -119,11 +154,16 @@ export default function Import() {
             📁 File Upload
           </button>
           <button
-            onClick={() => setImportMethod("url")}
+            onClick={() => {
+              if (urlImportEnabled) setImportMethod("url");
+            }}
+            disabled={!urlImportEnabled}
             className={`flex-1 px-4 py-3 rounded-lg font-medium transition-all ${
               importMethod === "url"
                 ? "bg-blue-500 text-white shadow-lg"
-                : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                : urlImportEnabled
+                  ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
             }`}
           >
             🔗 URL
@@ -139,6 +179,11 @@ export default function Import() {
             📋 Paste Text
           </button>
         </div>
+        {!urlImportEnabled && (
+          <p className="mb-6 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            URL import is disabled by backend security settings (`ENABLE_URL_IMPORT=false`).
+          </p>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Conversation Name */}
@@ -200,7 +245,7 @@ export default function Import() {
                 required
               />
               <p className="mt-2 text-xs text-gray-500">
-                Enter a URL pointing to a text transcript
+                Enter a public HTTP(S) URL pointing to a text transcript
               </p>
             </div>
           )}
@@ -257,7 +302,7 @@ Speaker 2 (00:00:05): Hi there..."
           <h3 className="font-semibold text-blue-900 mb-2">Import Tips:</h3>
           <ul className="text-sm text-blue-800 space-y-1">
             <li>• <strong>File:</strong> Upload TXT or PDF (Google Meet format)</li>
-            <li>• <strong>URL:</strong> Link to a publicly accessible transcript</li>
+            <li>• <strong>URL:</strong> Public HTTP(S) transcript link (if enabled in backend)</li>
             <li>• <strong>Paste:</strong> Copy and paste your transcript text directly</li>
             <li>• Format should include speaker names and timestamps</li>
             <li>• Expected format: <code>Speaker Name (HH:MM:SS): Message</code></li>

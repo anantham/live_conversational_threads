@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { apiFetch } from "../services/apiClient";
 
 export default function GenerateFormalism({
   chunkDict,
@@ -27,18 +28,14 @@ export default function GenerateFormalism({
     setIsLoading(true);
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "";
-      const response = await fetch(
-        `${API_URL}/generate_formalism/`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify(dataForFormalism),
-        }
-      );
+      const response = await apiFetch("/generate_formalism/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify(dataForFormalism),
+      });
 
       if (!response.ok) throw new Error("Failed to generate formalisms");
 

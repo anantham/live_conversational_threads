@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ImportCanvas from "../components/ImportCanvas";
-
-const API_URL = import.meta.env.VITE_API_URL || "";
+import { apiFetch } from "../services/apiClient";
 
 export default function Browse() {
   const [conversations, setConversations] = useState([]);
@@ -19,7 +18,7 @@ export default function Browse() {
   const handleDelete = async (conversationId, conversationName) => {
     setDeleting(conversationId);
     try {
-      const response = await fetch(`${API_URL}/conversations/${conversationId}`, {
+      const response = await apiFetch(`/conversations/${conversationId}`, {
         method: 'DELETE',
       });
 
@@ -43,7 +42,7 @@ export default function Browse() {
   useEffect(() => {
     const fetchConversations = async () => {
       try {
-        const response = await fetch(`${API_URL}/conversations/`);
+        const response = await apiFetch("/conversations/");
 
         if (!response.ok) {
           const errorData = await response.json();

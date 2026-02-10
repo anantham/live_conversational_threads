@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, List
 from datetime import date, datetime, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from instrumentation import (
     CostAggregator,
@@ -39,8 +39,7 @@ class CostAggregationResponse(BaseModel):
     avg_cost_per_call: float
     avg_tokens_per_call: float
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ConversationCostResponse(BaseModel):
@@ -54,8 +53,7 @@ class ConversationCostResponse(BaseModel):
     first_call: datetime
     last_call: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CostTrendResponse(BaseModel):

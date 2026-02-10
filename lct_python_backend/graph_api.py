@@ -1,26 +1,40 @@
-"""
-API endpoints for graph generation and management.
+"""Graph generation and retrieval API endpoints."""
 
-Provides endpoints for:
-- Generating graphs from conversations
-- Retrieving graph data
-- Managing nodes and edges
-"""
+import logging
+import time
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-import uuid
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from lct_python_backend.services.graph_generation import GraphGenerationService
-from lct_python_backend.parsers import GoogleMeetParser
+from lct_python_backend.db_session import get_async_session
+from lct_python_backend.models import Conversation, Node, Relationship
+from lct_python_backend.services.graph_generation_service import (
+    build_temporal_edge_payload,
+    build_turn_based_nodes,
+    fetch_conversation_and_utterances,
+    persist_generated_graph,
+)
+from lct_python_backend.services.graph_query_service import (
+    edge_to_response_payload,
+    filter_edges_by_relationship_type,
+    is_temporal_relationship,
+    load_edges_for_conversation,
+    load_edges_for_nodes,
+    load_nodes_for_conversation,
+    node_to_response_payload,
+    parse_conversation_uuid,
+)
 
+logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/graph", tags=["graph"])
 
-# Pydantic models for API responses
 
 class NodeResponse(BaseModel):
     """Response model for a node."""
+
     id: str
     conversation_id: str
     title: str
@@ -28,50 +42,53 @@ class NodeResponse(BaseModel):
     node_type: str
     level: int
     zoom_level_visible: List[int]
-    utterance_ids: List[int]
+    utterance_ids: List[str]
     start_time: Optional[float]
     end_time: Optional[float]
     sequence_number: int
-    speaker_info: dict
+    speaker_info: Dict[str, Any]
     keywords: List[str]
-    metadata: dict
-
-    class Config:
-        from_attributes = True
+    metadata: Dict[str, Any]
+    canvas_x: Optional[int] = None
+    canvas_y: Optional[int] = None
 
 
 class EdgeResponse(BaseModel):
     """Response model for an edge."""
+
     id: str
     source_node_id: str
     target_node_id: str
     relationship_type: str
     strength: float
-    metadata: dict
-
-    class Config:
-        from_attributes = True
+    description: Optional[str] = None
+    metadata: Dict[str, Any]
 
 
 class GraphResponse(BaseModel):
     """Response model for a complete graph."""
+
     conversation_id: str
     nodes: List[NodeResponse]
     edges: List[EdgeResponse]
     node_count: int
     edge_count: int
-    metadata: dict
+    metadata: Dict[str, Any]
 
 
 class GraphGenerationRequest(BaseModel):
     """Request model for graph generation."""
+
     conversation_id: str
     use_llm: bool = True
+    model: Optional[str] = None
+    detect_relationships: bool = True
     save_to_db: bool = True
 
 
 class GraphGenerationStatusResponse(BaseModel):
     """Response model for graph generation status."""
+
     success: bool
     conversation_id: str
     message: str
@@ -81,389 +98,147 @@ class GraphGenerationStatusResponse(BaseModel):
     cost_usd: Optional[float]
 
 
-# Create router
-router = APIRouter(prefix="/api/graph", tags=["graph"])
+def _parse_conversation_uuid(conversation_id: str):
+    """Backward-compatible wrapper for internal/external imports."""
+    return parse_conversation_uuid(conversation_id)
 
 
-# Dependency to get database session
-async def get_db() -> AsyncSession:
-    """Get database session."""
-    # TODO: Replace with actual database session
-    return None
+def _is_temporal_relationship(relationship_type: Optional[str]) -> bool:
+    """Backward-compatible wrapper used by tests."""
+    return is_temporal_relationship(relationship_type)
 
 
-# Dependency to get LLM client
-async def get_llm_client():
-    """Get LLM client."""
-    # TODO: Replace with actual LLM client initialization
-    # For now, return None - service will use fallback
-    return None
+def _build_turn_based_nodes(utterances):
+    """Backward-compatible wrapper used by tests."""
+    return build_turn_based_nodes(utterances)
+
+
+def _build_temporal_edge_payload(node_specs):
+    """Backward-compatible wrapper used by tests."""
+    return build_temporal_edge_payload(node_specs)
+
+
+@router.get("/health")
+async def health_check():
+    """Health check endpoint for graph API."""
+    return {"status": "healthy", "service": "graph_api"}
 
 
 @router.post("/generate", response_model=GraphGenerationStatusResponse)
 async def generate_graph(
     request: GraphGenerationRequest,
-    db: AsyncSession = Depends(get_db),
-    llm_client = Depends(get_llm_client),
+    db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Generate a conversation graph from a parsed transcript.
+    """Generate a minimal turn-based graph from utterances for a conversation."""
+    started = time.perf_counter()
+    conversation_uuid = _parse_conversation_uuid(request.conversation_id)
 
-    This endpoint:
-    1. Retrieves the conversation and its utterances from database
-    2. Uses LLM to identify topic clusters at 5 zoom levels
-    3. Creates nodes and edges
-    4. Saves graph to database
+    conversation, utterances = await fetch_conversation_and_utterances(db, conversation_uuid)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if not utterances:
+        raise HTTPException(status_code=400, detail="No utterances found for conversation")
 
-    Args:
-        request: Graph generation request
-        db: Database session
-        llm_client: LLM client
+    node_specs = _build_turn_based_nodes(utterances)
+    edge_payload = _build_temporal_edge_payload(node_specs)
 
-    Returns:
-        GraphGenerationStatusResponse with status and metadata
-    """
-    import time
-    start_time = time.time()
+    if request.save_to_db:
+        try:
+            await persist_generated_graph(db, conversation_uuid, node_specs, edge_payload)
+            await db.commit()
+        except Exception as exc:
+            await db.rollback()
+            logger.exception("[GRAPH] Failed to generate graph for conversation %s", request.conversation_id)
+            raise HTTPException(status_code=500, detail=f"Failed to generate graph: {str(exc)}") from exc
 
-    conversation_id = request.conversation_id
-
-    # Get conversation from database
-    if db is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Database connection not available"
-        )
-
-    try:
-        from models import Conversation, Utterance as DBUtterance
-        from sqlalchemy import select
-
-        # Get conversation
-        stmt = select(Conversation).where(Conversation.id == uuid.UUID(conversation_id))
-        result = await db.execute(stmt)
-        conversation = result.scalar_one_or_none()
-
-        if not conversation:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Conversation {conversation_id} not found"
-            )
-
-        # Get utterances
-        stmt = select(DBUtterance).where(
-            DBUtterance.conversation_id == uuid.UUID(conversation_id)
-        ).order_by(DBUtterance.sequence_number)
-        result = await db.execute(stmt)
-        db_utterances = result.scalars().all()
-
-        if not db_utterances:
-            raise HTTPException(
-                status_code=400,
-                detail=f"No utterances found for conversation {conversation_id}"
-            )
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve conversation: {str(e)}"
-        )
-
-    # Convert to ParsedTranscript format
-    from parsers.google_meet import ParsedTranscript, Utterance as ParserUtterance
-
-    utterances = [
-        ParserUtterance(
-            speaker=u.speaker_id,
-            text=u.text,
-            start_time=u.timestamp_start,
-            end_time=u.timestamp_end,
-            timestamp_marker=u.timestamp_marker,
-            sequence_number=u.sequence_number,
-            metadata=u.metadata or {},
-        )
-        for u in db_utterances
-    ]
-
-    participants = list(set(u.speaker for u in utterances))
-
-    transcript = ParsedTranscript(
-        utterances=utterances,
-        participants=participants,
-        duration=utterances[-1].end_time if utterances[-1].end_time else None,
-        source_file=None,
-        parse_metadata={
-            "utterance_count": len(utterances),
-            "participant_count": len(participants),
-        }
+    duration_s = round(time.perf_counter() - started, 3)
+    mode_note = "LLM-assisted" if request.use_llm else "rule-based"
+    return GraphGenerationStatusResponse(
+        success=True,
+        conversation_id=request.conversation_id,
+        message=f"{mode_note} graph generation completed with turn-based fallback.",
+        node_count=len(node_specs),
+        edge_count=len(edge_payload),
+        generation_time_seconds=duration_s,
+        cost_usd=0.0,
     )
-
-    # Generate graph
-    try:
-        service = GraphGenerationService(
-            llm_client=llm_client if request.use_llm else None,
-            db=db if request.save_to_db else None,
-        )
-
-        graph = await service.generate_graph(
-            conversation_id=conversation_id,
-            transcript=transcript,
-            save_to_db=request.save_to_db,
-        )
-
-        generation_time = time.time() - start_time
-
-        return GraphGenerationStatusResponse(
-            success=True,
-            conversation_id=conversation_id,
-            message=f"Successfully generated graph with {graph['node_count']} nodes and {graph['edge_count']} edges",
-            node_count=graph['node_count'],
-            edge_count=graph['edge_count'],
-            generation_time_seconds=round(generation_time, 2),
-            cost_usd=None,  # TODO: Extract from instrumentation
-        )
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate graph: {str(e)}"
-        )
 
 
 @router.get("/{conversation_id}", response_model=GraphResponse)
 async def get_graph(
     conversation_id: str,
     zoom_level: Optional[int] = Query(None, ge=1, le=5, description="Filter by zoom level"),
-    db: AsyncSession = Depends(get_db),
+    include_edges: bool = Query(True, description="Include edges in response"),
+    db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Get the graph for a conversation.
+    """Get graph payload for a conversation."""
+    conversation_uuid = _parse_conversation_uuid(conversation_id)
+    nodes = await load_nodes_for_conversation(db, conversation_uuid, zoom_level)
+    node_responses = [NodeResponse(**node_to_response_payload(node, idx)) for idx, node in enumerate(nodes)]
 
-    Args:
-        conversation_id: Conversation UUID
-        zoom_level: Optional zoom level filter (1-5)
-        db: Database session
+    edge_responses: List[EdgeResponse] = []
+    if include_edges and nodes:
+        edges = await load_edges_for_nodes(db, conversation_uuid, [node.id for node in nodes])
+        edge_responses = [EdgeResponse(**edge_to_response_payload(edge)) for edge in edges]
 
-    Returns:
-        GraphResponse with nodes and edges
-    """
-    if db is None:
-        raise HTTPException(
-            status_code=503,
-            detail="Database connection not available"
-        )
-
-    try:
-        from models import Node, Relationship
-        from sqlalchemy import select
-
-        # Get nodes
-        stmt = select(Node).where(Node.conversation_id == uuid.UUID(conversation_id))
-
-        if zoom_level:
-            # Filter by zoom level using array contains
-            from sqlalchemy import func
-            stmt = stmt.where(func.array_position(Node.zoom_level_visible, zoom_level) != None)
-
-        stmt = stmt.order_by(Node.sequence_number)
-
-        result = await db.execute(stmt)
-        nodes = result.scalars().all()
-
-        if not nodes:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No nodes found for conversation {conversation_id}"
-            )
-
-        # Get edges
-        node_ids = [node.id for node in nodes]
-
-        stmt = select(Relationship).where(
-            Relationship.source_node_id.in_(node_ids),
-            Relationship.target_node_id.in_(node_ids),
-        )
-
-        result = await db.execute(stmt)
-        edges = result.scalars().all()
-
-        # Convert to response models
-        node_responses = [
-            NodeResponse(
-                id=str(node.id),
-                conversation_id=str(node.conversation_id),
-                title=node.title,
-                summary=node.summary,
-                node_type=node.node_type,
-                level=node.level,
-                zoom_level_visible=node.zoom_level_visible or [],
-                utterance_ids=node.utterance_ids or [],
-                start_time=node.start_time,
-                end_time=node.end_time,
-                sequence_number=node.sequence_number,
-                speaker_info=node.speaker_info or {},
-                keywords=node.keywords or [],
-                metadata=node.metadata or {},
-            )
-            for node in nodes
-        ]
-
-        edge_responses = [
-            EdgeResponse(
-                id=str(edge.id),
-                source_node_id=str(edge.source_node_id),
-                target_node_id=str(edge.target_node_id),
-                relationship_type=edge.relationship_type,
-                strength=edge.strength,
-                metadata=edge.metadata or {},
-            )
-            for edge in edges
-        ]
-
-        return GraphResponse(
-            conversation_id=conversation_id,
-            nodes=node_responses,
-            edges=edge_responses,
-            node_count=len(node_responses),
-            edge_count=len(edge_responses),
-            metadata={
-                "zoom_level_filter": zoom_level,
-            }
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve graph: {str(e)}"
-        )
+    return GraphResponse(
+        conversation_id=conversation_id,
+        nodes=node_responses,
+        edges=edge_responses,
+        node_count=len(node_responses),
+        edge_count=len(edge_responses),
+        metadata={
+            "zoom_level_filter": zoom_level,
+            "include_edges": include_edges,
+        },
+    )
 
 
 @router.get("/{conversation_id}/nodes", response_model=List[NodeResponse])
 async def get_nodes(
     conversation_id: str,
-    zoom_level: Optional[int] = Query(None, ge=1, le=5),
-    db: AsyncSession = Depends(get_db),
+    zoom_level: Optional[int] = Query(None, ge=1, le=5, description="Filter by zoom level"),
+    db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Get all nodes for a conversation.
-
-    Args:
-        conversation_id: Conversation UUID
-        zoom_level: Optional zoom level filter
-        db: Database session
-
-    Returns:
-        List of NodeResponse
-    """
-    if db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
-
-    try:
-        from models import Node
-        from sqlalchemy import select
-
-        stmt = select(Node).where(Node.conversation_id == uuid.UUID(conversation_id))
-
-        if zoom_level:
-            from sqlalchemy import func
-            stmt = stmt.where(func.array_position(Node.zoom_level_visible, zoom_level) != None)
-
-        stmt = stmt.order_by(Node.sequence_number)
-
-        result = await db.execute(stmt)
-        nodes = result.scalars().all()
-
-        return [
-            NodeResponse(
-                id=str(node.id),
-                conversation_id=str(node.conversation_id),
-                title=node.title,
-                summary=node.summary,
-                node_type=node.node_type,
-                level=node.level,
-                zoom_level_visible=node.zoom_level_visible or [],
-                utterance_ids=node.utterance_ids or [],
-                start_time=node.start_time,
-                end_time=node.end_time,
-                sequence_number=node.sequence_number,
-                speaker_info=node.speaker_info or {},
-                keywords=node.keywords or [],
-                metadata=node.metadata or {},
-            )
-            for node in nodes
-        ]
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    """Get node list for a conversation."""
+    conversation_uuid = _parse_conversation_uuid(conversation_id)
+    nodes = await load_nodes_for_conversation(db, conversation_uuid, zoom_level)
+    return [NodeResponse(**node_to_response_payload(node, idx)) for idx, node in enumerate(nodes)]
 
 
 @router.get("/{conversation_id}/edges", response_model=List[EdgeResponse])
 async def get_edges(
     conversation_id: str,
-    relationship_type: Optional[str] = Query(None, description="Filter by type"),
-    db: AsyncSession = Depends(get_db),
+    relationship_type: Optional[str] = Query(None, description="temporal | contextual | explicit relationship type"),
+    db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Get all edges for a conversation.
+    """Get edge list for a conversation."""
+    conversation_uuid = _parse_conversation_uuid(conversation_id)
+    edges = await load_edges_for_conversation(db, conversation_uuid)
+    filtered = filter_edges_by_relationship_type(edges, relationship_type)
+    return [EdgeResponse(**edge_to_response_payload(edge)) for edge in filtered]
 
-    Args:
-        conversation_id: Conversation UUID
-        relationship_type: Optional filter by type
-        db: Database session
 
-    Returns:
-        List of EdgeResponse
-    """
-    if db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
+@router.delete("/{conversation_id}")
+async def delete_graph(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Delete graph nodes and relationships for a conversation."""
+    conversation_uuid = _parse_conversation_uuid(conversation_id)
 
     try:
-        from models import Node, Relationship
-        from sqlalchemy import select
+        edges_result = await db.execute(delete(Relationship).where(Relationship.conversation_id == conversation_uuid))
+        nodes_result = await db.execute(delete(Node).where(Node.conversation_id == conversation_uuid))
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        logger.exception("[GRAPH] Failed to delete graph for conversation %s", conversation_id)
+        raise HTTPException(status_code=500, detail=f"Failed to delete graph: {str(exc)}") from exc
 
-        # Get node IDs for this conversation
-        stmt = select(Node.id).where(Node.conversation_id == uuid.UUID(conversation_id))
-        result = await db.execute(stmt)
-        node_ids = [row[0] for row in result.all()]
-
-        if not node_ids:
-            return []
-
-        # Get edges
-        stmt = select(Relationship).where(
-            Relationship.source_node_id.in_(node_ids),
-            Relationship.target_node_id.in_(node_ids),
-        )
-
-        if relationship_type:
-            stmt = stmt.where(Relationship.relationship_type == relationship_type)
-
-        result = await db.execute(stmt)
-        edges = result.scalars().all()
-
-        return [
-            EdgeResponse(
-                id=str(edge.id),
-                source_node_id=str(edge.source_node_id),
-                target_node_id=str(edge.target_node_id),
-                relationship_type=edge.relationship_type,
-                strength=edge.strength,
-                metadata=edge.metadata or {},
-            )
-            for edge in edges
-        ]
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/health")
-async def health_check():
-    """Health check endpoint for graph API."""
     return {
-        "status": "healthy",
-        "service": "graph_api",
-        "timestamp": "2025-11-11T12:00:00",
+        "message": "Graph deleted",
+        "conversation_id": conversation_id,
+        "deleted_edges": int(edges_result.rowcount or 0),
+        "deleted_nodes": int(nodes_result.rowcount or 0),
     }

@@ -7,6 +7,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiFetch } from '../services/apiClient';
 
 export default function CostDashboard() {
   const navigate = useNavigate();
@@ -14,8 +15,6 @@ export default function CostDashboard() {
   const [error, setError] = useState(null);
   const [stats, setStats] = useState(null);
   const [timeRange, setTimeRange] = useState('7d'); // 1d, 7d, 30d, all
-
-  const API_URL = import.meta.env.VITE_BACKEND_API_URL || "http://localhost:8000";
 
   useEffect(() => {
     loadStats();
@@ -26,7 +25,7 @@ export default function CostDashboard() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/cost-tracking/stats?time_range=${timeRange}`);
+      const response = await apiFetch(`/api/cost-tracking/stats?time_range=${timeRange}`);
 
       if (!response.ok) {
         throw new Error('Failed to load cost statistics');

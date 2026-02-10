@@ -9,10 +9,13 @@ This module provides:
 """
 
 import time
+import logging
 from typing import Callable
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class InstrumentationMiddleware(BaseHTTPMiddleware):
@@ -48,10 +51,10 @@ class InstrumentationMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             status_code = response.status_code
-        except Exception as e:
+        except Exception:
             # Log error
             if self.enable_logging:
-                print(f"Error processing {path}: {e}")
+                logger.exception("Error processing %s", path)
             # Re-raise to let error handlers deal with it
             raise
 
@@ -90,17 +93,7 @@ class InstrumentationMiddleware(BaseHTTPMiddleware):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         method = request.method
         path = request.url.path
-
-        # Color code by status
-        if status_code < 300:
-            color = "\033[92m"  # Green
-        elif status_code < 400:
-            color = "\033[93m"  # Yellow
-        else:
-            color = "\033[91m"  # Red
-        reset = "\033[0m"
-
-        print(f"[{timestamp}] {method} {path} {color}{status_code}{reset} - {latency_ms}ms")
+        logger.info("[%s] %s %s %s - %sms", timestamp, method, path, status_code, latency_ms)
 
     def get_metrics(self):
         """Get current metrics."""

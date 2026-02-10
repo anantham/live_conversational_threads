@@ -5,6 +5,7 @@ import {
   DEFAULT_COMPLETE_ENDPOINT,
   replaceConversationPlaceholder,
 } from "./sttUtils";
+import { apiHeaders } from "../../services/apiClient";
 
 const resolveConversationId = (conversationId, conversationRef) =>
   conversationId || conversationRef?.current;
@@ -31,7 +32,7 @@ const queueAudioChunkUpload = ({
     .then(() =>
       fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/octet-stream" },
+        headers: apiHeaders({ "Content-Type": "application/octet-stream" }),
         body: buffer,
       }).then((res) => {
         if (!res.ok) {
@@ -62,7 +63,7 @@ const finalizeAudioUpload = async ({
   const path = replaceConversationPlaceholder(chunkTemplate, resolvedConversationId);
   const url = appendSessionQuery(buildApiUrl(path), resolvedSessionId);
   try {
-    const response = await fetch(url, { method: "POST" });
+    const response = await fetch(url, { method: "POST", headers: apiHeaders() });
     if (!response.ok) {
       throw new Error(`Audio finalize failed: ${response.statusText}`);
     }

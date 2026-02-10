@@ -7,6 +7,13 @@ This project is now designed for local-first speech-to-text by default.
 - Keep local latency low by running one fast STT service continuously.
 - Record telemetry for turnaround speed per provider.
 
+## Canonical Cross-Project Registry
+
+For machine-wide endpoint and venv ownership tracking across multiple projects, use:
+- `/Users/aditya/Documents/Ongoing Local/SHARED_AI_SERVICES.md`
+
+This file (`LOCAL_STT_SERVICES.md`) remains the project-local companion focused on this repository's settings model.
+
 ## Provider IDs
 
 Use these IDs in settings and API payloads:
