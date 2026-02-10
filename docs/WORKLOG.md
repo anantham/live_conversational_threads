@@ -10,6 +10,11 @@
   - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_stt_api_settings.py tests/unit/test_stt_http_transcriber.py tests/integration/test_transcripts_websocket.py` (10 passed)
   - `python3 -m py_compile lct_python_backend/stt_api.py lct_python_backend/services/stt_http_transcriber.py lct_python_backend/services/stt_telemetry_service.py` (passed)
 
+## 2026-02-10T15:14:17Z — docs: add diarization ADR-012 + file-by-file implementation checklist
+- `docs/adr/ADR-012-realtime-speaker-diarization-sidecar.md` (lines 1-135): Added a new ADR defining the chosen dual-stream late-binding diarization architecture, phased stack choices (Diart -> ONNX hardening), event contract updates, validation gates, risks, assumptions, and rollback strategy.
+- `docs/plans/2026-02-10-realtime-speaker-diarization-implementation-checklist.md` (lines 1-157): Added a concrete phase-by-phase implementation checklist with explicit backend/frontend/test/doc paths and acceptance gates.
+- `docs/adr/INDEX.md`: Registered ADR-012 (renumbered from ADR-010 to avoid conflict with conversation schema ADR).
+
 ## 2026-02-13T19:27:48Z
 - docs/VISION.md (lines 1-148): Added a pause/resume-first product vision document focused on parallel insight handling, human-in-the-loop safeguards, retrieval nudges during lulls, and explicit reliability/no-silent-failure requirements.
 - docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md (lines 1-177): Added a proposed ADR defining a minimal transcript-first schema, strict LLM output contracts, validation/degradation rules, and rollout metrics to stabilize local-model graphing.
@@ -63,7 +68,6 @@
   - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_bookmarks_health_route.py tests/unit/test_import_api_security.py` (10 passed)
   - `bash ./start-all-local.command` (backend/frontend/parakeet/local Postgres startup completed successfully)
 
->>>>>>> 8642c3e (fix(cost): replace get_db() stub with real session; update docs)
 ## 2026-02-10T02:24:31Z — refactor: fact-check + graph router decomposition, warning-debt cleanup
 - `lct_python_backend/factcheck_api.py` (lines 1-89): Reduced to thin router adapter with compatibility wrappers (`_parse_time_range_to_start`, `_aggregate_cost_logs`, `generate_fact_check_json_perplexity`) to preserve existing test and import behavior.
 - `lct_python_backend/services/factcheck_service.py` (lines 1-202): Extracted Perplexity integration, response JSON extraction, verdict/citation normalization, and unverified fallback shaping.
