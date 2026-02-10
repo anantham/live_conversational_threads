@@ -1,5 +1,123 @@
 # WORKLOG
 
+## 2026-02-10T02:24:31Z — refactor: fact-check + graph router decomposition, warning-debt cleanup
+- `lct_python_backend/factcheck_api.py` (lines 1-89): Reduced to thin router adapter with compatibility wrappers (`_parse_time_range_to_start`, `_aggregate_cost_logs`, `generate_fact_check_json_perplexity`) to preserve existing test and import behavior.
+- `lct_python_backend/services/factcheck_service.py` (lines 1-202): Extracted Perplexity integration, response JSON extraction, verdict/citation normalization, and unverified fallback shaping.
+- `lct_python_backend/services/cost_stats_service.py` (lines 1-88): Extracted time-range parsing, cost aggregation payload shaping, and DB log query helper for `/api/cost-tracking/stats`.
+- `lct_python_backend/graph_api.py` (lines 1-244): Reduced to route adapter with compatibility wrappers (`_is_temporal_relationship`, `_build_turn_based_nodes`, `_build_temporal_edge_payload`) and delegated query/generation concerns.
+- `lct_python_backend/services/graph_generation_service.py` (lines 1-177): Extracted turn-node generation, temporal edge construction, conversation/utterance fetch, and persistence replacement workflow.
+- `lct_python_backend/services/graph_query_service.py` (lines 1-133): Extracted conversation UUID parsing, relationship classification/filtering, node/edge serialization payload helpers, and query loaders.
+- Warning-debt cleanup:
+  - `lct_python_backend/models.py` (line 11): Migrated `declarative_base` import to `sqlalchemy.orm.declarative_base` to remove SQLAlchemy 2.x deprecation warning.
+  - `lct_python_backend/import_api.py` (lines 17, 46): Migrated Pydantic class-based config to `ConfigDict`.
+  - `lct_python_backend/cost_api.py` (lines 15, 42, 57): Migrated Pydantic class-based config to `ConfigDict`.
+  - `lct_python_backend/bookmarks_api.py` (lines 19, 66): Migrated Pydantic class-based config to `ConfigDict`.
+- `docs/TECH_DEBT.md` (lines 21-28): Marked `factcheck_api.py` and `graph_api.py` as resolved; added follow-up entries for `bookmarks_api.py` and `cost_api.py`.
+- Validation run:
+  - `python3 -m py_compile lct_python_backend/factcheck_api.py lct_python_backend/services/factcheck_service.py lct_python_backend/services/cost_stats_service.py lct_python_backend/graph_api.py lct_python_backend/services/graph_generation_service.py lct_python_backend/services/graph_query_service.py lct_python_backend/models.py lct_python_backend/import_api.py lct_python_backend/cost_api.py lct_python_backend/bookmarks_api.py`
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_factcheck_cost_stats.py tests/unit/test_graph_api_contract.py tests/unit/test_import_api_security.py tests/unit/test_conversations_api_relationship_maps.py tests/test_instrumentation.py tests/unit/test_instrumentation_schema_alignment.py tests/unit/test_middleware.py` (50 passed, only LibreSSL warning remains)
+  - `cd lct_python_backend && ../.venv/bin/pytest -q tests/unit/test_stt_config.py tests/unit/test_stt_api_settings.py tests/unit/test_audio_storage.py tests/unit/test_graph_api_contract.py tests/unit/test_factcheck_cost_stats.py tests/unit/test_import_api_security.py tests/unit/test_conversations_api_relationship_maps.py` (26 passed, only LibreSSL warning remains)
+
+## 2026-02-09T19:30:21Z — refactor: import/conversation decomposition + instrumentation logging cleanup
+- `lct_python_backend/import_api.py` (lines 1-386): Reduced router concerns by delegating URL/file validation, fetch logic, and DB persistence while preserving route contracts and backwards-compatible helper wrappers (`_validate_import_url`, `_is_url_import_enabled`, `_download_url_text`) used by tests.
+- `lct_python_backend/services/import_validation.py` (lines 1-88): Added URL/filename validation helpers and import capability helpers.
+- `lct_python_backend/services/import_fetchers.py` (lines 1-63): Added bounded URL download + temp upload persistence helpers.
+- `lct_python_backend/services/import_persistence.py` (lines 1-71): Added shared conversation/utterance persistence path to remove duplicated DB write logic across import routes.
+- `lct_python_backend/conversations_api.py` (lines 1-193): Reduced to thin API adapter with shared conversation-read/turn-synthesis service delegation and structured logging.
+- `lct_python_backend/services/conversation_reader.py` (lines 1-132): Added conversation DB fetch bundle, relationship maps, analyzed-node serialization, chunk dict creation, and utterance serializer helpers.
+- `lct_python_backend/services/turn_synthesizer.py` (lines 1-93): Added reusable speaker-turn graph synthesis helpers for conversations lacking analyzed nodes.
+- `lct_python_backend/instrumentation/alerts.py` (lines 10-373): Replaced console prints with logger-based delivery/handler logging.
+- `lct_python_backend/instrumentation/middleware.py` (lines 11-236): Replaced print-based request/error logging with structured logger output.
+- `lct_python_backend/instrumentation/cost_reporting.py` (lines 5-97): Replaced background-job prints with logger output.
+- `docs/TECH_DEBT.md` (lines 19-26): Updated `import_api.py` LOC/debt status after decomposition, marked `conversations_api.py` as resolved, and logged `instrumentation/alerts.py` as a new large-file decomposition candidate.
+- Validation run:
+  - `python3 -m py_compile lct_python_backend/import_api.py lct_python_backend/conversations_api.py lct_python_backend/services/import_validation.py lct_python_backend/services/import_fetchers.py lct_python_backend/services/import_persistence.py lct_python_backend/services/conversation_reader.py lct_python_backend/services/turn_synthesizer.py lct_python_backend/instrumentation/alerts.py lct_python_backend/instrumentation/middleware.py lct_python_backend/instrumentation/cost_reporting.py`
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_import_api_security.py tests/unit/test_conversations_api_relationship_maps.py tests/test_instrumentation.py tests/unit/test_instrumentation_schema_alignment.py tests/unit/test_middleware.py` (44 passed)
+  - `cd lct_python_backend && ../.venv/bin/pytest -q tests/unit/test_stt_config.py tests/unit/test_stt_api_settings.py tests/unit/test_audio_storage.py tests/unit/test_graph_api_contract.py tests/unit/test_factcheck_cost_stats.py tests/unit/test_import_api_security.py tests/unit/test_conversations_api_relationship_maps.py` (26 passed)
+
+## 2026-02-09T18:00:41Z — refactor: split instrumentation decorators + aggregation modules
+- `lct_python_backend/instrumentation/decorators.py` (lines 1-265): Reduced to wrapper-focused module, preserving public API (`APICallTracker`, `track_api_call`, `set_db_connection`, `get_tracker`) while delegating response parsing and DB mapping concerns.
+- `lct_python_backend/instrumentation/response_parsing.py` (lines 1-80): Added normalized response parsing helpers for object/dict provider responses and token extraction (`ParsedResponseMetrics`, `parse_response_metrics`).
+- `lct_python_backend/instrumentation/cost_tracking_mapper.py` (lines 1-133): Added mapping helpers for in-memory log payloads and `APICallsLog` record construction, including UUID/provider normalization and cost-breakdown mapping.
+- `lct_python_backend/instrumentation/aggregation.py` (lines 1-213): Reduced to façade API (`CostAggregator`, `CostReporter`, `run_daily_aggregation_job` imports) while delegating query math and reporting helpers.
+- `lct_python_backend/instrumentation/cost_queries.py` (lines 1-93): Added DB query functions for period, conversation, and top-conversation cost reads.
+- `lct_python_backend/instrumentation/cost_rollups.py` (lines 1-152): Added pure rollup models/functions (`CostAggregation`, `ConversationCost`, `empty_cost_aggregation`, rollup helpers).
+- `lct_python_backend/instrumentation/cost_reporting.py` (lines 1-94): Added report rendering and daily aggregation background job helper.
+- `docs/TECH_DEBT.md` (lines 23-24): Marked `decorators.py` and `aggregation.py` tech-debt entries as resolved after decomposition and LOC reduction.
+- Validation run:
+  - `cd lct_python_backend && python3 -m py_compile instrumentation/decorators.py instrumentation/aggregation.py instrumentation/response_parsing.py instrumentation/cost_tracking_mapper.py instrumentation/cost_queries.py instrumentation/cost_rollups.py instrumentation/cost_reporting.py`
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/test_instrumentation.py tests/unit/test_instrumentation_schema_alignment.py` (16 passed)
+  - `cd lct_python_backend && ../.venv/bin/pytest -q tests/unit/test_middleware.py tests/unit/test_stt_config.py tests/unit/test_stt_api_settings.py tests/unit/test_audio_storage.py tests/unit/test_graph_api_contract.py tests/unit/test_factcheck_cost_stats.py tests/unit/test_import_api_security.py tests/unit/test_conversations_api_relationship_maps.py` (43 passed)
+
+## 2026-02-09T17:53:23Z — fix: instrumentation `APICallsLog` schema alignment
+- `lct_python_backend/instrumentation/decorators.py` (lines 13-47, 67-175, 234, 345): Replaced stale `APICallLog` persistence mapping with current `APICallsLog` fields (`started_at`, `completed_at`, `status`, `total_cost`, token/cost breakdown columns, `request_id`) and added provider/UUID normalization helpers plus timezone-aware timestamps.
+- `lct_python_backend/instrumentation/aggregation.py` (lines 17-20, 168-178, 257-297, 319-340): Updated aggregation queries to use current model/field names (`APICallsLog`, `started_at`, `status == "success"`, `total_cost`) and removed old `timestamp/success/cost_usd` assumptions.
+- `lct_python_backend/tests/unit/test_instrumentation_schema_alignment.py` (lines 1-127): Added focused unit tests verifying decorator-to-model field mapping and aggregator consumption of `started_at`/`total_cost`.
+- `docs/TECH_DEBT.md` (lines 23-24): Refreshed instrumentation module LOC snapshots after this pass.
+- Validation run:
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/test_instrumentation.py tests/unit/test_instrumentation_schema_alignment.py` (16 passed)
+  - `cd lct_python_backend && python3 -m py_compile instrumentation/decorators.py instrumentation/aggregation.py`
+  - `cd lct_python_backend && ../.venv/bin/pytest -q tests/unit/test_middleware.py tests/unit/test_stt_config.py tests/unit/test_stt_api_settings.py tests/unit/test_audio_storage.py tests/unit/test_graph_api_contract.py tests/unit/test_factcheck_cost_stats.py tests/unit/test_import_api_security.py tests/unit/test_conversations_api_relationship_maps.py` (43 passed)
+
+## 2026-02-09T17:46:13Z — fix: graph API made operational and mounted
+- `lct_python_backend/graph_api.py` (lines 1-499): Replaced broken placeholder implementation with model-consistent graph API:
+  - Switched to real DB dependency (`get_async_session`) and fixed ORM field mapping (`node_name`, `timestamp_start/end`, `from_node_id/to_node_id`, `explanation`).
+  - Added `include_edges` support on `GET /api/graph/{conversation_id}` and stable empty-graph responses (200 with zero nodes/edges) instead of hard failures.
+  - Implemented working `POST /api/graph/generate` fallback generation from speaker turns + temporal edges with optional DB persistence.
+  - Implemented working `DELETE /api/graph/{conversation_id}` for graph cleanup.
+  - Kept frontend-compatible payload contract (`title`, `keywords`, `description`, `metadata`, canvas coordinates).
+- `lct_python_backend/backend.py` (lines 125, 140): Mounted `graph_router` so `/api/graph/*` endpoints are now reachable.
+- `lct_python_backend/tests/unit/test_graph_api_contract.py` (lines 1-109): Added focused unit coverage for temporal classification, speaker-turn grouping, and empty graph endpoint payload contract.
+- `docs/TECH_DEBT.md` (line 22): Logged `graph_api.py` as a large mixed-concern refactor candidate after this repair pass.
+- Validation run:
+  - `../.venv/bin/pytest -q tests/unit/test_graph_api_contract.py tests/unit/test_factcheck_cost_stats.py tests/unit/test_import_api_security.py tests/unit/test_conversations_api_relationship_maps.py` (17 passed)
+  - `../.venv/bin/pytest -q tests/unit/test_middleware.py tests/unit/test_stt_config.py tests/unit/test_stt_api_settings.py tests/unit/test_audio_storage.py` (26 passed)
+  - `python3 -m py_compile graph_api.py backend.py factcheck_api.py import_api.py conversations_api.py`
+  - `npm run build` (Vite production build passed)
+
+## 2026-02-09T17:28:00Z — fix: cost dashboard endpoint now uses real `api_calls_log` aggregation
+- `lct_python_backend/factcheck_api.py` (lines 127-188): Added `_parse_time_range_to_start(...)` and `_aggregate_cost_logs(...)` helpers to normalize time-range handling and return dashboard-compatible aggregate payloads from real log rows.
+- `lct_python_backend/factcheck_api.py` (lines 321-355): Replaced mock `/api/cost-tracking/stats` response with live DB query (`APICallsLog` filtered by `status="success"` and optional time window), plus explicit 400 on invalid time range and structured server-side logging on failures.
+- `lct_python_backend/tests/unit/test_factcheck_cost_stats.py` (lines 1-74): Added unit coverage for time-range parsing and cost aggregation payload shape using stubbed module import.
+- `docs/TECH_DEBT.md` (line 21): Logged `factcheck_api.py` as a decomposition candidate after crossing the large-file heuristic with mixed concerns.
+- Validation run:
+  - `../.venv/bin/pytest -q tests/unit/test_factcheck_cost_stats.py tests/unit/test_import_api_security.py tests/unit/test_conversations_api_relationship_maps.py` (14 passed)
+  - `../.venv/bin/pytest -q tests/unit/test_middleware.py tests/unit/test_stt_config.py tests/unit/test_stt_api_settings.py tests/unit/test_audio_storage.py` (26 passed)
+  - `python3 -m py_compile factcheck_api.py import_api.py conversations_api.py`
+  - `npm run build` (Vite production build passed)
+
+## 2026-02-09T17:24:23Z — fix: URL import capability parity + relationship hydration
+- `lct_python_backend/import_api.py` (lines 101-189, 481-501, 566-579): Added URL-import capability helpers (`_is_url_import_enabled`, `_validate_import_url`, `_download_url_text`) with host/scheme guards, bounded async fetch, and explicit defense-in-depth gate in `/api/import/from-url`.
+- `lct_python_backend/import_api.py` (lines 669-683): Updated `/api/import/health` to report `url_import_enabled` and dynamic `supported_formats` so frontend can reflect deployment capability.
+- `lct_app/src/pages/Import.jsx` (lines 15-43, 83-98, 156-186): Added import-health capability load, disabled URL mode when backend gate is off, and added explicit UX messaging for disabled URL import.
+- `lct_python_backend/conversations_api.py` (lines 19-53, 95-170): Added `_build_relationship_maps` and wired `Relationship` query into conversation payload generation so `contextual_relation` and `linked_nodes` are no longer placeholder empties for analyzed nodes.
+- `lct_python_backend/tests/unit/test_import_api_security.py` (lines 1-64): Added unit coverage for URL validation and import-health capability reporting using stubbed module import.
+- `lct_python_backend/tests/unit/test_conversations_api_relationship_maps.py` (lines 1-78): Added unit coverage for temporal/contextual relationship mapping and bidirectional link behavior.
+- `docs/TECH_DEBT.md` (lines 19-20): Logged `import_api.py` and `conversations_api.py` as decomposition candidates after touching >300 LOC mixed-concern files.
+- Validation run:
+  - `../.venv/bin/pytest -q tests/unit/test_import_api_security.py tests/unit/test_conversations_api_relationship_maps.py` (11 passed)
+  - `../.venv/bin/pytest -q tests/unit/test_middleware.py tests/unit/test_stt_config.py tests/unit/test_stt_api_settings.py tests/unit/test_audio_storage.py` (26 passed)
+  - `python3 -m py_compile import_api.py conversations_api.py`
+  - `npm run build` (Vite production build passed)
+
+## 2026-02-09T17:16:38Z — refactor: frontend auth/env consistency pass (P1)
+- `lct_app/src/pages/Import.jsx`, `lct_app/src/pages/Browse.jsx`, `lct_app/src/pages/Bookmarks.jsx`, `lct_app/src/components/ImportCanvas.jsx`, `lct_app/src/components/ExportCanvas.jsx`, `lct_app/src/components/GenerateFormalism.jsx`, `lct_app/src/pages/CostDashboard.jsx`, `lct_app/src/utils/SaveConversation.jsx`, `lct_app/src/components/Input.jsx`, `lct_app/src/components/ContextualGraph.jsx`, `lct_app/src/pages/ViewConversation.jsx`, `lct_app/src/components/ThematicView.jsx` (file-level updates): Replaced hardcoded backend URLs/raw fetch with shared `apiFetch` so auth token/base URL behavior is consistent across app surfaces.
+- `lct_app/src/components/audio/sttUtils.js` (lines 1-20): Switched API/WS construction to shared `API_BASE_URL` + `wsUrl(...)` to keep websocket token behavior aligned with HTTP auth mode.
+- `lct_app/src/components/audio/audioUpload.js` (lines 1-80): Added `apiHeaders(...)` for chunk upload/finalize requests so AUTH_TOKEN deployments can persist opt-in audio storage without silent 401s.
+
+## 2026-02-09T17:05:53Z — fix: P0 route alignment + fact-check endpoint hardening
+- `lct_app/src/components/ImportCanvas.jsx` (line 65): Updated post-import navigation from `/view/{id}` to `/conversation/{id}` to match router paths and prevent dead-link redirects.
+- `lct_app/src/pages/Bookmarks.jsx` (line 81): Updated bookmark navigation from `/view/{id}` to `/conversation/{id}` so "View in Conversation" opens the correct page.
+- `lct_python_backend/factcheck_api.py` (lines 1-233): Replaced broken undefined function path with a concrete async Perplexity integration and safe fallback behavior:
+  - Added provider call via `httpx` with structured JSON prompt/response handling.
+  - Added robust JSON extraction + citation normalization for schema-safe responses.
+  - Added explicit unverified fallback when API key is missing, provider errors occur, or response parsing fails.
+  - Switched endpoint call to `await generate_fact_check_json_perplexity(...)` to avoid runtime `NameError` and keep UI flow stable.
+- Validation run:
+  - `python3 -m py_compile lct_python_backend/factcheck_api.py`
+  - `../.venv/bin/pytest -q tests/unit/test_middleware.py tests/unit/test_stt_config.py tests/unit/test_stt_api_settings.py tests/unit/test_audio_storage.py` (26 passed)
+  - `npm run build` (Vite production build passed)
+
 ## 2026-02-09T17:00:00Z — refactor: split backend.py monolith (3549 → 140 LOC)
 - **lct_python_backend/backend.py** (3549 → 140 LOC): Reduced to app shell — logging, app creation, CORS, middleware, 13 router mounts. All inline route handlers, Pydantic models, and helper functions extracted.
 - **lct_python_backend/config.py** (20 LOC): New — env constants (API keys, GCS, audio paths) extracted from backend.py.
