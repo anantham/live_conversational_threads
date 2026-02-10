@@ -122,6 +122,7 @@ from lct_python_backend.edit_history_api import router as edit_history_router
 from lct_python_backend.factcheck_api import router as factcheck_router
 from lct_python_backend.analysis_api import router as analysis_router
 from lct_python_backend.analytics_api import router as analytics_router
+from lct_python_backend.graph_api import router as graph_router
 from lct_python_backend.canvas_api import router as canvas_router
 from lct_python_backend.thematic_api import router as thematic_router
 
@@ -136,5 +137,6 @@ lct_app.include_router(edit_history_router)
 lct_app.include_router(factcheck_router)
 lct_app.include_router(analysis_router)
 lct_app.include_router(analytics_router)
+lct_app.include_router(graph_router)
 lct_app.include_router(canvas_router)
 lct_app.include_router(thematic_router)

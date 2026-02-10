@@ -8,9 +8,12 @@ This module provides:
 """
 
 import asyncio
+import logging
 from typing import List, Dict, Optional, Callable, Any
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
 from enum import Enum
 
 
@@ -223,8 +226,8 @@ class AlertManager:
                         await handler(alert)
                     else:
                         handler(alert)
-                except Exception as e:
-                    print(f"Failed to deliver alert via {channel.value}: {e}")
+                except Exception:
+                    logger.exception("Failed to deliver alert via %s", channel.value)
 
     def _log_handler(self, alert: Alert) -> None:
         """Default handler: log to console."""
@@ -233,9 +236,19 @@ class AlertManager:
             AlertSeverity.WARNING: "⚠️",
             AlertSeverity.CRITICAL: "🚨",
         }
-
         emoji = severity_emoji.get(alert.severity, "")
-        print(f"{emoji} [{alert.severity.value.upper()}] {alert.message}")
+        severity_levels = {
+            AlertSeverity.INFO: logging.INFO,
+            AlertSeverity.WARNING: logging.WARNING,
+            AlertSeverity.CRITICAL: logging.ERROR,
+        }
+        logger.log(
+            severity_levels.get(alert.severity, logging.INFO),
+            "%s [%s] %s",
+            emoji,
+            alert.severity.value.upper(),
+            alert.message,
+        )
 
     def get_alert_history(
         self,
@@ -324,7 +337,7 @@ async def email_alert_handler(alert: Alert) -> None:
     In production, replace with actual email service (SendGrid, SES, etc.)
     """
     # TODO: Implement actual email sending
-    print(f"[EMAIL] Would send email: {alert.message}")
+    logger.info("[EMAIL] Would send email: %s", alert.message)
 
 
 async def slack_alert_handler(alert: Alert) -> None:
@@ -334,7 +347,7 @@ async def slack_alert_handler(alert: Alert) -> None:
     In production, use Slack SDK or webhook.
     """
     # TODO: Implement Slack webhook
-    print(f"[SLACK] Would send Slack message: {alert.message}")
+    logger.info("[SLACK] Would send Slack message: %s", alert.message)
 
 
 async def webhook_alert_handler(alert: Alert) -> None:
@@ -357,4 +370,4 @@ async def webhook_alert_handler(alert: Alert) -> None:
         "metadata": alert.metadata,
     }
 
-    print(f"[WEBHOOK] Would POST: {json.dumps(payload, indent=2)}")
+    logger.info("[WEBHOOK] Would POST: %s", json.dumps(payload, indent=2))

@@ -8,43 +8,47 @@ Provides endpoints for:
 """
 
 import logging
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, Form
-from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List
-from pathlib import Path
-import tempfile
-import uuid
 from datetime import datetime
+from pathlib import Path
+from typing import List, Optional
+import uuid
 
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.ext.asyncio import AsyncSession
 
-# Configure logger
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+from lct_python_backend.db_session import get_async_session
+from lct_python_backend.parsers import GoogleMeetParser
+from lct_python_backend.services.import_fetchers import (
+    download_url_text,
+    save_upload_to_temp_file,
+)
+from lct_python_backend.services.import_persistence import persist_transcript
+from lct_python_backend.services.import_validation import (
+    get_supported_import_formats,
+    is_url_import_enabled,
+    validate_import_url,
+    validate_transcript_filename,
 )
 
-from lct_python_backend.parsers import GoogleMeetParser, ParsedTranscript, ValidationResult
-from lct_python_backend.models import Conversation, Utterance as DBUtterance
+logger = logging.getLogger(__name__)
 
-
-# Pydantic models for API responses
 
 class UtteranceResponse(BaseModel):
     """Response model for utterance."""
+
     speaker: str
     text: str
     start_time: Optional[float]
     end_time: Optional[float]
     sequence_number: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ValidationResponse(BaseModel):
     """Response model for validation result."""
+
     is_valid: bool
     errors: List[str]
     warnings: List[str]
@@ -53,6 +57,7 @@ class ValidationResponse(BaseModel):
 
 class ParsedTranscriptResponse(BaseModel):
     """Response model for parsed transcript."""
+
     conversation_id: str
     utterance_count: int
     participant_count: int
@@ -64,6 +69,7 @@ class ParsedTranscriptResponse(BaseModel):
 
 class ImportStatusResponse(BaseModel):
     """Response model for import status."""
+
     success: bool
     conversation_id: Optional[str]
     message: str
@@ -73,6 +79,7 @@ class ImportStatusResponse(BaseModel):
 
 class ImportFromUrlRequest(BaseModel):
     """Request model for importing from URL."""
+
     url: str
     conversation_name: Optional[str] = None
     owner_id: Optional[str] = None
@@ -80,17 +87,37 @@ class ImportFromUrlRequest(BaseModel):
 
 class ImportFromTextRequest(BaseModel):
     """Request model for importing from text."""
+
     text: str
     conversation_name: Optional[str] = None
     owner_id: Optional[str] = None
 
 
-# Create router
 router = APIRouter(prefix="/api/import", tags=["import"])
 
 
-# Import database session
-from lct_python_backend.db_session import get_async_session
+def _is_url_import_enabled() -> bool:
+    """Backward-compatible wrapper used by tests and existing imports."""
+    return is_url_import_enabled()
+
+
+def _validate_import_url(raw_url: str) -> str:
+    """Backward-compatible wrapper used by tests and existing imports."""
+    return validate_import_url(raw_url)
+
+
+async def _download_url_text(url: str) -> str:
+    """Backward-compatible wrapper used by tests and existing imports."""
+    return await download_url_text(url)
+
+
+def _cleanup_temp_file(temp_path: Optional[str]) -> None:
+    if not temp_path:
+        return
+    try:
+        Path(temp_path).unlink(missing_ok=True)
+    except Exception:
+        logger.warning("Failed to cleanup temp file: %s", temp_path)
 
 
 @router.post("/google-meet", response_model=ImportStatusResponse)
@@ -100,181 +127,87 @@ async def import_google_meet_transcript(
     owner_id: Optional[str] = Form(None, description="Owner/user ID"),
     db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Import a Google Meet transcript from PDF or TXT file.
+    """Import a Google Meet transcript from PDF or TXT file."""
+    logger.info("=== Import request received ===")
+    logger.info("File: %s", file.filename or "No filename")
+    logger.info("Conversation name: %s", conversation_name or "Not provided")
+    logger.info("Owner ID: %s", owner_id or "Not provided (will use anonymous)")
 
-    This endpoint:
-    1. Accepts uploaded PDF or TXT file
-    2. Parses speaker-diarized transcript
-    3. Extracts timestamps
-    4. Validates the transcript
-    5. Saves to database (conversation + utterances)
+    file_ext = validate_transcript_filename(file.filename)
+    logger.info("File extension: %s", file_ext)
 
-    Args:
-        file: Uploaded transcript file (PDF or TXT)
-        conversation_name: Optional name for the conversation
-        owner_id: Optional owner/user ID
-        db: Database session
-
-    Returns:
-        ImportStatusResponse with success status and metadata
-    """
-    logger.info(f"=== Import request received ===")
-    logger.info(f"File: {file.filename if file.filename else 'No filename'}")
-    logger.info(f"Conversation name: {conversation_name or 'Not provided'}")
-    logger.info(f"Owner ID: {owner_id or 'Not provided (will use anonymous)'}")
-
-    # Validate file format
-    if not file.filename:
-        logger.error("No filename provided in upload")
-        raise HTTPException(status_code=400, detail="No filename provided")
-
-    file_ext = Path(file.filename).suffix.lower()
-    logger.info(f"File extension: {file_ext}")
-
-    if file_ext not in ['.pdf', '.txt', '.text']:
-        logger.error(f"Unsupported file format: {file_ext}")
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file format: {file_ext}. Only PDF and TXT are supported."
-        )
-
-    # Save uploaded file to temporary location
-    logger.info("Saving uploaded file to temporary location...")
+    temp_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_path = temp_file.name
-        logger.info(f"File saved to: {temp_path} ({len(content)} bytes)")
+        temp_path, content_size = await save_upload_to_temp_file(file, file_ext)
+        logger.info("File saved to: %s (%s bytes)", temp_path, content_size)
 
-    except Exception as e:
-        logger.error(f"Failed to save uploaded file: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
-
-    # Parse the transcript
-    logger.info("Starting transcript parsing...")
-    try:
         parser = GoogleMeetParser()
         transcript = parser.parse_file(temp_path)
-        logger.info(f"Parsing successful! Found {len(transcript.utterances)} utterances from {len(transcript.participants)} participants")
-        logger.info(f"Participants: {', '.join(transcript.participants)}")
+        logger.info(
+            "Parsing successful! Found %s utterances from %s participants",
+            len(transcript.utterances),
+            len(transcript.participants),
+        )
+        logger.info("Participants: %s", ", ".join(transcript.participants))
 
-    except ValueError as e:
-        # Clean up temp file
-        logger.error(f"Parsing failed (ValueError): {str(e)}")
-        Path(temp_path).unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=f"Failed to parse transcript: {str(e)}")
-
-    except Exception as e:
-        # Clean up temp file
-        logger.error(f"Parsing failed (unexpected error): {str(e)}")
-        Path(temp_path).unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Unexpected error during parsing: {str(e)}")
-
+    except ValueError as exc:
+        logger.error("Parsing failed (ValueError): %s", str(exc))
+        raise HTTPException(status_code=400, detail=f"Failed to parse transcript: {str(exc)}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("Failed to process uploaded file: %s", str(exc))
+        raise HTTPException(status_code=500, detail=f"Failed to process uploaded file: {str(exc)}")
     finally:
-        # Always clean up temp file
-        try:
-            Path(temp_path).unlink(missing_ok=True)
-            logger.info("Temporary file cleaned up")
-        except:
-            pass
+        _cleanup_temp_file(temp_path)
 
-    # Validate the transcript
-    logger.info("Validating transcript...")
     validation = parser.validate_transcript(transcript)
-    logger.info(f"Validation result: valid={validation.is_valid}, errors={len(validation.errors)}, warnings={len(validation.warnings)}")
+    logger.info(
+        "Validation result: valid=%s, errors=%s, warnings=%s",
+        validation.is_valid,
+        len(validation.errors),
+        len(validation.warnings),
+    )
 
     if validation.warnings:
         for warning in validation.warnings:
-            logger.warning(f"Validation warning: {warning}")
+            logger.warning("Validation warning: %s", warning)
 
     if not validation.is_valid:
-        logger.error(f"Validation failed: {', '.join(validation.errors)}")
+        logger.error("Validation failed: %s", ", ".join(validation.errors))
         raise HTTPException(
             status_code=400,
-            detail=f"Transcript validation failed: {', '.join(validation.errors)}"
+            detail=f"Transcript validation failed: {', '.join(validation.errors)}",
         )
 
-    # Save to database
     conversation_id = str(uuid.uuid4())
-    logger.info(f"Saving to database with conversation_id: {conversation_id}")
+    logger.info("Saving to database with conversation_id: %s", conversation_id)
 
     try:
-        # Create conversation record
-        logger.info("Creating conversation record...")
-        # Calculate speaker turns (nodes) from utterances
-        speaker_turns = 1
-        prev_speaker = None
-        for utt in transcript.utterances:
-            if prev_speaker and utt.speaker != prev_speaker:
-                speaker_turns += 1
-            prev_speaker = utt.speaker
-
-        logger.info(f"Calculated {speaker_turns} speaker turns from {len(transcript.utterances)} utterances")
-
-        conversation = Conversation(
-            id=uuid.UUID(conversation_id),
-            conversation_name=conversation_name or file.filename,
-            conversation_type='transcript',
-            source_type='google_meet',
+        await persist_transcript(
+            db=db,
+            transcript=transcript,
+            conversation_id=conversation_id,
+            conversation_name=conversation_name or file.filename or "Google Meet Transcript",
+            source_type="google_meet",
             owner_id=owner_id or "anonymous",
-            participant_count=len(transcript.participants),
-            participants=[
-                {"name": p, "utterance_count": sum(1 for u in transcript.utterances if u.speaker == p)}
-                for p in transcript.participants
-            ],
-            duration_seconds=transcript.duration,
-            started_at=datetime.now(),
-            created_at=datetime.now(),
-            total_utterances=len(transcript.utterances),
-            total_nodes=speaker_turns,
             metadata={
-                'source_file': file.filename,
-                'parse_metadata': transcript.parse_metadata,
-                'validation': {
-                    'warnings': validation.warnings,
-                    'stats': validation.stats,
-                }
-            }
+                "source_file": file.filename,
+                "parse_metadata": transcript.parse_metadata,
+                "validation": {
+                    "warnings": validation.warnings,
+                    "stats": validation.stats,
+                },
+            },
         )
+        logger.info("Database commit successful")
 
-        db.add(conversation)
-        logger.info("Conversation record created")
-
-        # Create utterance records
-        logger.info(f"Creating {len(transcript.utterances)} utterance records...")
-        for idx, utt in enumerate(transcript.utterances):
-            db_utterance = DBUtterance(
-                id=uuid.uuid4(),
-                conversation_id=uuid.UUID(conversation_id),
-                text=utt.text,
-                speaker_id=utt.speaker,
-                sequence_number=utt.sequence_number,
-                timestamp_start=utt.start_time,
-                timestamp_end=utt.end_time,
-                platform_metadata=utt.metadata or {},
-            )
-            db.add(db_utterance)
-            if (idx + 1) % 5 == 0:
-                logger.info(f"  Created {idx + 1}/{len(transcript.utterances)} utterances...")
-
-        # Commit to database
-        logger.info("Committing to database...")
-        await db.commit()
-        logger.info("Database commit successful!")
-
-    except Exception as e:
-        logger.error(f"Database operation failed: {str(e)}")
+    except Exception as exc:
+        logger.error("Database operation failed: %s", str(exc))
         await db.rollback()
-        logger.info("Database rollback completed")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to save to database: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to save to database: {str(exc)}")
 
-    # Return success response
-    logger.info(f"=== Import successful! Conversation ID: {conversation_id} ===")
+    logger.info("=== Import successful! Conversation ID: %s ===", conversation_id)
     return ImportStatusResponse(
         success=True,
         conversation_id=conversation_id,
@@ -288,80 +221,39 @@ async def import_google_meet_transcript(
 async def preview_google_meet_transcript(
     file: UploadFile = File(..., description="Google Meet transcript (PDF or TXT)"),
 ):
-    """
-    Preview/validate a Google Meet transcript without saving to database.
+    """Preview/validate a Google Meet transcript without saving to database."""
+    file_ext = validate_transcript_filename(file.filename)
 
-    This endpoint:
-    1. Parses the uploaded file
-    2. Validates the transcript
-    3. Returns parsed data for review
-    4. Does NOT save to database
-
-    Args:
-        file: Uploaded transcript file (PDF or TXT)
-
-    Returns:
-        ParsedTranscriptResponse with validation results and sample data
-    """
-
-    # Validate file format
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No filename provided")
-
-    file_ext = Path(file.filename).suffix.lower()
-    if file_ext not in ['.pdf', '.txt', '.text']:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file format: {file_ext}. Only PDF and TXT are supported."
-        )
-
-    # Save to temp file
+    temp_path = None
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_path = temp_file.name
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save uploaded file: {str(e)}")
-
-    # Parse the transcript
-    try:
+        temp_path, _ = await save_upload_to_temp_file(file, file_ext)
         parser = GoogleMeetParser()
         transcript = parser.parse_file(temp_path)
 
-    except ValueError as e:
-        Path(temp_path).unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=f"Failed to parse transcript: {str(e)}")
-
-    except Exception as e:
-        Path(temp_path).unlink(missing_ok=True)
-        raise HTTPException(status_code=500, detail=f"Unexpected error during parsing: {str(e)}")
-
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to parse transcript: {str(exc)}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unexpected error during parsing: {str(exc)}")
     finally:
-        try:
-            Path(temp_path).unlink(missing_ok=True)
-        except:
-            pass
+        _cleanup_temp_file(temp_path)
 
-    # Validate
     validation = parser.validate_transcript(transcript)
 
-    # Get sample utterances (first 10)
     sample_utterances = [
         UtteranceResponse(
-            speaker=u.speaker,
-            text=u.text,
-            start_time=u.start_time,
-            end_time=u.end_time,
-            sequence_number=u.sequence_number,
+            speaker=utterance.speaker,
+            text=utterance.text,
+            start_time=utterance.start_time,
+            end_time=utterance.end_time,
+            sequence_number=utterance.sequence_number,
         )
-        for u in transcript.utterances[:10]
+        for utterance in transcript.utterances[:10]
     ]
 
-    # Return preview
     return ParsedTranscriptResponse(
-        conversation_id=str(uuid.uuid4()),  # Generate temporary ID
+        conversation_id=str(uuid.uuid4()),
         utterance_count=len(transcript.utterances),
         participant_count=len(transcript.participants),
         participants=transcript.participants,
@@ -381,90 +273,48 @@ async def import_from_url(
     request: ImportFromUrlRequest,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Import a transcript from a URL.
+    """Import a transcript from a URL."""
+    if not _is_url_import_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "URL import is disabled. "
+                "Set ENABLE_URL_IMPORT=true to enable (SSRF risk — only for trusted networks)."
+            ),
+        )
 
-    Downloads content from the URL and parses it as a transcript.
-    """
-    import requests
+    validated_url = _validate_import_url(request.url)
+    content = await _download_url_text(validated_url)
 
-    try:
-        # Fetch content from URL
-        response = requests.get(request.url, timeout=30)
-        response.raise_for_status()
-        content = response.text
-
-    except requests.RequestException as e:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch URL: {str(e)}")
-
-    # Parse the transcript
     try:
         parser = GoogleMeetParser()
         transcript = parser.parse_text(content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to parse transcript: {str(exc)}")
 
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse transcript: {str(e)}")
-
-    # Validate
     validation = parser.validate_transcript(transcript)
     if not validation.is_valid:
         raise HTTPException(
             status_code=400,
-            detail=f"Transcript validation failed: {', '.join(validation.errors)}"
+            detail=f"Transcript validation failed: {', '.join(validation.errors)}",
         )
 
-    # Save to database
     conversation_id = str(uuid.uuid4())
 
     if db is not None:
         try:
-            # Calculate speaker turns (nodes) from utterances
-            speaker_turns = 1
-            prev_speaker = None
-            for utt in transcript.utterances:
-                if prev_speaker and utt.speaker != prev_speaker:
-                    speaker_turns += 1
-                prev_speaker = utt.speaker
-
-            conversation = Conversation(
-                id=uuid.UUID(conversation_id),
-                conversation_name=request.conversation_name or f"Transcript from {request.url}",
-                conversation_type='transcript',
-                source_type='url',
+            await persist_transcript(
+                db=db,
+                transcript=transcript,
+                conversation_id=conversation_id,
+                conversation_name=request.conversation_name or f"Transcript from {validated_url}",
+                source_type="url",
                 owner_id=request.owner_id or "anonymous",
-                participant_count=len(transcript.participants),
-                participants=[
-                    {"name": p, "utterance_count": sum(1 for u in transcript.utterances if u.speaker == p)}
-                    for p in transcript.participants
-                ],
-                duration_seconds=transcript.duration,
-                started_at=datetime.now(),
-                created_at=datetime.now(),
-                total_utterances=len(transcript.utterances),
-                total_nodes=speaker_turns,
-                metadata={'source_url': request.url}
+                metadata={"source_url": validated_url},
             )
-
-            db.add(conversation)
-
-            for utt in transcript.utterances:
-                db_utterance = DBUtterance(
-                    id=uuid.uuid4(),
-                    conversation_id=uuid.UUID(conversation_id),
-                    text=utt.text,
-                    speaker_id=utt.speaker,
-                    sequence_number=utt.sequence_number,
-                    timestamp_start=utt.start_time,
-                    timestamp_end=utt.end_time,
-                    platform_metadata=utt.metadata or {},
-                )
-                db.add(db_utterance)
-
-            await db.commit()
-
-        except Exception as e:
+        except Exception as exc:
             await db.rollback()
-            raise HTTPException(status_code=500, detail=f"Failed to save to database: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to save to database: {str(exc)}")
 
     return ImportStatusResponse(
         success=True,
@@ -480,79 +330,36 @@ async def import_from_text(
     request: ImportFromTextRequest,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """
-    Import a transcript from pasted text.
-
-    Parses the provided text as a transcript.
-    """
-    # Parse the transcript
+    """Import a transcript from pasted text."""
     try:
         parser = GoogleMeetParser()
         transcript = parser.parse_text(request.text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"Failed to parse transcript: {str(exc)}")
 
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Failed to parse transcript: {str(e)}")
-
-    # Validate
     validation = parser.validate_transcript(transcript)
     if not validation.is_valid:
         raise HTTPException(
             status_code=400,
-            detail=f"Transcript validation failed: {', '.join(validation.errors)}"
+            detail=f"Transcript validation failed: {', '.join(validation.errors)}",
         )
 
-    # Save to database
     conversation_id = str(uuid.uuid4())
 
     if db is not None:
         try:
-            # Calculate speaker turns (nodes) from utterances
-            speaker_turns = 1
-            prev_speaker = None
-            for utt in transcript.utterances:
-                if prev_speaker and utt.speaker != prev_speaker:
-                    speaker_turns += 1
-                prev_speaker = utt.speaker
-
-            conversation = Conversation(
-                id=uuid.UUID(conversation_id),
+            await persist_transcript(
+                db=db,
+                transcript=transcript,
+                conversation_id=conversation_id,
                 conversation_name=request.conversation_name or "Pasted Transcript",
-                conversation_type='transcript',
-                source_type='text',
+                source_type="text",
                 owner_id=request.owner_id or "anonymous",
-                participant_count=len(transcript.participants),
-                participants=[
-                    {"name": p, "utterance_count": sum(1 for u in transcript.utterances if u.speaker == p)}
-                    for p in transcript.participants
-                ],
-                duration_seconds=transcript.duration,
-                started_at=datetime.now(),
-                created_at=datetime.now(),
-                total_utterances=len(transcript.utterances),
-                total_nodes=speaker_turns,
-                metadata={'source': 'pasted_text'}
+                metadata={"source": "pasted_text"},
             )
-
-            db.add(conversation)
-
-            for utt in transcript.utterances:
-                db_utterance = DBUtterance(
-                    id=uuid.uuid4(),
-                    conversation_id=uuid.UUID(conversation_id),
-                    text=utt.text,
-                    speaker_id=utt.speaker,
-                    sequence_number=utt.sequence_number,
-                    timestamp_start=utt.start_time,
-                    timestamp_end=utt.end_time,
-                    platform_metadata=utt.metadata or {},
-                )
-                db.add(db_utterance)
-
-            await db.commit()
-
-        except Exception as e:
+        except Exception as exc:
             await db.rollback()
-            raise HTTPException(status_code=500, detail=f"Failed to save to database: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Failed to save to database: {str(exc)}")
 
     return ImportStatusResponse(
         success=True,
@@ -566,9 +373,13 @@ async def import_from_text(
 @router.get("/health")
 async def health_check():
     """Health check endpoint for import API."""
+    url_import_enabled = _is_url_import_enabled()
+    supported_formats = get_supported_import_formats(url_import_enabled)
+
     return {
         "status": "healthy",
         "service": "import_api",
-        "supported_formats": ["pdf", "txt", "url", "text"],
+        "url_import_enabled": url_import_enabled,
+        "supported_formats": supported_formats,
         "timestamp": datetime.now().isoformat(),
     }
