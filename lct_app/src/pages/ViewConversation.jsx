@@ -12,6 +12,7 @@ import ExportCanvas from "../components/ExportCanvas";
 import Legend from "../components/Legend";
 import GenerateFormalism from "../components/GenerateFormalism";
 import FormalismList from "../components/FormalismList";
+import { apiFetch } from "../services/apiClient";
 
 export default function ViewConversation() {
   const [graphData, setGraphData] = useState([]); // Stores graph data
@@ -37,15 +38,13 @@ const { conversationId } = useParams();
 
 const navigate = useNavigate();
 
-const API_URL = import.meta.env.VITE_API_URL || "";
-
 useEffect(() => {
   if (!conversationId) return;
 
   console.log("[ViewConversation] Loading conversation:", conversationId);
 
   // Load conversation data
-  fetch(`${API_URL}/conversations/${conversationId}`)
+  apiFetch(`/conversations/${conversationId}`)
     .then((res) => {
       console.log("[ViewConversation] Fetch response status:", res.status);
       return res.json();
@@ -69,7 +68,7 @@ useEffect(() => {
     });
 
   // Load conversation metadata for name
-  fetch(`${API_URL}/conversations/`)
+  apiFetch("/conversations/")
     .then((res) => res.json())
     .then((conversations) => {
       console.log("[ViewConversation] Loaded conversations list:", conversations);
@@ -101,7 +100,7 @@ useEffect(() => {
 
   console.log("[ViewConversation] Loading utterances for conversation:", conversationId);
 
-  fetch(`${API_URL}/api/conversations/${conversationId}/utterances`)
+  apiFetch(`/api/conversations/${conversationId}/utterances`)
     .then((res) => res.json())
     .then((data) => {
       console.log("[ViewConversation] Loaded utterances:", data.total);
@@ -118,7 +117,7 @@ useEffect(() => {
 
   console.log("[ViewConversation] Checking for existing thematic structure");
 
-  fetch(`${API_URL}/api/conversations/${conversationId}/themes`)
+  apiFetch(`/api/conversations/${conversationId}/themes`)
     .then((res) => res.json())
     .then((data) => {
       if (data.summary?.exists && data.thematic_nodes?.length > 0) {
@@ -145,13 +144,10 @@ const handleGenerateThematicView = async () => {
   try {
     console.log("[Thematic] Generating thematic structure for conversation:", conversationId);
 
-    const response = await fetch(
-      `${API_URL}/api/conversations/${conversationId}/themes/generate`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    const response = await apiFetch(`/api/conversations/${conversationId}/themes/generate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
 
     if (!response.ok) {
       throw new Error(`Failed to generate themes: ${response.statusText}`);

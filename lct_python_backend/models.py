@@ -8,7 +8,7 @@ from sqlalchemy import (
     ForeignKey, Index, CheckConstraint, ARRAY, BigInteger, text
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 import uuid
 

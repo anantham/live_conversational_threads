@@ -1,13 +1,12 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiFetch } from "../services/apiClient";
 
 export default function ImportCanvas() {
   const [isImporting, setIsImporting] = useState(false);
   const [fileName, setFileName] = useState("");
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
-
-  const API_URL = import.meta.env.VITE_API_URL || "";
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
@@ -40,7 +39,7 @@ export default function ImportCanvas() {
       // Extract name without .canvas extension
       const baseName = originalFileName.replace(".canvas", "");
 
-      const response = await fetch(`${API_URL}/import/obsidian-canvas/`, {
+      const response = await apiFetch("/import/obsidian-canvas/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -62,7 +61,7 @@ export default function ImportCanvas() {
       alert(`Successfully imported: ${result.file_name}`);
 
       // Navigate to the newly imported conversation
-      navigate(`/view/${result.file_id}`);
+      navigate(`/conversation/${result.file_id}`);
     } catch (error) {
       console.error("Failed to import canvas:", error);
       alert(`Failed to import canvas: ${error.message}`);

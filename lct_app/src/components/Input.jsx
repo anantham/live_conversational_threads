@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { apiFetch } from "../services/apiClient";
 
 export default function Input({ onChunksReceived, onDataReceived }) {
   const [text, setText] = useState("");
@@ -29,9 +30,8 @@ export default function Input({ onChunksReceived, onDataReceived }) {
     // formData1.append("transcript", text);
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "";
       // **Step 1: Get Chunks**
-      const chunkResponse = await fetch(`${API_URL}/get_chunks/`, {
+      const chunkResponse = await apiFetch("/get_chunks/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -54,16 +54,13 @@ export default function Input({ onChunksReceived, onDataReceived }) {
       console.log("Chunks received:", chunks);
 
       // **Step 2: Send Chunks as JSON String**
-      const response = await fetch(
-        `${API_URL}/generate-context-stream/`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ chunks }), // Sending JSON directly
-        }
-      );
+      const response = await apiFetch("/generate-context-stream/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ chunks }), // Sending JSON directly
+      });
 
       if (!response.ok) {
         throw new Error(`Failed to fetch data: ${response.statusText}`);

@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import ReactFlow, { Controls, Background } from "reactflow";
 import dagre from "dagre"; // Import Dagre for auto-layout
 import "reactflow/dist/style.css";
+import { apiFetch } from "../services/apiClient";
 
 // Define outside component to prevent ReactFlow warnings
 const NODE_TYPES = {};
@@ -64,8 +65,6 @@ export default function ContextualGraph({
 
   const latestChunk = graphData?.[graphData.length - 1] || [];
 
-  const API_URL = import.meta.env.VITE_API_URL || "";
-
   // Ref for transcript auto-scroll - must be at top level
   const highlightRef = useRef(null);
 
@@ -100,8 +99,7 @@ export default function ContextualGraph({
     setFactCheckResults(null); // Clear previous results
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "";
-      const response = await fetch(`${API_URL}/fact_check_claims/`, {
+      const response = await apiFetch("/fact_check_claims/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ claims: selectedNodeClaims }),
@@ -160,7 +158,7 @@ export default function ContextualGraph({
     // If already bookmarked, delete it
     if (node.is_bookmark && node.bookmark_id) {
       try {
-        const response = await fetch(`${API_URL}/api/bookmarks/${node.bookmark_id}`, {
+        const response = await apiFetch(`/api/bookmarks/${node.bookmark_id}`, {
           method: 'DELETE',
         });
 
@@ -187,7 +185,7 @@ export default function ContextualGraph({
     } else {
       // Create new bookmark
       try {
-        const response = await fetch(`${API_URL}/api/bookmarks`, {
+        const response = await apiFetch("/api/bookmarks", {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

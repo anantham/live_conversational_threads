@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { apiFetch } from "../services/apiClient";
 
 export default function ExportCanvas({ graphData, fileName }) {
   const { conversationId } = useParams();
   const [isExporting, setIsExporting] = useState(false);
   const [includeChunks, setIncludeChunks] = useState(false);
-
-  const API_URL = import.meta.env.VITE_API_URL || "";
 
   const isExportDisabled = !graphData || graphData.length === 0 || !conversationId;
 
@@ -18,14 +17,14 @@ export default function ExportCanvas({ graphData, fileName }) {
 
     setIsExporting(true);
 
-    const exportUrl = `${API_URL}/export/obsidian-canvas/${conversationId}?include_chunks=${includeChunks}`;
+    const exportPath = `/export/obsidian-canvas/${conversationId}?include_chunks=${includeChunks}`;
     console.log('[ExportCanvas] Starting export...');
-    console.log('[ExportCanvas] URL:', exportUrl);
+    console.log('[ExportCanvas] URL path:', exportPath);
     console.log('[ExportCanvas] conversationId:', conversationId);
     console.log('[ExportCanvas] includeChunks:', includeChunks);
 
     try {
-      const response = await fetch(exportUrl, {
+      const response = await apiFetch(exportPath, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -42,7 +41,7 @@ export default function ExportCanvas({ graphData, fileName }) {
         try {
           errorDetails = await response.json();
           console.error('[ExportCanvas] Backend error details:', errorDetails);
-        } catch (jsonError) {
+        } catch {
           // Response might not be JSON
           const textError = await response.text();
           console.error('[ExportCanvas] Backend error (text):', textError);
