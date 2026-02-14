@@ -41,6 +41,7 @@ Extract Key Nodes: Identify all topic shifts in the conversation. Each topic shi
       "...": "Additional related nodes with their respective explanations can be included as needed"
     },
     "chunk_id": null,  // This field will be **ignored** for now and will be added externally.
+    "speaker_id": "Speaker label from the transcript (e.g., 'SPEAKER_00'). Use null if speaker is not identifiable or no speaker labels are present.",
     "linked_nodes": [
       "List of all nodes this node is either drawing context from or providing context to"
     ],
@@ -68,6 +69,7 @@ Create cohesive narratives that explain the full relationship context rather tha
 • Keys = node names that contribute context.
 • Values = a detailed explanation of how the multiple referenced nodes influence the current discussion.
 "chunk_id" -> This field will be ignored for now, as it will be added externally by the code.
+"speaker_id" -> If the transcript includes speaker labels like [SPEAKER_00]:, assign the corresponding speaker_id to each node based on the primary speaker in that segment. Use null if no speaker labels are present.
 
 **Claims Field Detection and Handling**
 "claims" must include only explicit, fact-checkable assertions made by a speaker.
@@ -175,9 +177,12 @@ Each node should include:
   - relation_type: supports | rebuts | clarifies | asks | tangent | return_to_thread
   - relation_text: short explanation for edge hover
 - linked_nodes: array of related node names
+- speaker_id: primary speaker label for this node (e.g., "SPEAKER_00") or null if no labels present
 - claims: array of explicit fact-checkable claims
 - is_bookmark: boolean
 - is_contextual_progress: boolean
+
+If the transcript includes speaker labels like [SPEAKER_00]:, assign the corresponding speaker_id to each node. Use null if no labels are present.
 
 For meandering/interleaving dialogue:
 - Start a new thread with thread_state=new_thread.
@@ -448,6 +453,7 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 "is_bookmark": bool(raw.get("is_bookmark")),
                 "is_contextual_progress": bool(raw.get("is_contextual_progress")),
                 "chunk_id": raw.get("chunk_id"),
+                "speaker_id": _as_clean_str(raw.get("speaker_id")) or None,
             }
         )
     return normalized_nodes
@@ -846,6 +852,35 @@ def accumulate_text_json(
     )
 
 
+def format_speaker_prefixed_transcript(
+    text: str,
+    speaker_segments: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """Format transcript with speaker labels when diarized segments are available.
+
+    Returns speaker-prefixed text like:
+        [SPEAKER_00]: Hello there
+        [SPEAKER_01]: Hi, how are you
+
+    Falls back to plain text when no segments are available.
+    """
+    if not speaker_segments:
+        return text
+
+    lines: List[str] = []
+    for seg in speaker_segments:
+        speaker = seg.get("speaker", "")
+        seg_text = str(seg.get("text", "")).strip()
+        if not seg_text:
+            continue
+        if speaker:
+            lines.append(f"[{speaker}]: {seg_text}")
+        else:
+            lines.append(seg_text)
+
+    return "\n".join(lines) if lines else text
+
+
 class TranscriptProcessor:
     def __init__(
         self,
@@ -856,6 +891,7 @@ class TranscriptProcessor:
         llm_config: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.accumulator: List[str] = []
+        self.accumulator_segments: List[List[Dict[str, Any]]] = []
         self.existing_json: List[Dict[str, Any]] = []
         self.chunk_dict: Dict[str, str] = {}
         self.base_batch_size = batch_size
@@ -875,10 +911,15 @@ class TranscriptProcessor:
         except Exception as exc:
             logger.debug("[PROCESSOR STATUS] failed to send status update: %s", exc)
 
-    async def handle_final_text(self, final_text: str) -> None:
+    async def handle_final_text(
+        self,
+        final_text: str,
+        speaker_segments: Optional[List[Dict[str, Any]]] = None,
+    ) -> None:
         if not final_text:
             return
         self.accumulator.append(final_text)
+        self.accumulator_segments.append(speaker_segments or [])
         if len(self.accumulator) >= self._current_batch_size and self._continue_accumulating:
             await self._process_batches()
 
@@ -887,6 +928,7 @@ class TranscriptProcessor:
             return
         await self._process_batch(self.accumulator, stop_accumulating_flag=True)
         self.accumulator = []
+        self.accumulator_segments = []
         self._current_batch_size = self.base_batch_size
         self._continue_accumulating = True
 
@@ -897,12 +939,14 @@ class TranscriptProcessor:
             if self._current_batch_size >= self.max_batch_size:
                 await self._process_batch(self.accumulator, stop_accumulating_flag=True)
                 self.accumulator = []
+                self.accumulator_segments = []
                 self._current_batch_size = self.base_batch_size
                 self._continue_accumulating = True
             else:
                 self._current_batch_size += self.base_batch_size
         else:
             self.accumulator = [incomplete_seg] if incomplete_seg else []
+            self.accumulator_segments = []  # Segments already consumed in batch
             self._current_batch_size = self.base_batch_size
             self._continue_accumulating = True
 
@@ -959,9 +1003,17 @@ class TranscriptProcessor:
             incomplete_seg = ""
 
         if segmented_input_chunk.strip():
+            # Use speaker-prefixed transcript when diarized segments are available
+            all_segments: List[Dict[str, Any]] = []
+            for seg_list in self.accumulator_segments:
+                all_segments.extend(seg_list)
+            transcript_for_llm = format_speaker_prefixed_transcript(
+                segmented_input_chunk, all_segments if all_segments else None,
+            )
+
             mod_input = (
                 f"Existing JSON : \n {repr(self.existing_json)} "
-                f"\n\n Transcript Input: \n {segmented_input_chunk}"
+                f"\n\n Transcript Input: \n {transcript_for_llm}"
             )
             generation_status_messages: List[str] = []
             output_json = generate_lct_json(

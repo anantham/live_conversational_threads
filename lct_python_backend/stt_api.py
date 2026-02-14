@@ -321,6 +321,7 @@ async def transcripts_websocket(websocket: WebSocket):
     stt_runtime: Optional[RealtimeHttpSttSession] = None
     pending_partial_parts: List[str] = []
     pending_partial_chars = 0
+    pending_speaker_segments: List[Dict[str, Any]] = []
     stt_unready_notified = False
     stt_flush_requested = False
     background_tasks: set[asyncio.Task[Any]] = set()
@@ -372,10 +373,13 @@ async def transcripts_websocket(websocket: WebSocket):
             task.add_done_callback(pending_stt_chunk_tasks.discard)
             task.add_done_callback(background_tasks.discard)
 
-        async def _run_processor_final(text: str) -> None:
+        async def _run_processor_final(
+            text: str,
+            speaker_segments: Optional[List[Dict[str, Any]]] = None,
+        ) -> None:
             try:
                 async with processor_lock:
-                    await processor.handle_final_text(text)
+                    await processor.handle_final_text(text, speaker_segments=speaker_segments)
             except Exception as exc:
                 logger.exception("[WS] Final transcript processing failed: %s", exc)
                 await _safe_send_json(
@@ -396,6 +400,7 @@ async def transcripts_websocket(websocket: WebSocket):
             timestamps: Optional[Dict[str, Any]] = None,
             emit_to_client: bool = False,
             process_final: bool = True,
+            speaker_segments: Optional[List[Dict[str, Any]]] = None,
         ) -> None:
             normalized_text = str(text or "").strip()
             if not normalized_text:
@@ -424,7 +429,9 @@ async def transcripts_websocket(websocket: WebSocket):
             await session.commit()
 
             if event_type == "final" and process_final:
-                _track_processor_final_task(asyncio.create_task(_run_processor_final(normalized_text)))
+                _track_processor_final_task(
+                    asyncio.create_task(_run_processor_final(normalized_text, speaker_segments=speaker_segments))
+                )
 
             if emit_to_client:
                 await _safe_send_json(
@@ -440,6 +447,7 @@ async def transcripts_websocket(websocket: WebSocket):
         async def _process_audio_chunk(chunk_bytes: bytes, audio_decode_ms: float) -> None:
             nonlocal pending_partial_parts
             nonlocal pending_partial_chars
+            nonlocal pending_speaker_segments
             nonlocal stt_unready_notified
 
             if not chunk_bytes:
@@ -515,12 +523,18 @@ async def transcripts_websocket(websocket: WebSocket):
                 pending_partial_parts.append(partial_text)
                 pending_partial_chars += len(partial_text)
 
+                # Accumulate speaker segments from diarized STT response
+                chunk_segments = partial_result.get("segments")
+                if isinstance(chunk_segments, list):
+                    pending_speaker_segments.extend(chunk_segments)
+
                 if _should_emit_final_segment(
                     partial_text,
                     pending_partial_parts,
                     pending_partial_chars,
                 ):
                     final_text = " ".join(pending_partial_parts).strip()
+                    final_segments = pending_speaker_segments if pending_speaker_segments else None
                     await _persist_event(
                         "final",
                         final_text,
@@ -530,9 +544,11 @@ async def transcripts_websocket(websocket: WebSocket):
                             "transport": "backend_http_stt",
                         },
                         emit_to_client=True,
+                        speaker_segments=final_segments,
                     )
                     pending_partial_parts = []
                     pending_partial_chars = 0
+                    pending_speaker_segments = []
 
         try:
             while True:
@@ -548,6 +564,7 @@ async def transcripts_websocket(websocket: WebSocket):
                         await asyncio.gather(*list(pending_stt_chunk_tasks), return_exceptions=True)
                     pending_partial_parts = []
                     pending_partial_chars = 0
+                    pending_speaker_segments = []
                     stt_unready_notified = False
                     telemetry_state = {
                         "audio_send_started_at_ms": None,
@@ -692,6 +709,7 @@ async def transcripts_websocket(websocket: WebSocket):
                     async def _run_post_flush_processing() -> None:
                         nonlocal pending_partial_parts
                         nonlocal pending_partial_chars
+                        nonlocal pending_speaker_segments
                         try:
                             if pending_stt_chunk_tasks:
                                 await asyncio.gather(
@@ -701,6 +719,7 @@ async def transcripts_websocket(websocket: WebSocket):
 
                             flush_final_metadata: Dict[str, Any] = {}
                             final_text_for_post_flush: Optional[str] = None
+                            final_segments_for_post_flush: Optional[List[Dict[str, Any]]] = None
                             if stt_runtime and stt_runtime.is_ready():
                                 async with stt_stream_lock:
                                     stt_flush_started_at = time.perf_counter()
@@ -745,9 +764,14 @@ async def transcripts_websocket(websocket: WebSocket):
                                                 }
                                             pending_partial_parts.append(final_text_piece)
                                             pending_partial_chars += len(final_text_piece)
+                                            # Accumulate segments from flush result
+                                            flush_segments = final_result.get("segments")
+                                            if isinstance(flush_segments, list):
+                                                pending_speaker_segments.extend(flush_segments)
 
                             if pending_partial_parts:
                                 final_text = " ".join(pending_partial_parts).strip()
+                                flush_speaker_segments = pending_speaker_segments if pending_speaker_segments else None
                                 final_event_metadata: Dict[str, Any] = {
                                     **flush_final_metadata,
                                     "aggregated_parts": len(pending_partial_parts),
@@ -759,10 +783,13 @@ async def transcripts_websocket(websocket: WebSocket):
                                     metadata=final_event_metadata,
                                     emit_to_client=True,
                                     process_final=False,
+                                    speaker_segments=flush_speaker_segments,
                                 )
                                 final_text_for_post_flush = final_text
+                                final_segments_for_post_flush = flush_speaker_segments
                                 pending_partial_parts = []
                                 pending_partial_chars = 0
+                                pending_speaker_segments = []
 
                             if state.store_audio and state.conversation_id:
                                 finalized = await audio_storage.finalize(state.conversation_id)
@@ -783,7 +810,10 @@ async def transcripts_websocket(websocket: WebSocket):
                                 )
                             async with processor_lock:
                                 if final_text_for_post_flush:
-                                    await processor.handle_final_text(final_text_for_post_flush)
+                                    await processor.handle_final_text(
+                                        final_text_for_post_flush,
+                                        speaker_segments=final_segments_for_post_flush,
+                                    )
                                 await processor.flush()
                         except Exception as exc:
                             logger.exception("[WS] Processor flush failed: %s", exc)

@@ -1,5 +1,8 @@
 from lct_python_backend.services import transcript_processing as transcript_processing_module
-from lct_python_backend.services.transcript_processing import _normalize_generated_output
+from lct_python_backend.services.transcript_processing import (
+    _normalize_generated_output,
+    format_speaker_prefixed_transcript,
+)
 
 
 def test_normalize_generated_output_accepts_nodes_and_edges_object():
@@ -154,3 +157,71 @@ def test_generate_lct_json_online_passes_selected_gemini_model(monkeypatch):
 
     assert result[0]["node_name"] == "gemini-node"
     assert captured["model_name"] == "gemini-3-flash-preview"
+
+
+# ---------------------------------------------------------------------------
+# Speaker diarization tests
+# ---------------------------------------------------------------------------
+def test_format_speaker_prefixed_transcript_with_segments():
+    segments = [
+        {"speaker": "SPEAKER_00", "text": "Hello there.", "start": 0.0, "end": 1.5},
+        {"speaker": "SPEAKER_01", "text": "Hi, how are you.", "start": 2.0, "end": 4.0},
+    ]
+    result = format_speaker_prefixed_transcript("Hello there. Hi, how are you.", segments)
+    assert "[SPEAKER_00]: Hello there." in result
+    assert "[SPEAKER_01]: Hi, how are you." in result
+    assert result == "[SPEAKER_00]: Hello there.\n[SPEAKER_01]: Hi, how are you."
+
+
+def test_format_speaker_prefixed_transcript_without_segments():
+    result = format_speaker_prefixed_transcript("plain text", None)
+    assert result == "plain text"
+
+
+def test_format_speaker_prefixed_transcript_empty_segments():
+    result = format_speaker_prefixed_transcript("plain text", [])
+    assert result == "plain text"
+
+
+def test_format_speaker_prefixed_transcript_skips_empty_text():
+    segments = [
+        {"speaker": "SPEAKER_00", "text": "Hello", "start": 0.0, "end": 1.0},
+        {"speaker": "SPEAKER_01", "text": "", "start": 1.0, "end": 2.0},
+        {"speaker": "SPEAKER_02", "text": "World", "start": 2.0, "end": 3.0},
+    ]
+    result = format_speaker_prefixed_transcript("Hello World", segments)
+    assert "[SPEAKER_00]: Hello" in result
+    assert "[SPEAKER_02]: World" in result
+    assert "SPEAKER_01" not in result
+
+
+def test_normalize_generated_output_preserves_speaker_id():
+    parsed = [
+        {
+            "node_name": "Greeting",
+            "summary": "Initial greeting exchange",
+            "speaker_id": "SPEAKER_00",
+        },
+        {
+            "node_name": "Question",
+            "summary": "Asked about project",
+            "speaker_id": "SPEAKER_01",
+            "predecessor": "Greeting",
+        },
+    ]
+    normalized = _normalize_generated_output(parsed)
+    assert len(normalized) == 2
+    assert normalized[0]["speaker_id"] == "SPEAKER_00"
+    assert normalized[1]["speaker_id"] == "SPEAKER_01"
+
+
+def test_normalize_generated_output_speaker_id_null_when_missing():
+    parsed = [
+        {
+            "node_name": "No Speaker",
+            "summary": "No speaker info",
+        },
+    ]
+    normalized = _normalize_generated_output(parsed)
+    assert len(normalized) == 1
+    assert normalized[0]["speaker_id"] is None
