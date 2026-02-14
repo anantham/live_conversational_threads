@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 LLM_CONFIG_KEY = "llm_config"
+TAILSCALE_LLM_BASE_URL = "http://100.81.65.74:1234"
 
 
 def _to_bool(value: Any) -> bool:
@@ -17,7 +18,7 @@ def _to_bool(value: Any) -> bool:
 def get_env_llm_defaults() -> Dict[str, Any]:
     return {
         "mode": os.getenv("DEFAULT_LLM_MODE", "local"),
-        "base_url": os.getenv("LOCAL_LLM_BASE_URL", "http://100.81.65.74:1234"),
+        "base_url": os.getenv("LOCAL_LLM_BASE_URL", TAILSCALE_LLM_BASE_URL),
         "chat_model": os.getenv("LOCAL_LLM_CHAT_MODEL", "glm-4.6v-flash"),
         "embedding_model": os.getenv("LOCAL_LLM_EMBEDDING_MODEL", "text-embedding-qwen3-embedding-8b"),
         "json_mode": _to_bool(os.getenv("LOCAL_LLM_JSON_MODE", "true")),
@@ -41,6 +42,13 @@ def merge_llm_config(overrides: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             sanitized[key] = value
 
     config.update(sanitized)
+
+    # Older local configs often point to localhost:1234; default to the Tailscale
+    # endpoint for this repo unless explicitly changed away from the localhost LM Studio port.
+    base_url = str(config.get("base_url", "")).strip()
+    if base_url.startswith("http://localhost:1234") or base_url.startswith("http://127.0.0.1:1234"):
+        config["base_url"] = os.getenv("LOCAL_LLM_BASE_URL", TAILSCALE_LLM_BASE_URL)
+
     return config
 
 

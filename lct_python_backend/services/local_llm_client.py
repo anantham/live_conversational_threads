@@ -1,5 +1,7 @@
 import json
 import logging
+import os
+import re
 from typing import Any, Dict, Optional, Tuple
 
 import httpx
@@ -9,21 +11,36 @@ from lct_python_backend.services.llm_config import get_env_llm_defaults
 logger = logging.getLogger("lct_backend")
 
 _CLIENT_CACHE: Dict[Tuple[str, float, bool], "LocalLLMClient"] = {}
+_JSON_OBJECT_UNSUPPORTED_BASE_URLS: set[str] = set()
+TRACE_API_CALLS = os.getenv("TRACE_API_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
+
+
+def _preview_text(value: Any, limit: int = API_LOG_PREVIEW_CHARS) -> str:
+    text = str(value or "")
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}...<truncated {len(text) - limit} chars>"
 
 
 def extract_json_from_text(text: str) -> Any:
     if text is None:
         raise ValueError("LLM response text is empty")
 
+    # Strip chain-of-thought style wrappers commonly emitted by local models.
+    normalized = re.sub(r"<think>.*?</think>", "", str(text), flags=re.IGNORECASE | re.DOTALL).strip()
+    if not normalized:
+        raise json.JSONDecodeError("No JSON object found", str(text), 0)
+
     try:
-        return json.loads(text)
+        return json.loads(normalized)
     except json.JSONDecodeError:
         pass
 
-    if "```" in text:
+    if "```" in normalized:
         for fence in ("```json", "```"):
-            if fence in text:
-                snippet = text.split(fence, 1)[1]
+            if fence in normalized:
+                snippet = normalized.split(fence, 1)[1]
                 if "```" in snippet:
                     candidate = snippet.split("```", 1)[0].strip()
                     try:
@@ -31,26 +48,18 @@ def extract_json_from_text(text: str) -> Any:
                     except json.JSONDecodeError:
                         continue
 
-    first_obj = text.find("{")
-    first_arr = text.find("[")
-    if first_obj == -1 and first_arr == -1:
-        raise json.JSONDecodeError("No JSON object found", text, 0)
+    # Robust fallback: decode the first valid JSON value from any object/array start.
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(normalized):
+        if char not in "{[":
+            continue
+        try:
+            decoded, _ = decoder.raw_decode(normalized[index:])
+            return decoded
+        except json.JSONDecodeError:
+            continue
 
-    if first_obj == -1:
-        start = first_arr
-    elif first_arr == -1:
-        start = first_obj
-    else:
-        start = min(first_obj, first_arr)
-
-    end_obj = text.rfind("}")
-    end_arr = text.rfind("]")
-    end = max(end_obj, end_arr)
-    if end == -1 or end <= start:
-        raise json.JSONDecodeError("Incomplete JSON response", text, start)
-
-    candidate = text[start:end + 1].strip()
-    return json.loads(candidate)
+    raise json.JSONDecodeError("No JSON object found", normalized, 0)
 
 
 def get_local_client(config: Optional[Dict[str, Any]] = None) -> "LocalLLMClient":
@@ -86,26 +95,50 @@ class LocalLLMClient:
             "max_tokens": max_tokens,
         }
 
+        supports_json_object = self.base_url not in _JSON_OBJECT_UNSUPPORTED_BASE_URLS
         if response_format:
             payload["response_format"] = response_format
-        elif self.json_mode:
+        elif self.json_mode and supports_json_object:
             payload["response_format"] = {"type": "json_object"}
 
         url = f"{self.base_url}/v1/chat/completions"
+        if TRACE_API_CALLS:
+            logger.info(
+                "[LLM API] POST %s model=%s messages=%s json_mode=%s",
+                url,
+                model,
+                len(messages or []),
+                payload.get("response_format", {}).get("type", "none"),
+            )
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             try:
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
+                if TRACE_API_CALLS:
+                    logger.info(
+                        "[LLM API] %s status=%s preview=%s",
+                        url,
+                        response.status_code,
+                        _preview_text(response.text),
+                    )
                 return response.json()
             except httpx.HTTPStatusError as exc:
                 if "response_format" in payload:
                     logger.warning(
                         "Local LLM response_format rejected (%s); retrying without response_format.",
-                        exc.response.text,
+                        _preview_text(exc.response.text),
                     )
+                    _JSON_OBJECT_UNSUPPORTED_BASE_URLS.add(self.base_url)
                     payload.pop("response_format", None)
                     retry = await client.post(url, json=payload)
                     retry.raise_for_status()
+                    if TRACE_API_CALLS:
+                        logger.info(
+                            "[LLM API] %s retry_status=%s preview=%s",
+                            url,
+                            retry.status_code,
+                            _preview_text(retry.text),
+                        )
                     return retry.json()
                 raise
 

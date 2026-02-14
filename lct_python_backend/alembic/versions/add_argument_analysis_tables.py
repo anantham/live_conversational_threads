@@ -1,7 +1,7 @@
 """Add argument trees and is-ought conflation tables
 
 Revision ID: add_argument_analysis
-Revises: add_claims_table_with_vectors
+Revises: add_claims_vectors
 Create Date: 2025-11-12 14:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'add_argument_analysis'
-down_revision = 'add_claims_table_with_vectors'
+down_revision = 'add_claims_vectors'
 branch_labels = None
 depends_on = None
 

@@ -15,6 +15,13 @@ export const API_BASE_URL =
   import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
 
 const AUTH_TOKEN = import.meta.env.VITE_AUTH_TOKEN || '';
+const TRACE_FLAG_RAW = import.meta.env.VITE_API_TRACE;
+const TRACE_FLAG = String(TRACE_FLAG_RAW ?? '').trim().toLowerCase();
+const TRACE_API =
+  TRACE_FLAG
+    ? ['1', 'true', 'yes', 'on'].includes(TRACE_FLAG)
+    : Boolean(import.meta.env.DEV);
+const TRACE_PREVIEW_CHARS = 500;
 
 /**
  * Returns headers object with auth token if configured.
@@ -38,7 +45,42 @@ export function apiHeaders(extra = {}) {
 export async function apiFetch(path, options = {}) {
   const url = `${API_BASE_URL}${path}`;
   const headers = apiHeaders(options.headers || {});
-  return fetch(url, { ...options, headers });
+  const method = String(options.method || 'GET').toUpperCase();
+  if (TRACE_API) {
+    console.info(`[API ->] ${method} ${url}`);
+  }
+  try {
+    const response = await fetch(url, { ...options, headers });
+    if (TRACE_API) {
+      let preview = '';
+      try {
+        const contentType = response.headers.get('content-type') || '';
+        if (
+          contentType.includes('application/json') ||
+          contentType.startsWith('text/')
+        ) {
+          const rawText = await response.clone().text();
+          preview =
+            rawText.length <= TRACE_PREVIEW_CHARS
+              ? rawText
+              : `${rawText.slice(0, TRACE_PREVIEW_CHARS)}...<truncated ${
+                  rawText.length - TRACE_PREVIEW_CHARS
+                } chars>`;
+        }
+      } catch (previewError) {
+        preview = `[preview unavailable: ${previewError}]`;
+      }
+      console.info(
+        `[API <-] ${response.status} ${method} ${url}${preview ? ` | ${preview}` : ''}`
+      );
+    }
+    return response;
+  } catch (error) {
+    if (TRACE_API) {
+      console.error(`[API !!] ${method} ${url}`, error);
+    }
+    throw error;
+  }
 }
 
 /**

@@ -1,6 +1,22 @@
 # ISSUES
 
-Last updated: 2026-01-09
+Last updated: 2026-02-14
+
+## Runtime Blockers (2026-02-10)
+- `live_conversational_threads` STT defaults point all providers to `ws://localhost:43001/stream`, but no local listener is running on port `43001`.
+- Active local Parakeet service (`http://localhost:5092`) is HTTP-only (`/v1/audio/transcriptions`) and does not provide the websocket `/stream` endpoint expected by `AudioInput` provider socket flow.
+- Live graph updates from `/ws/transcripts` depend on local LLM generation (`lct_python_backend/services/transcript_processing.py`), but configured LLM base URL `http://100.81.65.74:1234` is intermittently unreachable/timing out; result is no `existing_json` updates even when transcript events are persisted.
+- During shutdown, long-running local LLM calls can keep backend workers alive long enough for `start.command` to force-kill the backend process after grace timeout; investigate graceful cancellation/timeout handling in transcript processing path.
+- E2E input blocker for cloud-backed media: Google Drive file-provider paths can be present in Finder with size metadata but not materialized locally; direct reads/ffmpeg decode can block indefinitely until file is downloaded (`/Users/aditya/Library/CloudStorage/.../ZOOM0123.MP3` repro).
+- Under sustained high-throughput websocket streaming (scripted `audio_chunk` bursts), `final_flush` ack can still take ~28s (`flush_ack_ms=27940` observed on 2026-02-14) even with Gemini mode enabled; likely backlog-dependent in STT/flush sequencing and needs follow-up if low-latency stop behavior is required.
+- After the latest flush refactor, `flush_ack` is intentionally near-immediate (~1 ms) but graph updates now arrive asynchronously after ack; clients that disconnect immediately after receiving `flush_ack` can miss late `existing_json`/`chunk_dict` updates unless they keep the socket open briefly.
+
+## Resolved (2026-02-13)
+- Alembic DAG/startup blocker resolved:
+  - Fixed broken revision links in `lct_python_backend/alembic/versions/*`.
+  - Made transcript settings migration idempotent for pre-existing local tables.
+  - Shortened transcript migration revision ID to fit `alembic_version.version_num` width.
+  - `alembic upgrade head` now succeeds in local startup flow.
 
 ## Recording & Data Retention
 - Live capture does not store raw audio; cannot re-run improved ASR/diarization later.

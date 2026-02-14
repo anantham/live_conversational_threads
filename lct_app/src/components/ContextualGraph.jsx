@@ -9,6 +9,17 @@ import { apiFetch } from "../services/apiClient";
 const NODE_TYPES = {};
 const EDGE_TYPES = {};
 
+const EDGE_RELATION_STYLE = {
+  supports: { color: "#16a34a", width: 2.8 },
+  rebuts: { color: "#dc2626", width: 2.8 },
+  clarifies: { color: "#2563eb", width: 2.6 },
+  asks: { color: "#0f766e", width: 2.6 },
+  tangent: { color: "#d97706", width: 2.6 },
+  return_to_thread: { color: "#0284c7", width: 3.0 },
+  contextual: { color: "#6b7280", width: 2.2 },
+  temporal_next: { color: "#9ca3af", width: 2.0 },
+};
+
 // Track reference stability
 console.log("[ContextualGraph] Module loaded - NODE_TYPES ref:", NODE_TYPES);
 console.log("[ContextualGraph] Module loaded - EDGE_TYPES ref:", EDGE_TYPES);
@@ -32,6 +43,7 @@ export default function ContextualGraph({
   const [isClaimsPanelOpen, setIsClaimsPanelOpen] = useState(false);
   const [factCheckResults, setFactCheckResults] = useState(null);
   const [isFactChecking, setIsFactChecking] = useState(false);
+  const [hoveredEdgeInfo, setHoveredEdgeInfo] = useState(null);
 
   const renderCountRef = useRef(0);
   const prevPropsRef = useRef({ graphData, selectedNode, isFullScreen });
@@ -135,6 +147,7 @@ export default function ContextualGraph({
       setShowTranscript(false);
       setIsClaimsPanelOpen(false);
     }
+    setHoveredEdgeInfo(null);
     setFactCheckResults(null);
   }, [selectedNode]);
 
@@ -297,7 +310,7 @@ export default function ContextualGraph({
         },
       };
     });
-    // Build edges - handle both contextual relations AND temporal predecessor/successor
+    // Build edges - temporal flow + contextual relation edges with relation typing/text
     const edges = [];
 
     latestChunk.forEach((item) => {
@@ -311,6 +324,10 @@ export default function ContextualGraph({
             target: successorNode.id, // ✅ Use unique ID
             animated: false,
             type: 'smoothstep',
+            data: {
+              relationType: "temporal_next",
+              relationText: "Next in conversation order",
+            },
             style: {
               stroke: "#999",
               strokeWidth: 2,
@@ -326,51 +343,85 @@ export default function ContextualGraph({
         }
       }
 
-      // Contextual relation edges (for analyzed nodes)
-      Object.keys(item.contextual_relation || {}).forEach((relatedNodeName) => {
-        const relatedNodeData = latestChunk.find(
-          (n) => n.node_name === relatedNodeName
-        );
+      // Preferred contextual edges: explicit relation payloads from backend.
+      const relationEntries = Array.isArray(item.edge_relations)
+        ? item.edge_relations
+        : [];
 
-        if (!relatedNodeData) return; // Skip if related node not found
+      if (relationEntries.length > 0) {
+        relationEntries.forEach((relation, index) => {
+          const relatedNodeName = relation?.related_node;
+          const relatedNodeData = latestChunk.find((n) => n.node_name === relatedNodeName);
+          if (!relatedNodeData) return;
 
-        const isRelatedEdge = Object.keys(
-          relatedNodeData?.contextual_relation || {}
-        ).includes(item.node_name);
+          const relationType = String(relation?.relation_type || "contextual");
+          const relationText = String(
+            relation?.relation_text ||
+              item?.contextual_relation?.[relatedNodeName] ||
+              `${relatedNodeName} -> ${item.node_name}`
+          );
+          const style = EDGE_RELATION_STYLE[relationType] || EDGE_RELATION_STYLE.contextual;
+          const isSelected = selectedNode === item.id || selectedNode === relatedNodeData.id;
 
+          edges.push({
+            id: `contextual-${relatedNodeData.id}-${item.id}-${index}`,
+            source: relatedNodeData.id,
+            target: item.id,
+            animated: relationType !== "supports" && relationType !== "temporal_next",
+            data: {
+              relationType,
+              relationText,
+              relationSource: relatedNodeName,
+            },
+            style: {
+              stroke: isSelected ? "#ff8800" : style.color,
+              strokeWidth: isSelected ? style.width + 0.9 : style.width,
+              opacity: isSelected ? 1 : 0.72,
+              transition: "all 0.3s ease-in-out",
+            },
+            markerEnd: {
+              type: "arrowclosed",
+              width: 10,
+              height: 10,
+              color: isSelected ? "#ff8800" : style.color,
+            },
+          });
+        });
+        return;
+      }
+
+      // Backward-compatible fallback: derive contextual edges from contextual_relation map.
+      Object.entries(item.contextual_relation || {}).forEach(([relatedNodeName, relationText]) => {
+        const relatedNodeData = latestChunk.find((n) => n.node_name === relatedNodeName);
+        if (!relatedNodeData) return;
+
+        const isRelatedEdge = Object.keys(relatedNodeData?.contextual_relation || {}).includes(item.node_name);
         const isFormalismEdge =
-          isRelatedEdge &&
-          (item.is_contextual_progress ||
-            relatedNodeData?.is_contextual_progress);
+          isRelatedEdge && (item.is_contextual_progress || relatedNodeData?.is_contextual_progress);
+        const relationType = isFormalismEdge ? "supports" : "contextual";
+        const style = EDGE_RELATION_STYLE[relationType];
 
         edges.push({
-          id: `contextual-${relatedNodeData.id}-${item.id}`, // ✅ Use unique IDs
-          source: relatedNodeData.id, // ✅ Use unique ID
-          target: item.id, // ✅ Use unique ID
+          id: `contextual-${relatedNodeData.id}-${item.id}`,
+          source: relatedNodeData.id,
+          target: item.id,
           animated: true,
+          data: {
+            relationType,
+            relationText: String(relationText || `${relatedNodeName} -> ${item.node_name}`),
+            relationSource: relatedNodeName,
+          },
           style: {
-            stroke:
-              selectedNode === item.id
-                ? "#ff8800"
-                : isFormalismEdge
-                ? "#33cc33"
-                : "#898989",
-            strokeWidth:
-              selectedNode === item.id || isFormalismEdge ? 3.5 : 2,
-            opacity:
-              selectedNode === item.id || isFormalismEdge ? 1 : 0.6,
+            stroke: selectedNode === item.id ? "#ff8800" : style.color,
+            strokeWidth: selectedNode === item.id || isFormalismEdge ? style.width + 0.8 : style.width,
+            opacity: selectedNode === item.id || isFormalismEdge ? 1 : 0.65,
             transition: "all 0.3s ease-in-out",
           },
           markerEnd: {
             type: "arrowclosed",
             width: 10,
             height: 10,
-            color:
-              selectedNode === item.id
-                ? "#ff8800"
-                : isFormalismEdge
-                ? "#33cc33"
-                : "#898989",
+            color: selectedNode === item.id ? "#ff8800" : style.color,
           },
         });
       });
@@ -526,6 +577,21 @@ export default function ContextualGraph({
                 </ul>
               </>
             )}
+          {Array.isArray(selectedNodeData?.edge_relations) &&
+            selectedNodeData.edge_relations.length > 0 && (
+              <>
+                <h4 className="font-semibold mt-2 text-black">Edge relations:</h4>
+                <ul className="list-disc pl-4">
+                  {selectedNodeData.edge_relations.map((relation, index) => (
+                    <li key={`${relation.related_node}-${relation.relation_type}-${index}`} className="text-sm text-black">
+                      <strong>{relation.relation_type || "contextual"}</strong> from{" "}
+                      <strong>{relation.related_node || "unknown"}</strong>:{" "}
+                      {relation.relation_text || "No description"}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
         </div>
       )}
 
@@ -662,14 +728,22 @@ export default function ContextualGraph({
           )}
       </div>
 
-      <div className="flex-grow border rounded-lg overflow-hidden">
+      <div className="relative flex-grow border rounded-lg overflow-hidden">
+        {hoveredEdgeInfo && (
+          <div className="absolute right-6 top-28 z-30 max-w-md rounded-md border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs text-cyan-900 shadow">
+            <p className="font-semibold">
+              Edge: {hoveredEdgeInfo.relationType || "contextual"}
+            </p>
+            <p>{hoveredEdgeInfo.relationText || "No relation detail available."}</p>
+          </div>
+        )}
         {/* Show raw transcript when no nodes exist yet */}
         {latestChunk.length === 0 && chunkDict && Object.keys(chunkDict).length > 0 ? (
           <div className="h-full p-6 overflow-y-auto bg-gray-50">
             <div className="max-w-4xl mx-auto">
               <div className="mb-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded">
                 <p className="text-sm text-blue-800">
-                  📝 <strong>Raw Transcript View</strong> - This conversation hasn't been analyzed yet.
+                  📝 <strong>Raw Transcript View</strong> - This conversation has not been analyzed yet.
                   The transcript is displayed below. Use analysis tools to generate nodes and insights.
                 </p>
               </div>
@@ -703,6 +777,13 @@ export default function ContextualGraph({
               return isDeselecting ? null : node.id;
             })
             } // Sync selection
+            onEdgeMouseEnter={(_, edge) =>
+              setHoveredEdgeInfo({
+                relationType: edge?.data?.relationType || "contextual",
+                relationText: edge?.data?.relationText || "",
+              })
+            }
+            onEdgeMouseLeave={() => setHoveredEdgeInfo(null)}
           >
             <Controls />
             <Background />
@@ -714,15 +795,28 @@ export default function ContextualGraph({
 }
 
 ContextualGraph.propTypes = {
+  conversationId: PropTypes.string,
   graphData: PropTypes.arrayOf(
     PropTypes.arrayOf(
       PropTypes.shape({
+        id: PropTypes.string,
         node_name: PropTypes.string.isRequired,
+        node_text: PropTypes.string,
+        source_excerpt: PropTypes.string,
+        thread_id: PropTypes.string,
+        thread_state: PropTypes.string,
         claims: PropTypes.arrayOf(PropTypes.string),
         is_contextual_progress: PropTypes.bool,
         is_bookmark: PropTypes.bool,
         summary: PropTypes.string,
         contextual_relation: PropTypes.object,
+        edge_relations: PropTypes.arrayOf(
+          PropTypes.shape({
+            related_node: PropTypes.string,
+            relation_type: PropTypes.string,
+            relation_text: PropTypes.string,
+          })
+        ),
         chunk_id: PropTypes.string,
         conversation_id: PropTypes.string,
         claims_checked: PropTypes.array,

@@ -187,7 +187,9 @@ outputs/
 
 # Local artifacts
 /.claude/
+/.serena/
 /TheWhisper/
+/lct_python_backend/recordings/
 /diagnostic_db_check.py
 /.coverage
 /lct_python_backend/.coverage
