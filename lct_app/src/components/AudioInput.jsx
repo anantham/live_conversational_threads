@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Mic } from "lucide-react";
 
@@ -95,7 +95,7 @@ function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef) 
   ]);
 }
 
-export default function AudioInput({
+const AudioInput = forwardRef(function AudioInput({
   onDataReceived,
   onChunksReceived,
   chunkDict,
@@ -106,7 +106,7 @@ export default function AudioInput({
   message,
   fileName,
   setFileName,
-}) {
+}, ref) {
   const [recording, setRecording] = useState(false);
   const [providerSocketState, setProviderSocketState] = useState("idle");
   const [backendSocketState, setBackendSocketState] = useState("idle");
@@ -209,13 +209,15 @@ export default function AudioInput({
     startSession({ activeSettings, newConversationId, sessionId });
   };
 
-  const stopRecording = async () => {
+  const stopRecording = useCallback(async () => {
     await stopCapture();
     await stopSession();
     setRecording(false);
     setProviderSocketState("closed");
     setBackendSocketState("closed");
-  };
+  }, [stopCapture, stopSession]);
+
+  useImperativeHandle(ref, () => ({ stopRecording }), [stopRecording]);
 
   // Derive aggregate status: worst of provider/backend
   const aggregateStatus = (() => {
@@ -283,7 +285,7 @@ export default function AudioInput({
       )}
     </div>
   );
-}
+});
 
 AudioInput.propTypes = {
   onDataReceived: PropTypes.func,
@@ -297,3 +299,5 @@ AudioInput.propTypes = {
   fileName: PropTypes.string,
   setFileName: PropTypes.func,
 };
+
+export default AudioInput;

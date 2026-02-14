@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import AudioInput from "../components/AudioInput";
 import MinimalGraph from "../components/MinimalGraph";
@@ -61,10 +61,14 @@ export default function NewConversation() {
   const [fileName, setFileName] = useState("");
   const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
   const [showBackConfirm, setShowBackConfirm] = useState(false);
+  const audioRef = useRef(null);
 
   const navigate = useNavigate();
 
-  const latestChunk = graphData?.[graphData.length - 1] || [];
+  const latestChunk = useMemo(
+    () => graphData?.[graphData.length - 1] || [],
+    [graphData]
+  );
   const hasData = latestChunk.length > 0;
 
   // Resolve selected node data for detail panel
@@ -97,8 +101,8 @@ export default function NewConversation() {
     }
   }, [hasData, navigate]);
 
-  const handleConfirmBack = useCallback(() => {
-    // Auto-save handles persistence. Just navigate.
+  const handleConfirmBack = useCallback(async () => {
+    await audioRef.current?.stopRecording();
     navigate("/");
   }, [navigate]);
 
@@ -163,6 +167,7 @@ export default function NewConversation() {
         {selectedNodeData && (
           <NodeDetail
             node={selectedNodeData}
+            chunkDict={chunkDict}
             onClose={() => setSelectedNode(null)}
           />
         )}
@@ -180,6 +185,7 @@ export default function NewConversation() {
       {/* Audio footer */}
       <div className="shrink-0 w-full py-2 px-4 flex items-center justify-center border-t border-gray-100 bg-white/80 backdrop-blur-sm relative">
         <AudioInput
+          ref={audioRef}
           onDataReceived={handleDataReceived}
           onChunksReceived={handleChunksReceived}
           chunkDict={chunkDict}
