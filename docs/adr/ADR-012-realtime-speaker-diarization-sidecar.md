@@ -1,4 +1,4 @@
-# ADR-010: Real-Time Speaker Diarization Sidecar for Local Speech-to-Graph
+# ADR-012: Real-Time Speaker Diarization Sidecar for Local Speech-to-Graph
 
 **Date:** 2026-02-10  
 **Status:** Proposed  
