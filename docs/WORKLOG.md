@@ -10,6 +10,11 @@
   - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_stt_api_settings.py tests/unit/test_stt_http_transcriber.py tests/integration/test_transcripts_websocket.py` (10 passed)
   - `python3 -m py_compile lct_python_backend/stt_api.py lct_python_backend/services/stt_http_transcriber.py lct_python_backend/services/stt_telemetry_service.py` (passed)
 
+## 2026-02-10T15:14:17Z — docs: add diarization ADR-012 + file-by-file implementation checklist
+- `docs/adr/ADR-012-realtime-speaker-diarization-sidecar.md` (lines 1-135): Added a new ADR defining the chosen dual-stream late-binding diarization architecture, phased stack choices (Diart -> ONNX hardening), event contract updates, validation gates, risks, assumptions, and rollback strategy.
+- `docs/plans/2026-02-10-realtime-speaker-diarization-implementation-checklist.md` (lines 1-157): Added a concrete phase-by-phase implementation checklist with explicit backend/frontend/test/doc paths and acceptance gates.
+- `docs/adr/INDEX.md`: Registered ADR-012 (renumbered from ADR-010 to avoid conflict with conversation schema ADR).
+
 ## 2026-02-13T19:27:48Z
 - docs/VISION.md (lines 1-148): Added a pause/resume-first product vision document focused on parallel insight handling, human-in-the-loop safeguards, retrieval nudges during lulls, and explicit reliability/no-silent-failure requirements.
 - docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md (lines 1-177): Added a proposed ADR defining a minimal transcript-first schema, strict LLM output contracts, validation/degradation rules, and rollout metrics to stabilize local-model graphing.
@@ -35,31 +40,33 @@
 
 **Note:** `useThematicGraph` required `.jsx` extension (contains JSX node labels inside useMemo — standard ReactFlow data pattern, but Vite requires explicit JSX extension).
 
-## 2026-02-10T06:00:00Z — refactor: split stt_api.py, AudioInput.jsx, SttSettingsPanel.jsx
+## 2026-02-10T08:00:00Z — refactor: split bookmarks_api.py, import_api.py; fix cost_api.py
 
-**Phase A — Backend `stt_api.py` (426 → 264 LOC)**
-- `lct_python_backend/services/stt_settings_service.py` (38 LOC, NEW): Extracted `load_stt_settings()` and `save_stt_settings()` from inline DB logic in `stt_api.py`.
-- `lct_python_backend/services/stt_telemetry_service.py` (107 LOC, NEW): Extracted `aggregate_telemetry()` with helpers `_to_float()`, `_utc_iso_now()`, `_empty_provider_bucket()` from `read_stt_telemetry` route body.
-- `lct_python_backend/services/stt_health_service.py` (72 LOC, NEW): Extracted `derive_health_url()` and `probe_health_url()` with all `urllib` imports from router.
-- `lct_python_backend/stt_api.py` (264 LOC): Thin router with audio upload, websocket handler, and backward-compat wrappers (`_load_stt_settings`, `_probe_health_url`) preserving existing monkeypatch targets in `test_stt_api_settings.py`.
-- Validation: `pytest tests/unit/test_stt_api_settings.py tests/unit/test_stt_config.py` — 7 passed.
+**Phase A — `bookmarks_api.py` (470 → 204 LOC)**
+- `lct_python_backend/services/bookmark_service.py` (155 LOC, NEW): Extracted CRUD ops (`create_bookmark`, `list_bookmarks`, `list_conversation_bookmarks`, `get_bookmark_by_id`, `update_bookmark`, `delete_bookmark`), `serialize_bookmark` (eliminated 5× duplication), and `parse_uuid` helper.
+- `lct_python_backend/bookmarks_api.py` (204 LOC): Thin router with Pydantic models and handlers delegating to service. Error translation: `ValueError` → 400, `LookupError` → 404, `Exception` → 500.
 
-**Phase B — Frontend `AudioInput.jsx` (329 → 137 LOC)**
-- `lct_app/src/components/audio/useTranscriptSockets.js` (233 LOC, NEW): Owns all WebSocket refs, telemetry tracking, chunk queue, `logToServer()`, `startSession()`, `stopSession()`, `onPCMFrame()` callback.
-- `lct_app/src/components/audio/useAudioCapture.js` (69 LOC, NEW): Owns MediaStream/AudioContext/ScriptProcessor lifecycle, `startCapture()`, `stopCapture()`.
-- `lct_app/src/components/AudioInput.jsx` (137 LOC): Thin orchestrator connecting `useTranscriptSockets` + `useAudioCapture` + existing `useAudioInputEffects` hooks. Renders mic button.
-- Validation: `npm run build` — passed.
+**Phase B — `import_api.py` (386 → 290 LOC)**
+- `lct_python_backend/services/import_orchestrator.py` (142 LOC, NEW): Consolidated duplicate parse→validate→persist flow into `parse_validate_and_persist()`. Supporting functions: `parse_transcript()`, `validate_or_raise()`. `ImportResult` dataclass for outcomes.
+- `lct_python_backend/import_api.py` (290 LOC): Simplified 3 import handlers from ~50-80 LOC each to ~20-30 LOC each. Preview endpoint uses `parse_transcript` + `validate_or_raise` directly (no persist). Backward-compat wrappers (`_validate_import_url`, `_is_url_import_enabled`, `_download_url_text`) preserved for test monkeypatch targets.
 
-**Phase C — Frontend `SttSettingsPanel.jsx` (370 → 310 LOC)**
-- `lct_app/src/components/audio/useSttTelemetry.js` (35 LOC, NEW): Owns telemetry state, polling interval, loading/error state.
-- `lct_app/src/components/audio/useProviderHealthChecks.js` (46 LOC, NEW): Owns per-provider health check state with checking/result/error.
-- `lct_app/src/components/SttSettingsPanel.jsx` (310 LOC): Keeps form state + JSX rendering, consumes extracted hooks.
-- Validation: `npm run build` — passed.
+**Phase C — `cost_api.py` (344 → 338 LOC, bug fix)**
+- `lct_python_backend/cost_api.py`: Replaced `get_db()` stub (returned `None`, silently breaking all endpoints) with `get_async_session` from `db_session.py`. No structural decomposition needed — file already delegates to `CostAggregator`/`CostReporter` from instrumentation layer. TECH_DEBT entry was misleading.
 
-**Full suite validation:**
-- Backend: `pytest -q` — 186 passed, 3 skipped (pre-existing `test_graph_generation.py` import error unrelated to this work).
-- Frontend: `npm run build` — passed.
+**Validation:**
+- `pytest -q` — 187 passed, 3 skipped (pre-existing `test_graph_generation.py` import error unrelated).
+- `tests/unit/test_import_api_security.py` — 9 passed (monkeypatch targets preserved).
+- `py_compile` all modified/new files — passed.
 - `docs/TECH_DEBT.md`: Marked all 3 entries as resolved with LOC before/after.
+
+## 2026-02-10T03:03:56Z — fix: local stack launcher backend health URL + bookmarks health route shadowing
+- `start-all-local.command` (lines 17-19, 148): Replaced stale backend health probe target with configurable `BACKEND_HEALTH_URL` defaulting to `http://localhost:$BACKEND_PORT/api/import/health` so startup no longer fails on nonexistent `/api/health/database`.
+- `lct_python_backend/bookmarks_api.py` (lines 79-87): Moved `/api/bookmarks/health` route above dynamic `/{bookmark_id}` route to prevent `"health"` being parsed as a UUID and returning 400.
+- `lct_python_backend/tests/unit/test_bookmarks_health_route.py` (lines 1-33): Added regression test asserting `/api/bookmarks/health` returns 200 and is not shadowed by `/{bookmark_id}`.
+- Validation run:
+  - `python3 -m py_compile lct_python_backend/bookmarks_api.py`
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_bookmarks_health_route.py tests/unit/test_import_api_security.py` (10 passed)
+  - `bash ./start-all-local.command` (backend/frontend/parakeet/local Postgres startup completed successfully)
 
 ## 2026-02-10T02:24:31Z — refactor: fact-check + graph router decomposition, warning-debt cleanup
 - `lct_python_backend/factcheck_api.py` (lines 1-89): Reduced to thin router adapter with compatibility wrappers (`_parse_time_range_to_start`, `_aggregate_cost_logs`, `generate_fact_check_json_perplexity`) to preserve existing test and import behavior.
