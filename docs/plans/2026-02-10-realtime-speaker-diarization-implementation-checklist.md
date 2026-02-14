@@ -2,7 +2,7 @@
 
 **Date:** 2026-02-10  
 **Status:** Draft (ready for implementation)  
-**ADR:** `docs/adr/ADR-010-realtime-speaker-diarization-sidecar.md`
+**ADR:** `docs/adr/ADR-012-realtime-speaker-diarization-sidecar.md`
 
 ## Scope
 
