@@ -651,3 +651,27 @@ Validation:
 
 Verification:
 - `git status --short` reviewed to ensure only docs files were newly added in this step before commit.
+
+## 2026-02-14T19:30:41Z
+- `lct_python_backend/services/file_transcriber.py` (new, lines 1-334): Added bulk-upload transcription primitives:
+  - file type detection (`detect_file_kind`) for audio/text/VTT/SRT/Google Meet.
+  - text parsers (`parse_plain_text`, `parse_vtt_text`, `parse_srt_text`) and Google Meet normalization helpers.
+  - transcript chunking (`chunk_transcript_lines`) for batch-friendly processing.
+  - HTTP STT integration (`transcribe_audio_file`) and end-to-end upload resolver (`transcribe_uploaded_file`).
+- `lct_python_backend/import_api.py` (lines 133-479): Added SSE bulk processing endpoint `POST /api/import/process-file` with:
+  - queue-based event streaming (`status`, `transcript`, `graph`, `done`, `error`).
+  - backend-owned STT/text parsing handoff via `transcribe_uploaded_file`.
+  - `TranscriptProcessor` integration for chunk -> graph generation updates.
+  - fixed upload lifecycle bug by saving `UploadFile` to temp before starting async worker (avoids closed-file reads in streamed responses).
+- `lct_python_backend/tests/unit/test_file_transcriber.py` (new, lines 1-166): Added parser/type-detection/audio transcription test coverage (18 tests total).
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (new, lines 1-235): Added SSE endpoint tests (4 tests) covering graph/done events, provider override pass-through, streamed error propagation, and processor status forwarding.
+- `lct_app/src/components/FileUpload.jsx` (new, lines 1-235): Added upload control for `/new` with fetch-based SSE parsing, progress bar, cancel via `AbortController`, and graph/chunk event routing into existing handlers.
+- `lct_app/src/pages/NewConversation.jsx` (lines 4, 243-266): Wired `FileUpload` into footer next to `AudioInput` so bulk uploads and live mic flows share the same graph/chunk rendering pipeline.
+- `docs/TECH_DEBT.md`: Reopened `import_api.py` as active split candidate because this router now exceeds 300 LOC and mixes import + SSE orchestration concerns.
+- `ISSUES.md`: Logged preexisting frontend chunk-size warning observed during build validation as out-of-scope follow-up.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_file_transcriber.py tests/unit/test_import_api_process_file.py tests/unit/test_import_api_security.py` (31 passed)
+- `python3 -m py_compile lct_python_backend/import_api.py lct_python_backend/services/file_transcriber.py` (passed)
+- `cd lct_app && npx eslint src/components/FileUpload.jsx src/pages/NewConversation.jsx` (passed)
+- `npm --prefix lct_app run -s build` (passed; existing bundle-size warning remains)
