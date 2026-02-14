@@ -1,459 +1,269 @@
-import { useParams, useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
-// import Input from "./components/Input";
-// import AudioInput from "../components/AudioInput";
-import StructuralGraph from "../components/StructuralGraph";
-import ContextualGraph from "../components/ContextualGraph";
-import HorizontalTimeline from "../components/HorizontalTimeline";
-import ThematicView from "../components/ThematicView";
-// import SaveJson from "../components/SaveJson";
-import SaveTranscript from "../components/SaveTranscript";
-import ExportCanvas from "../components/ExportCanvas";
-import Legend from "../components/Legend";
-import GenerateFormalism from "../components/GenerateFormalism";
-import FormalismList from "../components/FormalismList";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+
+import MinimalGraph from "../components/MinimalGraph";
+import MinimalLegend from "../components/MinimalLegend";
+import NodeDetail from "../components/NodeDetail";
+import TimelineRibbon from "../components/TimelineRibbon";
+import { buildSpeakerColorMap } from "../components/graphConstants";
 import { apiFetch } from "../services/apiClient";
 
-export default function ViewConversation() {
-  const [graphData, setGraphData] = useState([]); // Stores graph data
-  const [selectedNode, setSelectedNode] = useState(null); // Tracks selected node
-  const [chunkDict, setChunkDict] = useState({}); // Stores chunk data
-  const [isFormalismView, setIsFormalismView] = useState(false); // stores layout state: formalism or browsability
-  const [selectedFormalism, setSelectedFormalism] = useState(null); // stores selected formalism
-  const [formalismData, setFormalismData] = useState({}); // Stores Formalism data
-  const [selectedLoopyURL, setSelectedLoopyURL] = useState(""); // Stores Loopy URL
-  // const [message, setMessage] = useState(""); // message for saving conversation
-  const [isFullScreen, setIsFullScreen] = useState(false); // full screen status
-  const [conversationName, setConversationName] = useState(""); // Stores conversation name for export
+function sanitizeNodeArray(chunk) {
+  return (Array.isArray(chunk) ? chunk : []).filter(
+    (item) => item && typeof item === "object" && !Array.isArray(item)
+  );
+}
 
-  // Thematic Analysis State
-  const [isGeneratingThemes, setIsGeneratingThemes] = useState(false);
-  const [thematicData, setThematicData] = useState(null); // Stores thematic nodes and edges
-  const [utterances, setUtterances] = useState([]); // Stores all utterances for timeline
-  const [selectedThematicNode, setSelectedThematicNode] = useState(null); // Selected thematic node ID
-  const [selectedUtteranceIds, setSelectedUtteranceIds] = useState([]); // Selected utterance IDs
-  const [isThematicViewActive, setIsThematicViewActive] = useState(false); // Toggle thematic view
+function unwrapGraphPayload(payload) {
+  const unwrapObject = (candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      return candidate;
+    }
+    if (Array.isArray(candidate.existing_json)) return candidate.existing_json;
+    if (Array.isArray(candidate.data)) return candidate.data;
+    return candidate;
+  };
 
-const { conversationId } = useParams();
+  let candidate = unwrapObject(payload);
 
-const navigate = useNavigate();
+  if (
+    Array.isArray(candidate) &&
+    candidate.length === 1 &&
+    candidate[0] &&
+    typeof candidate[0] === "object" &&
+    !Array.isArray(candidate[0])
+  ) {
+    candidate = unwrapObject(candidate[0]);
+  }
 
-useEffect(() => {
-  if (!conversationId) return;
+  return candidate;
+}
 
-  console.log("[ViewConversation] Loading conversation:", conversationId);
+function normalizeGraphDataPayload(payload) {
+  const unwrapped = unwrapGraphPayload(payload);
+  if (!Array.isArray(unwrapped)) {
+    return [];
+  }
 
-  // Load conversation data
-  apiFetch(`/conversations/${conversationId}`)
-    .then((res) => {
-      console.log("[ViewConversation] Fetch response status:", res.status);
-      return res.json();
-    })
-    .then((data) => {
-      console.log("[ViewConversation] Received data:", data);
-      console.log("[ViewConversation] graph_data:", data.graph_data);
-      console.log("[ViewConversation] chunk_dict:", data.chunk_dict);
+  if (unwrapped.length === 0) {
+    return [];
+  }
 
-      if (data.graph_data) {
-        console.log("[ViewConversation] Setting graphData with", data.graph_data.length, "nodes");
-        setGraphData(data.graph_data);
+  if (Array.isArray(unwrapped[0])) {
+    return unwrapped.map(sanitizeNodeArray).filter((chunk) => chunk.length > 0);
+  }
+
+  if (unwrapped[0] && typeof unwrapped[0] === "object") {
+    const chunkOrder = [];
+    const chunkMap = new Map();
+
+    unwrapped.forEach((node) => {
+      if (!node || typeof node !== "object" || Array.isArray(node)) {
+        return;
       }
-      if (data.chunk_dict) {
-        console.log("[ViewConversation] Setting chunkDict with", Object.keys(data.chunk_dict).length, "chunks");
-        setChunkDict(data.chunk_dict);
+
+      const chunkId =
+        typeof node.chunk_id === "string" && node.chunk_id.trim() ? node.chunk_id : "chunk-0";
+
+      if (!chunkMap.has(chunkId)) {
+        chunkMap.set(chunkId, []);
+        chunkOrder.push(chunkId);
       }
-    })
-    .catch((err) => {
-      console.error("[ViewConversation] Failed to load conversation:", err);
+
+      chunkMap.get(chunkId).push(node);
     });
 
-  // Load conversation metadata for name
-  apiFetch("/conversations/")
-    .then((res) => res.json())
-    .then((conversations) => {
-      console.log("[ViewConversation] Loaded conversations list:", conversations);
-      // FIX: Backend returns 'file_id', not 'id'
-      const conversation = conversations.find((c) => c.file_id === conversationId);
-      console.log("[ViewConversation] Found conversation:", conversation);
-      if (conversation) {
-        setConversationName(conversation.file_name);
-      }
-    })
-    .catch((err) => {
-      console.error("[ViewConversation] Failed to load conversation metadata:", err);
-    });
-}, [conversationId]);
+    return chunkOrder.map((chunkId) => chunkMap.get(chunkId)).filter((chunk) => chunk.length > 0);
+  }
 
-useEffect(() => {
-  console.log('[ViewConversation] Initial mount - setting isFullScreen to true');
-  setIsFullScreen(true); // Trigger fullscreen on load
-}, []);
+  return [];
+}
 
-// Track isFullScreen state changes
-useEffect(() => {
-  console.log('[ViewConversation] isFullScreen state changed to:', isFullScreen);
-}, [isFullScreen]);
-
-// Fetch utterances for timeline
-useEffect(() => {
-  if (!conversationId) return;
-
-  console.log("[ViewConversation] Loading utterances for conversation:", conversationId);
-
-  apiFetch(`/api/conversations/${conversationId}/utterances`)
-    .then((res) => res.json())
-    .then((data) => {
-      console.log("[ViewConversation] Loaded utterances:", data.total);
-      setUtterances(data.utterances || []);
-    })
-    .catch((err) => {
-      console.error("[ViewConversation] Failed to load utterances:", err);
-    });
-}, [conversationId]);
-
-// Fetch existing thematic structure on load
-useEffect(() => {
-  if (!conversationId) return;
-
-  console.log("[ViewConversation] Checking for existing thematic structure");
-
-  apiFetch(`/api/conversations/${conversationId}/themes`)
-    .then((res) => res.json())
-    .then((data) => {
-      if (data.summary?.exists && data.thematic_nodes?.length > 0) {
-        console.log("[ViewConversation] Found existing thematic structure:", data);
-        console.log("[ViewConversation] Edges from API:", data.edges);
-        console.log("[ViewConversation] Number of edges:", data.edges?.length || 0);
-        if (data.edges && data.edges.length > 0) {
-          console.log("[ViewConversation] First edge details:", data.edges[0]);
-        }
-        setThematicData(data);
-      }
-    })
-    .catch((err) => {
-      console.error("[ViewConversation] Failed to check for thematic structure:", err);
-    });
-}, [conversationId]);
-
-// Handler: Generate Thematic View
-const handleGenerateThematicView = async () => {
-  if (!conversationId) return;
-
-  setIsGeneratingThemes(true);
+async function readErrorMessage(response) {
+  let message = `Request failed with status ${response.status}`;
 
   try {
-    console.log("[Thematic] Generating thematic structure for conversation:", conversationId);
+    const payload = await response.json();
+    if (payload?.detail && typeof payload.detail === "string") {
+      message = payload.detail;
+    } else if (payload?.message && typeof payload.message === "string") {
+      message = payload.message;
+    }
+  } catch {
+    // keep fallback message when response is not json
+  }
 
-    const response = await apiFetch(`/api/conversations/${conversationId}/themes/generate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
+  return message;
+}
 
-    if (!response.ok) {
-      throw new Error(`Failed to generate themes: ${response.statusText}`);
+export default function ViewConversation() {
+  const { conversationId } = useParams();
+  const navigate = useNavigate();
+
+  const [graphData, setGraphData] = useState([]);
+  const [chunkDict, setChunkDict] = useState({});
+  const [conversationName, setConversationName] = useState("");
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    if (!conversationId) {
+      setIsLoading(false);
+      setLoadError("Missing conversation id.");
+      return;
     }
 
-    const data = await response.json();
-    console.log("[Thematic] Generated thematic structure:", data);
-    console.log("[Thematic] Edges from API:", data.edges);
-    console.log("[Thematic] Number of edges:", data.edges?.length || 0);
-    if (data.edges && data.edges.length > 0) {
-      console.log("[Thematic] First edge details:", data.edges[0]);
+    let isCancelled = false;
+
+    async function loadConversation() {
+      setIsLoading(true);
+      setLoadError("");
+      setSelectedNode(null);
+
+      try {
+        const conversationResponse = await apiFetch(`/conversations/${conversationId}`);
+        if (!conversationResponse.ok) {
+          throw new Error(await readErrorMessage(conversationResponse));
+        }
+
+        const payload = await conversationResponse.json();
+        if (isCancelled) return;
+
+        setGraphData(normalizeGraphDataPayload(payload.graph_data));
+        setChunkDict(
+          payload.chunk_dict && typeof payload.chunk_dict === "object" && !Array.isArray(payload.chunk_dict)
+            ? payload.chunk_dict
+            : {}
+        );
+
+        try {
+          const listResponse = await apiFetch("/conversations/");
+          if (listResponse.ok) {
+            const conversations = await listResponse.json();
+            if (!isCancelled && Array.isArray(conversations)) {
+              const match = conversations.find((item) => item?.file_id === conversationId);
+              if (match?.file_name) {
+                setConversationName(match.file_name);
+              }
+            }
+          }
+        } catch {
+          // metadata lookup is optional for this view
+        }
+      } catch (error) {
+        if (isCancelled) return;
+        setLoadError(error?.message || "Failed to load conversation.");
+      } finally {
+        if (!isCancelled) {
+          setIsLoading(false);
+        }
+      }
     }
 
-    setThematicData(data);
-    setIsThematicViewActive(true); // Activate thematic view
-    alert(`Successfully generated ${data.thematic_nodes?.length || 0} thematic nodes!`);
+    loadConversation();
 
-  } catch (error) {
-    console.error("[Thematic] Error generating themes:", error);
-    alert(`Error generating thematic view: ${error.message}`);
-  } finally {
-    setIsGeneratingThemes(false);
-  }
-};
+    return () => {
+      isCancelled = true;
+    };
+  }, [conversationId]);
 
-// Handler: Thematic Node Click (bidirectional selection)
-const handleThematicNodeClick = (nodeId) => {
-  console.log("[Thematic] Clicked thematic node:", nodeId);
+  const latestChunk = useMemo(() => graphData?.[graphData.length - 1] || [], [graphData]);
 
-  // Toggle selection
-  if (selectedThematicNode === nodeId) {
-    setSelectedThematicNode(null);
-    setSelectedUtteranceIds([]);
-  } else {
-    setSelectedThematicNode(nodeId);
+  const allNodes = useMemo(
+    () => graphData.flatMap((chunk) => (Array.isArray(chunk) ? chunk : [])),
+    [graphData]
+  );
 
-    // Find the thematic node and get its utterance IDs
-    const node = thematicData?.thematic_nodes?.find(n => n.id === nodeId);
-    if (node && node.utterance_ids) {
-      setSelectedUtteranceIds(node.utterance_ids);
+  const selectedNodeData = useMemo(() => {
+    if (!selectedNode) return null;
+    return allNodes.find((node) => node?.id === selectedNode) || null;
+  }, [allNodes, selectedNode]);
+
+  const speakerColorMap = useMemo(() => buildSpeakerColorMap(latestChunk), [latestChunk]);
+
+  useEffect(() => {
+    if (!selectedNode) return;
+    if (!allNodes.some((node) => node?.id === selectedNode)) {
+      setSelectedNode(null);
     }
-  }
-};
-
-// Handler: Utterance Click (bidirectional selection)
-const handleUtteranceClick = (utterance) => {
-  console.log("[Thematic] Clicked utterance:", utterance.id);
-
-  // Toggle utterance selection
-  if (selectedUtteranceIds.includes(utterance.id)) {
-    // Deselect this utterance
-    setSelectedUtteranceIds([]);
-    setSelectedThematicNode(null);
-  } else {
-    // Select this utterance (this will highlight ALL parent thematic nodes)
-    setSelectedUtteranceIds([utterance.id]);
-    // Don't set selectedThematicNode - let all parent nodes be highlighted instead
-    setSelectedThematicNode(null);
-  }
-};
+  }, [allNodes, selectedNode]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-      {/* Header - Hidden when in fullscreen thematic view */}
-      {!(isFullScreen && isThematicViewActive) && (
-        <div className="w-full px-4 py-4 bg-transparent flex flex-row justify-between items-start md:grid md:grid-cols-3 md:items-center gap-2">
-        {/* Left: Back Button & Analysis Menu */}
-        <div className="w-full md:w-auto flex justify-start gap-2">
-          <button
-            onClick={() => navigate("/browse")}
-            className="px-4 py-2 h-10 bg-white text-blue-600 font-semibold rounded-lg shadow hover:bg-blue-100 transition text-sm md:text-base"
-          >
-            ⬅ Back
-          </button>
+    <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[#f2f1ed] text-slate-800">
+      <header className="flex shrink-0 items-center border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
+        <button
+          onClick={() => navigate("/browse")}
+          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+        >
+          Back
+        </button>
 
-          {/* Analysis Dropdown */}
-          <div className="relative group">
-            <button
-              className="px-4 py-2 h-10 bg-purple-500 text-white font-semibold rounded-lg shadow hover:bg-purple-600 transition text-sm md:text-base"
-            >
-              Analysis 📊
-            </button>
-
-            {/* Dropdown Menu */}
-            <div className="absolute left-0 mt-2 w-56 bg-white rounded-lg shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-              <div className="py-2">
-                <button
-                  onClick={() => navigate(`/analytics/${conversationId}`)}
-                  className="w-full text-left px-4 py-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition"
-                >
-                  📈 Speaker Analytics
-                </button>
-                <button
-                  onClick={() => navigate(`/edit-history/${conversationId}`)}
-                  className="w-full text-left px-4 py-2 text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition"
-                >
-                  📝 Edit History
-                </button>
-                <hr className="my-2 border-gray-200" />
-                <div className="px-4 py-1 text-xs font-semibold text-gray-500 uppercase">
-                  AI Analysis (Weeks 11-13)
-                </div>
-                <button
-                  onClick={() => navigate(`/simulacra/${conversationId}`)}
-                  className="w-full text-left px-4 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition"
-                >
-                  🎭 Simulacra Levels
-                </button>
-                <button
-                  onClick={() => navigate(`/biases/${conversationId}`)}
-                  className="w-full text-left px-4 py-2 text-gray-700 hover:bg-orange-50 hover:text-orange-600 transition"
-                >
-                  🧠 Cognitive Biases
-                </button>
-                <button
-                  onClick={() => navigate(`/frames/${conversationId}`)}
-                  className="w-full text-left px-4 py-2 text-gray-700 hover:bg-green-50 hover:text-green-600 transition"
-                >
-                  🔍 Implicit Frames
-                </button>
-                <button
-                  onClick={handleGenerateThematicView}
-                  disabled={isGeneratingThemes}
-                  className={`w-full text-left px-4 py-2 transition ${
-                    isGeneratingThemes
-                      ? 'text-gray-400 cursor-wait'
-                      : 'text-gray-700 hover:bg-indigo-50 hover:text-indigo-600'
-                  }`}
-                >
-                  {isGeneratingThemes ? '⏳ Generating...' : '🎨 Generate Thematic View'}
-                </button>
-                {thematicData && thematicData.thematic_nodes?.length > 0 && (
-                  <button
-                    onClick={() => setIsThematicViewActive(!isThematicViewActive)}
-                    className="w-full text-left px-4 py-2 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition"
-                  >
-                    {isThematicViewActive ? '👁️ Hide Thematic View' : '👁️ Show Thematic View'}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
+        <div className="min-w-0 flex-1 px-4">
+          <h1 className="truncate text-sm font-semibold text-slate-800">
+            {conversationName || conversationId || "Conversation"}
+          </h1>
+          <p className="text-xs text-slate-500">Saved conversation view</p>
         </div>
 
-        {/* Center: GenerateFormalism Buttons */}
-        <div className="w-full md:w-auto flex justify-end md:justify-center">
-          <div className="flex flex-col md:flex-row items-end md:items-center gap-2">
-            <GenerateFormalism
-              chunkDict={chunkDict}
-              graphData={graphData}
-              isFormalismView={isFormalismView}
-              setIsFormalismView={setIsFormalismView}
-              formalismData={formalismData}
-              setFormalismData={setFormalismData}
-            />
-          </div>
-        </div>
+        {latestChunk.length > 0 && (
+          <span className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-500">
+            {latestChunk.length} nodes
+          </span>
+        )}
+      </header>
 
-        {/* Right: Export Actions (desktop only) */}
-        {graphData.length > 0 && (
-          <div className="hidden md:flex justify-end w-full gap-2">
-            <SaveTranscript chunkDict={chunkDict} />
-            <ExportCanvas graphData={graphData} fileName={conversationName} />
+      <main className="relative min-h-0 flex-1">
+        {isLoading && (
+          <div className="flex h-full items-center justify-center text-sm text-slate-500">
+            Loading conversation...
           </div>
         )}
-        </div>
-      )}
 
-      {!isFormalismView ? (
-        // Check if thematic view is active
-        isThematicViewActive && thematicData ? (
-          // 🎨 Thematic View Layout (ThematicView + HorizontalTimeline)
-          <div className={`flex-grow flex flex-col w-full h-screen ${isFullScreen ? 'p-0' : 'p-6 space-y-6'}`}>
-            {/* Top: Thematic Nodes Graph - Takes full height when fullscreen, 2/3 otherwise */}
-            <div className={`bg-white w-full flex flex-col ${isFullScreen ? 'flex-grow h-full' : 'flex-grow-[2] rounded-lg shadow-lg p-4'}`}>
-              <ThematicView
-                thematicData={thematicData}
-                selectedThematicNode={selectedThematicNode}
-                onThematicNodeClick={handleThematicNodeClick}
-                highlightedUtterances={selectedUtteranceIds}
-                isFullScreen={isFullScreen}
-                setIsFullScreen={setIsFullScreen}
-                conversationId={conversationId}
-                utterances={utterances}
-                onUtteranceClick={handleUtteranceClick}
-              />
-            </div>
-
-            {/* Bottom: Horizontal Timeline - Hidden when fullscreen, 1/3 height otherwise */}
-            {!isFullScreen && (
-              <div className="flex-grow bg-white rounded-lg shadow-lg p-4 w-full overflow-hidden flex flex-col">
-                <HorizontalTimeline
-                  conversationId={conversationId}
-                  utterances={utterances}
-                  selectedUtteranceIds={selectedUtteranceIds}
-                  onUtteranceClick={handleUtteranceClick}
-                  highlightedThematicNodes={selectedThematicNode ? [selectedThematicNode] : []}
-                  selectedThematicNodeUtterances={
-                    // Get full utterance objects for the selected thematic node
-                    selectedUtteranceIds.length > 0
-                      ? utterances.filter(utt => selectedUtteranceIds.includes(utt.id))
-                      : []
-                  }
-                />
-              </div>
-            )}
+        {!isLoading && loadError && (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+            <p className="max-w-xl text-sm text-red-600">{loadError}</p>
+            <button
+              onClick={() => navigate("/browse")}
+              className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+            >
+              Return to browse
+            </button>
           </div>
-        ) : (
-          // 🔵 Default layout (Contextual + Structural)
-          <div className="flex-grow flex flex-col p-6 w-full h-screen space-y-6">
+        )}
 
-            {/* 🟣 Contextual Flow - 3/4 height */}
-            <div className="flex-grow-[4] bg-white rounded-lg shadow-lg p-4 w-full overflow-hidden flex flex-col">
-              <ContextualGraph
-                  conversationId={conversationId}
-                  graphData={graphData}
-                  chunkDict={chunkDict}
-                  setGraphData={setGraphData}
-                  selectedNode={selectedNode}
-                  setSelectedNode={setSelectedNode}
-                  isFullScreen={isFullScreen}
-                  setIsFullScreen={setIsFullScreen}
-                />
-            </div>
-
-            {/* 🎨 Horizontal Timeline - 1/4 height */}
-            <div className="flex-grow bg-white rounded-lg shadow-lg p-4 w-full overflow-hidden flex flex-col">
-              <HorizontalTimeline
-                conversationId={conversationId}
-                utterances={utterances}
-                selectedUtteranceIds={selectedUtteranceIds}
-                onUtteranceClick={handleUtteranceClick}
-                highlightedThematicNodes={[]}
-                selectedThematicNodeUtterances={
-                  selectedUtteranceIds.length > 0
-                    ? utterances.filter(utt => selectedUtteranceIds.includes(utt.id))
-                    : []
-                }
-              />
-            </div>
+        {!isLoading && !loadError && latestChunk.length === 0 && (
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
+            This conversation has no graph nodes yet.
           </div>
-        )
-      ) : (
-        // 🟣 Formalism layout
-        <div className="flex-grow flex flex-col space-y-4 p-4 md:p-6">
-          {/* Top Section */}
-          <div className="flex flex-col md:flex-row md:space-x-4 space-y-4 md:space-y-0 md:h-2/5">
-            {/* Top Left - Formalism List */}
-            <div className="w-full md:w-1/2 bg-white rounded-lg shadow-lg p-4">
-              <h2 className="text-xl font-bold text-gray-800 text-center mb-2">
-                Generated Formalisms
-              </h2>
-              <FormalismList
-                selectedFormalism={selectedFormalism}
-                setSelectedFormalism={setSelectedFormalism}
-                formalismData={formalismData}
-                setFormalismData={setFormalismData}
-                setSelectedLoopyURL={setSelectedLoopyURL}
-              />
-            </div>
+        )}
 
-            {/* Top Right - Contextual Graph */}
-            <div className="hidden md:block w-full md:w-1/2 bg-white rounded-lg shadow-lg p-4">
-              <ContextualGraph
-                conversationId={conversationId}
+        {!isLoading && !loadError && latestChunk.length > 0 && (
+          <div className="flex h-full flex-col">
+            <div className="relative min-h-0 flex-1">
+              <MinimalGraph
                 graphData={graphData}
-                chunkDict={chunkDict}
-                setGraphData={setGraphData}
                 selectedNode={selectedNode}
                 setSelectedNode={setSelectedNode}
-                isFullScreen={isFullScreen}
-                setIsFullScreen={setIsFullScreen}
               />
+              <MinimalLegend speakerColorMap={speakerColorMap} />
             </div>
+            <TimelineRibbon
+              graphData={graphData}
+              selectedNode={selectedNode}
+              setSelectedNode={setSelectedNode}
+            />
           </div>
+        )}
 
-          {/* Bottom - Canvas */}
-          <div className="bg-white rounded-lg shadow-lg p-4 flex flex-col flex-grow">
-            <h2 className="text-xl font-bold text-gray-800 text-center mb-2">
-              Formalism Model Diagram
-            </h2>
-
-            <div className="flex-1 flex items-center justify-center">
-              <button
-                onClick={() => {
-                  const url = selectedLoopyURL || "https://ncase.me/loopy/";
-                  window.open(url, "_blank");
-                }}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors"
-              >
-                {selectedLoopyURL ? "View Model" : "Open Loopy Editor"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!isFormalismView && (
-        <>
-
-          {/* Legend - moved to bottom-left, collapsible */}
-          <div className="hidden md:block">
-            <Legend position="bottom-left" />
-          </div>
-        </>
-      )}
+        {selectedNodeData && (
+          <NodeDetail
+            node={selectedNodeData}
+            chunkDict={chunkDict}
+            onClose={() => setSelectedNode(null)}
+          />
+        )}
+      </main>
     </div>
   );
 }

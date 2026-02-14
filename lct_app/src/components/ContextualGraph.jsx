@@ -20,9 +20,16 @@ const EDGE_RELATION_STYLE = {
   temporal_next: { color: "#9ca3af", width: 2.0 },
 };
 
+const GRAPH_DEBUG = import.meta.env.VITE_GRAPH_DEBUG === "true";
+const graphDebugLog = (...args) => {
+  if (GRAPH_DEBUG) {
+    console.log(...args);
+  }
+};
+
 // Track reference stability
-console.log("[ContextualGraph] Module loaded - NODE_TYPES ref:", NODE_TYPES);
-console.log("[ContextualGraph] Module loaded - EDGE_TYPES ref:", EDGE_TYPES);
+graphDebugLog("[ContextualGraph] Module loaded - NODE_TYPES ref:", NODE_TYPES);
+graphDebugLog("[ContextualGraph] Module loaded - EDGE_TYPES ref:", EDGE_TYPES);
 
 // Counter to track renders
 let renderCount = 0;
@@ -52,8 +59,8 @@ export default function ContextualGraph({
   renderCount++;
   renderCountRef.current++;
 
-  console.log(`[ContextualGraph RENDER #${renderCount}] Component rendering`);
-  console.log(`[ContextualGraph RENDER #${renderCount}] Props:`, {
+  graphDebugLog(`[ContextualGraph RENDER #${renderCount}] Component rendering`);
+  graphDebugLog(`[ContextualGraph RENDER #${renderCount}] Props:`, {
     conversationId,
     graphDataLength: graphData?.length,
     selectedNode,
@@ -67,11 +74,11 @@ export default function ContextualGraph({
     selectedNode: prevPropsRef.current.selectedNode !== selectedNode,
     isFullScreen: prevPropsRef.current.isFullScreen !== isFullScreen,
   };
-  console.log(`[ContextualGraph RENDER #${renderCount}] Props changed:`, propsChanged);
+  graphDebugLog(`[ContextualGraph RENDER #${renderCount}] Props changed:`, propsChanged);
 
   // Check NODE_TYPES and EDGE_TYPES stability
-  console.log(`[ContextualGraph RENDER #${renderCount}] NODE_TYPES ref:`, NODE_TYPES);
-  console.log(`[ContextualGraph RENDER #${renderCount}] EDGE_TYPES ref:`, EDGE_TYPES);
+  graphDebugLog(`[ContextualGraph RENDER #${renderCount}] NODE_TYPES ref:`, NODE_TYPES);
+  graphDebugLog(`[ContextualGraph RENDER #${renderCount}] EDGE_TYPES ref:`, EDGE_TYPES);
 
   prevPropsRef.current = { graphData, selectedNode, isFullScreen };
 
@@ -89,12 +96,12 @@ export default function ContextualGraph({
 
   // logging
   useEffect(() => {
-    console.log("[ContextualGraph MOUNT/UPDATE] Component mounted or updated");
-    console.log("Full Graph Data(contextual):", graphData);
-    console.log("Latest Chunk Data(contextual):", latestChunk);
+    graphDebugLog("[ContextualGraph MOUNT/UPDATE] Component mounted or updated");
+    graphDebugLog("Full Graph Data(contextual):", graphData);
+    graphDebugLog("Latest Chunk Data(contextual):", latestChunk);
 
     return () => {
-      console.log("[ContextualGraph CLEANUP] Component cleanup/unmount");
+      graphDebugLog("[ContextualGraph CLEANUP] Component cleanup/unmount");
     };
   }, [graphData]);
 
