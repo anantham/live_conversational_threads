@@ -297,3 +297,21 @@ Negative:
 - `docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md` — backend schema contract
 - `lct_app/src/components/DualView/` — existing infrastructure
 - `lct_app/src/hooks/useZoomController.js` — semantic zoom controller
+
+## Implementation Notes (2026-02-14)
+
+MVP implemented on branch `feat/minimal-live-ui`. Key files:
+
+| Component | File | LOC | Purpose |
+|-----------|------|-----|---------|
+| graphConstants | `components/graphConstants.js` | ~35 | Shared EDGE_COLORS, SPEAKER_COLORS, buildSpeakerColorMap |
+| MinimalGraph | `components/MinimalGraph.jsx` | ~190 | ReactFlow + dagre, pill nodes, typed edges, auto-pan |
+| TimelineRibbon | `components/TimelineRibbon.jsx` | ~90 | Plain DOM timeline strip, colored dots, auto-scroll |
+| NodeDetail | `components/NodeDetail.jsx` | ~130 | Slide-in detail panel (full-width mobile, 320px desktop) |
+| MinimalLegend | `components/MinimalLegend.jsx` | ~90 | Collapsible legend for speakers + edge types |
+| NewConversation | `pages/NewConversation.jsx` | ~195 | Page assembly with normalizeGraphDataPayload |
+| AudioInput | `components/AudioInput.jsx` | ~299 | Simplified: compact mic, status dot, 2-3 line caption |
+
+Total new component code: ~535 LOC. Old code removed from NewConversation: ~130 LOC. AudioInput JSX simplified: ~25 LOC reduction.
+
+Old components (ContextualGraph, StructuralGraph, etc.) retained — still used by ViewConversation route.

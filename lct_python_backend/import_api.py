@@ -5,12 +5,17 @@ Thin router — delegates parsing/validation/persistence to ``import_orchestrato
 and source-specific helpers to ``import_validation`` / ``import_fetchers``.
 """
 
+import asyncio
+import contextlib
+import json
 import logging
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +35,13 @@ from lct_python_backend.services.import_validation import (
     validate_import_url,
     validate_transcript_filename,
 )
+from lct_python_backend.services.file_transcriber import (
+    chunk_transcript_lines,
+    transcribe_uploaded_file,
+)
+from lct_python_backend.services.llm_config import load_llm_config
+from lct_python_backend.services.stt_settings_service import load_stt_settings
+from lct_python_backend.services.transcript_processing import TranscriptProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +128,11 @@ def _cleanup_temp_file(temp_path: Optional[str]) -> None:
         Path(temp_path).unlink(missing_ok=True)
     except Exception:
         logger.warning("Failed to cleanup temp file: %s", temp_path)
+
+
+def _sse_encode(event: str, payload: dict) -> str:
+    body = json.dumps(payload, ensure_ascii=False)
+    return f"event: {event}\ndata: {body}\n\n"
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
@@ -288,3 +305,199 @@ async def health_check():
         "supported_formats": supported_formats,
         "timestamp": datetime.now().isoformat(),
     }
+
+
+@router.post("/process-file")
+async def process_file(
+    request: Request,
+    file: UploadFile = File(..., description="Audio/text transcript file"),
+    source_type: str = Form("auto"),
+    conversation_id: Optional[str] = Form(None),
+    speaker_id: Optional[str] = Form(None),
+    provider: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Process uploaded file through STT/parsing + transcript-to-graph pipeline.
+
+    Streams SSE events:
+    - status
+    - transcript
+    - graph (existing_json/chunk_dict)
+    - done / error
+    """
+    filename = file.filename or "upload.bin"
+    suffix = Path(filename).suffix.lower() or ".bin"
+    temp_path = None
+    content_size = 0
+    event_queue: asyncio.Queue = asyncio.Queue()
+    resolved_conversation_id = conversation_id or str(uuid.uuid4())
+    resolved_speaker_id = speaker_id or "speaker_1"
+
+    try:
+        temp_path, content_size = await save_upload_to_temp_file(file, suffix)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=f"Failed to read uploaded file: {exc}")
+
+    async def emit(event_type: str, payload: dict) -> None:
+        await event_queue.put((event_type, payload))
+
+    async def send_update(existing_json, chunk_dict):
+        await emit("graph", {"type": "existing_json", "data": existing_json})
+        await emit("graph", {"type": "chunk_dict", "data": chunk_dict})
+
+    async def send_status(level: str, message: str, context: dict):
+        context = context or {}
+        stage = str(context.get("stage") or "").strip()
+        progress_map = {
+            "accumulate": 0.65,
+            "generate_lct_json": 0.85,
+        }
+        payload = {
+            "level": level,
+            "stage": stage or "analyzing",
+            "message": message,
+            "progress": progress_map.get(stage, 0.55),
+            "context": context,
+        }
+        await emit("status", payload)
+
+    async def worker() -> None:
+        try:
+            await emit(
+                "status",
+                {
+                    "stage": "uploading",
+                    "progress": 0.05,
+                    "message": f"File received ({content_size} bytes)",
+                    "file_name": filename,
+                },
+            )
+
+            stt_settings = await load_stt_settings(db)
+
+            # Emit progress before the (potentially slow) transcription call
+            resolved_source_type = source_type if source_type != "auto" else None
+            is_likely_audio = (
+                resolved_source_type == "audio"
+                or (resolved_source_type is None and Path(filename).suffix.lower() in {
+                    ".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".mp4",
+                })
+            )
+            await emit(
+                "status",
+                {
+                    "stage": "transcribing" if is_likely_audio else "parsing",
+                    "progress": 0.10,
+                    "message": (
+                        "Transcribing audio..."
+                        if is_likely_audio
+                        else "Extracting transcript text..."
+                    ),
+                },
+            )
+
+            transcript_result = await transcribe_uploaded_file(
+                temp_path=Path(temp_path),
+                filename=filename,
+                content_type=file.content_type,
+                stt_settings=stt_settings,
+                provider_override=provider,
+                source_type_override=resolved_source_type,
+            )
+            await emit(
+                "status",
+                {
+                    "stage": "transcribed",
+                    "progress": 0.35,
+                    "message": f"Got {transcript_result.source_type} transcript.",
+                    "source_type": transcript_result.source_type,
+                    "metadata": transcript_result.metadata,
+                },
+            )
+
+            transcript_text = transcript_result.transcript_text.strip()
+            if not transcript_text:
+                raise ValueError("No transcript text could be extracted from file.")
+
+            transcript_chunks = chunk_transcript_lines(transcript_text)
+            if not transcript_chunks:
+                raise ValueError("Transcript parser produced no usable chunks.")
+
+            await emit(
+                "status",
+                {
+                    "stage": "analyzing",
+                    "progress": 0.55,
+                    "message": f"Generating graph from {len(transcript_chunks)} transcript chunks...",
+                },
+            )
+
+            llm_config = await load_llm_config(db)
+            processor = TranscriptProcessor(
+                send_update=send_update,
+                send_status=send_status,
+                llm_config=llm_config,
+            )
+
+            for index, chunk in enumerate(transcript_chunks, start=1):
+                if await request.is_disconnected():
+                    logger.info("[PROCESS FILE] Client disconnected, aborting at chunk %d/%d", index, len(transcript_chunks))
+                    return
+
+                await emit(
+                    "transcript",
+                    {
+                        "chunk_id": f"segment-{index}",
+                        "index": index,
+                        "total": len(transcript_chunks),
+                        "text": chunk,
+                    },
+                )
+                await processor.handle_final_text(chunk)
+
+            await processor.flush()
+
+            await emit(
+                "done",
+                {
+                    "conversation_id": resolved_conversation_id,
+                    "speaker_id": resolved_speaker_id,
+                    "node_count": len(processor.existing_json),
+                    "chunk_count": len(processor.chunk_dict),
+                    "source_type": transcript_result.source_type,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Bulk file processing failed for %s", filename)
+            await emit(
+                "error",
+                {
+                    "message": str(exc),
+                    "file_name": filename,
+                },
+            )
+        finally:
+            _cleanup_temp_file(temp_path)
+            await event_queue.put(None)
+
+    async def event_stream():
+        worker_task = asyncio.create_task(worker())
+        try:
+            while True:
+                item = await event_queue.get()
+                if item is None:
+                    break
+                event_type, payload = item
+                yield _sse_encode(event_type, payload)
+        finally:
+            if not worker_task.done():
+                worker_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await worker_task
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers=headers)
