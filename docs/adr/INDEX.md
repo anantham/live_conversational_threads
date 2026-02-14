@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-02-13
+Last updated: 2026-02-14
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -15,6 +15,7 @@ Last updated: 2026-02-13
 | [ADR-009](ADR-009-local-llm-defaults.md) | Local-First LLM Defaults with Optional Online Mode | 2026-01-12 | Proposed |
 | [ADR-010](ADR-010-minimal-conversation-schema-and-pause-resume.md) | Minimal Conversation Schema for Pause/Resume and Thread Legibility | 2026-02-13 | Proposed |
 | [ADR-011](ADR-011-minimal-live-conversation-ui.md) | Minimal Live Conversation UI Redesign | 2026-02-14 | Draft |
+| [ADR-012](ADR-012-realtime-speaker-diarization-sidecar.md) | Real-Time Speaker Diarization Sidecar for Local Speech-to-Graph | 2026-02-10 | Proposed |
 
 ## Status Definitions
 
