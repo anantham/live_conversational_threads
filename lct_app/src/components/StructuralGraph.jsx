@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import PropTypes from "prop-types";
 import ReactFlow, { Controls, Background } from "reactflow";
 import dagre from "dagre"; // Import Dagre for auto-layout
 import "reactflow/dist/style.css";
@@ -7,9 +8,16 @@ import "reactflow/dist/style.css";
 const NODE_TYPES = {};
 const EDGE_TYPES = {};
 
+const GRAPH_DEBUG = import.meta.env.VITE_GRAPH_DEBUG === "true";
+const graphDebugLog = (...args) => {
+  if (GRAPH_DEBUG) {
+    console.log(...args);
+  }
+};
+
 // Track reference stability
-console.log("[StructuralGraph] Module loaded - NODE_TYPES ref:", NODE_TYPES);
-console.log("[StructuralGraph] Module loaded - EDGE_TYPES ref:", EDGE_TYPES);
+graphDebugLog("[StructuralGraph] Module loaded - NODE_TYPES ref:", NODE_TYPES);
+graphDebugLog("[StructuralGraph] Module loaded - EDGE_TYPES ref:", EDGE_TYPES);
 
 // Counter to track renders
 let renderCount = 0;
@@ -19,7 +27,7 @@ export default function StructuralGraph({
   selectedNode,
   setSelectedNode,
 }) {
-  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [isFullScreen] = useState(false);
   const renderCountRef = useRef(0);
   const prevPropsRef = useRef({ graphData, selectedNode });
 
@@ -27,8 +35,8 @@ export default function StructuralGraph({
   renderCount++;
   renderCountRef.current++;
 
-  console.log(`[StructuralGraph RENDER #${renderCount}] Component rendering`);
-  console.log(`[StructuralGraph RENDER #${renderCount}] Props:`, {
+  graphDebugLog(`[StructuralGraph RENDER #${renderCount}] Component rendering`);
+  graphDebugLog(`[StructuralGraph RENDER #${renderCount}] Props:`, {
     graphDataLength: graphData?.length,
     selectedNode,
     graphDataRef: graphData,
@@ -39,11 +47,11 @@ export default function StructuralGraph({
     graphData: prevPropsRef.current.graphData !== graphData,
     selectedNode: prevPropsRef.current.selectedNode !== selectedNode,
   };
-  console.log(`[StructuralGraph RENDER #${renderCount}] Props changed:`, propsChanged);
+  graphDebugLog(`[StructuralGraph RENDER #${renderCount}] Props changed:`, propsChanged);
 
   // Check NODE_TYPES and EDGE_TYPES stability
-  console.log(`[StructuralGraph RENDER #${renderCount}] NODE_TYPES ref:`, NODE_TYPES);
-  console.log(`[StructuralGraph RENDER #${renderCount}] EDGE_TYPES ref:`, EDGE_TYPES);
+  graphDebugLog(`[StructuralGraph RENDER #${renderCount}] NODE_TYPES ref:`, NODE_TYPES);
+  graphDebugLog(`[StructuralGraph RENDER #${renderCount}] EDGE_TYPES ref:`, EDGE_TYPES);
 
   prevPropsRef.current = { graphData, selectedNode };
 
@@ -51,13 +59,13 @@ export default function StructuralGraph({
   // const jsonData = latestChunk.existing_json || [];
 
   useEffect(() => {
-    console.log("[StructuralGraph MOUNT/UPDATE] Component mounted or updated");
-    console.log("Full Graph Data(Structural):", graphData);
-    console.log("Latest Chunk Data(Structural):", latestChunk);
+    graphDebugLog("[StructuralGraph MOUNT/UPDATE] Component mounted or updated");
+    graphDebugLog("Full Graph Data(Structural):", graphData);
+    graphDebugLog("Latest Chunk Data(Structural):", latestChunk);
     // console.log("Extracted JSON Data:", jsonData);
 
     return () => {
-      console.log("[StructuralGraph CLEANUP] Component cleanup/unmount");
+      graphDebugLog("[StructuralGraph CLEANUP] Component cleanup/unmount");
     };
   }, [graphData]);
 
@@ -212,3 +220,9 @@ export default function StructuralGraph({
     </div>
   );
 }
+
+StructuralGraph.propTypes = {
+  graphData: PropTypes.array,
+  selectedNode: PropTypes.string,
+  setSelectedNode: PropTypes.func.isRequired,
+};
