@@ -15,6 +15,8 @@ const ACCEPTED_FILE_TYPES = [
   ".mp4",
   ".txt",
   ".text",
+  ".md",
+  ".log",
   ".vtt",
   ".srt",
   ".pdf",

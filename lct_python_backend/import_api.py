@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -309,7 +309,9 @@ async def health_check():
 
 @router.post("/process-file")
 async def process_file(
+    request: Request,
     file: UploadFile = File(..., description="Audio/text transcript file"),
+    source_type: str = Form("auto"),
     conversation_id: Optional[str] = Form(None),
     speaker_id: Optional[str] = Form(None),
     provider: Optional[str] = Form(None),
@@ -372,24 +374,42 @@ async def process_file(
             )
 
             stt_settings = await load_stt_settings(db)
+
+            # Emit progress before the (potentially slow) transcription call
+            resolved_source_type = source_type if source_type != "auto" else None
+            is_likely_audio = (
+                resolved_source_type == "audio"
+                or (resolved_source_type is None and Path(filename).suffix.lower() in {
+                    ".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".mp4",
+                })
+            )
+            await emit(
+                "status",
+                {
+                    "stage": "transcribing" if is_likely_audio else "parsing",
+                    "progress": 0.10,
+                    "message": (
+                        "Transcribing audio..."
+                        if is_likely_audio
+                        else "Extracting transcript text..."
+                    ),
+                },
+            )
+
             transcript_result = await transcribe_uploaded_file(
                 temp_path=Path(temp_path),
                 filename=filename,
                 content_type=file.content_type,
                 stt_settings=stt_settings,
                 provider_override=provider,
+                source_type_override=resolved_source_type,
             )
-            is_audio = transcript_result.source_type == "audio"
             await emit(
                 "status",
                 {
-                    "stage": "transcribing" if is_audio else "parsing",
-                    "progress": 0.35 if is_audio else 0.25,
-                    "message": (
-                        "Transcribing audio..."
-                        if is_audio
-                        else f"Parsed {transcript_result.source_type} transcript."
-                    ),
+                    "stage": "transcribed",
+                    "progress": 0.35,
+                    "message": f"Got {transcript_result.source_type} transcript.",
                     "source_type": transcript_result.source_type,
                     "metadata": transcript_result.metadata,
                 },
@@ -420,6 +440,10 @@ async def process_file(
             )
 
             for index, chunk in enumerate(transcript_chunks, start=1):
+                if await request.is_disconnected():
+                    logger.info("[PROCESS FILE] Client disconnected, aborting at chunk %d/%d", index, len(transcript_chunks))
+                    return
+
                 await emit(
                     "transcript",
                     {

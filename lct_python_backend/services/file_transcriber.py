@@ -283,12 +283,18 @@ async def transcribe_uploaded_file(
     content_type: Optional[str],
     stt_settings: Optional[Dict[str, Any]] = None,
     provider_override: Optional[str] = None,
+    source_type_override: Optional[str] = None,
 ) -> FileTranscriptResult:
     """Resolve transcript text from uploaded audio/text/video-caption files."""
 
     raw_bytes = temp_path.read_bytes()
     preview = _decode_text_bytes(raw_bytes[:8000]) if raw_bytes else ""
-    file_kind = detect_file_kind(filename, content_type=content_type, text_preview=preview)
+
+    # If the caller explicitly set source_type (not "auto"), use it directly
+    if source_type_override and source_type_override.strip():
+        file_kind = source_type_override.strip()
+    else:
+        file_kind = detect_file_kind(filename, content_type=content_type, text_preview=preview)
     metadata: Dict[str, Any] = {"file_kind": file_kind}
 
     if file_kind == "audio":
