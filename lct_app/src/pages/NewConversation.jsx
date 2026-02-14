@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import AudioInput from "../components/AudioInput";
+import FileUpload from "../components/FileUpload";
 import MinimalGraph from "../components/MinimalGraph";
 import TimelineRibbon from "../components/TimelineRibbon";
 import NodeDetail from "../components/NodeDetail";
@@ -241,19 +242,28 @@ export default function NewConversation() {
 
       {/* Audio footer */}
       <div className="shrink-0 w-full py-2 px-4 flex items-center justify-center border-t border-gray-100 bg-white/80 backdrop-blur-sm relative">
-        <AudioInput
-          ref={audioRef}
-          onDataReceived={handleDataReceived}
-          onChunksReceived={handleChunksReceived}
-          chunkDict={chunkDict}
-          graphData={graphData}
-          conversationId={conversationId}
-          setConversationId={setConversationId}
-          setMessage={setMessage}
-          message={message}
-          fileName={fileName}
-          setFileName={setFileName}
-        />
+        <div className="w-full max-w-5xl flex items-center justify-center gap-4">
+          <FileUpload
+            onDataReceived={handleDataReceived}
+            onChunksReceived={handleChunksReceived}
+            setConversationId={setConversationId}
+            setFileName={setFileName}
+            setMessage={setMessage}
+          />
+          <AudioInput
+            ref={audioRef}
+            onDataReceived={handleDataReceived}
+            onChunksReceived={handleChunksReceived}
+            chunkDict={chunkDict}
+            graphData={graphData}
+            conversationId={conversationId}
+            setConversationId={setConversationId}
+            setMessage={setMessage}
+            message={message}
+            fileName={fileName}
+            setFileName={setFileName}
+          />
+        </div>
       </div>
     </div>
   );
