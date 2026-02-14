@@ -616,6 +616,16 @@ Validation:
   - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/components/AudioInput.jsx src/components/LlmSettingsPanel.jsx src/components/SttSettingsPanel.jsx src/components/audio/audioMessages.js src/components/audio/sttUtils.js src/components/audio/useProviderHealthChecks.js src/components/audio/useTranscriptSockets.js src/services/llmSettingsApi.js src/pages/Settings.jsx` (0 errors, 2 pre-existing warnings in `Settings.jsx`)
   - `npm --prefix lct_app run build` (passed)
 
+## 2026-02-14T20:34:04Z
+- lct_app/src/pages/ViewConversation.jsx (lines 1-269): Replaced legacy saved-conversation page (formalism/thematic/old graph stack) with minimal viewer architecture matching the new UI direction: defensive graph payload normalization, streamlined `/conversations/{id}` load path, selected-node detail drawer wiring, minimal header/error/empty states, and timeline+graph assembly.
+- lct_app/src/components/MinimalGraph.jsx (lines 1-253): Added minimal Dagre + ReactFlow renderer with node normalization guards, relation-aware edge styling, and auto-follow behavior for latest nodes.
+- lct_app/src/components/TimelineRibbon.jsx (lines 1-72): Added low-profile timeline ribbon with speaker-colored dots and selected-node synchronization.
+- lct_app/src/components/NodeDetail.jsx (lines 1-179): Added minimal slide-over node detail panel with transcript/context/relations sections and Escape-to-close keyboard behavior.
+- lct_app/src/components/MinimalLegend.jsx (lines 1-91): Added compact collapsible legend for speaker colors and edge relation types.
+- lct_app/src/components/graphConstants.js (lines 1-34): Added shared edge color map and speaker palette helpers for minimal graph components.
+- Validation:
+  - `cd lct_app && npx eslint src/pages/ViewConversation.jsx src/components/MinimalGraph.jsx src/components/TimelineRibbon.jsx src/components/NodeDetail.jsx src/components/MinimalLegend.jsx src/components/graphConstants.js` (passed)
+  - `npm --prefix lct_app run -s build` (passed)
 ## 2026-02-14T16:14:02Z
 - README.md (lines 274-306, 355): Aligned docs with runtime defaults by replacing stale manual DB bootstrap (`createdb lct_db`) with script-first setup (`setup-once.command` / `start.command`), documenting the actual default local DB URL (`postgresql://lct_user:lct_password@localhost:5433/lct_dev`), and correcting ADR-001 status to `Proposed` to match `docs/adr/INDEX.md`.
 - API_DOCUMENTATION.md (line 115): Corrected save-path note to reflect current implementation reality (`POST /save_json/` uses GCS helper and may fail locally without ADC/bucket config) instead of claiming an automatic local fallback that does not exist in code.
