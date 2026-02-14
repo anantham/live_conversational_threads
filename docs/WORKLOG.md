@@ -615,3 +615,29 @@ Validation:
   - `cd lct_python_backend && set -a && source .env && set +a && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_llm_api.py tests/unit/test_transcript_processing_schema.py tests/unit/test_stt_api_settings.py tests/integration/test_transcripts_websocket.py` (21 passed)
   - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/components/AudioInput.jsx src/components/LlmSettingsPanel.jsx src/components/SttSettingsPanel.jsx src/components/audio/audioMessages.js src/components/audio/sttUtils.js src/components/audio/useProviderHealthChecks.js src/components/audio/useTranscriptSockets.js src/services/llmSettingsApi.js src/pages/Settings.jsx` (0 errors, 2 pre-existing warnings in `Settings.jsx`)
   - `npm --prefix lct_app run build` (passed)
+
+## 2026-02-14T16:14:02Z
+- README.md (lines 274-306, 355): Aligned docs with runtime defaults by replacing stale manual DB bootstrap (`createdb lct_db`) with script-first setup (`setup-once.command` / `start.command`), documenting the actual default local DB URL (`postgresql://lct_user:lct_password@localhost:5433/lct_dev`), and correcting ADR-001 status to `Proposed` to match `docs/adr/INDEX.md`.
+- API_DOCUMENTATION.md (line 115): Corrected save-path note to reflect current implementation reality (`POST /save_json/` uses GCS helper and may fail locally without ADC/bucket config) instead of claiming an automatic local fallback that does not exist in code.
+- docs/ROADMAP.md (line 133): Updated import endpoint path from legacy unprefixed `/import/google-meet` to mounted route `/api/import/google-meet`.
+
+Verification:
+- Source-of-truth route/config checks from code: `lct_python_backend/backend.py` router mounts, route decorators under `lct_python_backend/*_api.py`, frontend base URL in `lct_app/src/services/apiClient.js`, and auth/rate-limit behavior in `lct_python_backend/middleware.py`.
+- Docs consistency scan: `rg -n "localhost:8080|VITE_API_BASE_URL|/ws/audio|/import/google-meet" README.md API_DOCUMENTATION.md docs/*.md docs/**/*.md -g'*.md'` (interpreted with ADR/plans as historical context, patched canonical docs accordingly).
+
+## 2026-02-14T19:07:49Z
+- `lct_app/src/pages/NewConversation.jsx` (lines 14-111, 141, 187): Restored robust `existing_json` normalization for legacy/current payload wrappers, reintroduced safe chunk fallback grouping (`chunk-0`) for nodes missing `chunk_id`, added node-shape normalization at the page boundary, and updated back-dialog copy to match local save fallback behavior.
+- `lct_app/src/components/MinimalGraph.jsx` (lines 11-38, 68-182): Added defensive node normalization before ReactFlow mapping so missing/partial node fields (`id`, `node_name`, relations) no longer cause silent render failures.
+- `lct_app/src/components/NodeDetail.jsx` (lines 4-37, 95-123, 189): Fixed hook-order risk by switching to `safeNode` pattern, added `Escape` key close behavior, and passed/used `chunkDict` for raw transcript context rendering.
+- `lct_python_backend/services/gcs_helpers.py` (lines 16-17, 30, 65-111, 116-128, 157): Implemented `SAVE_BACKEND` routing (`auto|gcs|local`), local JSON save path fallback for ADC/GCS failures, and local file load support when persisted path points to disk.
+- `lct_python_backend/generation_api.py` (lines 16, 71-77, 100, 104, 113): Switched `/save_json/` to backend-aware saver, added env validation/defaulting for `SAVE_BACKEND`, removed debug prints, and preserved stable API response shape while returning fallback-aware message text.
+- `lct_python_backend/tests/unit/test_gcs_helpers_save_fallback.py` (lines 8-56): Added regression coverage for local save mode, auto fallback when GCS save fails, and invalid backend value handling.
+- `lct_app/src/components/audio/useAudioInputEffects.js` + `lct_app/src/components/AudioInput.jsx` (lines 46-71 and 177-184): Surfaced autosave failures via UI message channel instead of silent logs only.
+- `lct_app/src/components/LlmSettingsPanel.jsx` (lines 58-103): Fixed model-option refresh dependency behavior by keying fetch effect off stable derived values (`mode`, `base_url`) instead of entire form object.
+- `lct_app/src/components/ContextualGraph.jsx` + `lct_app/src/components/StructuralGraph.jsx` (lines 23-32/99-104 and 11-20/62-68): Gated verbose render debug logs behind `VITE_GRAPH_DEBUG=true` so default dev runs are not flooded with noisy logs.
+- `ISSUES.md`: Logged preexisting non-blocking lint warning debt in legacy graph components to keep this scoped fix set unblocked.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_gcs_helpers_save_fallback.py tests/unit/test_stt_api_settings.py tests/unit/test_stt_config.py tests/unit/test_transcript_processing_schema.py` (20 passed)
+- `python3 -m py_compile lct_python_backend/generation_api.py lct_python_backend/services/gcs_helpers.py` (passed)
+- `cd lct_app && npx eslint src/components/NodeDetail.jsx src/pages/NewConversation.jsx src/components/MinimalGraph.jsx src/components/AudioInput.jsx src/components/audio/useAudioInputEffects.js src/components/LlmSettingsPanel.jsx src/components/ContextualGraph.jsx src/components/StructuralGraph.jsx` (0 errors, 6 preexisting warnings in legacy graph components only)

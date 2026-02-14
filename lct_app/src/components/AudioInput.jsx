@@ -174,7 +174,14 @@ const AudioInput = forwardRef(function AudioInput({
   // --- Existing extracted effects (unchanged interfaces) ---
   useFilenameFromGraph({ graphData, fileNameWasReset, lastAutoSaveRef, setFileName });
   useGraphDataSync({ graphData, graphDataFromSocket, backendWsRef, logToServer });
-  useAutoSaveConversation({ graphData, chunkDict, fileName, conversationId, lastAutoSaveRef });
+  useAutoSaveConversation({
+    graphData,
+    chunkDict,
+    fileName,
+    conversationId,
+    lastAutoSaveRef,
+    setMessage,
+  });
   useMessageDismissOnClick({ message, setMessage });
 
   useEffect(() => {
