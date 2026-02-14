@@ -14,8 +14,7 @@ Built with **FastAPI** (Python backend) and **React + TypeScript** (frontend), t
 - [Architecture Overview](#architecture-overview)
 - [Project Structure](#project-structure)
 - [Prerequisites](#prerequisites)
-- [Backend Setup](#backend-setup)
-- [Frontend Setup](#frontend-setup)
+- [Local Setup (Recommended)](#local-setup-recommended)
 - [Running the Application](#running-the-application)
 - [Environment Variables](#environment-variables)
 - [Database Setup](#database-setup)
@@ -210,119 +209,56 @@ live_conversational_threads/
 
 ---
 
-## Backend Setup
+## Local Setup (Recommended)
 
-### 1. Create and activate Python environment
+Use the streamlined scripts from repo root:
 
-**Using venv:**
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
-
-**Or using Conda:**
-```bash
-conda create -n lct_env python=3.11
-conda activate lct_env
-```
-
-### 2. Install backend dependencies
+### 1. One-time setup
 
 ```bash
-cd lct_python_backend
-pip install -r requirements.txt
+./setup-once.command
 ```
 
-### 3. Configure environment variables
+This installs dependencies, initializes local PostgreSQL (`.postgres_data` on `5433`), prepares `lct_python_backend/.env`, and runs migrations.
 
-Create a `.env` file in the project root or export variables:
+### 2. Daily startup
 
 ```bash
-# LLM API Keys
-export OPENAI_API_KEY=your_openai_api_key
-export ANTHROPIC_API_KEY=your_anthropic_api_key
-
-# Google Cloud Storage
-export GCS_BUCKET_NAME=your_gcs_bucket
-export GCS_FOLDER=conversations
-export GOOGLE_APPLICATION_CREDENTIALS=/path/to/credentials.json
-
-# Database
-export DATABASE_URL=postgresql://user:password@localhost:5432/lct_db
-
-# Optional (for future features)
-export ASSEMBLYAI_API_KEY=your_assemblyai_api_key
-export PERPLEXITY_API_KEY=your_perplexity_api_key
-export GOOGLEAI_API_KEY=your_googleai_api_key
+./start.command
 ```
 
-**On Windows (PowerShell):**
-```powershell
-$env:OPENAI_API_KEY="your_openai_api_key"
-$env:DATABASE_URL="postgresql://user:password@localhost:5432/lct_db"
-# ...and so on
-```
+This performs a clean start, runs migrations, then starts backend + frontend with prefixed terminal logs.
 
-### 4. Set up PostgreSQL database
+`start.command` now attempts shared Parakeet STT autostart by default (`STT_AUTOSTART=1`) and uses backend-owned STT routing.
+It also checks local LLM reachability at `${LOCAL_LLM_BASE_URL:-http://100.81.65.74:1234}/v1/models` during startup.
 
-See [Database Setup](#database-setup) section below.
-
----
-
-## Frontend Setup
-
-### 1. Navigate to frontend directory
+To disable STT autostart for a run:
 
 ```bash
-cd lct_app
+STT_AUTOSTART=0 ./start.command
 ```
 
-### 2. Install Node.js dependencies
+By default this reuses the sibling Parakeet repo/container and shared Docker volume `parakeet-models`.
 
-```bash
-npm install
-```
+### 3. Full setup guide
 
-### 3. Configure frontend (optional)
-
-The frontend uses environment variables for API endpoints. Create `lct_app/.env`:
-
-```
-VITE_API_URL=http://localhost:8000
-VITE_BACKEND_API_URL=http://localhost:8000
-```
-
-Default is `http://localhost:8000`, so this step is optional for local development.
+See [`docs/LOCAL_SETUP.md`](docs/LOCAL_SETUP.md) for detailed setup behavior and troubleshooting.
 
 ---
 
 ## Running the Application
 
-### 1. Start the Backend Server
-
-From the project root (with Python environment activated):
+### 1. Start local stack
 
 ```bash
-cd lct_python_backend
-uvicorn lct_python_backend.backend:lct_app --reload --port 8000
+./start.command
 ```
 
-The backend API will be available at [http://localhost:8000](http://localhost:8000)
+### 2. Verify services
 
-**Verify backend is running:**
-- Visit [http://localhost:8000/docs](http://localhost:8000/docs) for Swagger UI
-- Check [http://localhost:8000/health](http://localhost:8000/health) for health status
-
-### 2. Start the Frontend Development Server
-
-In a new terminal:
-
-```bash
-cd lct_app
-npm run dev
-```
-
-The frontend will be available at [http://localhost:5173](http://localhost:5173)
+- Backend API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Backend health: [http://localhost:8000/api/import/health](http://localhost:8000/api/import/health)
+- Frontend: [http://localhost:5173](http://localhost:5173)
 
 ### 3. Import a Google Meet Transcript
 
@@ -342,7 +278,7 @@ The frontend will be available at [http://localhost:5173](http://localhost:5173)
 |----------|-------------|---------|
 | `OPENAI_API_KEY` | OpenAI API key for GPT-4/GPT-3.5-turbo | `sk-...` |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude Sonnet-4 | `sk-ant-...` |
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:pass@localhost:5432/lct_db` |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://lct_user:lct_password@localhost:5433/lct_dev` |
 | `GCS_BUCKET_NAME` | Google Cloud Storage bucket name | `my-lct-bucket` |
 | `GCS_FOLDER` | GCS folder for transcript storage | `conversations` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to GCS service account JSON | `/path/to/credentials.json` |
@@ -750,5 +686,5 @@ If you would like to use this software in a **closed-source or commercial produc
 
 ---
 
-**Last Updated**: 2026-02-08
+**Last Updated**: 2026-02-13
 **Version**: 2.1.0 (Local STT, local-first LLM, security hardening)

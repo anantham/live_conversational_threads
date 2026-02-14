@@ -3,13 +3,22 @@ import { API_BASE_URL, wsUrl } from "../../services/apiClient";
 const API_BASE = API_BASE_URL;
 const BACKEND_WS_URL = wsUrl("/ws/transcripts");
 const STT_PROVIDER_OPTIONS = ["senko", "parakeet", "whisper", "ofc"];
-const DEFAULT_STT_PROVIDER = (import.meta.env.VITE_DEFAULT_STT_PROVIDER || "whisper").toLowerCase();
+const DEFAULT_STT_PROVIDER = (import.meta.env.VITE_DEFAULT_STT_PROVIDER || "parakeet").toLowerCase();
 const DEFAULT_STT_WS = import.meta.env.VITE_DEFAULT_STT_WS || "ws://localhost:43001/stream";
+const DEFAULT_STT_HTTP =
+  import.meta.env.VITE_DEFAULT_STT_HTTP ||
+  "http://localhost:5092/v1/audio/transcriptions";
 const DEFAULT_STT_PROVIDER_URLS = {
   senko: import.meta.env.VITE_DEFAULT_STT_SENKO_WS || DEFAULT_STT_WS,
   parakeet: import.meta.env.VITE_DEFAULT_STT_PARAKEET_WS || DEFAULT_STT_WS,
   whisper: import.meta.env.VITE_DEFAULT_STT_WHISPER_WS || DEFAULT_STT_WS,
   ofc: import.meta.env.VITE_DEFAULT_STT_OFC_WS || DEFAULT_STT_WS,
+};
+const DEFAULT_STT_PROVIDER_HTTP_URLS = {
+  senko: import.meta.env.VITE_DEFAULT_STT_SENKO_HTTP || DEFAULT_STT_HTTP,
+  parakeet: import.meta.env.VITE_DEFAULT_STT_PARAKEET_HTTP || DEFAULT_STT_HTTP,
+  whisper: import.meta.env.VITE_DEFAULT_STT_WHISPER_HTTP || DEFAULT_STT_HTTP,
+  ofc: import.meta.env.VITE_DEFAULT_STT_OFC_HTTP || DEFAULT_STT_HTTP,
 };
 const DEFAULT_CHUNK_ENDPOINT = "/api/conversations/{conversation_id}/audio/chunk";
 const DEFAULT_COMPLETE_ENDPOINT = "/api/conversations/{conversation_id}/audio/complete";
@@ -38,16 +47,36 @@ const normalizeProviderUrls = (providerUrls) => {
   return base;
 };
 
+const normalizeProviderHttpUrls = (providerHttpUrls) => {
+  const base = { ...DEFAULT_STT_PROVIDER_HTTP_URLS };
+  if (providerHttpUrls && typeof providerHttpUrls === "object") {
+    Object.entries(providerHttpUrls).forEach(([provider, httpUrl]) => {
+      const normalizedProvider = String(provider || "").trim().toLowerCase();
+      if (STT_PROVIDER_OPTIONS.includes(normalizedProvider)) {
+        base[normalizedProvider] = String(httpUrl || "").trim();
+      }
+    });
+  }
+  return base;
+};
+
 const normalizeSttSettings = (settings = {}) => {
   const provider = normalizeProvider(settings?.provider);
   const provider_urls = normalizeProviderUrls(settings?.provider_urls);
+  const provider_http_urls = normalizeProviderHttpUrls(settings?.provider_http_urls);
   const resolvedWsUrl = provider_urls[provider] || String(settings?.ws_url || "").trim() || DEFAULT_STT_WS;
+  const resolvedHttpUrl =
+    provider_http_urls[provider] ||
+    String(settings?.http_url || "").trim() ||
+    DEFAULT_STT_HTTP;
 
   return {
     ...settings,
     provider,
     provider_urls,
+    provider_http_urls,
     ws_url: resolvedWsUrl,
+    http_url: resolvedHttpUrl,
     local_only: settings?.local_only !== false,
   };
 };
@@ -94,6 +123,8 @@ export {
   BACKEND_WS_URL,
   DEFAULT_STT_PROVIDER,
   DEFAULT_STT_PROVIDER_URLS,
+  DEFAULT_STT_PROVIDER_HTTP_URLS,
+  DEFAULT_STT_HTTP,
   DEFAULT_STT_WS,
   DEFAULT_CHUNK_ENDPOINT,
   DEFAULT_COMPLETE_ENDPOINT,
@@ -101,6 +132,7 @@ export {
   buildApiUrl,
   appendSessionQuery,
   normalizeProvider,
+  normalizeProviderHttpUrls,
   normalizeProviderUrls,
   normalizeSttSettings,
   replaceConversationPlaceholder,

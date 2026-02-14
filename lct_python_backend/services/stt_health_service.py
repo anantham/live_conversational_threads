@@ -29,6 +29,18 @@ def derive_health_url(ws_url: str) -> str:
     return urlunparse((scheme, parsed.netloc, "/health", "", "", ""))
 
 
+def derive_health_url_from_http_url(http_url: str) -> str:
+    """Convert an HTTP transcription URL to a provider health-check URL on /health."""
+    if not http_url:
+        return ""
+    parsed = urlparse(str(http_url).strip())
+    if not parsed.netloc:
+        return ""
+    if parsed.scheme not in {"http", "https"}:
+        return ""
+    return urlunparse((parsed.scheme, parsed.netloc, "/health", "", "", ""))
+
+
 def probe_health_url(health_url: str, timeout_seconds: float) -> Dict[str, Any]:
     """Synchronous HTTP probe to a health endpoint. Returns a result dict."""
     start = time.perf_counter()

@@ -4,7 +4,7 @@ import os
 import random
 import time
 import uuid
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import httpx
 from google import genai
@@ -15,8 +15,11 @@ from lct_python_backend.services.local_llm_client import extract_json_from_text
 
 logger = logging.getLogger("lct_backend")
 
-GOOGLEAI_API_KEY = os.getenv("GOOGLEAI_API_KEY")
-GEMINI_MODEL_NAME = "gemini-2.5-flash-preview-05-20"
+GEMINI_MODEL_NAME = os.getenv("ONLINE_LLM_CHAT_MODEL", "gemini-2.5-flash")
+TRACE_API_CALLS = os.getenv("TRACE_API_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
+_JSON_OBJECT_UNSUPPORTED_BASE_URLS: set[str] = set()
+_GEMINI_KEY_ENV_ORDER = ("GOOGLEAI_API_KEY", "GEMINI_API_KEY", "GEMINI_KEY")
 
 GENERATE_LCT_PROMPT = """You are an advanced AI model that structures conversations into strictly JSON-formatted nodes. Each conversational shift should be captured as a new node with defined relationships, with primary emphasis on capturing rich contextual connections that demonstrate thematic coherence, conceptual evolution, and cross-conversational idea building.
 **Formatting Rules:**
@@ -152,9 +155,302 @@ Evaluation Notes:
 - Do not rearrange the order of the text. Preserve original sequencing when splitting.
 """
 
+LOCAL_GENERATE_LCT_PROMPT = """You structure transcript text into conversation graph nodes.
+You may reason freely, but your final answer must end with valid JSON.
+
+Return only a JSON array where each item is a node for the current transcript segment.
+Do not rewrite previous nodes from Existing JSON.
+
+Each node should include:
+- node_name: short descriptive title
+- summary: concise node-level summary text (used as node text in UI)
+- source_excerpt: direct supporting excerpt from transcript
+- predecessor: previous node_name in temporal flow or null
+- successor: next node_name in temporal flow or null
+- thread_id: stable identifier for the active thread
+- thread_state: one of new_thread, continue_thread, return_to_thread
+- contextual_relation: object {related_node_name: relation_text}
+- edge_relations: array of objects with:
+  - related_node: source node_name
+  - relation_type: supports | rebuts | clarifies | asks | tangent | return_to_thread
+  - relation_text: short explanation for edge hover
+- linked_nodes: array of related node names
+- claims: array of explicit fact-checkable claims
+- is_bookmark: boolean
+- is_contextual_progress: boolean
+
+For meandering/interleaving dialogue:
+- Start a new thread with thread_state=new_thread.
+- Continue same thread with thread_state=continue_thread.
+- If discussion returns to an earlier thread, create a new node with thread_state=return_to_thread and reuse that thread_id.
+"""
+
 
 def _resolve_llm_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     return config or get_env_llm_defaults()
+
+
+def _resolve_online_gemini_model(llm_config: Optional[Dict[str, Any]] = None) -> str:
+    config = _resolve_llm_config(llm_config)
+    configured = str(config.get("chat_model") or "").strip()
+    if configured.startswith("models/"):
+        configured = configured[len("models/") :]
+    if "/" in configured and "gemini" in configured.lower():
+        tail = configured.split("/")[-1]
+        if "gemini" in tail.lower():
+            configured = tail
+
+    if "gemini" in configured.lower():
+        return configured
+    return GEMINI_MODEL_NAME
+
+
+def _resolve_gemini_api_key() -> Tuple[Optional[str], Optional[str]]:
+    for env_name in _GEMINI_KEY_ENV_ORDER:
+        value = str(os.getenv(env_name, "")).strip()
+        if value:
+            return value, env_name
+    return None, None
+
+
+def _missing_gemini_key_message() -> str:
+    return (
+        "Online mode requires a Gemini key (GOOGLEAI_API_KEY, GEMINI_API_KEY, or GEMINI_KEY); "
+        "falling back to local LLM."
+    )
+
+
+def _preview_text(value: Any, limit: int = API_LOG_PREVIEW_CHARS) -> str:
+    text = str(value or "")
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}...<truncated {len(text) - limit} chars>"
+
+
+def _trace_api_call(message: str, *args: Any) -> None:
+    if TRACE_API_CALLS:
+        logger.info(message, *args)
+
+
+_THREAD_STATES = {"new_thread", "continue_thread", "return_to_thread"}
+_RELATION_TYPES = {
+    "supports",
+    "rebuts",
+    "clarifies",
+    "asks",
+    "tangent",
+    "return_to_thread",
+    "contextual",
+    "temporal_next",
+}
+
+
+def _as_clean_str(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _as_string_list(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    seen = set()
+    output: List[str] = []
+    for item in value:
+        text = _as_clean_str(item)
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        output.append(text)
+    return output
+
+
+def _as_string_map(value: Any) -> Dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: Dict[str, str] = {}
+    for key, map_value in value.items():
+        normalized_key = _as_clean_str(key)
+        normalized_value = _as_clean_str(map_value)
+        if normalized_key and normalized_value:
+            normalized[normalized_key] = normalized_value
+    return normalized
+
+
+def _slugify(value: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "-" for char in value)
+    slug = "-".join(segment for segment in cleaned.split("-") if segment)
+    return slug[:48] or "untitled-thread"
+
+
+def _normalize_thread_state(value: Any, predecessor: Optional[str]) -> str:
+    raw = _as_clean_str(value).lower()
+    if raw in _THREAD_STATES:
+        return raw
+    if "return" in raw:
+        return "return_to_thread"
+    if predecessor:
+        return "continue_thread"
+    return "new_thread"
+
+
+def _normalize_relation_type(value: Any) -> str:
+    raw = _as_clean_str(value).lower()
+    if raw in _RELATION_TYPES:
+        return raw
+    if "support" in raw:
+        return "supports"
+    if "rebut" in raw or "contradict" in raw:
+        return "rebuts"
+    if "clarif" in raw:
+        return "clarifies"
+    if "question" in raw or "ask" in raw:
+        return "asks"
+    if "return" in raw:
+        return "return_to_thread"
+    if "tangent" in raw or "branch" in raw:
+        return "tangent"
+    return "contextual"
+
+
+def _normalize_edge_relations(value: Any) -> List[Dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    normalized: List[Dict[str, str]] = []
+    seen = set()
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        related_node = _as_clean_str(
+            item.get("related_node")
+            or item.get("relatedNode")
+            or item.get("source")
+            or item.get("from")
+            or item.get("node")
+        )
+        relation_text = _as_clean_str(
+            item.get("relation_text")
+            or item.get("relationText")
+            or item.get("description")
+            or item.get("explanation")
+        )
+        relation_type = _normalize_relation_type(item.get("relation_type") or item.get("type"))
+        if not related_node:
+            continue
+        if not relation_text:
+            relation_text = f"{related_node} -> current node"
+        key = (related_node, relation_type, relation_text)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(
+            {
+                "related_node": related_node,
+                "relation_type": relation_type,
+                "relation_text": relation_text,
+            }
+        )
+    return normalized
+
+
+def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
+    if isinstance(parsed, list):
+        raw_nodes = parsed
+        raw_edges = []
+    elif isinstance(parsed, dict):
+        if isinstance(parsed.get("nodes"), list):
+            raw_nodes = parsed.get("nodes") or []
+            raw_edges = parsed.get("edges") if isinstance(parsed.get("edges"), list) else []
+        elif parsed.get("node_name") or parsed.get("title") or parsed.get("name"):
+            raw_nodes = [parsed]
+            raw_edges = []
+        else:
+            return []
+    else:
+        return []
+
+    id_to_name: Dict[str, str] = {}
+    for raw in raw_nodes:
+        if not isinstance(raw, dict):
+            continue
+        node_name = _as_clean_str(raw.get("node_name") or raw.get("title") or raw.get("name"))
+        raw_id = _as_clean_str(raw.get("id") or raw.get("node_id"))
+        if node_name and raw_id:
+            id_to_name[raw_id] = node_name
+
+    incoming_edges_by_target: Dict[str, List[Dict[str, str]]] = {}
+    for raw_edge in raw_edges:
+        if not isinstance(raw_edge, dict):
+            continue
+        source_raw = _as_clean_str(raw_edge.get("source") or raw_edge.get("from") or raw_edge.get("from_node"))
+        target_raw = _as_clean_str(raw_edge.get("target") or raw_edge.get("to") or raw_edge.get("to_node"))
+        source_name = id_to_name.get(source_raw, source_raw)
+        target_name = id_to_name.get(target_raw, target_raw)
+        if not source_name or not target_name:
+            continue
+        entry = {
+            "related_node": source_name,
+            "relation_type": _normalize_relation_type(raw_edge.get("relation_type") or raw_edge.get("type")),
+            "relation_text": _as_clean_str(
+                raw_edge.get("relation_text")
+                or raw_edge.get("description")
+                or raw_edge.get("label")
+            )
+            or f"{source_name} -> {target_name}",
+        }
+        incoming_edges_by_target.setdefault(target_name, []).append(entry)
+
+    normalized_nodes: List[Dict[str, Any]] = []
+    for raw in raw_nodes:
+        if not isinstance(raw, dict):
+            continue
+
+        node_name = _as_clean_str(raw.get("node_name") or raw.get("title") or raw.get("name"))
+        if not node_name:
+            continue
+
+        predecessor = _as_clean_str(raw.get("predecessor")) or None
+        successor = _as_clean_str(raw.get("successor")) or None
+        summary = _as_clean_str(raw.get("summary") or raw.get("node_text") or raw.get("text")) or node_name
+        source_excerpt = _as_clean_str(raw.get("source_excerpt") or raw.get("source") or summary)
+        contextual_relation = _as_string_map(raw.get("contextual_relation"))
+        edge_relations = _normalize_edge_relations(raw.get("edge_relations"))
+        edge_relations.extend(incoming_edges_by_target.get(node_name, []))
+
+        for relation in edge_relations:
+            related_name = relation["related_node"]
+            if related_name not in contextual_relation:
+                contextual_relation[related_name] = relation["relation_text"]
+
+        linked_nodes = _as_string_list(raw.get("linked_nodes"))
+        for related_name in contextual_relation:
+            if related_name not in linked_nodes:
+                linked_nodes.append(related_name)
+
+        thread_id = _as_clean_str(raw.get("thread_id")) or f"thread::{_slugify(node_name)}"
+        thread_state = _normalize_thread_state(raw.get("thread_state"), predecessor)
+
+        normalized_nodes.append(
+            {
+                "id": _as_clean_str(raw.get("id") or raw.get("node_id")) or str(uuid.uuid4()),
+                "node_name": node_name,
+                "summary": summary,
+                "node_text": summary,
+                "source_excerpt": source_excerpt,
+                "predecessor": predecessor,
+                "successor": successor,
+                "contextual_relation": contextual_relation,
+                "edge_relations": edge_relations,
+                "thread_id": thread_id,
+                "thread_state": thread_state,
+                "linked_nodes": linked_nodes,
+                "claims": _as_string_list(raw.get("claims")),
+                "is_bookmark": bool(raw.get("is_bookmark")),
+                "is_contextual_progress": bool(raw.get("is_contextual_progress")),
+                "chunk_id": raw.get("chunk_id"),
+            }
+        )
+    return normalized_nodes
 
 
 def _call_local_chat_json(
@@ -178,41 +474,80 @@ def _call_local_chat_json(
         "max_tokens": max_tokens,
     }
 
-    if config.get("json_mode", True):
+    use_json_object = bool(config.get("json_mode", True)) and base_url not in _JSON_OBJECT_UNSUPPORTED_BASE_URLS
+    if use_json_object:
         payload["response_format"] = {"type": "json_object"}
 
     url = f"{base_url}/v1/chat/completions"
     timeout = float(config.get("timeout_seconds", 120))
+    _trace_api_call(
+        "[LLM API] POST %s model=%s prompt_chars=%s json_mode=%s",
+        url,
+        payload.get("model"),
+        len(str(prompt or "")),
+        "json_object" if "response_format" in payload else "none",
+    )
     with httpx.Client(timeout=timeout) as client:
         try:
             response = client.post(url, json=payload)
             response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"]
+            raw_json = response.json()
+            content = raw_json["choices"][0]["message"]["content"]
+            _trace_api_call(
+                "[LLM API] %s status=%s content_preview=%s",
+                url,
+                response.status_code,
+                _preview_text(content),
+            )
             return extract_json_from_text(content)
         except httpx.HTTPStatusError as exc:
             if "response_format" in payload:
+                body_preview = _preview_text(exc.response.text)
                 logger.warning(
                     "Local LLM response_format rejected (%s); retrying without response_format.",
-                    exc.response.text,
+                    body_preview,
                 )
+                _JSON_OBJECT_UNSUPPORTED_BASE_URLS.add(base_url)
                 payload.pop("response_format", None)
+                _trace_api_call("[LLM API] retry POST %s without response_format", url)
                 retry = client.post(url, json=payload)
                 retry.raise_for_status()
-                content = retry.json()["choices"][0]["message"]["content"]
+                retry_json = retry.json()
+                content = retry_json["choices"][0]["message"]["content"]
+                _trace_api_call(
+                    "[LLM API] %s retry_status=%s content_preview=%s",
+                    url,
+                    retry.status_code,
+                    _preview_text(content),
+                )
                 return extract_json_from_text(content)
             raise
 
 
 def generate_lct_json_gemini(
     transcript: str,
+    model_name: Optional[str] = None,
+    api_key: Optional[str] = None,
+    key_source: Optional[str] = None,
     retries: int = 5,
     backoff_base: float = 1.5,
+    status_messages: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
-    if not GOOGLEAI_API_KEY:
-        logger.error("GOOGLEAI_API_KEY is not set; cannot generate LCT JSON.")
+    resolved_model = str(model_name or GEMINI_MODEL_NAME).strip() or GEMINI_MODEL_NAME
+    resolved_key = str(api_key or "").strip()
+    if not resolved_key:
+        resolved_key, key_source = _resolve_gemini_api_key()
+
+    if not resolved_key:
+        message = _missing_gemini_key_message()
+        logger.error("%s Cannot generate graph nodes with Gemini.", message)
+        if status_messages is not None:
+            status_messages.append(message)
         return []
 
-    client = genai.Client(api_key=GOOGLEAI_API_KEY)
+    client = genai.Client(api_key=resolved_key)
+    if key_source:
+        _trace_api_call("[GEMINI] Using key from %s for graph generation model=%s.", key_source, resolved_model)
 
     generate_lct_prompt = GENERATE_LCT_PROMPT
 
@@ -230,11 +565,12 @@ def generate_lct_json_gemini(
         system_instruction=[types.Part.from_text(text=generate_lct_prompt)],
     )
 
+    last_error: Optional[str] = None
     for attempt in range(retries):
         full_response = ""
         try:
             for chunk in client.models.generate_content_stream(
-                model=GEMINI_MODEL_NAME,
+                model=resolved_model,
                 contents=contents,
                 config=config,
             ):
@@ -243,32 +579,50 @@ def generate_lct_json_gemini(
 
             try:
                 parsed = json.loads(full_response)
-                return parsed
+                normalized = _normalize_generated_output(parsed)
+                if normalized:
+                    return normalized
+                last_error = f"Gemini response decoded but produced no normalized nodes (attempt {attempt + 1})."
+                logger.warning("[LCT JSON] %s", last_error)
             except json.JSONDecodeError as e:
-                logger.warning("[LCT JSON] Attempt %s JSON decode failed: %s", attempt + 1, e)
+                last_error = f"Gemini JSON decode failed on attempt {attempt + 1}: {e}"
+                logger.warning("[LCT JSON] %s", last_error)
                 logger.debug("[LCT JSON] Raw Gemini response: %s", full_response)
 
         except Exception as e:
-            logger.warning("[LCT JSON] Attempt %s failed: %s", attempt + 1, e)
+            last_error = f"Gemini request failed on attempt {attempt + 1}: {e}"
+            logger.warning("[LCT JSON] %s", last_error)
 
         time.sleep(backoff_base ** attempt)
 
     logger.error("[LCT JSON] All attempts failed, returning empty list.")
+    if status_messages is not None and last_error:
+        status_messages.append(last_error)
     return []
 
 
 def genai_accumulate_text_json(
     input_text: str,
+    model_name: Optional[str] = None,
+    api_key: Optional[str] = None,
+    key_source: Optional[str] = None,
     retries: int = 3,
     backoff_base: float = 1.5,
 ) -> Dict[str, Any]:
-    if not GOOGLEAI_API_KEY:
-        logger.error("GOOGLEAI_API_KEY is not set; cannot accumulate transcript text.")
+    resolved_model = str(model_name or GEMINI_MODEL_NAME).strip() or GEMINI_MODEL_NAME
+    errors: List[str] = []
+    resolved_key = str(api_key or "").strip()
+    if not resolved_key:
+        resolved_key, key_source = _resolve_gemini_api_key()
+    if not resolved_key:
+        message = _missing_gemini_key_message()
+        logger.error("%s Cannot accumulate transcript text with Gemini.", message)
         return {
             "decision": "continue_accumulating",
             "Completed_segment": "",
             "Incomplete_segment": input_text,
             "detected_threads": [],
+            "_errors": [message],
         }
 
     system_prompt = ACCUMULATE_SYSTEM_PROMPT
@@ -276,7 +630,9 @@ def genai_accumulate_text_json(
     for attempt in range(retries):
         full_response = ""
         try:
-            client = genai.Client(api_key=GOOGLEAI_API_KEY)
+            client = genai.Client(api_key=resolved_key)
+            if key_source:
+                _trace_api_call("[GEMINI] Using key from %s for accumulation model=%s.", key_source, resolved_model)
 
             contents = [
                 types.Content(
@@ -305,7 +661,7 @@ def genai_accumulate_text_json(
             )
 
             for chunk in client.models.generate_content_stream(
-                model=GEMINI_MODEL_NAME,
+                model=resolved_model,
                 contents=contents,
                 config=config,
             ):
@@ -313,13 +669,18 @@ def genai_accumulate_text_json(
                     full_response += str(chunk.text)
 
             try:
-                return json.loads(full_response)
+                parsed = json.loads(full_response)
+                if errors:
+                    parsed["_warnings"] = errors
+                return parsed
             except json.JSONDecodeError as e:
                 logger.warning("[ACCUMULATE] Attempt %s JSON decode failed: %s", attempt + 1, e)
                 logger.debug("[ACCUMULATE] Raw Gemini response: %s", full_response)
+                errors.append(f"Attempt {attempt + 1} decode failed: {e}")
 
         except Exception as e:
             logger.warning("[ACCUMULATE] Attempt %s failed: %s", attempt + 1, e)
+            errors.append(f"Attempt {attempt + 1} failed: {e}")
 
         time.sleep(backoff_base ** attempt)
 
@@ -329,6 +690,7 @@ def genai_accumulate_text_json(
         "Completed_segment": "",
         "Incomplete_segment": input_text,
         "detected_threads": [],
+        "_errors": errors or ["Gemini accumulation attempts exhausted"],
     }
 
 
@@ -343,14 +705,18 @@ def generate_lct_json_local(
         try:
             parsed = _call_local_chat_json(
                 prompt=transcript,
-                system_prompt=GENERATE_LCT_PROMPT,
+                system_prompt=LOCAL_GENERATE_LCT_PROMPT,
                 config=config,
                 temperature=0.65,
                 max_tokens=4000,
             )
-            if isinstance(parsed, list):
-                return parsed
-            logger.warning("[LCT JSON] Local response was not a list; attempt %s", attempt + 1)
+            normalized = _normalize_generated_output(parsed)
+            if normalized:
+                return normalized
+            logger.warning(
+                "[LCT JSON] Local response decoded but produced no normalized nodes; attempt %s",
+                attempt + 1,
+            )
         except Exception as e:
             logger.warning("[LCT JSON] Local attempt %s failed: %s", attempt + 1, e)
 
@@ -367,6 +733,7 @@ def accumulate_text_json_local(
     backoff_base: float = 1.5,
 ) -> Dict[str, Any]:
     config = _resolve_llm_config(llm_config)
+    errors: List[str] = []
     for attempt in range(retries):
         try:
             parsed = _call_local_chat_json(
@@ -377,10 +744,14 @@ def accumulate_text_json_local(
                 max_tokens=1200,
             )
             if isinstance(parsed, dict):
+                if errors:
+                    parsed["_warnings"] = errors
                 return parsed
             logger.warning("[ACCUMULATE] Local response was not a dict; attempt %s", attempt + 1)
+            errors.append(f"Attempt {attempt + 1} returned non-dict payload")
         except Exception as e:
             logger.warning("[ACCUMULATE] Local attempt %s failed: %s", attempt + 1, e)
+            errors.append(f"Attempt {attempt + 1} failed: {e}")
 
         time.sleep(backoff_base ** attempt)
 
@@ -390,6 +761,7 @@ def accumulate_text_json_local(
         "Completed_segment": "",
         "Incomplete_segment": input_text,
         "detected_threads": [],
+        "_errors": errors or ["Local accumulation attempts exhausted"],
     }
 
 
@@ -398,14 +770,33 @@ def generate_lct_json(
     llm_config: Optional[Dict[str, Any]] = None,
     retries: int = 5,
     backoff_base: float = 1.5,
+    status_messages: Optional[List[str]] = None,
 ) -> List[Dict[str, Any]]:
     config = _resolve_llm_config(llm_config)
-    if config.get("mode") == "online" and GOOGLEAI_API_KEY:
-        return generate_lct_json_gemini(
-            transcript,
-            retries=retries,
-            backoff_base=backoff_base,
-        )
+    if config.get("mode") == "online":
+        gemini_key, key_source = _resolve_gemini_api_key()
+        gemini_model = _resolve_online_gemini_model(config)
+        if gemini_key:
+            gemini_result = generate_lct_json_gemini(
+                transcript,
+                model_name=gemini_model,
+                api_key=gemini_key,
+                key_source=key_source,
+                retries=retries,
+                backoff_base=backoff_base,
+                status_messages=status_messages,
+            )
+            if gemini_result:
+                return gemini_result
+            fallback_message = "Gemini produced no graph output; falling back to local LLM."
+            logger.warning("[LCT JSON] %s", fallback_message)
+            if status_messages is not None:
+                status_messages.append(fallback_message)
+        else:
+            fallback_message = _missing_gemini_key_message()
+            logger.warning("[LCT JSON] %s", fallback_message)
+            if status_messages is not None:
+                status_messages.append(fallback_message)
 
     return generate_lct_json_local(
         transcript,
@@ -422,12 +813,30 @@ def accumulate_text_json(
     backoff_base: float = 1.5,
 ) -> Dict[str, Any]:
     config = _resolve_llm_config(llm_config)
-    if config.get("mode") == "online" and GOOGLEAI_API_KEY:
-        return genai_accumulate_text_json(
+    if config.get("mode") == "online":
+        gemini_key, key_source = _resolve_gemini_api_key()
+        gemini_model = _resolve_online_gemini_model(config)
+        if gemini_key:
+            return genai_accumulate_text_json(
+                input_text,
+                model_name=gemini_model,
+                api_key=gemini_key,
+                key_source=key_source,
+                retries=retries,
+                backoff_base=backoff_base,
+            )
+        fallback = accumulate_text_json_local(
             input_text,
+            llm_config=config,
             retries=retries,
             backoff_base=backoff_base,
         )
+        warnings = fallback.get("_warnings")
+        if not isinstance(warnings, list):
+            warnings = []
+        warnings.append(_missing_gemini_key_message())
+        fallback["_warnings"] = warnings
+        return fallback
 
     return accumulate_text_json_local(
         input_text,
@@ -441,6 +850,7 @@ class TranscriptProcessor:
     def __init__(
         self,
         send_update,
+        send_status: Optional[Callable[[str, str, Dict[str, Any]], Awaitable[None]]] = None,
         batch_size: int = 4,
         max_batch_size: int = 12,
         llm_config: Optional[Dict[str, Any]] = None,
@@ -453,7 +863,17 @@ class TranscriptProcessor:
         self._current_batch_size = batch_size
         self._continue_accumulating = True
         self._send_update = send_update
+        self._send_status = send_status
         self._llm_config = _resolve_llm_config(llm_config)
+
+    async def _emit_status(self, level: str, message: str, context: Optional[Dict[str, Any]] = None) -> None:
+        if not self._send_status:
+            return
+        payload = context or {}
+        try:
+            await self._send_status(level, message, payload)
+        except Exception as exc:
+            logger.debug("[PROCESSOR STATUS] failed to send status update: %s", exc)
 
     async def handle_final_text(self, final_text: str) -> None:
         if not final_text:
@@ -495,7 +915,31 @@ class TranscriptProcessor:
         accumulated_output = accumulate_text_json(input_text, llm_config=self._llm_config)
         if not accumulated_output:
             logger.info("[ACCUMULATE] Empty result; continuing accumulation.")
+            await self._emit_status(
+                "warning",
+                "Accumulator returned empty output; continuing accumulation.",
+                {"stage": "accumulate"},
+            )
             return True, input_text
+
+        errors = []
+        if isinstance(accumulated_output, dict):
+            raw_errors = accumulated_output.get("_errors") or accumulated_output.get("_warnings")
+            if isinstance(raw_errors, list):
+                errors = [str(item) for item in raw_errors if str(item).strip()]
+
+        if errors:
+            summary = errors[0]
+            if len(errors) > 1:
+                summary = f"{summary} (+{len(errors) - 1} more)"
+            await self._emit_status(
+                "warning",
+                summary,
+                {
+                    "stage": "accumulate",
+                    "attempt_errors": errors,
+                },
+            )
 
         segmented_input_chunk = accumulated_output.get("Completed_segment", "")
         incomplete_seg = accumulated_output.get("Incomplete_segment", "")
@@ -519,7 +963,18 @@ class TranscriptProcessor:
                 f"Existing JSON : \n {repr(self.existing_json)} "
                 f"\n\n Transcript Input: \n {segmented_input_chunk}"
             )
-            output_json = generate_lct_json(mod_input, llm_config=self._llm_config)
+            generation_status_messages: List[str] = []
+            output_json = generate_lct_json(
+                mod_input,
+                llm_config=self._llm_config,
+                status_messages=generation_status_messages,
+            )
+            for status_message in generation_status_messages:
+                await self._emit_status(
+                    "warning",
+                    status_message,
+                    {"stage": "generate_lct_json"},
+                )
 
             if output_json:
                 chunk_id = str(uuid.uuid4())
@@ -529,6 +984,15 @@ class TranscriptProcessor:
 
                 self.existing_json.extend(output_json)
                 await self._send_update(self.existing_json, self.chunk_dict)
+            else:
+                await self._emit_status(
+                    "error",
+                    "LLM returned no structured graph output for a completed transcript segment.",
+                    {
+                        "stage": "generate_lct_json",
+                        "segment_chars": len(segmented_input_chunk),
+                    },
+                )
 
         logger.info("[ACCUMULATE] Evaluated batch of %s transcripts", len(text_batch))
         return decision, incomplete_seg

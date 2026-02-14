@@ -88,18 +88,36 @@ def test_telemetry_endpoint_aggregates_metrics(monkeypatch):
             provider="parakeet",
             received_at=now,
             event_metadata={
-                "telemetry": {"partial_turnaround_ms": 100, "final_turnaround_ms": 220}
+                "telemetry": {
+                    "partial_turnaround_ms": 100,
+                    "final_turnaround_ms": 220,
+                    "stt_request_ms": 80,
+                    "audio_decode_ms": 4,
+                }
             },
         ),
         SimpleNamespace(
             provider="parakeet",
             received_at=now - timedelta(seconds=3),
-            event_metadata={"telemetry": {"partial_turnaround_ms": 140}},
+            event_metadata={
+                "telemetry": {
+                    "partial_turnaround_ms": 140,
+                    "stt_request_ms": 120,
+                    "audio_decode_ms": 6,
+                }
+            },
         ),
         SimpleNamespace(
             provider="whisper",
             received_at=now - timedelta(seconds=5),
-            event_metadata={"telemetry": {"final_turnaround_ms": 310}},
+            event_metadata={
+                "telemetry": {
+                    "final_turnaround_ms": 310,
+                    "stt_request_ms": 210,
+                    "stt_flush_request_ms": 250,
+                    "audio_decode_ms": 5,
+                }
+            },
         ),
     ]
 
@@ -126,10 +144,20 @@ def test_telemetry_endpoint_aggregates_metrics(monkeypatch):
     assert parakeet["avg_final_ms"] == 220.0
     assert parakeet["partial_samples"] == 2
     assert parakeet["final_samples"] == 1
+    assert parakeet["last_stt_request_ms"] == 80.0
+    assert parakeet["avg_stt_request_ms"] == 100.0
+    assert parakeet["p95_stt_request_ms"] == 120.0
+    assert parakeet["stt_request_samples"] == 2
+    assert parakeet["avg_audio_decode_ms"] == 5.0
+    assert parakeet["p95_audio_decode_ms"] == 6.0
 
     assert whisper["last_final_ms"] == 310.0
     assert whisper["avg_final_ms"] == 310.0
     assert whisper["final_samples"] == 1
+    assert whisper["avg_stt_request_ms"] == 210.0
+    assert whisper["p95_stt_request_ms"] == 210.0
+    assert whisper["avg_stt_flush_request_ms"] == 250.0
+    assert whisper["p95_stt_flush_request_ms"] == 250.0
 
 
 def test_health_check_endpoint_derives_health_url_from_provider_ws(monkeypatch):
@@ -170,6 +198,44 @@ def test_health_check_endpoint_derives_health_url_from_provider_ws(monkeypatch):
     assert payload["latency_ms"] == 11.5
 
 
+def test_health_check_endpoint_prefers_provider_http_url(monkeypatch):
+    stt_api = _load_stt_api_with_stubs(monkeypatch)
+
+    monkeypatch.setattr(
+        stt_api,
+        "_load_stt_settings",
+        AsyncMock(
+            return_value={
+                "provider": "parakeet",
+                "provider_urls": {"parakeet": "ws://localhost:43001/stream"},
+                "provider_http_urls": {"parakeet": "http://localhost:5092/v1/audio/transcriptions"},
+            }
+        ),
+    )
+    monkeypatch.setattr(
+        stt_api,
+        "_probe_health_url",
+        lambda health_url, timeout_seconds: {
+            "ok": True,
+            "status_code": 200,
+            "latency_ms": 9.2,
+            "response_preview": {"status": "ok"},
+            "error": None,
+        },
+    )
+
+    client = _build_test_client(stt_api)
+    response = client.post("/api/settings/stt/health-check", json={"provider": "parakeet"})
+    assert response.status_code == 200
+
+    payload = response.json()
+    assert payload["provider"] == "parakeet"
+    assert payload["ws_url"] == "ws://localhost:43001/stream"
+    assert payload["http_url"] == "http://localhost:5092/v1/audio/transcriptions"
+    assert payload["health_url"] == "http://localhost:5092/health"
+    assert payload["ok"] is True
+
+
 def test_health_check_endpoint_rejects_invalid_provider(monkeypatch):
     stt_api = _load_stt_api_with_stubs(monkeypatch)
     client = _build_test_client(stt_api)
@@ -179,7 +245,7 @@ def test_health_check_endpoint_rejects_invalid_provider(monkeypatch):
     assert "provider must be one of" in response.json()["detail"]
 
 
-def test_health_check_endpoint_requires_provider_url(monkeypatch):
+def test_health_check_endpoint_requires_provider_or_http_url(monkeypatch):
     stt_api = _load_stt_api_with_stubs(monkeypatch)
 
     monkeypatch.setattr(
@@ -191,4 +257,4 @@ def test_health_check_endpoint_requires_provider_url(monkeypatch):
     client = _build_test_client(stt_api)
     response = client.post("/api/settings/stt/health-check", json={"provider": "parakeet"})
     assert response.status_code == 400
-    assert "No websocket URL configured" in response.json()["detail"]
+    assert "No STT URL configured" in response.json()["detail"]

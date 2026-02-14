@@ -1,5 +1,40 @@
 # WORKLOG
 
+## 2026-02-13T19:35:56Z
+- docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md (lines 87-154, 211): Extended the decision with explicit diarization requirements (overlay model, speaker evidence, node coloring semantics) and telemetry requirements (stage timings + per-provider p95 aggregation), plus a phase-gated `speaker_segments` persistence element and telemetry success criterion.
+- lct_python_backend/stt_api.py (lines 72-113, 321-331, 453-523, 569-640): Added phase-1 realtime instrumentation in websocket pipeline: decode timing capture, stage-metric merge into per-event telemetry metadata, and flush-stage timing propagation (`stt_flush_request_ms`, `final_flush_total_ms`) for client visibility and backend aggregation.
+- lct_python_backend/services/stt_http_transcriber.py (lines 33-35, 130-148): Added provider request duration measurement (`stt_request_ms`) at the HTTP transcriber session layer so every emitted STT event can carry provider-latency metadata.
+- lct_python_backend/services/stt_telemetry_service.py (lines 30-181): Expanded provider telemetry aggregation to include last/avg/p95 for `stt_request_ms`, `stt_flush_request_ms`, and `audio_decode_ms`, alongside existing partial/final turnaround statistics.
+- lct_python_backend/tests/unit/test_stt_api_settings.py (lines 86-160): Extended telemetry endpoint unit assertions to validate new stage-latency aggregates and p95 calculations.
+- Validation:
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_stt_api_settings.py tests/unit/test_stt_http_transcriber.py tests/integration/test_transcripts_websocket.py` (10 passed)
+  - `python3 -m py_compile lct_python_backend/stt_api.py lct_python_backend/services/stt_http_transcriber.py lct_python_backend/services/stt_telemetry_service.py` (passed)
+
+## 2026-02-13T19:27:48Z
+- docs/VISION.md (lines 1-148): Added a pause/resume-first product vision document focused on parallel insight handling, human-in-the-loop safeguards, retrieval nudges during lulls, and explicit reliability/no-silent-failure requirements.
+- docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md (lines 1-177): Added a proposed ADR defining a minimal transcript-first schema, strict LLM output contracts, validation/degradation rules, and rollout metrics to stabilize local-model graphing.
+- docs/adr/INDEX.md (lines 3-16): Updated ADR index date and registered ADR-010.
+- Why: Align product/architecture with current goal ("preserve conversational flow while retaining threads"), reduce schema complexity that is currently causing local-model JSON failures, and make the intended system behavior explicit for implementation and review.
+
+## 2026-02-10T09:00:00Z — refactor: decompose ThematicView.jsx (976 → 267 LOC)
+
+**Target:** `lct_app/src/components/ThematicView.jsx` — 976 LOC with 8 tangled concerns (level conversion, polling, graph generation, settings UI, utterance panel, keyboard shortcuts, node interaction, formatting).
+
+**Extracted files (all in `components/thematic/`):**
+- `thematicConstants.js` (80 LOC): Level maps, colors, node type colors, font size classes, available models, `formatTimestamp()`, `getDetailLevelFromZoom()`
+- `useThematicLevels.js` (170 LOC): Level state, polling `/themes/levels` every 5s, data fetching, navigation (prev/next/jump), `clearLevelCache()` for regeneration
+- `useThematicGraph.jsx` (265 LOC): Dagre layout + ReactFlow node/edge generation (~224 LOC useMemo), `selectedNodeData` and `selectedNodeUtterances` memos, utterance-highlight matching
+- `useThematicKeyboard.js` (48 LOC): Keys 0-5 jump, +/- navigate, input/textarea guard
+- `LevelSelector.jsx` (91 LOC): Level navigation bar with prev/next buttons and numbered level buttons
+- `ThematicSettingsPanel.jsx` (108 LOC): Font size, granularity slider, model selection, regenerate button
+- `UtteranceDetailPanel.jsx` (93 LOC): Bottom panel showing utterances for selected thematic node
+
+**Root `ThematicView.jsx` (267 LOC):** Thin orchestrator importing hooks + subcomponents. Keeps: local UI state (`hoveredNode`, `showSettings`, `isRegenerating`, `showUtterancePanel`, `settings`), `handleRegenerate`, node click/hover handlers, ReactFlow JSX, empty state check.
+
+**Validation:** `npx vite build` — clean build (2158 modules, 7.97s). No consumer changes needed (`ViewConversation.jsx` unchanged).
+
+**Note:** `useThematicGraph` required `.jsx` extension (contains JSX node labels inside useMemo — standard ReactFlow data pattern, but Vite requires explicit JSX extension).
+
 ## 2026-02-10T06:00:00Z — refactor: split stt_api.py, AudioInput.jsx, SttSettingsPanel.jsx
 
 **Phase A — Backend `stt_api.py` (426 → 264 LOC)**
@@ -313,3 +348,263 @@
 ## 2026-02-09T16:03:38Z
 - /Users/aditya/Documents/Ongoing Local/SHARED_AI_SERVICES.md (lines 1-74): Created cross-project registry for STT/AI endpoints, runtime ownership, startup + health commands, venv/package snapshots, and redundancy-avoidance protocol so multiple projects can reuse shared services instead of reinstalling blindly.
 - LOCAL_STT_SERVICES.md (lines 10-15): Added a canonical pointer to `/Users/aditya/Documents/Ongoing Local/SHARED_AI_SERVICES.md` and clarified this file remains the project-local companion.
+
+## 2026-02-10T17:01:41Z
+- Runtime investigation (no production code changes) to validate prerecorded-audio realtime graph generation path:
+  - Verified active listeners/services: backend on `:8000`, Parakeet container on `:5092`, no listener on `:43001`.
+  - Confirmed STT settings resolve all providers to `ws://localhost:43001/stream`, which is currently unavailable.
+  - Confirmed Parakeet health endpoint is live (`http://127.0.0.1:5092/health`) and transcription endpoint works (`/v1/audio/transcriptions`), but it is HTTP-only and not a websocket `/stream` provider.
+  - Replayed prerecorded transcript events into `/ws/transcripts`; transcript events persisted (telemetry `providers.parakeet.event_count` incremented) but no `existing_json` arrived during test window because local LLM generation timed out.
+  - Reproduced LLM timeout directly via `transcript_processing` local calls; configured base URL `http://100.81.65.74:1234` was unreachable/timing out during this session.
+- `ISSUES.md` (lines 5-9): Added `Runtime Blockers (2026-02-10)` for STT websocket mismatch and LLM endpoint reachability issues to keep discovered blockers tracked.
+- `/Users/aditya/Documents/Ongoing Local/SHARED_AI_SERVICES.md` (lines 1-44, 48-52): Refreshed cross-project registry health statuses (Parakeet local healthy, Whisper WS endpoints unreachable), added tailscale LM Studio service entry (`:1234`), and updated venv package snapshot fields (`speechbrain`, `websockets`) for current host state.
+
+## 2026-02-13T12:55:00Z
+- setup-once.command (lines 1-136): Added a first-time bootstrap script that installs Python/frontend dependencies, initializes local PostgreSQL (`.postgres_data` on port 5433), creates `lct_python_backend/.env` when missing, and runs Alembic migrations.
+- start.command (lines 1-261): Added a single daily startup script that loads env vars, cleans stale repo-owned backend/frontend processes, validates prerequisites, ensures PostgreSQL is running, runs migrations, starts backend + frontend with prefixed live logs, and performs graceful shutdown on `Ctrl+C`.
+- docs/LOCAL_SETUP.md (lines 1-55): Added consolidated operator documentation for one-time setup and daily startup flow, including local STT prerequisites.
+- scripts/legacy_commands/README.md (lines 1-13): Added archive manifest describing why legacy scripts were retained and superseded.
+- scripts/legacy_commands/setup-backend.command (moved): Archived legacy Docker-based setup script to reduce root-level startup script sprawl.
+- scripts/legacy_commands/setup-postgres-local.command (moved): Archived legacy local Postgres setup script in favor of `setup-once.command`.
+- scripts/legacy_commands/start-backend-local.command (moved): Archived legacy backend-only local starter in favor of `start.command`.
+- scripts/legacy_commands/start-backend.command (moved): Archived legacy Docker-backed backend starter in favor of `start.command`.
+- scripts/legacy_commands/stop-postgres-local.command (moved): Archived standalone Postgres stop helper; lifecycle is now controlled by the streamlined startup/shutdown flow.
+- scripts/legacy_commands/start_server.sh (moved): Archived ad-hoc backend launcher to avoid duplicate startup entrypoints.
+- README.md (Table of Contents + Local Setup/Running sections): Replaced split backend/frontend startup instructions with the new streamlined flow (`./setup-once.command`, `./start.command`) and corrected health-check guidance to `/api/import/health`.
+- start.command (lines 63-97, 140-166): Fixed `set -e` helper-return behavior so no-op cleanup paths return success instead of exiting before startup.
+- start.command (lines 144-159): Added `SKIP_MIGRATIONS=1` gate for manual E2E runs when migration history is already applied but Alembic chain is inconsistent.
+- start.command (lines 30, 215-236): Added cleanup idempotency guard to avoid duplicate shutdown path on `INT` + `EXIT`.
+- docs/LOCAL_SETUP.md (lines 36-41): Documented `SKIP_MIGRATIONS=1` override.
+- ISSUES.md (Runtime Blockers): Logged preexisting Alembic revision-chain inconsistency (`KeyError: 'add_claims_table_with_vectors'`).
+  - Impact: blocks clean startup when migrations run.
+  - Blocker status: blocking for first-time setup; bypassable for existing DB with `SKIP_MIGRATIONS=1`.
+  - Recommended next step: repair migration DAG in `lct_python_backend/alembic/versions/` so `alembic upgrade head` resolves without missing revision IDs.
+
+## 2026-02-13T13:05:00Z
+- lct_python_backend/alembic/versions/add_claims_table_with_vectors.py (lines 3-4, 13-15): Corrected revision linkage to `add_analysis_weeks_11_13` so Alembic can resolve the chain.
+- lct_python_backend/alembic/versions/add_claims_table_with_vectors.py (lines 19-29): Made pgvector extension setup conditional on `pg_available_extensions` to avoid migration failure on local Postgres instances without `vector.control`.
+- lct_python_backend/alembic/versions/add_argument_analysis_tables.py (lines 3-4, 13-15): Corrected `Revises`/`down_revision` to `add_claims_vectors` (removed reference to nonexistent `add_claims_table_with_vectors`).
+- lct_python_backend/alembic/versions/add_transcript_events_and_settings.py (lines 3-5, 11-14): Shortened revision ID to `add_transcript_events_settings` (<=32 chars) and set parent revision to `add_argument_analysis` to maintain a single linear head for `upgrade head`.
+- lct_python_backend/alembic/versions/add_transcript_events_and_settings.py (lines 18-69): Made migration idempotent for pre-existing `app_settings`/`transcript_events` tables by creating missing tables/indexes/check-constraints only when absent.
+- ISSUES.md (lines 3, 10-15): Updated issue tracker date and moved Alembic blocker to resolved section after verification.
+- Verification (local DB `postgresql://lct_user:lct_password@localhost:5433/lct_dev`):
+  - `python -m alembic history` shows linear chain ending in `add_transcript_events_settings (head)`.
+  - `python -m alembic heads` returns a single head.
+  - `python -m alembic upgrade head` succeeds.
+  - `./start.command` now succeeds without `SKIP_MIGRATIONS`.
+
+## 2026-02-13T07:49:44Z
+- start.command (lines 25-35, 185-264, 343-345): Added opt-in shared STT bootstrap controls (`STT_AUTOSTART`, `STT_AUTOSTART_PROVIDER`, `SHARED_PARAKEET_DIR`) and endpoint status reporting. `STT_AUTOSTART=1 STT_AUTOSTART_PROVIDER=parakeet` now starts the sibling Parakeet Docker service if available, waits for `/health`, and reuses Docker volume `parakeet-models` to avoid duplicate model downloads across projects.
+- docs/LOCAL_SETUP.md (lines 27-55): Documented new optional shared STT autostart flow and clarified non-redundant cache behavior.
+- README.md (lines 230-239): Added the shared Parakeet autostart command to the primary startup section so operators can run app + shared STT from this repo.
+- Verification: `bash -n start.command` passed.
+
+## 2026-02-13T07:51:43Z
+- start.command (lines 28-29): Updated Whisper/WhisperX default health URLs to TemporalCoordination defaults (`172.20.5.123:8000/8001`) to avoid false checks against this repo's backend port `8000`.
+- Verification: `bash -n start.command` passed.
+- Verification: `STT_AUTOSTART=1 STT_AUTOSTART_PROVIDER=parakeet ./start.command` reached healthy backend/frontend startup, skipped STT autostart cleanly when Docker daemon was unavailable, printed endpoint status summary, and shut down cleanly on `Ctrl+C`.
+
+## 2026-02-13T08:11:41Z
+- lct_app/src/components/audio/audioMessages.js (lines 37-67): Added `onTranscriptEvent` callback emission for each provider partial/final payload so UI can render raw text immediately without waiting for backend semantic batching.
+- lct_app/src/components/audio/useTranscriptSockets.js (lines 17-279): Added optional callbacks for provider/backend WebSocket connection states (`connecting|connected|error|closed`) and passed through provider transcript events to the UI layer.
+- lct_app/src/components/AudioInput.jsx (lines 16-290): Added live capture visibility UX: mic/provider/backend status chips and a rolling "Live Raw Transcript" panel that streams partial and final text as it arrives; keeps final lines and updates the in-flight partial line in place.
+- Verification:
+  - `npx eslint src/components/AudioInput.jsx src/components/audio/useTranscriptSockets.js src/components/audio/audioMessages.js` (from `lct_app/`) passed.
+  - `npm --prefix lct_app run build` passed.
+  - `npm --prefix lct_app run lint -- ...` reports pre-existing repository-wide lint errors unrelated to these changes.
+
+## 2026-02-13T17:28:32Z
+- lct_python_backend/services/stt_http_transcriber.py (lines 1-179): Added backend-owned realtime STT HTTP transcriber utilities for base64 audio decode, PCM->WAV conversion, provider response text extraction, and chunked/flush transcription session handling.
+- lct_python_backend/stt_api.py (lines 1-419): Refactored `/ws/transcripts` to accept `audio_chunk` payloads, route chunks to backend HTTP STT provider sessions, persist/emit transcript partial+final events from backend, keep legacy transcript event input compatibility, and include session ack/provider readiness metadata.
+- lct_python_backend/services/stt_config.py (lines 1-147): Extended STT config model with provider HTTP URL map + active `http_url`, HTTP-specific defaults (`chunk_seconds`, timeout, model, language, sample rate), and merge behavior while preserving legacy WS settings for health checks.
+- lct_app/src/components/audio/useTranscriptSockets.js (lines 1-185): Simplified client transport to backend-only WS; removed direct provider WS dependency and now streams microphone chunks as base64 `audio_chunk` messages to `/ws/transcripts`.
+- lct_app/src/components/audio/audioMessages.js (lines 1-53): Reworked backend message handler to consume backend-emitted transcript events and STT provider readiness/error states for live UI feedback.
+- lct_app/src/components/AudioInput.jsx (lines 1-277): Updated recording flow to start backend-owned STT sessions (no direct provider URL requirement) and relabeled provider chip as `STT Engine`.
+- lct_app/src/components/audio/sttUtils.js (lines 1-130): Added provider HTTP URL normalization/defaults and active `http_url` derivation in normalized STT settings.
+- lct_app/src/components/SttSettingsPanel.jsx (lines 1-327): Added per-provider HTTP transcription URL fields and active HTTP URL display to match backend-owned routing.
+- lct_python_backend/tests/integration/test_transcripts_websocket.py (lines 1-240): Added websocket integration coverage for backend-owned `audio_chunk` ingestion path.
+- lct_python_backend/tests/unit/test_stt_config.py (lines 1-74): Expanded config unit coverage for provider HTTP URL merge/default behavior.
+- lct_python_backend/tests/unit/test_stt_http_transcriber.py (lines 1-57): Added unit coverage for transcriber helpers and realtime chunk/flush session behavior.
+- start.command (lines 1-364): Defaulted shared STT autostart on (`STT_AUTOSTART=1`), updated readiness hints for backend-owned HTTP STT routing, and marked WS listener checks as legacy optional.
+- README.md (lines 225-246): Updated startup docs to reflect default STT autostart and backend-owned STT path.
+- docs/LOCAL_SETUP.md (lines 35-84): Updated setup docs from WS-required STT to backend-owned HTTP STT requirements and defaults.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_stt_config.py tests/unit/test_stt_api_settings.py tests/integration/test_transcripts_websocket.py tests/unit/test_stt_http_transcriber.py` (13 passed)
+- `cd lct_app && npx eslint src/components/AudioInput.jsx src/components/audio/useTranscriptSockets.js src/components/audio/audioMessages.js src/components/audio/sttUtils.js src/components/SttSettingsPanel.jsx` (passed)
+- `npm --prefix lct_app run build` (passed)
+- `python3 -m py_compile lct_python_backend/stt_api.py lct_python_backend/services/stt_http_transcriber.py lct_python_backend/services/stt_config.py` (passed)
+- `bash -n start.command` (passed)
+- docs/TECH_DEBT.md (lines 1-15): Re-opened `lct_python_backend/stt_api.py` as a decomposition candidate after backend-owned STT routing increased module size/concern density; recorded suggested split targets.
+- docs/adr/ADR-008-local-stt-transcripts.md (lines 1-68): Added 2026-02-13 amendment documenting the backend-owned STT routing shift (`audio_chunk` -> backend HTTP provider -> backend-emitted transcript events) and clarified provider WS is now legacy/optional.
+
+## 2026-02-13T17:36:41Z
+- lct_app/src/components/AudioInput.jsx (lines 78-94): Updated live raw transcript behavior to append every incoming partial/final STT event as a new line entry instead of replacing the latest partial line. This makes the panel behave like a running stream (within existing `LIVE_TRANSCRIPT_MAX_LINES` cap).
+
+Validation:
+- `cd lct_app && npx eslint src/components/AudioInput.jsx` (passed)
+- `npm --prefix lct_app run build` (passed)
+
+## 2026-02-13T17:44:07Z
+- lct_python_backend/services/transcript_processing.py (lines 1-579): Added outbound LLM API trace logging (`TRACE_API_CALLS` + preview truncation), cached fallback when providers reject `response_format: json_object`, surfaced accumulation warnings/errors in result payloads, and added processor status callback plumbing (`send_status`) so websocket clients can receive explicit processing warnings/errors instead of silent drops.
+- lct_python_backend/stt_api.py (lines 267-566): Added websocket `processing_status` emissions from transcript processor callbacks and explicit error status messages for final-text processing / flush failures.
+- lct_app/src/components/audio/audioMessages.js (lines 1-73): Added handling for backend `processing_status` messages and promoted backend `error` messages into UI-consumable processing status callbacks.
+- lct_app/src/components/audio/useTranscriptSockets.js (lines 20-57): Added `onProcessingStatus` pass-through from backend websocket handler.
+- lct_app/src/components/AudioInput.jsx (lines 65-141, 168-227): Added in-UI processing warning/error banner so local LLM/graph-generation failures are visible during recording sessions.
+- lct_app/src/services/apiClient.js (lines 1-102): Added frontend API request/response tracing in dev mode (or `VITE_API_TRACE`) with response preview logging for easier debugging.
+- lct_python_backend/services/stt_http_transcriber.py (lines 16-186): Added structured STT HTTP API trace logging (request metadata + status + transcript preview + error body preview).
+- lct_python_backend/services/local_llm_client.py (lines 1-185): Added local LLM API trace logging and cached skip of unsupported `response_format` for endpoints that reject `json_object`.
+- lct_python_backend/services/llm_config.py (lines 1-61): Added explicit Tailscale default constant and rewrite guard that normalizes legacy `localhost:1234` configs to `http://100.81.65.74:1234`.
+- lct_python_backend/.env.example (lines 53-64): Added Local LLM defaults (Tailscale base URL) and API trace toggles.
+- lct_python_backend/tests/unit/test_llm_config.py (lines 1-37): Added regression coverage for localhost->Tailscale base URL rewrite behavior.
+- start.command (lines 114-124, 284-292, 373): Added startup defaults + health check for local LLM endpoint (`$LOCAL_LLM_BASE_URL/v1/models`) and printed status in startup summary.
+- docs/LOCAL_SETUP.md (lines 1-105): Updated setup guide with local LLM default endpoint and explicit log/trace configuration guidance.
+- README.md (Local Setup section): Added note that startup now reports local LLM endpoint reachability.
+- lct_app/src/components/LlmSettingsPanel.jsx (lines 69-75): Added confirmation gate when saving `mode=online` so external-provider mode is not accidentally enabled.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_stt_config.py tests/unit/test_llm_config.py tests/unit/test_stt_api_settings.py tests/integration/test_transcripts_websocket.py tests/unit/test_stt_http_transcriber.py` (16 passed)
+- `cd lct_app && npx eslint src/components/AudioInput.jsx src/components/audio/useTranscriptSockets.js src/components/audio/audioMessages.js src/components/LlmSettingsPanel.jsx src/services/apiClient.js` (passed)
+- `python3 -m py_compile lct_python_backend/stt_api.py lct_python_backend/services/transcript_processing.py lct_python_backend/services/stt_http_transcriber.py lct_python_backend/services/llm_config.py lct_python_backend/services/local_llm_client.py` (passed)
+- `npm --prefix lct_app run build` (passed)
+- `bash -n start.command` (passed)
+- ISSUES.md (Runtime Blockers): Added a preexisting runtime issue note for backend force-kill on shutdown when long LLM requests are in-flight (non-blocking for current task, recommended follow-up: graceful cancellation in transcript processing).
+
+## 2026-02-13T17:53:38Z
+- E2E validation attempt (manual websocket pipeline): tried streaming `/Users/aditya/Library/CloudStorage/GoogleDrive-adityaprasadiskool@gmail.com/My Drive/Audio Recordings/h1n/ZOOM0123.MP3` through backend `/ws/transcripts` via ffmpeg decode + `audio_chunk` messages.
+- Result: source audio path is not materialized locally (single `read(4096)` times out after 8s; ffmpeg blocks indefinitely on read), so this specific MP3 could not be streamed for E2E from that path.
+- Fallback E2E run executed with local sample `outputs/stt_sample.wav` to validate pipeline behavior:
+  - session ack successful (`stt_mode=backend_http`, provider HTTP URL present)
+  - 20 audio chunks / 160000 bytes sent
+  - transcript events received: partial=3, final=1
+  - DB persistence confirmed for conversation `7e171234-ca06-4625-bfee-bba1247ccdfe`: `transcript_events` partial=3/final=1, `utterances`=1
+  - semantic graph generation not produced within run window: `existing_json`=0, `chunk_dict`=0, `nodes` table count=0 for that conversation
+- Backend logs show root cause for missing graph update in this run: local LLM responses from `http://100.81.65.74:1234/v1/chat/completions` include non-JSON preambles (`<think>...`), causing JSON parse failures (`Extra data`) in `generate_lct_json_local` retries.
+- ISSUES.md (Runtime Blockers): logged cloud file-provider materialization blocker for E2E media inputs from Google Drive paths (file metadata visible but reads can block until explicit local download).
+
+## 2026-02-13T19:37:25Z
+- docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md (lines 87-121, 153, 211): Added explicit diarization requirements (speaker segments for node coloring) and Phase 1 telemetry requirements (per-provider last/avg/p95 latency metrics) plus success criteria updates.
+- lct_python_backend/services/stt_http_transcriber.py (lines 33, 130-148): Added STT request timing capture and emitted `stt_request_ms` in transcript event metadata for each chunk/flush transcription call.
+- lct_python_backend/stt_api.py (lines 72-118, 462-512, 577-640, 663-669): Added telemetry helpers and websocket-stage instrumentation (`audio_decode_ms`, `stt_request_ms`, `stt_flush_request_ms`, `final_flush_total_ms`) and merged normalized telemetry metadata into persisted transcript events and flush acknowledgements.
+- lct_python_backend/services/stt_telemetry_service.py (lines 42-52, 57, 137-174): Extended provider aggregation to compute sample counts and last/avg/p95 stats for decode/STT/flush timings.
+- lct_python_backend/tests/unit/test_stt_api_settings.py (lines 94-118, 147-160): Expanded telemetry endpoint unit assertions to cover new timing fields and p95 aggregates.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_stt_api_settings.py tests/unit/test_stt_http_transcriber.py tests/integration/test_transcripts_websocket.py` (10 passed)
+- `python3 -m py_compile lct_python_backend/stt_api.py lct_python_backend/services/stt_http_transcriber.py lct_python_backend/services/stt_telemetry_service.py` (passed)
+
+## 2026-02-14T05:30:21Z
+- lct_python_backend/services/local_llm_client.py (lines 26-59): Hardened JSON extraction for local model outputs that include visible reasoning (`<think>...</think>`), fenced blocks, and trailing prose by decoding the first valid JSON value instead of requiring the entire response body to be pure JSON.
+- lct_python_backend/services/transcript_processing.py (lines 158-186, 206-420, 640-664): Added a minimal local graph prompt (`LOCAL_GENERATE_LCT_PROMPT`) with explicit node summary + edge relation text requirements and thread transition states (`new_thread|continue_thread|return_to_thread`), then added output normalization so dict/list variants from local models are coerced into a stable node payload (`edge_relations`, `thread_id`, `thread_state`, `node_text`, `source_excerpt`) while preserving legacy fields.
+- lct_python_backend/stt_api.py (lines 136-150, 339-391, 629-719, 732-735): Added websocket-safe send helper (`_safe_send_json`) and changed `final_flush` behavior so `flush_ack` is emitted before expensive graph-generation flush work. Post-flush transcript processing now runs in a background task, preventing client timeouts when local LLM JSON cycles are slow.
+- lct_app/src/components/ContextualGraph.jsx (lines 12-22, 347-441, 577-595, 732-788): Added relation-type edge styling (`supports`, `rebuts`, `clarifies`, `tangent`, `return_to_thread`), hover card for edge relation text, and context panel display of normalized `edge_relations` to make branching/return semantics visible in the realtime graph.
+- lct_python_backend/tests/integration/test_transcripts_websocket.py (line 233): Added regression test ensuring `flush_ack` is not blocked by slow `processor.flush()`.
+- lct_python_backend/tests/unit/test_local_llm_client.py (lines 1-22): Added extractor tests for `<think>` output, trailing prose, and missing JSON failure path.
+- lct_python_backend/tests/unit/test_transcript_processing_schema.py (lines 1-52): Added normalization tests for `nodes+edges` object outputs and default field coercion.
+- docs/TECH_DEBT.md (table rows): Updated LOC/rationale for `transcript_processing.py` and `stt_api.py` and added `ContextualGraph.jsx` as a decomposition candidate after this patch.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_local_llm_client.py tests/unit/test_transcript_processing_schema.py tests/integration/test_transcripts_websocket.py tests/unit/test_stt_api_settings.py tests/unit/test_stt_http_transcriber.py` (16 passed)
+- `python3 -m py_compile lct_python_backend/stt_api.py lct_python_backend/services/transcript_processing.py lct_python_backend/services/local_llm_client.py` (passed)
+- `cd lct_app && npx eslint src/components/ContextualGraph.jsx` (no errors; warnings are pre-existing hook-dependency warnings in this component)
+- `npm --prefix lct_app run build` (passed)
+
+Diagnostics run for local model behavior:
+- Streamed prompt bakeoff against `http://100.81.65.74:1234/v1/chat/completions` with realistic transcript snippets.
+- Observed consistent `<think>` prefix plus parseable JSON tail; schema shape varied across runs (array vs object), which motivated backend normalization instead of trying to suppress reasoning text.
+
+## 2026-02-14T05:36:01Z
+- lct_python_backend/stt_api.py (lines 308-389, 697-719, 730-748): Refined websocket flush path further by queueing `final` transcript processing into background tasks (serialized via lock) and waiting for pending final-processing tasks inside post-ack flush worker. This prevents `final_flush` ack delays caused by in-flight local-LLM processing from earlier `transcript_final` events.
+- lct_python_backend/stt_api.py (lines 730-748): Added RuntimeError handling for disconnected websocket receive/close path to avoid noisy stack traces (`WebSocket is not connected` / `Cannot call send once close sent`).
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/integration/test_transcripts_websocket.py tests/unit/test_stt_api_settings.py` (7 passed)
+- Runtime probe (`ZOOM0123.MP3`, 10s slice over `/ws/transcripts`): `flush_ack` received in ~1567 ms (no client-side flush timeout), confirming ack is no longer blocked on graph-generation flush completion.
+
+## 2026-02-14T06:41:48Z
+- lct_app/src/components/AudioInput.jsx (lines 16, 53-108, 136-143, 285): Fixed live transcript duplication by replacing streaming partial text in-place and converting that same line to final on `transcript_final` instead of appending both events. Added duplicate-final guard for repeated server messages, increased rolling buffer from 60 to 240 lines, and increased transcript viewport height (`h-28` -> `h-40`) so longer sessions remain visible.
+
+Validation:
+- `cd lct_app && npx eslint src/components/AudioInput.jsx` (passed)
+- `npm --prefix lct_app run build` (passed)
+
+## 2026-02-14T06:56:27Z
+- lct_app/src/pages/Settings.jsx (line 388): Fixed runtime crash on `/settings` by escaping the literal template example string. Previous text `Use $variable or ${{variable}} ...` evaluated `variable` at render-time and threw `ReferenceError: variable is not defined`; updated to literal JSX string fragments `{"$variable"}` and `{"${{variable}}"}`.
+
+Validation:
+- `cd lct_app && npx eslint src/pages/Settings.jsx` (0 errors, 2 pre-existing hook-dependency warnings)
+- `npm --prefix lct_app run build` (passed)
+
+## 2026-02-14T07:01:42Z
+- lct_python_backend/services/transcript_processing.py (lines 18-23, 193-205, 512-975): Added Gemini key alias resolution (`GOOGLEAI_API_KEY`, `GEMINI_API_KEY`, `GEMINI_KEY`) and replaced static import-time key usage with runtime resolution; preserved fast Gemini config (`thinking_budget=0`, no tools), added explicit online-mode fallback warnings, and surfaced detailed generation/accumulation failure reasons via `processing_status` so frontend users see why graph generation is degraded/fallback.
+- lct_python_backend/config.py (lines 7-11): Updated shared `GOOGLEAI_API_KEY` constant to accept `GEMINI_API_KEY` and `GEMINI_KEY` aliases.
+- lct_python_backend/.env.example (line 38): Added `GEMINI_KEY=` for parity with runtime alias support.
+- lct_python_backend/tests/unit/test_transcript_processing_schema.py (lines 1-113): Added regression coverage for Gemini key alias resolution and online-mode missing-key fallback warnings for both graph generation and accumulator paths.
+- docs/TECH_DEBT.md (lines 3, 12): Refreshed last-updated date and expanded `transcript_processing.py` split recommendation to include a dedicated `llm_provider_router.py`, since provider/key-routing concerns now further increase mixed responsibility in that module.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_transcript_processing_schema.py tests/unit/test_llm_config.py` (8 passed)
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/integration/test_transcripts_websocket.py` (3 passed)
+- `python3 -m py_compile lct_python_backend/services/transcript_processing.py lct_python_backend/config.py` (passed)
+
+## 2026-02-14T07:09:03Z
+- lct_python_backend/services/stt_health_service.py (lines 32-41): Added `derive_health_url_from_http_url()` so provider health checks can derive `/health` from HTTP transcription endpoints (`http://.../v1/audio/transcriptions` -> `http://.../health`) instead of assuming websocket transport.
+- lct_python_backend/stt_api.py (lines 32-36, 176-179, 226-266): Updated `/api/settings/stt/health-check` resolution order to prefer provider HTTP URLs (`provider_http_urls`) and only fall back to websocket-derived health URLs when HTTP URL is absent; endpoint now accepts health checks with only HTTP URL configured and returns both `ws_url` and `http_url` in payload for transparency.
+- lct_app/src/components/audio/useProviderHealthChecks.js (lines 12-26): Updated health-check request payload to include `http_url` alongside `ws_url`.
+- lct_app/src/components/SttSettingsPanel.jsx (lines 205-211): Updated Health Check button to pass both provider WS and provider HTTP URLs from settings state.
+- lct_python_backend/tests/unit/test_stt_api_settings.py (lines 201-260): Added regression test for HTTP-priority health resolution and updated missing-URL assertion to new error semantics.
+- Note on modularity: `lct_python_backend/stt_api.py` remains a known large mixed-concern module and is already tracked in `docs/TECH_DEBT.md` for decomposition; no new split candidate added in this patch.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_stt_api_settings.py tests/unit/test_stt_config.py` (8 passed)
+- `python3 -m py_compile lct_python_backend/stt_api.py lct_python_backend/services/stt_health_service.py` (passed)
+- `cd lct_app && npx eslint src/components/SttSettingsPanel.jsx src/components/audio/useProviderHealthChecks.js` (passed)
+
+## 2026-02-14T07:29:34Z
+- lct_python_backend/llm_api.py (lines 1-235): Added provider-aware model options endpoint `GET /api/settings/llm/models` with mode routing (`local` via `<base_url>/v1/models`, `online` via Google Gemini models API), 5-minute in-process caching, and strict online save validation so `PUT /api/settings/llm` rejects invalid Gemini `chat_model` IDs.
+- lct_app/src/services/llmSettingsApi.js (lines 11-23): Added `getLlmModelOptions()` client for dynamic model option retrieval.
+- lct_app/src/components/LlmSettingsPanel.jsx (lines 1-262): Replaced static chat model list with dynamic accepted-model dropdown tied to mode/base URL, removed free-form chat model entry path, surfaced option source (`gemini_api`, `local_api`, `fallback`), and blocked save when no accepted model is selected.
+- lct_python_backend/tests/unit/test_llm_api.py (lines 1-99): Added unit coverage for online/local model-options behavior, invalid online-model rejection, and normalization of `models/<id>` values.
+- lct_python_backend/services/transcript_processing.py (lines 18, 193-205, 527-648, 768-823): Completed online Gemini model selection fix so graph/accumulation calls use configured `chat_model` (normalized) instead of stale hardcoded model ID.
+- lct_python_backend/tests/unit/test_transcript_processing_schema.py (lines 116-156): Added regression tests for online Gemini model resolution and pass-through into graph generation.
+- outputs/e2e_gemini_summary_1771054114.json + outputs/e2e_gemini_graph_1771054114.json: Saved E2E run artifacts for `ZOOM0123.MP3` using backend websocket STT + Gemini graph generation (`conversation_id=95226fd3-8b7a-480b-8362-dd31d58dead2`).
+
+Validation:
+- `./.venv/bin/python -m py_compile lct_python_backend/llm_api.py lct_python_backend/services/transcript_processing.py` (passed)
+- `cd lct_python_backend && set -a && source .env && set +a && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_llm_api.py tests/unit/test_transcript_processing_schema.py` (13 passed)
+- `cd lct_app && npx eslint src/components/LlmSettingsPanel.jsx src/services/llmSettingsApi.js` (passed)
+- `curl 'http://localhost:8000/api/settings/llm/models?mode=online'` returned 22 accepted Gemini models from `source=gemini_api` (including `gemini-3-flash-preview`).
+- `curl -X PUT /api/settings/llm ... chat_model=not-valid` now fails with `400` and accepted-model guidance.
+- E2E websocket stream (`ZOOM0123.MP3`, 75s segment, provider=parakeet, mode=online chat_model=gemini-3-flash-preview):
+  - `session_ack=1`, `transcript_partial=23`, `transcript_final=18`
+  - `existing_json=2`, `chunk_dict=2`, `errors=0`, `processing_status=0`
+  - graph export captured 2 nodes / 2 chunks in `outputs/e2e_gemini_graph_1771054114.json`
+  - backend logs confirm Gemini calls: `[GEMINI] ... accumulation model=gemini-3-flash-preview` and `[GEMINI] ... graph generation model=gemini-3-flash-preview`
+  - observed `flush_ack_ms=27940.65` on this high-throughput scripted run; logged to `ISSUES.md` as backlog-latency follow-up.
+
+## 2026-02-14T07:57:04Z
+- Validation-only pass (no production code changes in this step): reran compile, targeted tests, frontend lint/build, and websocket E2E against `ZOOM0123.MP3` with Gemini online mode.
+- outputs/e2e_gemini_summary_1771055718.json + outputs/e2e_gemini_graph_1771055718.json: New artifact set from 75s stream (`conversation_id=27f83aa1-7729-4cd6-bfe5-c9429fb6885c`) showing `session_ack=1`, `transcript_partial=25`, `transcript_final=18`, `existing_json=2`, `chunk_dict=2`, `errors=0`, `processing_status=0`.
+- Runtime stress probe (`conversation_id=c3a6959a-e764-4678-bfed-cc19a0a6ff7d`, 20s burst, no pacing): confirmed near-immediate `flush_ack` (`ack_wait_ms=0.89`) and successful late semantic updates while socket remains open (`existing_json=1`, `chunk_dict=1`, no errors).
+- docs note: updated `ISSUES.md` with follow-up that post-refactor `flush_ack` may arrive before graph updates; clients should keep websocket open briefly after ack to avoid missing late `existing_json`/`chunk_dict`.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/python -m py_compile stt_api.py llm_api.py services/transcript_processing.py services/stt_health_service.py` (passed)
+- `cd lct_python_backend && set -a && source .env && set +a && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_llm_api.py tests/unit/test_transcript_processing_schema.py tests/unit/test_stt_api_settings.py tests/integration/test_transcripts_websocket.py` (21 passed)
+- `cd lct_app && npx eslint src/pages/Settings.jsx src/components/LlmSettingsPanel.jsx src/components/AudioInput.jsx src/components/SttSettingsPanel.jsx src/components/audio/useProviderHealthChecks.js src/services/llmSettingsApi.js` (0 errors, 2 pre-existing hook-dependency warnings in `Settings.jsx`)
+- `npm --prefix lct_app run build` (passed)
+
+## 2026-02-14T10:54:43Z
+- lct_app/src/pages/NewConversation.jsx (lines 13-58, 76-86, 137-143, 179-185): Added `normalizeGraphDataPayload()` boundary normalizer so websocket `existing_json` payloads in either shape (`Array<Node>` from current backend or legacy `Array<Array<Node>>`) are converted to the chunked structure expected by `ContextualGraph`/`StructuralGraph`. Malformed payloads are now ignored with a descriptive warning instead of crashing downstream `latestChunk.map(...)` calls.
+- lct_app/src/pages/NewConversation.jsx (lines 137, 179): Passed `conversationId` into `ContextualGraph` in both default and formalism layouts so conversation-scoped actions (bookmark/fact-check flows) receive a defined identifier.
+
+Validation:
+- `cd lct_app && npx eslint src/pages/NewConversation.jsx` (passed)
+- `npm --prefix lct_app run build` (passed)
+
+## 2026-02-14T10:59:52Z
+- .gitignore (lines 207-213): Added local-artifact exclusions for `/.serena/` and `/lct_python_backend/recordings/` so developer-local metadata and runtime audio captures do not keep the branch perpetually dirty or leak into PRs.
+- Branch validation pass before commit:
+  - `cd lct_python_backend && set -a && source .env && set +a && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_llm_api.py tests/unit/test_transcript_processing_schema.py tests/unit/test_stt_api_settings.py tests/integration/test_transcripts_websocket.py` (21 passed)
+  - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/components/AudioInput.jsx src/components/LlmSettingsPanel.jsx src/components/SttSettingsPanel.jsx src/components/audio/audioMessages.js src/components/audio/sttUtils.js src/components/audio/useProviderHealthChecks.js src/components/audio/useTranscriptSockets.js src/services/llmSettingsApi.js src/pages/Settings.jsx` (0 errors, 2 pre-existing warnings in `Settings.jsx`)
+  - `npm --prefix lct_app run build` (passed)
