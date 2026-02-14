@@ -7,47 +7,104 @@ import NodeDetail from "../components/NodeDetail";
 import MinimalLegend from "../components/MinimalLegend";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 
-function normalizeGraphDataPayload(payload) {
-  if (!Array.isArray(payload)) {
+function isNodeObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeChunkNode(node, index, fallbackChunkId) {
+  if (!isNodeObject(node)) return null;
+
+  const chunkId =
+    typeof node.chunk_id === "string" && node.chunk_id.trim()
+      ? node.chunk_id.trim()
+      : fallbackChunkId;
+
+  const explicitId = typeof node.id === "string" && node.id.trim() ? node.id.trim() : "";
+  const explicitName =
+    typeof node.node_name === "string" && node.node_name.trim() ? node.node_name.trim() : "";
+  const fallbackName =
+    typeof node.summary === "string" && node.summary.trim()
+      ? node.summary.trim().slice(0, 48)
+      : `Node ${index + 1}`;
+
+  return {
+    ...node,
+    chunk_id: chunkId,
+    id: explicitId || `${chunkId}-node-${index}`,
+    node_name: explicitName || fallbackName,
+    edge_relations: Array.isArray(node.edge_relations) ? node.edge_relations : [],
+    contextual_relation:
+      node.contextual_relation && typeof node.contextual_relation === "object" && !Array.isArray(node.contextual_relation)
+        ? node.contextual_relation
+        : {},
+  };
+}
+
+function normalizeGraphDataPayload(payload, depth = 0) {
+  if (depth > 3) return null;
+
+  // Wrapper object payloads seen in older responses: { existing_json: [...] } / { data: [...] }
+  if (isNodeObject(payload)) {
+    if (Array.isArray(payload.existing_json)) {
+      return normalizeGraphDataPayload(payload.existing_json, depth + 1);
+    }
+    if (Array.isArray(payload.data)) {
+      return normalizeGraphDataPayload(payload.data, depth + 1);
+    }
     return null;
   }
 
-  if (payload.length === 0) {
-    return [];
+  if (!Array.isArray(payload)) return null;
+  if (payload.length === 0) return [];
+
+  // Wrapper array shape: [{ existing_json: [...] }] or [{ data: [...] }]
+  if (payload.length === 1 && isNodeObject(payload[0])) {
+    if (Array.isArray(payload[0].existing_json)) {
+      return normalizeGraphDataPayload(payload[0].existing_json, depth + 1);
+    }
+    if (Array.isArray(payload[0].data)) {
+      return normalizeGraphDataPayload(payload[0].data, depth + 1);
+    }
   }
 
-  // Legacy/expected shape: Array<Array<Node>>
+  // Chunked shape: Array<Array<Node>>
   if (Array.isArray(payload[0])) {
     return payload
-      .map((chunk) =>
-        Array.isArray(chunk)
-          ? chunk.filter((item) => item && typeof item === "object" && !Array.isArray(item))
-          : []
-      )
+      .map((chunk, chunkIndex) => {
+        if (!Array.isArray(chunk)) return [];
+        const fallbackChunkId = `chunk-${chunkIndex}`;
+        return chunk
+          .map((node, index) => normalizeChunkNode(node, index, fallbackChunkId))
+          .filter(Boolean);
+      })
       .filter((chunk) => chunk.length > 0);
   }
 
-  // New backend shape: Array<Node>; rebuild chunk groups by chunk_id.
-  if (payload[0] && typeof payload[0] === "object") {
+  // Flat shape: Array<Node>
+  if (isNodeObject(payload[0])) {
     const chunkOrder = [];
     const chunkMap = new Map();
 
-    payload.forEach((node, index) => {
-      if (!node || typeof node !== "object" || Array.isArray(node)) {
-        return;
-      }
+    payload.forEach((rawNode) => {
+      if (!isNodeObject(rawNode)) return;
       const chunkId =
-        typeof node.chunk_id === "string" && node.chunk_id.trim()
-          ? node.chunk_id
-          : `legacy-${index}`;
+        typeof rawNode.chunk_id === "string" && rawNode.chunk_id.trim()
+          ? rawNode.chunk_id.trim()
+          : "chunk-0";
       if (!chunkMap.has(chunkId)) {
         chunkMap.set(chunkId, []);
         chunkOrder.push(chunkId);
       }
-      chunkMap.get(chunkId).push(node);
+      const targetChunk = chunkMap.get(chunkId);
+      const normalized = normalizeChunkNode(rawNode, targetChunk.length, chunkId);
+      if (normalized) {
+        targetChunk.push(normalized);
+      }
     });
 
-    return chunkOrder.map((id) => chunkMap.get(id)).filter((chunk) => chunk.length > 0);
+    return chunkOrder
+      .map((id) => chunkMap.get(id))
+      .filter((chunk) => Array.isArray(chunk) && chunk.length > 0);
   }
 
   return null;
@@ -127,7 +184,7 @@ export default function NewConversation() {
               End this recording?
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Transcript is preserved. Graph may not persist without cloud storage.
+              Auto-save is active. If cloud storage is unavailable, local fallback is used.
             </p>
             <div className="flex gap-2 justify-center">
               <button

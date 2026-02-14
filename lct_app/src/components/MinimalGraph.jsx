@@ -8,6 +8,35 @@ import { EDGE_COLORS, buildSpeakerColorMap } from "./graphConstants";
 const NODE_TYPES = {};
 const EDGE_TYPES = {};
 
+function normalizeGraphNode(item, index) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) {
+    return null;
+  }
+
+  const rawId = typeof item.id === "string" && item.id.trim() ? item.id.trim() : "";
+  const rawName =
+    typeof item.node_name === "string" && item.node_name.trim() ? item.node_name.trim() : "";
+  const fallbackName =
+    typeof item.summary === "string" && item.summary.trim()
+      ? item.summary.trim().slice(0, 48)
+      : `Node ${index + 1}`;
+
+  return {
+    ...item,
+    id: rawId || `node-${index}`,
+    node_name: rawName || fallbackName,
+    speaker_id: typeof item.speaker_id === "string" ? item.speaker_id : "",
+    successor: typeof item.successor === "string" ? item.successor : "",
+    edge_relations: Array.isArray(item.edge_relations) ? item.edge_relations : [],
+    contextual_relation:
+      item.contextual_relation &&
+      typeof item.contextual_relation === "object" &&
+      !Array.isArray(item.contextual_relation)
+        ? item.contextual_relation
+        : {},
+  };
+}
+
 function layoutWithDagre(nodes, edges) {
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 80 });
@@ -36,11 +65,16 @@ function MinimalGraphInner({
     [graphData]
   );
 
-  const speakerColorMap = useMemo(() => buildSpeakerColorMap(latestChunk), [latestChunk]);
+  const normalizedChunk = useMemo(
+    () => latestChunk.map((item, index) => normalizeGraphNode(item, index)).filter(Boolean),
+    [latestChunk]
+  );
+
+  const speakerColorMap = useMemo(() => buildSpeakerColorMap(normalizedChunk), [normalizedChunk]);
 
   // Build ReactFlow nodes
   const rfNodes = useMemo(() => {
-    return latestChunk.map((item) => {
+    return normalizedChunk.map((item) => {
       const isSelected = selectedNode === item.id;
       const speakerColor = speakerColorMap[item.speaker_id] || "#e2e8f0";
       const label =
@@ -73,16 +107,16 @@ function MinimalGraphInner({
         },
       };
     });
-  }, [latestChunk, selectedNode, speakerColorMap]);
+  }, [normalizedChunk, selectedNode, speakerColorMap]);
 
   // Build ReactFlow edges
   const rfEdges = useMemo(() => {
     const edges = [];
 
-    latestChunk.forEach((item) => {
+    normalizedChunk.forEach((item) => {
       // Temporal edges
       if (item.successor) {
-        const target = latestChunk.find((n) => n.id === item.successor);
+        const target = normalizedChunk.find((n) => n.id === item.successor);
         if (target) {
           edges.push({
             id: `t-${item.id}-${target.id}`,
@@ -98,7 +132,7 @@ function MinimalGraphInner({
       // Contextual edges from edge_relations
       const relations = Array.isArray(item.edge_relations) ? item.edge_relations : [];
       relations.forEach((rel, i) => {
-        const related = latestChunk.find((n) => n.node_name === rel?.related_node);
+        const related = normalizedChunk.find((n) => n.node_name === rel?.related_node);
         if (!related) return;
         const relType = rel.relation_type || "contextual";
         const color = EDGE_COLORS[relType] || EDGE_COLORS.contextual;
@@ -128,7 +162,7 @@ function MinimalGraphInner({
       // Fallback: contextual_relation map (backward compat)
       if (relations.length === 0 && item.contextual_relation) {
         Object.entries(item.contextual_relation).forEach(([relName, relText]) => {
-          const related = latestChunk.find((n) => n.node_name === relName);
+          const related = normalizedChunk.find((n) => n.node_name === relName);
           if (!related) return;
           const color = EDGE_COLORS.contextual;
           edges.push({
@@ -145,7 +179,7 @@ function MinimalGraphInner({
     });
 
     return edges;
-  }, [latestChunk, selectedNode]);
+  }, [normalizedChunk, selectedNode]);
 
   // Layout
   const layoutedNodes = useMemo(

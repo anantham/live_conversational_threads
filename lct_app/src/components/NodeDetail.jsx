@@ -1,19 +1,47 @@
+import { useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 
-export default function NodeDetail({ node, onClose }) {
-  if (!node) return null;
+export default function NodeDetail({ node, chunkDict, onClose }) {
+  const safeNode = node ?? null;
 
-  const relations = Array.isArray(node.edge_relations) ? node.edge_relations : [];
-  const contextualRelations = node.contextual_relation
-    ? Object.entries(node.contextual_relation)
+  const relations = Array.isArray(safeNode?.edge_relations) ? safeNode.edge_relations : [];
+  const contextualRelations = safeNode?.contextual_relation
+    ? Object.entries(safeNode.contextual_relation)
     : [];
+
+  // Raw transcript for this node's chunk
+  const rawTranscript = safeNode?.chunk_id ? chunkDict?.[safeNode.chunk_id] || null : null;
+
+  // Split raw transcript into lines and find the node's text within it
+  const highlightedTranscript = useMemo(() => {
+    if (!rawTranscript || !safeNode?.full_text) return null;
+    const lines = rawTranscript.split("\n");
+    const needle = safeNode.full_text.trim().substring(0, 40);
+    if (!needle) return null;
+    const startIdx = lines.findIndex((l) => l.includes(needle));
+    const nodeLineCount = safeNode.full_text.split("\n").length;
+    return { lines, startIdx, nodeLineCount };
+  }, [rawTranscript, safeNode?.full_text]);
+
+  useEffect(() => {
+    if (!safeNode) return undefined;
+    const handleKeydown = (event) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeydown);
+    return () => window.removeEventListener("keydown", handleKeydown);
+  }, [safeNode, onClose]);
+
+  if (!safeNode) return null;
 
   return (
     <div className="fixed top-0 right-0 h-full w-full sm:w-80 sm:max-w-[85vw] bg-white shadow-lg border-l border-gray-200 z-40 flex flex-col animate-slideIn">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
         <h3 className="text-sm font-semibold text-gray-800 truncate pr-2">
-          {node.node_name}
+          {safeNode.node_name}
         </h3>
         <button
           onClick={onClose}
@@ -29,49 +57,76 @@ export default function NodeDetail({ node, onClose }) {
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 text-sm">
         {/* Speaker */}
-        {node.speaker_id && (
+        {safeNode.speaker_id && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Speaker</span>
-            <p className="text-gray-700 mt-0.5">{node.speaker_id}</p>
+            <p className="text-gray-700 mt-0.5">{safeNode.speaker_id}</p>
           </div>
         )}
 
         {/* Summary */}
-        {node.summary && (
+        {safeNode.summary && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Summary</span>
-            <p className="text-gray-700 mt-0.5 leading-relaxed">{node.summary}</p>
+            <p className="text-gray-700 mt-0.5 leading-relaxed">{safeNode.summary}</p>
           </div>
         )}
 
         {/* Full text / transcript excerpt */}
-        {node.full_text && (
+        {safeNode.full_text && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Transcript</span>
             <p className="text-gray-600 mt-0.5 leading-relaxed text-xs bg-gray-50 rounded p-2">
-              {node.full_text}
+              {safeNode.full_text}
             </p>
           </div>
         )}
 
         {/* Source excerpt */}
-        {node.source_excerpt && !node.full_text && (
+        {safeNode.source_excerpt && !safeNode.full_text && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Source</span>
             <p className="text-gray-600 mt-0.5 leading-relaxed text-xs bg-gray-50 rounded p-2">
-              {node.source_excerpt}
+              {safeNode.source_excerpt}
             </p>
           </div>
         )}
 
+        {/* Raw transcript chunk (what the LLM saw) */}
+        {rawTranscript && (
+          <div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Raw Transcript
+            </span>
+            <div className="mt-1 max-h-48 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">
+              {highlightedTranscript
+                ? highlightedTranscript.lines.map((line, i) => {
+                    const isHL =
+                      highlightedTranscript.startIdx !== -1 &&
+                      i >= highlightedTranscript.startIdx &&
+                      i < highlightedTranscript.startIdx + highlightedTranscript.nodeLineCount;
+                    return (
+                      <div
+                        key={i}
+                        className={isHL ? "bg-amber-100 rounded px-0.5" : ""}
+                      >
+                        {line || "\u00A0"}
+                      </div>
+                    );
+                  })
+                : rawTranscript}
+            </div>
+          </div>
+        )}
+
         {/* Thread */}
-        {node.thread_id && (
+        {safeNode.thread_id && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Thread</span>
             <p className="text-gray-700 mt-0.5">
-              {node.thread_id}
-              {node.thread_state && (
-                <span className="ml-2 text-xs text-gray-400">({node.thread_state})</span>
+              {safeNode.thread_id}
+              {safeNode.thread_state && (
+                <span className="ml-2 text-xs text-gray-400">({safeNode.thread_state})</span>
               )}
             </p>
           </div>
@@ -112,11 +167,11 @@ export default function NodeDetail({ node, onClose }) {
         )}
 
         {/* Claims */}
-        {node.claims && node.claims.length > 0 && (
+        {safeNode.claims && safeNode.claims.length > 0 && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Claims</span>
             <ul className="mt-1 space-y-0.5">
-              {node.claims.map((claim, i) => (
+              {safeNode.claims.map((claim, i) => (
                 <li key={i} className="text-xs text-gray-600">
                   {claim}
                 </li>
@@ -131,5 +186,6 @@ export default function NodeDetail({ node, onClose }) {
 
 NodeDetail.propTypes = {
   node: PropTypes.object,
+  chunkDict: PropTypes.object,
   onClose: PropTypes.func.isRequired,
 };
