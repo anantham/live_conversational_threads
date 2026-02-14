@@ -1,6 +1,5 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
-
 import { EDGE_COLORS } from "./graphConstants";
 
 const EDGE_LEGEND = [
@@ -18,25 +17,24 @@ export default function MinimalLegend({ speakerColorMap }) {
   return (
     <div className="absolute bottom-14 right-4 z-20">
       {open ? (
-        <div className="min-w-[140px] space-y-3 rounded-lg border border-gray-200 bg-white/95 p-3 text-xs shadow-md backdrop-blur">
+        <div className="bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-3 min-w-[140px] animate-slideIn">
           <button
             onClick={() => setOpen(false)}
-            className="absolute right-1 top-1 p-2 text-xs text-gray-400 transition hover:text-gray-600"
-            aria-label="Close legend"
+            className="absolute top-1 right-1 p-2 text-gray-400 hover:text-gray-600 text-xs"
           >
             close
           </button>
 
           {speakers.length > 0 && (
             <div>
-              <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
+              <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">
                 Speakers
               </span>
               <div className="mt-1 space-y-1">
                 {speakers.map(([name, color]) => (
                   <div key={name} className="flex items-center gap-2">
                     <div
-                      className="h-3 w-3 rounded-full border border-gray-300"
+                      className="w-3 h-3 rounded-full border border-gray-300"
                       style={{ backgroundColor: color }}
                     />
                     <span className="text-gray-600">{name}</span>
@@ -47,13 +45,13 @@ export default function MinimalLegend({ speakerColorMap }) {
           )}
 
           <div>
-            <span className="text-[10px] font-medium uppercase tracking-wider text-gray-400">
+            <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">
               Edges
             </span>
             <div className="mt-1 space-y-1">
               {EDGE_LEGEND.map(({ label, color }) => (
                 <div key={label} className="flex items-center gap-2">
-                  <div className="h-0.5 w-4" style={{ backgroundColor: color }} />
+                  <div className="w-4 h-0.5" style={{ backgroundColor: color }} />
                   <span className="text-gray-600">{label}</span>
                 </div>
               ))}
@@ -63,20 +61,11 @@ export default function MinimalLegend({ speakerColorMap }) {
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="rounded-full border border-gray-200 bg-white/70 p-3 text-gray-400 opacity-50 shadow-sm backdrop-blur transition hover:bg-white/90 hover:text-gray-600 hover:opacity-100"
+          className="p-3 bg-white/70 hover:bg-white/90 backdrop-blur rounded-full shadow-sm border border-gray-200 text-gray-400 hover:text-gray-600 transition opacity-50 hover:opacity-100"
           title="Legend"
           aria-label="Show legend"
         >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 16v-4M12 8h.01" />
           </svg>

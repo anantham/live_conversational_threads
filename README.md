@@ -4,7 +4,7 @@
 
 Live Conversational Threads transforms conversation transcripts into interactive, multi-scale graph visualizations that reveal both temporal flow and thematic relationships. The application supports Google Meet transcripts with speaker diarization, allowing users to explore conversations at five discrete zoom levels—from individual sentences to narrative arcs—while simultaneously viewing both timeline and contextual network views.
 
-Built with **FastAPI** (Python backend) and **React + TypeScript** (frontend), the platform leverages LLM-powered analysis to detect Simulacra levels, identify cognitive biases, extract implicit frames, and generate comprehensive speaker analytics.
+Built with **FastAPI** (Python backend) and **React + Vite** (frontend), the platform leverages LLM-powered analysis to detect Simulacra levels, identify cognitive biases, extract implicit frames, and generate comprehensive speaker analytics.
 
 ---
 
@@ -138,60 +138,26 @@ Built with **FastAPI** (Python backend) and **React + TypeScript** (frontend), t
 
 ## Project Structure
 
-```
+```text
 live_conversational_threads/
-├── lct_python_backend/          # Python FastAPI backend
-│   ├── backend.py              # Main FastAPI application
-│   ├── db.py                   # Database connection & ORM
-│   ├── db_helpers.py           # Database helper functions
-│   ├── requirements.txt        # Backend dependencies
-│   ├── config/
-│   │   └── prompts.json        # Externalized LLM prompts
-│   ├── services/
-│   │   ├── graph_generation_service.py
-│   │   ├── prompts_service.py
-│   │   ├── simulacra_detector.py
-│   │   └── cognitive_bias_detector.py
-│   ├── parsers/
-│   │   └── google_meet_parser.py
-│   ├── instrumentation/
-│   │   ├── decorators.py       # @track_api_call
-│   │   └── cost_calculator.py
-│   └── tests/
-│       ├── unit/
-│       ├── integration/
-│       └── e2e/
-├── lct_app/                     # React + TypeScript frontend
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── DualView/
-│   │   │   │   ├── DualViewCanvas.tsx
-│   │   │   │   ├── TimelineView.tsx
-│   │   │   │   └── ContextualNetworkView.tsx
-│   │   │   ├── NodeDetail/
-│   │   │   ├── Analytics/
-│   │   │   └── Settings/
-│   │   ├── hooks/
-│   │   ├── lib/
-│   │   └── tests/
+├── lct_python_backend/          # FastAPI backend
+│   ├── backend.py               # App shell + router mounting
+│   ├── *_api.py                 # Router modules (import, stt, llm, graph, etc.)
+│   ├── services/                # Processing, LLM/STT, persistence helpers
+│   ├── alembic/                 # Database migrations
+│   ├── tests/                   # Unit + integration coverage
+│   └── prompts.json             # Prompt configuration
+├── lct_app/                     # React frontend (JSX)
+│   ├── src/pages/               # Route-level screens
+│   ├── src/components/          # Graph/audio/settings UI
+│   ├── src/services/            # API clients
 │   ├── package.json
-│   └── vite.config.ts
-├── docs/                        # Comprehensive documentation
-│   ├── ROADMAP.md              # 14-week implementation plan
-│   ├── TIER_1_DECISIONS.md     # Foundational design decisions
-│   ├── TIER_2_FEATURES.md      # Detailed feature specifications
-│   ├── FEATURE_SIMULACRA_LEVELS.md
-│   ├── FEATURE_ROADMAP.md
-│   ├── DATA_MODEL_V2.md
-│   ├── PRODUCT_VISION.md
-│   └── adr/                    # Architecture Decision Records
-│       ├── ADR-001-google-meet-transcript-support.md
-│       ├── ADR-002-hierarchical-coarse-graining.md
-│       ├── ADR-003-observability-and-storage-foundation.md
-│       ├── ADR-004-dual-view-architecture.md
-│       └── ADR-005-prompts-configuration-system.md
-├── README.md                    # This file
-└── requirements.txt
+│   └── vite.config.js
+├── docs/                        # ADRs, plans, runbooks
+├── setup-once.command           # First-time setup
+├── start.command                # Daily startup
+├── AGENTS.md                    # Operating protocol
+└── README.md
 ```
 
 ---
@@ -201,11 +167,10 @@ live_conversational_threads/
 - **Python 3.9+** (with `venv` or Conda)
 - **Node.js 18+** and **npm 9+**
 - **PostgreSQL 15+** (or Docker via `docker compose up -d`)
-- **API Keys**:
-  - OpenAI API key (for GPT-4, GPT-3.5-turbo)
-  - Anthropic API key (for Claude Sonnet-4)
-  - Google Cloud Storage credentials (for transcript storage)
-  - AssemblyAI API key (optional, for future audio support)
+- **Optional API keys** (depend on provider mode):
+  - Local mode: none required
+  - Online LLMs: `GEMINI_KEY` / `GEMINI_API_KEY` / `GOOGLEAI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `PERPLEXITY_API_KEY`
+  - Cloud persistence (optional): `GCS_BUCKET_NAME`, `GOOGLE_APPLICATION_CREDENTIALS`
 
 ---
 
@@ -272,145 +237,73 @@ See [`docs/LOCAL_SETUP.md`](docs/LOCAL_SETUP.md) for detailed setup behavior and
 
 ## Environment Variables
 
-### Backend Required Variables
+### Backend Core Variables
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key for GPT-4/GPT-3.5-turbo | `sk-...` |
-| `ANTHROPIC_API_KEY` | Anthropic API key for Claude Sonnet-4 | `sk-ant-...` |
 | `DATABASE_URL` | PostgreSQL connection string | `postgresql://lct_user:lct_password@localhost:5433/lct_dev` |
-| `GCS_BUCKET_NAME` | Google Cloud Storage bucket name | `my-lct-bucket` |
-| `GCS_FOLDER` | GCS folder for transcript storage | `conversations` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Path to GCS service account JSON | `/path/to/credentials.json` |
+| `DEFAULT_LLM_MODE` | Local/online default mode | `local` |
+| `LOCAL_LLM_BASE_URL` | Local LLM endpoint | `http://100.81.65.74:1234` |
 
 ### Backend Optional Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `OPENAI_API_KEY` | OpenAI key (online mode) | unset |
+| `ANTHROPIC_API_KEY` | Anthropic key (online mode) | unset |
+| `GEMINI_KEY` / `GEMINI_API_KEY` / `GOOGLEAI_API_KEY` | Gemini key aliases (online mode) | unset |
+| `OPENROUTER_API_KEY` | OpenRouter key (online mode) | unset |
+| `PERPLEXITY_API_KEY` | Perplexity key (fact-checking) | unset |
+| `GCS_BUCKET_NAME` | Cloud bucket for conversation JSON | unset |
+| `GCS_FOLDER` | Cloud folder path | unset |
+| `GOOGLE_APPLICATION_CREDENTIALS` | ADC/service account path | unset |
 | `LOG_LEVEL` | Logging level | `INFO` |
-| `MAX_CONVERSATION_SIZE_MB` | Max transcript size | `10` |
-| `ENABLE_COST_ALERTS` | Enable cost threshold alerts | `true` |
-| `DAILY_COST_LIMIT_USD` | Daily spending limit | `100.0` |
+| `TRACE_API_CALLS` | Backend outbound call tracing | `true` |
+| `API_LOG_PREVIEW_CHARS` | Trace preview truncation length | `280` |
 
 ### Frontend Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `VITE_API_URL` | Backend API base URL (window-origin fallback clients) | `http://localhost:8000` |
 | `VITE_BACKEND_API_URL` | Backend API base URL (service clients) | `http://localhost:8000` |
+| `VITE_AUTH_TOKEN` | Optional bearer token for protected backends | unset |
+| `VITE_API_TRACE` | Frontend request/response console tracing | dev-mode on |
 
 ---
 
 ## Database Setup
 
-### 1. Create PostgreSQL Database
+### 1. Recommended path (scripted)
+
+Use `./setup-once.command` for first-time setup and `./start.command` for daily runs.  
+These scripts initialize local Postgres (default `localhost:5433`) and run Alembic migrations automatically.
+
+### 2. Manual migration path (advanced)
+
+From `lct_python_backend/`:
 
 ```bash
-createdb lct_db
+alembic upgrade head
 ```
 
-### 2. Run Migrations
+Default local connection in this repo is:
 
-The application uses Alembic for database migrations. From `lct_python_backend/`:
-
-```bash
-# Generate initial migration (if needed)
-alembic revision --autogenerate -m "Initial schema"
-
-# Apply migrations
-alembic upgrade head
+```text
+postgresql://lct_user:lct_password@localhost:5433/lct_dev
 ```
 
 ### 3. Database Schema
 
-The application uses the following core tables (see `docs/DATA_MODEL_V2.md` for full schema):
+Schema is migration-driven (`alembic upgrade head`) and evolves over time.
 
-```sql
--- Conversations metadata
-CREATE TABLE conversations (
-  id UUID PRIMARY KEY,
-  title VARCHAR(255),
-  source VARCHAR(50),  -- 'google_meet', 'manual', etc.
-  created_at TIMESTAMP,
-  updated_at TIMESTAMP
-);
+Current core entities include:
+- `conversations`, `utterances`, `nodes`, `relationships`
+- `transcript_events`, `app_settings`
+- `bookmarks`, `fact_checks`, `api_calls_log`
 
--- Speaker-diarized utterances
-CREATE TABLE utterances (
-  id UUID PRIMARY KEY,
-  conversation_id UUID REFERENCES conversations(id),
-  speaker_name TEXT,
-  text TEXT,
-  start_time FLOAT,
-  end_time FLOAT,
-  audio_segment_id UUID  -- For future audio support
-);
-
--- AI-generated conversation nodes
-CREATE TABLE nodes (
-  id UUID PRIMARY KEY,
-  conversation_id UUID REFERENCES conversations(id),
-  summary TEXT,
-  node_type VARCHAR(50),
-  utterance_ids JSONB,  -- Array of utterance UUIDs
-  created_by VARCHAR(10),  -- 'ai' or 'user'
-  edited BOOLEAN DEFAULT FALSE,
-  zoom_level_visible INTEGER,  -- 1-5
-  position JSONB,  -- {x, y} coordinates
-  created_at TIMESTAMP
-);
-
--- Edges between nodes
-CREATE TABLE edges (
-  id UUID PRIMARY KEY,
-  conversation_id UUID REFERENCES conversations(id),
-  from_node_id UUID REFERENCES nodes(id),
-  to_node_id UUID REFERENCES nodes(id),
-  relationship_type VARCHAR(20),  -- 'temporal' or 'contextual'
-  label TEXT,
-  created_by VARCHAR(10),
-  created_at TIMESTAMP
-);
-
--- Hierarchical clusters for zoom levels
-CREATE TABLE clusters (
-  id UUID PRIMARY KEY,
-  conversation_id UUID REFERENCES conversations(id),
-  label TEXT,
-  child_node_ids JSONB,
-  zoom_level_min INTEGER,
-  zoom_level_max INTEGER,
-  position JSONB
-);
-
--- Edit history (training data)
-CREATE TABLE edits_log (
-  id UUID PRIMARY KEY,
-  conversation_id UUID REFERENCES conversations(id),
-  user_id UUID,
-  edit_type VARCHAR(50),
-  before_value JSONB,
-  after_value JSONB,
-  feedback TEXT,
-  timestamp TIMESTAMP
-);
-
--- API call instrumentation
-CREATE TABLE api_calls_log (
-  id UUID PRIMARY KEY,
-  conversation_id UUID,
-  endpoint TEXT,
-  model VARCHAR(50),
-  input_tokens INTEGER,
-  output_tokens INTEGER,
-  total_tokens INTEGER,
-  cost_usd DECIMAL(10, 6),
-  latency_ms INTEGER,
-  timestamp TIMESTAMP,
-  success BOOLEAN,
-  error_message TEXT
-);
-```
+For field-level details, use:
+- ORM models: `lct_python_backend/models.py`
+- Migrations: `lct_python_backend/alembic/versions/`
 
 ---
 
@@ -423,15 +316,20 @@ Once the backend server is running:
 
 ### Key Endpoints
 
-```
-POST   /import/google-meet          # Import Google Meet transcript
-GET    /conversations/{id}          # Get conversation graph
-POST   /conversations/{id}/analyze  # Run AI analysis (bias, Simulacra)
-GET    /conversations/{id}/analytics # Get speaker analytics
-PATCH  /nodes/{id}                  # Edit node summary
-GET    /prompts/                    # List all prompts
-PATCH  /prompts/{id}                # Update prompt configuration
-GET    /cost-dashboard              # View cost tracking metrics
+```text
+GET    /api/import/health
+POST   /api/import/google-meet
+POST   /api/import/from-text
+GET    /conversations/{conversation_id}
+POST   /save_json/
+GET    /api/settings/stt
+PUT    /api/settings/stt
+GET    /api/settings/llm
+PUT    /api/settings/llm
+GET    /api/settings/llm/models
+GET    /api/graph/health
+POST   /api/graph/generate
+WS     /ws/transcripts
 ```
 
 ---
@@ -454,7 +352,7 @@ GET    /cost-dashboard              # View cost tracking metrics
 
 | ADR | Title | Status |
 |-----|-------|--------|
-| **[ADR-001](docs/adr/ADR-001-google-meet-transcript-support.md)** | Google Meet Transcript Support | Approved |
+| **[ADR-001](docs/adr/ADR-001-google-meet-transcript-support.md)** | Google Meet Transcript Support | Proposed |
 | **[ADR-002](docs/adr/ADR-002-hierarchical-coarse-graining.md)** | Hierarchical Coarse-Graining for Multi-Scale Visualization | Proposed |
 | **[ADR-003](docs/adr/ADR-003-observability-and-storage-foundation.md)** | Observability, Metrics, and Storage Baseline | Proposed |
 | **[ADR-004](docs/adr/ADR-004-dual-view-architecture.md)** | Dual-View Architecture (Timeline + Contextual Network) | Approved |
@@ -463,6 +361,9 @@ GET    /cost-dashboard              # View cost tracking metrics
 | **[ADR-007](docs/adr/ADR-007-system-invariants-data-integrity.md)** | System Invariants & Data Integrity | Proposed |
 | **[ADR-008](docs/adr/ADR-008-local-stt-transcripts.md)** | Local STT & Append-Only Transcript Events | Approved |
 | **[ADR-009](docs/adr/ADR-009-local-llm-defaults.md)** | Local-First LLM Defaults | Proposed |
+| **[ADR-010](docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md)** | Minimal Conversation Schema for Pause/Resume and Thread Legibility | Proposed |
+| **[ADR-011](docs/adr/ADR-011-minimal-live-conversation-ui.md)** | Minimal Live Conversation UI Redesign | Draft |
+| **[ADR-012](docs/adr/ADR-012-realtime-speaker-diarization-sidecar.md)** | Real-Time Speaker Diarization Sidecar for Local Speech-to-Graph | Proposed |
 
 See [docs/adr/INDEX.md](docs/adr/INDEX.md) for the complete ADR index.
 
@@ -530,7 +431,7 @@ curl https://api.openai.com/v1/models \
 # Reinstall dependencies
 pip install --force-reinstall -r requirements.txt
 
-# Check Python version (must be 3.11+)
+# Check Python version (must be 3.9+)
 python --version
 ```
 
@@ -564,7 +465,7 @@ npm install
 - Reduce max_tokens in `prompts.json`
 
 **High LLM costs:**
-- Check `/cost-dashboard` endpoint
+- Check `/api/cost-tracking/stats` endpoint
 - Review `prompts.json` for token-heavy templates
 - Enable prompt caching (coming in Week 9)
 
@@ -613,9 +514,8 @@ We welcome contributions! Please follow these guidelines:
    flake8 .
    mypy .
 
-   # TypeScript
+   # Frontend
    npm run lint
-   npm run typecheck
    ```
 
 5. **Create Pull Request** to `main`:
