@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-02-08
+Last updated: 2026-02-13
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -13,6 +13,8 @@ Last updated: 2026-02-08
 | [ADR-007](ADR-007-system-invariants-data-integrity.md) | System Invariants and Data Integrity Rules | 2025-11-27 | Proposed |
 | [ADR-008](ADR-008-local-stt-transcripts.md) | Local STT Ingestion with Append-Only Transcript Events | 2026-01-12 | Approved |
 | [ADR-009](ADR-009-local-llm-defaults.md) | Local-First LLM Defaults with Optional Online Mode | 2026-01-12 | Proposed |
+| [ADR-010](ADR-010-minimal-conversation-schema-and-pause-resume.md) | Minimal Conversation Schema for Pause/Resume and Thread Legibility | 2026-02-13 | Proposed |
+| [ADR-011](ADR-011-minimal-live-conversation-ui.md) | Minimal Live Conversation UI Redesign | 2026-02-14 | Draft |
 
 ## Status Definitions
 

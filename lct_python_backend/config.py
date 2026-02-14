@@ -4,7 +4,11 @@ import os
 # --- API Keys ---
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-GOOGLEAI_API_KEY = os.getenv("GOOGLEAI_API_KEY")
+GOOGLEAI_API_KEY = (
+    os.getenv("GOOGLEAI_API_KEY")
+    or os.getenv("GEMINI_API_KEY")
+    or os.getenv("GEMINI_KEY")
+)
 
 # --- Google Cloud Storage ---
 GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")

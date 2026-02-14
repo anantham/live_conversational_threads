@@ -1,14 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { getLlmSettings, updateLlmSettings } from "../services/llmSettingsApi";
-
-const CHAT_MODELS = [
-  "glm-4.6v-flash",
-  "reka-flash-3-21b-reasoning-uncensored-max-neo-imatrix",
-  "qwen/qwen3-coder-30b",
-  "qwen/qwen3-vl-8b",
-  "liquid/lfm2.5-1.2b",
-];
+import {
+  getLlmModelOptions,
+  getLlmSettings,
+  updateLlmSettings,
+} from "../services/llmSettingsApi";
 
 const EMBEDDING_MODELS = [
   "text-embedding-qwen3-embedding-8b",
@@ -24,9 +20,11 @@ export default function LlmSettingsPanel() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [chatChoice, setChatChoice] = useState(CUSTOM_VALUE);
+  const [chatModels, setChatModels] = useState([]);
+  const [chatModelsSource, setChatModelsSource] = useState("unknown");
+  const [chatModelsLoading, setChatModelsLoading] = useState(false);
+  const [chatModelsError, setChatModelsError] = useState(null);
   const [embeddingChoice, setEmbeddingChoice] = useState(CUSTOM_VALUE);
-  const [customChatModel, setCustomChatModel] = useState("");
   const [customEmbeddingModel, setCustomEmbeddingModel] = useState("");
 
   const load = async () => {
@@ -36,15 +34,6 @@ export default function LlmSettingsPanel() {
       const data = await getLlmSettings();
       setSettings(data);
       setForm(data);
-
-      const chatModel = data?.chat_model || "";
-      if (CHAT_MODELS.includes(chatModel)) {
-        setChatChoice(chatModel);
-        setCustomChatModel("");
-      } else {
-        setChatChoice(CUSTOM_VALUE);
-        setCustomChatModel(chatModel);
-      }
 
       const embeddingModel = data?.embedding_model || "";
       if (EMBEDDING_MODELS.includes(embeddingModel)) {
@@ -66,14 +55,67 @@ export default function LlmSettingsPanel() {
     load();
   }, []);
 
+  useEffect(() => {
+    if (!form) return;
+    let active = true;
+
+    const loadModels = async () => {
+      setChatModelsLoading(true);
+      setChatModelsError(null);
+      try {
+        const options = await getLlmModelOptions({
+          mode: form.mode || "local",
+          baseUrl: form.base_url || "",
+        });
+        if (!active) return;
+        const models = Array.isArray(options?.models) ? options.models : [];
+        setChatModels(models);
+        setChatModelsSource(options?.source || "unknown");
+
+        if (models.length > 0) {
+          setForm((prev) => {
+            if (!prev) return prev;
+            const current = String(prev.chat_model || "").trim();
+            if (models.includes(current)) return prev;
+            return { ...prev, chat_model: models[0] };
+          });
+        }
+      } catch (err) {
+        console.error("Unable to load chat model options:", err);
+        if (!active) return;
+        setChatModels([]);
+        setChatModelsSource("error");
+        setChatModelsError("Unable to load accepted chat model options.");
+      } finally {
+        if (active) setChatModelsLoading(false);
+      }
+    };
+
+    loadModels();
+
+    return () => {
+      active = false;
+    };
+  }, [form, form?.mode, form?.base_url]);
+
   const handleSave = async () => {
     if (!form) return;
+    if (!String(form?.chat_model || "").trim()) {
+      setError("Select an accepted chat model before saving.");
+      return;
+    }
+    if ((form?.mode || "local") === "online") {
+      const proceed = window.confirm(
+        "Online mode sends transcript-derived data to external providers. Continue saving?"
+      );
+      if (!proceed) return;
+    }
+
     setSaving(true);
     setError(null);
     try {
       const payload = {
         ...form,
-        chat_model: chatChoice === CUSTOM_VALUE ? customChatModel : chatChoice,
         embedding_model: embeddingChoice === CUSTOM_VALUE ? customEmbeddingModel : embeddingChoice,
       };
       const updated = await updateLlmSettings(payload);
@@ -106,7 +148,7 @@ export default function LlmSettingsPanel() {
         <div>
           <h2 className="text-lg font-semibold text-gray-800">LLM Settings</h2>
           <p className="text-sm text-gray-500">
-            Local mode uses LM Studio. Online mode allows external providers if keys are configured.
+            Local mode uses LM Studio. Online mode uses Gemini with accepted model IDs only.
           </p>
         </div>
         <button
@@ -133,7 +175,7 @@ export default function LlmSettingsPanel() {
             className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
           >
             <option value="local">Local (private)</option>
-            <option value="online">Online (external)</option>
+            <option value="online">Online (Gemini)</option>
           </select>
         </label>
 
@@ -150,25 +192,29 @@ export default function LlmSettingsPanel() {
         <label className="text-sm text-gray-700 space-y-1">
           <span>Chat Model</span>
           <select
-            value={chatChoice}
-            onChange={(event) => setChatChoice(event.target.value)}
+            value={form?.chat_model || ""}
+            onChange={handleChange("chat_model")}
             className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            disabled={chatModelsLoading}
           >
-            {CHAT_MODELS.map((model) => (
+            {!chatModels.length && (
+              <option value="">
+                {chatModelsLoading ? "Loading accepted models..." : "No accepted models available"}
+              </option>
+            )}
+            {chatModels.map((model) => (
               <option key={model} value={model}>
                 {model}
               </option>
             ))}
-            <option value={CUSTOM_VALUE}>Custom…</option>
           </select>
-          {chatChoice === CUSTOM_VALUE && (
-            <input
-              type="text"
-              value={customChatModel}
-              onChange={(event) => setCustomChatModel(event.target.value)}
-              placeholder="Enter custom chat model id"
-              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-            />
+          <p className="text-xs text-gray-500">
+            Source: {chatModelsSource}. Online mode is restricted to accepted Gemini models.
+          </p>
+          {chatModelsError && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">
+              {chatModelsError}
+            </p>
           )}
         </label>
 
@@ -200,13 +246,12 @@ export default function LlmSettingsPanel() {
 
       <div className="flex items-center justify-between">
         <p className="text-xs text-gray-500">
-          Default: {settings?.chat_model || "glm-4.6v-flash"} +{" "}
-          {settings?.embedding_model || "text-embedding-qwen3-embedding-8b"}.
+          Current: {form?.chat_model || "n/a"} + {settings?.embedding_model || "text-embedding-qwen3-embedding-8b"}.
         </p>
         <button
           onClick={handleSave}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-60"
-          disabled={saving}
+          disabled={saving || chatModelsLoading}
           type="button"
         >
           {saving ? "Saving…" : "Save LLM Settings"}

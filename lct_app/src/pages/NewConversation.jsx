@@ -10,6 +10,53 @@ import Legend from "../components/Legend";
 import GenerateFormalism from "../components/GenerateFormalism";
 import FormalismList from "../components/FormalismList";
 
+function normalizeGraphDataPayload(payload) {
+  if (!Array.isArray(payload)) {
+    return null;
+  }
+
+  if (payload.length === 0) {
+    return [];
+  }
+
+  // Legacy/expected shape: Array<Array<Node>>
+  if (Array.isArray(payload[0])) {
+    const normalized = payload
+      .map((chunk) =>
+        Array.isArray(chunk)
+          ? chunk.filter((item) => item && typeof item === "object" && !Array.isArray(item))
+          : []
+      )
+      .filter((chunk) => chunk.length > 0);
+    return normalized;
+  }
+
+  // New backend shape: Array<Node>; rebuild chunk groups by chunk_id.
+  if (payload[0] && typeof payload[0] === "object") {
+    const chunkOrder = [];
+    const chunkMap = new Map();
+
+    payload.forEach((node, index) => {
+      if (!node || typeof node !== "object" || Array.isArray(node)) {
+        return;
+      }
+      const chunkId =
+        typeof node.chunk_id === "string" && node.chunk_id.trim()
+          ? node.chunk_id
+          : `legacy-${index}`;
+      if (!chunkMap.has(chunkId)) {
+        chunkMap.set(chunkId, []);
+        chunkOrder.push(chunkId);
+      }
+      chunkMap.get(chunkId).push(node);
+    });
+
+    return chunkOrder.map((chunkId) => chunkMap.get(chunkId)).filter((chunk) => chunk.length > 0);
+  }
+
+  return null;
+}
+
 export default function NewConversation() {
   const [graphData, setGraphData] = useState([]); // Stores graph data
   const [selectedNode, setSelectedNode] = useState(null); // Tracks selected node
@@ -28,7 +75,14 @@ export default function NewConversation() {
 
   // Handles streamed JSON data
   const handleDataReceived = (newData) => {
-    setGraphData(newData);
+    const normalized = normalizeGraphDataPayload(newData);
+    if (normalized === null) {
+      console.warn(
+        "[NewConversation] Ignoring malformed existing_json payload. Expected Array<Node> or Array<Array<Node>>."
+      );
+      return;
+    }
+    setGraphData(normalized);
   };
 
   // Handles received chunks
@@ -81,6 +135,7 @@ export default function NewConversation() {
           {/* 🟣 Contextual Flow - 3/4 height */}
           <div className="flex-grow-[4] bg-white rounded-lg shadow-lg p-4 w-full overflow-hidden flex flex-col">
               <ContextualGraph
+                conversationId={conversationId}
                 graphData={graphData}
                 chunkDict={chunkDict}
                 setGraphData={setGraphData}
@@ -122,6 +177,7 @@ export default function NewConversation() {
             {/* Top Right - Contextual Graph */}
             <div className="hidden md:block w-full md:w-1/2 bg-white rounded-lg shadow-lg p-4">
               <ContextualGraph
+                conversationId={conversationId}
                 graphData={graphData}
                 chunkDict={chunkDict}
                 setGraphData={setGraphData}

@@ -39,3 +39,13 @@ Completed. The backend now exposes the new routers and tables, the frontend conn
 - `docs/plans/2026-01-12-option-b-implementation-plan.md`
 - `lct_python_backend/stt_api.py`
 - `lct_app/src/components/AudioInput.jsx`
+
+## Amendment — 2026-02-13
+
+Backend-owned STT routing is now the default path:
+
+1. Browser audio chunks are sent directly to backend `/ws/transcripts` as `audio_chunk` messages.
+2. Backend routes chunks to provider HTTP transcription endpoints (Parakeet-first), emits `transcript_partial`/`transcript_final` events back to the client, persists events, and runs semantic processing on backend-generated finals.
+3. Provider WebSocket usage is now legacy/optional; provider HTTP URLs are first-class settings (`provider_http_urls`, `http_url`).
+
+This keeps session orchestration, provider routing, persistence, and telemetry in one trust boundary (backend), simplifies frontend transport, and aligns startup (`start.command`) with local HTTP STT readiness.

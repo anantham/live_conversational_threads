@@ -9,7 +9,7 @@ import { checkSttProviderHealth } from "../../services/sttSettingsApi";
 export default function useProviderHealthChecks() {
   const [healthByProvider, setHealthByProvider] = useState({});
 
-  const checkHealth = useCallback(async (providerId, wsUrl) => {
+  const checkHealth = useCallback(async (providerId, wsUrl, httpUrl) => {
     setHealthByProvider((prev) => ({
       ...prev,
       [providerId]: {
@@ -22,6 +22,7 @@ export default function useProviderHealthChecks() {
       const result = await checkSttProviderHealth({
         provider: providerId,
         ws_url: wsUrl,
+        http_url: httpUrl,
       });
       setHealthByProvider((prev) => ({
         ...prev,

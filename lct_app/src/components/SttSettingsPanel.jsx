@@ -79,6 +79,7 @@ export default function SttSettingsPanel() {
         const normalizedProvider = normalizeProvider(value);
         next.provider = normalizedProvider;
         next.ws_url = next.provider_urls?.[normalizedProvider] || "";
+        next.http_url = next.provider_http_urls?.[normalizedProvider] || "";
       }
       return next;
     });
@@ -96,6 +97,21 @@ export default function SttSettingsPanel() {
         normalizeProvider(prev?.provider) === providerId
           ? value
           : prev?.ws_url || "",
+    }));
+  };
+
+  const handleProviderHttpUrlChange = (providerId) => (event) => {
+    const value = event.target.value;
+    setForm((prev) => ({
+      ...(prev || {}),
+      provider_http_urls: {
+        ...(prev?.provider_http_urls || {}),
+        [providerId]: value,
+      },
+      http_url:
+        normalizeProvider(prev?.provider) === providerId
+          ? value
+          : prev?.http_url || "",
     }));
   };
 
@@ -186,7 +202,13 @@ export default function SttSettingsPanel() {
               <span className="font-medium">{providerId} WS URL</span>
               <button
                 type="button"
-                onClick={() => checkHealth(providerId, form?.provider_urls?.[providerId] || "")}
+                onClick={() =>
+                  checkHealth(
+                    providerId,
+                    form?.provider_urls?.[providerId] || "",
+                    form?.provider_http_urls?.[providerId] || ""
+                  )
+                }
                 disabled={Boolean(healthByProvider?.[providerId]?.checking)}
                 className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-60"
               >
@@ -197,6 +219,13 @@ export default function SttSettingsPanel() {
               type="text"
               value={form?.provider_urls?.[providerId] || ""}
               onChange={handleProviderUrlChange(providerId)}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            />
+            <label className="block text-xs text-gray-600 mt-2">HTTP Transcription URL</label>
+            <input
+              type="text"
+              value={form?.provider_http_urls?.[providerId] || ""}
+              onChange={handleProviderHttpUrlChange(providerId)}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
             />
             <p className="text-xs text-gray-500">
@@ -299,7 +328,10 @@ export default function SttSettingsPanel() {
       <div className="text-xs text-gray-500 space-y-1">
         <p>Retention: {settings?.retention || "forever (default)"}.</p>
         <p>
-          Active provider URL: <code>{form?.provider_urls?.[form?.provider] || form?.ws_url || "not configured"}</code>
+          Active provider WS URL: <code>{form?.provider_urls?.[form?.provider] || form?.ws_url || "not configured"}</code>
+        </p>
+        <p>
+          Active provider HTTP URL: <code>{form?.provider_http_urls?.[form?.provider] || form?.http_url || "not configured"}</code>
         </p>
         <p>
           Audio download token: <code>{settings?.download_token || "not configured"}</code>

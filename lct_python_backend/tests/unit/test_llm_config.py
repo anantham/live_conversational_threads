@@ -26,3 +26,11 @@ def test_merge_llm_config_sanitizes_mode(monkeypatch):
 
     assert merged["mode"] == "local"
     assert merged["json_mode"] is False
+
+
+def test_merge_llm_config_rewrites_localhost_lmstudio_to_tailscale(monkeypatch):
+    monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://100.81.65.74:1234")
+
+    merged = merge_llm_config({"base_url": "http://localhost:1234"})
+
+    assert merged["base_url"] == "http://100.81.65.74:1234"
