@@ -1,5 +1,6 @@
 """Transcript processing and generation API endpoints."""
 import logging
+import os
 from datetime import datetime
 from typing import List
 
@@ -12,7 +13,7 @@ from lct_python_backend.schemas import (
     SaveJsonRequest, SaveJsonResponse,
     generateFormalismRequest, generateFormalismResponse,
 )
-from lct_python_backend.services.gcs_helpers import save_json_to_gcs
+from lct_python_backend.services.gcs_helpers import save_json_with_backend
 from lct_python_backend.services.llm_helpers import (
     sliding_window_chunking, stream_generate_context_json, generate_formalism,
 )
@@ -67,32 +68,52 @@ async def save_json_call(request: SaveJsonRequest):
         if not isinstance(request.chunks, dict) or not isinstance(request.graph_data, list):
             raise HTTPException(status_code=400, detail="Chunks must be a valid dictionary and Graph Data must be a valid list.")
 
+        save_backend = str(os.getenv("SAVE_BACKEND", "auto")).strip().lower()
+        if save_backend not in {"auto", "gcs", "local"}:
+            logger.warning("Invalid SAVE_BACKEND '%s'; defaulting to auto", save_backend)
+            save_backend = "auto"
+
         try:
-            result = save_json_to_gcs(
+            result = save_json_with_backend(
                 request.file_name,
                 request.chunks,
                 request.graph_data,
-                request.conversation_id
+                request.conversation_id,
+                backend=save_backend,
             )
+        except ValueError as file_error:
+            raise HTTPException(status_code=400, detail=f"File saving config error: {str(file_error)}")
         except Exception as file_error:
             raise HTTPException(status_code=500, detail=f"File saving error: {str(file_error)}")
 
         # Insert metadata into DB
-        number_of_nodes = len(request.graph_data[0]) if request.graph_data and isinstance(request.graph_data[0], list) else 0
-        print("graph data check: ", request.graph_data)
-        print("number of nodes: ", len(request.graph_data[0]) if request.graph_data and isinstance(request.graph_data[0], list) else 0)
+        number_of_nodes = 0
+        if request.graph_data and isinstance(request.graph_data[0], list):
+            number_of_nodes = len(request.graph_data[0])
+        elif request.graph_data and isinstance(request.graph_data[0], dict):
+            number_of_nodes = len(request.graph_data)
+
         metadata = {
             "id": result["file_id"],
             "conversation_name": result["file_name"],  # Database column is conversation_name
             "total_nodes": number_of_nodes,
-            "gcs_path": result["gcs_path"],
+            "gcs_path": result.get("gcs_path"),
             "created_at": datetime.utcnow()
         }
-        print(f"[DEBUG] Inserting metadata: conversation_name={result['file_name']}, total_nodes={number_of_nodes}")
+        logger.info(
+            "Persisting conversation metadata: conversation_name=%s total_nodes=%s storage=%s",
+            result["file_name"],
+            number_of_nodes,
+            result.get("storage", "unknown"),
+        )
 
         await insert_conversation_metadata(metadata)
 
-        return result
+        return {
+            "message": result.get("message", "Saved!"),
+            "file_id": result["file_id"],
+            "file_name": result["file_name"],
+        }
 
     except HTTPException as http_err:
         raise http_err
