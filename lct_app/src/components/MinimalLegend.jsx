@@ -20,7 +20,7 @@ export default function MinimalLegend({ speakerColorMap }) {
         <div className="bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-3 min-w-[140px] animate-slideIn">
           <button
             onClick={() => setOpen(false)}
-            className="absolute top-1.5 right-2 text-gray-400 hover:text-gray-600 text-xs"
+            className="absolute top-1 right-1 p-2 text-gray-400 hover:text-gray-600 text-xs"
           >
             close
           </button>
@@ -61,7 +61,7 @@ export default function MinimalLegend({ speakerColorMap }) {
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="p-2 bg-white/70 hover:bg-white/90 backdrop-blur rounded-full shadow-sm border border-gray-200 text-gray-400 hover:text-gray-600 transition opacity-50 hover:opacity-100"
+          className="p-3 bg-white/70 hover:bg-white/90 backdrop-blur rounded-full shadow-sm border border-gray-200 text-gray-400 hover:text-gray-600 transition opacity-50 hover:opacity-100"
           title="Legend"
           aria-label="Show legend"
         >

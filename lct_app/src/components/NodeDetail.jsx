@@ -17,7 +17,7 @@ export default function NodeDetail({ node, onClose }) {
         </h3>
         <button
           onClick={onClose}
-          className="p-1 text-gray-400 hover:text-gray-600 transition shrink-0"
+          className="p-3 text-gray-400 hover:text-gray-600 transition shrink-0"
           aria-label="Close"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
