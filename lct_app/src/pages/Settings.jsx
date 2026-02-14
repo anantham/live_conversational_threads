@@ -385,7 +385,7 @@ export default function Settings() {
                     </pre>
                   )}
                   <p className="text-xs text-gray-500 mt-1">
-                    Use $variable or ${{variable}} syntax for variable substitution
+                    Use {"$variable"} or {"${{variable}}"} syntax for variable substitution
                   </p>
                 </div>
 

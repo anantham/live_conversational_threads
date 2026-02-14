@@ -1,25 +1,32 @@
 """Add claims table with pgvector support
 
 Revision ID: add_claims_vectors
-Revises: add_analysis_tables_weeks_11_13
+Revises: add_analysis_weeks_11_13
 Create Date: 2025-11-12 10:00:00.000000
 
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
-from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = 'add_claims_vectors'
-down_revision = 'add_analysis_tables_weeks_11_13'
+down_revision = 'add_analysis_weeks_11_13'
 branch_labels = None
 depends_on = None
 
 
 def upgrade():
-    # Enable pgvector extension
-    op.execute('CREATE EXTENSION IF NOT EXISTS vector')
+    # Best-effort enablement: this migration stores embeddings as FLOAT[].
+    # Keep local setups working even when pgvector is not installed.
+    bind = op.get_bind()
+    vector_available = bind.execute(
+        sa.text("SELECT EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'vector')")
+    ).scalar()
+    if vector_available:
+        op.execute('CREATE EXTENSION IF NOT EXISTS vector')
+    else:
+        print("⚠️  Skipping pgvector extension setup: extension not available on this PostgreSQL instance")
 
     # Create claims table
     op.create_table(
