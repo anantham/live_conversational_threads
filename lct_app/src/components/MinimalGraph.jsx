@@ -31,7 +31,10 @@ function MinimalGraphInner({
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
-  const latestChunk = graphData?.[graphData.length - 1] || [];
+  const latestChunk = useMemo(
+    () => graphData?.[graphData.length - 1] || [],
+    [graphData]
+  );
 
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(latestChunk), [latestChunk]);
 
@@ -151,6 +154,7 @@ function MinimalGraphInner({
   );
 
   // Auto-pan to latest nodes
+  const lastNodeId = layoutedNodes[layoutedNodes.length - 1]?.id ?? null;
   useEffect(() => {
     if (!autoFollowRef.current || layoutedNodes.length === 0) return;
     const last = layoutedNodes[layoutedNodes.length - 1];
@@ -160,7 +164,7 @@ function MinimalGraphInner({
         duration: 400,
       });
     }
-  }, [layoutedNodes.length, reactFlow]);
+  }, [lastNodeId, layoutedNodes, reactFlow]);
 
   const handleNodeClick = useCallback(
     (_, node) => {
@@ -209,6 +213,12 @@ function MinimalGraphInner({
     </div>
   );
 }
+
+MinimalGraphInner.propTypes = {
+  graphData: PropTypes.array,
+  selectedNode: PropTypes.string,
+  setSelectedNode: PropTypes.func.isRequired,
+};
 
 export default function MinimalGraph(props) {
   return (
