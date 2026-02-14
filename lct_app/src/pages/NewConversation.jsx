@@ -120,7 +120,10 @@ export default function NewConversation() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
           <div className="bg-white rounded-lg shadow-lg p-5 max-w-xs text-center space-y-3">
             <p className="text-sm text-gray-700">
-              End recording? Your conversation is saved automatically.
+              End this recording?
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Transcript is preserved. Graph may not persist without cloud storage.
             </p>
             <div className="flex gap-2 justify-center">
               <button
@@ -133,7 +136,7 @@ export default function NewConversation() {
                 onClick={handleConfirmBack}
                 className="px-4 py-3 text-sm bg-gray-800 text-white rounded-md hover:bg-gray-700 transition"
               >
-                Save & Exit
+                End & Exit
               </button>
             </div>
           </div>
