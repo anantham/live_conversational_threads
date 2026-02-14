@@ -641,3 +641,13 @@ Validation:
 - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_gcs_helpers_save_fallback.py tests/unit/test_stt_api_settings.py tests/unit/test_stt_config.py tests/unit/test_transcript_processing_schema.py` (20 passed)
 - `python3 -m py_compile lct_python_backend/generation_api.py lct_python_backend/services/gcs_helpers.py` (passed)
 - `cd lct_app && npx eslint src/components/NodeDetail.jsx src/pages/NewConversation.jsx src/components/MinimalGraph.jsx src/components/AudioInput.jsx src/components/audio/useAudioInputEffects.js src/components/LlmSettingsPanel.jsx src/components/ContextualGraph.jsx src/components/StructuralGraph.jsx` (0 errors, 6 preexisting warnings in legacy graph components only)
+
+## 2026-02-14T19:11:31Z
+- Documentation bundling for PR scope alignment:
+  - `README.md`: Included existing runtime/setup accuracy edits (script-first startup flow and local DB defaults) in feature branch PR scope.
+  - `API_DOCUMENTATION.md`: Included endpoint behavior clarification updates for save behavior and environment expectations.
+  - `docs/PROJECT_STRUCTURE.md` + `docs/ROADMAP.md`: Included pending structure/roadmap cleanups aligned with current backend/frontend routes.
+  - `docs/plans/2026-02-15-bulk-file-upload-design.md`, `docs/plans/2026-02-15-bulk-file-upload-plan.md`, `docs/plans/2026-02-15-speaker-diarization-pipeline.md`: Added planning artifacts for upcoming ingest/diarization workstreams.
+
+Verification:
+- `git status --short` reviewed to ensure only docs files were newly added in this step before commit.
