@@ -1,220 +1,257 @@
-import { useState } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-// import Input from "./components/Input";
 import AudioInput from "../components/AudioInput";
-import StructuralGraph from "../components/StructuralGraph";
-import ContextualGraph from "../components/ContextualGraph";
-import SaveJson from "../components/SaveJson";
-import SaveTranscript from "../components/SaveTranscript";
-import Legend from "../components/Legend";
-import GenerateFormalism from "../components/GenerateFormalism";
-import FormalismList from "../components/FormalismList";
+import FileUpload from "../components/FileUpload";
+import MinimalGraph from "../components/MinimalGraph";
+import TimelineRibbon from "../components/TimelineRibbon";
+import NodeDetail from "../components/NodeDetail";
+import MinimalLegend from "../components/MinimalLegend";
+import { buildSpeakerColorMap } from "../components/graphConstants";
 
-function normalizeGraphDataPayload(payload) {
-  if (!Array.isArray(payload)) {
+function isNodeObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeChunkNode(node, index, fallbackChunkId) {
+  if (!isNodeObject(node)) return null;
+
+  const chunkId =
+    typeof node.chunk_id === "string" && node.chunk_id.trim()
+      ? node.chunk_id.trim()
+      : fallbackChunkId;
+
+  const explicitId = typeof node.id === "string" && node.id.trim() ? node.id.trim() : "";
+  const explicitName =
+    typeof node.node_name === "string" && node.node_name.trim() ? node.node_name.trim() : "";
+  const fallbackName =
+    typeof node.summary === "string" && node.summary.trim()
+      ? node.summary.trim().slice(0, 48)
+      : `Node ${index + 1}`;
+
+  return {
+    ...node,
+    chunk_id: chunkId,
+    id: explicitId || `${chunkId}-node-${index}`,
+    node_name: explicitName || fallbackName,
+    edge_relations: Array.isArray(node.edge_relations) ? node.edge_relations : [],
+    contextual_relation:
+      node.contextual_relation && typeof node.contextual_relation === "object" && !Array.isArray(node.contextual_relation)
+        ? node.contextual_relation
+        : {},
+  };
+}
+
+function normalizeGraphDataPayload(payload, depth = 0) {
+  if (depth > 3) return null;
+
+  // Wrapper object payloads seen in older responses: { existing_json: [...] } / { data: [...] }
+  if (isNodeObject(payload)) {
+    if (Array.isArray(payload.existing_json)) {
+      return normalizeGraphDataPayload(payload.existing_json, depth + 1);
+    }
+    if (Array.isArray(payload.data)) {
+      return normalizeGraphDataPayload(payload.data, depth + 1);
+    }
     return null;
   }
 
-  if (payload.length === 0) {
-    return [];
+  if (!Array.isArray(payload)) return null;
+  if (payload.length === 0) return [];
+
+  // Wrapper array shape: [{ existing_json: [...] }] or [{ data: [...] }]
+  if (payload.length === 1 && isNodeObject(payload[0])) {
+    if (Array.isArray(payload[0].existing_json)) {
+      return normalizeGraphDataPayload(payload[0].existing_json, depth + 1);
+    }
+    if (Array.isArray(payload[0].data)) {
+      return normalizeGraphDataPayload(payload[0].data, depth + 1);
+    }
   }
 
-  // Legacy/expected shape: Array<Array<Node>>
+  // Chunked shape: Array<Array<Node>>
   if (Array.isArray(payload[0])) {
-    const normalized = payload
-      .map((chunk) =>
-        Array.isArray(chunk)
-          ? chunk.filter((item) => item && typeof item === "object" && !Array.isArray(item))
-          : []
-      )
+    return payload
+      .map((chunk, chunkIndex) => {
+        if (!Array.isArray(chunk)) return [];
+        const fallbackChunkId = `chunk-${chunkIndex}`;
+        return chunk
+          .map((node, index) => normalizeChunkNode(node, index, fallbackChunkId))
+          .filter(Boolean);
+      })
       .filter((chunk) => chunk.length > 0);
-    return normalized;
   }
 
-  // New backend shape: Array<Node>; rebuild chunk groups by chunk_id.
-  if (payload[0] && typeof payload[0] === "object") {
+  // Flat shape: Array<Node>
+  if (isNodeObject(payload[0])) {
     const chunkOrder = [];
     const chunkMap = new Map();
 
-    payload.forEach((node, index) => {
-      if (!node || typeof node !== "object" || Array.isArray(node)) {
-        return;
-      }
+    payload.forEach((rawNode) => {
+      if (!isNodeObject(rawNode)) return;
       const chunkId =
-        typeof node.chunk_id === "string" && node.chunk_id.trim()
-          ? node.chunk_id
-          : `legacy-${index}`;
+        typeof rawNode.chunk_id === "string" && rawNode.chunk_id.trim()
+          ? rawNode.chunk_id.trim()
+          : "chunk-0";
       if (!chunkMap.has(chunkId)) {
         chunkMap.set(chunkId, []);
         chunkOrder.push(chunkId);
       }
-      chunkMap.get(chunkId).push(node);
+      const targetChunk = chunkMap.get(chunkId);
+      const normalized = normalizeChunkNode(rawNode, targetChunk.length, chunkId);
+      if (normalized) {
+        targetChunk.push(normalized);
+      }
     });
 
-    return chunkOrder.map((chunkId) => chunkMap.get(chunkId)).filter((chunk) => chunk.length > 0);
+    return chunkOrder
+      .map((id) => chunkMap.get(id))
+      .filter((chunk) => Array.isArray(chunk) && chunk.length > 0);
   }
 
   return null;
 }
 
 export default function NewConversation() {
-  const [graphData, setGraphData] = useState([]); // Stores graph data
-  const [selectedNode, setSelectedNode] = useState(null); // Tracks selected node
-  const [chunkDict, setChunkDict] = useState({}); // Stores chunk data
-  const [isFormalismView, setIsFormalismView] = useState(false); // stores layout state: formalism or browsability
-  const [selectedFormalism, setSelectedFormalism] = useState(null); // stores selected formalism
-  const [formalismData, setFormalismData] = useState({}); // Stores Formalism data
-  const [selectedLoopyURL, setSelectedLoopyURL] = useState(""); // Stores Loopy URL
-  const [message, setMessage] = useState(""); // message for saving conversation
-  const [fileName, setFileName] = useState(""); //filename for saving conversation
-  const [isFullScreen, setIsFullScreen] = useState(false); // full screen status
-  
-  const [conversationId, setConversationId] = useState(() => {
-    return crypto.randomUUID(); // uuid for conversation
-  });
+  const [graphData, setGraphData] = useState([]);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [chunkDict, setChunkDict] = useState({});
+  const [message, setMessage] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
+  const [showBackConfirm, setShowBackConfirm] = useState(false);
+  const audioRef = useRef(null);
 
-  // Handles streamed JSON data
-  const handleDataReceived = (newData) => {
+  const navigate = useNavigate();
+
+  const latestChunk = useMemo(
+    () => graphData?.[graphData.length - 1] || [],
+    [graphData]
+  );
+  const hasData = latestChunk.length > 0;
+
+  // Resolve selected node data for detail panel
+  const selectedNodeData = useMemo(() => {
+    if (!selectedNode) return null;
+    return latestChunk.find((n) => n.id === selectedNode) || null;
+  }, [selectedNode, latestChunk]);
+
+  // Speaker color map (shared between graph, ribbon, legend)
+  const speakerColorMap = useMemo(() => buildSpeakerColorMap(latestChunk), [latestChunk]);
+
+  const handleDataReceived = useCallback((newData) => {
     const normalized = normalizeGraphDataPayload(newData);
     if (normalized === null) {
       console.warn(
-        "[NewConversation] Ignoring malformed existing_json payload. Expected Array<Node> or Array<Array<Node>>."
+        "[NewConversation] Ignoring malformed existing_json payload."
       );
       return;
     }
     setGraphData(normalized);
-  };
+  }, []);
 
-  // Handles received chunks
-  const handleChunksReceived = (chunks) => {
-    setChunkDict(chunks);
-  };
+  const handleChunksReceived = useCallback((chunks) => setChunkDict(chunks), []);
 
-  const navigate = useNavigate();
+  const handleBack = useCallback(() => {
+    if (hasData) {
+      setShowBackConfirm(true);
+    } else {
+      navigate("/");
+    }
+  }, [hasData, navigate]);
+
+  const handleConfirmBack = useCallback(async () => {
+    await audioRef.current?.stopRecording();
+    navigate("/");
+  }, [navigate]);
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-      {/* Header */}
-      <div className="w-full px-4 py-4 bg-transparent flex flex-row justify-between items-start md:grid md:grid-cols-3 md:items-center gap-2">
-        {/* Left: Back Button */}
-        <div className="w-full md:w-auto flex justify-start">
-          <button
-            onClick={() => navigate("/")}
-            className="px-4 py-2 h-10 bg-white text-blue-600 font-semibold rounded-lg shadow hover:bg-blue-100 transition text-sm md:text-base"
-          >
-            ⬅ Back
-          </button>
-        </div>
+    <div className="flex flex-col h-[100dvh] w-screen bg-[#fafafa] font-sans">
+      {/* Back button */}
+      <button
+        onClick={handleBack}
+        className="absolute top-3 left-3 z-30 p-3 text-gray-300 hover:text-gray-500 transition"
+        aria-label="Back"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7" />
+        </svg>
+      </button>
 
-        {/* Center: GenerateFormalism Buttons */}
-        <div className="w-full md:w-auto flex justify-end md:justify-center">
-          <div className="flex flex-col md:flex-row items-end md:items-center gap-2">
-            <GenerateFormalism
-              chunkDict={chunkDict}
-              graphData={graphData}
-              isFormalismView={isFormalismView}
-              setIsFormalismView={setIsFormalismView}
-              formalismData={formalismData}
-              setFormalismData={setFormalismData}
-            />
-          </div>
-        </div>
-
-        {/* Right: Save Transcript (desktop only) */}
-        {graphData.length > 0 && (
-          <div className="hidden md:flex justify-end w-full">
-            <SaveTranscript chunkDict={chunkDict} />
-          </div>
-        )}
-      </div>
-
-      {!isFormalismView ? (
-        // 🔵 Default layout (Structural + Contextual)
-        <div className="flex-grow flex flex-col p-6 w-full h-screen space-y-6">
-  
-          {/* 🟣 Contextual Flow - 3/4 height */}
-          <div className="flex-grow-[4] bg-white rounded-lg shadow-lg p-4 w-full overflow-hidden flex flex-col">
-              <ContextualGraph
-                conversationId={conversationId}
-                graphData={graphData}
-                chunkDict={chunkDict}
-                setGraphData={setGraphData}
-                selectedNode={selectedNode}
-                setSelectedNode={setSelectedNode}
-                isFullScreen={isFullScreen}
-                setIsFullScreen={setIsFullScreen}
-              />
-          </div>
-
-          {/* 🔵 Structural Flow - 1/4 height */}
-          <div className="hidden md:flex flex-grow bg-white rounded-lg shadow-lg p-4 w-full overflow-hidden flex flex-col">
-            <StructuralGraph
-              graphData={graphData}
-              selectedNode={selectedNode}
-              setSelectedNode={setSelectedNode}
-            />
-          </div>
-        </div>
-      ) : (
-        // 🟣 Formalism layout
-        <div className="flex-grow flex flex-col space-y-4 p-4 md:p-6">
-          {/* Top Section */}
-          <div className="flex flex-col md:flex-row md:space-x-4 space-y-4 md:space-y-0 md:h-2/5">
-            {/* Top Left - Formalism List */}
-            <div className="w-full md:w-1/2 bg-white rounded-lg shadow-lg p-4">
-              <h2 className="text-xl font-bold text-gray-800 text-center mb-2">
-                Generated Formalisms
-              </h2>
-              <FormalismList
-                selectedFormalism={selectedFormalism}
-                setSelectedFormalism={setSelectedFormalism}
-                formalismData={formalismData}
-                setFormalismData={setFormalismData}
-                setSelectedLoopyURL={setSelectedLoopyURL}
-              />
-            </div>
-
-            {/* Top Right - Contextual Graph */}
-            <div className="hidden md:block w-full md:w-1/2 bg-white rounded-lg shadow-lg p-4">
-              <ContextualGraph
-                conversationId={conversationId}
-                graphData={graphData}
-                chunkDict={chunkDict}
-                setGraphData={setGraphData}
-                selectedNode={selectedNode}
-                setSelectedNode={setSelectedNode}
-                isFullScreen={isFullScreen}
-                setIsFullScreen={setIsFullScreen}
-              />
-            </div>
-          </div>
-
-          {/* Bottom - Canvas */}
-          <div className="bg-white rounded-lg shadow-lg p-4 flex flex-col flex-grow">
-            <h2 className="text-xl font-bold text-gray-800 text-center mb-2">
-              Formalism Model Diagram
-            </h2>
-
-            <div className="flex-1 flex items-center justify-center">
+      {/* Back confirmation dialog */}
+      {showBackConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-lg p-5 max-w-xs text-center space-y-3">
+            <p className="text-sm text-gray-700">
+              End this recording?
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Auto-save is active. If cloud storage is unavailable, local fallback is used.
+            </p>
+            <div className="flex gap-2 justify-center">
               <button
-                onClick={() => {
-                  const url = selectedLoopyURL || "https://ncase.me/loopy/";
-                  window.open(url, "_blank");
-                }}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 transition-colors"
+                onClick={() => setShowBackConfirm(false)}
+                className="px-4 py-3 text-sm text-gray-500 hover:text-gray-700 transition"
               >
-                {selectedLoopyURL ? "View Model" : "Open Loopy Editor"}
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmBack}
+                className="px-4 py-3 text-sm bg-gray-800 text-white rounded-md hover:bg-gray-700 transition"
+              >
+                End & Exit
               </button>
             </div>
           </div>
         </div>
       )}
-      
-      {!isFormalismView && (
-        <>
-          {/* Audio Input Section */}
-          <div className="sticky bottom-0 w-full p-4 flex justify-center z-20">
+
+      {/* Main graph area */}
+      <div className="flex-1 relative min-h-0">
+        {hasData ? (
+          <>
+            <MinimalGraph
+              graphData={graphData}
+              selectedNode={selectedNode}
+              setSelectedNode={setSelectedNode}
+            />
+            <MinimalLegend speakerColorMap={speakerColorMap} />
+          </>
+        ) : (
+          // Empty state — just breathing room
+          <div className="w-full h-full" />
+        )}
+
+        {/* Node detail panel */}
+        {selectedNodeData && (
+          <NodeDetail
+            node={selectedNodeData}
+            chunkDict={chunkDict}
+            onClose={() => setSelectedNode(null)}
+          />
+        )}
+      </div>
+
+      {/* Timeline ribbon */}
+      {hasData && (
+        <TimelineRibbon
+          graphData={graphData}
+          selectedNode={selectedNode}
+          setSelectedNode={setSelectedNode}
+        />
+      )}
+
+      {/* Audio footer */}
+      <div className="shrink-0 w-full py-2 px-4 flex items-center justify-center border-t border-gray-100 bg-white/80 backdrop-blur-sm relative">
+        <div className="w-full max-w-5xl flex items-center justify-center gap-4">
+          <FileUpload
+            onDataReceived={handleDataReceived}
+            onChunksReceived={handleChunksReceived}
+            setConversationId={setConversationId}
+            setFileName={setFileName}
+            setMessage={setMessage}
+          />
           <AudioInput
+            ref={audioRef}
             onDataReceived={handleDataReceived}
             onChunksReceived={handleChunksReceived}
             chunkDict={chunkDict}
@@ -226,29 +263,8 @@ export default function NewConversation() {
             fileName={fileName}
             setFileName={setFileName}
           />
-          </div>
-
-          {/* Save Transcript Button Below Audio Input */}
-          {graphData.length > 0 && (
-            <div className="w-full px-4 mt-4 mb-2 z-20 flex justify-center md:sticky md:bottom-2">
-              <SaveJson
-                chunkDict={chunkDict}
-                graphData={graphData}
-                conversationId={conversationId}
-                setMessage={setMessage}
-                message={message}
-                fileName={fileName}
-                setFileName={setFileName}
-              />
-            </div>
-          )}
-
-          {/* Legend */}
-          <div className="hidden md:block absolute bottom-4 right-4">
-            <Legend />
-          </div>
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }
