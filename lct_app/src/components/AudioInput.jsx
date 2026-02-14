@@ -185,6 +185,13 @@ const AudioInput = forwardRef(function AudioInput({
     wasRecording.current = recording;
   }, [recording]);
 
+  // Auto-dismiss processing errors after 8s
+  useEffect(() => {
+    if (!processingError) return;
+    const t = setTimeout(() => setProcessingError(""), 8000);
+    return () => clearTimeout(t);
+  }, [processingError]);
+
   // --- Orchestration ---
   const startRecording = async () => {
     if (recording) return;
@@ -276,12 +283,13 @@ const AudioInput = forwardRef(function AudioInput({
         title={statusTooltip}
       />
 
-      {/* Error messages (inline, compact) */}
-      {settingsError && (
-        <span className="text-[10px] text-red-500">{settingsError}</span>
-      )}
-      {processingError && (
-        <span className="text-[10px] text-amber-600">{processingError}</span>
+      {/* Error toast (above footer) */}
+      {(settingsError || processingError) && (
+        <div className="absolute bottom-full left-0 right-0 mb-1 px-4 pointer-events-none">
+          <div className="max-w-lg mx-auto bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 text-center shadow-sm">
+            {settingsError || processingError}
+          </div>
+        </div>
       )}
     </div>
   );
