@@ -30,3 +30,7 @@ opentelemetry-instrumentation-fastapi==0.43b0
 pdfplumber==0.11.0
 python-dateutil==2.8.2
 httpx>=0.28.1
+
+# Optional: VAD-based audio chunking (STT_VAD_ENABLED=true)
+# Pulls in torch + onnxruntime (~500MB). Only needed if you enable VAD.
+# pip install silero-vad
