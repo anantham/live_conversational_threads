@@ -615,3 +615,14 @@ Validation:
   - `cd lct_python_backend && set -a && source .env && set +a && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_llm_api.py tests/unit/test_transcript_processing_schema.py tests/unit/test_stt_api_settings.py tests/integration/test_transcripts_websocket.py` (21 passed)
   - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/components/AudioInput.jsx src/components/LlmSettingsPanel.jsx src/components/SttSettingsPanel.jsx src/components/audio/audioMessages.js src/components/audio/sttUtils.js src/components/audio/useProviderHealthChecks.js src/components/audio/useTranscriptSockets.js src/services/llmSettingsApi.js src/pages/Settings.jsx` (0 errors, 2 pre-existing warnings in `Settings.jsx`)
   - `npm --prefix lct_app run build` (passed)
+
+## 2026-02-14T20:34:04Z
+- lct_app/src/pages/ViewConversation.jsx (lines 1-269): Replaced legacy saved-conversation page (formalism/thematic/old graph stack) with minimal viewer architecture matching the new UI direction: defensive graph payload normalization, streamlined `/conversations/{id}` load path, selected-node detail drawer wiring, minimal header/error/empty states, and timeline+graph assembly.
+- lct_app/src/components/MinimalGraph.jsx (lines 1-253): Added minimal Dagre + ReactFlow renderer with node normalization guards, relation-aware edge styling, and auto-follow behavior for latest nodes.
+- lct_app/src/components/TimelineRibbon.jsx (lines 1-72): Added low-profile timeline ribbon with speaker-colored dots and selected-node synchronization.
+- lct_app/src/components/NodeDetail.jsx (lines 1-179): Added minimal slide-over node detail panel with transcript/context/relations sections and Escape-to-close keyboard behavior.
+- lct_app/src/components/MinimalLegend.jsx (lines 1-91): Added compact collapsible legend for speaker colors and edge relation types.
+- lct_app/src/components/graphConstants.js (lines 1-34): Added shared edge color map and speaker palette helpers for minimal graph components.
+- Validation:
+  - `cd lct_app && npx eslint src/pages/ViewConversation.jsx src/components/MinimalGraph.jsx src/components/TimelineRibbon.jsx src/components/NodeDetail.jsx src/components/MinimalLegend.jsx src/components/graphConstants.js` (passed)
+  - `npm --prefix lct_app run -s build` (passed)
