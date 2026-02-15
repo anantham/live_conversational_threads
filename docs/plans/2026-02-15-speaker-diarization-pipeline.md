@@ -303,38 +303,81 @@ Forward-compatible with ADR-012:
 
 Tested against `100.81.65.74:8001`. Health endpoint reports:
 ```json
-{"status":"ok","model":"large-v3","device":"cuda","diarization":false,"backend":"whisperx"}
+{"status":"ok","model":"large-v3","stream_model":"turbo","device":"cuda","compute_type":"float16","diarization":true,"streaming":true,"backend":"whisperx"}
 ```
 
-**Diarization was disabled at time of testing.** User reports it has been enabled since; health endpoint still showed `false` (server may need restart). Code handles both states via Approach C.
+**Diarization is enabled.** Server accepts `diarize` (default `"true"`), `include_timestamps` (default `"true"`), `min_speakers`, `max_speakers` form fields.
 
-Response shape with real audio (diarization off):
+### Response: diarization OFF (`diarize=false`)
 ```json
 {
-  "text": "What about now? I want to basically",
+  "text": "The same way you measure animal intelligence",
   "language": "en",
   "duration": 5.0,
   "model": "large-v3",
   "timestamps": [
-    {"start": 1.33, "end": 2.199, "text": "What about now?"},
-    {"start": 2.704, "end": 4.017, "text": "I want to basically"}
+    {"start": 0.031, "end": 4.995, "text": "The same way you measure animal intelligence"}
   ],
   "speakers": null
 }
 ```
 
-When diarization is enabled, each timestamp entry gains a `speaker` field (`"SPEAKER_00"`, etc.) and `speakers` becomes a list. Parser handles both shapes (see Layer 1 contract).
+### Response: diarization ON, single speaker (5s clip)
+```json
+{
+  "text": "The same way you measure animal intelligence",
+  "language": "en",
+  "duration": 5.0,
+  "model": "large-v3",
+  "timestamps": [
+    {"start": 0.031, "end": 4.995, "text": "The same way you measure animal intelligence", "speaker": "SPEAKER_00"}
+  ],
+  "speakers": [
+    {"speaker": "SPEAKER_00", "start": 0.031, "end": 4.995, "text": "The same way you measure animal intelligence"}
+  ]
+}
+```
 
-**Action needed:** Confirm diarization is active (health should show `"diarization": true` and transcription responses should include `speaker` fields in timestamps).
+### Response: diarization ON, multi-speaker (30s conversation)
+```json
+{
+  "text": "You called me yesterday, I'm sorry. No, it's fine. ...",
+  "language": "en",
+  "duration": 30.0,
+  "model": "large-v3",
+  "timestamps": [
+    {"start": 0.031, "end": 1.453, "text": "You called me yesterday, I'm sorry.", "speaker": "SPEAKER_02"},
+    {"start": 4.035, "end": 4.636, "text": "No, it's fine.", "speaker": "SPEAKER_00"},
+    {"start": 7.059, "end": 7.359, "text": "You're okay?", "speaker": "SPEAKER_02"},
+    {"start": 10.262, "end": 13.746, "text": "I don't know what I'm feeling like.", "speaker": "SPEAKER_00"}
+  ],
+  "speakers": [
+    {"speaker": "SPEAKER_02", "start": 0.031, "end": 1.453, "text": "You called me yesterday, I'm sorry."},
+    {"speaker": "SPEAKER_00", "start": 4.035, "end": 4.636, "text": "No, it's fine."},
+    {"speaker": "SPEAKER_02", "start": 7.059, "end": 7.359, "text": "You're okay?"},
+    {"speaker": "SPEAKER_00", "start": 10.262, "end": 13.746, "text": "I don't know what I'm feeling like."}
+  ]
+}
+```
+
+### Key observations
+- `speakers` array: `{speaker, start, end, text}` per segment
+- `timestamps` also gets `speaker` field injected when diarization is on
+- Speaker IDs: `SPEAKER_00`, `SPEAKER_01`, etc. — not stable across requests
+- `speakers` and `timestamps` contain the same data (redundant)
+- pyannote can over-segment (4 speakers detected in a 2-person conversation on short clips)
+- CUDA OOM on 75s audio with `large-v3` + diarization — VAD chunking helps by sending smaller chunks
+- `min_speakers`/`max_speakers` params available to constrain over-segmentation
 
 ---
 
 ## Resolved Questions
 
-1. ~~Is WhisperX diarization enabled?~~ **Reported enabled by user** — health endpoint not yet reflecting. Code handles both states.
-2. ~~Cross-chunk speaker reconciliation?~~ **Deferred to ADR-012.** Accept per-chunk labels for now.
+1. ~~Is WhisperX diarization enabled?~~ **Yes** — confirmed working with real multi-speaker audio.
+2. ~~Cross-chunk speaker reconciliation?~~ **Deferred to ADR-012.** Accept per-chunk labels for now. Speaker IDs are not stable across chunks.
 3. ~~`handle_final_text` signature change~~ **Backward-compatible:** `handle_final_text(text, speaker_segments=None)`. Existing call sites unaffected.
 4. **LLM prompt token cost:** ~50-100 extra tokens per call. Negligible for Gemini Flash.
+5. **Parser contract confirmed:** Use `speakers[]` array — each entry has `{speaker, start, end, text}`. When `speakers` is `null` or absent, graceful degradation (no speaker labels).
 
 ---
 
