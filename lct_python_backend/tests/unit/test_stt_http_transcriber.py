@@ -1,6 +1,5 @@
 import base64
 import sys
-import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -10,6 +9,7 @@ from lct_python_backend.services import stt_http_transcriber as mod
 from lct_python_backend.services.stt_http_transcriber import (
     RealtimeHttpSttSession,
     decode_audio_base64,
+    extract_diarized_segments,
     extract_transcript_text,
     pcm16le_to_wav,
 )
@@ -46,6 +46,62 @@ def test_pcm16le_to_wav_generates_valid_header():
     wav_bytes = pcm16le_to_wav(b"\x00\x00" * 64, sample_rate_hz=16000)
     assert wav_bytes.startswith(b"RIFF")
     assert b"WAVE" in wav_bytes[:24]
+
+
+# ---------------------------------------------------------------------------
+# extract_diarized_segments
+# ---------------------------------------------------------------------------
+def test_extract_diarized_segments_returns_none_for_non_dict():
+    assert extract_diarized_segments("not a dict") is None
+    assert extract_diarized_segments(None) is None
+    assert extract_diarized_segments(42) is None
+
+
+def test_extract_diarized_segments_returns_none_for_missing_or_empty_speakers():
+    assert extract_diarized_segments({"text": "hello", "speakers": None}) is None
+    assert extract_diarized_segments({"text": "hello", "speakers": []}) is None
+
+
+def test_extract_diarized_segments_returns_none_for_error_response():
+    payload = {
+        "text": "hello",
+        "speakers": [{"error": "module 'whisperx' has no attribute 'DiarizationPipeline'"}],
+    }
+    assert extract_diarized_segments(payload) is None
+
+
+def test_extract_diarized_segments_returns_segments_for_valid_response():
+    payload = {
+        "text": "Hello there. Hi, how are you.",
+        "speakers": [
+            {"speaker": "SPEAKER_00", "start": 0.031, "end": 1.5, "text": "Hello there."},
+            {"speaker": "SPEAKER_01", "start": 2.0, "end": 4.0, "text": "Hi, how are you."},
+        ],
+    }
+    result = extract_diarized_segments(payload)
+    assert result is not None
+    assert len(result) == 2
+    assert result[0]["speaker"] == "SPEAKER_00"
+    assert result[0]["text"] == "Hello there."
+    assert result[0]["start"] == 0.031
+    assert result[1]["speaker"] == "SPEAKER_01"
+    assert result[1]["text"] == "Hi, how are you."
+
+
+def test_extract_diarized_segments_skips_invalid_entries():
+    payload = {
+        "text": "hello",
+        "speakers": [
+            {"speaker": "SPEAKER_00", "text": "valid"},
+            {"speaker": "", "text": "no speaker"},
+            {"speaker": "SPEAKER_01"},
+            {"not_a_segment": True},
+        ],
+    }
+    result = extract_diarized_segments(payload)
+    assert result is not None
+    assert len(result) == 1
+    assert result[0]["speaker"] == "SPEAKER_00"
 
 
 # ---------------------------------------------------------------------------
@@ -86,14 +142,14 @@ def _pcm_bytes(seconds: float, sample_rate: int = 16000) -> bytes:
 @pytest.mark.asyncio
 async def test_realtime_http_session_pushes_and_flushes_chunks():
     session = _make_session()
-    session._transcribe_pcm = AsyncMock(return_value="chunk text")
+    session._transcribe_pcm = AsyncMock(return_value=("chunk text", None))
 
     result = await session.push_audio_chunk(b"\x00\x01" * 4000)
     assert result is not None
     assert result["text"] == "chunk text"
     assert result["is_final"] is False
 
-    session._transcribe_pcm = AsyncMock(return_value="final text")
+    session._transcribe_pcm = AsyncMock(return_value=("final text", None))
     await session.push_audio_chunk(b"\x00\x01" * 2000)
     flush_result = await session.flush()
     assert flush_result is not None
@@ -104,7 +160,7 @@ async def test_realtime_http_session_pushes_and_flushes_chunks():
 @pytest.mark.asyncio
 async def test_fixed_interval_does_not_flush_below_threshold():
     session = _make_session(chunk_seconds=1.0)
-    session._transcribe_pcm = AsyncMock(return_value="text")
+    session._transcribe_pcm = AsyncMock(return_value=("text", None))
 
     # Push 0.5s of audio (below 1.0s threshold)
     result = await session.push_audio_chunk(_pcm_bytes(0.5))
@@ -113,13 +169,86 @@ async def test_fixed_interval_does_not_flush_below_threshold():
 
 
 @pytest.mark.asyncio
-async def test_metadata_includes_vad_enabled_false():
+async def test_metadata_includes_vad_and_diarize_flags():
     session = _make_session()
-    session._transcribe_pcm = AsyncMock(return_value="text")
+    session._transcribe_pcm = AsyncMock(return_value=("text", None))
 
     result = await session.push_audio_chunk(_pcm_bytes(0.5))
     assert result is not None
     assert result["metadata"]["vad_enabled"] is False
+    assert "diarize_enabled" in result["metadata"]
+
+
+# ---------------------------------------------------------------------------
+# Diarization wiring
+# ---------------------------------------------------------------------------
+@pytest.mark.asyncio
+async def test_transcribe_buffer_includes_segments_when_present():
+    session = _make_session()
+    segments = [
+        {"speaker": "SPEAKER_00", "start": 0.0, "end": 1.0, "text": "Hello"},
+        {"speaker": "SPEAKER_01", "start": 1.0, "end": 2.0, "text": "Hi"},
+    ]
+    session._transcribe_pcm = AsyncMock(return_value=("Hello Hi", segments))
+
+    result = await session.push_audio_chunk(b"\x00\x01" * 4000)
+    assert result is not None
+    assert result["text"] == "Hello Hi"
+    assert result["segments"] == segments
+
+
+@pytest.mark.asyncio
+async def test_diarize_form_field_sent_when_enabled():
+    session = _make_session(pool_enabled=False)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "application/json"}
+    mock_response.json.return_value = {
+        "text": "hello",
+        "speakers": [{"speaker": "SPEAKER_00", "start": 0.0, "end": 1.0, "text": "hello"}],
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.aclose = AsyncMock()
+
+    with patch.object(mod, "STT_DIARIZE_ENABLED", True), \
+         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+        text, segments = await session._transcribe_pcm(_pcm_bytes(0.1))
+
+    assert text == "hello"
+    assert segments is not None
+    assert len(segments) == 1
+
+    form_data = mock_client.post.call_args.kwargs.get("data", {})
+    assert form_data.get("diarize") == "true"
+
+
+@pytest.mark.asyncio
+async def test_diarize_not_sent_when_disabled():
+    session = _make_session(pool_enabled=False)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "application/json"}
+    mock_response.json.return_value = {"text": "hello", "speakers": None}
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.aclose = AsyncMock()
+
+    with patch.object(mod, "STT_DIARIZE_ENABLED", False), \
+         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+        text, segments = await session._transcribe_pcm(_pcm_bytes(0.1))
+
+    assert text == "hello"
+    assert segments is None
+
+    form_data = mock_client.post.call_args.kwargs.get("data", {})
+    assert "diarize" not in form_data
 
 
 # ---------------------------------------------------------------------------
@@ -166,12 +295,14 @@ async def test_pooled_client_reused_across_transcriptions():
     original_client.post = AsyncMock(return_value=mock_response)
 
     # First transcription
-    text1 = await session._transcribe_pcm(_pcm_bytes(0.1))
+    text1, segments1 = await session._transcribe_pcm(_pcm_bytes(0.1))
     assert text1 == "hello"
+    assert segments1 is None
 
     # Second transcription
-    text2 = await session._transcribe_pcm(_pcm_bytes(0.1))
+    text2, segments2 = await session._transcribe_pcm(_pcm_bytes(0.1))
     assert text2 == "hello"
+    assert segments2 is None
 
     # Both calls used the same client
     assert original_client.post.call_count == 2
@@ -185,8 +316,6 @@ async def test_unpooled_creates_per_request_client():
     session = _make_session(pool_enabled=False)
     assert session._client is None
 
-    # _transcribe_pcm should create and close a client per request
-    # We'll mock httpx.AsyncClient to verify
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.headers = {"content-type": "application/json"}
@@ -198,8 +327,9 @@ async def test_unpooled_creates_per_request_client():
     mock_client.aclose = AsyncMock()
 
     with patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
-        text = await session._transcribe_pcm(_pcm_bytes(0.1))
+        text, segments = await session._transcribe_pcm(_pcm_bytes(0.1))
         assert text == "hello"
+        assert segments is None
         mock_client.aclose.assert_called_once()
 
 
@@ -224,7 +354,7 @@ def _make_vad_model(*, speech_prob=0.9):
 async def test_vad_does_not_flush_before_min_seconds():
     model = _make_vad_model(speech_prob=0.0)  # All silence
     session = _make_session(vad_enabled=True, vad_model=model)
-    session._transcribe_pcm = AsyncMock(return_value="text")
+    session._transcribe_pcm = AsyncMock(return_value=("text", None))
 
     # Push 0.3s of audio (below min 0.5s)
     with patch.object(mod, "STT_VAD_MIN_SECONDS", 0.5), \
@@ -238,7 +368,7 @@ async def test_vad_does_not_flush_before_min_seconds():
 async def test_vad_force_flush_at_max_seconds():
     model = _make_vad_model(speech_prob=0.9)  # Always speech
     session = _make_session(vad_enabled=True, vad_model=model)
-    session._transcribe_pcm = AsyncMock(return_value="forced text")
+    session._transcribe_pcm = AsyncMock(return_value=("forced text", None))
 
     # Push enough audio to exceed max_seconds
     with patch.object(mod, "STT_VAD_MAX_SECONDS", 1.0), \
@@ -261,7 +391,7 @@ async def test_vad_flushes_on_silence_after_speech():
     """
     model = _make_vad_model(speech_prob=0.0)  # All silence
     session = _make_session(vad_enabled=True, vad_model=model)
-    session._transcribe_pcm = AsyncMock(return_value="silence text")
+    session._transcribe_pcm = AsyncMock(return_value=("silence text", None))
 
     # silence_ms threshold = 50ms → 0.05s * 16000 = 800 samples of silence needed
     # Push 0.5s = 8000 samples → silence_samples will be ~8000 (all frames are silence)
@@ -279,7 +409,7 @@ async def test_vad_flushes_on_silence_after_speech():
 async def test_vad_does_not_flush_during_speech():
     model = _make_vad_model(speech_prob=0.9)  # Active speech
     session = _make_session(vad_enabled=True, vad_model=model)
-    session._transcribe_pcm = AsyncMock(return_value="text")
+    session._transcribe_pcm = AsyncMock(return_value=("text", None))
 
     with patch.object(mod, "STT_VAD_MIN_SECONDS", 0.1), \
          patch.object(mod, "STT_VAD_MAX_SECONDS", 10.0), \
@@ -296,7 +426,7 @@ async def test_vad_does_not_flush_during_speech():
 async def test_vad_metadata_includes_vad_enabled_true():
     model = _make_vad_model(speech_prob=0.0)  # Silence triggers flush
     session = _make_session(vad_enabled=True, vad_model=model)
-    session._transcribe_pcm = AsyncMock(return_value="text")
+    session._transcribe_pcm = AsyncMock(return_value=("text", None))
 
     with patch.object(mod, "STT_VAD_MIN_SECONDS", 0.1), \
          patch.object(mod, "STT_VAD_MAX_SECONDS", 10.0), \
@@ -314,7 +444,7 @@ async def test_vad_fallback_when_silero_unavailable():
     session = _make_session(vad_enabled=True, vad_model=None)  # Model unavailable
     assert session._vad_available is False
 
-    session._transcribe_pcm = AsyncMock(return_value="fallback text")
+    session._transcribe_pcm = AsyncMock(return_value=("fallback text", None))
 
     # Should use fixed-interval chunking (chunk_seconds=0.25 default)
     result = await session.push_audio_chunk(_pcm_bytes(0.5))
@@ -343,7 +473,7 @@ async def test_vad_feed_error_assumes_speech():
     model.reset_states = MagicMock()
 
     session = _make_session(vad_enabled=True, vad_model=model)
-    session._transcribe_pcm = AsyncMock(return_value="text")
+    session._transcribe_pcm = AsyncMock(return_value=("text", None))
 
     with patch.object(mod, "STT_VAD_MIN_SECONDS", 0.1), \
          patch.object(mod, "STT_VAD_MAX_SECONDS", 10.0), \
