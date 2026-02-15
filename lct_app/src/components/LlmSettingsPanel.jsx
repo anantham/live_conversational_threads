@@ -55,8 +55,12 @@ export default function LlmSettingsPanel() {
     load();
   }, []);
 
+  const hasForm = Boolean(form);
+  const modelMode = form?.mode || "local";
+  const modelBaseUrl = form?.base_url || "";
+
   useEffect(() => {
-    if (!form) return;
+    if (!hasForm) return;
     let active = true;
 
     const loadModels = async () => {
@@ -64,8 +68,8 @@ export default function LlmSettingsPanel() {
       setChatModelsError(null);
       try {
         const options = await getLlmModelOptions({
-          mode: form.mode || "local",
-          baseUrl: form.base_url || "",
+          mode: modelMode,
+          baseUrl: modelBaseUrl,
         });
         if (!active) return;
         const models = Array.isArray(options?.models) ? options.models : [];
@@ -96,7 +100,7 @@ export default function LlmSettingsPanel() {
     return () => {
       active = false;
     };
-  }, [form, form?.mode, form?.base_url]);
+  }, [hasForm, modelMode, modelBaseUrl]);
 
   const handleSave = async () => {
     if (!form) return;
