@@ -373,13 +373,29 @@ async def transcripts_websocket(websocket: WebSocket):
             task.add_done_callback(pending_stt_chunk_tasks.discard)
             task.add_done_callback(background_tasks.discard)
 
+        async def _processor_handle_final_text(
+            text: str,
+            speaker_segments: Optional[List[Dict[str, Any]]] = None,
+        ) -> None:
+            if speaker_segments:
+                try:
+                    await processor.handle_final_text(text, speaker_segments=speaker_segments)
+                    return
+                except TypeError as exc:
+                    if "speaker_segments" not in str(exc):
+                        raise
+                    logger.debug(
+                        "[WS] Processor handle_final_text does not accept speaker_segments; retrying without labels."
+                    )
+            await processor.handle_final_text(text)
+
         async def _run_processor_final(
             text: str,
             speaker_segments: Optional[List[Dict[str, Any]]] = None,
         ) -> None:
             try:
                 async with processor_lock:
-                    await processor.handle_final_text(text, speaker_segments=speaker_segments)
+                    await _processor_handle_final_text(text, speaker_segments=speaker_segments)
             except Exception as exc:
                 logger.exception("[WS] Final transcript processing failed: %s", exc)
                 await _safe_send_json(
@@ -810,7 +826,7 @@ async def transcripts_websocket(websocket: WebSocket):
                                 )
                             async with processor_lock:
                                 if final_text_for_post_flush:
-                                    await processor.handle_final_text(
+                                    await _processor_handle_final_text(
                                         final_text_for_post_flush,
                                         speaker_segments=final_segments_for_post_flush,
                                     )

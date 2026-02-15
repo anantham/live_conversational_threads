@@ -62,8 +62,8 @@ def test_transcripts_ws_persists_partial_and_final(monkeypatch):
             self._llm_config = llm_config
             self._send_status = send_status
 
-        async def handle_final_text(self, text):
-            processor_calls["final"].append(text)
+        async def handle_final_text(self, text, speaker_segments=None):
+            processor_calls["final"].append((text, speaker_segments))
 
         async def flush(self):
             processor_calls["flush"] += 1
@@ -108,7 +108,7 @@ def test_transcripts_ws_persists_partial_and_final(monkeypatch):
 
     time.sleep(0.05)
     assert [event for event, *_rest in persisted] == ["partial", "final"]
-    assert processor_calls["final"] == ["hello world"]
+    assert processor_calls["final"] == [("hello world", None)]
     assert processor_calls["flush"] == 1
 
 
@@ -162,8 +162,8 @@ def test_transcripts_ws_accepts_audio_chunk_backend_owned_stt(monkeypatch):
             self._llm_config = llm_config
             self._send_status = send_status
 
-        async def handle_final_text(self, text):
-            processor_calls["final"].append(text)
+        async def handle_final_text(self, text, speaker_segments=None):
+            processor_calls["final"].append((text, speaker_segments))
 
         async def flush(self):
             processor_calls["flush"] += 1
@@ -180,6 +180,14 @@ def test_transcripts_ws_accepts_audio_chunk_backend_owned_stt(monkeypatch):
                 "text": "quick transcript.",
                 "is_final": False,
                 "metadata": {"provider": "parakeet"},
+                "segments": [
+                    {
+                        "speaker": "SPEAKER_00",
+                        "start": 0.0,
+                        "end": 0.8,
+                        "text": "quick transcript.",
+                    }
+                ],
             }
 
         async def flush(self):
@@ -238,7 +246,10 @@ def test_transcripts_ws_accepts_audio_chunk_backend_owned_stt(monkeypatch):
 
     time.sleep(0.05)
     assert [event for event, *_rest in persisted] == ["partial", "final"]
-    assert processor_calls["final"] == ["quick transcript."]
+    assert len(processor_calls["final"]) == 1
+    assert processor_calls["final"][0][0] == "quick transcript."
+    assert processor_calls["final"][0][1]
+    assert processor_calls["final"][0][1][0]["speaker"] == "SPEAKER_00"
     assert processor_calls["flush"] == 1
 
 

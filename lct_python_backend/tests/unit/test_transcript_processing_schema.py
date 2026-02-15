@@ -225,3 +225,46 @@ def test_normalize_generated_output_speaker_id_null_when_missing():
     normalized = _normalize_generated_output(parsed)
     assert len(normalized) == 1
     assert normalized[0]["speaker_id"] is None
+
+
+def test_split_segments_for_completed_chunk_separates_carryover():
+    text_batch = ["A done", "B later"]
+    segment_batch = [
+        [{"speaker": "SPEAKER_00", "text": "A done"}],
+        [{"speaker": "SPEAKER_01", "text": "B later"}],
+    ]
+
+    completed, carryover = (
+        transcript_processing_module.TranscriptProcessor._split_segments_for_completed_chunk(
+            text_batch=text_batch,
+            segment_batch=segment_batch,
+            completed_text="A done",
+            incomplete_text="B later",
+            stop_accumulating_flag=False,
+        )
+    )
+
+    assert [segment["text"] for segment in completed] == ["A done"]
+    assert len(carryover) == 1
+    assert [segment["text"] for segment in carryover[0]] == ["B later"]
+
+
+def test_split_segments_for_completed_chunk_uses_all_segments_on_forced_flush():
+    text_batch = ["A done", "B later"]
+    segment_batch = [
+        [{"speaker": "SPEAKER_00", "text": "A done"}],
+        [{"speaker": "SPEAKER_01", "text": "B later"}],
+    ]
+
+    completed, carryover = (
+        transcript_processing_module.TranscriptProcessor._split_segments_for_completed_chunk(
+            text_batch=text_batch,
+            segment_batch=segment_batch,
+            completed_text="A done B later",
+            incomplete_text="",
+            stop_accumulating_flag=True,
+        )
+    )
+
+    assert [segment["text"] for segment in completed] == ["A done", "B later"]
+    assert carryover == []
