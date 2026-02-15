@@ -864,6 +864,11 @@ async def transcripts_websocket(websocket: WebSocket):
                 for task in list(pending_stt_chunk_tasks):
                     task.cancel()
                 await asyncio.gather(*list(pending_stt_chunk_tasks), return_exceptions=True)
+            if stt_runtime:
+                try:
+                    await stt_runtime.close()
+                except Exception as exc:
+                    logger.debug("[WS] stt_runtime.close() failed: %s", exc)
 
 
 async def _send_processor_update(websocket: WebSocket, existing_json: Any, chunk_dict: Any):

@@ -130,7 +130,7 @@ def test_cost_alert_threshold():
    - Missing timestamps
 
 5. Create data validation layer
-6. Build import API endpoint: `POST /import/google-meet`
+6. Build import API endpoint: `POST /api/import/google-meet`
 
 **Code Structure:**
 ```python

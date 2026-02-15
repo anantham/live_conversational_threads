@@ -43,24 +43,32 @@ const useAutoSaveConversation = ({
   fileName,
   conversationId,
   lastAutoSaveRef,
+  setMessage,
 }) => {
   useEffect(() => {
     if (!graphData || !chunkDict || !fileName) return;
     const timeoutId = setTimeout(async () => {
       try {
-        await saveConversationToServer({
+        const result = await saveConversationToServer({
           fileName,
           graphData,
           chunkDict,
           conversationId,
         });
+        if (!result?.success) {
+          const detail = result?.message || "Unknown error";
+          console.error("Auto-save failed:", detail);
+          setMessage?.(`Auto-save failed: ${detail}`);
+          return;
+        }
         lastAutoSaveRef.current = { graphData, chunkDict };
       } catch (err) {
-        console.error("Silent auto-save failed:", err);
+        console.error("Auto-save failed:", err);
+        setMessage?.(`Auto-save failed: ${err?.message || "Unknown error"}`);
       }
     }, 1000);
     return () => clearTimeout(timeoutId);
-  }, [graphData, chunkDict, fileName, conversationId, lastAutoSaveRef]);
+  }, [graphData, chunkDict, fileName, conversationId, lastAutoSaveRef, setMessage]);
 };
 
 const useMessageDismissOnClick = ({ message, setMessage }) => {

@@ -37,7 +37,9 @@ const createBackendMessageHandler =
       }
       if (message.type === "stt_provider_error") {
         onSttProviderStateChange?.("error");
-        logToServer?.(`Provider error: ${message.detail || "unknown error"}`);
+        const detail = message.detail || "STT provider unavailable";
+        logToServer?.(`Provider error: ${detail}`);
+        onProcessingStatus?.({ level: "error", message: detail, context: {} });
       }
       if (message.type === "processing_status") {
         const level = String(message.level || "info").toLowerCase();
