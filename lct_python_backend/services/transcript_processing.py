@@ -902,6 +902,53 @@ class TranscriptProcessor:
         self._send_status = send_status
         self._llm_config = _resolve_llm_config(llm_config)
 
+    @staticmethod
+    def _split_segments_for_completed_chunk(
+        text_batch: List[str],
+        segment_batch: List[List[Dict[str, Any]]],
+        completed_text: str,
+        incomplete_text: str,
+        stop_accumulating_flag: bool,
+    ) -> Tuple[List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
+        if not segment_batch:
+            return [], []
+
+        flattened_segments: List[Dict[str, Any]] = []
+        for seg_list in segment_batch:
+            if isinstance(seg_list, list):
+                flattened_segments.extend(seg_list)
+
+        if not flattened_segments:
+            return [], []
+
+        if stop_accumulating_flag or not str(incomplete_text or "").strip():
+            return flattened_segments, []
+
+        input_text = " ".join(text_batch)
+        completed_chars = max(0, len(input_text) - len(str(incomplete_text or "")))
+        if completed_chars <= 0:
+            return [], [flattened_segments]
+
+        completed_segments: List[Dict[str, Any]] = []
+        carryover_segments: List[Dict[str, Any]] = []
+        consumed_chars = 0
+
+        for segment in flattened_segments:
+            segment_text = str(segment.get("text", "")).strip()
+            segment_len = len(segment_text)
+            segment_cost = segment_len + (1 if segment_len > 0 else 0)
+
+            if consumed_chars + segment_len <= completed_chars:
+                completed_segments.append(segment)
+            else:
+                carryover_segments.append(segment)
+            consumed_chars += segment_cost
+
+        if completed_segments:
+            return completed_segments, [carryover_segments] if carryover_segments else []
+
+        return [], [flattened_segments]
+
     async def _emit_status(self, level: str, message: str, context: Optional[Dict[str, Any]] = None) -> None:
         if not self._send_status:
             return
@@ -926,18 +973,29 @@ class TranscriptProcessor:
     async def flush(self) -> None:
         if not self.accumulator:
             return
-        await self._process_batch(self.accumulator, stop_accumulating_flag=True)
+        await self._process_batch(
+            self.accumulator,
+            self.accumulator_segments,
+            stop_accumulating_flag=True,
+        )
         self.accumulator = []
         self.accumulator_segments = []
         self._current_batch_size = self.base_batch_size
         self._continue_accumulating = True
 
     async def _process_batches(self) -> None:
-        continue_accumulating, incomplete_seg = await self._process_batch(self.accumulator)
+        continue_accumulating, incomplete_seg, carryover_segments = await self._process_batch(
+            self.accumulator,
+            self.accumulator_segments,
+        )
 
         if continue_accumulating:
             if self._current_batch_size >= self.max_batch_size:
-                await self._process_batch(self.accumulator, stop_accumulating_flag=True)
+                await self._process_batch(
+                    self.accumulator,
+                    self.accumulator_segments,
+                    stop_accumulating_flag=True,
+                )
                 self.accumulator = []
                 self.accumulator_segments = []
                 self._current_batch_size = self.base_batch_size
@@ -946,15 +1004,16 @@ class TranscriptProcessor:
                 self._current_batch_size += self.base_batch_size
         else:
             self.accumulator = [incomplete_seg] if incomplete_seg else []
-            self.accumulator_segments = []  # Segments already consumed in batch
+            self.accumulator_segments = carryover_segments if incomplete_seg else []
             self._current_batch_size = self.base_batch_size
             self._continue_accumulating = True
 
     async def _process_batch(
         self,
         text_batch: List[str],
+        segment_batch: List[List[Dict[str, Any]]],
         stop_accumulating_flag: bool = False,
-    ) -> Tuple[bool, str]:
+    ) -> Tuple[bool, str, List[List[Dict[str, Any]]]]:
         input_text = " ".join(text_batch)
         accumulated_output = accumulate_text_json(input_text, llm_config=self._llm_config)
         if not accumulated_output:
@@ -964,7 +1023,7 @@ class TranscriptProcessor:
                 "Accumulator returned empty output; continuing accumulation.",
                 {"stage": "accumulate"},
             )
-            return True, input_text
+            return True, input_text, segment_batch
 
         errors = []
         if isinstance(accumulated_output, dict):
@@ -1002,13 +1061,18 @@ class TranscriptProcessor:
             segmented_input_chunk = input_text
             incomplete_seg = ""
 
+        completed_segments, carryover_segments = self._split_segments_for_completed_chunk(
+            text_batch=text_batch,
+            segment_batch=segment_batch,
+            completed_text=segmented_input_chunk,
+            incomplete_text=incomplete_seg,
+            stop_accumulating_flag=stop_accumulating_flag,
+        )
+
         if segmented_input_chunk.strip():
-            # Use speaker-prefixed transcript when diarized segments are available
-            all_segments: List[Dict[str, Any]] = []
-            for seg_list in self.accumulator_segments:
-                all_segments.extend(seg_list)
             transcript_for_llm = format_speaker_prefixed_transcript(
-                segmented_input_chunk, all_segments if all_segments else None,
+                segmented_input_chunk,
+                completed_segments if completed_segments else None,
             )
 
             mod_input = (
@@ -1047,4 +1111,4 @@ class TranscriptProcessor:
                 )
 
         logger.info("[ACCUMULATE] Evaluated batch of %s transcripts", len(text_batch))
-        return decision, incomplete_seg
+        return decision, incomplete_seg, carryover_segments
