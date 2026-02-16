@@ -6,10 +6,11 @@ from lct_python_backend.db import db
 
 async def insert_conversation_metadata(metadata: dict):
     query = """
-    INSERT INTO conversations (id, conversation_name, total_nodes, gcs_path, created_at)
-    VALUES (:id, :conversation_name, :total_nodes, :gcs_path, :created_at)
+    INSERT INTO conversations (id, conversation_name, conversation_type, total_nodes, gcs_path, created_at)
+    VALUES (:id, :conversation_name, :conversation_type, :total_nodes, :gcs_path, :created_at)
     ON CONFLICT (id) DO UPDATE SET
         conversation_name = EXCLUDED.conversation_name,
+        conversation_type = EXCLUDED.conversation_type,
         total_nodes = EXCLUDED.total_nodes,
         gcs_path = EXCLUDED.gcs_path,
         created_at = EXCLUDED.created_at

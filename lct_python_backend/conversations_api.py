@@ -2,6 +2,7 @@
 
 import logging
 import uuid
+from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -20,6 +21,7 @@ from lct_python_backend.services.conversation_reader import (
     serialize_utterances,
     wrap_graph_data_chunks,
 )
+from lct_python_backend.services.gcs_helpers import LOCAL_SAVE_DIR, load_conversation_from_gcs
 from lct_python_backend.services.turn_synthesizer import build_turn_graph_from_utterances
 
 logger = logging.getLogger(__name__)
@@ -48,9 +50,13 @@ async def list_saved_conversations(db: AsyncSession = Depends(get_async_session)
             {
                 "file_id": str(conversation.id),
                 "file_name": conversation.conversation_name,
-                "message": "Loaded from database",
+                "message": conversation.conversation_type or "live_audio",
                 "no_of_nodes": conversation.total_nodes or 0,
                 "created_at": conversation.created_at.isoformat() if conversation.created_at else None,
+                "conversation_type": conversation.conversation_type,
+                "duration_seconds": conversation.duration_seconds,
+                "started_at": conversation.started_at.isoformat() if conversation.started_at else None,
+                "total_utterances": conversation.total_utterances or 0,
             }
             for conversation in conversations_db
         ]
@@ -83,19 +89,56 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
             len(utterances),
         )
 
+        graph_data = []
+        chunk_dict = {}
+
         if nodes:
+            # Preferred: use analyzed nodes from DB
             graph_data = build_graph_data_from_nodes(nodes, relationships)
-        elif utterances:
+            chunk_dict = build_chunk_dict_from_utterances(utterances)
+        else:
+            # Fallback: read graph data + chunks from saved JSON file
+            # Try gcs_path first, then convention-based local path
+            json_path = conversation.gcs_path
+            if not json_path:
+                local_candidate = LOCAL_SAVE_DIR / f"{conversation_id}.json"
+                if local_candidate.exists():
+                    json_path = str(local_candidate)
+                    logger.info("Found local JSON by convention: %s", json_path)
+
+            if json_path:
+                try:
+                    saved = load_conversation_from_gcs(json_path)
+                    saved_graph = saved.get("graph_data", [])
+                    saved_chunks = saved.get("chunk_dict") or saved.get("chunks", {})
+                    if saved_graph:
+                        # Unwrap nested [[nodes]] format if present
+                        if isinstance(saved_graph[0], list):
+                            graph_data = saved_graph[0]
+                        else:
+                            graph_data = saved_graph
+                        chunk_dict = saved_chunks
+                        logger.info(
+                            "Loaded %s nodes + %s chunks from saved JSON: %s",
+                            len(graph_data),
+                            len(chunk_dict),
+                            json_path,
+                        )
+                except Exception as exc:
+                    logger.warning("Failed to load saved JSON from %s: %s", json_path, exc)
+
+        if not graph_data and utterances:
+            # Last resort: synthesize speaker turns from utterances
             graph_data = build_turn_graph_from_utterances(utterances)
+            chunk_dict = build_chunk_dict_from_utterances(utterances)
             logger.info(
                 "Generated %s speaker turns from %s utterances",
                 len(graph_data),
                 len(utterances),
             )
-        else:
-            graph_data = []
+        elif not graph_data:
+            chunk_dict = build_chunk_dict_from_utterances(utterances)
 
-        chunk_dict = build_chunk_dict_from_utterances(utterances)
         graph_data_nested = wrap_graph_data_chunks(graph_data)
 
         logger.info(

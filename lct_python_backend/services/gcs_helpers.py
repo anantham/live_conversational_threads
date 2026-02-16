@@ -13,8 +13,10 @@ from lct_python_backend.config import GCS_BUCKET_NAME, GCS_FOLDER
 
 logger = logging.getLogger("lct_backend")
 
+# Resolve relative to project root (parent of lct_python_backend/)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 LOCAL_SAVE_DIR = Path(
-    os.getenv("LOCAL_SAVE_DIR", "./outputs/saved_conversations")
+    os.getenv("LOCAL_SAVE_DIR", str(_PROJECT_ROOT / "outputs" / "saved_conversations"))
 ).expanduser()
 
 
@@ -126,11 +128,10 @@ def load_conversation_from_gcs(gcs_path: str) -> dict:
                 "chunk_dict": chunk_dict,
             }
 
-        # GCS object path resolution
-        if "/" not in str(gcs_path or ""):
-            raise ValueError("Invalid GCS path. Must be in format 'bucket/path/to/file.json'")
-
+        # GCS object path resolution — accept root-level keys (e.g. "<uuid>.json")
         bucket_name = GCS_BUCKET_NAME
+        if not bucket_name:
+            raise ValueError("GCS_BUCKET_NAME is not configured.")
         object_path = gcs_path
 
         client = storage.Client()
