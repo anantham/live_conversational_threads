@@ -66,6 +66,10 @@ def _make_app(env_overrides: dict = None):
         async def import_from_url():
             return {"status": "imported"}
 
+        @app.post("/api/import/process-file")
+        async def process_file():
+            return {"status": "processing"}
+
         @app.websocket("/ws/transcripts")
         async def ws_transcripts(websocket: WebSocket):
             if not mw.check_ws_auth(websocket):
@@ -218,6 +222,35 @@ class TestBodySizeLimits:
         # Should pass the size check (100 < 10240) even though > JSON limit
         # (endpoint may fail on parsing, but middleware should let it through)
         assert resp.status_code != 413
+
+    def test_upload_route_uses_higher_limit(self):
+        """File upload routes get MAX_UPLOAD_BYTES instead of MAX_BODY_BYTES."""
+        app = _make_app({
+            "MAX_BODY_BYTES": "1024",       # 1 KB — would reject 5 KB
+            "MAX_UPLOAD_BYTES": "10240",     # 10 KB — allows 5 KB
+        })
+        client = TestClient(app)
+        resp = client.post(
+            "/api/import/process-file",
+            content=b"x" * 5000,
+            headers={"Content-Type": "multipart/form-data", "Content-Length": "5000"},
+        )
+        # 5 KB exceeds MAX_BODY_BYTES but not MAX_UPLOAD_BYTES
+        assert resp.status_code != 413
+
+    def test_upload_route_still_rejects_over_upload_limit(self):
+        """File upload routes are still bounded by MAX_UPLOAD_BYTES."""
+        app = _make_app({
+            "MAX_BODY_BYTES": "1024",
+            "MAX_UPLOAD_BYTES": "2048",
+        })
+        client = TestClient(app)
+        resp = client.post(
+            "/api/import/process-file",
+            content=b"x" * 3000,
+            headers={"Content-Type": "multipart/form-data", "Content-Length": "3000"},
+        )
+        assert resp.status_code == 413
 
 
 # ---------------------------------------------------------------------------
