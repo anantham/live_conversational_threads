@@ -685,3 +685,18 @@ Validation:
 - `python3 -m py_compile lct_python_backend/import_api.py lct_python_backend/services/file_transcriber.py` (passed)
 - `cd lct_app && npx eslint src/components/FileUpload.jsx src/pages/NewConversation.jsx` (passed)
 - `npm --prefix lct_app run -s build` (passed; existing bundle-size warning remains)
+
+## 2026-02-15T15:31:22Z
+- `start.command` (lines 99-120): Hardened stale-listener cleanup by resolving the listening PID's working directory (`lsof -a -p <pid> -d cwd`) and treating processes started from this repository as safe to terminate, even when `uvicorn --reload` command lines omit `$ROOT_DIR`.
+- `docs/TECH_DEBT.md` (lines 3, 21-22): Updated the document date and logged `start.command` (411 LOC) as a decomposition candidate due to mixed process-control/startup-health responsibilities.
+
+Validation:
+- `bash -n start.command` (passed)
+- `./start.command` smoke run (passed): stale backend listener on `:8000` (`pid 16341`) was auto-stopped, backend and frontend both reached health endpoints, then shutdown completed cleanly.
+
+## 2026-02-16T02:21:20Z
+- `start.command` (lines 246-284): Fixed `set -e` startup abort in `resolve_stt_urls_from_backend()` by replacing trailing `[ -n ... ] && ...` assignments with explicit `if ...; then ...; fi` blocks and adding `return 0` so empty optional provider URLs (for example `WHISPERX_URL`) do not terminate the script.
+
+Validation:
+- `bash -n start.command` (passed)
+- `./start.command` smoke run (passed): reached `All services are up.` and remained running until manual `Ctrl+C`; clean shutdown path executed afterward.

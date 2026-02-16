@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-02-14
+Last updated: 2026-02-15
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -18,6 +18,7 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_python_backend/stt_api.py | 747 | Backend-owned STT websocket now combines session orchestration, realtime routing, persistence, telemetry, async flush orchestration, and compatibility paths | Re-split websocket handler into focused modules (`stt_ws_session.py`, `stt_ws_message_router.py`, `stt_event_persistence.py`) while keeping router thin |
 | lct_app/src/components/ContextualGraph.jsx | 832 | Graph rendering, edge styling/hover UX, context cards, transcript view, bookmark/fact-check interactions, and panel state are mixed in one component | Split into `useContextualGraphLayout`, `ContextCard`, `TranscriptCard`, and `ClaimsDrawer`; keep container focused on orchestration |
 | ~~lct_app/src/components/SttSettingsPanel.jsx~~ | ~~370~~ → 310 | **RESOLVED** — Extracted `useSttTelemetry` (35 LOC) and `useProviderHealthChecks` (46 LOC) hooks; panel keeps form state + JSX rendering. |
+| start.command | 411 | Local stack launch script mixes process ownership detection, port cleanup, service startup, health checks, and optional STT orchestration in one file | Split into `scripts/lib/process_control.sh`, `scripts/lib/health_checks.sh`, and keep `start.command` as thin orchestrator |
 | lct_python_backend/import_api.py | 479 | File/URL/text import routes now share router with SSE bulk processing orchestration, event encoding, temp-file lifecycle, and LLM/STT pipeline wiring | Split into `import_routes.py` (CRUD/preview/from-url/from-text), `import_bulk_routes.py` (SSE upload flow), and `import_sse.py` (event helpers + queue worker orchestration) |
 | ~~lct_python_backend/conversations_api.py~~ | ~~434~~ → 193 | **RESOLVED** — Extracted conversation read/serialization and turn synthesis into `conversation_reader.py` + `turn_synthesizer.py`, leaving a thin API adapter. |
 | ~~lct_python_backend/factcheck_api.py~~ | ~~355~~ → 89 | **RESOLVED** — Extracted provider normalization/orchestration and cost aggregation into `factcheck_service.py` + `cost_stats_service.py`; router is now a thin adapter. |

@@ -44,6 +44,12 @@ ENABLE_URL_IMPORT: bool = os.getenv("ENABLE_URL_IMPORT", "false").lower() in {
 # Body size limits (bytes)
 MAX_BODY_BYTES: int = int(os.getenv("MAX_BODY_BYTES", str(50 * 1024 * 1024)))  # 50 MB default
 MAX_JSON_BYTES: int = int(os.getenv("MAX_JSON_BYTES", str(1 * 1024 * 1024)))    # 1 MB default
+MAX_UPLOAD_BYTES: int = int(os.getenv("MAX_UPLOAD_BYTES", str(500 * 1024 * 1024)))  # 500 MB for file uploads
+
+# Routes that accept large file uploads (use MAX_UPLOAD_BYTES instead of MAX_BODY_BYTES)
+LARGE_UPLOAD_PATHS: set = {
+    "/api/import/process-file",
+}
 
 # Rate limit configuration (requests per window)
 RATE_LIMIT_WINDOW: int = 60  # seconds
@@ -207,7 +213,13 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
                 )
 
             is_json = "application/json" in content_type
-            limit = MAX_JSON_BYTES if is_json else MAX_BODY_BYTES
+            is_large_upload = request.url.path in LARGE_UPLOAD_PATHS
+            if is_json:
+                limit = MAX_JSON_BYTES
+            elif is_large_upload:
+                limit = MAX_UPLOAD_BYTES
+            else:
+                limit = MAX_BODY_BYTES
 
             if length > limit:
                 limit_mb = limit / (1024 * 1024)
@@ -326,5 +338,6 @@ def configure_p0_security(app):
     logger.info("[SECURITY]   URL import: %s", url_import)
     logger.info("[SECURITY]   Rate limits: expensive=%d, mutate=%d, read=%d per %ds",
                 RATE_LIMIT_EXPENSIVE, RATE_LIMIT_MUTATE, RATE_LIMIT_READ, RATE_LIMIT_WINDOW)
-    logger.info("[SECURITY]   Body limits: JSON=%d MB, other=%d MB",
-                MAX_JSON_BYTES // (1024 * 1024), MAX_BODY_BYTES // (1024 * 1024))
+    logger.info("[SECURITY]   Body limits: JSON=%d MB, other=%d MB, uploads=%d MB",
+                MAX_JSON_BYTES // (1024 * 1024), MAX_BODY_BYTES // (1024 * 1024),
+                MAX_UPLOAD_BYTES // (1024 * 1024))
