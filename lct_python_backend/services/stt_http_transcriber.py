@@ -8,7 +8,7 @@ import os
 import time
 import wave
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 import numpy as np
@@ -22,6 +22,9 @@ DEFAULT_HTTP_MODEL = os.getenv("STT_HTTP_MODEL", "")
 DEFAULT_HTTP_LANGUAGE = os.getenv("STT_HTTP_LANGUAGE", "")
 TRACE_API_CALLS = os.getenv("TRACE_API_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
+
+# --- Diarization feature flag ---
+STT_DIARIZE_ENABLED = os.getenv("STT_DIARIZE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 # --- VAD + Pooling feature flags ---
 STT_VAD_ENABLED = os.getenv("STT_VAD_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -137,6 +140,42 @@ def extract_transcript_text(payload: Any) -> str:
                 return nested
 
     return ""
+
+
+def extract_diarized_segments(payload: Any) -> Optional[List[Dict[str, Any]]]:
+    """Extract speaker-diarized segments from STT response.
+
+    Returns a list of {speaker, start, end, text} dicts when diarization data
+    is present and valid, or None when absent/invalid.
+    """
+    if not isinstance(payload, dict):
+        return None
+
+    speakers = payload.get("speakers")
+    if not isinstance(speakers, list) or not speakers:
+        return None
+
+    # Check for error responses (e.g. {"error": "..."})
+    if len(speakers) == 1 and isinstance(speakers[0], dict) and "error" in speakers[0]:
+        logger.debug("[DIARIZE] Server returned diarization error: %s", speakers[0]["error"])
+        return None
+
+    segments: List[Dict[str, Any]] = []
+    for entry in speakers:
+        if not isinstance(entry, dict):
+            continue
+        speaker = entry.get("speaker")
+        text = entry.get("text")
+        if not speaker or not text:
+            continue
+        segments.append({
+            "speaker": str(speaker),
+            "text": str(text).strip(),
+            "start": entry.get("start"),
+            "end": entry.get("end"),
+        })
+
+    return segments if segments else None
 
 
 _VAD_WINDOW_SIZE_16K = 512  # 32ms at 16kHz
@@ -316,11 +355,11 @@ class RealtimeHttpSttSession:
         raw_pcm = bytes(self._buffer)
         self._buffer.clear()
         request_started_at = time.perf_counter()
-        text = await self._transcribe_pcm(raw_pcm)
+        text, segments = await self._transcribe_pcm(raw_pcm)
         stt_request_ms = _elapsed_ms(request_started_at)
         if not text:
             return None
-        return {
+        result: Dict[str, Any] = {
             "text": text,
             "is_final": is_final,
             "metadata": {
@@ -330,11 +369,15 @@ class RealtimeHttpSttSession:
                 "chunks_seen": self._chunks_seen,
                 "transport": "backend_http_stt",
                 "stt_request_ms": stt_request_ms,
+                "diarize_enabled": STT_DIARIZE_ENABLED,
                 "vad_enabled": self._vad_available,
             },
         }
+        if segments:
+            result["segments"] = segments
+        return result
 
-    async def _transcribe_pcm(self, pcm_bytes: bytes) -> str:
+    async def _transcribe_pcm(self, pcm_bytes: bytes) -> Tuple[str, Optional[List[Dict[str, Any]]]]:
         if not self.is_ready():
             raise RuntimeError(
                 f"No STT HTTP URL configured for provider '{self.provider}'."
@@ -348,18 +391,21 @@ class RealtimeHttpSttSession:
         language = str(self.language or "").strip()
         if language:
             form_data["language"] = language
+        if STT_DIARIZE_ENABLED:
+            form_data["diarize"] = "true"
 
         files = {"file": ("chunk.wav", wav_payload, "audio/wav")}
         timeout_seconds = max(5.0, float(self.timeout_seconds or DEFAULT_HTTP_TIMEOUT_SECONDS))
         if TRACE_API_CALLS:
             logger.info(
-                "[STT HTTP] POST %s provider=%s chunk_bytes=%s wav_bytes=%s model=%s language=%s",
+                "[STT HTTP] POST %s provider=%s chunk_bytes=%s wav_bytes=%s model=%s language=%s diarize=%s",
                 self.http_url,
                 self.provider,
                 len(pcm_bytes),
                 len(wav_payload),
                 model or "-",
                 language or "-",
+                STT_DIARIZE_ENABLED,
             )
 
         # Use pooled client or create per-request client
@@ -384,14 +430,16 @@ class RealtimeHttpSttSession:
                 raise
             payload = _parse_response_payload(response)
             text = extract_transcript_text(payload)
+            segments = extract_diarized_segments(payload) if STT_DIARIZE_ENABLED else None
             if TRACE_API_CALLS:
                 logger.info(
-                    "[STT HTTP] %s status=%s transcript_preview=%s",
+                    "[STT HTTP] %s status=%s transcript_preview=%s speakers=%s",
                     self.http_url,
                     response.status_code,
                     _preview_text(text),
+                    len(segments) if segments else 0,
                 )
-            return text
+            return text, segments
         finally:
             if should_close:
                 await client.aclose()
