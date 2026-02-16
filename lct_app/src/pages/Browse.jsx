@@ -46,7 +46,7 @@ export default function Browse() {
 
   const navigate = useNavigate();
 
-  const handleDelete = async (conversationId, conversationName) => {
+  const handleDelete = async (conversationId) => {
     setDeleting(conversationId);
     try {
       const response = await apiFetch(`/conversations/${conversationId}`, {
@@ -170,7 +170,7 @@ export default function Browse() {
 
                   {/* Delete */}
                   <button
-                    className="shrink-0 opacity-0 group-hover:opacity-100 text-xs text-gray-300 hover:text-red-400 transition px-2 py-1"
+                    className="shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-xs text-gray-300 hover:text-red-400 transition px-2 py-1"
                     onClick={(e) => {
                       e.stopPropagation();
                       setDeleteConfirm({ id: conv.file_id, name: conv.file_name });
