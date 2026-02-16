@@ -128,11 +128,10 @@ def load_conversation_from_gcs(gcs_path: str) -> dict:
                 "chunk_dict": chunk_dict,
             }
 
-        # GCS object path resolution
-        if "/" not in str(gcs_path or ""):
-            raise ValueError("Invalid GCS path. Must be in format 'bucket/path/to/file.json'")
-
+        # GCS object path resolution — accept root-level keys (e.g. "<uuid>.json")
         bucket_name = GCS_BUCKET_NAME
+        if not bucket_name:
+            raise ValueError("GCS_BUCKET_NAME is not configured.")
         object_path = gcs_path
 
         client = storage.Client()

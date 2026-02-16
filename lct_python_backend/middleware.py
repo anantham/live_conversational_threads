@@ -213,7 +213,8 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
                 )
 
             is_json = "application/json" in content_type
-            is_large_upload = request.url.path in LARGE_UPLOAD_PATHS
+            normalized_path = request.url.path.rstrip("/")
+            is_large_upload = normalized_path in LARGE_UPLOAD_PATHS
             if is_json:
                 limit = MAX_JSON_BYTES
             elif is_large_upload:
