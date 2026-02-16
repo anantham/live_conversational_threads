@@ -41,6 +41,10 @@ class SaveJsonResponseExtended(BaseModel):
     message: str
     no_of_nodes: int
     created_at: Optional[str]
+    conversation_type: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    started_at: Optional[str] = None
+    total_utterances: Optional[int] = None
 
 class ConversationResponse(BaseModel):
     graph_data: List[Any]

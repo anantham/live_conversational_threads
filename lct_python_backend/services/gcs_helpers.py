@@ -13,8 +13,10 @@ from lct_python_backend.config import GCS_BUCKET_NAME, GCS_FOLDER
 
 logger = logging.getLogger("lct_backend")
 
+# Resolve relative to project root (parent of lct_python_backend/)
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 LOCAL_SAVE_DIR = Path(
-    os.getenv("LOCAL_SAVE_DIR", "./outputs/saved_conversations")
+    os.getenv("LOCAL_SAVE_DIR", str(_PROJECT_ROOT / "outputs" / "saved_conversations"))
 ).expanduser()
 
 
