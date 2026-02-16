@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.db_session import get_async_session
-from lct_python_backend.db_helpers import insert_conversation_metadata
+from lct_python_backend.models import Conversation
 from lct_python_backend.schemas import SaveJsonResponse
 from lct_python_backend.services.gcs_helpers import save_json_to_gcs
 
@@ -588,7 +588,10 @@ async def export_to_obsidian_canvas(
 
 
 @router.post("/import/obsidian-canvas/")
-async def import_from_obsidian_canvas(request: CanvasImportRequest):
+async def import_from_obsidian_canvas(
+    request: CanvasImportRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
     """
     Import an Obsidian Canvas file and save it as a conversation.
 
@@ -619,18 +622,22 @@ async def import_from_obsidian_canvas(request: CanvasImportRequest):
             conversation_id
         )
 
-        # Insert metadata into DB
+        # Persist conversation metadata to DB
         number_of_nodes = len(graph_data[0])
-        metadata = {
-            "id": result["file_id"],
-            "conversation_name": result["file_name"],  # Database column is conversation_name
-            "total_nodes": number_of_nodes,
-            "gcs_path": result["gcs_path"],
-            "created_at": datetime.utcnow()
-        }
-        print(f"[DEBUG] Canvas import - Inserting metadata: conversation_name={result['file_name']}, total_nodes={number_of_nodes}")
-
-        await insert_conversation_metadata(metadata)
+        conv_uuid = uuid.UUID(result["file_id"])
+        conv = Conversation(
+            id=conv_uuid,
+            conversation_name=result["file_name"],
+            conversation_type="transcript",
+            source_type="obsidian_canvas",
+            owner_id="default_user",
+            started_at=datetime.utcnow(),
+            total_nodes=number_of_nodes,
+            gcs_path=result["gcs_path"],
+        )
+        db.add(conv)
+        await db.commit()
+        logger.info("Canvas import persisted: name=%s nodes=%s", result["file_name"], number_of_nodes)
 
         return SaveJsonResponse(
             message=f"Successfully imported Canvas as conversation",
