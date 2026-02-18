@@ -5,17 +5,27 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import os
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
 
 import httpx
+from pydub import AudioSegment
 
 from lct_python_backend.parsers import GoogleMeetParser
 from lct_python_backend.services.stt_http_transcriber import extract_transcript_text
 
 logger = logging.getLogger("lct_backend")
+
+# Chunked audio transcription defaults
+DEFAULT_CHUNK_DURATION_S = int(os.getenv("STT_CHUNK_DURATION_S", "60"))
+DEFAULT_CHUNK_OVERLAP_S = int(os.getenv("STT_CHUNK_OVERLAP_S", "2"))
+
+# Type alias for progress callbacks: (chunk_index, total_chunks, chunk_transcript) -> None
+ProgressCallback = Callable[[int, int, str], Awaitable[None]]
 
 AUDIO_EXTENSIONS = {
     ".wav",
@@ -248,7 +258,8 @@ async def transcribe_audio_file(
     files = {
         "file": (file_path.name, payload_bytes, guessed_content_type),
     }
-    timeout = max(5.0, float(timeout_seconds or 120.0))
+    t = max(5.0, float(timeout_seconds or 120.0))
+    timeout = httpx.Timeout(connect=10.0, read=t, write=t, pool=10.0)
     async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
         response = await client.post(target_url, data=form_data, files=files)
         try:
@@ -276,6 +287,97 @@ async def transcribe_audio_file(
     return transcript
 
 
+def _split_audio_to_chunks(
+    file_path: Path,
+    chunk_duration_s: int = DEFAULT_CHUNK_DURATION_S,
+    overlap_s: int = DEFAULT_CHUNK_OVERLAP_S,
+) -> List[Tuple[Path, int, int]]:
+    """Split an audio file into overlapping WAV chunks on disk.
+
+    Returns a list of (chunk_path, start_ms, end_ms) tuples.  Caller is
+    responsible for cleaning up the temp files.
+    """
+    audio = AudioSegment.from_file(str(file_path))
+    duration_ms = len(audio)
+    chunk_ms = chunk_duration_s * 1000
+    overlap_ms = overlap_s * 1000
+    step_ms = max(1000, chunk_ms - overlap_ms)
+
+    chunks: List[Tuple[Path, int, int]] = []
+    start = 0
+    while start < duration_ms:
+        end = min(start + chunk_ms, duration_ms)
+        segment = audio[start:end]
+
+        tmp = tempfile.NamedTemporaryFile(
+            suffix=".wav", prefix="stt_chunk_", delete=False,
+        )
+        segment.export(tmp.name, format="wav")
+        tmp.close()
+        chunks.append((Path(tmp.name), start, end))
+
+        if end >= duration_ms:
+            break
+        start += step_ms
+
+    logger.info(
+        "[CHUNK] Split %s (%d ms) into %d chunks of ~%d s with %d s overlap",
+        file_path.name, duration_ms, len(chunks), chunk_duration_s, overlap_s,
+    )
+    return chunks
+
+
+async def transcribe_audio_chunked(
+    file_path: Path,
+    *,
+    http_url: str,
+    model: str = "",
+    language: str = "",
+    timeout_seconds: float = 120.0,
+    chunk_duration_s: int = DEFAULT_CHUNK_DURATION_S,
+    overlap_s: int = DEFAULT_CHUNK_OVERLAP_S,
+    on_chunk_progress: Optional[ProgressCallback] = None,
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> str:
+    """Transcribe an audio file by splitting into chunks and sending each to STT.
+
+    Falls back to single-shot transcription for short files (< 2 chunks).
+    """
+    chunks = _split_audio_to_chunks(file_path, chunk_duration_s, overlap_s)
+
+    if len(chunks) <= 1:
+        # Short file — no need to chunk, clean up and send directly
+        for chunk_path, _, _ in chunks:
+            chunk_path.unlink(missing_ok=True)
+        return await transcribe_audio_file(
+            file_path, http_url=http_url, model=model,
+            language=language, timeout_seconds=timeout_seconds,
+            transport=transport,
+        )
+
+    transcripts: List[str] = []
+    total = len(chunks)
+    try:
+        for idx, (chunk_path, start_ms, end_ms) in enumerate(chunks):
+            logger.info(
+                "[CHUNK] Transcribing chunk %d/%d (%d–%d ms) via %s",
+                idx + 1, total, start_ms, end_ms, http_url,
+            )
+            text = await transcribe_audio_file(
+                chunk_path, http_url=http_url, model=model,
+                language=language, timeout_seconds=timeout_seconds,
+                transport=transport,
+            )
+            transcripts.append(text)
+            if on_chunk_progress:
+                await on_chunk_progress(idx + 1, total, text)
+    finally:
+        for chunk_path, _, _ in chunks:
+            chunk_path.unlink(missing_ok=True)
+
+    return "\n".join(transcripts)
+
+
 async def transcribe_uploaded_file(
     *,
     temp_path: Path,
@@ -284,6 +386,7 @@ async def transcribe_uploaded_file(
     stt_settings: Optional[Dict[str, Any]] = None,
     provider_override: Optional[str] = None,
     source_type_override: Optional[str] = None,
+    on_chunk_progress: Optional[ProgressCallback] = None,
 ) -> FileTranscriptResult:
     """Resolve transcript text from uploaded audio/text/video-caption files."""
 
@@ -303,12 +406,14 @@ async def transcribe_uploaded_file(
         provider_http_urls = settings.get("provider_http_urls")
         provider_url_map = provider_http_urls if isinstance(provider_http_urls, dict) else {}
         http_url = _coerce_str(provider_url_map.get(provider) or settings.get("http_url"))
-        transcript_text = await transcribe_audio_file(
+        timeout = float(settings.get("http_timeout_seconds", 120.0) or 120.0)
+        transcript_text = await transcribe_audio_chunked(
             temp_path,
             http_url=http_url,
             model=_coerce_str(settings.get("http_model")),
             language=_coerce_str(settings.get("http_language")),
-            timeout_seconds=float(settings.get("http_timeout_seconds", 120.0) or 120.0),
+            timeout_seconds=timeout,
+            on_chunk_progress=on_chunk_progress,
         )
         metadata.update({"provider": provider, "http_url": http_url})
         return FileTranscriptResult(
