@@ -25,8 +25,8 @@ POSTGRES_BIN_INTEL="/usr/local/opt/postgresql@15/bin"
 BACKEND_HEALTH_URL="http://localhost:${BACKEND_PORT}/api/import/health"
 FRONTEND_HEALTH_URL="http://localhost:${FRONTEND_PORT}"
 PARAKEET_HEALTH_URL="${PARAKEET_HEALTH_URL:-http://localhost:5092/health}"
-WHISPER_HTTP_HEALTH_URL="${WHISPER_HTTP_HEALTH_URL:-http://172.20.5.123:8000/health}"
-WHISPERX_HTTP_HEALTH_URL="${WHISPERX_HTTP_HEALTH_URL:-http://172.20.5.123:8001/health}"
+WHISPER_HTTP_HEALTH_URL="${WHISPER_HTTP_HEALTH_URL:-}"
+WHISPERX_HTTP_HEALTH_URL="${WHISPERX_HTTP_HEALTH_URL:-}"
 
 STT_AUTOSTART="${STT_AUTOSTART:-1}"
 STT_AUTOSTART_PROVIDER="${STT_AUTOSTART_PROVIDER:-parakeet}"
@@ -108,8 +108,12 @@ cleanup_port() {
 
   local cmd
   cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+  local cwd
+  cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1 || true)"
 
-  if [[ "$cmd" == *"$ROOT_DIR"* ]]; then
+  # Treat listeners started from this repo as safe to clean up even when
+  # the command line does not include $ROOT_DIR (common with uvicorn --reload).
+  if [[ "$cmd" == *"$ROOT_DIR"* ]] || [[ "$cwd" == "$ROOT_DIR"* ]]; then
     kill_pid_gracefully "$pid" "$label on :$port"
   else
     fail "Port $port is already in use by an external process: ${cmd:-unknown}"
@@ -239,6 +243,46 @@ start_optional_stt_services() {
   esac
 }
 
+resolve_stt_urls_from_backend() {
+  # Read provider URLs from the backend's live settings so health checks
+  # match what the app will actually use (instead of hardcoded defaults).
+  local settings_url="http://localhost:${BACKEND_PORT}/api/settings/stt"
+  local json
+  json="$(curl -fsS --max-time 3 "$settings_url" 2>/dev/null || true)"
+  if [ -z "$json" ]; then
+    return 0
+  fi
+
+  # Extract provider_http_urls using Python (always available via venv)
+  eval "$("$VENV_PY" -c "
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+    urls = d.get('provider_http_urls', {})
+    for name in ('parakeet', 'whisper', 'whisperx'):
+        url = urls.get(name, '')
+        if url:
+            # Derive health URL: strip path, append /health
+            from urllib.parse import urlparse
+            p = urlparse(url)
+            print(f'{name.upper()}_URL={p.scheme}://{p.netloc}/health')
+except Exception:
+    pass
+" "$json" 2>/dev/null || true)"
+
+  if [ -n "${PARAKEET_URL:-}" ]; then
+    PARAKEET_HEALTH_URL="$PARAKEET_URL"
+  fi
+  if [ -n "${WHISPER_URL:-}" ]; then
+    WHISPER_HTTP_HEALTH_URL="$WHISPER_URL"
+  fi
+  if [ -n "${WHISPERX_URL:-}" ]; then
+    WHISPERX_HTTP_HEALTH_URL="$WHISPERX_URL"
+  fi
+
+  return 0
+}
+
 report_known_stt_endpoints() {
   if lsof -nP -iTCP:43001 -sTCP:LISTEN >/dev/null 2>&1; then
     log "STT WS status (legacy optional): listener detected on ws://localhost:43001/stream"
@@ -252,16 +296,20 @@ report_known_stt_endpoints() {
     log "STT HTTP status: Parakeet unreachable at $PARAKEET_HEALTH_URL"
   fi
 
-  if curl -fsS --max-time 2 "$WHISPER_HTTP_HEALTH_URL" >/dev/null 2>&1; then
-    log "STT HTTP status: Whisper healthy at $WHISPER_HTTP_HEALTH_URL"
-  else
-    log "STT HTTP status: Whisper unreachable at $WHISPER_HTTP_HEALTH_URL"
+  if [ -n "$WHISPER_HTTP_HEALTH_URL" ]; then
+    if curl -fsS --max-time 2 "$WHISPER_HTTP_HEALTH_URL" >/dev/null 2>&1; then
+      log "STT HTTP status: Whisper healthy at $WHISPER_HTTP_HEALTH_URL"
+    else
+      log "STT HTTP status: Whisper unreachable at $WHISPER_HTTP_HEALTH_URL"
+    fi
   fi
 
-  if curl -fsS --max-time 2 "$WHISPERX_HTTP_HEALTH_URL" >/dev/null 2>&1; then
-    log "STT HTTP status: WhisperX healthy at $WHISPERX_HTTP_HEALTH_URL"
-  else
-    log "STT HTTP status: WhisperX unreachable at $WHISPERX_HTTP_HEALTH_URL"
+  if [ -n "$WHISPERX_HTTP_HEALTH_URL" ]; then
+    if curl -fsS --max-time 2 "$WHISPERX_HTTP_HEALTH_URL" >/dev/null 2>&1; then
+      log "STT HTTP status: WhisperX healthy at $WHISPERX_HTTP_HEALTH_URL"
+    else
+      log "STT HTTP status: WhisperX unreachable at $WHISPERX_HTTP_HEALTH_URL"
+    fi
   fi
 }
 
@@ -308,12 +356,12 @@ stt_readiness_hint() {
     return
   fi
 
-  if curl -fsS --max-time 2 "$WHISPER_HTTP_HEALTH_URL" >/dev/null 2>&1; then
+  if [ -n "$WHISPER_HTTP_HEALTH_URL" ] && curl -fsS --max-time 2 "$WHISPER_HTTP_HEALTH_URL" >/dev/null 2>&1; then
     log "Detected local STT HTTP provider (Whisper) at $WHISPER_HTTP_HEALTH_URL"
     return
   fi
 
-  if curl -fsS --max-time 2 "$WHISPERX_HTTP_HEALTH_URL" >/dev/null 2>&1; then
+  if [ -n "$WHISPERX_HTTP_HEALTH_URL" ] && curl -fsS --max-time 2 "$WHISPERX_HTTP_HEALTH_URL" >/dev/null 2>&1; then
     log "Detected local STT HTTP provider (WhisperX) at $WHISPERX_HTTP_HEALTH_URL"
     return
   fi
@@ -362,6 +410,7 @@ run_migrations
 start_backend
 start_frontend
 start_optional_stt_services
+resolve_stt_urls_from_backend
 report_known_stt_endpoints
 report_llm_endpoint
 stt_readiness_hint

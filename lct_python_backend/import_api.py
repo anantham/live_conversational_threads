@@ -396,6 +396,19 @@ async def process_file(
                 },
             )
 
+            async def _on_chunk_progress(chunk_idx: int, total: int, _text: str):
+                # Map chunk progress into the 0.10–0.35 range of overall progress
+                frac = chunk_idx / total
+                progress = 0.10 + frac * 0.25
+                await emit(
+                    "status",
+                    {
+                        "stage": "transcribing",
+                        "progress": round(progress, 3),
+                        "message": f"Transcribing audio chunk {chunk_idx}/{total}...",
+                    },
+                )
+
             transcript_result = await transcribe_uploaded_file(
                 temp_path=Path(temp_path),
                 filename=filename,
@@ -403,6 +416,7 @@ async def process_file(
                 stt_settings=stt_settings,
                 provider_override=provider,
                 source_type_override=resolved_source_type,
+                on_chunk_progress=_on_chunk_progress if is_likely_audio else None,
             )
             await emit(
                 "status",
