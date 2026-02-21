@@ -713,3 +713,22 @@ Validation:
 Validation:
 - `bash -n start.command` (passed)
 - `./start.command` smoke run (passed): reached `All services are up.` and remained running until manual `Ctrl+C`; clean shutdown path executed afterward.
+
+## 2026-02-18T08:57:19Z
+- `docs/TECH_DEBT.md` (lines 3-32): Performed code-backed debt audit (not doc-only) and updated entries to match current source-of-truth LOC + module shape:
+  - Updated active LOC values for `transcript_processing.py` (1114), `stt_api.py` (899), `ContextualGraph.jsx` (839), `start.command` (423), and `import_api.py` (517).
+  - Marked `ViewConversation.jsx` as resolved (`463 -> 269`) after validating the file is now a thinner composition page built around extracted components.
+  - Added new mixed-concern candidates confirmed in code: `canvas_api.py` (654), `services/file_transcriber.py` (459), and `services/stt_http_transcriber.py` (461).
+- Audit basis (code inspection):
+  - Read current source files directly (`ViewConversation.jsx`, `Settings.jsx`, `ContextualGraph.jsx`, `import_api.py`, `start.command`) and reviewed function/class breakdowns for `llm_helpers.py`, `models.py`, `transcript_processing.py`, `stt_api.py`, `alerts.py`, `canvas_api.py`, `file_transcriber.py`, and `stt_http_transcriber.py`.
+
+Validation:
+- `wc -l` verification on tracked debt files and candidate additions.
+- repo-wide large-file scan (`>=300 LOC`) across `lct_python_backend` and `lct_app/src` to cross-check omissions before updating debt entries.
+
+## 2026-02-18T09:25:26Z
+- `lct_app/src/pages/Browse.jsx` (line 213): Removed stale extra argument from the delete-confirmation call site (`handleDelete(deleteConfirm.id, deleteConfirm.name)` -> `handleDelete(deleteConfirm.id)`) to align with the current one-parameter handler signature and keep lint clean.
+
+Validation:
+- `cd lct_app && npx eslint src/pages/Browse.jsx` (passed)
+- `cd lct_app && npm run -s build` (passed; existing bundle-size warning remains)
