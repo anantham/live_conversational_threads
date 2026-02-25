@@ -9,6 +9,8 @@ import asyncio
 import contextlib
 import json
 import logging
+import shutil
+import tempfile
 import time
 import uuid
 from datetime import datetime
@@ -24,6 +26,12 @@ from lct_python_backend.db_session import get_async_session
 from lct_python_backend.services.import_fetchers import (
     download_url_text,
     save_upload_to_temp_file,
+)
+from lct_python_backend.services.import_diarization_queue import (
+    enqueue_import_diarization_job,
+    get_import_diarization_job,
+    get_import_diarization_job_events,
+    is_async_import_diarization_enabled,
 )
 from lct_python_backend.services.import_orchestrator import (
     parse_transcript,
@@ -122,6 +130,22 @@ async def _download_url_text(url: str) -> str:
     return await download_url_text(url)
 
 
+def _is_async_import_diarization_enabled() -> bool:
+    return is_async_import_diarization_enabled()
+
+
+async def _enqueue_import_diarization_job(**kwargs):
+    return await enqueue_import_diarization_job(**kwargs)
+
+
+async def _get_import_diarization_job(job_id: str):
+    return await get_import_diarization_job(job_id)
+
+
+async def _get_import_diarization_job_events(job_id: str, *, cursor: int = 0):
+    return await get_import_diarization_job_events(job_id, cursor=cursor)
+
+
 def _cleanup_temp_file(temp_path: Optional[str]) -> None:
     if not temp_path:
         return
@@ -139,6 +163,26 @@ def _sse_encode(event: str, payload: dict) -> str:
 def _elapsed_ms(started_at: float) -> int:
     """Return elapsed milliseconds since a perf-counter timestamp."""
     return int((time.perf_counter() - started_at) * 1000)
+
+
+def _copy_temp_upload_for_async_job(temp_path: Path, *, suffix: str) -> Path:
+    normalized_suffix = suffix if suffix.startswith(".") else f".{suffix}"
+    handle = tempfile.NamedTemporaryFile(
+        suffix=normalized_suffix or ".bin",
+        prefix="import_diar_job_",
+        delete=False,
+    )
+    handle.close()
+    target_path = Path(handle.name)
+    shutil.copy2(temp_path, target_path)
+    return target_path
+
+
+def _diarization_job_urls(job_id: str) -> dict:
+    return {
+        "status_url": f"/api/import/diarization-jobs/{job_id}",
+        "events_url": f"/api/import/diarization-jobs/{job_id}/events",
+    }
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
@@ -311,6 +355,26 @@ async def health_check():
         "supported_formats": supported_formats,
         "timestamp": datetime.now().isoformat(),
     }
+
+
+@router.get("/diarization-jobs/{job_id}")
+async def get_diarization_job_status(job_id: str):
+    """Get status/telemetry snapshot for an async diarization job."""
+    snapshot = await _get_import_diarization_job(job_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Diarization job not found: {job_id}")
+    return snapshot
+
+
+@router.get("/diarization-jobs/{job_id}/events")
+async def get_diarization_job_events(job_id: str, cursor: int = 0):
+    """Get incremental events for an async diarization job."""
+    if cursor < 0:
+        raise HTTPException(status_code=400, detail="cursor must be >= 0")
+    snapshot = await _get_import_diarization_job_events(job_id, cursor=cursor)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Diarization job not found: {job_id}")
+    return snapshot
 
 
 @router.post("/process-file")
@@ -579,6 +643,56 @@ async def process_file(
                 json.dumps(telemetry, ensure_ascii=False, sort_keys=True),
             )
 
+            diarization_job_payload = None
+            if (
+                transcript_result.source_type == "audio"
+                and _is_async_import_diarization_enabled()
+            ):
+                async_audio_copy: Optional[Path] = None
+                try:
+                    async_audio_copy = _copy_temp_upload_for_async_job(Path(temp_path), suffix=suffix)
+                    job_snapshot = await _enqueue_import_diarization_job(
+                        audio_path=async_audio_copy,
+                        filename=filename,
+                        content_type=file.content_type,
+                        source_type_override=resolved_source_type,
+                        provider_override=provider,
+                        conversation_id=resolved_conversation_id,
+                        speaker_id=resolved_speaker_id,
+                        stt_settings=stt_settings,
+                        llm_config=llm_config,
+                        source_metadata=transcript_result.metadata,
+                    )
+                    job_id = str(job_snapshot["job_id"])
+                    telemetry["async_diarization_job_id"] = job_id
+                    diarization_job_payload = {
+                        "id": job_id,
+                        "status": job_snapshot.get("status"),
+                        **_diarization_job_urls(job_id),
+                    }
+                    await emit(
+                        "status",
+                        {
+                            "stage": "queued",
+                            "progress": 0.98,
+                            "message": "Queued background diarization job.",
+                            "diarization_job": diarization_job_payload,
+                            "telemetry": {
+                                "total_elapsed_ms": _elapsed_ms(pipeline_started_at),
+                            },
+                        },
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    if async_audio_copy is not None:
+                        _cleanup_temp_file(str(async_audio_copy))
+                    enqueue_error = str(exc) or type(exc).__name__
+                    telemetry["async_diarization_enqueue_error"] = enqueue_error
+                    logger.warning(
+                        "Failed to enqueue async diarization job for %s: %s",
+                        filename,
+                        enqueue_error,
+                    )
+
             await emit(
                 "done",
                 {
@@ -588,6 +702,7 @@ async def process_file(
                     "chunk_count": len(processor.chunk_dict),
                     "source_type": transcript_result.source_type,
                     "telemetry": telemetry,
+                    "diarization_job": diarization_job_payload,
                 },
             )
         except Exception as exc:  # noqa: BLE001

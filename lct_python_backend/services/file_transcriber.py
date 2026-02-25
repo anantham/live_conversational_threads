@@ -810,6 +810,7 @@ async def transcribe_uploaded_file(
     provider_override: Optional[str] = None,
     source_type_override: Optional[str] = None,
     on_chunk_progress: Optional[ProgressCallback] = None,
+    enable_parakeet_pyannote: Optional[bool] = None,
 ) -> FileTranscriptResult:
     """Resolve transcript text from uploaded audio/text/video-caption files."""
 
@@ -835,7 +836,13 @@ async def transcribe_uploaded_file(
         transcript_text = ""
         source_diarized_segments: Optional[List[Dict[str, Any]]] = None
 
-        if provider == "parakeet" and STT_PARAKEET_PYANNOTE_ENABLED:
+        pyannote_enabled = (
+            STT_PARAKEET_PYANNOTE_ENABLED
+            if enable_parakeet_pyannote is None
+            else bool(enable_parakeet_pyannote)
+        )
+
+        if provider == "parakeet" and pyannote_enabled:
             stt_started_at = time.perf_counter()
             detail = await transcribe_audio_file_detailed(
                 temp_path,

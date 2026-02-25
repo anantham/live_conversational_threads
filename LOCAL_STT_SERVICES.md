@@ -63,6 +63,17 @@ Telemetry will include stage timings:
 - `alignment_ms`
 - `bottleneck_stage` / `bottleneck_ms`
 
+### Optional async diarization queue (upload-first UX)
+
+If you want the graph to start fast and diarization to continue in background:
+- `IMPORT_ASYNC_DIARIZATION_ENABLED=true`
+- Keep `provider=parakeet`
+- Optionally leave `STT_PARAKEET_PYANNOTE_ENABLED=false` for the fast lane and let the background queue force diarization.
+
+Polling endpoints:
+- `GET /api/import/diarization-jobs/{job_id}`
+- `GET /api/import/diarization-jobs/{job_id}/events?cursor=<last_seq>`
+
 ## Local LLM Endpoint (Semantic Clustering)
 
 For topic/tangent clustering and graph generation, point local LLM settings to:
