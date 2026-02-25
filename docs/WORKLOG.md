@@ -792,3 +792,33 @@ Manual retry trial (post-change):
   - `/Users/aditya/Downloads/Yeshe_Tsogyel_Mantra.mp3`
   - `/Users/aditya/Downloads/signal-2026-01-11-155955_006.mp4`
 - Outcome: both still ended in `error` events (`message=ReadError`, `active_stage=transcribing`), but backend logs now show retry attempts/backoff for chunk `1/N` before failing (evidence that retry path is active).
+
+## 2026-02-25T07:28:13Z
+- `lct_python_backend/services/import_diarization_queue.py` (new, lines 1-521): Added a process-local async diarization queue with:
+  - job lifecycle (`pending`/`running`/`completed`/`failed`),
+  - incremental event stream (`status`, `patch`, `done`, `error`) with monotonic `seq` cursors,
+  - background worker that reuses `transcribe_uploaded_file(..., enable_parakeet_pyannote=True)` plus `TranscriptProcessor`,
+  - telemetry capture (`queue_wait_ms`, transcription/diarization/alignment/chunking/graph timings, bottleneck stage),
+  - in-memory status/event snapshots for polling endpoints.
+- `lct_python_backend/services/file_transcriber.py` (lines 804-846): Extended `transcribe_uploaded_file(...)` with `enable_parakeet_pyannote: Optional[bool]` to allow explicit runtime control of sidecar diarization (used by async background jobs).
+- `lct_python_backend/import_api.py` (lines 12-35, 133-185, 360-377, 646-706): Wired async diarization plumbing into import API:
+  - added wrappers for queue functions (test monkeypatch targets),
+  - added temp-file copy helper for background job ownership,
+  - added polling endpoints:
+    - `GET /api/import/diarization-jobs/{job_id}`
+    - `GET /api/import/diarization-jobs/{job_id}/events?cursor=...`
+  - updated `POST /api/import/process-file` `done` payload to include optional `diarization_job` metadata and enqueue background jobs for audio when `IMPORT_ASYNC_DIARIZATION_ENABLED=true`.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (lines 252-391): Added coverage for async diarization queue integration and polling endpoints:
+  - `done` payload includes queued diarization metadata,
+  - status endpoint success + 404 behavior,
+  - events endpoint cursor handling + negative cursor validation.
+- `lct_python_backend/.env.example` (lines 84-89): Documented new async diarization queue controls:
+  - `IMPORT_ASYNC_DIARIZATION_ENABLED`
+  - `IMPORT_ASYNC_DIARIZATION_MAX_QUEUE`
+  - `IMPORT_ASYNC_DIARIZATION_MAX_JOBS`
+- `LOCAL_STT_SERVICES.md` (lines 66-75): Added operator guidance for upload-first mode (fast graph now, diarization merge later) and polling endpoints.
+- `docs/TECH_DEBT.md` (table rows): Updated LOC for touched large files and added `import_diarization_queue.py` as a decomposition candidate.
+
+Validation:
+- `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_import_api_process_file.py lct_python_backend/tests/unit/test_file_transcriber.py` (51 passed)
+- `./.venv/bin/python -m py_compile lct_python_backend/import_api.py lct_python_backend/services/file_transcriber.py lct_python_backend/services/import_diarization_queue.py lct_python_backend/tests/unit/test_import_api_process_file.py` (passed)
