@@ -1,5 +1,34 @@
 # WORKLOG
 
+## 2026-02-25T06:05:46Z
+- Runtime setup and benchmark execution for Path-A validation (no tracked source edits besides issue logs):
+  - Started Docker daemon and verified local Parakeet service health on `http://localhost:5092/health`.
+  - Installed optional local diarization deps into repo venv: `torch`, `pyannote.audio==3.1.1`, `speechbrain` transitives; fixed import break by downgrading `numpy` to `1.26.4`.
+  - Resolved pyannote/HF client mismatch by pinning runtime `huggingface_hub<1.0` (from `1.1.2` -> `0.36.2`) for compatibility with pyannote 3.1 loader API.
+  - Ran Path-A benchmark script on local media samples:
+    - `/tmp/yeshe_clean.wav` (converted from `Yeshe_Tsogyel_Mantra.mp3`): success, `stt_ms=9140`, `diarization_ms=100932`, `total_ms=110078`.
+    - `/tmp/adiga_90s.wav` (first 90s from `Adiga and Prasad talk.m4a`): success, `stt_ms=12531`, `diarization_ms=153673`, `total_ms=166209`.
+    - Several raw mp4/webm samples returned empty STT text; direct mp3 diarization path triggered torchaudio/libmpg123 tensor-size mismatch.
+  - Bottleneck conclusion from successful local runs: diarization stage dominates runtime (~89-92% of total), while Parakeet STT remains comparatively fast.
+- `ISSUES.md` (lines 15-17): Logged preexisting runtime gaps discovered during Path-A validation (hf hub version mismatch, mp3 decode instability in pyannote path, and Parakeet empty transcript behavior on some codecs/content).
+
+## 2026-02-25T05:35:01Z
+- `lct_python_backend/services/file_transcriber.py` (lines 68-358, 532-605, 727-815): Added Path-A runtime flags for Parakeet + separate Pyannote diarization, introduced structured STT response parsing (`AudioTranscriptionDetail` + ASR segment extraction), added pyannote pipeline loader/diarization helpers, and wired segment-overlap speaker alignment so upload transcripts can be emitted as `SPEAKER_x: text` even when STT provider itself has no diarization.
+- `lct_python_backend/services/file_transcriber.py` (lines 308-321, 352-364): Added explicit runtime diagnostics for common Path-A failures:
+  - pyannote vs `huggingface_hub` API mismatch now raises actionable guidance (`huggingface_hub<1.0`).
+  - compressed-audio tensor-size mismatch now surfaces a clear fallback instruction (convert to `16kHz mono WAV`).
+- `lct_python_backend/import_api.py` (lines 464-485, 560-575): Added stage-level upload telemetry plumbed from transcriber metadata (`stt_provider_ms`, `diarization_ms`, `alignment_ms`) and computed `bottleneck_stage`/`bottleneck_ms` for each `/api/import/process-file` run.
+- `lct_python_backend/.env.example` (lines 73-82): Added documented env controls for Path-A local diarization (`STT_PARAKEET_PYANNOTE_*`, `STT_PYANNOTE_*`).
+- `lct_python_backend/requirements.txt` (lines 39-42): Documented optional install for Path-A (`torch`, `pyannote.audio`) so core installs stay lightweight.
+- `lct_python_backend/tests/unit/test_file_transcriber.py` (lines 145-175, 424-440, 557-601): Added coverage for structured segment extraction, speaker-overlap alignment, and Parakeet+Pyannote sidecar orchestration.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (lines 111-112): Extended SSE done-payload test to assert bottleneck telemetry fields.
+- `LOCAL_STT_SERVICES.md` (lines 45-58): Added Path-A operating notes and expected telemetry keys.
+- `ISSUES.md` (line 14): Logged preexisting blocker that `.venv` currently lacks pyannote dependencies required for Path-A runtime.
+- `docs/TECH_DEBT.md` (line 26): Updated `file_transcriber.py` debt entry to include new speaker-alignment concern and recommended split.
+- Validation:
+  - `cd lct_python_backend && ../.venv/bin/python -m py_compile services/file_transcriber.py import_api.py`
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_file_transcriber.py tests/unit/test_import_api_process_file.py` (46 passed)
+
 ## 2026-02-13T19:35:56Z
 - docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md (lines 87-154, 211): Extended the decision with explicit diarization requirements (overlay model, speaker evidence, node coloring semantics) and telemetry requirements (stage timings + per-provider p95 aggregation), plus a phase-gated `speaker_segments` persistence element and telemetry success criterion.
 - lct_python_backend/stt_api.py (lines 72-113, 321-331, 453-523, 569-640): Added phase-1 realtime instrumentation in websocket pipeline: decode timing capture, stage-metric merge into per-event telemetry metadata, and flush-stage timing propagation (`stt_flush_request_ms`, `final_flush_total_ms`) for client visibility and backend aggregation.
@@ -732,3 +761,34 @@ Validation:
 Validation:
 - `cd lct_app && npx eslint src/pages/Browse.jsx` (passed)
 - `cd lct_app && npm run -s build` (passed; existing bundle-size warning remains)
+
+## 2026-02-25T03:44:47Z
+- `lct_python_backend/import_api.py` (lines 12, 139-141, 341, 355-587): Added upload-pipeline telemetry for `POST /api/import/process-file` using `time.perf_counter()` and `_elapsed_ms(...)`. SSE payloads now include timing metadata on `status`/`transcript` updates, final `done` telemetry (`transcription_ms`, `chunking_ms`, `graph_generation_ms`, `total_processing_ms`, chunk counts, source metadata), and error telemetry (`active_stage`, elapsed ms). Added structured telemetry log line: `[PROCESS FILE TELEMETRY] { ... }`.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (lines 104-110, 182-187, 244-247): Expanded SSE tests to assert telemetry presence on `done`, `error`, and processor-emitted `status` events.
+- `docs/TECH_DEBT.md` (lines 3, 23): Updated timestamp and refreshed `import_api.py` debt note to explicitly include telemetry concerns in the mixed-responsibility warning.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_import_api_process_file.py` (4 passed)
+- `python3 -m py_compile lct_python_backend/import_api.py lct_python_backend/tests/unit/test_import_api_process_file.py` (passed)
+
+## 2026-02-25T05:16:16Z
+- `lct_python_backend/services/file_transcriber.py` (lines 5-71, 383-407, 410-493): Implemented conservative chunk-processing defaults and per-chunk retry behavior for large audio uploads.
+  - Defaults now enforce conservative production chunking via bounded env config (`STT_CHUNK_DURATION_S` clamped to 20-30s, `STT_CHUNK_OVERLAP_S` clamped to 0-3s).
+  - Added per-chunk retry with exponential backoff (`STT_CHUNK_MAX_RETRIES`, `STT_CHUNK_RETRY_BACKOFF_S`) and retryable-error classification for transient transport/server failures.
+  - Kept chunk uploads explicitly sequential to avoid GPU contention.
+- `lct_python_backend/tests/unit/test_file_transcriber.py` (lines 301-385): Added retry coverage and tightened cleanup validation:
+  - New test: retries transient `ReadTimeout` and succeeds.
+  - New test: does not retry permanent 4xx failures.
+  - Updated cleanup test to check for leaked temp files created during test run (before/after diff), avoiding false failures from pre-existing temp artifacts.
+- `docs/TECH_DEBT.md` (line 26): Updated `file_transcriber.py` debt note to include retry/backoff concern coupling.
+- `ISSUES.md` (Runtime Blockers): Logged newly observed runtime blocker from this session: repeated transient STT transport failures (`ReadError`, `RemoteProtocolError`) persist even with per-chunk retries.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_file_transcriber.py tests/unit/test_import_api_process_file.py` (43 passed)
+- `python3 -m py_compile lct_python_backend/services/file_transcriber.py lct_python_backend/tests/unit/test_file_transcriber.py` (passed)
+
+Manual retry trial (post-change):
+- Re-ran `POST /api/import/process-file` with:
+  - `/Users/aditya/Downloads/Yeshe_Tsogyel_Mantra.mp3`
+  - `/Users/aditya/Downloads/signal-2026-01-11-155955_006.mp4`
+- Outcome: both still ended in `error` events (`message=ReadError`, `active_stage=transcribing`), but backend logs now show retry attempts/backoff for chunk `1/N` before failing (evidence that retry path is active).

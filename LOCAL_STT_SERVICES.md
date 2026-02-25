@@ -49,6 +49,20 @@ Then set project STT URLs to the shared endpoint in Settings.
 - `external_fallback_ws_url`: optional fallback URL, used only when `local_only=false`.
 - `store_audio`: optional chunk persistence for reprocessing.
 
+### Path A (Parakeet + Pyannote sidecar)
+
+For faster ASR with separate diarization in upload flow:
+- `provider=parakeet`
+- `STT_PARAKEET_PYANNOTE_ENABLED=true`
+- `STT_PYANNOTE_HF_TOKEN=<token>`
+- optional speaker hints: `STT_PYANNOTE_MIN_SPEAKERS`, `STT_PYANNOTE_MAX_SPEAKERS`
+
+Telemetry will include stage timings:
+- `stt_provider_ms`
+- `diarization_ms`
+- `alignment_ms`
+- `bottleneck_stage` / `bottleneck_ms`
+
 ## Local LLM Endpoint (Semantic Clustering)
 
 For topic/tangent clustering and graph generation, point local LLM settings to:

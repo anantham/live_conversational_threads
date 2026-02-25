@@ -104,6 +104,12 @@ def test_process_file_streams_graph_and_done_events(monkeypatch):
     done_payload = [payload for name, payload in events if name == "done"][-1]
     assert done_payload["node_count"] == 1
     assert done_payload["chunk_count"] == 1
+    assert isinstance(done_payload.get("telemetry"), dict)
+    assert done_payload["telemetry"].get("total_processing_ms") is not None
+    assert done_payload["telemetry"].get("transcript_chunk_count") == 1
+    assert done_payload["telemetry"].get("source_type") == "text"
+    assert done_payload["telemetry"].get("bottleneck_stage") is not None
+    assert done_payload["telemetry"].get("bottleneck_ms") is not None
 
 
 def test_process_file_passes_provider_override_to_transcriber(monkeypatch):
@@ -178,6 +184,9 @@ def test_process_file_streams_error_event_when_transcriber_fails(monkeypatch):
     error_events = [payload for name, payload in events if name == "error"]
     assert error_events, "expected an SSE error event"
     assert "transcriber boom" in error_events[0]["message"]
+    assert isinstance(error_events[0].get("telemetry"), dict)
+    assert error_events[0]["telemetry"].get("active_stage") in {"transcribing", "parsing"}
+    assert error_events[0]["telemetry"].get("total_elapsed_ms") is not None
 
 
 def test_process_file_streams_processor_status_context(monkeypatch):
@@ -232,5 +241,9 @@ def test_process_file_streams_processor_status_context(monkeypatch):
     assert any(item.get("stage") == "accumulate" and item.get("progress") == 0.65 for item in status_events)
     assert any(
         item.get("stage") == "generate_lct_json" and item.get("progress") == 0.85
+        for item in status_events
+    )
+    assert any(
+        isinstance(item.get("telemetry"), dict) and item["telemetry"].get("total_elapsed_ms") is not None
         for item in status_events
     )

@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-02-18
+Last updated: 2026-02-25
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -19,9 +19,9 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_app/src/components/ContextualGraph.jsx | 839 | Graph rendering, edge styling/hover UX, context cards, transcript view, bookmark/fact-check interactions, and panel state are mixed in one component | Split into `useContextualGraphLayout`, `ContextCard`, `TranscriptCard`, and `ClaimsDrawer`; keep container focused on orchestration |
 | ~~lct_app/src/components/SttSettingsPanel.jsx~~ | ~~370~~ → 310 | **RESOLVED** — Extracted `useSttTelemetry` (35 LOC) and `useProviderHealthChecks` (46 LOC) hooks; panel keeps form state + JSX rendering. |
 | start.command | 423 | Local stack launch script mixes process ownership detection, port cleanup, service startup, health checks, and optional STT orchestration in one file | Split into `scripts/lib/process_control.sh`, `scripts/lib/health_checks.sh`, and keep `start.command` as thin orchestrator |
-| lct_python_backend/import_api.py | 517 | File/URL/text import routes now share router with SSE bulk processing orchestration, event encoding, temp-file lifecycle, and LLM/STT pipeline wiring | Split into `import_routes.py` (CRUD/preview/from-url/from-text), `import_bulk_routes.py` (SSE upload flow), and `import_sse.py` (event helpers + queue worker orchestration) |
+| lct_python_backend/import_api.py | 517 | File/URL/text import routes now share router with SSE bulk processing orchestration, event encoding, temp-file lifecycle, LLM/STT pipeline wiring, and newly added stage telemetry concerns | Split into `import_routes.py` (CRUD/preview/from-url/from-text), `import_bulk_routes.py` (SSE upload flow), and `import_sse.py` (event helpers + queue worker orchestration) |
 | lct_python_backend/canvas_api.py | 654 | Canvas schemas, graph conversion/layout logic, relationship mapping, storage calls, and import/export route handlers are all in one module | Split into `canvas_schemas.py`, `canvas_converter.py`, and `canvas_routes.py` with router-only wiring in `canvas_api.py` |
-| lct_python_backend/services/file_transcriber.py | 459 | File-type detection, transcript parsers (VTT/SRT/plain/Meet), chunking policy, and HTTP STT transport/chunked transcription are tightly coupled | Split into `file_kind.py`, `text_parsers.py`, and `audio_transcriber.py` with `transcribe_uploaded_file` as orchestrator |
+| lct_python_backend/services/file_transcriber.py | 459+ | File-type detection, transcript parsers (VTT/SRT/plain/Meet), chunking policy, HTTP STT transport/chunked transcription, retry/backoff behavior, and new pyannote sidecar alignment are tightly coupled | Split into `file_kind.py`, `text_parsers.py`, `audio_transcriber.py`, and `speaker_alignment.py` with `transcribe_uploaded_file` as orchestrator |
 | lct_python_backend/services/stt_http_transcriber.py | 461 | Audio decode helpers, diarization extraction, VAD buffering, HTTP pooling/session state, and provider request/response handling are combined | Split into `audio_decode.py`, `diarization_extract.py`, `vad_buffer.py`, and `stt_http_client.py` while keeping session orchestration thin |
 | ~~lct_python_backend/conversations_api.py~~ | ~~434~~ → 193 | **RESOLVED** — Extracted conversation read/serialization and turn synthesis into `conversation_reader.py` + `turn_synthesizer.py`, leaving a thin API adapter. |
 | ~~lct_python_backend/factcheck_api.py~~ | ~~355~~ → 89 | **RESOLVED** — Extracted provider normalization/orchestration and cost aggregation into `factcheck_service.py` + `cost_stats_service.py`; router is now a thin adapter. |
