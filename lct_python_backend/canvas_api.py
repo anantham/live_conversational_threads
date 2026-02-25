@@ -64,6 +64,69 @@ class CanvasImportRequest(BaseModel):
 # Converter Functions
 # ============================================================================
 
+def _clean_str(value: object) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _extract_contextual_relation_entries(value: object) -> List[tuple[str, str]]:
+    if not value:
+        return []
+
+    entries: List[tuple[str, str]] = []
+
+    if isinstance(value, dict):
+        related_node = _clean_str(
+            value.get("related_node_name")
+            or value.get("related_node")
+            or value.get("relatedNode")
+            or value.get("source")
+            or value.get("from")
+            or value.get("node")
+        )
+        relation_text = _clean_str(
+            value.get("relation_text")
+            or value.get("relationText")
+            or value.get("description")
+            or value.get("explanation")
+        )
+        single_relation_keys = {
+            "related_node_name",
+            "related_node",
+            "relatedNode",
+            "source",
+            "from",
+            "node",
+            "relation_text",
+            "relationText",
+            "description",
+            "explanation",
+            "relation_type",
+            "type",
+        }
+        if (
+            related_node
+            and relation_text
+            and set(str(key).strip() for key in value.keys()).issubset(single_relation_keys)
+        ):
+            entries.append((related_node, relation_text))
+            return entries
+
+        for key, raw_text in value.items():
+            node_name = _clean_str(key)
+            text = _clean_str(raw_text)
+            if node_name and text:
+                entries.append((node_name, text))
+        return entries
+
+    if isinstance(value, list):
+        for item in value:
+            entries.extend(_extract_contextual_relation_entries(item))
+
+    return entries
+
+
 def convert_conversation_to_canvas(
     graph_data: List,
     chunk_dict: Dict[str, str],
@@ -87,109 +150,268 @@ def convert_conversation_to_canvas(
     nodes: List[CanvasNode] = []
     edges: List[CanvasEdge] = []
 
-    # Extract nodes from graph_data (format is [[nodes]])
-    conversation_nodes = graph_data[0] if graph_data and isinstance(graph_data[0], list) else []
+    # Extract nodes from graph_data (format is usually [[nodes]])
+    if graph_data and isinstance(graph_data[0], list):
+        conversation_nodes = graph_data[0]
+    elif isinstance(graph_data, list):
+        conversation_nodes = graph_data
+    else:
+        conversation_nodes = []
 
     if not conversation_nodes:
         raise ValueError("No nodes found in conversation data")
 
-    # Build node position map using hierarchical layout
-    node_positions = {}
-    node_map = {node["node_name"]: node for node in conversation_nodes}
-
-    # Find root nodes (nodes without predecessors)
-    root_nodes = [node for node in conversation_nodes if not node.get("predecessor")]
-
-    # Simple hierarchical layout algorithm
     NODE_WIDTH = 350
     NODE_HEIGHT = 200
-    # Spacing: horizontal = 2x node width, vertical = 3x node height
-    HORIZONTAL_SPACING = 2 * NODE_WIDTH  # 700px = 350px gap between nodes
-    VERTICAL_SPACING = 3 * NODE_HEIGHT   # 600px = 400px gap between nodes
+    HORIZONTAL_SPACING = 520
+    VERTICAL_SPACING = 280
+    COMPONENT_GAP = 420
+    MAX_ROW_WIDTH = 4600
 
-    def calculate_positions(current_node, x, y, visited):
-        """Recursively calculate positions for nodes"""
-        node_name = current_node["node_name"]
+    canonical_nodes: List[Dict[str, object]] = []
+    used_canvas_ids: set[str] = set()
+    node_id_to_canvas_id: Dict[str, str] = {}
+    node_name_to_canvas_id: Dict[str, str] = {}
+    legacy_node_name_to_canvas_id: Dict[str, str] = {}
 
-        if node_name in visited:
-            return y
+    for index, raw_node in enumerate(conversation_nodes):
+        if not isinstance(raw_node, dict):
+            continue
+        node_name = _clean_str(raw_node.get("node_name") or raw_node.get("title") or raw_node.get("name"))
+        if not node_name:
+            node_name = f"Node {index + 1}"
 
-        visited.add(node_name)
-        node_positions[node_name] = {"x": x, "y": y}
+        raw_id = _clean_str(raw_node.get("id") or raw_node.get("node_id"))
+        canvas_id = raw_id or node_name.replace(" ", "_") or f"node_{index + 1}"
+        if canvas_id in used_canvas_ids:
+            canvas_id = f"{canvas_id}_{index + 1}"
+        used_canvas_ids.add(canvas_id)
 
-        # Find successor
-        successor_name = current_node.get("successor")
-        if successor_name and successor_name in node_map:
-            successor = node_map[successor_name]
-            y = calculate_positions(successor, x + HORIZONTAL_SPACING, y, visited)
-        else:
-            y += VERTICAL_SPACING
-
-        return y
-
-    # Calculate positions starting from root nodes
-    visited = set()
-    current_y = 100
-    for root in root_nodes:
-        current_y = calculate_positions(root, 100, current_y, visited)
-
-    # Handle orphan nodes (nodes not connected to any root)
-    orphan_x = 100
-    orphan_y = current_y + VERTICAL_SPACING
-    for node in conversation_nodes:
-        if node["node_name"] not in visited:
-            node_positions[node["node_name"]] = {"x": orphan_x, "y": orphan_y}
-            orphan_x += HORIZONTAL_SPACING
-            if orphan_x > 2000:  # Wrap to next row
-                orphan_x = 100
-                orphan_y += VERTICAL_SPACING
-
-    # Create Canvas nodes
-    for node in conversation_nodes:
-        node_name = node["node_name"]
-        position = node_positions.get(node_name, {"x": 100, "y": 100})
-
-        # Determine node color based on flags
-        color = None
-        if node.get("is_bookmark"):
-            color = "5"  # Cyan/Blue for bookmarks
-        elif node.get("is_contextual_progress"):
-            color = "4"  # Green for contextual progress
-
-        # Build node text content with markdown
-        text_content = f"# {node_name}\n\n"
-        text_content += f"{node.get('summary', '')}\n\n"
-
-        if node.get("claims"):
-            text_content += "## Claims\n"
-            for claim in node["claims"]:
-                text_content += f"- {claim}\n"
-            text_content += "\n"
-
-        if node.get("chunk_id") and not include_chunks:
-            text_content += f"*Chunk ID: {node['chunk_id']}*\n"
-
-        # Calculate height based on text length (rough estimate)
-        estimated_height = max(NODE_HEIGHT, min(600, len(text_content) // 3))
-
-        canvas_node = CanvasNode(
-            id=node_name.replace(" ", "_"),
-            type="text",
-            x=position["x"],
-            y=position["y"],
-            width=NODE_WIDTH,
-            height=estimated_height,
-            color=color,
-            text=text_content
+        canonical_nodes.append(
+            {
+                "canvas_id": canvas_id,
+                "node_name": node_name,
+                "raw": raw_node,
+            }
         )
-        nodes.append(canvas_node)
 
-    # Create edges: first from supplied edge_records (relationships), then fallback temporal/contextual
+        if raw_id:
+            node_id_to_canvas_id[raw_id] = canvas_id
+        node_name_to_canvas_id.setdefault(node_name, canvas_id)
+        legacy_node_name_to_canvas_id.setdefault(node_name.replace(" ", "_"), canvas_id)
+
+    if not canonical_nodes:
+        raise ValueError("No valid nodes found in conversation data")
+
+    node_lookup = {item["canvas_id"]: item for item in canonical_nodes}
+    node_order_index = {item["canvas_id"]: index for index, item in enumerate(canonical_nodes)}
+
+    def resolve_node_ref(ref: object) -> Optional[str]:
+        token = _clean_str(ref)
+        if not token:
+            return None
+        if token in node_lookup:
+            return token
+        if token in node_id_to_canvas_id:
+            return node_id_to_canvas_id[token]
+        if token in node_name_to_canvas_id:
+            return node_name_to_canvas_id[token]
+        if token in legacy_node_name_to_canvas_id:
+            return legacy_node_name_to_canvas_id[token]
+        return None
+
+    temporal_edges: List[tuple[str, str]] = []
+    contextual_edges: List[tuple[str, str, str, str]] = []
+    supplied_edges: List[tuple[str, str, str, str]] = []
+    temporal_seen = set()
+    contextual_seen = set()
+
+    for item in canonical_nodes:
+        raw_node = item["raw"]
+        source_id = item["canvas_id"]
+
+        successor_id = resolve_node_ref(raw_node.get("successor"))
+        if successor_id and successor_id != source_id:
+            key = (source_id, successor_id)
+            if key not in temporal_seen:
+                temporal_seen.add(key)
+                temporal_edges.append(key)
+
+        predecessor_id = resolve_node_ref(raw_node.get("predecessor"))
+        if predecessor_id and predecessor_id != source_id:
+            key = (predecessor_id, source_id)
+            if key not in temporal_seen:
+                temporal_seen.add(key)
+                temporal_edges.append(key)
+
+        raw_relations = raw_node.get("edge_relations")
+        if isinstance(raw_relations, list):
+            for relation in raw_relations:
+                if not isinstance(relation, dict):
+                    continue
+                related_name = _clean_str(
+                    relation.get("related_node")
+                    or relation.get("related_node_name")
+                    or relation.get("relatedNode")
+                    or relation.get("source")
+                    or relation.get("from")
+                    or relation.get("node")
+                )
+                related_id = resolve_node_ref(related_name)
+                if not related_id or related_id == source_id:
+                    continue
+                relation_type = _clean_str(relation.get("relation_type") or relation.get("type")).lower() or "contextual"
+                relation_text = _clean_str(
+                    relation.get("relation_text")
+                    or relation.get("relationText")
+                    or relation.get("description")
+                    or relation.get("explanation")
+                )
+                if not relation_text:
+                    relation_text = f"{related_name} -> {item['node_name']}"
+                label = relation_text[:50] + "..." if len(relation_text) > 50 else relation_text
+                if relation_type in {"supports", "informs", "builds_on", "enables", "affirms"}:
+                    color = "4"
+                elif relation_type in {"contradicts", "opposes", "refutes", "challenges", "conflicts", "disagrees", "rebuts"}:
+                    color = "1"
+                else:
+                    color = "3"
+                edge_key = (related_id, source_id, label, color)
+                if edge_key not in contextual_seen:
+                    contextual_seen.add(edge_key)
+                    contextual_edges.append(edge_key)
+
+        for related_name, explanation in _extract_contextual_relation_entries(raw_node.get("contextual_relation")):
+            related_id = resolve_node_ref(related_name)
+            if not related_id or related_id == source_id:
+                continue
+            relation_text = _clean_str(explanation) or "related"
+            label = relation_text[:50] + "..." if len(relation_text) > 50 else relation_text
+            edge_key = (related_id, source_id, label, "3")
+            if edge_key not in contextual_seen:
+                contextual_seen.add(edge_key)
+                contextual_edges.append(edge_key)
+
+    if edge_records:
+        for rec in edge_records:
+            source = resolve_node_ref(rec.get("fromNode") or rec.get("from") or rec.get("source"))
+            target = resolve_node_ref(rec.get("toNode") or rec.get("to") or rec.get("target"))
+            if not source or not target or source == target:
+                continue
+            label = _clean_str(rec.get("label") or rec.get("type")) or "related"
+            color = _clean_str(rec.get("color")) or "3"
+            supplied_edges.append((source, target, label, color))
+            rel_type = label.lower()
+            if rel_type in {"next", "leads_to", "follows"}:
+                key = (source, target)
+                if key not in temporal_seen:
+                    temporal_seen.add(key)
+                    temporal_edges.append(key)
+
+    # Build connected components using all known edges so related subgraphs are co-located.
+    layout_pairs = {(source, target) for source, target in temporal_edges}
+    layout_pairs.update((source, target) for source, target, _, _ in contextual_edges)
+    layout_pairs.update((source, target) for source, target, _, _ in supplied_edges)
+    adjacency = {item["canvas_id"]: set() for item in canonical_nodes}
+    for source, target in layout_pairs:
+        if source in adjacency and target in adjacency:
+            adjacency[source].add(target)
+            adjacency[target].add(source)
+
+    components: List[List[str]] = []
+    visited: set[str] = set()
+    for item in canonical_nodes:
+        start_id = item["canvas_id"]
+        if start_id in visited:
+            continue
+        stack = [start_id]
+        component: List[str] = []
+        visited.add(start_id)
+        while stack:
+            current = stack.pop()
+            component.append(current)
+            for neighbor in adjacency.get(current, set()):
+                if neighbor in visited:
+                    continue
+                visited.add(neighbor)
+                stack.append(neighbor)
+        component.sort(key=lambda node_id: node_order_index.get(node_id, 0))
+        components.append(component)
+
+    temporal_out = {item["canvas_id"]: set() for item in canonical_nodes}
+    for source, target in temporal_edges:
+        if source in temporal_out:
+            temporal_out[source].add(target)
+
+    node_positions: Dict[str, Dict[str, int]] = {}
+    cursor_x = 100
+    cursor_y = 100
+    current_row_height = 0
+
+    for component in components:
+        component_set = set(component)
+        depth = {node_id: 0 for node_id in component}
+
+        for _ in range(len(component)):
+            changed = False
+            for source in component:
+                for target in temporal_out.get(source, set()):
+                    if target not in component_set:
+                        continue
+                    candidate = depth[source] + 1
+                    if candidate > depth[target]:
+                        depth[target] = candidate
+                        changed = True
+            if not changed:
+                break
+
+        if len(set(depth.values())) == 1 and len(component) > 1:
+            for index, node_id in enumerate(component):
+                depth[node_id] = index
+
+        levels: Dict[int, List[str]] = {}
+        for node_id in component:
+            levels.setdefault(depth[node_id], []).append(node_id)
+        for node_ids in levels.values():
+            node_ids.sort(key=lambda node_id: node_order_index.get(node_id, 0))
+
+        max_level = max(levels) if levels else 0
+        max_nodes_in_level = max((len(node_ids) for node_ids in levels.values()), default=1)
+        component_width = (max_level + 1) * HORIZONTAL_SPACING + NODE_WIDTH
+        component_height = max_nodes_in_level * VERTICAL_SPACING + NODE_HEIGHT
+
+        if cursor_x + component_width > MAX_ROW_WIDTH:
+            cursor_x = 100
+            cursor_y += current_row_height + COMPONENT_GAP
+            current_row_height = 0
+
+        for level in sorted(levels.keys()):
+            for row_index, node_id in enumerate(levels[level]):
+                node_positions[node_id] = {
+                    "x": cursor_x + level * HORIZONTAL_SPACING,
+                    "y": cursor_y + row_index * VERTICAL_SPACING,
+                }
+
+        cursor_x += component_width + COMPONENT_GAP
+        current_row_height = max(current_row_height, component_height)
+
+    valid_node_ids = set(node_lookup.keys())
     edge_counter = 0
     created_edges = set()
 
-    def add_edge(from_id: str, to_id: str, label: str, color: str, from_side=None, to_side=None, from_end="none", to_end="arrow"):
+    def add_edge(
+        from_id: str,
+        to_id: str,
+        label: str,
+        color: str,
+        from_side=None,
+        to_side=None,
+        from_end="none",
+        to_end="arrow",
+    ):
         nonlocal edge_counter
+        if from_id not in valid_node_ids or to_id not in valid_node_ids or from_id == to_id:
+            return
         edge_key = f"{from_id}->{to_id}:{label}:{color}"
         if edge_key in created_edges:
             return
@@ -209,65 +431,96 @@ def convert_conversation_to_canvas(
         created_edges.add(edge_key)
         edge_counter += 1
 
-    # Inject edges provided via edge_records (relationships)
-    if edge_records:
-        for rec in edge_records:
-            source = rec.get("fromNode") or rec.get("from") or rec.get("source")
-            target = rec.get("toNode") or rec.get("to") or rec.get("target")
-            label = rec.get("label") or rec.get("type") or "related"
-            color = rec.get("color") or "3"
-            if source and target:
-                add_edge(source, target, label, color, from_end="none", to_end="arrow")
+    # Create Canvas nodes
+    for item in canonical_nodes:
+        node_id = item["canvas_id"]
+        raw_node = item["raw"]
+        node_name = item["node_name"]
+        position = node_positions.get(node_id, {"x": 100, "y": 100})
 
-    # Fallback: temporal/contextual relationships derived from graph_data
-    for node in conversation_nodes:
-        node_id = node["node_name"].replace(" ", "_")
+        color = None
+        if raw_node.get("is_bookmark"):
+            color = "5"
+        elif raw_node.get("is_contextual_progress"):
+            color = "4"
 
-        # Temporal edge (successor)
-        if node.get("successor"):
-            successor_id = node["successor"].replace(" ", "_")
-            add_edge(node_id, successor_id, "next", "1", from_side="right", to_side="left", to_end="arrow")
+        text_content = f"# {node_name}\n\n"
+        text_content += f"{_clean_str(raw_node.get('summary'))}\n\n"
 
-        # Contextual relationships
-        if node.get("contextual_relation"):
-            for related_node_name, explanation in node["contextual_relation"].items():
-                related_id = related_node_name.replace(" ", "_")
-                label = explanation[:50] + "..." if len(explanation) > 50 else explanation
-                add_edge(node_id, related_id, label or "related", "3", from_end="none", to_end="none")
+        claims = raw_node.get("claims")
+        if isinstance(claims, list) and claims:
+            text_content += "## Claims\n"
+            for claim in claims:
+                text_content += f"- {_clean_str(claim)}\n"
+            text_content += "\n"
+
+        chunk_id = _clean_str(raw_node.get("chunk_id"))
+        if chunk_id and not include_chunks:
+            text_content += f"*Chunk ID: {chunk_id}*\n"
+
+        estimated_height = max(NODE_HEIGHT, min(600, len(text_content) // 3))
+        nodes.append(
+            CanvasNode(
+                id=node_id,
+                type="text",
+                x=position["x"],
+                y=position["y"],
+                width=NODE_WIDTH,
+                height=estimated_height,
+                color=color,
+                text=text_content,
+            )
+        )
+
+    # Preferred relationship edges from DB/export payload.
+    for source, target, label, color in supplied_edges:
+        add_edge(source, target, label, color, from_end="none", to_end="arrow")
+
+    # Temporal edges from transcript output.
+    for source, target in temporal_edges:
+        add_edge(source, target, "next", "1", from_side="right", to_side="left", to_end="arrow")
+
+    # Contextual edges from transcript output.
+    for source, target, label, color in contextual_edges:
+        add_edge(source, target, label or "related", color or "3", from_end="none", to_end="none")
 
     # Add chunk nodes if requested
     if include_chunks:
-        chunk_y = max([pos["y"] for pos in node_positions.values()], default=0) + VERTICAL_SPACING * 2
+        chunk_y = max((pos["y"] for pos in node_positions.values()), default=0) + VERTICAL_SPACING * 2
         chunk_x = 100
 
         for chunk_id, chunk_text in chunk_dict.items():
-            canvas_node = CanvasNode(
-                id=f"chunk_{chunk_id}",
-                type="text",
-                x=chunk_x,
-                y=chunk_y,
-                width=NODE_WIDTH,
-                height=300,
-                color="6",  # Purple for chunks
-                text=f"# Chunk: {chunk_id}\n\n{chunk_text[:500]}..."  # Truncate long chunks
+            chunk_id_text = _clean_str(chunk_id)
+            chunk_node_id = f"chunk_{chunk_id_text}"
+            nodes.append(
+                CanvasNode(
+                    id=chunk_node_id,
+                    type="text",
+                    x=chunk_x,
+                    y=chunk_y,
+                    width=NODE_WIDTH,
+                    height=300,
+                    color="6",
+                    text=f"# Chunk: {chunk_id_text}\n\n{_clean_str(chunk_text)[:500]}...",
+                )
             )
-            nodes.append(canvas_node)
 
-            # Link chunk to related conversation nodes
-            for node in conversation_nodes:
-                if node.get("chunk_id") == chunk_id:
-                    node_id = node["node_name"].replace(" ", "_")
-                    edge = CanvasEdge(
+            for item in canonical_nodes:
+                node_chunk_id = _clean_str(item["raw"].get("chunk_id"))
+                if node_chunk_id != chunk_id_text:
+                    continue
+                edges.append(
+                    CanvasEdge(
                         id=f"edge_{edge_counter}",
-                        fromNode=node_id,
-                        toNode=f"chunk_{chunk_id}",
+                        fromNode=item["canvas_id"],
+                        toNode=chunk_node_id,
                         fromEnd="none",
                         toEnd="none",
-                        color="2",  # Orange for chunk links
-                        label="references"
+                        color="2",
+                        label="references",
                     )
-                    edges.append(edge)
-                    edge_counter += 1
+                )
+                edge_counter += 1
 
             chunk_x += HORIZONTAL_SPACING
             if chunk_x > 2000:
@@ -296,8 +549,10 @@ def convert_canvas_to_conversation(canvas: ObsidianCanvas, preserve_positions: b
     contextual_edges = {}  # node_id -> [(target_id, label)]
 
     for edge in canvas.edges:
-        # Temporal edges have "next" label or are red (color "1")
-        if edge.label == "next" or edge.color == "1":
+        edge_label = _clean_str(edge.label).lower()
+
+        # Temporal edges must be explicitly labelled as temporal.
+        if edge_label in {"next", "leads_to", "follows"}:
             temporal_edges[edge.fromNode] = edge.toNode
         # Chunk reference edges
         elif edge.label == "references" or edge.color == "2":
@@ -308,27 +563,34 @@ def convert_canvas_to_conversation(canvas: ObsidianCanvas, preserve_positions: b
                 contextual_edges[edge.fromNode] = []
             contextual_edges[edge.fromNode].append((edge.toNode, edge.label or "Related"))
 
-    # Process nodes
+    text_nodes: List[CanvasNode] = []
+    node_title_by_id: Dict[str, str] = {}
+
     for node in canvas.nodes:
-        # Skip non-text nodes and chunk nodes
-        if node.type != "text" or node.id.startswith("chunk_"):
-            if node.id.startswith("chunk_"):
-                # Extract chunk content
-                chunk_id = node.id.replace("chunk_", "")
-                chunk_dict[chunk_id] = node.text or ""
+        if node.type != "text":
+            continue
+        if node.id.startswith("chunk_"):
+            chunk_id = node.id.replace("chunk_", "")
+            chunk_dict[chunk_id] = node.text or ""
             continue
 
-        # Extract node name from ID (reverse the replacement)
-        node_name = node.id.replace("_", " ")
+        text_nodes.append(node)
+        node_name_from_id = node.id.replace("_", " ")
+        text = node.text or ""
+        lines = text.split("\n")
+        title = node_name_from_id
+        if lines and lines[0].startswith("#"):
+            parsed_title = lines[0].replace("#", "").strip()
+            if parsed_title:
+                title = parsed_title
+        node_title_by_id[node.id] = title
 
+    # Process non-chunk text nodes
+    for node in text_nodes:
         # Parse text content to extract summary and other fields
         text = node.text or ""
         lines = text.split("\n")
-
-        # Extract title (first line after #)
-        title = node_name
-        if lines and lines[0].startswith("#"):
-            title = lines[0].replace("#", "").strip()
+        title = node_title_by_id.get(node.id) or node.id.replace("_", " ")
 
         # Extract summary (everything between title and ## Claims)
         summary_lines = []
@@ -358,20 +620,20 @@ def convert_canvas_to_conversation(canvas: ObsidianCanvas, preserve_positions: b
         predecessor = None
         for from_id, to_id in temporal_edges.items():
             if to_id == node.id:
-                predecessor = from_id.replace("_", " ")
+                predecessor = node_title_by_id.get(from_id) or from_id.replace("_", " ")
                 break
 
         # Find successor
         successor = temporal_edges.get(node.id)
         if successor:
-            successor = successor.replace("_", " ")
+            successor = node_title_by_id.get(successor) or successor.replace("_", " ")
 
         # Build contextual_relation map
         contextual_relation = {}
         linked_nodes = []
         if node.id in contextual_edges:
             for target_id, label in contextual_edges[node.id]:
-                target_name = target_id.replace("_", " ")
+                target_name = node_title_by_id.get(target_id) or target_id.replace("_", " ")
                 contextual_relation[target_name] = label
                 linked_nodes.append(target_name)
 
@@ -379,7 +641,7 @@ def convert_canvas_to_conversation(canvas: ObsidianCanvas, preserve_positions: b
         for from_id, edges_list in contextual_edges.items():
             for target_id, label in edges_list:
                 if target_id == node.id:
-                    source_name = from_id.replace("_", " ")
+                    source_name = node_title_by_id.get(from_id) or from_id.replace("_", " ")
                     if source_name not in contextual_relation:
                         contextual_relation[source_name] = label
                         linked_nodes.append(source_name)

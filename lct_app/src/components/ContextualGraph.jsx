@@ -27,6 +27,50 @@ const graphDebugLog = (...args) => {
   }
 };
 
+function extractContextualRelationEntries(contextualRelation) {
+  if (!contextualRelation || typeof contextualRelation !== "object" || Array.isArray(contextualRelation)) {
+    return [];
+  }
+
+  const relatedNode =
+    contextualRelation.related_node_name ||
+    contextualRelation.related_node ||
+    contextualRelation.relatedNode ||
+    contextualRelation.source ||
+    contextualRelation.from ||
+    contextualRelation.node;
+  const relationText =
+    contextualRelation.relation_text ||
+    contextualRelation.relationText ||
+    contextualRelation.description ||
+    contextualRelation.explanation;
+  const singleRelationKeys = new Set([
+    "related_node_name",
+    "related_node",
+    "relatedNode",
+    "source",
+    "from",
+    "node",
+    "relation_text",
+    "relationText",
+    "description",
+    "explanation",
+    "relation_type",
+    "type",
+  ]);
+  const keys = Object.keys(contextualRelation);
+  const looksLikeSingleRelation =
+    Boolean(relatedNode && relationText) && keys.every((key) => singleRelationKeys.has(key));
+
+  if (looksLikeSingleRelation) {
+    return [[String(relatedNode), String(relationText)]];
+  }
+
+  return Object.entries(contextualRelation)
+    .filter(([name, text]) => Boolean(String(name).trim()) && Boolean(String(text).trim()))
+    .map(([name, text]) => [String(name), String(text)]);
+}
+
 // Track reference stability
 graphDebugLog("[ContextualGraph] Module loaded - NODE_TYPES ref:", NODE_TYPES);
 graphDebugLog("[ContextualGraph] Module loaded - EDGE_TYPES ref:", EDGE_TYPES);
@@ -398,7 +442,7 @@ export default function ContextualGraph({
       }
 
       // Backward-compatible fallback: derive contextual edges from contextual_relation map.
-      Object.entries(item.contextual_relation || {}).forEach(([relatedNodeName, relationText]) => {
+      extractContextualRelationEntries(item.contextual_relation || {}).forEach(([relatedNodeName, relationText]) => {
         const relatedNodeData = latestChunk.find((n) => n.node_name === relatedNodeName);
         if (!relatedNodeData) return;
 
@@ -569,14 +613,13 @@ export default function ContextualGraph({
             </p>
           )}
 
-          {selectedNodeData?.contextual_relation &&
-            Object.keys(selectedNodeData?.contextual_relation).length > 0 && (
+          {extractContextualRelationEntries(selectedNodeData?.contextual_relation).length > 0 && (
               <>
                 <h4 className="font-semibold mt-2 text-black">
                   Context drawn from:
                 </h4>
                 <ul className="list-disc pl-4">
-                  {Object.entries(selectedNodeData?.contextual_relation).map(([key, value]) => (
+                  {extractContextualRelationEntries(selectedNodeData?.contextual_relation).map(([key, value]) => (
                     <li key={key} className="text-sm text-black">
                       <strong>{key}:</strong> {value}
                     </li>
