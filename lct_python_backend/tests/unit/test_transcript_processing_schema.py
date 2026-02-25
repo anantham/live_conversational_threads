@@ -58,6 +58,33 @@ def test_normalize_generated_output_adds_required_defaults():
     assert node["node_text"] == node["summary"]
 
 
+def test_normalize_generated_output_coerces_single_contextual_relation_object():
+    parsed = [
+        {
+            "node_name": "A",
+            "summary": "Root topic",
+        },
+        {
+            "node_name": "B",
+            "summary": "Follow-up topic",
+            "contextual_relation": {
+                "related_node_name": "A",
+                "relation_text": "Builds on A",
+            },
+        },
+    ]
+
+    normalized = _normalize_generated_output(parsed)
+    assert len(normalized) == 2
+    node_b = next(node for node in normalized if node["node_name"] == "B")
+    assert node_b["contextual_relation"] == {"A": "Builds on A"}
+    assert "A" in node_b["linked_nodes"]
+    assert any(
+        relation["related_node"] == "A" and relation["relation_text"] == "Builds on A"
+        for relation in node_b["edge_relations"]
+    )
+
+
 def test_resolve_gemini_api_key_accepts_gemini_key_alias(monkeypatch):
     monkeypatch.delenv("GOOGLEAI_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
