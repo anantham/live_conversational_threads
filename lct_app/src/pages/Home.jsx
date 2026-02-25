@@ -1,53 +1,79 @@
 import { useNavigate } from "react-router-dom";
+import { Mic, FolderOpen, FileUp, Bookmark, BarChart3, Settings } from "lucide-react";
 
 export default function Home() {
   const navigate = useNavigate();
 
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-blue-500 to-purple-600 text-white px-4">
-      <h1 className="text-4xl font-bold mb-12 text-center">Live Conversational Threads</h1>
+    <div className="flex flex-col items-center justify-center h-[100dvh] w-screen bg-[#fafafa] font-sans">
+      {/* Title */}
+      <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-10">
+        Live Conversational Threads
+      </p>
 
-      <div className="flex flex-col gap-6 w-full max-w-xs">
+      {/* Primary actions */}
+      <div className="flex items-center gap-6 mb-12">
         <button
           onClick={() => navigate("/new")}
-          className="w-full px-6 py-3 bg-emerald-500 hover:bg-emerald-700 active:bg-emerald-800 rounded-2xl shadow-lg text-white text-lg transition-all duration-200"
+          className="flex flex-col items-center gap-2 group"
         >
-          Start New Conversation
+          <span className="w-14 h-14 flex items-center justify-center rounded-full bg-gray-800 text-white group-hover:bg-gray-700 transition">
+            <Mic size={22} />
+          </span>
+          <span className="text-xs text-gray-500 group-hover:text-gray-700 transition">New</span>
         </button>
 
         <button
           onClick={() => navigate("/browse")}
-          className="w-full px-6 py-3 bg-yellow-500 hover:bg-yellow-700 active:bg-yellow-800 rounded-2xl shadow-lg text-white text-lg transition-all duration-200"
+          className="flex flex-col items-center gap-2 group"
         >
-          Browse Conversations
+          <span className="w-14 h-14 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
+            <FolderOpen size={22} />
+          </span>
+          <span className="text-xs text-gray-500 group-hover:text-gray-700 transition">Browse</span>
         </button>
+      </div>
 
+      {/* Secondary actions */}
+      <div className="flex items-center gap-5">
         <button
           onClick={() => navigate("/import")}
-          className="w-full px-6 py-3 bg-teal-500 hover:bg-teal-700 active:bg-teal-800 rounded-2xl shadow-lg text-white text-lg transition-all duration-200"
+          className="flex flex-col items-center gap-1.5 group"
         >
-          📥 Import Transcript
+          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-150 text-gray-400 group-hover:text-gray-600 group-hover:border-gray-300 transition">
+            <FileUp size={16} />
+          </span>
+          <span className="text-[10px] text-gray-400 group-hover:text-gray-600 transition">Import</span>
         </button>
 
         <button
           onClick={() => navigate("/bookmarks")}
-          className="w-full px-6 py-3 bg-pink-500 hover:bg-pink-700 active:bg-pink-800 rounded-2xl shadow-lg text-white text-lg transition-all duration-200"
+          className="flex flex-col items-center gap-1.5 group"
         >
-          🔖 My Bookmarks
+          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-150 text-gray-400 group-hover:text-gray-600 group-hover:border-gray-300 transition">
+            <Bookmark size={16} />
+          </span>
+          <span className="text-[10px] text-gray-400 group-hover:text-gray-600 transition">Bookmarks</span>
         </button>
 
         <button
           onClick={() => navigate("/cost-dashboard")}
-          className="w-full px-6 py-3 bg-indigo-500 hover:bg-indigo-700 active:bg-indigo-800 rounded-2xl shadow-lg text-white text-lg transition-all duration-200"
+          className="flex flex-col items-center gap-1.5 group"
         >
-          💰 Cost Dashboard
+          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-150 text-gray-400 group-hover:text-gray-600 group-hover:border-gray-300 transition">
+            <BarChart3 size={16} />
+          </span>
+          <span className="text-[10px] text-gray-400 group-hover:text-gray-600 transition">Costs</span>
         </button>
 
         <button
           onClick={() => navigate("/settings")}
-          className="w-full px-6 py-3 bg-gray-500 hover:bg-gray-700 active:bg-gray-800 rounded-2xl shadow-lg text-white text-lg transition-all duration-200"
+          className="flex flex-col items-center gap-1.5 group"
         >
-          ⚙️ Settings
+          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-150 text-gray-400 group-hover:text-gray-600 group-hover:border-gray-300 transition">
+            <Settings size={16} />
+          </span>
+          <span className="text-[10px] text-gray-400 group-hover:text-gray-600 transition">Settings</span>
         </button>
       </div>
     </div>

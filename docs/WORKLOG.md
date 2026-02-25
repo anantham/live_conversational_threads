@@ -1,5 +1,84 @@
 # WORKLOG
 
+## 2026-02-25T15:33:01Z
+- `lct_python_backend/import_api.py` (lines 494-547, 677): Enhanced `/api/import/process-file` streaming behavior for realtime UX:
+  - `_on_chunk_progress(...)` now computes and emits transcription ETA telemetry (`transcription_eta_ms`, `transcription_estimated_total_ms`) alongside chunk counters.
+  - emits realtime `transcript` SSE events during STT with `phase="transcribing"` so frontend can render text as chunks land.
+  - marks existing graph-analysis transcript events explicitly as `phase="analyzing"` to keep frontend phase handling deterministic.
+- `lct_app/src/components/FileUpload.jsx` (lines 24-44, 85-86, 138-231, 316-331): Added first-pass realtime upload UX:
+  - ETA rendering from transcribing telemetry.
+  - live transcript preview panel fed by `transcript` SSE events with `phase="transcribing"`.
+  - phase-aware transcript handling so analysis-stage progress updates still work while STT-stage transcript lines stream in.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (line 308): Added regression coverage proving STT-phase transcript events + ETA telemetry keys are emitted.
+- `docs/TECH_DEBT.md` (table rows): Updated `import_api.py` LOC/scope note and added `FileUpload.jsx` as a decomposition candidate after this UI-state/SSE parsing expansion.
+- Validation:
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_import_api_process_file.py tests/unit/test_file_transcriber.py` (55 passed)
+  - `./.venv/bin/python -m py_compile lct_python_backend/import_api.py lct_python_backend/tests/unit/test_import_api_process_file.py` (passed)
+  - `cd lct_app && npx eslint src/components/FileUpload.jsx` (passed)
+  - `cd lct_app && npm run -s build` (passed)
+
+## 2026-02-25T15:06:53Z
+- `lct_python_backend/services/file_transcriber.py` (lines 87-95, 162-270, 944-1109): Added upload STT local-first provider selection (`STT_UPLOAD_LOCAL_FIRST`) with remote fallback (`STT_UPLOAD_REMOTE_FALLBACK`) and provider-candidate resolution, plus per-attempt metadata (`provider_attempts`, `provider_fallback_*`) and `on_provider_fallback(...)` callback hook so callers can surface fallback events to users.
+- `lct_python_backend/import_api.py` (lines 519-579): Wired fallback callback into `/api/import/process-file` worker, emitting SSE `status` events with `notice_type="stt_provider_fallback"` and fallback payload (`from_provider`, `to_provider`, error), and enriched final transcribed-stage messaging/telemetry when fallback was used.
+- `lct_app/src/components/FileUpload.jsx` (lines 69-75, 143-171, 225, 268-273): Added deduped fallback toast UI for upload flows; consumes SSE `stt_provider_fallback` notices (or transcribed metadata fallback flag as backup) and surfaces a non-blocking user message when local STT fails over to remote.
+- `lct_python_backend/.env.example` (lines 93-97): Documented new upload routing toggles (`STT_UPLOAD_LOCAL_FIRST`, `STT_UPLOAD_REMOTE_FALLBACK`) so local-first/remote-fallback behavior is explicit and configurable.
+- Local runtime config (non-committed): set `lct_python_backend/.env` `IMPORT_ASYNC_DIARIZATION_ENABLED=true` to honor delayed diarization mode for this machine/session.
+- `lct_python_backend/tests/unit/test_file_transcriber.py` (line 588): Added regression test proving local provider failure falls back to remote provider and records fallback metadata/callback events.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (line 252): Added SSE regression test proving fallback status notice is emitted for frontend toast handling.
+- `docs/TECH_DEBT.md` (table rows for `import_api.py`, `file_transcriber.py`): Updated LOC and decomposition notes after adding provider-fallback routing concerns.
+- Validation:
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_file_transcriber.py tests/unit/test_import_api_process_file.py` (54 passed)
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/file_transcriber.py lct_python_backend/import_api.py lct_python_backend/tests/unit/test_file_transcriber.py lct_python_backend/tests/unit/test_import_api_process_file.py` (passed)
+  - `cd lct_app && npx eslint src/components/FileUpload.jsx` (passed)
+  - `cd lct_app && npm run -s build` (passed)
+
+## 2026-02-25T13:30:39Z
+- `lct_app/src/components/TimelineRibbon.jsx` (lines 5-58, 28-118): Added muted timestamp labels under timeline dots to improve click-target clarity; implemented resilient timestamp normalization across common node fields (`timestamp_start`, `start_time`, `timestamp`, metadata mirrors) and formatted values as `MM:SS` / `H:MM:SS`. Also updated ribbon spacing/height and dot rail alignment to accommodate readable labels.
+- Validation:
+  - `cd lct_app && npm run build` (passed)
+
+## 2026-02-25T13:25:36Z
+- `lct_python_backend/services/transcript_processing.py` (lines 285-360, 499-532): Added contextual-relation normalization for legacy single-relation objects (`{"related_node_name": ..., "relation_text": ...}`) and list variants; added backfill of `edge_relations` from normalized contextual links so relationship edges are emitted consistently instead of collapsing to temporal-only chains.
+- `lct_app/src/components/MinimalGraph.jsx` (lines 40-82, 206-222, 234-279): Added backward-compatible contextual-relation parsing for malformed objects and fixed timeline selection UX by centering viewport on selected nodes (instead of always auto-following latest node).
+- `lct_python_backend/canvas_api.py` (lines 67-127, 130-553, 311-419): Reworked Canvas conversion to use stable canonical IDs, robust edge reference resolution (UUID/name/legacy slug), contextual relation extraction, and component-aware layout so exported canvases preserve non-linear relationships and avoid vertical-stack degradation; updated Canvas import path to map predecessor/successor/contextual links via parsed node titles instead of raw node IDs.
+- `lct_app/src/components/NodeDetail.jsx` (lines 4-53): Added contextual-relation normalization in detail panel so relationship labels render correctly for legacy payload shapes.
+- `lct_app/src/components/ContextualGraph.jsx` (lines 30-72, 441-447, 614-621): Added same contextual-relation normalization helper for graph fallback edges and context panel rendering.
+- `lct_python_backend/tests/unit/test_transcript_processing_schema.py` (lines 61-85): Added regression test covering coercion of single contextual-relation objects into canonical relation maps/edges.
+- `lct_python_backend/tests/unit/test_canvas_api_converter.py` (lines 1-93): Added converter regression tests for malformed contextual-relation input and Canvas import correctness when node IDs are UUIDs.
+- Validation:
+  - `cd lct_python_backend && ../.venv/bin/python -m py_compile services/transcript_processing.py canvas_api.py tests/unit/test_transcript_processing_schema.py tests/unit/test_canvas_api_converter.py`
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_transcript_processing_schema.py tests/unit/test_canvas_api_converter.py` (20 passed)
+  - `cd lct_app && npm run build` (passed)
+
+## 2026-02-25T06:05:46Z
+- Runtime setup and benchmark execution for Path-A validation (no tracked source edits besides issue logs):
+  - Started Docker daemon and verified local Parakeet service health on `http://localhost:5092/health`.
+  - Installed optional local diarization deps into repo venv: `torch`, `pyannote.audio==3.1.1`, `speechbrain` transitives; fixed import break by downgrading `numpy` to `1.26.4`.
+  - Resolved pyannote/HF client mismatch by pinning runtime `huggingface_hub<1.0` (from `1.1.2` -> `0.36.2`) for compatibility with pyannote 3.1 loader API.
+  - Ran Path-A benchmark script on local media samples:
+    - `/tmp/yeshe_clean.wav` (converted from `Yeshe_Tsogyel_Mantra.mp3`): success, `stt_ms=9140`, `diarization_ms=100932`, `total_ms=110078`.
+    - `/tmp/adiga_90s.wav` (first 90s from `Adiga and Prasad talk.m4a`): success, `stt_ms=12531`, `diarization_ms=153673`, `total_ms=166209`.
+    - Several raw mp4/webm samples returned empty STT text; direct mp3 diarization path triggered torchaudio/libmpg123 tensor-size mismatch.
+  - Bottleneck conclusion from successful local runs: diarization stage dominates runtime (~89-92% of total), while Parakeet STT remains comparatively fast.
+- `ISSUES.md` (lines 15-17): Logged preexisting runtime gaps discovered during Path-A validation (hf hub version mismatch, mp3 decode instability in pyannote path, and Parakeet empty transcript behavior on some codecs/content).
+
+## 2026-02-25T05:35:01Z
+- `lct_python_backend/services/file_transcriber.py` (lines 68-358, 532-605, 727-815): Added Path-A runtime flags for Parakeet + separate Pyannote diarization, introduced structured STT response parsing (`AudioTranscriptionDetail` + ASR segment extraction), added pyannote pipeline loader/diarization helpers, and wired segment-overlap speaker alignment so upload transcripts can be emitted as `SPEAKER_x: text` even when STT provider itself has no diarization.
+- `lct_python_backend/services/file_transcriber.py` (lines 308-321, 352-364): Added explicit runtime diagnostics for common Path-A failures:
+  - pyannote vs `huggingface_hub` API mismatch now raises actionable guidance (`huggingface_hub<1.0`).
+  - compressed-audio tensor-size mismatch now surfaces a clear fallback instruction (convert to `16kHz mono WAV`).
+- `lct_python_backend/import_api.py` (lines 464-485, 560-575): Added stage-level upload telemetry plumbed from transcriber metadata (`stt_provider_ms`, `diarization_ms`, `alignment_ms`) and computed `bottleneck_stage`/`bottleneck_ms` for each `/api/import/process-file` run.
+- `lct_python_backend/.env.example` (lines 73-82): Added documented env controls for Path-A local diarization (`STT_PARAKEET_PYANNOTE_*`, `STT_PYANNOTE_*`).
+- `lct_python_backend/requirements.txt` (lines 39-42): Documented optional install for Path-A (`torch`, `pyannote.audio`) so core installs stay lightweight.
+- `lct_python_backend/tests/unit/test_file_transcriber.py` (lines 145-175, 424-440, 557-601): Added coverage for structured segment extraction, speaker-overlap alignment, and Parakeet+Pyannote sidecar orchestration.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (lines 111-112): Extended SSE done-payload test to assert bottleneck telemetry fields.
+- `LOCAL_STT_SERVICES.md` (lines 45-58): Added Path-A operating notes and expected telemetry keys.
+- `ISSUES.md` (line 14): Logged preexisting blocker that `.venv` currently lacks pyannote dependencies required for Path-A runtime.
+- `docs/TECH_DEBT.md` (line 26): Updated `file_transcriber.py` debt entry to include new speaker-alignment concern and recommended split.
+- Validation:
+  - `cd lct_python_backend && ../.venv/bin/python -m py_compile services/file_transcriber.py import_api.py`
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_file_transcriber.py tests/unit/test_import_api_process_file.py` (46 passed)
+
 ## 2026-02-13T19:35:56Z
 - docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md (lines 87-154, 211): Extended the decision with explicit diarization requirements (overlay model, speaker evidence, node coloring semantics) and telemetry requirements (stage timings + per-provider p95 aggregation), plus a phase-gated `speaker_segments` persistence element and telemetry success criterion.
 - lct_python_backend/stt_api.py (lines 72-113, 321-331, 453-523, 569-640): Added phase-1 realtime instrumentation in websocket pipeline: decode timing capture, stage-metric merge into per-event telemetry metadata, and flush-stage timing propagation (`stt_flush_request_ms`, `final_flush_total_ms`) for client visibility and backend aggregation.
@@ -713,3 +792,101 @@ Validation:
 Validation:
 - `bash -n start.command` (passed)
 - `./start.command` smoke run (passed): reached `All services are up.` and remained running until manual `Ctrl+C`; clean shutdown path executed afterward.
+
+## 2026-02-18T08:57:19Z
+- `docs/TECH_DEBT.md` (lines 3-32): Performed code-backed debt audit (not doc-only) and updated entries to match current source-of-truth LOC + module shape:
+  - Updated active LOC values for `transcript_processing.py` (1114), `stt_api.py` (899), `ContextualGraph.jsx` (839), `start.command` (423), and `import_api.py` (517).
+  - Marked `ViewConversation.jsx` as resolved (`463 -> 269`) after validating the file is now a thinner composition page built around extracted components.
+  - Added new mixed-concern candidates confirmed in code: `canvas_api.py` (654), `services/file_transcriber.py` (459), and `services/stt_http_transcriber.py` (461).
+- Audit basis (code inspection):
+  - Read current source files directly (`ViewConversation.jsx`, `Settings.jsx`, `ContextualGraph.jsx`, `import_api.py`, `start.command`) and reviewed function/class breakdowns for `llm_helpers.py`, `models.py`, `transcript_processing.py`, `stt_api.py`, `alerts.py`, `canvas_api.py`, `file_transcriber.py`, and `stt_http_transcriber.py`.
+
+Validation:
+- `wc -l` verification on tracked debt files and candidate additions.
+- repo-wide large-file scan (`>=300 LOC`) across `lct_python_backend` and `lct_app/src` to cross-check omissions before updating debt entries.
+
+## 2026-02-18T09:25:26Z
+- `lct_app/src/pages/Browse.jsx` (line 213): Removed stale extra argument from the delete-confirmation call site (`handleDelete(deleteConfirm.id, deleteConfirm.name)` -> `handleDelete(deleteConfirm.id)`) to align with the current one-parameter handler signature and keep lint clean.
+
+Validation:
+- `cd lct_app && npx eslint src/pages/Browse.jsx` (passed)
+- `cd lct_app && npm run -s build` (passed; existing bundle-size warning remains)
+
+## 2026-02-25T03:44:47Z
+- `lct_python_backend/import_api.py` (lines 12, 139-141, 341, 355-587): Added upload-pipeline telemetry for `POST /api/import/process-file` using `time.perf_counter()` and `_elapsed_ms(...)`. SSE payloads now include timing metadata on `status`/`transcript` updates, final `done` telemetry (`transcription_ms`, `chunking_ms`, `graph_generation_ms`, `total_processing_ms`, chunk counts, source metadata), and error telemetry (`active_stage`, elapsed ms). Added structured telemetry log line: `[PROCESS FILE TELEMETRY] { ... }`.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (lines 104-110, 182-187, 244-247): Expanded SSE tests to assert telemetry presence on `done`, `error`, and processor-emitted `status` events.
+- `docs/TECH_DEBT.md` (lines 3, 23): Updated timestamp and refreshed `import_api.py` debt note to explicitly include telemetry concerns in the mixed-responsibility warning.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_import_api_process_file.py` (4 passed)
+- `python3 -m py_compile lct_python_backend/import_api.py lct_python_backend/tests/unit/test_import_api_process_file.py` (passed)
+
+## 2026-02-25T05:16:16Z
+- `lct_python_backend/services/file_transcriber.py` (lines 5-71, 383-407, 410-493): Implemented conservative chunk-processing defaults and per-chunk retry behavior for large audio uploads.
+  - Defaults now enforce conservative production chunking via bounded env config (`STT_CHUNK_DURATION_S` clamped to 20-30s, `STT_CHUNK_OVERLAP_S` clamped to 0-3s).
+  - Added per-chunk retry with exponential backoff (`STT_CHUNK_MAX_RETRIES`, `STT_CHUNK_RETRY_BACKOFF_S`) and retryable-error classification for transient transport/server failures.
+  - Kept chunk uploads explicitly sequential to avoid GPU contention.
+- `lct_python_backend/tests/unit/test_file_transcriber.py` (lines 301-385): Added retry coverage and tightened cleanup validation:
+  - New test: retries transient `ReadTimeout` and succeeds.
+  - New test: does not retry permanent 4xx failures.
+  - Updated cleanup test to check for leaked temp files created during test run (before/after diff), avoiding false failures from pre-existing temp artifacts.
+- `docs/TECH_DEBT.md` (line 26): Updated `file_transcriber.py` debt note to include retry/backoff concern coupling.
+- `ISSUES.md` (Runtime Blockers): Logged newly observed runtime blocker from this session: repeated transient STT transport failures (`ReadError`, `RemoteProtocolError`) persist even with per-chunk retries.
+
+Validation:
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_file_transcriber.py tests/unit/test_import_api_process_file.py` (43 passed)
+- `python3 -m py_compile lct_python_backend/services/file_transcriber.py lct_python_backend/tests/unit/test_file_transcriber.py` (passed)
+
+Manual retry trial (post-change):
+- Re-ran `POST /api/import/process-file` with:
+  - `/Users/aditya/Downloads/Yeshe_Tsogyel_Mantra.mp3`
+  - `/Users/aditya/Downloads/signal-2026-01-11-155955_006.mp4`
+- Outcome: both still ended in `error` events (`message=ReadError`, `active_stage=transcribing`), but backend logs now show retry attempts/backoff for chunk `1/N` before failing (evidence that retry path is active).
+
+## 2026-02-25T07:28:13Z
+- `lct_python_backend/services/import_diarization_queue.py` (new, lines 1-521): Added a process-local async diarization queue with:
+  - job lifecycle (`pending`/`running`/`completed`/`failed`),
+  - incremental event stream (`status`, `patch`, `done`, `error`) with monotonic `seq` cursors,
+  - background worker that reuses `transcribe_uploaded_file(..., enable_parakeet_pyannote=True)` plus `TranscriptProcessor`,
+  - telemetry capture (`queue_wait_ms`, transcription/diarization/alignment/chunking/graph timings, bottleneck stage),
+  - in-memory status/event snapshots for polling endpoints.
+- `lct_python_backend/services/file_transcriber.py` (lines 804-846): Extended `transcribe_uploaded_file(...)` with `enable_parakeet_pyannote: Optional[bool]` to allow explicit runtime control of sidecar diarization (used by async background jobs).
+- `lct_python_backend/import_api.py` (lines 12-35, 133-185, 360-377, 646-706): Wired async diarization plumbing into import API:
+  - added wrappers for queue functions (test monkeypatch targets),
+  - added temp-file copy helper for background job ownership,
+  - added polling endpoints:
+    - `GET /api/import/diarization-jobs/{job_id}`
+    - `GET /api/import/diarization-jobs/{job_id}/events?cursor=...`
+  - updated `POST /api/import/process-file` `done` payload to include optional `diarization_job` metadata and enqueue background jobs for audio when `IMPORT_ASYNC_DIARIZATION_ENABLED=true`.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (lines 252-391): Added coverage for async diarization queue integration and polling endpoints:
+  - `done` payload includes queued diarization metadata,
+  - status endpoint success + 404 behavior,
+  - events endpoint cursor handling + negative cursor validation.
+- `lct_python_backend/.env.example` (lines 84-89): Documented new async diarization queue controls:
+  - `IMPORT_ASYNC_DIARIZATION_ENABLED`
+  - `IMPORT_ASYNC_DIARIZATION_MAX_QUEUE`
+  - `IMPORT_ASYNC_DIARIZATION_MAX_JOBS`
+- `LOCAL_STT_SERVICES.md` (lines 66-75): Added operator guidance for upload-first mode (fast graph now, diarization merge later) and polling endpoints.
+- `docs/TECH_DEBT.md` (table rows): Updated LOC for touched large files and added `import_diarization_queue.py` as a decomposition candidate.
+
+Validation:
+- `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_import_api_process_file.py lct_python_backend/tests/unit/test_file_transcriber.py` (51 passed)
+- `./.venv/bin/python -m py_compile lct_python_backend/import_api.py lct_python_backend/services/file_transcriber.py lct_python_backend/services/import_diarization_queue.py lct_python_backend/tests/unit/test_import_api_process_file.py` (passed)
+
+## 2026-02-25T17:18:30Z
+- E2E execution (no repo runtime code changes) for Downloads media through:
+  - `POST /api/import/process-file` (SSE graph generation),
+  - `POST /save_json/` (conversation persistence),
+  - `POST /export/obsidian-canvas/{conversation_id}` (canvas export check).
+- Runtime setup adjustments made to complete E2E:
+  - Started backend in tmux session `lct_backend` using `.venv` with `DATABASE_URL=postgresql://lct_user:lct_password@localhost:5432/lct_dev`.
+  - Started OpenRouter proxy in tmux session `openrouter_proxy` on `http://localhost:12450` and updated LLM settings to `base_url=http://localhost:12450`, `chat_model=openai/gpt-4o-mini` (to bypass remote LM Studio timeout path).
+- Files tested and outcomes:
+  - `/Users/aditya/Downloads/Mantra_Meaning_and_Video_Generation.mp4`: success; telemetry `transcription_ms=1017`, `graph_generation_ms=7010`, `total_processing_ms=8066`, bottleneck=`graph_generation_ms`.
+  - `/Users/aditya/Downloads/clip of ooty retreat.mov`: success; telemetry `transcription_ms=4427`, `graph_generation_ms=22590`, `total_processing_ms=27364`, bottleneck=`graph_generation_ms`.
+- Export artifacts written to vault:
+  - `/Users/aditya/Library/CloudStorage/GoogleDrive-adityaprasadiskool@gmail.com/My Drive/Exocortex/LCT_E2E/Mantra_Meaning_and_Video_Generation__20260225_171648__5271c0de.canvas`
+  - `/Users/aditya/Library/CloudStorage/GoogleDrive-adityaprasadiskool@gmail.com/My Drive/Exocortex/LCT_E2E/clip of ooty retreat__20260225_171716__4a79135d.canvas`
+- Preexisting issue discovered (out-of-scope but logged): canonical canvas endpoint returns 500 for upload-generated conversations because DB node tables are empty despite saved graph JSON. Blocker status: non-blocking for review (converter fallback used), blocking for canonical API-only export flow.
+- Recommended next step:
+  - add export fallback path in `canvas_api.py` to load persisted `graph_data/chunks` (saved JSON/GCS/local) when `Node` rows are absent for the conversation.

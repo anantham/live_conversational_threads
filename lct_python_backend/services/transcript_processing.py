@@ -282,6 +282,84 @@ def _as_string_map(value: Any) -> Dict[str, str]:
     return normalized
 
 
+def _extract_contextual_relation_pair(value: Any) -> Tuple[str, str]:
+    if not isinstance(value, dict):
+        return "", ""
+    related_node = _as_clean_str(
+        value.get("related_node_name")
+        or value.get("related_node")
+        or value.get("relatedNode")
+        or value.get("source")
+        or value.get("from")
+        or value.get("node")
+    )
+    relation_text = _as_clean_str(
+        value.get("relation_text")
+        or value.get("relationText")
+        or value.get("description")
+        or value.get("explanation")
+    )
+    return related_node, relation_text
+
+
+def _looks_like_single_contextual_relation_object(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    keys = {str(key).strip() for key in value.keys()}
+    if not keys:
+        return False
+    allowed = {
+        "related_node_name",
+        "related_node",
+        "relatedNode",
+        "source",
+        "from",
+        "node",
+        "relation_text",
+        "relationText",
+        "description",
+        "explanation",
+        "relation_type",
+        "type",
+    }
+    return keys.issubset(allowed)
+
+
+def _normalize_contextual_relation(value: Any) -> Dict[str, str]:
+    normalized: Dict[str, str] = {}
+
+    def _add_entry(node_name: str, relation_text: str) -> None:
+        related = _as_clean_str(node_name)
+        text = _as_clean_str(relation_text)
+        if not related or not text:
+            return
+        if related not in normalized:
+            normalized[related] = text
+
+    if isinstance(value, dict):
+        if _looks_like_single_contextual_relation_object(value):
+            related_node, relation_text = _extract_contextual_relation_pair(value)
+            _add_entry(related_node, relation_text)
+            return normalized
+
+        for node_name, relation_text in _as_string_map(value).items():
+            _add_entry(node_name, relation_text)
+        return normalized
+
+    if isinstance(value, list):
+        for item in value:
+            related_node, relation_text = _extract_contextual_relation_pair(item)
+            if related_node and relation_text:
+                _add_entry(related_node, relation_text)
+                continue
+            if isinstance(item, dict):
+                for node_name, text in _as_string_map(item).items():
+                    _add_entry(node_name, text)
+        return normalized
+
+    return normalized
+
+
 def _slugify(value: str) -> str:
     cleaned = "".join(char.lower() if char.isalnum() else "-" for char in value)
     slug = "-".join(segment for segment in cleaned.split("-") if segment)
@@ -418,7 +496,7 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
         successor = _as_clean_str(raw.get("successor")) or None
         summary = _as_clean_str(raw.get("summary") or raw.get("node_text") or raw.get("text")) or node_name
         source_excerpt = _as_clean_str(raw.get("source_excerpt") or raw.get("source") or summary)
-        contextual_relation = _as_string_map(raw.get("contextual_relation"))
+        contextual_relation = _normalize_contextual_relation(raw.get("contextual_relation"))
         edge_relations = _normalize_edge_relations(raw.get("edge_relations"))
         edge_relations.extend(incoming_edges_by_target.get(node_name, []))
 
@@ -426,6 +504,27 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
             related_name = relation["related_node"]
             if related_name not in contextual_relation:
                 contextual_relation[related_name] = relation["relation_text"]
+
+        existing_edge_keys = {
+            (
+                relation.get("related_node", ""),
+                relation.get("relation_type", ""),
+                relation.get("relation_text", ""),
+            )
+            for relation in edge_relations
+        }
+        for related_name, relation_text in contextual_relation.items():
+            contextual_edge = (related_name, "contextual", relation_text)
+            if contextual_edge in existing_edge_keys:
+                continue
+            edge_relations.append(
+                {
+                    "related_node": related_name,
+                    "relation_type": "contextual",
+                    "relation_text": relation_text,
+                }
+            )
+            existing_edge_keys.add(contextual_edge)
 
         linked_nodes = _as_string_list(raw.get("linked_nodes"))
         for related_name in contextual_relation:
@@ -471,7 +570,7 @@ def _call_local_chat_json(
         raise ValueError("Local LLM base_url is required.")
 
     payload = {
-        "model": config.get("chat_model", "glm-4.6v-flash"),
+        "model": config.get("chat_model", "zai-org/glm-4.6v-flash"),
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
