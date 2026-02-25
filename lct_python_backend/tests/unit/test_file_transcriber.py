@@ -397,6 +397,36 @@ async def test_transcribe_audio_chunked_retries_transient_errors(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_transcribe_audio_chunked_skips_empty_chunks(tmp_path: Path):
+    """A chunk returning empty text should be skipped, not abort the pipeline."""
+    wav = _make_silent_wav(tmp_path, duration_s=6.0)
+    call_count = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        # chunk 2 of 3 returns empty — simulates a silent section
+        if call_count == 2:
+            return httpx.Response(200, json={"text": ""})
+        return httpx.Response(200, json={"text": f"chunk-{call_count}"})
+
+    result = await transcribe_audio_chunked(
+        wav,
+        http_url="http://stt.local/transcriptions",
+        chunk_duration_s=2,
+        overlap_s=0,
+        chunk_max_retries=0,
+        chunk_retry_backoff_s=0.0,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert call_count == 3
+    # Empty chunk skipped; transcript stitched from the other two
+    assert "chunk-1" in result
+    assert "chunk-3" in result
+
+
+@pytest.mark.asyncio
 async def test_transcribe_audio_chunked_does_not_retry_non_retryable_http_status(tmp_path: Path):
     """Permanent 4xx STT failures should fail fast without retries."""
     wav = _make_silent_wav(tmp_path, duration_s=4.0)
@@ -552,6 +582,58 @@ async def test_transcribe_uploaded_file_source_type_override(tmp_path: Path):
     )
     assert result.source_type == "text"
     assert result.metadata["file_kind"] == "text"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_uploaded_file_falls_back_to_remote_provider(monkeypatch, tmp_path: Path):
+    import lct_python_backend.services.file_transcriber as mod
+
+    wav = _make_silent_wav(tmp_path, duration_s=1.5, name="clip.wav")
+    calls: list[str] = []
+    fallback_events: list[tuple[str, str, str]] = []
+
+    async def fake_chunked(*_args, **kwargs):
+        url = str(kwargs.get("http_url") or "")
+        calls.append(url)
+        if len(calls) == 1:
+            request = httpx.Request("POST", url or "http://localhost")
+            raise httpx.ReadError("local provider down", request=request)
+        return "speaker one: recovered transcript"
+
+    async def on_fallback(from_provider: str, to_provider: str, error: str):
+        fallback_events.append((from_provider, to_provider, error))
+
+    monkeypatch.setattr(mod, "transcribe_audio_chunked", AsyncMock(side_effect=fake_chunked))
+
+    result = await mod.transcribe_uploaded_file(
+        temp_path=wav,
+        filename="clip.wav",
+        content_type="audio/wav",
+        stt_settings={
+            "provider": "whisper",
+            "provider_http_urls": {
+                "parakeet": "http://localhost:5092/v1/audio/transcriptions",
+                "whisper": "http://100.81.65.74:8001/v1/audio/transcriptions",
+            },
+            "http_timeout_seconds": 120.0,
+        },
+        enable_parakeet_pyannote=False,
+        on_provider_fallback=on_fallback,
+    )
+
+    assert result.source_type == "audio"
+    assert result.transcript_text == "speaker one: recovered transcript"
+    assert calls == [
+        "http://localhost:5092/v1/audio/transcriptions",
+        "http://100.81.65.74:8001/v1/audio/transcriptions",
+    ]
+    assert result.metadata["provider"] == "whisper"
+    assert result.metadata["provider_fallback_used"] is True
+    assert result.metadata["provider_fallback_from"] == "parakeet"
+    assert result.metadata["provider_fallback_to"] == "whisper"
+    assert result.metadata["provider_attempt_count"] == 2
+    assert fallback_events and fallback_events[0][0] == "parakeet"
+    assert fallback_events[0][1] == "whisper"
 
 
 @pytest.mark.asyncio

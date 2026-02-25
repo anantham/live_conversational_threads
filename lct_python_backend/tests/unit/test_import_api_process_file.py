@@ -249,6 +249,127 @@ def test_process_file_streams_processor_status_context(monkeypatch):
     )
 
 
+def test_process_file_emits_fallback_status_notice(monkeypatch):
+    import_api = _load_import_api_with_stubs(monkeypatch)
+    client = _build_test_client(import_api)
+
+    monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
+    monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+
+    async def fake_transcribe_uploaded_file(*args, **kwargs):
+        on_provider_fallback = kwargs.get("on_provider_fallback")
+        if on_provider_fallback:
+            await on_provider_fallback("parakeet", "whisper", "ReadError")
+        return SimpleNamespace(
+            transcript_text="alpha\nbeta",
+            source_type="audio",
+            metadata={
+                "provider": "whisper",
+                "provider_fallback_used": True,
+                "provider_fallback_from": "parakeet",
+                "provider_fallback_to": "whisper",
+            },
+        )
+
+    monkeypatch.setattr(import_api, "transcribe_uploaded_file", AsyncMock(side_effect=fake_transcribe_uploaded_file))
+
+    class FakeProcessor:
+        def __init__(self, send_update, send_status=None, llm_config=None):
+            self._send_update = send_update
+            self.existing_json = []
+            self.chunk_dict = {}
+
+        async def handle_final_text(self, _text):
+            return None
+
+        async def flush(self):
+            self.existing_json = [{"id": "n1", "node_name": "Node 1", "chunk_id": "c1"}]
+            self.chunk_dict = {"c1": "alpha beta"}
+            await self._send_update(self.existing_json, self.chunk_dict)
+
+    monkeypatch.setattr(import_api, "TranscriptProcessor", FakeProcessor)
+
+    with client.stream(
+        "POST",
+        "/api/import/process-file",
+        files={"file": ("clip.wav", b"RIFF....WAVE", "audio/wav")},
+    ) as response:
+        assert response.status_code == 200
+        events = _parse_sse_events("".join(response.iter_text()))
+
+    status_events = [payload for name, payload in events if name == "status"]
+    fallback_events = [payload for payload in status_events if payload.get("notice_type") == "stt_provider_fallback"]
+    assert fallback_events, "expected stt_provider_fallback status notice"
+    assert fallback_events[0]["fallback"]["from_provider"] == "parakeet"
+    assert fallback_events[0]["fallback"]["to_provider"] == "whisper"
+    assert "Falling back to whisper" in fallback_events[0]["message"]
+
+
+def test_process_file_emits_transcribing_transcript_events(monkeypatch):
+    import_api = _load_import_api_with_stubs(monkeypatch)
+    client = _build_test_client(import_api)
+
+    monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
+    monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+
+    async def fake_transcribe_uploaded_file(*args, **kwargs):
+        on_chunk_progress = kwargs.get("on_chunk_progress")
+        if on_chunk_progress:
+            await on_chunk_progress(1, 4, "first transcribed chunk")
+            await on_chunk_progress(2, 4, "second transcribed chunk")
+        return SimpleNamespace(
+            transcript_text="first transcribed chunk\nsecond transcribed chunk",
+            source_type="audio",
+            metadata={"provider": "whisper"},
+        )
+
+    monkeypatch.setattr(import_api, "transcribe_uploaded_file", AsyncMock(side_effect=fake_transcribe_uploaded_file))
+
+    class FakeProcessor:
+        def __init__(self, send_update, send_status=None, llm_config=None):
+            self._send_update = send_update
+            self.existing_json = []
+            self.chunk_dict = {}
+
+        async def handle_final_text(self, _text):
+            return None
+
+        async def flush(self):
+            self.existing_json = [{"id": "n1", "node_name": "Node 1", "chunk_id": "c1"}]
+            self.chunk_dict = {"c1": "first second"}
+            await self._send_update(self.existing_json, self.chunk_dict)
+
+    monkeypatch.setattr(import_api, "TranscriptProcessor", FakeProcessor)
+
+    with client.stream(
+        "POST",
+        "/api/import/process-file",
+        files={"file": ("clip.wav", b"RIFF....WAVE", "audio/wav")},
+    ) as response:
+        assert response.status_code == 200
+        events = _parse_sse_events("".join(response.iter_text()))
+
+    transcript_events = [payload for name, payload in events if name == "transcript"]
+    stt_events = [payload for payload in transcript_events if payload.get("phase") == "transcribing"]
+    assert len(stt_events) == 2
+    assert stt_events[0]["text"] == "first transcribed chunk"
+    assert stt_events[0]["index"] == 1
+    assert stt_events[0]["total"] == 4
+    telemetry = stt_events[0].get("telemetry") or {}
+    assert telemetry.get("stt_chunks_completed") == 1
+    assert telemetry.get("stt_chunks_total") == 4
+
+    transcribing_statuses = [
+        payload
+        for name, payload in events
+        if name == "status" and payload.get("stage") == "transcribing"
+    ]
+    assert transcribing_statuses
+    status_telemetry = transcribing_statuses[-1].get("telemetry") or {}
+    assert "transcription_eta_ms" in status_telemetry
+    assert "transcription_estimated_total_ms" in status_telemetry
+
+
 def test_process_file_enqueues_async_diarization_job_for_audio(monkeypatch):
     import_api = _load_import_api_with_stubs(monkeypatch)
     client = _build_test_client(import_api)
