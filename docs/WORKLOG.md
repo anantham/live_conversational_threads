@@ -1,5 +1,55 @@
 # WORKLOG
 
+## 2026-02-25T15:33:01Z
+- `lct_python_backend/import_api.py` (lines 494-547, 677): Enhanced `/api/import/process-file` streaming behavior for realtime UX:
+  - `_on_chunk_progress(...)` now computes and emits transcription ETA telemetry (`transcription_eta_ms`, `transcription_estimated_total_ms`) alongside chunk counters.
+  - emits realtime `transcript` SSE events during STT with `phase="transcribing"` so frontend can render text as chunks land.
+  - marks existing graph-analysis transcript events explicitly as `phase="analyzing"` to keep frontend phase handling deterministic.
+- `lct_app/src/components/FileUpload.jsx` (lines 24-44, 85-86, 138-231, 316-331): Added first-pass realtime upload UX:
+  - ETA rendering from transcribing telemetry.
+  - live transcript preview panel fed by `transcript` SSE events with `phase="transcribing"`.
+  - phase-aware transcript handling so analysis-stage progress updates still work while STT-stage transcript lines stream in.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (line 308): Added regression coverage proving STT-phase transcript events + ETA telemetry keys are emitted.
+- `docs/TECH_DEBT.md` (table rows): Updated `import_api.py` LOC/scope note and added `FileUpload.jsx` as a decomposition candidate after this UI-state/SSE parsing expansion.
+- Validation:
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_import_api_process_file.py tests/unit/test_file_transcriber.py` (55 passed)
+  - `./.venv/bin/python -m py_compile lct_python_backend/import_api.py lct_python_backend/tests/unit/test_import_api_process_file.py` (passed)
+  - `cd lct_app && npx eslint src/components/FileUpload.jsx` (passed)
+  - `cd lct_app && npm run -s build` (passed)
+
+## 2026-02-25T15:06:53Z
+- `lct_python_backend/services/file_transcriber.py` (lines 87-95, 162-270, 944-1109): Added upload STT local-first provider selection (`STT_UPLOAD_LOCAL_FIRST`) with remote fallback (`STT_UPLOAD_REMOTE_FALLBACK`) and provider-candidate resolution, plus per-attempt metadata (`provider_attempts`, `provider_fallback_*`) and `on_provider_fallback(...)` callback hook so callers can surface fallback events to users.
+- `lct_python_backend/import_api.py` (lines 519-579): Wired fallback callback into `/api/import/process-file` worker, emitting SSE `status` events with `notice_type="stt_provider_fallback"` and fallback payload (`from_provider`, `to_provider`, error), and enriched final transcribed-stage messaging/telemetry when fallback was used.
+- `lct_app/src/components/FileUpload.jsx` (lines 69-75, 143-171, 225, 268-273): Added deduped fallback toast UI for upload flows; consumes SSE `stt_provider_fallback` notices (or transcribed metadata fallback flag as backup) and surfaces a non-blocking user message when local STT fails over to remote.
+- `lct_python_backend/.env.example` (lines 93-97): Documented new upload routing toggles (`STT_UPLOAD_LOCAL_FIRST`, `STT_UPLOAD_REMOTE_FALLBACK`) so local-first/remote-fallback behavior is explicit and configurable.
+- Local runtime config (non-committed): set `lct_python_backend/.env` `IMPORT_ASYNC_DIARIZATION_ENABLED=true` to honor delayed diarization mode for this machine/session.
+- `lct_python_backend/tests/unit/test_file_transcriber.py` (line 588): Added regression test proving local provider failure falls back to remote provider and records fallback metadata/callback events.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (line 252): Added SSE regression test proving fallback status notice is emitted for frontend toast handling.
+- `docs/TECH_DEBT.md` (table rows for `import_api.py`, `file_transcriber.py`): Updated LOC and decomposition notes after adding provider-fallback routing concerns.
+- Validation:
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_file_transcriber.py tests/unit/test_import_api_process_file.py` (54 passed)
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/file_transcriber.py lct_python_backend/import_api.py lct_python_backend/tests/unit/test_file_transcriber.py lct_python_backend/tests/unit/test_import_api_process_file.py` (passed)
+  - `cd lct_app && npx eslint src/components/FileUpload.jsx` (passed)
+  - `cd lct_app && npm run -s build` (passed)
+
+## 2026-02-25T13:30:39Z
+- `lct_app/src/components/TimelineRibbon.jsx` (lines 5-58, 28-118): Added muted timestamp labels under timeline dots to improve click-target clarity; implemented resilient timestamp normalization across common node fields (`timestamp_start`, `start_time`, `timestamp`, metadata mirrors) and formatted values as `MM:SS` / `H:MM:SS`. Also updated ribbon spacing/height and dot rail alignment to accommodate readable labels.
+- Validation:
+  - `cd lct_app && npm run build` (passed)
+
+## 2026-02-25T13:25:36Z
+- `lct_python_backend/services/transcript_processing.py` (lines 285-360, 499-532): Added contextual-relation normalization for legacy single-relation objects (`{"related_node_name": ..., "relation_text": ...}`) and list variants; added backfill of `edge_relations` from normalized contextual links so relationship edges are emitted consistently instead of collapsing to temporal-only chains.
+- `lct_app/src/components/MinimalGraph.jsx` (lines 40-82, 206-222, 234-279): Added backward-compatible contextual-relation parsing for malformed objects and fixed timeline selection UX by centering viewport on selected nodes (instead of always auto-following latest node).
+- `lct_python_backend/canvas_api.py` (lines 67-127, 130-553, 311-419): Reworked Canvas conversion to use stable canonical IDs, robust edge reference resolution (UUID/name/legacy slug), contextual relation extraction, and component-aware layout so exported canvases preserve non-linear relationships and avoid vertical-stack degradation; updated Canvas import path to map predecessor/successor/contextual links via parsed node titles instead of raw node IDs.
+- `lct_app/src/components/NodeDetail.jsx` (lines 4-53): Added contextual-relation normalization in detail panel so relationship labels render correctly for legacy payload shapes.
+- `lct_app/src/components/ContextualGraph.jsx` (lines 30-72, 441-447, 614-621): Added same contextual-relation normalization helper for graph fallback edges and context panel rendering.
+- `lct_python_backend/tests/unit/test_transcript_processing_schema.py` (lines 61-85): Added regression test covering coercion of single contextual-relation objects into canonical relation maps/edges.
+- `lct_python_backend/tests/unit/test_canvas_api_converter.py` (lines 1-93): Added converter regression tests for malformed contextual-relation input and Canvas import correctness when node IDs are UUIDs.
+- Validation:
+  - `cd lct_python_backend && ../.venv/bin/python -m py_compile services/transcript_processing.py canvas_api.py tests/unit/test_transcript_processing_schema.py tests/unit/test_canvas_api_converter.py`
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_transcript_processing_schema.py tests/unit/test_canvas_api_converter.py` (20 passed)
+  - `cd lct_app && npm run build` (passed)
+
 ## 2026-02-25T06:05:46Z
 - Runtime setup and benchmark execution for Path-A validation (no tracked source edits besides issue logs):
   - Started Docker daemon and verified local Parakeet service health on `http://localhost:5092/health`.

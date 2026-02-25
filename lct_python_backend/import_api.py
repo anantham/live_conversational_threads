@@ -491,12 +491,30 @@ async def process_file(
             )
             transcription_started_at = time.perf_counter()
 
-            async def _on_chunk_progress(chunk_idx: int, total: int, _text: str):
+            async def _on_chunk_progress(chunk_idx: int, total: int, chunk_text: str):
                 # Map chunk progress into the 0.10–0.35 range of overall progress
                 frac = chunk_idx / total
                 progress = 0.10 + frac * 0.25
                 telemetry["stt_chunks_completed"] = chunk_idx
                 telemetry["stt_chunks_total"] = total
+                transcription_elapsed_ms = (
+                    _elapsed_ms(transcription_started_at)
+                    if transcription_started_at is not None
+                    else None
+                )
+                transcription_eta_ms = None
+                transcription_estimated_total_ms = None
+                if (
+                    isinstance(transcription_elapsed_ms, int)
+                    and chunk_idx > 0
+                    and total > 0
+                ):
+                    average_per_chunk_ms = transcription_elapsed_ms / chunk_idx
+                    transcription_estimated_total_ms = int(average_per_chunk_ms * total)
+                    transcription_eta_ms = max(
+                        0,
+                        transcription_estimated_total_ms - transcription_elapsed_ms,
+                    )
                 await emit(
                     "status",
                     {
@@ -505,13 +523,65 @@ async def process_file(
                         "message": f"Transcribing audio chunk {chunk_idx}/{total}...",
                         "telemetry": {
                             "total_elapsed_ms": _elapsed_ms(pipeline_started_at),
+                            "transcription_elapsed_ms": transcription_elapsed_ms,
+                            "transcription_eta_ms": transcription_eta_ms,
+                            "transcription_estimated_total_ms": transcription_estimated_total_ms,
+                            "stt_chunks_completed": chunk_idx,
+                            "stt_chunks_total": total,
+                        },
+                    },
+                )
+                normalized_chunk_text = str(chunk_text or "").strip()
+                if normalized_chunk_text:
+                    await emit(
+                        "transcript",
+                        {
+                            "phase": "transcribing",
+                            "chunk_id": f"stt-chunk-{chunk_idx}",
+                            "index": chunk_idx,
+                            "total": total,
+                            "text": normalized_chunk_text,
+                            "telemetry": {
+                                "total_elapsed_ms": _elapsed_ms(pipeline_started_at),
+                                "transcription_elapsed_ms": transcription_elapsed_ms,
+                                "transcription_eta_ms": transcription_eta_ms,
+                                "stt_chunks_completed": chunk_idx,
+                                "stt_chunks_total": total,
+                            },
+                        },
+                    )
+
+            async def _on_provider_fallback(
+                from_provider: str,
+                to_provider: str,
+                error_message: str,
+            ) -> None:
+                fallback_record = {
+                    "from_provider": str(from_provider or "").strip().lower() or "unknown",
+                    "to_provider": str(to_provider or "").strip().lower() or "unknown",
+                    "error": str(error_message or "").strip() or "unknown_error",
+                }
+                fallback_events = telemetry.setdefault("stt_provider_fallbacks", [])
+                if isinstance(fallback_events, list):
+                    fallback_events.append(fallback_record)
+                await emit(
+                    "status",
+                    {
+                        "stage": "transcribing",
+                        "progress": 0.2,
+                        "notice_type": "stt_provider_fallback",
+                        "message": (
+                            f"Local STT provider {fallback_record['from_provider']} failed. "
+                            f"Falling back to {fallback_record['to_provider']}."
+                        ),
+                        "fallback": fallback_record,
+                        "telemetry": {
+                            "total_elapsed_ms": _elapsed_ms(pipeline_started_at),
                             "transcription_elapsed_ms": (
                                 _elapsed_ms(transcription_started_at)
                                 if transcription_started_at is not None
                                 else None
                             ),
-                            "stt_chunks_completed": chunk_idx,
-                            "stt_chunks_total": total,
                         },
                     },
                 )
@@ -524,20 +594,30 @@ async def process_file(
                 provider_override=provider,
                 source_type_override=resolved_source_type,
                 on_chunk_progress=_on_chunk_progress if is_likely_audio else None,
+                on_provider_fallback=_on_provider_fallback if is_likely_audio else None,
             )
             source_timings = transcript_result.metadata.get("timings_ms", {})
             if isinstance(source_timings, dict):
                 telemetry["stt_provider_ms"] = source_timings.get("stt_ms")
                 telemetry["diarization_ms"] = source_timings.get("diarization_ms")
                 telemetry["alignment_ms"] = source_timings.get("alignment_ms")
+            if transcript_result.metadata.get("provider_fallback_used"):
+                telemetry["stt_provider_fallback_used"] = True
+                telemetry["stt_provider_fallback_from"] = transcript_result.metadata.get("provider_fallback_from")
+                telemetry["stt_provider_fallback_to"] = transcript_result.metadata.get("provider_fallback_to")
             if transcription_started_at is not None:
                 telemetry["transcription_ms"] = _elapsed_ms(transcription_started_at)
+            status_message = f"Got {transcript_result.source_type} transcript."
+            if transcript_result.source_type == "audio" and transcript_result.metadata.get("provider_fallback_used"):
+                fallback_from = transcript_result.metadata.get("provider_fallback_from") or "local"
+                fallback_to = transcript_result.metadata.get("provider") or "fallback provider"
+                status_message = f"Got audio transcript via fallback ({fallback_from} -> {fallback_to})."
             await emit(
                 "status",
                 {
                     "stage": "transcribed",
                     "progress": 0.35,
-                    "message": f"Got {transcript_result.source_type} transcript.",
+                    "message": status_message,
                     "source_type": transcript_result.source_type,
                     "metadata": transcript_result.metadata,
                     "telemetry": {
@@ -594,6 +674,7 @@ async def process_file(
                 await emit(
                     "transcript",
                     {
+                        "phase": "analyzing",
                         "chunk_id": f"segment-{index}",
                         "index": index,
                         "total": len(transcript_chunks),
