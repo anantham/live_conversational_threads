@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-02-25T17:46:33Z
+- `lct_python_backend/services/import_bulk_processor.py` (lines 1-518): Extracted `/api/import/process-file` SSE pipeline into a dedicated service module, including temp-file lifecycle helpers, event encoding, stage telemetry/ETA emission, fallback notice emission, transcript-to-graph loop orchestration, and async diarization enqueue handling.
+- `lct_python_backend/import_api.py` (lines 39-44, 147-156, 357-389): Replaced in-router bulk-processing monolith with delegation to `build_process_file_stream(...)` while preserving backward-compatible monkeypatch wrapper symbols (`_cleanup_temp_file`, `_copy_temp_upload_for_async_job`, `_diarization_job_urls`, async queue wrappers) used by existing tests.
+- `docs/TECH_DEBT.md` (lines 22-24): Updated `import_api.py` debt entry from 829 -> 389 and added a new decomposition candidate entry for `services/import_bulk_processor.py` after extraction.
+- Validation:
+  - `cd lct_python_backend && ../.venv/bin/python -m py_compile import_api.py services/import_bulk_processor.py tests/unit/test_import_api_process_file.py tests/unit/test_import_api_security.py` (passed)
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_import_api_process_file.py tests/unit/test_import_api_security.py` (20 passed)
+
 ## 2026-02-25T15:33:01Z
 - `lct_python_backend/import_api.py` (lines 494-547, 677): Enhanced `/api/import/process-file` streaming behavior for realtime UX:
   - `_on_chunk_progress(...)` now computes and emits transcription ETA telemetry (`transcription_eta_ms`, `transcription_estimated_total_ms`) alongside chunk counters.
