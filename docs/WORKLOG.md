@@ -822,3 +822,21 @@ Manual retry trial (post-change):
 Validation:
 - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_import_api_process_file.py lct_python_backend/tests/unit/test_file_transcriber.py` (51 passed)
 - `./.venv/bin/python -m py_compile lct_python_backend/import_api.py lct_python_backend/services/file_transcriber.py lct_python_backend/services/import_diarization_queue.py lct_python_backend/tests/unit/test_import_api_process_file.py` (passed)
+
+## 2026-02-25T17:18:30Z
+- E2E execution (no repo runtime code changes) for Downloads media through:
+  - `POST /api/import/process-file` (SSE graph generation),
+  - `POST /save_json/` (conversation persistence),
+  - `POST /export/obsidian-canvas/{conversation_id}` (canvas export check).
+- Runtime setup adjustments made to complete E2E:
+  - Started backend in tmux session `lct_backend` using `.venv` with `DATABASE_URL=postgresql://lct_user:lct_password@localhost:5432/lct_dev`.
+  - Started OpenRouter proxy in tmux session `openrouter_proxy` on `http://localhost:12450` and updated LLM settings to `base_url=http://localhost:12450`, `chat_model=openai/gpt-4o-mini` (to bypass remote LM Studio timeout path).
+- Files tested and outcomes:
+  - `/Users/aditya/Downloads/Mantra_Meaning_and_Video_Generation.mp4`: success; telemetry `transcription_ms=1017`, `graph_generation_ms=7010`, `total_processing_ms=8066`, bottleneck=`graph_generation_ms`.
+  - `/Users/aditya/Downloads/clip of ooty retreat.mov`: success; telemetry `transcription_ms=4427`, `graph_generation_ms=22590`, `total_processing_ms=27364`, bottleneck=`graph_generation_ms`.
+- Export artifacts written to vault:
+  - `/Users/aditya/Library/CloudStorage/GoogleDrive-adityaprasadiskool@gmail.com/My Drive/Exocortex/LCT_E2E/Mantra_Meaning_and_Video_Generation__20260225_171648__5271c0de.canvas`
+  - `/Users/aditya/Library/CloudStorage/GoogleDrive-adityaprasadiskool@gmail.com/My Drive/Exocortex/LCT_E2E/clip of ooty retreat__20260225_171716__4a79135d.canvas`
+- Preexisting issue discovered (out-of-scope but logged): canonical canvas endpoint returns 500 for upload-generated conversations because DB node tables are empty despite saved graph JSON. Blocker status: non-blocking for review (converter fallback used), blocking for canonical API-only export flow.
+- Recommended next step:
+  - add export fallback path in `canvas_api.py` to load persisted `graph_data/chunks` (saved JSON/GCS/local) when `Node` rows are absent for the conversation.
