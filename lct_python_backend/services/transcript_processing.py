@@ -471,7 +471,7 @@ def _call_local_chat_json(
         raise ValueError("Local LLM base_url is required.")
 
     payload = {
-        "model": config.get("chat_model", "glm-4.6v-flash"),
+        "model": config.get("chat_model", "zai-org/glm-4.6v-flash"),
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},

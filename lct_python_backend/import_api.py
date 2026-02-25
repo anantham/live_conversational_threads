@@ -483,10 +483,11 @@ async def process_file(
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception("Bulk file processing failed for %s", filename)
+            err_msg = str(exc) or f"{type(exc).__name__}"
             await emit(
                 "error",
                 {
-                    "message": str(exc),
+                    "message": err_msg,
                     "file_name": filename,
                 },
             )
