@@ -16,7 +16,7 @@ import httpx
 from pydub import AudioSegment
 
 from lct_python_backend.parsers import GoogleMeetParser
-from lct_python_backend.services.stt_http_transcriber import extract_transcript_text
+from lct_python_backend.services.stt_http_transcriber import extract_diarized_segments, extract_transcript_text
 
 logger = logging.getLogger("lct_backend")
 
@@ -281,7 +281,14 @@ async def transcribe_audio_file(
         except json.JSONDecodeError:
             parsed_payload = {"text": raw_text}
 
-    transcript = extract_transcript_text(parsed_payload).strip()
+    # Prefer diarized speaker segments when available; fall back to plain text
+    segments = extract_diarized_segments(parsed_payload)
+    if segments:
+        transcript = "\n".join(
+            f"{seg['speaker']}: {seg['text']}" for seg in segments
+        ).strip()
+    else:
+        transcript = extract_transcript_text(parsed_payload).strip()
     if not transcript:
         raise RuntimeError("STT provider returned empty transcript.")
     return transcript

@@ -19,7 +19,7 @@ def get_env_llm_defaults() -> Dict[str, Any]:
     return {
         "mode": os.getenv("DEFAULT_LLM_MODE", "local"),
         "base_url": os.getenv("LOCAL_LLM_BASE_URL", TAILSCALE_LLM_BASE_URL),
-        "chat_model": os.getenv("LOCAL_LLM_CHAT_MODEL", "glm-4.6v-flash"),
+        "chat_model": os.getenv("LOCAL_LLM_CHAT_MODEL", "zai-org/glm-4.6v-flash"),
         "embedding_model": os.getenv("LOCAL_LLM_EMBEDDING_MODEL", "text-embedding-qwen3-embedding-8b"),
         "json_mode": _to_bool(os.getenv("LOCAL_LLM_JSON_MODE", "true")),
         "timeout_seconds": float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "120")),
