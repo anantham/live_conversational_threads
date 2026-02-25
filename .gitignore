@@ -189,9 +189,12 @@ outputs/
 /.claude/
 /.serena/
 /TheWhisper/
-/lct_python_backend/recordings/
+**/recordings/
 /diagnostic_db_check.py
 /.coverage
 /lct_python_backend/.coverage
 /test_reactflow_warnings.js
 /test_transcript.txt
+
+# macOS Finder duplicate copies ("filename (1).ext")
+* (1).*

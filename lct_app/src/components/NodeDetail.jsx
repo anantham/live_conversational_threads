@@ -1,13 +1,55 @@
 import { useEffect, useMemo } from "react";
 import PropTypes from "prop-types";
 
+function normalizeContextualRelations(contextualRelation) {
+  if (!contextualRelation || typeof contextualRelation !== "object" || Array.isArray(contextualRelation)) {
+    return [];
+  }
+
+  const relatedNode =
+    contextualRelation.related_node_name ||
+    contextualRelation.related_node ||
+    contextualRelation.relatedNode ||
+    contextualRelation.source ||
+    contextualRelation.from ||
+    contextualRelation.node;
+  const relationText =
+    contextualRelation.relation_text ||
+    contextualRelation.relationText ||
+    contextualRelation.description ||
+    contextualRelation.explanation;
+  const singleRelationKeys = new Set([
+    "related_node_name",
+    "related_node",
+    "relatedNode",
+    "source",
+    "from",
+    "node",
+    "relation_text",
+    "relationText",
+    "description",
+    "explanation",
+    "relation_type",
+    "type",
+  ]);
+  const keys = Object.keys(contextualRelation);
+  const looksLikeSingleRelation =
+    Boolean(relatedNode && relationText) && keys.every((key) => singleRelationKeys.has(key));
+
+  if (looksLikeSingleRelation) {
+    return [[String(relatedNode), String(relationText)]];
+  }
+
+  return Object.entries(contextualRelation)
+    .filter(([name, text]) => Boolean(String(name).trim()) && Boolean(String(text).trim()))
+    .map(([name, text]) => [String(name), String(text)]);
+}
+
 export default function NodeDetail({ node, chunkDict, onClose }) {
   const safeNode = node ?? null;
 
   const relations = Array.isArray(safeNode?.edge_relations) ? safeNode.edge_relations : [];
-  const contextualRelations = safeNode?.contextual_relation
-    ? Object.entries(safeNode.contextual_relation)
-    : [];
+  const contextualRelations = normalizeContextualRelations(safeNode?.contextual_relation);
 
   // Raw transcript for this node's chunk
   const rawTranscript = safeNode?.chunk_id ? chunkDict?.[safeNode.chunk_id] || null : null;

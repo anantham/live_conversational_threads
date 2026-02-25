@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Upload, X } from "lucide-react";
 
@@ -21,12 +21,27 @@ const ACCEPTED_FILE_TYPES = [
   ".srt",
   ".pdf",
 ].join(",");
+const LIVE_STT_LINES_MAX = 8;
 
 const clampProgress = (value) => {
   const parsed = Number(value);
   if (Number.isNaN(parsed)) return 0;
   return Math.min(1, Math.max(0, parsed));
 };
+
+const formatDuration = (milliseconds) => {
+  const ms = Number(milliseconds);
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+};
+
+const normalizeTranscriptLine = (value) => String(value || "").replace(/\s+/g, " ").trim();
 
 function parseEventBlock(block) {
   let eventName = "message";
@@ -62,13 +77,25 @@ export default function FileUpload({
 }) {
   const inputRef = useRef(null);
   const abortRef = useRef(null);
+  const fallbackNoticeKeyRef = useRef("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState("");
+  const [fallbackToast, setFallbackToast] = useState("");
+  const [etaText, setEtaText] = useState("");
+  const [liveTranscriptLines, setLiveTranscriptLines] = useState([]);
+
+  useEffect(() => {
+    if (!fallbackToast) return undefined;
+    const timeoutId = window.setTimeout(() => setFallbackToast(""), 8000);
+    return () => window.clearTimeout(timeoutId);
+  }, [fallbackToast]);
 
   const clearLocalState = () => {
     setIsProcessing(false);
     setProgress(0);
+    setEtaText("");
+    setLiveTranscriptLines([]);
   };
 
   const cancelUpload = () => {
@@ -88,6 +115,10 @@ export default function FileUpload({
     setIsProcessing(true);
     setProgress(0.02);
     setStatusText(`Uploading ${file.name}...`);
+    setFallbackToast("");
+    setEtaText("");
+    setLiveTranscriptLines([]);
+    fallbackNoticeKeyRef.current = "";
     const abortController = new AbortController();
     abortRef.current = abortController;
 
@@ -126,15 +157,79 @@ export default function FileUpload({
           if (parsed) {
             const { eventName, payload } = parsed;
             if (eventName === "status") {
-              setStatusText(payload.message || "Processing...");
+              const stage = String(payload.stage || "").trim().toLowerCase();
+              const telemetry = payload.telemetry && typeof payload.telemetry === "object" ? payload.telemetry : {};
+              let nextStatusText = payload.message || "Processing...";
+              if (stage === "transcribing") {
+                const chunksDone = Number(telemetry.stt_chunks_completed || 0);
+                const chunksTotal = Number(telemetry.stt_chunks_total || 0);
+                const elapsedMs = Number(telemetry.transcription_elapsed_ms || 0);
+                let etaMs = Number(telemetry.transcription_eta_ms);
+                if (!Number.isFinite(etaMs) || etaMs < 0) {
+                  if (chunksDone > 0 && chunksTotal > chunksDone && elapsedMs > 0) {
+                    const avgChunkMs = elapsedMs / chunksDone;
+                    etaMs = Math.max(0, Math.round(avgChunkMs * (chunksTotal - chunksDone)));
+                  } else {
+                    etaMs = NaN;
+                  }
+                }
+                const etaLabel = formatDuration(etaMs);
+                if (etaLabel) {
+                  setEtaText(`ETA ${etaLabel}`);
+                } else {
+                  setEtaText("");
+                }
+              } else {
+                setEtaText("");
+              }
+              setStatusText(nextStatusText);
               if (payload.progress != null) {
                 setProgress(clampProgress(payload.progress));
               }
+              if (payload.notice_type === "stt_provider_fallback") {
+                const fallback = payload.fallback && typeof payload.fallback === "object" ? payload.fallback : {};
+                const fromProvider = String(fallback.from_provider || "local").trim().toLowerCase() || "local";
+                const toProvider = String(fallback.to_provider || "remote").trim().toLowerCase() || "remote";
+                const noticeKey = `${fromProvider}->${toProvider}`;
+                if (fallbackNoticeKeyRef.current !== noticeKey) {
+                  fallbackNoticeKeyRef.current = noticeKey;
+                  const notice = `Local STT (${fromProvider}) failed. Using ${toProvider} fallback.`;
+                  setFallbackToast(notice);
+                  setMessage?.(notice);
+                }
+              } else if (
+                payload.stage === "transcribed" &&
+                payload.metadata &&
+                payload.metadata.provider_fallback_used
+              ) {
+                const fromProvider = String(payload.metadata.provider_fallback_from || "local").trim().toLowerCase();
+                const toProvider = String(payload.metadata.provider || payload.metadata.provider_fallback_to || "remote")
+                  .trim()
+                  .toLowerCase();
+                const noticeKey = `${fromProvider || "local"}->${toProvider || "remote"}`;
+                if (fallbackNoticeKeyRef.current !== noticeKey) {
+                  fallbackNoticeKeyRef.current = noticeKey;
+                  const notice = `Transcription used fallback (${fromProvider || "local"} -> ${toProvider || "remote"}).`;
+                  setFallbackToast(notice);
+                  setMessage?.(notice);
+                }
+              }
             }
             if (eventName === "transcript") {
+              const phase = String(payload.phase || "").trim().toLowerCase();
               const index = Number(payload.index || 0);
               const total = Number(payload.total || 0);
-              if (index > 0 && total > 0) {
+              if (phase === "transcribing") {
+                const line = normalizeTranscriptLine(payload.text);
+                if (line) {
+                  setLiveTranscriptLines((previous) => {
+                    if (previous[previous.length - 1] === line) {
+                      return previous;
+                    }
+                    return [...previous, line].slice(-LIVE_STT_LINES_MAX);
+                  });
+                }
+              } else if (index > 0 && total > 0) {
                 setStatusText(`Analyzing chunk ${index}/${total}...`);
                 const ratio = 0.55 + (index / total) * 0.35;
                 setProgress(clampProgress(ratio));
@@ -184,7 +279,7 @@ export default function FileUpload({
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="relative flex items-center gap-2">
       <button
         type="button"
         onClick={() => inputRef.current?.click()}
@@ -218,11 +313,29 @@ export default function FileUpload({
       {(statusText || isProcessing) && (
         <div className="hidden md:block min-w-[180px] max-w-[260px]">
           <p className="text-[11px] text-gray-500 truncate">{statusText || "Processing..."}</p>
+          {etaText && <p className="text-[10px] text-gray-400">{etaText}</p>}
           <div className="mt-1 h-1 rounded-full bg-gray-200">
             <div
               className="h-1 rounded-full bg-gray-500 transition-all duration-200"
               style={{ width: `${Math.round(clampProgress(progress) * 100)}%` }}
             />
+          </div>
+          {liveTranscriptLines.length > 0 && (
+            <div className="mt-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1">
+              {liveTranscriptLines.slice(-3).map((line, index) => (
+                <p key={`${index}-${line.slice(0, 24)}`} className="text-[10px] text-gray-500 truncate">
+                  {line}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {fallbackToast && (
+        <div className="absolute bottom-full left-0 right-0 mb-2 pointer-events-none">
+          <div className="mx-auto max-w-md rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 shadow-sm">
+            {fallbackToast}
           </div>
         </div>
       )}

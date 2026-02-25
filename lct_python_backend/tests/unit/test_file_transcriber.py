@@ -1,10 +1,13 @@
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
 
 from lct_python_backend.services.file_transcriber import (
+    AudioTranscriptionDetail,
     _decode_text_bytes,
+    _align_asr_segments_to_speakers,
     _split_audio_to_chunks,
     chunk_transcript_lines,
     detect_file_kind,
@@ -15,6 +18,7 @@ from lct_python_backend.services.file_transcriber import (
     parse_vtt_text,
     transcribe_audio_chunked,
     transcribe_audio_file,
+    transcribe_audio_file_detailed,
     transcribe_uploaded_file,
 )
 
@@ -136,6 +140,38 @@ async def test_transcribe_audio_file_success_json_payload(tmp_path: Path):
         transport=httpx.MockTransport(handler),
     )
     assert transcript == "hello from stt"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_audio_file_detailed_extracts_segments(tmp_path: Path):
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"RIFF....WAVE")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            json={
+                "text": "hello world",
+                "segments": [
+                    {"start": 0.0, "end": 0.8, "text": "hello"},
+                    {"start": 0.8, "end": 1.4, "segment": "world"},
+                ],
+            },
+        )
+
+    detail = await transcribe_audio_file_detailed(
+        audio_path,
+        http_url="http://stt.local/v1/audio/transcriptions",
+        response_format="verbose_json",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert detail.transcript_text == "hello world"
+    assert detail.asr_segments == [
+        {"start": 0.0, "end": 0.8, "text": "hello"},
+        {"start": 0.8, "end": 1.4, "text": "world"},
+    ]
 
 
 @pytest.mark.asyncio
@@ -300,6 +336,11 @@ async def test_transcribe_audio_chunked_calls_progress_callback(tmp_path: Path):
 @pytest.mark.asyncio
 async def test_transcribe_audio_chunked_cleans_up_temp_files(tmp_path: Path):
     """Temp chunk files are cleaned up even on error."""
+    import glob
+    import tempfile
+
+    chunk_glob = f"{tempfile.gettempdir()}/stt_chunk_*.wav"
+    existing_chunks = set(glob.glob(chunk_glob))
     wav = _make_silent_wav(tmp_path, duration_s=4.0)
 
     call_count = 0
@@ -317,14 +358,116 @@ async def test_transcribe_audio_chunked_cleans_up_temp_files(tmp_path: Path):
             http_url="http://stt.local/transcriptions",
             chunk_duration_s=2,
             overlap_s=0,
+            chunk_max_retries=0,
             transport=httpx.MockTransport(handler),
         )
 
-    # Verify no leftover stt_chunk_ temp files
-    import glob
-    import tempfile
-    leftover = glob.glob(f"{tempfile.gettempdir()}/stt_chunk_*.wav")
-    assert len(leftover) == 0
+    # Verify this test did not leak additional stt_chunk temp files.
+    leftover = set(glob.glob(chunk_glob))
+    leaked = leftover - existing_chunks
+    assert leaked == set()
+
+
+@pytest.mark.asyncio
+async def test_transcribe_audio_chunked_retries_transient_errors(tmp_path: Path):
+    """Transient network errors should retry per chunk with backoff."""
+    wav = _make_silent_wav(tmp_path, duration_s=4.0)
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise httpx.ReadTimeout("timed out", request=request)
+        return httpx.Response(200, json={"text": f"chunk-{call_count}"})
+
+    result = await transcribe_audio_chunked(
+        wav,
+        http_url="http://stt.local/transcriptions",
+        chunk_duration_s=2,
+        overlap_s=0,
+        chunk_max_retries=2,
+        chunk_retry_backoff_s=0.0,
+        transport=httpx.MockTransport(handler),
+    )
+
+    # 2 chunks total, with first attempt transient-failing once => 3 requests.
+    assert call_count == 3
+    assert result == "chunk-2\nchunk-3"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_audio_chunked_skips_empty_chunks(tmp_path: Path):
+    """A chunk returning empty text should be skipped, not abort the pipeline."""
+    wav = _make_silent_wav(tmp_path, duration_s=6.0)
+    call_count = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        # chunk 2 of 3 returns empty — simulates a silent section
+        if call_count == 2:
+            return httpx.Response(200, json={"text": ""})
+        return httpx.Response(200, json={"text": f"chunk-{call_count}"})
+
+    result = await transcribe_audio_chunked(
+        wav,
+        http_url="http://stt.local/transcriptions",
+        chunk_duration_s=2,
+        overlap_s=0,
+        chunk_max_retries=0,
+        chunk_retry_backoff_s=0.0,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert call_count == 3
+    # Empty chunk skipped; transcript stitched from the other two
+    assert "chunk-1" in result
+    assert "chunk-3" in result
+
+
+@pytest.mark.asyncio
+async def test_transcribe_audio_chunked_does_not_retry_non_retryable_http_status(tmp_path: Path):
+    """Permanent 4xx STT failures should fail fast without retries."""
+    wav = _make_silent_wav(tmp_path, duration_s=4.0)
+    call_count = 0
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(400, text="bad request")
+
+    with pytest.raises(RuntimeError, match="400"):
+        await transcribe_audio_chunked(
+            wav,
+            http_url="http://stt.local/transcriptions",
+            chunk_duration_s=2,
+            overlap_s=0,
+            chunk_max_retries=3,
+            chunk_retry_backoff_s=0.0,
+            transport=httpx.MockTransport(handler),
+        )
+
+    assert call_count == 1
+
+
+def test_align_asr_segments_to_speakers_by_overlap():
+    asr_segments = [
+        {"start": 0.0, "end": 1.0, "text": "hello"},
+        {"start": 1.0, "end": 2.0, "text": "there"},
+        {"start": 2.0, "end": 3.0, "text": "friend"},
+    ]
+    speaker_segments = [
+        {"speaker": "SPEAKER_00", "start": 0.0, "end": 1.3},
+        {"speaker": "SPEAKER_01", "start": 1.3, "end": 3.5},
+    ]
+
+    aligned = _align_asr_segments_to_speakers(asr_segments, speaker_segments)
+
+    assert aligned[0]["speaker"] == "SPEAKER_00"
+    assert aligned[1]["speaker"] == "SPEAKER_01"
+    assert "there" in aligned[1]["text"]
+    assert "friend" in aligned[1]["text"]
 
 
 # ---------------------------------------------------------------------------
@@ -439,3 +582,101 @@ async def test_transcribe_uploaded_file_source_type_override(tmp_path: Path):
     )
     assert result.source_type == "text"
     assert result.metadata["file_kind"] == "text"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_uploaded_file_falls_back_to_remote_provider(monkeypatch, tmp_path: Path):
+    import lct_python_backend.services.file_transcriber as mod
+
+    wav = _make_silent_wav(tmp_path, duration_s=1.5, name="clip.wav")
+    calls: list[str] = []
+    fallback_events: list[tuple[str, str, str]] = []
+
+    async def fake_chunked(*_args, **kwargs):
+        url = str(kwargs.get("http_url") or "")
+        calls.append(url)
+        if len(calls) == 1:
+            request = httpx.Request("POST", url or "http://localhost")
+            raise httpx.ReadError("local provider down", request=request)
+        return "speaker one: recovered transcript"
+
+    async def on_fallback(from_provider: str, to_provider: str, error: str):
+        fallback_events.append((from_provider, to_provider, error))
+
+    monkeypatch.setattr(mod, "transcribe_audio_chunked", AsyncMock(side_effect=fake_chunked))
+
+    result = await mod.transcribe_uploaded_file(
+        temp_path=wav,
+        filename="clip.wav",
+        content_type="audio/wav",
+        stt_settings={
+            "provider": "whisper",
+            "provider_http_urls": {
+                "parakeet": "http://localhost:5092/v1/audio/transcriptions",
+                "whisper": "http://100.81.65.74:8001/v1/audio/transcriptions",
+            },
+            "http_timeout_seconds": 120.0,
+        },
+        enable_parakeet_pyannote=False,
+        on_provider_fallback=on_fallback,
+    )
+
+    assert result.source_type == "audio"
+    assert result.transcript_text == "speaker one: recovered transcript"
+    assert calls == [
+        "http://localhost:5092/v1/audio/transcriptions",
+        "http://100.81.65.74:8001/v1/audio/transcriptions",
+    ]
+    assert result.metadata["provider"] == "whisper"
+    assert result.metadata["provider_fallback_used"] is True
+    assert result.metadata["provider_fallback_from"] == "parakeet"
+    assert result.metadata["provider_fallback_to"] == "whisper"
+    assert result.metadata["provider_attempt_count"] == 2
+    assert fallback_events and fallback_events[0][0] == "parakeet"
+    assert fallback_events[0][1] == "whisper"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_uploaded_file_parakeet_pyannote_sidecar(monkeypatch, tmp_path: Path):
+    import lct_python_backend.services.file_transcriber as mod
+
+    wav = _make_silent_wav(tmp_path, duration_s=1.5, name="clip.wav")
+    detail = AudioTranscriptionDetail(
+        transcript_text="hello there",
+        asr_segments=[
+            {"start": 0.0, "end": 0.8, "text": "hello"},
+            {"start": 0.8, "end": 1.5, "text": "there"},
+        ],
+        diarized_segments=None,
+        raw_payload={"text": "hello there"},
+    )
+
+    monkeypatch.setattr(mod, "STT_PARAKEET_PYANNOTE_ENABLED", True)
+    monkeypatch.setattr(mod, "transcribe_audio_file_detailed", AsyncMock(return_value=detail))
+    monkeypatch.setattr(
+        mod,
+        "_run_pyannote_diarization",
+        lambda _path: [
+            {"speaker": "SPEAKER_00", "start": 0.0, "end": 0.9},
+            {"speaker": "SPEAKER_01", "start": 0.9, "end": 2.0},
+        ],
+    )
+
+    result = await mod.transcribe_uploaded_file(
+        temp_path=wav,
+        filename="clip.wav",
+        content_type="audio/wav",
+        stt_settings={
+            "provider": "parakeet",
+            "provider_http_urls": {"parakeet": "http://stt.local/v1/audio/transcriptions"},
+            "http_timeout_seconds": 120.0,
+        },
+        provider_override="parakeet",
+    )
+
+    assert result.source_type == "audio"
+    assert result.metadata["diarization_source"] == "pyannote_sidecar"
+    assert "SPEAKER_00: hello" in result.transcript_text
+    assert "SPEAKER_01: there" in result.transcript_text
+    assert isinstance(result.metadata.get("timings_ms"), dict)
+    assert result.metadata["timings_ms"].get("stt_ms") is not None

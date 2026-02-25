@@ -49,6 +49,31 @@ Then set project STT URLs to the shared endpoint in Settings.
 - `external_fallback_ws_url`: optional fallback URL, used only when `local_only=false`.
 - `store_audio`: optional chunk persistence for reprocessing.
 
+### Path A (Parakeet + Pyannote sidecar)
+
+For faster ASR with separate diarization in upload flow:
+- `provider=parakeet`
+- `STT_PARAKEET_PYANNOTE_ENABLED=true`
+- `STT_PYANNOTE_HF_TOKEN=<token>`
+- optional speaker hints: `STT_PYANNOTE_MIN_SPEAKERS`, `STT_PYANNOTE_MAX_SPEAKERS`
+
+Telemetry will include stage timings:
+- `stt_provider_ms`
+- `diarization_ms`
+- `alignment_ms`
+- `bottleneck_stage` / `bottleneck_ms`
+
+### Optional async diarization queue (upload-first UX)
+
+If you want the graph to start fast and diarization to continue in background:
+- `IMPORT_ASYNC_DIARIZATION_ENABLED=true`
+- Keep `provider=parakeet`
+- Optionally leave `STT_PARAKEET_PYANNOTE_ENABLED=false` for the fast lane and let the background queue force diarization.
+
+Polling endpoints:
+- `GET /api/import/diarization-jobs/{job_id}`
+- `GET /api/import/diarization-jobs/{job_id}/events?cursor=<last_seq>`
+
 ## Local LLM Endpoint (Semantic Clustering)
 
 For topic/tangent clustering and graph generation, point local LLM settings to:
