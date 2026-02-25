@@ -210,7 +210,7 @@ export default function Browse() {
               </button>
               <button
                 className="flex-1 px-3 py-2 text-sm bg-gray-800 text-white rounded-md hover:bg-gray-700 transition"
-                onClick={() => handleDelete(deleteConfirm.id, deleteConfirm.name)}
+                onClick={() => handleDelete(deleteConfirm.id)}
               >
                 Delete
               </button>
