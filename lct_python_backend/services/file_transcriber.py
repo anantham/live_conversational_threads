@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import mimetypes
 import os
 import re
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
@@ -20,9 +22,67 @@ from lct_python_backend.services.stt_http_transcriber import extract_diarized_se
 
 logger = logging.getLogger("lct_backend")
 
-# Chunked audio transcription defaults
-DEFAULT_CHUNK_DURATION_S = int(os.getenv("STT_CHUNK_DURATION_S", "60"))
-DEFAULT_CHUNK_OVERLAP_S = int(os.getenv("STT_CHUNK_OVERLAP_S", "2"))
+def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "[STT CHUNK] Invalid %s=%r, using default=%d",
+            name,
+            raw,
+            default,
+        )
+        return default
+    bounded = max(minimum, min(maximum, value))
+    if bounded != value:
+        logger.warning(
+            "[STT CHUNK] Clamped %s=%d to %d (allowed %d-%d)",
+            name,
+            value,
+            bounded,
+            minimum,
+            maximum,
+        )
+    return bounded
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "[STT CHUNK] Invalid %s=%r, using default=%.2f",
+            name,
+            raw,
+            default,
+        )
+        return default
+
+
+# Conservative chunked audio transcription defaults for GPU stability.
+DEFAULT_CHUNK_DURATION_S = _bounded_env_int("STT_CHUNK_DURATION_S", default=30, minimum=20, maximum=30)
+DEFAULT_CHUNK_OVERLAP_S = _bounded_env_int("STT_CHUNK_OVERLAP_S", default=1, minimum=0, maximum=3)
+DEFAULT_CHUNK_MAX_RETRIES = _bounded_env_int("STT_CHUNK_MAX_RETRIES", default=2, minimum=0, maximum=6)
+DEFAULT_CHUNK_RETRY_BACKOFF_S = max(0.0, _env_float("STT_CHUNK_RETRY_BACKOFF_S", default=1.5))
+STT_PARAKEET_PYANNOTE_ENABLED = (
+    os.getenv("STT_PARAKEET_PYANNOTE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+)
+STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT = (
+    str(os.getenv("STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT", "verbose_json")).strip().lower() or "verbose_json"
+)
+STT_PYANNOTE_MODEL = (
+    str(os.getenv("STT_PYANNOTE_MODEL", "pyannote/speaker-diarization-3.1")).strip()
+    or "pyannote/speaker-diarization-3.1"
+)
+STT_PYANNOTE_DEVICE = str(os.getenv("STT_PYANNOTE_DEVICE", "cpu")).strip().lower() or "cpu"
+STT_PYANNOTE_MIN_SPEAKERS = str(os.getenv("STT_PYANNOTE_MIN_SPEAKERS", "")).strip()
+STT_PYANNOTE_MAX_SPEAKERS = str(os.getenv("STT_PYANNOTE_MAX_SPEAKERS", "")).strip()
 
 # Type alias for progress callbacks: (chunk_index, total_chunks, chunk_transcript) -> None
 ProgressCallback = Callable[[int, int, str], Awaitable[None]]
@@ -52,10 +112,267 @@ class FileTranscriptResult:
     metadata: Dict[str, Any]
 
 
+@dataclass
+class AudioTranscriptionDetail:
+    """Detailed STT result with optional timestamped segments."""
+
+    transcript_text: str
+    asr_segments: List[Dict[str, Any]]
+    diarized_segments: Optional[List[Dict[str, Any]]]
+    raw_payload: Any
+
+
 def _coerce_str(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return int((time.perf_counter() - started_at) * 1000)
+
+
+def _coerce_float(value: Any) -> Optional[float]:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    raw = _coerce_str(value)
+    if not raw:
+        return None
+    try:
+        parsed = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 1 else None
+
+
+def _extract_asr_segments(payload: Any) -> List[Dict[str, Any]]:
+    """Extract ASR timestamp segments from provider payload."""
+    if not isinstance(payload, dict):
+        return []
+
+    raw_segments = payload.get("segments")
+    if not isinstance(raw_segments, list):
+        raw_segments = payload.get("timestamps")
+    if not isinstance(raw_segments, list):
+        return []
+
+    segments: List[Dict[str, Any]] = []
+    for item in raw_segments:
+        if not isinstance(item, dict):
+            continue
+        start = _coerce_float(item.get("start"))
+        end = _coerce_float(item.get("end"))
+        text = _coerce_str(item.get("text") or item.get("segment") or item.get("word"))
+        if start is None or end is None or end <= start or not text:
+            continue
+        segments.append(
+            {
+                "start": start,
+                "end": end,
+                "text": text,
+            }
+        )
+    return segments
+
+
+def _format_speaker_transcript(segments: Sequence[Dict[str, Any]]) -> str:
+    lines: List[str] = []
+    for seg in segments:
+        speaker = _coerce_str(seg.get("speaker")) or "SPEAKER_00"
+        text = _coerce_str(seg.get("text"))
+        if text:
+            lines.append(f"{speaker}: {text}")
+    return "\n".join(lines).strip()
+
+
+def _speaker_overlap_seconds(
+    asr_start: float,
+    asr_end: float,
+    speaker_start: float,
+    speaker_end: float,
+) -> float:
+    return max(0.0, min(asr_end, speaker_end) - max(asr_start, speaker_start))
+
+
+def _align_asr_segments_to_speakers(
+    asr_segments: Sequence[Dict[str, Any]],
+    speaker_segments: Sequence[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Assign each ASR segment to the speaker segment with max overlap."""
+    if not asr_segments:
+        return []
+
+    normalized_speaker_segments: List[Dict[str, Any]] = []
+    for seg in speaker_segments:
+        if not isinstance(seg, dict):
+            continue
+        start = _coerce_float(seg.get("start"))
+        end = _coerce_float(seg.get("end"))
+        speaker = _coerce_str(seg.get("speaker"))
+        if start is None or end is None or end <= start or not speaker:
+            continue
+        normalized_speaker_segments.append(
+            {
+                "speaker": speaker,
+                "start": start,
+                "end": end,
+            }
+        )
+
+    assigned: List[Dict[str, Any]] = []
+    for asr in asr_segments:
+        asr_start = _coerce_float(asr.get("start"))
+        asr_end = _coerce_float(asr.get("end"))
+        text = _coerce_str(asr.get("text"))
+        if asr_start is None or asr_end is None or asr_end <= asr_start or not text:
+            continue
+
+        best_speaker = "SPEAKER_00"
+        best_overlap = 0.0
+        for diar in normalized_speaker_segments:
+            overlap = _speaker_overlap_seconds(
+                asr_start,
+                asr_end,
+                diar["start"],
+                diar["end"],
+            )
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_speaker = diar["speaker"]
+
+        assigned.append(
+            {
+                "speaker": best_speaker,
+                "start": asr_start,
+                "end": asr_end,
+                "text": text,
+            }
+        )
+
+    # Merge adjacent segments from same speaker to keep transcript compact.
+    merged: List[Dict[str, Any]] = []
+    for seg in assigned:
+        if (
+            merged
+            and merged[-1]["speaker"] == seg["speaker"]
+            and float(seg["start"]) - float(merged[-1]["end"]) <= 0.35
+        ):
+            merged[-1]["text"] = f"{merged[-1]['text']} {seg['text']}".strip()
+            merged[-1]["end"] = max(float(merged[-1]["end"]), float(seg["end"]))
+            continue
+        merged.append(dict(seg))
+    return merged
+
+
+_PYANNOTE_PIPELINE: Any = None
+_PYANNOTE_PIPELINE_DEVICE: str = ""
+_PYANNOTE_PIPELINE_MODEL: str = ""
+
+
+def _resolve_pyannote_device(torch_module: Any) -> str:
+    requested = STT_PYANNOTE_DEVICE
+    if requested in {"", "auto"}:
+        if getattr(torch_module.backends, "mps", None) and torch_module.backends.mps.is_available():
+            return "mps"
+        if torch_module.cuda.is_available():
+            return "cuda"
+        return "cpu"
+    return requested
+
+
+def _load_pyannote_pipeline():
+    """Load and cache pyannote pipeline once per process."""
+    global _PYANNOTE_PIPELINE, _PYANNOTE_PIPELINE_DEVICE, _PYANNOTE_PIPELINE_MODEL
+
+    hf_token = _coerce_str(os.getenv("STT_PYANNOTE_HF_TOKEN") or os.getenv("HF_TOKEN"))
+    if not hf_token:
+        raise RuntimeError("Missing HF token for pyannote (set STT_PYANNOTE_HF_TOKEN or HF_TOKEN).")
+
+    if (
+        _PYANNOTE_PIPELINE is not None
+        and _PYANNOTE_PIPELINE_DEVICE == STT_PYANNOTE_DEVICE
+        and _PYANNOTE_PIPELINE_MODEL == STT_PYANNOTE_MODEL
+    ):
+        return _PYANNOTE_PIPELINE
+
+    import torch
+    from pyannote.audio import Pipeline
+
+    try:
+        pipeline = Pipeline.from_pretrained(
+            STT_PYANNOTE_MODEL,
+            use_auth_token=hf_token,
+        )
+    except TypeError as exc:
+        message = str(exc)
+        if "use_auth_token" in message:
+            raise RuntimeError(
+                "pyannote/huggingface_hub version mismatch: install huggingface_hub<1.0 "
+                "for pyannote.audio 3.x compatibility."
+            ) from exc
+        raise
+    resolved_device = _resolve_pyannote_device(torch)
+    if resolved_device != "cpu":
+        try:
+            pipeline.to(torch.device(resolved_device))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[PYANNOTE] Failed to move pipeline to %s: %s. Falling back to CPU.", resolved_device, exc)
+            resolved_device = "cpu"
+
+    _PYANNOTE_PIPELINE = pipeline
+    _PYANNOTE_PIPELINE_DEVICE = STT_PYANNOTE_DEVICE
+    _PYANNOTE_PIPELINE_MODEL = STT_PYANNOTE_MODEL
+    logger.info(
+        "[PYANNOTE] Loaded model=%s requested_device=%s resolved_device=%s",
+        STT_PYANNOTE_MODEL,
+        STT_PYANNOTE_DEVICE,
+        resolved_device,
+    )
+    return _PYANNOTE_PIPELINE
+
+
+def _run_pyannote_diarization(audio_path: Path) -> List[Dict[str, Any]]:
+    pipeline = _load_pyannote_pipeline()
+    min_speakers = _coerce_optional_int(STT_PYANNOTE_MIN_SPEAKERS)
+    max_speakers = _coerce_optional_int(STT_PYANNOTE_MAX_SPEAKERS)
+
+    kwargs: Dict[str, Any] = {}
+    if min_speakers is not None:
+        kwargs["min_speakers"] = min_speakers
+    if max_speakers is not None:
+        kwargs["max_speakers"] = max_speakers
+
+    try:
+        diarization = pipeline(str(audio_path), **kwargs)
+    except Exception as exc:  # noqa: BLE001
+        message = str(exc) or type(exc).__name__
+        if "Expected size" in message and "tensor" in message:
+            raise RuntimeError(
+                "pyannote diarization failed on this compressed source; convert to 16kHz mono WAV and retry."
+            ) from exc
+        raise
+    speaker_segments: List[Dict[str, Any]] = []
+    for turn, _, speaker in diarization.itertracks(yield_label=True):
+        start = float(turn.start)
+        end = float(turn.end)
+        if end <= start:
+            continue
+        speaker_segments.append(
+            {
+                "speaker": _coerce_str(speaker) or "SPEAKER_00",
+                "start": start,
+                "end": end,
+            }
+        )
+    speaker_segments.sort(key=lambda seg: (float(seg["start"]), float(seg["end"])))
+    return speaker_segments
 
 
 def looks_like_google_meet_text(text: str) -> bool:
@@ -229,16 +546,17 @@ def chunk_transcript_lines(transcript_text: str, *, max_chars: int = 280) -> Lis
     return chunks
 
 
-async def transcribe_audio_file(
+async def transcribe_audio_file_detailed(
     file_path: Path,
     *,
     http_url: str,
     model: str = "",
     language: str = "",
     timeout_seconds: float = 120.0,
+    response_format: str = "",
     transport: Optional[httpx.AsyncBaseTransport] = None,
-) -> str:
-    """Transcribe an audio file via HTTP STT provider."""
+) -> AudioTranscriptionDetail:
+    """Transcribe an audio file via HTTP STT provider and keep optional segments."""
 
     target_url = _coerce_str(http_url)
     if not target_url:
@@ -254,6 +572,10 @@ async def transcribe_audio_file(
         form_data["model"] = _coerce_str(model)
     if _coerce_str(language):
         form_data["language"] = _coerce_str(language)
+    if _coerce_str(response_format):
+        form_data["response_format"] = _coerce_str(response_format)
+    # Providers that support timestamps should include them in structured responses.
+    form_data.setdefault("include_timestamps", "true")
 
     files = {
         "file": (file_path.name, payload_bytes, guessed_content_type),
@@ -282,16 +604,45 @@ async def transcribe_audio_file(
             parsed_payload = {"text": raw_text}
 
     # Prefer diarized speaker segments when available; fall back to plain text
-    segments = extract_diarized_segments(parsed_payload)
-    if segments:
-        transcript = "\n".join(
-            f"{seg['speaker']}: {seg['text']}" for seg in segments
-        ).strip()
+    diarized_segments = extract_diarized_segments(parsed_payload)
+    asr_segments = _extract_asr_segments(parsed_payload)
+    if diarized_segments:
+        transcript = _format_speaker_transcript(diarized_segments)
     else:
         transcript = extract_transcript_text(parsed_payload).strip()
+        if not transcript and asr_segments:
+            transcript = "\n".join(seg["text"] for seg in asr_segments if _coerce_str(seg.get("text"))).strip()
     if not transcript:
         raise RuntimeError("STT provider returned empty transcript.")
-    return transcript
+    return AudioTranscriptionDetail(
+        transcript_text=transcript,
+        asr_segments=asr_segments,
+        diarized_segments=diarized_segments,
+        raw_payload=parsed_payload,
+    )
+
+
+async def transcribe_audio_file(
+    file_path: Path,
+    *,
+    http_url: str,
+    model: str = "",
+    language: str = "",
+    timeout_seconds: float = 120.0,
+    response_format: str = "",
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> str:
+    """Transcribe an audio file via HTTP STT provider."""
+    detail = await transcribe_audio_file_detailed(
+        file_path,
+        http_url=http_url,
+        model=model,
+        language=language,
+        timeout_seconds=timeout_seconds,
+        response_format=response_format,
+        transport=transport,
+    )
+    return detail.transcript_text
 
 
 def _split_audio_to_chunks(
@@ -334,6 +685,33 @@ def _split_audio_to_chunks(
     return chunks
 
 
+def _is_retryable_stt_error(exc: Exception) -> bool:
+    if isinstance(exc, httpx.RequestError):
+        return True
+
+    if isinstance(exc, RuntimeError):
+        message = str(exc).lower()
+        if not message:
+            return False
+        if "stt provider request failed (" in message:
+            status_match = re.search(r"stt provider request failed \((\d{3})\)", message)
+            if status_match:
+                code = int(status_match.group(1))
+                return code in {429, 500, 502, 503, 504}
+        retryable_markers = (
+            "timed out",
+            "timeout",
+            "connection reset",
+            "readerror",
+            "temporarily unavailable",
+            "cuda",
+            "unknown error",
+        )
+        return any(marker in message for marker in retryable_markers)
+
+    return False
+
+
 async def transcribe_audio_chunked(
     file_path: Path,
     *,
@@ -343,13 +721,18 @@ async def transcribe_audio_chunked(
     timeout_seconds: float = 120.0,
     chunk_duration_s: int = DEFAULT_CHUNK_DURATION_S,
     overlap_s: int = DEFAULT_CHUNK_OVERLAP_S,
+    chunk_max_retries: int = DEFAULT_CHUNK_MAX_RETRIES,
+    chunk_retry_backoff_s: float = DEFAULT_CHUNK_RETRY_BACKOFF_S,
     on_chunk_progress: Optional[ProgressCallback] = None,
+    response_format: str = "",
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> str:
     """Transcribe an audio file by splitting into chunks and sending each to STT.
 
     Falls back to single-shot transcription for short files (< 2 chunks).
     """
+    max_retries = max(0, int(chunk_max_retries))
+    backoff_base_s = max(0.0, float(chunk_retry_backoff_s))
     chunks = _split_audio_to_chunks(file_path, chunk_duration_s, overlap_s)
 
     if len(chunks) <= 1:
@@ -359,22 +742,55 @@ async def transcribe_audio_chunked(
         return await transcribe_audio_file(
             file_path, http_url=http_url, model=model,
             language=language, timeout_seconds=timeout_seconds,
+            response_format=response_format,
             transport=transport,
         )
 
     transcripts: List[str] = []
     total = len(chunks)
     try:
+        # Keep chunk transcription sequential to avoid GPU contention.
         for idx, (chunk_path, start_ms, end_ms) in enumerate(chunks):
             logger.info(
                 "[CHUNK] Transcribing chunk %d/%d (%d–%d ms) via %s",
                 idx + 1, total, start_ms, end_ms, http_url,
             )
-            text = await transcribe_audio_file(
-                chunk_path, http_url=http_url, model=model,
-                language=language, timeout_seconds=timeout_seconds,
-                transport=transport,
-            )
+            attempts_allowed = max_retries + 1
+            text = ""
+            for attempt in range(1, attempts_allowed + 1):
+                try:
+                    text = await transcribe_audio_file(
+                        chunk_path, http_url=http_url, model=model,
+                        language=language, timeout_seconds=timeout_seconds,
+                        response_format=response_format,
+                        transport=transport,
+                    )
+                    if attempt > 1:
+                        logger.info(
+                            "[CHUNK] Chunk %d/%d recovered on attempt %d/%d",
+                            idx + 1,
+                            total,
+                            attempt,
+                            attempts_allowed,
+                        )
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    retryable = _is_retryable_stt_error(exc)
+                    if attempt >= attempts_allowed or not retryable:
+                        raise
+                    backoff_s = backoff_base_s * (2 ** (attempt - 1))
+                    logger.warning(
+                        "[CHUNK] Chunk %d/%d attempt %d/%d failed (%s: %s), retrying in %.2fs",
+                        idx + 1,
+                        total,
+                        attempt,
+                        attempts_allowed,
+                        type(exc).__name__,
+                        str(exc) or type(exc).__name__,
+                        backoff_s,
+                    )
+                    if backoff_s > 0:
+                        await asyncio.sleep(backoff_s)
             transcripts.append(text)
             if on_chunk_progress:
                 await on_chunk_progress(idx + 1, total, text)
@@ -414,14 +830,70 @@ async def transcribe_uploaded_file(
         provider_url_map = provider_http_urls if isinstance(provider_http_urls, dict) else {}
         http_url = _coerce_str(provider_url_map.get(provider) or settings.get("http_url"))
         timeout = float(settings.get("http_timeout_seconds", 120.0) or 120.0)
-        transcript_text = await transcribe_audio_chunked(
-            temp_path,
-            http_url=http_url,
-            model=_coerce_str(settings.get("http_model")),
-            language=_coerce_str(settings.get("http_language")),
-            timeout_seconds=timeout,
-            on_chunk_progress=on_chunk_progress,
-        )
+        timings_ms: Dict[str, int] = {}
+        response_format = _coerce_str(settings.get("response_format"))
+        transcript_text = ""
+        source_diarized_segments: Optional[List[Dict[str, Any]]] = None
+
+        if provider == "parakeet" and STT_PARAKEET_PYANNOTE_ENABLED:
+            stt_started_at = time.perf_counter()
+            detail = await transcribe_audio_file_detailed(
+                temp_path,
+                http_url=http_url,
+                model=_coerce_str(settings.get("http_model")),
+                language=_coerce_str(settings.get("http_language")),
+                timeout_seconds=timeout,
+                response_format=response_format or STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT,
+            )
+            timings_ms["stt_ms"] = _elapsed_ms(stt_started_at)
+            transcript_text = detail.transcript_text
+            source_diarized_segments = detail.diarized_segments
+
+            if detail.diarized_segments:
+                metadata["diarization_source"] = "stt_provider"
+                transcript_text = _format_speaker_transcript(detail.diarized_segments)
+                metadata["speaker_count"] = len(
+                    {seg.get("speaker") for seg in detail.diarized_segments if _coerce_str(seg.get("speaker"))}
+                )
+            elif detail.asr_segments:
+                diarization_started_at = time.perf_counter()
+                try:
+                    speaker_segments = await asyncio.to_thread(_run_pyannote_diarization, temp_path)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("[STT+PYANNOTE] Separate diarization failed: %s", exc)
+                    metadata["diarization_error"] = str(exc) or type(exc).__name__
+                else:
+                    timings_ms["diarization_ms"] = _elapsed_ms(diarization_started_at)
+                    align_started_at = time.perf_counter()
+                    aligned_segments = _align_asr_segments_to_speakers(detail.asr_segments, speaker_segments)
+                    timings_ms["alignment_ms"] = _elapsed_ms(align_started_at)
+                    if aligned_segments:
+                        transcript_text = _format_speaker_transcript(aligned_segments)
+                        metadata["diarization_source"] = "pyannote_sidecar"
+                        metadata["speaker_count"] = len(
+                            {seg.get("speaker") for seg in aligned_segments if _coerce_str(seg.get("speaker"))}
+                        )
+                    metadata["pyannote_segment_count"] = len(speaker_segments)
+                metadata["asr_segment_count"] = len(detail.asr_segments)
+            else:
+                metadata["diarization_skipped"] = "no_asr_timestamps_from_stt"
+        else:
+            stt_started_at = time.perf_counter()
+            transcript_text = await transcribe_audio_chunked(
+                temp_path,
+                http_url=http_url,
+                model=_coerce_str(settings.get("http_model")),
+                language=_coerce_str(settings.get("http_language")),
+                timeout_seconds=timeout,
+                on_chunk_progress=on_chunk_progress,
+                response_format=response_format,
+            )
+            timings_ms["stt_ms"] = _elapsed_ms(stt_started_at)
+
+        if source_diarized_segments is not None:
+            metadata["stt_diarized_segment_count"] = len(source_diarized_segments)
+        if timings_ms:
+            metadata["timings_ms"] = timings_ms
         metadata.update({"provider": provider, "http_url": http_url})
         return FileTranscriptResult(
             transcript_text=parse_plain_text(transcript_text),
