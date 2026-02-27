@@ -169,7 +169,7 @@ async def local_chat_json(
 ) -> Any:
     client = get_local_client(config)
     response = await client.chat(
-        model=config.get("chat_model", "glm-4.6v-flash"),
+        model=config.get("chat_model", "zai-org/glm-4.6v-flash"),
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,

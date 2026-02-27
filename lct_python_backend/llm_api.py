@@ -24,7 +24,7 @@ ONLINE_GEMINI_FALLBACK_MODELS = [
 ]
 
 LOCAL_CHAT_FALLBACK_MODELS = [
-    "glm-4.6v-flash",
+    "zai-org/glm-4.6v-flash",
     "reka-flash-3-21b-reasoning-uncensored-max-neo-imatrix",
     "qwen/qwen3-coder-30b",
     "qwen/qwen3-vl-8b",
