@@ -18,6 +18,16 @@
   - `cd lct_python_backend && ../.venv/bin/python -m py_compile import_api.py services/import_bulk_processor.py tests/unit/test_import_api_process_file.py tests/unit/test_import_api_security.py` (passed)
   - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_import_api_process_file.py tests/unit/test_import_api_security.py` (20 passed)
 
+## 2026-02-25T17:17:06Z
+- `lct_app/src/components/upload/useFileUploadStream.js` (lines 1-265): Extracted upload SSE orchestration/state machine from `FileUpload.jsx`, including chunk-stream parsing, progress/ETA updates, fallback-toast signaling, transcript-phase handling, cancel flow, and status/error propagation.
+- `lct_app/src/components/upload/UploadProgressPanel.jsx` (lines 1-41): Added dedicated upload progress presenter for status text, ETA label, and progress bar rendering.
+- `lct_app/src/components/upload/UploadTranscriptPreview.jsx` (lines 1-19): Added reusable live transcript preview presenter (last three lines) for in-progress STT feedback.
+- `lct_app/src/components/FileUpload.jsx` (lines 1-114): Reduced component to a thin shell that wires file input/buttons/fallback toast with the extracted hook and presentation components; behavior and props contract preserved.
+- `docs/TECH_DEBT.md` (line 24): Marked `FileUpload.jsx` decomposition debt as resolved (`352 -> 114`) with extracted module references.
+- Validation:
+  - `cd lct_app && npx eslint src/components/FileUpload.jsx src/components/upload/useFileUploadStream.js src/components/upload/UploadProgressPanel.jsx src/components/upload/UploadTranscriptPreview.jsx` (passed)
+  - `cd lct_app && npm run -s build` (passed)
+
 ## 2026-02-25T15:33:01Z
 - `lct_python_backend/import_api.py` (lines 494-547, 677): Enhanced `/api/import/process-file` streaming behavior for realtime UX:
   - `_on_chunk_progress(...)` now computes and emits transcription ETA telemetry (`transcription_eta_ms`, `transcription_estimated_total_ms`) alongside chunk counters.
