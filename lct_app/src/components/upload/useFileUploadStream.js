@@ -71,6 +71,13 @@ export default function useFileUploadStream({
     return () => window.clearTimeout(timeoutId);
   }, [fallbackToast]);
 
+  // Abort in-flight upload if component unmounts mid-stream
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const clearLocalState = () => {
     setIsProcessing(false);
     setProgress(0);
