@@ -14,8 +14,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.services.import_bulk_pipeline import run_bulk_processing_worker
-from lct_python_backend.services.import_bulk_sse import sse_encode, stream_event_queue
-from lct_python_backend.services.import_bulk_telemetry import elapsed_ms
+from lct_python_backend.services.import_bulk_sse import stream_event_queue
 
 
 def cleanup_temp_file(temp_path: Optional[str], *, logger: logging.Logger) -> None:
