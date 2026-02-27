@@ -83,11 +83,17 @@ MODEL_PRICING: Dict[str, ModelPricing] = {
         model_name="claude-3-haiku"
     ),
     # Local models (no per-token cost)
-    "glm-4.6v-flash": ModelPricing(
+    "zai-org/glm-4.6v-flash": ModelPricing(
         input_cost_per_1k=Decimal("0"),
         output_cost_per_1k=Decimal("0"),
         provider="local",
-        model_name="glm-4.6v-flash"
+        model_name="zai-org/glm-4.6v-flash"
+    ),
+    "zai-org/glm-4.7-flash": ModelPricing(
+        input_cost_per_1k=Decimal("0"),
+        output_cost_per_1k=Decimal("0"),
+        provider="local",
+        model_name="zai-org/glm-4.7-flash"
     ),
     "text-embedding-qwen3-embedding-8b": ModelPricing(
         input_cost_per_1k=Decimal("0"),
