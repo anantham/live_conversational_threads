@@ -1,5 +1,15 @@
 # WORKLOG
 
+## 2026-02-26T02:12:18Z
+- `lct_python_backend/services/import_bulk_processor.py` (lines 1-125): Reduced the bulk processor module to a thin facade that now handles temp upload save/cleanup, event queue wiring, and delegation to extracted pipeline/SSE helpers while preserving exported helper symbols (`cleanup_temp_file`, `copy_temp_upload_for_async_job`, `diarization_job_urls`, `build_process_file_stream`).
+- `lct_python_backend/services/import_bulk_pipeline.py` (lines 1-429): Moved the `/api/import/process-file` worker orchestration out of the facade into a dedicated pipeline module (stage status events, transcribing/analyzing transcript events, fallback notice handling, telemetry aggregation, bottleneck computation hook, async diarization enqueue flow).
+- `lct_python_backend/services/import_bulk_sse.py` (lines 1-34): Added SSE-specific helpers (`sse_encode`, `stream_event_queue`) for event serialization + worker-task lifecycle handling.
+- `lct_python_backend/services/import_bulk_telemetry.py` (lines 1-50): Added telemetry-specific helpers (`elapsed_ms`, transcription ETA estimation, bottleneck stage attachment) used by the pipeline module.
+- `docs/TECH_DEBT.md` (lines 23-24): Marked `import_bulk_processor.py` split as resolved (`518 -> 125`) and added follow-up debt entry for `import_bulk_pipeline.py` residual mixed concerns.
+- Validation:
+  - `cd lct_python_backend && ../.venv/bin/python -m py_compile import_api.py services/import_bulk_processor.py services/import_bulk_pipeline.py services/import_bulk_sse.py services/import_bulk_telemetry.py tests/unit/test_import_api_process_file.py tests/unit/test_import_api_security.py` (passed)
+  - `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_import_api_process_file.py tests/unit/test_import_api_security.py` (20 passed)
+
 ## 2026-02-25T17:46:33Z
 - `lct_python_backend/services/import_bulk_processor.py` (lines 1-518): Extracted `/api/import/process-file` SSE pipeline into a dedicated service module, including temp-file lifecycle helpers, event encoding, stage telemetry/ETA emission, fallback notice emission, transcript-to-graph loop orchestration, and async diarization enqueue handling.
 - `lct_python_backend/import_api.py` (lines 39-44, 147-156, 357-389): Replaced in-router bulk-processing monolith with delegation to `build_process_file_stream(...)` while preserving backward-compatible monkeypatch wrapper symbols (`_cleanup_temp_file`, `_copy_temp_upload_for_async_job`, `_diarization_job_urls`, async queue wrappers) used by existing tests.
