@@ -1,0 +1,492 @@
+"""LLM API callers for transcript processing (Gemini + local).
+
+Extracted from transcript_processing.py — contains configuration helpers,
+API tracing, and all sync LLM call functions with retry logic.
+"""
+
+import json
+import logging
+import os
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
+import httpx
+from google import genai
+from google.genai import types
+
+from lct_python_backend.services.llm_config import get_env_llm_defaults
+from lct_python_backend.services.local_llm_client import extract_json_from_text
+from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
+from lct_python_backend.services.transcript_prompts import (
+    ACCUMULATE_SYSTEM_PROMPT,
+    GENERATE_LCT_PROMPT,
+    LOCAL_GENERATE_LCT_PROMPT,
+)
+
+logger = logging.getLogger("lct_backend")
+
+# ---------------------------------------------------------------------------
+# Configuration constants
+# ---------------------------------------------------------------------------
+GEMINI_MODEL_NAME = os.getenv("ONLINE_LLM_CHAT_MODEL", "gemini-2.5-flash")
+TRACE_API_CALLS = os.getenv("TRACE_API_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
+_JSON_OBJECT_UNSUPPORTED_BASE_URLS: set[str] = set()
+_GEMINI_KEY_ENV_ORDER = ("GOOGLEAI_API_KEY", "GEMINI_API_KEY", "GEMINI_KEY")
+
+
+# ---------------------------------------------------------------------------
+# Config helpers
+# ---------------------------------------------------------------------------
+def _resolve_llm_config(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    return config or get_env_llm_defaults()
+
+
+def _resolve_online_gemini_model(llm_config: Optional[Dict[str, Any]] = None) -> str:
+    config = _resolve_llm_config(llm_config)
+    configured = str(config.get("chat_model") or "").strip()
+    if configured.startswith("models/"):
+        configured = configured[len("models/") :]
+    if "/" in configured and "gemini" in configured.lower():
+        tail = configured.split("/")[-1]
+        if "gemini" in tail.lower():
+            configured = tail
+
+    if "gemini" in configured.lower():
+        return configured
+    return GEMINI_MODEL_NAME
+
+
+def _resolve_gemini_api_key() -> Tuple[Optional[str], Optional[str]]:
+    for env_name in _GEMINI_KEY_ENV_ORDER:
+        value = str(os.getenv(env_name, "")).strip()
+        if value:
+            return value, env_name
+    return None, None
+
+
+def _missing_gemini_key_message() -> str:
+    return (
+        "Online mode requires a Gemini key (GOOGLEAI_API_KEY, GEMINI_API_KEY, or GEMINI_KEY); "
+        "falling back to local LLM."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Trace helpers
+# ---------------------------------------------------------------------------
+def _preview_text(value: Any, limit: int = API_LOG_PREVIEW_CHARS) -> str:
+    text = str(value or "")
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}...<truncated {len(text) - limit} chars>"
+
+
+def _trace_api_call(message: str, *args: Any) -> None:
+    if TRACE_API_CALLS:
+        logger.info(message, *args)
+
+
+# ---------------------------------------------------------------------------
+# Sync local caller
+# ---------------------------------------------------------------------------
+def _call_local_chat_json(
+    prompt: str,
+    system_prompt: str,
+    config: Dict[str, Any],
+    temperature: float = 0.65,
+    max_tokens: int = 4000,
+) -> Any:
+    base_url = str(config.get("base_url", "")).rstrip("/")
+    if not base_url:
+        raise ValueError("Local LLM base_url is required.")
+
+    payload = {
+        "model": config.get("chat_model", "zai-org/glm-4.6v-flash"),
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+
+    use_json_object = bool(config.get("json_mode", True)) and base_url not in _JSON_OBJECT_UNSUPPORTED_BASE_URLS
+    if use_json_object:
+        payload["response_format"] = {"type": "json_object"}
+
+    url = f"{base_url}/v1/chat/completions"
+    timeout = float(config.get("timeout_seconds", 120))
+    _trace_api_call(
+        "[LLM API] POST %s model=%s prompt_chars=%s json_mode=%s",
+        url,
+        payload.get("model"),
+        len(str(prompt or "")),
+        "json_object" if "response_format" in payload else "none",
+    )
+    with httpx.Client(timeout=timeout) as client:
+        try:
+            response = client.post(url, json=payload)
+            response.raise_for_status()
+            raw_json = response.json()
+            content = raw_json["choices"][0]["message"]["content"]
+            _trace_api_call(
+                "[LLM API] %s status=%s content_preview=%s",
+                url,
+                response.status_code,
+                _preview_text(content),
+            )
+            return extract_json_from_text(content)
+        except httpx.HTTPStatusError as exc:
+            if "response_format" in payload:
+                body_preview = _preview_text(exc.response.text)
+                logger.warning(
+                    "Local LLM response_format rejected (%s); retrying without response_format.",
+                    body_preview,
+                )
+                _JSON_OBJECT_UNSUPPORTED_BASE_URLS.add(base_url)
+                payload.pop("response_format", None)
+                _trace_api_call("[LLM API] retry POST %s without response_format", url)
+                retry = client.post(url, json=payload)
+                retry.raise_for_status()
+                retry_json = retry.json()
+                content = retry_json["choices"][0]["message"]["content"]
+                _trace_api_call(
+                    "[LLM API] %s retry_status=%s content_preview=%s",
+                    url,
+                    retry.status_code,
+                    _preview_text(content),
+                )
+                return extract_json_from_text(content)
+            raise
+
+
+# ---------------------------------------------------------------------------
+# Gemini callers
+# ---------------------------------------------------------------------------
+def generate_lct_json_gemini(
+    transcript: str,
+    model_name: Optional[str] = None,
+    api_key: Optional[str] = None,
+    key_source: Optional[str] = None,
+    retries: int = 5,
+    backoff_base: float = 1.5,
+    status_messages: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    resolved_model = str(model_name or GEMINI_MODEL_NAME).strip() or GEMINI_MODEL_NAME
+    resolved_key = str(api_key or "").strip()
+    if not resolved_key:
+        resolved_key, key_source = _resolve_gemini_api_key()
+
+    if not resolved_key:
+        message = _missing_gemini_key_message()
+        logger.error("%s Cannot generate graph nodes with Gemini.", message)
+        if status_messages is not None:
+            status_messages.append(message)
+        return []
+
+    client = genai.Client(api_key=resolved_key)
+    if key_source:
+        _trace_api_call("[GEMINI] Using key from %s for graph generation model=%s.", key_source, resolved_model)
+
+    generate_lct_prompt = GENERATE_LCT_PROMPT
+
+    contents = [
+        types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=transcript)],
+        )
+    ]
+
+    config = types.GenerateContentConfig(
+        temperature=0.65,
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
+        response_mime_type="application/json",
+        system_instruction=[types.Part.from_text(text=generate_lct_prompt)],
+    )
+
+    last_error: Optional[str] = None
+    for attempt in range(retries):
+        full_response = ""
+        try:
+            for chunk in client.models.generate_content_stream(
+                model=resolved_model,
+                contents=contents,
+                config=config,
+            ):
+                if hasattr(chunk, "text"):
+                    full_response += chunk.text
+
+            try:
+                parsed = json.loads(full_response)
+                normalized = _normalize_generated_output(parsed)
+                if normalized:
+                    return normalized
+                last_error = f"Gemini response decoded but produced no normalized nodes (attempt {attempt + 1})."
+                logger.warning("[LCT JSON] %s", last_error)
+            except json.JSONDecodeError as e:
+                last_error = f"Gemini JSON decode failed on attempt {attempt + 1}: {e}"
+                logger.warning("[LCT JSON] %s", last_error)
+                logger.debug("[LCT JSON] Raw Gemini response: %s", full_response)
+
+        except Exception as e:
+            last_error = f"Gemini request failed on attempt {attempt + 1}: {e}"
+            logger.warning("[LCT JSON] %s", last_error)
+
+        time.sleep(backoff_base ** attempt)
+
+    logger.error("[LCT JSON] All attempts failed, returning empty list.")
+    if status_messages is not None and last_error:
+        status_messages.append(last_error)
+    return []
+
+
+def genai_accumulate_text_json(
+    input_text: str,
+    model_name: Optional[str] = None,
+    api_key: Optional[str] = None,
+    key_source: Optional[str] = None,
+    retries: int = 3,
+    backoff_base: float = 1.5,
+) -> Dict[str, Any]:
+    resolved_model = str(model_name or GEMINI_MODEL_NAME).strip() or GEMINI_MODEL_NAME
+    errors: List[str] = []
+    resolved_key = str(api_key or "").strip()
+    if not resolved_key:
+        resolved_key, key_source = _resolve_gemini_api_key()
+    if not resolved_key:
+        message = _missing_gemini_key_message()
+        logger.error("%s Cannot accumulate transcript text with Gemini.", message)
+        return {
+            "decision": "continue_accumulating",
+            "Completed_segment": "",
+            "Incomplete_segment": input_text,
+            "detected_threads": [],
+            "_errors": [message],
+        }
+
+    system_prompt = ACCUMULATE_SYSTEM_PROMPT
+
+    for attempt in range(retries):
+        full_response = ""
+        try:
+            client = genai.Client(api_key=resolved_key)
+            if key_source:
+                _trace_api_call("[GEMINI] Using key from %s for accumulation model=%s.", key_source, resolved_model)
+
+            contents = [
+                types.Content(
+                    role="user",
+                    parts=[types.Part.from_text(text=input_text)],
+                ),
+            ]
+
+            config = types.GenerateContentConfig(
+                temperature=0.65,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+                response_mime_type="application/json",
+                response_schema=genai.types.Schema(
+                    type=genai.types.Type.OBJECT,
+                    properties={
+                        "decision": genai.types.Schema(type=genai.types.Type.STRING),
+                        "Completed_segment": genai.types.Schema(type=genai.types.Type.STRING),
+                        "Incomplete_segment": genai.types.Schema(type=genai.types.Type.STRING),
+                        "detected_threads": genai.types.Schema(
+                            type=genai.types.Type.ARRAY,
+                            items=genai.types.Schema(type=genai.types.Type.STRING),
+                        ),
+                    },
+                ),
+                system_instruction=[types.Part.from_text(text=system_prompt)],
+            )
+
+            for chunk in client.models.generate_content_stream(
+                model=resolved_model,
+                contents=contents,
+                config=config,
+            ):
+                if hasattr(chunk, "text"):
+                    full_response += str(chunk.text)
+
+            try:
+                parsed = json.loads(full_response)
+                if errors:
+                    parsed["_warnings"] = errors
+                return parsed
+            except json.JSONDecodeError as e:
+                logger.warning("[ACCUMULATE] Attempt %s JSON decode failed: %s", attempt + 1, e)
+                logger.debug("[ACCUMULATE] Raw Gemini response: %s", full_response)
+                errors.append(f"Attempt {attempt + 1} decode failed: {e}")
+
+        except Exception as e:
+            logger.warning("[ACCUMULATE] Attempt %s failed: %s", attempt + 1, e)
+            errors.append(f"Attempt {attempt + 1} failed: {e}")
+
+        time.sleep(backoff_base ** attempt)
+
+    logger.error("[ACCUMULATE] All decoding attempts failed - using fallback.")
+    return {
+        "decision": "continue_accumulating",
+        "Completed_segment": "",
+        "Incomplete_segment": input_text,
+        "detected_threads": [],
+        "_errors": errors or ["Gemini accumulation attempts exhausted"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Local callers
+# ---------------------------------------------------------------------------
+def generate_lct_json_local(
+    transcript: str,
+    llm_config: Optional[Dict[str, Any]] = None,
+    retries: int = 5,
+    backoff_base: float = 1.5,
+) -> List[Dict[str, Any]]:
+    config = _resolve_llm_config(llm_config)
+    for attempt in range(retries):
+        try:
+            parsed = _call_local_chat_json(
+                prompt=transcript,
+                system_prompt=LOCAL_GENERATE_LCT_PROMPT,
+                config=config,
+                temperature=0.65,
+                max_tokens=4000,
+            )
+            normalized = _normalize_generated_output(parsed)
+            if normalized:
+                return normalized
+            logger.warning(
+                "[LCT JSON] Local response decoded but produced no normalized nodes; attempt %s",
+                attempt + 1,
+            )
+        except Exception as e:
+            logger.warning("[LCT JSON] Local attempt %s failed: %s", attempt + 1, e)
+
+        time.sleep(backoff_base ** attempt)
+
+    logger.error("[LCT JSON] Local attempts exhausted; returning empty list.")
+    return []
+
+
+def accumulate_text_json_local(
+    input_text: str,
+    llm_config: Optional[Dict[str, Any]] = None,
+    retries: int = 3,
+    backoff_base: float = 1.5,
+) -> Dict[str, Any]:
+    config = _resolve_llm_config(llm_config)
+    errors: List[str] = []
+    for attempt in range(retries):
+        try:
+            parsed = _call_local_chat_json(
+                prompt=input_text,
+                system_prompt=ACCUMULATE_SYSTEM_PROMPT,
+                config=config,
+                temperature=0.65,
+                max_tokens=1200,
+            )
+            if isinstance(parsed, dict):
+                if errors:
+                    parsed["_warnings"] = errors
+                return parsed
+            logger.warning("[ACCUMULATE] Local response was not a dict; attempt %s", attempt + 1)
+            errors.append(f"Attempt {attempt + 1} returned non-dict payload")
+        except Exception as e:
+            logger.warning("[ACCUMULATE] Local attempt %s failed: %s", attempt + 1, e)
+            errors.append(f"Attempt {attempt + 1} failed: {e}")
+
+        time.sleep(backoff_base ** attempt)
+
+    logger.error("[ACCUMULATE] Local attempts exhausted - using fallback.")
+    return {
+        "decision": "continue_accumulating",
+        "Completed_segment": "",
+        "Incomplete_segment": input_text,
+        "detected_threads": [],
+        "_errors": errors or ["Local accumulation attempts exhausted"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Dispatchers (online → local fallback)
+# ---------------------------------------------------------------------------
+def generate_lct_json(
+    transcript: str,
+    llm_config: Optional[Dict[str, Any]] = None,
+    retries: int = 5,
+    backoff_base: float = 1.5,
+    status_messages: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    config = _resolve_llm_config(llm_config)
+    if config.get("mode") == "online":
+        gemini_key, key_source = _resolve_gemini_api_key()
+        gemini_model = _resolve_online_gemini_model(config)
+        if gemini_key:
+            gemini_result = generate_lct_json_gemini(
+                transcript,
+                model_name=gemini_model,
+                api_key=gemini_key,
+                key_source=key_source,
+                retries=retries,
+                backoff_base=backoff_base,
+                status_messages=status_messages,
+            )
+            if gemini_result:
+                return gemini_result
+            fallback_message = "Gemini produced no graph output; falling back to local LLM."
+            logger.warning("[LCT JSON] %s", fallback_message)
+            if status_messages is not None:
+                status_messages.append(fallback_message)
+        else:
+            fallback_message = _missing_gemini_key_message()
+            logger.warning("[LCT JSON] %s", fallback_message)
+            if status_messages is not None:
+                status_messages.append(fallback_message)
+
+    return generate_lct_json_local(
+        transcript,
+        llm_config=config,
+        retries=retries,
+        backoff_base=backoff_base,
+    )
+
+
+def accumulate_text_json(
+    input_text: str,
+    llm_config: Optional[Dict[str, Any]] = None,
+    retries: int = 3,
+    backoff_base: float = 1.5,
+) -> Dict[str, Any]:
+    config = _resolve_llm_config(llm_config)
+    if config.get("mode") == "online":
+        gemini_key, key_source = _resolve_gemini_api_key()
+        gemini_model = _resolve_online_gemini_model(config)
+        if gemini_key:
+            return genai_accumulate_text_json(
+                input_text,
+                model_name=gemini_model,
+                api_key=gemini_key,
+                key_source=key_source,
+                retries=retries,
+                backoff_base=backoff_base,
+            )
+        fallback = accumulate_text_json_local(
+            input_text,
+            llm_config=config,
+            retries=retries,
+            backoff_base=backoff_base,
+        )
+        warnings = fallback.get("_warnings")
+        if not isinstance(warnings, list):
+            warnings = []
+        warnings.append(_missing_gemini_key_message())
+        fallback["_warnings"] = warnings
+        return fallback
+
+    return accumulate_text_json_local(
+        input_text,
+        llm_config=config,
+        retries=retries,
+        backoff_base=backoff_base,
+    )
