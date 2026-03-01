@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-02-25
+Last updated: 2026-02-28
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -9,7 +9,7 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | ~~lct_python_backend/backend.py~~ | ~~3545~~ → 140 | **RESOLVED** — Split into 13 router modules + 4 shared modules. See `refactor/split-backend-monolith` branch. |
 | lct_python_backend/services/llm_helpers.py | 501 | Extracted from backend.py; large LLM prompt inline | Consider moving prompt to separate file if it grows further |
 | lct_python_backend/models.py | 714 | All ORM models in a single file | Split by domain (core, analysis, instrumentation, settings) |
-| lct_python_backend/services/transcript_processing.py | 1114 | Prompt templates, output normalization, segmentation, provider/key fallback, and LLM IO are tightly coupled | Split into `transcript_prompts.py`, `graph_output_normalizer.py`, `llm_provider_router.py`, and `transcript_accumulator.py` with `TranscriptProcessor` as orchestrator |
+| ~~lct_python_backend/services/transcript_processing.py~~ | ~~1213~~ → 278 | **RESOLVED** — Decomposed into `transcript_prompts.py` (174 LOC), `transcript_normalizer.py` (358 LOC), `transcript_llm_callers.py` (492 LOC); `transcript_processing.py` kept as facade with `TranscriptProcessor` class + backward-compat re-exports. PR #22. |
 | ~~lct_app/src/components/ThematicView.jsx~~ | ~~976~~ → 267 | **RESOLVED** — Extracted 3 hooks (`useThematicLevels`, `useThematicGraph`, `useThematicKeyboard`), 3 subcomponents (`LevelSelector`, `ThematicSettingsPanel`, `UtteranceDetailPanel`), and shared constants into `components/thematic/`. Root is now a thin orchestrator. |
 | lct_app/src/pages/Settings.jsx | 481 | Multiple settings panels in one file | Split into settings sections + shared layout |
 | ~~lct_app/src/pages/ViewConversation.jsx~~ | ~~463~~ → 269 | **RESOLVED** — Replaced with a thinner viewer that composes extracted presentation components (`MinimalGraph`, `TimelineRibbon`, `NodeDetail`, `MinimalLegend`). |

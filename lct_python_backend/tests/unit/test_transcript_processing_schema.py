@@ -1,4 +1,5 @@
 from lct_python_backend.services import transcript_processing as transcript_processing_module
+from lct_python_backend.services import transcript_llm_callers as llm_callers_module
 from lct_python_backend.services.transcript_processing import (
     _normalize_generated_output,
     format_speaker_prefixed_transcript,
@@ -102,7 +103,7 @@ def test_generate_lct_json_online_missing_key_emits_fallback_warning(monkeypatch
     monkeypatch.delenv("GEMINI_KEY", raising=False)
 
     monkeypatch.setattr(
-        transcript_processing_module,
+        llm_callers_module,
         "generate_lct_json_local",
         lambda *args, **kwargs: [{"node_name": "fallback-node", "summary": "from-local"}],
     )
@@ -124,7 +125,7 @@ def test_accumulate_text_json_online_missing_key_adds_warning(monkeypatch):
     monkeypatch.delenv("GEMINI_KEY", raising=False)
 
     monkeypatch.setattr(
-        transcript_processing_module,
+        llm_callers_module,
         "accumulate_text_json_local",
         lambda input_text, **kwargs: {
             "decision": "continue_accumulating",
@@ -144,7 +145,7 @@ def test_accumulate_text_json_online_missing_key_adds_warning(monkeypatch):
 
 
 def test_resolve_online_gemini_model_uses_chat_model(monkeypatch):
-    monkeypatch.setattr(transcript_processing_module, "GEMINI_MODEL_NAME", "gemini-2.5-flash")
+    monkeypatch.setattr(llm_callers_module, "GEMINI_MODEL_NAME", "gemini-2.5-flash")
     resolved = transcript_processing_module._resolve_online_gemini_model(
         {"mode": "online", "chat_model": "gemini-3-flash-preview"}
     )
@@ -152,7 +153,7 @@ def test_resolve_online_gemini_model_uses_chat_model(monkeypatch):
 
 
 def test_resolve_online_gemini_model_normalizes_prefix(monkeypatch):
-    monkeypatch.setattr(transcript_processing_module, "GEMINI_MODEL_NAME", "gemini-2.5-flash")
+    monkeypatch.setattr(llm_callers_module, "GEMINI_MODEL_NAME", "gemini-2.5-flash")
     resolved = transcript_processing_module._resolve_online_gemini_model(
         {"mode": "online", "chat_model": "models/gemini-2.0-flash"}
     )
@@ -160,7 +161,7 @@ def test_resolve_online_gemini_model_normalizes_prefix(monkeypatch):
 
 
 def test_resolve_online_gemini_model_falls_back_for_local_model(monkeypatch):
-    monkeypatch.setattr(transcript_processing_module, "GEMINI_MODEL_NAME", "gemini-2.5-flash")
+    monkeypatch.setattr(llm_callers_module, "GEMINI_MODEL_NAME", "gemini-2.5-flash")
     resolved = transcript_processing_module._resolve_online_gemini_model(
         {"mode": "online", "chat_model": "glm-4.6v-flash"}
     )
@@ -168,14 +169,14 @@ def test_resolve_online_gemini_model_falls_back_for_local_model(monkeypatch):
 
 
 def test_generate_lct_json_online_passes_selected_gemini_model(monkeypatch):
-    monkeypatch.setattr(transcript_processing_module, "_resolve_gemini_api_key", lambda: ("fake-key", "GEMINI_KEY"))
+    monkeypatch.setattr(llm_callers_module, "_resolve_gemini_api_key", lambda: ("fake-key", "GEMINI_KEY"))
     captured = {}
 
     def _fake_generate(transcript, **kwargs):
         captured["model_name"] = kwargs.get("model_name")
         return [{"node_name": "gemini-node", "summary": "ok"}]
 
-    monkeypatch.setattr(transcript_processing_module, "generate_lct_json_gemini", _fake_generate)
+    monkeypatch.setattr(llm_callers_module, "generate_lct_json_gemini", _fake_generate)
 
     result = transcript_processing_module.generate_lct_json(
         "Transcript text",

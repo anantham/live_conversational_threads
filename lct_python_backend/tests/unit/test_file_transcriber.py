@@ -680,3 +680,126 @@ async def test_transcribe_uploaded_file_parakeet_pyannote_sidecar(monkeypatch, t
     assert "SPEAKER_01: there" in result.transcript_text
     assert isinstance(result.metadata.get("timings_ms"), dict)
     assert result.metadata["timings_ms"].get("stt_ms") is not None
+
+
+# ---------------------------------------------------------------------------
+# _backend / ContextVar extraction tests (IndrasNet GPU coordinator wiring)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_transcribe_audio_file_detailed_extracts_backend(tmp_path: Path):
+    """When WhisperX response contains _backend, it populates detail.backend and the ContextVar."""
+    from lct_python_backend.services.file_transcriber import _last_stt_backend
+
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"RIFF....WAVE")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            json={
+                "text": "hello",
+                "segments": [{"start": 0.0, "end": 0.5, "text": "hello"}],
+                "_backend": "local_whisperx",
+            },
+        )
+
+    detail = await transcribe_audio_file_detailed(
+        audio_path,
+        http_url="http://stt.local/v1/audio/transcriptions",
+        response_format="verbose_json",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert detail.backend == "local_whisperx"
+    assert _last_stt_backend.get("") == "local_whisperx"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_audio_file_detailed_backend_empty_when_absent(tmp_path: Path):
+    """When _backend is missing from response, detail.backend defaults to empty string."""
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"RIFF....WAVE")
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={"content-type": "application/json"},
+            json={"text": "world", "segments": [{"start": 0.0, "end": 0.5, "text": "world"}]},
+        )
+
+    detail = await transcribe_audio_file_detailed(
+        audio_path,
+        http_url="http://stt.local/v1/audio/transcriptions",
+        response_format="verbose_json",
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert detail.backend == ""
+
+
+@pytest.mark.asyncio
+async def test_transcribe_uploaded_file_surfaces_stt_backend_in_metadata(monkeypatch, tmp_path: Path):
+    """stt_backend appears in metadata when IndrasNet proxy stamps _backend."""
+    import lct_python_backend.services.file_transcriber as mod
+
+    wav = _make_silent_wav(tmp_path, duration_s=1.5, name="gpu.wav")
+    detail = AudioTranscriptionDetail(
+        transcript_text="hello gpu",
+        asr_segments=[{"start": 0.0, "end": 1.0, "text": "hello gpu"}],
+        diarized_segments=None,
+        raw_payload={"text": "hello gpu", "_backend": "modal_whisperx"},
+        backend="modal_whisperx",
+    )
+
+    # parakeet + pyannote_enabled path calls transcribe_audio_file_detailed directly
+    monkeypatch.setattr(mod, "STT_PARAKEET_PYANNOTE_ENABLED", True)
+    monkeypatch.setattr(mod, "transcribe_audio_file_detailed", AsyncMock(return_value=detail))
+
+    result = await mod.transcribe_uploaded_file(
+        temp_path=wav,
+        filename="gpu.wav",
+        content_type="audio/wav",
+        stt_settings={
+            "provider": "parakeet",
+            "provider_http_urls": {"parakeet": "http://stt.local/v1/audio/transcriptions"},
+            "http_timeout_seconds": 120.0,
+        },
+        provider_override="parakeet",
+    )
+
+    assert result.metadata.get("stt_backend") == "modal_whisperx"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_uploaded_file_omits_stt_backend_when_empty(monkeypatch, tmp_path: Path):
+    """stt_backend key is absent from metadata when not routed through IndrasNet."""
+    import lct_python_backend.services.file_transcriber as mod
+
+    wav = _make_silent_wav(tmp_path, duration_s=1.5, name="direct.wav")
+    detail = AudioTranscriptionDetail(
+        transcript_text="direct call",
+        asr_segments=[{"start": 0.0, "end": 1.0, "text": "direct call"}],
+        diarized_segments=None,
+        raw_payload={"text": "direct call"},
+        backend="",
+    )
+
+    monkeypatch.setattr(mod, "STT_PARAKEET_PYANNOTE_ENABLED", True)
+    monkeypatch.setattr(mod, "transcribe_audio_file_detailed", AsyncMock(return_value=detail))
+
+    result = await mod.transcribe_uploaded_file(
+        temp_path=wav,
+        filename="direct.wav",
+        content_type="audio/wav",
+        stt_settings={
+            "provider": "parakeet",
+            "provider_http_urls": {"parakeet": "http://stt.local/v1/audio/transcriptions"},
+            "http_timeout_seconds": 120.0,
+        },
+        provider_override="parakeet",
+    )
+
+    assert "stt_backend" not in result.metadata

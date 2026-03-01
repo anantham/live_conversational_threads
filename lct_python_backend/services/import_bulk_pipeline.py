@@ -262,6 +262,7 @@ async def run_bulk_processing_worker(
                     "stt_provider_ms": telemetry.get("stt_provider_ms"),
                     "diarization_ms": telemetry.get("diarization_ms"),
                     "alignment_ms": telemetry.get("alignment_ms"),
+                    "stt_backend": transcript_result.metadata.get("stt_backend"),
                 },
             },
         )
