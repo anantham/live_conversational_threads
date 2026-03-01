@@ -1,10 +1,16 @@
 """Obsidian Canvas export/import API endpoints."""
+import io
+import json
 import logging
+import re
 import uuid
+import zipfile
+from collections import deque
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -679,6 +685,196 @@ def convert_canvas_to_conversation(canvas: ObsidianCanvas, preserve_positions: b
 
 
 # ============================================================================
+# Hierarchical Canvas Helpers
+# ============================================================================
+
+def _slugify(text: str, max_len: int = 35) -> str:
+    slug = re.sub(r"[^\w\s]", "", (text or "").lower())
+    slug = re.sub(r"\s+", "_", slug).strip("_")
+    return slug[:max_len]
+
+
+def build_hierarchical_canvas_set(
+    nodes: list,
+    relationships: list,
+    base_filename: str,
+    canvas_dir_path: str,
+) -> dict:
+    """
+    Build a set of linked Obsidian canvas files from a hierarchical node tree.
+
+    Returns a dict of {filename: canvas_json_dict}.
+    Falls back to a single flat canvas if no L2 hierarchy exists.
+    """
+    # Group nodes by level (1=top/summary, 5=atomic)
+    by_level: dict = {}
+    id_to_node: dict = {}
+    for node in nodes:
+        lvl = getattr(node, "level", None) or 0
+        by_level.setdefault(lvl, []).append(node)
+        id_to_node[node.id] = node
+
+    l2_nodes = by_level.get(2, [])
+
+    # Fallback: no hierarchy → return single flat canvas using existing exporter
+    if not l2_nodes:
+        logger.info("[HIERARCHICAL CANVAS] No L2 nodes found — falling back to flat canvas")
+        # Build minimal graph_data for convert_conversation_to_canvas
+        node_data_list = [
+            {
+                "id": str(n.id),
+                "node_name": n.node_name,
+                "summary": n.summary,
+                "claims": [],
+                "key_points": n.key_points or [],
+                "predecessor": None,
+                "successor": None,
+                "contextual_relation": {},
+                "linked_nodes": [],
+                "is_bookmark": n.is_bookmark,
+                "is_contextual_progress": n.is_contextual_progress,
+                "chunk_id": str(n.chunk_ids[0]) if n.chunk_ids else None,
+                "utterance_ids": [str(uid) for uid in (n.utterance_ids or [])],
+            }
+            for n in nodes
+        ]
+        rel_records = [
+            {
+                "id": f"edge_{r.id}",
+                "fromNode": str(r.from_node_id),
+                "toNode": str(r.to_node_id),
+                "label": r.relationship_type or "related",
+                "color": "3",
+            }
+            for r in relationships
+        ]
+        canvas = convert_conversation_to_canvas(
+            [node_data_list], {}, base_filename, False, edge_records=rel_records
+        )
+        return {f"{base_filename}.canvas": canvas.model_dump()}
+
+    # Build parent→children map.
+    # NOTE: children_ids is misnamed — it stores a node's PARENT ids (the nodes one
+    # level above it), not its children. To find descendants of a node we invert:
+    # for each node N, for each pid in N.children_ids, record pid→N as a child.
+    parent_to_children: dict = {}
+    for node in nodes:
+        parent_ids = getattr(node, "children_ids", None) or []
+        for pid in parent_ids:
+            if pid in id_to_node:
+                parent_to_children.setdefault(pid, []).append(node)
+
+    def get_descendants(node_id) -> list:
+        result = []
+        queue = deque(parent_to_children.get(node_id, []))
+        while queue:
+            child = queue.popleft()
+            result.append(child)
+            queue.extend(parent_to_children.get(child.id, []))
+        return result
+
+    result_files: dict = {}
+
+    # ── Overview canvas: one file-type node per L2 theme ──────────────────────
+    overview_nodes: list = []
+    col_x = 0
+    for l2 in l2_nodes:
+        slug = _slugify(l2.node_name or f"theme_{l2.id}")
+        sub_filename = f"{base_filename}_{slug}.canvas"
+        dir_prefix = canvas_dir_path.rstrip("/") + "/" if canvas_dir_path else ""
+        file_ref = f"{dir_prefix}{sub_filename}"
+        overview_nodes.append(
+            CanvasNode(
+                id=str(l2.id),
+                type="file",
+                x=col_x,
+                y=0,
+                width=420,
+                height=280,
+                file=file_ref,
+                label=l2.node_name or "",
+            )
+        )
+        col_x += 500
+
+    # Edges between L2 nodes only
+    l2_ids = {n.id for n in l2_nodes}
+    overview_edges: list = []
+    for rel in relationships:
+        if rel.from_node_id in l2_ids and rel.to_node_id in l2_ids:
+            rel_type = (rel.relationship_type or "related").lower()
+            color = (
+                "4" if rel_type in ("supports", "informs", "builds_on", "enables", "affirms")
+                else "1" if rel_type in ("contradicts", "opposes", "refutes", "challenges")
+                else "3"
+            )
+            overview_edges.append(
+                CanvasEdge(
+                    id=f"edge_{rel.id}",
+                    fromNode=str(rel.from_node_id),
+                    toNode=str(rel.to_node_id),
+                    label=rel.relationship_type or "",
+                    color=color,
+                )
+            )
+
+    overview_canvas = ObsidianCanvas(nodes=overview_nodes, edges=overview_edges)
+    result_files[f"{base_filename}_overview.canvas"] = overview_canvas.model_dump()
+
+    # ── Per-theme detail canvases ──────────────────────────────────────────────
+    for l2 in l2_nodes:
+        slug = _slugify(l2.node_name or f"theme_{l2.id}")
+        sub_filename = f"{base_filename}_{slug}.canvas"
+
+        descendants = get_descendants(l2.id)
+        if not descendants:
+            # Include the L2 node itself if it has no children
+            descendants = [l2]
+
+        descendant_ids = {n.id for n in descendants}
+        sub_node_data = [
+            {
+                "id": str(n.id),
+                "node_name": n.node_name,
+                "summary": n.summary,
+                "claims": [],
+                "key_points": n.key_points or [],
+                "predecessor": None,
+                "successor": None,
+                "contextual_relation": {},
+                "linked_nodes": [],
+                "is_bookmark": n.is_bookmark,
+                "is_contextual_progress": n.is_contextual_progress,
+                "chunk_id": str(n.chunk_ids[0]) if n.chunk_ids else None,
+                "utterance_ids": [str(uid) for uid in (n.utterance_ids or [])],
+            }
+            for n in descendants
+        ]
+        sub_rels = [r for r in relationships if r.from_node_id in descendant_ids and r.to_node_id in descendant_ids]
+        sub_rel_records = [
+            {
+                "id": f"edge_{r.id}",
+                "fromNode": str(r.from_node_id),
+                "toNode": str(r.to_node_id),
+                "label": r.relationship_type or "related",
+                "color": "3",
+            }
+            for r in sub_rels
+        ]
+        sub_canvas = convert_conversation_to_canvas(
+            [sub_node_data], {}, l2.node_name or base_filename, False, edge_records=sub_rel_records
+        )
+        result_files[sub_filename] = sub_canvas.model_dump()
+
+    logger.info(
+        "[HIERARCHICAL CANVAS] Built %d canvas files (%d themes)",
+        len(result_files),
+        len(l2_nodes),
+    )
+    return result_files
+
+
+# ============================================================================
 # Route Handlers
 # ============================================================================
 
@@ -847,6 +1043,76 @@ async def export_to_obsidian_canvas(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+
+@router.post("/export/obsidian-canvas/{conversation_id}/hierarchical")
+async def export_hierarchical_canvas(
+    conversation_id: str,
+    canvas_dir_path: str = Query(default="", description="Vault-relative folder path for cross-canvas file references, e.g. 'Conversations/Divij/2026-02-14'"),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """
+    Export a conversation as a set of linked Obsidian canvas files (canvas-of-canvases).
+
+    Returns a ZIP archive containing:
+    - {name}_overview.canvas  — L2 theme nodes as file-type embeds
+    - {name}_{theme}.canvas   — one detail canvas per L2 theme (L3/L4/L5 nodes)
+
+    Falls back to a single flat canvas if the conversation has no hierarchy.
+    """
+    try:
+        from sqlalchemy import select
+        from lct_python_backend.models import Conversation, Node, Relationship
+
+        result = await db.execute(
+            select(Conversation).where(Conversation.id == uuid.UUID(conversation_id))
+        )
+        conversation = result.scalar_one_or_none()
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        nodes_result = await db.execute(
+            select(Node).where(Node.conversation_id == uuid.UUID(conversation_id))
+        )
+        nodes = list(nodes_result.scalars().all())
+
+        rels_result = await db.execute(
+            select(Relationship).where(Relationship.conversation_id == uuid.UUID(conversation_id))
+        )
+        relationships = list(rels_result.scalars().all())
+
+        base_filename = _slugify(conversation.conversation_name or "conversation", max_len=50)
+        canvas_files = build_hierarchical_canvas_set(
+            nodes=nodes,
+            relationships=relationships,
+            base_filename=base_filename,
+            canvas_dir_path=canvas_dir_path,
+        )
+
+        # Pack all canvas files into a ZIP in memory
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for filename, canvas_data in canvas_files.items():
+                zf.writestr(filename, json.dumps(canvas_data, ensure_ascii=False, indent=2))
+        zip_buffer.seek(0)
+
+        zip_name = f"{base_filename}_canvas.zip"
+        logger.info(
+            "[HIERARCHICAL CANVAS] Returning ZIP with %d canvas files for conversation %s",
+            len(canvas_files),
+            conversation_id,
+        )
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Hierarchical canvas export failed for %s", conversation_id)
+        raise HTTPException(status_code=500, detail=f"Hierarchical export failed: {exc}")
 
 
 @router.post("/import/obsidian-canvas/")
