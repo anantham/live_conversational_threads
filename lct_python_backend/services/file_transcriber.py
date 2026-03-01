@@ -10,6 +10,7 @@ import os
 import re
 import tempfile
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
@@ -22,6 +23,11 @@ from lct_python_backend.parsers import GoogleMeetParser
 from lct_python_backend.services.stt_http_transcriber import extract_diarized_segments, extract_transcript_text
 
 logger = logging.getLogger("lct_backend")
+
+# Tracks which GPU backend handled the most recent transcription call within
+# this async task context.  Set by transcribe_audio_file_detailed(); read by
+# transcribe_uploaded_file() to surface it in metadata → SSE events.
+_last_stt_backend: ContextVar[str] = ContextVar("_last_stt_backend", default="")
 
 def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
     raw = os.getenv(name)
@@ -127,6 +133,7 @@ class AudioTranscriptionDetail:
     asr_segments: List[Dict[str, Any]]
     diarized_segments: Optional[List[Dict[str, Any]]]
     raw_payload: Any
+    backend: str = ""  # "local_whisperx" | "modal_whisperx" | "" (set when routed via IndrasNet)
 
 
 def _coerce_str(value: Any) -> str:
@@ -740,11 +747,14 @@ async def transcribe_audio_file_detailed(
             transcript = "\n".join(seg["text"] for seg in asr_segments if _coerce_str(seg.get("text"))).strip()
     if not transcript:
         raise RuntimeError("STT provider returned empty transcript.")
+    backend = parsed_payload.get("_backend", "") if isinstance(parsed_payload, dict) else ""
+    _last_stt_backend.set(backend)
     return AudioTranscriptionDetail(
         transcript_text=transcript,
         asr_segments=asr_segments,
         diarized_segments=diarized_segments,
         raw_payload=parsed_payload,
+        backend=backend,
     )
 
 
@@ -979,6 +989,7 @@ async def transcribe_uploaded_file(
         active_provider = ""
         active_http_url = ""
         timings_ms: Dict[str, int] = {}
+        stt_backend = ""  # "local_whisperx" | "modal_whisperx" | "" — set when via IndrasNet proxy
         fallback_used = False
 
         pyannote_enabled = (
@@ -1015,6 +1026,7 @@ async def transcribe_uploaded_file(
                         timeout_seconds=timeout,
                         response_format=response_format or STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT,
                     )
+                    stt_backend = detail.backend
                     timings_ms["stt_ms"] = _elapsed_ms(stt_started_at)
                     transcript_text = detail.transcript_text
                     source_diarized_segments = detail.diarized_segments
@@ -1059,6 +1071,9 @@ async def transcribe_uploaded_file(
                         response_format=response_format,
                     )
                     timings_ms["stt_ms"] = _elapsed_ms(stt_started_at)
+                    # _last_stt_backend is updated by transcribe_audio_file_detailed()
+                    # (called internally by transcribe_audio_chunked) for each chunk.
+                    stt_backend = _last_stt_backend.get("")
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 attempt_record["status"] = "failed"
@@ -1110,6 +1125,8 @@ async def transcribe_uploaded_file(
                 metadata["provider_fallback_from"] = failed_attempts[-1].get("provider")
             metadata["provider_fallback_to"] = active_provider
         metadata.update({"provider": active_provider, "http_url": active_http_url})
+        if stt_backend:
+            metadata["stt_backend"] = stt_backend
         return FileTranscriptResult(
             transcript_text=parse_plain_text(transcript_text),
             source_type="audio",
