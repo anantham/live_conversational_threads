@@ -11,13 +11,14 @@ import re
 import tempfile
 import time
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
 import httpx
 from pydub import AudioSegment
+from pydub.silence import detect_silence
 
 from lct_python_backend.parsers import GoogleMeetParser
 from lct_python_backend.services.stt_http_transcriber import extract_diarized_segments, extract_transcript_text
@@ -134,6 +135,19 @@ class AudioTranscriptionDetail:
     diarized_segments: Optional[List[Dict[str, Any]]]
     raw_payload: Any
     backend: str = ""  # "local_whisperx" | "modal_whisperx" | "" (set when routed via IndrasNet)
+
+
+@dataclass
+class SegmentResult:
+    """Result for a single audio segment in interleaved processing."""
+
+    segment_index: int  # 1-based index
+    segment_total: int  # Total number of segments
+    start_ms: int
+    end_ms: int
+    transcript_text: str
+    elapsed_ms: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 def _coerce_str(value: Any) -> str:
@@ -821,6 +835,143 @@ def _split_audio_to_chunks(
     return chunks
 
 
+# ── Dynamic silence-based segmentation for interleaved pipeline ─────────────
+
+# Environment-tunable segment boundaries
+DEFAULT_MIN_SEGMENT_MS = _bounded_env_int("SEGMENT_MIN_MS", default=120_000, minimum=60_000, maximum=300_000)  # 2 min
+DEFAULT_MAX_SEGMENT_MS = _bounded_env_int("SEGMENT_MAX_MS", default=480_000, minimum=120_000, maximum=900_000)  # 8 min
+DEFAULT_SILENCE_THRESH_DB = _bounded_env_int("SEGMENT_SILENCE_DB", default=-40, minimum=-60, maximum=-20)
+DEFAULT_MIN_SILENCE_MS = _bounded_env_int("SEGMENT_SILENCE_MS", default=2000, minimum=500, maximum=5000)
+
+
+def detect_segment_boundaries(
+    audio_path: Path,
+    *,
+    min_segment_ms: int = DEFAULT_MIN_SEGMENT_MS,
+    max_segment_ms: int = DEFAULT_MAX_SEGMENT_MS,
+    silence_thresh_db: int = DEFAULT_SILENCE_THRESH_DB,
+    min_silence_ms: int = DEFAULT_MIN_SILENCE_MS,
+) -> List[int]:
+    """Detect natural break points in audio based on silences.
+
+    Instead of fixed-duration segments, this finds natural conversation pauses
+    (2-3 second silences) to create segment boundaries. This ensures we never
+    cut off during high-energy continuous speech.
+
+    Args:
+        audio_path: Path to audio file
+        min_segment_ms: Minimum segment duration (default 2 min, avoid micro-segments)
+        max_segment_ms: Maximum segment duration (default 8 min, ensure timely feedback)
+        silence_thresh_db: Audio below this dB is considered silence (default -40)
+        min_silence_ms: Minimum silence duration to consider a break (default 2s)
+
+    Returns:
+        List of millisecond timestamps marking segment boundaries (starts with 0).
+    """
+    audio = AudioSegment.from_file(str(audio_path))
+    duration_ms = len(audio)
+
+    # Short files don't need segmentation
+    if duration_ms <= min_segment_ms:
+        logger.info(
+            "[SEGMENT] Audio too short for segmentation (%d ms <= %d ms min), single segment",
+            duration_ms, min_segment_ms
+        )
+        return [0, duration_ms]
+
+    # Find all silences
+    silences = detect_silence(audio, min_silence_len=min_silence_ms, silence_thresh=silence_thresh_db)
+    logger.info(
+        "[SEGMENT] Found %d silence regions (>=%d ms, <%d dB) in %d ms audio",
+        len(silences), min_silence_ms, silence_thresh_db, duration_ms
+    )
+
+    boundaries = [0]
+    last_boundary = 0
+
+    for silence_start, silence_end in silences:
+        time_since_last = silence_start - last_boundary
+
+        # Skip if too soon (< min_segment)
+        if time_since_last < min_segment_ms:
+            continue
+
+        # Use middle of silence as boundary
+        boundary = (silence_start + silence_end) // 2
+        boundaries.append(boundary)
+        last_boundary = boundary
+
+        logger.debug(
+            "[SEGMENT] Boundary at %d ms (silence %d-%d ms, %.1f min since last)",
+            boundary, silence_start, silence_end, time_since_last / 60000
+        )
+
+    # Force boundaries at max_segment intervals if no natural break was found
+    # This ensures we don't have segments longer than max_segment_ms
+    forced_boundaries: List[int] = [0]
+    for next_boundary in boundaries[1:] + [duration_ms]:
+        while next_boundary - forced_boundaries[-1] > max_segment_ms:
+            # Find a silence in this range, or force cut at max_segment
+            forced_point = forced_boundaries[-1] + max_segment_ms
+            # Look for a silence near the forced point (within 30 seconds)
+            best_silence_midpoint = forced_point
+            for silence_start, silence_end in silences:
+                midpoint = (silence_start + silence_end) // 2
+                if forced_point - 30000 <= midpoint <= forced_point + 30000:
+                    best_silence_midpoint = midpoint
+                    break
+            forced_boundaries.append(best_silence_midpoint)
+            logger.info(
+                "[SEGMENT] Forced boundary at %d ms (max segment reached)",
+                best_silence_midpoint
+            )
+        if next_boundary not in forced_boundaries:
+            forced_boundaries.append(next_boundary)
+
+    # Ensure we end at duration
+    if forced_boundaries[-1] != duration_ms:
+        # If remaining is too short, extend last segment
+        remaining = duration_ms - forced_boundaries[-1]
+        if remaining < min_segment_ms // 2:
+            forced_boundaries[-1] = duration_ms
+        else:
+            forced_boundaries.append(duration_ms)
+
+    segment_count = len(forced_boundaries) - 1
+    avg_segment_ms = duration_ms / segment_count if segment_count > 0 else duration_ms
+    logger.info(
+        "[SEGMENT] Created %d segments from %d ms audio (avg %.1f min each)",
+        segment_count, duration_ms, avg_segment_ms / 60000
+    )
+
+    return forced_boundaries
+
+
+def extract_audio_segment(
+    audio_path: Path,
+    start_ms: int,
+    end_ms: int,
+) -> Path:
+    """Extract a segment of audio to a temporary WAV file.
+
+    Returns the path to the temp file. Caller is responsible for cleanup.
+    """
+    audio = AudioSegment.from_file(str(audio_path))
+    segment = audio[start_ms:end_ms]
+
+    tmp = tempfile.NamedTemporaryFile(
+        suffix=".wav", prefix="stt_segment_", delete=False,
+    )
+    segment.export(tmp.name, format="wav")
+    tmp.close()
+
+    logger.debug(
+        "[SEGMENT] Extracted %d-%d ms (%d ms) to %s",
+        start_ms, end_ms, end_ms - start_ms, tmp.name
+    )
+    return Path(tmp.name)
+
+
 def _is_empty_transcript_error(exc: Exception) -> bool:
     return isinstance(exc, RuntimeError) and "empty transcript" in str(exc).lower()
 
@@ -947,6 +1098,138 @@ async def transcribe_audio_chunked(
             chunk_path.unlink(missing_ok=True)
 
     return "\n".join(transcripts)
+
+
+# Type alias for segment-level callbacks
+SegmentStartedCallback = Callable[[int, int, int, int], Awaitable[None]]  # (index, total, start_ms, end_ms)
+
+
+async def transcribe_audio_segmented(
+    file_path: Path,
+    *,
+    http_url: str,
+    model: str = "",
+    language: str = "",
+    timeout_seconds: float = 120.0,
+    chunk_duration_s: int = DEFAULT_CHUNK_DURATION_S,
+    overlap_s: int = DEFAULT_CHUNK_OVERLAP_S,
+    chunk_max_retries: int = DEFAULT_CHUNK_MAX_RETRIES,
+    chunk_retry_backoff_s: float = DEFAULT_CHUNK_RETRY_BACKOFF_S,
+    min_segment_ms: int = DEFAULT_MIN_SEGMENT_MS,
+    max_segment_ms: int = DEFAULT_MAX_SEGMENT_MS,
+    silence_thresh_db: int = DEFAULT_SILENCE_THRESH_DB,
+    min_silence_ms: int = DEFAULT_MIN_SILENCE_MS,
+    on_segment_started: Optional[SegmentStartedCallback] = None,
+    on_chunk_progress: Optional[ProgressCallback] = None,
+    response_format: str = "",
+    transport: Optional[httpx.AsyncBaseTransport] = None,
+) -> AsyncGenerator[SegmentResult, None]:
+    """Yield transcripts per natural segment instead of waiting for full file.
+
+    This enables interleaved processing where each segment flows through the
+    full pipeline (STT → LLM → nodes) before the next segment starts. Users
+    see results progressively rather than waiting for the entire file.
+
+    Args:
+        file_path: Path to audio file
+        http_url: STT provider URL
+        model: Optional model name for STT
+        language: Optional language hint
+        timeout_seconds: HTTP timeout per chunk
+        chunk_duration_s: Chunk size for STT within each segment
+        overlap_s: Overlap between chunks
+        chunk_max_retries: Retries per chunk on failure
+        chunk_retry_backoff_s: Backoff delay between retries
+        min_segment_ms: Minimum segment duration (default 2 min)
+        max_segment_ms: Maximum segment duration (default 8 min)
+        silence_thresh_db: Silence detection threshold
+        min_silence_ms: Minimum silence duration for breaks
+        on_segment_started: Callback when segment transcription begins
+        on_chunk_progress: Callback for chunk-level progress within segment
+        response_format: STT response format
+        transport: Optional httpx transport
+
+    Yields:
+        SegmentResult for each natural audio segment
+    """
+    # Step 1: Detect natural boundaries
+    boundaries = detect_segment_boundaries(
+        file_path,
+        min_segment_ms=min_segment_ms,
+        max_segment_ms=max_segment_ms,
+        silence_thresh_db=silence_thresh_db,
+        min_silence_ms=min_silence_ms,
+    )
+    segment_count = len(boundaries) - 1
+
+    if segment_count == 0:
+        logger.warning("[SEGMENT] No segments detected for %s", file_path.name)
+        return
+
+    logger.info(
+        "[SEGMENT] Starting segmented transcription: %d segments from %s",
+        segment_count, file_path.name
+    )
+
+    # Step 2: Process each segment
+    for i in range(segment_count):
+        start_ms, end_ms = boundaries[i], boundaries[i + 1]
+        segment_index = i + 1
+
+        logger.info(
+            "[SEGMENT %d/%d] Processing %d-%d ms (%.1f min)",
+            segment_index, segment_count, start_ms, end_ms, (end_ms - start_ms) / 60000
+        )
+
+        if on_segment_started:
+            await on_segment_started(segment_index, segment_count, start_ms, end_ms)
+
+        # Extract segment audio to temp file
+        segment_audio_path = extract_audio_segment(file_path, start_ms, end_ms)
+        segment_started_at = time.perf_counter()
+
+        try:
+            # Transcribe segment using existing chunked logic
+            transcript_text = await transcribe_audio_chunked(
+                segment_audio_path,
+                http_url=http_url,
+                model=model,
+                language=language,
+                timeout_seconds=timeout_seconds,
+                chunk_duration_s=chunk_duration_s,
+                overlap_s=overlap_s,
+                chunk_max_retries=chunk_max_retries,
+                chunk_retry_backoff_s=chunk_retry_backoff_s,
+                on_chunk_progress=on_chunk_progress,
+                response_format=response_format,
+                transport=transport,
+            )
+
+            elapsed_ms = _elapsed_ms(segment_started_at)
+            stt_backend = _last_stt_backend.get("")
+
+            logger.info(
+                "[SEGMENT %d/%d] Completed in %d ms, %d chars",
+                segment_index, segment_count, elapsed_ms, len(transcript_text)
+            )
+
+            yield SegmentResult(
+                segment_index=segment_index,
+                segment_total=segment_count,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                transcript_text=transcript_text,
+                elapsed_ms=elapsed_ms,
+                metadata={
+                    "stt_backend": stt_backend,
+                    "duration_ms": end_ms - start_ms,
+                },
+            )
+        finally:
+            # Cleanup temp segment file
+            segment_audio_path.unlink(missing_ok=True)
+
+    logger.info("[SEGMENT] Completed all %d segments for %s", segment_count, file_path.name)
 
 
 async def transcribe_uploaded_file(

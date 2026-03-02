@@ -4,18 +4,32 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 
 from fastapi import Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.services.import_bulk_telemetry import (
     attach_bottleneck_stage,
+    calculate_segmented_progress,
     elapsed_ms,
+    estimate_analysis_eta_ms,
     estimate_transcription_eta_ms,
+)
+
+# Environment-tunable threshold for enabling interleaved segmentation (in bytes)
+# Files larger than this will use segmented processing for progressive feedback
+# Default: 10MB (roughly 10+ minutes of audio)
+SEGMENT_PROCESSING_THRESHOLD_BYTES = int(
+    os.getenv("SEGMENT_PROCESSING_THRESHOLD_BYTES", str(10 * 1024 * 1024))
+)
+# Set to "true" to enable segmented processing for all audio files
+SEGMENT_PROCESSING_FORCE_ENABLED = (
+    os.getenv("SEGMENT_PROCESSING_FORCE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
 )
 
 
@@ -45,7 +59,9 @@ async def run_bulk_processing_worker(
     emit: Callable[[str, dict[str, Any]], Awaitable[None]],
     load_stt_settings: Callable[[AsyncSession], Awaitable[dict[str, Any]]],
     load_llm_config: Callable[[AsyncSession], Awaitable[dict[str, Any]]],
+    load_llm_providers: Optional[Callable[[AsyncSession], Awaitable[dict[str, Any]]]] = None,
     transcribe_uploaded_file: Callable[..., Awaitable[Any]],
+    transcribe_audio_segmented: Optional[Callable[..., AsyncGenerator[Any, None]]] = None,
     chunk_transcript_lines: Callable[[str], list[str]],
     transcript_processor_cls: Callable[..., Any],
     is_async_import_diarization_enabled: Callable[[], bool],
@@ -64,6 +80,15 @@ async def run_bulk_processing_worker(
     transcription_started_at: Optional[float] = None
     graph_started_at: Optional[float] = None
     active_stage = "uploading"
+
+    logger.info(
+        "[PROCESS FILE] Starting pipeline for %s (%d bytes, source_type=%s, provider=%s)",
+        filename,
+        content_size,
+        source_type,
+        provider or "auto",
+    )
+
     telemetry: dict[str, Any] = {
         "file_name": filename,
         "file_size_bytes": content_size,
@@ -88,8 +113,12 @@ async def run_bulk_processing_worker(
                 "message": message,
                 "progress": progress_map.get(stage, 0.55),
                 "context": context,
+                "stt_backend": telemetry.get("stt_backend", ""),
+                "llm_backend": telemetry.get("llm_backend", ""),
                 "telemetry": {
                     "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                    "stt_backend": telemetry.get("stt_backend", ""),
+                    "llm_backend": telemetry.get("llm_backend", ""),
                 },
             },
         )
@@ -222,125 +251,395 @@ async def run_bulk_processing_worker(
                 },
             )
 
-        transcript_result = await transcribe_uploaded_file(
-            temp_path=Path(temp_path),
-            filename=filename,
-            content_type=file.content_type,
-            stt_settings=stt_settings,
-            provider_override=provider,
-            source_type_override=resolved_source_type,
-            on_chunk_progress=on_chunk_progress if is_likely_audio else None,
-            on_provider_fallback=on_provider_fallback if is_likely_audio else None,
+        # Determine if we should use interleaved segmented processing
+        # This is beneficial for large audio files (> threshold) as it provides
+        # progressive feedback: users see nodes appearing as each segment completes
+        use_segmented_processing = (
+            is_likely_audio
+            and transcribe_audio_segmented is not None
+            and (
+                SEGMENT_PROCESSING_FORCE_ENABLED
+                or content_size > SEGMENT_PROCESSING_THRESHOLD_BYTES
+            )
         )
-        source_timings = transcript_result.metadata.get("timings_ms", {})
-        if isinstance(source_timings, dict):
-            telemetry["stt_provider_ms"] = source_timings.get("stt_ms")
-            telemetry["diarization_ms"] = source_timings.get("diarization_ms")
-            telemetry["alignment_ms"] = source_timings.get("alignment_ms")
-        if transcript_result.metadata.get("provider_fallback_used"):
-            telemetry["stt_provider_fallback_used"] = True
-            telemetry["stt_provider_fallback_from"] = transcript_result.metadata.get("provider_fallback_from")
-            telemetry["stt_provider_fallback_to"] = transcript_result.metadata.get("provider_fallback_to")
-        if transcription_started_at is not None:
-            telemetry["transcription_ms"] = elapsed_ms(transcription_started_at)
-        status_message = f"Got {transcript_result.source_type} transcript."
-        if transcript_result.source_type == "audio" and transcript_result.metadata.get("provider_fallback_used"):
-            fallback_from = transcript_result.metadata.get("provider_fallback_from") or "local"
-            fallback_to = transcript_result.metadata.get("provider") or "fallback provider"
-            status_message = f"Got audio transcript via fallback ({fallback_from} -> {fallback_to})."
-        await emit(
-            "status",
-            {
-                "stage": "transcribed",
-                "progress": 0.35,
-                "message": status_message,
-                "source_type": transcript_result.source_type,
-                "metadata": transcript_result.metadata,
-                "telemetry": {
-                    "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                    "transcription_ms": telemetry.get("transcription_ms"),
-                    "stt_provider_ms": telemetry.get("stt_provider_ms"),
-                    "diarization_ms": telemetry.get("diarization_ms"),
-                    "alignment_ms": telemetry.get("alignment_ms"),
-                    "stt_backend": transcript_result.metadata.get("stt_backend"),
-                },
-            },
-        )
-        active_stage = "chunking"
+        telemetry["segmented_processing"] = use_segmented_processing
 
-        transcript_text = transcript_result.transcript_text.strip()
-        if not transcript_text:
-            raise ValueError("No transcript text could be extracted from file.")
-
-        chunking_started_at = time.perf_counter()
-        transcript_chunks = chunk_transcript_lines(transcript_text)
-        if not transcript_chunks:
-            raise ValueError("Transcript parser produced no usable chunks.")
-        telemetry["chunking_ms"] = elapsed_ms(chunking_started_at)
-        telemetry["transcript_chars"] = len(transcript_text)
-        telemetry["transcript_chunk_count"] = len(transcript_chunks)
-
-        active_stage = "analyzing"
-        await emit(
-            "status",
-            {
-                "stage": "analyzing",
-                "progress": 0.55,
-                "message": f"Generating graph from {len(transcript_chunks)} transcript chunks...",
-                "telemetry": {
-                    "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                    "chunking_ms": telemetry.get("chunking_ms"),
-                    "transcript_chunk_count": len(transcript_chunks),
-                },
-            },
-        )
+        if use_segmented_processing:
+            logger.info(
+                "[PROCESS FILE] Using interleaved segmented processing for %s (%d bytes, threshold=%d)",
+                filename,
+                content_size,
+                SEGMENT_PROCESSING_THRESHOLD_BYTES,
+            )
+        else:
+            logger.info(
+                "[PROCESS FILE] Using sequential processing for %s (%d bytes, is_audio=%s, segmented_fn=%s)",
+                filename,
+                content_size,
+                is_likely_audio,
+                transcribe_audio_segmented is not None,
+            )
 
         llm_config = await load_llm_config(db)
+        # Load LLM providers for fallback support
+        llm_providers = None
+        if load_llm_providers:
+            llm_providers_config = await load_llm_providers(db)
+            llm_providers = llm_providers_config.get("providers")
+
+        # Determine LLM backend for UI indicators (will be updated by processor)
+        llm_base_url = str(llm_config.get("base_url", "")).strip()
+        llm_model = str(llm_config.get("chat_model", "")).strip()
+        is_modal_llm = "modal.run" in llm_base_url
+        llm_backend = f"modal_{llm_model}" if is_modal_llm else f"local_{llm_model}"
+        telemetry["llm_backend"] = llm_backend
+
         processor = transcript_processor_cls(
             send_update=send_update,
             send_status=send_status,
             llm_config=llm_config,
+            providers=llm_providers,
         )
         graph_started_at = time.perf_counter()
 
-        for index, chunk in enumerate(transcript_chunks, start=1):
-            if await request.is_disconnected():
-                logger.info(
-                    "[PROCESS FILE] Client disconnected, aborting at chunk %d/%d",
-                    index,
-                    len(transcript_chunks),
-                )
-                return
+        # Track final source type (set by either path)
+        final_source_type = "audio" if is_likely_audio else "text"
+        final_source_metadata: dict[str, Any] = {}
 
+        if use_segmented_processing:
+            # ────────────────────────────────────────────────────────────────
+            # INTERLEAVED SEGMENTED PROCESSING
+            # Process each natural audio segment through the full pipeline
+            # so users see nodes appearing progressively
+            # ────────────────────────────────────────────────────────────────
+            active_stage = "segmented_transcribing"
+            total_transcript_chars = 0
+            total_nodes_generated = 0
+
+            # Get STT URL from settings
+            stt_http_url = str(stt_settings.get("http_url", "")).strip()
+            if not stt_http_url:
+                logger.error("[PROCESS FILE] No STT HTTP URL configured for segmented transcription")
+                raise ValueError("No STT HTTP URL configured for segmented transcription.")
+
+            logger.info(
+                "[PROCESS FILE] Starting segmented transcription using STT URL: %s",
+                stt_http_url,
+            )
+
+            segment_idx = 0
+            async for segment in transcribe_audio_segmented(
+                file_path=Path(temp_path),
+                http_url=stt_http_url,
+                model=str(stt_settings.get("http_model", "")).strip(),
+                language=str(stt_settings.get("http_language", "")).strip(),
+                timeout_seconds=float(stt_settings.get("http_timeout_seconds", 120.0) or 120.0),
+            ):
+                segment_idx += 1
+                if await request.is_disconnected():
+                    logger.info(
+                        "[PROCESS FILE] Client disconnected during segment %d/%d",
+                        segment.segment_index,
+                        segment.segment_total,
+                    )
+                    return
+
+                # Emit segment_started event
+                await emit(
+                    "segment_started",
+                    {
+                        "index": segment.segment_index,
+                        "total": segment.segment_total,
+                        "start_ms": segment.start_ms,
+                        "end_ms": segment.end_ms,
+                        "duration_ms": segment.end_ms - segment.start_ms,
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                        },
+                    },
+                )
+
+                # Calculate overall progress for this segment's transcription phase
+                stt_progress = calculate_segmented_progress(
+                    segment.segment_index,
+                    segment.segment_total,
+                    "transcribing",
+                    1.0,  # Segment transcription complete
+                )
+
+                await emit(
+                    "status",
+                    {
+                        "stage": "transcribing",
+                        "progress": round(stt_progress, 3),
+                        "message": f"Transcribed segment {segment.segment_index}/{segment.segment_total}",
+                        "segment_index": segment.segment_index,
+                        "segment_total": segment.segment_total,
+                        "stt_backend": segment.metadata.get("stt_backend", ""),
+                        "llm_backend": llm_backend,
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                            "segment_elapsed_ms": segment.elapsed_ms,
+                            "segment_index": segment.segment_index,
+                            "segment_total": segment.segment_total,
+                        },
+                    },
+                )
+
+                # Store STT backend
+                if segment.metadata.get("stt_backend"):
+                    telemetry["stt_backend"] = segment.metadata.get("stt_backend")
+
+                # Emit transcript text for this segment
+                await emit(
+                    "transcript",
+                    {
+                        "phase": "transcribing",
+                        "segment_index": segment.segment_index,
+                        "segment_total": segment.segment_total,
+                        "text": segment.transcript_text,
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                        },
+                    },
+                )
+
+                # Now analyze this segment's transcript
+                active_stage = "analyzing"
+                segment_chunks = chunk_transcript_lines(segment.transcript_text)
+                total_transcript_chars += len(segment.transcript_text)
+
+                for chunk_idx, chunk in enumerate(segment_chunks, start=1):
+                    if await request.is_disconnected():
+                        return
+
+                    # Calculate progress for analysis phase of this segment
+                    analysis_stage_progress = chunk_idx / max(1, len(segment_chunks))
+                    overall_progress = calculate_segmented_progress(
+                        segment.segment_index,
+                        segment.segment_total,
+                        "analyzing",
+                        analysis_stage_progress,
+                    )
+
+                    await emit(
+                        "status",
+                        {
+                            "stage": "analyzing",
+                            "progress": round(overall_progress, 3),
+                            "message": f"Analyzing segment {segment.segment_index}/{segment.segment_total} chunk {chunk_idx}/{len(segment_chunks)}...",
+                            "segment_index": segment.segment_index,
+                            "segment_total": segment.segment_total,
+                            "stt_backend": telemetry.get("stt_backend", ""),
+                            "llm_backend": llm_backend,
+                            "telemetry": {
+                                "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                                "segment_index": segment.segment_index,
+                                "segment_total": segment.segment_total,
+                            },
+                        },
+                    )
+
+                    await processor.handle_final_text(chunk)
+
+                # Flush segment to emit nodes from this segment
+                nodes_after_segment = await processor.flush_segment()
+                nodes_this_segment = nodes_after_segment - total_nodes_generated
+                total_nodes_generated = nodes_after_segment
+
+                # Emit segment_complete event
+                await emit(
+                    "segment_complete",
+                    {
+                        "index": segment.segment_index,
+                        "total": segment.segment_total,
+                        "nodes_generated": nodes_this_segment,
+                        "total_nodes": total_nodes_generated,
+                        "elapsed_ms": segment.elapsed_ms,
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                        },
+                    },
+                )
+
+                logger.info(
+                    "[PROCESS FILE] Segment %d/%d complete: %d nodes (+%d this segment)",
+                    segment.segment_index,
+                    segment.segment_total,
+                    total_nodes_generated,
+                    nodes_this_segment,
+                )
+
+            # Final flush after all segments
+            await processor.flush()
+            telemetry["segment_count"] = segment_idx
+            telemetry["transcript_chars"] = total_transcript_chars
+            final_source_type = "audio"
+
+        else:
+            # ────────────────────────────────────────────────────────────────
+            # SEQUENTIAL PROCESSING (existing flow)
+            # Transcribe entire file, then analyze all at once
+            # ────────────────────────────────────────────────────────────────
+            transcript_result = await transcribe_uploaded_file(
+                temp_path=Path(temp_path),
+                filename=filename,
+                content_type=file.content_type,
+                stt_settings=stt_settings,
+                provider_override=provider,
+                source_type_override=resolved_source_type,
+                on_chunk_progress=on_chunk_progress if is_likely_audio else None,
+                on_provider_fallback=on_provider_fallback if is_likely_audio else None,
+            )
+            source_timings = transcript_result.metadata.get("timings_ms", {})
+            if isinstance(source_timings, dict):
+                telemetry["stt_provider_ms"] = source_timings.get("stt_ms")
+                telemetry["diarization_ms"] = source_timings.get("diarization_ms")
+                telemetry["alignment_ms"] = source_timings.get("alignment_ms")
+            if transcript_result.metadata.get("provider_fallback_used"):
+                telemetry["stt_provider_fallback_used"] = True
+                telemetry["stt_provider_fallback_from"] = transcript_result.metadata.get("provider_fallback_from")
+                telemetry["stt_provider_fallback_to"] = transcript_result.metadata.get("provider_fallback_to")
+            # Store stt_backend for later use in send_status
+            if transcript_result.metadata.get("stt_backend"):
+                telemetry["stt_backend"] = transcript_result.metadata.get("stt_backend")
+            if transcription_started_at is not None:
+                telemetry["transcription_ms"] = elapsed_ms(transcription_started_at)
+            status_message = f"Got {transcript_result.source_type} transcript."
+            if transcript_result.source_type == "audio" and transcript_result.metadata.get("provider_fallback_used"):
+                fallback_from = transcript_result.metadata.get("provider_fallback_from") or "local"
+                fallback_to = transcript_result.metadata.get("provider") or "fallback provider"
+                status_message = f"Got audio transcript via fallback ({fallback_from} -> {fallback_to})."
             await emit(
-                "transcript",
+                "status",
                 {
-                    "phase": "analyzing",
-                    "chunk_id": f"segment-{index}",
-                    "index": index,
-                    "total": len(transcript_chunks),
-                    "text": chunk,
+                    "stage": "transcribed",
+                    "progress": 0.35,
+                    "message": status_message,
+                    "source_type": transcript_result.source_type,
+                    "metadata": transcript_result.metadata,
                     "telemetry": {
                         "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                        "graph_elapsed_ms": (
-                            elapsed_ms(graph_started_at)
-                            if graph_started_at is not None
-                            else None
-                        ),
+                        "transcription_ms": telemetry.get("transcription_ms"),
+                        "stt_provider_ms": telemetry.get("stt_provider_ms"),
+                        "diarization_ms": telemetry.get("diarization_ms"),
+                        "alignment_ms": telemetry.get("alignment_ms"),
+                        "stt_backend": transcript_result.metadata.get("stt_backend"),
                     },
                 },
             )
-            await processor.handle_final_text(chunk)
+            active_stage = "chunking"
 
-        await processor.flush()
+            transcript_text = transcript_result.transcript_text.strip()
+            if not transcript_text:
+                raise ValueError("No transcript text could be extracted from file.")
+
+            chunking_started_at = time.perf_counter()
+            transcript_chunks = chunk_transcript_lines(transcript_text)
+            if not transcript_chunks:
+                raise ValueError("Transcript parser produced no usable chunks.")
+            telemetry["chunking_ms"] = elapsed_ms(chunking_started_at)
+            telemetry["transcript_chars"] = len(transcript_text)
+            telemetry["transcript_chunk_count"] = len(transcript_chunks)
+
+            active_stage = "analyzing"
+            await emit(
+                "status",
+                {
+                    "stage": "analyzing",
+                    "progress": 0.55,
+                    "message": f"Generating graph from {len(transcript_chunks)} transcript chunks...",
+                    "stt_backend": transcript_result.metadata.get("stt_backend", ""),
+                    "llm_backend": llm_backend,
+                    "telemetry": {
+                        "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                        "chunking_ms": telemetry.get("chunking_ms"),
+                        "transcript_chunk_count": len(transcript_chunks),
+                        "stt_backend": transcript_result.metadata.get("stt_backend", ""),
+                        "llm_backend": llm_backend,
+                    },
+                },
+            )
+
+            for index, chunk in enumerate(transcript_chunks, start=1):
+                if await request.is_disconnected():
+                    logger.info(
+                        "[PROCESS FILE] Client disconnected, aborting at chunk %d/%d",
+                        index,
+                        len(transcript_chunks),
+                    )
+                    return
+
+                # Calculate ETA for analysis stage
+                analysis_elapsed_ms = (
+                    elapsed_ms(graph_started_at) if graph_started_at is not None else None
+                )
+                analysis_eta_ms, analysis_estimated_total_ms = estimate_analysis_eta_ms(
+                    analysis_elapsed_ms=analysis_elapsed_ms,
+                    chunk_idx=index - 1,  # Use completed chunks for ETA
+                    total_chunks=len(transcript_chunks),
+                )
+
+                # Calculate progress within analysis phase (0.55 to 0.95)
+                analysis_progress = 0.55 + (index / len(transcript_chunks)) * 0.40
+
+                await emit(
+                    "status",
+                    {
+                        "stage": "analyzing",
+                        "progress": round(analysis_progress, 3),
+                        "message": f"Analyzing chunk {index}/{len(transcript_chunks)}...",
+                        "stt_backend": telemetry.get("stt_backend", ""),
+                        "llm_backend": telemetry.get("llm_backend", ""),
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                            "analysis_elapsed_ms": analysis_elapsed_ms,
+                            "analysis_eta_ms": analysis_eta_ms,
+                            "analysis_estimated_total_ms": analysis_estimated_total_ms,
+                            "analysis_chunks_completed": index - 1,
+                            "analysis_chunks_total": len(transcript_chunks),
+                            "stt_backend": telemetry.get("stt_backend", ""),
+                            "llm_backend": telemetry.get("llm_backend", ""),
+                        },
+                    },
+                )
+
+                await emit(
+                    "transcript",
+                    {
+                        "phase": "analyzing",
+                        "chunk_id": f"segment-{index}",
+                        "index": index,
+                        "total": len(transcript_chunks),
+                        "text": chunk,
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                            "graph_elapsed_ms": analysis_elapsed_ms,
+                            "analysis_eta_ms": analysis_eta_ms,
+                        },
+                    },
+                )
+
+                logger.info(
+                    "[PROCESS FILE] Processing chunk %d/%d (eta: %s ms)",
+                    index,
+                    len(transcript_chunks),
+                    analysis_eta_ms,
+                )
+                await processor.handle_final_text(chunk)
+
+            await processor.flush()
+            final_source_type = transcript_result.source_type
+            final_source_metadata = transcript_result.metadata
+
         telemetry["graph_generation_ms"] = (
             elapsed_ms(graph_started_at)
             if graph_started_at is not None
             else None
         )
         telemetry["total_processing_ms"] = elapsed_ms(pipeline_started_at)
-        telemetry["source_type"] = transcript_result.source_type
-        telemetry["source_metadata"] = transcript_result.metadata
+        telemetry["source_type"] = final_source_type
+        telemetry["source_metadata"] = final_source_metadata
         telemetry["node_count"] = len(processor.existing_json)
         telemetry["chunk_count"] = len(processor.chunk_dict)
         attach_bottleneck_stage(telemetry)
@@ -352,7 +651,7 @@ async def run_bulk_processing_worker(
 
         diarization_job_payload = None
         if (
-            transcript_result.source_type == "audio"
+            final_source_type == "audio"
             and is_async_import_diarization_enabled()
         ):
             async_audio_copy: Optional[Path] = None
@@ -368,7 +667,7 @@ async def run_bulk_processing_worker(
                     speaker_id=resolved_speaker_id,
                     stt_settings=stt_settings,
                     llm_config=llm_config,
-                    source_metadata=transcript_result.metadata,
+                    source_metadata=final_source_metadata,
                 )
                 job_id = str(job_snapshot["job_id"])
                 telemetry["async_diarization_job_id"] = job_id
@@ -407,7 +706,7 @@ async def run_bulk_processing_worker(
                 "speaker_id": resolved_speaker_id,
                 "node_count": len(processor.existing_json),
                 "chunk_count": len(processor.chunk_dict),
-                "source_type": transcript_result.source_type,
+                "source_type": final_source_type,
                 "telemetry": telemetry,
                 "diarization_job": diarization_job_payload,
             },

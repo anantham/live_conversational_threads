@@ -4,6 +4,11 @@ All route handlers live in dedicated router modules.
 This file handles: logging, app creation, CORS, middleware, and router mounting.
 """
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from backend directory before any other imports
+load_dotenv(Path(__file__).parent / ".env")
 import logging
 from logging.handlers import RotatingFileHandler
 from contextlib import asynccontextmanager
@@ -47,6 +52,13 @@ console_handler.setFormatter(logging.Formatter(
 
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
+
+# Capture all lct_python_backend.* module logs (using __name__)
+# This ensures import_api, services, etc. all go to the log file
+lct_package_logger = logging.getLogger("lct_python_backend")
+lct_package_logger.setLevel(logging.DEBUG)
+lct_package_logger.addHandler(file_handler)
+lct_package_logger.addHandler(console_handler)
 
 # Also capture uvicorn logs
 logging.getLogger("uvicorn").addHandler(file_handler)
@@ -140,3 +152,6 @@ lct_app.include_router(analytics_router)
 lct_app.include_router(graph_router)
 lct_app.include_router(canvas_router)
 lct_app.include_router(thematic_router)
+
+# Alias for uvicorn compatibility
+app = lct_app
