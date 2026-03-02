@@ -20,6 +20,30 @@ const formatBackend = (backend) => {
   return "Local";
 };
 
+/**
+ * Get tooltip text for backend type
+ */
+const getBackendTooltip = (type, backend) => {
+  if (!backend) return "";
+  const label = formatBackend(backend);
+  const model = backend.replace(/^(local_|modal_|openrouter_)/i, "");
+
+  if (type === "stt") {
+    if (label === "Local") return `WhisperX on local GPU (${model || "whisperx"})`;
+    if (label === "Modal") return `WhisperX on Modal cloud (${model || "whisperx"})`;
+    return `STT via ${label}`;
+  }
+
+  if (type === "llm") {
+    if (label === "Local") return `LLM on local GPU (${model || "local model"})`;
+    if (label === "Modal") return `LLM on Modal cloud (${model || "qwen3-32b"})`;
+    if (label === "OpenRouter") return `LLM via OpenRouter API (${model || "gemini-3-flash"})`;
+    return `LLM via ${label}`;
+  }
+
+  return backend;
+};
+
 export default function UploadProgressPanel({
   etaText,
   isProcessing,
@@ -42,20 +66,26 @@ export default function UploadProgressPanel({
       {(sttLabel || llmLabel) && (
         <div className="flex items-center gap-2 mt-0.5 text-[9px] text-gray-400">
           {sttLabel && (
-            <span className={
-              sttLabel === "Modal" ? "text-yellow-600" :
-              sttLabel === "OpenRouter" ? "text-blue-600" :
-              "text-green-600"
-            }>
+            <span
+              title={getBackendTooltip("stt", sttBackend)}
+              className={`cursor-help ${
+                sttLabel === "Modal" ? "text-yellow-600" :
+                sttLabel === "OpenRouter" ? "text-blue-600" :
+                "text-green-600"
+              }`}
+            >
               STT: {sttLabel}
             </span>
           )}
           {llmLabel && (
-            <span className={
-              llmLabel === "Modal" ? "text-yellow-600" :
-              llmLabel === "OpenRouter" ? "text-blue-600" :
-              "text-green-600"
-            }>
+            <span
+              title={getBackendTooltip("llm", llmBackend)}
+              className={`cursor-help ${
+                llmLabel === "Modal" ? "text-yellow-600" :
+                llmLabel === "OpenRouter" ? "text-blue-600" :
+                "text-green-600"
+              }`}
+            >
               LLM: {llmLabel}
             </span>
           )}

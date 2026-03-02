@@ -18,6 +18,7 @@ from lct_python_backend.services.import_bulk_telemetry import (
     calculate_segmented_progress,
     elapsed_ms,
     estimate_analysis_eta_ms,
+    estimate_segment_eta_ms,
     estimate_transcription_eta_ms,
 )
 
@@ -367,6 +368,13 @@ async def run_bulk_processing_worker(
                     1.0,  # Segment transcription complete
                 )
 
+                # Calculate segment ETA
+                segment_eta_ms, segment_estimated_total_ms = estimate_segment_eta_ms(
+                    total_elapsed_ms=elapsed_ms(pipeline_started_at),
+                    segments_completed=segment.segment_index,
+                    segments_total=segment.segment_total,
+                )
+
                 await emit(
                     "status",
                     {
@@ -382,6 +390,11 @@ async def run_bulk_processing_worker(
                             "segment_elapsed_ms": segment.elapsed_ms,
                             "segment_index": segment.segment_index,
                             "segment_total": segment.segment_total,
+                            # Compatibility keys for frontend ETA calculation
+                            "stt_chunks_completed": segment.segment_index,
+                            "stt_chunks_total": segment.segment_total,
+                            "transcription_elapsed_ms": elapsed_ms(pipeline_started_at),
+                            "transcription_eta_ms": segment_eta_ms,
                         },
                     },
                 )

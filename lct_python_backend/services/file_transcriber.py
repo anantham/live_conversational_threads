@@ -762,6 +762,12 @@ async def transcribe_audio_file_detailed(
     if not transcript:
         raise RuntimeError("STT provider returned empty transcript.")
     backend = parsed_payload.get("_backend", "") if isinstance(parsed_payload, dict) else ""
+    # Fallback: infer backend from URL if not provided in response
+    if not backend:
+        if "modal" in target_url.lower():
+            backend = "modal_whisperx"
+        elif "127.0.0.1" in target_url or "localhost" in target_url:
+            backend = "local_whisperx"
     _last_stt_backend.set(backend)
     return AudioTranscriptionDetail(
         transcript_text=transcript,
