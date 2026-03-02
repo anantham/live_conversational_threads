@@ -14,8 +14,12 @@ import httpx
 from google import genai
 from google.genai import types
 
-from lct_python_backend.services.llm_config import get_env_llm_defaults
-from lct_python_backend.services.local_llm_client import extract_json_from_text
+from lct_python_backend.services.llm_config import get_env_llm_defaults, get_default_providers
+from lct_python_backend.services.local_llm_client import (
+    extract_json_from_text,
+    chat_with_provider_fallback_sync,
+    ProviderResult,
+)
 from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
 from lct_python_backend.services.transcript_prompts import (
     ACCUMULATE_SYSTEM_PROMPT,
@@ -88,8 +92,47 @@ def _trace_api_call(message: str, *args: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Sync local caller
+# Sync local caller (with provider fallback support)
 # ---------------------------------------------------------------------------
+def _call_local_chat_json_with_fallback(
+    prompt: str,
+    system_prompt: str,
+    providers: Optional[List[Dict[str, Any]]] = None,
+    temperature: float = 0.65,
+    max_tokens: int = 4000,
+) -> Tuple[Any, Optional[ProviderResult]]:
+    """
+    Call local LLM with provider fallback support.
+
+    Returns:
+        Tuple of (parsed_json, provider_result) where provider_result contains
+        metadata about which provider succeeded.
+    """
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+
+    if providers is None:
+        providers = get_default_providers()
+
+    _trace_api_call(
+        "[LLM API] Calling with %s enabled providers, prompt_chars=%s",
+        len([p for p in providers if p.get("enabled", True)]),
+        len(str(prompt or "")),
+    )
+
+    result = chat_with_provider_fallback_sync(
+        messages=messages,
+        providers=providers,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        require_json=True,
+    )
+
+    return result.data, result
+
+
 def _call_local_chat_json(
     prompt: str,
     system_prompt: str,
@@ -97,6 +140,7 @@ def _call_local_chat_json(
     temperature: float = 0.65,
     max_tokens: int = 4000,
 ) -> Any:
+    """Legacy single-endpoint caller for backwards compatibility."""
     base_url = str(config.get("base_url", "")).rstrip("/")
     if not base_url:
         raise ValueError("Local LLM base_url is required.")
@@ -335,27 +379,37 @@ def genai_accumulate_text_json(
 
 
 # ---------------------------------------------------------------------------
-# Local callers
+# Local callers (with provider fallback)
 # ---------------------------------------------------------------------------
 def generate_lct_json_local(
     transcript: str,
     llm_config: Optional[Dict[str, Any]] = None,
+    providers: Optional[List[Dict[str, Any]]] = None,
     retries: int = 5,
     backoff_base: float = 1.5,
-) -> List[Dict[str, Any]]:
-    config = _resolve_llm_config(llm_config)
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """
+    Generate LCT JSON using local LLM with provider fallback.
+
+    Returns:
+        Tuple of (nodes_list, backend_label) where backend_label is like 'local_qwen3-32b'
+    """
+    if providers is None:
+        providers = get_default_providers()
+
     for attempt in range(retries):
         try:
-            parsed = _call_local_chat_json(
+            parsed, provider_result = _call_local_chat_json_with_fallback(
                 prompt=transcript,
                 system_prompt=LOCAL_GENERATE_LCT_PROMPT,
-                config=config,
+                providers=providers,
                 temperature=0.65,
                 max_tokens=4000,
             )
             normalized = _normalize_generated_output(parsed)
             if normalized:
-                return normalized
+                backend_label = provider_result.backend_label() if provider_result else None
+                return normalized, backend_label
             logger.warning(
                 "[LCT JSON] Local response decoded but produced no normalized nodes; attempt %s",
                 attempt + 1,
@@ -366,30 +420,40 @@ def generate_lct_json_local(
         time.sleep(backoff_base ** attempt)
 
     logger.error("[LCT JSON] Local attempts exhausted; returning empty list.")
-    return []
+    return [], None
 
 
 def accumulate_text_json_local(
     input_text: str,
     llm_config: Optional[Dict[str, Any]] = None,
+    providers: Optional[List[Dict[str, Any]]] = None,
     retries: int = 3,
     backoff_base: float = 1.5,
-) -> Dict[str, Any]:
-    config = _resolve_llm_config(llm_config)
+) -> Tuple[Dict[str, Any], Optional[str]]:
+    """
+    Accumulate transcript text using local LLM with provider fallback.
+
+    Returns:
+        Tuple of (result_dict, backend_label) where backend_label is like 'local_qwen3-32b'
+    """
+    if providers is None:
+        providers = get_default_providers()
+
     errors: List[str] = []
     for attempt in range(retries):
         try:
-            parsed = _call_local_chat_json(
+            parsed, provider_result = _call_local_chat_json_with_fallback(
                 prompt=input_text,
                 system_prompt=ACCUMULATE_SYSTEM_PROMPT,
-                config=config,
+                providers=providers,
                 temperature=0.65,
                 max_tokens=1200,
             )
             if isinstance(parsed, dict):
                 if errors:
                     parsed["_warnings"] = errors
-                return parsed
+                backend_label = provider_result.backend_label() if provider_result else None
+                return parsed, backend_label
             logger.warning("[ACCUMULATE] Local response was not a dict; attempt %s", attempt + 1)
             errors.append(f"Attempt {attempt + 1} returned non-dict payload")
         except Exception as e:
@@ -405,7 +469,7 @@ def accumulate_text_json_local(
         "Incomplete_segment": input_text,
         "detected_threads": [],
         "_errors": errors or ["Local accumulation attempts exhausted"],
-    }
+    }, None
 
 
 # ---------------------------------------------------------------------------
@@ -414,10 +478,18 @@ def accumulate_text_json_local(
 def generate_lct_json(
     transcript: str,
     llm_config: Optional[Dict[str, Any]] = None,
+    providers: Optional[List[Dict[str, Any]]] = None,
     retries: int = 5,
     backoff_base: float = 1.5,
     status_messages: Optional[List[str]] = None,
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """
+    Generate LCT JSON nodes from transcript.
+
+    Returns:
+        Tuple of (nodes_list, backend_label) where backend_label is like 'local_qwen3-32b'
+        or 'online_gemini-2.5-flash'
+    """
     config = _resolve_llm_config(llm_config)
     if config.get("mode") == "online":
         gemini_key, key_source = _resolve_gemini_api_key()
@@ -433,7 +505,7 @@ def generate_lct_json(
                 status_messages=status_messages,
             )
             if gemini_result:
-                return gemini_result
+                return gemini_result, f"online_{gemini_model}"
             fallback_message = "Gemini produced no graph output; falling back to local LLM."
             logger.warning("[LCT JSON] %s", fallback_message)
             if status_messages is not None:
@@ -447,6 +519,7 @@ def generate_lct_json(
     return generate_lct_json_local(
         transcript,
         llm_config=config,
+        providers=providers,
         retries=retries,
         backoff_base=backoff_base,
     )
@@ -455,15 +528,23 @@ def generate_lct_json(
 def accumulate_text_json(
     input_text: str,
     llm_config: Optional[Dict[str, Any]] = None,
+    providers: Optional[List[Dict[str, Any]]] = None,
     retries: int = 3,
     backoff_base: float = 1.5,
-) -> Dict[str, Any]:
+) -> Tuple[Dict[str, Any], Optional[str]]:
+    """
+    Accumulate transcript text into segments.
+
+    Returns:
+        Tuple of (result_dict, backend_label) where backend_label is like 'local_qwen3-32b'
+        or 'online_gemini-2.5-flash'
+    """
     config = _resolve_llm_config(llm_config)
     if config.get("mode") == "online":
         gemini_key, key_source = _resolve_gemini_api_key()
         gemini_model = _resolve_online_gemini_model(config)
         if gemini_key:
-            return genai_accumulate_text_json(
+            result = genai_accumulate_text_json(
                 input_text,
                 model_name=gemini_model,
                 api_key=gemini_key,
@@ -471,22 +552,25 @@ def accumulate_text_json(
                 retries=retries,
                 backoff_base=backoff_base,
             )
-        fallback = accumulate_text_json_local(
+            return result, f"online_{gemini_model}"
+        result, backend_label = accumulate_text_json_local(
             input_text,
             llm_config=config,
+            providers=providers,
             retries=retries,
             backoff_base=backoff_base,
         )
-        warnings = fallback.get("_warnings")
+        warnings = result.get("_warnings")
         if not isinstance(warnings, list):
             warnings = []
         warnings.append(_missing_gemini_key_message())
-        fallback["_warnings"] = warnings
-        return fallback
+        result["_warnings"] = warnings
+        return result, backend_label
 
     return accumulate_text_json_local(
         input_text,
         llm_config=config,
+        providers=providers,
         retries=retries,
         backoff_base=backoff_base,
     )

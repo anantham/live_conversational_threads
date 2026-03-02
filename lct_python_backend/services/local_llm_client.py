@@ -2,11 +2,11 @@ import json
 import logging
 import os
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
-from lct_python_backend.services.llm_config import get_env_llm_defaults
+from lct_python_backend.services.llm_config import get_env_llm_defaults, get_default_providers
 
 logger = logging.getLogger("lct_backend")
 
@@ -177,3 +177,363 @@ async def local_chat_json(
     )
     content = response["choices"][0]["message"]["content"]
     return extract_json_from_text(content)
+
+
+class ProviderResult:
+    """Result from provider fallback containing the response and metadata."""
+
+    def __init__(
+        self,
+        data: Any,
+        provider_id: str,
+        provider_name: str,
+        model: str,
+        base_url: str,
+        provider_type: str,
+        attempt_number: int = 1,
+        total_providers_tried: int = 1,
+    ):
+        self.data = data
+        self.provider_id = provider_id
+        self.provider_name = provider_name
+        self.model = model
+        self.base_url = base_url
+        self.provider_type = provider_type
+        self.attempt_number = attempt_number
+        self.total_providers_tried = total_providers_tried
+
+    def backend_label(self) -> str:
+        """Return a label like 'local_qwen3-32b' or 'modal_qwen3-32b'."""
+        prefix = "modal" if "modal" in self.base_url.lower() else "local"
+        return f"{prefix}_{self.model}"
+
+    def attempt_info(self) -> str:
+        """Return info about provider attempts like 'attempt 2/3'."""
+        if self.total_providers_tried <= 1:
+            return ""
+        return f"attempt {self.attempt_number}/{self.total_providers_tried}"
+
+
+async def chat_with_provider_fallback(
+    messages: list,
+    providers: Optional[List[Dict[str, Any]]] = None,
+    temperature: float = 0.3,
+    max_tokens: int = 4000,
+    response_format: Optional[Dict[str, Any]] = None,
+    require_json: bool = True,
+) -> ProviderResult:
+    """
+    Try LLM chat through providers in priority order until one succeeds.
+
+    Args:
+        messages: Chat messages to send
+        providers: List of provider configs in priority order. If None, uses defaults.
+        temperature: LLM temperature
+        max_tokens: Max tokens for response
+        response_format: Optional response format specification
+        require_json: If True, parse response as JSON
+
+    Returns:
+        ProviderResult containing the response data and provider metadata
+
+    Raises:
+        RuntimeError: If all providers fail
+    """
+    if providers is None:
+        providers = get_default_providers()
+
+    # Filter to enabled providers only
+    enabled_providers = [p for p in providers if p.get("enabled", True)]
+    if not enabled_providers:
+        raise RuntimeError("No enabled LLM providers configured")
+
+    errors: List[Tuple[str, str]] = []
+    total_providers = len(enabled_providers)
+    attempt_number = 0
+
+    for provider in enabled_providers:
+        attempt_number += 1
+        provider_id = provider.get("id", "unknown")
+        provider_name = provider.get("name", provider_id)
+        base_url = str(provider.get("base_url", "")).rstrip("/")
+        model = provider.get("model", "")
+        provider_type = provider.get("type", "openai_compatible")
+        timeout = float(provider.get("timeout_seconds", 120))
+        api_key = provider.get("api_key")
+
+        if not base_url or not model:
+            logger.warning("[LLM Fallback] Skipping provider %s: missing base_url or model", provider_id)
+            continue
+
+        logger.info(
+            "[LLM Fallback] Trying provider %d/%d: %s (%s) model=%s",
+            attempt_number,
+            total_providers,
+            provider_name,
+            provider_type,
+            model,
+        )
+
+        try:
+            # Build the request
+            payload: Dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+
+            # Add response format if supported
+            supports_json_object = base_url not in _JSON_OBJECT_UNSUPPORTED_BASE_URLS
+            if response_format:
+                payload["response_format"] = response_format
+            elif require_json and supports_json_object:
+                payload["response_format"] = {"type": "json_object"}
+
+            # Build headers
+            headers: Dict[str, str] = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
+            url = f"{base_url}/v1/chat/completions"
+            if TRACE_API_CALLS:
+                logger.info(
+                    "[LLM Fallback] POST %s model=%s messages=%s",
+                    url,
+                    model,
+                    len(messages or []),
+                )
+
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(url, json=payload, headers=headers)
+                response.raise_for_status()
+
+                if TRACE_API_CALLS:
+                    logger.info(
+                        "[LLM Fallback] %s status=%s preview=%s",
+                        url,
+                        response.status_code,
+                        _preview_text(response.text),
+                    )
+
+                result_json = response.json()
+                content = result_json["choices"][0]["message"]["content"]
+
+                if require_json:
+                    data = extract_json_from_text(content)
+                else:
+                    data = content
+
+                logger.info(
+                    "[LLM Fallback] Success with provider %d/%d: %s (%s)",
+                    attempt_number,
+                    total_providers,
+                    provider_name,
+                    provider_id,
+                )
+
+                return ProviderResult(
+                    data=data,
+                    provider_id=provider_id,
+                    provider_name=provider_name,
+                    model=model,
+                    base_url=base_url,
+                    provider_type=provider_type,
+                    attempt_number=attempt_number,
+                    total_providers_tried=total_providers,
+                )
+
+        except httpx.HTTPStatusError as exc:
+            error_msg = f"HTTP {exc.response.status_code}: {_preview_text(exc.response.text, 100)}"
+            logger.warning(
+                "[LLM Fallback] Provider %s failed: %s",
+                provider_name,
+                error_msg,
+            )
+            errors.append((provider_name, error_msg))
+
+            # Handle json_object not supported - mark and retry without it
+            if "response_format" in payload and exc.response.status_code in (400, 422):
+                _JSON_OBJECT_UNSUPPORTED_BASE_URLS.add(base_url)
+
+        except httpx.TimeoutException:
+            error_msg = f"Timeout after {timeout}s"
+            logger.warning("[LLM Fallback] Provider %s failed: %s", provider_name, error_msg)
+            errors.append((provider_name, error_msg))
+
+        except httpx.ConnectError as exc:
+            error_msg = f"Connection failed: {exc}"
+            logger.warning("[LLM Fallback] Provider %s failed: %s", provider_name, error_msg)
+            errors.append((provider_name, error_msg))
+
+        except json.JSONDecodeError as exc:
+            error_msg = f"JSON parse error: {exc}"
+            logger.warning("[LLM Fallback] Provider %s failed: %s", provider_name, error_msg)
+            errors.append((provider_name, error_msg))
+
+        except Exception as exc:
+            error_msg = f"{type(exc).__name__}: {exc}"
+            logger.warning("[LLM Fallback] Provider %s failed: %s", provider_name, error_msg)
+            errors.append((provider_name, error_msg))
+
+    # All providers failed
+    error_summary = "; ".join(f"{name}: {err}" for name, err in errors)
+    raise RuntimeError(f"All LLM providers failed. Errors: {error_summary}")
+
+
+def chat_with_provider_fallback_sync(
+    messages: list,
+    providers: Optional[List[Dict[str, Any]]] = None,
+    temperature: float = 0.3,
+    max_tokens: int = 4000,
+    response_format: Optional[Dict[str, Any]] = None,
+    require_json: bool = True,
+) -> ProviderResult:
+    """
+    Synchronous version of chat_with_provider_fallback.
+
+    Try LLM chat through providers in priority order until one succeeds.
+    """
+    if providers is None:
+        providers = get_default_providers()
+
+    # Filter to enabled providers only
+    enabled_providers = [p for p in providers if p.get("enabled", True)]
+    if not enabled_providers:
+        raise RuntimeError("No enabled LLM providers configured")
+
+    errors: List[Tuple[str, str]] = []
+    total_providers = len(enabled_providers)
+    attempt_number = 0
+
+    for provider in enabled_providers:
+        attempt_number += 1
+        provider_id = provider.get("id", "unknown")
+        provider_name = provider.get("name", provider_id)
+        base_url = str(provider.get("base_url", "")).rstrip("/")
+        model = provider.get("model", "")
+        provider_type = provider.get("type", "openai_compatible")
+        timeout = float(provider.get("timeout_seconds", 120))
+        api_key = provider.get("api_key")
+
+        if not base_url or not model:
+            logger.warning("[LLM Fallback Sync] Skipping provider %s: missing base_url or model", provider_id)
+            continue
+
+        logger.info(
+            "[LLM Fallback Sync] Trying provider %d/%d: %s (%s) model=%s",
+            attempt_number,
+            total_providers,
+            provider_name,
+            provider_type,
+            model,
+        )
+
+        try:
+            # Build the request
+            payload: Dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            }
+
+            # Add response format if supported
+            supports_json_object = base_url not in _JSON_OBJECT_UNSUPPORTED_BASE_URLS
+            if response_format:
+                payload["response_format"] = response_format
+            elif require_json and supports_json_object:
+                payload["response_format"] = {"type": "json_object"}
+
+            # Build headers
+            headers: Dict[str, str] = {"Content-Type": "application/json"}
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
+
+            url = f"{base_url}/v1/chat/completions"
+            if TRACE_API_CALLS:
+                logger.info(
+                    "[LLM Fallback Sync] POST %s model=%s messages=%s",
+                    url,
+                    model,
+                    len(messages or []),
+                )
+
+            with httpx.Client(timeout=timeout) as client:
+                response = client.post(url, json=payload, headers=headers)
+
+                # Handle json_object not supported - retry without it
+                if response.status_code in (400, 422) and "response_format" in payload:
+                    logger.warning(
+                        "[LLM Fallback Sync] Provider %s rejected response_format; retrying without.",
+                        provider_name,
+                    )
+                    _JSON_OBJECT_UNSUPPORTED_BASE_URLS.add(base_url)
+                    payload.pop("response_format", None)
+                    response = client.post(url, json=payload, headers=headers)
+
+                response.raise_for_status()
+
+                if TRACE_API_CALLS:
+                    logger.info(
+                        "[LLM Fallback Sync] %s status=%s preview=%s",
+                        url,
+                        response.status_code,
+                        _preview_text(response.text),
+                    )
+
+                result_json = response.json()
+                content = result_json["choices"][0]["message"]["content"]
+
+                if require_json:
+                    data = extract_json_from_text(content)
+                else:
+                    data = content
+
+                logger.info(
+                    "[LLM Fallback Sync] Success with provider %d/%d: %s (%s)",
+                    attempt_number,
+                    total_providers,
+                    provider_name,
+                    provider_id,
+                )
+
+                return ProviderResult(
+                    data=data,
+                    provider_id=provider_id,
+                    provider_name=provider_name,
+                    model=model,
+                    base_url=base_url,
+                    provider_type=provider_type,
+                    attempt_number=attempt_number,
+                    total_providers_tried=total_providers,
+                )
+
+        except httpx.HTTPStatusError as exc:
+            error_msg = f"HTTP {exc.response.status_code}: {_preview_text(exc.response.text, 100)}"
+            logger.warning("[LLM Fallback Sync] Provider %d/%d %s failed: %s", attempt_number, total_providers, provider_name, error_msg)
+            errors.append((provider_name, error_msg))
+
+        except httpx.TimeoutException:
+            error_msg = f"Timeout after {timeout}s"
+            logger.warning("[LLM Fallback Sync] Provider %s failed: %s", provider_name, error_msg)
+            errors.append((provider_name, error_msg))
+
+        except httpx.ConnectError as exc:
+            error_msg = f"Connection failed: {exc}"
+            logger.warning("[LLM Fallback Sync] Provider %s failed: %s", provider_name, error_msg)
+            errors.append((provider_name, error_msg))
+
+        except json.JSONDecodeError as exc:
+            error_msg = f"JSON parse error: {exc}"
+            logger.warning("[LLM Fallback Sync] Provider %s failed: %s", provider_name, error_msg)
+            errors.append((provider_name, error_msg))
+
+        except Exception as exc:
+            error_msg = f"{type(exc).__name__}: {exc}"
+            logger.warning("[LLM Fallback Sync] Provider %s failed: %s", provider_name, error_msg)
+            errors.append((provider_name, error_msg))
+
+    # All providers failed
+    error_summary = "; ".join(f"{name}: {err}" for name, err in errors)
+    raise RuntimeError(f"All LLM providers failed. Errors: {error_summary}")

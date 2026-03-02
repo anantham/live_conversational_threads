@@ -6,9 +6,10 @@ and source-specific helpers to ``import_validation`` / ``import_fetchers``.
 """
 
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, ConfigDict
@@ -44,10 +45,12 @@ from lct_python_backend.services.import_bulk_processor import (
 )
 from lct_python_backend.services.file_transcriber import (
     chunk_transcript_lines,
+    transcribe_audio_segmented,
     transcribe_uploaded_file,
 )
-from lct_python_backend.services.llm_config import load_llm_config
+from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers, get_env_llm_defaults
 from lct_python_backend.services.stt_settings_service import load_stt_settings
+from lct_python_backend.services.stt_health_service import probe_health_url
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
 
 logger = logging.getLogger(__name__)
@@ -106,6 +109,24 @@ class ImportFromTextRequest(BaseModel):
     text: str
     conversation_name: Optional[str] = None
     owner_id: Optional[str] = None
+
+
+class ServiceHealthInfo(BaseModel):
+    """Health info for a single service."""
+    healthy: bool
+    backend: str  # 'local' or 'modal'
+    latency_ms: Optional[int] = None
+    url: Optional[str] = None
+    model: Optional[str] = None
+    error: Optional[str] = None
+
+
+class ServicesStatusResponse(BaseModel):
+    """Response model for service status endpoint."""
+    services: Dict[str, ServiceHealthInfo]
+    active_stt_backend: str  # 'local_whisperx' or 'modal_whisperx'
+    active_llm_backend: str  # 'local_lmstudio' or 'modal_qwen3'
+    timestamp: str
 
 
 # ── Backward-compat wrappers (test monkeypatch targets) ─────────────────────
@@ -328,6 +349,95 @@ async def health_check():
     }
 
 
+@router.get("/status", response_model=ServicesStatusResponse)
+async def get_services_status(
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Get health status of STT and LLM backend services.
+
+    Returns status of:
+    - whisperx: Local WhisperX via IndrasNet orchestrator
+    - modal_whisperx: Modal WhisperX fallback
+    - llm: Active LLM backend (local or Modal)
+    """
+    # Get config settings
+    llm_config = await load_llm_config(db)
+    stt_settings = await load_stt_settings(db)
+
+    services: Dict[str, ServiceHealthInfo] = {}
+
+    # ── Check local WhisperX (via IndrasNet at 127.0.0.1:7777) ──────────────
+    local_stt_url = stt_settings.get("http_url", "http://127.0.0.1:7777/api/transcribe")
+    # Derive health URL from transcribe endpoint
+    local_stt_health_url = local_stt_url.rsplit("/", 2)[0] + "/health" if "/api/" in local_stt_url else local_stt_url.rstrip("/") + "/health"
+
+    local_stt_probe = probe_health_url(local_stt_health_url, timeout_seconds=5.0)
+    services["whisperx"] = ServiceHealthInfo(
+        healthy=local_stt_probe["ok"],
+        backend="local",
+        latency_ms=int(local_stt_probe["latency_ms"]) if local_stt_probe["latency_ms"] else None,
+        url=local_stt_url,
+        error=local_stt_probe.get("error"),
+    )
+
+    # ── Check Modal WhisperX fallback ───────────────────────────────────────
+    modal_whisperx_url = os.getenv("MODAL_WHISPERX_URL", "https://adityaarpitha--whisperx-server-serve.modal.run")
+    if modal_whisperx_url:
+        modal_whisperx_health_url = modal_whisperx_url.rstrip("/") + "/health"
+        modal_stt_probe = probe_health_url(modal_whisperx_health_url, timeout_seconds=10.0)
+        services["modal_whisperx"] = ServiceHealthInfo(
+            healthy=modal_stt_probe["ok"],
+            backend="modal",
+            latency_ms=int(modal_stt_probe["latency_ms"]) if modal_stt_probe["latency_ms"] else None,
+            url=modal_whisperx_url,
+            error=modal_stt_probe.get("error"),
+        )
+
+    # ── Check LLM backend ───────────────────────────────────────────────────
+    llm_base_url = llm_config.get("base_url", "")
+    llm_model = llm_config.get("chat_model", "")
+    llm_mode = llm_config.get("mode", "local")
+
+    # Determine if using Modal or local based on URL
+    is_modal_llm = "modal.run" in llm_base_url
+    llm_backend_type = "modal" if is_modal_llm else "local"
+
+    # Health check URL for vLLM/LM Studio
+    llm_health_url = llm_base_url.rstrip("/") + "/health"
+    llm_probe = probe_health_url(llm_health_url, timeout_seconds=10.0)
+
+    services["llm"] = ServiceHealthInfo(
+        healthy=llm_probe["ok"],
+        backend=llm_backend_type,
+        latency_ms=int(llm_probe["latency_ms"]) if llm_probe["latency_ms"] else None,
+        url=llm_base_url,
+        model=llm_model,
+        error=llm_probe.get("error"),
+    )
+
+    # ── Determine active backends ───────────────────────────────────────────
+    # STT: prefer local if healthy, else Modal
+    if services["whisperx"].healthy:
+        active_stt = "local_whisperx"
+    elif services.get("modal_whisperx", ServiceHealthInfo(healthy=False, backend="modal")).healthy:
+        active_stt = "modal_whisperx"
+    else:
+        active_stt = "unavailable"
+
+    # LLM: use what's configured
+    if services["llm"].healthy:
+        active_llm = f"{llm_backend_type}_{llm_model}" if llm_model else llm_backend_type
+    else:
+        active_llm = "unavailable"
+
+    return ServicesStatusResponse(
+        services=services,
+        active_stt_backend=active_stt,
+        active_llm_backend=active_llm,
+        timestamp=datetime.now().isoformat(),
+    )
+
+
 @router.get("/diarization-jobs/{job_id}")
 async def get_diarization_job_status(job_id: str):
     """Get status/telemetry snapshot for an async diarization job."""
@@ -377,7 +487,9 @@ async def process_file(
         save_upload_to_temp_file=save_upload_to_temp_file,
         load_stt_settings=load_stt_settings,
         load_llm_config=load_llm_config,
+        load_llm_providers=load_llm_providers,
         transcribe_uploaded_file=transcribe_uploaded_file,
+        transcribe_audio_segmented=transcribe_audio_segmented,
         chunk_transcript_lines=chunk_transcript_lines,
         transcript_processor_cls=TranscriptProcessor,
         is_async_import_diarization_enabled=_is_async_import_diarization_enabled,

@@ -7,7 +7,7 @@ import logging
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 
 from fastapi import HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
@@ -58,7 +58,9 @@ async def build_process_file_stream(
     save_upload_to_temp_file: Callable[[UploadFile, str], Awaitable[tuple[str, int]]],
     load_stt_settings: Callable[[AsyncSession], Awaitable[dict[str, Any]]],
     load_llm_config: Callable[[AsyncSession], Awaitable[dict[str, Any]]],
+    load_llm_providers: Optional[Callable[[AsyncSession], Awaitable[dict[str, Any]]]] = None,
     transcribe_uploaded_file: Callable[..., Awaitable[Any]],
+    transcribe_audio_segmented: Optional[Callable[..., AsyncGenerator[Any, None]]] = None,
     chunk_transcript_lines: Callable[[str], list[str]],
     transcript_processor_cls: Callable[..., Any],
     is_async_import_diarization_enabled: Callable[[], bool],
@@ -98,7 +100,9 @@ async def build_process_file_stream(
                 emit=emit,
                 load_stt_settings=load_stt_settings,
                 load_llm_config=load_llm_config,
+                load_llm_providers=load_llm_providers,
                 transcribe_uploaded_file=transcribe_uploaded_file,
+                transcribe_audio_segmented=transcribe_audio_segmented,
                 chunk_transcript_lines=chunk_transcript_lines,
                 transcript_processor_cls=transcript_processor_cls,
                 is_async_import_diarization_enabled=is_async_import_diarization_enabled,
