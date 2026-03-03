@@ -19,7 +19,8 @@ export default function useSttTelemetry({ autoRefreshMs = 5000 } = {}) {
       setTelemetry(data);
     } catch (err) {
       console.error("Failed to load STT telemetry:", err);
-      setError("Unable to load STT telemetry.");
+      const isNetworkError = err.message?.includes("fetch") || err.name === "TypeError";
+      setError(isNetworkError ? "Backend unavailable" : "Unable to load STT telemetry.");
     } finally {
       if (!silent) setLoading(false);
     }
