@@ -15,7 +15,10 @@ const useSttSettings = () => {
       })
       .catch((err) => {
         console.error("Failed to load STT settings:", err);
-        if (active) setSettingsError("Unable to load STT configuration.");
+        const isNetworkError = err.message?.includes("fetch") || err.name === "TypeError";
+        if (active) {
+          setSettingsError(isNetworkError ? "Backend unavailable" : "Unable to load STT configuration.");
+        }
       });
     return () => {
       active = false;

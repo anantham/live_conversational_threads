@@ -39,7 +39,8 @@ export default function SttSettingsPanel() {
       setForm(normalized);
     } catch (err) {
       console.error("Unable to load STT settings:", err);
-      setError("Unable to load STT configuration.");
+      const isNetworkError = err.message?.includes("fetch") || err.name === "TypeError";
+      setError(isNetworkError ? "Backend unavailable" : "Unable to load STT configuration.");
     } finally {
       setLoading(false);
     }
@@ -65,7 +66,8 @@ export default function SttSettingsPanel() {
       setForm(updatedNormalized);
     } catch (err) {
       console.error("Failed to save STT settings:", err);
-      setError("Unable to persist STT settings.");
+      const isNetworkError = err.message?.includes("fetch") || err.name === "TypeError";
+      setError(isNetworkError ? "Backend unavailable" : "Unable to persist STT settings.");
     } finally {
       setSaving(false);
     }
