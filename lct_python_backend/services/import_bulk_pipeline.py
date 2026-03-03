@@ -46,6 +46,48 @@ _AUDIO_SUFFIXES = {
 }
 
 
+def _get_audio_duration_ms(file_path: Path) -> Optional[float]:
+    """Get audio file duration in milliseconds using ffprobe.
+
+    Returns None if unable to determine duration.
+    """
+    import subprocess
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(file_path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            duration_seconds = float(result.stdout.strip())
+            return duration_seconds * 1000
+    except (subprocess.TimeoutExpired, ValueError, FileNotFoundError):
+        pass
+    return None
+
+
+def _format_duration_for_display(ms: Optional[float]) -> str:
+    """Format milliseconds as human-readable duration string."""
+    if ms is None or not isinstance(ms, (int, float)) or ms <= 0:
+        return ""
+    total_seconds = int(ms / 1000)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours > 0:
+        return f"{hours}h {minutes}m"
+    if minutes > 0:
+        return f"{minutes}m {seconds}s"
+    return f"{seconds}s"
+
+
 async def run_bulk_processing_worker(
     *,
     request: Request,
@@ -140,6 +182,16 @@ async def run_bulk_processing_worker(
 
         stt_settings = await load_stt_settings(db)
 
+        # Determine STT backend from settings for early UI indicator
+        stt_http_url = str(stt_settings.get("http_url", "")).strip()
+        if "modal" in stt_http_url.lower():
+            stt_backend = "modal_whisperx"
+        elif "127.0.0.1" in stt_http_url or "localhost" in stt_http_url:
+            stt_backend = "local_whisperx"
+        else:
+            stt_backend = "whisperx"  # Generic fallback
+        telemetry["stt_backend"] = stt_backend
+
         # Emit progress before the (potentially slow) transcription call.
         resolved_source_type = source_type if source_type != "auto" else None
         is_likely_audio = (
@@ -149,18 +201,34 @@ async def run_bulk_processing_worker(
         active_stage = "transcribing" if is_likely_audio else "parsing"
         telemetry["is_likely_audio"] = is_likely_audio
         telemetry["source_type_override"] = resolved_source_type or "auto"
+
+        # Detect audio duration for better progress feedback
+        audio_duration_ms: Optional[float] = None
+        if is_likely_audio:
+            audio_duration_ms = _get_audio_duration_ms(Path(temp_path))
+            telemetry["audio_duration_ms"] = audio_duration_ms
+
+        # Build transcription message with duration if available
+        duration_str = _format_duration_for_display(audio_duration_ms)
+        if is_likely_audio and duration_str:
+            transcribe_msg = f"Transcribing {duration_str} of audio..."
+        elif is_likely_audio:
+            transcribe_msg = "Transcribing audio..."
+        else:
+            transcribe_msg = "Extracting transcript text..."
+
         await emit(
             "status",
             {
                 "stage": "transcribing" if is_likely_audio else "parsing",
                 "progress": 0.10,
-                "message": (
-                    "Transcribing audio..."
-                    if is_likely_audio
-                    else "Extracting transcript text..."
-                ),
+                "message": transcribe_msg,
+                "stt_backend": stt_backend if is_likely_audio else "",
+                "audio_duration_ms": audio_duration_ms,
                 "telemetry": {
                     "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                    "stt_backend": stt_backend if is_likely_audio else "",
+                    "audio_duration_ms": audio_duration_ms,
                 },
             },
         )
@@ -187,6 +255,7 @@ async def run_bulk_processing_worker(
                     "stage": "transcribing",
                     "progress": round(progress, 3),
                     "message": f"Transcribing audio chunk {chunk_idx}/{total}...",
+                    "stt_backend": telemetry.get("stt_backend", ""),
                     "telemetry": {
                         "total_elapsed_ms": elapsed_ms(pipeline_started_at),
                         "transcription_elapsed_ms": transcription_elapsed_ms,
@@ -194,6 +263,7 @@ async def run_bulk_processing_worker(
                         "transcription_estimated_total_ms": transcription_estimated_total_ms,
                         "stt_chunks_completed": chunk_idx,
                         "stt_chunks_total": total,
+                        "stt_backend": telemetry.get("stt_backend", ""),
                     },
                 },
             )
