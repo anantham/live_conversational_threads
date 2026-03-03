@@ -32,13 +32,16 @@ export default function FileUpload({
 }) {
   const inputRef = useRef(null);
   const {
+    audioDurationMs,
     cancelUpload,
     etaText,
     fallbackToast,
     isProcessing,
     liveTranscriptLines,
+    llmBackend,
     processFile,
     progress,
+    sttBackend,
     statusText,
   } = useFileUploadStream({
     onDataReceived,
@@ -87,11 +90,14 @@ export default function FileUpload({
       />
 
       <UploadProgressPanel
+        audioDurationMs={audioDurationMs}
         statusText={statusText}
         isProcessing={isProcessing}
         etaText={etaText}
         progress={progress}
         liveTranscriptLines={liveTranscriptLines}
+        sttBackend={sttBackend}
+        llmBackend={llmBackend}
       />
 
       {fallbackToast && (

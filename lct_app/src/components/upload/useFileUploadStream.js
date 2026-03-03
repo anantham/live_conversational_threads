@@ -64,6 +64,9 @@ export default function useFileUploadStream({
   const [fallbackToast, setFallbackToast] = useState("");
   const [etaText, setEtaText] = useState("");
   const [liveTranscriptLines, setLiveTranscriptLines] = useState([]);
+  const [sttBackend, setSttBackend] = useState("");
+  const [llmBackend, setLlmBackend] = useState("");
+  const [audioDurationMs, setAudioDurationMs] = useState(null);
 
   useEffect(() => {
     if (!fallbackToast) return undefined;
@@ -83,6 +86,9 @@ export default function useFileUploadStream({
     setProgress(0);
     setEtaText("");
     setLiveTranscriptLines([]);
+    setSttBackend("");
+    setLlmBackend("");
+    setAudioDurationMs(null);
   };
 
   const cancelUpload = () => {
@@ -147,6 +153,17 @@ export default function useFileUploadStream({
               const stage = String(payload.stage || "").trim().toLowerCase();
               const telemetry = payload.telemetry && typeof payload.telemetry === "object" ? payload.telemetry : {};
               const nextStatusText = payload.message || "Processing...";
+              // Extract backend indicators from status events
+              if (payload.stt_backend) {
+                setSttBackend(payload.stt_backend);
+              }
+              if (payload.llm_backend) {
+                setLlmBackend(payload.llm_backend);
+              }
+              // Extract audio duration for UI display
+              if (payload.audio_duration_ms != null) {
+                setAudioDurationMs(Number(payload.audio_duration_ms));
+              }
               if (stage === "transcribing") {
                 const chunksDone = Number(telemetry.stt_chunks_completed || 0);
                 const chunksTotal = Number(telemetry.stt_chunks_total || 0);
@@ -166,6 +183,34 @@ export default function useFileUploadStream({
                 } else {
                   setEtaText("");
                 }
+              } else if (stage === "analyzing") {
+                // Calculate ETA for LLM analysis stage
+                const chunksDone = Number(telemetry.analysis_chunks_completed || 0);
+                const chunksTotal = Number(telemetry.analysis_chunks_total || 0);
+                const elapsedMs = Number(telemetry.analysis_elapsed_ms || 0);
+                let etaMs = Number(telemetry.analysis_eta_ms);
+                if (!Number.isFinite(etaMs) || etaMs < 0) {
+                  if (chunksDone > 0 && chunksTotal > chunksDone && elapsedMs > 0) {
+                    const avgChunkMs = elapsedMs / chunksDone;
+                    etaMs = Math.max(0, Math.round(avgChunkMs * (chunksTotal - chunksDone)));
+                  } else {
+                    etaMs = Number.NaN;
+                  }
+                }
+                const etaLabel = formatDuration(etaMs);
+                if (etaLabel) {
+                  setEtaText(`ETA ${etaLabel}`);
+                } else if (chunksDone === 0 && chunksTotal > 0) {
+                  // First chunk - show calculating message
+                  setEtaText("Calculating ETA...");
+                } else {
+                  setEtaText("");
+                }
+                // Log analysis progress to dev console
+                console.log(
+                  `[LLM Analysis] Chunk ${chunksDone}/${chunksTotal} | Elapsed: ${formatDuration(elapsedMs)} | ETA: ${formatDuration(etaMs)}`,
+                  telemetry
+                );
               } else {
                 setEtaText("");
               }
@@ -260,13 +305,16 @@ export default function useFileUploadStream({
   };
 
   return {
+    audioDurationMs,
     cancelUpload,
     etaText,
     fallbackToast,
     isProcessing,
     liveTranscriptLines,
+    llmBackend,
     processFile,
     progress,
+    sttBackend,
     statusText,
   };
 }

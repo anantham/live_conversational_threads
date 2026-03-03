@@ -9,6 +9,20 @@ const clampProgress = (value) => {
 };
 
 /**
+ * Format milliseconds as human-readable duration string.
+ */
+const formatDuration = (ms) => {
+  if (ms == null || !Number.isFinite(ms) || ms <= 0) return "";
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+};
+
+/**
  * Format backend string for display.
  * e.g., "local_whisperx" -> "Local", "modal_qwen3-32b" -> "Modal", "openrouter_gemini" -> "OpenRouter"
  */
@@ -45,6 +59,7 @@ const getBackendTooltip = (type, backend) => {
 };
 
 export default function UploadProgressPanel({
+  audioDurationMs,
   etaText,
   isProcessing,
   liveTranscriptLines,
@@ -57,11 +72,19 @@ export default function UploadProgressPanel({
 
   const sttLabel = formatBackend(sttBackend);
   const llmLabel = formatBackend(llmBackend);
+  const durationStr = formatDuration(audioDurationMs);
 
   return (
     <div className="hidden md:block min-w-[180px] max-w-[260px]">
       <p className="text-[11px] text-gray-500 truncate">{statusText || "Processing..."}</p>
-      {etaText && <p className="text-[10px] text-gray-400">{etaText}</p>}
+      {/* Duration and ETA row */}
+      {(durationStr || etaText) && (
+        <p className="text-[10px] text-gray-400">
+          {durationStr && <span title="Audio file duration">Duration: {durationStr}</span>}
+          {durationStr && etaText && <span className="mx-1">•</span>}
+          {etaText && <span>{etaText}</span>}
+        </p>
+      )}
       {/* Backend indicators */}
       {(sttLabel || llmLabel) && (
         <div className="flex items-center gap-2 mt-0.5 text-[9px] text-gray-400">
@@ -103,6 +126,7 @@ export default function UploadProgressPanel({
 }
 
 UploadProgressPanel.propTypes = {
+  audioDurationMs: PropTypes.number,
   etaText: PropTypes.string,
   isProcessing: PropTypes.bool.isRequired,
   liveTranscriptLines: PropTypes.arrayOf(PropTypes.string),
