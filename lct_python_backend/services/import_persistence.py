@@ -76,7 +76,6 @@ async def persist_import_graph(
     db,
     conversation_id: str,
     existing_json: list,
-    chunk_dict: dict,
 ) -> int:
     """
     Persist LLM-generated graph nodes and relationships to DB.
@@ -120,8 +119,8 @@ async def persist_import_graph(
             summary=item.get("summary", ""),
             chunk_ids=[chunk_id] if chunk_id else [],
             node_type=node_type,
-            level=3,
-            zoom_level_visible=[2, 3, 4],
+            level=1,
+            zoom_level_visible=[1, 2, 3],
         ))
 
     # Step 3: Write Relationship rows

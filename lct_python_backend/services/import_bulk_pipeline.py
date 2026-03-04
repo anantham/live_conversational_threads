@@ -720,7 +720,6 @@ async def run_bulk_processing_worker(
                     db=db,
                     conversation_id=resolved_conversation_id,
                     existing_json=processor.existing_json,
-                    chunk_dict=processor.chunk_dict,
                 )
                 logger.info("[PROCESS FILE] Persisted %d nodes to DB for %s", persisted_count, resolved_conversation_id)
                 telemetry["graph_persisted_nodes"] = persisted_count

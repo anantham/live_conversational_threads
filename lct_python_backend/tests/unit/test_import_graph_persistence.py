@@ -70,7 +70,6 @@ async def test_persist_import_graph_returns_node_count():
         db=db,
         conversation_id=CONVERSATION_ID,
         existing_json=SAMPLE_NODES,
-        chunk_dict={},
     )
 
     assert count == 3
@@ -87,7 +86,6 @@ async def test_persist_import_graph_adds_correct_node_types():
         db=db,
         conversation_id=CONVERSATION_ID,
         existing_json=SAMPLE_NODES,
-        chunk_dict={},
     )
 
     added_objects = [c.args[0] for c in db.add.call_args_list]
@@ -98,6 +96,9 @@ async def test_persist_import_graph_adds_correct_node_types():
     assert node_types["Alpha"] == "conversational_thread"
     assert node_types["Beta"] == "bookmark"
     assert node_types["Gamma"] == "contextual_progress"
+    # All imported nodes are level 1 (individual conversation nodes, per ADR-002)
+    assert all(n.level == 1 for n in nodes)
+    assert all(n.zoom_level_visible == [1, 2, 3] for n in nodes)
 
 
 @pytest.mark.asyncio
@@ -111,7 +112,6 @@ async def test_persist_import_graph_creates_temporal_relationship():
         db=db,
         conversation_id=CONVERSATION_ID,
         existing_json=SAMPLE_NODES,
-        chunk_dict={},
     )
 
     added_objects = [c.args[0] for c in db.add.call_args_list]
@@ -134,7 +134,6 @@ async def test_persist_import_graph_creates_contextual_relationship():
         db=db,
         conversation_id=CONVERSATION_ID,
         existing_json=SAMPLE_NODES,
-        chunk_dict={},
     )
 
     added_objects = [c.args[0] for c in db.add.call_args_list]
@@ -155,7 +154,6 @@ async def test_persist_import_graph_updates_conversation_total_nodes():
         db=db,
         conversation_id=CONVERSATION_ID,
         existing_json=SAMPLE_NODES,
-        chunk_dict={},
     )
 
     assert conv.total_nodes == 3
@@ -169,7 +167,6 @@ async def test_persist_import_graph_returns_zero_for_empty_input():
         db=db,
         conversation_id=CONVERSATION_ID,
         existing_json=[],
-        chunk_dict={},
     )
 
     assert count == 0
@@ -190,7 +187,6 @@ async def test_persist_import_graph_idempotent_deletes_stale_rows():
         db=db,
         conversation_id=CONVERSATION_ID,
         existing_json=SAMPLE_NODES,
-        chunk_dict={},
     )
     first_execute_calls = db.execute.call_count
 
@@ -206,7 +202,6 @@ async def test_persist_import_graph_idempotent_deletes_stale_rows():
         db=db,
         conversation_id=CONVERSATION_ID,
         existing_json=SAMPLE_NODES,
-        chunk_dict={},
     )
 
     # execute called at least twice for the two deletes + once for conv select
