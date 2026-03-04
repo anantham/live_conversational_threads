@@ -216,3 +216,36 @@ Negative:
 - `docs/PRODUCT_VISION.md`
 - `docs/adr/ADR-008-local-stt-transcripts.md`
 - `docs/adr/ADR-009-local-llm-defaults.md`
+
+---
+
+## Amendment — 2026-03-05
+
+**Context:** VISION.md was reframed from "Pause/Resume First" to "Preserve the
+pre-formal layer of human intellectual work." The new framing introduces **prayers**
+as the core primitive: pre-formal intentions gestured at in conversation before they
+are nameable as claims or threads.
+
+**Impact on this ADR:**
+
+The technical decisions here remain valid and unchanged. The two-layer schema
+(fact layer / interpretation layer), minimal LLM contracts, and telemetry requirements
+all support the new vision without modification.
+
+The existing schema already points toward the new framing:
+- `threads` (with `salience` and `state`) can track prayers as low-salience open threads
+- `claims` with `factual|normative|worldview` typing covers the claim decomposition layer
+- `claim_relations` with `is_crux_for` supports crux detection
+
+**Gap identified:**
+
+The schema has no first-class primitive for a prayer — a pre-formal intention that
+is not yet specific enough to be a claim or a named thread. Forcing prayers into
+`threads` or `claims` prematurely would lose the specificity of their conversational
+context and contradict the "preserve specificity, resist abstraction" principle.
+
+A future ADR should specify the `intent_signals` (or `prayers`) table and the
+Layer 1→2 formalization bridge: the mechanism by which a prayer accumulates context
+across sessions until it is ready to be offered for formalization.
+
+**Related:** `docs/VISION.md` (amended 2026-03-05)
