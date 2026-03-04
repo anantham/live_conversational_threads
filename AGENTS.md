@@ -208,9 +208,19 @@ Don't rely on CI logs to explain context—put essentials in the body.
 
 ## PULL_REQUEST_WORKFLOW (Mandatory for Code Review)
 
-### All Changes Must Go Through Pull Requests
+### When to Use Pull Requests
 
-**CRITICAL:** Direct commits to main branch are PROHIBITED. All changes must be submitted via Pull Request to trigger Codex automated code review.
+**Code changes** (features, bug fixes, refactors) must go through a Pull Request to trigger Codex automated code review.
+
+**Direct commits to main are allowed for:**
+- Docs-only changes (VISION.md, ADRs, WORKLOG, TECH_DEBT, README)
+- Single-file config tweaks with no logic changes
+- Typo / comment fixes
+
+**Direct commits to main are PROHIBITED for:**
+- Any change touching `.py`, `.js`, `.jsx`, `.ts`, `.tsx` source files
+- Schema or migration changes
+- Dependency updates
 
 ### PR Creation Protocol
 
