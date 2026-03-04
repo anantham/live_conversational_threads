@@ -1,5 +1,11 @@
 # WORKLOG
 
+## 2026-03-05T00:00:00Z
+- `lct_python_backend/services/import_persistence.py` (lines 74-163): Added `persist_import_graph()` — persists LLM-generated nodes and relationships from `processor.existing_json` to `Node`/`Relationship` DB tables after import pipeline flush. Handles idempotent delete of stale rows, name→UUID resolution for relationship wiring, temporal chain (successor) and contextual relation edges, and `Conversation.total_nodes` update.
+- `lct_python_backend/services/import_bulk_pipeline.py` (lines 17, 714-729): Imported `persist_import_graph` and called it after `processor.flush()`. Non-fatal: persistence errors are logged as warnings and recorded in telemetry without aborting the SSE stream.
+- `lct_python_backend/tests/unit/test_import_graph_persistence.py` (lines 1-163): Added 7 unit tests covering node count, node_type mapping, temporal relationships, contextual relationships, `Conversation.total_nodes` update, empty-input no-op, and idempotent double-call behaviour.
+- Fixes: "Obsidian canvas export gap for upload-generated conversations" (ISSUES.md line 18) — `POST /export/obsidian-canvas/{conversation_id}` now returns 200 for import-flow conversations instead of 500 "No nodes found".
+
 ## 2026-02-26T02:12:18Z
 - `lct_python_backend/services/import_bulk_processor.py` (lines 1-125): Reduced the bulk processor module to a thin facade that now handles temp upload save/cleanup, event queue wiring, and delegation to extracted pipeline/SSE helpers while preserving exported helper symbols (`cleanup_temp_file`, `copy_temp_upload_for_async_job`, `diarization_job_urls`, `build_process_file_stream`).
 - `lct_python_backend/services/import_bulk_pipeline.py` (lines 1-429): Moved the `/api/import/process-file` worker orchestration out of the facade into a dedicated pipeline module (stage status events, transcribing/analyzing transcript events, fallback notice handling, telemetry aggregation, bottleneck computation hook, async diarization enqueue flow).
