@@ -1,11 +1,11 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-02-14
+Last updated: 2026-03-05
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
 | [ADR-001](ADR-001-google-meet-transcript-support.md) | Google Meet Transcript Support with Speaker Diarization | 2025-11-10 | Proposed |
-| [ADR-002](ADR-002-hierarchical-coarse-graining.md) | Hierarchical Coarse-Graining for Multi-Scale Visualization | 2025-11-10 | Proposed |
+| [ADR-002](ADR-002-hierarchical-coarse-graining.md) | Hierarchical Coarse-Graining for Multi-Scale Visualization | 2025-11-10 | Approved |
 | [ADR-003](ADR-003-observability-and-storage-foundation.md) | Observability, Metrics, and Storage Baseline | 2025-11-11 | Proposed |
 | [ADR-004](ADR-004-dual-view-architecture.md) | Dual-View Architecture for Conversation Visualization | 2025-11-11 | Approved |
 | [ADR-005](ADR-005-prompts-configuration-system.md) | Externalized Prompts Configuration System | 2025-11-11 | Approved |
