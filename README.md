@@ -1,590 +1,130 @@
+<div align="center">
+
+<img src="docs/assets/scholars-garden.png" alt="Two scholars in a garden, roots glowing beneath them" width="100%"/>
+
 # Live Conversational Threads
 
-**A multi-scale conversation analysis platform for Google Meet transcripts with AI-powered insights, cognitive bias detection, and advanced visualization.**
+**Preserve the pre-formal layer of human intellectual work.**
 
-Live Conversational Threads transforms conversation transcripts into interactive, multi-scale graph visualizations that reveal both temporal flow and thematic relationships. The application supports Google Meet transcripts with speaker diarization, allowing users to explore conversations at five discrete zoom levels—from individual sentences to narrative arcs—while simultaneously viewing both timeline and contextual network views.
+[Setup Guide](docs/LOCAL_SETUP.md) · [Vision](docs/VISION.md) · [Architecture Decisions](docs/adr/INDEX.md) · [Demo](https://youtu.be/sflh9t_Y1eQ?feature=shared)
 
-Built with **FastAPI** (Python backend) and **React + Vite** (frontend), the platform leverages LLM-powered analysis to detect Simulacra levels, identify cognitive biases, extract implicit frames, and generate comprehensive speaker analytics.
-
----
-
-## Table of Contents
-- [Key Features](#key-features)
-- [Demo](#demo)
-- [Architecture Overview](#architecture-overview)
-- [Project Structure](#project-structure)
-- [Prerequisites](#prerequisites)
-- [Local Setup (Recommended)](#local-setup-recommended)
-- [Running the Application](#running-the-application)
-- [Environment Variables](#environment-variables)
-- [Database Setup](#database-setup)
-- [API Documentation](#api-documentation)
-- [Documentation](#documentation)
-- [Development Roadmap](#development-roadmap)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
+</div>
 
 ---
 
-## Key Features
+## The Problem
 
-### Core Capabilities
+<img src="docs/assets/icebergs-chalkboard.png" alt="Submerged ideas on a chalkboard, hands connecting them with chalk" width="100%"/>
 
-**🎯 Google Meet Transcript Import**
-- Parse PDF/TXT transcripts with speaker diarization
-- Automatic speaker detection and turn segmentation
-- Timestamp extraction and duration calculation
+Real conversations generate what we call **prayers** — implicit intentions, half-formed intuitions, gestured-at connections that are too vague to write down but too important to lose.
 
-**📊 Dual-View Visualization**
-- **Timeline View** (15%): Linear temporal progression of conversation
-- **Contextual Network View** (85%): Thematic clustering and idea relationships
-- Synchronized navigation and selection across views
-- Resizable split with user-customizable proportions
+A theory builder saying *"I keep noticing this pattern across these three examples, I don't know what it is yet"* is not wasting time. That gesture is the actual creative work. The formalization comes later. The insight comes here.
 
-**🔍 5-Level Zoom System**
-- **Level 1 (Sentence)**: Individual utterances and speaker turns
-- **Level 2 (Turn)**: Aggregated speaker contributions
-- **Level 3 (Topic)**: Semantic topic segments
-- **Level 4 (Theme)**: Major thematic clusters
-- **Level 5 (Arc)**: Narrative arcs and conversation structure
-
-**🎭 Advanced AI Analysis**
-- **Simulacra Level Detection**: Classify utterances by communication intent (Levels 1-4)
-- **Cognitive Bias Detection**: Identify 25+ types of biases and logical fallacies
-- **Implicit Frame Analysis**: Uncover hidden worldviews and normative assumptions
-- **Speaker Analytics**: Role detection, time distribution, topic dominance
-
-**⚙️ Customizable AI Prompts**
-- Externalized prompts in JSON configuration
-- User-editable via Settings UI
-- A/B testing support for prompt variations
-- Version history and rollback capability
-- Performance metrics per prompt (cost, latency, accuracy)
-
-**📈 Cost Tracking & Instrumentation**
-- Real-time LLM API cost tracking
-- Latency monitoring (p50, p95, p99)
-- Token usage analytics by feature
-- Cost per conversation dashboards
-- Automated alerts for threshold breaches
-
-**✏️ Edit Mode & Training Data Export**
-- Manual correction of AI-generated nodes/edges
-- All edits logged for future model training
-- Export formats: JSONL (fine-tuning), CSV (analysis), Markdown (review)
-- Feedback annotation for continuous improvement
+Current tools handle this badly:
+- The insight evaporates when the conversation moves on
+- Note-taking interrupts the social rhythm
+- Linear transcripts lose the structure of what was developing
+- No system tracks how a vague intuition accumulates specificity across sessions
 
 ---
 
-## Demo
+## What We're Building
 
-- [Live Conversational Threads Presentation (YouTube)](https://youtu.be/sflh9t_Y1eQ?feature=shared)
+<img src="docs/assets/dinner-constellations.png" alt="A dinner party, conversation threads rising as mathematical constellations" width="100%"/>
 
-*Note: Video reflects earlier version of the application. Current version includes dual-view architecture, zoom levels, and advanced analysis features.*
+Threads is infrastructure for the **live selection layer** — the part of the knowledge stack where human creative direction originates.
 
----
+Autoformalization and verified software engineering are collapsing the cost of producing formal knowledge. The scarce resource is shifting to **specification** — human taste, judgment, and direction. Specifications are set in conversations.
 
-## Architecture Overview
-
-### High-Level Architecture
+Threads makes the conversational layer legible to the formal infrastructure without forcing it to be formal.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    React Frontend (Vite)                     │
-│  ┌────────────────┐  ┌─────────────────────────────────┐   │
-│  │ Timeline View  │  │  Contextual Network View        │   │
-│  │ (15% height)   │  │  (85% height)                   │   │
-│  │                │  │                                  │   │
-│  │ ●──●──●──●──●  │  │      ┌──┐      ┌──┐            │   │
-│  │                │  │      │  │──────│  │            │   │
-│  └────────────────┘  │      └──┘      └──┘            │   │
-│                      │         ↘      ↗                 │   │
-│                      │          ┌──┐                   │   │
-│                      │          │  │                   │   │
-│                      │          └──┘                   │   │
-│                      └─────────────────────────────────┘   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ REST API
-┌──────────────────────────────┴──────────────────────────────┐
-│                    FastAPI Backend                           │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
-│  │  Parsers     │  │  AI Services │  │  Instrumentation │  │
-│  │ - Google Meet│  │ - Clustering │  │  - Cost Tracking │  │
-│  │              │  │ - Bias Det.  │  │  - Metrics       │  │
-│  └──────────────┘  └──────────────┘  └──────────────────┘  │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-        ┌──────────────────────┼──────────────────────┐
-        │                      │                      │
-   ┌────▼────┐          ┌──────▼──────┐      ┌───────▼──────┐
-   │PostgreSQL│          │ OpenAI API │      │ GCS Storage  │
-   │ Database │          │ Anthropic  │      │ (Transcripts)│
-   └──────────┘          └─────────────┘      └──────────────┘
-```
-
-### Data Flow
-
-1. **Import**: User uploads Google Meet transcript (PDF/TXT)
-2. **Parsing**: Backend extracts speakers, utterances, timestamps
-3. **AI Analysis**: LLM generates nodes, edges, clusters (via prompts.json)
-4. **Storage**: Conversation data saved to PostgreSQL, files to GCS
-5. **Visualization**: Frontend fetches graph data, renders dual-view
-6. **Interaction**: User explores zoom levels, selects nodes, views analytics
-7. **Editing**: User corrections logged to `edits_log` table
-8. **Export**: Training data exported in JSONL format for fine-tuning
-
----
-
-## Project Structure
-
-```text
-live_conversational_threads/
-├── lct_python_backend/          # FastAPI backend
-│   ├── backend.py               # App shell + router mounting
-│   ├── *_api.py                 # Router modules (import, stt, llm, graph, etc.)
-│   ├── services/                # Processing, LLM/STT, persistence helpers
-│   ├── alembic/                 # Database migrations
-│   ├── tests/                   # Unit + integration coverage
-│   └── prompts.json             # Prompt configuration
-├── lct_app/                     # React frontend (JSX)
-│   ├── src/pages/               # Route-level screens
-│   ├── src/components/          # Graph/audio/settings UI
-│   ├── src/services/            # API clients
-│   ├── package.json
-│   └── vite.config.js
-├── docs/                        # ADRs, plans, runbooks
-├── setup-once.command           # First-time setup
-├── start.command                # Daily startup
-├── AGENTS.md                    # Operating protocol
-└── README.md
+Layer 0  CONVERSATION          Pre-formal, gestural, exploratory.
+                                Prayers emerge here.
+         ↕
+Layer 1  THREADS               Captures prayers with context.
+                                Tracks threads across sessions.
+                                Surfaces connections, cruxes, lulls.
+         ↕
+Layer 2  JUST-IN-TIME FORMALISM Offers candidate formal statements
+                                for human review when ready.
+         ↕
+Layer 3  FORMAL BACKBONE        Verification is now cheap.
+                                This layer is being built by others.
+         ↕
+Layer 4  FEEDBACK               Verified signals flow back to the conversation.
 ```
 
 ---
 
-## Prerequisites
+## How It Works
 
-- **Python 3.9+** (with `venv` or Conda)
-- **Node.js 18+** and **npm 9+**
-- **PostgreSQL 15+** (or Docker via `docker compose up -d`)
-- **Optional API keys** (depend on provider mode):
-  - Local mode: none required
-  - Online LLMs: `GEMINI_KEY` / `GEMINI_API_KEY` / `GOOGLEAI_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY`, `PERPLEXITY_API_KEY`
-  - Cloud persistence (optional): `GCS_BUCKET_NAME`, `GOOGLE_APPLICATION_CREDENTIALS`
+<img src="docs/assets/formal-informal-overlay.png" alt="Handwritten notes overlaid with Lean theorem syntax and a glowing node graph" width="100%"/>
 
----
+Threads listens to your conversation and builds a live graph — threads, claims, cruxes, tangents — without interrupting the flow.
 
-## Local Setup (Recommended)
+**Core capabilities:**
 
-Use the streamlined scripts from repo root:
-
-### 1. One-time setup
-
-```bash
-./setup-once.command
-```
-
-This installs dependencies, initializes local PostgreSQL (`.postgres_data` on `5433`), prepares `lct_python_backend/.env`, and runs migrations.
-
-### 2. Daily startup
-
-```bash
-./start.command
-```
-
-This performs a clean start, runs migrations, then starts backend + frontend with prefixed terminal logs.
-
-`start.command` now attempts shared Parakeet STT autostart by default (`STT_AUTOSTART=1`) and uses backend-owned STT routing.
-It also checks local LLM reachability at `${LOCAL_LLM_BASE_URL:-http://100.81.65.74:1234}/v1/models` during startup.
-
-To disable STT autostart for a run:
-
-```bash
-STT_AUTOSTART=0 ./start.command
-```
-
-By default this reuses the sibling Parakeet repo/container and shared Docker volume `parakeet-models`.
-
-### 3. Full setup guide
-
-See [`docs/LOCAL_SETUP.md`](docs/LOCAL_SETUP.md) for detailed setup behavior and troubleshooting.
+- **Prayer detection** — identifies pre-formal intentions before they evaporate, preserves them with full conversational context
+- **Thread tracking** — open threads persist across sessions with surrounding context intact
+- **Claim decomposition** — factual, normative, and worldview claims surfaced and distinguished
+- **Crux visibility** — what agreement depends on, where conflict roots are
+- **Retrieval at lulls** — surfaces dormant threads at natural pauses with suggested re-entry phrasing
+- **Speaker analytics** — speaking time, turn-taking balance, bandwidth distribution
+- **Rhetorical pattern detection** — fallacies and rhetorical moves flagged with confidence scores
+- **Formalization bridge** — when a prayer has accumulated enough context, offers a candidate formal statement for human review
 
 ---
 
-## Running the Application
+## Principles
 
-### 1. Start local stack
+<img src="docs/assets/field-notebook.png" alt="A field notebook with branching tree diagrams growing from handwritten notes" width="100%"/>
 
-```bash
-./start.command
-```
+**Conversation is primary, tools are substrate.**
+No feature should force participants to leave conversational mode. Threads is infrastructure, not an interlocutor.
 
-### 2. Verify services
+**Preserve specificity, resist abstraction.**
+A prayer captured with full context is more valuable than a generalized summary. Specificity is the raw material of eventual formalization.
 
-- Backend API docs: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Backend health: [http://localhost:8000/api/import/health](http://localhost:8000/api/import/health)
-- Frontend: [http://localhost:5173](http://localhost:5173)
+**Offer, never direct.**
+Every intervention is an offering — surfaced threads, suggested connections, formalization prompts — all optional, all human-confirmed.
 
-### 3. Import a Google Meet Transcript
+**Transcript as source of truth.**
+Every analysis is traceable back to concrete utterances.
 
-1. Navigate to [http://localhost:5173](http://localhost:5173)
-2. Click "Import Transcript" button
-3. Upload a Google Meet transcript (PDF or TXT format)
-4. Wait for AI-powered graph generation (~30-60 seconds)
-5. Explore the conversation using dual-view interface!
+**Privacy-first.**
+Local-first inference where feasible. Self-hostable. Your data stays yours.
 
 ---
 
-## Environment Variables
+## Why Now
 
-### Backend Core Variables
+<img src="docs/assets/sand-axioms.png" alt="People writing axioms in sand as the tide approaches, conversations visible in rock pools" width="100%"/>
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | `postgresql://lct_user:lct_password@localhost:5433/lct_dev` |
-| `DEFAULT_LLM_MODE` | Local/online default mode | `local` |
-| `LOCAL_LLM_BASE_URL` | Local LLM endpoint | `http://100.81.65.74:1234` |
+The formal backbone of knowledge is being built right now. Specification decisions made today will become load-bearing infrastructure — socially and epistemically expensive to change, even when computationally cheap to regenerate.
 
-### Backend Optional Variables
+The governance layer that keeps human judgment in the loop at the point where creative direction originates needs to develop in parallel. The mould is being set.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI key (online mode) | unset |
-| `ANTHROPIC_API_KEY` | Anthropic key (online mode) | unset |
-| `GEMINI_KEY` / `GEMINI_API_KEY` / `GOOGLEAI_API_KEY` | Gemini key aliases (online mode) | unset |
-| `OPENROUTER_API_KEY` | OpenRouter key (online mode) | unset |
-| `PERPLEXITY_API_KEY` | Perplexity key (fact-checking) | unset |
-| `GCS_BUCKET_NAME` | Cloud bucket for conversation JSON | unset |
-| `GCS_FOLDER` | Cloud folder path | unset |
-| `GOOGLE_APPLICATION_CREDENTIALS` | ADC/service account path | unset |
-| `LOG_LEVEL` | Logging level | `INFO` |
-| `TRACE_API_CALLS` | Backend outbound call tracing | `true` |
-| `API_LOG_PREVIEW_CHARS` | Trace preview truncation length | `280` |
-
-### Frontend Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `VITE_BACKEND_API_URL` | Backend API base URL (service clients) | `http://localhost:8000` |
-| `VITE_AUTH_TOKEN` | Optional bearer token for protected backends | unset |
-| `VITE_API_TRACE` | Frontend request/response console tracing | dev-mode on |
+Threads is part of that governance layer.
 
 ---
 
-## Database Setup
+## Built With
 
-### 1. Recommended path (scripted)
+**Backend:** FastAPI (Python), PostgreSQL, local-first LLM routing (LM Studio / Ollama), Whisper STT
 
-Use `./setup-once.command` for first-time setup and `./start.command` for daily runs.  
-These scripts initialize local Postgres (default `localhost:5433`) and run Alembic migrations automatically.
+**Frontend:** React + Vite, React Flow
 
-### 2. Manual migration path (advanced)
-
-From `lct_python_backend/`:
-
-```bash
-alembic upgrade head
-```
-
-Default local connection in this repo is:
-
-```text
-postgresql://lct_user:lct_password@localhost:5433/lct_dev
-```
-
-### 3. Database Schema
-
-Schema is migration-driven (`alembic upgrade head`) and evolves over time.
-
-Current core entities include:
-- `conversations`, `utterances`, `nodes`, `relationships`
-- `transcript_events`, `app_settings`
-- `bookmarks`, `fact_checks`, `api_calls_log`
-
-For field-level details, use:
-- ORM models: `lct_python_backend/models.py`
-- Migrations: `lct_python_backend/alembic/versions/`
+**AI:** Local-first by default (privacy-preserving), optional cloud LLM fallback
 
 ---
 
-## API Documentation
+<div align="center">
 
-Once the backend server is running:
+<img src="docs/assets/conversation-nexus.png" alt="Two speakers, conversation threads radiating outward into geometric order" width="100%"/>
 
-- **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+*Conversations generate structure. Structure generates knowledge. Knowledge changes what is possible.*
 
-### Key Endpoints
+**[Read the Vision →](docs/VISION.md)** · **[Get Started →](docs/LOCAL_SETUP.md)**
 
-```text
-GET    /api/import/health
-POST   /api/import/google-meet
-POST   /api/import/from-text
-GET    /conversations/{conversation_id}
-POST   /save_json/
-GET    /api/settings/stt
-PUT    /api/settings/stt
-GET    /api/settings/llm
-PUT    /api/settings/llm
-GET    /api/settings/llm/models
-GET    /api/graph/health
-POST   /api/graph/generate
-WS     /ws/transcripts
-```
-
----
-
-## Documentation
-
-### Core Documentation
-
-| Document | Description |
-|----------|-------------|
-| **[ROADMAP.md](docs/ROADMAP.md)** | 14-week implementation plan with instrumentation, metrics, storage, and testing strategies |
-| **[TIER_1_DECISIONS.md](docs/TIER_1_DECISIONS.md)** | Foundational architectural decisions (Google Meet format, zoom levels, dual-view, prompts) |
-| **[TIER_2_FEATURES.md](docs/TIER_2_FEATURES.md)** | Detailed specifications for 6 major features (Node Detail Panel, Speaker Analytics, Prompts Config, etc.) |
-| **[FEATURE_SIMULACRA_LEVELS.md](docs/FEATURE_SIMULACRA_LEVELS.md)** | Simulacra level detection, cognitive bias analysis, implicit frames, rhetorical profiling |
-| **[DATA_MODEL_V2.md](docs/DATA_MODEL_V2.md)** | Complete database schema with all tables, indexes, and relationships |
-| **[PRODUCT_VISION.md](docs/PRODUCT_VISION.md)** | High-level product strategy and user personas |
-| **[FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md)** | ROI analysis and feature prioritization |
-
-### Architecture Decision Records (ADRs)
-
-| ADR | Title | Status |
-|-----|-------|--------|
-| **[ADR-001](docs/adr/ADR-001-google-meet-transcript-support.md)** | Google Meet Transcript Support | Proposed |
-| **[ADR-002](docs/adr/ADR-002-hierarchical-coarse-graining.md)** | Hierarchical Coarse-Graining for Multi-Scale Visualization | Proposed |
-| **[ADR-003](docs/adr/ADR-003-observability-and-storage-foundation.md)** | Observability, Metrics, and Storage Baseline | Proposed |
-| **[ADR-004](docs/adr/ADR-004-dual-view-architecture.md)** | Dual-View Architecture (Timeline + Contextual Network) | Approved |
-| **[ADR-005](docs/adr/ADR-005-prompts-configuration-system.md)** | Externalized Prompts Configuration System | Approved |
-| **[ADR-006](docs/adr/ADR-006-testing-strategy-quality-assurance.md)** | Testing Strategy & Quality Assurance | Proposed |
-| **[ADR-007](docs/adr/ADR-007-system-invariants-data-integrity.md)** | System Invariants & Data Integrity | Proposed |
-| **[ADR-008](docs/adr/ADR-008-local-stt-transcripts.md)** | Local STT & Append-Only Transcript Events | Approved |
-| **[ADR-009](docs/adr/ADR-009-local-llm-defaults.md)** | Local-First LLM Defaults | Proposed |
-| **[ADR-010](docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md)** | Minimal Conversation Schema for Pause/Resume and Thread Legibility | Proposed |
-| **[ADR-011](docs/adr/ADR-011-minimal-live-conversation-ui.md)** | Minimal Live Conversation UI Redesign | Draft |
-| **[ADR-012](docs/adr/ADR-012-realtime-speaker-diarization-sidecar.md)** | Real-Time Speaker Diarization Sidecar for Local Speech-to-Graph | Proposed |
-
-See [docs/adr/INDEX.md](docs/adr/INDEX.md) for the complete ADR index.
-
----
-
-## Development Roadmap
-
-### Phase 1: Foundation & Infrastructure (Weeks 1-4)
-- ✅ Database schema migration (DATA_MODEL_V2)
-- ✅ Instrumentation & cost tracking
-- 🚧 Google Meet transcript parser
-- 🚧 Initial graph generation with prompt engineering
-
-### Phase 2: Core Features (Weeks 5-7)
-- 📅 Dual-view architecture (Timeline + Contextual)
-- 📅 5-level zoom system
-- 📅 Node detail panel with editing
-
-### Phase 3: Analysis Features (Weeks 8-10)
-- 📅 Speaker analytics view
-- 📅 Prompts configuration UI
-- 📅 Edit history & training data export
-
-### Phase 4: Advanced Features (Weeks 11-14)
-- 📅 Simulacra level detection
-- 📅 Cognitive bias detection (25 types)
-- 📅 Implicit frame analysis
-- 📅 Final integration & polish
-
-**Legend:**
-- ✅ Completed
-- 🚧 In Progress
-- 📅 Planned
-
-See [docs/ROADMAP.md](docs/ROADMAP.md) for detailed sprint-by-sprint breakdown.
-
----
-
-## Troubleshooting
-
-### Backend Issues
-
-**Database connection errors:**
-```bash
-# Check PostgreSQL is running
-pg_ctl status
-
-# Test connection
-psql -U your_user -d lct_db
-```
-
-**LLM API errors:**
-```bash
-# Verify API keys are set
-echo $OPENAI_API_KEY
-echo $ANTHROPIC_API_KEY
-
-# Check API key validity
-curl https://api.openai.com/v1/models \
-  -H "Authorization: Bearer $OPENAI_API_KEY"
-```
-
-**Import errors:**
-```bash
-# Reinstall dependencies
-pip install --force-reinstall -r requirements.txt
-
-# Check Python version (must be 3.9+)
-python --version
-```
-
-### Frontend Issues
-
-**Port conflicts:**
-```bash
-# Kill process on port 5173
-lsof -ti:5173 | xargs kill -9
-
-# Or use different port
-npm run dev -- --port 3000
-```
-
-**CORS errors:**
-- Backend is configured to allow `http://localhost:5173`
-- If using different port, update CORS settings in `backend.py`
-
-**Build errors:**
-```bash
-# Clear cache and reinstall
-rm -rf node_modules package-lock.json
-npm install
-```
-
-### Performance Issues
-
-**Slow graph generation:**
-- Check `api_calls_log` table for high latency
-- Consider using GPT-3.5-turbo for cheaper/faster clustering
-- Reduce max_tokens in `prompts.json`
-
-**High LLM costs:**
-- Check `/api/cost-tracking/stats` endpoint
-- Review `prompts.json` for token-heavy templates
-- Enable prompt caching (coming in Week 9)
-
----
-
-## Contributing
-
-We welcome contributions! Please follow these guidelines:
-
-### Pull Request Process
-
-1. **Create a feature branch** from `main`:
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-
-2. **Follow commit message format** (see `.claude/CLAUDE.md`):
-   ```
-   [TYPE]: Brief summary (50 chars max)
-
-   MOTIVATION:
-   - Why this change was needed
-
-   APPROACH:
-   - How the solution works
-
-   CHANGES:
-   - file1.py: Specific changes made
-
-   IMPACT:
-   - What functionality is added/changed
-
-   TESTING:
-   - How to verify the changes work
-   ```
-
-3. **Write tests**:
-   - Unit tests: `pytest tests/unit/test_your_feature.py`
-   - Integration tests: `pytest tests/integration/`
-   - Maintain 85%+ coverage
-
-4. **Run linters**:
-   ```bash
-   # Python
-   black .
-   flake8 .
-   mypy .
-
-   # Frontend
-   npm run lint
-   ```
-
-5. **Create Pull Request** to `main`:
-   - Fill out PR template
-   - Link related issues
-   - Request review from maintainers
-
-### Development Guidelines
-
-- **No direct commits to main** – all changes via PR
-- **Test coverage**: 85%+ for new code
-- **Documentation**: Update relevant docs/ files
-- **ADRs**: Create ADR for significant architectural decisions
-- **Prompts**: Externalize new LLM prompts to `prompts.json`
-
-### Code Style
-
-**Python:**
-- Black formatter (line length 100)
-- Type hints for all functions
-- Docstrings (Google style)
-
-**TypeScript:**
-- Prettier formatter
-- ESLint rules enforced
-- Prefer functional components with hooks
-
----
-
-## License
-
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**.
-
-You are free to use, modify, and distribute this software under the terms of the GPLv3, which ensures that derivative works remain open source.
-
-**Key Points:**
-- ✅ Use freely for personal, academic, or open-source projects
-- ✅ Modify and distribute under GPLv3 terms
-- ❌ Cannot use in proprietary/closed-source software without commercial license
-
-### Commercial Use
-
-If you would like to use this software in a **closed-source or commercial product**, or if you need a **commercial license** without the GPL's copyleft requirements, please contact:
-
-**Email**: [adityaadiga6@gmail.com](mailto:adityaadiga6@gmail.com)
-**GitHub**: [https://github.com/aditya-adiga](https://github.com/aditya-adiga)
-
----
-
-## Contact & Support
-
-**Maintainer**: Aditya Adiga
-**Email**: [adityaadiga6@gmail.com](mailto:adityaadiga6@gmail.com)
-**GitHub**: [@aditya-adiga](https://github.com/aditya-adiga)
-
-**Issues**: [GitHub Issues](https://github.com/aditya-adiga/live_conversational_threads/issues)
-**Discussions**: [GitHub Discussions](https://github.com/aditya-adiga/live_conversational_threads/discussions)
-
----
-
-## Acknowledgments
-
-- **Zvi Mowshowitz** – Simulacra Levels framework
-- **LessWrong Community** – Cognitive bias taxonomies
-- **OpenAI & Anthropic** – LLM APIs powering analysis
-- **React Flow** – Graph visualization library
-- **FastAPI** – Python web framework
-
----
-
-**Last Updated**: 2026-02-13
-**Version**: 2.1.0 (Local STT, local-first LLM, security hardening)
+</div>

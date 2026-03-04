@@ -198,3 +198,6 @@ outputs/
 
 # macOS Finder duplicate copies ("filename (1).ext")
 * (1).*
+
+# Raw/original large images (resized versions live in docs/assets/)
+/images/
