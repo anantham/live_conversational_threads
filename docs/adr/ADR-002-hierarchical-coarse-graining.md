@@ -1,6 +1,6 @@
 # ADR-002: Hierarchical Coarse-Graining for Multi-Scale Graph Visualization
 
-**Status**: Proposed
+**Status**: Approved
 **Date**: 2025-11-10
 **Deciders**: Development Team
 **Related**: ADR-001 (Google Meet Transcripts)
