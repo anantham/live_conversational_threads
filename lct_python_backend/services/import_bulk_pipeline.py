@@ -714,21 +714,26 @@ async def run_bulk_processing_worker(
 
             await processor.flush()
 
-            # Persist graph to DB (enables canvas export and other DB-backed features)
-            try:
-                persisted_count = await persist_import_graph(
-                    db=db,
-                    conversation_id=resolved_conversation_id,
-                    existing_json=processor.existing_json,
-                )
-                logger.info("[PROCESS FILE] Persisted %d nodes to DB for %s", persisted_count, resolved_conversation_id)
-                telemetry["graph_persisted_nodes"] = persisted_count
-            except Exception as persist_exc:  # noqa: BLE001
-                logger.warning("[PROCESS FILE] Graph persistence failed (non-fatal): %s", persist_exc)
-                telemetry["graph_persist_error"] = str(persist_exc) or type(persist_exc).__name__
-
             final_source_type = transcript_result.source_type
             final_source_metadata = transcript_result.metadata
+
+        # Persist graph to DB (enables canvas export and other DB-backed features)
+        try:
+            persisted_count = await persist_import_graph(
+                db=db,
+                conversation_id=resolved_conversation_id,
+                existing_json=processor.existing_json,
+                conversation_name=Path(filename).stem or "Imported conversation",
+                source_type=final_source_type,
+                source_metadata=(
+                    final_source_metadata if isinstance(final_source_metadata, dict) else {}
+                ),
+            )
+            logger.info("[PROCESS FILE] Persisted %d nodes to DB for %s", persisted_count, resolved_conversation_id)
+            telemetry["graph_persisted_nodes"] = persisted_count
+        except Exception as persist_exc:  # noqa: BLE001
+            logger.warning("[PROCESS FILE] Graph persistence failed (non-fatal): %s", persist_exc)
+            telemetry["graph_persist_error"] = str(persist_exc) or type(persist_exc).__name__
 
         telemetry["graph_generation_ms"] = (
             elapsed_ms(graph_started_at)

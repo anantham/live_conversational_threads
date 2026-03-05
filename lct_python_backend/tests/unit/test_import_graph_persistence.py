@@ -2,7 +2,7 @@
 
 import os
 import uuid
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -52,6 +52,7 @@ def _make_db_mock(conv=None):
     db = MagicMock()
     db.add = MagicMock()
     db.execute = AsyncMock()
+    db.flush = AsyncMock()
     db.commit = AsyncMock()
 
     # Simulate scalar_one_or_none returning the provided conv object
@@ -96,6 +97,14 @@ async def test_persist_import_graph_adds_correct_node_types():
     assert node_types["Alpha"] == "conversational_thread"
     assert node_types["Beta"] == "bookmark"
     assert node_types["Gamma"] == "contextual_progress"
+    bookmark_flags = {n.node_name: bool(n.is_bookmark) for n in nodes}
+    contextual_flags = {n.node_name: bool(n.is_contextual_progress) for n in nodes}
+    assert bookmark_flags["Alpha"] is False
+    assert bookmark_flags["Beta"] is True
+    assert bookmark_flags["Gamma"] is False
+    assert contextual_flags["Alpha"] is False
+    assert contextual_flags["Beta"] is False
+    assert contextual_flags["Gamma"] is True
     # All imported nodes are level 1 (individual conversation nodes, per ADR-002)
     assert all(n.level == 1 for n in nodes)
     assert all(n.zoom_level_visible == [1, 2, 3] for n in nodes)
@@ -160,6 +169,28 @@ async def test_persist_import_graph_updates_conversation_total_nodes():
 
 
 @pytest.mark.asyncio
+async def test_persist_import_graph_creates_missing_conversation_row():
+    from lct_python_backend.models import Conversation
+
+    db = _make_db_mock(conv=None)
+
+    await persist_import_graph(
+        db=db,
+        conversation_id=CONVERSATION_ID,
+        existing_json=SAMPLE_NODES,
+        conversation_name="Uploaded notes",
+        source_type="audio",
+    )
+
+    added_objects = [c.args[0] for c in db.add.call_args_list]
+    conversations = [o for o in added_objects if isinstance(o, Conversation)]
+    assert len(conversations) == 1
+    assert conversations[0].conversation_name == "Uploaded notes"
+    assert conversations[0].source_type == "audio"
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_persist_import_graph_returns_zero_for_empty_input():
     db = _make_db_mock()
 
@@ -188,7 +219,6 @@ async def test_persist_import_graph_idempotent_deletes_stale_rows():
         conversation_id=CONVERSATION_ID,
         existing_json=SAMPLE_NODES,
     )
-    first_execute_calls = db.execute.call_count
 
     # Reset and call again (simulates re-run)
     db.execute.reset_mock()
