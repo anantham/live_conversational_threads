@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Mic } from "lucide-react";
+import { Mic, ChevronDown } from "lucide-react";
 
 import { normalizeSttSettings } from "./audio/sttUtils";
 import {
@@ -12,6 +12,7 @@ import {
 import { useSttSettings } from "./audio/useSttSettings";
 import useTranscriptSockets from "./audio/useTranscriptSockets";
 import useAudioCapture from "./audio/useAudioCapture";
+import useMicDevices from "./audio/useMicDevices";
 
 const LIVE_TRANSCRIPT_MAX_LINES = 240;
 
@@ -112,7 +113,9 @@ const AudioInput = forwardRef(function AudioInput({
   const [backendSocketState, setBackendSocketState] = useState("idle");
   const [liveTranscriptLines, setLiveTranscriptLines] = useState([]);
   const [processingError, setProcessingError] = useState("");
+  const [showDevicePicker, setShowDevicePicker] = useState(false);
   const { sttSettings, settingsError } = useSttSettings();
+  const { devices: micDevices, selectedId: micDeviceId, setSelectedId: setMicDeviceId, refresh: refreshMicDevices } = useMicDevices();
 
   const graphDataFromSocket = useRef(false);
   const fileNameWasReset = useRef(false);
@@ -208,7 +211,11 @@ const AudioInput = forwardRef(function AudioInput({
     setProcessingError("");
     setProviderSocketState("connecting");
     setBackendSocketState("connecting");
-    const captureStarted = await startCapture();
+    const captureStarted = await startCapture(micDeviceId);
+    if (captureStarted) {
+      // Refresh device labels — browser only populates labels after permission is granted
+      refreshMicDevices();
+    }
     if (!captureStarted) {
       setProviderSocketState("idle");
       setBackendSocketState("idle");
@@ -268,21 +275,67 @@ const AudioInput = forwardRef(function AudioInput({
         </div>
       )}
 
-      {/* Mic button */}
-      <button
-        onClick={recording ? stopRecording : startRecording}
-        className={`relative flex items-center justify-center w-11 h-11 rounded-full transition-all duration-200 focus:outline-none ${
-          recording
-            ? "bg-red-100 text-red-600 hover:bg-red-200"
-            : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-        }`}
-        aria-label={recording ? "Stop recording" : "Start recording"}
-      >
-        <Mic size={18} />
-        {recording && (
-          <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+      {/* Mic button + device picker */}
+      <div className="relative flex items-center">
+        <button
+          onClick={recording ? stopRecording : startRecording}
+          className={`relative flex items-center justify-center w-11 h-11 rounded-full transition-all duration-200 focus:outline-none ${
+            recording
+              ? "bg-red-100 text-red-600 hover:bg-red-200"
+              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
+          }`}
+          aria-label={recording ? "Stop recording" : "Start recording"}
+        >
+          <Mic size={18} />
+          {recording && (
+            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+          )}
+        </button>
+
+        {/* Device picker chevron — only shown when not recording and multiple devices exist */}
+        {!recording && micDevices.length > 1 && (
+          <button
+            onClick={() => setShowDevicePicker((v) => !v)}
+            className="ml-0.5 p-1 text-gray-400 hover:text-gray-600 focus:outline-none"
+            aria-label="Choose microphone"
+            title="Choose microphone"
+          >
+            <ChevronDown size={12} />
+          </button>
         )}
-      </button>
+
+        {/* Device picker dropdown */}
+        {showDevicePicker && !recording && (
+          <div className="absolute bottom-full left-0 mb-2 z-40 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-max max-w-[280px]">
+            <p className="px-3 py-1 text-[10px] font-medium text-gray-400 uppercase tracking-wide">Microphone</p>
+            {micDevices.map((device) => (
+              <button
+                key={device.deviceId}
+                onClick={() => {
+                  setMicDeviceId(device.deviceId);
+                  setShowDevicePicker(false);
+                }}
+                className={`w-full text-left px-3 py-1.5 text-xs truncate hover:bg-gray-50 ${
+                  device.deviceId === micDeviceId ? "text-blue-600 font-medium" : "text-gray-700"
+                }`}
+              >
+                {device.label}
+              </button>
+            ))}
+            {micDeviceId && (
+              <button
+                onClick={() => {
+                  setMicDeviceId("");
+                  setShowDevicePicker(false);
+                }}
+                className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:bg-gray-50 border-t border-gray-100 mt-1"
+              >
+                Use system default
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Status dot */}
       <div
