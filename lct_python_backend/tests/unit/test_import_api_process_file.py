@@ -59,6 +59,7 @@ def test_process_file_streams_graph_and_done_events(monkeypatch):
 
     monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+    monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
     monkeypatch.setattr(
         import_api,
         "transcribe_uploaded_file",
@@ -72,7 +73,7 @@ def test_process_file_streams_graph_and_done_events(monkeypatch):
     )
 
     class FakeProcessor:
-        def __init__(self, send_update, send_status=None, llm_config=None):
+        def __init__(self, send_update, send_status=None, llm_config=None, **kwargs):
             self._send_update = send_update
             self.existing_json = []
             self.chunk_dict = {}
@@ -122,6 +123,7 @@ def test_process_file_passes_provider_override_to_transcriber(monkeypatch):
     }
     monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value=stt_settings))
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+    monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
     transcribe_mock = AsyncMock(
         return_value=SimpleNamespace(
             transcript_text="audio segment",
@@ -132,7 +134,7 @@ def test_process_file_passes_provider_override_to_transcriber(monkeypatch):
     monkeypatch.setattr(import_api, "transcribe_uploaded_file", transcribe_mock)
 
     class FakeProcessor:
-        def __init__(self, send_update, send_status=None, llm_config=None):
+        def __init__(self, send_update, send_status=None, llm_config=None, **kwargs):
             self._send_update = send_update
             self.existing_json = []
             self.chunk_dict = {}
@@ -167,6 +169,7 @@ def test_process_file_streams_error_event_when_transcriber_fails(monkeypatch):
 
     monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+    monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
 
     async def _raise(*args, **kwargs):
         raise RuntimeError("transcriber boom")
@@ -195,6 +198,7 @@ def test_process_file_streams_processor_status_context(monkeypatch):
 
     monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+    monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
     monkeypatch.setattr(
         import_api,
         "transcribe_uploaded_file",
@@ -208,7 +212,7 @@ def test_process_file_streams_processor_status_context(monkeypatch):
     )
 
     class FakeProcessor:
-        def __init__(self, send_update, send_status=None, llm_config=None):
+        def __init__(self, send_update, send_status=None, llm_config=None, **kwargs):
             self._send_update = send_update
             self._send_status = send_status
             self.existing_json = []
@@ -255,6 +259,7 @@ def test_process_file_emits_fallback_status_notice(monkeypatch):
 
     monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+    monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
 
     async def fake_transcribe_uploaded_file(*args, **kwargs):
         on_provider_fallback = kwargs.get("on_provider_fallback")
@@ -274,7 +279,7 @@ def test_process_file_emits_fallback_status_notice(monkeypatch):
     monkeypatch.setattr(import_api, "transcribe_uploaded_file", AsyncMock(side_effect=fake_transcribe_uploaded_file))
 
     class FakeProcessor:
-        def __init__(self, send_update, send_status=None, llm_config=None):
+        def __init__(self, send_update, send_status=None, llm_config=None, **kwargs):
             self._send_update = send_update
             self.existing_json = []
             self.chunk_dict = {}
@@ -311,6 +316,7 @@ def test_process_file_emits_transcribing_transcript_events(monkeypatch):
 
     monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+    monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
 
     async def fake_transcribe_uploaded_file(*args, **kwargs):
         on_chunk_progress = kwargs.get("on_chunk_progress")
@@ -326,7 +332,7 @@ def test_process_file_emits_transcribing_transcript_events(monkeypatch):
     monkeypatch.setattr(import_api, "transcribe_uploaded_file", AsyncMock(side_effect=fake_transcribe_uploaded_file))
 
     class FakeProcessor:
-        def __init__(self, send_update, send_status=None, llm_config=None):
+        def __init__(self, send_update, send_status=None, llm_config=None, **kwargs):
             self._send_update = send_update
             self.existing_json = []
             self.chunk_dict = {}
@@ -380,6 +386,7 @@ def test_process_file_enqueues_async_diarization_job_for_audio(monkeypatch):
     }
     monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value=stt_settings))
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+    monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
     monkeypatch.setattr(import_api, "_is_async_import_diarization_enabled", lambda: True)
     monkeypatch.setattr(
         import_api,
@@ -401,7 +408,7 @@ def test_process_file_enqueues_async_diarization_job_for_audio(monkeypatch):
     )
 
     class FakeProcessor:
-        def __init__(self, send_update, send_status=None, llm_config=None):
+        def __init__(self, send_update, send_status=None, llm_config=None, **kwargs):
             self._send_update = send_update
             self.existing_json = []
             self.chunk_dict = {}

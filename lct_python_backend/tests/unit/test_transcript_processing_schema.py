@@ -127,15 +127,18 @@ def test_accumulate_text_json_online_missing_key_adds_warning(monkeypatch):
     monkeypatch.setattr(
         llm_callers_module,
         "accumulate_text_json_local",
-        lambda input_text, **kwargs: {
-            "decision": "continue_accumulating",
-            "Completed_segment": "",
-            "Incomplete_segment": input_text,
-            "detected_threads": [],
-        },
+        lambda input_text, **kwargs: (
+            {
+                "decision": "continue_accumulating",
+                "Completed_segment": "",
+                "Incomplete_segment": input_text,
+                "detected_threads": [],
+            },
+            "local_fallback",
+        ),
     )
 
-    result = transcript_processing_module.accumulate_text_json(
+    result, _ = transcript_processing_module.accumulate_text_json(
         "hello there",
         llm_config={"mode": "online"},
     )
@@ -178,7 +181,7 @@ def test_generate_lct_json_online_passes_selected_gemini_model(monkeypatch):
 
     monkeypatch.setattr(llm_callers_module, "generate_lct_json_gemini", _fake_generate)
 
-    result = transcript_processing_module.generate_lct_json(
+    result, _ = transcript_processing_module.generate_lct_json(
         "Transcript text",
         llm_config={"mode": "online", "chat_model": "gemini-3-flash-preview"},
     )
