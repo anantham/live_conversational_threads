@@ -1,10 +1,97 @@
 """Persistence helpers for transcript import endpoints."""
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Iterable, Optional, Tuple
 import uuid
 
 from lct_python_backend.models import Conversation, Utterance as DBUtterance
+
+
+def _to_clean_str(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _extract_contextual_relation_pair(value: Any) -> Tuple[str, str]:
+    if not isinstance(value, dict):
+        return "", ""
+    related_node = _to_clean_str(
+        value.get("related_node_name")
+        or value.get("related_node")
+        or value.get("relatedNode")
+        or value.get("source")
+        or value.get("from")
+        or value.get("node")
+    )
+    relation_text = _to_clean_str(
+        value.get("relation_text")
+        or value.get("relationText")
+        or value.get("description")
+        or value.get("explanation")
+    )
+    return related_node, relation_text
+
+
+def _looks_like_single_contextual_relation_object(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    keys = {str(key).strip() for key in value.keys()}
+    if not keys:
+        return False
+    allowed = {
+        "related_node_name",
+        "related_node",
+        "relatedNode",
+        "source",
+        "from",
+        "node",
+        "relation_text",
+        "relationText",
+        "description",
+        "explanation",
+        "relation_type",
+        "type",
+    }
+    return keys.issubset(allowed)
+
+
+def _iter_contextual_relations(value: Any) -> Iterable[Tuple[str, str]]:
+    seen = set()
+
+    def _add(related_node: Any, relation_text: Any) -> Optional[Tuple[str, str]]:
+        related = _to_clean_str(related_node)
+        text = _to_clean_str(relation_text)
+        if not related or not text or related in seen:
+            return None
+        seen.add(related)
+        return related, text
+
+    if isinstance(value, dict):
+        if _looks_like_single_contextual_relation_object(value):
+            relation = _add(*_extract_contextual_relation_pair(value))
+            if relation:
+                yield relation
+            return
+
+        for related_name, relation_text in value.items():
+            relation = _add(related_name, relation_text)
+            if relation:
+                yield relation
+        return
+
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                relation = _add(*_extract_contextual_relation_pair(item))
+                if relation:
+                    yield relation
+                    continue
+                for related_name, relation_text in item.items():
+                    relation = _add(related_name, relation_text)
+                    if relation:
+                        yield relation
+        return
 
 
 def calculate_speaker_turns(transcript) -> int:
@@ -164,7 +251,7 @@ async def persist_import_graph(
 
     # 3b. Contextual relations
     for node_id, item in node_records:
-        for related_name, relation_text in (item.get("contextual_relation") or {}).items():
+        for related_name, relation_text in _iter_contextual_relations(item.get("contextual_relation")):
             if related_name in name_to_id:
                 db.add(Relationship(
                     id=uuid.uuid4(),
