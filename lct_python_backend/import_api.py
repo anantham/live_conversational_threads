@@ -7,6 +7,7 @@ and source-specific helpers to ``import_validation`` / ``import_fetchers``.
 
 import logging
 import os
+import asyncio
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -50,7 +51,10 @@ from lct_python_backend.services.file_transcriber import (
 )
 from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers, get_env_llm_defaults
 from lct_python_backend.services.stt_settings_service import load_stt_settings
-from lct_python_backend.services.stt_health_service import probe_health_url
+from lct_python_backend.services.stt_health_service import (
+    derive_health_url_from_http_url,
+    probe_health_url,
+)
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
 
 logger = logging.getLogger(__name__)
@@ -175,6 +179,11 @@ def _copy_temp_upload_for_async_job(temp_path: Path, *, suffix: str) -> Path:
 
 def _diarization_job_urls(job_id: str) -> dict:
     return build_bulk_diarization_job_urls(job_id)
+
+
+async def _probe_health_url_async(health_url: str, timeout_seconds: float) -> Dict[str, Any]:
+    """Run blocking health probe in a worker thread to avoid event-loop stalls."""
+    return await asyncio.to_thread(probe_health_url, health_url, timeout_seconds)
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
@@ -368,10 +377,23 @@ async def get_services_status(
 
     # ── Check local WhisperX (via IndrasNet at 127.0.0.1:7777) ──────────────
     local_stt_url = stt_settings.get("http_url", "http://127.0.0.1:7777/api/transcribe")
-    # Derive health URL from transcribe endpoint
-    local_stt_health_url = local_stt_url.rsplit("/", 2)[0] + "/health" if "/api/" in local_stt_url else local_stt_url.rstrip("/") + "/health"
+    local_stt_health_url = derive_health_url_from_http_url(local_stt_url)
+    if not local_stt_health_url:
+        local_stt_health_url = local_stt_url.rstrip("/") + "/health"
+    local_stt_probe_task = asyncio.create_task(
+        _probe_health_url_async(local_stt_health_url, timeout_seconds=5.0)
+    )
 
-    local_stt_probe = probe_health_url(local_stt_health_url, timeout_seconds=5.0)
+    # ── Check Modal WhisperX fallback ───────────────────────────────────────
+    modal_whisperx_url = os.getenv("MODAL_WHISPERX_URL", "https://adityaarpitha--whisperx-server-serve.modal.run")
+    modal_stt_probe_task = None
+    if modal_whisperx_url:
+        modal_whisperx_health_url = modal_whisperx_url.rstrip("/") + "/health"
+        modal_stt_probe_task = asyncio.create_task(
+            _probe_health_url_async(modal_whisperx_health_url, timeout_seconds=10.0)
+        )
+
+    local_stt_probe = await local_stt_probe_task
     services["whisperx"] = ServiceHealthInfo(
         healthy=local_stt_probe["ok"],
         backend="local",
@@ -379,12 +401,8 @@ async def get_services_status(
         url=local_stt_url,
         error=local_stt_probe.get("error"),
     )
-
-    # ── Check Modal WhisperX fallback ───────────────────────────────────────
-    modal_whisperx_url = os.getenv("MODAL_WHISPERX_URL", "https://adityaarpitha--whisperx-server-serve.modal.run")
-    if modal_whisperx_url:
-        modal_whisperx_health_url = modal_whisperx_url.rstrip("/") + "/health"
-        modal_stt_probe = probe_health_url(modal_whisperx_health_url, timeout_seconds=10.0)
+    if modal_stt_probe_task is not None:
+        modal_stt_probe = await modal_stt_probe_task
         services["modal_whisperx"] = ServiceHealthInfo(
             healthy=modal_stt_probe["ok"],
             backend="modal",
@@ -404,7 +422,7 @@ async def get_services_status(
 
     # Health check URL for vLLM/LM Studio
     llm_health_url = llm_base_url.rstrip("/") + "/health"
-    llm_probe = probe_health_url(llm_health_url, timeout_seconds=10.0)
+    llm_probe = await _probe_health_url_async(llm_health_url, timeout_seconds=10.0)
 
     services["llm"] = ServiceHealthInfo(
         healthy=llm_probe["ok"],
