@@ -3,10 +3,11 @@
 import logging
 import uuid
 from pathlib import Path
-from typing import List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from google.cloud import storage
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
@@ -209,6 +210,56 @@ async def delete_conversation(
     except Exception as exc:
         logger.exception("Failed to delete conversation: %s", conversation_id)
         raise HTTPException(status_code=500, detail=f"Deletion failed: {str(exc)}")
+
+
+class GraphSnapshotRequest(BaseModel):
+    nodes: List[Dict[str, Any]]
+    chunk_dict: Optional[Dict[str, Any]] = None
+    conversation_name: Optional[str] = None
+
+
+@router.patch("/conversations/{conversation_id}/graph")
+async def patch_conversation_graph(
+    conversation_id: str,
+    body: GraphSnapshotRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """
+    Upsert graph nodes + relationships for a live conversation.
+
+    Called periodically by the frontend auto-save hook while a live session
+    is active.  Reuses persist_import_graph() which is idempotent (deletes
+    stale rows before re-inserting) so repeated calls are safe.
+    """
+    from lct_python_backend.services.import_persistence import persist_import_graph
+
+    try:
+        uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid conversation_id UUID")
+
+    if not body.nodes:
+        return {"persisted": 0, "conversation_id": conversation_id}
+
+    try:
+        persisted = await persist_import_graph(
+            db=db,
+            conversation_id=conversation_id,
+            existing_json=body.nodes,
+            conversation_name=body.conversation_name,
+            source_type="live_audio",
+        )
+        logger.info(
+            "[auto-save] Persisted %d nodes for conversation %s",
+            persisted,
+            conversation_id,
+        )
+        return {"persisted": persisted, "conversation_id": conversation_id}
+    except Exception as exc:
+        logger.exception(
+            "[auto-save] Failed to persist graph for conversation %s", conversation_id
+        )
+        raise HTTPException(status_code=500, detail=f"Graph save failed: {exc}") from exc
 
 
 @router.get("/api/conversations/{conversation_id}/utterances")
