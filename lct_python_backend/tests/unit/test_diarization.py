@@ -7,12 +7,12 @@ Tests for speaker labeling and diarization invariants:
 """
 
 import pytest
-from tests.conftest import (
+from lct_python_backend.tests.conftest import (
     create_mock_conversation,
     create_mock_utterance,
     MockNode
 )
-from tests.invariants import (
+from lct_python_backend.tests.invariants import (
     assert_participant_count_consistency,
     assert_speaker_id_stability,
     InvariantViolation

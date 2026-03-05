@@ -303,7 +303,7 @@ def check_invariants(mock_db, mock_api_client):
             # ... create test data ...
             check_invariants(conversation_id)  # Will raise if invariants violated
     """
-    from tests.invariants import check_all_invariants
+    from lct_python_backend.tests.invariants import check_all_invariants
     
     def _check(conversation_id: str):
         check_all_invariants(mock_db, mock_api_client, conversation_id)
