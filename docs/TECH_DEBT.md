@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-02-28
+Last updated: 2026-03-05
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -8,7 +8,7 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | --- | --- | --- | --- |
 | ~~lct_python_backend/backend.py~~ | ~~3545~~ → 140 | **RESOLVED** — Split into 13 router modules + 4 shared modules. See `refactor/split-backend-monolith` branch. |
 | lct_python_backend/services/llm_helpers.py | 501 | Extracted from backend.py; large LLM prompt inline | Consider moving prompt to separate file if it grows further |
-| lct_python_backend/models.py | 714 | All ORM models in a single file | Split by domain (core, analysis, instrumentation, settings) |
+| ~~lct_python_backend/models.py~~ | ~~714~~ → 7 files | **RESOLVED (2026-03-05)** — Split into `models/` package: `core.py` (Conversation/Utterance/TranscriptEvent), `graph.py` (Node/Relationship/Cluster), `analysis.py` (Claim/ArgumentTree/IsOughtConflation/Simulacra/Bias/Frame), `interaction.py` (Bookmark/EditsLog/EditFeedback), `system.py` (APICallsLog/AppSetting), `base.py` (Base), `__init__.py` (re-exports, zero consumer changes). |
 | ~~lct_python_backend/services/transcript_processing.py~~ | ~~1213~~ → 278 | **RESOLVED** — Decomposed into `transcript_prompts.py` (174 LOC), `transcript_normalizer.py` (358 LOC), `transcript_llm_callers.py` (492 LOC); `transcript_processing.py` kept as facade with `TranscriptProcessor` class + backward-compat re-exports. PR #22. |
 | ~~lct_app/src/components/ThematicView.jsx~~ | ~~976~~ → 267 | **RESOLVED** — Extracted 3 hooks (`useThematicLevels`, `useThematicGraph`, `useThematicKeyboard`), 3 subcomponents (`LevelSelector`, `ThematicSettingsPanel`, `UtteranceDetailPanel`), and shared constants into `components/thematic/`. Root is now a thin orchestrator. |
 | lct_app/src/pages/Settings.jsx | 481 | Multiple settings panels in one file | Split into settings sections + shared layout |
@@ -21,7 +21,7 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | start.command | 423 | Local stack launch script mixes process ownership detection, port cleanup, service startup, health checks, and optional STT orchestration in one file | Split into `scripts/lib/process_control.sh`, `scripts/lib/health_checks.sh`, and keep `start.command` as thin orchestrator |
 | lct_python_backend/import_api.py | 389 | Import router is much thinner, but still co-locates Pydantic schemas and route wiring concerns in one file | Split request/response schemas into `import_schemas.py` and keep `import_api.py` as route-only wiring |
 | ~~lct_python_backend/services/import_bulk_processor.py~~ | ~~518~~ → 125 | **RESOLVED** — Split SSE encode/stream pumping into `import_bulk_sse.py`, telemetry helpers into `import_bulk_telemetry.py`, and moved worker orchestration into `import_bulk_pipeline.py`; `import_bulk_processor.py` now acts as a thin facade. |
-| lct_python_backend/services/import_bulk_pipeline.py | 429 | Worker still combines stage transitions, transcript iteration, fallback signaling, async diarization enqueue flow, and payload shaping in one module | Split next into `import_bulk_stage_events.py` (status/transcript emitters), `import_bulk_graph_pass.py` (chunk->processor loop), and `import_bulk_diarization_enqueue.py` (queue handoff) while keeping the worker orchestrator thin |
+| lct_python_backend/services/import_bulk_pipeline.py | 832 | Worker now combines stage transitions, transcript iteration, fallback signaling, conversation-bootstrap + graph persistence wiring, async diarization enqueue flow, and payload shaping in one module | Split next into `import_bulk_stage_events.py` (status/transcript emitters), `import_bulk_graph_pass.py` (chunk->processor loop), `import_bulk_persistence.py` (conversation bootstrap + graph materialization), and `import_bulk_diarization_enqueue.py` (queue handoff) while keeping the worker orchestrator thin |
 | lct_python_backend/canvas_api.py | 654 | Canvas schemas, graph conversion/layout logic, relationship mapping, storage calls, and import/export route handlers are all in one module | Split into `canvas_schemas.py`, `canvas_converter.py`, and `canvas_routes.py` with router-only wiring in `canvas_api.py` |
 | ~~lct_app/src/components/FileUpload.jsx~~ | ~~352~~ → 114 | **RESOLVED** — Extracted SSE/state orchestration to `components/upload/useFileUploadStream.js` and moved progress/transcript rendering into `UploadProgressPanel.jsx` + `UploadTranscriptPreview.jsx`; root `FileUpload.jsx` is now a thin shell. |
 | lct_python_backend/services/file_transcriber.py | 1145 | File-type detection, transcript parsers (VTT/SRT/plain/Meet), chunking policy, provider selection/local-first fallback routing, HTTP STT transport/chunked transcription, retry/backoff behavior, and pyannote sidecar alignment are tightly coupled | Split into `file_kind.py`, `text_parsers.py`, `provider_selection.py`, `audio_transcriber.py`, and `speaker_alignment.py` with `transcribe_uploaded_file` as orchestrator |
