@@ -10,7 +10,12 @@ from sqlalchemy import select
 
 from lct_python_backend.db_session import get_async_session
 from lct_python_backend.models import AppSetting
-from lct_python_backend.services.llm_config import LLM_CONFIG_KEY, merge_llm_config
+from lct_python_backend.services.llm_config import (
+    LLM_CONFIG_KEY,
+    merge_llm_config,
+    load_llm_providers,
+    save_llm_providers,
+)
 
 router = APIRouter()
 
@@ -233,3 +238,65 @@ async def update_llm_settings(payload: Dict[str, Any], session=Depends(get_async
         )
     await session.commit()
     return merge_llm_config(payload)
+
+
+# ── Provider Priority Management ─────────────────────────────────────────────
+
+
+@router.get("/api/settings/llm/providers")
+async def read_llm_providers(session=Depends(get_async_session)):
+    """Get LLM provider list with priority order."""
+    return await load_llm_providers(session)
+
+
+@router.put("/api/settings/llm/providers")
+async def update_llm_providers(payload: Dict[str, Any], session=Depends(get_async_session)):
+    """Update LLM provider list (priority order determined by array order)."""
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload must be a JSON object.")
+
+    providers = payload.get("providers")
+    if not isinstance(providers, list):
+        raise HTTPException(status_code=400, detail="providers must be an array.")
+
+    # Validate each provider has required fields
+    for i, provider in enumerate(providers):
+        if not isinstance(provider, dict):
+            raise HTTPException(status_code=400, detail=f"Provider at index {i} must be an object.")
+        if not provider.get("id"):
+            raise HTTPException(status_code=400, detail=f"Provider at index {i} missing 'id'.")
+        if not provider.get("base_url"):
+            raise HTTPException(status_code=400, detail=f"Provider at index {i} missing 'base_url'.")
+        if not provider.get("model"):
+            raise HTTPException(status_code=400, detail=f"Provider at index {i} missing 'model'.")
+
+    return await save_llm_providers(session, payload)
+
+
+@router.post("/api/settings/llm/providers/health")
+async def check_provider_health(payload: Dict[str, Any]):
+    """Check health of a single provider endpoint."""
+    base_url = str(payload.get("base_url", "")).strip().rstrip("/")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="base_url is required.")
+
+    health_url = f"{base_url}/health"
+    start = time.time()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(health_url)
+            latency_ms = int((time.time() - start) * 1000)
+            return {
+                "healthy": response.status_code == 200,
+                "status_code": response.status_code,
+                "latency_ms": latency_ms,
+                "url": base_url,
+            }
+    except Exception as exc:
+        latency_ms = int((time.time() - start) * 1000)
+        return {
+            "healthy": False,
+            "error": str(exc),
+            "latency_ms": latency_ms,
+            "url": base_url,
+        }
