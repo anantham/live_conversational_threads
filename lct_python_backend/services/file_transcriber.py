@@ -1,1242 +1,171 @@
-"""File transcription and parsing helpers for bulk upload workflows."""
+"""File transcription orchestrator for bulk upload workflows.
+
+This module is the public façade.  All external callers import from here;
+the actual implementation lives in the domain-specific submodules:
+
+    transcription_utils  — constants, dataclasses, coercion helpers
+    text_parsers         — file-kind detection, VTT/SRT/text/Google Meet parsing
+    speaker_alignment    — pyannote diarization + ASR-to-speaker alignment
+    provider_selection   — STT provider candidate resolution
+    audio_transcriber    — HTTP STT calls, chunked + segmented transcription
+"""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import mimetypes
-import os
-import re
-import tempfile
 import time
-from contextvars import ContextVar
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional
 
-import httpx
-from pydub import AudioSegment
-from pydub.silence import detect_silence
+from lct_python_backend.services.audio_transcriber import (
+    _extract_asr_segments,
+    _is_empty_transcript_error,
+    _is_retryable_stt_error,
+    _split_audio_to_chunks,
+    detect_segment_boundaries,
+    extract_audio_segment,
+    transcribe_audio_chunked,
+    transcribe_audio_file,
+    transcribe_audio_file_detailed,
+    transcribe_audio_segmented,
+)
+from lct_python_backend.services.provider_selection import (
+    _is_local_http_url,
+    _resolve_audio_provider_candidates,
+)
+from lct_python_backend.services.speaker_alignment import (
+    _align_asr_segments_to_speakers,
+    _format_speaker_transcript,
+    _load_pyannote_pipeline,
+    _run_pyannote_diarization,
+)
+from lct_python_backend.services.text_parsers import (
+    _decode_text_bytes,
+    _strip_markup,
+    chunk_transcript_lines,
+    detect_file_kind,
+    looks_like_google_meet_text,
+    parse_google_meet_file,
+    parse_google_meet_text,
+    parse_plain_text,
+    parse_srt_text,
+    parse_vtt_text,
+)
+from lct_python_backend.services.transcription_utils import (
+    AUDIO_EXTENSIONS,
+    DEFAULT_CHUNK_DURATION_S,
+    DEFAULT_CHUNK_MAX_RETRIES,
+    DEFAULT_CHUNK_OVERLAP_S,
+    DEFAULT_CHUNK_RETRY_BACKOFF_S,
+    DEFAULT_MAX_SEGMENT_MS,
+    DEFAULT_MIN_SEGMENT_MS,
+    DEFAULT_MIN_SILENCE_MS,
+    DEFAULT_SILENCE_THRESH_DB,
+    GOOGLE_MEET_EXTENSIONS,
+    SRT_EXTENSIONS,
+    STT_PARAKEET_PYANNOTE_ENABLED,
+    STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT,
+    STT_PROVIDER_ORDER,
+    STT_PYANNOTE_DEVICE,
+    STT_PYANNOTE_MAX_SPEAKERS,
+    STT_PYANNOTE_MIN_SPEAKERS,
+    STT_PYANNOTE_MODEL,
+    STT_UPLOAD_LOCAL_FIRST,
+    STT_UPLOAD_REMOTE_FALLBACK,
+    TEXT_EXTENSIONS,
+    VTT_EXTENSIONS,
+    AudioTranscriptionDetail,
+    FileTranscriptResult,
+    ProgressCallback,
+    ProviderFallbackCallback,
+    SegmentResult,
+    SegmentStartedCallback,
+    _coerce_float,
+    _coerce_optional_int,
+    _coerce_str,
+    _elapsed_ms,
+    _last_stt_backend,
+    _to_bool,
+)
 
-from lct_python_backend.parsers import GoogleMeetParser
-from lct_python_backend.services.stt_http_transcriber import extract_diarized_segments, extract_transcript_text
+# Re-export __all__ so `from file_transcriber import *` still works
+__all__ = [
+    # transcription_utils
+    "AUDIO_EXTENSIONS",
+    "TEXT_EXTENSIONS",
+    "VTT_EXTENSIONS",
+    "SRT_EXTENSIONS",
+    "GOOGLE_MEET_EXTENSIONS",
+    "STT_PARAKEET_PYANNOTE_ENABLED",
+    "STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT",
+    "STT_PYANNOTE_MODEL",
+    "STT_PYANNOTE_DEVICE",
+    "STT_PYANNOTE_MIN_SPEAKERS",
+    "STT_PYANNOTE_MAX_SPEAKERS",
+    "STT_UPLOAD_LOCAL_FIRST",
+    "STT_UPLOAD_REMOTE_FALLBACK",
+    "STT_PROVIDER_ORDER",
+    "DEFAULT_CHUNK_DURATION_S",
+    "DEFAULT_CHUNK_OVERLAP_S",
+    "DEFAULT_CHUNK_MAX_RETRIES",
+    "DEFAULT_CHUNK_RETRY_BACKOFF_S",
+    "DEFAULT_MIN_SEGMENT_MS",
+    "DEFAULT_MAX_SEGMENT_MS",
+    "DEFAULT_SILENCE_THRESH_DB",
+    "DEFAULT_MIN_SILENCE_MS",
+    "AudioTranscriptionDetail",
+    "FileTranscriptResult",
+    "SegmentResult",
+    "ProgressCallback",
+    "ProviderFallbackCallback",
+    "SegmentStartedCallback",
+    "_last_stt_backend",
+    "_coerce_str",
+    "_elapsed_ms",
+    "_coerce_float",
+    "_coerce_optional_int",
+    "_to_bool",
+    # text_parsers
+    "looks_like_google_meet_text",
+    "detect_file_kind",
+    "_decode_text_bytes",
+    "_strip_markup",
+    "parse_plain_text",
+    "parse_vtt_text",
+    "parse_srt_text",
+    "parse_google_meet_text",
+    "parse_google_meet_file",
+    "chunk_transcript_lines",
+    # speaker_alignment
+    "_format_speaker_transcript",
+    "_align_asr_segments_to_speakers",
+    "_load_pyannote_pipeline",
+    "_run_pyannote_diarization",
+    # provider_selection
+    "_is_local_http_url",
+    "_resolve_audio_provider_candidates",
+    # audio_transcriber
+    "_extract_asr_segments",
+    "_split_audio_to_chunks",
+    "_is_empty_transcript_error",
+    "_is_retryable_stt_error",
+    "detect_segment_boundaries",
+    "extract_audio_segment",
+    "transcribe_audio_file_detailed",
+    "transcribe_audio_file",
+    "transcribe_audio_chunked",
+    "transcribe_audio_segmented",
+    # orchestrator (this module)
+    "transcribe_uploaded_file",
+]
 
 logger = logging.getLogger("lct_backend")
 
-# Tracks which GPU backend handled the most recent transcription call within
-# this async task context.  Set by transcribe_audio_file_detailed(); read by
-# transcribe_uploaded_file() to surface it in metadata → SSE events.
-_last_stt_backend: ContextVar[str] = ContextVar("_last_stt_backend", default="")
 
-def _bounded_env_int(name: str, default: int, minimum: int, maximum: int) -> int:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        logger.warning(
-            "[STT CHUNK] Invalid %s=%r, using default=%d",
-            name,
-            raw,
-            default,
-        )
-        return default
-    bounded = max(minimum, min(maximum, value))
-    if bounded != value:
-        logger.warning(
-            "[STT CHUNK] Clamped %s=%d to %d (allowed %d-%d)",
-            name,
-            value,
-            bounded,
-            minimum,
-            maximum,
-        )
-    return bounded
-
-
-def _env_float(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None:
-        return default
-    try:
-        return float(raw)
-    except (TypeError, ValueError):
-        logger.warning(
-            "[STT CHUNK] Invalid %s=%r, using default=%.2f",
-            name,
-            raw,
-            default,
-        )
-        return default
-
-
-# Conservative chunked audio transcription defaults for GPU stability.
-DEFAULT_CHUNK_DURATION_S = _bounded_env_int("STT_CHUNK_DURATION_S", default=30, minimum=20, maximum=30)
-DEFAULT_CHUNK_OVERLAP_S = _bounded_env_int("STT_CHUNK_OVERLAP_S", default=1, minimum=0, maximum=3)
-DEFAULT_CHUNK_MAX_RETRIES = _bounded_env_int("STT_CHUNK_MAX_RETRIES", default=2, minimum=0, maximum=6)
-DEFAULT_CHUNK_RETRY_BACKOFF_S = max(0.0, _env_float("STT_CHUNK_RETRY_BACKOFF_S", default=1.5))
-STT_PARAKEET_PYANNOTE_ENABLED = (
-    os.getenv("STT_PARAKEET_PYANNOTE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
-)
-STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT = (
-    str(os.getenv("STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT", "verbose_json")).strip().lower() or "verbose_json"
-)
-STT_PYANNOTE_MODEL = (
-    str(os.getenv("STT_PYANNOTE_MODEL", "pyannote/speaker-diarization-3.1")).strip()
-    or "pyannote/speaker-diarization-3.1"
-)
-STT_PYANNOTE_DEVICE = str(os.getenv("STT_PYANNOTE_DEVICE", "cpu")).strip().lower() or "cpu"
-STT_PYANNOTE_MIN_SPEAKERS = str(os.getenv("STT_PYANNOTE_MIN_SPEAKERS", "")).strip()
-STT_PYANNOTE_MAX_SPEAKERS = str(os.getenv("STT_PYANNOTE_MAX_SPEAKERS", "")).strip()
-STT_UPLOAD_LOCAL_FIRST = os.getenv("STT_UPLOAD_LOCAL_FIRST", "true").strip().lower() in {"1", "true", "yes", "on"}
-STT_UPLOAD_REMOTE_FALLBACK = (
-    os.getenv("STT_UPLOAD_REMOTE_FALLBACK", "true").strip().lower() in {"1", "true", "yes", "on"}
-)
-
-# Type alias for progress callbacks: (chunk_index, total_chunks, chunk_transcript) -> None
-ProgressCallback = Callable[[int, int, str], Awaitable[None]]
-ProviderFallbackCallback = Callable[[str, str, str], Awaitable[None]]
-STT_PROVIDER_ORDER: Tuple[str, ...] = ("parakeet", "senko", "ofc", "whisper")
-
-AUDIO_EXTENSIONS = {
-    ".wav",
-    ".mp3",
-    ".m4a",
-    ".ogg",
-    ".flac",
-    ".aac",
-    ".webm",
-    ".mp4",
-}
-TEXT_EXTENSIONS = {".txt", ".text", ".md", ".log"}
-VTT_EXTENSIONS = {".vtt"}
-SRT_EXTENSIONS = {".srt"}
-GOOGLE_MEET_EXTENSIONS = {".pdf"}
-
-
-@dataclass
-class FileTranscriptResult:
-    """Normalized transcript extraction result."""
-
-    transcript_text: str
-    source_type: str
-    metadata: Dict[str, Any]
-
-
-@dataclass
-class AudioTranscriptionDetail:
-    """Detailed STT result with optional timestamped segments."""
-
-    transcript_text: str
-    asr_segments: List[Dict[str, Any]]
-    diarized_segments: Optional[List[Dict[str, Any]]]
-    raw_payload: Any
-    backend: str = ""  # "local_whisperx" | "modal_whisperx" | "" (set when routed via IndrasNet)
-
-
-@dataclass
-class SegmentResult:
-    """Result for a single audio segment in interleaved processing."""
-
-    segment_index: int  # 1-based index
-    segment_total: int  # Total number of segments
-    start_ms: int
-    end_ms: int
-    transcript_text: str
-    elapsed_ms: int = 0
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-def _coerce_str(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _elapsed_ms(started_at: float) -> int:
-    return int((time.perf_counter() - started_at) * 1000)
-
-
-def _coerce_float(value: Any) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _coerce_optional_int(value: Any) -> Optional[int]:
-    raw = _coerce_str(value)
-    if not raw:
-        return None
-    try:
-        parsed = int(raw)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed >= 1 else None
-
-
-def _to_bool(value: Any, default: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    raw = _coerce_str(value).lower()
-    if not raw:
-        return default
-    if raw in {"1", "true", "yes", "on"}:
-        return True
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    return default
-
-
-def _is_local_http_url(raw_url: str) -> bool:
-    if not raw_url:
-        return False
-    try:
-        parsed = urlparse(raw_url)
-    except ValueError:
-        return False
-    host = (parsed.hostname or "").strip().lower()
-    if not host:
-        return False
-    if host in {"localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal"}:
-        return True
-    return host.endswith(".local")
-
-
-def _resolve_audio_provider_candidates(
-    *,
-    settings: Dict[str, Any],
-    provider_override: Optional[str],
-) -> List[Dict[str, str]]:
-    provider_http_urls = settings.get("provider_http_urls")
-    provider_url_map = provider_http_urls if isinstance(provider_http_urls, dict) else {}
-    configured_provider = _coerce_str(settings.get("provider")).lower()
-    override_provider = _coerce_str(provider_override).lower()
-    fallback_provider = _coerce_str(settings.get("fallback_provider")).lower()
-    external_fallback_http_url = _coerce_str(settings.get("external_fallback_http_url"))
-    local_first_enabled = _to_bool(settings.get("upload_local_first"), STT_UPLOAD_LOCAL_FIRST)
-    fallback_enabled = _to_bool(settings.get("upload_remote_fallback"), STT_UPLOAD_REMOTE_FALLBACK)
-
-    def provider_url(provider_name: str) -> str:
-        normalized = _coerce_str(provider_name).lower()
-        if normalized and normalized in provider_url_map:
-            return _coerce_str(provider_url_map.get(normalized))
-        return ""
-
-    candidates: List[Dict[str, str]] = []
-    seen: set[Tuple[str, str]] = set()
-
-    def add_candidate(provider_name: str, http_url: str, reason: str) -> None:
-        normalized_provider = _coerce_str(provider_name).lower() or "whisper"
-        normalized_url = _coerce_str(http_url)
-        if not normalized_url:
-            return
-        key = (normalized_provider, normalized_url)
-        if key in seen:
-            return
-        seen.add(key)
-        candidates.append(
-            {
-                "provider": normalized_provider,
-                "http_url": normalized_url,
-                "reason": reason,
-            }
-        )
-
-    if override_provider:
-        add_candidate(
-            override_provider,
-            provider_url(override_provider) or _coerce_str(settings.get("http_url")),
-            "override",
-        )
-    else:
-        primary_added = False
-        if local_first_enabled:
-            for provider_name in STT_PROVIDER_ORDER:
-                local_url = provider_url(provider_name)
-                if local_url and _is_local_http_url(local_url):
-                    add_candidate(provider_name, local_url, "local_first")
-                    primary_added = True
-                    break
-        if not primary_added:
-            add_candidate(
-                configured_provider or "whisper",
-                provider_url(configured_provider) or _coerce_str(settings.get("http_url")),
-                "configured",
-            )
-            primary_added = len(candidates) > 0
-        if not primary_added:
-            for provider_name in STT_PROVIDER_ORDER:
-                add_candidate(provider_name, provider_url(provider_name), "available")
-                if candidates:
-                    primary_added = True
-                    break
-
-    if fallback_enabled:
-        if fallback_provider:
-            add_candidate(fallback_provider, provider_url(fallback_provider), "fallback_provider")
-        whisper_url = provider_url("whisper")
-        if whisper_url and not _is_local_http_url(whisper_url):
-            add_candidate("whisper", whisper_url, "fallback_whisper")
-        if external_fallback_http_url:
-            add_candidate("external", external_fallback_http_url, "fallback_external")
-        for provider_name in STT_PROVIDER_ORDER:
-            candidate_url = provider_url(provider_name)
-            if candidate_url and not _is_local_http_url(candidate_url):
-                add_candidate(provider_name, candidate_url, "fallback_remote")
-
-    if not candidates:
-        add_candidate(
-            configured_provider or override_provider or "whisper",
-            _coerce_str(settings.get("http_url")),
-            "legacy_http_url",
-        )
-    return candidates
-
-
-def _extract_asr_segments(payload: Any) -> List[Dict[str, Any]]:
-    """Extract ASR timestamp segments from provider payload."""
-    if not isinstance(payload, dict):
-        return []
-
-    raw_segments = payload.get("segments")
-    if not isinstance(raw_segments, list):
-        raw_segments = payload.get("timestamps")
-    if not isinstance(raw_segments, list):
-        return []
-
-    segments: List[Dict[str, Any]] = []
-    for item in raw_segments:
-        if not isinstance(item, dict):
-            continue
-        start = _coerce_float(item.get("start"))
-        end = _coerce_float(item.get("end"))
-        text = _coerce_str(item.get("text") or item.get("segment") or item.get("word"))
-        if start is None or end is None or end <= start or not text:
-            continue
-        segments.append(
-            {
-                "start": start,
-                "end": end,
-                "text": text,
-            }
-        )
-    return segments
-
-
-def _format_speaker_transcript(segments: Sequence[Dict[str, Any]]) -> str:
-    lines: List[str] = []
-    for seg in segments:
-        speaker = _coerce_str(seg.get("speaker")) or "SPEAKER_00"
-        text = _coerce_str(seg.get("text"))
-        if text:
-            lines.append(f"{speaker}: {text}")
-    return "\n".join(lines).strip()
-
-
-def _speaker_overlap_seconds(
-    asr_start: float,
-    asr_end: float,
-    speaker_start: float,
-    speaker_end: float,
-) -> float:
-    return max(0.0, min(asr_end, speaker_end) - max(asr_start, speaker_start))
-
-
-def _align_asr_segments_to_speakers(
-    asr_segments: Sequence[Dict[str, Any]],
-    speaker_segments: Sequence[Dict[str, Any]],
-) -> List[Dict[str, Any]]:
-    """Assign each ASR segment to the speaker segment with max overlap."""
-    if not asr_segments:
-        return []
-
-    normalized_speaker_segments: List[Dict[str, Any]] = []
-    for seg in speaker_segments:
-        if not isinstance(seg, dict):
-            continue
-        start = _coerce_float(seg.get("start"))
-        end = _coerce_float(seg.get("end"))
-        speaker = _coerce_str(seg.get("speaker"))
-        if start is None or end is None or end <= start or not speaker:
-            continue
-        normalized_speaker_segments.append(
-            {
-                "speaker": speaker,
-                "start": start,
-                "end": end,
-            }
-        )
-
-    assigned: List[Dict[str, Any]] = []
-    for asr in asr_segments:
-        asr_start = _coerce_float(asr.get("start"))
-        asr_end = _coerce_float(asr.get("end"))
-        text = _coerce_str(asr.get("text"))
-        if asr_start is None or asr_end is None or asr_end <= asr_start or not text:
-            continue
-
-        best_speaker = "SPEAKER_00"
-        best_overlap = 0.0
-        for diar in normalized_speaker_segments:
-            overlap = _speaker_overlap_seconds(
-                asr_start,
-                asr_end,
-                diar["start"],
-                diar["end"],
-            )
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best_speaker = diar["speaker"]
-
-        assigned.append(
-            {
-                "speaker": best_speaker,
-                "start": asr_start,
-                "end": asr_end,
-                "text": text,
-            }
-        )
-
-    # Merge adjacent segments from same speaker to keep transcript compact.
-    merged: List[Dict[str, Any]] = []
-    for seg in assigned:
-        if (
-            merged
-            and merged[-1]["speaker"] == seg["speaker"]
-            and float(seg["start"]) - float(merged[-1]["end"]) <= 0.35
-        ):
-            merged[-1]["text"] = f"{merged[-1]['text']} {seg['text']}".strip()
-            merged[-1]["end"] = max(float(merged[-1]["end"]), float(seg["end"]))
-            continue
-        merged.append(dict(seg))
-    return merged
-
-
-_PYANNOTE_PIPELINE: Any = None
-_PYANNOTE_PIPELINE_DEVICE: str = ""
-_PYANNOTE_PIPELINE_MODEL: str = ""
-
-
-def _resolve_pyannote_device(torch_module: Any) -> str:
-    requested = STT_PYANNOTE_DEVICE
-    if requested in {"", "auto"}:
-        if getattr(torch_module.backends, "mps", None) and torch_module.backends.mps.is_available():
-            return "mps"
-        if torch_module.cuda.is_available():
-            return "cuda"
-        return "cpu"
-    return requested
-
-
-def _load_pyannote_pipeline():
-    """Load and cache pyannote pipeline once per process."""
-    global _PYANNOTE_PIPELINE, _PYANNOTE_PIPELINE_DEVICE, _PYANNOTE_PIPELINE_MODEL
-
-    hf_token = _coerce_str(os.getenv("STT_PYANNOTE_HF_TOKEN") or os.getenv("HF_TOKEN"))
-    if not hf_token:
-        raise RuntimeError("Missing HF token for pyannote (set STT_PYANNOTE_HF_TOKEN or HF_TOKEN).")
-
-    if (
-        _PYANNOTE_PIPELINE is not None
-        and _PYANNOTE_PIPELINE_DEVICE == STT_PYANNOTE_DEVICE
-        and _PYANNOTE_PIPELINE_MODEL == STT_PYANNOTE_MODEL
-    ):
-        return _PYANNOTE_PIPELINE
-
-    import torch
-    from pyannote.audio import Pipeline
-
-    try:
-        pipeline = Pipeline.from_pretrained(
-            STT_PYANNOTE_MODEL,
-            use_auth_token=hf_token,
-        )
-    except TypeError as exc:
-        message = str(exc)
-        if "use_auth_token" in message:
-            raise RuntimeError(
-                "pyannote/huggingface_hub version mismatch: install huggingface_hub<1.0 "
-                "for pyannote.audio 3.x compatibility."
-            ) from exc
-        raise
-    resolved_device = _resolve_pyannote_device(torch)
-    if resolved_device != "cpu":
-        try:
-            pipeline.to(torch.device(resolved_device))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("[PYANNOTE] Failed to move pipeline to %s: %s. Falling back to CPU.", resolved_device, exc)
-            resolved_device = "cpu"
-
-    _PYANNOTE_PIPELINE = pipeline
-    _PYANNOTE_PIPELINE_DEVICE = STT_PYANNOTE_DEVICE
-    _PYANNOTE_PIPELINE_MODEL = STT_PYANNOTE_MODEL
-    logger.info(
-        "[PYANNOTE] Loaded model=%s requested_device=%s resolved_device=%s",
-        STT_PYANNOTE_MODEL,
-        STT_PYANNOTE_DEVICE,
-        resolved_device,
-    )
-    return _PYANNOTE_PIPELINE
-
-
-def _run_pyannote_diarization(audio_path: Path) -> List[Dict[str, Any]]:
-    pipeline = _load_pyannote_pipeline()
-    min_speakers = _coerce_optional_int(STT_PYANNOTE_MIN_SPEAKERS)
-    max_speakers = _coerce_optional_int(STT_PYANNOTE_MAX_SPEAKERS)
-
-    kwargs: Dict[str, Any] = {}
-    if min_speakers is not None:
-        kwargs["min_speakers"] = min_speakers
-    if max_speakers is not None:
-        kwargs["max_speakers"] = max_speakers
-
-    try:
-        diarization = pipeline(str(audio_path), **kwargs)
-    except Exception as exc:  # noqa: BLE001
-        message = str(exc) or type(exc).__name__
-        if "Expected size" in message and "tensor" in message:
-            raise RuntimeError(
-                "pyannote diarization failed on this compressed source; convert to 16kHz mono WAV and retry."
-            ) from exc
-        raise
-    speaker_segments: List[Dict[str, Any]] = []
-    for turn, _, speaker in diarization.itertracks(yield_label=True):
-        start = float(turn.start)
-        end = float(turn.end)
-        if end <= start:
-            continue
-        speaker_segments.append(
-            {
-                "speaker": _coerce_str(speaker) or "SPEAKER_00",
-                "start": start,
-                "end": end,
-            }
-        )
-    speaker_segments.sort(key=lambda seg: (float(seg["start"]), float(seg["end"])))
-    return speaker_segments
-
-
-def looks_like_google_meet_text(text: str) -> bool:
-    candidate = _coerce_str(text)
-    if not candidate:
-        return False
-    if "transcription ended" in candidate.lower():
-        return True
-    # Typical line formats:
-    # 00:10:47
-    # Speaker Name ~: utterance
-    if re.search(r"^\s*\d{1,2}:\d{2}:\d{2}\s*$", candidate, flags=re.MULTILINE):
-        return True
-    if re.search(r"^[^\n:]{2,80}\s*~?\s*:\s+.+$", candidate, flags=re.MULTILINE):
-        return True
-    return False
-
-
-def detect_file_kind(
-    filename: Optional[str],
-    *,
-    content_type: Optional[str] = None,
-    text_preview: Optional[str] = None,
-) -> str:
-    """Detect input kind for upload processing."""
-
-    ext = Path(filename or "").suffix.lower()
-    content_type_lc = _coerce_str(content_type).lower()
-    preview = _coerce_str(text_preview)
-
-    if ext in AUDIO_EXTENSIONS or content_type_lc.startswith("audio/"):
-        return "audio"
-    if ext in VTT_EXTENSIONS:
-        return "vtt"
-    if ext in SRT_EXTENSIONS:
-        return "srt"
-    if ext in GOOGLE_MEET_EXTENSIONS:
-        return "google_meet"
-    if ext in TEXT_EXTENSIONS:
-        if looks_like_google_meet_text(preview):
-            return "google_meet"
-        return "text"
-
-    if "subrip" in content_type_lc:
-        return "srt"
-    if "vtt" in content_type_lc:
-        return "vtt"
-    if "text/plain" in content_type_lc:
-        if looks_like_google_meet_text(preview):
-            return "google_meet"
-        return "text"
-
-    return "unknown"
-
-
-def _decode_text_bytes(file_bytes: bytes) -> str:
-    for encoding in ("utf-8", "utf-8-sig", "latin-1", "cp1252"):
-        try:
-            return file_bytes.decode(encoding)
-        except UnicodeDecodeError:
-            continue
-    return file_bytes.decode("utf-8", errors="replace")
-
-
-def parse_plain_text(text: str) -> str:
-    cleaned = _coerce_str(text).replace("\r\n", "\n").replace("\r", "\n")
-    lines = [line.strip() for line in cleaned.split("\n") if line.strip()]
-    return "\n".join(lines)
-
-
-def _strip_markup(value: str) -> str:
-    # Remove simple WEBVTT markup tags (<c.foo>, <v Speaker>, etc).
-    return re.sub(r"<[^>]+>", "", value).strip()
-
-
-def parse_vtt_text(text: str) -> str:
-    lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
-    utterances: List[str] = []
-    cue_lines: List[str] = []
-    in_note = False
-
-    def flush_cue() -> None:
-        if not cue_lines:
-            return
-        utterance = " ".join(_strip_markup(line) for line in cue_lines if _strip_markup(line))
-        if utterance:
-            utterances.append(utterance)
-        cue_lines.clear()
-
-    for raw_line in lines:
-        line = raw_line.strip()
-        if not line:
-            flush_cue()
-            in_note = False
-            continue
-        if line.startswith("WEBVTT"):
-            continue
-        if line.upper().startswith("NOTE"):
-            in_note = True
-            continue
-        if in_note:
-            continue
-        if "-->" in line:
-            flush_cue()
-            continue
-        if re.fullmatch(r"\d+", line):
-            # Optional cue id / numeric index.
-            continue
-        cue_lines.append(line)
-
-    flush_cue()
-    return "\n".join(utterances)
-
-
-def parse_srt_text(text: str) -> str:
-    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    blocks = [block.strip() for block in normalized.split("\n\n") if block.strip()]
-    utterances: List[str] = []
-
-    for block in blocks:
-        lines = [line.strip() for line in block.split("\n") if line.strip()]
-        if not lines:
-            continue
-        cursor = 0
-        if re.fullmatch(r"\d+", lines[0]):
-            cursor = 1
-        if cursor < len(lines) and "-->" in lines[cursor]:
-            cursor += 1
-        body = [_strip_markup(line) for line in lines[cursor:] if _strip_markup(line)]
-        if body:
-            utterances.append(" ".join(body))
-
-    return "\n".join(utterances)
-
-
-def parse_google_meet_text(text: str) -> str:
-    parser = GoogleMeetParser()
-    transcript = parser.parse_text(text)
-    lines = [f"{utterance.speaker}: {utterance.text}".strip() for utterance in transcript.utterances]
-    return "\n".join(line for line in lines if line and not line.endswith(":"))
-
-
-def parse_google_meet_file(file_path: Path) -> str:
-    parser = GoogleMeetParser()
-    transcript = parser.parse_file(str(file_path))
-    lines = [f"{utterance.speaker}: {utterance.text}".strip() for utterance in transcript.utterances]
-    return "\n".join(line for line in lines if line and not line.endswith(":"))
-
-
-def chunk_transcript_lines(transcript_text: str, *, max_chars: int = 280) -> List[str]:
-    """Chunk transcript into sentence-like pieces for processor ingestion."""
-
-    lines = [line.strip() for line in transcript_text.split("\n") if line.strip()]
-    if not lines:
-        return []
-
-    chunks: List[str] = []
-    buffer = ""
-    for line in lines:
-        if not buffer:
-            buffer = line
-            continue
-        candidate = f"{buffer} {line}"
-        if len(candidate) <= max_chars:
-            buffer = candidate
-        else:
-            chunks.append(buffer)
-            buffer = line
-    if buffer:
-        chunks.append(buffer)
-    return chunks
-
-
-async def transcribe_audio_file_detailed(
-    file_path: Path,
-    *,
-    http_url: str,
-    model: str = "",
-    language: str = "",
-    timeout_seconds: float = 120.0,
-    response_format: str = "",
-    transport: Optional[httpx.AsyncBaseTransport] = None,
-) -> AudioTranscriptionDetail:
-    """Transcribe an audio file via HTTP STT provider and keep optional segments."""
-
-    target_url = _coerce_str(http_url)
-    if not target_url:
-        raise ValueError("STT HTTP URL is required for audio transcription.")
-
-    payload_bytes = file_path.read_bytes()
-    if not payload_bytes:
-        raise ValueError("Uploaded audio file is empty.")
-
-    guessed_content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
-    form_data: Dict[str, str] = {}
-    if _coerce_str(model):
-        form_data["model"] = _coerce_str(model)
-    if _coerce_str(language):
-        form_data["language"] = _coerce_str(language)
-    if _coerce_str(response_format):
-        form_data["response_format"] = _coerce_str(response_format)
-    # Providers that support timestamps should include them in structured responses.
-    form_data.setdefault("include_timestamps", "true")
-
-    files = {
-        "file": (file_path.name, payload_bytes, guessed_content_type),
-    }
-    t = max(5.0, float(timeout_seconds or 120.0))
-    timeout = httpx.Timeout(connect=10.0, read=t, write=t, pool=10.0)
-    async with httpx.AsyncClient(timeout=timeout, transport=transport) as client:
-        response = await client.post(target_url, data=form_data, files=files)
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            body_preview = response.text[:300]
-            raise RuntimeError(
-                f"STT provider request failed ({exc.response.status_code}): {body_preview}"
-            ) from exc
-
-    content_type = _coerce_str(response.headers.get("content-type")).lower()
-    parsed_payload: Any
-    if "application/json" in content_type:
-        parsed_payload = response.json()
-    else:
-        raw_text = response.text.strip()
-        try:
-            parsed_payload = json.loads(raw_text)
-        except json.JSONDecodeError:
-            parsed_payload = {"text": raw_text}
-
-    # Prefer diarized speaker segments when available; fall back to plain text
-    diarized_segments = extract_diarized_segments(parsed_payload)
-    asr_segments = _extract_asr_segments(parsed_payload)
-    if diarized_segments:
-        transcript = _format_speaker_transcript(diarized_segments)
-    else:
-        transcript = extract_transcript_text(parsed_payload).strip()
-        if not transcript and asr_segments:
-            transcript = "\n".join(seg["text"] for seg in asr_segments if _coerce_str(seg.get("text"))).strip()
-    if not transcript:
-        raise RuntimeError("STT provider returned empty transcript.")
-    backend = parsed_payload.get("_backend", "") if isinstance(parsed_payload, dict) else ""
-    # Fallback: infer backend from URL if not provided in response
-    if not backend:
-        if "modal" in target_url.lower():
-            backend = "modal_whisperx"
-        elif "127.0.0.1" in target_url or "localhost" in target_url:
-            backend = "local_whisperx"
-    _last_stt_backend.set(backend)
-    return AudioTranscriptionDetail(
-        transcript_text=transcript,
-        asr_segments=asr_segments,
-        diarized_segments=diarized_segments,
-        raw_payload=parsed_payload,
-        backend=backend,
-    )
-
-
-async def transcribe_audio_file(
-    file_path: Path,
-    *,
-    http_url: str,
-    model: str = "",
-    language: str = "",
-    timeout_seconds: float = 120.0,
-    response_format: str = "",
-    transport: Optional[httpx.AsyncBaseTransport] = None,
-) -> str:
-    """Transcribe an audio file via HTTP STT provider."""
-    detail = await transcribe_audio_file_detailed(
-        file_path,
-        http_url=http_url,
-        model=model,
-        language=language,
-        timeout_seconds=timeout_seconds,
-        response_format=response_format,
-        transport=transport,
-    )
-    return detail.transcript_text
-
-
-def _split_audio_to_chunks(
-    file_path: Path,
-    chunk_duration_s: int = DEFAULT_CHUNK_DURATION_S,
-    overlap_s: int = DEFAULT_CHUNK_OVERLAP_S,
-) -> List[Tuple[Path, int, int]]:
-    """Split an audio file into overlapping WAV chunks on disk.
-
-    Returns a list of (chunk_path, start_ms, end_ms) tuples.  Caller is
-    responsible for cleaning up the temp files.
-    """
-    audio = AudioSegment.from_file(str(file_path))
-    duration_ms = len(audio)
-    chunk_ms = chunk_duration_s * 1000
-    overlap_ms = overlap_s * 1000
-    step_ms = max(1000, chunk_ms - overlap_ms)
-
-    chunks: List[Tuple[Path, int, int]] = []
-    start = 0
-    while start < duration_ms:
-        end = min(start + chunk_ms, duration_ms)
-        segment = audio[start:end]
-
-        tmp = tempfile.NamedTemporaryFile(
-            suffix=".wav", prefix="stt_chunk_", delete=False,
-        )
-        segment.export(tmp.name, format="wav")
-        tmp.close()
-        chunks.append((Path(tmp.name), start, end))
-
-        if end >= duration_ms:
-            break
-        start += step_ms
-
-    logger.info(
-        "[CHUNK] Split %s (%d ms) into %d chunks of ~%d s with %d s overlap",
-        file_path.name, duration_ms, len(chunks), chunk_duration_s, overlap_s,
-    )
-    return chunks
-
-
-# ── Dynamic silence-based segmentation for interleaved pipeline ─────────────
-
-# Environment-tunable segment boundaries
-DEFAULT_MIN_SEGMENT_MS = _bounded_env_int("SEGMENT_MIN_MS", default=120_000, minimum=60_000, maximum=300_000)  # 2 min
-DEFAULT_MAX_SEGMENT_MS = _bounded_env_int("SEGMENT_MAX_MS", default=480_000, minimum=120_000, maximum=900_000)  # 8 min
-DEFAULT_SILENCE_THRESH_DB = _bounded_env_int("SEGMENT_SILENCE_DB", default=-40, minimum=-60, maximum=-20)
-DEFAULT_MIN_SILENCE_MS = _bounded_env_int("SEGMENT_SILENCE_MS", default=2000, minimum=500, maximum=5000)
-
-
-def detect_segment_boundaries(
-    audio_path: Path,
-    *,
-    min_segment_ms: int = DEFAULT_MIN_SEGMENT_MS,
-    max_segment_ms: int = DEFAULT_MAX_SEGMENT_MS,
-    silence_thresh_db: int = DEFAULT_SILENCE_THRESH_DB,
-    min_silence_ms: int = DEFAULT_MIN_SILENCE_MS,
-) -> List[int]:
-    """Detect natural break points in audio based on silences.
-
-    Instead of fixed-duration segments, this finds natural conversation pauses
-    (2-3 second silences) to create segment boundaries. This ensures we never
-    cut off during high-energy continuous speech.
-
-    Args:
-        audio_path: Path to audio file
-        min_segment_ms: Minimum segment duration (default 2 min, avoid micro-segments)
-        max_segment_ms: Maximum segment duration (default 8 min, ensure timely feedback)
-        silence_thresh_db: Audio below this dB is considered silence (default -40)
-        min_silence_ms: Minimum silence duration to consider a break (default 2s)
-
-    Returns:
-        List of millisecond timestamps marking segment boundaries (starts with 0).
-    """
-    audio = AudioSegment.from_file(str(audio_path))
-    duration_ms = len(audio)
-
-    # Short files don't need segmentation
-    if duration_ms <= min_segment_ms:
-        logger.info(
-            "[SEGMENT] Audio too short for segmentation (%d ms <= %d ms min), single segment",
-            duration_ms, min_segment_ms
-        )
-        return [0, duration_ms]
-
-    # Find all silences
-    silences = detect_silence(audio, min_silence_len=min_silence_ms, silence_thresh=silence_thresh_db)
-    logger.info(
-        "[SEGMENT] Found %d silence regions (>=%d ms, <%d dB) in %d ms audio",
-        len(silences), min_silence_ms, silence_thresh_db, duration_ms
-    )
-
-    boundaries = [0]
-    last_boundary = 0
-
-    for silence_start, silence_end in silences:
-        time_since_last = silence_start - last_boundary
-
-        # Skip if too soon (< min_segment)
-        if time_since_last < min_segment_ms:
-            continue
-
-        # Use middle of silence as boundary
-        boundary = (silence_start + silence_end) // 2
-        boundaries.append(boundary)
-        last_boundary = boundary
-
-        logger.debug(
-            "[SEGMENT] Boundary at %d ms (silence %d-%d ms, %.1f min since last)",
-            boundary, silence_start, silence_end, time_since_last / 60000
-        )
-
-    # Force boundaries at max_segment intervals if no natural break was found
-    # This ensures we don't have segments longer than max_segment_ms
-    forced_boundaries: List[int] = [0]
-    for next_boundary in boundaries[1:] + [duration_ms]:
-        while next_boundary - forced_boundaries[-1] > max_segment_ms:
-            # Find a silence in this range, or force cut at max_segment
-            forced_point = forced_boundaries[-1] + max_segment_ms
-            # Look for a silence near the forced point (within 30 seconds)
-            best_silence_midpoint = forced_point
-            for silence_start, silence_end in silences:
-                midpoint = (silence_start + silence_end) // 2
-                if forced_point - 30000 <= midpoint <= forced_point + 30000:
-                    best_silence_midpoint = midpoint
-                    break
-            forced_boundaries.append(best_silence_midpoint)
-            logger.info(
-                "[SEGMENT] Forced boundary at %d ms (max segment reached)",
-                best_silence_midpoint
-            )
-        if next_boundary not in forced_boundaries:
-            forced_boundaries.append(next_boundary)
-
-    # Ensure we end at duration
-    if forced_boundaries[-1] != duration_ms:
-        # If remaining is too short, extend last segment
-        remaining = duration_ms - forced_boundaries[-1]
-        if remaining < min_segment_ms // 2:
-            forced_boundaries[-1] = duration_ms
-        else:
-            forced_boundaries.append(duration_ms)
-
-    segment_count = len(forced_boundaries) - 1
-    avg_segment_ms = duration_ms / segment_count if segment_count > 0 else duration_ms
-    logger.info(
-        "[SEGMENT] Created %d segments from %d ms audio (avg %.1f min each)",
-        segment_count, duration_ms, avg_segment_ms / 60000
-    )
-
-    return forced_boundaries
-
-
-def extract_audio_segment(
-    audio_path: Path,
-    start_ms: int,
-    end_ms: int,
-) -> Path:
-    """Extract a segment of audio to a temporary WAV file.
-
-    Returns the path to the temp file. Caller is responsible for cleanup.
-    """
-    audio = AudioSegment.from_file(str(audio_path))
-    segment = audio[start_ms:end_ms]
-
-    tmp = tempfile.NamedTemporaryFile(
-        suffix=".wav", prefix="stt_segment_", delete=False,
-    )
-    segment.export(tmp.name, format="wav")
-    tmp.close()
-
-    logger.debug(
-        "[SEGMENT] Extracted %d-%d ms (%d ms) to %s",
-        start_ms, end_ms, end_ms - start_ms, tmp.name
-    )
-    return Path(tmp.name)
-
-
-def _is_empty_transcript_error(exc: Exception) -> bool:
-    return isinstance(exc, RuntimeError) and "empty transcript" in str(exc).lower()
-
-
-def _is_retryable_stt_error(exc: Exception) -> bool:
-    if isinstance(exc, httpx.RequestError):
-        return True
-
-    if isinstance(exc, RuntimeError):
-        message = str(exc).lower()
-        if not message:
-            return False
-        if "stt provider request failed (" in message:
-            status_match = re.search(r"stt provider request failed \((\d{3})\)", message)
-            if status_match:
-                code = int(status_match.group(1))
-                return code in {429, 500, 502, 503, 504}
-        retryable_markers = (
-            "timed out",
-            "timeout",
-            "connection reset",
-            "readerror",
-            "temporarily unavailable",
-            "cuda",
-            "unknown error",
-        )
-        return any(marker in message for marker in retryable_markers)
-
-    return False
-
-
-async def transcribe_audio_chunked(
-    file_path: Path,
-    *,
-    http_url: str,
-    model: str = "",
-    language: str = "",
-    timeout_seconds: float = 120.0,
-    chunk_duration_s: int = DEFAULT_CHUNK_DURATION_S,
-    overlap_s: int = DEFAULT_CHUNK_OVERLAP_S,
-    chunk_max_retries: int = DEFAULT_CHUNK_MAX_RETRIES,
-    chunk_retry_backoff_s: float = DEFAULT_CHUNK_RETRY_BACKOFF_S,
-    on_chunk_progress: Optional[ProgressCallback] = None,
-    response_format: str = "",
-    transport: Optional[httpx.AsyncBaseTransport] = None,
-) -> str:
-    """Transcribe an audio file by splitting into chunks and sending each to STT.
-
-    Falls back to single-shot transcription for short files (< 2 chunks).
-    """
-    max_retries = max(0, int(chunk_max_retries))
-    backoff_base_s = max(0.0, float(chunk_retry_backoff_s))
-    chunks = _split_audio_to_chunks(file_path, chunk_duration_s, overlap_s)
-
-    if len(chunks) <= 1:
-        # Short file — no need to chunk, clean up and send directly
-        for chunk_path, _, _ in chunks:
-            chunk_path.unlink(missing_ok=True)
-        return await transcribe_audio_file(
-            file_path, http_url=http_url, model=model,
-            language=language, timeout_seconds=timeout_seconds,
-            response_format=response_format,
-            transport=transport,
-        )
-
-    transcripts: List[str] = []
-    total = len(chunks)
-    try:
-        # Keep chunk transcription sequential to avoid GPU contention.
-        for idx, (chunk_path, start_ms, end_ms) in enumerate(chunks):
-            logger.info(
-                "[CHUNK] Transcribing chunk %d/%d (%d–%d ms) via %s",
-                idx + 1, total, start_ms, end_ms, http_url,
-            )
-            attempts_allowed = max_retries + 1
-            text = ""
-            for attempt in range(1, attempts_allowed + 1):
-                try:
-                    text = await transcribe_audio_file(
-                        chunk_path, http_url=http_url, model=model,
-                        language=language, timeout_seconds=timeout_seconds,
-                        response_format=response_format,
-                        transport=transport,
-                    )
-                    if attempt > 1:
-                        logger.info(
-                            "[CHUNK] Chunk %d/%d recovered on attempt %d/%d",
-                            idx + 1,
-                            total,
-                            attempt,
-                            attempts_allowed,
-                        )
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    retryable = _is_retryable_stt_error(exc)
-                    if attempt >= attempts_allowed or not retryable:
-                        if _is_empty_transcript_error(exc):
-                            logger.warning(
-                                "[CHUNK] Chunk %d/%d returned empty after %d attempt(s) — skipping silent chunk",
-                                idx + 1,
-                                total,
-                                attempt,
-                            )
-                            break
-                        raise
-                    backoff_s = backoff_base_s * (2 ** (attempt - 1))
-                    logger.warning(
-                        "[CHUNK] Chunk %d/%d attempt %d/%d failed (%s: %s), retrying in %.2fs",
-                        idx + 1,
-                        total,
-                        attempt,
-                        attempts_allowed,
-                        type(exc).__name__,
-                        str(exc) or type(exc).__name__,
-                        backoff_s,
-                    )
-                    if backoff_s > 0:
-                        await asyncio.sleep(backoff_s)
-            transcripts.append(text)
-            if on_chunk_progress:
-                await on_chunk_progress(idx + 1, total, text)
-    finally:
-        for chunk_path, _, _ in chunks:
-            chunk_path.unlink(missing_ok=True)
-
-    return "\n".join(transcripts)
-
-
-# Type alias for segment-level callbacks
-SegmentStartedCallback = Callable[[int, int, int, int], Awaitable[None]]  # (index, total, start_ms, end_ms)
-
-
-async def transcribe_audio_segmented(
-    file_path: Path,
-    *,
-    http_url: str,
-    model: str = "",
-    language: str = "",
-    timeout_seconds: float = 120.0,
-    chunk_duration_s: int = DEFAULT_CHUNK_DURATION_S,
-    overlap_s: int = DEFAULT_CHUNK_OVERLAP_S,
-    chunk_max_retries: int = DEFAULT_CHUNK_MAX_RETRIES,
-    chunk_retry_backoff_s: float = DEFAULT_CHUNK_RETRY_BACKOFF_S,
-    min_segment_ms: int = DEFAULT_MIN_SEGMENT_MS,
-    max_segment_ms: int = DEFAULT_MAX_SEGMENT_MS,
-    silence_thresh_db: int = DEFAULT_SILENCE_THRESH_DB,
-    min_silence_ms: int = DEFAULT_MIN_SILENCE_MS,
-    on_segment_started: Optional[SegmentStartedCallback] = None,
-    on_chunk_progress: Optional[ProgressCallback] = None,
-    response_format: str = "",
-    transport: Optional[httpx.AsyncBaseTransport] = None,
-) -> AsyncGenerator[SegmentResult, None]:
-    """Yield transcripts per natural segment instead of waiting for full file.
-
-    This enables interleaved processing where each segment flows through the
-    full pipeline (STT → LLM → nodes) before the next segment starts. Users
-    see results progressively rather than waiting for the entire file.
-
-    Args:
-        file_path: Path to audio file
-        http_url: STT provider URL
-        model: Optional model name for STT
-        language: Optional language hint
-        timeout_seconds: HTTP timeout per chunk
-        chunk_duration_s: Chunk size for STT within each segment
-        overlap_s: Overlap between chunks
-        chunk_max_retries: Retries per chunk on failure
-        chunk_retry_backoff_s: Backoff delay between retries
-        min_segment_ms: Minimum segment duration (default 2 min)
-        max_segment_ms: Maximum segment duration (default 8 min)
-        silence_thresh_db: Silence detection threshold
-        min_silence_ms: Minimum silence duration for breaks
-        on_segment_started: Callback when segment transcription begins
-        on_chunk_progress: Callback for chunk-level progress within segment
-        response_format: STT response format
-        transport: Optional httpx transport
-
-    Yields:
-        SegmentResult for each natural audio segment
-    """
-    # Step 1: Detect natural boundaries
-    boundaries = detect_segment_boundaries(
-        file_path,
-        min_segment_ms=min_segment_ms,
-        max_segment_ms=max_segment_ms,
-        silence_thresh_db=silence_thresh_db,
-        min_silence_ms=min_silence_ms,
-    )
-    segment_count = len(boundaries) - 1
-
-    if segment_count == 0:
-        logger.warning("[SEGMENT] No segments detected for %s", file_path.name)
-        return
-
-    logger.info(
-        "[SEGMENT] Starting segmented transcription: %d segments from %s",
-        segment_count, file_path.name
-    )
-
-    # Step 2: Process each segment
-    for i in range(segment_count):
-        start_ms, end_ms = boundaries[i], boundaries[i + 1]
-        segment_index = i + 1
-
-        logger.info(
-            "[SEGMENT %d/%d] Processing %d-%d ms (%.1f min)",
-            segment_index, segment_count, start_ms, end_ms, (end_ms - start_ms) / 60000
-        )
-
-        if on_segment_started:
-            await on_segment_started(segment_index, segment_count, start_ms, end_ms)
-
-        # Extract segment audio to temp file
-        segment_audio_path = extract_audio_segment(file_path, start_ms, end_ms)
-        segment_started_at = time.perf_counter()
-
-        try:
-            # Transcribe segment using existing chunked logic
-            transcript_text = await transcribe_audio_chunked(
-                segment_audio_path,
-                http_url=http_url,
-                model=model,
-                language=language,
-                timeout_seconds=timeout_seconds,
-                chunk_duration_s=chunk_duration_s,
-                overlap_s=overlap_s,
-                chunk_max_retries=chunk_max_retries,
-                chunk_retry_backoff_s=chunk_retry_backoff_s,
-                on_chunk_progress=on_chunk_progress,
-                response_format=response_format,
-                transport=transport,
-            )
-
-            elapsed_ms = _elapsed_ms(segment_started_at)
-            stt_backend = _last_stt_backend.get("")
-
-            logger.info(
-                "[SEGMENT %d/%d] Completed in %d ms, %d chars",
-                segment_index, segment_count, elapsed_ms, len(transcript_text)
-            )
-
-            yield SegmentResult(
-                segment_index=segment_index,
-                segment_total=segment_count,
-                start_ms=start_ms,
-                end_ms=end_ms,
-                transcript_text=transcript_text,
-                elapsed_ms=elapsed_ms,
-                metadata={
-                    "stt_backend": stt_backend,
-                    "duration_ms": end_ms - start_ms,
-                },
-            )
-        finally:
-            # Cleanup temp segment file
-            segment_audio_path.unlink(missing_ok=True)
-
-    logger.info("[SEGMENT] Completed all %d segments for %s", segment_count, file_path.name)
-
+# ---------------------------------------------------------------------------
+# Orchestrator
+# ---------------------------------------------------------------------------
 
 async def transcribe_uploaded_file(
     *,
@@ -1255,7 +184,6 @@ async def transcribe_uploaded_file(
     raw_bytes = temp_path.read_bytes()
     preview = _decode_text_bytes(raw_bytes[:8000]) if raw_bytes else ""
 
-    # If the caller explicitly set source_type (not "auto"), use it directly
     if source_type_override and source_type_override.strip():
         file_kind = source_type_override.strip()
     else:
@@ -1278,7 +206,7 @@ async def transcribe_uploaded_file(
         active_provider = ""
         active_http_url = ""
         timings_ms: Dict[str, int] = {}
-        stt_backend = ""  # "local_whisperx" | "modal_whisperx" | "" — set when via IndrasNet proxy
+        stt_backend = ""
         fallback_used = False
 
         pyannote_enabled = (
@@ -1324,25 +252,37 @@ async def transcribe_uploaded_file(
                         metadata["diarization_source"] = "stt_provider"
                         transcript_text = _format_speaker_transcript(detail.diarized_segments)
                         metadata["speaker_count"] = len(
-                            {seg.get("speaker") for seg in detail.diarized_segments if _coerce_str(seg.get("speaker"))}
+                            {
+                                seg.get("speaker")
+                                for seg in detail.diarized_segments
+                                if _coerce_str(seg.get("speaker"))
+                            }
                         )
                     elif detail.asr_segments:
                         diarization_started_at = time.perf_counter()
                         try:
-                            speaker_segments = await asyncio.to_thread(_run_pyannote_diarization, temp_path)
+                            speaker_segments = await asyncio.to_thread(
+                                _run_pyannote_diarization, temp_path
+                            )
                         except Exception as exc:  # noqa: BLE001
                             logger.warning("[STT+PYANNOTE] Separate diarization failed: %s", exc)
                             metadata["diarization_error"] = str(exc) or type(exc).__name__
                         else:
                             timings_ms["diarization_ms"] = _elapsed_ms(diarization_started_at)
                             align_started_at = time.perf_counter()
-                            aligned_segments = _align_asr_segments_to_speakers(detail.asr_segments, speaker_segments)
+                            aligned_segments = _align_asr_segments_to_speakers(
+                                detail.asr_segments, speaker_segments
+                            )
                             timings_ms["alignment_ms"] = _elapsed_ms(align_started_at)
                             if aligned_segments:
                                 transcript_text = _format_speaker_transcript(aligned_segments)
                                 metadata["diarization_source"] = "pyannote_sidecar"
                                 metadata["speaker_count"] = len(
-                                    {seg.get("speaker") for seg in aligned_segments if _coerce_str(seg.get("speaker"))}
+                                    {
+                                        seg.get("speaker")
+                                        for seg in aligned_segments
+                                        if _coerce_str(seg.get("speaker"))
+                                    }
                                 )
                             metadata["pyannote_segment_count"] = len(speaker_segments)
                         metadata["asr_segment_count"] = len(detail.asr_segments)
@@ -1360,8 +300,6 @@ async def transcribe_uploaded_file(
                         response_format=response_format,
                     )
                     timings_ms["stt_ms"] = _elapsed_ms(stt_started_at)
-                    # _last_stt_backend is updated by transcribe_audio_file_detailed()
-                    # (called internally by transcribe_audio_chunked) for each chunk.
                     stt_backend = _last_stt_backend.get("")
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
@@ -1370,7 +308,12 @@ async def transcribe_uploaded_file(
                 attempt_record["duration_ms"] = _elapsed_ms(attempt_started_at)
                 provider_attempts.append(attempt_record)
                 if attempt_idx + 1 < len(provider_candidates):
-                    next_provider = _coerce_str(provider_candidates[attempt_idx + 1].get("provider")).lower() or "whisper"
+                    next_provider = (
+                        _coerce_str(
+                            provider_candidates[attempt_idx + 1].get("provider")
+                        ).lower()
+                        or "whisper"
+                    )
                     logger.warning(
                         "[STT FALLBACK] provider=%s failed (%s: %s), switching to provider=%s",
                         provider,
@@ -1382,9 +325,7 @@ async def transcribe_uploaded_file(
                     if on_provider_fallback is not None:
                         try:
                             await on_provider_fallback(
-                                provider,
-                                next_provider,
-                                str(exc) or type(exc).__name__,
+                                provider, next_provider, str(exc) or type(exc).__name__
                             )
                         except Exception as callback_exc:  # noqa: BLE001
                             logger.warning("[STT FALLBACK] callback failed: %s", callback_exc)
@@ -1447,7 +388,7 @@ async def transcribe_uploaded_file(
         transcript_text = parse_plain_text(_decode_text_bytes(raw_bytes))
         return FileTranscriptResult(transcript_text=transcript_text, source_type="text", metadata=metadata)
 
-    supported: Sequence[str] = (
+    supported = (
         sorted(AUDIO_EXTENSIONS)
         + sorted(TEXT_EXTENSIONS)
         + sorted(VTT_EXTENSIONS)
