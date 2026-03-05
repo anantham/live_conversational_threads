@@ -8,7 +8,7 @@ Domain split:
   analysis    — Claim, ArgumentTree, IsOughtConflation,
                 SimulacraAnalysis, BiasAnalysis, FrameAnalysis
   interaction — Bookmark, EditsLog, EditFeedback
-  system      — APICallsLog, AppSetting
+  system      — APICallsLog, AppSetting, PipelineArtifact, ServiceStatus
 
 All public names are re-exported here so existing
 `from lct_python_backend.models import X` imports remain unchanged.
@@ -28,7 +28,7 @@ from .analysis import (  # noqa: F401
     FrameAnalysis,
 )
 from .interaction import Bookmark, EditsLog, EditFeedback  # noqa: F401
-from .system import APICallsLog, AppSetting  # noqa: F401
+from .system import APICallsLog, AppSetting, PipelineArtifact, ServiceStatus  # noqa: F401
 
 __all__ = [
     "Base",
@@ -54,4 +54,6 @@ __all__ = [
     # system
     "APICallsLog",
     "AppSetting",
+    "PipelineArtifact",
+    "ServiceStatus",
 ]

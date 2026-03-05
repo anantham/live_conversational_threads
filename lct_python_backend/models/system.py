@@ -1,9 +1,9 @@
-"""System models: APICallsLog, AppSetting."""
+"""System models: APICallsLog, AppSetting, PipelineArtifact, ServiceStatus."""
 
 import uuid
 
 from sqlalchemy import (
-    Column, Integer, Float, Text, DateTime,
+    Boolean, Column, Integer, Float, String, Text, DateTime,
     ForeignKey, Index,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -67,3 +67,52 @@ class AppSetting(Base):
     value = Column(JSONB, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class PipelineArtifact(Base):
+    """
+    Cached pipeline artifacts for resume-on-failure.
+    Each stage stores its output so failed LLM steps don't require re-transcription.
+    """
+    __tablename__ = "pipeline_artifacts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'))
+
+    # Stage identification
+    stage = Column(String(50), nullable=False)  # 'upload', 'transcription', 'chunking', 'accumulation', 'graph'
+    stage_index = Column(Integer, default=0)  # For multi-part stages (chunk 1/41)
+
+    # Cache key
+    content_hash = Column(String(64))  # SHA256 of input for deduplication
+
+    # Artifact data
+    artifact_type = Column(String(50))  # 'audio', 'transcript', 'chunks', 'segment', 'nodes'
+    artifact_path = Column(Text)  # File path for large data (audio, etc.)
+    artifact_json = Column(JSONB)  # Inline JSON for small data
+
+    # Metadata (named artifact_metadata to avoid SQLAlchemy reserved 'metadata')
+    artifact_metadata = Column(JSONB)  # Telemetry, provider info, timing
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_artifacts_conv_stage', 'conversation_id', 'stage'),
+        Index('idx_artifacts_hash', 'content_hash'),
+    )
+
+
+class ServiceStatus(Base):
+    """
+    Tracks health status of backend services (WhisperX, LLM, etc.)
+    for UI indicators and routing decisions.
+    """
+    __tablename__ = "service_status"
+
+    service_name = Column(String(50), primary_key=True)  # 'whisperx', 'modal_whisperx', 'lmstudio', 'modal_llm'
+    is_healthy = Column(Boolean, default=False)
+    last_check = Column(DateTime(timezone=True))
+    latency_ms = Column(Integer)
+    backend_type = Column(String(20))  # 'local', 'modal'
+    url = Column(Text)
+    model_name = Column(String(100))  # For LLM services
+    service_metadata = Column(JSONB)  # Avoid SQLAlchemy reserved 'metadata'

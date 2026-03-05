@@ -23,6 +23,7 @@ import {
   reloadPrompts
 } from '../services/promptsApi';
 import LlmSettingsPanel from '../components/LlmSettingsPanel';
+import LlmProvidersPanel from '../components/LlmProvidersPanel';
 import SttSettingsPanel from '../components/SttSettingsPanel';
 
 export default function Settings() {
@@ -473,6 +474,7 @@ export default function Settings() {
             </div>
           </div>
         )}
+        <LlmProvidersPanel />
         <LlmSettingsPanel />
         <SttSettingsPanel />
       </div>

@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { Mic, FolderOpen, FileUp, Bookmark, BarChart3, Settings } from "lucide-react";
+import ServiceStatus from "../components/ServiceStatus";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -75,6 +76,11 @@ export default function Home() {
           </span>
           <span className="text-[10px] text-gray-400 group-hover:text-gray-600 transition">Settings</span>
         </button>
+      </div>
+
+      {/* Service Status Indicators */}
+      <div className="absolute bottom-6 left-6">
+        <ServiceStatus />
       </div>
     </div>
   );
