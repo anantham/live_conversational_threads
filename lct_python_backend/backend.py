@@ -76,17 +76,15 @@ logger.info("=" * 60)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("[INFO] Connecting to database...")
+    logger.info("Connecting to database...")
     try:
         await db.connect()
-        print("[INFO] Connected to database.")
+        logger.info("Connected to database.")
     except Exception as e:
-        print("[ERROR] Failed to connect to database during startup:")
-        import traceback
-        traceback.print_exc()
+        logger.exception("Failed to connect to database during startup:")
         raise e
     yield
-    print("[INFO] Disconnecting from database...")
+    logger.info("Disconnecting from database...")
     await db.disconnect()
 
 

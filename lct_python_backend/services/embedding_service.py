@@ -5,6 +5,7 @@ Generates 1536-dimensional vectors for claims, nodes, and utterances
 to enable cross-conversation semantic search.
 """
 
+import logging
 import os
 import asyncio
 from typing import List, Dict, Any, Optional
@@ -13,6 +14,8 @@ from openai import AsyncOpenAI
 
 from lct_python_backend.services.llm_config import get_env_llm_defaults
 from lct_python_backend.services.local_llm_client import get_local_client
+
+logger = logging.getLogger(__name__)
 
 
 class EmbeddingService:
@@ -84,7 +87,7 @@ class EmbeddingService:
             return embedding
 
         except Exception as e:
-            print(f"Error generating embedding: {e}")
+            logger.error(f"Error generating embedding: {e}")
             raise
 
     async def embed_batch(
@@ -140,7 +143,7 @@ class EmbeddingService:
                         all_embeddings[original_idx] = embedding_obj["embedding"]
 
                 except Exception as e:
-                    print(f"Error generating batch embeddings: {e}")
+                    logger.error(f"Error generating batch embeddings: {e}")
                     raise
 
             return all_embeddings
@@ -174,7 +177,7 @@ class EmbeddingService:
                     all_embeddings[original_idx] = embedding_obj.embedding
 
             except Exception as e:
-                print(f"Error generating batch embeddings: {e}")
+                logger.error(f"Error generating batch embeddings: {e}")
                 raise
 
             # Rate limiting: small delay between batches

@@ -29,6 +29,11 @@ from lct_python_backend.services.transcript_prompts import (
 
 logger = logging.getLogger("lct_backend")
 
+
+def _sleep_backoff(attempt: int, base: float) -> None:
+    """Exponential backoff sleep between retry attempts (sync — safe in thread context)."""
+    time.sleep(base ** attempt)
+
 # ---------------------------------------------------------------------------
 # Configuration constants
 # ---------------------------------------------------------------------------
@@ -277,7 +282,7 @@ def generate_lct_json_gemini(
             last_error = f"Gemini request failed on attempt {attempt + 1}: {e}"
             logger.warning("[LCT JSON] %s", last_error)
 
-        time.sleep(backoff_base ** attempt)
+        _sleep_backoff(attempt, backoff_base)
 
     logger.error("[LCT JSON] All attempts failed, returning empty list.")
     if status_messages is not None and last_error:
@@ -366,7 +371,7 @@ def genai_accumulate_text_json(
             logger.warning("[ACCUMULATE] Attempt %s failed: %s", attempt + 1, e)
             errors.append(f"Attempt {attempt + 1} failed: {e}")
 
-        time.sleep(backoff_base ** attempt)
+        _sleep_backoff(attempt, backoff_base)
 
     logger.error("[ACCUMULATE] All decoding attempts failed - using fallback.")
     return {
@@ -417,7 +422,7 @@ def generate_lct_json_local(
         except Exception as e:
             logger.warning("[LCT JSON] Local attempt %s failed: %s", attempt + 1, e)
 
-        time.sleep(backoff_base ** attempt)
+        _sleep_backoff(attempt, backoff_base)
 
     logger.error("[LCT JSON] Local attempts exhausted; returning empty list.")
     return [], None
@@ -460,7 +465,7 @@ def accumulate_text_json_local(
             logger.warning("[ACCUMULATE] Local attempt %s failed: %s", attempt + 1, e)
             errors.append(f"Attempt {attempt + 1} failed: {e}")
 
-        time.sleep(backoff_base ** attempt)
+        _sleep_backoff(attempt, backoff_base)
 
     logger.error("[ACCUMULATE] Local attempts exhausted - using fallback.")
     return {

@@ -152,7 +152,7 @@ async def generate_formalism_call(request: generateFormalismRequest):
         try:
             result = generate_formalism(request.chunks, request.graph_data, request.user_pref) # save json function
         except Exception as formalism_error:
-            print(f"[INFO]: Formalism Generation error: {formalism_error}")
+            logger.error(f"Formalism Generation error: {formalism_error}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Formalism Generation error: {str(formalism_error)}")
 
         return {"formalism_data": result}

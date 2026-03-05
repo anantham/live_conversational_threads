@@ -16,6 +16,7 @@ Uses Claude 3.5 Sonnet for fallacy detection.
 """
 
 import json
+import logging
 import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -28,6 +29,8 @@ from models import IsOughtConflation, Claim, Node
 from services.prompt_manager import get_prompt_manager
 from services.llm_config import load_llm_config
 from services.local_llm_client import local_chat_json
+
+logger = logging.getLogger(__name__)
 
 
 class IsOughtDetector:
@@ -223,10 +226,10 @@ Speaker: {normative_claim.get('speaker_name', 'Unknown')}
             return data
 
         except json.JSONDecodeError as e:
-            print(f"Failed to parse LLM response: {e}")
+            logger.error(f"Failed to parse LLM response: {e}", exc_info=True)
             return {"is_conflation": False, "reason": "Failed to parse response"}
         except Exception as e:
-            print(f"Error calling LLM: {e}")
+            logger.error(f"Error calling LLM: {e}", exc_info=True)
             return {"is_conflation": False, "reason": str(e)}
 
     def _calculate_temporal_proximity(

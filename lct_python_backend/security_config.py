@@ -5,6 +5,8 @@ Production Tool: Security best practices and middleware
 Add this to backend.py for production deployment
 """
 
+import logging
+
 from fastapi import HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -13,6 +15,8 @@ from starlette.middleware.sessions import SessionMiddleware
 import os
 from typing import Callable
 import time
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================================================
@@ -56,7 +60,7 @@ def configure_cors(app, environment="development"):
         allow_headers=["*"],
     )
 
-    print(f"[SECURITY] CORS configured for {environment} with origins: {allowed_origins}")
+    logger.info(f"[SECURITY] CORS configured for {environment} with origins: {allowed_origins}")
 
 
 # ============================================================================
@@ -90,7 +94,7 @@ def configure_trusted_hosts(app, environment="development"):
             TrustedHostMiddleware,
             allowed_hosts=allowed_hosts
         )
-        print(f"[SECURITY] Trusted hosts configured: {allowed_hosts}")
+        logger.info(f"[SECURITY] Trusted hosts configured: {allowed_hosts}")
 
 
 # ============================================================================
@@ -227,7 +231,7 @@ async def validate_api_key(request: Request, call_next):
         expected_key = os.getenv("API_KEY")
 
         if not expected_key:
-            print("[WARNING] API_KEY_REQUIRED is true but API_KEY not set!")
+            logger.warning("[WARNING] API_KEY_REQUIRED is true but API_KEY not set!")
             return await call_next(request)
 
         if api_key != expected_key:
@@ -252,7 +256,7 @@ def configure_security(app, environment="development"):
         configure_security(app, environment="production")
     """
 
-    print(f"\n[SECURITY] Configuring security for {environment} environment")
+    logger.info(f"[SECURITY] Configuring security for {environment} environment")
 
     # 1. CORS
     configure_cors(app, environment)
@@ -262,24 +266,24 @@ def configure_security(app, environment="development"):
 
     # 3. GZip compression
     app.add_middleware(GZipMiddleware, minimum_size=1000)
-    print("[SECURITY] GZip compression enabled")
+    logger.info("[SECURITY] GZip compression enabled")
 
     # 4. Security headers
     app.middleware("http")(add_security_headers)
-    print("[SECURITY] Security headers middleware enabled")
+    logger.info("[SECURITY] Security headers middleware enabled")
 
     # 5. Rate limiting (if needed)
     if environment == "production":
         # In production, use Redis-based rate limiting
         # app.middleware("http")(RateLimitMiddleware(app, max_requests=100, window_seconds=60))
-        print("[SECURITY] Note: Consider Redis-based rate limiting for production")
+        logger.info("[SECURITY] Note: Consider Redis-based rate limiting for production")
 
     # 6. Session middleware (if using sessions)
     secret_key = os.getenv("SESSION_SECRET_KEY", "development-secret-key-change-in-production")
     if environment == "production" and secret_key == "development-secret-key-change-in-production":
-        print("[WARNING] Using default session secret key! Set SESSION_SECRET_KEY in production!")
+        logger.warning("[WARNING] Using default session secret key! Set SESSION_SECRET_KEY in production!")
 
-    print("[SECURITY] Security configuration complete\n")
+    logger.info("[SECURITY] Security configuration complete")
 
 
 # ============================================================================
@@ -326,9 +330,10 @@ def print_security_checklist():
 
     ════════════════════════════════════════════════════════════════════════
     """
-    print(checklist)
+    logger.info(checklist)
 
 
 if __name__ == "__main__":
-    print("Live Conversational Threads - Security Configuration")
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Live Conversational Threads - Security Configuration")
     print_security_checklist()

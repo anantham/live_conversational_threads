@@ -74,7 +74,7 @@ class Level5AtomicGenerator(BaseClusterer):
                     utterance_uuids.append(utterance_by_seq[seq].id)
 
             if not utterance_uuids:
-                print(f"[WARNING] Atomic theme '{theme.get('label')}' has no valid utterances, skipping")
+                logger.warning(f"Atomic theme '{theme.get('label')}' has no valid utterances, skipping")
                 continue
 
             node = self._create_node(

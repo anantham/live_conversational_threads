@@ -6,6 +6,7 @@ Merges 2-3 closely related atomic themes.
 """
 
 import json
+import logging
 import httpx
 import os
 from typing import List, Dict, Any
@@ -15,6 +16,8 @@ from lct_python_backend.models import Node, Utterance
 from lct_python_backend.services.llm_config import load_llm_config
 from lct_python_backend.services.local_llm_client import local_chat_json
 from .base_clusterer import BaseClusterer
+
+logger = logging.getLogger(__name__)
 
 
 class Level4Clusterer(BaseClusterer):
@@ -64,7 +67,7 @@ class Level4Clusterer(BaseClusterer):
             parent_node_objects = [parent_by_label.get(label) for label in parent_labels if label in parent_by_label]
 
             if not parent_node_objects:
-                print(f"[WARNING] Cluster '{cluster.get('label')}' has no valid parents, skipping")
+                logger.warning(f"Cluster '{cluster.get('label')}' has no valid parents, skipping")
                 continue
 
             # Collect all utterance IDs from parents

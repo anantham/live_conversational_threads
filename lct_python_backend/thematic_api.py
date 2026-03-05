@@ -405,7 +405,7 @@ async def get_thematic_structure(
         return structure
 
     except Exception as e:
-        print(f"[ERROR] Failed to get thematic structure: {e}")
+        logger.error(f"[ERROR] Failed to get thematic structure: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -481,5 +481,5 @@ async def get_available_levels(
         }
 
     except Exception as e:
-        print(f"[ERROR] Failed to get available levels: {e}")
+        logger.error(f"[ERROR] Failed to get available levels: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
