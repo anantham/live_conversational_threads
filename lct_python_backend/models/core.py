@@ -1,0 +1,155 @@
+"""Core conversation models: Conversation, Utterance, TranscriptEvent."""
+
+import uuid
+
+from sqlalchemy import (
+    Column, Integer, Float, Boolean, Text, DateTime,
+    ForeignKey, Index, CheckConstraint, ARRAY, text,
+)
+from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
+from sqlalchemy.sql import func
+
+from .base import Base
+
+
+class Conversation(Base):
+    """Top-level conversation container"""
+    __tablename__ = "conversations"
+
+    # Identity
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_name = Column(Text, nullable=False)
+    conversation_type = Column(Text, nullable=False)  # 'live_audio', 'transcript', 'chat', 'hybrid'
+
+    # Source
+    source_type = Column(Text, nullable=False)  # 'audio_stream', 'google_meet', 'slack', etc.
+    source_metadata = Column(JSONB)
+
+    # Participants
+    participant_count = Column(Integer, default=0)
+    participants = Column(ARRAY(JSONB))  # Array of participant objects
+
+    # Temporal
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    ended_at = Column(DateTime(timezone=True))
+    duration_seconds = Column(Integer)
+
+    # Goals & Intent
+    goals = Column(ARRAY(JSONB))  # Array of goal objects
+    goal_progress = Column(JSONB)
+
+    # Storage
+    gcs_path = Column(Text)  # Path to full conversation JSON in GCS
+
+    # Metadata
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    deleted_at = Column(DateTime(timezone=True))  # Soft delete
+
+    # Privacy
+    owner_id = Column(Text, nullable=False)
+    visibility = Column(Text, default='private')  # 'private', 'shared', 'public'
+    shared_with = Column(ARRAY(Text))
+
+    # Analytics (cached)
+    total_utterances = Column(Integer, default=0)
+    total_words = Column(Integer, default=0)
+    total_nodes = Column(Integer, default=0)
+    total_claims = Column(Integer, default=0)
+
+    # Full-text search
+    tsv_search = Column(TSVECTOR)
+
+    __table_args__ = (
+        CheckConstraint(
+            "conversation_type IN ('live_audio', 'transcript', 'chat', 'hybrid')",
+            name='valid_conversation_type'
+        ),
+        CheckConstraint(
+            "visibility IN ('private', 'shared', 'public')",
+            name='valid_visibility'
+        ),
+        Index('idx_conversations_owner', 'owner_id'),
+        Index('idx_conversations_started', 'started_at'),
+        Index('idx_conversations_tsv', 'tsv_search', postgresql_using='gin'),
+    )
+
+
+class Utterance(Base):
+    """Atomic unit of speech/text"""
+    __tablename__ = "utterances"
+
+    # Identity
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+
+    # Content
+    text = Column(Text, nullable=False)
+    text_cleaned = Column(Text)  # Normalized
+
+    # Speaker
+    speaker_id = Column(Text, nullable=False)
+    speaker_name = Column(Text)
+    speaker_role = Column(Text)
+
+    # Temporal
+    sequence_number = Column(Integer, nullable=False)
+    timestamp_start = Column(Float)
+    timestamp_end = Column(Float)
+    duration_seconds = Column(Float)
+
+    # Context
+    chunk_id = Column(UUID(as_uuid=True))
+    node_id = Column(UUID(as_uuid=True))
+    thread_id = Column(UUID(as_uuid=True))
+
+    # Metadata
+    confidence_score = Column(Float)
+    language = Column(Text, default='en')
+    emotion = Column(Text)
+    energy_level = Column(Float)
+
+    # Source-specific
+    platform_metadata = Column(JSONB)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "(timestamp_start IS NULL AND timestamp_end IS NULL) OR "
+            "(timestamp_end IS NULL) OR "
+            "(timestamp_end >= timestamp_start)",
+            name='valid_timestamps'
+        ),
+        Index('idx_utterances_conversation', 'conversation_id', 'sequence_number'),
+        Index('idx_utterances_speaker', 'conversation_id', 'speaker_id'),
+        Index('idx_utterances_chunk', 'chunk_id'),
+        Index('idx_utterances_node', 'node_id'),
+        Index('idx_utterances_thread', 'thread_id'),
+        Index('idx_utterances_timestamp', 'conversation_id', 'timestamp_start'),
+    )
+
+
+class TranscriptEvent(Base):
+    __tablename__ = "transcript_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+    utterance_id = Column(UUID(as_uuid=True), ForeignKey('utterances.id', ondelete='CASCADE'), nullable=True)
+    provider = Column(Text, nullable=False)
+    event_type = Column(Text, nullable=False)  # 'partial' | 'final'
+    text = Column(Text, nullable=False)
+    word_timestamps = Column(JSONB)
+    segment_timestamps = Column(JSONB)
+    speaker_id = Column(Text)
+    sequence_number = Column(Integer, nullable=False)
+    event_metadata = Column("metadata", JSONB)
+    received_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_transcript_events_conversation', 'conversation_id'),
+        Index('idx_transcript_events_provider', 'provider'),
+        Index('idx_transcript_events_event_type', 'event_type'),
+        Index('idx_transcript_events_utterance', 'utterance_id'),
+        CheckConstraint("event_type IN ('partial', 'final')", name='check_event_type'),
+    )
