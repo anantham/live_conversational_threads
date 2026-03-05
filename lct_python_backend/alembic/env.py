@@ -4,6 +4,10 @@ import os
 import sys
 from pathlib import Path
 
+# Load .env before anything else
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 

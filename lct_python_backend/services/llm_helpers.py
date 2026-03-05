@@ -428,7 +428,7 @@ def stream_generate_context_json(chunks: Dict[str, str]) -> Generator[str, None,
 
     for chunk_id, chunk_text in chunks.items():
         mod_input = f'Existing JSON : \n {repr(existing_json)} \n\n Transcript Input: \n {chunk_text}'
-        output_json = generate_lct_json(mod_input)
+        output_json, _backend = generate_lct_json(mod_input)
         # output_json = generate_lct_json_claude(mod_input)
 
         if output_json is None:
