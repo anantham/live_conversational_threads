@@ -104,6 +104,8 @@ function MinimalGraphInner({
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
+  const [reduceMotion, setReduceMotion] = useState(false);
+  const [hideEdges, setHideEdges] = useState(false);
   const latestChunk = useMemo(
     () => graphData?.[graphData.length - 1] || [],
     [graphData]
@@ -155,6 +157,8 @@ function MinimalGraphInner({
 
   // Build ReactFlow edges
   const rfEdges = useMemo(() => {
+    if (hideEdges) return [];
+
     const edges = [];
 
     normalizedChunk.forEach((item) => {
@@ -186,7 +190,7 @@ function MinimalGraphInner({
           id: `c-${related.id}-${item.id}-${i}`,
           source: related.id,
           target: item.id,
-          animated: relType !== "supports" && relType !== "temporal_next",
+          animated: !reduceMotion && relType !== "supports" && relType !== "temporal_next",
           data: { relationType: relType, relationText: rel.relation_text || "" },
           style: {
             stroke: isConnectedToSelected ? "#f59e0b" : color,
@@ -213,7 +217,7 @@ function MinimalGraphInner({
             id: `c-${related.id}-${item.id}`,
             source: related.id,
             target: item.id,
-            animated: true,
+            animated: !reduceMotion,
             data: { relationType: "contextual", relationText: String(relText) },
             style: { stroke: color, strokeWidth: 1.5, opacity: 0.5 },
             markerEnd: { type: "arrowclosed", width: 8, height: 8, color },
@@ -223,7 +227,7 @@ function MinimalGraphInner({
     });
 
     return edges;
-  }, [normalizedChunk, selectedNode]);
+  }, [normalizedChunk, selectedNode, reduceMotion, hideEdges]);
 
   // Layout
   const layoutedNodes = useMemo(
@@ -309,7 +313,7 @@ function MinimalGraphInner({
         proOptions={{ hideAttribution: true }}
       />
 
-      {/* Zoom preset controls */}
+      {/* Zoom preset + graph display controls */}
       <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1">
         {ZOOM_PRESETS.map(({ label, action }) => (
           <button
@@ -320,7 +324,30 @@ function MinimalGraphInner({
             {label}
           </button>
         ))}
-        <span className="ml-1 text-[9px] text-gray-400 select-none">scroll = pan · pinch = zoom</span>
+        <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
+        <button
+          onClick={() => setReduceMotion((v) => !v)}
+          title={reduceMotion ? "Re-enable edge animation" : "Stop edge animation"}
+          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+            reduceMotion
+              ? "bg-amber-50 border-amber-300 text-amber-700"
+              : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          {reduceMotion ? "Motion off" : "Motion on"}
+        </button>
+        <button
+          onClick={() => setHideEdges((v) => !v)}
+          title={hideEdges ? "Show edges" : "Hide edges"}
+          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+            hideEdges
+              ? "bg-amber-50 border-amber-300 text-amber-700"
+              : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          {hideEdges ? "Edges off" : "Edges on"}
+        </button>
+        <span className="ml-1 select-none text-[9px] text-gray-400">scroll = pan · pinch = zoom</span>
       </div>
 
       {/* Edge hover tooltip */}
