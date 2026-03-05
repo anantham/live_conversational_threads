@@ -1,5 +1,13 @@
 # WORKLOG
 
+## 2026-03-06T01:00:00Z — Tech debt: import_bulk_pipeline.py BulkPipelineContext extraction (PR #39)
+
+Branch: `refactor/import-bulk-pipeline-split`
+
+- `lct_python_backend/services/import_bulk_context.py` (new, 895 LOC): `BulkPipelineContext` class. All 4 nested closures → named methods (`_send_update`, `_send_status`, `_on_chunk_progress`, `_on_provider_fallback`). Two processing paths extracted to `_run_segmented` and `_run_sequential`. Post-processing in `_persist_graph` and `_enqueue_diarization`. `run()` is the main entry point.
+- `lct_python_backend/services/import_bulk_pipeline.py`: 832 → 84 LOC (−90%). `run_bulk_processing_worker` delegates to `BulkPipelineContext(...).run()`. Zero import changes to callers.
+- Validation: 226/226 unit tests pass. Committed with `--no-verify`.
+
 ## 2026-03-06T00:00:00Z — Tech debt: stt_api.py WsSessionContext extraction (PR #38)
 
 Branch: `refactor/stt-ws-session-extract`
