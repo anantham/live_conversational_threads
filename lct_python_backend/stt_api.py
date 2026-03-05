@@ -25,6 +25,19 @@ from lct_python_backend.middleware import check_ws_auth
 from lct_python_backend.services.audio_storage import AudioStorageManager
 from lct_python_backend.services.llm_config import load_llm_config
 from lct_python_backend.services.stt_config import STT_PROVIDER_IDS
+from lct_python_backend.services.stt_ws_helpers import (
+    build_telemetry_metadata as _build_telemetry_metadata,
+    coerce_latency_ms as _coerce_latency_ms,
+    elapsed_ms as _elapsed_ms,
+    normalize_provider as _normalize_provider,
+    now_ms as _now_ms,
+    safe_float as _safe_float,
+    safe_int as _safe_int,
+    safe_send_json as _safe_send_json,
+    send_processor_update as _send_processor_update_helper,
+    should_emit_final_segment as _should_emit_final_segment,
+    ws_is_connected as _ws_is_connected,
+)
 from lct_python_backend.services.stt_http_transcriber import (
     RealtimeHttpSttSession,
     decode_audio_base64,
@@ -48,111 +61,6 @@ DOWNLOAD_TOKEN = os.getenv("AUDIO_DOWNLOAD_TOKEN")
 STT_DEBUG = os.getenv("STT_DEBUG", "false").lower() in {"1", "true", "yes"}
 
 audio_storage = AudioStorageManager(RECORDINGS_DIR)
-
-
-def _log_debug(*args, **kwargs):
-    if STT_DEBUG:
-        logger.debug(*args, **kwargs)
-
-
-def _safe_float(value: Any, default: float) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return float(default)
-
-
-def _safe_int(value: Any, default: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return int(default)
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
-
-
-def _elapsed_ms(started_at: float) -> float:
-    return round(max(0.0, (time.perf_counter() - started_at) * 1000.0), 2)
-
-
-def _coerce_latency_ms(value: Any) -> Optional[float]:
-    parsed = _safe_float(value, -1.0)
-    if parsed < 0:
-        return None
-    return round(parsed, 2)
-
-
-def _build_telemetry_metadata(
-    telemetry_state: Dict[str, Optional[int]],
-    event_type: str,
-    stage_metrics: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    now_ms = _now_ms()
-    if event_type == "partial" and not telemetry_state.get("first_partial_at_ms"):
-        telemetry_state["first_partial_at_ms"] = now_ms
-    if event_type == "final" and not telemetry_state.get("first_final_at_ms"):
-        telemetry_state["first_final_at_ms"] = now_ms
-
-    started = telemetry_state.get("audio_send_started_at_ms")
-    first_partial = telemetry_state.get("first_partial_at_ms")
-    first_final = telemetry_state.get("first_final_at_ms")
-    telemetry: Dict[str, Any] = {
-        "event_received_at_ms": now_ms,
-        "audio_send_started_at_ms": started,
-        "first_partial_at_ms": first_partial,
-        "first_final_at_ms": first_final,
-        "partial_turnaround_ms": (first_partial - started) if started and first_partial else None,
-        "final_turnaround_ms": (first_final - started) if started and first_final else None,
-    }
-    if isinstance(stage_metrics, dict):
-        for key, value in stage_metrics.items():
-            if not key:
-                continue
-            parsed = _coerce_latency_ms(value)
-            if parsed is None:
-                continue
-            telemetry[str(key)] = parsed
-    return telemetry
-
-
-def _normalize_provider(provider: Any, fallback_provider: Any) -> str:
-    candidate = str(provider or "").strip().lower()
-    if candidate in STT_PROVIDER_IDS:
-        return candidate
-    fallback = str(fallback_provider or "").strip().lower()
-    if fallback in STT_PROVIDER_IDS:
-        return fallback
-    return "parakeet"
-
-
-def _should_emit_final_segment(latest_text: str, pending_parts: List[str], pending_chars: int) -> bool:
-    text = str(latest_text or "").strip()
-    if not text:
-        return False
-    if len(pending_parts) >= 3:
-        return True
-    if pending_chars >= 180:
-        return True
-    return text.endswith((".", "!", "?", ";"))
-
-
-def _ws_is_connected(websocket: WebSocket) -> bool:
-    try:
-        return websocket.client_state.name == "CONNECTED"
-    except Exception:
-        return False
-
-
-async def _safe_send_json(websocket: WebSocket, payload: Dict[str, Any]) -> bool:
-    if not _ws_is_connected(websocket):
-        return False
-    try:
-        await websocket.send_json(payload)
-        return True
-    except (WebSocketDisconnect, RuntimeError):
-        return False
 
 
 # ---------------------------------------------------------------------------
@@ -338,7 +246,7 @@ async def transcripts_websocket(websocket: WebSocket):
         task.add_done_callback(background_tasks.discard)
 
     async def _processor_update(existing_json, chunk_dict):
-        await _send_processor_update(websocket, existing_json, chunk_dict)
+        await _send_processor_update_helper(websocket, existing_json, chunk_dict, logger)
 
     async with get_async_session_context() as session:
         async def _processor_status(level: str, message: str, context: Dict[str, Any]) -> None:
@@ -885,15 +793,3 @@ async def transcripts_websocket(websocket: WebSocket):
                     await stt_runtime.close()
                 except Exception as exc:
                     logger.debug("[WS] stt_runtime.close() failed: %s", exc)
-
-
-async def _send_processor_update(websocket: WebSocket, existing_json: Any, chunk_dict: Any):
-    try:
-        if websocket.client_state.name != "CONNECTED":
-            return
-        await websocket.send_json({"type": "existing_json", "data": existing_json})
-        await websocket.send_json({"type": "chunk_dict", "data": chunk_dict})
-    except WebSocketDisconnect:
-        logger.info("[WS] Processor update failed - client disconnected")
-    except RuntimeError:
-        logger.info("[WS] Processor update failed - websocket already closed")
