@@ -26,6 +26,8 @@ from .analysis import (  # noqa: F401
     SimulacraAnalysis,
     BiasAnalysis,
     FrameAnalysis,
+    IntentSignal,
+    IntentSignalSighting,
 )
 from .interaction import Bookmark, EditsLog, EditFeedback  # noqa: F401
 from .system import APICallsLog, AppSetting, PipelineArtifact, ServiceStatus  # noqa: F401
@@ -47,6 +49,8 @@ __all__ = [
     "SimulacraAnalysis",
     "BiasAnalysis",
     "FrameAnalysis",
+    "IntentSignal",
+    "IntentSignalSighting",
     # interaction
     "Bookmark",
     "EditsLog",

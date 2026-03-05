@@ -1,4 +1,5 @@
-"""Epistemic analysis models: Claim, ArgumentTree, IsOughtConflation, Simulacra, Bias, Frame."""
+"""Epistemic analysis models: Claim, ArgumentTree, IsOughtConflation, Simulacra, Bias, Frame,
+IntentSignal, IntentSignalSighting."""
 
 import uuid
 
@@ -254,4 +255,108 @@ class FrameAnalysis(Base):
         Index('idx_frame_category', 'category'),
         CheckConstraint('strength >= 0.0 AND strength <= 1.0', name='check_frame_strength'),
         CheckConstraint('confidence >= 0.0 AND confidence <= 1.0', name='check_frame_confidence'),
+    )
+
+
+class IntentSignal(Base):
+    """
+    A prayer — a pre-formal intention gestured at in conversation before it is nameable
+    as a claim or thread.  Defined in ADR-013.
+
+    Immutable core (raw_text, context_window) after creation; lifecycle state
+    advances via status column only.
+    """
+    __tablename__ = "intent_signals"
+
+    # Identity
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+
+    # The prayer itself — immutable after detection
+    raw_text = Column(Text, nullable=False)        # verbatim quote from transcript
+    context_window = Column(Text, nullable=False)  # surrounding utterances verbatim
+    speaker_id = Column(Text, nullable=False)
+
+    # Fact-layer anchors — immutable
+    source_utterance_ids = Column(ARRAY(UUID(as_uuid=True)))
+    source_node_id = Column(UUID(as_uuid=True), ForeignKey('nodes.id', ondelete='SET NULL'), nullable=True)
+
+    # Lifecycle
+    status = Column(Text, nullable=False, default='active')
+    # 'active' | 'accumulating' | 'ready' | 'formalized' | 'abandoned'
+    emerged_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    # Accumulation summary (denormalized; source of truth is intent_signal_sightings)
+    sighting_count = Column(Integer, default=1, nullable=False)
+    last_sighted_at = Column(DateTime(timezone=True))
+    last_sighted_conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='SET NULL'), nullable=True)
+
+    # Detection metadata
+    detection_confidence = Column(Float)   # LLM confidence (0-1)
+    detection_model = Column(Text)
+
+    # Formalization bridge (Layer 1→2)
+    candidate_formal_statement = Column(Text)      # populated when status='ready'
+    formalization_offered_at = Column(DateTime(timezone=True))
+    human_reviewed = Column(Boolean, default=False)
+    human_review_note = Column(Text)
+    formalized_claim_id = Column(UUID(as_uuid=True), ForeignKey('claims.id', ondelete='SET NULL'), nullable=True)
+    formalized_node_id = Column(UUID(as_uuid=True), ForeignKey('nodes.id', ondelete='SET NULL'), nullable=True)
+
+    # Display
+    salience = Column(Float, default=0.5)    # surfacing priority (0-1)
+    tags = Column(ARRAY(Text))
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    __table_args__ = (
+        Index('idx_intent_signals_conv_status', 'conversation_id', 'status'),
+        Index('idx_intent_signals_status_salience', 'status', 'salience'),
+        Index('idx_intent_signals_last_sighted_conv', 'last_sighted_conversation_id'),
+        Index('idx_intent_signals_formalized_claim', 'formalized_claim_id'),
+        CheckConstraint(
+            "status IN ('active', 'accumulating', 'ready', 'formalized', 'abandoned')",
+            name='check_intent_signal_status',
+        ),
+        CheckConstraint(
+            'detection_confidence IS NULL OR (detection_confidence >= 0.0 AND detection_confidence <= 1.0)',
+            name='check_intent_signal_confidence',
+        ),
+        CheckConstraint(
+            'salience IS NULL OR (salience >= 0.0 AND salience <= 1.0)',
+            name='check_intent_signal_salience',
+        ),
+    )
+
+
+class IntentSignalSighting(Base):
+    """
+    One row per (intent_signal, conversation) the signal reappears in.
+    Enables "what signals were active in session X?" queries without JSONB searches.
+    ADR-013.
+    """
+    __tablename__ = "intent_signal_sightings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    intent_signal_id = Column(UUID(as_uuid=True), ForeignKey('intent_signals.id', ondelete='CASCADE'), nullable=False)
+    conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'), nullable=False)
+
+    # Evidence for this sighting
+    utterance_ids = Column(ARRAY(UUID(as_uuid=True)))
+    context_note = Column(Text)                # how it was re-raised
+    sighting_confidence = Column(Float)        # LLM confidence this is the same signal
+
+    sighted_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_intent_signal_sightings_signal', 'intent_signal_id'),
+        Index('idx_intent_signal_sightings_conv', 'conversation_id'),
+        # One sighting per signal per conversation
+        Index('uq_intent_signal_sightings', 'intent_signal_id', 'conversation_id', unique=True),
+        CheckConstraint(
+            'sighting_confidence IS NULL OR (sighting_confidence >= 0.0 AND sighting_confidence <= 1.0)',
+            name='check_sighting_confidence',
+        ),
     )
