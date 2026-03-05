@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-03-05
+Last updated: 2026-03-05 (ADR-013 added)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -16,6 +16,7 @@ Last updated: 2026-03-05
 | [ADR-010](ADR-010-minimal-conversation-schema-and-pause-resume.md) | Minimal Conversation Schema for Pause/Resume and Thread Legibility | 2026-02-13 | Proposed |
 | [ADR-011](ADR-011-minimal-live-conversation-ui.md) | Minimal Live Conversation UI Redesign | 2026-02-14 | Draft |
 | [ADR-012](ADR-012-realtime-speaker-diarization-sidecar.md) | Real-Time Speaker Diarization Sidecar for Local Speech-to-Graph | 2026-02-10 | Proposed |
+| [ADR-013](ADR-013-intent-signals-prayers-schema.md) | Intent Signals (Prayers) Schema and Layer 1→2 Formalization Bridge | 2026-03-05 | Approved |
 
 ## Status Definitions
 
