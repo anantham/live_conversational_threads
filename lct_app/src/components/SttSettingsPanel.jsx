@@ -166,6 +166,28 @@ export default function SttSettingsPanel() {
         </label>
 
         <label className="text-sm text-gray-700 space-y-1">
+          <span>Model override</span>
+          <input
+            type="text"
+            value={form?.http_model || ""}
+            onChange={handleChange("http_model")}
+            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            placeholder="e.g. large-v3, whisper-1 (blank = server default)"
+          />
+        </label>
+
+        <label className="text-sm text-gray-700 space-y-1">
+          <span>Language hint</span>
+          <input
+            type="text"
+            value={form?.http_language || ""}
+            onChange={handleChange("http_language")}
+            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            placeholder="e.g. en, hi (blank = auto-detect)"
+          />
+        </label>
+
+        <label className="text-sm text-gray-700 space-y-1">
           <span>Chunk Endpoint</span>
           <input
             type="text"

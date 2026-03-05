@@ -27,9 +27,12 @@ export default function useAudioCapture({ onPCMFrame, onError }) {
     }
   }, []);
 
-  const startCapture = useCallback(async () => {
+  const startCapture = useCallback(async (deviceId = "") => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioConstraints = deviceId
+        ? { deviceId: { exact: deviceId } }
+        : true;
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
       const audioContext = new AudioContext({ sampleRate: 16000 });
       audioContextRef.current = audioContext;
 
