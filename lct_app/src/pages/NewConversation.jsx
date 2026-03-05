@@ -7,6 +7,7 @@ import TimelineRibbon from "../components/TimelineRibbon";
 import NodeDetail from "../components/NodeDetail";
 import MinimalLegend from "../components/MinimalLegend";
 import { buildSpeakerColorMap } from "../components/graphConstants";
+import { useAutoSave } from "../hooks/useAutoSave";
 
 function isNodeObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -129,6 +130,13 @@ export default function NewConversation() {
   );
   const hasData = latestChunk.length > 0;
 
+  const { saveStatus, lastSavedAt, triggerSave } = useAutoSave({
+    conversationId,
+    graphData,
+    conversationName: fileName || undefined,
+    enabled: hasData,
+  });
+
   // Resolve selected node data for detail panel
   const selectedNodeData = useMemo(() => {
     if (!selectedNode) return null;
@@ -160,9 +168,12 @@ export default function NewConversation() {
   }, [hasData, navigate]);
 
   const handleConfirmBack = useCallback(async () => {
-    await audioRef.current?.stopRecording();
+    await Promise.all([
+      audioRef.current?.stopRecording(),
+      triggerSave(),
+    ]);
     navigate("/");
-  }, [navigate]);
+  }, [navigate, triggerSave]);
 
   return (
     <div className="flex flex-col h-[100dvh] w-screen bg-[#fafafa] font-sans">
@@ -238,6 +249,19 @@ export default function NewConversation() {
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
         />
+      )}
+
+      {/* Auto-save status indicator */}
+      {hasData && (
+        <div className="absolute bottom-16 right-3 z-20 text-[10px] text-gray-400 select-none">
+          {saveStatus === "saving" && "Saving…"}
+          {saveStatus === "saved" && lastSavedAt && (
+            <>Saved {lastSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</>
+          )}
+          {saveStatus === "error" && (
+            <span className="text-red-400">Save failed</span>
+          )}
+        </div>
       )}
 
       {/* Audio footer */}
