@@ -155,6 +155,81 @@ async def test_persist_import_graph_creates_contextual_relationship():
 
 
 @pytest.mark.asyncio
+async def test_persist_import_graph_handles_non_dict_contextual_relation_variants():
+    from lct_python_backend.models import Node, Relationship
+
+    conv = MagicMock()
+    db = _make_db_mock(conv=conv)
+    nodes_with_variants = [
+        {
+            "node_name": "Alpha",
+            "summary": "First topic",
+            "successor": None,
+            "predecessor": None,
+            "contextual_relation": [
+                {
+                    "related_node_name": "Gamma",
+                    "relation_text": "Alpha references Gamma from list object",
+                }
+            ],
+            "is_bookmark": False,
+            "is_contextual_progress": False,
+            "chunk_id": "chunk_001",
+        },
+        {
+            "node_name": "Beta",
+            "summary": "Second topic",
+            "successor": None,
+            "predecessor": None,
+            "contextual_relation": {
+                "related_node_name": "Gamma",
+                "relation_text": "Beta references Gamma from single object",
+            },
+            "is_bookmark": False,
+            "is_contextual_progress": False,
+            "chunk_id": "chunk_002",
+        },
+        {
+            "node_name": "Gamma",
+            "summary": "Third topic",
+            "successor": None,
+            "predecessor": None,
+            "contextual_relation": "not-a-dict",
+            "is_bookmark": False,
+            "is_contextual_progress": False,
+            "chunk_id": "chunk_003",
+        },
+    ]
+
+    await persist_import_graph(
+        db=db,
+        conversation_id=CONVERSATION_ID,
+        existing_json=nodes_with_variants,
+    )
+
+    added_objects = [c.args[0] for c in db.add.call_args_list]
+    nodes = [o for o in added_objects if isinstance(o, Node)]
+    rels = [o for o in added_objects if isinstance(o, Relationship)]
+    contextual_rels = [r for r in rels if r.relationship_type == "contextual"]
+
+    node_name_by_id = {node.id: node.node_name for node in nodes}
+    contextual_edges = {
+        (
+            node_name_by_id.get(rel.from_node_id),
+            node_name_by_id.get(rel.to_node_id),
+            rel.explanation,
+        )
+        for rel in contextual_rels
+    }
+
+    assert len(contextual_rels) == 2
+    assert contextual_edges == {
+        ("Alpha", "Gamma", "Alpha references Gamma from list object"),
+        ("Beta", "Gamma", "Beta references Gamma from single object"),
+    }
+
+
+@pytest.mark.asyncio
 async def test_persist_import_graph_updates_conversation_total_nodes():
     conv = MagicMock()
     db = _make_db_mock(conv=conv)
