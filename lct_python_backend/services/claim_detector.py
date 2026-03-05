@@ -10,6 +10,7 @@ Uses Claude 3.5 Sonnet for claim detection and OpenAI for embeddings.
 """
 
 import json
+import logging
 import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -19,6 +20,8 @@ import anthropic
 import os
 
 from models import Claim, Node, Utterance
+
+logger = logging.getLogger(__name__)
 from services.prompt_manager import get_prompt_manager
 from services.embedding_service import get_embedding_service
 from services.llm_config import load_llm_config
@@ -234,11 +237,11 @@ class ClaimDetector:
             return data
 
         except json.JSONDecodeError as e:
-            print(f"Failed to parse LLM response: {e}")
-            print(f"Response: {content[:500]}")
+            logger.error(f"Failed to parse LLM response: {e}")
+            logger.debug(f"Response: {content[:500]}")
             return {"claims": []}
         except Exception as e:
-            print(f"Error calling LLM: {e}")
+            logger.error(f"Error calling LLM: {e}")
             return {"claims": []}
 
     def _format_utterances_for_llm(

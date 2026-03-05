@@ -12,6 +12,7 @@ Uses Claude 3.5 Sonnet for argument structure analysis.
 """
 
 import json
+import logging
 import uuid
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -21,6 +22,8 @@ import anthropic
 import os
 
 from models import ArgumentTree, Claim, Node
+
+logger = logging.getLogger(__name__)
 from services.prompt_manager import get_prompt_manager
 from services.llm_config import load_llm_config
 from services.local_llm_client import local_chat_json
@@ -173,7 +176,7 @@ class ArgumentMapper:
                 )
                 return data
             except Exception as e:
-                print(f"Error calling local LLM: {e}")
+                logger.error(f"Error calling local LLM: {e}")
                 return {"has_argument": False, "reason": str(e)}
 
         try:
@@ -204,10 +207,10 @@ class ArgumentMapper:
             return data
 
         except json.JSONDecodeError as e:
-            print(f"Failed to parse LLM response: {e}")
+            logger.error(f"Failed to parse LLM response: {e}")
             return {"has_argument": False, "reason": "Failed to parse response"}
         except Exception as e:
-            print(f"Error calling LLM: {e}")
+            logger.error(f"Error calling LLM: {e}")
             return {"has_argument": False, "reason": str(e)}
 
     def _format_claims_for_llm(self, claims: List[Dict[str, Any]]) -> str:

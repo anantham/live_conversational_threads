@@ -10,6 +10,7 @@ Uses OpenRouter API to analyze conversations and create high-level thematic stru
 """
 
 import json
+import logging
 import uuid
 import httpx
 import os
@@ -20,6 +21,8 @@ from sqlalchemy import select, and_
 from lct_python_backend.models import Utterance, Node, Relationship
 from lct_python_backend.services.llm_config import load_llm_config
 from lct_python_backend.services.local_llm_client import local_chat_json
+
+logger = logging.getLogger(__name__)
 
 
 class ThematicAnalyzer:
@@ -214,7 +217,7 @@ class ThematicAnalyzer:
                 )
         except Exception as e:
             # Fallback to basic json_object if schema not supported
-            print(f"[WARNING] Schema-based response failed, falling back to json_object: {e}")
+            logger.warning(f"Schema-based response failed, falling back to json_object: {e}")
             request_body["response_format"] = {"type": "json_object"}
 
             async with httpx.AsyncClient(timeout=120.0) as client:
@@ -394,7 +397,7 @@ IMPORTANT:
         # Create mapping: sequence_number -> UUID (for remapping LLM response)
         seq_to_uuid = {utt.sequence_number: utt.id for utt in utterances}
 
-        print(f"[INFO] Remapping sequence numbers to UUIDs using {len(seq_to_uuid)} utterances")
+        logger.info(f"Remapping sequence numbers to UUIDs using {len(seq_to_uuid)} utterances")
 
         # Create thematic nodes
         for theme in thematic_structure.get("thematic_nodes", []):
@@ -406,10 +409,10 @@ IMPORTANT:
                 if seq_num in seq_to_uuid:
                     utterance_uuids.append(seq_to_uuid[seq_num])
                 else:
-                    print(f"[WARNING] Sequence number {seq_num} not found in utterances for theme '{theme.get('label')}'")
+                    logger.warning(f"Sequence number {seq_num} not found in utterances for theme '{theme.get('label')}'")
 
             if not utterance_uuids:
-                print(f"[WARNING] Theme '{theme.get('label')}' has no valid utterances, skipping")
+                logger.warning(f"Theme '{theme.get('label')}' has no valid utterances, skipping")
                 continue
 
             # Create Node
@@ -454,7 +457,7 @@ IMPORTANT:
             target_label = edge.get("target_label")
 
             if source_label not in label_to_node_id or target_label not in label_to_node_id:
-                print(f"[WARNING] Skipping edge: {source_label} -> {target_label} (node not found)")
+                logger.warning(f"Skipping edge: {source_label} -> {target_label} (node not found)")
                 continue
 
             relationship = Relationship(
@@ -532,10 +535,10 @@ IMPORTANT:
                 })
 
         # Debug logging for edge data flow
-        print(f"[DEBUG thematic_analyzer] Returning {len(edges)} edges from _serialize_existing_structure:")
+        logger.debug(f"Returning {len(edges)} edges from _serialize_existing_structure:")
         for edge in edges:
-            print(f"  Edge: {edge['source']} -> {edge['target']} (type: {edge['type']})")
-        print(f"[DEBUG thematic_analyzer] Node IDs available: {list(node_id_to_label.keys())}")
+            logger.debug(f"  Edge: {edge['source']} -> {edge['target']} (type: {edge['type']})")
+        logger.debug(f"Node IDs available: {list(node_id_to_label.keys())}")
 
         return {
             "thematic_nodes": thematic_nodes,

@@ -6,6 +6,7 @@ with temporal and contextual edges across 5 zoom levels.
 """
 
 import json
+import logging
 import uuid
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -13,6 +14,8 @@ from datetime import datetime
 import asyncio
 
 from lct_python_backend.instrumentation import track_api_call
+
+logger = logging.getLogger(__name__)
 from lct_python_backend.parsers import ParsedTranscript, Utterance as ParserUtterance
 from lct_python_backend.models import Node, Relationship, Conversation
 from .prompt_manager import get_prompt_manager
@@ -154,7 +157,7 @@ class GraphGenerationService:
             return nodes
 
         except Exception as e:
-            print(f"Error generating nodes with LLM: {e}")
+            logger.error(f"Error generating nodes with LLM: {e}")
             # Fallback to simple node generation
             return self._create_fallback_nodes(conversation_id, transcript)
 
@@ -283,8 +286,8 @@ class GraphGenerationService:
                 nodes_data = [nodes_data]
             return nodes_data
         except json.JSONDecodeError as e:
-            print(f"Failed to parse LLM response as JSON: {e}")
-            print(f"Response text: {text[:500]}")
+            logger.error(f"Failed to parse LLM response as JSON: {e}")
+            logger.debug(f"Response text: {text[:500]}")
             return []
 
     def _create_node_from_data(
@@ -521,7 +524,7 @@ class GraphGenerationService:
             return edges
 
         except Exception as e:
-            print(f"Error detecting contextual relationships: {e}")
+            logger.error(f"Error detecting contextual relationships: {e}")
             return self._detect_relationships_heuristic(nodes)
 
     def _detect_relationships_heuristic(self, nodes: List[Dict]) -> List[Dict]:

@@ -1,5 +1,6 @@
 """LLM call helpers — Claude API wrapper and JSON generation."""
 import json
+import logging
 import time
 import random
 import anthropic
@@ -7,6 +8,8 @@ from typing import Dict, Generator, List
 
 from lct_python_backend.config import ANTHROPIC_API_KEY
 from lct_python_backend.services.transcript_processing import generate_lct_json
+
+logger = logging.getLogger(__name__)
 
 
 def claude_llm_call(transcript: str, claude_prompt: str, start_text: str, temp: float = 0.6, retries: int = 5, backoff_base: float = 1.5):
@@ -42,23 +45,23 @@ def claude_llm_call(transcript: str, claude_prompt: str, start_text: str, temp: 
             return message.content[0].text
 
         except json.JSONDecodeError as e:
-            print(f"[INFO]: Invalid JSON: {e}")
+            logger.error(f"Invalid JSON: {e}")
             return None
 
         except anthropic.AuthenticationError:
-            print("[INFO]: Authentication failed. Check your API key.")
+            logger.error("Authentication failed. Check your API key.")
             return None
 
         except anthropic.RateLimitError:
-            print("[INFO]: Rate limit exceeded. Retrying...")  # ✅ Retryable
+            logger.warning("Rate limit exceeded. Retrying...")  # Retryable
 
         except anthropic.APIError as e:
-            print(f"[INFO]: API error occurred: {e}")
+            logger.error(f"API error occurred: {e}")
             if "overloaded" not in str(e).lower():
                 return None
 
         except Exception as e:
-            print(f"[INFO]: Unexpected error: {e}")
+            logger.error(f"Unexpected error: {e}")
             return None
 
         # Exponential backoff before next retry
@@ -400,23 +403,23 @@ Example JSON Output:
 
 
         except json.JSONDecodeError as e:
-            print(f"[INFO]: Invalid JSON: {e}")
+            logger.error(f"Invalid JSON: {e}")
             return None
 
         except anthropic.AuthenticationError:
-            print("[INFO]: Authentication failed. Check your API key.")
+            logger.error("Authentication failed. Check your API key.")
             return None
 
         except anthropic.RateLimitError:
-            print("[INFO]: Rate limit exceeded. Retrying...")  # Retryable
+            logger.warning("Rate limit exceeded. Retrying...")  # Retryable
 
         except anthropic.APIError as e:
-            print(f"[INFO]: API error occurred: {e}")
+            logger.error(f"API error occurred: {e}")
             if "overloaded" not in str(e).lower():
                 return None
 
         except Exception as e:
-            print(f"[INFO]: Unexpected error: {e}")
+            logger.error(f"Unexpected error: {e}")
             return None
 
 

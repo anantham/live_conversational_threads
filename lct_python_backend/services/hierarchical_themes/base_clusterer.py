@@ -5,6 +5,7 @@ Abstract base class for all hierarchical theme clusterers.
 Provides common functionality for caching, database access, and node creation.
 """
 
+import logging
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 import uuid
@@ -14,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, delete
 
 from lct_python_backend.models import Node, Utterance, Relationship
+
+logger = logging.getLogger(__name__)
 
 
 class BaseClusterer(ABC):
@@ -60,18 +63,18 @@ class BaseClusterer(ABC):
         if force_regenerate:
             deleted_count = await self._delete_existing_nodes(conversation_id)
             if deleted_count > 0:
-                print(f"[INFO] Deleted {deleted_count} existing level {self.level} nodes")
+                logger.info(f"Deleted {deleted_count} existing level {self.level} nodes")
         else:
             # Check cache first
             existing_nodes = await self._load_from_db(conversation_id)
             if existing_nodes:
-                print(f"[INFO] Level {self.level} nodes found in cache ({len(existing_nodes)} nodes)")
+                logger.info(f"Level {self.level} nodes found in cache ({len(existing_nodes)} nodes)")
                 return existing_nodes
 
         # Generate new nodes
-        print(f"[INFO] Generating level {self.level} nodes...")
+        logger.info(f"Generating level {self.level} nodes...")
         new_nodes = await self.generate_level(conversation_id, parent_nodes, utterances)
-        print(f"[INFO] Generated {len(new_nodes)} level {self.level} nodes")
+        logger.info(f"Generated {len(new_nodes)} level {self.level} nodes")
 
         return new_nodes
 
@@ -221,7 +224,7 @@ class BaseClusterer(ABC):
                     parent_node.children_ids = child_ids
 
         await self.db.commit()
-        print(f"[INFO] Saved {len(nodes)} nodes to database")
+        logger.info(f"Saved {len(nodes)} nodes to database")
 
     async def _persist_relationships(
         self,
@@ -245,7 +248,7 @@ class BaseClusterer(ABC):
             if not source_label or not target_label:
                 continue
             if source_label not in label_to_node or target_label not in label_to_node:
-                print(f"[WARNING] Relationship skipped - unknown labels: {source_label} -> {target_label}")
+                logger.warning(f"Relationship skipped - unknown labels: {source_label} -> {target_label}")
                 continue
 
             relationship = Relationship(
@@ -266,6 +269,6 @@ class BaseClusterer(ABC):
 
         if created:
             await self.db.commit()
-            print(f"[INFO] Saved {len(created)} relationships for level {self.level}")
+            logger.info(f"Saved {len(created)} relationships for level {self.level}")
 
         return created

@@ -84,9 +84,7 @@ async def update_node(node_id: str, request: NodeUpdateRequest):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to update node: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"Failed to update node: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -146,7 +144,7 @@ async def get_conversation_edits(
             }
 
     except Exception as e:
-        print(f"[ERROR] Failed to get edits: {e}")
+        logger.error(f"Failed to get edits: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -168,7 +166,7 @@ async def get_edit_statistics(conversation_id: str):
             return stats
 
     except Exception as e:
-        print(f"[ERROR] Failed to get edit statistics: {e}")
+        logger.error(f"Failed to get edit statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -221,9 +219,7 @@ async def export_training_data(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        print(f"[ERROR] Failed to export training data: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"Failed to export training data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -255,5 +251,5 @@ async def add_edit_feedback(edit_id: str, feedback: dict):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to add feedback: {e}")
+        logger.error(f"Failed to add feedback: {e}")
         raise HTTPException(status_code=500, detail=str(e))
