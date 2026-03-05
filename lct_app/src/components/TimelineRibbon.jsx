@@ -54,6 +54,10 @@ function getNodeTimestampLabel(node) {
   return "";
 }
 
+const DOT_SPACING = 54; // px between dot centres
+const RAIL_START = 24; // centre-x of the first dot
+const DOT_BUTTON_WIDTH = 44;
+
 export default function TimelineRibbon({
   graphData,
   selectedNode,
@@ -64,19 +68,27 @@ export default function TimelineRibbon({
 
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(latestChunk), [latestChunk]);
 
-  // Auto-scroll to end when new nodes arrive
+  // Auto-scroll to end when new nodes arrive (only if no node is selected)
   useEffect(() => {
+    if (selectedNode) return;
     if (scrollRef.current) {
       scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
     }
-  }, [latestChunk.length]);
+  }, [latestChunk.length, selectedNode]);
+
+  // Scroll ribbon to show the selected node (syncs when selection comes from the main graph)
+  useEffect(() => {
+    if (!selectedNode || !scrollRef.current) return;
+    const idx = latestChunk.findIndex((n) => n.id === selectedNode);
+    if (idx < 0) return;
+    const centerX = RAIL_START + idx * DOT_SPACING;
+    const containerWidth = scrollRef.current.clientWidth;
+    scrollRef.current.scrollLeft = centerX - containerWidth / 2;
+  }, [selectedNode, latestChunk]);
 
   if (latestChunk.length === 0) return null;
 
-  const dotSpacing = 54; // px between dots
-  const railStart = 24; // center x of first dot
-  const dotButtonWidth = 44;
-  const totalWidth = latestChunk.length * dotSpacing + railStart * 2;
+  const totalWidth = latestChunk.length * DOT_SPACING + RAIL_START * 2;
 
   return (
     <div
@@ -92,9 +104,9 @@ export default function TimelineRibbon({
         <div
           className="absolute h-px bg-gray-200"
           style={{
-            left: `${railStart}px`,
+            left: `${RAIL_START}px`,
             top: "14px",
-            width: `${Math.max(0, latestChunk.length - 1) * dotSpacing}px`,
+            width: `${Math.max(0, latestChunk.length - 1) * DOT_SPACING}px`,
           }}
         />
 
@@ -103,7 +115,7 @@ export default function TimelineRibbon({
           const isSelected = selectedNode === node.id;
           const color = speakerColorMap[node.speaker_id] || "#e2e8f0";
           const timestampLabel = getNodeTimestampLabel(node);
-          const centerX = railStart + i * dotSpacing;
+          const centerX = RAIL_START + i * DOT_SPACING;
           const titlePrefix = timestampLabel ? `[${timestampLabel}] ` : "";
 
           return (
@@ -114,9 +126,9 @@ export default function TimelineRibbon({
               }
               className="absolute flex flex-col items-center transition-all duration-200"
               style={{
-                left: `${centerX - dotButtonWidth / 2}px`,
+                left: `${centerX - DOT_BUTTON_WIDTH / 2}px`,
                 top: "0px",
-                width: `${dotButtonWidth}px`,
+                width: `${DOT_BUTTON_WIDTH}px`,
                 height: "52px",
               }}
               title={`${titlePrefix}${node.node_name || `Node ${i + 1}`}`}

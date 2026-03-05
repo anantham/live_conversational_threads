@@ -281,6 +281,13 @@ function MinimalGraphInner({
   // Edge hover tooltip
   const [hoveredEdge, setHoveredEdge] = useState(null);
 
+  const ZOOM_PRESETS = [
+    { label: "Fit", action: () => reactFlow.fitView({ padding: 0.15, duration: 300 }) },
+    { label: "50%", action: () => reactFlow.zoomTo(0.5, { duration: 250 }) },
+    { label: "100%", action: () => reactFlow.zoomTo(1, { duration: 250 }) },
+    { label: "150%", action: () => reactFlow.zoomTo(1.5, { duration: 250 }) },
+  ];
+
   return (
     <div className="relative w-full h-full">
       <ReactFlow
@@ -294,13 +301,27 @@ function MinimalGraphInner({
         onEdgeMouseLeave={() => setHoveredEdge(null)}
         fitView
         zoomOnPinch
-        zoomOnScroll
+        zoomOnScroll={false}
         panOnDrag
-        panOnScroll={false}
-        minZoom={0.2}
-        maxZoom={3}
+        panOnScroll
+        minZoom={0.3}
+        maxZoom={2.5}
         proOptions={{ hideAttribution: true }}
       />
+
+      {/* Zoom preset controls */}
+      <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1">
+        {ZOOM_PRESETS.map(({ label, action }) => (
+          <button
+            key={label}
+            onClick={action}
+            className="px-2 py-1 text-[10px] font-medium bg-white/90 border border-gray-200 rounded shadow-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+          >
+            {label}
+          </button>
+        ))}
+        <span className="ml-1 text-[9px] text-gray-400 select-none">scroll = pan · pinch = zoom</span>
+      </div>
 
       {/* Edge hover tooltip */}
       {hoveredEdge && (
