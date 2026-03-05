@@ -173,6 +173,12 @@ function MinimalGraphInner({
             type: "smoothstep",
             style: { stroke: EDGE_COLORS.temporal_next, strokeWidth: 1, opacity: 0.4 },
             markerEnd: { type: "arrowclosed", width: 6, height: 6, color: EDGE_COLORS.temporal_next },
+            data: {
+              relationType: "temporal_next",
+              relationText: "",
+              sourceLabel: item.node_name,
+              targetLabel: target.node_name,
+            },
           });
         }
       }
@@ -191,7 +197,12 @@ function MinimalGraphInner({
           source: related.id,
           target: item.id,
           animated: !reduceMotion && relType !== "supports" && relType !== "temporal_next",
-          data: { relationType: relType, relationText: rel.relation_text || "" },
+          data: {
+            relationType: relType,
+            relationText: rel.relation_text || "",
+            sourceLabel: related.node_name,
+            targetLabel: item.node_name,
+          },
           style: {
             stroke: isConnectedToSelected ? "#f59e0b" : color,
             strokeWidth: isConnectedToSelected ? 2.5 : 1.5,
@@ -218,7 +229,12 @@ function MinimalGraphInner({
             source: related.id,
             target: item.id,
             animated: !reduceMotion,
-            data: { relationType: "contextual", relationText: String(relText) },
+            data: {
+              relationType: "contextual",
+              relationText: String(relText),
+              sourceLabel: related.node_name,
+              targetLabel: item.node_name,
+            },
             style: { stroke: color, strokeWidth: 1.5, opacity: 0.5 },
             markerEnd: { type: "arrowclosed", width: 8, height: 8, color },
           });
@@ -273,6 +289,7 @@ function MinimalGraphInner({
         autoFollowRef.current = next === null;
         return next;
       });
+      setClickedEdge(null);
     },
     [setSelectedNode]
   );
@@ -280,10 +297,16 @@ function MinimalGraphInner({
   const handlePaneClick = useCallback(() => {
     autoFollowRef.current = true;
     setSelectedNode(null);
+    setClickedEdge(null);
   }, [setSelectedNode]);
 
-  // Edge hover tooltip
+  // Edge hover tooltip + pinned click panel
   const [hoveredEdge, setHoveredEdge] = useState(null);
+  const [clickedEdge, setClickedEdge] = useState(null);
+
+  const handleEdgeClick = useCallback((_, edge) => {
+    setClickedEdge((prev) => (prev?.id === edge.id ? null : { id: edge.id, ...edge.data }));
+  }, []);
 
   const ZOOM_PRESETS = [
     { label: "Fit", action: () => reactFlow.fitView({ padding: 0.15, duration: 300 }) },
@@ -301,6 +324,7 @@ function MinimalGraphInner({
         edgeTypes={EDGE_TYPES}
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
+        onEdgeClick={handleEdgeClick}
         onEdgeMouseEnter={(_, edge) => setHoveredEdge(edge.data)}
         onEdgeMouseLeave={() => setHoveredEdge(null)}
         fitView
@@ -350,12 +374,43 @@ function MinimalGraphInner({
         <span className="ml-1 select-none text-[9px] text-gray-400">scroll = pan · pinch = zoom</span>
       </div>
 
-      {/* Edge hover tooltip */}
-      {hoveredEdge && (
-        <div className="absolute top-4 right-4 z-30 max-w-xs rounded-md bg-white/90 backdrop-blur px-3 py-2 text-xs text-gray-700 shadow-sm border border-gray-200">
-          <span className="font-medium">{hoveredEdge.relationType}</span>
+      {/* Edge hover tooltip — transient, top-right */}
+      {hoveredEdge && !clickedEdge && (
+        <div className="absolute top-4 right-4 z-30 max-w-xs rounded-md bg-white/90 backdrop-blur px-3 py-2 text-xs text-gray-700 shadow-sm border border-gray-200 pointer-events-none">
+          <span className="font-medium capitalize">{hoveredEdge.relationType}</span>
           {hoveredEdge.relationText && (
-            <p className="mt-0.5 text-gray-500">{hoveredEdge.relationText}</p>
+            <p className="mt-0.5 text-gray-500 line-clamp-2">{hoveredEdge.relationText}</p>
+          )}
+          <p className="mt-1 text-[10px] text-gray-400">click to pin</p>
+        </div>
+      )}
+
+      {/* Edge click detail panel — pinned, bottom-right */}
+      {clickedEdge && (
+        <div className="absolute bottom-14 right-4 z-30 w-72 rounded-lg bg-white border border-gray-200 shadow-lg px-4 py-3 text-xs text-gray-700">
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <span className="font-semibold text-gray-900 capitalize leading-tight">
+              {clickedEdge.relationType?.replace(/_/g, " ")}
+            </span>
+            <button
+              onClick={() => setClickedEdge(null)}
+              className="text-gray-400 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
+              aria-label="Dismiss"
+            >
+              ✕
+            </button>
+          </div>
+          {(clickedEdge.sourceLabel || clickedEdge.targetLabel) && (
+            <p className="text-[10px] text-gray-400 mb-2 truncate">
+              {clickedEdge.sourceLabel}
+              <span className="mx-1">→</span>
+              {clickedEdge.targetLabel}
+            </p>
+          )}
+          {clickedEdge.relationText ? (
+            <p className="leading-relaxed text-gray-600">{clickedEdge.relationText}</p>
+          ) : (
+            <p className="text-gray-400 italic">No relation detail available.</p>
           )}
         </div>
       )}
