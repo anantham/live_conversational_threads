@@ -1,0 +1,57 @@
+"""
+SQLAlchemy models for Live Conversational Threads V2.
+Based on DATA_MODEL_V2.md
+
+Domain split:
+  core        — Conversation, Utterance, TranscriptEvent
+  graph       — Node, Relationship, Cluster
+  analysis    — Claim, ArgumentTree, IsOughtConflation,
+                SimulacraAnalysis, BiasAnalysis, FrameAnalysis
+  interaction — Bookmark, EditsLog, EditFeedback
+  system      — APICallsLog, AppSetting
+
+All public names are re-exported here so existing
+`from lct_python_backend.models import X` imports remain unchanged.
+"""
+
+from .base import Base  # noqa: F401 — must be imported before submodules
+
+# Import submodules so Base.metadata is fully populated (required by Alembic)
+from .core import Conversation, Utterance, TranscriptEvent  # noqa: F401
+from .graph import Node, Relationship, Cluster  # noqa: F401
+from .analysis import (  # noqa: F401
+    Claim,
+    ArgumentTree,
+    IsOughtConflation,
+    SimulacraAnalysis,
+    BiasAnalysis,
+    FrameAnalysis,
+)
+from .interaction import Bookmark, EditsLog, EditFeedback  # noqa: F401
+from .system import APICallsLog, AppSetting  # noqa: F401
+
+__all__ = [
+    "Base",
+    # core
+    "Conversation",
+    "Utterance",
+    "TranscriptEvent",
+    # graph
+    "Node",
+    "Relationship",
+    "Cluster",
+    # analysis
+    "Claim",
+    "ArgumentTree",
+    "IsOughtConflation",
+    "SimulacraAnalysis",
+    "BiasAnalysis",
+    "FrameAnalysis",
+    # interaction
+    "Bookmark",
+    "EditsLog",
+    "EditFeedback",
+    # system
+    "APICallsLog",
+    "AppSetting",
+]
