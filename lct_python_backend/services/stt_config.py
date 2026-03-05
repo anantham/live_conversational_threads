@@ -4,6 +4,9 @@ from typing import Any, Dict, Mapping
 STT_CONFIG_KEY = "stt_config"
 STT_PROVIDER_IDS = ("senko", "parakeet", "whisper", "ofc")
 DEFAULT_STT_PROVIDER = "whisper"
+DEFAULT_STT_HTTP_URL = "http://localhost:5092/v1/audio/transcriptions"
+# IndrasNet orchestrator endpoint (routes local WhisperX first, then Modal fallback).
+DEFAULT_STT_WHISPER_HTTP_URL = "http://100.81.65.74:7777/api/transcribe"
 
 
 def _to_bool(value: Any) -> bool:
@@ -39,7 +42,7 @@ def _build_provider_http_urls(default_http_url: str) -> Dict[str, str]:
     return {
         "senko": _to_str(os.getenv("DEFAULT_STT_SENKO_HTTP_URL", default_http_url)),
         "parakeet": _to_str(os.getenv("DEFAULT_STT_PARAKEET_HTTP_URL", default_http_url)),
-        "whisper": _to_str(os.getenv("DEFAULT_STT_WHISPER_HTTP_URL", default_http_url)),
+        "whisper": _to_str(os.getenv("DEFAULT_STT_WHISPER_HTTP_URL", DEFAULT_STT_WHISPER_HTTP_URL)),
         "ofc": _to_str(os.getenv("DEFAULT_STT_OFC_HTTP_URL", default_http_url)),
     }
 
@@ -58,9 +61,7 @@ def _merge_provider_urls(raw_urls: Any, base_urls: Mapping[str, str]) -> Dict[st
 
 def get_env_stt_defaults() -> Dict[str, Any]:
     legacy_ws_url = _to_str(os.getenv("DEFAULT_STT_WS_URL", "ws://localhost:43001/stream"))
-    default_http_url = _to_str(
-        os.getenv("DEFAULT_STT_HTTP_URL", "http://localhost:5092/v1/audio/transcriptions")
-    )
+    default_http_url = _to_str(os.getenv("DEFAULT_STT_HTTP_URL", DEFAULT_STT_HTTP_URL))
     provider = _normalize_provider(os.getenv("DEFAULT_STT_PROVIDER", DEFAULT_STT_PROVIDER))
     provider_urls = _build_provider_urls(legacy_ws_url)
     provider_http_urls = _build_provider_http_urls(default_http_url)
