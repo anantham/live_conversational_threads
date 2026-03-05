@@ -8,6 +8,9 @@ const DEFAULT_STT_WS = import.meta.env.VITE_DEFAULT_STT_WS || "ws://localhost:43
 const DEFAULT_STT_HTTP =
   import.meta.env.VITE_DEFAULT_STT_HTTP ||
   "http://localhost:5092/v1/audio/transcriptions";
+const DEFAULT_STT_WHISPER_HTTP =
+  import.meta.env.VITE_DEFAULT_STT_WHISPER_HTTP ||
+  "http://100.81.65.74:7777/api/transcribe";
 const DEFAULT_STT_PROVIDER_URLS = {
   senko: import.meta.env.VITE_DEFAULT_STT_SENKO_WS || DEFAULT_STT_WS,
   parakeet: import.meta.env.VITE_DEFAULT_STT_PARAKEET_WS || DEFAULT_STT_WS,
@@ -17,7 +20,7 @@ const DEFAULT_STT_PROVIDER_URLS = {
 const DEFAULT_STT_PROVIDER_HTTP_URLS = {
   senko: import.meta.env.VITE_DEFAULT_STT_SENKO_HTTP || DEFAULT_STT_HTTP,
   parakeet: import.meta.env.VITE_DEFAULT_STT_PARAKEET_HTTP || DEFAULT_STT_HTTP,
-  whisper: import.meta.env.VITE_DEFAULT_STT_WHISPER_HTTP || DEFAULT_STT_HTTP,
+  whisper: DEFAULT_STT_WHISPER_HTTP,
   ofc: import.meta.env.VITE_DEFAULT_STT_OFC_HTTP || DEFAULT_STT_HTTP,
 };
 const DEFAULT_CHUNK_ENDPOINT = "/api/conversations/{conversation_id}/audio/chunk";
