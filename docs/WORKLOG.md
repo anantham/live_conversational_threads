@@ -1,9 +1,23 @@
 # WORKLOG
 
+## 2026-03-05T11:30:00Z — Live session auto-save (PR #30)
+- `lct_python_backend/conversations_api.py`: Added `GraphSnapshotRequest` schema and `PATCH /conversations/{conversation_id}/graph` endpoint. Delegates to `persist_import_graph()` (idempotent). Returns `{persisted, conversation_id}`.
+- `lct_app/src/hooks/useAutoSave.js` (new, 82 LOC): Debounced 30 s save on graphData change; `navigator.sendBeacon` on `visibilitychange` + `beforeunload`; exposes `saveStatus`, `lastSavedAt`, `triggerSave`.
+- `lct_app/src/pages/NewConversation.jsx`: Wired `useAutoSave` with `enabled=hasData`; `triggerSave()` awaited in `handleConfirmBack`; subtle "Saved HH:MM" indicator bottom-right.
+- Validation: 207 unit tests pass; ESLint clean; py_compile clean.
+- Resolves ISSUES.md: "Live sessions only persist on manual save; tab loss drops data".
+
 ## 2026-03-05T10:30:00Z — Timeline UX improvements (PR #28)
 - `lct_app/src/components/TimelineRibbon.jsx`: hoisted `DOT_SPACING`, `RAIL_START`, `DOT_BUTTON_WIDTH` to module-level constants. Added `useEffect` that scrolls the ribbon to centre the selected node when selection changes from outside (e.g. clicking a node in the main graph). Modified auto-scroll-to-end effect to skip when a node is selected (so the two effects don't fight each other).
 - `lct_app/src/components/MinimalGraph.jsx`: disabled `zoomOnScroll` (was the source of accidental zoom while panning), enabled `panOnScroll` (scroll wheel now pans). Constrained `minZoom`/`maxZoom` to 0.3–2.5. Added zoom preset control bar (Fit / 50% / 100% / 150%) at bottom-left using `reactFlow.fitView()` / `reactFlow.zoomTo()`.
 - Resolves ISSUES.md: "Too many degrees of freedom", "clicking a node in timeline should sync", "horizontal scrolling should be easy/smooth".
+
+## 2026-03-05T09:33:38Z
+- `lct_python_backend/services/import_persistence.py` (lines 4-95, 261): Fixed graph-persistence crash on non-dict `contextual_relation` payloads by adding local normalization helpers that accept dict maps, list variants, and single relation objects (`related_node_name` + `relation_text`) and by replacing direct `.items()` iteration with `_iter_contextual_relations(...)`. This keeps persistence resilient when upstream emits historical shape variants instead of silently dropping all graph writes for the batch.
+- `lct_python_backend/tests/unit/test_import_graph_persistence.py` (lines 157-229): Added regression coverage for list/object/scalar `contextual_relation` variants and asserted correct contextual edge materialization (`Alpha -> Gamma`, `Beta -> Gamma`) without exceptions.
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_import_graph_persistence.py` (9 passed)
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/import_persistence.py lct_python_backend/tests/unit/test_import_graph_persistence.py` (passed)
 
 ## 2026-03-05T08:16:27Z
 - `lct_python_backend/services/stt_config.py` (lines 4-9, 41-46, 62-64): Updated STT defaults so Whisper HTTP now falls back to IndrasNet (`http://100.81.65.74:7777/api/transcribe`) while preserving existing env override support.
