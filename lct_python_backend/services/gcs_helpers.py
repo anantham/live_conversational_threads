@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -113,8 +114,37 @@ def save_json_with_backend(
         return fallback
 
 
+# Allowlist for gcs_path values that may be resolved as local files.
+# Accepts: bare UUID (no extension), UUID.json, or an absolute path
+# confined to LOCAL_SAVE_DIR.  Rejects any path that contains traversal
+# sequences (../, //, or control characters).
+_GCS_PATH_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(\.json)?$",
+    re.IGNORECASE,
+)
+
+
+def _validate_gcs_path(gcs_path: str) -> None:
+    """Raise HTTPException(400) if gcs_path looks like a traversal attempt."""
+    if not gcs_path:
+        return
+    # Reject traversal sequences regardless of format
+    if ".." in gcs_path or gcs_path.startswith("/") or "//" in gcs_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid conversation path.",
+        )
+    # When it looks like a short identifier (no path separators), enforce UUID format
+    if "/" not in gcs_path and not _GCS_PATH_RE.match(gcs_path):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid conversation path.",
+        )
+
+
 def load_conversation_from_gcs(gcs_path: str) -> dict:
     try:
+        _validate_gcs_path(gcs_path)
         # Support local fallback files stored in gcs_path.
         local_path = Path(str(gcs_path or "")).expanduser()
         if local_path.exists():
