@@ -7,11 +7,11 @@ Tests for zoom system invariants:
 """
 
 import pytest
-from tests.conftest import (
+from lct_python_backend.tests.conftest import (
     create_mock_conversation,
     MockNode
 )
-from tests.invariants import (
+from lct_python_backend.tests.invariants import (
     assert_zoom_visibility_hierarchy,
     InvariantViolation
 )
@@ -51,7 +51,7 @@ class TestZoomLevelGranularity:
         
         # Turn 1: Speaker A (3 utterances)
         for i in range(3):
-            from tests.conftest import create_mock_utterance
+            from lct_python_backend.tests.conftest import create_mock_utterance
             u = create_mock_utterance(
                 conversation_id=conversation_id,
                 text=f"A says {i}",
@@ -221,7 +221,7 @@ class TestEdgeRedrawingOnZoomChange:
             mock_db.nodes[node.id] = node
         
         # Create edges for zoom 1 (9 edges connecting 10 nodes)
-        from tests.conftest import MockEdge
+        from lct_python_backend.tests.conftest import MockEdge
         for i in range(9):
             edge = MockEdge(
                 id=f"z1-edge-{i}",

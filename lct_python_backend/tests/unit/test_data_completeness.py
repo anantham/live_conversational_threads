@@ -8,12 +8,12 @@ Tests for system invariants INV-1.1, INV-1.2, INV-1.3:
 """
 
 import pytest
-from tests.conftest import (
+from lct_python_backend.tests.conftest import (
     create_mock_conversation,
     MockNode,
     MockEdge
 )
-from tests.invariants import (
+from lct_python_backend.tests.invariants import (
     assert_utterance_node_completeness,
     assert_timeline_completeness,
     assert_lossless_aggregation,
