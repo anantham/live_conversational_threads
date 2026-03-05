@@ -7,6 +7,7 @@ from prompts.json configuration file.
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -14,6 +15,8 @@ from datetime import datetime
 import shutil
 from string import Template
 import hashlib
+
+logger = logging.getLogger(__name__)
 
 
 class PromptManager:
@@ -256,7 +259,7 @@ class PromptManager:
                     version_data = json.load(f)
                     history.append(version_data)
             except Exception as e:
-                print(f"[WARNING] Failed to load version file {version_file}: {e}")
+                logger.warning(f"[WARNING] Failed to load version file {version_file}: {e}", exc_info=True)
                 continue
 
         return history

@@ -2,9 +2,12 @@
 Create bookmarks table in database
 """
 import asyncio
+import logging
 from sqlalchemy.ext.asyncio import create_async_engine
 from models import Base, Bookmark
 import os
+
+logger = logging.getLogger(__name__)
 
 async def create_bookmarks_table():
     # Get database URL from environment
@@ -22,7 +25,7 @@ async def create_bookmarks_table():
         # Only create bookmarks table, not all tables
         await conn.run_sync(Bookmark.__table__.create, checkfirst=True)
 
-    print("✅ Bookmarks table created successfully!")
+    logger.info("Bookmarks table created successfully!")
 
     await engine.dispose()
 

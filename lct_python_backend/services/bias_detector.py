@@ -14,6 +14,7 @@ Categories:
 """
 
 import json
+import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import uuid
@@ -25,6 +26,8 @@ from lct_python_backend.services.llm_config import load_llm_config
 from lct_python_backend.services.local_llm_client import local_chat_json
 import anthropic
 import os
+
+logger = logging.getLogger(__name__)
 
 
 # Comprehensive bias taxonomy
@@ -304,7 +307,7 @@ class BiasDetector:
             return result.get("biases", [])
 
         except Exception as e:
-            print(f"Error analyzing node {node.id} for biases: {e}")
+            logger.error(f"Error analyzing node {node.id} for biases: {e}", exc_info=True)
             # Return empty list on error
             return []
 

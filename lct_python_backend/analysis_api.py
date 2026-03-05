@@ -38,7 +38,7 @@ async def analyze_simulacra_levels(
             return results
 
     except Exception as e:
-        print(f"[ERROR] Simulacra analysis failed: {e}")
+        logger.error(f"Simulacra analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -55,7 +55,7 @@ async def get_simulacra_results(conversation_id: str):
             return results
 
     except Exception as e:
-        print(f"[ERROR] Failed to get Simulacra results: {e}")
+        logger.error(f"Failed to get Simulacra results: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -80,7 +80,7 @@ async def get_node_simulacra(node_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to get node Simulacra: {e}")
+        logger.error(f"Failed to get node Simulacra: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -114,7 +114,7 @@ async def analyze_cognitive_biases(
             return results
 
     except Exception as e:
-        print(f"[ERROR] Bias analysis failed: {e}")
+        logger.error(f"Bias analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -131,7 +131,7 @@ async def get_bias_results(conversation_id: str):
             return results
 
     except Exception as e:
-        print(f"[ERROR] Failed to get bias results: {e}")
+        logger.error(f"Failed to get bias results: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -148,7 +148,7 @@ async def get_node_biases(node_id: str):
             return {"biases": biases}
 
     except Exception as e:
-        print(f"[ERROR] Failed to get node biases: {e}")
+        logger.error(f"Failed to get node biases: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -182,7 +182,7 @@ async def analyze_implicit_frames(
             return results
 
     except Exception as e:
-        print(f"[ERROR] Frame analysis failed: {e}")
+        logger.error(f"Frame analysis failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -199,7 +199,7 @@ async def get_frame_results(conversation_id: str):
             return results
 
     except Exception as e:
-        print(f"[ERROR] Failed to get frame results: {e}")
+        logger.error(f"Failed to get frame results: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -216,5 +216,5 @@ async def get_node_frames(node_id: str):
             return {"frames": frames}
 
     except Exception as e:
-        print(f"[ERROR] Failed to get node frames: {e}")
+        logger.error(f"Failed to get node frames: {e}")
         raise HTTPException(status_code=500, detail=str(e))

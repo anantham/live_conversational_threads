@@ -895,7 +895,7 @@ async def export_to_obsidian_canvas(
         JSON response with Canvas format that can be saved as .canvas file
     """
     try:
-        print(f"[INFO] Exporting conversation {conversation_id} to Obsidian Canvas (include_chunks={include_chunks})")
+        logger.info(f"Exporting conversation {conversation_id} to Obsidian Canvas (include_chunks={include_chunks})")
 
         from sqlalchemy import select
         from lct_python_backend.models import Conversation, Node, Utterance, Relationship
@@ -907,24 +907,24 @@ async def export_to_obsidian_canvas(
         conversation = result.scalar_one_or_none()
 
         if not conversation:
-            print(f"[ERROR] Conversation not found: {conversation_id}")
+            logger.error(f"Conversation not found: {conversation_id}")
             raise HTTPException(status_code=404, detail="Conversation not found")
 
-        print(f"[INFO] Found conversation: {conversation.conversation_name}")
+        logger.info(f"Found conversation: {conversation.conversation_name}")
 
         # Fetch all nodes for this conversation
         nodes_result = await db.execute(
             select(Node).where(Node.conversation_id == uuid.UUID(conversation_id))
         )
         nodes = list(nodes_result.scalars().all())
-        print(f"[INFO] Found {len(nodes)} nodes")
+        logger.info(f"Found {len(nodes)} nodes")
 
         # Fetch all relationships for this conversation
         relationships_result = await db.execute(
             select(Relationship).where(Relationship.conversation_id == uuid.UUID(conversation_id))
         )
         relationships = list(relationships_result.scalars().all())
-        print(f"[INFO] Found {len(relationships)} relationships")
+        logger.info(f"Found {len(relationships)} relationships")
 
         # Fetch all utterances for this conversation
         utterances_result = await db.execute(
@@ -933,7 +933,7 @@ async def export_to_obsidian_canvas(
             .order_by(Utterance.sequence_number)
         )
         utterances = list(utterances_result.scalars().all())
-        print(f"[INFO] Found {len(utterances)} utterances")
+        logger.info(f"Found {len(utterances)} utterances")
 
         # Build graph_data from nodes
         graph_data = []
@@ -1015,7 +1015,7 @@ async def export_to_obsidian_canvas(
                         chunk_text = "\n".join([utt.text for utt in chunk_utterances])
                         chunk_dict[chunk_id_str] = chunk_text
 
-        print(f"[INFO] Built graph_data with {len(graph_data)} nodes and {len(chunk_dict)} chunks")
+        logger.info(f"Built graph_data with {len(graph_data)} nodes and {len(chunk_dict)} chunks")
 
         # Use conversation name as file name
         file_name = conversation.conversation_name or "Untitled Conversation"
@@ -1032,16 +1032,14 @@ async def export_to_obsidian_canvas(
             edge_records=canvas_edges
         )
 
-        print(f"[INFO] Successfully exported conversation to Canvas")
+        logger.info(f"Successfully exported conversation to Canvas")
         # Return as JSON (user can save as .canvas file)
         return canvas.model_dump()
 
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to export conversation to Canvas: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"Failed to export conversation to Canvas: {e}")
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
 
@@ -1176,7 +1174,5 @@ async def import_from_obsidian_canvas(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to import Canvas: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"Failed to import Canvas: {e}")
         raise HTTPException(status_code=500, detail=f"Import failed: {str(e)}")
