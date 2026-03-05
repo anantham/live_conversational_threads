@@ -76,6 +76,10 @@ async def persist_import_graph(
     db,
     conversation_id: str,
     existing_json: list,
+    conversation_name: Optional[str] = None,
+    source_type: Optional[str] = None,
+    owner_id: str = "default_user",
+    source_metadata: Optional[Dict[str, Any]] = None,
 ) -> int:
     """
     Persist LLM-generated graph nodes and relationships to DB.
@@ -89,6 +93,23 @@ async def persist_import_graph(
         return 0
 
     conv_uuid = uuid.UUID(conversation_id)
+    conv_result = await db.execute(select(Conversation).where(Conversation.id == conv_uuid))
+    conv = conv_result.scalar_one_or_none()
+    if conv is None:
+        fallback_conversation_name = (conversation_name or "").strip() or f"import-{conv_uuid.hex[:8]}"
+        conv = Conversation(
+            id=conv_uuid,
+            conversation_name=fallback_conversation_name,
+            conversation_type="transcript",
+            source_type=(source_type or "import").strip() or "import",
+            source_metadata=source_metadata or {},
+            owner_id=(owner_id or "default_user").strip() or "default_user",
+            started_at=datetime.now(),
+            created_at=datetime.now(),
+        )
+        db.add(conv)
+        # Ensure parent row exists before inserting child node/relationship rows.
+        await db.flush()
 
     # Delete any stale rows (idempotent re-runs)
     await db.execute(delete(Relationship).where(Relationship.conversation_id == conv_uuid))
@@ -119,6 +140,8 @@ async def persist_import_graph(
             summary=item.get("summary", ""),
             chunk_ids=[chunk_id] if chunk_id else [],
             node_type=node_type,
+            is_bookmark=bool(item.get("is_bookmark")),
+            is_contextual_progress=bool(item.get("is_contextual_progress")),
             level=1,
             zoom_level_visible=[1, 2, 3],
         ))
@@ -155,10 +178,7 @@ async def persist_import_graph(
                 ))
 
     # Step 4: Update conversation node count
-    conv_result = await db.execute(select(Conversation).where(Conversation.id == conv_uuid))
-    conv = conv_result.scalar_one_or_none()
-    if conv is not None:
-        conv.total_nodes = len(node_records)
+    conv.total_nodes = len(node_records)
 
     await db.commit()
     return len(node_records)
