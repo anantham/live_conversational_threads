@@ -8,6 +8,7 @@ This is the finest-grained level and the foundation of the hierarchy.
 """
 
 import json
+import logging
 import httpx
 import os
 from typing import List, Dict, Any
@@ -17,6 +18,8 @@ from lct_python_backend.models import Node, Utterance
 from lct_python_backend.services.llm_config import load_llm_config
 from lct_python_backend.services.local_llm_client import local_chat_json
 from .base_clusterer import BaseClusterer
+
+logger = logging.getLogger(__name__)
 
 
 class Level5AtomicGenerator(BaseClusterer):
@@ -30,7 +33,7 @@ class Level5AtomicGenerator(BaseClusterer):
         super().__init__(db, model, level=5)
         self.utterances_per_theme = utterances_per_theme
         self.api_key = os.getenv("OPENROUTER_API_KEY")
-        print(f"[DEBUG] Level5AtomicGenerator initialized with API key: {self.api_key[:30] if self.api_key else 'NONE'}...")
+        logger.debug(f"Level5AtomicGenerator initialized with API key: {self.api_key[:30] if self.api_key else 'NONE'}...")
 
     async def generate_level(
         self,
@@ -71,7 +74,7 @@ class Level5AtomicGenerator(BaseClusterer):
                     utterance_uuids.append(utterance_by_seq[seq].id)
 
             if not utterance_uuids:
-                print(f"[WARNING] Atomic theme '{theme.get('label')}' has no valid utterances, skipping")
+                logger.warning(f"Atomic theme '{theme.get('label')}' has no valid utterances, skipping")
                 continue
 
             node = self._create_node(

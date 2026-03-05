@@ -10,6 +10,7 @@ Sub-modules:
   transcript_llm_callers  — LLM API call functions
 """
 
+import asyncio
 import logging
 import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
@@ -210,8 +211,11 @@ class TranscriptProcessor:
         stop_accumulating_flag: bool = False,
     ) -> Tuple[bool, str, List[List[Dict[str, Any]]]]:
         input_text = " ".join(text_batch)
-        accumulated_output, acc_backend = accumulate_text_json(
-            input_text, llm_config=self._llm_config, providers=self._providers
+        accumulated_output, acc_backend = await asyncio.to_thread(
+            accumulate_text_json,
+            input_text,
+            llm_config=self._llm_config,
+            providers=self._providers,
         )
         if acc_backend:
             self._last_llm_backend = acc_backend
@@ -279,7 +283,8 @@ class TranscriptProcessor:
                 f"\n\n Transcript Input: \n {transcript_for_llm}"
             )
             generation_status_messages: List[str] = []
-            output_json, gen_backend = generate_lct_json(
+            output_json, gen_backend = await asyncio.to_thread(
+                generate_lct_json,
                 mod_input,
                 llm_config=self._llm_config,
                 providers=self._providers,

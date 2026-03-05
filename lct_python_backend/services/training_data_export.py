@@ -8,6 +8,7 @@ Supports JSONL (OpenAI), CSV, and Markdown formats.
 
 import json
 import csv
+import logging
 from typing import List, Dict, Any, Optional
 from io import StringIO
 from datetime import datetime
@@ -16,6 +17,8 @@ from sqlalchemy import select
 import uuid
 
 from lct_python_backend.models import EditsLog, Node, Conversation
+
+logger = logging.getLogger(__name__)
 
 
 class TrainingDataExporter:
@@ -328,7 +331,7 @@ class TrainingDataExporter:
                 "key_points": node.key_points or []
             }
         except Exception as e:
-            print(f"[WARNING] Failed to get node context: {e}")
+            logger.warning(f"[WARNING] Failed to get node context: {e}", exc_info=True)
             return None
 
     async def generate_dataset_id(self, conversation_id: str) -> str:

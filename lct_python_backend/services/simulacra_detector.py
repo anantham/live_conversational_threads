@@ -13,6 +13,7 @@ Levels:
 """
 
 import json
+import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import uuid
@@ -24,6 +25,8 @@ from lct_python_backend.services.llm_config import load_llm_config
 from lct_python_backend.services.local_llm_client import local_chat_json
 import anthropic
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class SimulacraDetector:
@@ -214,7 +217,7 @@ class SimulacraDetector:
             }
 
         except Exception as e:
-            print(f"Error analyzing node {node.id}: {e}")
+            logger.error(f"Error analyzing node {node.id}: {e}", exc_info=True)
             # Return default level 2 on error
             return {
                 "level": 2,

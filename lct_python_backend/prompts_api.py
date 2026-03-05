@@ -34,7 +34,7 @@ async def list_prompts():
         prompts = pm.list_prompts()
         return {"prompts": prompts, "count": len(prompts)}
     except Exception as e:
-        print(f"[ERROR] Failed to list prompts: {e}")
+        logger.error(f"Failed to list prompts: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -50,7 +50,7 @@ async def get_prompts_config():
         config = pm.get_prompts_config()
         return config
     except Exception as e:
-        print(f"[ERROR] Failed to get prompts config: {e}")
+        logger.error(f"Failed to get prompts config: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -72,7 +72,7 @@ async def get_prompt(prompt_name: str):
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        print(f"[ERROR] Failed to get prompt: {e}")
+        logger.error(f"Failed to get prompt: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -94,7 +94,7 @@ async def get_prompt_metadata(prompt_name: str):
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        print(f"[ERROR] Failed to get prompt metadata: {e}")
+        logger.error(f"Failed to get prompt metadata: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -134,9 +134,7 @@ async def update_prompt(prompt_name: str, request: PromptConfigUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"[ERROR] Failed to update prompt: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"Failed to update prompt: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -160,7 +158,7 @@ async def delete_prompt(prompt_name: str, user_id: str = "anonymous", comment: s
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        print(f"[ERROR] Failed to delete prompt: {e}")
+        logger.error(f"Failed to delete prompt: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -181,7 +179,7 @@ async def get_prompt_history(prompt_name: str, limit: int = 10):
         history = pm.get_prompt_history(prompt_name, limit)
         return {"prompt_name": prompt_name, "history": history, "count": len(history)}
     except Exception as e:
-        print(f"[ERROR] Failed to get prompt history: {e}")
+        logger.error(f"Failed to get prompt history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -208,9 +206,7 @@ async def restore_prompt_version(prompt_name: str, request: PromptRestoreRequest
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        print(f"[ERROR] Failed to restore prompt version: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(f"Failed to restore prompt version: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -231,7 +227,7 @@ async def validate_prompt_config(prompt_name: str, prompt_config: dict):
         validation = pm.validate_prompt(prompt_config)
         return validation
     except Exception as e:
-        print(f"[ERROR] Failed to validate prompt: {e}")
+        logger.error(f"Failed to validate prompt: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -252,5 +248,5 @@ async def reload_prompts():
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
-        print(f"[ERROR] Failed to reload prompts: {e}")
+        logger.error(f"Failed to reload prompts: {e}")
         raise HTTPException(status_code=500, detail=str(e))
