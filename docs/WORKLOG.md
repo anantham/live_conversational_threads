@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-03-05T01:00:00Z
+- `lct_python_backend/models.py` (714 LOC): Deleted flat file; replaced with `models/` package.
+- `lct_python_backend/models/base.py`: `Base = declarative_base()` — single source of truth for Alembic and all domain modules.
+- `lct_python_backend/models/core.py` (~155 LOC): `Conversation`, `Utterance`, `TranscriptEvent`.
+- `lct_python_backend/models/graph.py` (~150 LOC): `Node`, `Relationship`, `Cluster`.
+- `lct_python_backend/models/analysis.py` (~220 LOC): `Claim`, `ArgumentTree`, `IsOughtConflation`, `SimulacraAnalysis`, `BiasAnalysis`, `FrameAnalysis`.
+- `lct_python_backend/models/interaction.py` (~90 LOC): `Bookmark`, `EditsLog`, `EditFeedback`.
+- `lct_python_backend/models/system.py` (~60 LOC): `APICallsLog`, `AppSetting`.
+- `lct_python_backend/models/__init__.py`: Re-exports all 17 models + `Base`; all 40+ existing import sites unchanged.
+- `docs/TECH_DEBT.md`: Marked `models.py` split as resolved.
+- Validation: `Base.metadata` registers all 17 tables; 170 previously-passing unit tests still pass; 9 pre-existing failures unchanged.
+
+## 2026-03-04T19:23:40Z
+- `lct_python_backend/services/import_persistence.py` (lines 74-184): Fixed PR #24 follow-up regressions by hardening `persist_import_graph()` to create a minimal parent `Conversation` row (with `flush`) when missing before node/relationship inserts, and by persisting `is_bookmark` / `is_contextual_progress` flags on `Node` rows so frontend/bookmark semantics survive DB round-trips.
+- `lct_python_backend/services/import_bulk_pipeline.py` (lines 720-737): Moved graph persistence call to run after both segmented and sequential processing paths and passed conversation bootstrap metadata (`conversation_name`, `source_type`, `source_metadata`) into persistence; keeps failure non-fatal but now covers both pipeline modes.
+- `lct_python_backend/tests/unit/test_import_graph_persistence.py` (lines 50-238): Added regression assertions for bookmark/contextual boolean persistence, added missing-conversation bootstrap test (`Conversation` row creation + `flush`), and updated DB mock to include async `flush`.
+- `docs/TECH_DEBT.md` (line 24): Updated `import_bulk_pipeline.py` debt row LOC (`429 -> 832`) and narrowed suggested split to include a dedicated persistence module (`import_bulk_persistence.py`) now that conversation bootstrap + graph materialization concerns are in the worker.
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_import_graph_persistence.py` (8 passed)
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/import_persistence.py lct_python_backend/services/import_bulk_pipeline.py lct_python_backend/tests/unit/test_import_graph_persistence.py` (passed)
+  - Local DB smoke check: invoked `persist_import_graph()` with a new UUID conversation (no preexisting conversation row) and confirmed persistence succeeds without FK violation.
+
 ## 2026-03-05T00:00:00Z
 - `lct_python_backend/services/import_persistence.py` (lines 74-163): Added `persist_import_graph()` — persists LLM-generated nodes and relationships from `processor.existing_json` to `Node`/`Relationship` DB tables after import pipeline flush. Handles idempotent delete of stale rows, name→UUID resolution for relationship wiring, temporal chain (successor) and contextual relation edges, and `Conversation.total_nodes` update.
 - `lct_python_backend/services/import_bulk_pipeline.py` (lines 17, 714-729): Imported `persist_import_graph` and called it after `processor.flush()`. Non-fatal: persistence errors are logged as warnings and recorded in telemetry without aborting the SSE stream.
