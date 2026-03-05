@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-03-05T10:30:00Z — Timeline UX improvements (PR #28)
+- `lct_app/src/components/TimelineRibbon.jsx`: hoisted `DOT_SPACING`, `RAIL_START`, `DOT_BUTTON_WIDTH` to module-level constants. Added `useEffect` that scrolls the ribbon to centre the selected node when selection changes from outside (e.g. clicking a node in the main graph). Modified auto-scroll-to-end effect to skip when a node is selected (so the two effects don't fight each other).
+- `lct_app/src/components/MinimalGraph.jsx`: disabled `zoomOnScroll` (was the source of accidental zoom while panning), enabled `panOnScroll` (scroll wheel now pans). Constrained `minZoom`/`maxZoom` to 0.3–2.5. Added zoom preset control bar (Fit / 50% / 100% / 150%) at bottom-left using `reactFlow.fitView()` / `reactFlow.zoomTo()`.
+- Resolves ISSUES.md: "Too many degrees of freedom", "clicking a node in timeline should sync", "horizontal scrolling should be easy/smooth".
+
+## 2026-03-05T08:16:27Z
+- `lct_python_backend/services/stt_config.py` (lines 4-9, 41-46, 62-64): Updated STT defaults so Whisper HTTP now falls back to IndrasNet (`http://100.81.65.74:7777/api/transcribe`) while preserving existing env override support.
+- `lct_python_backend/services/stt_settings_service.py` (lines 19-72): Added legacy-override normalization on settings load to migrate known old Modal Whisper URL values in `app_settings.stt_config` to the current default Whisper endpoint; migration writes back once and logs success/failure (no silent behavior).
+- `lct_app/src/components/audio/sttUtils.js` (lines 11-24): Updated frontend fallback map so Whisper HTTP default also points to IndrasNet when backend settings are unavailable.
+- `lct_python_backend/.env.example` (lines 91-94): Documented `DEFAULT_STT_WHISPER_HTTP_URL` default value for consistent local setup.
+- `lct_python_backend/tests/unit/test_stt_config.py` (lines 13, 27): Extended defaults test to assert Whisper fallback URL.
+- `lct_python_backend/tests/unit/test_stt_settings_service.py` (lines 1-90): Added new unit coverage for legacy Modal override migration, non-legacy no-op behavior, and missing-setting fallback defaults.
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_config.py lct_python_backend/tests/unit/test_stt_settings_service.py` (6 passed)
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/stt_config.py lct_python_backend/services/stt_settings_service.py` (passed)
+  - `cd lct_app && npx eslint src/components/audio/sttUtils.js` (passed)
+  - `DATABASE_URL=postgresql://lct_user:lct_password@localhost:5433/lct_dev ./.venv/bin/python - <<'PY' ... load_stt_settings ... PY` (provider=`whisper`, `provider_http_urls.whisper` and active `http_url` both resolved to `http://100.81.65.74:7777/api/transcribe`)
+
 ## 2026-03-05T01:00:00Z
 - `lct_python_backend/models.py` (714 LOC): Deleted flat file; replaced with `models/` package.
 - `lct_python_backend/models/base.py`: `Base = declarative_base()` — single source of truth for Alembic and all domain modules.
