@@ -1,5 +1,16 @@
 # WORKLOG
 
+## 2026-03-06T02:00:00Z — Tech debt: import_bulk_pipeline.py 4-module split (PR #39, supersedes BulkPipelineContext approach)
+
+Branch: `refactor/import-bulk-pipeline-split`
+
+- `lct_python_backend/services/import_pipeline_context.py` (new, 184 LOC): `PipelineContext` class. All 4 inner closures (`send_update`, `send_status`, `on_chunk_progress`, `on_provider_fallback`) lifted to bound methods. Owns `telemetry` dict + 3 timing floats (`pipeline_started_at`, `transcription_started_at`, `graph_started_at`).
+- `lct_python_backend/services/import_bulk_segmented.py` (new, 201 LOC): `run_segmented_path()` — interleaved audio segmentation path.
+- `lct_python_backend/services/import_bulk_sequential.py` (new, 191 LOC): `run_sequential_path()` — whole-file transcription + sequential analysis path.
+- `lct_python_backend/services/import_bulk_pipeline.py`: 832 → 396 LOC (−52%). Slim orchestrator: setup, path dispatch, post-processing. `run_bulk_processing_worker()` public API unchanged.
+- `lct_python_backend/services/import_bulk_context.py`: REMOVED (old BulkPipelineContext sketch superseded).
+- Validation: 11/11 unit tests pass unchanged. Import smoke test clean.
+
 ## 2026-03-06T01:00:00Z — Tech debt: import_bulk_pipeline.py BulkPipelineContext extraction (PR #39)
 
 Branch: `refactor/import-bulk-pipeline-split`
