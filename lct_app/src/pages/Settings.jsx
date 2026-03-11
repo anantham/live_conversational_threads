@@ -3,11 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import LlmProvidersPanel from '../components/LlmProvidersPanel';
 import SttSettingsPanel from '../components/SttSettingsPanel';
 import PromptEditorPanel from '../components/PromptEditorPanel';
+import DiagnosticsPanel from '../components/DiagnosticsPanel';
 
 const TABS = [
   { id: 'llm', label: 'LLM Providers' },
   { id: 'speech', label: 'Speech' },
   { id: 'prompts', label: 'Prompts' },
+  { id: 'diag', label: 'Diagnostics' },
 ];
 
 export default function Settings() {
@@ -53,6 +55,8 @@ export default function Settings() {
         {activeTab === 'speech' && <SttSettingsPanel />}
 
         {activeTab === 'prompts' && <PromptEditorPanel />}
+
+        {activeTab === 'diag' && <DiagnosticsPanel />}
       </div>
     </div>
   );

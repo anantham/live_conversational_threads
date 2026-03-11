@@ -6,15 +6,14 @@ import {
   normalizeProvider,
   normalizeSttSettings,
 } from "./audio/sttUtils";
-import useSttTelemetry from "./audio/useSttTelemetry";
 import useProviderHealthChecks from "./audio/useProviderHealthChecks";
 
-const formatMs = (value) => (Number.isFinite(value) ? `${Math.round(value)} ms` : "—");
+const formatMs = (value) => (Number.isFinite(value) ? `${Math.round(value)} ms` : "\u2014");
 
 const formatClock = (isoValue) => {
-  if (!isoValue) return "—";
+  if (!isoValue) return "\u2014";
   const parsed = new Date(isoValue);
-  if (Number.isNaN(parsed.getTime())) return "—";
+  if (Number.isNaN(parsed.getTime())) return "\u2014";
   return parsed.toLocaleTimeString();
 };
 
@@ -25,8 +24,6 @@ export default function SttSettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  const { telemetry, loading: telemetryLoading, error: telemetryError, refresh: refreshTelemetry } =
-    useSttTelemetry({ autoRefreshMs: 5000 });
   const { healthByProvider, checkHealth } = useProviderHealthChecks();
 
   const load = async () => {
@@ -120,7 +117,7 @@ export default function SttSettingsPanel() {
   if (loading) {
     return (
       <div className="bg-white rounded-lg shadow p-6 mt-6 text-sm text-gray-500">
-        Loading STT settings…
+        Loading STT settings...
       </div>
     );
   }
@@ -129,9 +126,9 @@ export default function SttSettingsPanel() {
     <section className="bg-white rounded-lg shadow-lg p-6 mt-6 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-gray-800">STT Settings</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Speech-to-Text</h2>
           <p className="text-sm text-gray-500">
-            Local-first streaming with provider routing and telemetry metadata capture.
+            Provider, model, and routing configuration.
           </p>
         </div>
         <button
@@ -139,7 +136,7 @@ export default function SttSettingsPanel() {
           className="text-sm text-blue-600 hover:text-blue-800"
           type="button"
         >
-          {loading ? "Refreshing…" : "Reload"}
+          Reload
         </button>
       </div>
 
@@ -149,7 +146,8 @@ export default function SttSettingsPanel() {
         </p>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Primary controls — what you actually change */}
+      <div className="grid gap-4 md:grid-cols-3">
         <label className="text-sm text-gray-700 space-y-1">
           <span>STT Provider</span>
           <select
@@ -186,180 +184,139 @@ export default function SttSettingsPanel() {
             placeholder="e.g. en, hi (blank = auto-detect)"
           />
         </label>
+      </div>
 
-        <label className="text-sm text-gray-700 space-y-1">
-          <span>Chunk Endpoint</span>
+      {/* Policy toggles — promoted for visibility */}
+      <div className="flex items-center gap-6">
+        <label className="flex items-center space-x-2 text-sm text-gray-700">
           <input
-            type="text"
-            value={form?.chunk_endpoint || ""}
-            onChange={handleChange("chunk_endpoint")}
-            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            type="checkbox"
+            checked={Boolean(form?.local_only)}
+            onChange={handleChange("local_only")}
+            className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
           />
+          <span>Local-only mode</span>
         </label>
-
-        <label className="text-sm text-gray-700 space-y-1">
-          <span>Finalize Endpoint</span>
+        <label className="flex items-center space-x-2 text-sm text-gray-700">
           <input
-            type="text"
-            value={form?.complete_endpoint || ""}
-            onChange={handleChange("complete_endpoint")}
-            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+            type="checkbox"
+            checked={Boolean(form?.store_audio)}
+            onChange={handleChange("store_audio")}
+            className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
           />
-        </label>
-
-        <label className="text-sm text-gray-700 space-y-1">
-          <span>External Fallback WS URL</span>
-          <input
-            type="text"
-            value={form?.external_fallback_ws_url || ""}
-            onChange={handleChange("external_fallback_ws_url")}
-            className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
-            placeholder="Optional. Used only when local-only is disabled."
-          />
+          <span>Store audio chunks</span>
         </label>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {STT_PROVIDER_OPTIONS.map((providerId) => (
-          <div key={providerId} className="text-sm text-gray-700 space-y-1 border border-gray-200 rounded p-3">
-            <div className="flex items-center justify-between">
-              <span className="font-medium">{providerId} WS URL</span>
-              <button
-                type="button"
-                onClick={() =>
-                  checkHealth(
-                    providerId,
-                    form?.provider_urls?.[providerId] || "",
-                    form?.provider_http_urls?.[providerId] || ""
-                  )
-                }
-                disabled={Boolean(healthByProvider?.[providerId]?.checking)}
-                className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-60"
-              >
-                {healthByProvider?.[providerId]?.checking ? "Checking…" : "Health Check"}
-              </button>
-            </div>
+      {/* Endpoints — rarely changed */}
+      <details className="text-sm text-gray-700">
+        <summary className="cursor-pointer text-gray-500 hover:text-gray-700 py-1">
+          Endpoints: chunk, finalize, fallback
+        </summary>
+        <div className="grid gap-4 md:grid-cols-2 mt-2">
+          <label className="space-y-1">
+            <span>Chunk Endpoint</span>
             <input
               type="text"
-              value={form?.provider_urls?.[providerId] || ""}
-              onChange={handleProviderUrlChange(providerId)}
+              value={form?.chunk_endpoint || ""}
+              onChange={handleChange("chunk_endpoint")}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
             />
-            <label className="block text-xs text-gray-600 mt-2">HTTP Transcription URL</label>
+          </label>
+          <label className="space-y-1">
+            <span>Finalize Endpoint</span>
             <input
               type="text"
-              value={form?.provider_http_urls?.[providerId] || ""}
-              onChange={handleProviderHttpUrlChange(providerId)}
+              value={form?.complete_endpoint || ""}
+              onChange={handleChange("complete_endpoint")}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
             />
-            <p className="text-xs text-gray-500">
-              {healthByProvider?.[providerId]?.checked_at ? (
-                healthByProvider?.[providerId]?.ok ? (
-                  <>
-                    Healthy ({healthByProvider?.[providerId]?.status_code || "200"}) in{" "}
-                    {formatMs(healthByProvider?.[providerId]?.latency_ms)} at{" "}
-                    {formatClock(healthByProvider?.[providerId]?.checked_at)}
-                  </>
-                ) : (
-                  <>
-                    Unhealthy: {healthByProvider?.[providerId]?.error || "check failed"}{" "}
-                    ({formatClock(healthByProvider?.[providerId]?.checked_at)})
-                  </>
-                )
-              ) : (
-                "No health check run yet."
-              )}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <section className="border border-blue-100 bg-blue-50 rounded-lg p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-semibold text-blue-900">STT Turnaround Telemetry</h3>
-            <p className="text-xs text-blue-800">
-              Live from recent transcript events (auto-refresh every 5s).
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => refreshTelemetry({ silent: false })}
-            className="text-xs px-3 py-1 border border-blue-300 rounded text-blue-700 hover:bg-blue-100"
-          >
-            {telemetryLoading ? "Refreshing…" : "Refresh"}
-          </button>
+          </label>
+          <label className="space-y-1 md:col-span-2">
+            <span>External Fallback WS URL</span>
+            <input
+              type="text"
+              value={form?.external_fallback_ws_url || ""}
+              onChange={handleChange("external_fallback_ws_url")}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              placeholder="Optional. Used only when local-only is disabled."
+            />
+          </label>
         </div>
+      </details>
 
-        {telemetryError && (
-          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
-            {telemetryError}
-          </p>
-        )}
-
-        <div className="grid gap-3 md:grid-cols-2">
-          {STT_PROVIDER_OPTIONS.map((providerId) => {
-            const providerTelemetry = telemetry?.providers?.[providerId] || {};
-            return (
-              <div key={providerId} className="bg-white border border-blue-100 rounded p-3 text-xs text-gray-700">
-                <p className="font-semibold text-gray-900 mb-1">{providerId}</p>
-                <p>Last partial: {formatMs(providerTelemetry?.last_partial_ms)}</p>
-                <p>Last final: {formatMs(providerTelemetry?.last_final_ms)}</p>
-                <p>Avg partial: {formatMs(providerTelemetry?.avg_partial_ms)}</p>
-                <p>Avg final: {formatMs(providerTelemetry?.avg_final_ms)}</p>
-                <p>Samples (final): {providerTelemetry?.final_samples || 0}</p>
-                <p>Last seen: {formatClock(providerTelemetry?.last_event_at)}</p>
+      {/* Per-provider URLs — infrastructure plumbing */}
+      <details className="text-sm text-gray-700">
+        <summary className="cursor-pointer text-gray-500 hover:text-gray-700 py-1">
+          Per-provider URLs and health checks
+        </summary>
+        <div className="grid gap-4 md:grid-cols-2 mt-2">
+          {STT_PROVIDER_OPTIONS.map((providerId) => (
+            <div key={providerId} className="space-y-1 border border-gray-200 rounded p-3">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">{providerId}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    checkHealth(
+                      providerId,
+                      form?.provider_urls?.[providerId] || "",
+                      form?.provider_http_urls?.[providerId] || ""
+                    )
+                  }
+                  disabled={Boolean(healthByProvider?.[providerId]?.checking)}
+                  className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-60"
+                >
+                  {healthByProvider?.[providerId]?.checking ? "Checking..." : "Health Check"}
+                </button>
               </div>
-            );
-          })}
+              <label className="block text-xs text-gray-600">WS URL</label>
+              <input
+                type="text"
+                value={form?.provider_urls?.[providerId] || ""}
+                onChange={handleProviderUrlChange(providerId)}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              <label className="block text-xs text-gray-600 mt-1">HTTP Transcription URL</label>
+              <input
+                type="text"
+                value={form?.provider_http_urls?.[providerId] || ""}
+                onChange={handleProviderHttpUrlChange(providerId)}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-xs text-gray-500">
+                {healthByProvider?.[providerId]?.checked_at ? (
+                  healthByProvider?.[providerId]?.ok ? (
+                    <>
+                      Healthy ({healthByProvider?.[providerId]?.status_code || "200"}) in{" "}
+                      {formatMs(healthByProvider?.[providerId]?.latency_ms)} at{" "}
+                      {formatClock(healthByProvider?.[providerId]?.checked_at)}
+                    </>
+                  ) : (
+                    <>
+                      Unhealthy: {healthByProvider?.[providerId]?.error || "check failed"}{" "}
+                      ({formatClock(healthByProvider?.[providerId]?.checked_at)})
+                    </>
+                  )
+                ) : (
+                  "No health check run yet."
+                )}
+              </p>
+            </div>
+          ))}
         </div>
-        <p className="text-[11px] text-blue-800">
-          Updated: {formatClock(telemetry?.generated_at)} • Window: {telemetry?.window_size || 0} events
-        </p>
-      </section>
+      </details>
 
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <label className="flex items-center space-x-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={Boolean(form?.local_only)}
-              onChange={handleChange("local_only")}
-              className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
-            />
-            <span>Local-only mode (default)</span>
-          </label>
-          <label className="flex items-center space-x-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={Boolean(form?.store_audio)}
-              onChange={handleChange("store_audio")}
-              className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
-            />
-            <span>Store audio chunks (opt-in)</span>
-          </label>
-        </div>
+      {/* Save */}
+      <div className="flex items-center justify-end pt-2">
         <button
           onClick={handleSave}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition disabled:opacity-60"
           disabled={saving}
           type="button"
         >
-          {saving ? "Saving…" : "Save STT Settings"}
+          {saving ? "Saving..." : "Save STT Settings"}
         </button>
-      </div>
-
-      <div className="text-xs text-gray-500 space-y-1">
-        <p>Retention: {settings?.retention || "forever (default)"}.</p>
-        <p>
-          Active provider WS URL: <code>{form?.provider_urls?.[form?.provider] || form?.ws_url || "not configured"}</code>
-        </p>
-        <p>
-          Active provider HTTP URL: <code>{form?.provider_http_urls?.[form?.provider] || form?.http_url || "not configured"}</code>
-        </p>
-        <p>
-          Audio download token: <code>{settings?.download_token || "not configured"}</code>
-        </p>
       </div>
     </section>
   );
