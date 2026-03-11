@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import LlmProvidersPanel from '../components/LlmProvidersPanel';
-import LlmSettingsPanel from '../components/LlmSettingsPanel';
 import SttSettingsPanel from '../components/SttSettingsPanel';
 import PromptEditorPanel from '../components/PromptEditorPanel';
 
@@ -49,12 +48,7 @@ export default function Settings() {
         </div>
 
         {/* Tab Content */}
-        {activeTab === 'llm' && (
-          <>
-            <LlmProvidersPanel />
-            <LlmSettingsPanel />
-          </>
-        )}
+        {activeTab === 'llm' && <LlmProvidersPanel />}
 
         {activeTab === 'speech' && <SttSettingsPanel />}
 
