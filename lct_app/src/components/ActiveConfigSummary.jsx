@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
+import PropTypes from "prop-types";
 
 import { apiFetch } from "../services/apiClient";
 import { getLlmSettings } from "../services/llmSettingsApi";
 import { getSttSettings, updateSttSettings } from "../services/sttSettingsApi";
 import { STT_PROVIDER_OPTIONS, normalizeSttSettings } from "./audio/sttUtils";
 
-export default function ActiveConfigSummary() {
+export default function ActiveConfigSummary({ onConfigChange }) {
   const [llmProviders, setLlmProviders] = useState([]);
   const [llmSettings, setLlmSettings] = useState(null);
   const [sttSettings, setSttSettings] = useState(null);
@@ -14,20 +15,17 @@ export default function ActiveConfigSummary() {
 
   useEffect(() => {
     const load = async () => {
-      try {
-        const [providersRes, llm, stt] = await Promise.all([
-          apiFetch("/api/settings/llm/providers").then((r) => (r.ok ? r.json() : null)),
-          getLlmSettings().catch(() => null),
-          getSttSettings().catch(() => null),
-        ]);
-        setLlmProviders(providersRes?.providers || []);
-        setLlmSettings(llm);
-        if (stt) setSttSettings(normalizeSttSettings(stt));
-      } catch (err) {
-        console.error("ActiveConfigSummary: failed to load:", err);
-      } finally {
-        setLoading(false);
-      }
+      const [providersRes, llm, stt] = await Promise.all([
+        apiFetch("/api/settings/llm/providers")
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null),
+        getLlmSettings().catch(() => null),
+        getSttSettings().catch(() => null),
+      ]);
+      setLlmProviders(providersRes?.providers || []);
+      setLlmSettings(llm);
+      if (stt) setSttSettings(normalizeSttSettings(stt));
+      setLoading(false);
     };
     load();
   }, []);
@@ -53,6 +51,7 @@ export default function ActiveConfigSummary() {
       if (response.ok) {
         const data = await response.json();
         setLlmProviders(data.providers || reordered);
+        onConfigChange?.();
       }
     } catch (err) {
       console.error("Quick switch LLM failed:", err);
@@ -73,6 +72,7 @@ export default function ActiveConfigSummary() {
       };
       const updated = await updateSttSettings(payload);
       setSttSettings(normalizeSttSettings(updated));
+      onConfigChange?.();
     } catch (err) {
       console.error("Quick switch STT failed:", err);
     } finally {
@@ -91,6 +91,7 @@ export default function ActiveConfigSummary() {
         ws_url: updated.provider_urls?.[updated.provider] || updated.ws_url,
       });
       setSttSettings(normalizeSttSettings(result));
+      onConfigChange?.();
     } catch (err) {
       console.error(`Toggle ${key} failed:`, err);
       setSttSettings(sttSettings);
@@ -183,3 +184,7 @@ export default function ActiveConfigSummary() {
     </div>
   );
 }
+
+ActiveConfigSummary.propTypes = {
+  onConfigChange: PropTypes.func,
+};

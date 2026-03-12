@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ActiveConfigSummary from '../components/ActiveConfigSummary';
 import LlmProvidersPanel from '../components/LlmProvidersPanel';
@@ -17,6 +17,13 @@ export default function Settings() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('llm');
 
+  // Incremented when ActiveConfigSummary saves, forcing tab panels
+  // to remount with fresh data from the backend.
+  const [configVersion, setConfigVersion] = useState(0);
+  const handleConfigChange = useCallback(() => {
+    setConfigVersion((v) => v + 1);
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
@@ -33,7 +40,7 @@ export default function Settings() {
         </div>
 
         {/* Active config summary — glanceable, always visible */}
-        <ActiveConfigSummary />
+        <ActiveConfigSummary onConfigChange={handleConfigChange} />
 
         {/* Tab Bar */}
         <div className="flex border-b border-gray-200">
@@ -53,14 +60,24 @@ export default function Settings() {
           ))}
         </div>
 
-        {/* Tab Content */}
-        {activeTab === 'llm' && <LlmProvidersPanel />}
+        {/* Tab Content — always mounted, hidden via CSS to preserve draft state.
+            key={configVersion} on LLM/STT panels forces remount after summary saves,
+            so they reload fresh data and don't overwrite the summary's changes. */}
+        <div hidden={activeTab !== 'llm'}>
+          <LlmProvidersPanel key={`llm-${configVersion}`} />
+        </div>
 
-        {activeTab === 'speech' && <SttSettingsPanel />}
+        <div hidden={activeTab !== 'speech'}>
+          <SttSettingsPanel key={`stt-${configVersion}`} />
+        </div>
 
-        {activeTab === 'prompts' && <PromptEditorPanel />}
+        <div hidden={activeTab !== 'prompts'}>
+          <PromptEditorPanel />
+        </div>
 
-        {activeTab === 'diag' && <DiagnosticsPanel />}
+        <div hidden={activeTab !== 'diag'}>
+          <DiagnosticsPanel key={`diag-${configVersion}`} />
+        </div>
       </div>
     </div>
   );
