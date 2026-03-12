@@ -17,11 +17,15 @@ export default function Settings() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('llm');
 
-  // Incremented when ActiveConfigSummary saves, forcing tab panels
-  // to remount with fresh data from the backend.
-  const [configVersion, setConfigVersion] = useState(0);
-  const handleConfigChange = useCallback(() => {
-    setConfigVersion((v) => v + 1);
+  // Per-domain version counters: incremented when ActiveConfigSummary
+  // saves to that domain, forcing only the affected panel to remount
+  // with fresh data. Unrelated panels keep their draft state.
+  const [llmVersion, setLlmVersion] = useState(0);
+  const [sttVersion, setSttVersion] = useState(0);
+
+  const handleConfigChange = useCallback((domain) => {
+    if (domain === "llm") setLlmVersion((v) => v + 1);
+    if (domain === "stt") setSttVersion((v) => v + 1);
   }, []);
 
   return (
@@ -60,24 +64,24 @@ export default function Settings() {
           ))}
         </div>
 
-        {/* Tab Content — always mounted, hidden via CSS to preserve draft state.
-            key={configVersion} on LLM/STT panels forces remount after summary saves,
-            so they reload fresh data and don't overwrite the summary's changes. */}
+        {/* Tab Content
+            - LLM/STT/Prompts: always mounted (hidden attr) to preserve draft state.
+              Per-domain key forces remount only when the summary saves to that domain.
+            - Diagnostics: conditionally rendered (&&) because it has no draft state
+              and its telemetry hook polls every 5s — no reason to run when hidden. */}
         <div hidden={activeTab !== 'llm'}>
-          <LlmProvidersPanel key={`llm-${configVersion}`} />
+          <LlmProvidersPanel key={`llm-${llmVersion}`} />
         </div>
 
         <div hidden={activeTab !== 'speech'}>
-          <SttSettingsPanel key={`stt-${configVersion}`} />
+          <SttSettingsPanel key={`stt-${sttVersion}`} />
         </div>
 
         <div hidden={activeTab !== 'prompts'}>
           <PromptEditorPanel />
         </div>
 
-        <div hidden={activeTab !== 'diag'}>
-          <DiagnosticsPanel key={`diag-${configVersion}`} />
-        </div>
+        {activeTab === 'diag' && <DiagnosticsPanel />}
       </div>
     </div>
   );

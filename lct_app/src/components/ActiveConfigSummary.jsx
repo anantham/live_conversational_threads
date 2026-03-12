@@ -51,7 +51,7 @@ export default function ActiveConfigSummary({ onConfigChange }) {
       if (response.ok) {
         const data = await response.json();
         setLlmProviders(data.providers || reordered);
-        onConfigChange?.();
+        onConfigChange?.("llm");
       }
     } catch (err) {
       console.error("Quick switch LLM failed:", err);
@@ -72,7 +72,7 @@ export default function ActiveConfigSummary({ onConfigChange }) {
       };
       const updated = await updateSttSettings(payload);
       setSttSettings(normalizeSttSettings(updated));
-      onConfigChange?.();
+      onConfigChange?.("stt");
     } catch (err) {
       console.error("Quick switch STT failed:", err);
     } finally {
@@ -91,7 +91,7 @@ export default function ActiveConfigSummary({ onConfigChange }) {
         ws_url: updated.provider_urls?.[updated.provider] || updated.ws_url,
       });
       setSttSettings(normalizeSttSettings(result));
-      onConfigChange?.();
+      onConfigChange?.("stt");
     } catch (err) {
       console.error(`Toggle ${key} failed:`, err);
       setSttSettings(sttSettings);
