@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ActiveConfigSummary from '../components/ActiveConfigSummary';
 import LlmProvidersPanel from '../components/LlmProvidersPanel';
 import SttSettingsPanel from '../components/SttSettingsPanel';
 import PromptEditorPanel from '../components/PromptEditorPanel';
@@ -30,6 +31,9 @@ export default function Settings() {
           <h1 className="text-3xl font-bold text-gray-800">Settings</h1>
           <p className="text-gray-600 mt-1">Configure LLM providers, speech-to-text, and prompts.</p>
         </div>
+
+        {/* Active config summary — glanceable, always visible */}
+        <ActiveConfigSummary />
 
         {/* Tab Bar */}
         <div className="flex border-b border-gray-200">
