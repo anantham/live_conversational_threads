@@ -70,7 +70,7 @@ live_conversational_threads/
 
 ## Documentation (`docs/`)
 
-- `docs/adr/`: architecture decisions (ADR-001 through ADR-015 currently; see `docs/adr/INDEX.md`).
+- `docs/adr/`: architecture decisions (ADR-001 through ADR-016 currently; see `docs/adr/INDEX.md`).
 - `docs/plans/`: implementation plans and checklists.
 - `docs/WORKLOG.md`: timestamped engineering log.
 - `docs/TECH_DEBT.md`: large-file and architecture cleanup backlog.
