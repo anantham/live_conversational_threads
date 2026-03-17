@@ -2,7 +2,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from lct_python_backend.services.stt_settings_service import load_stt_settings
+from lct_python_backend.services.stt_settings_service import (
+    load_stt_settings,
+    load_stt_settings_for_client,
+    save_stt_settings,
+)
 
 
 LEGACY_MODAL_WHISPER_URL = "https://adityaarpitha--whisperx-server-serve.modal.run/v1/audio/transcriptions"
@@ -22,6 +26,7 @@ class _DummySession:
         self._setting = setting
         self.commit_calls = 0
         self.rollback_calls = 0
+        self.added = []
 
     async def execute(self, _statement):
         return _DummyExecuteResult(self._setting)
@@ -31,6 +36,10 @@ class _DummySession:
 
     async def rollback(self):
         self.rollback_calls += 1
+
+    def add(self, value):
+        self.added.append(value)
+        self._setting = value
 
 
 @pytest.mark.asyncio
@@ -88,3 +97,94 @@ async def test_load_stt_settings_uses_defaults_when_db_setting_missing(monkeypat
 
     assert session.commit_calls == 0
     assert merged["provider_http_urls"]["whisper"] == INDRAS_NET_WHISPER_URL
+
+
+@pytest.mark.asyncio
+async def test_load_stt_settings_for_client_masks_cloud_api_keys(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "env-openai-secret")
+    setting = SimpleNamespace(
+        value={
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com/v1/audio/transcriptions",
+                    "model": "gpt-4o-transcribe-diarize",
+                    "api_key": "db-openai-secret",
+                }
+            }
+        },
+        updated_at=None,
+    )
+    session = _DummySession(setting)
+
+    merged = await load_stt_settings_for_client(session)
+
+    provider = merged["cloud_fallback_providers"]["openai_audio"]
+    assert provider["api_key"] == ""
+    assert provider["has_api_key"] is True
+    assert provider["base_url"] == "https://api.openai.com"
+
+
+@pytest.mark.asyncio
+async def test_save_stt_settings_preserves_existing_cloud_api_key_when_blank(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    setting = SimpleNamespace(
+        value={
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com",
+                    "model": "gpt-4o-transcribe-diarize",
+                    "api_key": "db-openai-secret",
+                }
+            }
+        },
+        updated_at=None,
+    )
+    session = _DummySession(setting)
+
+    merged = await save_stt_settings(
+        session,
+        {
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com",
+                    "model": "gpt-4o-transcribe-diarize",
+                    "api_key": "",
+                }
+            }
+        },
+        include_secrets=True,
+    )
+
+    provider = merged["cloud_fallback_providers"]["openai_audio"]
+    assert session.commit_calls == 1
+    assert provider["api_key"] == "db-openai-secret"
+    assert setting.value["cloud_fallback_providers"]["openai_audio"]["api_key"] == "db-openai-secret"
+
+
+@pytest.mark.asyncio
+async def test_save_stt_settings_can_clear_cloud_api_key_and_shadow_env_default(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "env-openai-secret")
+    session = _DummySession(setting=None)
+
+    merged = await save_stt_settings(
+        session,
+        {
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com",
+                    "model": "gpt-4o-transcribe-diarize",
+                    "clear_api_key": True,
+                }
+            }
+        },
+        include_secrets=True,
+    )
+
+    provider = merged["cloud_fallback_providers"]["openai_audio"]
+    assert session.commit_calls == 1
+    assert provider["api_key"] == ""
+    assert session.added[0].value["cloud_fallback_providers"]["openai_audio"]["api_key"] == ""

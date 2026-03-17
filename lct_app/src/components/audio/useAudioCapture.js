@@ -4,15 +4,17 @@ import { downsampleBuffer, convertFloat32ToInt16 } from "./pcm";
 
 /**
  * Manages the MediaStream, AudioContext, and ScriptProcessor lifecycle.
- * Calls `onPCMFrame(buffer)` on each processed audio frame.
+ * Calls `onPCMFrame(buffer)` on each processed audio frame and reports input level.
  */
-export default function useAudioCapture({ onPCMFrame, onError }) {
+export default function useAudioCapture({ onPCMFrame, onAudioLevel, onError }) {
   const audioContextRef = useRef(null);
   const processorRef = useRef(null);
   const sourceRef = useRef(null);
+  const streamRef = useRef(null);
 
   const cleanupNodes = useCallback(async () => {
     try {
+      streamRef.current?.getTracks?.().forEach((track) => track.stop());
       processorRef.current?.disconnect();
       sourceRef.current?.disconnect();
       if (audioContextRef.current?.state !== "closed") {
@@ -24,6 +26,7 @@ export default function useAudioCapture({ onPCMFrame, onError }) {
       processorRef.current = null;
       sourceRef.current = null;
       audioContextRef.current = null;
+      streamRef.current = null;
     }
   }, []);
 
@@ -33,6 +36,7 @@ export default function useAudioCapture({ onPCMFrame, onError }) {
         ? { deviceId: { exact: deviceId } }
         : true;
       const stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+      streamRef.current = stream;
       const audioContext = new AudioContext({ sampleRate: 16000 });
       audioContextRef.current = audioContext;
 
@@ -44,6 +48,17 @@ export default function useAudioCapture({ onPCMFrame, onError }) {
       processor.onaudioprocess = (event) => {
         try {
           const inputBuffer = event.inputBuffer.getChannelData(0);
+          let energy = 0;
+          let peak = 0;
+          for (let index = 0; index < inputBuffer.length; index += 1) {
+            const sample = Math.abs(inputBuffer[index]);
+            energy += sample * sample;
+            if (sample > peak) {
+              peak = sample;
+            }
+          }
+          const rms = inputBuffer.length > 0 ? Math.sqrt(energy / inputBuffer.length) : 0;
+          onAudioLevel?.({ rms, peak, tsMs: Date.now() });
           const downsampled = downsampleBuffer(
             inputBuffer,
             audioContext.sampleRate,
@@ -64,7 +79,7 @@ export default function useAudioCapture({ onPCMFrame, onError }) {
       onError?.(error);
       return false;
     }
-  }, [onPCMFrame, onError]);
+  }, [onAudioLevel, onPCMFrame, onError]);
 
   const stopCapture = useCallback(async () => {
     await cleanupNodes();

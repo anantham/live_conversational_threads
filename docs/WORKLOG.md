@@ -1,5 +1,89 @@
 # WORKLOG
 
+## 2026-03-13T09:17:37Z — Phase 1 live pipeline HUD for `/new`
+
+Branch: `codex/test/streaming-audio-e2e`
+
+- `lct_app/src/components/AudioInput.jsx` (lines 78-382): Replaced the old single status dot with a live session HUD, wired transcript/backend/status callbacks into a session-scoped health model, and added a mic level ring so the record control now shows active capture instead of only websocket state.
+- `lct_app/src/components/audio/useLiveSessionStatus.js` (new, lines 1-647): Added a session-local health/latency hook that tracks mic activity, backend RTT/freshness, STT caption timing, graph-generation progress, and detail-card copy without depending on global Settings telemetry.
+- `lct_app/src/components/audio/LiveSessionHud.jsx` (new, lines 1-112): Added the compact `Backend` / `STT` / `Graph` chip cluster plus a tap/click detail card for capture, transport, STT, and graph diagnostics.
+- `lct_app/src/components/audio/useTranscriptSockets.js` (lines 20-222): Added websocket ping/pong timing, immediate post-connect ping, session-ack/pong/backend-message callbacks, and ping-loop cleanup so the live HUD can show backend RTT and freshness.
+- `lct_app/src/components/audio/audioMessages.js` (lines 1-77): Enriched backend message dispatch so `session_ack`, `pong`, provider/backend errors, and all server messages can update the session-local HUD state.
+- `lct_app/src/components/audio/useAudioCapture.js` (lines 9-82): Added RMS/peak reporting for the mic level ring and tightened capture cleanup by stopping MediaStream tracks when recording ends.
+- `lct_python_backend/services/stt_ws_session.py` (lines 496-581, 681-687): Enriched `session_ack` with transport/model/fallback metadata and upgraded `pong` to echo timestamps so the frontend can distinguish “configured” from “healthy” and display measured RTT.
+- `lct_python_backend/services/transcript_processing.py` (lines 134-365): Emitted structured graph lifecycle updates (`queued`, `generating`, `completed`, `empty`) over the existing `processing_status` channel so the live HUD can show graph progress without a second event stream.
+- `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 11-279): Extended websocket contract coverage for the new `session_ack` fields and timestamped `pong` responses.
+- `docs/TECH_DEBT.md` (lines 1-33): Logged new decomposition candidates for `AudioInput.jsx`, `useLiveSessionStatus.js`, `stt_ws_session.py`, and `transcript_processing.py` because this phase added enough mixed concern to justify follow-up modularization.
+
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/integration/test_transcripts_websocket.py` (`5 passed`)
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/stt_ws_session.py lct_python_backend/services/transcript_processing.py lct_python_backend/tests/integration/test_transcripts_websocket.py`
+  - `cd lct_app && npx eslint src/components/AudioInput.jsx src/components/audio/useAudioCapture.js src/components/audio/useTranscriptSockets.js src/components/audio/audioMessages.js src/components/audio/useLiveSessionStatus.js src/components/audio/LiveSessionHud.jsx`
+  - `cd lct_app && npm run -s build` (passed; existing Vite chunk-size warning persists)
+
+## 2026-03-08T11:02:41Z — Live STT cloud fallback settings + masked credential path
+
+Branch: `codex/test/streaming-audio-e2e`
+
+- `lct_python_backend/services/stt_config.py` (lines 1-356): Added STT cloud-fallback provider defaults for OpenAI/OpenRouter, canonical base/API URL normalization, client-safe secret masking helpers, and merge rules for live fallback toggles plus persisted cloud provider records.
+- `lct_python_backend/services/stt_settings_service.py` (lines 56-138): Added secret-preserving save logic for cloud fallback providers, client-safe STT settings reads, and blank-as-keep / explicit-clear handling for stored STT API keys.
+- `lct_python_backend/stt_api.py` (lines 34-88): Switched `GET /api/settings/stt` and `PUT /api/settings/stt` to the masked STT settings path so browser reads no longer echo cloud STT secrets.
+- `lct_python_backend/services/stt_live_provider_selection.py` (new, lines 1-189): Added ordered live websocket STT candidate resolution covering configured provider, remote WhisperX fallback, optional external HTTP fallback, OpenAI diarized cloud fallback, and OpenRouter degraded text-only fallback.
+- `lct_python_backend/services/stt_http_transcriber.py` (lines 185-241, 249-734): Extended realtime HTTP STT sessions to try ordered fallback candidates, record fallback/degraded metadata, and support OpenAI `/v1/audio/transcriptions` plus OpenRouter chat-audio transports while preserving the existing websocket event contract.
+- `lct_python_backend/services/stt_ws_session.py` (lines 500-565): Live websocket session setup now resolves fallback candidates, binds them into `RealtimeHttpSttSession`, and includes summarized fallback metadata in `session_ack`.
+- `lct_app/src/components/audio/sttUtils.js` (lines 14-59, 98-142): Added frontend defaults/normalization for cloud fallback providers plus the new live fallback flags.
+- `lct_app/src/components/SttCloudFallbackFields.jsx` (new, lines 1-153): Added dedicated STT settings UI for OpenAI/OpenRouter fallback providers, including write-only API key fields, clear-key toggles, and diarization/degraded-mode guidance.
+- `lct_app/src/components/SttSettingsPanel.jsx` (lines 9, 121-163, 267-276, 333-338): Wired the STT panel to the new cloud fallback section, added nested field handlers for provider credentials, and exposed the missing external fallback HTTP URL field used by live candidate routing.
+- `lct_python_backend/tests/unit/test_stt_config.py` (lines 81-134): Added regression coverage for STT cloud provider URL normalization and client-safe secret masking.
+- `lct_python_backend/tests/unit/test_stt_settings_service.py` (lines 102-190): Added regression coverage for masked STT settings reads, blank-key preservation, and explicit key-clearing that shadows env defaults.
+- `lct_python_backend/tests/unit/test_stt_live_provider_selection.py` (new, lines 1-79): Added ordered-candidate tests proving diarization-required mode prefers remote Whisper/OpenAI and degraded mode can opt into OpenRouter.
+- `lct_python_backend/tests/unit/test_stt_api_settings.py` (lines 82-120): Added route regressions for masked STT settings reads and `include_secrets=False` writes.
+- `lct_python_backend/tests/unit/test_stt_http_transcriber.py` (lines 230-377): Added fallback transport regressions covering backend-http -> OpenAI failover and OpenRouter chat-audio request shaping.
+- `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 192-251): Added websocket contract coverage for `session_ack.fallback_candidates`.
+- `docs/TECH_DEBT.md`: Updated STT panel/config/transcriber debt entries after this slice increased mixed concerns in those files.
+
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_config.py lct_python_backend/tests/unit/test_stt_settings_service.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/unit/test_stt_api_settings.py lct_python_backend/tests/unit/test_stt_http_transcriber.py lct_python_backend/tests/integration/test_transcripts_websocket.py lct_python_backend/tests/integration/test_streaming_audio_http_e2e.py` (`58 passed`)
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/stt_config.py lct_python_backend/services/stt_settings_service.py lct_python_backend/services/stt_live_provider_selection.py lct_python_backend/services/stt_http_transcriber.py lct_python_backend/services/stt_ws_session.py lct_python_backend/stt_api.py lct_python_backend/tests/unit/test_stt_config.py lct_python_backend/tests/unit/test_stt_settings_service.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/unit/test_stt_api_settings.py lct_python_backend/tests/unit/test_stt_http_transcriber.py lct_python_backend/tests/integration/test_transcripts_websocket.py lct_python_backend/tests/integration/test_streaming_audio_http_e2e.py`
+  - `cd lct_app && npx eslint src/components/SttSettingsPanel.jsx src/components/SttCloudFallbackFields.jsx src/components/audio/sttUtils.js`
+  - `cd lct_app && npm run -s build` (passed; existing chunk-size warning persists)
+
+## 2026-03-08T10:36:52Z — LLM provider settings: server-side key masking + OpenAI/OpenRouter normalization
+
+Branch: `codex/test/streaming-audio-e2e`
+
+- `lct_python_backend/services/llm_config.py` (lines 11-145, 151-298): Added provider-type/base-URL normalization, canonical API URL building, client-safe provider masking (`has_api_key` + blank `api_key`), and save/load merge rules that preserve existing secrets across ordinary edits while still allowing explicit key clears to shadow env defaults.
+- `lct_python_backend/llm_api.py` (lines 248-344): Provider settings reads now return masked configs, provider updates reject duplicate ids, and provider health checks now probe the real models endpoint with stored Authorization headers instead of assuming `/health` exists.
+- `lct_python_backend/services/local_llm_client.py` (lines 9-13, 108-160, 258-302, 417-457): Local client + provider-fallback transport now use shared provider URL construction so OpenAI/OpenRouter/OpenAI-compatible bases resolve to consistent `/v1/...` endpoints without duplicated path segments.
+- `lct_app/src/components/LlmProvidersPanel.jsx` (lines 7-612): Reworked the Settings provider panel to support OpenAI/OpenRouter presets, editing existing providers, write-only password fields, explicit “clear stored key” behavior, and provider-aware health checks while keeping reordering/toggling intact.
+- `lct_python_backend/tests/unit/test_llm_config.py` (new, lines 1-172): Added regression coverage for provider URL normalization, masked default reads, env-secret inheritance for matching providers, key preservation when payloads omit replacements, and explicit key clearing.
+- `lct_python_backend/tests/unit/test_llm_api.py` (lines 1-166): Added explicit `DATABASE_URL` test bootstrap and a provider-health regression proving `/api/settings/llm/providers/health` uses the models endpoint with the stored Bearer key.
+- `docs/TECH_DEBT.md` (lines 14-30): Logged new decomposition candidates for `LlmProvidersPanel.jsx`, `llm_api.py`, `llm_config.py`, and `local_llm_client.py` because this slice increased mixed concerns in each.
+- `ISSUES.md` (lines 22-26): Logged two out-of-scope/preexisting follow-ups surfaced during validation: `Settings.jsx` hook-dependency lint warnings and the overlapping `LlmSettingsPanel` vs `LlmProvidersPanel` UX.
+
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/llm_config.py lct_python_backend/llm_api.py lct_python_backend/services/local_llm_client.py lct_python_backend/tests/unit/test_llm_config.py lct_python_backend/tests/unit/test_llm_api.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_llm_config.py lct_python_backend/tests/unit/test_llm_api.py lct_python_backend/tests/unit/test_local_llm_client.py` (`13 passed`)
+  - `cd lct_app && npx eslint src/components/LlmProvidersPanel.jsx src/pages/Settings.jsx src/components/LlmSettingsPanel.jsx` (`0 errors, 2 preexisting warnings in Settings.jsx`)
+  - `cd lct_app && npm run -s build` (passed; existing chunk-size warning persists)
+
+## 2026-03-08T08:18:44Z — Backend streaming audio E2E coverage + STT diarize contract hardening
+
+Branch: `codex/test/streaming-audio-e2e`
+
+- `lct_python_backend/services/stt_http_transcriber.py` (lines 386-396): Hardened the live STT HTTP contract by always sending `diarize=true|false` in multipart form data, so remote `/api/transcribe` proxies cannot reinterpret an omitted field as enabled diarization.
+- `lct_python_backend/tests/unit/test_stt_http_transcriber.py` (lines 229-251): Updated the disabled-diarization regression to assert the outbound form now carries `diarize=false` instead of omitting the field.
+- `lct_python_backend/tests/integration/transcripts_test_support.py` (new, lines 1-120): Added a reusable websocket test harness with dummy DB/transcript-processing modules, lazy `stt_api` import, processor-call collectors, and PCM base64 generation to keep integration tests isolated from real DB startup and LLM work.
+- `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 1-189): Repaired stale websocket integration coverage after the `WsSessionContext` extraction; tests now patch the current `stt_ws_session` seams and cover client-sent partial/final events, backend-owned STT chunk handling, and the immediate `flush_ack` contract.
+- `lct_python_backend/tests/integration/test_streaming_audio_http_e2e.py` (new, lines 1-232): Added deterministic `/ws/transcripts` → real `RealtimeHttpSttSession` → fake local HTTP STT server coverage, asserting WAV payload generation, `model`/`language`/`diarize` form fields, transcript/final message emission, and speaker-segment handoff.
+- `lct_python_backend/tests/integration/test_transcribe_proxy_smoke.py` (new, lines 1-38): Added an env-gated smoke test for the real remote IndrasNet `/api/transcribe` proxy using caller-supplied audio.
+- `lct_python_backend/tests/README.md` (lines 49-54): Documented the new deterministic HTTP integration test and the new remote proxy smoke-test env vars.
+- `ISSUES.md` (lines 14-15): Logged two out-of-scope remote issues discovered during this session: IndrasNet defaults missing `diarize` fields to true, and Modal overflow currently fails with a workspace billing-limit error.
+
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/stt_http_transcriber.py lct_python_backend/tests/unit/test_stt_http_transcriber.py lct_python_backend/tests/integration/transcripts_test_support.py lct_python_backend/tests/integration/test_transcripts_websocket.py lct_python_backend/tests/integration/test_streaming_audio_http_e2e.py lct_python_backend/tests/integration/test_transcribe_proxy_smoke.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_http_transcriber.py lct_python_backend/tests/integration/test_transcripts_websocket.py lct_python_backend/tests/integration/test_streaming_audio_http_e2e.py lct_python_backend/tests/integration/test_transcribe_proxy_smoke.py` (`35 passed, 1 skipped`)
+
 ## 2026-03-06T02:00:00Z — Tech debt: import_bulk_pipeline.py 4-module split (PR #39, supersedes BulkPipelineContext approach)
 
 Branch: `refactor/import-bulk-pipeline-split`
@@ -1006,3 +1090,41 @@ Validation:
 - Preexisting issue discovered (out-of-scope but logged): canonical canvas endpoint returns 500 for upload-generated conversations because DB node tables are empty despite saved graph JSON. Blocker status: non-blocking for review (converter fallback used), blocking for canonical API-only export flow.
 - Recommended next step:
   - add export fallback path in `canvas_api.py` to load persisted `graph_data/chunks` (saved JSON/GCS/local) when `Node` rows are absent for the conversation.
+
+## 2026-03-13T12:03:07Z
+- `lct_app/src/pages/Settings.jsx` (lines 1-76, 173-237, 259-429): Reframed Settings around pipeline stages instead of prompt-first navigation, moved runtime routing ahead of prompt authoring, and cleaned up prompt-loading effects with `useCallback` so the updated page passes hook linting.
+- `lct_app/src/components/SttSettingsPanel.jsx` (lines 4-11, 123-183, 193-224, 362-447): Wired `live_fallback_priority` into the live STT form, added explicit primary-route copy, rendered cloud providers beside ordered fallback routes, and renamed the panel/save action to match the live STT stage.
+- `lct_app/src/components/SttCloudFallbackFields.jsx` (lines 23-29): Clarified that cloud providers are route participants and that their relative order is controlled by the separate live fallback list.
+- `lct_app/src/components/SttFallbackOrderFields.jsx` (lines 1-136): Added a dedicated ordered-route control for `remote_whisper`, `external_http`, `openai_audio`, and `openrouter_audio`, including eligibility labels derived from the active STT form state.
+- `lct_app/src/components/LlmProvidersPanel.jsx` (lines 525-533): Renamed the provider stack panel to `Graph LLM Routing` so the copy matches the stage-based IA.
+- `lct_app/src/components/LlmSettingsPanel.jsx` (lines 149-157): Renamed the model panel to `Graph Models & Embeddings` and updated its subtitle to reflect graph-generation and retrieval roles.
+- `docs/adr/ADR-014-stage-based-runtime-settings-and-explicit-live-fallback-order.md` (lines 1-65): Documented the stage-based settings architecture and persisted live STT fallback ordering decision.
+- `docs/adr/INDEX.md` (lines 3-20): Added ADR-014 to the ADR index.
+- `docs/TECH_DEBT.md` (lines 15-16, 27): Refreshed the large-file notes for `Settings.jsx`, `LlmProvidersPanel.jsx`, and `SttSettingsPanel.jsx` after this pass.
+
+Validation:
+- `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_config.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/unit/test_stt_settings_service.py lct_python_backend/tests/unit/test_stt_api_settings.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (28 passed)
+- `./.venv/bin/python -m py_compile lct_python_backend/services/stt_config.py lct_python_backend/services/stt_live_provider_selection.py lct_python_backend/services/stt_ws_session.py lct_python_backend/tests/unit/test_stt_config.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/unit/test_stt_settings_service.py lct_python_backend/tests/unit/test_stt_api_settings.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (passed)
+- `cd lct_app && npx eslint src/pages/Settings.jsx src/components/SttSettingsPanel.jsx src/components/SttCloudFallbackFields.jsx src/components/SttFallbackOrderFields.jsx src/components/LlmProvidersPanel.jsx src/components/LlmSettingsPanel.jsx src/components/audio/sttUtils.js` (passed)
+- `cd lct_app && npm run -s build` (passed; existing chunk-size warning remains)
+
+## 2026-03-14T01:16:29Z
+- `lct_app/src/routes/AppRoutes.jsx` (lines 1-37): Replaced the single `/settings` page route with nested routes under `SettingsLayout`, keeping `/settings` as the stable entry while redirecting to `/settings/runtime`.
+- `lct_app/src/pages/settings/SettingsLayout.jsx` (lines 1-48): Added the shared settings shell with back navigation, `Runtime`/`Prompts` tabs, and `<Outlet />`.
+- `lct_app/src/pages/settings/RuntimeSettingsPage.jsx` (lines 1-23): Added the compact runtime page that mounts `SttSettingsCard`, `LlmRoutingCard`, and `LlmModelsCard`.
+- `lct_app/src/pages/settings/PromptLibraryPage.jsx` (lines 1-133): Extracted prompt authoring into its own route with the prompt list sidebar, editor card, reload button, and history modal wiring.
+- `lct_app/src/components/settings/usePromptLibraryState.js` (lines 1-218), `lct_app/src/components/settings/useUnsavedChangesGuard.js` (lines 1-32), `lct_app/src/components/settings/PromptEditorCard.jsx` (lines 1-220), and `lct_app/src/components/settings/PromptHistoryModal.jsx` (lines 1-73): Split prompt state/UX concerns out of the deleted monolithic settings page and added route-leave/browser-unload protection for unsaved prompt edits.
+- `lct_app/src/components/settings/SttSettingsCard.jsx` (lines 1-198), `lct_app/src/components/settings/useSttSettingsForm.js` (lines 1-195), `lct_app/src/components/settings/SttEndpointFields.jsx` (lines 1-122), and `lct_app/src/components/settings/SttDiagnosticsPanel.jsx` (lines 1-173): Replaced the old all-at-once STT panel with a compact card that keeps primary provider/fallback order visible, moves endpoints/cloud/diagnostics behind disclosures, and lazy-mounts telemetry and health checks only when diagnostics are opened.
+- `lct_app/src/components/SttCloudFallbackFields.jsx` (lines 14-157): Added `showEnableToggle` so the cloud-provider disclosure can hide the top-level enable checkbox when that control is surfaced on the card itself.
+- `lct_app/src/components/SttFallbackOrderFields.jsx` (lines 24-67): Fixed the OpenRouter fallback label-precedence bug so disabled/unconfigured routes report `configure and enable provider` before diarization gating, and renamed optimistic `eligible` labels to `configured` / `configured (degraded)` so the settings page no longer implies live health from static config alone.
+- `lct_app/src/components/LlmProvidersPanel.jsx` (lines 393-645), `lct_app/src/components/LlmSettingsPanel.jsx` (lines 18-292), `lct_app/src/components/settings/LlmRoutingCard.jsx` (lines 1-56), `lct_app/src/components/settings/LlmModelsCard.jsx` (lines 1-54), `lct_app/src/components/settings/DisclosureSection.jsx` (lines 1-52), and `lct_app/src/components/settings/settingsSummary.js` (lines 1-42): Added compact runtime cards, embedded-mode support for the existing LLM panels, and shared summary formatting for collapsed card states.
+- `lct_app/src/components/SttSettingsPanel.jsx` (lines 1-5): Reduced to a thin compatibility wrapper over `SttSettingsCard`.
+- `lct_app/src/pages/Settings.jsx`: Deleted after the nested settings routes were wired in.
+- `docs/TECH_DEBT.md` (table rows for `Settings.jsx`, `SttSettingsPanel.jsx`, and `LlmProvidersPanel.jsx`) and `ISSUES.md` (Developer Warnings): Updated debt tracking to mark the deleted/split files as resolved, refresh the remaining `LlmProvidersPanel.jsx` note, and log the remaining cloud-fallback `configured` vs actual `ready/healthy` semantics gap for follow-up.
+
+Validation:
+- `cd lct_app && npx eslint src/routes/AppRoutes.jsx src/pages/settings/SettingsLayout.jsx src/pages/settings/RuntimeSettingsPage.jsx src/pages/settings/PromptLibraryPage.jsx src/components/settings/DisclosureSection.jsx src/components/settings/settingsSummary.js src/components/settings/useUnsavedChangesGuard.js src/components/settings/usePromptLibraryState.js src/components/settings/PromptHistoryModal.jsx src/components/settings/PromptEditorCard.jsx src/components/settings/SttEndpointFields.jsx src/components/settings/SttDiagnosticsPanel.jsx src/components/settings/useSttSettingsForm.js src/components/settings/SttSettingsCard.jsx src/components/settings/LlmRoutingCard.jsx src/components/settings/LlmModelsCard.jsx src/components/SttCloudFallbackFields.jsx src/components/SttFallbackOrderFields.jsx src/components/SttSettingsPanel.jsx src/components/LlmProvidersPanel.jsx src/components/LlmSettingsPanel.jsx` (passed)
+- `cd lct_app && npm run -s build` (passed; existing chunk-size warning remains)
+
+Manual testing not run:
+- No browser click-through after the route split and disclosure refactor in this work session.

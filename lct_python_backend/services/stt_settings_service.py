@@ -2,15 +2,18 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Mapping
 
 from sqlalchemy import select
 
 from lct_python_backend.models import AppSetting
 from lct_python_backend.services.stt_config import (
     STT_CONFIG_KEY,
+    STT_CLOUD_PROVIDER_IDS,
     get_env_stt_defaults,
     merge_stt_config,
+    normalize_cloud_provider_record,
+    sanitize_stt_config_for_client,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,8 +53,38 @@ def _normalize_legacy_whisper_overrides(overrides: Dict[str, Any]) -> tuple[Dict
     return normalized_overrides, True
 
 
+def _preserve_cloud_provider_secrets(
+    payload: Dict[str, Any],
+    existing_value: Mapping[str, Any],
+) -> Dict[str, Any]:
+    normalized_payload = dict(payload)
+    incoming_raw = normalized_payload.get("cloud_fallback_providers")
+    incoming_providers = dict(incoming_raw) if isinstance(incoming_raw, Mapping) else {}
+    existing_raw = existing_value.get("cloud_fallback_providers")
+    existing_providers = dict(existing_raw) if isinstance(existing_raw, Mapping) else {}
+
+    merged_providers: Dict[str, Dict[str, Any]] = {}
+    for provider_id in STT_CLOUD_PROVIDER_IDS:
+        raw_provider = incoming_providers.get(provider_id)
+        provider_for_save = dict(raw_provider) if isinstance(raw_provider, Mapping) else {}
+        if (
+            provider_for_save.get("api_key") is not None
+            and not str(provider_for_save.get("api_key") or "").strip()
+            and not str(provider_for_save.get("clear_api_key", "")).strip().lower() in {"1", "true", "yes", "on"}
+        ):
+            provider_for_save.pop("api_key", None)
+        merged_providers[provider_id] = normalize_cloud_provider_record(
+            provider_id,
+            provider_for_save,
+            existing_providers.get(provider_id),
+        )
+
+    normalized_payload["cloud_fallback_providers"] = merged_providers
+    return normalized_payload
+
+
 async def load_stt_settings(session) -> Dict[str, Any]:
-    """Load merged STT settings from DB overrides + env defaults."""
+    """Load merged STT settings from DB overrides + env defaults, including secrets."""
     setting = await session.execute(
         select(AppSetting).where(AppSetting.key == STT_CONFIG_KEY)
     )
@@ -72,17 +105,34 @@ async def load_stt_settings(session) -> Dict[str, Any]:
     return merge_stt_config(normalized_overrides)
 
 
-async def save_stt_settings(session, payload: Dict[str, Any]) -> Dict[str, Any]:
+async def load_stt_settings_for_client(session) -> Dict[str, Any]:
+    """Load STT settings with secrets masked for browser consumption."""
+    return sanitize_stt_config_for_client(await load_stt_settings(session))
+
+
+async def save_stt_settings(
+    session,
+    payload: Dict[str, Any],
+    *,
+    include_secrets: bool = False,
+) -> Dict[str, Any]:
     """Persist STT settings overrides and return the merged config."""
     if not isinstance(payload, dict):
         raise ValueError("Payload must be a JSON object.")
 
     stmt = select(AppSetting).where(AppSetting.key == STT_CONFIG_KEY)
     existing = (await session.execute(stmt)).scalar_one_or_none()
+    existing_value = existing.value if existing and isinstance(existing.value, dict) else {}
+    normalized_payload = _preserve_cloud_provider_secrets(payload, existing_value)
+
     if existing:
-        existing.value = payload
+        existing.value = normalized_payload
         existing.updated_at = datetime.utcnow()
     else:
-        session.add(AppSetting(key=STT_CONFIG_KEY, value=payload))
+        session.add(AppSetting(key=STT_CONFIG_KEY, value=normalized_payload))
     await session.commit()
-    return merge_stt_config(payload)
+
+    merged = merge_stt_config(normalized_payload)
+    if include_secrets:
+        return merged
+    return sanitize_stt_config_for_client(merged)

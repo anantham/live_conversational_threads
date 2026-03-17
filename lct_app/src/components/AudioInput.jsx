@@ -3,6 +3,8 @@ import PropTypes from "prop-types";
 import { Mic, ChevronDown } from "lucide-react";
 
 import { normalizeSttSettings } from "./audio/sttUtils";
+import LiveSessionHud from "./audio/LiveSessionHud";
+import useLiveSessionStatus from "./audio/useLiveSessionStatus";
 import {
   useAutoSaveConversation,
   useFilenameFromGraph,
@@ -15,29 +17,6 @@ import useAudioCapture from "./audio/useAudioCapture";
 import useMicDevices from "./audio/useMicDevices";
 
 const LIVE_TRANSCRIPT_MAX_LINES = 240;
-
-const VALID_SOCKET_STATES = new Set(["idle", "connecting", "connected", "closed", "error"]);
-
-const normalizeSocketState = (state) => {
-  if (!state) return "idle";
-  const normalized = String(state).trim().toLowerCase();
-  return VALID_SOCKET_STATES.has(normalized) ? normalized : "idle";
-};
-
-const prettifySocketState = (state) => {
-  switch (normalizeSocketState(state)) {
-    case "connecting":
-      return "connecting";
-    case "connected":
-      return "connected";
-    case "error":
-      return "error";
-    case "closed":
-      return "closed";
-    default:
-      return "idle";
-  }
-};
 
 function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef) {
   if (!cleanText) {
@@ -122,15 +101,47 @@ const AudioInput = forwardRef(function AudioInput({
   const lastAutoSaveRef = useRef({ graphData: null, chunkDict: null });
   const wasRecording = useRef(false);
   const transcriptLineIdRef = useRef(0);
+  const {
+    backend: liveBackend,
+    detailOpen,
+    details,
+    graph: liveGraph,
+    handleAudioLevel,
+    handleBackendMessage,
+    handlePong,
+    handleProcessingStatus: handleLiveProcessingStatus,
+    handleSessionAck,
+    handleTranscriptEvent: handleLiveTranscriptEvent,
+    micLevel,
+    resetSession,
+    setDetailOpen,
+    statusLine,
+    stt: liveStt,
+  } = useLiveSessionStatus({
+    recording,
+    providerSocketState,
+    backendSocketState,
+  });
 
-  const handleProviderTranscript = useCallback(({ text, eventType }) => {
+  const handleProviderTranscript = useCallback(({ text, eventType, metadata }) => {
     const cleanText = String(text || "").trim();
     if (!cleanText) return;
     const isFinal = eventType === "transcript_final";
+    handleLiveTranscriptEvent({ text: cleanText, eventType, metadata });
     setLiveTranscriptLines((previous) =>
       upsertLiveTranscriptLine(previous, cleanText, isFinal, transcriptLineIdRef)
     );
-  }, []);
+  }, [handleLiveTranscriptEvent]);
+
+  const handleProcessingStatus = useCallback((status) => {
+    handleLiveProcessingStatus(status);
+    const level = String(status?.level || "").toLowerCase();
+    const messageText = String(status?.message || "").trim();
+    if (!messageText) return;
+    if (level === "error" || level === "warning") {
+      setProcessingError(messageText);
+    }
+  }, [handleLiveProcessingStatus]);
 
   // --- Transport hook ---
   const {
@@ -146,28 +157,26 @@ const AudioInput = forwardRef(function AudioInput({
     onChunksReceived,
     graphDataFromSocket,
     onSessionReady: () => setRecording(true),
+    onSessionAck: handleSessionAck,
     onFatalError: useCallback(() => {
       setRecording(false);
     }, []),
     onProviderSocketStateChange: setProviderSocketState,
     onBackendSocketStateChange: setBackendSocketState,
+    onPong: handlePong,
     onProviderTranscript: handleProviderTranscript,
-    onProcessingStatus: useCallback((status) => {
-      const level = String(status?.level || "").toLowerCase();
-      const messageText = String(status?.message || "").trim();
-      if (!messageText) return;
-      if (level === "error" || level === "warning") {
-        setProcessingError(messageText);
-      }
-    }, []),
+    onProcessingStatus: handleProcessingStatus,
+    onBackendMessage: handleBackendMessage,
   });
 
   // --- Capture hook ---
   const { startCapture, stopCapture } = useAudioCapture({
     onPCMFrame,
+    onAudioLevel: handleAudioLevel,
     onError: () => {
       setMessage?.("Microphone access denied or unavailable.");
       socketsCleanup();
+      resetSession();
       setRecording(false);
       setProviderSocketState("error");
       setBackendSocketState("error");
@@ -206,6 +215,7 @@ const AudioInput = forwardRef(function AudioInput({
   const startRecording = async () => {
     if (recording) return;
     const activeSettings = normalizeSttSettings(sttSettings || {});
+    resetSession();
     transcriptLineIdRef.current = 0;
     setLiveTranscriptLines([]);
     setProcessingError("");
@@ -233,32 +243,20 @@ const AudioInput = forwardRef(function AudioInput({
   const stopRecording = useCallback(async () => {
     await stopCapture();
     await stopSession();
+    resetSession();
     setRecording(false);
     setProviderSocketState("closed");
     setBackendSocketState("closed");
-  }, [stopCapture, stopSession]);
+  }, [resetSession, stopCapture, stopSession]);
 
   useImperativeHandle(ref, () => ({ stopRecording }), [stopRecording]);
 
-  // Derive aggregate status: worst of provider/backend
-  const aggregateStatus = (() => {
-    if ([providerSocketState, backendSocketState].some((s) => normalizeSocketState(s) === "error")) return "error";
-    if ([providerSocketState, backendSocketState].some((s) => normalizeSocketState(s) === "connecting")) return "connecting";
-    if (recording) return "connected";
-    return "idle";
-  })();
-
-  const statusDotColor = {
-    idle: "bg-gray-300",
-    connecting: "bg-amber-400 animate-pulse",
-    connected: "bg-emerald-400",
-    error: "bg-red-400",
-  }[aggregateStatus];
-
-  const statusTooltip = `Mic: ${recording ? "recording" : "idle"} | STT: ${prettifySocketState(providerSocketState)} | Backend: ${prettifySocketState(backendSocketState)}`;
-
   // Show last 3 transcript lines for live caption
   const captionLines = liveTranscriptLines.slice(-3);
+  const micRingScale = 1 + micLevel * 0.42;
+  const micRingOpacity = recording
+    ? Math.min(0.85, 0.2 + micLevel * 0.65)
+    : 0;
 
   return (
     <div className="flex items-center gap-3">
@@ -286,6 +284,15 @@ const AudioInput = forwardRef(function AudioInput({
           }`}
           aria-label={recording ? "Stop recording" : "Start recording"}
         >
+          {recording && (
+            <span
+              className="absolute inset-0 rounded-full border-2 border-emerald-400 transition-transform duration-75"
+              style={{
+                opacity: micRingOpacity,
+                transform: `scale(${micRingScale})`,
+              }}
+            />
+          )}
           <Mic size={18} />
           {recording && (
             <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
@@ -337,10 +344,14 @@ const AudioInput = forwardRef(function AudioInput({
         )}
       </div>
 
-      {/* Status dot */}
-      <div
-        className={`w-2 h-2 rounded-full ${statusDotColor} shrink-0`}
-        title={statusTooltip}
+      <LiveSessionHud
+        backend={liveBackend}
+        detailOpen={detailOpen}
+        details={details}
+        graph={liveGraph}
+        onToggleDetails={() => setDetailOpen((open) => !open)}
+        statusLine={statusLine}
+        stt={liveStt}
       />
 
       {/* Error toast (above footer) */}
