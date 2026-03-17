@@ -1,7 +1,7 @@
 # Documentation Refresh Plan
 
 **Date:** 2026-01-11
-**Status:** Draft
+**Status:** Partially complete — see notes below
 
 ## Goals
 
@@ -19,24 +19,24 @@
 ## Deliverables
 
 ### Structure And Indexing
-- Create `docs/PROJECT_STRUCTURE.md` with module boundaries and ownership.
-- Add `docs/adr/INDEX.md` listing ADRs and status.
-- Add `docs/DOCS_MAP.md` to outline what each doc covers.
+- [x] Create `docs/PROJECT_STRUCTURE.md` with module boundaries and ownership.
+- [x] Add `docs/adr/INDEX.md` listing ADRs and status.
+- [ ] ~~Add `docs/DOCS_MAP.md` to outline what each doc covers.~~ **Deferred** — not yet needed at current doc count.
 
 ### Configuration And Operations
-- Add `docs/CONFIG_REFERENCE.md` with env vars, defaults, and overrides.
+- [ ] ~~Add `docs/CONFIG_REFERENCE.md` with env vars, defaults, and overrides.~~ **Deferred.**
 - Update `DEPLOYMENT_CHECKLIST.md` with current steps.
 - Update `TESTING.md` with local + CI instructions.
 
 ### API Documentation
-- Update `API_DOCUMENTATION.md` and `openapi.json` together.
-- Add `docs/api/` for endpoint-specific notes when needed.
+- Update `API_DOCUMENTATION.md` and `openapi.json` together. **Deferred** — no `openapi.json` yet.
+- [ ] ~~Add `docs/api/` for endpoint-specific notes when needed.~~ **Deferred.**
 
 ### Feature Intent (ADRs)
-- New ADRs for:
-  - Local STT ingestion and storage policy.
-  - Transcript event persistence and retention defaults.
-  - Settings storage model (env defaults + DB override).
+- [x] New ADRs for:
+  - Local STT ingestion and storage policy. → ADR-008
+  - Transcript event persistence and retention defaults. → ADR-010
+  - Settings storage model (env defaults + DB override). → ADR-014
 
 ## Plan
 
