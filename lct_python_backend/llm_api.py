@@ -12,8 +12,10 @@ from lct_python_backend.db_session import get_async_session
 from lct_python_backend.models import AppSetting
 from lct_python_backend.services.llm_config import (
     LLM_CONFIG_KEY,
+    build_provider_api_url,
     merge_llm_config,
     load_llm_providers,
+    normalize_provider_record,
     save_llm_providers,
 )
 
@@ -246,7 +248,7 @@ async def update_llm_settings(payload: Dict[str, Any], session=Depends(get_async
 @router.get("/api/settings/llm/providers")
 async def read_llm_providers(session=Depends(get_async_session)):
     """Get LLM provider list with priority order."""
-    return await load_llm_providers(session)
+    return await load_llm_providers(session, include_secrets=False)
 
 
 @router.put("/api/settings/llm/providers")
@@ -259,12 +261,16 @@ async def update_llm_providers(payload: Dict[str, Any], session=Depends(get_asyn
     if not isinstance(providers, list):
         raise HTTPException(status_code=400, detail="providers must be an array.")
 
-    # Validate each provider has required fields
+    seen_ids: Set[str] = set()
     for i, provider in enumerate(providers):
         if not isinstance(provider, dict):
             raise HTTPException(status_code=400, detail=f"Provider at index {i} must be an object.")
         if not provider.get("id"):
             raise HTTPException(status_code=400, detail=f"Provider at index {i} missing 'id'.")
+        provider_id = str(provider.get("id") or "").strip()
+        if provider_id in seen_ids:
+            raise HTTPException(status_code=400, detail=f"Duplicate provider id '{provider_id}'.")
+        seen_ids.add(provider_id)
         if not provider.get("base_url"):
             raise HTTPException(status_code=400, detail=f"Provider at index {i} missing 'base_url'.")
         if not provider.get("model"):
@@ -274,29 +280,69 @@ async def update_llm_providers(payload: Dict[str, Any], session=Depends(get_asyn
 
 
 @router.post("/api/settings/llm/providers/health")
-async def check_provider_health(payload: Dict[str, Any]):
+async def check_provider_health(payload: Dict[str, Any], session=Depends(get_async_session)):
     """Check health of a single provider endpoint."""
-    base_url = str(payload.get("base_url", "")).strip().rstrip("/")
+    provider_payload = payload.get("provider") if isinstance(payload.get("provider"), dict) else payload
+    if not isinstance(provider_payload, dict):
+        raise HTTPException(status_code=400, detail="provider must be an object.")
+
+    provider_id = str(provider_payload.get("id") or "").strip()
+    if provider_id:
+        config_with_secrets = await load_llm_providers(session, include_secrets=True)
+        stored_provider = next(
+            (
+                item
+                for item in config_with_secrets.get("providers", [])
+                if str(item.get("id") or "").strip() == provider_id
+            ),
+            None,
+        )
+    else:
+        stored_provider = None
+
+    resolved_provider = normalize_provider_record(provider_payload, stored_provider)
+    base_url = str(resolved_provider.get("base_url") or "").strip().rstrip("/")
     if not base_url:
         raise HTTPException(status_code=400, detail="base_url is required.")
 
-    health_url = f"{base_url}/health"
+    provider_type = str(resolved_provider.get("type") or "openai_compatible").strip().lower()
+    api_key = str(resolved_provider.get("api_key") or "").strip()
+    health_url = build_provider_api_url(base_url, provider_type, "models")
+    headers = {}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     start = time.time()
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            response = await client.get(health_url)
+            response = await client.get(health_url, headers=headers)
             latency_ms = int((time.time() - start) * 1000)
+            response.raise_for_status()
             return {
-                "healthy": response.status_code == 200,
+                "healthy": True,
                 "status_code": response.status_code,
                 "latency_ms": latency_ms,
-                "url": base_url,
+                "url": health_url,
+                "provider_id": provider_id or None,
+                "provider_type": provider_type,
             }
+    except httpx.HTTPStatusError as exc:
+        latency_ms = int((time.time() - start) * 1000)
+        return {
+            "healthy": False,
+            "status_code": exc.response.status_code,
+            "error": exc.response.text or f"HTTP {exc.response.status_code}",
+            "latency_ms": latency_ms,
+            "url": health_url,
+            "provider_id": provider_id or None,
+            "provider_type": provider_type,
+        }
     except Exception as exc:
         latency_ms = int((time.time() - start) * 1000)
         return {
             "healthy": False,
             "error": str(exc),
             "latency_ms": latency_ms,
-            "url": base_url,
+            "url": health_url,
+            "provider_id": provider_id or None,
+            "provider_type": provider_type,
         }

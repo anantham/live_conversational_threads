@@ -1,3 +1,4 @@
+import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import {
@@ -14,7 +15,7 @@ const EMBEDDING_MODELS = [
 
 const CUSTOM_VALUE = "__custom__";
 
-export default function LlmSettingsPanel() {
+export default function LlmSettingsPanel({ embedded = false, onSaved }) {
   const [settings, setSettings] = useState(null);
   const [form, setForm] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -125,6 +126,7 @@ export default function LlmSettingsPanel() {
       const updated = await updateLlmSettings(payload);
       setSettings(updated);
       setForm(updated);
+      onSaved?.(updated);
     } catch (err) {
       console.error("Failed to save LLM settings:", err);
       setError("Unable to persist LLM settings.");
@@ -140,29 +142,42 @@ export default function LlmSettingsPanel() {
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 mt-6 text-sm text-gray-500">
+      <div className={embedded ? "text-sm text-gray-500" : "bg-white rounded-lg shadow p-6 text-sm text-gray-500"}>
         Loading LLM settings…
       </div>
     );
   }
 
-  return (
-    <section className="bg-white rounded-lg shadow-lg p-6 mt-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-800">LLM Settings</h2>
-          <p className="text-sm text-gray-500">
-            Local mode uses LM Studio. Online mode uses Gemini with accepted model IDs only.
-          </p>
+  const content = (
+    <div className="space-y-4">
+      {!embedded ? (
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">Graph Models & Embeddings</h2>
+            <p className="text-sm text-gray-500">
+              Choose the accepted chat model for graph generation and the embedding model used for
+              retrieval and similarity lookups.
+            </p>
+          </div>
+          <button
+            onClick={load}
+            className="text-sm text-blue-600 hover:text-blue-800"
+            type="button"
+          >
+            Reload
+          </button>
         </div>
-        <button
-          onClick={load}
-          className="text-sm text-blue-600 hover:text-blue-800"
-          type="button"
-        >
-          Reload
-        </button>
-      </div>
+      ) : (
+        <div className="flex items-center justify-end">
+          <button
+            onClick={load}
+            className="text-sm text-blue-600 hover:text-blue-800"
+            type="button"
+          >
+            Reload
+          </button>
+        </div>
+      )}
 
       {error && (
         <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
@@ -261,6 +276,17 @@ export default function LlmSettingsPanel() {
           {saving ? "Saving…" : "Save LLM Settings"}
         </button>
       </div>
-    </section>
+    </div>
   );
+
+  if (embedded) {
+    return content;
+  }
+
+  return <section className="bg-white rounded-lg shadow-lg p-6 space-y-4">{content}</section>;
 }
+
+LlmSettingsPanel.propTypes = {
+  embedded: PropTypes.bool,
+  onSaved: PropTypes.func,
+};

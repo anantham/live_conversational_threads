@@ -31,7 +31,11 @@ from lct_python_backend.services.stt_health_service import (
     derive_health_url_from_http_url,
     probe_health_url,
 )
-from lct_python_backend.services.stt_settings_service import load_stt_settings, save_stt_settings
+from lct_python_backend.services.stt_settings_service import (
+    load_stt_settings,
+    load_stt_settings_for_client,
+    save_stt_settings,
+)
 from lct_python_backend.services.stt_telemetry_service import aggregate_telemetry
 from lct_python_backend.services.stt_ws_session import WsSessionContext
 
@@ -74,14 +78,14 @@ def _derive_health_url_from_http(http_url):
 # ---------------------------------------------------------------------------
 @router.get("/api/settings/stt")
 async def read_stt_settings(session=Depends(get_async_session)):
-    return await _load_stt_settings(session)
+    return await load_stt_settings_for_client(session)
 
 
 @router.put("/api/settings/stt")
 async def update_stt_settings(payload: Dict[str, Any], session=Depends(get_async_session)):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Payload must be a JSON object.")
-    return await save_stt_settings(session, payload)
+    return await save_stt_settings(session, payload, include_secrets=False)
 
 
 # ---------------------------------------------------------------------------

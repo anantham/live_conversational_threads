@@ -4,6 +4,31 @@ import { ChevronUp, ChevronDown, Trash2, Plus, RefreshCw } from "lucide-react";
 
 import { apiFetch } from "../services/apiClient";
 
+const PROVIDER_TYPE_OPTIONS = [
+  {
+    value: "openai_compatible",
+    label: "OpenAI Compatible",
+    defaultBaseUrl: "",
+    modelPlaceholder: "qwen3-32b",
+  },
+  {
+    value: "openai",
+    label: "OpenAI",
+    defaultBaseUrl: "https://api.openai.com",
+    modelPlaceholder: "gpt-4.1-mini",
+  },
+  {
+    value: "openrouter",
+    label: "OpenRouter",
+    defaultBaseUrl: "https://openrouter.ai/api",
+    modelPlaceholder: "google/gemini-2.5-flash",
+  },
+];
+
+const PROVIDER_TYPE_LABELS = Object.fromEntries(
+  PROVIDER_TYPE_OPTIONS.map((option) => [option.value, option.label]),
+);
+
 const DEFAULT_PROVIDER = {
   id: "",
   name: "",
@@ -13,17 +38,45 @@ const DEFAULT_PROVIDER = {
   api_key: "",
   enabled: true,
   timeout_seconds: 120,
+  has_api_key: false,
 };
 
-function ProviderRow({ provider, index, total, onMove, onToggle, onDelete, onHealthCheck, healthStatus }) {
+function getProviderTypeOption(providerType) {
+  return (
+    PROVIDER_TYPE_OPTIONS.find((option) => option.value === providerType) ||
+    PROVIDER_TYPE_OPTIONS[0]
+  );
+}
+
+function buildProviderDraft(provider) {
+  return {
+    ...DEFAULT_PROVIDER,
+    ...provider,
+    api_key: "",
+    has_api_key: Boolean(provider?.has_api_key),
+  };
+}
+
+function ProviderRow({
+  provider,
+  index,
+  total,
+  onMove,
+  onToggle,
+  onEdit,
+  onDelete,
+  onHealthCheck,
+  healthStatus,
+}) {
   const isFirst = index === 0;
   const isLast = index === total - 1;
 
   return (
-    <div className={`flex items-center gap-2 p-3 rounded-lg border ${
-      provider.enabled ? "bg-white border-gray-200" : "bg-gray-50 border-gray-100 opacity-60"
-    }`}>
-      {/* Priority controls */}
+    <div
+      className={`flex items-center gap-2 p-3 rounded-lg border ${
+        provider.enabled ? "bg-white border-gray-200" : "bg-gray-50 border-gray-100 opacity-60"
+      }`}
+    >
       <div className="flex flex-col">
         <button
           type="button"
@@ -45,12 +98,8 @@ function ProviderRow({ provider, index, total, onMove, onToggle, onDelete, onHea
         </button>
       </div>
 
-      {/* Priority number */}
-      <span className="w-6 text-center text-xs font-medium text-gray-400">
-        {index + 1}
-      </span>
+      <span className="w-6 text-center text-xs font-medium text-gray-400">{index + 1}</span>
 
-      {/* Enable toggle */}
       <input
         type="checkbox"
         checked={provider.enabled}
@@ -59,7 +108,6 @@ function ProviderRow({ provider, index, total, onMove, onToggle, onDelete, onHea
         title={provider.enabled ? "Disable provider" : "Enable provider"}
       />
 
-      {/* Health indicator */}
       <span
         className={`w-2 h-2 rounded-full ${
           healthStatus?.healthy
@@ -75,14 +123,20 @@ function ProviderRow({ provider, index, total, onMove, onToggle, onDelete, onHea
         }
       />
 
-      {/* Provider info */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm text-gray-800 truncate">
             {provider.name || provider.id}
           </span>
           <span className="text-xs text-gray-400 px-1.5 py-0.5 bg-gray-100 rounded">
-            {provider.type}
+            {PROVIDER_TYPE_LABELS[provider.type] || provider.type}
+          </span>
+          <span
+            className={`text-xs px-1.5 py-0.5 rounded ${
+              provider.has_api_key ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-500"
+            }`}
+          >
+            {provider.has_api_key ? "key saved" : "no key"}
           </span>
         </div>
         <div className="text-xs text-gray-500 truncate">
@@ -90,7 +144,6 @@ function ProviderRow({ provider, index, total, onMove, onToggle, onDelete, onHea
         </div>
       </div>
 
-      {/* Actions */}
       <button
         type="button"
         onClick={() => onHealthCheck(index)}
@@ -98,6 +151,14 @@ function ProviderRow({ provider, index, total, onMove, onToggle, onDelete, onHea
         title="Check health"
       >
         <RefreshCw size={14} />
+      </button>
+      <button
+        type="button"
+        onClick={() => onEdit(index)}
+        className="px-2 py-1 text-xs text-gray-500 hover:text-blue-700"
+        title="Edit provider"
+      >
+        Edit
       </button>
       <button
         type="button"
@@ -117,31 +178,102 @@ ProviderRow.propTypes = {
   total: PropTypes.number.isRequired,
   onMove: PropTypes.func.isRequired,
   onToggle: PropTypes.func.isRequired,
+  onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func.isRequired,
   onHealthCheck: PropTypes.func.isRequired,
   healthStatus: PropTypes.object,
 };
 
-function AddProviderForm({ onAdd, onCancel }) {
-  const [form, setForm] = useState({ ...DEFAULT_PROVIDER, id: `provider_${Date.now()}` });
+function ProviderForm({ initialProvider, mode, onSubmit, onCancel }) {
+  const [form, setForm] = useState(() => buildProviderDraft(initialProvider));
+  const [clearStoredKey, setClearStoredKey] = useState(false);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const typeOption = getProviderTypeOption(form.type);
+  const buttonLabel = mode === "edit" ? "Save Provider" : "Add Provider";
+
+  useEffect(() => {
+    setForm(buildProviderDraft(initialProvider));
+    setClearStoredKey(false);
+  }, [initialProvider]);
+
+  const handleFieldChange = (key) => (event) => {
+    const value = event.target.value;
+    setForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleTypeChange = (event) => {
+    const nextType = event.target.value;
+    const previousOption = getProviderTypeOption(form.type);
+    const nextOption = getProviderTypeOption(nextType);
+    const shouldUpdateBaseUrl =
+      !String(form.base_url || "").trim() ||
+      String(form.base_url || "").trim() === previousOption.defaultBaseUrl;
+
+    setForm((current) => ({
+      ...current,
+      type: nextType,
+      base_url: shouldUpdateBaseUrl ? nextOption.defaultBaseUrl : current.base_url,
+    }));
+  };
+
+  const handleApiKeyChange = (event) => {
+    const value = event.target.value;
+    setForm((current) => ({ ...current, api_key: value }));
+    if (value.trim()) {
+      setClearStoredKey(false);
+    }
+  };
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
     if (!form.name || !form.base_url || !form.model) {
       return;
     }
-    onAdd(form);
+
+    const payload = {
+      ...form,
+      id: String(form.id || `provider_${Date.now()}`).trim(),
+      name: String(form.name || "").trim(),
+      base_url: String(form.base_url || "").trim(),
+      model: String(form.model || "").trim(),
+      timeout_seconds: Number(form.timeout_seconds || 120),
+      enabled: Boolean(form.enabled),
+    };
+
+    delete payload.has_api_key;
+    if (clearStoredKey) {
+      payload.clear_api_key = true;
+      delete payload.api_key;
+    } else if (!String(payload.api_key || "").trim()) {
+      delete payload.api_key;
+    }
+
+    onSubmit(payload);
   };
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-3">
+    <form
+      onSubmit={handleSubmit}
+      className="p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-3"
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-blue-900">
+          {mode === "edit" ? "Edit Provider" : "Add Provider"}
+        </h3>
+        {mode === "edit" && (
+          <span className="text-xs text-blue-800">
+            {form.id}
+          </span>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-3">
         <label className="text-xs text-gray-700 space-y-1">
           <span>Name</span>
           <input
             type="text"
             value={form.name}
-            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            onChange={handleFieldChange("name")}
             placeholder="My Provider"
             className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
             required
@@ -151,48 +283,87 @@ function AddProviderForm({ onAdd, onCancel }) {
           <span>Type</span>
           <select
             value={form.type}
-            onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
+            onChange={handleTypeChange}
             className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
           >
-            <option value="openai_compatible">OpenAI Compatible</option>
-            <option value="openrouter">OpenRouter</option>
+            {PROVIDER_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </label>
       </div>
+
       <label className="block text-xs text-gray-700 space-y-1">
         <span>Base URL</span>
         <input
           type="text"
           value={form.base_url}
-          onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
-          placeholder="https://api.example.com"
+          onChange={handleFieldChange("base_url")}
+          placeholder={typeOption.defaultBaseUrl || "https://api.example.com"}
           className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
           required
         />
       </label>
+
       <div className="grid grid-cols-2 gap-3">
         <label className="text-xs text-gray-700 space-y-1">
           <span>Model</span>
           <input
             type="text"
             value={form.model}
-            onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
-            placeholder="qwen3-32b"
+            onChange={handleFieldChange("model")}
+            placeholder={typeOption.modelPlaceholder}
             className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
             required
           />
         </label>
         <label className="text-xs text-gray-700 space-y-1">
-          <span>API Key (optional)</span>
+          <span>Timeout (seconds)</span>
           <input
-            type="password"
-            value={form.api_key}
-            onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
-            placeholder="sk-..."
+            type="number"
+            min="1"
+            step="1"
+            value={form.timeout_seconds}
+            onChange={handleFieldChange("timeout_seconds")}
             className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
           />
         </label>
       </div>
+
+      <label className="block text-xs text-gray-700 space-y-1">
+        <span>API Key</span>
+        <input
+          type="password"
+          value={form.api_key}
+          onChange={handleApiKeyChange}
+          placeholder={mode === "edit" ? "Leave blank to keep current key" : "sk-..."}
+          className="w-full px-2 py-1.5 text-sm border border-gray-300 rounded"
+        />
+      </label>
+
+      {mode === "edit" && (
+        <div className="text-xs text-gray-600 space-y-2">
+          <p>
+            {form.has_api_key
+              ? "A key is already stored on the backend. Leave this field blank to keep it, or enter a new key to replace it."
+              : "No key is currently stored for this provider."}
+          </p>
+          {form.has_api_key && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={clearStoredKey}
+                onChange={(event) => setClearStoredKey(event.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <span>Clear stored API key on save</span>
+            </label>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-end gap-2 pt-2">
         <button
           type="button"
@@ -205,24 +376,26 @@ function AddProviderForm({ onAdd, onCancel }) {
           type="submit"
           className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
         >
-          Add Provider
+          {buttonLabel}
         </button>
       </div>
     </form>
   );
 }
 
-AddProviderForm.propTypes = {
-  onAdd: PropTypes.func.isRequired,
+ProviderForm.propTypes = {
+  initialProvider: PropTypes.object.isRequired,
+  mode: PropTypes.oneOf(["add", "edit"]).isRequired,
+  onSubmit: PropTypes.func.isRequired,
   onCancel: PropTypes.func.isRequired,
 };
 
-export default function LlmProvidersPanel() {
+export default function LlmProvidersPanel({ embedded = false, onSaved }) {
   const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [editor, setEditor] = useState(null);
   const [healthStatuses, setHealthStatuses] = useState({});
 
   const load = async () => {
@@ -254,58 +427,72 @@ export default function LlmProvidersPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newConfig),
       });
-      if (!response.ok) throw new Error("Failed to save providers");
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(body || "Failed to save providers");
+      }
       const data = await response.json();
       setConfig(data);
+      onSaved?.(data);
+      return data;
     } catch (err) {
       console.error("Failed to save LLM providers:", err);
       setError("Unable to save provider configuration.");
+      throw err;
     } finally {
       setSaving(false);
     }
   };
 
-  const handleMove = (index, direction) => {
-    const providers = [...config.providers];
+  const handleMove = async (index, direction) => {
+    const providers = [...(config?.providers || [])];
     const newIndex = index + direction;
     if (newIndex < 0 || newIndex >= providers.length) return;
     [providers[index], providers[newIndex]] = [providers[newIndex], providers[index]];
-    const newConfig = { ...config, providers };
-    setConfig(newConfig);
-    save(newConfig);
+    await save({ ...config, providers });
   };
 
-  const handleToggle = (index) => {
-    const providers = [...config.providers];
+  const handleToggle = async (index) => {
+    const providers = [...(config?.providers || [])];
     providers[index] = { ...providers[index], enabled: !providers[index].enabled };
-    const newConfig = { ...config, providers };
-    setConfig(newConfig);
-    save(newConfig);
+    await save({ ...config, providers });
   };
 
-  const handleDelete = (index) => {
+  const handleDelete = async (index) => {
     if (!window.confirm("Remove this provider?")) return;
-    const providers = config.providers.filter((_, i) => i !== index);
-    const newConfig = { ...config, providers };
-    setConfig(newConfig);
-    save(newConfig);
+    const providers = (config?.providers || []).filter((_, i) => i !== index);
+    await save({ ...config, providers });
+    if (editor?.mode === "edit") {
+      if (editor.index === index) {
+        setEditor(null);
+      } else if (editor.index > index) {
+        setEditor({ mode: "edit", index: editor.index - 1 });
+      }
+    }
   };
 
-  const handleAdd = (provider) => {
-    const providers = [...config.providers, provider];
-    const newConfig = { ...config, providers };
-    setConfig(newConfig);
-    save(newConfig);
-    setShowAddForm(false);
+  const handleAdd = async (provider) => {
+    const providers = [...(config?.providers || []), provider];
+    await save({ ...config, providers });
+    setEditor(null);
+  };
+
+  const handleUpdate = async (provider) => {
+    if (editor?.mode !== "edit") return;
+    const providers = [...(config?.providers || [])];
+    providers[editor.index] = provider;
+    await save({ ...config, providers });
+    setEditor(null);
   };
 
   const handleHealthCheck = async (index) => {
-    const provider = config.providers[index];
+    const provider = config?.providers?.[index];
+    if (!provider) return;
     try {
       const response = await apiFetch("/api/settings/llm/providers/health", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ base_url: provider.base_url }),
+        body: JSON.stringify({ provider }),
       });
       const status = await response.json();
       setHealthStatuses((prev) => ({ ...prev, [provider.id]: status }));
@@ -319,34 +506,57 @@ export default function LlmProvidersPanel() {
 
   const checkAllHealth = async () => {
     if (!config?.providers) return;
-    for (let i = 0; i < config.providers.length; i++) {
+    for (let i = 0; i < config.providers.length; i += 1) {
       await handleHealthCheck(i);
     }
   };
 
   if (loading) {
     return (
-      <div className="bg-white rounded-lg shadow p-6 mt-6 text-sm text-gray-500">
+      <div className={embedded ? "text-sm text-gray-500" : "bg-white rounded-lg shadow p-6 text-sm text-gray-500"}>
         Loading provider configuration...
       </div>
     );
   }
 
   const providers = config?.providers || [];
+  const editingProvider =
+    editor?.mode === "edit" ? providers[editor.index] || DEFAULT_PROVIDER : DEFAULT_PROVIDER;
 
-  return (
-    <section className="bg-white rounded-lg shadow-lg p-6 mt-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-800">LLM Providers</h2>
-          <p className="text-sm text-gray-500">
-            Providers are tried in order. Drag to reorder priority.
-          </p>
+  const content = (
+    <div className="space-y-4">
+      {!embedded ? (
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800">Graph LLM Routing</h2>
+            <p className="text-sm text-gray-500">
+              Providers are tried top-to-bottom when graph updates need a model. API keys stay
+              server-side; blank password fields keep the existing key.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={checkAllHealth}
+              className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+              type="button"
+            >
+              <RefreshCw size={14} />
+              Check All
+            </button>
+            <button
+              onClick={load}
+              className="text-sm text-gray-500 hover:text-gray-700"
+              type="button"
+            >
+              Reload
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+      ) : (
+        <div className="flex items-center justify-end gap-2">
           <button
             onClick={checkAllHealth}
-            className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1"
+            className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
             type="button"
           >
             <RefreshCw size={14} />
@@ -360,7 +570,7 @@ export default function LlmProvidersPanel() {
             Reload
           </button>
         </div>
-      </div>
+      )}
 
       {error && (
         <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
@@ -377,6 +587,7 @@ export default function LlmProvidersPanel() {
             total={providers.length}
             onMove={handleMove}
             onToggle={handleToggle}
+            onEdit={(providerIndex) => setEditor({ mode: "edit", index: providerIndex })}
             onDelete={handleDelete}
             onHealthCheck={handleHealthCheck}
             healthStatus={healthStatuses[provider.id]}
@@ -390,12 +601,26 @@ export default function LlmProvidersPanel() {
         )}
       </div>
 
-      {showAddForm ? (
-        <AddProviderForm onAdd={handleAdd} onCancel={() => setShowAddForm(false)} />
+      {editor?.mode === "edit" && (
+        <ProviderForm
+          mode="edit"
+          initialProvider={editingProvider}
+          onSubmit={handleUpdate}
+          onCancel={() => setEditor(null)}
+        />
+      )}
+
+      {editor?.mode === "add" ? (
+        <ProviderForm
+          mode="add"
+          initialProvider={{ ...DEFAULT_PROVIDER, id: editor.draftId }}
+          onSubmit={handleAdd}
+          onCancel={() => setEditor(null)}
+        />
       ) : (
         <button
           type="button"
-          onClick={() => setShowAddForm(true)}
+          onClick={() => setEditor({ mode: "add", draftId: `provider_${Date.now()}` })}
           className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800"
         >
           <Plus size={16} />
@@ -403,9 +628,18 @@ export default function LlmProvidersPanel() {
         </button>
       )}
 
-      {saving && (
-        <p className="text-xs text-gray-400">Saving...</p>
-      )}
-    </section>
+      {saving && <p className="text-xs text-gray-400">Saving...</p>}
+    </div>
   );
+
+  if (embedded) {
+    return content;
+  }
+
+  return <section className="bg-white rounded-lg shadow-lg p-6 space-y-4">{content}</section>;
 }
+
+LlmProvidersPanel.propTypes = {
+  embedded: PropTypes.bool,
+  onSaved: PropTypes.func,
+};

@@ -6,7 +6,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
-from lct_python_backend.services.llm_config import get_env_llm_defaults, get_default_providers
+from lct_python_backend.services.llm_config import (
+    build_provider_api_url,
+    get_env_llm_defaults,
+    get_default_providers,
+)
 
 logger = logging.getLogger("lct_backend")
 
@@ -101,7 +105,7 @@ class LocalLLMClient:
         elif self.json_mode and supports_json_object:
             payload["response_format"] = {"type": "json_object"}
 
-        url = f"{self.base_url}/v1/chat/completions"
+        url = build_provider_api_url(self.base_url, "openai_compatible", "chat/completions")
         if TRACE_API_CALLS:
             logger.info(
                 "[LLM API] POST %s model=%s messages=%s json_mode=%s",
@@ -153,7 +157,7 @@ class LocalLLMClient:
             "input": input_data,
             "encoding_format": encoding_format,
         }
-        url = f"{self.base_url}/v1/embeddings"
+        url = build_provider_api_url(self.base_url, "openai_compatible", "embeddings")
         async with httpx.AsyncClient(timeout=self.timeout_seconds) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
@@ -295,7 +299,7 @@ async def chat_with_provider_fallback(
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
 
-            url = f"{base_url}/v1/chat/completions"
+            url = build_provider_api_url(base_url, provider_type, "chat/completions")
             if TRACE_API_CALLS:
                 logger.info(
                     "[LLM Fallback] POST %s model=%s messages=%s",
@@ -450,7 +454,7 @@ def chat_with_provider_fallback_sync(
             if api_key:
                 headers["Authorization"] = f"Bearer {api_key}"
 
-            url = f"{base_url}/v1/chat/completions"
+            url = build_provider_api_url(base_url, provider_type, "chat/completions")
             if TRACE_API_CALLS:
                 logger.info(
                     "[LLM Fallback Sync] POST %s model=%s messages=%s",
