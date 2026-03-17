@@ -19,6 +19,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from lct_python_backend.services.audio_storage import AudioStorageManager
 from lct_python_backend.services.stt_http_transcriber import RealtimeHttpSttSession, decode_audio_base64
+from lct_python_backend.services.stt_live_provider_selection import resolve_live_stt_candidates
 from lct_python_backend.services.stt_session import SessionState, persist_transcript_event
 from lct_python_backend.services.stt_ws_helpers import (
     build_telemetry_metadata as _build_telemetry_metadata,
@@ -507,17 +508,39 @@ class WsSessionContext:
             or stt_settings.get("http_url")
             or ""
         ).strip()
+        stt_candidates = resolve_live_stt_candidates(
+            settings=stt_settings,
+            provider_override=payload.get("provider"),
+        )
+        primary_candidate = stt_candidates[0] if stt_candidates else {}
+        active_provider = str(primary_candidate.get("provider") or normalized_provider).strip() or normalized_provider
+        active_transport = str(primary_candidate.get("transport") or "backend_http").strip() or "backend_http"
+        active_model = str(
+            primary_candidate.get("model")
+            or stt_settings.get("http_model")
+            or ""
+        ).strip()
+        active_supports_diarization = bool(
+            primary_candidate.get("supports_diarization")
+            if primary_candidate.get("supports_diarization") is not None
+            else active_provider == "whisper"
+        )
+        provider_http_url = str(
+            primary_candidate.get("http_url")
+            or primary_candidate.get("base_url")
+            or provider_http_url
+        ).strip()
 
         self.state.conversation_id = conversation_id
         self.state.session_id = payload.get("session_id") or str(uuid.uuid4())
-        self.state.provider = normalized_provider
+        self.state.provider = active_provider
         default_store_audio = bool(stt_settings.get("store_audio"))
         self.state.store_audio = bool(payload.get("store_audio", default_store_audio))
         self.state.speaker_id = payload.get("speaker_id", self.state.speaker_id)
         self.state.metadata = payload.get("metadata") or {}
 
         self.stt_runtime = RealtimeHttpSttSession(
-            provider=normalized_provider,
+            provider=active_provider,
             http_url=provider_http_url,
             sample_rate_hz=_safe_int(
                 payload.get("sample_rate_hz") or stt_settings.get("sample_rate_hz"),
@@ -530,6 +553,7 @@ class WsSessionContext:
             timeout_seconds=_safe_float(stt_settings.get("http_timeout_seconds"), 30.0),
             model=str(stt_settings.get("http_model") or ""),
             language=str(stt_settings.get("http_language") or ""),
+            candidates=stt_candidates,
         )
 
         await self.websocket.send_json({
@@ -537,10 +561,25 @@ class WsSessionContext:
             "conversation_id": conversation_id,
             "session_id": self.state.session_id,
             "store_audio": self.state.store_audio,
-            "provider": normalized_provider,
+            "provider": active_provider,
+            "transport": active_transport,
+            "model": active_model or None,
+            "model_source": "configured_override" if active_model else "server_default",
+            "supports_diarization": active_supports_diarization,
+            "degraded": bool(primary_candidate.get("degraded")),
             "provider_http_url": provider_http_url or None,
             "stt_mode": "backend_http",
             "stt_ready": bool(self.stt_runtime.is_ready()),
+            "fallback_candidates": [
+                {
+                    "route_id": str(candidate.get("route_id") or ""),
+                    "provider": str(candidate.get("provider") or ""),
+                    "transport": str(candidate.get("transport") or ""),
+                    "reason": str(candidate.get("reason") or ""),
+                    "degraded": bool(candidate.get("degraded")),
+                }
+                for candidate in stt_candidates[1:]
+            ],
         })
 
     async def handle_audio_chunk(self, payload: Dict[str, Any]) -> None:
@@ -640,7 +679,13 @@ class WsSessionContext:
                 elif msg_type == "client_log":
                     logger.info("[CLIENT LOG] %s", payload.get("message"))
                 elif msg_type == "ping":
-                    await self.websocket.send_json({"type": "pong"})
+                    await self.websocket.send_json(
+                        {
+                            "type": "pong",
+                            "client_ts_ms": payload.get("client_ts_ms"),
+                            "server_ts_ms": _now_ms(),
+                        }
+                    )
 
         except WebSocketDisconnect:
             logger.info("[WS] Client disconnected")
