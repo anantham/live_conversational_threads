@@ -12,6 +12,7 @@ Sub-modules:
 
 import asyncio
 import logging
+import time
 import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
@@ -140,6 +141,17 @@ class TranscriptProcessor:
             return
         self.accumulator.append(final_text)
         self.accumulator_segments.append(speaker_segments or [])
+        await self._emit_status(
+            "info",
+            "Queued finalized transcript for graph processing.",
+            {
+                "stage": "graph",
+                "phase": "queued",
+                "queued_finals": len(self.accumulator),
+                "batch_target": self._current_batch_size,
+                "pending_chars": sum(len(str(item or "")) for item in self.accumulator),
+            },
+        )
         if len(self.accumulator) >= self._current_batch_size and self._continue_accumulating:
             await self._process_batches()
 
@@ -283,6 +295,19 @@ class TranscriptProcessor:
                 f"\n\n Transcript Input: \n {transcript_for_llm}"
             )
             generation_status_messages: List[str] = []
+            generation_started_at = time.perf_counter()
+            await self._emit_status(
+                "info",
+                "Generating graph update from finalized transcript.",
+                {
+                    "stage": "graph",
+                    "phase": "generating",
+                    "queued_finals": len(text_batch),
+                    "segment_chars": len(segmented_input_chunk),
+                    "existing_node_count": len(self.existing_json),
+                    "llm_backend": self._llm_config.get("backend"),
+                },
+            )
             output_json, gen_backend = await asyncio.to_thread(
                 generate_lct_json,
                 mod_input,
@@ -307,13 +332,35 @@ class TranscriptProcessor:
 
                 self.existing_json.extend(output_json)
                 await self._send_update(self.existing_json, self.chunk_dict)
+                await self._emit_status(
+                    "info",
+                    "Graph update ready.",
+                    {
+                        "stage": "graph",
+                        "phase": "completed",
+                        "chunk_id": chunk_id,
+                        "latency_ms": round(
+                            max(0.0, (time.perf_counter() - generation_started_at) * 1000.0),
+                            2,
+                        ),
+                        "node_delta": len(output_json),
+                        "total_nodes": len(self.existing_json),
+                        "llm_backend": gen_backend or self._last_llm_backend,
+                    },
+                )
             else:
                 await self._emit_status(
                     "error",
                     "LLM returned no structured graph output for a completed transcript segment.",
                     {
-                        "stage": "generate_lct_json",
+                        "stage": "graph",
+                        "phase": "empty",
+                        "generation_stage": "generate_lct_json",
                         "segment_chars": len(segmented_input_chunk),
+                        "latency_ms": round(
+                            max(0.0, (time.perf_counter() - generation_started_at) * 1000.0),
+                            2,
+                        ),
                     },
                 )
 
