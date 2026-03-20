@@ -38,26 +38,24 @@ class TrainingDataExporter:
         self,
         conversation_id: str,
         format: str = "jsonl",
-        unexported_only: bool = False
+        unexported_only: bool = False,
+        actor_type_filter: Optional[str] = None,
     ) -> str:
-        """
-        Export all edits for a conversation
+        """Export all edits for a conversation.
 
         Args:
-            conversation_id: UUID of conversation
-            format: Export format ('jsonl', 'csv', 'markdown')
-            unexported_only: Only export edits not yet exported
-
-        Returns:
-            Exported data as string
+            actor_type_filter: If set, only export edits with this actor_type
+                (e.g., "human" to exclude llm_suggestion edits).
         """
-        # Get edits
         query = select(EditsLog).where(
             EditsLog.conversation_id == uuid.UUID(conversation_id)
         )
 
         if unexported_only:
             query = query.where(EditsLog.exported_for_training == False)
+
+        if actor_type_filter:
+            query = query.where(EditsLog.actor_type == actor_type_filter)
 
         query = query.order_by(EditsLog.created_at)
 
@@ -335,15 +333,31 @@ class TrainingDataExporter:
             return None
 
     async def generate_dataset_id(self, conversation_id: str) -> str:
-        """
-        Generate a unique training dataset ID
-
-        Args:
-            conversation_id: UUID of conversation
-
-        Returns:
-            Dataset ID string
-        """
+        """Generate a unique training dataset ID."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         conv_short = str(conversation_id)[:8]
         return f"training_{conv_short}_{timestamp}"
+
+    async def mark_as_exported(
+        self,
+        conversation_id: str,
+        dataset_id: str,
+        unexported_only: bool = False,
+        actor_type_filter: Optional[str] = None,
+    ) -> int:
+        """Mark matching edits as exported with the given dataset_id."""
+        from sqlalchemy import update as sa_update
+
+        conditions = [EditsLog.conversation_id == uuid.UUID(conversation_id)]
+        if unexported_only:
+            conditions.append(EditsLog.exported_for_training == False)
+        if actor_type_filter:
+            conditions.append(EditsLog.actor_type == actor_type_filter)
+
+        result = await self.db.execute(
+            sa_update(EditsLog)
+            .where(*conditions)
+            .values(exported_for_training=True, training_dataset_id=dataset_id)
+        )
+        await self.db.commit()
+        return result.rowcount

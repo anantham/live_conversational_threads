@@ -37,9 +37,10 @@ class EditLogger:
         old_value: Any,
         new_value: Any,
         edit_type: str,
-        user_id: str = "anonymous",
+        user_id: str = "default",
+        actor_type: str = "human",
         user_comment: Optional[str] = None,
-        user_confidence: float = 1.0
+        user_confidence: float = 1.0,
     ) -> str:
         """
         Log an edit to the database
@@ -69,11 +70,12 @@ class EditLogger:
             new_value=str(new_value) if new_value is not None else None,
             edit_type=edit_type,
             user_id=user_id,
+            actor_type=actor_type,
             user_comment=user_comment,
             user_confidence=user_confidence,
             exported_for_training=False,
             training_dataset_id=None,
-            created_at=datetime.now()
+            created_at=datetime.now(),
         )
 
         self.db.add(edit_log)
@@ -87,8 +89,9 @@ class EditLogger:
         conversation_id: str,
         node_id: str,
         changes: Dict[str, Dict[str, Any]],
-        user_id: str = "anonymous",
-        user_comment: Optional[str] = None
+        user_id: str = "default",
+        actor_type: str = "human",
+        user_comment: Optional[str] = None,
     ) -> List[str]:
         """
         Log multiple field changes to a node
@@ -124,7 +127,8 @@ class EditLogger:
                 new_value=change.get('new'),
                 edit_type='correction',
                 user_id=user_id,
-                user_comment=user_comment
+                actor_type=actor_type,
+                user_comment=user_comment,
             )
             edit_ids.append(edit_id)
 
@@ -286,43 +290,43 @@ class EditLogger:
         )
         exported_count = exported_result.scalar()
 
+        # Feedback count (edits with annotations)
+        feedback_result = await self.db.execute(
+            select(func.count(EditsLog.id)).where(
+                EditsLog.conversation_id == uuid.UUID(conversation_id),
+                EditsLog.annotations.isnot(None),
+            )
+        )
+        feedback_count = feedback_result.scalar()
+
         return {
             "total_edits": total_edits,
             "edits_by_target_type": edits_by_type,
             "edits_by_edit_type": edits_by_edit_type,
             "exported_count": exported_count,
             "unexported_count": total_edits - exported_count,
-            "export_percentage": (exported_count / total_edits * 100) if total_edits > 0 else 0
+            "export_percentage": (exported_count / total_edits * 100) if total_edits > 0 else 0,
+            "feedback_count": feedback_count,
         }
 
-    async def add_feedback(
-        self,
-        edit_id: str,
-        feedback: str
-    ) -> bool:
-        """
-        Add feedback to an edit log entry
+    async def add_annotation(self, edit_id: str, text: str) -> bool:
+        """Append a timestamped annotation to an edit's annotations field.
 
-        Args:
-            edit_id: UUID of edit
-            feedback: Feedback text
-
-        Returns:
-            True if successful
+        Does NOT modify user_comment (contemporaneous rationale).
         """
         result = await self.db.execute(
             select(EditsLog).where(EditsLog.id == uuid.UUID(edit_id))
         )
         edit_log = result.scalar_one_or_none()
+        if not edit_log:
+            return False
 
-        if edit_log:
-            # Append feedback to user_comment
-            if edit_log.user_comment:
-                edit_log.user_comment += f"\n\nFeedback: {feedback}"
-            else:
-                edit_log.user_comment = f"Feedback: {feedback}"
+        ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+        entry = f"[{ts}] {text}"
+        if edit_log.annotations:
+            edit_log.annotations = f"{edit_log.annotations}\n{entry}"
+        else:
+            edit_log.annotations = entry
 
-            await self.db.commit()
-            return True
-
-        return False
+        await self.db.commit()
+        return True
