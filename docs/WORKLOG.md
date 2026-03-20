@@ -1,5 +1,16 @@
 # WORKLOG
 
+## 2026-03-20T18:31:39Z — Docs and ignore cleanup for conventions, ADR-018, and local replay artifacts
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `docs/CONVENTIONS.md` (lines 1-215): Reviewed the untracked conventions reference and kept it as a repo doc rather than treating it as a local scratch file. It captures current naming, error-handling, file-organization, import, and API-contract rules that are already reflected in the codebase and useful for future audits.
+- `docs/adr/ADR-018-edit-history-training-data-export.md` (lines 1-260): Reviewed the untracked ADR and kept it as a proposed architectural record. It documents the edit-history/training-export design space cleanly enough to preserve even though it is not part of the live STT/materialization stack.
+- `.gitignore` (local-artifacts section): Added `tmp/` to keep 1x replay probes and evaluation JSON out of repo status. The current `tmp/` contents are local experiments, not reusable fixtures or committed tooling.
+
+- Validation:
+  - Docs/gitignore only; no tests required.
+
 ## 2026-03-20T16:33:46Z — ADR-019 Phase 2A: durable speaker evidence, live timebase, and utterance speaker materialization
 
 Branch: `codex/fix-stt-cloud-test-observability`
