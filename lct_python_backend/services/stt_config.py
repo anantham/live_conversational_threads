@@ -214,6 +214,8 @@ def sanitize_stt_config_for_client(config: Dict[str, Any]) -> Dict[str, Any]:
     sanitized["live_fallback_priority"] = normalize_live_fallback_priority(
         sanitized.get("live_fallback_priority")
     )
+    # Strip secrets that should not reach the browser
+    sanitized.pop("download_token", None)
     return sanitized
 
 
