@@ -154,29 +154,22 @@ const normalizeCloudFallbackProviders = (providers) => {
 };
 
 const normalizeSttSettings = (settings = {}) => {
-  const provider = normalizeProvider(settings?.provider);
-  const provider_urls = normalizeProviderUrls(settings?.provider_urls);
-  const provider_http_urls = normalizeProviderHttpUrls(settings?.provider_http_urls);
+  // The backend already normalizes provider, URLs, fallback priority, and
+  // boolean flags in merge_stt_config + sanitize_stt_config_for_client.
+  // Frontend only needs to handle api_key preservation for the save path
+  // and apply lightweight defaults for missing fields.
+  const provider = settings?.provider || DEFAULT_STT_PROVIDER;
   const cloud_fallback_providers = normalizeCloudFallbackProviders(settings?.cloud_fallback_providers);
-  const resolvedWsUrl = provider_urls[provider] || String(settings?.ws_url || "").trim() || DEFAULT_STT_WS;
-  const resolvedHttpUrl =
-    provider_http_urls[provider] ||
-    String(settings?.http_url || "").trim() ||
-    DEFAULT_STT_HTTP;
 
   return {
     ...settings,
     provider,
-    provider_urls,
-    provider_http_urls,
     cloud_fallback_providers,
-    live_fallback_priority: normalizeLiveFallbackPriority(settings?.live_fallback_priority),
-    ws_url: resolvedWsUrl,
-    http_url: resolvedHttpUrl,
-    local_only: settings?.local_only !== false,
-    live_cloud_fallback_enabled: settings?.live_cloud_fallback_enabled === true,
-    live_require_diarization: settings?.live_require_diarization !== false,
-    live_allow_text_only_fallback: settings?.live_allow_text_only_fallback === true,
+    provider_urls: settings?.provider_urls || { ...DEFAULT_STT_PROVIDER_URLS },
+    provider_http_urls: settings?.provider_http_urls || { ...DEFAULT_STT_PROVIDER_HTTP_URLS },
+    live_fallback_priority: settings?.live_fallback_priority || [...LIVE_FALLBACK_ROUTE_OPTIONS],
+    ws_url: settings?.ws_url || DEFAULT_STT_WS,
+    http_url: settings?.http_url || DEFAULT_STT_HTTP,
   };
 };
 
