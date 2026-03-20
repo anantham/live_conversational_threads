@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 
+import { sendWsAuth } from "../../services/apiClient";
 import { BACKEND_WS_URL } from "./sttUtils";
 import { createBackendMessageHandler } from "./audioMessages";
 
@@ -104,6 +105,7 @@ export default function useTranscriptSockets({
 
       ws.onopen = () => {
         onBackendSocketStateChange?.("connected");
+        sendWsAuth(ws);
         clearPingLoop();
         ws.send(JSON.stringify({ type: "ping", client_ts_ms: Date.now() }));
         pingIntervalRef.current = window.setInterval(() => {

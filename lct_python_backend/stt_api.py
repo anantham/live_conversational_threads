@@ -17,7 +17,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 
 from lct_python_backend.db_session import get_async_session, get_async_session_context
-from lct_python_backend.middleware import check_ws_auth
+from lct_python_backend.middleware import check_ws_auth, check_ws_auth_message
 from lct_python_backend.services.audio_storage import AudioStorageManager
 from lct_python_backend.services.llm_config import load_llm_config
 from lct_python_backend.services.stt_config import STT_PROVIDER_IDS
@@ -208,10 +208,9 @@ async def get_audio_ws_fallback():
 # ---------------------------------------------------------------------------
 @router.websocket("/ws/transcripts")
 async def transcripts_websocket(websocket: WebSocket):
-    if not check_ws_auth(websocket):
-        await websocket.close(code=4401, reason="Unauthorized")
-        return
     await websocket.accept()
+    if not await check_ws_auth_message(websocket):
+        return
     async with get_async_session_context() as session:
         llm_config = await load_llm_config(session)
         ctx = WsSessionContext(

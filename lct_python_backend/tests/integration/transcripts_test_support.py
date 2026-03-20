@@ -90,7 +90,10 @@ def build_test_client(
         "http_url": "",
     }
 
-    monkeypatch.setattr(stt_api, "check_ws_auth", lambda _websocket: True)
+    async def _always_authed(_websocket):
+        return True
+
+    monkeypatch.setattr(stt_api, "check_ws_auth_message", _always_authed)
     monkeypatch.setattr(stt_api, "get_async_session_context", dummy_session_context)
     monkeypatch.setattr(stt_api, "load_llm_config", AsyncMock(return_value={}))
     monkeypatch.setattr(

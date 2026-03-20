@@ -84,7 +84,7 @@ export async function apiFetch(path, options = {}) {
 }
 
 /**
- * Build a WebSocket URL with auth token in query params.
+ * Build a WebSocket URL (no auth token in URL — use wsAuthMessage() after connect).
  *
  * @param {string} path - WS path (e.g. '/ws/transcripts')
  * @param {Record<string, string>} params - additional query params
@@ -93,11 +93,21 @@ export async function apiFetch(path, options = {}) {
 export function wsUrl(path, params = {}) {
   const base = API_BASE_URL.replace(/^http/, 'ws');
   const url = new URL(`${base}${path}`);
-  if (AUTH_TOKEN) {
-    url.searchParams.set('token', AUTH_TOKEN);
-  }
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, v);
   }
   return url.toString();
+}
+
+/**
+ * Send auth message over an open WebSocket.
+ * Must be called before session_meta or other messages.
+ * No-op when AUTH_TOKEN is not configured.
+ *
+ * @param {WebSocket} ws - open WebSocket connection
+ */
+export function sendWsAuth(ws) {
+  if (AUTH_TOKEN && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'auth', token: AUTH_TOKEN }));
+  }
 }
