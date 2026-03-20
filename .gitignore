@@ -204,3 +204,6 @@ outputs/
 
 # Git worktrees
 .worktrees/
+
+# Local replay / probe artifacts
+tmp/
