@@ -69,39 +69,25 @@ class TestIterContextualRelations:
         assert len(result) == 1
         assert result[0] == ("NodeA", "depends on")
 
-    def test_duplicate_related_node_first_extracted_then_fallthrough(self):
-        """When _add rejects a duplicate, the fallthrough to item.items()
-        leaks raw dict keys as node names. This is a known bug — the
-        continue on line 84 only fires when _add succeeds.
-        """
+    def test_duplicate_related_node_drops_second(self):
+        """Duplicate related_node names should be deduplicated."""
         value = [
             {"related_node_name": "X", "relation_text": "first relation"},
             {"related_node_name": "X", "relation_text": "second relation"},
         ]
         result = list(_iter_contextual_relations(value))
-        # BUG: second item falls through to item.items(), yielding
-        # ("related_node_name", "X") and ("relation_text", "second relation")
-        # as separate "relations" — dict keys become node names.
+        assert len(result) == 1
         assert result[0] == ("X", "first relation")
-        assert len(result) == 3  # 1 real + 2 leaked key-value pairs
 
-    def test_empty_related_node_leaks_via_fallthrough(self):
-        """Empty related_node causes _add to return None, then item.items()
-        fallthrough yields the raw dict keys. Known bug.
-        """
+    def test_empty_related_node_skipped(self):
         value = [{"related_node_name": "", "relation_text": "something"}]
         result = list(_iter_contextual_relations(value))
-        # BUG: yields ("relation_text", "something") via fallthrough
-        assert len(result) == 1
+        assert len(result) == 0
 
-    def test_empty_relation_text_leaks_via_fallthrough(self):
-        """Empty relation_text causes _add to return None, then item.items()
-        fallthrough yields raw dict keys. Known bug.
-        """
+    def test_empty_relation_text_skipped(self):
         value = [{"related_node_name": "Node", "relation_text": ""}]
         result = list(_iter_contextual_relations(value))
-        # BUG: yields ("related_node_name", "Node") via fallthrough
-        assert len(result) == 1
+        assert len(result) == 0
 
     def test_none_input(self):
         result = list(_iter_contextual_relations(None))

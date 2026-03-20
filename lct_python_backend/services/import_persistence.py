@@ -78,9 +78,11 @@ def _iter_contextual_relations(value: Any) -> Iterable[Tuple[str, str]]:
     if isinstance(value, list):
         for item in value:
             if isinstance(item, dict):
-                relation = _add(*_extract_contextual_relation_pair(item))
-                if relation:
-                    yield relation
+                node, text = _extract_contextual_relation_pair(item)
+                if node or text:
+                    relation = _add(node, text)
+                    if relation:
+                        yield relation
                     continue
                 for related_name, relation_text in item.items():
                     relation = _add(related_name, relation_text)
