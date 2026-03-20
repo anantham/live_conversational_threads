@@ -199,15 +199,32 @@ async def persist_import_graph(
     await db.execute(delete(Relationship).where(Relationship.conversation_id == conv_uuid))
     await db.execute(delete(Node).where(Node.conversation_id == conv_uuid))
 
-    # Step 1: Assign stable UUIDs; build name→id map for relationship resolution
-    name_to_id: Dict[str, uuid.UUID] = {}
+    def _coerce_uuid(value: Any) -> Optional[uuid.UUID]:
+        try:
+            token = _to_clean_str(value)
+            return uuid.UUID(token) if token else None
+        except (TypeError, ValueError, AttributeError):
+            return None
+
+    # Step 1: Assign stable UUIDs; build reference→id map for relationship resolution
+    ref_to_id: Dict[str, uuid.UUID] = {}
     node_records = []
     for item in existing_json:
-        node_id = uuid.uuid4()
-        name = item.get("node_name") or ""
+        node_id = _coerce_uuid(item.get("id") or item.get("node_id")) or uuid.uuid4()
+        name = _to_clean_str(item.get("node_name") or "")
+        raw_id = _to_clean_str(item.get("id") or item.get("node_id"))
         if name:
-            name_to_id[name] = node_id
+            ref_to_id[name] = node_id
+        if raw_id:
+            ref_to_id[raw_id] = node_id
         node_records.append((node_id, item))
+
+    if conv and conversation_name:
+        clean_conversation_name = _to_clean_str(conversation_name)
+        if clean_conversation_name:
+            conv.conversation_name = clean_conversation_name
+    if conv and source_metadata:
+        conv.source_metadata = source_metadata
 
     # Step 2: Write Node rows
     for node_id, item in node_records:
@@ -233,13 +250,13 @@ async def persist_import_graph(
     # Step 3: Write Relationship rows
     # 3a. Temporal chain via successor field
     for node_id, item in node_records:
-        successor_name = item.get("successor")
-        if successor_name and successor_name in name_to_id:
+        successor_name = _to_clean_str(item.get("successor"))
+        if successor_name and successor_name in ref_to_id:
             db.add(Relationship(
                 id=uuid.uuid4(),
                 conversation_id=conv_uuid,
                 from_node_id=node_id,
-                to_node_id=name_to_id[successor_name],
+                to_node_id=ref_to_id[successor_name],
                 relationship_type="temporal",
                 explanation="Sequential conversation flow",
                 strength=1.0,
@@ -249,12 +266,12 @@ async def persist_import_graph(
     # 3b. Contextual relations
     for node_id, item in node_records:
         for related_name, relation_text in _iter_contextual_relations(item.get("contextual_relation")):
-            if related_name in name_to_id:
+            if related_name in ref_to_id:
                 db.add(Relationship(
                     id=uuid.uuid4(),
                     conversation_id=conv_uuid,
                     from_node_id=node_id,
-                    to_node_id=name_to_id[related_name],
+                    to_node_id=ref_to_id[related_name],
                     relationship_type="contextual",
                     explanation=relation_text,
                     strength=0.8,
