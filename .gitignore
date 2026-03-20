@@ -201,3 +201,6 @@ outputs/
 
 # Raw/original large images (resized versions live in docs/assets/)
 /images/
+
+# Git worktrees
+.worktrees/
