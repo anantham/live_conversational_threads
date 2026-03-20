@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy import select
 
 from lct_python_backend.models import TranscriptEvent
+from lct_python_backend.services.coercion_helpers import coerce_float
 from lct_python_backend.services.stt_config import STT_PROVIDER_IDS
 
 logger = logging.getLogger(__name__)
@@ -15,16 +16,6 @@ logger = logging.getLogger(__name__)
 
 def _utc_iso_now() -> str:
     return datetime.utcnow().isoformat() + "Z"
-
-
-def _to_float(value: Any) -> Optional[float]:
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        return None
-    if parsed < 0:
-        return None
-    return round(parsed, 2)
 
 
 def _empty_provider_bucket() -> Dict[str, Any]:
@@ -107,11 +98,11 @@ async def aggregate_telemetry(
 
         metadata = event.event_metadata if isinstance(event.event_metadata, dict) else {}
         telemetry = metadata.get("telemetry") if isinstance(metadata.get("telemetry"), dict) else {}
-        partial_ms = _to_float(telemetry.get("partial_turnaround_ms"))
-        final_ms = _to_float(telemetry.get("final_turnaround_ms"))
-        stt_request_ms = _to_float(telemetry.get("stt_request_ms"))
-        stt_flush_request_ms = _to_float(telemetry.get("stt_flush_request_ms"))
-        audio_decode_ms = _to_float(telemetry.get("audio_decode_ms"))
+        partial_ms = coerce_float(telemetry.get("partial_turnaround_ms"))
+        final_ms = coerce_float(telemetry.get("final_turnaround_ms"))
+        stt_request_ms = coerce_float(telemetry.get("stt_request_ms"))
+        stt_flush_request_ms = coerce_float(telemetry.get("stt_flush_request_ms"))
+        audio_decode_ms = coerce_float(telemetry.get("audio_decode_ms"))
 
         if partial_ms is not None:
             if info["last_partial_ms"] is None:

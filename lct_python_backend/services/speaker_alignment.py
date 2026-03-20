@@ -7,14 +7,13 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
+from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
 from lct_python_backend.services.transcription_utils import (
     STT_PYANNOTE_DEVICE,
     STT_PYANNOTE_MAX_SPEAKERS,
     STT_PYANNOTE_MIN_SPEAKERS,
     STT_PYANNOTE_MODEL,
-    _coerce_float,
     _coerce_optional_int,
-    _coerce_str,
 )
 
 logger = logging.getLogger("lct_backend")
@@ -27,8 +26,8 @@ logger = logging.getLogger("lct_backend")
 def _format_speaker_transcript(segments: Sequence[Dict[str, Any]]) -> str:
     lines: List[str] = []
     for seg in segments:
-        speaker = _coerce_str(seg.get("speaker")) or "SPEAKER_00"
-        text = _coerce_str(seg.get("text"))
+        speaker = coerce_str(seg.get("speaker")) or "SPEAKER_00"
+        text = coerce_str(seg.get("text"))
         if text:
             lines.append(f"{speaker}: {text}")
     return "\n".join(lines).strip()
@@ -59,18 +58,18 @@ def _align_asr_segments_to_speakers(
     for seg in speaker_segments:
         if not isinstance(seg, dict):
             continue
-        start = _coerce_float(seg.get("start"))
-        end = _coerce_float(seg.get("end"))
-        speaker = _coerce_str(seg.get("speaker"))
+        start = coerce_float(seg.get("start"))
+        end = coerce_float(seg.get("end"))
+        speaker = coerce_str(seg.get("speaker"))
         if start is None or end is None or end <= start or not speaker:
             continue
         normalized_speaker_segments.append({"speaker": speaker, "start": start, "end": end})
 
     assigned: List[Dict[str, Any]] = []
     for asr in asr_segments:
-        asr_start = _coerce_float(asr.get("start"))
-        asr_end = _coerce_float(asr.get("end"))
-        text = _coerce_str(asr.get("text"))
+        asr_start = coerce_float(asr.get("start"))
+        asr_end = coerce_float(asr.get("end"))
+        text = coerce_str(asr.get("text"))
         if asr_start is None or asr_end is None or asr_end <= asr_start or not text:
             continue
 
@@ -123,7 +122,7 @@ def _load_pyannote_pipeline() -> Any:
     """Load and cache pyannote pipeline once per process."""
     global _PYANNOTE_PIPELINE, _PYANNOTE_PIPELINE_DEVICE, _PYANNOTE_PIPELINE_MODEL
 
-    hf_token = _coerce_str(os.getenv("STT_PYANNOTE_HF_TOKEN") or os.getenv("HF_TOKEN"))
+    hf_token = coerce_str(os.getenv("STT_PYANNOTE_HF_TOKEN") or os.getenv("HF_TOKEN"))
     if not hf_token:
         raise RuntimeError("Missing HF token for pyannote (set STT_PYANNOTE_HF_TOKEN or HF_TOKEN).")
 
@@ -201,7 +200,7 @@ def _run_pyannote_diarization(audio_path: Path) -> List[Dict[str, Any]]:
         if end <= start:
             continue
         speaker_segments.append(
-            {"speaker": _coerce_str(speaker) or "SPEAKER_00", "start": start, "end": end}
+            {"speaker": coerce_str(speaker) or "SPEAKER_00", "start": start, "end": end}
         )
     speaker_segments.sort(key=lambda seg: (float(seg["start"]), float(seg["end"])))
     return speaker_segments

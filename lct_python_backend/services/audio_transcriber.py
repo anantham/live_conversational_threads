@@ -20,6 +20,7 @@ from lct_python_backend.services.stt_http_transcriber import (
     extract_diarized_segments,
     extract_transcript_text,
 )
+from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
 from lct_python_backend.services.transcription_utils import (
     DEFAULT_CHUNK_DURATION_S,
     DEFAULT_CHUNK_MAX_RETRIES,
@@ -33,8 +34,6 @@ from lct_python_backend.services.transcription_utils import (
     ProgressCallback,
     SegmentResult,
     SegmentStartedCallback,
-    _coerce_float,
-    _coerce_str,
     _elapsed_ms,
     _last_stt_backend,
 )
@@ -62,9 +61,9 @@ def _extract_asr_segments(payload: Any) -> List[Dict[str, Any]]:
     for item in raw_segments:
         if not isinstance(item, dict):
             continue
-        start = _coerce_float(item.get("start"))
-        end = _coerce_float(item.get("end"))
-        text = _coerce_str(item.get("text") or item.get("segment") or item.get("word"))
+        start = coerce_float(item.get("start"))
+        end = coerce_float(item.get("end"))
+        text = coerce_str(item.get("text") or item.get("segment") or item.get("word"))
         if start is None or end is None or end <= start or not text:
             continue
         segments.append({"start": start, "end": end, "text": text})
@@ -86,7 +85,7 @@ async def transcribe_audio_file_detailed(
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> AudioTranscriptionDetail:
     """Transcribe an audio file via HTTP STT provider and return full detail."""
-    target_url = _coerce_str(http_url)
+    target_url = coerce_str(http_url)
     if not target_url:
         raise ValueError("STT HTTP URL is required for audio transcription.")
 
@@ -96,12 +95,12 @@ async def transcribe_audio_file_detailed(
 
     guessed_content_type = mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
     form_data: Dict[str, str] = {}
-    if _coerce_str(model):
-        form_data["model"] = _coerce_str(model)
-    if _coerce_str(language):
-        form_data["language"] = _coerce_str(language)
-    if _coerce_str(response_format):
-        form_data["response_format"] = _coerce_str(response_format)
+    if coerce_str(model):
+        form_data["model"] = coerce_str(model)
+    if coerce_str(language):
+        form_data["language"] = coerce_str(language)
+    if coerce_str(response_format):
+        form_data["response_format"] = coerce_str(response_format)
     form_data.setdefault("include_timestamps", "true")
 
     files = {"file": (file_path.name, payload_bytes, guessed_content_type)}
@@ -117,7 +116,7 @@ async def transcribe_audio_file_detailed(
                 f"STT provider request failed ({exc.response.status_code}): {body_preview}"
             ) from exc
 
-    content_type = _coerce_str(response.headers.get("content-type")).lower()
+    content_type = coerce_str(response.headers.get("content-type")).lower()
     parsed_payload: Any
     if "application/json" in content_type:
         parsed_payload = response.json()
@@ -136,7 +135,7 @@ async def transcribe_audio_file_detailed(
         transcript = extract_transcript_text(parsed_payload).strip()
         if not transcript and asr_segments:
             transcript = "\n".join(
-                seg["text"] for seg in asr_segments if _coerce_str(seg.get("text"))
+                seg["text"] for seg in asr_segments if coerce_str(seg.get("text"))
             ).strip()
     if not transcript:
         raise RuntimeError("STT provider returned empty transcript.")

@@ -5,18 +5,13 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 import uuid
 
 from lct_python_backend.models import Conversation, Utterance as DBUtterance
-
-
-def _to_clean_str(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from lct_python_backend.services.coercion_helpers import coerce_str
 
 
 def _extract_contextual_relation_pair(value: Any) -> Tuple[str, str]:
     if not isinstance(value, dict):
         return "", ""
-    related_node = _to_clean_str(
+    related_node = coerce_str(
         value.get("related_node_name")
         or value.get("related_node")
         or value.get("relatedNode")
@@ -24,7 +19,7 @@ def _extract_contextual_relation_pair(value: Any) -> Tuple[str, str]:
         or value.get("from")
         or value.get("node")
     )
-    relation_text = _to_clean_str(
+    relation_text = coerce_str(
         value.get("relation_text")
         or value.get("relationText")
         or value.get("description")
@@ -60,8 +55,8 @@ def _iter_contextual_relations(value: Any) -> Iterable[Tuple[str, str]]:
     seen = set()
 
     def _add(related_node: Any, relation_text: Any) -> Optional[Tuple[str, str]]:
-        related = _to_clean_str(related_node)
-        text = _to_clean_str(relation_text)
+        related = coerce_str(related_node)
+        text = coerce_str(relation_text)
         if not related or not text or related in seen:
             return None
         seen.add(related)
