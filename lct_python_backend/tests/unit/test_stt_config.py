@@ -1,6 +1,11 @@
 from lct_python_backend.services.stt_config import (
+    DEFAULT_STT_LIVE_FALLBACK_PRIORITY,
+    build_cloud_provider_api_url,
     get_env_stt_defaults,
     merge_stt_config,
+    normalize_cloud_provider_base_url,
+    normalize_live_fallback_priority,
+    sanitize_stt_config_for_client,
 )
 
 
@@ -28,6 +33,7 @@ def test_env_defaults_respect_auth(monkeypatch):
     assert defaults["http_url"] == "http://localhost:5092/v1/audio/transcriptions"
     assert defaults["store_audio"] is True
     assert defaults["local_only"] is True
+    assert defaults["live_fallback_priority"] == DEFAULT_STT_LIVE_FALLBACK_PRIORITY
 
 
 def test_merge_overrides_converts_booleans_and_preserves_provider_map():
@@ -73,3 +79,90 @@ def test_merge_legacy_ws_url_updates_selected_provider_slot():
     assert merged["provider_http_urls"]["whisper"] == "http://localhost:45000/v1/audio/transcriptions"
     assert merged["ws_url"] == "ws://localhost:45000/stream"
     assert merged["http_url"] == "http://localhost:45000/v1/audio/transcriptions"
+
+
+def test_cloud_provider_url_normalization_builds_canonical_api_endpoints():
+    openai_base = normalize_cloud_provider_base_url(
+        "openai_audio",
+        "https://api.openai.com/v1/audio/transcriptions",
+    )
+    openrouter_base = normalize_cloud_provider_base_url(
+        "openrouter_audio",
+        "https://openrouter.ai/api/v1/chat/completions",
+    )
+
+    assert openai_base == "https://api.openai.com"
+    assert openrouter_base == "https://openrouter.ai/api"
+    assert build_cloud_provider_api_url("openai_audio", openai_base) == (
+        "https://api.openai.com/v1/audio/transcriptions"
+    )
+    assert build_cloud_provider_api_url("openrouter_audio", openrouter_base) == (
+        "https://openrouter.ai/api/v1/chat/completions"
+    )
+
+
+def test_sanitize_stt_config_for_client_masks_cloud_api_keys():
+    sanitized = sanitize_stt_config_for_client(
+        {
+            "provider": "whisper",
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "id": "openai_audio",
+                    "name": "OpenAI Audio",
+                    "enabled": True,
+                    "base_url": "https://api.openai.com/v1/audio/transcriptions",
+                    "model": "gpt-4o-transcribe-diarize",
+                    "api_key": "sk-openai-secret",
+                },
+                "openrouter_audio": {
+                    "id": "openrouter_audio",
+                    "name": "OpenRouter Audio",
+                    "enabled": True,
+                    "base_url": "https://openrouter.ai/api/v1/chat/completions",
+                    "model": "google/gemini-2.5-flash",
+                    "api_key": "or-secret",
+                },
+            },
+        }
+    )
+
+    openai_provider = sanitized["cloud_fallback_providers"]["openai_audio"]
+    openrouter_provider = sanitized["cloud_fallback_providers"]["openrouter_audio"]
+
+    assert openai_provider["api_key"] == ""
+    assert openai_provider["has_api_key"] is True
+    assert openai_provider["base_url"] == "https://api.openai.com"
+    assert openrouter_provider["api_key"] == ""
+    assert openrouter_provider["has_api_key"] is True
+    assert openrouter_provider["base_url"] == "https://openrouter.ai/api"
+
+
+def test_normalize_live_fallback_priority_dedupes_and_appends_missing_defaults():
+    normalized = normalize_live_fallback_priority([
+        "openai_audio",
+        "external_http",
+        "openai_audio",
+        "invalid_route",
+    ])
+
+    assert normalized == [
+        "openai_audio",
+        "external_http",
+        "remote_whisper",
+        "openrouter_audio",
+    ]
+
+
+def test_merge_overrides_normalizes_live_fallback_priority():
+    merged = merge_stt_config(
+        {
+            "live_fallback_priority": ["openai_audio", "remote_whisper"],
+        }
+    )
+
+    assert merged["live_fallback_priority"] == [
+        "openai_audio",
+        "remote_whisper",
+        "external_http",
+        "openrouter_audio",
+    ]

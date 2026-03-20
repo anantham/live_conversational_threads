@@ -79,6 +79,47 @@ def _build_test_client(stt_api_module, events=None):
     return TestClient(app)
 
 
+def test_read_stt_settings_returns_client_safe_masked_payload(monkeypatch):
+    stt_api = _load_stt_api_with_stubs(monkeypatch)
+    monkeypatch.setattr(
+        stt_api,
+        "load_stt_settings_for_client",
+        AsyncMock(
+            return_value={
+                "provider": "whisper",
+                "cloud_fallback_providers": {
+                    "openai_audio": {
+                        "api_key": "",
+                        "has_api_key": True,
+                    }
+                },
+            }
+        ),
+    )
+
+    client = _build_test_client(stt_api)
+    response = client.get("/api/settings/stt")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "whisper"
+    assert payload["cloud_fallback_providers"]["openai_audio"]["api_key"] == ""
+    assert payload["cloud_fallback_providers"]["openai_audio"]["has_api_key"] is True
+
+
+def test_update_stt_settings_uses_masked_save_path(monkeypatch):
+    stt_api = _load_stt_api_with_stubs(monkeypatch)
+    save_mock = AsyncMock(return_value={"provider": "whisper", "saved": True})
+    monkeypatch.setattr(stt_api, "save_stt_settings", save_mock)
+
+    client = _build_test_client(stt_api)
+    response = client.put("/api/settings/stt", json={"provider": "whisper"})
+
+    assert response.status_code == 200
+    assert response.json()["saved"] is True
+    assert save_mock.await_args.kwargs["include_secrets"] is False
+
+
 def test_telemetry_endpoint_aggregates_metrics(monkeypatch):
     stt_api = _load_stt_api_with_stubs(monkeypatch)
     now = datetime.utcnow()

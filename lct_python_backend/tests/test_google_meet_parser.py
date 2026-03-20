@@ -7,7 +7,7 @@ Run with: pytest tests/test_google_meet_parser.py -v
 import pytest
 from pathlib import Path
 
-from parsers.google_meet import GoogleMeetParser, Utterance, ParsedTranscript, ValidationResult
+from lct_python_backend.parsers.google_meet import GoogleMeetParser, Utterance, ParsedTranscript, ValidationResult
 
 
 # Path to test fixtures

@@ -2,6 +2,7 @@ import base64
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import numpy as np
 import pytest
 
@@ -227,7 +228,7 @@ async def test_diarize_form_field_sent_when_enabled():
 
 
 @pytest.mark.asyncio
-async def test_diarize_not_sent_when_disabled():
+async def test_diarize_false_sent_when_disabled():
     session = _make_session(pool_enabled=False)
 
     mock_response = MagicMock()
@@ -248,7 +249,132 @@ async def test_diarize_not_sent_when_disabled():
     assert segments is None
 
     form_data = mock_client.post.call_args.kwargs.get("data", {})
-    assert "diarize" not in form_data
+    assert form_data.get("diarize") == "false"
+
+
+@pytest.mark.asyncio
+async def test_primary_backend_candidate_can_fall_back_to_openai_audio():
+    session = _make_session(
+        pool_enabled=False,
+        provider="whisper",
+        http_url="http://primary.example/api/transcribe",
+        candidates=[
+            {
+                "provider": "whisper",
+                "transport": "backend_http",
+                "http_url": "http://primary.example/api/transcribe",
+                "supports_diarization": True,
+                "degraded": False,
+            },
+            {
+                "provider": "openai_audio",
+                "transport": "openai_audio",
+                "http_url": "https://api.openai.com/v1/audio/transcriptions",
+                "api_key": "sk-openai-secret",
+                "model": "gpt-4o-transcribe-diarize",
+                "supports_diarization": True,
+                "degraded": False,
+                "reason": "fallback_openai_audio",
+            },
+        ],
+    )
+
+    primary_response = MagicMock()
+    primary_response.status_code = 503
+    primary_response.text = "gpu busy"
+    primary_response.headers = {"content-type": "application/json"}
+    primary_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "gpu busy",
+        request=MagicMock(),
+        response=primary_response,
+    )
+
+    openai_response = MagicMock()
+    openai_response.status_code = 200
+    openai_response.headers = {"content-type": "application/json"}
+    openai_response.json.return_value = {
+        "text": "speaker one speaker two",
+        "segments": [
+            {"speaker": "speaker_0", "start": 0.0, "end": 0.2, "text": "speaker one"},
+            {"speaker": "speaker_1", "start": 0.2, "end": 0.5, "text": "speaker two"},
+        ],
+    }
+    openai_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=[primary_response, openai_response])
+    mock_client.aclose = AsyncMock()
+
+    with patch.object(mod, "STT_DIARIZE_ENABLED", False), \
+         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+        result = await session.push_audio_chunk(_pcm_bytes(0.5))
+
+    assert result is not None
+    assert result["text"] == "speaker one speaker two"
+    assert len(result["segments"]) == 2
+    assert result["metadata"]["fallback_used"] is True
+    assert result["metadata"]["fallback_from"] == "whisper"
+    assert result["metadata"]["fallback_to"] == "openai_audio"
+    assert result["metadata"]["provider"] == "openai_audio"
+    assert result["metadata"]["supports_diarization"] is True
+
+    primary_form = mock_client.post.call_args_list[0].kwargs["data"]
+    openai_form = mock_client.post.call_args_list[1].kwargs["data"]
+    assert primary_form["diarize"] == "false"
+    assert openai_form["response_format"] == "diarized_json"
+    assert openai_form["chunking_strategy"] == "auto"
+    assert mock_client.post.call_args_list[1].kwargs["headers"]["Authorization"] == "Bearer sk-openai-secret"
+
+
+@pytest.mark.asyncio
+async def test_openrouter_candidate_posts_chat_completion_payload():
+    session = _make_session(
+        pool_enabled=False,
+        provider="whisper",
+        http_url="http://unused.example/api/transcribe",
+        language="en",
+        candidates=[
+            {
+                "provider": "openrouter_audio",
+                "transport": "openrouter_audio",
+                "http_url": "https://openrouter.ai/api/v1/chat/completions",
+                "api_key": "or-secret",
+                "model": "google/gemini-2.5-flash",
+                "supports_diarization": False,
+                "degraded": True,
+            }
+        ],
+    )
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "application/json"}
+    mock_response.json.return_value = {
+        "choices": [{"message": {"content": "openrouter transcript"}}]
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.aclose = AsyncMock()
+
+    with patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+        result = await session.push_audio_chunk(_pcm_bytes(0.5))
+
+    assert result is not None
+    assert result["text"] == "openrouter transcript"
+    assert result["metadata"]["provider"] == "openrouter_audio"
+    assert result["metadata"]["degraded"] is True
+    assert result["metadata"]["supports_diarization"] is False
+
+    request_kwargs = mock_client.post.call_args.kwargs
+    request_payload = request_kwargs["json"]
+    assert request_kwargs["headers"]["Authorization"] == "Bearer or-secret"
+    assert request_payload["model"] == "google/gemini-2.5-flash"
+    assert request_payload["stream"] is False
+    assert request_payload["messages"][0]["content"][0]["text"].endswith("The audio language is en.")
+    assert request_payload["messages"][0]["content"][1]["type"] == "input_audio"
+    assert request_payload["messages"][0]["content"][1]["input_audio"]["format"] == "wav"
 
 
 # ---------------------------------------------------------------------------

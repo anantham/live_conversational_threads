@@ -52,6 +52,12 @@ from lct_python_backend.services.text_parsers import (
     parse_srt_text,
     parse_vtt_text,
 )
+from lct_python_backend.services.coercion_helpers import (
+    coerce_float,
+    coerce_int,
+    coerce_str,
+    to_bool,
+)
 from lct_python_backend.services.transcription_utils import (
     AUDIO_EXTENSIONS,
     DEFAULT_CHUNK_DURATION_S,
@@ -81,12 +87,9 @@ from lct_python_backend.services.transcription_utils import (
     ProviderFallbackCallback,
     SegmentResult,
     SegmentStartedCallback,
-    _coerce_float,
     _coerce_optional_int,
-    _coerce_str,
     _elapsed_ms,
     _last_stt_backend,
-    _to_bool,
 )
 
 # Re-export __all__ so `from file_transcriber import *` still works
@@ -121,11 +124,12 @@ __all__ = [
     "ProviderFallbackCallback",
     "SegmentStartedCallback",
     "_last_stt_backend",
-    "_coerce_str",
+    "coerce_str",
     "_elapsed_ms",
-    "_coerce_float",
+    "coerce_float",
+    "coerce_int",
     "_coerce_optional_int",
-    "_to_bool",
+    "to_bool",
     # text_parsers
     "looks_like_google_meet_text",
     "detect_file_kind",
@@ -199,7 +203,7 @@ async def transcribe_uploaded_file(
         if not provider_candidates:
             raise ValueError("No STT HTTP URL configured for upload transcription.")
         timeout = float(settings.get("http_timeout_seconds", 120.0) or 120.0)
-        response_format = _coerce_str(settings.get("response_format"))
+        response_format = coerce_str(settings.get("response_format"))
         provider_attempts: List[Dict[str, Any]] = []
         transcript_text = ""
         source_diarized_segments: Optional[List[Dict[str, Any]]] = None
@@ -217,8 +221,8 @@ async def transcribe_uploaded_file(
 
         last_error: Optional[Exception] = None
         for attempt_idx, candidate in enumerate(provider_candidates):
-            provider = _coerce_str(candidate.get("provider")).lower() or "whisper"
-            http_url = _coerce_str(candidate.get("http_url"))
+            provider = coerce_str(candidate.get("provider")).lower() or "whisper"
+            http_url = coerce_str(candidate.get("http_url"))
             if not http_url:
                 continue
 
@@ -227,7 +231,7 @@ async def transcribe_uploaded_file(
             attempt_record: Dict[str, Any] = {
                 "provider": provider,
                 "http_url": http_url,
-                "reason": _coerce_str(candidate.get("reason")),
+                "reason": coerce_str(candidate.get("reason")),
             }
             attempt_started_at = time.perf_counter()
             try:
@@ -238,8 +242,8 @@ async def transcribe_uploaded_file(
                     detail = await transcribe_audio_file_detailed(
                         temp_path,
                         http_url=http_url,
-                        model=_coerce_str(settings.get("http_model")),
-                        language=_coerce_str(settings.get("http_language")),
+                        model=coerce_str(settings.get("http_model")),
+                        language=coerce_str(settings.get("http_language")),
                         timeout_seconds=timeout,
                         response_format=response_format or STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT,
                     )
@@ -255,7 +259,7 @@ async def transcribe_uploaded_file(
                             {
                                 seg.get("speaker")
                                 for seg in detail.diarized_segments
-                                if _coerce_str(seg.get("speaker"))
+                                if coerce_str(seg.get("speaker"))
                             }
                         )
                     elif detail.asr_segments:
@@ -281,7 +285,7 @@ async def transcribe_uploaded_file(
                                     {
                                         seg.get("speaker")
                                         for seg in aligned_segments
-                                        if _coerce_str(seg.get("speaker"))
+                                        if coerce_str(seg.get("speaker"))
                                     }
                                 )
                             metadata["pyannote_segment_count"] = len(speaker_segments)
@@ -293,8 +297,8 @@ async def transcribe_uploaded_file(
                     transcript_text = await transcribe_audio_chunked(
                         temp_path,
                         http_url=http_url,
-                        model=_coerce_str(settings.get("http_model")),
-                        language=_coerce_str(settings.get("http_language")),
+                        model=coerce_str(settings.get("http_model")),
+                        language=coerce_str(settings.get("http_language")),
                         timeout_seconds=timeout,
                         on_chunk_progress=on_chunk_progress,
                         response_format=response_format,
@@ -309,7 +313,7 @@ async def transcribe_uploaded_file(
                 provider_attempts.append(attempt_record)
                 if attempt_idx + 1 < len(provider_candidates):
                     next_provider = (
-                        _coerce_str(
+                        coerce_str(
                             provider_candidates[attempt_idx + 1].get("provider")
                         ).lower()
                         or "whisper"

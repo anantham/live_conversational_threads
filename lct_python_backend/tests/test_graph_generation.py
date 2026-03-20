@@ -9,59 +9,29 @@ import json
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch
 
-from services.graph_generation import GraphGenerationService, PromptLoader
-from parsers.google_meet import ParsedTranscript, Utterance
+from lct_python_backend.services.graph_generation import GraphGenerationService
+from lct_python_backend.parsers.google_meet import ParsedTranscript, Utterance
 
 
 # Path to test fixtures
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
+@pytest.mark.skip(reason="PromptLoader class removed from graph_generation module")
 class TestPromptLoader:
-    """Tests for PromptLoader class."""
+    """Tests for PromptLoader class (removed — prompts now managed via prompt_manager)."""
 
     def test_load_prompts(self):
-        """Test loading prompts from JSON."""
-        loader = PromptLoader()
-
-        assert loader.prompts is not None
-        assert "prompts" in loader.prompts
-        assert "version" in loader.prompts
+        pass
 
     def test_get_prompt(self):
-        """Test getting a specific prompt."""
-        loader = PromptLoader()
-
-        prompt = loader.get_prompt("initial_clustering")
-
-        assert prompt is not None
-        assert "description" in prompt
-        assert "model" in prompt
-        assert "template" in prompt
+        pass
 
     def test_get_nonexistent_prompt_raises_error(self):
-        """Test that getting non-existent prompt raises KeyError."""
-        loader = PromptLoader()
-
-        with pytest.raises(KeyError):
-            loader.get_prompt("nonexistent_prompt")
+        pass
 
     def test_render_template(self):
-        """Test rendering a prompt template."""
-        loader = PromptLoader()
-
-        rendered = loader.render_template(
-            "initial_clustering",
-            utterance_count=10,
-            participant_count=3,
-            participants="Alice, Bob, Charlie",
-            transcript="Test transcript"
-        )
-
-        assert "10" in rendered
-        assert "3" in rendered
-        assert "Alice, Bob, Charlie" in rendered
-        assert "Test transcript" in rendered
+        pass
 
 
 class TestGraphGenerationService:
@@ -349,7 +319,7 @@ class TestGraphGenerationIntegration:
     @pytest.mark.asyncio
     async def test_graph_with_real_transcript(self):
         """Test graph generation with real parsed transcript."""
-        from parsers import GoogleMeetParser
+        from lct_python_backend.parsers.google_meet import GoogleMeetParser
 
         parser = GoogleMeetParser()
         transcript_path = FIXTURES_DIR / "sample_transcript_simple.txt"

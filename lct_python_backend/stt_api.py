@@ -17,7 +17,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 
 from lct_python_backend.db_session import get_async_session, get_async_session_context
-from lct_python_backend.middleware import check_ws_auth
+from lct_python_backend.middleware import check_ws_auth, check_ws_auth_message
 from lct_python_backend.services.audio_storage import AudioStorageManager
 from lct_python_backend.services.llm_config import load_llm_config
 from lct_python_backend.services.stt_config import STT_PROVIDER_IDS
@@ -31,7 +31,11 @@ from lct_python_backend.services.stt_health_service import (
     derive_health_url_from_http_url,
     probe_health_url,
 )
-from lct_python_backend.services.stt_settings_service import load_stt_settings, save_stt_settings
+from lct_python_backend.services.stt_settings_service import (
+    load_stt_settings,
+    load_stt_settings_for_client,
+    save_stt_settings,
+)
 from lct_python_backend.services.stt_telemetry_service import aggregate_telemetry
 from lct_python_backend.services.stt_ws_session import WsSessionContext
 
@@ -74,14 +78,14 @@ def _derive_health_url_from_http(http_url):
 # ---------------------------------------------------------------------------
 @router.get("/api/settings/stt")
 async def read_stt_settings(session=Depends(get_async_session)):
-    return await _load_stt_settings(session)
+    return await load_stt_settings_for_client(session)
 
 
 @router.put("/api/settings/stt")
 async def update_stt_settings(payload: Dict[str, Any], session=Depends(get_async_session)):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Payload must be a JSON object.")
-    return await save_stt_settings(session, payload)
+    return await save_stt_settings(session, payload, include_secrets=False)
 
 
 # ---------------------------------------------------------------------------
@@ -204,10 +208,9 @@ async def get_audio_ws_fallback():
 # ---------------------------------------------------------------------------
 @router.websocket("/ws/transcripts")
 async def transcripts_websocket(websocket: WebSocket):
-    if not check_ws_auth(websocket):
-        await websocket.close(code=4401, reason="Unauthorized")
-        return
     await websocket.accept()
+    if not await check_ws_auth_message(websocket):
+        return
     async with get_async_session_context() as session:
         llm_config = await load_llm_config(session)
         ctx = WsSessionContext(
