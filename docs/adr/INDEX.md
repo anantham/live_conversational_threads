@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-03-17 (ADR-016 approved)
+Last updated: 2026-03-19 (ADR-018 proposed)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -20,6 +20,7 @@ Last updated: 2026-03-17 (ADR-016 approved)
 | [ADR-014](ADR-014-stage-based-runtime-settings-and-explicit-live-fallback-order.md) | Stage-Based Runtime Settings and Explicit Live STT Fallback Order | 2026-03-13 | Approved |
 | [ADR-015](ADR-015-settings-route-split-and-progressive-disclosure.md) | Settings Route Split and Progressive Disclosure | 2026-03-14 | Approved |
 | [ADR-016](ADR-016-review-experience-mvp-thematic-zoom-series-cross-session-signals.md) | Review Experience MVP — Thematic Zoom Integration, Conversation Series, Cross-Session Intent Signal Linking | 2026-03-17 | Approved |
+| [ADR-018](ADR-018-edit-history-training-data-export.md) | Edit History Contracts and Training Data Export | 2026-03-19 | Proposed |
 
 ## Status Definitions
 
