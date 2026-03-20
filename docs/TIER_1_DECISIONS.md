@@ -57,6 +57,11 @@ Harshit Aggarwal: So, why is the thing so zoomed in on your face?
 
 ### ✅ DECIDED: NO Audio Storage for MVP
 
+> **Superseded (2026-02-13):** ADR-008 amendment added optional audio storage
+> with `AudioStorageManager`, upload endpoints (`/audio/chunk`, `/audio/complete`),
+> and `STT_STORE_AUDIO_DEFAULT` env flag. Audio storage is now implemented but
+> opt-in. The original "no audio" decision below reflects the MVP baseline.
+
 **Rationale**: Too expensive to process audio as first-class primitive
 
 **Architecture planning**:

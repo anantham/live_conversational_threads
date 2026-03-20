@@ -1,5 +1,18 @@
 # WORKLOG
 
+## 2026-03-20T19:19:44Z — Docs freshness pass for roadmap, structure, and ADR status notes
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `docs/FEATURE_ROADMAP.md` (lines 1-26, 47-71, 452-481): Added a staleness banner and refreshed roadmap notes so the document explicitly points readers to ADR-driven planning, acknowledges already-shipped items, and adds the guided runtime setup work to the prioritization sections.
+- `docs/PROJECT_STRUCTURE.md` (lines 1-74): Refreshed the structure inventory to match the current codebase layout: split model modules, expanded router/service/frontend areas, the settings sub-pages, and the conventions doc.
+- `docs/TIER_1_DECISIONS.md` (lines 57-67): Added a supersession note clarifying that the old “no audio storage” MVP decision was later amended by ADR-008 into an opt-in audio-storage model.
+- `docs/adr/ADR-001-google-meet-transcript-support.md` (line 139): Added an implementation note correcting the live import route reference so the ADR points at the actual mounted route.
+- `docs/adr/ADR-016-review-experience-mvp-thematic-zoom-series-cross-session-signals.md` (line 4): Clarified that the ADR is approved but not yet started, to reduce ambiguity between architectural approval and shipped status.
+
+- Validation:
+  - Docs-only change; no tests required.
+
 ## 2026-03-20T18:31:39Z — Docs and ignore cleanup for conventions, ADR-018, and local replay artifacts
 
 Branch: `codex/fix-stt-cloud-test-observability`
