@@ -78,6 +78,7 @@ function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef) 
 const AudioInput = forwardRef(function AudioInput({
   onDataReceived,
   onChunksReceived,
+  onGraphPatchReceived,
   chunkDict,
   graphData,
   conversationId,
@@ -155,6 +156,7 @@ const AudioInput = forwardRef(function AudioInput({
   } = useTranscriptSockets({
     onDataReceived,
     onChunksReceived,
+    onGraphPatchReceived,
     graphDataFromSocket,
     onSessionReady: () => setRecording(true),
     onSessionAck: handleSessionAck,
@@ -369,6 +371,7 @@ const AudioInput = forwardRef(function AudioInput({
 AudioInput.propTypes = {
   onDataReceived: PropTypes.func,
   onChunksReceived: PropTypes.func,
+  onGraphPatchReceived: PropTypes.func,
   chunkDict: PropTypes.object,
   graphData: PropTypes.array,
   conversationId: PropTypes.string,

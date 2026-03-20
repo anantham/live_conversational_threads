@@ -75,12 +75,15 @@ export default function useLiveSessionStatus({
   const [lastFinalAtMs, setLastFinalAtMs] = useState(null);
   const [firstCaptionMs, setFirstCaptionMs] = useState(null);
   const [firstFinalCaptionMs, setFirstFinalCaptionMs] = useState(null);
+  const [firstGraphNodeMs, setFirstGraphNodeMs] = useState(null);
   const [lastSttRequestMs, setLastSttRequestMs] = useState(null);
   const [lastProviderError, setLastProviderError] = useState("");
   const [graphPhase, setGraphPhase] = useState("idle");
   const [graphQueuedFinals, setGraphQueuedFinals] = useState(0);
   const [lastGraphUpdateAtMs, setLastGraphUpdateAtMs] = useState(null);
+  const [lastGraphQueueWaitMs, setLastGraphQueueWaitMs] = useState(null);
   const [lastGraphLatencyMs, setLastGraphLatencyMs] = useState(null);
+  const [lastGraphTotalUpdateMs, setLastGraphTotalUpdateMs] = useState(null);
   const [lastGraphError, setLastGraphError] = useState("");
   const [detailOpen, setDetailOpen] = useState(false);
 
@@ -104,12 +107,15 @@ export default function useLiveSessionStatus({
     setLastFinalAtMs(null);
     setFirstCaptionMs(null);
     setFirstFinalCaptionMs(null);
+    setFirstGraphNodeMs(null);
     setLastSttRequestMs(null);
     setLastProviderError("");
     setGraphPhase("idle");
     setGraphQueuedFinals(0);
     setLastGraphUpdateAtMs(null);
+    setLastGraphQueueWaitMs(null);
     setLastGraphLatencyMs(null);
+    setLastGraphTotalUpdateMs(null);
     setLastGraphError("");
     setDetailOpen(false);
   }, []);
@@ -176,12 +182,27 @@ export default function useLiveSessionStatus({
   const handleBackendMessage = useCallback((message) => {
     const nextNow = Date.now();
     setLastServerMessageAtMs(nextNow);
-    if (message?.type === "existing_json") {
+    if (message?.type === "existing_json" || message?.type === "graph_patch") {
+      const patchKind =
+        message?.type === "graph_patch"
+          ? String(message?.data?.kind || "").trim().toLowerCase()
+          : "finalized";
+      const patchNodeCount =
+        message?.type === "graph_patch" && Array.isArray(message?.data?.nodes)
+          ? message.data.nodes.length
+          : null;
+      if (message?.type === "graph_patch" && patchNodeCount === 0) {
+        return;
+      }
       const startedAtMs = graphStartedAtRef.current;
-      setGraphPhase("completed");
+      const firstGraphLatency = speechWindowStartedAtRef.current
+        ? Math.round(Math.max(0, nextNow - speechWindowStartedAtRef.current) * 100) / 100
+        : null;
+      setGraphPhase(patchKind === "draft" ? "generating" : "completed");
       setGraphQueuedFinals(0);
       setLastGraphError("");
       setLastGraphUpdateAtMs(nextNow);
+      setFirstGraphNodeMs((previous) => previous ?? firstGraphLatency);
       setLastGraphLatencyMs(
         startedAtMs ? Math.round((nextNow - startedAtMs) * 100) / 100 : null
       );
@@ -236,6 +257,9 @@ export default function useLiveSessionStatus({
     const context = status?.context && typeof status.context === "object" ? status.context : {};
     const stage = String(context.stage || "").trim().toLowerCase();
     const phase = String(context.phase || "").trim().toLowerCase();
+    const queueWaitMs = toLatency(context.queue_wait_ms);
+    const generationMs = toLatency(context.generation_ms ?? context.latency_ms);
+    const totalUpdateMs = toLatency(context.total_update_ms);
 
     if (stage === "stt" && level === "error" && message) {
       setLastProviderError(message);
@@ -246,11 +270,24 @@ export default function useLiveSessionStatus({
       setGraphPhase("error");
       setGraphQueuedFinals(0);
       setLastGraphError(message);
-      const latencyMs = toLatency(context.latency_ms);
-      if (latencyMs !== null) {
-        setLastGraphLatencyMs(latencyMs);
+      if (queueWaitMs !== null) {
+        setLastGraphQueueWaitMs(queueWaitMs);
+      }
+      if (generationMs !== null) {
+        setLastGraphLatencyMs(generationMs);
       } else if (graphStartedAtRef.current) {
         setLastGraphLatencyMs(
+          Math.round(Math.max(0, nextNow - graphStartedAtRef.current) * 100) / 100
+        );
+      }
+      if (totalUpdateMs !== null) {
+        setLastGraphTotalUpdateMs(totalUpdateMs);
+      } else if (queueWaitMs !== null || generationMs !== null) {
+        setLastGraphTotalUpdateMs(
+          Math.round(((queueWaitMs || 0) + (generationMs || 0)) * 100) / 100
+        );
+      } else if (graphStartedAtRef.current) {
+        setLastGraphTotalUpdateMs(
           Math.round(Math.max(0, nextNow - graphStartedAtRef.current) * 100) / 100
         );
       }
@@ -264,6 +301,9 @@ export default function useLiveSessionStatus({
     if (phase === "queued") {
       setGraphPhase("queued");
       setGraphQueuedFinals(Math.max(1, Number(context.queued_finals) || 0));
+      if (queueWaitMs !== null) {
+        setLastGraphQueueWaitMs(queueWaitMs);
+      }
       setLastGraphError("");
       return;
     }
@@ -272,19 +312,33 @@ export default function useLiveSessionStatus({
       graphStartedAtRef.current = nextNow;
       setGraphPhase("generating");
       setGraphQueuedFinals(Math.max(1, Number(context.queued_finals) || 0));
+      if (queueWaitMs !== null) {
+        setLastGraphQueueWaitMs(queueWaitMs);
+      }
       setLastGraphError("");
       return;
     }
 
     if (phase === "completed") {
-      const latencyMs = toLatency(context.latency_ms);
+      const firstGraphLatency = speechWindowStartedAtRef.current
+        ? Math.round(Math.max(0, nextNow - speechWindowStartedAtRef.current) * 100) / 100
+        : totalUpdateMs ?? generationMs;
       setGraphPhase("completed");
       setGraphQueuedFinals(0);
       setLastGraphUpdateAtMs(nextNow);
+      setFirstGraphNodeMs((previous) => previous ?? firstGraphLatency);
+      setLastGraphQueueWaitMs(queueWaitMs);
       setLastGraphLatencyMs(
-        latencyMs ?? (
+        generationMs ?? (
           graphStartedAtRef.current
             ? Math.round(Math.max(0, nextNow - graphStartedAtRef.current) * 100) / 100
+            : null
+        )
+      );
+      setLastGraphTotalUpdateMs(
+        totalUpdateMs ?? (
+          queueWaitMs !== null || generationMs !== null
+            ? Math.round(((queueWaitMs || 0) + (generationMs || 0)) * 100) / 100
             : null
         )
       );
@@ -296,9 +350,14 @@ export default function useLiveSessionStatus({
       setGraphPhase("error");
       setGraphQueuedFinals(0);
       setLastGraphError(message);
-      const latencyMs = toLatency(context.latency_ms);
-      if (latencyMs !== null) {
-        setLastGraphLatencyMs(latencyMs);
+      if (queueWaitMs !== null) {
+        setLastGraphQueueWaitMs(queueWaitMs);
+      }
+      if (generationMs !== null) {
+        setLastGraphLatencyMs(generationMs);
+      }
+      if (totalUpdateMs !== null) {
+        setLastGraphTotalUpdateMs(totalUpdateMs);
       }
     }
   }, []);
@@ -321,9 +380,15 @@ export default function useLiveSessionStatus({
   const backendStaleMs = lastServerMessageAtMs ? nowMs - lastServerMessageAtMs : null;
   const lastTranscriptAgeMs = lastTranscriptAtMs ? nowMs - lastTranscriptAtMs : null;
   const lastSpeechAgeMs = lastSpeechAtMs ? nowMs - lastSpeechAtMs : null;
+  const sttAwaitingMs = speechPresent && speechWindowStartedAtMs
+    ? nowMs - speechWindowStartedAtMs
+    : null;
   const graphAwaitingMs = lastFinalAtMs && (!lastGraphUpdateAtMs || lastGraphUpdateAtMs < lastFinalAtMs)
     ? nowMs - lastFinalAtMs
     : null;
+  const graphWorkingMs = graphPhase === "generating" && graphStartedAtRef.current
+    ? nowMs - graphStartedAtRef.current
+    : graphAwaitingMs;
 
   const backend = useMemo(() => {
     if (backendSocket === "error") {
@@ -376,28 +441,44 @@ export default function useLiveSessionStatus({
       && speakingSinceMs !== null
       && speakingSinceMs > STT_ERROR_MS
     ) {
-      return buildChip("error", "STT stalled", "Speech detected but no captions returned");
+      return buildChip(
+        "error",
+        `STT ${providerName} ${formatLatency(speakingSinceMs)}`,
+        "Speech detected but no captions returned"
+      );
     }
     if (
       speakingWithoutCaption
       && speakingSinceMs !== null
       && speakingSinceMs > STT_WARN_MS
     ) {
-      return buildChip("degraded", "STT slow", "Speech detected but captions are late");
+      return buildChip(
+        "degraded",
+        `STT ${providerName} ${formatLatency(speakingSinceMs)}`,
+        "Speech detected but captions are late"
+      );
     }
     if (
       speechPresent
       && lastTranscriptAgeMs !== null
       && lastTranscriptAgeMs > STT_ERROR_MS
     ) {
-      return buildChip("error", "STT stalled", "Caption stream has gone stale");
+      return buildChip(
+        "error",
+        `STT ${providerName} ${formatLatency(lastTranscriptAgeMs)}`,
+        "Caption stream has gone stale"
+      );
     }
     if (
       speechPresent
       && lastTranscriptAgeMs !== null
       && lastTranscriptAgeMs > STT_WARN_MS
     ) {
-      return buildChip("degraded", "STT slow", "Caption stream is delayed");
+      return buildChip(
+        "degraded",
+        `STT ${providerName} ${formatLatency(lastTranscriptAgeMs)}`,
+        "Caption stream is delayed"
+      );
     }
     if (sessionAck?.degraded || (firstCaptionMs !== null && firstCaptionMs > STT_WARN_MS)) {
       return buildChip(
@@ -414,7 +495,11 @@ export default function useLiveSessionStatus({
       );
     }
     if (recording || providerSocket === "connected") {
-      return buildChip("connecting", `STT ${providerName}`, "Listening for speech");
+      return buildChip(
+        "connecting",
+        sttAwaitingMs !== null ? `STT ${providerName} ${formatLatency(sttAwaitingMs)}` : `STT ${providerName}`,
+        speechPresent ? "Waiting for captions" : "Listening for speech"
+      );
     }
     return buildChip("idle", "STT idle", "No active transcription");
   }, [
@@ -430,6 +515,7 @@ export default function useLiveSessionStatus({
     sessionAck,
     speechPresent,
     speechWindowStartedAtMs,
+    sttAwaitingMs,
   ]);
 
   const graph = useMemo(() => {
@@ -437,24 +523,37 @@ export default function useLiveSessionStatus({
       return buildChip("error", "Graph failed", lastGraphError);
     }
     if (graphPhase === "generating" || graphPhase === "queued") {
-      return buildChip("processing", "Graph building", "Generating node updates");
+      return buildChip(
+        "processing",
+        graphWorkingMs !== null ? `Graph ${formatLatency(graphWorkingMs)}` : "Graph building",
+        graphPhase === "generating" ? "Generating node updates" : "Waiting on finalized transcript"
+      );
     }
     if (graphAwaitingMs !== null && graphAwaitingMs > GRAPH_ERROR_MS) {
-      return buildChip("error", "Graph stalled", "Final transcript has not produced graph output");
+      return buildChip(
+        "error",
+        `Graph ${formatLatency(graphAwaitingMs)}`,
+        "Final transcript has not produced graph output"
+      );
     }
     if (graphAwaitingMs !== null && graphAwaitingMs > GRAPH_WARN_MS) {
-      return buildChip("degraded", "Graph delayed", "Node updates are behind captions");
+      return buildChip(
+        "degraded",
+        `Graph ${formatLatency(graphAwaitingMs)}`,
+        "Node updates are behind captions"
+      );
     }
     if (graphAwaitingMs !== null) {
-      return buildChip("processing", "Graph waiting", "Final transcript queued");
+      return buildChip("processing", `Graph ${formatLatency(graphAwaitingMs)}`, "Final transcript queued");
     }
     if (lastGraphUpdateAtMs) {
-      if (lastGraphLatencyMs !== null && lastGraphLatencyMs > GRAPH_WARN_MS) {
-        return buildChip("degraded", `Graph ${formatLatency(lastGraphLatencyMs)}`, "Graph generation is slow");
+      const completedGraphLatencyMs = lastGraphTotalUpdateMs ?? lastGraphLatencyMs;
+      if (completedGraphLatencyMs !== null && completedGraphLatencyMs > GRAPH_WARN_MS) {
+        return buildChip("degraded", `Graph ${formatLatency(completedGraphLatencyMs)}`, "Graph generation is slow");
       }
       return buildChip(
         "healthy",
-        lastGraphLatencyMs !== null ? `Graph ${formatLatency(lastGraphLatencyMs)}` : "Graph ready",
+        completedGraphLatencyMs !== null ? `Graph ${formatLatency(completedGraphLatencyMs)}` : "Graph ready",
         "Node updates flowing"
       );
     }
@@ -462,7 +561,7 @@ export default function useLiveSessionStatus({
       return buildChip("idle", "Graph idle", "No finalized transcript yet");
     }
     return buildChip("idle", "Graph idle", "No active session");
-  }, [graphAwaitingMs, graphPhase, lastGraphError, lastGraphLatencyMs, lastGraphUpdateAtMs, recording]);
+  }, [graphAwaitingMs, graphPhase, graphWorkingMs, lastGraphError, lastGraphLatencyMs, lastGraphTotalUpdateMs, lastGraphUpdateAtMs, recording]);
 
   const summary = useMemo(() => {
     let headline = "Ready";
@@ -565,6 +664,10 @@ export default function useLiveSessionStatus({
           value: lastSttRequestMs !== null ? formatLatency(lastSttRequestMs) : "waiting",
         },
         {
+          label: "Current wait",
+          value: sttAwaitingMs !== null ? formatLatency(sttAwaitingMs) : "waiting",
+        },
+        {
           label: "Fallbacks",
           value: fallbackLabels || "none",
         },
@@ -587,8 +690,20 @@ export default function useLiveSessionStatus({
           value: graphQueuedFinals > 0 ? String(graphQueuedFinals) : "0",
         },
         {
-          label: "Last generation",
+          label: "Queue wait",
+          value: lastGraphQueueWaitMs !== null ? formatLatency(lastGraphQueueWaitMs) : "waiting",
+        },
+        {
+          label: "Generation",
           value: lastGraphLatencyMs !== null ? formatLatency(lastGraphLatencyMs) : "waiting",
+        },
+        {
+          label: "Last total",
+          value: lastGraphTotalUpdateMs !== null ? formatLatency(lastGraphTotalUpdateMs) : "waiting",
+        },
+        {
+          label: "First node",
+          value: firstGraphNodeMs !== null ? formatLatency(firstGraphNodeMs) : "waiting",
         },
         {
           label: "Last update",
@@ -609,11 +724,14 @@ export default function useLiveSessionStatus({
     fallbackLabels,
     firstCaptionMs,
     firstFinalCaptionMs,
+    firstGraphNodeMs,
     graph.label,
     graphPhase,
     graphQueuedFinals,
     lastGraphError,
+    lastGraphQueueWaitMs,
     lastGraphLatencyMs,
+    lastGraphTotalUpdateMs,
     lastGraphUpdateAtMs,
     lastProviderError,
     lastSpeechAgeMs,
@@ -623,6 +741,7 @@ export default function useLiveSessionStatus({
     recording,
     sessionAck,
     speechPresent,
+    sttAwaitingMs,
   ]);
 
   return {

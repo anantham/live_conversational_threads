@@ -299,3 +299,104 @@ def test_health_check_endpoint_requires_provider_or_http_url(monkeypatch):
     response = client.post("/api/settings/stt/health-check", json={"provider": "parakeet"})
     assert response.status_code == 400
     assert "No STT URL configured" in response.json()["detail"]
+
+
+def test_cloud_provider_test_uses_saved_provider_config(monkeypatch):
+    stt_api = _load_stt_api_with_stubs(monkeypatch)
+    smoke_test_mock = AsyncMock(
+        return_value={
+            "provider": "openai_audio",
+            "transport": "openai_audio",
+            "route_id": "openai_audio_manual_test",
+            "http_url": "https://api.openai.com/v1/audio/transcriptions",
+            "base_url": "https://api.openai.com",
+            "model": "gpt-4o-mini-transcribe",
+            "checked_at": "2026-03-19T18:00:00Z",
+            "ok": True,
+            "status": "ready",
+            "latency_ms": 245.0,
+            "sample_seconds": 1.2,
+            "diarization_requested": False,
+            "supports_diarization": True,
+            "degraded": False,
+            "transcript_preview": "test transcript",
+            "segments_count": 2,
+            "warning": None,
+            "error": None,
+            "status_code": None,
+        }
+    )
+
+    monkeypatch.setattr(
+        stt_api,
+        "_load_stt_settings",
+        AsyncMock(
+            return_value={
+                "sample_rate_hz": "16000",
+                "http_language": "en",
+                "cloud_fallback_providers": {
+                    "openai_audio": {
+                        "enabled": True,
+                        "base_url": "https://api.openai.com",
+                        "model": "gpt-4o-mini-transcribe",
+                        "diarize_model": "gpt-4o-transcribe-diarize",
+                        "api_key": "sk-test",
+                    }
+                },
+            }
+        ),
+    )
+    monkeypatch.setattr(stt_api, "_run_stt_cloud_provider_smoke_test", smoke_test_mock)
+
+    client = _build_test_client(stt_api)
+    response = client.post("/api/settings/stt/cloud-provider-test", json={"provider": "openai_audio"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "openai_audio"
+    assert payload["status"] == "ready"
+    assert payload["ok"] is True
+    assert payload["enabled"] is True
+
+    candidate = smoke_test_mock.await_args.args[0]
+    assert candidate["provider"] == "openai_audio"
+    assert candidate["transport"] == "openai_audio"
+    assert candidate["http_url"] == "https://api.openai.com/v1/audio/transcriptions"
+    assert candidate["request_diarization"] is False
+    assert smoke_test_mock.await_args.kwargs["timeout_seconds"] == 20.0
+    assert smoke_test_mock.await_args.kwargs["sample_rate_hz"] == 16000
+    assert smoke_test_mock.await_args.kwargs["language"] == "en"
+
+
+def test_cloud_provider_test_reports_misconfigured_provider(monkeypatch):
+    stt_api = _load_stt_api_with_stubs(monkeypatch)
+    smoke_test_mock = AsyncMock()
+
+    monkeypatch.setattr(
+        stt_api,
+        "_load_stt_settings",
+        AsyncMock(
+            return_value={
+                "cloud_fallback_providers": {
+                    "openai_audio": {
+                        "enabled": True,
+                        "base_url": "https://api.openai.com",
+                        "model": "gpt-4o-mini-transcribe",
+                        "diarize_model": "gpt-4o-transcribe-diarize",
+                        "api_key": "",
+                    }
+                },
+            }
+        ),
+    )
+    monkeypatch.setattr(stt_api, "_run_stt_cloud_provider_smoke_test", smoke_test_mock)
+
+    client = _build_test_client(stt_api)
+    response = client.post("/api/settings/stt/cloud-provider-test", json={"provider": "openai_audio"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["status"] == "misconfigured"
+    assert "API key" in payload["error"]
+    smoke_test_mock.assert_not_called()

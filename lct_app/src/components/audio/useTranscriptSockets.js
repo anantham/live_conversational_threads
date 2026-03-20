@@ -21,6 +21,7 @@ const arrayBufferToBase64 = (buffer) => {
 export default function useTranscriptSockets({
   onDataReceived,
   onChunksReceived,
+  onGraphPatchReceived,
   graphDataFromSocket,
   onSessionReady,
   onSessionAck,
@@ -49,6 +50,7 @@ export default function useTranscriptSockets({
   const handleBackendMessage = createBackendMessageHandler({
     onDataReceived,
     onChunksReceived,
+    onGraphPatchReceived,
     onSessionAck,
     onPong,
     onTranscriptEvent: onProviderTranscript,

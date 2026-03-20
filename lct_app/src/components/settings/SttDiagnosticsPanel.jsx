@@ -158,7 +158,7 @@ export default function SttDiagnosticsPanel({ form, settings }) {
           <code>{form?.provider_http_urls?.[form?.provider] || form?.http_url || "not configured"}</code>
         </p>
         <p>
-          Audio download token: <code>{settings?.download_token || "not configured"}</code>
+          Audio download token: <code>{settings?.has_download_token ? "configured" : "not configured"}</code>
         </p>
       </section>
     </div>

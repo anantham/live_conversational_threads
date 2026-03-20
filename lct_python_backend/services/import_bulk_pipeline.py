@@ -138,7 +138,9 @@ async def run_bulk_processing_worker(
         "file_size_bytes": content_size,
     }
 
-    async def send_update(existing_json, chunk_dict):
+    async def send_update(existing_json, chunk_dict, patch=None):
+        if isinstance(patch, dict):
+            await emit("graph", {"type": "graph_patch", "data": patch})
         await emit("graph", {"type": "existing_json", "data": existing_json})
         await emit("graph", {"type": "chunk_dict", "data": chunk_dict})
 
