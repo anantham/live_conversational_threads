@@ -22,6 +22,10 @@ DEFAULT_HTTP_MODEL = os.getenv("STT_HTTP_MODEL", "")
 DEFAULT_HTTP_LANGUAGE = os.getenv("STT_HTTP_LANGUAGE", "")
 TRACE_API_CALLS = os.getenv("TRACE_API_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
+OPENROUTER_TRANSCRIPTION_PROMPT = (
+    "Transcribe this audio accurately. Return plain text only. "
+    "Do not summarize. Do not add speaker labels."
+)
 
 # --- Diarization feature flag ---
 STT_DIARIZE_ENABLED = os.getenv("STT_DIARIZE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
@@ -178,6 +182,65 @@ def extract_diarized_segments(payload: Any) -> Optional[List[Dict[str, Any]]]:
     return segments if segments else None
 
 
+def extract_openai_diarized_segments(payload: Any) -> Optional[List[Dict[str, Any]]]:
+    if not isinstance(payload, dict):
+        return None
+    segments = payload.get("segments")
+    if not isinstance(segments, list) or not segments:
+        return None
+
+    normalized_segments: List[Dict[str, Any]] = []
+    for segment in segments:
+        if not isinstance(segment, dict):
+            continue
+        speaker = segment.get("speaker")
+        text = str(segment.get("text") or "").strip()
+        if not speaker or not text:
+            continue
+        normalized_segments.append(
+            {
+                "speaker": str(speaker),
+                "text": text,
+                "start": segment.get("start"),
+                "end": segment.get("end"),
+            }
+        )
+    return normalized_segments or None
+
+
+def _text_from_segments(segments: Optional[List[Dict[str, Any]]]) -> str:
+    if not segments:
+        return ""
+    parts = [str(segment.get("text") or "").strip() for segment in segments if isinstance(segment, dict)]
+    return " ".join(part for part in parts if part).strip()
+
+
+def extract_openrouter_transcript_text(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+
+    choices = payload.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return ""
+
+    message = choices[0].get("message") if isinstance(choices[0], dict) else None
+    if not isinstance(message, dict):
+        return ""
+
+    content = message.get("content")
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        text_parts: List[str] = []
+        for item in content:
+            if isinstance(item, dict):
+                text_value = str(item.get("text") or "").strip()
+                if text_value:
+                    text_parts.append(text_value)
+        return " ".join(text_parts).strip()
+    return ""
+
+
 _VAD_WINDOW_SIZE_16K = 512  # 32ms at 16kHz
 _VAD_WINDOW_SIZE_8K = 256  # 32ms at 8kHz
 
@@ -191,6 +254,7 @@ class RealtimeHttpSttSession:
     timeout_seconds: float = DEFAULT_HTTP_TIMEOUT_SECONDS
     model: str = DEFAULT_HTTP_MODEL
     language: str = DEFAULT_HTTP_LANGUAGE
+    candidates: Optional[List[Dict[str, Any]]] = None
     _buffer: bytearray = field(default_factory=bytearray)
     _chunks_seen: int = 0
     # Connection pooling
@@ -200,8 +264,20 @@ class RealtimeHttpSttSession:
     _vad_available: bool = field(default=False, init=False)
     _last_speech_sample: int = field(default=0, init=False)
     _total_samples_seen: int = field(default=0, init=False)
+    _last_runtime_metadata: Dict[str, Any] = field(default_factory=dict, init=False)
 
     def __post_init__(self):
+        if not self.candidates:
+            self.candidates = [
+                {
+                    "provider": self.provider,
+                    "transport": "backend_http",
+                    "http_url": str(self.http_url or "").strip(),
+                    "reason": "configured_provider",
+                    "supports_diarization": self.provider == "whisper",
+                    "degraded": False,
+                }
+            ]
         # Connection pooling: create persistent client
         if STT_HTTP_POOL_ENABLED:
             timeout = max(5.0, float(self.timeout_seconds or DEFAULT_HTTP_TIMEOUT_SECONDS))
@@ -231,13 +307,17 @@ class RealtimeHttpSttSession:
         if self._vad_model:
             try:
                 self._vad_model.reset_states()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("[VAD] reset_states() failed during cleanup: %s", exc)
             self._vad_model = None
             self._vad_available = False
 
     def is_ready(self) -> bool:
-        return bool(str(self.http_url or "").strip())
+        for candidate in self.candidates or []:
+            endpoint = str(candidate.get("http_url") or candidate.get("base_url") or "").strip()
+            if endpoint:
+                return True
+        return False
 
     def _min_chunk_bytes(self) -> int:
         seconds = max(0.25, float(self.chunk_seconds or DEFAULT_HTTP_CHUNK_SECONDS))
@@ -355,22 +435,34 @@ class RealtimeHttpSttSession:
         raw_pcm = bytes(self._buffer)
         self._buffer.clear()
         request_started_at = time.perf_counter()
+        self._last_runtime_metadata = {}
         text, segments = await self._transcribe_pcm(raw_pcm)
         stt_request_ms = _elapsed_ms(request_started_at)
         if not text:
             return None
+        runtime_metadata = (
+            dict(self._last_runtime_metadata)
+            if isinstance(self._last_runtime_metadata, dict)
+            else {}
+        )
         result: Dict[str, Any] = {
             "text": text,
             "is_final": is_final,
             "metadata": {
-                "provider": self.provider,
+                "provider": runtime_metadata.get("provider", self.provider),
                 "chunk_bytes": len(raw_pcm),
                 "sample_rate_hz": self.sample_rate_hz,
                 "chunks_seen": self._chunks_seen,
-                "transport": "backend_http_stt",
+                "transport": runtime_metadata.get("transport", "backend_http_stt"),
                 "stt_request_ms": stt_request_ms,
-                "diarize_enabled": STT_DIARIZE_ENABLED,
+                "diarize_enabled": runtime_metadata.get("diarize_enabled", STT_DIARIZE_ENABLED),
                 "vad_enabled": self._vad_available,
+                "fallback_used": bool(runtime_metadata.get("fallback_used")),
+                "fallback_reason": runtime_metadata.get("fallback_reason"),
+                "fallback_from": runtime_metadata.get("fallback_from"),
+                "fallback_to": runtime_metadata.get("fallback_to"),
+                "degraded": bool(runtime_metadata.get("degraded")),
+                "supports_diarization": bool(runtime_metadata.get("supports_diarization")),
             },
         }
         if segments:
@@ -384,65 +476,246 @@ class RealtimeHttpSttSession:
             )
 
         wav_payload = pcm16le_to_wav(pcm_bytes, sample_rate_hz=self.sample_rate_hz)
-        form_data: Dict[str, str] = {}
-        model = str(self.model or "").strip()
-        if model:
-            form_data["model"] = model
-        language = str(self.language or "").strip()
-        if language:
-            form_data["language"] = language
-        if STT_DIARIZE_ENABLED:
-            form_data["diarize"] = "true"
-
-        files = {"file": ("chunk.wav", wav_payload, "audio/wav")}
         timeout_seconds = max(5.0, float(self.timeout_seconds or DEFAULT_HTTP_TIMEOUT_SECONDS))
-        if TRACE_API_CALLS:
-            logger.info(
-                "[STT HTTP] POST %s provider=%s chunk_bytes=%s wav_bytes=%s model=%s language=%s diarize=%s",
-                self.http_url,
-                self.provider,
-                len(pcm_bytes),
-                len(wav_payload),
-                model or "-",
-                language or "-",
-                STT_DIARIZE_ENABLED,
-            )
-
-        # Use pooled client or create per-request client
         client = self._client
         should_close = False
         if not client:
             client = httpx.AsyncClient(timeout=timeout_seconds)
             should_close = True
 
+        candidates = list(self.candidates or [])
+        errors: List[str] = []
+        primary_provider = str(candidates[0].get("provider") or self.provider) if candidates else self.provider
+
         try:
-            response = await client.post(self.http_url, data=form_data, files=files)
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                if TRACE_API_CALLS:
-                    logger.warning(
-                        "[STT HTTP] %s status=%s body_preview=%s",
-                        self.http_url,
-                        exc.response.status_code,
-                        _preview_text(exc.response.text),
-                    )
-                raise
-            payload = _parse_response_payload(response)
-            text = extract_transcript_text(payload)
-            segments = extract_diarized_segments(payload) if STT_DIARIZE_ENABLED else None
-            if TRACE_API_CALLS:
-                logger.info(
-                    "[STT HTTP] %s status=%s transcript_preview=%s speakers=%s",
-                    self.http_url,
-                    response.status_code,
-                    _preview_text(text),
-                    len(segments) if segments else 0,
-                )
-            return text, segments
+            for index, candidate in enumerate(candidates):
+                transport = str(candidate.get("transport") or "backend_http").strip().lower()
+                candidate_provider = str(candidate.get("provider") or self.provider).strip() or self.provider
+                candidate_reason = str(candidate.get("reason") or "").strip() or None
+
+                try:
+                    if transport == "openai_audio":
+                        text, segments, diarize_enabled = await self._transcribe_openai_audio_candidate(
+                            client,
+                            candidate,
+                            wav_payload,
+                        )
+                    elif transport == "openrouter_audio":
+                        text, segments, diarize_enabled = await self._transcribe_openrouter_audio_candidate(
+                            client,
+                            candidate,
+                            wav_payload,
+                        )
+                    else:
+                        text, segments, diarize_enabled = await self._transcribe_backend_http_candidate(
+                            client,
+                            candidate,
+                            pcm_bytes,
+                            wav_payload,
+                        )
+                except Exception as exc:
+                    error_message = f"{candidate_provider}/{transport}: {exc}"
+                    logger.warning("[STT HTTP] Candidate failed: %s", error_message)
+                    errors.append(error_message)
+                    continue
+
+                if not text:
+                    error_message = f"{candidate_provider}/{transport}: empty transcript"
+                    logger.warning("[STT HTTP] Candidate failed: %s", error_message)
+                    errors.append(error_message)
+                    continue
+
+                fallback_used = index > 0
+                self._last_runtime_metadata = {
+                    "provider": candidate_provider,
+                    "transport": transport,
+                    "fallback_used": fallback_used,
+                    "fallback_reason": candidate_reason,
+                    "fallback_from": primary_provider if fallback_used else None,
+                    "fallback_to": candidate_provider if fallback_used else None,
+                    "degraded": bool(candidate.get("degraded")),
+                    "supports_diarization": bool(candidate.get("supports_diarization")),
+                    "diarize_enabled": diarize_enabled,
+                }
+                return text, segments
+
+            raise RuntimeError(
+                "All live STT candidates failed. " + "; ".join(errors or ["No usable candidates"])
+            )
         finally:
             if should_close:
                 await client.aclose()
+
+    async def _transcribe_backend_http_candidate(
+        self,
+        client: httpx.AsyncClient,
+        candidate: Dict[str, Any],
+        pcm_bytes: bytes,
+        wav_payload: bytes,
+    ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
+        http_url = str(candidate.get("http_url") or self.http_url or "").strip()
+        model = str(candidate.get("model") or self.model or "").strip()
+        language = str(candidate.get("language") or self.language or "").strip()
+        diarize_enabled = bool(candidate.get("request_diarization", STT_DIARIZE_ENABLED))
+        form_data: Dict[str, str] = {"diarize": "true" if diarize_enabled else "false"}
+        if model:
+            form_data["model"] = model
+        if language:
+            form_data["language"] = language
+
+        if TRACE_API_CALLS:
+            logger.info(
+                "[STT HTTP] POST %s provider=%s chunk_bytes=%s wav_bytes=%s model=%s language=%s diarize=%s",
+                http_url,
+                candidate.get("provider") or self.provider,
+                len(pcm_bytes),
+                len(wav_payload),
+                model or "-",
+                language or "-",
+                diarize_enabled,
+            )
+
+        response = await client.post(
+            http_url,
+            data=form_data,
+            files={"file": ("chunk.wav", wav_payload, "audio/wav")},
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            if TRACE_API_CALLS:
+                logger.warning(
+                    "[STT HTTP] %s status=%s body_preview=%s",
+                    http_url,
+                    exc.response.status_code,
+                    _preview_text(exc.response.text),
+                )
+            raise
+
+        payload = _parse_response_payload(response)
+        text = extract_transcript_text(payload)
+        segments = extract_diarized_segments(payload) if diarize_enabled else None
+        if TRACE_API_CALLS:
+            logger.info(
+                "[STT HTTP] %s status=%s transcript_preview=%s speakers=%s",
+                http_url,
+                response.status_code,
+                _preview_text(text),
+                len(segments) if segments else 0,
+            )
+        return text, segments, diarize_enabled
+
+    async def _transcribe_openai_audio_candidate(
+        self,
+        client: httpx.AsyncClient,
+        candidate: Dict[str, Any],
+        wav_payload: bytes,
+    ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
+        model = str(candidate.get("model") or "").strip()
+        api_key = str(candidate.get("api_key") or "").strip()
+        http_url = str(candidate.get("http_url") or "").strip()
+        language = str(candidate.get("language") or self.language or "").strip()
+        request_diarization = bool(candidate.get("request_diarization", True))
+        response_format = "diarized_json" if request_diarization else "json"
+        form_data = {
+            "model": model,
+            "response_format": response_format,
+        }
+        if request_diarization:
+            form_data["chunking_strategy"] = "auto"
+        if language:
+            form_data["language"] = language
+        headers = {"Authorization": f"Bearer {api_key}"}
+
+        if TRACE_API_CALLS:
+            logger.info(
+                "[STT OpenAI] POST %s model=%s wav_bytes=%s response_format=%s language=%s",
+                http_url,
+                model or "-",
+                len(wav_payload),
+                response_format,
+                language or "-",
+            )
+
+        response = await client.post(
+            http_url,
+            headers=headers,
+            data=form_data,
+            files={"file": ("chunk.wav", wav_payload, "audio/wav")},
+        )
+        response.raise_for_status()
+        payload = _parse_response_payload(response)
+        segments = extract_openai_diarized_segments(payload) if request_diarization else None
+        text = extract_transcript_text(payload) or _text_from_segments(segments)
+        if TRACE_API_CALLS:
+            logger.info(
+                "[STT OpenAI] %s status=%s transcript_preview=%s speakers=%s",
+                http_url,
+                response.status_code,
+                _preview_text(text),
+                len(segments) if segments else 0,
+            )
+        return text, segments, request_diarization
+
+    async def _transcribe_openrouter_audio_candidate(
+        self,
+        client: httpx.AsyncClient,
+        candidate: Dict[str, Any],
+        wav_payload: bytes,
+    ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
+        model = str(candidate.get("model") or "").strip()
+        api_key = str(candidate.get("api_key") or "").strip()
+        http_url = str(candidate.get("http_url") or "").strip()
+        language = str(candidate.get("language") or self.language or "").strip()
+        prompt = OPENROUTER_TRANSCRIPTION_PROMPT
+        if language:
+            prompt = f"{prompt} The audio language is {language}."
+        base64_audio = base64.b64encode(wav_payload).decode("utf-8")
+        payload = {
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": base64_audio,
+                                "format": "wav",
+                            },
+                        },
+                    ],
+                }
+            ],
+            "stream": False,
+        }
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        if TRACE_API_CALLS:
+            logger.info(
+                "[STT OpenRouter] POST %s model=%s wav_bytes=%s language=%s",
+                http_url,
+                model or "-",
+                len(wav_payload),
+                language or "-",
+            )
+
+        response = await client.post(http_url, headers=headers, json=payload)
+        response.raise_for_status()
+        response_payload = _parse_response_payload(response)
+        text = extract_openrouter_transcript_text(response_payload)
+        if TRACE_API_CALLS:
+            logger.info(
+                "[STT OpenRouter] %s status=%s transcript_preview=%s",
+                http_url,
+                response.status_code,
+                _preview_text(text),
+            )
+        return text, None, False
 
 
 def _parse_response_payload(response: httpx.Response) -> Any:

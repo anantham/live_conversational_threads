@@ -151,11 +151,65 @@ def check_ws_auth(websocket: WebSocket) -> bool:
 
     Returns True if auth passes (or AUTH_TOKEN not configured).
     Call this before websocket.accept().
+
+    DEPRECATED: prefer post-connect auth via ``check_ws_auth_message``
+    to avoid exposing the token in URLs, logs, and browser history.
+    Kept for backward compatibility during transition.
     """
     if not AUTH_TOKEN:
         return True
     token = websocket.query_params.get("token")
     return token == AUTH_TOKEN
+
+
+WS_AUTH_TIMEOUT_SECONDS = 10
+
+
+async def check_ws_auth_message(websocket: WebSocket) -> bool:
+    """
+    Authenticate a WebSocket connection via a post-connect auth message.
+
+    Call this *after* ``websocket.accept()``.  If ``AUTH_TOKEN`` is not
+    configured, returns ``True`` immediately (dev mode).
+
+    Otherwise waits up to ``WS_AUTH_TIMEOUT_SECONDS`` for the first JSON
+    message.  Accepts either:
+    - ``{"type": "auth", "token": "<token>"}`` — dedicated auth frame
+    - Any message with a ``token`` field matching AUTH_TOKEN (backward compat
+      with query-param clients that embed the token in session_meta)
+
+    On failure or timeout, sends an error frame and closes with code ``4401``.
+    """
+    import asyncio
+
+    if not AUTH_TOKEN:
+        return True
+
+    # Also accept legacy query-param token (transition period)
+    query_token = websocket.query_params.get("token")
+    if query_token == AUTH_TOKEN:
+        return True
+
+    try:
+        first_msg = await asyncio.wait_for(
+            websocket.receive_json(),
+            timeout=WS_AUTH_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("[WS AUTH] Client did not send auth message within %ds", WS_AUTH_TIMEOUT_SECONDS)
+        await websocket.close(code=4401, reason="Unauthorized: auth timeout")
+        return False
+    except Exception:
+        await websocket.close(code=4401, reason="Unauthorized: no auth message received")
+        return False
+
+    token = first_msg.get("token")
+    if token == AUTH_TOKEN:
+        return True
+
+    await websocket.send_json({"type": "error", "detail": "Unauthorized: invalid token"})
+    await websocket.close(code=4401, reason="Unauthorized")
+    return False
 
 
 # ---------------------------------------------------------------------------

@@ -5,31 +5,17 @@ and session orchestration. All functions here are stateless and free of
 FastAPI / router dependencies.
 """
 
+import logging
 import time
 from typing import Any, Dict, List, Optional
+
+logger = logging.getLogger(__name__)
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
+from lct_python_backend.services.coercion_helpers import safe_float, safe_int
 from lct_python_backend.services.stt_config import STT_PROVIDER_IDS
-
-
-# ---------------------------------------------------------------------------
-# Numeric coercion helpers
-# ---------------------------------------------------------------------------
-
-def safe_float(value: Any, default: float) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return float(default)
-
-
-def safe_int(value: Any, default: int) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return int(default)
 
 
 def now_ms() -> int:
@@ -131,7 +117,8 @@ def ws_is_connected(websocket: WebSocket) -> bool:
     """Return True when the WebSocket is in the CONNECTED state."""
     try:
         return websocket.client_state.name == "CONNECTED"
-    except Exception:
+    except Exception as exc:
+        logger.debug("[WS] client_state check failed: %s", exc)
         return False
 
 

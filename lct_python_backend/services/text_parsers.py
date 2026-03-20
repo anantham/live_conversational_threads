@@ -10,18 +10,18 @@ from pathlib import Path
 from typing import List, Optional
 
 from lct_python_backend.parsers import GoogleMeetParser
+from lct_python_backend.services.coercion_helpers import coerce_str
 from lct_python_backend.services.transcription_utils import (
     AUDIO_EXTENSIONS,
     GOOGLE_MEET_EXTENSIONS,
     SRT_EXTENSIONS,
     TEXT_EXTENSIONS,
     VTT_EXTENSIONS,
-    _coerce_str,
 )
 
 
 def looks_like_google_meet_text(text: str) -> bool:
-    candidate = _coerce_str(text)
+    candidate = coerce_str(text)
     if not candidate:
         return False
     if "transcription ended" in candidate.lower():
@@ -44,8 +44,8 @@ def detect_file_kind(
 ) -> str:
     """Detect input kind for upload processing."""
     ext = Path(filename or "").suffix.lower()
-    content_type_lc = _coerce_str(content_type).lower()
-    preview = _coerce_str(text_preview)
+    content_type_lc = coerce_str(content_type).lower()
+    preview = coerce_str(text_preview)
 
     if ext in AUDIO_EXTENSIONS or content_type_lc.startswith("audio/"):
         return "audio"
@@ -82,7 +82,7 @@ def _decode_text_bytes(file_bytes: bytes) -> str:
 
 
 def parse_plain_text(text: str) -> str:
-    cleaned = _coerce_str(text).replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = coerce_str(text).replace("\r\n", "\n").replace("\r", "\n")
     lines = [line.strip() for line in cleaned.split("\n") if line.strip()]
     return "\n".join(lines)
 

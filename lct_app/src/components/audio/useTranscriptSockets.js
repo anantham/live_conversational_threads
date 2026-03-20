@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 
+import { sendWsAuth } from "../../services/apiClient";
 import { BACKEND_WS_URL } from "./sttUtils";
 import { createBackendMessageHandler } from "./audioMessages";
 
@@ -22,15 +23,19 @@ export default function useTranscriptSockets({
   onChunksReceived,
   graphDataFromSocket,
   onSessionReady,
+  onSessionAck,
   onFatalError,
   onProviderSocketStateChange,
   onBackendSocketStateChange,
+  onPong,
   onProviderTranscript,
   onProcessingStatus,
+  onBackendMessage,
 }) {
   const backendWsRef = useRef(null);
   const flushResolveRef = useRef(null);
   const conversationRef = useRef(null);
+  const pingIntervalRef = useRef(null);
 
   const logToServer = useCallback((text) => {
     console.log("[Client Log]", text);
@@ -44,13 +49,23 @@ export default function useTranscriptSockets({
   const handleBackendMessage = createBackendMessageHandler({
     onDataReceived,
     onChunksReceived,
+    onSessionAck,
+    onPong,
     onTranscriptEvent: onProviderTranscript,
     onSttProviderStateChange: onProviderSocketStateChange,
     onProcessingStatus,
+    onBackendMessage,
     logToServer,
     flushResolveRef,
     graphDataFromSocket,
   });
+
+  const clearPingLoop = useCallback(() => {
+    if (pingIntervalRef.current) {
+      window.clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = null;
+    }
+  }, []);
 
   /** Called by the capture hook on each audio frame. */
   const onPCMFrame = useCallback((buffer) => {
@@ -78,6 +93,7 @@ export default function useTranscriptSockets({
       const ws = new WebSocket(BACKEND_WS_URL);
       const failSession = () => {
         if (backendWsRef.current !== ws) return;
+        clearPingLoop();
         flushResolveRef.current?.();
         flushResolveRef.current = null;
         backendWsRef.current?.close();
@@ -89,6 +105,13 @@ export default function useTranscriptSockets({
 
       ws.onopen = () => {
         onBackendSocketStateChange?.("connected");
+        sendWsAuth(ws);
+        clearPingLoop();
+        ws.send(JSON.stringify({ type: "ping", client_ts_ms: Date.now() }));
+        pingIntervalRef.current = window.setInterval(() => {
+          if (ws.readyState !== WebSocket.OPEN) return;
+          ws.send(JSON.stringify({ type: "ping", client_ts_ms: Date.now() }));
+        }, 3000);
         const convoId = conversationParam || conversationRef.current;
         ws.send(
           JSON.stringify({
@@ -116,6 +139,7 @@ export default function useTranscriptSockets({
         failSession();
       };
       ws.onclose = () => {
+        clearPingLoop();
         onBackendSocketStateChange?.("closed");
         onProviderSocketStateChange?.("closed");
         logToServer("Backend socket closed.");
@@ -125,6 +149,7 @@ export default function useTranscriptSockets({
     },
     [
       handleBackendMessage,
+      clearPingLoop,
       logToServer,
       onBackendSocketStateChange,
       onFatalError,
@@ -167,21 +192,23 @@ export default function useTranscriptSockets({
       flushResolveRef.current = null;
     }
 
+    clearPingLoop();
     backendWsRef.current?.close();
     backendWsRef.current = null;
     onProviderSocketStateChange?.("closed");
     onBackendSocketStateChange?.("closed");
-  }, [onBackendSocketStateChange, onProviderSocketStateChange]);
+  }, [clearPingLoop, onBackendSocketStateChange, onProviderSocketStateChange]);
 
   /** Emergency shutdown: resolve pending flush, close backend socket, reset states. */
   const cleanup = useCallback(() => {
+    clearPingLoop();
     flushResolveRef.current?.();
     flushResolveRef.current = null;
     backendWsRef.current?.close();
     backendWsRef.current = null;
     onProviderSocketStateChange?.("closed");
     onBackendSocketStateChange?.("closed");
-  }, [onBackendSocketStateChange, onProviderSocketStateChange]);
+  }, [clearPingLoop, onBackendSocketStateChange, onProviderSocketStateChange]);
 
   return {
     backendWsRef,

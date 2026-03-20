@@ -740,8 +740,6 @@ const handleSave = async () => {
 
 - [DUAL_VIEW_ARCHITECTURE.md](./DUAL_VIEW_ARCHITECTURE.md) - Dual-view system overview
 - [ZOOM_SYSTEM.md](./ZOOM_SYSTEM.md) - 5-level zoom system details
-- [ROADMAP.md](./ROADMAP.md) - Overall project roadmap
-- [GRAPH_API.md](./GRAPH_API.md) - Backend API reference (Week 4)
 
 ---
 

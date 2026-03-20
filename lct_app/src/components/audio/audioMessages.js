@@ -3,8 +3,11 @@ const createBackendMessageHandler =
     onDataReceived,
     onChunksReceived,
     onTranscriptEvent,
+    onSessionAck,
+    onPong,
     onSttProviderStateChange,
     onProcessingStatus,
+    onBackendMessage,
     logToServer,
     flushResolveRef,
     graphDataFromSocket,
@@ -12,6 +15,7 @@ const createBackendMessageHandler =
   (event) => {
     try {
       const message = JSON.parse(event.data);
+      onBackendMessage?.(message);
       if (message.type === "existing_json") {
         graphDataFromSocket.current = true;
         onDataReceived?.(message.data);
@@ -21,12 +25,16 @@ const createBackendMessageHandler =
       }
       if (message.type === "session_ack") {
         const sttReady = message.stt_ready !== false;
+        onSessionAck?.(message);
         onSttProviderStateChange?.(sttReady ? "connected" : "error");
         logToServer?.(
           `Session ack: ${message.conversation_id || "-"} (provider=${
             message.provider || "unknown"
           }, stt_ready=${sttReady})`
         );
+      }
+      if (message.type === "pong") {
+        onPong?.(message);
       }
       if (message.type === "transcript_partial" || message.type === "transcript_final") {
         onTranscriptEvent?.({
@@ -39,7 +47,7 @@ const createBackendMessageHandler =
         onSttProviderStateChange?.("error");
         const detail = message.detail || "STT provider unavailable";
         logToServer?.(`Provider error: ${detail}`);
-        onProcessingStatus?.({ level: "error", message: detail, context: {} });
+        onProcessingStatus?.({ level: "error", message: detail, context: { stage: "stt" } });
       }
       if (message.type === "processing_status") {
         const level = String(message.level || "info").toLowerCase();
@@ -66,7 +74,7 @@ const createBackendMessageHandler =
         onProcessingStatus?.({
           level: "error",
           message: String(message.detail || "Backend error"),
-          context: {},
+          context: { stage: "backend" },
         });
       }
     } catch (error) {

@@ -49,7 +49,9 @@ cd lct_python_backend
 ### Integration Tests (`tests/integration/`)
 - **test_audio_to_transcript_pipeline.py** - Full audio → transcript flow [TODO]
 - **test_websocket_communication.py** - WebSocket health checks [TODO]
+- **test_streaming_audio_http_e2e.py** - Deterministic `/ws/transcripts` → HTTP STT integration using a local fake provider
 - **test_whisper_ws_smoke.py** - Optional smoke test for Whisper WS (set `RUN_WHISPER_WS_SMOKE_TEST=1`, `WHISPER_WS_URL`, `WHISPER_PCM_PATH`, optional `WHISPER_CHUNK_SIZE`, `WHISPER_MAX_BYTES`/`WHISPER_MAX_SECONDS`, `WHISPER_SKIP_SECONDS`, `WHISPER_STOP_ON_TEXT`, `WHISPER_CHUNK_TIMEOUT`, `WHISPER_FINAL_TIMEOUT`, `WHISPER_STREAM_SPEED`, `WHISPER_PING_INTERVAL`, `WHISPER_PING_TIMEOUT`)
+- **test_transcribe_proxy_smoke.py** - Optional smoke test for remote `/api/transcribe` (set `RUN_TRANSCRIBE_PROXY_SMOKE_TEST=1`, `TRANSCRIBE_PROXY_AUDIO_PATH`, optional `TRANSCRIBE_PROXY_URL`, `TRANSCRIBE_PROXY_LANGUAGE`, `TRANSCRIBE_PROXY_DIARIZE`, `TRANSCRIBE_PROXY_TIMEOUT`)
 
 ### E2E Tests (`tests/e2e/`)
 - **test_full_audio_pipeline.py** - Complete flow validation [TODO]
