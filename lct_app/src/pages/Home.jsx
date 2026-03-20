@@ -6,14 +6,20 @@ export default function Home() {
   const navigate = useNavigate();
 
   return (
-    <div className="flex flex-col items-center justify-center h-[100dvh] w-screen bg-[#fafafa] font-sans">
-      {/* Title */}
-      <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-10">
-        Live Conversational Threads
-      </p>
+    <div className="relative flex h-[100dvh] w-screen flex-col items-center justify-center overflow-hidden bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] font-sans">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(15,23,42,0.06),transparent_42%)]" />
+
+      <div className="relative mb-12 text-center">
+        <p className="mb-3 text-[10px] font-medium uppercase tracking-[0.42em] text-slate-400">
+          live conversational
+        </p>
+        <h1 className="text-6xl font-semibold leading-none tracking-[-0.09em] text-slate-800 sm:text-7xl md:text-8xl">
+          Threads
+        </h1>
+      </div>
 
       {/* Primary actions */}
-      <div className="flex items-center gap-6 mb-12">
+      <div className="relative mb-12 flex items-center gap-6">
         <button
           onClick={() => navigate("/new")}
           className="flex flex-col items-center gap-2 group"
@@ -36,7 +42,7 @@ export default function Home() {
       </div>
 
       {/* Secondary actions */}
-      <div className="flex items-center gap-5">
+      <div className="relative flex items-center gap-5">
         <button
           onClick={() => navigate("/import")}
           className="flex flex-col items-center gap-1.5 group"
@@ -79,7 +85,7 @@ export default function Home() {
       </div>
 
       {/* Service Status Indicators */}
-      <div className="absolute bottom-6 left-6">
+      <div className="absolute bottom-8 left-8">
         <ServiceStatus />
       </div>
     </div>
