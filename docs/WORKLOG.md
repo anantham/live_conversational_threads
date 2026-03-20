@@ -1,5 +1,279 @@
 # WORKLOG
 
+## 2026-03-20T16:33:46Z — ADR-019 Phase 2A: durable speaker evidence, live timebase, and utterance speaker materialization
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/models/core.py` (lines 94-96, 162-213) and `lct_python_backend/models/__init__.py` (core exports): Added the Phase 2A speaker schema. `Utterance` now carries `speaker_source`, `speaker_confidence`, and `speaker_revision`, and the new `SpeakerSegment` model stores immutable diarization evidence with both relative window offsets and conversation-global timestamps.
+- `lct_python_backend/alembic/versions/add_speaker_segments_and_utterance_speaker_materialization.py` (new): Added the migration for `speaker_segments` plus the new utterance speaker read-model columns and indexes. The migration follows the repo’s additive/idempotent Alembic pattern so it can be applied against partially evolved dev databases without assuming a fresh schema.
+- `lct_python_backend/services/speaker_materialization.py` (new, lines 1-300): Added the backend speaker materializer for Phase 2A. The service persists immutable diarization evidence rows, converts refinement-window-relative segments into conversation-global timestamps, and deterministically updates `utterances.speaker_id` only when timestamp overlap is strong enough. Ambiguous windows are left unresolved instead of forcing incorrect speaker labels into the read model.
+- `lct_python_backend/services/stt_openai_realtime.py` (lines 82-96, 212-215, 333-404): Added a real provider-audio timebase for realtime STT by tracking committed provider sample windows. Final realtime transcript events now include `timestamps.start/end` derived from committed audio duration instead of emitting text-only results.
+- `lct_python_backend/services/stt_http_transcriber.py` (lines 618-663): Added conversation-global chunk timestamps to backend HTTP STT results so HTTP chunking and realtime STT both feed the same deterministic speaker-materialization path.
+- `lct_python_backend/services/stt_session.py` (lines 85-102): Seeded new utterances with explicit speaker read-model defaults (`speaker_source=session_default`, `speaker_confidence`, `speaker_revision`) instead of relying only on DB defaults.
+- `lct_python_backend/services/stt_ws_session.py` (lines 23, 91-93, 166-200, 703-780, 831-980, 1125-1158, 1213-1243): Wired Phase 2A into live STT. The websocket session now tracks partial-window timestamps, passes source utterance IDs and window timestamps into background refinement, persists durable speaker evidence/materialized utterance speakers through `persist_speaker_refinement(...)`, and keeps the existing live graph-reconciliation patch path as a supplementary UX layer.
+- `lct_python_backend/services/conversation_reader.py` (serialize path): Conversation/timeline payloads now expose `speaker_source`, `speaker_confidence`, and `speaker_revision`, so downstream readers/exporters can tell whether a speaker label came from session defaults or durable diarization materialization.
+- `lct_python_backend/tests/unit/test_speaker_materialization.py` (new): Added deterministic overlap-materialization coverage: relative→global timestamp conversion, dominant-speaker assignment, and ambiguous-window refusal.
+- `lct_python_backend/tests/unit/test_stt_live_runtime.py` and `lct_python_backend/tests/unit/test_stt_http_transcriber.py`: Added coverage proving both realtime and HTTP STT runtimes now emit concrete `timestamps.start/end` windows for final transcript events.
+- `lct_python_backend/tests/integration/test_transcripts_websocket.py` and `lct_python_backend/tests/integration/transcripts_test_support.py`: Added websocket regression coverage proving background refinement now calls the durable speaker materializer with the correct window timestamps and source utterance ID. Also fixed a hidden teardown hang during this slice by correcting an `_safe_float(...)` call signature in the new timestamp-merge path; without that fix the websocket task was dying silently and tests waited forever for messages that never arrived.
+
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/models/core.py lct_python_backend/models/__init__.py lct_python_backend/services/speaker_materialization.py lct_python_backend/services/stt_session.py lct_python_backend/services/stt_openai_realtime.py lct_python_backend/services/stt_http_transcriber.py lct_python_backend/services/stt_ws_session.py lct_python_backend/services/conversation_reader.py lct_python_backend/tests/unit/test_speaker_materialization.py lct_python_backend/tests/unit/test_stt_live_runtime.py lct_python_backend/tests/unit/test_stt_http_transcriber.py lct_python_backend/tests/integration/test_transcripts_websocket.py lct_python_backend/tests/integration/transcripts_test_support.py` (passed)
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_speaker_materialization.py lct_python_backend/tests/unit/test_stt_live_runtime.py lct_python_backend/tests/unit/test_stt_http_transcriber.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`60 passed`, existing LibreSSL warning only)
+  - `cd lct_app && npx eslint src/hooks/useAutoSave.js` (passed)
+
+- Recommended next step:
+  - Phase 2B of ADR-019: add an evidence-bounded alignment pass for ambiguous windows only. Phase 2A now persists the immutable segment evidence and a deterministic timebase, so the next slice can safely let a constrained aligner move utterance boundaries or choose between observed text sources without inventing words or timestamps.
+
+## 2026-03-20T14:50:25Z — ADR-019 Phase 1: backend-owned semantic graph persistence
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/services/live_graph_persistence.py` (lines 1-65): Added backend-owned semantic graph persistence helper for live sessions and headless replays. `persist_live_graph_snapshot(...)` now writes the current best `existing_json` graph through `persist_import_graph(...)`, and `extract_conversation_name(...)` derives a stable conversation title from session/file metadata so backend persistence can name conversations without relying on the browser.
+- `lct_python_backend/services/import_persistence.py` (lines 161-230): Strengthened canonical graph persistence so backend-owned live snapshots preserve provided UUID node IDs, resolve relationship references by both node name and raw ID, and update `Conversation.conversation_name` / `source_metadata` when persisting an existing conversation. This keeps live node identity stable across repeated materialization passes instead of regenerating fresh IDs on every save.
+- `lct_python_backend/services/stt_ws_session.py` (lines 22, 110-118, 153-247, 463, 1121, 1587-1588): Added backend-owned live graph persistence orchestration to the websocket session. Finalized graph updates now schedule canonical graph persistence after finalized patches, final flush forces the latest graph snapshot to be persisted before teardown, and persistence failures emit explicit structured `processing_status` warnings instead of failing silently.
+- `lct_python_backend/conversations_api.py` (lines 221-261): Reframed `PATCH /conversations/{conversation_id}/graph` as a supplementary browser snapshot path during the migration to backend-owned semantic persistence, and clarified log messages from generic autosave wording to `[browser graph snapshot]` so operators can distinguish browser-originated layout saves from canonical backend graph materialization.
+- `lct_app/src/hooks/useAutoSave.js` (lines 27-33): Updated the hook contract comments to reflect the new ownership model: canonical live semantic graph persistence is backend-owned, and browser autosave is now a best-effort snapshot path for layout/presentation continuity.
+- `lct_python_backend/tests/unit/test_import_graph_persistence.py` (line 321): Added regression coverage proving canonical graph persistence preserves provided UUID node IDs and can resolve relationship references by raw UUID string, which is required for patch-based live graph updates to remain stable when materialized into DB rows.
+- `lct_python_backend/tests/integration/test_transcripts_websocket.py` (line 405): Added websocket integration coverage proving finalized live graph updates trigger backend canonical graph persistence after transcript finalization and flush, so headless replay mode no longer depends on a browser autosave hook to produce durable node rows.
+
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/live_graph_persistence.py lct_python_backend/services/import_persistence.py lct_python_backend/services/stt_ws_session.py lct_python_backend/conversations_api.py` (passed)
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_import_graph_persistence.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`23 passed`, existing LibreSSL warning only)
+  - `cd lct_app && npx eslint src/hooks/useAutoSave.js` (passed)
+
+- Recommended next step:
+  - Phase 2 of ADR-019: persist speaker reconciliation as durable backend evidence/read-model state (`speaker_segments` plus utterance speaker updates) so exported transcripts/canvases stop collapsing long conversations into one speaker even when live diarization succeeds in memory.
+
+## 2026-03-20T09:42:33Z — ADR-019 approved: event-sourced transcript/graph materialization and canonical artifact pipeline
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `docs/adr/ADR-019-event-sourced-transcript-graph-and-artifact-materialization.md` (new): Added an approved architectural decision for the principled redesign requested after the live/headless replay RCA. The ADR freezes the backend-owned truth model: immutable transcript/diarization evidence, materialized `utterances` / `nodes` / `relationships`, new `speaker_segments`, `graph_revisions`, and `conversation_artifacts` tables, plus a single canonical materializer for conversation read and export.
+- `docs/plans/2026-03-20-event-sourced-materialization-roadmap.md` (new): Added the phased migration roadmap covering backend-owned semantic graph persistence, durable speaker reconciliation, graph revision history, unified reader/export materialization, tracked txt/canvas artifacts, and monologue-safe fallback chunking.
+- `docs/adr/INDEX.md`: Registered ADR-019 as approved.
+- `ISSUES.md`: Logged the newly confirmed preexisting gap exposed by the 1x Anand replay: live/headless conversations can produce transcript + graph state without durable semantic `Node` rows, leaving canonical export/read paths to diverge.
+- Investigation note: the replay failure is now formally characterized as a persistence-ownership issue, not a “one bad diarization” issue. The decisive chain was: session-scoped `speaker_id` persistence in `stt_session.py`, frontend-owned semantic autosave in `useAutoSave.js`, exporter dependence on persisted `Node` rows in `canvas_api.py`, and speaker-change-only fallback chunking in `turn_synthesizer.py`.
+
+- Validation:
+  - Docs-only change; no runtime behavior modified.
+
+## 2026-03-20T08:31:18Z — Live graph patches, draft nodes from partials, and speaker reconciliation
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/services/stt_live_graph.py` (lines 1-204): Added reusable live-graph helpers for draft-node heuristics, source-text overlap matching, and chunk-level speaker reconciliation so Phase 2/3/4 logic does not sprawl further inside `stt_ws_session.py`.
+- `lct_python_backend/services/transcript_processing.py` (lines 87-92, 163-171, 486-497): Extended the processor/update contract to support optional incremental `graph_patch` payloads while preserving backward compatibility with older two-argument `send_update(...)` callbacks, and started emitting finalized graph patches alongside the existing full snapshots.
+- `lct_python_backend/services/stt_ws_helpers.py` (lines 192-225): Added explicit websocket `graph_patch` sending and taught `send_processor_update(...)` to include the incremental patch before the legacy `existing_json` / `chunk_dict` snapshot pair.
+- `lct_python_backend/services/stt_ws_session.py` (lines 152-337, 513-520, 591-611, 814-1024): Added live draft-graph state, replacement/removal bookkeeping, chunk-matched speaker reconciliation, and flush-time cleanup so partial captions now produce ephemeral draft nodes immediately, finalized graph patches remove those drafts, and successful background diarization updates feed back into `speaker_id` plus chunk transcript text instead of dying in logs.
+- `lct_python_backend/services/import_bulk_pipeline.py` (lines 141-144): Taught the upload pipeline to forward `graph_patch` events too, so the new patch contract is shared between live and import pipelines rather than becoming another live-only special case.
+- `lct_app/src/pages/newConversationGraphState.js` (lines 1-248): Extracted graph payload normalization, incremental patch application, chunk patching, and draft/final layer merging out of `NewConversation.jsx` so the page can stay a thin orchestrator while supporting live graph patches.
+- `lct_app/src/pages/NewConversation.jsx` (lines 1-246): Split display state into finalized vs draft graph layers, merged them only for rendering, kept autosave bound to finalized graph state, and wired a dedicated `handleGraphPatchReceived(...)` path so draft nodes appear immediately without polluting persisted graph snapshots.
+- `lct_app/src/components/AudioInput.jsx` (lines 74-162, 372-380), `lct_app/src/components/audio/useTranscriptSockets.js` (lines 20-54), `lct_app/src/components/audio/audioMessages.js` (lines 3-43), `lct_app/src/components/FileUpload.jsx` (lines 24-50, 116-121), and `lct_app/src/components/upload/useFileUploadStream.js` (lines 49-58, 271-277): Propagated the new `graph_patch` event through both live websocket and upload SSE paths instead of forcing the UI to wait for full `existing_json` snapshots.
+- `lct_app/src/components/audio/useLiveSessionStatus.js` (lines 185-205): Counted `graph_patch` arrivals as real graph activity so the HUD’s first-node timing now reflects the new draft-node path, not just finalized snapshots.
+- `lct_python_backend/tests/unit/test_stt_live_graph.py` (lines 1-55): Added unit coverage for draft-patch construction and latest-chunk speaker reconciliation selection.
+- `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 134-145, 264-275, 346-399): Updated live websocket expectations so audio-backed sessions explicitly assert the new `graph_patch(draft)` event before transcript text, and added an end-to-end regression that finalized graph patches remove the prior draft node.
+- Investigation note: the only real regression found during this slice was not architectural — the new live-draft path assumed every processor double exposed `existing_json`/`chunk_dict`. Hardened `stt_ws_session.py` against those lighter stubs before continuing, because the websocket tests intentionally use simplified processors.
+
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/stt_live_graph.py lct_python_backend/services/transcript_processing.py lct_python_backend/services/stt_ws_helpers.py lct_python_backend/services/stt_ws_session.py lct_python_backend/services/import_bulk_pipeline.py lct_python_backend/tests/unit/test_stt_live_graph.py lct_python_backend/tests/integration/test_transcripts_websocket.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_transcript_processing_runtime.py lct_python_backend/tests/unit/test_stt_live_graph.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`17 passed, 1 warning`)
+  - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/pages/newConversationGraphState.js src/components/AudioInput.jsx src/components/FileUpload.jsx src/components/upload/useFileUploadStream.js src/components/audio/audioMessages.js src/components/audio/useTranscriptSockets.js src/components/audio/useLiveSessionStatus.js`
+  - `cd lct_app && npm run -s build` (passed; pre-existing Vite chunk-size warning remains)
+
+## 2026-03-20T06:46:57Z — Phase 1 graph cadence: gentler batching, max-wait flush, and queue-vs-generation telemetry
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/services/transcript_processing.py` (lines 50-93, 156-230, 232-335, 337-522): Reworked live graph cadence around a gentler early batch schedule (`1 -> 1 -> 2 -> 2 -> 4`), added max-wait timer forcing (`graph_first_update_max_wait_ms`, `graph_steady_update_max_wait_ms`) so finalized transcript text cannot sit indefinitely while the accumulator keeps asking for more context, anchored the timer to the original queue-start time rather than resetting it on every new final, and split graph telemetry into `queue_wait_ms`, `generation_ms`, and `total_update_ms` for each graph update.
+- `lct_python_backend/services/stt_ws_session.py` (lines 144-176, 794-798): Added correlated `[WS][GRAPH]` logging for graph queue/generation/completion statuses plus first-node-from-audio timing so backend logs now show where graph time is actually being spent during live sessions.
+- `lct_app/src/components/audio/useLiveSessionStatus.js` (lines 81-88, 114-119, 242-352, 510-553, 669-704): Added graph queue-wait and total-update tracking to the HUD so live diagnostics no longer collapse graph latency into a single opaque number; the details panel now separates `Queue wait`, `Generation`, and `Last total`.
+- `lct_python_backend/tests/unit/test_transcript_processing_runtime.py` (lines 10-173): Updated batching regression coverage to the new aggressive early cadence, added a timer-forced graph-cut regression, and added explicit assertions for the new graph timing telemetry.
+- `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 280-330): Added websocket coverage proving that graph `processing_status` events now carry `queue_wait_ms`, `generation_ms`, `total_update_ms`, and the trigger source through the live websocket path.
+- Investigation note: the root cause for the remaining first-node lag was not “first batch still waits for 4 finals.” `handle_final_text(...)` was already running at batch size 1, but the accumulator could still respond `continue_accumulating` and then fall back to timerless waiting. This slice fixes that by adding an explicit max-wait boundary and by keeping the early retry schedule aggressive.
+
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/transcript_processing.py lct_python_backend/services/stt_ws_session.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_transcript_processing_runtime.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`14 passed, 1 warning`)
+  - `cd lct_app && npx eslint src/components/audio/useLiveSessionStatus.js`
+
+## 2026-03-20T06:27:12Z — Websocket STT errors now fail loudly with structured context
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/services/stt_ws_helpers.py` (lines 156-189): Added `build_ws_error_payload(...)` so websocket protocol/runtime failures share one structured envelope with `code`, `detail`, `level`, `fatal`, and correlated session/provider/transport context instead of ad hoc payload shapes.
+- `lct_python_backend/services/stt_ws_session.py` (lines 153-199, 793-821, 962-1005, 1007-1099, 1129-1206): Routed protocol violations, runtime-start degradation, malformed JSON, unsupported message types, STT request/flush failures, and fatal loop exceptions through `_emit_ws_error(...)`, and added correlated backend logging for those same stages so failures no longer disappear as generic timeouts or silent drops.
+- `lct_app/src/components/audio/audioMessages.js` (lines 18-31, 40-61, 73-116): Normalized backend `error`, `stt_provider_error`, `processing_status`, and `session_ack.runtime_error` handling into one processing-status surface so the client logs and UI receive the same structured error context the backend emits.
+- `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 415-609): Added websocket regression coverage for the specific silent/misleading failure classes we hit during investigation: audio before `session_meta`, malformed JSON, unsupported message types, and streaming-runtime startup failure that degrades to HTTP but must still surface a structured warning after `session_ack`.
+- Investigation note: this slice closes two real observability gaps from the same work session: realtime startup errors that previously masqueraded as generic timeouts, and websocket protocol/probe mistakes that previously vanished because only `stt_provider_error` was being watched.
+
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/stt_ws_helpers.py lct_python_backend/services/stt_ws_session.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/integration/test_transcripts_websocket.py lct_python_backend/tests/unit/test_stt_live_runtime.py` (`16 passed`)
+  - `cd lct_app && npx eslint src/components/audio/audioMessages.js`
+
+## 2026-03-20T05:42:09Z — Fix OpenAI realtime transcription startup handshake
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/services/stt_openai_realtime.py` (lines 76-190, 306-391): Fixed the realtime transcription init payload by adding `session.type = "transcription"`, added explicit startup-state tracking so provider `error` events received before `session.updated` fail startup immediately instead of being misreported as a generic timeout, and reset the startup state cleanly during shutdown.
+- `lct_python_backend/tests/unit/test_stt_live_runtime.py` (lines 1-164): Added regression coverage proving that the realtime init payload now includes the required transcription session type and that startup fails fast with the real provider error message when the server rejects the initial payload.
+- Investigation note: traced the previous fallback-to-HTTP behavior to an OpenAI realtime server response of `missing_required_parameter: session.type`; a direct probe using the saved OpenAI STT settings confirmed the old payload produced `session.created` followed by `error`, while the corrected payload now reaches `session.updated` and leaves the runtime ready.
+
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/stt_openai_realtime.py lct_python_backend/tests/unit/test_stt_live_runtime.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_live_runtime.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`12 passed`)
+  - Direct probe via `OpenAIRealtimeTranscriptionRuntime.start()` with saved STT settings: `{"ready": true, "transport": "openai_realtime", "metadata": {"provider": "openai_audio", "transport": "openai_realtime", "model": "gpt-4o-mini-transcribe", "session_updated": true}}`
+
+## 2026-03-20T05:26:04Z — True streaming STT slice: runtime seam + OpenAI realtime captions
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/services/stt_live_runtime.py` (lines 1-167): Added the new provider-agnostic live STT runtime seam, including the `LiveSttRuntime` protocol, an HTTP adapter that wraps the existing `RealtimeHttpSttSession`, and `build_live_stt_runtime(...)` so websocket sessions can choose streaming versus chunked HTTP without changing the frontend transcript contract.
+- `lct_python_backend/services/stt_openai_realtime.py` (lines 1-422): Added a new OpenAI realtime transcription runtime that opens the outbound provider websocket, sends `session.update` transcription settings, resamples backend audio from `16kHz` PCM to OpenAI’s `24kHz` realtime format, translates provider delta/completed events into internal `partial` / `final` runtime events, and snapshots committed PCM so background diarization refinement can still run on finalized windows.
+- `lct_python_backend/services/stt_live_provider_selection.py` (lines 138-163): Marked the fast OpenAI caption candidate as realtime-streaming-capable so the new runtime builder can select the realtime transport only for the appropriate online OpenAI route while leaving the slower diarization refinement path on HTTP.
+- `lct_python_backend/services/stt_ws_session.py` (lines 18-29, 74-135, 253-455, 519-719, 766-987): Replaced direct `RealtimeHttpSttSession` coupling with the new live runtime seam, added explicit realtime-event handling alongside the existing HTTP aggregation path, started runtime selection during `session_meta`, added automatic fallback to the legacy HTTP runtime if realtime startup fails, preserved background refinement scheduling from realtime final events, and enriched session setup/flush logs with runtime mode and startup errors.
+- `lct_python_backend/tests/integration/transcripts_test_support.py` (lines 49-167): Updated websocket integration test helpers to patch the new runtime factory rather than the old HTTP session class directly, while preserving a compatibility wrapper for existing HTTP-oriented tests.
+- `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 161-279, 360-363): Added a realtime-runtime websocket integration test proving that `session_ack` reports `openai_realtime`, that partial/final transcript events flow through the unchanged frontend contract, and that finalized realtime text still reaches the processor path.
+- `lct_python_backend/tests/unit/test_stt_live_runtime.py` (lines 1-122): Added new unit coverage for runtime selection, PCM resampling, and OpenAI realtime server-event mapping into internal partial/final events.
+- `docs/TECH_DEBT.md` (lines 15, 26-31): Refreshed the STT debt inventory because this slice intentionally introduced a new realtime runtime while leaving `stt_ws_session.py` and the realtime adapter itself larger than the desired long-term shape.
+
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/stt_openai_realtime.py lct_python_backend/services/stt_live_runtime.py lct_python_backend/services/stt_ws_session.py lct_python_backend/tests/unit/test_stt_live_runtime.py lct_python_backend/tests/integration/test_transcripts_websocket.py lct_python_backend/tests/integration/transcripts_test_support.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_live_runtime.py lct_python_backend/tests/integration/test_transcripts_websocket.py lct_python_backend/tests/unit/test_stt_http_transcriber.py` (`47 passed`)
+  - `cd lct_app && npx eslint src/components/audio/useTranscriptSockets.js src/components/audio/audioMessages.js src/components/AudioInput.jsx src/components/audio/useLiveSessionStatus.js`
+
+## 2026-03-20T04:45:16Z — Low-hanging live latency slice: faster first captions, fewer dead fallbacks, earlier first node
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/services/stt_http_transcriber.py` (lines 19-34, 108-128, 380-515, 557-667, 696-991): Added adaptive first-chunk sizing (`STT_INITIAL_HTTP_CHUNK_SECONDS`, default `0.5s`) so the first successful caption can flush earlier than the steady-state chunk size; added per-session circuit-breaker TTL memory for dead candidates (`timeout`, `network_error`, `rate_limited`, `auth_failed`, etc.); and changed empty cloud-transcript handling so `openai_audio` / `openrouter_audio` empties are treated as no-speech outcomes instead of automatically falling through to slow Whisper timeouts.
+- `lct_python_backend/services/transcript_processing.py` (lines 50-68, 137-172, 197-222): Added `initial_batch_size=1` semantics so the very first graph batch runs after the first finalized transcript instead of waiting for the old `4 -> 8 -> 12` ramp, while later batches still return to the larger steady-state policy.
+- `lct_app/src/components/audio/useLiveSessionStatus.js` (lines 67-90, 181-195, 205-314, 334-514, 594-685): Added live `Current wait` timing for STT, `First node` timing for graph creation, and in-flight chip labels like `STT OpenAI 2.3s` / `Graph 1.8s` so the HUD emphasizes caption and node latency rather than only backend websocket RTT.
+- `lct_python_backend/tests/unit/test_stt_http_transcriber.py` (lines 163-200, 354-432): Updated the fixed-interval regression to pin the old threshold explicitly when desired, and added coverage for adaptive first-chunk behavior, empty OpenAI transcripts not falling through to Whisper, and timeout-driven circuit opening that skips repeated dead-end requests inside the TTL window.
+- `lct_python_backend/tests/unit/test_transcript_processing_runtime.py` (lines 1-49): Added a new regression test proving the first graph batch can run immediately and that the processor then returns to the normal larger batch size for subsequent updates.
+- `docs/TECH_DEBT.md` (lines 13, 23, 39): Refreshed the existing debt entries for `transcript_processing.py`, `useLiveSessionStatus.js`, and `stt_http_transcriber.py` because this slice deliberately improved UX/latency inside the current modules without yet extracting the policy/orchestration seams into smaller units.
+
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_http_transcriber.py lct_python_backend/tests/unit/test_transcript_processing_runtime.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`43 passed, 1 warning`)
+  - `cd lct_app && npx eslint src/components/audio/useLiveSessionStatus.js`
+  - `cd lct_app && npm run build` (passed; existing Vite chunk-size warning persists)
+
+## 2026-03-20T04:12:00Z — Fast OpenAI live captions + separate diarization model plumbing
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/services/stt_config.py` (lines 19-21, 137-219): Changed the OpenAI live STT default model from diarized OpenAI to `gpt-4o-mini-transcribe`, added a separate `diarize_model` field, and added legacy-config migration so older saved `gpt-4o-transcribe-diarize` settings are interpreted as “background diarization model” instead of keeping the slow diarized model on the caption-critical path.
+- `lct_python_backend/services/stt_live_provider_selection.py` (lines 138-260): Changed the live `openai_audio` candidate to request plain JSON captions on the fast path, required a separate diarization model when diarization is expected, and added `build_live_stt_background_refinement_candidate(...)` so the session layer can wire a separate non-blocking refinement pass without changing the websocket ingress contract.
+- `lct_python_backend/services/stt_http_transcriber.py` (lines 543-583, 1157-1231): Preserved the per-chunk WAV payload internally after fast transcription, kept OpenAI caption requests non-diarized on the live route, and added `transcribe_wav_stt_candidate(...)` so existing WAV chunks can be re-submitted to a separate diarized model in the background without introducing new dependencies.
+- `lct_python_backend/services/stt_ws_session.py` (lines 21-29, 79-135, 259-336, 585-749): Added background refinement task tracking, derived an OpenAI diarization refinement candidate during `session_meta`, scheduled chunk-level background refinement without blocking fast transcript emission, and enriched session setup/processing logs with refinement metadata while keeping `transcript_partial` / `transcript_final` unchanged.
+- `lct_python_backend/stt_api.py` (lines 91-132, 223-289): Updated the cloud provider smoke-test candidate builder so `Save & Test` now validates the fast OpenAI caption path rather than the slower diarized OpenAI request, while still reporting whether diarization capability is configured separately.
+- `lct_app/src/components/audio/sttUtils.js` (lines 14-19, 45-56): Updated frontend defaults to mirror the new backend semantics: fast OpenAI live captions by default plus a separate stored diarization model.
+- `lct_app/src/components/SttCloudFallbackFields.jsx` (lines 5-10, 168-190): Updated the OpenAI copy to explain the new fast-caption/refinement split and added a dedicated `Diarization model` field so the separate refinement model is visible/editable in Runtime Settings.
+- `lct_python_backend/.env.example` (lines 76-87): Updated the env template to document the new online-first STT defaults with `gpt-4o-mini-transcribe` for fast captions and `gpt-4o-transcribe-diarize` as the separate diarized refinement model.
+- `lct_python_backend/tests/unit/test_stt_config.py` (lines 104-140), `lct_python_backend/tests/unit/test_stt_settings_service.py` (lines 102-198), `lct_python_backend/tests/unit/test_stt_live_provider_selection.py` (lines 7-202), `lct_python_backend/tests/unit/test_stt_api_settings.py` (lines 304-402), `lct_python_backend/tests/unit/test_stt_http_transcriber.py` (lines 257-470), `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 228-259): Updated config/router/runtime coverage to reflect the new split between fast OpenAI captions and background diarization, and added regression coverage for the new background refinement candidate helper.
+- `docs/TECH_DEBT.md` (lines 22-26): Updated the existing `stt_config.py`, `stt_http_transcriber.py`, and `stt_ws_session.py` debt entries to acknowledge that this slice added live/background-model migration and refinement orchestration without yet decomposing those modules.
+
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_config.py lct_python_backend/tests/unit/test_stt_settings_service.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/unit/test_stt_api_settings.py lct_python_backend/tests/unit/test_stt_http_transcriber.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`66 passed`)
+  - `cd lct_app && npx eslint src/components/SttCloudFallbackFields.jsx src/components/audio/sttUtils.js`
+  - `cd lct_app && npm run build` (passed; existing Vite chunk-size warning persists)
+
+## 2026-03-20T03:14:45Z — Docs: approve modular live runtime architecture and defer implementation
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `docs/adr/ADR-017-capability-oriented-live-runtime-pipeline.md` (lines 1-193): Added a new approved ADR freezing the architectural direction for the live runtime: stage-based lanes (`capture`, `live captions`, `refinement`, `chunking`, `graph`, `reconciliation`, `telemetry`), capability-oriented provider adapters, canonical transcript/speaker/graph event types, smooth graph deformation semantics, and an explicit decision to defer dependency additions and implementation slices until later approval.
+- `docs/plans/2026-03-19-capability-oriented-live-runtime-pipeline-roadmap.md` (lines 1-244): Added the deferred implementation roadmap covering Phase 0 documentation freeze through Phase 6 provider expansion, with concrete existing file paths likely to change, indicative new module seams, acceptance gates, and a recommended first implementation slice that does not widen the current OpenAI stabilization task.
+- `docs/adr/INDEX.md` (lines 3-23): Registered ADR-017 and updated the ADR index timestamp.
+
+- Validation:
+  - Docs-only change; no tests or runtime commands were required beyond context reading and timestamp capture.
+
+## 2026-03-20T03:02:11Z — Live STT now tries OpenAI before remote Whisper in online-style Whisper setups
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/services/stt_live_provider_selection.py` (lines 99-205): Changed candidate ordering so when the selected live provider is remote `whisper` and `openai_audio` is enabled, OpenAI is attempted before the remote Whisper HTTP route instead of after Whisper burns the full timeout budget. Local-only and non-Whisper primary setups keep the prior ordering.
+- `lct_python_backend/tests/unit/test_stt_live_provider_selection.py` (lines 129-166): Added regression coverage for the exact online case requested here: remote Whisper selected, OpenAI enabled, diarization required, and OpenAI should become candidate 1 while Whisper remains a fallback.
+
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_live_provider_selection.py` (`4 passed`)
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/stt_live_provider_selection.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py`
+
+## 2026-03-20T02:38:49Z — STT cloud API key replacement now persists from settings UI
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_app/src/components/audio/sttUtils.js` (lines 126-175): Split STT normalization behavior so cloud fallback providers still come back masked on browser reads, but freshly typed `api_key` values can now be preserved when explicitly requested for a save payload instead of being unconditionally blanked.
+- `lct_app/src/components/settings/useSttSettingsForm.js` (lines 65-76): Updated the STT save path to normalize draft settings with `preserveApiKeys: true`, fixing the regression where pasting a replacement OpenAI/OpenRouter audio key looked successful in the UI but silently re-saved the old backend secret.
+- Investigation result: confirmed the previously persisted OpenAI STT key suffix remained `...sgIA` even after the user created a fresh key, which matched backend 401 logs and proved the bug was on the frontend save path, not the provider credential itself.
+- Similar-bug scan: read through `lct_app/src/components/LlmProvidersPanel.jsx`; that editor already preserves non-empty `api_key` values on submit, so the normalize-and-wipe bug was specific to the STT settings flow.
+
+- Validation:
+  - `cd lct_app && npx eslint src/components/audio/sttUtils.js src/components/settings/useSttSettingsForm.js src/components/SttCloudFallbackFields.jsx`
+  - `cd lct_app && npm run build` (passed; existing chunk-size warning persists)
+
+## 2026-03-20T02:16:44Z — Home status meaning clarified + landing title simplified
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_app/src/components/ServiceStatus.jsx` (lines 1-282): Rebuilt the home status as larger hoverable pills, added 3-second request timeouts so `/api/import/status` cannot stall the landing page, and changed the logic to combine runtime settings with the older import probe so `online` LLM / fallback STT setups now read as `configured` instead of opaque hard-red failures.
+- `lct_app/src/pages/Home.jsx` (lines 9-19, 22-89): Replaced the small `Live Conversational Threads` label with a larger `Threads` lockup, added small eyebrow copy, and slightly strengthened the landing background while preserving the existing action layout.
+- `docs/TECH_DEBT.md` (line 22): Logged `ServiceStatus.jsx` as a mixed-concern candidate because it now combines endpoint polling, signal interpretation, and tooltip rendering.
+
+- Validation:
+  - `cd lct_app && npx eslint src/components/ServiceStatus.jsx src/pages/Home.jsx`
+  - `cd lct_app && npm run build` (passed; existing chunk-size warning persists)
+
+## 2026-03-20T01:40:02Z — STT cloud provider save-and-test + live fallback observability
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/stt_api.py` (lines 23-28, 81-132, 223-285): Added a backend-backed STT cloud provider smoke-test route for `openai_audio` / `openrouter_audio`, plus candidate-building helpers that validate stored settings and return normalized readiness states (`ready`, `auth_failed`, `misconfigured`, etc.) instead of raw `httpx` exceptions.
+- `lct_python_backend/services/stt_http_transcriber.py` (lines 93-189, 350-429, 543-833, 1043-1152): Added normalized STT error classification, generated sample audio for smoke tests, enriched runtime metadata with candidate counts and flow timing, logged per-attempt fallback order/latency/error detail, and introduced a reusable cloud-provider smoke-test helper that returns latency, transcript preview, and diarization metadata.
+- `lct_python_backend/services/stt_ws_session.py` (lines 79-84, 268-291, 378-395, 493-727): Added websocket-session observability logs for session setup, ordered fallback candidates, first audio chunk timing, flush requests, and failure summaries so `logs/backend.log` now captures why STT fallback happened and how long each attempt took.
+- `lct_app/src/services/sttSettingsApi.js` (lines 3-6, 52-60): Added the frontend API client for `/api/settings/stt/cloud-provider-test`.
+- `lct_app/src/components/settings/useSttSettingsForm.js` (lines 14-149, 203-245): Added positive save feedback, per-cloud-provider test state, `Save & Test` orchestration that persists settings before testing, and clearing of stale test results when provider fields change.
+- `lct_app/src/components/SttCloudFallbackFields.jsx` (lines 14-257): Added accessible per-provider status badges (`No key`, `Saved`, `Testing`, `Ready`, `Auth failed`, etc.), concise result copy, latency/last-checked detail, and the `Save & Test` action next to each cloud fallback provider.
+- `lct_app/src/components/settings/SttSettingsCard.jsx` (lines 25-43, 86-102, 188-196): Surfaced save/test feedback banners and threaded cloud-provider test state/actions into the STT settings card.
+- `lct_python_backend/tests/unit/test_stt_api_settings.py` (lines 304-400): Added route coverage for successful cloud-provider tests and misconfigured-provider responses without hitting the actual smoke-test transport.
+- `lct_python_backend/tests/unit/test_stt_http_transcriber.py` (lines 328-332, 387-424): Added regression coverage for new fallback timing metadata and the cloud smoke-test helper response shaping.
+- `ISSUES.md` (lines 23-27): Logged the preexisting repo-wide frontend lint backlog discovered during validation and updated the runtime-readiness warning to reflect the new STT-specific save-and-test capability.
+- `docs/TECH_DEBT.md` (lines 24-25, 38): Refreshed STT API/session/transcriber debt entries because this slice confirmed those modules are still absorbing too many concerns.
+
+- Validation:
+  - `./.venv/bin/pytest lct_python_backend/tests/unit/test_stt_api_settings.py lct_python_backend/tests/unit/test_stt_http_transcriber.py` (`42 passed`)
+  - `cd lct_app && npx eslint src/components/SttCloudFallbackFields.jsx src/components/settings/SttSettingsCard.jsx src/components/settings/useSttSettingsForm.js src/services/sttSettingsApi.js`
+  - `cd lct_app && npm run build` (passed; existing chunk-size warning persists)
+  - `cd lct_app && npm run lint` still fails because of a preexisting unrelated ESLint backlog across older UI files; logged in `ISSUES.md` instead of widening this change scope.
+
+## 2026-03-20T01:13:58Z — Product note: accessible runtime setup future feature
+
+Branch: `main`
+
+- `docs/FEATURE_ROADMAP.md` (lines 21-52, 431-462): Added a future roadmap entry for `Guided Runtime Setup & Confidence Checks` to capture the request for a more accessible runtime setup experience: plain-language green/orange/red readiness states, progressive disclosure into deeper diagnostics, UI-managed provider keys, and one-click smoke tests/benchmarks that reflect user-facing timings instead of raw health pings.
+- `docs/TECH_DEBT.md` (lines 3, 39): Updated the review date and logged `docs/FEATURE_ROADMAP.md` as a documentation monolith candidate because future-feature notes, prioritization, and roadmap planning are starting to accumulate in one place.
+
+- Validation:
+  - Docs-only change; no tests or runtime commands were needed.
+
+## 2026-03-20T00:54:03Z — Online-first runtime defaults for UI work
+
+Branch: `main`
+
+- `lct_python_backend/.env` (lines 34-45): Added local-machine runtime overrides so `start.command` boots into an online-first profile by default (`DEFAULT_LLM_MODE=online`, Gemini Flash online model, live STT cloud fallback enabled, local STT autostart disabled, diarization enabled, and live STT timeout reduced to 10s) instead of assuming local-only infrastructure.
+- `lct_python_backend/.env.example` (lines 56-85): Updated the generated env template to mirror the same online-first runtime defaults for fresh setups, including Gemini Flash as the online LLM default and remote-first STT fallback settings.
+- Local Postgres `app_settings` rows `llm_config`, `llm_providers`, and `stt_config`: Updated persisted runtime overrides so the running app resolves to `mode=online`, `chat_model=gemini-3-flash-preview`, `embedding_model=text-embedding-3-small`, remote-only graph-provider fallback order (`openrouter_gemini -> modal_qwen -> local_lmstudio disabled`), and live STT settings with `provider=whisper`, `local_only=false`, OpenAI cloud fallback enabled, OpenRouter audio disabled, and `http_timeout_seconds=10`.
+- `ISSUES.md` (lines 5-9): Logged the newly confirmed blocker that the currently configured OpenAI audio credential returns `401 Unauthorized`, which prevents the requested diarized OpenAI fallback from actually executing until the key is replaced.
+
+- Validation:
+  - `./start.command` reached `All services are up.` with the updated env/runtime profile and no local STT autostart attempt.
+  - `curl http://localhost:8000/api/settings/llm` returned `mode=online`, `chat_model=gemini-3-flash-preview`, and `embedding_model=text-embedding-3-small`.
+  - `curl http://localhost:8000/api/settings/llm/providers` returned remote-first provider ordering with `local_lmstudio` disabled.
+  - `curl http://localhost:8000/api/settings/stt` returned `local_only=false`, `live_cloud_fallback_enabled=true`, `openai_audio.enabled=true`, and `http_timeout_seconds=10`.
+  - `curl 'http://localhost:8000/api/settings/llm/models?mode=online'` returned accepted Gemini models from `source=gemini_api`, including `gemini-3-flash-preview`.
+  - Direct smoke test to `https://api.openai.com/v1/audio/transcriptions` with the configured OpenAI key returned `401 Unauthorized` (recorded in `ISSUES.md` as a preexisting credential blocker).
+
 ## 2026-03-13T09:17:37Z — Phase 1 live pipeline HUD for `/new`
 
 Branch: `codex/test/streaming-audio-e2e`
