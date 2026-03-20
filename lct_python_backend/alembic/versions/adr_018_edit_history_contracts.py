@@ -1,0 +1,52 @@
+"""ADR-018: Edit History Contracts — add actor_type/annotations, drop EditFeedback
+
+Revision ID: adr_018_edit_history
+Revises: add_intent_signals
+Create Date: 2026-03-20
+
+Adds:
+  edits_log.actor_type  — TEXT DEFAULT 'human' (backfilled)
+  edits_log.annotations — TEXT nullable (post-hoc review notes, separate from user_comment)
+
+Drops:
+  edit_feedback table — replaced by annotations column on edits_log
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+revision: str = 'adr_018_edit_history'
+down_revision: Union[str, Sequence[str], None] = 'add_intent_signals'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    # Add actor_type with default and backfill
+    op.add_column(
+        'edits_log',
+        sa.Column('actor_type', sa.Text(), server_default='human', nullable=False),
+    )
+    # Add annotations column for post-hoc review notes
+    op.add_column(
+        'edits_log',
+        sa.Column('annotations', sa.Text(), nullable=True),
+    )
+    # Drop EditFeedback table (replaced by annotations column)
+    op.drop_table('edit_feedback')
+
+
+def downgrade() -> None:
+    op.drop_column('edits_log', 'annotations')
+    op.drop_column('edits_log', 'actor_type')
+    # Recreate edit_feedback table
+    op.create_table(
+        'edit_feedback',
+        sa.Column('id', sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column('edit_id', sa.dialects.postgresql.UUID(as_uuid=True),
+                  sa.ForeignKey('edits_log.id'), nullable=False),
+        sa.Column('text', sa.Text(), nullable=False),
+        sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.func.now()),
+    )
+    op.create_index('idx_edit_feedback_edit', 'edit_feedback', ['edit_id'])

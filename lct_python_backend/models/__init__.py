@@ -7,7 +7,7 @@ Domain split:
   graph       — Node, Relationship, Cluster
   analysis    — Claim, ArgumentTree, IsOughtConflation,
                 SimulacraAnalysis, BiasAnalysis, FrameAnalysis
-  interaction — Bookmark, EditsLog, EditFeedback
+  interaction — Bookmark, EditsLog
   system      — APICallsLog, AppSetting, PipelineArtifact, ServiceStatus
 
 All public names are re-exported here so existing
@@ -29,7 +29,7 @@ from .analysis import (  # noqa: F401
     IntentSignal,
     IntentSignalSighting,
 )
-from .interaction import Bookmark, EditsLog, EditFeedback  # noqa: F401
+from .interaction import Bookmark, EditsLog  # noqa: F401
 from .system import APICallsLog, AppSetting, PipelineArtifact, ServiceStatus  # noqa: F401
 
 __all__ = [
@@ -54,7 +54,6 @@ __all__ = [
     # interaction
     "Bookmark",
     "EditsLog",
-    "EditFeedback",
     # system
     "APICallsLog",
     "AppSetting",
