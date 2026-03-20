@@ -133,12 +133,21 @@ const normalizeCloudFallbackProviders = (providers) => {
       if (!base[providerId] || !providerConfig || typeof providerConfig !== "object") {
         return;
       }
-      base[providerId] = {
+      const merged = {
         ...base[providerId],
         ...providerConfig,
-        api_key: "",
         has_api_key: Boolean(providerConfig?.has_api_key),
       };
+      // Preserve non-empty api_key from user input. If the key is empty
+      // (masked placeholder or cleared), omit it so the backend preserves
+      // the existing secret via _preserve_cloud_provider_secrets.
+      const rawKey = String(providerConfig?.api_key ?? "").trim();
+      if (rawKey) {
+        merged.api_key = rawKey;
+      } else {
+        delete merged.api_key;
+      }
+      base[providerId] = merged;
     });
   }
   return base;
