@@ -1,4 +1,4 @@
-"""User interaction models: Bookmark, EditsLog, EditFeedback."""
+"""User interaction models: Bookmark, EditsLog."""
 
 import uuid
 
@@ -62,10 +62,12 @@ class EditsLog(Base):
 
     # Context
     edit_type = Column(Text, nullable=False)  # 'correction', 'addition', 'deletion', 'merge', 'split'
-    user_comment = Column(Text)
+    user_comment = Column(Text)  # Contemporaneous rationale (set at creation, immutable)
+    annotations = Column(Text)  # Post-hoc review notes (appended via feedback endpoint)
 
     # User
     user_id = Column(Text, nullable=False)
+    actor_type = Column(Text, nullable=False, server_default='human')  # human|llm_suggestion|import_correction|bulk_operation
     user_confidence = Column(Float, default=1.0)
 
     # Training
@@ -89,20 +91,3 @@ class EditsLog(Base):
     )
 
 
-class EditFeedback(Base):
-    """Feedback annotations for edit history"""
-    __tablename__ = "edit_feedback"
-
-    # Identity
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    edit_id = Column(UUID(as_uuid=True), ForeignKey('edits_log.id'), nullable=False)
-
-    # Feedback content
-    text = Column(Text, nullable=False)
-
-    # Metadata
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
-
-    __table_args__ = (
-        Index('idx_edit_feedback_edit', 'edit_id'),
-    )
