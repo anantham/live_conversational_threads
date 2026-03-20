@@ -139,6 +139,8 @@ class Utterance:
 **Import Google Meet Transcript:**
 ```
 POST /import/google-meet-transcript/
+# NOTE (2026-03-20): Actual implemented route is POST /google-meet
+# (under the /api/import router prefix). See import_api.py:191.
 
 Request:
 {
