@@ -1,5 +1,16 @@
 # WORKLOG
 
+## 2026-03-20T19:21:03Z — Legacy backend test cleanup after live/materialization PR split
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- `lct_python_backend/tests/test_cost_calculator.py`, `lct_python_backend/tests/test_google_meet_parser.py`, and `lct_python_backend/tests/test_instrumentation.py`: Kept the package-import normalization to `lct_python_backend.*` so these older tests still run under the current package layout.
+- `lct_python_backend/tests/test_graph_generation.py` (lines 7-21): Removed the dead `PromptLoader` compatibility shim instead of keeping skipped placeholder tests. `PromptLoader` is no longer part of the current graph-generation contract, so the stale compatibility block was deleted and the file now tests only the active `GraphGenerationService` behavior.
+- `lct_python_backend/factcheck_api.py`: Explicitly dropped the uncommitted audio-download hardening diff after confirming it was out of scope for the current branch and not worth carrying as an unrelated partial feature.
+
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/test_cost_calculator.py lct_python_backend/tests/test_google_meet_parser.py lct_python_backend/tests/test_graph_generation.py lct_python_backend/tests/test_instrumentation.py`
+
 ## 2026-03-20T19:19:44Z — Docs freshness pass for roadmap, structure, and ADR status notes
 
 Branch: `codex/fix-stt-cloud-test-observability`
