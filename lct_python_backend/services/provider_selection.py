@@ -5,12 +5,11 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
+from lct_python_backend.services.coercion_helpers import coerce_str, to_bool
 from lct_python_backend.services.transcription_utils import (
     STT_PROVIDER_ORDER,
     STT_UPLOAD_LOCAL_FIRST,
     STT_UPLOAD_REMOTE_FALLBACK,
-    _coerce_str,
-    _to_bool,
 )
 
 
@@ -41,25 +40,25 @@ def _resolve_audio_provider_candidates(
     """
     provider_http_urls = settings.get("provider_http_urls")
     provider_url_map = provider_http_urls if isinstance(provider_http_urls, dict) else {}
-    configured_provider = _coerce_str(settings.get("provider")).lower()
-    override_provider = _coerce_str(provider_override).lower()
-    fallback_provider = _coerce_str(settings.get("fallback_provider")).lower()
-    external_fallback_http_url = _coerce_str(settings.get("external_fallback_http_url"))
-    local_first_enabled = _to_bool(settings.get("upload_local_first"), STT_UPLOAD_LOCAL_FIRST)
-    fallback_enabled = _to_bool(settings.get("upload_remote_fallback"), STT_UPLOAD_REMOTE_FALLBACK)
+    configured_provider = coerce_str(settings.get("provider")).lower()
+    override_provider = coerce_str(provider_override).lower()
+    fallback_provider = coerce_str(settings.get("fallback_provider")).lower()
+    external_fallback_http_url = coerce_str(settings.get("external_fallback_http_url"))
+    local_first_enabled = to_bool(settings.get("upload_local_first"), STT_UPLOAD_LOCAL_FIRST)
+    fallback_enabled = to_bool(settings.get("upload_remote_fallback"), STT_UPLOAD_REMOTE_FALLBACK)
 
     def provider_url(provider_name: str) -> str:
-        normalized = _coerce_str(provider_name).lower()
+        normalized = coerce_str(provider_name).lower()
         if normalized and normalized in provider_url_map:
-            return _coerce_str(provider_url_map.get(normalized))
+            return coerce_str(provider_url_map.get(normalized))
         return ""
 
     candidates: List[Dict[str, str]] = []
     seen: set[Tuple[str, str]] = set()
 
     def add_candidate(provider_name: str, http_url: str, reason: str) -> None:
-        normalized_provider = _coerce_str(provider_name).lower() or "whisper"
-        normalized_url = _coerce_str(http_url)
+        normalized_provider = coerce_str(provider_name).lower() or "whisper"
+        normalized_url = coerce_str(http_url)
         if not normalized_url:
             return
         key = (normalized_provider, normalized_url)
@@ -71,7 +70,7 @@ def _resolve_audio_provider_candidates(
     if override_provider:
         add_candidate(
             override_provider,
-            provider_url(override_provider) or _coerce_str(settings.get("http_url")),
+            provider_url(override_provider) or coerce_str(settings.get("http_url")),
             "override",
         )
     else:
@@ -86,7 +85,7 @@ def _resolve_audio_provider_candidates(
         if not primary_added:
             add_candidate(
                 configured_provider or "whisper",
-                provider_url(configured_provider) or _coerce_str(settings.get("http_url")),
+                provider_url(configured_provider) or coerce_str(settings.get("http_url")),
                 "configured",
             )
             primary_added = len(candidates) > 0
@@ -113,7 +112,7 @@ def _resolve_audio_provider_candidates(
     if not candidates:
         add_candidate(
             configured_provider or override_provider or "whisper",
-            _coerce_str(settings.get("http_url")),
+            coerce_str(settings.get("http_url")),
             "legacy_http_url",
         )
     return candidates

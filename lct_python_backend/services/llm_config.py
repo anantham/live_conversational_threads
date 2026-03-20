@@ -5,6 +5,8 @@ from urllib.parse import urlparse, urlunparse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lct_python_backend.services.coercion_helpers import to_bool, coerce_str, coerce_url, safe_int
+
 LLM_CONFIG_KEY = "llm_config"
 LLM_PROVIDERS_KEY = "llm_providers"
 TAILSCALE_LLM_BASE_URL = "http://100.81.65.74:1234"
@@ -56,33 +58,13 @@ def get_env_providers_defaults() -> Dict[str, Any]:
     return {
         "providers": get_default_providers(),
         "embedding_provider_id": "local_lmstudio",
-        "json_mode": _to_bool(os.getenv("LOCAL_LLM_JSON_MODE", "true")),
+        "json_mode": to_bool(os.getenv("LOCAL_LLM_JSON_MODE", "true")),
     }
 
 
 def _normalize_provider_type(value: Any) -> str:
     provider_type = str(value or "openai_compatible").strip().lower()
     return provider_type if provider_type in LLM_PROVIDER_TYPES else "openai_compatible"
-
-
-def _to_int(value: Any, default: int) -> int:
-    try:
-        return max(1, int(float(value)))
-    except (TypeError, ValueError):
-        return default
-
-
-def _coerce_url(value: Any) -> str:
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    if "://" not in raw:
-        raw = f"https://{raw}"
-    parsed = urlparse(raw)
-    scheme = parsed.scheme or "https"
-    netloc = parsed.netloc or parsed.path
-    path = parsed.path if parsed.netloc else ""
-    return urlunparse((scheme, netloc, path, "", "", "")).rstrip("/")
 
 
 def _strip_provider_endpoint_suffix(path: str) -> str:
@@ -103,9 +85,13 @@ def _strip_provider_endpoint_suffix(path: str) -> str:
 
 
 def normalize_provider_base_url(provider_type: Any, base_url: Any) -> str:
-    coerced = _coerce_url(base_url)
+    coerced = coerce_url(base_url)
     if not coerced:
         return ""
+
+    # Ensure a scheme is present so urlparse can split netloc/path correctly.
+    if "://" not in coerced:
+        coerced = f"https://{coerced}"
 
     parsed = urlparse(coerced)
     path = _strip_provider_endpoint_suffix(parsed.path)
@@ -167,14 +153,14 @@ def normalize_provider_record(
         "type": provider_type,
         "base_url": base_url,
         "model": model,
-        "enabled": _to_bool(raw_provider.get("enabled", existing.get("enabled", True))),
-        "timeout_seconds": _to_int(
+        "enabled": to_bool(raw_provider.get("enabled", existing.get("enabled", True))),
+        "timeout_seconds": max(1, safe_int(
             raw_provider.get("timeout_seconds", existing.get("timeout_seconds", 120)),
             120,
-        ),
+        )),
     }
 
-    clear_api_key = _to_bool(raw_provider.get("clear_api_key", False))
+    clear_api_key = to_bool(raw_provider.get("clear_api_key", False))
     incoming_api_key = raw_provider.get("api_key")
     if clear_api_key:
         provider["api_key"] = ""
@@ -270,7 +256,7 @@ async def save_llm_providers(session: AsyncSession, payload: Dict[str, Any]) -> 
         if (
             provider_for_save.get("api_key") is not None
             and not str(provider_for_save.get("api_key") or "").strip()
-            and not _to_bool(provider_for_save.get("clear_api_key", False))
+            and not to_bool(provider_for_save.get("clear_api_key", False))
         ):
             provider_for_save.pop("api_key", None)
         provider_id = str(raw_provider.get("id") or "").strip()
@@ -284,7 +270,7 @@ async def save_llm_providers(session: AsyncSession, payload: Dict[str, Any]) -> 
             "embedding_provider_id",
             existing_value.get("embedding_provider_id", "local_lmstudio"),
         ),
-        "json_mode": _to_bool(
+        "json_mode": to_bool(
             payload.get("json_mode", existing_value.get("json_mode", os.getenv("LOCAL_LLM_JSON_MODE", "true")))
         ),
     }
@@ -298,20 +284,13 @@ async def save_llm_providers(session: AsyncSession, payload: Dict[str, Any]) -> 
     return await load_llm_providers(session, include_secrets=False)
 
 
-def _to_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    value_str = str(value).strip().lower()
-    return value_str in {"1", "true", "yes", "on"}
-
-
 def get_env_llm_defaults() -> Dict[str, Any]:
     return {
         "mode": os.getenv("DEFAULT_LLM_MODE", "local"),
         "base_url": os.getenv("LOCAL_LLM_BASE_URL", TAILSCALE_LLM_BASE_URL),
         "chat_model": os.getenv("LOCAL_LLM_CHAT_MODEL", "zai-org/glm-4.6v-flash"),
         "embedding_model": os.getenv("LOCAL_LLM_EMBEDDING_MODEL", "text-embedding-qwen3-embedding-8b"),
-        "json_mode": _to_bool(os.getenv("LOCAL_LLM_JSON_MODE", "true")),
+        "json_mode": to_bool(os.getenv("LOCAL_LLM_JSON_MODE", "true")),
         "timeout_seconds": float(os.getenv("LOCAL_LLM_TIMEOUT_SECONDS", "120")),
     }
 
@@ -324,7 +303,7 @@ def merge_llm_config(overrides: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     sanitized = {}
     for key, value in overrides.items():
         if key in {"json_mode"}:
-            sanitized[key] = _to_bool(value)
+            sanitized[key] = to_bool(value)
         elif key == "mode":
             normalized = str(value).strip().lower()
             sanitized[key] = normalized if normalized in {"local", "online"} else config["mode"]

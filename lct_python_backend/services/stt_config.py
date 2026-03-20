@@ -2,6 +2,8 @@ import os
 from typing import Any, Dict, Mapping, Optional
 from urllib.parse import urlparse, urlunparse
 
+from lct_python_backend.services.coercion_helpers import to_bool, coerce_str, coerce_url
+
 STT_CONFIG_KEY = "stt_config"
 STT_PROVIDER_IDS = ("senko", "parakeet", "whisper", "ofc")
 STT_CLOUD_PROVIDER_IDS = ("openai_audio", "openrouter_audio")
@@ -20,13 +22,6 @@ DEFAULT_OPENAI_AUDIO_BASE_URL = "https://api.openai.com"
 DEFAULT_OPENAI_AUDIO_MODEL = "gpt-4o-transcribe-diarize"
 DEFAULT_OPENROUTER_AUDIO_BASE_URL = "https://openrouter.ai/api"
 DEFAULT_OPENROUTER_AUDIO_MODEL = "google/gemini-2.5-flash"
-
-
-def _to_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    value_str = str(value).strip().lower()
-    return value_str in {"1", "true", "yes", "on"}
 
 
 def _normalize_provider(value: Any) -> str:
@@ -64,25 +59,6 @@ def normalize_live_fallback_priority(raw_priority: Any) -> list[str]:
     return normalized
 
 
-def _to_str(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _coerce_url(value: Any) -> str:
-    raw = _to_str(value)
-    if not raw:
-        return ""
-    if "://" not in raw:
-        raw = f"https://{raw}"
-    parsed = urlparse(raw)
-    scheme = parsed.scheme or "https"
-    netloc = parsed.netloc or parsed.path
-    path = parsed.path if parsed.netloc else ""
-    return urlunparse((scheme, netloc, path, "", "", "")).rstrip("/")
-
-
 def _strip_cloud_endpoint_suffix(provider_id: str, path: str) -> str:
     normalized = str(path or "").rstrip("/")
     if provider_id == "openrouter_audio":
@@ -108,7 +84,7 @@ def _strip_cloud_endpoint_suffix(provider_id: str, path: str) -> str:
 
 def normalize_cloud_provider_base_url(provider_id: Any, base_url: Any) -> str:
     normalized_provider_id = _normalize_cloud_provider_id(provider_id)
-    coerced = _coerce_url(base_url)
+    coerced = coerce_url(base_url)
     if not coerced:
         return ""
 
@@ -138,26 +114,26 @@ def _cloud_provider_defaults() -> Dict[str, Dict[str, Any]]:
         "openai_audio": {
             "id": "openai_audio",
             "name": "OpenAI Audio",
-            "enabled": bool(_to_str(os.getenv("OPENAI_API_KEY", ""))),
+            "enabled": bool(coerce_str(os.getenv("OPENAI_API_KEY", ""))),
             "base_url": normalize_cloud_provider_base_url(
                 "openai_audio",
                 os.getenv("STT_OPENAI_AUDIO_BASE_URL", DEFAULT_OPENAI_AUDIO_BASE_URL),
             ),
-            "model": _to_str(os.getenv("STT_OPENAI_AUDIO_MODEL", DEFAULT_OPENAI_AUDIO_MODEL)),
-            "api_key": _to_str(os.getenv("OPENAI_API_KEY", "")),
+            "model": coerce_str(os.getenv("STT_OPENAI_AUDIO_MODEL", DEFAULT_OPENAI_AUDIO_MODEL)),
+            "api_key": coerce_str(os.getenv("OPENAI_API_KEY", "")),
             "supports_diarization": True,
             "degraded": False,
         },
         "openrouter_audio": {
             "id": "openrouter_audio",
             "name": "OpenRouter Audio",
-            "enabled": bool(_to_str(os.getenv("OPENROUTER_API_KEY", ""))),
+            "enabled": bool(coerce_str(os.getenv("OPENROUTER_API_KEY", ""))),
             "base_url": normalize_cloud_provider_base_url(
                 "openrouter_audio",
                 os.getenv("STT_OPENROUTER_AUDIO_BASE_URL", DEFAULT_OPENROUTER_AUDIO_BASE_URL),
             ),
-            "model": _to_str(os.getenv("STT_OPENROUTER_AUDIO_MODEL", DEFAULT_OPENROUTER_AUDIO_MODEL)),
-            "api_key": _to_str(os.getenv("OPENROUTER_API_KEY", "")),
+            "model": coerce_str(os.getenv("STT_OPENROUTER_AUDIO_MODEL", DEFAULT_OPENROUTER_AUDIO_MODEL)),
+            "api_key": coerce_str(os.getenv("OPENROUTER_API_KEY", "")),
             "supports_diarization": False,
             "degraded": True,
         },
@@ -176,25 +152,25 @@ def normalize_cloud_provider_record(
 
     provider: Dict[str, Any] = {
         "id": normalized_provider_id,
-        "name": _to_str(raw.get("name") or existing.get("name") or defaults.get("name")),
-        "enabled": _to_bool(raw.get("enabled", existing.get("enabled", defaults.get("enabled")))),
+        "name": coerce_str(raw.get("name") or existing.get("name") or defaults.get("name")),
+        "enabled": to_bool(raw.get("enabled", existing.get("enabled", defaults.get("enabled")))),
         "base_url": normalize_cloud_provider_base_url(
             normalized_provider_id,
             raw.get("base_url", existing.get("base_url", defaults.get("base_url"))),
         ),
-        "model": _to_str(raw.get("model") or existing.get("model") or defaults.get("model")),
+        "model": coerce_str(raw.get("model") or existing.get("model") or defaults.get("model")),
         "supports_diarization": bool(defaults.get("supports_diarization")),
         "degraded": bool(defaults.get("degraded")),
     }
 
-    clear_api_key = _to_bool(raw.get("clear_api_key", False))
+    clear_api_key = to_bool(raw.get("clear_api_key", False))
     incoming_api_key = raw.get("api_key")
     if clear_api_key:
         provider["api_key"] = ""
     elif incoming_api_key is not None:
-        provider["api_key"] = _to_str(incoming_api_key)
+        provider["api_key"] = coerce_str(incoming_api_key)
     else:
-        provider["api_key"] = _to_str(existing.get("api_key"))
+        provider["api_key"] = coerce_str(existing.get("api_key"))
 
     return provider
 
@@ -216,7 +192,7 @@ def _merge_cloud_provider_configs(
 
 def _sanitize_cloud_provider_for_client(provider: Mapping[str, Any]) -> Dict[str, Any]:
     sanitized = dict(provider)
-    api_key = _to_str(sanitized.get("api_key"))
+    api_key = coerce_str(sanitized.get("api_key"))
     sanitized["api_key"] = ""
     sanitized["has_api_key"] = bool(api_key)
     sanitized["base_url"] = normalize_cloud_provider_base_url(
@@ -243,37 +219,37 @@ def sanitize_stt_config_for_client(config: Dict[str, Any]) -> Dict[str, Any]:
 
 def _build_provider_urls(default_ws_url: str) -> Dict[str, str]:
     return {
-        "senko": _to_str(os.getenv("DEFAULT_STT_SENKO_WS_URL", default_ws_url)),
-        "parakeet": _to_str(os.getenv("DEFAULT_STT_PARAKEET_WS_URL", default_ws_url)),
-        "whisper": _to_str(os.getenv("DEFAULT_STT_WHISPER_WS_URL", default_ws_url)),
-        "ofc": _to_str(os.getenv("DEFAULT_STT_OFC_WS_URL", default_ws_url)),
+        "senko": coerce_str(os.getenv("DEFAULT_STT_SENKO_WS_URL", default_ws_url)),
+        "parakeet": coerce_str(os.getenv("DEFAULT_STT_PARAKEET_WS_URL", default_ws_url)),
+        "whisper": coerce_str(os.getenv("DEFAULT_STT_WHISPER_WS_URL", default_ws_url)),
+        "ofc": coerce_str(os.getenv("DEFAULT_STT_OFC_WS_URL", default_ws_url)),
     }
 
 
 def _build_provider_http_urls(default_http_url: str) -> Dict[str, str]:
     return {
-        "senko": _to_str(os.getenv("DEFAULT_STT_SENKO_HTTP_URL", default_http_url)),
-        "parakeet": _to_str(os.getenv("DEFAULT_STT_PARAKEET_HTTP_URL", default_http_url)),
-        "whisper": _to_str(os.getenv("DEFAULT_STT_WHISPER_HTTP_URL", DEFAULT_STT_WHISPER_HTTP_URL)),
-        "ofc": _to_str(os.getenv("DEFAULT_STT_OFC_HTTP_URL", default_http_url)),
+        "senko": coerce_str(os.getenv("DEFAULT_STT_SENKO_HTTP_URL", default_http_url)),
+        "parakeet": coerce_str(os.getenv("DEFAULT_STT_PARAKEET_HTTP_URL", default_http_url)),
+        "whisper": coerce_str(os.getenv("DEFAULT_STT_WHISPER_HTTP_URL", DEFAULT_STT_WHISPER_HTTP_URL)),
+        "ofc": coerce_str(os.getenv("DEFAULT_STT_OFC_HTTP_URL", default_http_url)),
     }
 
 
 def _merge_provider_urls(raw_urls: Any, base_urls: Mapping[str, str]) -> Dict[str, str]:
-    merged = {provider: _to_str(base_urls.get(provider, "")) for provider in STT_PROVIDER_IDS}
+    merged = {provider: coerce_str(base_urls.get(provider, "")) for provider in STT_PROVIDER_IDS}
     if not isinstance(raw_urls, Mapping):
         return merged
 
     for provider, url in raw_urls.items():
-        normalized_provider = _to_str(provider).lower()
+        normalized_provider = coerce_str(provider).lower()
         if normalized_provider in STT_PROVIDER_IDS:
-            merged[normalized_provider] = _to_str(url)
+            merged[normalized_provider] = coerce_str(url)
     return merged
 
 
 def get_env_stt_defaults() -> Dict[str, Any]:
-    legacy_ws_url = _to_str(os.getenv("DEFAULT_STT_WS_URL", "ws://localhost:43001/stream"))
-    default_http_url = _to_str(os.getenv("DEFAULT_STT_HTTP_URL", DEFAULT_STT_HTTP_URL))
+    legacy_ws_url = coerce_str(os.getenv("DEFAULT_STT_WS_URL", "ws://localhost:43001/stream"))
+    default_http_url = coerce_str(os.getenv("DEFAULT_STT_HTTP_URL", DEFAULT_STT_HTTP_URL))
     provider = _normalize_provider(os.getenv("DEFAULT_STT_PROVIDER", DEFAULT_STT_PROVIDER))
     provider_urls = _build_provider_urls(legacy_ws_url)
     provider_http_urls = _build_provider_http_urls(default_http_url)
@@ -283,16 +259,16 @@ def get_env_stt_defaults() -> Dict[str, Any]:
         "provider_http_urls": provider_http_urls,
         "ws_url": provider_urls.get(provider) or legacy_ws_url,
         "http_url": provider_http_urls.get(provider) or default_http_url,
-        "local_only": _to_bool(os.getenv("STT_LOCAL_ONLY", "true")),
-        "external_fallback_ws_url": _to_str(os.getenv("STT_EXTERNAL_FALLBACK_WS_URL", "")),
-        "external_fallback_http_url": _to_str(os.getenv("STT_EXTERNAL_FALLBACK_HTTP_URL", "")),
-        "live_cloud_fallback_enabled": _to_bool(
+        "local_only": to_bool(os.getenv("STT_LOCAL_ONLY", "true")),
+        "external_fallback_ws_url": coerce_str(os.getenv("STT_EXTERNAL_FALLBACK_WS_URL", "")),
+        "external_fallback_http_url": coerce_str(os.getenv("STT_EXTERNAL_FALLBACK_HTTP_URL", "")),
+        "live_cloud_fallback_enabled": to_bool(
             os.getenv("STT_LIVE_CLOUD_FALLBACK_ENABLED", "false")
         ),
-        "live_require_diarization": _to_bool(
+        "live_require_diarization": to_bool(
             os.getenv("STT_LIVE_REQUIRE_DIARIZATION", "true")
         ),
-        "live_allow_text_only_fallback": _to_bool(
+        "live_allow_text_only_fallback": to_bool(
             os.getenv("STT_LIVE_ALLOW_TEXT_ONLY_FALLBACK", "false")
         ),
         "live_fallback_priority": normalize_live_fallback_priority(
@@ -302,7 +278,7 @@ def get_env_stt_defaults() -> Dict[str, Any]:
             )
         ),
         "cloud_fallback_providers": _cloud_provider_defaults(),
-        "store_audio": _to_bool(os.getenv("STT_STORE_AUDIO_DEFAULT", "false")),
+        "store_audio": to_bool(os.getenv("STT_STORE_AUDIO_DEFAULT", "false")),
         "chunk_endpoint": os.getenv(
             "STT_AUDIO_CHUNK_ENDPOINT",
             "/api/conversations/{conversation_id}/audio/chunk",
@@ -311,18 +287,18 @@ def get_env_stt_defaults() -> Dict[str, Any]:
             "STT_AUDIO_COMPLETE_ENDPOINT",
             "/api/conversations/{conversation_id}/audio/complete",
         ),
-        "http_chunk_seconds": _to_str(os.getenv("STT_HTTP_CHUNK_SECONDS", "1.2")),
-        "http_timeout_seconds": _to_str(os.getenv("STT_HTTP_TIMEOUT_SECONDS", "30")),
-        "http_model": _to_str(os.getenv("STT_HTTP_MODEL", "")),
-        "http_language": _to_str(os.getenv("STT_HTTP_LANGUAGE", "")),
-        "sample_rate_hz": _to_str(os.getenv("STT_SAMPLE_RATE_HZ", "16000")),
+        "http_chunk_seconds": coerce_str(os.getenv("STT_HTTP_CHUNK_SECONDS", "1.2")),
+        "http_timeout_seconds": coerce_str(os.getenv("STT_HTTP_TIMEOUT_SECONDS", "30")),
+        "http_model": coerce_str(os.getenv("STT_HTTP_MODEL", "")),
+        "http_language": coerce_str(os.getenv("STT_HTTP_LANGUAGE", "")),
+        "sample_rate_hz": coerce_str(os.getenv("STT_SAMPLE_RATE_HZ", "16000")),
         "retention": os.getenv("STT_RETENTION_POLICY", "forever"),
         "audio_recordings_dir": os.getenv(
             "AUDIO_RECORDINGS_DIR",
             "./lct_python_backend/recordings",
         ),
         "download_token": os.getenv("AUDIO_DOWNLOAD_TOKEN"),
-        "debug": _to_bool(os.getenv("STT_DEBUG", "false")),
+        "debug": to_bool(os.getenv("STT_DEBUG", "false")),
     }
 
 
@@ -344,8 +320,8 @@ def merge_stt_config(overrides: Dict[str, Any]) -> Dict[str, Any]:
     live_fallback_priority = normalize_live_fallback_priority(
         overrides.get("live_fallback_priority", config.get("live_fallback_priority"))
     )
-    legacy_ws_url = _to_str(overrides.get("ws_url"))
-    legacy_http_url = _to_str(overrides.get("http_url"))
+    legacy_ws_url = coerce_str(overrides.get("ws_url"))
+    legacy_http_url = coerce_str(overrides.get("http_url"))
     if legacy_ws_url:
         provider_urls[provider] = legacy_ws_url
     if legacy_http_url:
@@ -361,7 +337,7 @@ def merge_stt_config(overrides: Dict[str, Any]) -> Dict[str, Any]:
             "live_require_diarization",
             "live_allow_text_only_fallback",
         }:
-            sanitized[key] = _to_bool(value)
+            sanitized[key] = to_bool(value)
         elif key in {
             "provider",
             "provider_urls",
@@ -382,17 +358,17 @@ def merge_stt_config(overrides: Dict[str, Any]) -> Dict[str, Any]:
     sanitized["live_fallback_priority"] = live_fallback_priority
     config.update(sanitized)
 
-    active_provider_url = _to_str(provider_urls.get(provider))
+    active_provider_url = coerce_str(provider_urls.get(provider))
     if not active_provider_url and config.get("local_only") is False:
-        active_provider_url = _to_str(config.get("external_fallback_ws_url"))
+        active_provider_url = coerce_str(config.get("external_fallback_ws_url"))
     if not active_provider_url:
-        active_provider_url = _to_str(config.get("ws_url"))
+        active_provider_url = coerce_str(config.get("ws_url"))
     config["ws_url"] = active_provider_url
 
-    active_provider_http_url = _to_str(provider_http_urls.get(provider))
+    active_provider_http_url = coerce_str(provider_http_urls.get(provider))
     if not active_provider_http_url and config.get("local_only") is False:
-        active_provider_http_url = _to_str(config.get("external_fallback_http_url"))
+        active_provider_http_url = coerce_str(config.get("external_fallback_http_url"))
     if not active_provider_http_url:
-        active_provider_http_url = _to_str(config.get("http_url"))
+        active_provider_http_url = coerce_str(config.get("http_url"))
     config["http_url"] = active_provider_http_url
     return config

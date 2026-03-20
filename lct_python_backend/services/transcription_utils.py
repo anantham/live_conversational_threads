@@ -9,6 +9,13 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
+from lct_python_backend.services.coercion_helpers import (
+    coerce_float,
+    coerce_int,
+    coerce_str,
+    to_bool,
+)
+
 logger = logging.getLogger("lct_backend")
 
 
@@ -60,50 +67,27 @@ def _env_float(name: str, default: float) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Type coercion helpers
+# Type coercion helpers — delegated to coercion_helpers
 # ---------------------------------------------------------------------------
 
-def _coerce_str(value: Any) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+# Backward-compatible aliases so existing importers keep working.
+_coerce_str = coerce_str
+_coerce_float = coerce_float
+_to_bool = to_bool
+
+
+def _coerce_optional_int(value: Any) -> Optional[int]:
+    """Coerce *value* to a positive int (>= 1), else ``None``.
+
+    Delegates to ``coerce_int`` but rejects zero and negative values,
+    which is the semantic contract callers (speaker counts, etc.) rely on.
+    """
+    result = coerce_int(coerce_str(value) or None)
+    return result if result is not None and result >= 1 else None
 
 
 def _elapsed_ms(started_at: float) -> int:
     return int((time.perf_counter() - started_at) * 1000)
-
-
-def _coerce_float(value: Any) -> Optional[float]:
-    try:
-        if value is None:
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _coerce_optional_int(value: Any) -> Optional[int]:
-    raw = _coerce_str(value)
-    if not raw:
-        return None
-    try:
-        parsed = int(raw)
-    except (TypeError, ValueError):
-        return None
-    return parsed if parsed >= 1 else None
-
-
-def _to_bool(value: Any, default: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    raw = _coerce_str(value).lower()
-    if not raw:
-        return default
-    if raw in {"1", "true", "yes", "on"}:
-        return True
-    if raw in {"0", "false", "no", "off"}:
-        return False
-    return default
 
 
 # ---------------------------------------------------------------------------
