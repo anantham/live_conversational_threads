@@ -7,7 +7,7 @@ Run with: pytest tests/test_cost_calculator.py -v
 import pytest
 from decimal import Decimal
 
-from instrumentation.cost_calculator import (
+from lct_python_backend.instrumentation.cost_calculator import (
     calculate_cost,
     calculate_cost_breakdown,
     get_model_pricing,

@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from lct_python_backend.services.stt_config import (
     STT_PROVIDER_IDS,
+    _normalize_provider,
     build_cloud_provider_api_url,
     normalize_live_fallback_priority,
 )
@@ -29,13 +30,6 @@ def _coerce_str(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
-
-
-def _normalize_provider(value: Any) -> str:
-    provider = _coerce_str(value).lower()
-    if provider in STT_PROVIDER_IDS:
-        return provider
-    return "whisper"
 
 
 def _is_local_http_url(raw_url: str) -> bool:
