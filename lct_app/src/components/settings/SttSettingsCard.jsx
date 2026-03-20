@@ -23,12 +23,15 @@ const buildCloudProvidersSummary = (form = {}) => {
 
 export default function SttSettingsCard() {
   const {
+    cloudProviderChecks,
     error,
+    feedback,
     form,
     handleChange,
     handleCloudFallbackFlagChange,
     handleCloudProviderClearToggle,
     handleCloudProviderFieldChange,
+    handleCloudProviderTest,
     handleFallbackPriorityMove,
     handleProviderHttpUrlChange,
     handleProviderUrlChange,
@@ -83,6 +86,18 @@ export default function SttSettingsCard() {
       {error ? (
         <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
           {error}
+        </p>
+      ) : null}
+
+      {feedback ? (
+        <p
+          className={`rounded px-3 py-2 text-xs ${
+            feedback.tone === "success"
+              ? "border border-green-200 bg-green-50 text-green-700"
+              : "border border-amber-200 bg-amber-50 text-amber-800"
+          }`}
+        >
+          {feedback.message}
         </p>
       ) : null}
 
@@ -171,10 +186,13 @@ export default function SttSettingsCard() {
           onToggle={() => setOpenSection((current) => (current === "cloud" ? null : "cloud"))}
         >
           <SttCloudFallbackFields
+            cloudProviderChecks={cloudProviderChecks}
+            disabled={saving}
             value={form}
             onFlagChange={handleCloudFallbackFlagChange}
             onProviderFieldChange={handleCloudProviderFieldChange}
             onProviderClearToggle={handleCloudProviderClearToggle}
+            onProviderTest={handleCloudProviderTest}
             showEnableToggle={false}
           />
         </DisclosureSection>

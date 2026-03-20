@@ -49,6 +49,7 @@ def build_test_client(
     stt_settings=None,
     processor_cls=None,
     stt_session_cls=None,
+    runtime_factory=None,
     persist_side_effect=None,
 ):
     async def dummy_get_async_session():
@@ -109,8 +110,63 @@ def build_test_client(
 
     if processor_cls is not None:
         monkeypatch.setattr(ws_mod, "TranscriptProcessor", processor_cls)
-    if stt_session_cls is not None:
-        monkeypatch.setattr(ws_mod, "RealtimeHttpSttSession", stt_session_cls)
+    if runtime_factory is not None:
+        monkeypatch.setattr(ws_mod, "build_live_stt_runtime", runtime_factory)
+    elif stt_session_cls is not None:
+        class DummyHttpRuntime:
+            stt_mode = "backend_http"
+            provider = "parakeet"
+            transport = "backend_http"
+            supports_diarization = False
+
+            def __init__(self, **kwargs):
+                self._session = stt_session_cls(**kwargs)
+                self.provider = getattr(self._session, "provider", kwargs.get("provider", "parakeet"))
+                self.transport = "backend_http"
+                self.supports_diarization = bool(kwargs.get("provider") == "whisper")
+                self.sample_rate_hz = getattr(self._session, "sample_rate_hz", kwargs.get("sample_rate_hz", 16000))
+                self.timeout_seconds = getattr(self._session, "timeout_seconds", kwargs.get("timeout_seconds", 30.0))
+                self.model = getattr(self._session, "model", kwargs.get("model", ""))
+
+            def is_ready(self):
+                return self._session.is_ready()
+
+            def get_last_runtime_metadata(self):
+                return self._session.get_last_runtime_metadata()
+
+            async def start(self):
+                return None
+
+            async def push_audio_chunk(self, chunk):
+                result = await self._session.push_audio_chunk(chunk)
+                if not result:
+                    return []
+                return [{
+                    "event_type": "partial",
+                    "text": result.get("text") or "",
+                    "metadata": result.get("metadata") or {},
+                    "timestamps": result.get("timestamps") or {},
+                    "segments": result.get("segments"),
+                    "_wav_payload": result.get("_wav_payload"),
+                }]
+
+            async def flush(self):
+                result = await self._session.flush()
+                if not result:
+                    return []
+                return [{
+                    "event_type": "final",
+                    "text": result.get("text") or "",
+                    "metadata": result.get("metadata") or {},
+                    "timestamps": result.get("timestamps") or {},
+                    "segments": result.get("segments"),
+                    "_wav_payload": result.get("_wav_payload"),
+                }]
+
+            async def close(self):
+                await self._session.close()
+
+        monkeypatch.setattr(ws_mod, "build_live_stt_runtime", lambda **kwargs: DummyHttpRuntime(**kwargs))
 
     app = FastAPI()
     app.include_router(stt_api.router)

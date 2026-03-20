@@ -3,6 +3,7 @@ import { apiFetch } from './apiClient';
 const SETTINGS_PATH = '/api/settings/stt';
 const TELEMETRY_PATH = `${SETTINGS_PATH}/telemetry`;
 const HEALTH_CHECK_PATH = `${SETTINGS_PATH}/health-check`;
+const CLOUD_PROVIDER_TEST_PATH = `${SETTINGS_PATH}/cloud-provider-test`;
 
 async function handleResponse(response) {
   if (!response.ok) {
@@ -39,6 +40,17 @@ export async function getSttTelemetry(limit = 400) {
 
 export async function checkSttProviderHealth(payload) {
   const response = await apiFetch(HEALTH_CHECK_PATH, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(response);
+}
+
+export async function testSttCloudProvider(payload) {
+  const response = await apiFetch(CLOUD_PROVIDER_TEST_PATH, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

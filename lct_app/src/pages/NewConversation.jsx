@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import AudioInput from "../components/AudioInput";
 import FileUpload from "../components/FileUpload";
@@ -8,114 +8,20 @@ import NodeDetail from "../components/NodeDetail";
 import MinimalLegend from "../components/MinimalLegend";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { useAutoSave } from "../hooks/useAutoSave";
-
-function isNodeObject(value) {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function normalizeChunkNode(node, index, fallbackChunkId) {
-  if (!isNodeObject(node)) return null;
-
-  const chunkId =
-    typeof node.chunk_id === "string" && node.chunk_id.trim()
-      ? node.chunk_id.trim()
-      : fallbackChunkId;
-
-  const explicitId = typeof node.id === "string" && node.id.trim() ? node.id.trim() : "";
-  const explicitName =
-    typeof node.node_name === "string" && node.node_name.trim() ? node.node_name.trim() : "";
-  const fallbackName =
-    typeof node.summary === "string" && node.summary.trim()
-      ? node.summary.trim().slice(0, 48)
-      : `Node ${index + 1}`;
-
-  return {
-    ...node,
-    chunk_id: chunkId,
-    id: explicitId || `${chunkId}-node-${index}`,
-    node_name: explicitName || fallbackName,
-    edge_relations: Array.isArray(node.edge_relations) ? node.edge_relations : [],
-    contextual_relation:
-      node.contextual_relation && typeof node.contextual_relation === "object" && !Array.isArray(node.contextual_relation)
-        ? node.contextual_relation
-        : {},
-  };
-}
-
-function normalizeGraphDataPayload(payload, depth = 0) {
-  if (depth > 3) return null;
-
-  // Wrapper object payloads seen in older responses: { existing_json: [...] } / { data: [...] }
-  if (isNodeObject(payload)) {
-    if (Array.isArray(payload.existing_json)) {
-      return normalizeGraphDataPayload(payload.existing_json, depth + 1);
-    }
-    if (Array.isArray(payload.data)) {
-      return normalizeGraphDataPayload(payload.data, depth + 1);
-    }
-    return null;
-  }
-
-  if (!Array.isArray(payload)) return null;
-  if (payload.length === 0) return [];
-
-  // Wrapper array shape: [{ existing_json: [...] }] or [{ data: [...] }]
-  if (payload.length === 1 && isNodeObject(payload[0])) {
-    if (Array.isArray(payload[0].existing_json)) {
-      return normalizeGraphDataPayload(payload[0].existing_json, depth + 1);
-    }
-    if (Array.isArray(payload[0].data)) {
-      return normalizeGraphDataPayload(payload[0].data, depth + 1);
-    }
-  }
-
-  // Chunked shape: Array<Array<Node>>
-  if (Array.isArray(payload[0])) {
-    return payload
-      .map((chunk, chunkIndex) => {
-        if (!Array.isArray(chunk)) return [];
-        const fallbackChunkId = `chunk-${chunkIndex}`;
-        return chunk
-          .map((node, index) => normalizeChunkNode(node, index, fallbackChunkId))
-          .filter(Boolean);
-      })
-      .filter((chunk) => chunk.length > 0);
-  }
-
-  // Flat shape: Array<Node>
-  if (isNodeObject(payload[0])) {
-    const chunkOrder = [];
-    const chunkMap = new Map();
-
-    payload.forEach((rawNode) => {
-      if (!isNodeObject(rawNode)) return;
-      const chunkId =
-        typeof rawNode.chunk_id === "string" && rawNode.chunk_id.trim()
-          ? rawNode.chunk_id.trim()
-          : "chunk-0";
-      if (!chunkMap.has(chunkId)) {
-        chunkMap.set(chunkId, []);
-        chunkOrder.push(chunkId);
-      }
-      const targetChunk = chunkMap.get(chunkId);
-      const normalized = normalizeChunkNode(rawNode, targetChunk.length, chunkId);
-      if (normalized) {
-        targetChunk.push(normalized);
-      }
-    });
-
-    return chunkOrder
-      .map((id) => chunkMap.get(id))
-      .filter((chunk) => Array.isArray(chunk) && chunk.length > 0);
-  }
-
-  return null;
-}
+import {
+  applyChunkPatch,
+  applyGraphPatch,
+  mergeGraphLayers,
+  normalizeGraphDataPayload,
+  normalizeGraphPatchPayload,
+} from "./newConversationGraphState";
 
 export default function NewConversation() {
   const [graphData, setGraphData] = useState([]);
+  const [draftGraphData, setDraftGraphData] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [chunkDict, setChunkDict] = useState({});
+  const [draftChunkDict, setDraftChunkDict] = useState({});
   const [message, setMessage] = useState("");
   const [fileName, setFileName] = useState("");
   const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
@@ -124,17 +30,27 @@ export default function NewConversation() {
 
   const navigate = useNavigate();
 
+  const displayGraphData = useMemo(
+    () => mergeGraphLayers(graphData, draftGraphData),
+    [draftGraphData, graphData]
+  );
+  const displayChunkDict = useMemo(
+    () => ({ ...chunkDict, ...draftChunkDict }),
+    [chunkDict, draftChunkDict]
+  );
+
   const latestChunk = useMemo(
-    () => graphData?.[graphData.length - 1] || [],
-    [graphData]
+    () => displayGraphData?.[displayGraphData.length - 1] || [],
+    [displayGraphData]
   );
   const hasData = latestChunk.length > 0;
+  const hasFinalizedData = (graphData?.[graphData.length - 1] || []).length > 0;
 
   const { saveStatus, lastSavedAt, triggerSave } = useAutoSave({
     conversationId,
     graphData,
     conversationName: fileName || undefined,
-    enabled: hasData,
+    enabled: hasFinalizedData,
   });
 
   // Resolve selected node data for detail panel
@@ -154,10 +70,44 @@ export default function NewConversation() {
       );
       return;
     }
+    if (normalized.length === 0) {
+      setDraftGraphData([]);
+      setDraftChunkDict({});
+    }
     setGraphData(normalized);
   }, []);
 
   const handleChunksReceived = useCallback((chunks) => setChunkDict(chunks), []);
+
+  const handleGraphPatchReceived = useCallback((patchPayload) => {
+    const patch = normalizeGraphPatchPayload(patchPayload);
+    if (!patch) {
+      console.warn("[NewConversation] Ignoring malformed graph_patch payload.");
+      return;
+    }
+
+    const applyToDraftLayer = patch.kind === "draft" || patch.kind === "draft_clear";
+
+    if (applyToDraftLayer) {
+      setDraftGraphData((previous) => applyGraphPatch(previous, patch));
+      setDraftChunkDict((previous) => applyChunkPatch(previous, patch));
+      return;
+    }
+
+    setGraphData((previous) => applyGraphPatch(previous, patch));
+    setChunkDict((previous) => applyChunkPatch(previous, patch));
+
+    if (patch.removeNodeIds.length > 0 || patch.removeChunkIds.length > 0) {
+      setDraftGraphData((previous) => applyGraphPatch(previous, patch));
+      setDraftChunkDict((previous) => applyChunkPatch(previous, patch));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedNode) return;
+    if (latestChunk.some((node) => node.id === selectedNode)) return;
+    setSelectedNode(null);
+  }, [latestChunk, selectedNode]);
 
   const handleBack = useCallback(() => {
     if (hasData) {
@@ -221,7 +171,7 @@ export default function NewConversation() {
         {hasData ? (
           <>
             <MinimalGraph
-              graphData={graphData}
+              graphData={displayGraphData}
               selectedNode={selectedNode}
               setSelectedNode={setSelectedNode}
             />
@@ -236,7 +186,7 @@ export default function NewConversation() {
         {selectedNodeData && (
           <NodeDetail
             node={selectedNodeData}
-            chunkDict={chunkDict}
+            chunkDict={displayChunkDict}
             onClose={() => setSelectedNode(null)}
           />
         )}
@@ -245,14 +195,14 @@ export default function NewConversation() {
       {/* Timeline ribbon */}
       {hasData && (
         <TimelineRibbon
-          graphData={graphData}
+          graphData={displayGraphData}
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
         />
       )}
 
       {/* Auto-save status indicator */}
-      {hasData && (
+      {hasFinalizedData && (
         <div className="absolute bottom-16 right-3 z-20 text-[10px] text-gray-400 select-none">
           {saveStatus === "saving" && "Saving…"}
           {saveStatus === "saved" && lastSavedAt && (
@@ -270,6 +220,7 @@ export default function NewConversation() {
           <FileUpload
             onDataReceived={handleDataReceived}
             onChunksReceived={handleChunksReceived}
+            onGraphPatchReceived={handleGraphPatchReceived}
             setConversationId={setConversationId}
             setFileName={setFileName}
             setMessage={setMessage}
@@ -278,6 +229,7 @@ export default function NewConversation() {
             ref={audioRef}
             onDataReceived={handleDataReceived}
             onChunksReceived={handleChunksReceived}
+            onGraphPatchReceived={handleGraphPatchReceived}
             chunkDict={chunkDict}
             graphData={graphData}
             conversationId={conversationId}

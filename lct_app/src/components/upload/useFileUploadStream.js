@@ -52,6 +52,7 @@ function parseEventBlock(block) {
 export default function useFileUploadStream({
   onDataReceived,
   onChunksReceived,
+  onGraphPatchReceived,
   setConversationId,
   setFileName,
   setMessage,
@@ -272,6 +273,8 @@ export default function useFileUploadStream({
                 onDataReceived?.(payload.data);
               } else if (payload.type === "chunk_dict") {
                 onChunksReceived?.(payload.data);
+              } else if (payload.type === "graph_patch") {
+                onGraphPatchReceived?.(payload.data);
               }
             }
             if (eventName === "done") {

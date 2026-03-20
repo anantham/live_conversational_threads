@@ -72,19 +72,18 @@ def resolve_live_stt_candidates(
         seen_keys.add(key)
         candidates.append(candidate)
 
-    add_candidate(
-        {
-            "route_id": "configured_provider",
-            "provider": selected_provider,
-            "transport": "backend_http",
-            "http_url": configured_http_url,
-            "reason": "configured_provider",
-            "supports_diarization": selected_provider == "whisper",
-            "degraded": False,
-        }
-    )
+    primary_candidate = {
+        "route_id": "configured_provider",
+        "provider": selected_provider,
+        "transport": "backend_http",
+        "http_url": configured_http_url,
+        "reason": "configured_provider",
+        "supports_diarization": selected_provider == "whisper",
+        "degraded": False,
+    }
 
     if local_only:
+        add_candidate(primary_candidate)
         return candidates
 
     fallback_candidates: Dict[str, Dict[str, Any]] = {}
@@ -115,14 +114,22 @@ def resolve_live_stt_candidates(
     if live_cloud_fallback_enabled:
         openai_provider = cloud_providers.get("openai_audio")
         if isinstance(openai_provider, dict):
+<<<<<<< HEAD
             openai_api_key = coerce_str(openai_provider.get("api_key"))
             openai_base_url = coerce_str(openai_provider.get("base_url"))
             openai_model = coerce_str(openai_provider.get("model"))
+=======
+            openai_api_key = _coerce_str(openai_provider.get("api_key"))
+            openai_base_url = _coerce_str(openai_provider.get("base_url"))
+            openai_model = _coerce_str(openai_provider.get("model"))
+            openai_diarize_model = _coerce_str(openai_provider.get("diarize_model"))
+>>>>>>> 0a91a06 (feat(live): add cloud-tested streaming captions and incremental graph updates)
             if (
                 to_bool(openai_provider.get("enabled"), False)
                 and openai_api_key
                 and openai_base_url
                 and openai_model
+                and (openai_diarize_model or not live_require_diarization)
             ):
                 fallback_candidates["openai_audio"] = {
                     "route_id": "openai_audio",
@@ -132,9 +139,12 @@ def resolve_live_stt_candidates(
                     "http_url": build_cloud_provider_api_url("openai_audio", openai_base_url),
                     "api_key": openai_api_key,
                     "model": openai_model,
+                    "diarize_model": openai_diarize_model,
                     "reason": "fallback_openai_audio",
-                    "supports_diarization": True,
+                    "supports_diarization": bool(openai_diarize_model),
+                    "supports_realtime_streaming": True,
                     "degraded": False,
+                    "request_diarization": False,
                 }
 
         openrouter_provider = cloud_providers.get("openrouter_audio")
@@ -160,9 +170,75 @@ def resolve_live_stt_candidates(
                     "supports_diarization": False,
                     "degraded": True,
                 }
+
+    prefer_openai_before_remote_whisper = (
+        selected_provider == "whisper"
+        and configured_http_url
+        and not _is_local_http_url(configured_http_url)
+        and "openai_audio" in fallback_priority
+        and "openai_audio" in fallback_candidates
+    )
+
+    if prefer_openai_before_remote_whisper:
+        add_candidate(fallback_candidates["openai_audio"])
+
+    add_candidate(primary_candidate)
+
     for route_id in fallback_priority:
+        if prefer_openai_before_remote_whisper and route_id == "openai_audio":
+            continue
         candidate = fallback_candidates.get(route_id)
         if candidate:
             add_candidate(candidate)
 
     return candidates
+
+
+def build_live_stt_background_refinement_candidate(
+    *,
+    settings: Dict[str, Any],
+    primary_candidate: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    """Return a non-blocking background diarization candidate for the live route."""
+    candidate = primary_candidate if isinstance(primary_candidate, dict) else {}
+    primary_provider = _coerce_str(candidate.get("provider")).lower()
+    primary_transport = _coerce_str(candidate.get("transport")).lower()
+    if primary_provider != "openai_audio" or primary_transport != "openai_audio":
+        return None
+    if not _to_bool(settings.get("live_require_diarization"), True):
+        return None
+
+    cloud_providers = (
+        settings.get("cloud_fallback_providers")
+        if isinstance(settings.get("cloud_fallback_providers"), dict)
+        else {}
+    )
+    openai_provider = cloud_providers.get("openai_audio")
+    if not isinstance(openai_provider, dict):
+        return None
+
+    api_key = _coerce_str(openai_provider.get("api_key"))
+    base_url = _coerce_str(openai_provider.get("base_url"))
+    diarize_model = _coerce_str(openai_provider.get("diarize_model"))
+    if not (
+        _to_bool(openai_provider.get("enabled"), False)
+        and api_key
+        and base_url
+        and diarize_model
+    ):
+        return None
+
+    return {
+        "route_id": "openai_audio_diarize_background",
+        "provider": "openai_audio",
+        "transport": "openai_audio",
+        "base_url": base_url,
+        "http_url": build_cloud_provider_api_url("openai_audio", base_url),
+        "api_key": api_key,
+        "model": diarize_model,
+        "reason": "background_openai_diarize",
+        "supports_diarization": True,
+        "supports_realtime_streaming": False,
+        "degraded": False,
+        "request_diarization": True,
+    }

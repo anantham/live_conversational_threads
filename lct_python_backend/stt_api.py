@@ -20,7 +20,12 @@ from lct_python_backend.db_session import get_async_session, get_async_session_c
 from lct_python_backend.middleware import check_ws_auth, check_ws_auth_message
 from lct_python_backend.services.audio_storage import AudioStorageManager
 from lct_python_backend.services.llm_config import load_llm_config
-from lct_python_backend.services.stt_config import STT_PROVIDER_IDS
+from lct_python_backend.services.stt_config import (
+    STT_CLOUD_PROVIDER_IDS,
+    STT_PROVIDER_IDS,
+    build_cloud_provider_api_url,
+)
+from lct_python_backend.services.stt_http_transcriber import smoke_test_stt_candidate
 from lct_python_backend.services.stt_ws_helpers import (
     normalize_provider as _normalize_provider,
     safe_send_json as _safe_send_json,
@@ -71,6 +76,60 @@ def _derive_health_url(ws_url):
 def _derive_health_url_from_http(http_url):
     """Wrapper for test_stt_api_settings.py monkeypatch compatibility."""
     return derive_health_url_from_http_url(http_url)
+
+
+async def _run_stt_cloud_provider_smoke_test(candidate, *, timeout_seconds, sample_rate_hz, language):
+    """Wrapper for test monkeypatch compatibility."""
+    return await smoke_test_stt_candidate(
+        candidate,
+        timeout_seconds=timeout_seconds,
+        sample_rate_hz=sample_rate_hz,
+        language=language,
+    )
+
+
+def _build_cloud_test_candidate(stt_settings: Dict[str, Any], provider_id: str) -> tuple[Dict[str, Any], str]:
+    cloud_providers = (
+        stt_settings.get("cloud_fallback_providers")
+        if isinstance(stt_settings.get("cloud_fallback_providers"), dict)
+        else {}
+    )
+    provider = cloud_providers.get(provider_id)
+    if not isinstance(provider, dict):
+        return {}, f"No cloud fallback provider configuration exists for '{provider_id}'."
+
+    base_url = str(provider.get("base_url") or "").strip()
+    model = str(provider.get("model") or "").strip()
+    api_key = str(provider.get("api_key") or "").strip()
+    http_url = build_cloud_provider_api_url(provider_id, base_url)
+    missing_fields = []
+    if not base_url:
+        missing_fields.append("base URL")
+    if not model:
+        missing_fields.append("model")
+    if not api_key:
+        missing_fields.append("API key")
+    if not http_url:
+        missing_fields.append("resolved API URL")
+
+    candidate = {
+        "route_id": f"{provider_id}_manual_test",
+        "provider": provider_id,
+        "transport": provider_id,
+        "base_url": base_url,
+        "http_url": http_url,
+        "api_key": api_key,
+        "model": model,
+        "language": str(stt_settings.get("http_language") or "").strip(),
+        "reason": "manual_settings_test",
+        "supports_diarization": provider_id == "openai_audio" and bool(provider.get("diarize_model")),
+        "degraded": provider_id == "openrouter_audio",
+        "request_diarization": False,
+        "enabled": bool(provider.get("enabled")),
+    }
+    if missing_fields:
+        return candidate, "Missing " + ", ".join(missing_fields) + ". Save the provider settings before testing."
+    return candidate, ""
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +217,75 @@ async def stt_provider_health_check(
         "health_url": health_url,
         "checked_at": datetime.utcnow().isoformat() + "Z",
         **probe_result,
+    }
+
+
+@router.post("/api/settings/stt/cloud-provider-test")
+async def stt_cloud_provider_test(
+    payload: Dict[str, Any],
+    session=Depends(get_async_session),
+):
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload must be a JSON object.")
+
+    provider = str(payload.get("provider") or "").strip().lower()
+    if provider not in STT_CLOUD_PROVIDER_IDS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"provider must be one of: {', '.join(STT_CLOUD_PROVIDER_IDS)}",
+        )
+
+    try:
+        timeout_seconds = float(payload.get("timeout_seconds", 20.0))
+    except (TypeError, ValueError):
+        timeout_seconds = 20.0
+    timeout_seconds = min(max(timeout_seconds, 5.0), 60.0)
+
+    stt_settings = await _load_stt_settings(session)
+    candidate, config_error = _build_cloud_test_candidate(stt_settings, provider)
+    checked_at = datetime.utcnow().isoformat() + "Z"
+    try:
+        sample_rate_hz = int(float(stt_settings.get("sample_rate_hz") or 16000))
+    except (TypeError, ValueError):
+        sample_rate_hz = 16000
+    if config_error:
+        logger.warning(
+            "[STT TEST] Skipping provider=%s due to incomplete configuration: %s",
+            provider,
+            config_error,
+        )
+        return {
+            "provider": provider,
+            "transport": provider,
+            "route_id": candidate.get("route_id") or f"{provider}_manual_test",
+            "http_url": candidate.get("http_url") or None,
+            "base_url": candidate.get("base_url") or None,
+            "model": candidate.get("model") or None,
+            "checked_at": checked_at,
+            "ok": False,
+            "status": "misconfigured",
+            "latency_ms": None,
+            "sample_seconds": None,
+            "diarization_requested": bool(candidate.get("request_diarization")),
+            "supports_diarization": bool(candidate.get("supports_diarization")),
+            "degraded": bool(candidate.get("degraded")),
+            "enabled": bool(candidate.get("enabled")),
+            "transcript_preview": "",
+            "segments_count": 0,
+            "warning": None,
+            "error": config_error,
+            "status_code": None,
+        }
+
+    result = await _run_stt_cloud_provider_smoke_test(
+        candidate,
+        timeout_seconds=timeout_seconds,
+        sample_rate_hz=sample_rate_hz,
+        language=str(stt_settings.get("http_language") or "").strip(),
+    )
+    return {
+        **result,
+        "enabled": bool(candidate.get("enabled")),
     }
 
 

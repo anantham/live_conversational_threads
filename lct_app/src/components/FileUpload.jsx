@@ -26,6 +26,7 @@ const ACCEPTED_FILE_TYPES = [
 export default function FileUpload({
   onDataReceived,
   onChunksReceived,
+  onGraphPatchReceived,
   setConversationId,
   setFileName,
   setMessage,
@@ -46,6 +47,7 @@ export default function FileUpload({
   } = useFileUploadStream({
     onDataReceived,
     onChunksReceived,
+    onGraphPatchReceived,
     setConversationId,
     setFileName,
     setMessage,
@@ -114,6 +116,7 @@ export default function FileUpload({
 FileUpload.propTypes = {
   onDataReceived: PropTypes.func,
   onChunksReceived: PropTypes.func,
+  onGraphPatchReceived: PropTypes.func,
   setConversationId: PropTypes.func,
   setFileName: PropTypes.func,
   setMessage: PropTypes.func,

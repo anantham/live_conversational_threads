@@ -111,7 +111,8 @@ def test_sanitize_stt_config_for_client_masks_cloud_api_keys():
                     "name": "OpenAI Audio",
                     "enabled": True,
                     "base_url": "https://api.openai.com/v1/audio/transcriptions",
-                    "model": "gpt-4o-transcribe-diarize",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
                     "api_key": "sk-openai-secret",
                 },
                 "openrouter_audio": {
@@ -132,9 +133,23 @@ def test_sanitize_stt_config_for_client_masks_cloud_api_keys():
     assert openai_provider["api_key"] == ""
     assert openai_provider["has_api_key"] is True
     assert openai_provider["base_url"] == "https://api.openai.com"
+    assert openai_provider["model"] == "gpt-4o-mini-transcribe"
+    assert openai_provider["diarize_model"] == "gpt-4o-transcribe-diarize"
     assert openrouter_provider["api_key"] == ""
     assert openrouter_provider["has_api_key"] is True
     assert openrouter_provider["base_url"] == "https://openrouter.ai/api"
+
+    # download_token must also be masked
+    assert sanitized["download_token"] == ""
+    assert sanitized["has_download_token"] is False
+
+
+def test_sanitize_stt_config_for_client_masks_download_token():
+    sanitized = sanitize_stt_config_for_client(
+        {"provider": "whisper", "download_token": "secret-bearer-token"}
+    )
+    assert sanitized["download_token"] == ""
+    assert sanitized["has_download_token"] is True
 
 
 def test_normalize_live_fallback_priority_dedupes_and_appends_missing_defaults():
