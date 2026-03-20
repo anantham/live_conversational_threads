@@ -162,6 +162,9 @@ def check_ws_auth(websocket: WebSocket) -> bool:
     return token == AUTH_TOKEN
 
 
+WS_AUTH_TIMEOUT_SECONDS = 10
+
+
 async def check_ws_auth_message(websocket: WebSocket) -> bool:
     """
     Authenticate a WebSocket connection via a post-connect auth message.
@@ -169,13 +172,16 @@ async def check_ws_auth_message(websocket: WebSocket) -> bool:
     Call this *after* ``websocket.accept()``.  If ``AUTH_TOKEN`` is not
     configured, returns ``True`` immediately (dev mode).
 
-    Otherwise waits for the first JSON message.  Accepts either:
+    Otherwise waits up to ``WS_AUTH_TIMEOUT_SECONDS`` for the first JSON
+    message.  Accepts either:
     - ``{"type": "auth", "token": "<token>"}`` — dedicated auth frame
     - Any message with a ``token`` field matching AUTH_TOKEN (backward compat
       with query-param clients that embed the token in session_meta)
 
-    On failure, sends an error frame and closes with code ``4401``.
+    On failure or timeout, sends an error frame and closes with code ``4401``.
     """
+    import asyncio
+
     if not AUTH_TOKEN:
         return True
 
@@ -185,7 +191,14 @@ async def check_ws_auth_message(websocket: WebSocket) -> bool:
         return True
 
     try:
-        first_msg = await websocket.receive_json()
+        first_msg = await asyncio.wait_for(
+            websocket.receive_json(),
+            timeout=WS_AUTH_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("[WS AUTH] Client did not send auth message within %ds", WS_AUTH_TIMEOUT_SECONDS)
+        await websocket.close(code=4401, reason="Unauthorized: auth timeout")
+        return False
     except Exception:
         await websocket.close(code=4401, reason="Unauthorized: no auth message received")
         return False
