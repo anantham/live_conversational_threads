@@ -9,7 +9,7 @@ import asyncio
 from datetime import datetime
 from unittest.mock import Mock, AsyncMock, patch
 
-from instrumentation.decorators import (
+from lct_python_backend.instrumentation.decorators import (
     track_api_call,
     APICallTracker,
     get_tracker,

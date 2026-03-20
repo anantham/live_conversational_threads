@@ -307,8 +307,8 @@ class RealtimeHttpSttSession:
         if self._vad_model:
             try:
                 self._vad_model.reset_states()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("[VAD] reset_states() failed during cleanup: %s", exc)
             self._vad_model = None
             self._vad_available = False
 

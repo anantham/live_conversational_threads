@@ -1,6 +1,7 @@
 """Fact-check, audio download, and cost tracking API endpoints."""
 
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -56,13 +57,23 @@ async def fact_check_claims_call(request: FactCheckRequest):
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(exc)}")
 
 
+_SAFE_CONVERSATION_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
+
+
 @router.get("/api/conversations/{conversation_id}/audio")
 async def download_audio(conversation_id: str, token: Optional[str] = Query(None)):
     if AUDIO_DOWNLOAD_TOKEN and token != AUDIO_DOWNLOAD_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid or missing token")
 
+    if not _SAFE_CONVERSATION_ID.match(conversation_id):
+        raise HTTPException(status_code=400, detail="Invalid conversation_id format")
+
     wav_path = Path(AUDIO_RECORDINGS_DIR) / f"{conversation_id}.wav"
     flac_path = Path(AUDIO_RECORDINGS_DIR) / f"{conversation_id}.flac"
+
+    recordings_root = Path(AUDIO_RECORDINGS_DIR).resolve()
+    if not wav_path.resolve().is_relative_to(recordings_root):
+        raise HTTPException(status_code=400, detail="Invalid conversation_id format")
 
     if wav_path.exists():
         return FileResponse(wav_path, media_type="audio/wav", filename=wav_path.name)
