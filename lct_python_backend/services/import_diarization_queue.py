@@ -18,6 +18,7 @@ from lct_python_backend.services.file_transcriber import (
     chunk_transcript_lines,
     transcribe_uploaded_file,
 )
+from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
 
 logger = logging.getLogger(__name__)
@@ -328,6 +329,42 @@ class ImportDiarizationQueue:
             transcript_text = transcript_result.transcript_text.strip()
             if not transcript_text:
                 raise ValueError("No transcript text could be extracted from background diarization input.")
+
+            speaker_segments = list(getattr(transcript_result, "speaker_segments", []) or [])
+            if speaker_segments:
+                active_stage = "materializing_speakers"
+                materialize_started_at = time.perf_counter()
+                materialization_result = await persist_speaker_refinement(
+                    conversation_id=str(job.request.get("conversation_id") or ""),
+                    segments=speaker_segments,
+                    source_text=transcript_text,
+                    provider=str(transcript_result.metadata.get("provider") or ""),
+                    model=str(transcript_result.metadata.get("model") or ""),
+                    transport=str(
+                        transcript_result.metadata.get("transport")
+                        or transcript_result.metadata.get("stt_backend")
+                        or ""
+                    ),
+                )
+                job.telemetry["speaker_materialization_ms"] = _elapsed_ms(materialize_started_at)
+                job.telemetry["speaker_materialization"] = _clone(materialization_result)
+                await self._record_event(
+                    job,
+                    "status",
+                    {
+                        "level": "info",
+                        "stage": "materializing_speakers",
+                        "message": (
+                            "Persisted background speaker refinement "
+                            f"({materialization_result.get('persisted_segments', 0)} segments)."
+                        ),
+                        "progress": 0.45,
+                        "telemetry": {
+                            "total_elapsed_ms": _elapsed_ms(started_perf),
+                            "speaker_materialization_ms": job.telemetry.get("speaker_materialization_ms"),
+                        },
+                    },
+                )
 
             active_stage = "chunking"
             chunking_started_at = time.perf_counter()
