@@ -9,23 +9,16 @@ from typing import Any, Dict, List, Optional, Sequence
 from sqlalchemy import select
 
 from lct_python_backend.models import SpeakerSegment, Utterance
+from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
 
 logger = logging.getLogger("lct_backend")
 
 SPEAKER_CONFIDENCE_THRESHOLD = 0.6
 
 
-def _clean_text(value: Any) -> str:
-    return str(value or "").strip()
-
-
-def _safe_float(value: Any) -> Optional[float]:
-    try:
-        if value is None or value == "":
-            return None
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+# Aliases for backward compatibility with call sites in this module.
+_clean_text = coerce_str
+_safe_float = coerce_float
 
 
 def normalize_speaker_label(value: Any) -> str:
@@ -57,12 +50,12 @@ def build_speaker_segment_rows(
         global_start = (
             window_start + relative_start
             if window_start is not None and relative_start is not None
-            else None
+            else relative_start
         )
         global_end = (
             window_start + relative_end
             if window_start is not None and relative_end is not None
-            else None
+            else relative_end
         )
         if global_start is None and global_end is None and len(segments or []) == 1:
             global_start = window_start

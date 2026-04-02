@@ -72,11 +72,28 @@ def build_graph_data_from_nodes(nodes, relationships) -> List[Dict[str, Any]]:
         nodes,
         relationships,
     )
+    id_to_name = {node.id: node.node_name for node in nodes}
+    edge_relations_by_id = {}
+    for rel in relationships:
+        if rel.relationship_type in TEMPORAL_RELATIONSHIP_TYPES:
+            continue
+        target_name = id_to_name.get(rel.from_node_id)
+        if not target_name:
+            continue
+        edge_relations_by_id.setdefault(rel.to_node_id, []).append(
+            {
+                "related_node": target_name,
+                "relation_type": rel.relationship_type or "contextual",
+                "relation_text": rel.explanation or rel.relationship_type or "related",
+            }
+        )
 
     graph_data = []
     for node in nodes:
         contextual_relation = contextual_by_id.get(node.id, {})
         linked_nodes = linked_by_id.get(node.id, sorted(contextual_relation.keys()))
+        cluster_info = node.cluster_info or {}
+        display_preferences = node.display_preferences or {}
         node_data = {
             "id": str(node.id),
             "node_name": node.node_name,
@@ -91,8 +108,12 @@ def build_graph_data_from_nodes(nodes, relationships) -> List[Dict[str, Any]]:
             "linked_nodes": linked_nodes,
             "is_bookmark": node.is_bookmark,
             "is_contextual_progress": node.is_contextual_progress,
+            "is_tangent": node.is_tangent,
             "chunk_id": str(node.chunk_ids[0]) if node.chunk_ids else None,
             "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])],
+            "thread_id": cluster_info.get("thread_id"),
+            "thread_state": cluster_info.get("thread_state"),
+            "edge_relations": edge_relations_by_id.get(node.id, display_preferences.get("edge_relations") or []),
         }
         graph_data.append(node_data)
 
@@ -105,7 +126,9 @@ def build_chunk_dict_from_utterances(utterances) -> Dict[str, str]:
         return {}
 
     default_chunk_id = "default_chunk"
-    chunk_text = "\n".join([f"{utt.speaker_id}: {utt.text}" for utt in utterances])
+    chunk_text = "\n".join(
+        [f"{(utt.speaker_name or utt.speaker_id)}: {utt.text}" for utt in utterances]
+    )
     return {default_chunk_id: chunk_text}
 
 
