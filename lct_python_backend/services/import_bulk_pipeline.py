@@ -22,6 +22,9 @@ from lct_python_backend.services.import_bulk_telemetry import (
     estimate_segment_eta_ms,
     estimate_transcription_eta_ms,
 )
+from lct_python_backend.services.provider_selection import resolve_import_audio_candidates
+from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
+from lct_python_backend.services.transcript_linearization import build_line_utterances
 
 # Environment-tunable threshold for enabling interleaved segmentation (in bytes)
 # Files larger than this will use segmented processing for progressive feedback
@@ -89,6 +92,26 @@ def _format_duration_for_display(ms: Optional[float]) -> str:
     return f"{seconds}s"
 
 
+def _candidate_backend_label(candidate: Optional[dict[str, Any]], fallback_http_url: str) -> str:
+    if isinstance(candidate, dict):
+        transport = str(candidate.get("transport") or "").strip().lower()
+        provider = str(candidate.get("provider") or "").strip().lower()
+        if transport in {"openai_audio", "openrouter_audio"}:
+            return transport
+        http_url = str(candidate.get("http_url") or "").strip()
+        if provider:
+            if "modal" in http_url.lower():
+                return f"modal_{provider}"
+            if "127.0.0.1" in http_url or "localhost" in http_url:
+                return f"local_{provider}"
+            return provider
+    if "modal" in fallback_http_url.lower():
+        return "modal_whisperx"
+    if "127.0.0.1" in fallback_http_url or "localhost" in fallback_http_url:
+        return "local_whisperx"
+    return "whisperx"
+
+
 async def run_bulk_processing_worker(
     *,
     request: Request,
@@ -102,12 +125,15 @@ async def run_bulk_processing_worker(
     content_size: int,
     emit: Callable[[str, dict[str, Any]], Awaitable[None]],
     load_stt_settings: Callable[[AsyncSession], Awaitable[dict[str, Any]]],
+    load_artifact_export_settings: Callable[[AsyncSession], Awaitable[dict[str, Any]]],
     load_llm_config: Callable[[AsyncSession], Awaitable[dict[str, Any]]],
     load_llm_providers: Optional[Callable[[AsyncSession], Awaitable[dict[str, Any]]]] = None,
     transcribe_uploaded_file: Callable[..., Awaitable[Any]],
     transcribe_audio_segmented: Optional[Callable[..., AsyncGenerator[Any, None]]] = None,
     chunk_transcript_lines: Callable[[str], list[str]],
     transcript_processor_cls: Callable[..., Any],
+    refine_import_graph_nodes: Callable[..., Awaitable[dict[str, Any]]],
+    auto_export_conversation_artifacts: Callable[..., Awaitable[dict[str, Any]]],
     is_async_import_diarization_enabled: Callable[[], bool],
     enqueue_import_diarization_job: Callable[..., Awaitable[dict[str, Any]]],
     copy_temp_upload_for_async_job: Callable[..., Path],
@@ -185,15 +211,17 @@ async def run_bulk_processing_worker(
 
         stt_settings = await load_stt_settings(db)
 
-        # Determine STT backend from settings for early UI indicator
         stt_http_url = str(stt_settings.get("http_url", "")).strip()
-        if "modal" in stt_http_url.lower():
-            stt_backend = "modal_whisperx"
-        elif "127.0.0.1" in stt_http_url or "localhost" in stt_http_url:
-            stt_backend = "local_whisperx"
-        else:
-            stt_backend = "whisperx"  # Generic fallback
+        import_candidates = resolve_import_audio_candidates(
+            settings=stt_settings,
+            provider_override=provider,
+        )
+        primary_import_candidate = import_candidates[0] if import_candidates else None
+        stt_backend = _candidate_backend_label(primary_import_candidate, stt_http_url)
         telemetry["stt_backend"] = stt_backend
+        if isinstance(primary_import_candidate, dict):
+            telemetry["stt_candidate_provider"] = str(primary_import_candidate.get("provider") or "")
+            telemetry["stt_candidate_transport"] = str(primary_import_candidate.get("transport") or "")
 
         # Emit progress before the (potentially slow) transcription call.
         resolved_source_type = source_type if source_type != "auto" else None
@@ -335,6 +363,10 @@ async def run_bulk_processing_worker(
                 SEGMENT_PROCESSING_FORCE_ENABLED
                 or content_size > SEGMENT_PROCESSING_THRESHOLD_BYTES
             )
+            and (
+                not isinstance(primary_import_candidate, dict)
+                or str(primary_import_candidate.get("transport") or "backend_http").strip().lower() == "backend_http"
+            )
         )
         telemetry["segmented_processing"] = use_segmented_processing
 
@@ -379,6 +411,9 @@ async def run_bulk_processing_worker(
         # Track final source type (set by either path)
         final_source_type = "audio" if is_likely_audio else "text"
         final_source_metadata: dict[str, Any] = {}
+        final_source_utterances: list[dict[str, Any]] = []
+        final_speaker_segments: list[dict[str, Any]] = []
+        final_transcript_text = ""
 
         if use_segmented_processing:
             # ────────────────────────────────────────────────────────────────
@@ -389,6 +424,7 @@ async def run_bulk_processing_worker(
             active_stage = "segmented_transcribing"
             total_transcript_chars = 0
             total_nodes_generated = 0
+            segmented_transcript_parts: list[str] = []
 
             # Get STT URL from settings
             stt_http_url = str(stt_settings.get("http_url", "")).strip()
@@ -402,6 +438,7 @@ async def run_bulk_processing_worker(
             )
 
             segment_idx = 0
+            accumulated_utterances: list[dict[str, Any]] = []
             async for segment in transcribe_audio_segmented(
                 file_path=Path(temp_path),
                 http_url=stt_http_url,
@@ -477,6 +514,9 @@ async def run_bulk_processing_worker(
                     telemetry["stt_backend"] = segment.metadata.get("stt_backend")
 
                 # Emit transcript text for this segment
+                normalized_segment_text = str(segment.transcript_text or "").strip()
+                if normalized_segment_text:
+                    segmented_transcript_parts.append(normalized_segment_text)
                 await emit(
                     "transcript",
                     {
@@ -494,6 +534,15 @@ async def run_bulk_processing_worker(
                 active_stage = "analyzing"
                 segment_chunks = chunk_transcript_lines(segment.transcript_text)
                 total_transcript_chars += len(segment.transcript_text)
+                segment_utterances = build_line_utterances(
+                    segment.transcript_text,
+                    default_speaker_id="SPEAKER_00",
+                    window_start_s=float(segment.start_ms) / 1000.0,
+                    window_end_s=float(segment.end_ms) / 1000.0,
+                    start_sequence=len(accumulated_utterances) + 1,
+                    source_label="segmented_import_window",
+                )
+                accumulated_utterances.extend(segment_utterances)
 
                 for chunk_idx, chunk in enumerate(segment_chunks, start=1):
                     if await request.is_disconnected():
@@ -561,6 +610,8 @@ async def run_bulk_processing_worker(
             telemetry["segment_count"] = segment_idx
             telemetry["transcript_chars"] = total_transcript_chars
             final_source_type = "audio"
+            final_source_utterances = accumulated_utterances
+            final_transcript_text = "\n".join(segmented_transcript_parts).strip()
 
         else:
             # ────────────────────────────────────────────────────────────────
@@ -615,6 +666,8 @@ async def run_bulk_processing_worker(
                 },
             )
             active_stage = "chunking"
+            final_source_utterances = list(getattr(transcript_result, "utterances", []) or [])
+            final_speaker_segments = list(getattr(transcript_result, "speaker_segments", []) or [])
 
             transcript_text = transcript_result.transcript_text.strip()
             if not transcript_text:
@@ -718,6 +771,97 @@ async def run_bulk_processing_worker(
 
             final_source_type = transcript_result.source_type
             final_source_metadata = transcript_result.metadata
+            final_transcript_text = transcript_text
+
+        graph_refinement_result = None
+        if processor.existing_json and final_source_utterances and final_transcript_text:
+            await emit(
+                "status",
+                {
+                    "stage": "refining_graph",
+                    "progress": 0.955,
+                    "message": "Refining graph into denser subthreads and tangents...",
+                    "stt_backend": telemetry.get("stt_backend", ""),
+                    "llm_backend": telemetry.get("llm_backend", ""),
+                    "telemetry": {
+                        "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                        "node_count": len(processor.existing_json),
+                        "utterance_count": len(final_source_utterances),
+                    },
+                },
+            )
+            graph_refinement_result = await refine_import_graph_nodes(
+                transcript_text=final_transcript_text,
+                utterances=final_source_utterances,
+                existing_nodes=processor.existing_json,
+                llm_config=llm_config,
+                providers=llm_providers,
+            )
+            telemetry["graph_refinement"] = {
+                key: value
+                for key, value in graph_refinement_result.items()
+                if key != "nodes"
+            }
+            logger.info(
+                "[PROCESS FILE] Graph refinement result for %s: %s",
+                resolved_conversation_id,
+                json.dumps(telemetry["graph_refinement"], ensure_ascii=False, sort_keys=True),
+            )
+            if graph_refinement_result.get("applied") and isinstance(graph_refinement_result.get("nodes"), list):
+                processor.existing_json = list(graph_refinement_result["nodes"])
+                await send_update(processor.existing_json, processor.chunk_dict)
+                await emit(
+                    "status",
+                    {
+                        "stage": "refining_graph",
+                        "progress": 0.965,
+                        "message": (
+                            f"Refined graph from {graph_refinement_result.get('original_node_count', len(processor.existing_json))} "
+                            f"to {graph_refinement_result.get('refined_node_count', len(processor.existing_json))} nodes."
+                        ),
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                            "graph_refinement_ms": graph_refinement_result.get("refinement_ms"),
+                            "graph_refinement_backend": graph_refinement_result.get("backend"),
+                        },
+                    },
+                )
+            elif graph_refinement_result.get("reason") == "refinement_failed":
+                await emit(
+                    "status",
+                    {
+                        "level": "warning",
+                        "stage": "refining_graph",
+                        "progress": 0.965,
+                        "message": (
+                            "Graph subthread refinement failed; keeping the first-pass graph. "
+                            f"{graph_refinement_result.get('error') or ''}".strip()
+                        ),
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                            "graph_refinement_ms": graph_refinement_result.get("refinement_ms"),
+                            "graph_refinement_backend": graph_refinement_result.get("backend"),
+                        },
+                    },
+                )
+            else:
+                await emit(
+                    "status",
+                    {
+                        "level": "info",
+                        "stage": "refining_graph",
+                        "progress": 0.965,
+                        "message": (
+                            "Graph subthread refinement skipped; keeping the first-pass graph. "
+                            f"Reason: {graph_refinement_result.get('reason') or 'unknown'}"
+                        ),
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                            "graph_refinement_ms": graph_refinement_result.get("refinement_ms"),
+                            "graph_refinement_backend": graph_refinement_result.get("backend"),
+                        },
+                    },
+                )
 
         # Persist graph to DB (enables canvas export and other DB-backed features)
         try:
@@ -725,6 +869,7 @@ async def run_bulk_processing_worker(
                 db=db,
                 conversation_id=resolved_conversation_id,
                 existing_json=processor.existing_json,
+                utterances=final_source_utterances,
                 conversation_name=Path(filename).stem or "Imported conversation",
                 source_type=final_source_type,
                 source_metadata=(
@@ -736,6 +881,83 @@ async def run_bulk_processing_worker(
         except Exception as persist_exc:  # noqa: BLE001
             logger.warning("[PROCESS FILE] Graph persistence failed (non-fatal): %s", persist_exc)
             telemetry["graph_persist_error"] = str(persist_exc) or type(persist_exc).__name__
+
+        if final_source_type == "audio" and final_speaker_segments:
+            try:
+                materialization_result = await persist_speaker_refinement(
+                    conversation_id=resolved_conversation_id,
+                    segments=final_speaker_segments,
+                    source_text="\n".join(segment.get("text", "") for segment in final_speaker_segments if isinstance(segment, dict)),
+                    provider=str(final_source_metadata.get("provider") or ""),
+                    model=str(final_source_metadata.get("model") or ""),
+                    transport=str(final_source_metadata.get("transport") or final_source_metadata.get("stt_backend") or ""),
+                )
+                telemetry["speaker_materialization"] = materialization_result
+            except Exception as speaker_exc:  # noqa: BLE001
+                speaker_error = str(speaker_exc) or type(speaker_exc).__name__
+                telemetry["speaker_materialization_error"] = speaker_error
+                logger.warning(
+                    "[PROCESS FILE] Speaker materialization failed for %s: %s",
+                    resolved_conversation_id,
+                    speaker_error,
+                )
+
+        artifact_export_settings = await load_artifact_export_settings(db)
+        artifact_export_payload = None
+        if (
+            artifact_export_settings.get("enabled")
+            and artifact_export_settings.get("trigger_on_import_complete")
+        ):
+            try:
+                await emit(
+                    "status",
+                    {
+                        "stage": "exporting_artifacts",
+                        "progress": 0.97,
+                        "message": "Writing paired canvas/transcript artifacts...",
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                        },
+                    },
+                )
+                artifact_export_payload = await auto_export_conversation_artifacts(
+                    db=db,
+                    conversation_id=resolved_conversation_id,
+                    settings=artifact_export_settings,
+                )
+                telemetry["artifact_export"] = artifact_export_payload
+                await emit(
+                    "status",
+                    {
+                        "stage": "exporting_artifacts",
+                        "progress": 0.99,
+                        "message": f"Exported {len(artifact_export_payload.get('written_files', []))} artifact files.",
+                        "artifact_export": artifact_export_payload,
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                        },
+                    },
+                )
+            except Exception as artifact_exc:  # noqa: BLE001
+                artifact_error = str(artifact_exc) or type(artifact_exc).__name__
+                telemetry["artifact_export_error"] = artifact_error
+                logger.warning(
+                    "[PROCESS FILE] Artifact auto-export failed for %s: %s",
+                    resolved_conversation_id,
+                    artifact_error,
+                )
+                await emit(
+                    "status",
+                    {
+                        "level": "warning",
+                        "stage": "exporting_artifacts",
+                        "progress": 0.99,
+                        "message": f"Artifact export failed: {artifact_error}",
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                        },
+                    },
+                )
 
         telemetry["graph_generation_ms"] = (
             elapsed_ms(graph_started_at)
@@ -813,6 +1035,7 @@ async def run_bulk_processing_worker(
                 "chunk_count": len(processor.chunk_dict),
                 "source_type": final_source_type,
                 "telemetry": telemetry,
+                "artifact_export": artifact_export_payload,
                 "diarization_job": diarization_job_payload,
             },
         )

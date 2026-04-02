@@ -16,6 +16,7 @@ from lct_python_backend.services.file_transcriber import (
     parse_plain_text,
     parse_srt_text,
     parse_vtt_text,
+    resolve_import_audio_candidates,
     transcribe_audio_chunked,
     transcribe_audio_file,
     transcribe_audio_file_detailed,
@@ -557,6 +558,8 @@ async def test_transcribe_uploaded_file_plain_text(tmp_path: Path):
     )
     assert result.source_type == "text"
     assert result.transcript_text == "line one\nline two"
+    assert [item["text"] for item in result.utterances] == ["line one", "line two"]
+    assert [item["speaker_id"] for item in result.utterances] == ["SPEAKER_00", "SPEAKER_00"]
 
 
 @pytest.mark.asyncio
@@ -634,6 +637,112 @@ async def test_transcribe_uploaded_file_falls_back_to_remote_provider(monkeypatc
     assert result.metadata["provider_attempt_count"] == 2
     assert fallback_events and fallback_events[0][0] == "parakeet"
     assert fallback_events[0][1] == "whisper"
+
+
+def test_resolve_import_audio_candidates_prefers_openai_diarized_for_quality():
+    candidates = resolve_import_audio_candidates(
+        settings={
+            "provider": "whisper",
+            "local_only": False,
+            "live_cloud_fallback_enabled": True,
+            "provider_http_urls": {
+                "parakeet": "http://localhost:5092/v1/audio/transcriptions",
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "live_fallback_priority": ["openai_audio", "remote_whisper"],
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com",
+                    "api_key": "sk-openai-secret",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
+                }
+            },
+        },
+        provider_override=None,
+    )
+
+    assert candidates[0]["provider"] == "openai_audio"
+    assert candidates[0]["transport"] == "openai_audio"
+    assert candidates[0]["request_diarization"] is True
+    assert candidates[0]["model"] == "gpt-4o-transcribe-diarize"
+
+
+@pytest.mark.asyncio
+async def test_transcribe_uploaded_file_prefers_openai_diarized_candidate(monkeypatch, tmp_path: Path):
+    import lct_python_backend.services.file_transcriber as mod
+
+    wav = _make_silent_wav(tmp_path, duration_s=1.5, name="clip.wav")
+    chunk_result = {
+        "ok": True,
+        "provider": "openai_audio",
+        "transport": "openai_audio",
+        "model": "gpt-4o-transcribe-diarize",
+        "text": "ignored because diarized segments are present",
+        "segments": [
+            {"speaker": "SPEAKER_00", "text": "hello there"},
+            {"speaker": "SPEAKER_01", "text": "hi"},
+        ],
+        "segments_count": 2,
+        "diarization_requested": True,
+        "supports_diarization": True,
+        "degraded": False,
+        "error": None,
+        "status": "ready",
+        "status_code": None,
+    }
+    transcribe_candidate_mock = AsyncMock(return_value=chunk_result)
+    chunked_mock = AsyncMock(side_effect=AssertionError("legacy chunked backend path should not run"))
+
+    monkeypatch.setattr(mod, "transcribe_wav_stt_candidate", transcribe_candidate_mock)
+    monkeypatch.setattr(mod, "transcribe_audio_chunked", chunked_mock)
+
+    result = await mod.transcribe_uploaded_file(
+        temp_path=wav,
+        filename="clip.wav",
+        content_type="audio/wav",
+        stt_settings={
+            "provider": "whisper",
+            "local_only": False,
+            "live_cloud_fallback_enabled": True,
+            "provider_http_urls": {
+                "parakeet": "http://localhost:5092/v1/audio/transcriptions",
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "http_timeout_seconds": 10.0,
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com",
+                    "api_key": "sk-openai-secret",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
+                }
+            },
+        },
+    )
+
+    assert result.source_type == "audio"
+    assert result.metadata["provider"] == "openai_audio"
+    assert result.metadata["transport"] == "openai_audio"
+    assert result.metadata["model"] == "gpt-4o-transcribe-diarize"
+    assert result.metadata["diarization_source"] == "stt_provider"
+    assert result.metadata["stt_diarized_segment_count"] == 2
+    assert "SPEAKER_00: hello there" in result.transcript_text
+    assert "SPEAKER_01: hi" in result.transcript_text
+    assert result.speaker_segments == [
+        {"speaker": "SPEAKER_00", "text": "hello there"},
+        {"speaker": "SPEAKER_01", "text": "hi"},
+    ]
+    assert [item["speaker_id"] for item in result.utterances] == ["SPEAKER_00", "SPEAKER_01"]
+    assert [item["text"] for item in result.utterances] == ["hello there", "hi"]
+    candidate = transcribe_candidate_mock.await_args.args[0]
+    kwargs = transcribe_candidate_mock.await_args.kwargs
+    assert candidate["provider"] == "openai_audio"
+    assert candidate["request_diarization"] is True
+    assert candidate["model"] == "gpt-4o-transcribe-diarize"
+    assert kwargs["timeout_seconds"] == 30.0
 
 
 @pytest.mark.asyncio
