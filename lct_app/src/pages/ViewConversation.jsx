@@ -246,7 +246,10 @@ export default function ViewConversation() {
                 selectedNode={selectedNode}
                 setSelectedNode={setSelectedNode}
               />
-              <MinimalLegend speakerColorMap={speakerColorMap} />
+              <MinimalLegend
+                speakerColorMap={speakerColorMap}
+                conversationId={conversationId}
+              />
             </div>
             <TimelineRibbon
               graphData={graphData}

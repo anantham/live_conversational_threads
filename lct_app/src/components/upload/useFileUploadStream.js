@@ -280,8 +280,19 @@ export default function useFileUploadStream({
             if (eventName === "done") {
               setProgress(1);
               setStatusText(`Done: ${payload.node_count || 0} nodes`);
+              const artifactExport = payload.artifact_export && typeof payload.artifact_export === "object"
+                ? payload.artifact_export
+                : null;
+              const writtenFiles = Array.isArray(artifactExport?.written_files)
+                ? artifactExport.written_files
+                : [];
+              const resolvedRootPath =
+                artifactExport?.resolved_root_path || artifactExport?.root_path || "configured folder";
+              const exportSuffix = writtenFiles.length
+                ? ` Exported ${writtenFiles.length} file${writtenFiles.length === 1 ? "" : "s"} to ${resolvedRootPath}.`
+                : "";
               setMessage?.(
-                `Bulk upload complete (${payload.node_count || 0} nodes, ${payload.chunk_count || 0} chunks).`
+                `Bulk upload complete (${payload.node_count || 0} nodes, ${payload.chunk_count || 0} chunks).${exportSuffix}`
               );
             }
             if (eventName === "error") {

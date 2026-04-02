@@ -175,7 +175,10 @@ export default function NewConversation() {
               selectedNode={selectedNode}
               setSelectedNode={setSelectedNode}
             />
-            <MinimalLegend speakerColorMap={speakerColorMap} />
+            <MinimalLegend
+              speakerColorMap={speakerColorMap}
+              conversationId={conversationId}
+            />
           </>
         ) : (
           // Empty state — just breathing room
