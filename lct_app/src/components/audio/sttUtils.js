@@ -126,8 +126,7 @@ const normalizeProviderHttpUrls = (providerHttpUrls) => {
   return base;
 };
 
-const normalizeCloudFallbackProviders = (providers, options = {}) => {
-  const preserveApiKeys = options?.preserveApiKeys === true;
+const normalizeCloudFallbackProviders = (providers) => {
   const base = {
     openai_audio: { ...DEFAULT_CLOUD_FALLBACK_PROVIDERS.openai_audio },
     openrouter_audio: { ...DEFAULT_CLOUD_FALLBACK_PROVIDERS.openrouter_audio },

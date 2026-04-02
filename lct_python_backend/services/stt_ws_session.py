@@ -21,7 +21,7 @@ from starlette.websockets import WebSocketDisconnect
 from lct_python_backend.services.audio_storage import AudioStorageManager
 from lct_python_backend.services.live_graph_persistence import persist_live_graph_snapshot
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
-from lct_python_backend.services.stt_http_transcriber import decode_audio_base64, transcribe_wav_stt_candidate
+from lct_python_backend.services.stt_http_transcriber import decode_audio_base64, pcm16le_to_wav, transcribe_wav_stt_candidate
 from lct_python_backend.services.stt_live_graph import (
     build_draft_graph_patch,
     build_speaker_reconciliation_patch,
@@ -97,6 +97,14 @@ class WsSessionContext:
         self.pending_speaker_reconciliations: List[Dict[str, Any]] = []
         self.stt_unready_notified: bool = False
         self.stt_flush_requested: bool = False
+
+        # Refinement audio buffer — accumulate PCM across finals for larger diarization windows
+        self._refinement_pcm_buffer: bytearray = bytearray()
+        self._refinement_text_parts: List[str] = []
+        self._refinement_sample_rate_hz: int = 16000
+        self._refinement_window_start: Optional[float] = None
+        self._refinement_window_end: Optional[float] = None
+        self._refinement_timer_task: Optional["asyncio.Task[Any]"] = None
         self.first_audio_chunk_logged: bool = False
         self.telemetry_state: Dict[str, Optional[int]] = {
             "audio_send_started_at_ms": None,
@@ -811,6 +819,116 @@ class WsSessionContext:
     def _runtime_mode(self) -> str:
         return str(getattr(self.stt_runtime, "stt_mode", "backend_http") or "backend_http")
 
+    # ------------------------------------------------------------------
+    # Buffered refinement — accumulate audio for larger diarization windows
+    # ------------------------------------------------------------------
+
+    REFINEMENT_WINDOW_SECONDS = 120  # 2 minutes
+
+    def _append_refinement_audio(
+        self,
+        wav_payload: bytes,
+        text: str,
+        sample_rate_hz: Optional[int] = None,
+        window_timestamps: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Append a WAV chunk to the refinement buffer.
+
+        WAV payloads have a 44-byte header; we strip it and accumulate raw
+        PCM so the buffer can be wrapped in a single WAV header when flushed.
+        """
+        if not wav_payload or len(wav_payload) <= 44:
+            return
+        pcm_data = wav_payload[44:]  # strip WAV header
+        self._refinement_pcm_buffer.extend(pcm_data)
+        if text:
+            self._refinement_text_parts.append(text)
+        if sample_rate_hz:
+            self._refinement_sample_rate_hz = sample_rate_hz
+
+        timestamps = window_timestamps or {}
+        start_s = timestamps.get("start_seconds")
+        end_s = timestamps.get("end_seconds")
+        if start_s is not None and (self._refinement_window_start is None or start_s < self._refinement_window_start):
+            self._refinement_window_start = float(start_s)
+        if end_s is not None and (self._refinement_window_end is None or end_s > self._refinement_window_end):
+            self._refinement_window_end = float(end_s)
+
+        self._ensure_refinement_timer()
+
+    def _refinement_buffer_duration_seconds(self) -> float:
+        """Estimate duration of buffered PCM in seconds."""
+        if not self._refinement_pcm_buffer:
+            return 0.0
+        bytes_per_sample = 2  # int16
+        return len(self._refinement_pcm_buffer) / (self._refinement_sample_rate_hz * bytes_per_sample)
+
+    def _ensure_refinement_timer(self) -> None:
+        """Start a timer to flush the refinement buffer if not already running."""
+        if self._refinement_timer_task and not self._refinement_timer_task.done():
+            return
+        self._refinement_timer_task = asyncio.create_task(self._refinement_timer_loop())
+
+    async def _refinement_timer_loop(self) -> None:
+        """Periodically check if the refinement buffer should be flushed."""
+        try:
+            while True:
+                await asyncio.sleep(10)  # check every 10s
+                duration = self._refinement_buffer_duration_seconds()
+                if duration >= self.REFINEMENT_WINDOW_SECONDS:
+                    await self._flush_refinement_buffer(reason="window_full")
+                    return
+        except asyncio.CancelledError:
+            return
+
+    async def _flush_refinement_buffer(self, *, reason: str = "manual") -> None:
+        """Convert buffered PCM to WAV and send to background refinement."""
+        if not self._refinement_pcm_buffer or not self.refinement_candidate:
+            return
+
+        pcm_bytes = bytes(self._refinement_pcm_buffer)
+        combined_text = " ".join(self._refinement_text_parts).strip()
+        sample_rate = self._refinement_sample_rate_hz
+        window_timestamps = {}
+        if self._refinement_window_start is not None:
+            window_timestamps["start_seconds"] = self._refinement_window_start
+        if self._refinement_window_end is not None:
+            window_timestamps["end_seconds"] = self._refinement_window_end
+
+        duration_s = self._refinement_buffer_duration_seconds()
+
+        # Reset buffer
+        self._refinement_pcm_buffer = bytearray()
+        self._refinement_text_parts = []
+        self._refinement_window_start = None
+        self._refinement_window_end = None
+        if self._refinement_timer_task and not self._refinement_timer_task.done():
+            self._refinement_timer_task.cancel()
+        self._refinement_timer_task = None
+
+        wav_payload = pcm16le_to_wav(pcm_bytes, sample_rate_hz=sample_rate)
+
+        logger.info(
+            "[WS][STT REFINE BUFFER] session=%s conversation=%s reason=%s duration_s=%.1f text_parts=%s pcm_bytes=%s",
+            self.state.session_id,
+            self.state.conversation_id,
+            reason,
+            duration_s,
+            len(self._refinement_text_parts) if self._refinement_text_parts else 0,
+            len(pcm_bytes),
+        )
+
+        self._track_refinement_task(
+            asyncio.create_task(
+                self._run_background_refinement(
+                    wav_payload,
+                    combined_text,
+                    window_timestamps=window_timestamps,
+                    sample_rate_hz=sample_rate,
+                )
+            )
+        )
+
     async def _process_http_runtime_event(
         self,
         event: Dict[str, Any],
@@ -851,17 +969,10 @@ class WsSessionContext:
             emit_to_client=True,
         )
         self._merge_pending_partial_timestamps(event_timestamps)
-        if isinstance(refinement_wav, (bytes, bytearray)) and self.refinement_candidate:
-            self._track_refinement_task(
-                asyncio.create_task(
-                    self._run_background_refinement(
-                        bytes(refinement_wav),
-                        partial_text,
-                        window_timestamps=event_timestamps,
-                        sample_rate_hz=partial_metadata.get("sample_rate_hz"),
-                    )
-                )
-            )
+        # Background refinement is intentionally skipped for partials — no utterance
+        # exists yet, so persist_speaker_refinement would create orphaned segments.
+        # Refinement fires on the final event (line ~970) which has a committed
+        # utterance ID and complete audio window.
         self.pending_partial_parts.append(partial_text)
         self.pending_partial_chars += len(partial_text)
 
@@ -969,16 +1080,11 @@ class WsSessionContext:
             )
             refinement_wav = event.get("_wav_payload")
             if isinstance(refinement_wav, (bytes, bytearray)) and self.refinement_candidate:
-                self._track_refinement_task(
-                    asyncio.create_task(
-                        self._run_background_refinement(
-                            bytes(refinement_wav),
-                            text_value,
-                            source_utterance_id=str(getattr(persisted_event, "utterance_id", "") or "") or None,
-                            window_timestamps=event_timestamps,
-                            sample_rate_hz=metadata.get("sample_rate_hz"),
-                        )
-                    )
+                self._append_refinement_audio(
+                    bytes(refinement_wav),
+                    text_value,
+                    sample_rate_hz=metadata.get("sample_rate_hz"),
+                    window_timestamps=event_timestamps,
                 )
             return
 
@@ -1228,6 +1334,14 @@ class WsSessionContext:
         self.stt_unready_notified = False
         self.first_audio_chunk_logged = False
         self.refinement_candidate = None
+        # Reset refinement buffer
+        self._refinement_pcm_buffer = bytearray()
+        self._refinement_text_parts = []
+        self._refinement_window_start = None
+        self._refinement_window_end = None
+        if self._refinement_timer_task and not self._refinement_timer_task.done():
+            self._refinement_timer_task.cancel()
+        self._refinement_timer_task = None
         self.first_graph_queued_at_ms = None
         self.first_graph_completed_at_ms = None
         self.telemetry_state = {
@@ -1546,6 +1660,8 @@ class WsSessionContext:
             )
             return
         self.stt_flush_requested = True
+        # Flush any buffered refinement audio before closing
+        await self._flush_refinement_buffer(reason="session_flush")
         flush_started_at = time.perf_counter()
         logger.info(
             "[WS][FLUSH] session=%s conversation=%s pending_stt_chunks=%s pending_partial_parts=%s",
@@ -1609,6 +1725,8 @@ class WsSessionContext:
                             "server_ts_ms": _now_ms(),
                         }
                     )
+                elif msg_type == "graph_data_update":
+                    pass  # client-side graph sync — acknowledged, no action needed
                 else:
                     await self._emit_ws_error(
                         code="unsupported_message_type",
@@ -1656,6 +1774,10 @@ class WsSessionContext:
                 for task in list(self.pending_stt_chunk_tasks):
                     task.cancel()
                 await asyncio.gather(*list(self.pending_stt_chunk_tasks), return_exceptions=True)
+            if self.pending_refinement_tasks:
+                for task in list(self.pending_refinement_tasks):
+                    task.cancel()
+                await asyncio.gather(*list(self.pending_refinement_tasks), return_exceptions=True)
             if self.graph_persist_task and not self.graph_persist_task.done():
                 await asyncio.gather(self.graph_persist_task, return_exceptions=True)
             if self.stt_runtime:

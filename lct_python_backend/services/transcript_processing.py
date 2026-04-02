@@ -56,8 +56,9 @@ class TranscriptProcessor:
         batch_size: int = 4,
         initial_batch_size: int = 1,
         max_batch_size: int = 12,
-        graph_first_update_max_wait_ms: int = 1200,
-        graph_steady_update_max_wait_ms: int = 2000,
+        graph_first_update_max_wait_ms: int = 3000,
+        graph_steady_update_max_wait_ms: int = 5000,
+        graph_min_flush_chars: int = 80,
         early_batch_targets: Optional[List[int]] = None,
         llm_config: Optional[Dict[str, Any]] = None,
         providers: Optional[List[Dict[str, Any]]] = None,
@@ -72,6 +73,7 @@ class TranscriptProcessor:
         self._current_batch_size = self.initial_batch_size
         self.graph_first_update_max_wait_ms = max(0, int(graph_first_update_max_wait_ms))
         self.graph_steady_update_max_wait_ms = max(0, int(graph_steady_update_max_wait_ms))
+        self.graph_min_flush_chars = max(0, int(graph_min_flush_chars))
         configured_targets = early_batch_targets or [
             self.initial_batch_size,
             self.initial_batch_size,
@@ -230,6 +232,31 @@ class TranscriptProcessor:
             ):
                 return
 
+            pending_chars = sum(len(str(item or "")) for item in self.accumulator)
+
+            # Don't force-flush tiny fragments — wait for more speech
+            if pending_chars < self.graph_min_flush_chars:
+                await self._emit_status(
+                    "info",
+                    "Timer fired but text too short; waiting for more speech.",
+                    {
+                        "stage": "graph",
+                        "phase": "waiting",
+                        "pending_chars": pending_chars,
+                        "min_flush_chars": self.graph_min_flush_chars,
+                        "queue_wait_ms": self._current_queue_wait_ms(),
+                        "trigger": "timer_deferred",
+                    },
+                )
+                # Schedule a fresh retry with a fixed backoff (2s) instead of
+                # re-using _ensure_batch_timer_locked which computes remaining_ms=0
+                # when the original budget is exhausted, causing a tight spin loop.
+                if not self._batch_timer_task or self._batch_timer_task.done():
+                    self._batch_timer_task = asyncio.create_task(
+                        self._run_batch_timer(2000.0, timeout_ms, pending_started_at)
+                    )
+                return
+
             await self._emit_status(
                 "info",
                 "Graph batch waited long enough; forcing an incremental update.",
@@ -238,7 +265,7 @@ class TranscriptProcessor:
                     "phase": "queued",
                     "queued_finals": len(self.accumulator),
                     "batch_target": self._current_batch_size,
-                    "pending_chars": sum(len(str(item or "")) for item in self.accumulator),
+                    "pending_chars": pending_chars,
                     "queue_wait_ms": self._current_queue_wait_ms(),
                     "max_wait_ms": timeout_ms,
                     "trigger": "timer",
