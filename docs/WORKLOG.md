@@ -1,5 +1,265 @@
 # WORKLOG
 
+## 2026-03-21T23:41:37Z — Manifest-backed artifact reroute after manual speaker naming
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- Context: manual speaker naming and participant-aware routing were already in place, but the first import auto-export still landed in the root `Conversations/` folder with no safe way to relocate or regenerate the paired `.canvas` + `.txt` after the human confirmed speaker names. The user approved the follow-up: reroute artifacts without rerunning STT or spending more API credits.
+- Root cause confirmed before patch:
+  - `lct_python_backend/services/artifact_export_service.py` wrote files and returned `written_files` in the SSE payload, but it did not persist any durable artifact manifest. After import completion the app no longer knew which filesystem paths belonged to conversation `X`.
+  - `lct_python_backend/artifact_api.py` only exposed settings/test-write. There was no explicit reroute/re-export endpoint.
+  - `lct_app/src/components/MinimalLegend.jsx` saved speaker names, but had no hook to trigger a backend rewrite/move after naming became unambiguous.
+- Files modified:
+  - `lct_python_backend/services/artifact_export_service.py` (lines 14-39, 162-188, 243-320, 330-420, 423-490): added `PipelineArtifact`-backed manifest persistence for exported `.canvas` / `.txt` files, taught filename collision logic to ignore the currently tracked artifact pair when rewriting in place, and added `reroute_conversation_artifacts(...)` that regenerates artifacts from canonical conversation state, writes them into the newly resolved root/participant folder, and only then removes superseded tracked files.
+  - `lct_python_backend/artifact_api.py` (lines 10-19, 21-24, 60-77): added `POST /api/conversations/{conversation_id}/artifacts/reroute` and fixed router-registration order so the new route is actually mounted.
+  - `lct_app/src/services/artifactSettingsApi.js` (lines 1-47): added `rerouteConversationArtifacts(conversationId)` for the new backend endpoint.
+  - `lct_app/src/components/MinimalLegend.jsx` (lines 5-9, 37-44, 97-133, 203-213): after a successful speaker rename, the legend now attempts reroute, surfaces the resolved folder on success, and reports reroute failures explicitly without losing the saved alias.
+  - `lct_python_backend/tests/unit/test_artifact_export_service.py` (full file) and `lct_python_backend/tests/unit/test_artifact_api.py` (new): added regressions for participant-folder reroute, root-file cleanup after rewrite, and the new reroute endpoint contract.
+- Why:
+  - reroute must regenerate the `.txt` artifact from persisted utterances so the renamed speaker labels are reflected in the transcript, not merely move the old generic-label file;
+  - moving/deleting files without a manifest is unsafe, so the backend now tracks the current artifact pair per conversation before any reroute happens.
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/artifact_export_service.py lct_python_backend/artifact_api.py lct_python_backend/speaker_naming_api.py lct_python_backend/services/speaker_naming_service.py lct_python_backend/tests/unit/test_artifact_export_service.py lct_python_backend/tests/unit/test_artifact_api.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_artifact_export_service.py lct_python_backend/tests/unit/test_artifact_api.py lct_python_backend/tests/unit/test_speaker_naming_api.py lct_python_backend/tests/unit/test_artifact_settings_service.py lct_python_backend/tests/unit/test_import_api_process_file.py` (`25 passed`, existing LibreSSL warning only)
+  - `cd lct_app && npx eslint src/components/MinimalLegend.jsx src/services/artifactSettingsApi.js src/services/speakerNamingApi.js` (passed)
+- Remaining caveat:
+  - there is still no dedicated post-import confirmation modal; reroute is now triggered from the legend rename flow itself, which is functionally sufficient but not yet the most discoverable UX.
+
+## 2026-03-21T16:14:31Z — Manual speaker naming + participant-aware artifact routing
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- Context: the user approved the safe-routing follow-up after artifact auto-export landed. Requirement: keep auto-export rooted at `Conversations/` by default, let humans manually rename `SPEAKER_*` labels to real people, and only use those confirmed names as routing evidence for later artifact writes.
+- Files modified:
+  - `lct_python_backend/services/speaker_naming_service.py` (lines 1-144): added generic-speaker detection, confirmed-name checks, conversation speaker listing, and durable rename flow that rewrites `Utterance.speaker_name` for a selected `speaker_id` and refreshes `Conversation.participants`.
+  - `lct_python_backend/speaker_naming_api.py` (lines 1-52): added `GET /api/conversations/{conversation_id}/speakers` and `PATCH /api/conversations/{conversation_id}/speakers/{speaker_id}` so manual aliasing is backend-owned instead of a frontend-only draft.
+  - `lct_python_backend/backend.py` (lines 124-156): mounted the new speaker-naming router.
+  - `lct_python_backend/services/artifact_settings_service.py` (lines 22-55, 134-155): extended artifact-export settings with `self_name` so routing can exclude the current user without guessing from diarization labels.
+  - `lct_python_backend/services/artifact_export_service.py` (lines 119-152, 175-285): threaded `utterances` through artifact-building, added `_resolve_export_directory(...)`, and now route auto-export writes into a participant subfolder only when there is exactly one confirmed non-generic participant name distinct from `self_name`; otherwise export stays at the configured root.
+  - `lct_python_backend/services/conversation_artifacts.py` (lines 28-63) and `lct_python_backend/services/conversation_reader.py` (lines 123-157): transcript/chunk serialization now prefers `speaker_name` over generic `speaker_id` when humans have confirmed aliases.
+  - `lct_app/src/components/MinimalLegend.jsx` (lines 1-222), `lct_app/src/services/speakerNamingApi.js` (lines 1-36), `lct_app/src/pages/NewConversation.jsx` (lines 173-181), and `lct_app/src/pages/ViewConversation.jsx` (legend wiring in the saved view): added inline speaker naming in the legend and wired it to persisted conversations so users can confirm names without leaving the graph.
+  - `lct_app/src/components/settings/ArtifactExportCard.jsx` (lines 14-24, 209-237): added `self_name` to artifact settings UI and documented the exact routing rule in the card copy.
+  - `lct_app/src/components/upload/useFileUploadStream.js` (artifact-complete message path): upload completion toasts now show `resolved_root_path` so a participant-routed export reports the actual folder, not only the configured root.
+  - `lct_python_backend/tests/unit/test_artifact_settings_service.py`, `lct_python_backend/tests/unit/test_artifact_export_service.py`, and `lct_python_backend/tests/unit/test_speaker_naming_api.py`: added coverage for `self_name` normalization, participant-folder routing, and speaker rename/list endpoints.
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/speaker_naming_service.py lct_python_backend/speaker_naming_api.py lct_python_backend/services/artifact_settings_service.py lct_python_backend/services/artifact_export_service.py lct_python_backend/services/conversation_artifacts.py lct_python_backend/services/conversation_reader.py lct_python_backend/backend.py lct_python_backend/tests/unit/test_artifact_settings_service.py lct_python_backend/tests/unit/test_artifact_export_service.py lct_python_backend/tests/unit/test_speaker_naming_api.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_artifact_settings_service.py lct_python_backend/tests/unit/test_artifact_export_service.py lct_python_backend/tests/unit/test_speaker_naming_api.py lct_python_backend/tests/unit/test_import_api_process_file.py` (`22 passed`, existing warning only)
+  - `cd lct_app && npx eslint src/components/MinimalLegend.jsx src/pages/NewConversation.jsx src/pages/ViewConversation.jsx src/components/settings/ArtifactExportCard.jsx src/components/upload/useFileUploadStream.js src/services/speakerNamingApi.js` (passed)
+- Follow-up:
+  - import-complete auto-export still fires before the human has a chance to rename speakers, so the first artifact write safely lands at the root folder and only later exports can use confirmed participant routing;
+  - recommended next step is a post-import rename/reroute affordance rather than guessing names from diarization labels.
+
+## 2026-03-21T05:36:12Z — Import graph refinement semantics-preservation fix validated on Anand 10-minute rerun
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- Context: the previous Anand rerun proved that second-pass import refinement was increasing node count while erasing contextual/tangent structure, so the user approved the minimal safe fix: preserve first-pass edge semantics in the refinement prompt and reject any refined graph that collapses relational structure.
+- Root cause confirmed before patch:
+  - `lct_python_backend/services/import_graph_refinement.py` only passed chronology/thread metadata into the refiner (`node_name`, `summary`, `source_excerpt`, `predecessor`, `successor`, `thread_id`, `thread_state`, `speaker_id`), so the LLM never saw first-pass `contextual_relation`, `edge_relations`, or `linked_nodes`.
+  - The acceptance gate also allowed a denser-but-flatter graph to replace the first pass as long as node count / return count increased.
+- Files modified:
+  - `lct_python_backend/services/import_graph_refinement.py` (lines 61-201, 311-369): expanded `_thread_metrics(...)` to measure contextual/link richness, threaded existing `contextual_relation` / `edge_relations` / `linked_nodes` into `_simplify_existing_nodes(...)`, and added `_refinement_semantics_degraded(...)` so refinement now fails closed if it zeroes out previously present contextual structure.
+  - `lct_python_backend/tests/unit/test_import_graph_refinement.py` (lines 49-64, 145-167): added a contextual-node fixture plus a regression test proving a refined graph with more nodes but zero contextual edges is rejected with `reason="refinement_semantics_degraded"`.
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/import_graph_refinement.py lct_python_backend/tests/unit/test_import_graph_refinement.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_import_graph_refinement.py lct_python_backend/tests/unit/test_import_api_process_file.py` (`18 passed`, existing LibreSSL warning only)
+- Manual rerun:
+  - Input: `tmp/talking_to_anand_10min.m4a` (600 s) via `POST /api/import/process-file` with `provider=openai_audio`
+  - Output conversation: `8aa49f33-2e0e-4444-806c-318a71c58673`
+  - Artifacts captured:
+    - `tmp/anand_import_fix_events_20260320T222748.json`
+    - `tmp/anand_import_fix_20260320T223420.canvas`
+    - `tmp/anand_import_fix_20260320T223420.txt`
+  - Result:
+    - refinement still applied, but no longer stripped graph semantics;
+    - `original_metrics`: `edge_count=40`, `contextual_node_count=20`, `linked_node_count=20`
+    - `refined_metrics`: `edge_count=44`, `contextual_node_count=20`, `linked_node_count=20`, `tangent_count=1`, `return_count=3`
+    - exported canvas now reads materially branchier: `21` text nodes, `174` edges, `14` x-columns, `13` y-bands, with non-temporal labels including `contextual`, `clarifies`, `supports`, `tangent`, `rebuts`, and `return_to_thread`.
+- Follow-up:
+  - the semantics-collapse bug is resolved;
+  - remaining graph-quality issue is node granularity, not edge survival or layout-only flattening.
+
+## 2026-03-21T04:49:48Z — Anand rerun validation after import densification slice
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- Context: after wiring the second-pass import graph refinement, I reran the real Anand 10-minute import on the restarted backend to validate actual user-visible output rather than only unit/SSE tests.
+- Manual validation:
+  - Input: `tmp/talking_to_anand_10min.m4a` (600 s) via `POST /api/import/process-file` with `provider=openai_audio`
+  - Output conversation: `7c5e5141-1441-4120-bd29-3113a29cca0b`
+  - Artifacts captured:
+    - `tmp/anand_import_rerun_summary_20260320T214140.json`
+    - `tmp/anand_import_rerun_events_20260320T214140.json`
+    - `tmp/anand_import_rerun_20260320T214140.canvas`
+    - `tmp/anand_import_rerun_20260320T214140.txt`
+- What improved:
+  - import stayed on the quality-first OpenAI diarized path (`gpt-4o-transcribe-diarize`) with no provider fallback;
+  - first-pass graph generation reached `19` nodes;
+  - second-pass refinement explicitly applied and raised the graph to `22` nodes (`refining_graph: "Refined graph from 19 to 22 nodes."`);
+  - transcript artifact is strong: `83` utterances, `83` speaker-segment materializations, timestamped `A/B` lines in the exported `.txt`.
+- What is still broken:
+  - the refined graph replaced the richer first-pass structure with thread-state-only nodes:
+    - `thread_states`: `4 new_thread`, `15 continue_thread`, `3 return_to_thread`
+    - but every refined node had empty `contextual_relation`, `linked_nodes`, and `edge_relations`
+  - exported canvas therefore had only temporal links:
+    - `22` nodes, `42` edges
+    - edge labels: `21 temporal`, `21 next`
+    - layout: `22` x-columns, `1` y-band
+  - user-visible result: denser topic splitting, but still a single-row temporal strip rather than a visibly branchy graph.
+- Follow-up:
+  - logged in `ISSUES.md` as an import graph densification semantics gap;
+  - likely next fix is to preserve or synthesize contextual/tangent edges during second-pass refinement instead of replacing the first-pass graph with a thread-state-only result.
+
+## 2026-03-21T01:07:20Z — Import graph densification via second-pass subthread/tangent refinement
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- Context: after the new Anand import export became branchier in layout, the user explicitly approved the next priority slice: improve node granularity rather than keep tuning geometry. The problem was that import still persisted the first-pass chapter graph directly, so long multi-topic sections remained coarse even when transcript evidence clearly contained smaller tangents, returns, and meta-conversations.
+- Root cause confirmed:
+  - `lct_python_backend/services/import_graph_refinement.py` already existed with the intended LLM-bound refinement contract, but it was not connected to the import worker at all, so imported conversations always persisted the first-pass graph.
+  - `lct_python_backend/services/import_bulk_pipeline.py` had the full refinement inputs available in one place right before persistence (`existing_json`, canonical utterances, and transcript text), but there was no second-pass checkpoint between `processor.flush()` and `persist_import_graph(...)`.
+- Files modified:
+  - `lct_python_backend/services/transcript_prompts.py` (lines 177-214): added `REFINE_LCT_SUBTHREAD_PROMPT`, a bounded prompt for denser subthread/tangent extraction that preserves chronology, thread semantics, and source-backed excerpts instead of allowing free rewriting.
+  - `lct_python_backend/services/import_graph_refinement.py` (full file, 1-347): kept the refinement logic in a dedicated service and confirmed the acceptance contract now used by the worker: threshold gating, transcript-evidence prompt assembly, online/local LLM fallback, duplicate-name rejection, and “only replace if structure is actually richer” scoring.
+  - `lct_python_backend/import_api.py` (lines 47-56, 500-518): threaded `refine_import_graph_nodes` into the `/api/import/process-file` route wiring so tests can monkeypatch it through the public import API seam.
+  - `lct_python_backend/services/import_bulk_processor.py` (lines 49-113): extended the facade signature so the new refinement callable reaches the worker without coupling tests or route code to a global import.
+  - `lct_python_backend/services/import_bulk_pipeline.py` (lines 131-136, 411-417, 427, 516-519, 772-846): added `final_transcript_text` tracking for both sequential and segmented import paths, ran the second-pass refinement right after first-pass graph generation, recorded structured `graph_refinement` telemetry, emitted explicit `refining_graph` SSE status events, and only replaced the graph when the refinement result was accepted as richer. Refinement failure now fails closed and keeps the first-pass graph.
+  - Tests:
+    - `lct_python_backend/tests/unit/test_import_graph_refinement.py` (new): covers threshold skip, richer accepted refinement, and duplicate-name rejection.
+    - `lct_python_backend/tests/unit/test_import_api_process_file.py` (extended): proves `/api/import/process-file` can apply a refined graph, emit the updated `existing_json`, and report the refined node count/telemetry in the `done` payload.
+- Why:
+  - improve import graph structure at the source rather than trying to “fake” branching with more layout heuristics;
+  - keep the second pass bounded and auditable by only allowing it to replace the graph when it demonstrably increases node/thread/edge richness;
+  - preserve the existing import/export contract by emitting another full graph snapshot rather than inventing a separate import-only graph format.
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/import_api.py lct_python_backend/services/import_bulk_processor.py lct_python_backend/services/import_bulk_pipeline.py lct_python_backend/services/import_graph_refinement.py lct_python_backend/tests/unit/test_import_graph_refinement.py lct_python_backend/tests/unit/test_import_api_process_file.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_import_graph_refinement.py lct_python_backend/tests/unit/test_import_api_process_file.py` (`17 passed`, existing LibreSSL warning only)
+- Remaining caveat:
+  - this slice makes import graphs denser when the second pass can prove richer structure, but it does not yet add a hierarchical graph model. The next meaningful quality step is likely a dedicated subthread/tangent representation or better prompt/evidence shaping, not another geometry tweak.
+
+## 2026-03-21T00:18:35Z — Import auto-export profile for paired Obsidian `.canvas` + `.txt` artifacts
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- Context: the user approved an opt-in setting so successful imports would immediately write both the exported canvas and the paired timestamped transcript into a configured Obsidian folder, without requiring the manual export button. The implementation needed to be backend-owned, loud on failure, and wired after canonical import persistence rather than as a browser-only download trick.
+- Files modified:
+  - `lct_python_backend/services/artifact_settings_service.py` (new): added the `artifact_export_settings` app-setting contract, normalization, validation, and a real write-probe helper. Invariants enforced: absolute directory path, at least one artifact type enabled when auto-export is on, and no silent pass-through for an invalid folder.
+  - `lct_python_backend/artifact_api.py` (new) and `lct_python_backend/backend.py`: added `/api/settings/artifact-export` load/save/test-write routes and mounted them into the backend so Runtime Settings can manage the feature without piggybacking on STT settings.
+  - `lct_python_backend/services/artifact_export_service.py` (new): added the backend-owned paired-artifact writer. It derives a timestamped basename from conversation metadata, builds the `.canvas` + `.txt` payloads from canonical conversation state, writes them atomically into the configured folder, and returns the written paths for telemetry/UI.
+  - `lct_python_backend/import_api.py`, `lct_python_backend/services/import_bulk_processor.py`, and `lct_python_backend/services/import_bulk_pipeline.py`: threaded the new settings/writer into the import worker and triggered auto-export only after graph persistence + speaker materialization. Export failures now surface as warning status events and telemetry instead of failing the import or disappearing silently.
+  - `lct_app/src/services/artifactSettingsApi.js` (new), `lct_app/src/components/settings/ArtifactExportCard.jsx` (new), and `lct_app/src/pages/settings/RuntimeSettingsPage.jsx`: added a dedicated Runtime Settings card for the feature with toggle, folder path, `.canvas` / `.txt` checkboxes, include-chunks option, save, and test-write.
+  - `lct_app/src/components/upload/useFileUploadStream.js`: import completion message now includes the auto-export result when files were written, so successful background writes are visible to the user.
+  - Tests:
+    - `lct_python_backend/tests/unit/test_artifact_settings_service.py` (new)
+    - `lct_python_backend/tests/unit/test_artifact_export_service.py` (new)
+    - `lct_python_backend/tests/unit/test_import_api_process_file.py` (extended with auto-export regression)
+- Why:
+  - keep artifact writing backend-owned and driven by canonical conversation state;
+  - avoid hidden filesystem side effects by surfacing success/failure in both logs and the SSE `done` payload;
+  - keep export configuration independent from STT configuration so future live-finalize export can reuse the same profile without bloating the STT card.
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/artifact_settings_service.py lct_python_backend/services/artifact_export_service.py lct_python_backend/artifact_api.py lct_python_backend/import_api.py lct_python_backend/services/import_bulk_processor.py lct_python_backend/services/import_bulk_pipeline.py lct_python_backend/backend.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_artifact_settings_service.py lct_python_backend/tests/unit/test_artifact_export_service.py lct_python_backend/tests/unit/test_import_api_process_file.py` (`18 passed`, existing LibreSSL warning only)
+  - `cd lct_app && npx eslint src/components/settings/ArtifactExportCard.jsx src/pages/settings/RuntimeSettingsPage.jsx src/components/upload/useFileUploadStream.js src/services/artifactSettingsApi.js`
+- Manual verification:
+  - Saved the profile against the running backend at `http://localhost:8000/api/settings/artifact-export` with `root_path=/tmp/lct_auto_export_test`, then confirmed `POST /api/settings/artifact-export/test-write` returned `{"ok": true}`.
+  - Ran a real tiny import through `POST /api/import/process-file` using `/tmp/lct_auto_export_test_input.txt`; the SSE stream emitted `stage=exporting_artifacts`, and the final `done` payload included two written files:
+    - `/tmp/lct_auto_export_test/lct_auto_export_test_input (2026-03-21 00-03-30).canvas`
+    - `/tmp/lct_auto_export_test/lct_auto_export_test_input (2026-03-21 00-03-30).txt`
+  - Verified both files exist on disk and the `.txt` contains the expected linear transcript lines.
+  - Restored the live setting afterward to its previous disabled state so the user’s runtime was not left pointed at the temporary test folder.
+- Remaining caveat:
+  - this slice only wires import-complete auto-export. The setting shape already leaves space for live-finalize export, but that trigger is intentionally not implemented yet so the UI does not over-promise behavior during live sessions.
+
+## 2026-03-20T23:58:10Z — Issue/debt sync after Anand import layout validation
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- Context: after validating the new import transcript artifact path and contextual hub/ring layout on the Anand 10-minute conversation (`1349fc27-c9dc-4b97-92e0-571df28c9754`), the tracking docs still described the old import speaker-materialization/export failures as unresolved and understated the complexity now living in `canvas_api.py`.
+- Files modified:
+  - `ISSUES.md` (Runtime Blockers + Graph & UI Polish sections): marked the live/headless semantic-persistence gap and imported-audio speaker-materialization gap as resolved, added the narrower remaining follow-up that import diarization job visibility is still in-memory/ephemeral, and logged that current imported graphs are branchier but still coarse at the node/tangent level.
+  - `docs/TECH_DEBT.md` (`lct_python_backend/canvas_api.py` row): updated the row to reflect current scale (`1244` LOC) and the new mixed concerns now living there, especially contextual community layout heuristics and paired transcript-artifact export wiring.
+- Why:
+  - keep repo tracking documents aligned with the behavior we actually validated rather than leaving stale blocker notes after the fixes landed;
+  - make the next decomposition target explicit now that `canvas_api.py` is materially larger and carries route, conversion, layout, and artifact responsibilities at once.
+
+## 2026-03-20T23:32:40Z — Import parity for transcript artifacts + branchier contextual canvas layout
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- Context: imported audio conversations were persisting graph nodes without durable utterances/speaker evidence, and exported Obsidian canvases still looked like a single left-to-right chapter strip even when the underlying graph contained many contextual links. The user also required every exported canvas to have an associated `.txt` transcript artifact with timestamps and speaker labels.
+- Root cause confirmed:
+  - `lct_python_backend/services/file_transcriber.py` (full file): `FileTranscriptResult` only exposed flat `transcript_text` + metadata, so import persistence had no canonical utterance rows or speaker segments to write.
+  - `lct_python_backend/services/import_bulk_pipeline.py` (lines 590-820 before patch): sequential audio import persisted only `existing_json` via `persist_import_graph(...)`; transcript evidence and speaker refinement were not materialized.
+  - `lct_python_backend/services/import_diarization_queue.py` (lines 288-430 before patch): background import diarization regenerated graph patches but never called `persist_speaker_refinement(...)`.
+  - `lct_python_backend/canvas_api.py` (lines 326-431 before patch): export layout only switched away from a temporal left-to-right chain when all temporal depths were identical. The latest Anand graph had dense contextual edges *and* a temporal spine, so it still rendered as one row of 15 nodes.
+- Files modified:
+  - `lct_python_backend/services/transcription_utils.py` (FileTranscriptResult dataclass): extended import results to carry structured `utterances` and `speaker_segments`.
+  - `lct_python_backend/services/transcript_linearization.py` (new): added canonical helpers for deriving utterance rows from diarized segments, ASR segments, or fallback speaker-prefixed transcript lines.
+  - `lct_python_backend/services/file_transcriber.py` (audio/text upload orchestrator): now populates canonical utterance rows and speaker segments for upload results, preserving provider/transport/model metadata needed for durable materialization.
+  - `lct_python_backend/services/import_persistence.py` (graph persistence): now optionally persists utterances alongside nodes/relationships, preserves richer edge/thread semantics (`predecessor`, `edge_relations`, `thread_id`, `thread_state`), and updates conversation participant/utterance stats from imported transcript evidence.
+  - `lct_python_backend/services/import_bulk_pipeline.py` (worker pipeline): now hands persisted utterances into `persist_import_graph(...)` and immediately materializes speaker evidence when the initial import already returned diarized segments.
+  - `lct_python_backend/services/import_diarization_queue.py` (background import diarization): now calls `persist_speaker_refinement(...)` so follow-up diarization updates become durable speaker segments / utterance speaker truth instead of in-memory-only patches.
+  - `lct_python_backend/services/conversation_artifacts.py` (new): added deterministic linear transcript artifact rendering with timestamps, speaker labels, and speaker provenance/confidence.
+  - `lct_python_backend/canvas_api.py` (export routes + layout): export now reads from the canonical conversation bundle, exposes `/export/obsidian-canvas/{conversation_id}/transcript`, and switches context-dense components to a hub/ring layout instead of always respecting the temporal chain as a single horizontal strip.
+  - `lct_python_backend/services/conversation_reader.py` (serialized graph payload): now includes preserved `thread_id`, `thread_state`, `is_tangent`, and `edge_relations` metadata so export/read paths can use richer graph semantics.
+  - `lct_app/src/components/ExportCanvas.jsx` (frontend export UX): export button now downloads the paired `.canvas` and `.txt` artifacts together.
+  - Tests:
+    - `lct_python_backend/tests/unit/test_file_transcriber.py`
+    - `lct_python_backend/tests/unit/test_import_graph_persistence.py`
+    - `lct_python_backend/tests/unit/test_canvas_api_converter.py`
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/transcript_linearization.py lct_python_backend/services/conversation_artifacts.py lct_python_backend/services/file_transcriber.py lct_python_backend/services/import_persistence.py lct_python_backend/services/import_bulk_pipeline.py lct_python_backend/services/import_diarization_queue.py lct_python_backend/services/conversation_reader.py lct_python_backend/services/speaker_materialization.py lct_python_backend/canvas_api.py`
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_file_transcriber.py lct_python_backend/tests/unit/test_import_graph_persistence.py lct_python_backend/tests/unit/test_canvas_api_converter.py lct_python_backend/tests/unit/test_import_api_process_file.py` (`79 passed`)
+  - `cd lct_app && npx eslint src/components/ExportCanvas.jsx`
+- Manual verification:
+  - Latest Anand import conversation: `1349fc27-c9dc-4b97-92e0-571df28c9754`
+  - `POST /export/obsidian-canvas/1349fc27-c9dc-4b97-92e0-571df28c9754/transcript` now returns a `.txt` artifact with `79` utterances and timestamped `A`/`B` speaker lines.
+  - Exported canvas for the same conversation no longer places all nodes on one row. Before the layout patch the latest export had 15 unique x-columns and a single y-row; after the patch it uses `7` x-columns and `7` y-bands, producing a visibly branchier layout around contextual hubs.
+  - Remaining caveat: the graph is still semantically coarse at the node level (high-level chapter/topic nodes), so the layout now exposes more branching but does not yet create finer-grained tangents/subthreads on its own.
+
+## 2026-03-20T22:31:40Z — Migration unblock for Anand import export/schema mismatch
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- Context: after the Anand 10-minute import succeeded on the new OpenAI diarized upload path, `POST /export/obsidian-canvas/{conversation_id}` failed with `column utterances.speaker_source does not exist`. The backend had been started with `SKIP_MIGRATIONS=1`, so the running models expected Phase 2A utterance speaker columns that were not yet present in the local PostgreSQL schema.
+- Root cause confirmed:
+  - `lct_python_backend/alembic/versions/adr_018_edit_history_contracts.py` (full file): the ADR-018 migration unconditionally dropped `edit_feedback`, but this local DB had never created that table. That caused `alembic upgrade head` to stop at revision `add_intent_signals`, preventing the later speaker-materialization migration from applying.
+  - `lct_python_backend/alembic/versions/add_speaker_segments_and_utterance_speaker_materialization.py` (full file): the Phase 2A migration used revision id `add_speaker_segments_materialization`, which exceeded the local `alembic_version.version_num` width and caused Alembic to fail when updating the version row even after the DDL itself succeeded.
+  - Verified DB state before patch: Alembic revision was still `add_intent_signals`; `utterances` lacked `speaker_source`, `speaker_confidence`, and `speaker_revision`; `edit_feedback` was absent.
+- Files modified:
+  - `lct_python_backend/alembic/versions/adr_018_edit_history_contracts.py` (upgrade/downgrade guards): made the migration robust to drifted dev DBs by checking existing `edits_log` columns before adding/removing them and checking whether `edit_feedback` exists before dropping/recreating it. This keeps the migration chain aligned with the actual local schema state instead of assuming a pristine branch history.
+  - `lct_python_backend/alembic/versions/add_speaker_segments_and_utterance_speaker_materialization.py` (revision metadata): shortened the revision id to fit the local `alembic_version.version_num` width so Alembic can advance past Phase 2A on this PostgreSQL instance.
+- Why:
+  - without this patch, `alembic upgrade head` fails locally, canvas export remains broken, and the async speaker-materialization job for imported audio cannot persist its read-model columns safely.
+- Additional discovery during validation:
+  - The repaired import now produces a valid conversation and exports a 14-node canvas, but direct DB inspection after export shows no persisted `utterances` or `speaker_segments` for conversation `59ea69eb-4888-4432-9229-9f8460f7a850`, and the advertised async diarization job id (`350877b0-be4c-4107-b93a-7e42bca00f25`) now returns 404 from `/api/import/diarization-jobs/...`. Impact: graph export is unblocked, but durable speaker-materialization parity for imported audio is still incomplete and needs a follow-up investigation in the import pipeline/job store.
+
+## 2026-03-20T22:08:40Z — Investigation plan for import STT unification after Anand replay failure
+
+Branch: `codex/fix-stt-cloud-test-observability`
+
+- Context: reran the Anand audio through both the live websocket path and `/api/import/process-file` to generate a canvas artifact. The live replay failed mid-session on the OpenAI realtime transport (`no close frame received or sent`), and the import pipeline failed on the legacy upload STT path after falling from local Parakeet to remote Whisper with `500 {"error":"'_asyncio.Task' object has no attribute 'cancelling'"}`.
+- Root-cause hypothesis confirmed from source inspection:
+  - `lct_python_backend/services/provider_selection.py` (full file): the upload provider resolver is legacy and only knows `parakeet`, `senko`, `ofc`, and `whisper`; it does not know about `openai_audio` or cloud capability routing.
+  - `lct_python_backend/services/file_transcriber.py` (full file): `transcribe_uploaded_file(...)` uses that legacy upload selector directly, so OpenAI is never even considered for `/api/import/process-file`.
+  - `lct_python_backend/services/import_bulk_pipeline.py` (full file): the segmented import path diverges further and bypasses provider selection entirely by sending segments straight to `stt_settings.http_url`.
+  - `lct_python_backend/services/stt_live_provider_selection.py` (full file): the newer live selector already has the correct cloud-aware provider model, including `openai_audio`, OpenAI diarized background refinement, and fallback priority semantics.
+- Working hypothesis for the fix:
+  - H1: import audio should share the same provider/capability model as live STT, but with an import-specific routing policy that prefers higher-quality diarized batch transcription over streaming-first latency.
+  - H2: the smallest principled slice is to unify sequential upload STT first, then bring segmented import onto the same candidate layer in the same pass so upload modes do not drift further.
+  - H3: remote Whisper's `_asyncio.Task.cancelling` failure is a separate upstream service bug, but it should become a fallback case rather than the default import path once OpenAI/cloud-aware upload routing exists.
+- Planned files for this slice:
+  - `lct_python_backend/services/provider_selection.py`
+  - `lct_python_backend/services/file_transcriber.py`
+  - `lct_python_backend/services/import_bulk_pipeline.py`
+  - `lct_python_backend/services/stt_live_provider_selection.py` (reuse/adapt candidate-building logic carefully because this file currently has an uncommitted blocker-fix diff in the worktree)
+  - `lct_python_backend/tests/unit/test_file_transcriber.py`
+  - `lct_python_backend/tests/unit/test_import_api_process_file.py`
+- Guardrails:
+  - do not revert or overwrite the existing uncommitted blocker-fix diff in `stt_live_provider_selection.py`, `stt_ws_session.py`, `speaker_materialization.py`, `import_persistence.py`, `sttUtils.js`, or the Alembic migration;
+  - preserve detailed error logging so upload failures remain loud and attributable by provider/transport.
+
 ## 2026-03-20T19:21:03Z — Legacy backend test cleanup after live/materialization PR split
 
 Branch: `codex/fix-stt-cloud-test-observability`
