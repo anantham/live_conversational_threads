@@ -114,16 +114,10 @@ def resolve_live_stt_candidates(
     if live_cloud_fallback_enabled:
         openai_provider = cloud_providers.get("openai_audio")
         if isinstance(openai_provider, dict):
-<<<<<<< HEAD
             openai_api_key = coerce_str(openai_provider.get("api_key"))
             openai_base_url = coerce_str(openai_provider.get("base_url"))
             openai_model = coerce_str(openai_provider.get("model"))
-=======
-            openai_api_key = _coerce_str(openai_provider.get("api_key"))
-            openai_base_url = _coerce_str(openai_provider.get("base_url"))
-            openai_model = _coerce_str(openai_provider.get("model"))
-            openai_diarize_model = _coerce_str(openai_provider.get("diarize_model"))
->>>>>>> 0a91a06 (feat(live): add cloud-tested streaming captions and incremental graph updates)
+            openai_diarize_model = coerce_str(openai_provider.get("diarize_model"))
             if (
                 to_bool(openai_provider.get("enabled"), False)
                 and openai_api_key
@@ -201,11 +195,11 @@ def build_live_stt_background_refinement_candidate(
 ) -> Optional[Dict[str, Any]]:
     """Return a non-blocking background diarization candidate for the live route."""
     candidate = primary_candidate if isinstance(primary_candidate, dict) else {}
-    primary_provider = _coerce_str(candidate.get("provider")).lower()
-    primary_transport = _coerce_str(candidate.get("transport")).lower()
+    primary_provider = coerce_str(candidate.get("provider")).lower()
+    primary_transport = coerce_str(candidate.get("transport")).lower()
     if primary_provider != "openai_audio" or primary_transport != "openai_audio":
         return None
-    if not _to_bool(settings.get("live_require_diarization"), True):
+    if not to_bool(settings.get("live_require_diarization"), True):
         return None
 
     cloud_providers = (
@@ -217,11 +211,11 @@ def build_live_stt_background_refinement_candidate(
     if not isinstance(openai_provider, dict):
         return None
 
-    api_key = _coerce_str(openai_provider.get("api_key"))
-    base_url = _coerce_str(openai_provider.get("base_url"))
-    diarize_model = _coerce_str(openai_provider.get("diarize_model"))
+    api_key = coerce_str(openai_provider.get("api_key"))
+    base_url = coerce_str(openai_provider.get("base_url"))
+    diarize_model = coerce_str(openai_provider.get("diarize_model"))
     if not (
-        _to_bool(openai_provider.get("enabled"), False)
+        to_bool(openai_provider.get("enabled"), False)
         and api_key
         and base_url
         and diarize_model

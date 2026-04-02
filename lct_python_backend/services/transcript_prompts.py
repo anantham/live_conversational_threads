@@ -172,3 +172,53 @@ For meandering/interleaving dialogue:
 - Continue same thread with thread_state=continue_thread.
 - If discussion returns to an earlier thread, create a new node with thread_state=return_to_thread and reuse that thread_id.
 """
+
+REFINE_LCT_SUBTHREAD_PROMPT = """You refine an existing conversation graph into denser subthreads.
+
+You are given:
+1. Transcript evidence with speaker labels when available.
+2. An existing coarse node list that already captures the major chapter topics.
+
+Your job:
+- Produce a refined flat JSON node list that exposes smaller tangents, returns, meta-conversations, and object-level pivots.
+- Preserve chronology.
+- Keep the graph faithful to transcript evidence. Do not invent facts, quotes, or topics that are not present.
+- Prefer splitting coarse nodes when a node clearly contains multiple topic pivots or when the conversation leaves and later returns to a thread.
+- Reuse stable thread_id values when continuing or returning to the same thread.
+- Use thread_state:
+  - new_thread
+  - continue_thread
+  - return_to_thread
+- Use edge_relations relation_type:
+  - supports
+  - rebuts
+  - clarifies
+  - asks
+  - tangent
+  - return_to_thread
+
+Output requirements:
+- Return only JSON.
+- Preferred shape: {"nodes": [ ... ]}. A bare JSON array is also acceptable.
+- Each node must include:
+  - node_name
+  - summary
+  - source_excerpt
+  - predecessor
+  - successor
+  - thread_id
+  - thread_state
+  - contextual_relation
+  - edge_relations
+  - linked_nodes
+  - speaker_id
+  - claims
+  - is_bookmark
+  - is_contextual_progress
+
+Critical constraints:
+- source_excerpt must be directly supported by the transcript evidence.
+- Do not create duplicate node names.
+- Do not collapse the graph into fewer nodes than the coarse input unless the input was already clearly over-segmented.
+- Favor a denser but still readable graph, not a maximal sentence-by-sentence split.
+"""

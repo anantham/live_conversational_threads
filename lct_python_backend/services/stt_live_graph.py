@@ -147,10 +147,48 @@ def _find_matching_chunk_id(
         return None
 
     chunk_items = list((chunk_dict or {}).items())
+
+    # Strategy 1: semantic overlap (existing logic)
     for chunk_id, chunk_text in reversed(chunk_items):
         if source_texts_overlap(chunk_text, normalized_source):
             return str(chunk_id)
+
+    # Strategy 2: substring containment (case-insensitive)
+    # Handles short diarization fragments like "um" or "Duh"
+    source_lower = normalized_source.lower()
+    for chunk_id, chunk_text in reversed(chunk_items):
+        if source_lower in clean_transcript_text(chunk_text).lower():
+            return str(chunk_id)
+
+    # Strategy 3: most recent chunk (diarization runs on recent audio)
+    if chunk_items:
+        return str(chunk_items[-1][0])
+
     return None
+
+
+def _find_nodes_for_source_text(
+    existing_json: List[Dict[str, Any]],
+    source_text: str,
+) -> List[int]:
+    """Find node indices whose source_excerpt or summary overlaps with source_text."""
+    normalized = _matchable_text(source_text)
+    if not normalized:
+        return []
+
+    matches = []
+    for idx, node in enumerate(existing_json or []):
+        if not isinstance(node, dict):
+            continue
+        for field in ("source_excerpt", "summary", "node_name"):
+            field_text = _matchable_text(node.get(field))
+            if field_text and (normalized in field_text or field_text in normalized):
+                matches.append(idx)
+                break
+            if field_text and source_texts_overlap(field_text, normalized):
+                matches.append(idx)
+                break
+    return matches
 
 
 def build_speaker_reconciliation_patch(
@@ -163,28 +201,47 @@ def build_speaker_reconciliation_patch(
     if not segments:
         return None
 
-    chunk_id = _find_matching_chunk_id(chunk_dict or {}, source_text=source_text)
-    if not chunk_id:
+    speaker_id = primary_speaker_from_segments(segments)
+    if not speaker_id:
         return None
 
-    speaker_id = primary_speaker_from_segments(segments)
-    existing_chunk_text = clean_transcript_text((chunk_dict or {}).get(chunk_id))
-    reconciled_chunk_text = str(
-        format_speaker_prefixed_transcript(existing_chunk_text or source_text, segments) or ""
-    ).strip()
+    chunk_id = _find_matching_chunk_id(chunk_dict or {}, source_text=source_text)
 
     updated_nodes: List[Dict[str, Any]] = []
-    for node in existing_json or []:
-        if str((node or {}).get("chunk_id") or "") != chunk_id:
-            continue
-        updated = dict(node)
-        if speaker_id:
-            updated["speaker_id"] = speaker_id
-        updated_nodes.append(updated)
-
     chunk_update: Dict[str, str] = {}
-    if reconciled_chunk_text and clean_transcript_text(reconciled_chunk_text) != existing_chunk_text:
-        chunk_update[chunk_id] = reconciled_chunk_text
+
+    if chunk_id:
+        # Primary path: update all nodes in the matched chunk
+        existing_chunk_text = clean_transcript_text((chunk_dict or {}).get(chunk_id))
+        reconciled_chunk_text = str(
+            format_speaker_prefixed_transcript(
+                existing_chunk_text or source_text, segments
+            ) or ""
+        ).strip()
+
+        for node in existing_json or []:
+            if str((node or {}).get("chunk_id") or "") != chunk_id:
+                continue
+            updated = dict(node)
+            updated["speaker_id"] = speaker_id
+            updated_nodes.append(updated)
+
+        if reconciled_chunk_text and clean_transcript_text(reconciled_chunk_text) != existing_chunk_text:
+            chunk_update[chunk_id] = reconciled_chunk_text
+    else:
+        # Fallback: match directly against node text fields
+        matched_indices = _find_nodes_for_source_text(existing_json or [], source_text)
+        if not matched_indices and existing_json:
+            # Last resort: update the most recent node
+            matched_indices = [len(existing_json) - 1]
+
+        for idx in matched_indices:
+            node = existing_json[idx]
+            if not isinstance(node, dict):
+                continue
+            updated = dict(node)
+            updated["speaker_id"] = speaker_id
+            updated_nodes.append(updated)
 
     if not updated_nodes and not chunk_update:
         return None
@@ -197,7 +254,7 @@ def build_speaker_reconciliation_patch(
         "chunk_count": len(chunk_dict or {}),
         "remove_node_ids": [],
         "remove_chunk_ids": [],
-        "chunk_id": chunk_id,
+        "chunk_id": chunk_id or "",
         "source_text": clean_transcript_text(source_text),
         "segments_count": len(segments or []),
         "speaker_id": speaker_id,
