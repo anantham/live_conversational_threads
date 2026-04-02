@@ -1,7 +1,7 @@
 """Add speaker_segments table and utterance speaker materialization fields
 
-Revision ID: add_speaker_segments_materialization
-Revises: add_pipeline_artifacts
+Revision ID: speaker_segments_materialized
+Revises: adr_018_edit_history
 Create Date: 2026-03-20
 """
 
@@ -11,8 +11,8 @@ from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
-revision = 'add_speaker_segments_materialization'
-down_revision = 'add_pipeline_artifacts'
+revision = 'speaker_segments_materialized'
+down_revision = 'adr_018_edit_history'
 branch_labels = None
 depends_on = None
 

@@ -23,30 +23,48 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    edits_log_columns = {
+        column["name"] for column in inspector.get_columns("edits_log")
+    }
+
     # Add actor_type with default and backfill
-    op.add_column(
-        'edits_log',
-        sa.Column('actor_type', sa.Text(), server_default='human', nullable=False),
-    )
+    if 'actor_type' not in edits_log_columns:
+        op.add_column(
+            'edits_log',
+            sa.Column('actor_type', sa.Text(), server_default='human', nullable=False),
+        )
     # Add annotations column for post-hoc review notes
-    op.add_column(
-        'edits_log',
-        sa.Column('annotations', sa.Text(), nullable=True),
-    )
+    if 'annotations' not in edits_log_columns:
+        op.add_column(
+            'edits_log',
+            sa.Column('annotations', sa.Text(), nullable=True),
+        )
     # Drop EditFeedback table (replaced by annotations column)
-    op.drop_table('edit_feedback')
+    if 'edit_feedback' in inspector.get_table_names():
+        op.drop_table('edit_feedback')
 
 
 def downgrade() -> None:
-    op.drop_column('edits_log', 'annotations')
-    op.drop_column('edits_log', 'actor_type')
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    edits_log_columns = {
+        column["name"] for column in inspector.get_columns("edits_log")
+    }
+
+    if 'annotations' in edits_log_columns:
+        op.drop_column('edits_log', 'annotations')
+    if 'actor_type' in edits_log_columns:
+        op.drop_column('edits_log', 'actor_type')
     # Recreate edit_feedback table
-    op.create_table(
-        'edit_feedback',
-        sa.Column('id', sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column('edit_id', sa.dialects.postgresql.UUID(as_uuid=True),
-                  sa.ForeignKey('edits_log.id'), nullable=False),
-        sa.Column('text', sa.Text(), nullable=False),
-        sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.func.now()),
-    )
-    op.create_index('idx_edit_feedback_edit', 'edit_feedback', ['edit_id'])
+    if 'edit_feedback' not in inspector.get_table_names():
+        op.create_table(
+            'edit_feedback',
+            sa.Column('id', sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
+            sa.Column('edit_id', sa.dialects.postgresql.UUID(as_uuid=True),
+                      sa.ForeignKey('edits_log.id'), nullable=False),
+            sa.Column('text', sa.Text(), nullable=False),
+            sa.Column('timestamp', sa.DateTime(timezone=True), server_default=sa.func.now()),
+        )
+        op.create_index('idx_edit_feedback_edit', 'edit_feedback', ['edit_id'])
