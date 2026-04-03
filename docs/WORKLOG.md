@@ -1,5 +1,296 @@
 # WORKLOG
 
+## 2026-04-03T08:16:42Z — IndexedDB-backed latest-draft recovery for `/new`
+
+Branch: current worktree
+
+- Context: the app already supported export and backend save paths, but it still had no browser-local
+  recovery for interrupted work. That meant anonymous sessions or temporary backend failures could
+  still lose meaningful graph/transcript progress before auth-backed saved conversations exist.
+- Explicit hypotheses before patch:
+  - `H1`: a frontend-only latest-draft IndexedDB layer is enough to eliminate the main “tab closed /
+    refresh / backend unreachable” loss mode without waiting on backend auth.
+  - `H2`: `/new` already owns the core recoverable state (`graphData`, draft graph patches, chunk
+    dictionaries, file name, message), so local recovery can be centered there without changing the
+    backend contract.
+  - `H3`: the first slice should restore only semantic/UI state, not transport state; resuming a
+    saved draft must not try to resume microphone capture, websocket sessions, or upload streams.
+- Files modified:
+  - `lct_app/src/services/localDraftStore.js` (lines 1-164): added a small IndexedDB service for a
+    single latest local draft, including draft sanitization, “meaningful draft” checks, load/save /
+    delete helpers, and summary metadata (`nodeCount`, `chunkCount`, `updatedAt`).
+  - `lct_app/src/hooks/useLocalConversationDraft.js` (lines 1-134): added a reusable React hook that
+    loads the latest draft, debounces IndexedDB writes, flushes on `beforeunload` /
+    `visibilitychange`, and exposes `restore` / `discard` actions.
+  - `lct_app/src/pages/NewConversation.jsx` (lines 21-44, 148-226, 244-310): wired local draft
+    snapshots into the new hook, added a `Resume / Discard` prompt when `/new` opens with an
+    interrupted draft, and restored graph/chunk/name/message state into the existing page state.
+  - `lct_app/src/pages/Home.jsx` (lines 1-30, 47-60): added a lightweight `Resume available`
+    affordance on the `New` action when a latest local draft exists in IndexedDB.
+  - `docs/adr/ADR-021-browser-local-draft-recovery.md` (new file): documented the browser-local
+    latest-draft decision and why it intentionally excludes raw audio and auth/token persistence.
+  - `docs/adr/INDEX.md` (lines 1-27): added ADR-021 to the ADR index.
+- Why:
+  - browser-local draft recovery is the smallest reliable safety net for anonymous sessions and
+    backend outages;
+  - IndexedDB is the right store for structured graph/chunk payloads and avoids pretending that
+    server-local fallback is equivalent to browser-local recovery;
+  - keeping the slice frontend-only avoids entangling it with the still-pending auth project.
+- Validation:
+  - `cd lct_app && ./node_modules/.bin/eslint src/services/localDraftStore.js src/hooks/useLocalConversationDraft.js src/pages/NewConversation.jsx src/pages/Home.jsx` (`passed`)
+  - `cd lct_app && npm run -s build` (`passed`; existing chunk-size warning remains)
+- Preexisting issue discovered while tracing persistence boundaries:
+  - the frontend still contains two separate server autosave paths (`useAutoSave.js` and
+    `components/audio/useAudioInputEffects.js`). This slice intentionally did **not** refactor that
+    behavior; it was logged in `ISSUES.md` as out-of-scope tech debt instead of silently widening
+    the feature patch.
+
+## 2026-04-03T15:01:48Z — Speaker alias editing added to node detail drawer
+
+Branch: current worktree
+
+- Context: the right-side node detail drawer showed raw `speaker_id` values such as `SPEAKER_A` as read-only text, while the existing manual speaker-naming flow was only available in the legend. The user explicitly wanted the drawer path to be editable in place.
+- Explicit hypotheses before patch:
+  - `H1`: the drawer was read-only because `NodeDetail` only rendered `safeNode.speaker_id` and did not load or write alias data through the existing speaker-naming API.
+  - `H2`: reusing the current `/api/conversations/{id}/speakers` endpoints would be sufficient; no backend schema or route change was needed.
+- Files modified:
+  - `lct_app/src/components/NodeDetail.jsx` (lines 1-250): added speaker-alias fetch/save state, wired the drawer to `fetchConversationSpeakers(...)` and `updateConversationSpeakerName(...)`, displayed the editable speaker name while still surfacing the immutable `speaker_id`, and reused artifact reroute behavior after rename so drawer-based edits match legend-based edits.
+  - `lct_app/src/components/MinimalLegend.jsx` (lines 37-82, 255-259): added `refreshKey` support so the legend reloads speaker aliases when the drawer saves a rename while the legend is open.
+  - `lct_app/src/pages/ViewConversation.jsx` (lines 103-109, 255-277): added a `speakerRefreshKey` state and passed `conversationId` plus an `onSpeakerRenamed` callback into `NodeDetail`.
+  - `lct_app/src/pages/NewConversation.jsx` (lines 21-31, 226-230, 385-393): added the same `speakerRefreshKey` plumbing for the live/new conversation view so drawer-based renames refresh the legend there too.
+- Why:
+  - keep speaker renaming available in the exact context where the user is inspecting a node instead of forcing a separate legend workflow;
+  - preserve one backend-owned rename path and one artifact-reroute side effect, rather than inventing a second persistence contract.
+- Validation:
+  - `cd lct_app && npx eslint src/components/NodeDetail.jsx src/components/MinimalLegend.jsx src/pages/ViewConversation.jsx src/pages/NewConversation.jsx` (`passed`)
+  - `cd lct_app && npm run -s build` (`passed`; existing bundle-size warning remains)
+- Manual verification not run:
+  - browser click-through/save confirmation was not run in this work session, so the remaining check is to click a node with `SPEAKER_*`, rename it in the drawer, and confirm the legend and drawer both reflect the alias immediately.
+
+## 2026-04-03T07:41:10Z — Public deploy hardening + VPS backend bootstrap
+
+Branch: current worktree
+
+- Context: after the BYOK/runtime work landed, the next approved step was deployment preparation for a public trial shape: VPS-hosted backend, Vercel-hosted frontend, anonymous live/upload flows, and authenticated admin/settings routes. The previous code still assumed localhost-only CORS and a shared browser-visible bearer token model that was not suitable for a public frontend.
+- Explicit hypotheses before patch:
+  - `H1`: adding an admin-only auth mode would preserve anonymous `/ws/transcripts`, `/api/import/process-file`, and BYOK session minting for public trials while still protecting settings/analytics/bookmark/config routes.
+  - `H2`: production CORS needed to be environment-driven (`FRONTEND_URL`, `CORS_ALLOW_ORIGINS`, `CORS_ALLOW_ORIGIN_REGEX`) rather than hardcoded localhost origins, otherwise a Vercel deployment would fail preflight even if the backend was healthy.
+  - `H3`: the backend deployment path would fail on a clean VPS unless `lct_python_backend/requirements.txt` included all runtime imports actually used by `backend.py` / audio import paths.
+- Files modified:
+  - `lct_python_backend/middleware.py` (lines 1-10, 30-52, 126-194, 441-455): introduced `ADMIN_AUTH_TOKEN`, route classification for admin-only HTTP protection, admin-token validation helpers, and startup logging that distinguishes global auth vs admin-only auth mode while leaving websocket auth tied only to `AUTH_TOKEN`.
+  - `lct_python_backend/backend.py` (lines 77-154): replaced localhost-only CORS with env-driven origin resolution via `_parse_csv_env(...)` and `_resolve_cors_origins()`, wired `allow_origin_regex`, and logged the resolved production CORS policy at startup.
+  - `lct_python_backend/.env.example` (lines 9-29): documented `ADMIN_AUTH_TOKEN`, `FRONTEND_URL`, `CORS_ALLOW_ORIGINS`, and `CORS_ALLOW_ORIGIN_REGEX` so the public deploy contract is explicit in repo config.
+  - `lct_python_backend/requirements.txt` (lines 1-34): added `python-dotenv` and `pydub` to the backend install set so a clean VPS install matches the actual import graph used by `backend.py` and upload/import routes.
+  - `lct_python_backend/tests/unit/test_middleware.py` (lines 20-31, 141-157): added admin-auth env defaults plus focused coverage that public upload remains anonymous while admin settings routes require a valid `ADMIN_AUTH_TOKEN`.
+- Why:
+  - the public frontend cannot safely rely on `VITE_AUTH_TOKEN` as real protection;
+  - admin-only auth is the smallest change that keeps the public trial path working without exposing settings mutation to anonymous users;
+  - the CORS/env changes are required for any Vercel frontend to talk to the VPS backend.
+- Validation:
+  - `python3 -m py_compile lct_python_backend/middleware.py lct_python_backend/backend.py lct_python_backend/tests/unit/test_middleware.py` (`passed`)
+  - `python3 -m pytest -q lct_python_backend/tests/unit/test_middleware.py` (`21 passed`)
+- Deployment actions (remote VPS only; no repo file changes on the server beyond copied working tree/config):
+  - Synced the repo to `ubuntu@15.223.245.244:~/apps/live_conversational_threads`.
+  - Installed `python3-venv`, `postgresql`, `ffmpeg`, `caddy`, and related build deps.
+  - Created local Postgres DB/user (`lct_dev` / `lct_user`), created a venv, installed `lct_python_backend/requirements.txt`, ran `alembic upgrade head`, created `lct-backend.service`, and configured Caddy for `15-223-245-244.sslip.io`.
+  - Verified on-box runtime state: `postgresql`, `caddy`, and `lct-backend` are all `active`; `http://127.0.0.1:8000/api/import/health` returns `200 OK`.
+- Deployment blocker discovered:
+  - Public HTTP/HTTPS access to `15-223-245-244.sslip.io` still times out from outside the host.
+  - Caddy logs show Let’s Encrypt `http-01` and `tls-alpn-01` challenge failures caused by connection timeouts to `15.223.245.244` on ports `80/443`, which indicates a cloud-network perimeter issue (likely AWS security group / provider firewall) rather than an application error.
+  - Vercel deployment is intentionally not started yet because the backend is not publicly reachable.
+
+## 2026-04-03T07:37:31Z — Node selection now centers within visible graph space
+
+Branch: current worktree
+
+- Context: clicking a node centered it in the full ReactFlow canvas, which left the selected node visually off-center once fixed overlays were present. The main reproductions were the right-side `NodeDetail` drawer in saved and live views, plus the bottom transcript overlay during upload/live processing.
+- Explicit hypotheses before patch:
+  - `H1`: page layout was leaving the graph viewport full-size even when fixed overlays covered part of it, so `setCenter(...)` targeted the wrong visible area.
+  - `H2`: selection recentering needed to wait one frame so the viewport reservation layout was committed before ReactFlow computed the new center target.
+- Files modified:
+  - `lct_app/src/pages/ViewConversation.jsx` (lines 176-180, 240-258): added a viewport reservation key and wrapped `MinimalGraph`/`MinimalLegend` in an overlay-aware container that reserves `sm:right-80` when the node detail drawer is open, so node centering and legend placement use the visible desktop graph area instead of the obscured full width.
+  - `lct_app/src/pages/NewConversation.jsx` (lines 60-75, 211-229, 233-237): added graph viewport reservation state for both the right-side detail drawer and the upload/live transcript overlay, shrinking the active graph viewport by `sm:right-80` and by `bottom: 40%` (or `4.5rem` when transcript is minimized) so selection uses the remaining visible space during live/upload sessions.
+  - `lct_app/src/components/MinimalGraph.jsx` (lines 858-949, 1020-1025): switched viewport centering to use the actual node center (measured width/height plus position), added a one-frame deferred recenter for selected nodes keyed to viewport-reservation changes, and reused the same helper for auto-follow/follow actions so pan targets match the visible viewport more consistently.
+- Why:
+  - layout reservation fixes the root cause for both horizontal and vertical overlay cases without hardcoding custom world-to-screen math for every overlay;
+  - centering on the node midpoint avoids bias toward the node’s top-left corner once the viewport is correctly sized.
+- Validation:
+  - `cd lct_app && npx eslint src/components/MinimalGraph.jsx src/pages/ViewConversation.jsx src/pages/NewConversation.jsx` (`passed with 1 pre-existing warning in MinimalGraph.jsx about clusterViews/useMemo dependency churn`)
+  - `cd lct_app && npm run -s build` (`passed`; existing bundle-size warning remains)
+- Remaining note:
+  - `lct_app/src/components/MinimalGraph.jsx` is now clearly a monolith carrying clustering, viewport control, and overlay/panel concerns together; logged in `docs/TECH_DEBT.md` instead of widening this bug-fix scope into a larger refactor.
+
+## 2026-04-03T07:21:22Z — Dev proxy env/launcher fix for stale `localhost:8000` requests
+
+Branch: current worktree
+
+- Context: the frontend still emitted `http://localhost:8000/api/settings/stt` even after the shared API client switched to proxy-relative paths, because local Vite env still injected `VITE_BACKEND_API_URL=http://localhost:8000`, and an older repo-owned Vite listener on `:5173` let the browser keep talking to a stale bundle.
+- Explicit hypotheses before patch:
+  - `H1`: `lct_app/.env` was forcing `import.meta.env.VITE_BACKEND_API_URL` to `http://localhost:8000`, so `apiClient` kept constructing absolute cross-origin URLs instead of proxy-relative paths.
+  - `H2`: `start.sh` could leave a stale repo-owned Vite process on `:5173`, so even correct code changes were masked by an old dev server.
+- Files modified:
+  - `lct_app/.env` (lines 1-5): removed the local `VITE_BACKEND_API_URL` / `VITE_API_URL` defaults and replaced them with guidance that local dev should leave the backend URL unset so Vite proxy + relative API paths are used.
+  - `start.sh` (lines 8-128): added fixed frontend-port handling, graceful repo-owned port cleanup for all listeners on `:5173`, startup health checks, strict Vite port binding, and `unset VITE_BACKEND_API_URL VITE_API_URL` before launching the dev server so stale env overrides cannot reintroduce direct `localhost:8000` requests.
+- Why:
+  - fix the root cause instead of adding another code-side override;
+  - ensure local dev attaches the browser to a fresh proxy-backed frontend instead of silently serving an older bundle on the same port.
+- Validation:
+  - `bash -n start.sh` (`passed`)
+  - `./start.sh` (`passed`; reclaimed repo-owned frontend on `:5173`, started backend on `:8001`, started frontend on `:5173`)
+  - `curl -fsS http://localhost:5173/api/settings/stt | head -c 400` (`passed`; request proxied through Vite to backend and returned STT JSON)
+  - `curl -fsS http://localhost:5173/src/services/apiClient.js | rg -n "localhost:8000|API_BASE_URL|VITE_BACKEND_API_URL|wsUrl"` (`passed`; no `localhost:8000` string in the served module)
+- Remaining note:
+  - `start.command` intentionally still exports `VITE_BACKEND_API_URL` for its own startup path; this fix is intentionally scoped to `start.sh` + local Vite `.env`.
+
+## 2026-04-03T07:11:41Z — Single-key OpenAI BYOK implemented for STT + graph generation
+
+Branch: current worktree
+
+- Context: completed the approved phase-2 BYOK slice so one OpenAI key can cover both the existing
+  STT BYOK path and transcript-to-graph generation for live websocket sessions and `/api/import/process-file`.
+- Files modified:
+  - `lct_python_backend/services/byok_session_store.py` (lines 37, 206, 301-343): extended the BYOK session record with `llm_model`, added `llm_live` / `llm_import` scopes, and introduced runtime-only LLM config/provider overlay helpers that force BYOK graph generation onto an ephemeral OpenAI provider instead of the Gemini-first online path.
+  - `lct_python_backend/stt_api.py` (lines 25, 70-72, 379-385): started loading server-side LLM providers with secrets for websocket setup and threaded the provider list into `WsSessionContext`.
+  - `lct_python_backend/services/stt_ws_session.py` (lines 87-99, 153-158, 1444-1515): added runtime LLM provider state to the websocket session, rebuilt `TranscriptProcessor` after `session_meta`, and attached `byok_llm_enabled` metadata when a BYOK token includes live LLM scope.
+  - `lct_python_backend/services/import_bulk_pipeline.py` (lines 133-157, 578-602, 1048-1049): standardized import-time runtime LLM overlay behavior, derived an accurate `llm_backend` label from the active provider, and passed the runtime config/provider list through both first-pass processing and refinement.
+  - `lct_python_backend/import_api.py` (lines 55, 196-198, 499-523): changed import-provider loading to `include_secrets=True` so server-side imports no longer operate on sanitized client payloads, while preserving the opaque `byok_session_token` contract.
+  - `lct_python_backend/services/local_llm_client.py` (lines 210-223): fixed provider backend labeling so `openai` and `openrouter` no longer collapse into misleading `local_*` labels.
+  - Frontend:
+    - `lct_app/src/services/byokApi.js` (lines 6-12): expanded BYOK scope minting to request `llm_live` and `llm_import` alongside STT scopes.
+    - `lct_app/src/components/ByokSessionControl.jsx` (lines 28-38, 47): updated UI copy from “STT-only” to “OpenAI BYOK for live/upload audio and graph generation”.
+  - Tests:
+    - `lct_python_backend/tests/integration/transcripts_test_support.py` (lines 28-35, 98): made the shared websocket processor fixture provider-aware and patched `_load_llm_providers`.
+    - `lct_python_backend/tests/unit/test_byok_session_store.py` (lines 15-76): added LLM overlay assertions.
+    - `lct_python_backend/tests/unit/test_local_llm_client.py` (lines 1-48): added backend-label coverage for OpenAI and remote-compatible providers.
+    - `lct_python_backend/tests/unit/test_import_api_process_file.py` (lines 10-62, 316-409): added BYOK LLM scope coverage, captured runtime provider injection, asserted `llm_backend`, and added local import-time stubs for optional dependencies needed only to import the module graph in lean test environments.
+    - `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 1-32, 319-431): added the same import-time optional dependency stub pattern for `google.genai` and asserted the live runtime processor receives the ephemeral BYOK OpenAI provider.
+- Why:
+  - the user explicitly preferred one BYOK key rather than mixed OpenAI STT + Gemini graph billing;
+  - runtime-only provider overlays preserve the existing backend-owned audio/websocket orchestration while keeping raw keys out of persistent config;
+  - loading real provider secrets server-side fixed a separate import-path correctness bug that would otherwise make live/import diverge.
+- Validation:
+  - `python3 -m py_compile lct_python_backend/services/byok_session_store.py lct_python_backend/stt_api.py lct_python_backend/services/stt_ws_session.py lct_python_backend/services/import_bulk_pipeline.py lct_python_backend/import_api.py lct_python_backend/services/local_llm_client.py lct_python_backend/tests/integration/transcripts_test_support.py lct_python_backend/tests/unit/test_byok_session_store.py lct_python_backend/tests/unit/test_import_api_process_file.py lct_python_backend/tests/integration/test_transcripts_websocket.py lct_python_backend/tests/unit/test_local_llm_client.py` (`passed`)
+  - `python3 -m pytest -q lct_python_backend/tests/unit/test_byok_session_store.py lct_python_backend/tests/unit/test_local_llm_client.py lct_python_backend/tests/unit/test_import_api_process_file.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`36 passed`)
+  - `cd lct_app && ./node_modules/.bin/eslint src/services/byokApi.js src/components/ByokSessionControl.jsx` (`passed`)
+- Remaining constraint:
+  - embeddings and other secondary analysis paths still use hosted/server-side credentials; BYOK currently covers STT plus transcript-to-graph generation only.
+
+## 2026-04-03T07:11:41Z — Discovered validation/testability issue: eager optional imports in backend module graph
+
+Branch: current worktree
+
+- Summary: focused import/websocket tests initially failed during module import because `transcript_processing` eagerly imports `google.genai`, and `import_api` pulls in `pydub` / `pdfplumber` transitively even when the tests later stub the actual runtime behavior.
+- Impact: logic regressions in the touched BYOK slice were temporarily masked by workstation-package availability rather than application behavior.
+- Blocker status: non-blocking for this slice after adding explicit local stubs in the touched test modules.
+- Recommended next step: centralize these stubs in shared test helpers or lazy-import optional integrations in production modules so focused tests do not depend on full media/Gemini extras being installed.
+
+## 2026-04-03T03:13:21Z — BYOK session-token MVP preflight (Option B approved)
+
+Branch: current worktree
+
+- Context: user approved option `B` for public-wallet protection: keep OpenAI keys out of Postgres and global settings, add a short-lived BYOK session token flow for live STT and `/api/import/process-file`, and leave LLM BYOK out of phase 1.
+- Explicit hypotheses before patch:
+  - `H1`: live websocket STT can support BYOK safely by resolving per-session cloud candidate secrets during `session_meta` handling instead of reading only persisted global provider config.
+  - `H2`: import audio can share the same BYOK token by threading an opaque token through `/api/import/process-file` and overriding only STT candidate resolution, leaving graph persistence / artifact export / LLM paths unchanged for this slice.
+  - `H3`: the lowest-risk frontend implementation is a shared in-memory BYOK session context used by upload and live recording, not the existing persisted settings panels and not browser storage.
+- Planned file set for this slice:
+  - `lct_python_backend/stt_api.py`
+  - `lct_python_backend/import_api.py`
+  - `lct_python_backend/services/stt_ws_session.py`
+  - `lct_python_backend/services/stt_live_provider_selection.py`
+  - `lct_python_backend/services/provider_selection.py`
+  - `lct_python_backend/services/import_bulk_pipeline.py`
+  - new backend BYOK session service module(s)
+  - `lct_app/src/components/audio/useTranscriptSockets.js`
+  - `lct_app/src/components/upload/useFileUploadStream.js`
+  - `lct_app/src/components/AudioInput.jsx`
+  - `lct_app/src/components/FileUpload.jsx`
+  - `lct_app/src/pages/NewConversation.jsx`
+  - `lct_app/src/App.jsx`
+  - new frontend BYOK session/context module(s)
+- Guardrails:
+  - do not reuse global STT/LLM settings persistence for BYOK;
+  - do not store raw BYOK secrets in DB, logs, or browser persistence;
+  - preserve existing dirty worktree changes outside this approved slice.
+
+## 2026-04-03T03:40:24Z — BYOK session-token MVP implemented for live STT + import
+
+Branch: current worktree
+
+- Context: completed option `B` after user approval. Goal was to keep user-supplied OpenAI STT keys out of Postgres/global settings while preserving the backend-owned audio pipeline for `/ws/transcripts` and `/api/import/process-file`.
+- Files modified:
+  - `lct_python_backend/services/byok_session_store.py` (new file, full file): added in-memory BYOK session creation, cheap OpenAI key validation, scope-aware lookup, TTL pruning, and runtime STT settings overlay that injects ephemeral OpenAI provider credentials without persisting them.
+  - `lct_python_backend/stt_api.py` (lines 137-157): added `POST /api/byok/session` to mint opaque session tokens from a browser-supplied key over HTTPS; returns `400` for invalid payload/key rejection and `502` for upstream validation failures.
+  - `lct_python_backend/services/stt_live_provider_selection.py` (cloud override branch in live candidate resolution): allowed `openai_audio` / `openrouter_audio` to become the primary live candidate when a BYOK-backed runtime overlay is present instead of always forcing the persisted backend provider first.
+  - `lct_python_backend/services/stt_ws_session.py` (lines 107-114, 720-950, 1405-1598, 1828-1836): threaded BYOK session resolution into `session_meta`, built runtime-only STT settings from the opaque token, exposed the BYOK provider in session metadata, preserved refinement window timestamps/source utterance IDs through the buffered refinement path, and stopped canceling committed refinement tasks on disconnect so final-flush speaker evidence is not discarded.
+  - `lct_python_backend/import_api.py` (lines 490-508) and `lct_python_backend/services/import_bulk_processor.py` (lines 49-101): accepted `byok_session_token` on `/api/import/process-file` and passed it through the SSE worker facade.
+  - `lct_python_backend/services/import_bulk_pipeline.py` (lines 512-571 and 751-759 plus BYOK worker overlay branch): resolved the BYOK token inside the import worker, overlaid runtime STT settings/provider selection for both sequential and segmented audio paths, and preserved the existing LLM/provider persistence behavior for phase 1.
+  - `lct_python_backend/services/audio_storage.py` (lines 13-37): moved the `asyncio.Lock()` allocation to first async use so importing `stt_api` no longer requires an active event loop in tests/CLI contexts.
+  - `lct_app/src/services/byokApi.js` (new file, full file): added frontend API helper for `/api/byok/session`.
+  - `lct_app/src/contexts/ByokContext.jsx` (lines 13-119) and `lct_app/src/contexts/byokContext.js` (new file, full file): added a shared in-memory BYOK provider/hook that keeps the raw key in React state only, refreshes short-lived tokens before expiry, and never writes to browser storage.
+  - `lct_app/src/components/audio/useTranscriptSockets.js` (lines 37-220): mints/reuses the opaque BYOK token before sending `session_meta`, switches live STT to `openai_audio` when a BYOK session exists, and blocks audio sends until `session_meta` is actually sent.
+  - `lct_app/src/components/upload/useFileUploadStream.js` (lines 62-134): mints/reuses the BYOK token for `/api/import/process-file`, appends the opaque token instead of the raw key, and now sends the normal API auth headers on the upload request.
+  - `lct_app/src/components/ByokSessionControl.jsx` (new file, full file), `lct_app/src/pages/NewConversation.jsx` (import + footer placement around line 351), and `lct_app/src/App.jsx` (lines 3-15): added the session-only BYOK control to the new-conversation footer and wrapped the app in the BYOK provider.
+  - Tests:
+    - `lct_python_backend/tests/unit/test_byok_session_store.py` (new file, full file): covers opaque-token minting, secret non-disclosure, and runtime STT overlay behavior.
+    - `lct_python_backend/tests/unit/test_stt_live_provider_selection.py` (line 205): covers `openai_audio` override as the primary live candidate.
+    - `lct_python_backend/tests/unit/test_import_api_process_file.py` (line 263): covers BYOK import processing with runtime-only OpenAI provider config.
+    - `lct_python_backend/tests/integration/test_transcripts_websocket.py` (line 290 and live-refinement fixture updates): covers BYOK live `session_meta` candidate selection and the realtime background-refinement materialization path with a real WAV payload.
+    - `lct_python_backend/tests/unit/test_audio_storage.py` (line 9): regression for constructing `AudioStorageManager` without an active event loop.
+- Why:
+  - session-only BYOK lets users pay for long audio themselves without teaching the existing global settings system to store per-user secrets;
+  - opaque tokens keep raw STT keys out of websocket payloads, import jobs, logs, and Postgres;
+  - the websocket/live refinement fixes were required to make the validated live path actually preserve speaker evidence through `final_flush`.
+- Validation:
+  - `./.venv/bin/python -m py_compile lct_python_backend/services/audio_storage.py lct_python_backend/services/byok_session_store.py lct_python_backend/stt_api.py lct_python_backend/services/stt_live_provider_selection.py lct_python_backend/services/stt_ws_session.py lct_python_backend/import_api.py lct_python_backend/services/import_bulk_processor.py lct_python_backend/services/import_bulk_pipeline.py lct_python_backend/tests/unit/test_audio_storage.py lct_python_backend/tests/unit/test_byok_session_store.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/unit/test_import_api_process_file.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`passed`)
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_audio_storage.py lct_python_backend/tests/unit/test_byok_session_store.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/unit/test_import_api_process_file.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`40 passed`, existing LibreSSL warning only)
+  - `cd lct_app && npx eslint src/App.jsx src/contexts/ByokContext.jsx src/contexts/byokContext.js src/components/ByokSessionControl.jsx src/components/audio/useTranscriptSockets.js src/components/upload/useFileUploadStream.js src/services/byokApi.js src/pages/NewConversation.jsx` (`passed`)
+- Remaining constraint:
+  - this slice only covers STT BYOK for live audio and import audio. Graph generation still uses the server-side LLM configuration, so full LLM BYOK remains a separate phase.
+
+## 2026-04-03T03:57:10Z — LLM BYOK investigation follow-up
+
+Branch: current worktree
+
+- Context: after shipping STT BYOK, the remaining user-visible wallet gap is the graph/LLM path. Investigated the current LLM routing seams before choosing an implementation slice.
+- Confirmed findings:
+  - `transcript_llm_callers.py` has two distinct LLM paths: `mode=online` is Gemini-env-key-first, while the provider-fallback path uses OpenAI-compatible provider records with per-provider `Authorization` headers.
+  - Import graph generation already loads `llm_providers` (`import_bulk_pipeline.py`) and passes them into `TranscriptProcessor`.
+  - Live graph generation does **not** load `llm_providers`; `stt_api.py` only loads `llm_config`, and `WsSessionContext` constructs `TranscriptProcessor` without a provider list. Result: live falls back to `get_default_providers()` rather than the saved provider order/credentials.
+  - `embedding_service.py` still uses `OPENAI_API_KEY` from env in online mode, but that is a separate spend path from the main live/import transcript-to-graph flow and should be treated as a distinct scope decision.
+- Impact:
+  - any LLM BYOK implementation must first standardize live and import runtime provider plumbing, otherwise the feature will behave inconsistently across recording vs upload.
+
+## 2026-04-03T04:01:20Z — LLM BYOK preflight (single-key OpenAI path)
+
+Branch: current worktree
+
+- Context: user approved the next slice and explicitly prefers a single OpenAI key for BYOK so both audio and graph generation share one wallet/mental model.
+- Explicit hypotheses before patch:
+  - `H1`: the cleanest implementation is to extend the existing BYOK session token with LLM scopes and inject an ephemeral OpenAI provider record into the runtime provider list rather than creating a separate OpenAI-only graph path.
+  - `H2`: fixing live/import inconsistency is part of the same slice, because live currently ignores provider lists while import loads them through a client-sanitized path.
+  - `H3`: embeddings should stay out of scope for phase 2; transcript-to-graph is the primary remaining spend path and widening into embeddings would unnecessarily enlarge the blast radius.
+- Planned file set for this slice:
+  - `lct_python_backend/services/byok_session_store.py`
+  - `lct_python_backend/stt_api.py`
+  - `lct_python_backend/services/stt_ws_session.py`
+  - `lct_python_backend/services/import_bulk_pipeline.py`
+  - `lct_python_backend/services/transcript_llm_callers.py`
+  - `lct_python_backend/services/local_llm_client.py`
+  - `lct_python_backend/import_api.py`
+  - `lct_python_backend/tests/integration/transcripts_test_support.py`
+  - `lct_python_backend/tests/integration/test_transcripts_websocket.py`
+  - `lct_python_backend/tests/unit/test_import_api_process_file.py`
+  - new/updated LLM BYOK unit tests
+  - `lct_app/src/services/byokApi.js`
+  - `lct_app/src/contexts/ByokContext.jsx`
+  - `lct_app/src/components/ByokSessionControl.jsx`
+- Guardrails:
+  - keep raw BYOK keys in browser memory + server memory only;
+  - do not mutate or persist global LLM settings for BYOK sessions;
+  - do not widen into embeddings in this slice;
+  - fail loudly if a BYOK token lacks required LLM scope instead of silently falling back to hosted online mode.
+
 ## 2026-03-21T23:41:37Z — Manifest-backed artifact reroute after manual speaker naming
 
 Branch: `codex/fix-stt-cloud-test-observability`
@@ -1697,3 +1988,22 @@ Validation:
 
 Manual testing not run:
 - No browser click-through after the route split and disclosure refactor in this work session.
+
+## 2026-04-03T18:55:00Z
+- `lct_python_backend/services/file_transcriber.py` (lines 185-248, 338-359): added bounded same-provider retry for cloud upload chunks before terminal failure/fallback, and changed resume callbacks to advance chunk progress without replaying cached transcript text back through the pipeline.
+- `lct_python_backend/services/import_bulk_pipeline.py` (lines 166-181, 327-389, 449-520, 1361-1391): added checkpoint/retry helpers, surfaced resume metadata in worker telemetry, emitted richer SSE error payloads (`retryable`, `failure_stage`, `resume_available`, `checkpoint_chunks`, `checkpoint_total_chunks`, `conversation_id`), and kept checkpoint progress up to date as chunks complete.
+- `lct_app/src/components/upload/useFileUploadStream.js` (lines 27-69, 104-198, 200-572): introduced a bounded upload retry state machine with backoff, preserved one `conversation_id` across retries, kept upload state alive across transient failures, consumed the new SSE retry/resume contract, and deduped replayed checkpoint transcript lines so resumed attempts do not duplicate prior transcript output in the UI.
+- `lct_app/src/services/apiClient.js` (lines 81-97): downgraded expected `AbortError` request cancellations to informational trace output so the home status poller stops looking like a hard API failure in dev logs.
+- `lct_python_backend/tests/unit/test_import_api_process_file.py` (lines 560-630): extended import SSE coverage to assert the new retry/resume error payload fields and checkpoint replay behavior.
+- `lct_python_backend/tests/unit/test_file_transcriber_cloud_retry.py` (lines 1-129): added focused regression coverage for cloud same-provider chunk retry and resume-without-duplicate-progress-replay.
+- `docs/adr/ADR-022-checkpoint-aware-upload-retry-and-resume.md` (lines 1-77) and `docs/adr/INDEX.md` (lines 1-28): documented the architectural decision to keep retry/resume on the existing SSE flow with explicit checkpoint-aware semantics instead of guessing or redesigning imports as background jobs.
+- `docs/TECH_DEBT.md` (lines 36-45): refreshed LOC and decomposition notes for the large touched files (`import_bulk_pipeline.py`, `useFileUploadStream.js`, `test_import_api_process_file.py`, `file_transcriber.py`) now that retry/resume concerns have landed.
+
+Validation:
+- `./.venv/bin/python -m py_compile lct_python_backend/services/file_transcriber.py lct_python_backend/services/import_bulk_pipeline.py lct_python_backend/tests/unit/test_import_api_process_file.py lct_python_backend/tests/unit/test_file_transcriber_cloud_retry.py` (passed)
+- `cd lct_app && npx eslint src/components/upload/useFileUploadStream.js src/services/apiClient.js` (passed)
+- `cd lct_python_backend && PYTHONPATH=. ../.venv/bin/pytest -q tests/unit/test_import_api_process_file.py tests/unit/test_file_transcriber_cloud_retry.py` (`18 passed`; one preexisting `urllib3` LibreSSL/OpenSSL warning only)
+- `cd lct_app && npm run -s build` (passed; existing Vite chunk-size warning remains)
+
+Manual testing not run:
+- No browser upload click-through in this work session after wiring the new retry/resume state machine; verification here is backend unit coverage plus frontend lint/syntax checks.

@@ -1,8 +1,9 @@
 # ISSUES
 
-Last updated: 2026-03-21
+Last updated: 2026-04-03
 
 ## Runtime Blockers (2026-02-10)
+- Live/import LLM routing mismatch (confirmed 2026-04-03): import graph generation loads `llm_providers` and can honor the saved provider list, but `/ws/transcripts` only loads `llm_config` and constructs `TranscriptProcessor` without `providers`, so live graph generation silently falls back to `get_default_providers()` from `llm_config.py` instead of the saved provider order/credentials. Impact: live and import can use different LLM backends under the same visible settings, and any serious LLM BYOK implementation must fix the live seam first. Recommended next step: thread runtime provider lists into `WsSessionContext` and standardize runtime LLM overlay behavior across live + import.
 - Online STT credential blocker (confirmed 2026-03-20): the currently configured OpenAI audio credential returns `401 Unauthorized` against `https://api.openai.com/v1/audio/transcriptions`, so the online diarized fallback route is configured in settings but will not execute successfully until that key is replaced/rotated.
 - `live_conversational_threads` STT defaults point all providers to `ws://localhost:43001/stream`, but no local listener is running on port `43001`.
 - Active local Parakeet service (`http://localhost:5092`) is HTTP-only (`/v1/audio/transcriptions`) and does not provide the websocket `/stream` endpoint expected by `AudioInput` provider socket flow.
@@ -24,6 +25,22 @@ Last updated: 2026-03-21
 - Import diarization job observability gap (confirmed 2026-03-20): `import_diarization_queue.py` still keeps job state in memory, so background job ids can disappear after process restarts or when debugging later from a fresh client. Impact: non-blocking for the new immediate import speaker-materialization path, but still weak for operator visibility, retry/debug UX, and long-running background refinement. Recommended next step: move import diarization job state into a durable store and expose terminal job outcomes independently of process lifetime.
 - ~~Artifact auto-routing confirmation gap (confirmed 2026-03-21)~~ **RESOLVED (2026-03-21)**: artifact exports are now tracked in `PipelineArtifact`, and renaming speakers from the legend triggers a backend reroute/re-export pass via `POST /api/conversations/{conversation_id}/artifacts/reroute`. The first import still lands safely at the root `Conversations/` folder, but once names are confirmed the paired `.canvas` + `.txt` files can be regenerated into the participant folder without rerunning STT or spending additional API credits.
 - ~~Import graph densification semantics gap (confirmed 2026-03-21 on Anand rerun `7c5e5141-1441-4120-bd29-3113a29cca0b`)~~ **RESOLVED (2026-03-21)**: `import_graph_refinement.py` now includes first-pass `contextual_relation` / `edge_relations` / `linked_nodes` in the refinement prompt and rejects any refined graph that collapses previously present contextual structure. Follow-up validation on conversation `8aa49f33-2e0e-4444-806c-318a71c58673` preserved and improved relational richness (`edge_count 40 -> 44`, `contextual_node_count 20 -> 20`, `linked_node_count 20 -> 20`, `tangent_count 0 -> 1`, `return_count 0 -> 3`), and the exported canvas shifted from a single-row strip to a multi-band graph (`21` text nodes, `174` edges, `14` x-columns, `13` y-bands).
+
+## Validation & Testability (2026-04-03)
+- Optional dependency import-coupling in backend module graph (confirmed 2026-04-03): importing `import_api` or `transcript_processing` in focused tests currently requires `google-genai`, `pydub`, and `pdfplumber` to be installed because optional LLM/media/parser integrations are imported eagerly at module load time. Impact: unit/integration tests on lean dev environments fail during collection before exercising actual behavior, which hides logic regressions behind workstation setup. Recommended next step: lazy-import optional integrations in production modules or centralize shared stubs in `conftest.py` / test helpers instead of duplicating them per test file.
+
+## Frontend Persistence / Autosave (2026-04-03)
+
+### Duplicate server autosave paths in the browser
+- The frontend currently uses two separate server persistence paths for live/new sessions:
+  - `lct_app/src/hooks/useAutoSave.js`
+  - `lct_app/src/components/audio/useAudioInputEffects.js`
+- Both can write conversation state back to the backend, which risks redundant writes and makes it
+  harder to reason about future auth-gated save behavior.
+- Blocker status: non-blocking for the new IndexedDB latest-draft slice; potentially confusing for
+  the upcoming account-auth/save-ownership work.
+- Recommended next step: consolidate browser-originated server persistence into one explicit path
+  before adding auth-gated saved conversations.
 
 ## ADR-018 Edit History Contract Mismatch (2026-03-20)
 - `EditHistory.jsx:178` expects `edit.user_comment`, `statistics.by_target_type`, and optional `edit.feedback` — these field names must match whatever the backend API returns. ADR-018 proposes collapsing `EditFeedback` into `annotations` and adding `actor_type`, but the frontend has not been updated to match either the current or proposed contract.
@@ -53,6 +70,15 @@ Last updated: 2026-03-21
 
 ### Data-Integrity Bug
 - **`_iter_contextual_relations` fallthrough bug** (`import_persistence.py:78-88`): When `_add()` rejects a duplicate or empty relation in list-of-objects input, the code falls through to `item.items()` which yields raw dict keys (`related_node_name`, `relation_text`) as graph node names. This corrupts graph data for any LLM output with duplicate node references. Fix: add `continue` after the `_add` call in the list branch. Documented in `test_import_persistence_helpers.py`.
+
+## Deployment Blockers (2026-04-03)
+
+### VPS public ingress blocked outside host
+- Backend bootstrap on `15.223.245.244` succeeded locally: Postgres, `lct-backend`, and Caddy all start; `http://127.0.0.1:8000/api/import/health` returns `200`.
+- Public access to `http://15-223-245-244.sslip.io` and `https://15-223-245-244.sslip.io` times out from outside the VPS.
+- Caddy/ACME logs show Let’s Encrypt `http-01` and `tls-alpn-01` challenge failures caused by connection timeouts to `15.223.245.244` on ports `80/443`, which strongly suggests an external firewall/security-group rule rather than an application failure.
+- Blocker status: blocking public backend deployment and therefore blocking Vercel frontend cutover.
+- Recommended next step: open inbound `80/tcp` and `443/tcp` (and keep `22/tcp`) in the VPS provider firewall / AWS security group, then re-run the public smoke test and allow Caddy to obtain the certificate.
 
 ## Developer Warnings (2026-02-14)
 - `lct_app/src/components/ContextualGraph.jsx` and `lct_app/src/components/StructuralGraph.jsx` still emit preexisting `react-hooks/exhaustive-deps` warnings in local lint runs. These do not block runtime but create noisy CI/dev output and should be addressed in a dedicated cleanup PR to avoid mixing legacy graph refactors with the minimal-live-ui scope.

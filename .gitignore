@@ -1,3 +1,7 @@
+# Runtime artifacts
+.backend-port
+.run/
+
 # Logs
 logs
 *.log
