@@ -10,6 +10,53 @@ from unittest.mock import AsyncMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+try:
+    from google import genai as _google_genai  # noqa: F401
+except ImportError:
+    google_module = sys.modules.get("google")
+    if google_module is None:
+        google_module = types.ModuleType("google")
+        sys.modules["google"] = google_module
+
+    genai_module = types.ModuleType("google.genai")
+
+    class _UnavailableGenaiClient:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("google-genai test stub should not be used at runtime")
+
+    genai_module.Client = _UnavailableGenaiClient
+    types_module = types.ModuleType("google.genai.types")
+    genai_module.types = types_module
+    setattr(google_module, "genai", genai_module)
+    sys.modules["google.genai"] = genai_module
+    sys.modules["google.genai.types"] = types_module
+
+try:
+    from pydub import AudioSegment as _PydubAudioSegment  # noqa: F401
+except ImportError:
+    pydub_module = types.ModuleType("pydub")
+
+    class _StubAudioSegment:
+        pass
+
+    silence_module = types.ModuleType("pydub.silence")
+    silence_module.detect_silence = lambda *args, **kwargs: []
+    pydub_module.AudioSegment = _StubAudioSegment
+    pydub_module.silence = silence_module
+    sys.modules["pydub"] = pydub_module
+    sys.modules["pydub.silence"] = silence_module
+
+try:
+    import pdfplumber as _pdfplumber  # noqa: F401
+except ImportError:
+    pdfplumber_module = types.ModuleType("pdfplumber")
+
+    def _pdfplumber_open(*args, **kwargs):
+        raise RuntimeError("pdfplumber test stub should not be used at runtime")
+
+    pdfplumber_module.open = _pdfplumber_open
+    sys.modules["pdfplumber"] = pdfplumber_module
+
 
 def _load_import_api_with_stubs(monkeypatch):
     async def dummy_get_async_session():
@@ -269,7 +316,7 @@ def test_process_file_uses_byok_session_for_openai_import(monkeypatch):
         byok.create_byok_session(
             provider="openai_audio",
             api_key="sk-byok-secret",
-            scopes=[byok.BYOK_SCOPE_STT_IMPORT],
+            scopes=[byok.BYOK_SCOPE_STT_IMPORT, byok.BYOK_SCOPE_LLM_IMPORT],
         )
     )
 
@@ -297,12 +344,16 @@ def test_process_file_uses_byok_session_for_openai_import(monkeypatch):
         )
     )
     monkeypatch.setattr(import_api, "transcribe_uploaded_file", transcribe_mock)
+    processor_init = {}
 
     class FakeProcessor:
-        def __init__(self, send_update, send_status=None, llm_config=None, **kwargs):
+        def __init__(self, send_update, send_status=None, llm_config=None, providers=None, **kwargs):
             self._send_update = send_update
             self.existing_json = []
             self.chunk_dict = {}
+            processor_init["llm_config"] = llm_config or {}
+            processor_init["providers"] = list(providers or [])
+            processor_init["kwargs"] = kwargs
 
         async def handle_final_text(self, _text):
             return None
@@ -331,8 +382,27 @@ def test_process_file_uses_byok_session_for_openai_import(monkeypatch):
     assert runtime_stt_settings["live_cloud_fallback_enabled"] is True
     assert openai_provider["enabled"] is True
     assert openai_provider["api_key"] == "sk-byok-secret"
+    assert processor_init["llm_config"]["mode"] == "local"
+    assert (
+        processor_init["llm_config"]["backend"]
+        == f"openai_{byok.DEFAULT_BYOK_OPENAI_CHAT_MODEL}"
+    )
+    assert processor_init["providers"] == [
+        {
+            "id": byok.BYOK_LLM_PROVIDER_ID,
+            "name": "BYOK OpenAI",
+            "type": "openai",
+            "base_url": byok.DEFAULT_OPENAI_BASE_URL,
+            "model": byok.DEFAULT_BYOK_OPENAI_CHAT_MODEL,
+            "api_key": "sk-byok-secret",
+            "enabled": True,
+            "timeout_seconds": byok.DEFAULT_BYOK_OPENAI_TIMEOUT_SECONDS,
+            "session_scoped": True,
+        }
+    ]
 
     done_payload = [payload for name, payload in events if name == "done"][-1]
+    assert done_payload["telemetry"]["llm_backend"] == f"openai_{byok.DEFAULT_BYOK_OPENAI_CHAT_MODEL}"
     assert done_payload["telemetry"]["stt_candidate_provider"] == "openai_audio"
     assert done_payload["telemetry"]["stt_candidate_transport"] == "openai_audio"
 
@@ -490,9 +560,74 @@ def test_process_file_streams_error_event_when_transcriber_fails(monkeypatch):
     error_events = [payload for name, payload in events if name == "error"]
     assert error_events, "expected an SSE error event"
     assert "transcriber boom" in error_events[0]["message"]
+    assert error_events[0]["retryable"] is False
+    assert error_events[0]["resume_available"] is False
+    assert error_events[0]["checkpoint_chunks"] == 0
     assert isinstance(error_events[0].get("telemetry"), dict)
     assert error_events[0]["telemetry"].get("active_stage") in {"transcribing", "parsing"}
+    assert error_events[0]["telemetry"].get("retryable") is False
+    assert error_events[0]["telemetry"].get("resume_available") is False
     assert error_events[0]["telemetry"].get("total_elapsed_ms") is not None
+
+
+def test_process_file_error_event_surfaces_resume_metadata(monkeypatch):
+    import_api = _load_import_api_with_stubs(monkeypatch)
+    import lct_python_backend.services.import_bulk_pipeline as bulk_pipeline
+
+    client = _build_test_client(import_api)
+
+    monkeypatch.setattr(
+        import_api,
+        "load_stt_settings",
+        AsyncMock(return_value={"provider": "whisper", "http_timeout_seconds": 10.0}),
+    )
+    monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+    monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
+    monkeypatch.setattr(bulk_pipeline, "compute_file_hash", lambda _path: "fake-audio-hash")
+    monkeypatch.setattr(
+        bulk_pipeline,
+        "find_checkpoint",
+        AsyncMock(
+            return_value={
+                "conversation_id": "resume-conversation",
+                "total_chunks": 4,
+                "completed_chunks": 2,
+                "completed_chunk_texts": [
+                    {"index": 1, "text": "cached one"},
+                    {"index": 2, "text": "cached two"},
+                ],
+            }
+        ),
+    )
+
+    async def _raise(*args, **kwargs):
+        raise RuntimeError("stt provider request failed (503)")
+
+    monkeypatch.setattr(import_api, "transcribe_uploaded_file", _raise)
+
+    with client.stream(
+        "POST",
+        "/api/import/process-file",
+        files={"file": ("clip.wav", b"RIFF....WAVE", "audio/wav")},
+    ) as response:
+        assert response.status_code == 200
+        events = _parse_sse_events("".join(response.iter_text()))
+
+    error_payload = [payload for name, payload in events if name == "error"][-1]
+    resumed_transcripts = [
+        payload
+        for name, payload in events
+        if name == "transcript" and payload.get("resumed") is True
+    ]
+    assert error_payload["retryable"] is True
+    assert error_payload["resume_available"] is True
+    assert error_payload["checkpoint_chunks"] == 2
+    assert error_payload["checkpoint_total_chunks"] == 4
+    assert error_payload["failure_stage"] == "transcribing"
+    assert error_payload["telemetry"]["checkpoint_chunks"] == 2
+    assert error_payload["telemetry"]["checkpoint_total_chunks"] == 4
+    assert error_payload["telemetry"]["resume_available"] is True
+    assert [item["text"] for item in resumed_transcripts] == ["cached one", "cached two"]
 
 
 def test_process_file_streams_processor_status_context(monkeypatch):

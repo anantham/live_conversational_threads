@@ -181,6 +181,72 @@ logger = logging.getLogger("lct_backend")
 # Orchestrator
 # ---------------------------------------------------------------------------
 
+
+async def _transcribe_cloud_chunk_with_retry(
+    candidate: Dict[str, Any],
+    *,
+    wav_payload: bytes,
+    timeout_seconds: float,
+    language: str,
+    chunk_idx: int,
+    total_chunks: int,
+    chunk_max_retries: int = DEFAULT_CHUNK_MAX_RETRIES,
+    chunk_retry_backoff_s: float = DEFAULT_CHUNK_RETRY_BACKOFF_S,
+) -> Dict[str, Any]:
+    attempts_allowed = max(0, int(chunk_max_retries)) + 1
+    backoff_base_s = max(0.0, float(chunk_retry_backoff_s))
+    provider = coerce_str(candidate.get("provider")).lower() or "unknown"
+    transport = coerce_str(candidate.get("transport")).lower() or "backend_http"
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, attempts_allowed + 1):
+        try:
+            chunk_result = await transcribe_wav_stt_candidate(
+                candidate,
+                wav_payload=wav_payload,
+                timeout_seconds=timeout_seconds,
+                language=language,
+            )
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+        else:
+            if chunk_result.get("ok"):
+                if attempt > 1:
+                    logger.info(
+                        "[UPLOAD STT] Cloud chunk %d/%d recovered on attempt %d/%d via %s (%s)",
+                        chunk_idx,
+                        total_chunks,
+                        attempt,
+                        attempts_allowed,
+                        provider,
+                        transport,
+                    )
+                return chunk_result
+            last_error = RuntimeError(
+                coerce_str(chunk_result.get("error")) or f"{provider} transcription failed."
+            )
+
+        retryable = isinstance(last_error, Exception) and _is_retryable_stt_error(last_error)
+        if attempt >= attempts_allowed or not retryable:
+            raise last_error or RuntimeError(f"{provider} transcription failed.")
+
+        backoff_s = backoff_base_s * (2 ** (attempt - 1))
+        logger.warning(
+            "[UPLOAD STT] Cloud chunk %d/%d attempt %d/%d failed via %s (%s: %s), retrying in %.2fs",
+            chunk_idx,
+            total_chunks,
+            attempt,
+            attempts_allowed,
+            provider,
+            type(last_error).__name__,
+            str(last_error) or type(last_error).__name__,
+            backoff_s,
+        )
+        if backoff_s > 0:
+            await asyncio.sleep(backoff_s)
+
+    raise last_error or RuntimeError(f"{provider} transcription failed.")
+
 async def transcribe_uploaded_file(
     *,
     temp_path: Path,
@@ -276,22 +342,21 @@ async def transcribe_uploaded_file(
                                 if cached_text:
                                     chunk_texts.append(cached_text)
                                 if on_chunk_progress is not None:
-                                    await on_chunk_progress(chunk_idx, len(chunks), cached_text)
+                                    # The pipeline already replays cached transcript text from the
+                                    # checkpoint. This callback only needs to advance progress.
+                                    await on_chunk_progress(chunk_idx, len(chunks), "")
                                 chunk_path.unlink(missing_ok=True)
                                 continue
 
                             wav_payload = chunk_path.read_bytes()
-                            chunk_result = await transcribe_wav_stt_candidate(
+                            chunk_result = await _transcribe_cloud_chunk_with_retry(
                                 candidate,
                                 wav_payload=wav_payload,
-                                timeout_seconds=candidate_timeout,
                                 language=coerce_str(settings.get("http_language")),
+                                timeout_seconds=candidate_timeout,
+                                chunk_idx=chunk_idx,
+                                total_chunks=len(chunks),
                             )
-                            if not chunk_result.get("ok"):
-                                raise RuntimeError(
-                                    coerce_str(chunk_result.get("error"))
-                                    or f"{provider} transcription failed."
-                                )
                             chunk_segments = (
                                 chunk_result.get("segments")
                                 if isinstance(chunk_result.get("segments"), list)

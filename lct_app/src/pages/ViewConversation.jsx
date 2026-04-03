@@ -104,6 +104,7 @@ export default function ViewConversation() {
   const [chunkDict, setChunkDict] = useState({});
   const [conversationName, setConversationName] = useState("");
   const [selectedNode, setSelectedNode] = useState(null);
+  const [speakerRefreshKey, setSpeakerRefreshKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
@@ -168,8 +169,6 @@ export default function ViewConversation() {
     };
   }, [conversationId]);
 
-  const latestChunk = useMemo(() => graphData?.[graphData.length - 1] || [], [graphData]);
-
   const allNodes = useMemo(
     () => graphData.flatMap((chunk) => (Array.isArray(chunk) ? chunk : [])),
     [graphData]
@@ -179,6 +178,7 @@ export default function ViewConversation() {
     if (!selectedNode) return null;
     return allNodes.find((node) => node?.id === selectedNode) || null;
   }, [allNodes, selectedNode]);
+  const graphViewportKey = selectedNodeData ? "detail-open" : "detail-closed";
 
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(allNodes), [allNodes]);
 
@@ -241,15 +241,23 @@ export default function ViewConversation() {
         {!isLoading && !loadError && allNodes.length > 0 && (
           <div className="flex h-full flex-col">
             <div className="relative min-h-0 flex-1">
-              <MinimalGraph
-                graphData={graphData}
-                selectedNode={selectedNode}
-                setSelectedNode={setSelectedNode}
-              />
-              <MinimalLegend
-                speakerColorMap={speakerColorMap}
-                conversationId={conversationId}
-              />
+              <div
+                className={`absolute inset-0 transition-all duration-200 ${
+                  selectedNodeData ? "sm:right-80" : ""
+                }`}
+              >
+                <MinimalGraph
+                  graphData={graphData}
+                  selectedNode={selectedNode}
+                  setSelectedNode={setSelectedNode}
+                  viewportReservationKey={graphViewportKey}
+                />
+                <MinimalLegend
+                  speakerColorMap={speakerColorMap}
+                  conversationId={conversationId}
+                  refreshKey={speakerRefreshKey}
+                />
+              </div>
             </div>
             <TimelineRibbon
               graphData={graphData}
@@ -263,7 +271,9 @@ export default function ViewConversation() {
           <NodeDetail
             node={selectedNodeData}
             chunkDict={chunkDict}
+            conversationId={conversationId}
             onClose={() => setSelectedNode(null)}
+            onSpeakerRenamed={() => setSpeakerRefreshKey((value) => value + 1)}
           />
         )}
       </main>

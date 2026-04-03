@@ -64,14 +64,16 @@ def test_compute_file_hash_different_content():
 # ---------------------------------------------------------------------------
 
 class FakeArtifactStore:
-    """In-memory store that simulates PipelineArtifact queries for checkpoint tests."""
+    """In-memory store that simulates PipelineArtifact queries for checkpoint tests.
+
+    Routes queries by extracting bound parameter values from compiled SQLAlchemy
+    statements, avoiding brittle string matching on SQL text.
+    """
 
     def __init__(self):
         self.rows: list[PipelineArtifact] = []
-        self._added: list = []
 
     def add(self, obj):
-        self._added.append(obj)
         if isinstance(obj, PipelineArtifact):
             self.rows.append(obj)
 
@@ -81,62 +83,70 @@ class FakeArtifactStore:
     async def flush(self):
         pass
 
+    def _extract_params(self, stmt) -> dict:
+        """Extract bound parameter values from a compiled statement."""
+        try:
+            compiled = stmt.compile(compile_kwargs={"literal_binds": False})
+            return dict(compiled.params) if compiled.params else {}
+        except Exception:
+            return {}
+
+    def _match_rows(self, params: dict) -> list[PipelineArtifact]:
+        """Find rows matching the given parameter filters."""
+        matches = list(self.rows)
+        for key, value in params.items():
+            if "content_hash" in key:
+                matches = [r for r in matches if r.content_hash == value]
+            elif "stage" in key and "index" not in key:
+                if isinstance(value, (list, tuple)):
+                    matches = [r for r in matches if r.stage in value]
+                else:
+                    matches = [r for r in matches if r.stage == value]
+            elif "stage_index" in key:
+                matches = [r for r in matches if r.stage_index == value]
+        return matches
+
     async def execute(self, stmt):
         """Route SELECT/DELETE statements to the in-memory store."""
-        stmt_str = str(stmt)
-        is_delete = stmt_str.strip().upper().startswith("DELETE")
+        is_delete = hasattr(stmt, "is_delete") and stmt.is_delete
+        if not is_delete:
+            # Heuristic: check if the statement string starts with DELETE
+            try:
+                is_delete = str(stmt).strip().upper().startswith("DELETE")
+            except Exception:
+                pass
+
+        params = self._extract_params(stmt)
 
         if is_delete:
-            before = len(self.rows)
-            # Filter out rows matching the stage + hash conditions
-            remaining = []
-            for r in self.rows:
-                # Check if this row should be deleted
-                match_hash = FILE_HASH in stmt_str or (
-                    hasattr(r, "content_hash") and r.content_hash == FILE_HASH
-                )
-                match_stage = (
-                    r.stage in (STAGE_CHUNK, STAGE_MANIFEST)
-                )
-                if match_hash and match_stage:
-                    continue  # deleted
-                remaining.append(r)
-            self.rows = remaining
+            matched = self._match_rows(params)
+            matched_ids = {id(r) for r in matched}
+            self.rows = [r for r in self.rows if id(r) not in matched_ids]
             result = MagicMock()
-            result.rowcount = before - len(self.rows)
+            result.rowcount = len(matched)
             return result
 
         # SELECT queries
+        matched = self._match_rows(params)
         result = MagicMock()
 
-        if STAGE_MANIFEST in stmt_str and STAGE_CHUNK not in stmt_str:
-            # Looking for manifest
-            matches = [r for r in self.rows if r.stage == STAGE_MANIFEST and r.content_hash == FILE_HASH]
-            row = matches[-1] if matches else None
-            result.scalar_one_or_none = MagicMock(return_value=row)
-            return result
+        # Detect if this is a "list chunks" query (no stage_index param)
+        # vs a "find one" query (has stage_index or is manifest lookup)
+        has_stage_index = any("stage_index" in k for k in params)
+        is_chunk_list = (
+            not has_stage_index
+            and any(v == STAGE_CHUNK for v in params.values())
+        )
 
-        if STAGE_CHUNK in stmt_str:
-            # Looking for chunk rows
-            # Check if this is a specific stage_index query (upsert check)
-            if "stage_index" in stmt_str:
-                # Specific chunk lookup — find by content_hash + stage + stage_index
-                # We can't easily parse the index from stmt_str, so check _added
-                # Return None (new insert) for simplicity in most tests
-                result.scalar_one_or_none = MagicMock(return_value=None)
-                return result
-            # Listing all chunks
-            matches = sorted(
-                [r for r in self.rows if r.stage == STAGE_CHUNK and r.content_hash == FILE_HASH],
-                key=lambda r: r.stage_index,
-            )
+        if is_chunk_list:
+            sorted_matches = sorted(matched, key=lambda r: r.stage_index)
             scalars_mock = MagicMock()
-            scalars_mock.all = MagicMock(return_value=matches)
+            scalars_mock.all = MagicMock(return_value=sorted_matches)
             result.scalars = MagicMock(return_value=scalars_mock)
-            return result
+        else:
+            row = matched[-1] if matched else None
+            result.scalar_one_or_none = MagicMock(return_value=row)
 
-        # Fallback
-        result.scalar_one_or_none = MagicMock(return_value=None)
         return result
 
 

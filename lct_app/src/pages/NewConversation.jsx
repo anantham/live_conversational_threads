@@ -8,6 +8,7 @@ import NodeDetail from "../components/NodeDetail";
 import MinimalLegend from "../components/MinimalLegend";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { useAutoSave } from "../hooks/useAutoSave";
+import useLocalConversationDraft from "../hooks/useLocalConversationDraft";
 import { useUpload } from "../contexts/UploadContext";
 import {
   applyChunkPatch,
@@ -17,10 +18,36 @@ import {
   normalizeGraphPatchPayload,
 } from "./newConversationGraphState";
 
+function normalizeObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function formatDraftUpdatedAt(isoString) {
+  if (!isoString) return "";
+  const updatedAt = new Date(isoString);
+  if (Number.isNaN(updatedAt.getTime())) return "";
+
+  const diffMs = Date.now() - updatedAt.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMinutes < 1) return "just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return updatedAt.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: updatedAt.getFullYear() !== new Date().getFullYear() ? "numeric" : undefined,
+  });
+}
+
 export default function NewConversation() {
   const [graphData, setGraphData] = useState([]);
   const [draftGraphData, setDraftGraphData] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [speakerRefreshKey, setSpeakerRefreshKey] = useState(0);
   const [chunkDict, setChunkDict] = useState({});
   const [draftChunkDict, setDraftChunkDict] = useState({});
   const [message, setMessage] = useState("");
@@ -31,6 +58,9 @@ export default function NewConversation() {
   const audioRef = useRef(null);
 
   const navigate = useNavigate();
+
+  // Subscribe to app-level upload context so file upload events flow into this page
+  const upload = useUpload();
 
   const displayGraphData = useMemo(
     () => mergeGraphLayers(graphData, draftGraphData),
@@ -47,10 +77,6 @@ export default function NewConversation() {
     [displayGraphData]
   );
 
-  const latestChunk = useMemo(
-    () => displayGraphData?.[displayGraphData.length - 1] || [],
-    [displayGraphData]
-  );
   const hasData = allNodes.length > 0;
   const hasFinalizedData = (graphData?.[graphData.length - 1] || []).length > 0;
 
@@ -66,6 +92,17 @@ export default function NewConversation() {
     if (!selectedNode) return null;
     return allNodes.find((n) => n.id === selectedNode) || null;
   }, [selectedNode, allNodes]);
+  const transcriptOverlayVisible = upload.isProcessing && upload.liveTranscriptLines.length > 0;
+  const graphViewportKey = `${selectedNodeData ? "detail-open" : "detail-closed"}:${transcriptOverlayVisible ? (transcriptMinimized ? "captions" : "transcript") : "clear"}`;
+  const graphViewportStyle = useMemo(() => {
+    if (!transcriptOverlayVisible) {
+      return undefined;
+    }
+
+    return {
+      bottom: transcriptMinimized ? "4.5rem" : "40%",
+    };
+  }, [transcriptMinimized, transcriptOverlayVisible]);
 
   // Speaker color map (shared between graph, ribbon, legend)
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(allNodes), [allNodes]);
@@ -111,8 +148,27 @@ export default function NewConversation() {
     }
   }, []);
 
-  // Subscribe to app-level upload context so file upload events flow into this page
-  const upload = useUpload();
+  // (upload hook moved earlier — needed before transcriptOverlayVisible)
+  const localDraftSnapshot = useMemo(
+    () => ({
+      conversationId,
+      fileName,
+      message,
+      graphData,
+      draftGraphData,
+      chunkDict,
+      draftChunkDict,
+    }),
+    [chunkDict, conversationId, draftChunkDict, draftGraphData, fileName, graphData, message]
+  );
+  const {
+    availableDraftSummary,
+    discardAvailableDraft,
+    isCheckingDraft,
+    restoreAvailableDraft,
+  } = useLocalConversationDraft({
+    snapshot: localDraftSnapshot,
+  });
   useEffect(() => {
     upload.subscribe({
       onDataReceived: handleDataReceived,
@@ -140,6 +196,36 @@ export default function NewConversation() {
     if (allNodes.some((node) => node.id === selectedNode)) return;
     setSelectedNode(null);
   }, [allNodes, selectedNode]);
+
+  const hasRecoverableLocalState = useMemo(
+    () =>
+      hasData ||
+      Object.keys(normalizeObject(displayChunkDict)).length > 0 ||
+      Boolean(String(fileName || "").trim()) ||
+      Boolean(String(message || "").trim()),
+    [displayChunkDict, fileName, hasData, message]
+  );
+
+  const handleResumeLocalDraft = useCallback(() => {
+    const draft = restoreAvailableDraft();
+    if (!draft) return;
+
+    setConversationId(draft.conversationId || crypto.randomUUID());
+    setFileName(String(draft.fileName || "").trim());
+    setMessage(
+      String(draft.message || "").trim() || "Restored local draft from this browser."
+    );
+    setGraphData(Array.isArray(draft.graphData) ? draft.graphData : []);
+    setDraftGraphData(Array.isArray(draft.draftGraphData) ? draft.draftGraphData : []);
+    setChunkDict(normalizeObject(draft.chunkDict));
+    setDraftChunkDict(normalizeObject(draft.draftChunkDict));
+    setSelectedNode(null);
+    setTranscriptMinimized(false);
+  }, [restoreAvailableDraft]);
+
+  const handleDiscardLocalDraft = useCallback(() => {
+    void discardAvailableDraft();
+  }, [discardAvailableDraft]);
 
   const handleBack = useCallback(() => {
     if (hasData) {
@@ -198,25 +284,72 @@ export default function NewConversation() {
         </div>
       )}
 
+      {!isCheckingDraft && availableDraftSummary && !hasRecoverableLocalState && (
+        <div className="absolute top-4 left-1/2 z-20 w-[min(92vw,30rem)] -translate-x-1/2 rounded-2xl border border-amber-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-amber-600">
+                Local Draft
+              </p>
+              <h2 className="mt-1 truncate text-sm font-semibold text-slate-800">
+                {availableDraftSummary.title}
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Updated {formatDraftUpdatedAt(availableDraftSummary.updatedAt)}
+                {availableDraftSummary.nodeCount > 0
+                  ? ` · ${availableDraftSummary.nodeCount} nodes`
+                  : ""}
+                {availableDraftSummary.chunkCount > 0
+                  ? ` · ${availableDraftSummary.chunkCount} chunks`
+                  : ""}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={handleDiscardLocalDraft}
+                className="rounded-full px-3 py-1.5 text-xs text-slate-500 transition hover:text-slate-700"
+              >
+                Discard
+              </button>
+              <button
+                onClick={handleResumeLocalDraft}
+                className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-700"
+              >
+                Resume
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main graph area */}
       <div className="flex-1 relative min-h-0">
         {/* Graph always renders when data exists */}
         {hasData && (
           <>
-            <MinimalGraph
-              graphData={displayGraphData}
-              selectedNode={selectedNode}
-              setSelectedNode={setSelectedNode}
-            />
-            <MinimalLegend
-              speakerColorMap={speakerColorMap}
-              conversationId={conversationId}
-            />
+            <div
+              className={`absolute inset-0 transition-all duration-200 ${
+                selectedNodeData ? "sm:right-80" : ""
+              }`}
+              style={graphViewportStyle}
+            >
+              <MinimalGraph
+                graphData={displayGraphData}
+                selectedNode={selectedNode}
+                setSelectedNode={setSelectedNode}
+                viewportReservationKey={graphViewportKey}
+              />
+              <MinimalLegend
+                speakerColorMap={speakerColorMap}
+                conversationId={conversationId}
+                refreshKey={speakerRefreshKey}
+              />
+            </div>
           </>
         )}
 
         {/* Upload transcript overlay — shown during upload, minimizable */}
-        {upload.isProcessing && upload.liveTranscriptLines.length > 0 && (
+        {transcriptOverlayVisible && (
           <div className={`absolute bottom-0 left-0 right-0 z-30 transition-all duration-300 ${
             transcriptMinimized ? "" : hasData ? "h-[40%]" : "top-0"
           }`}>
@@ -370,7 +503,9 @@ export default function NewConversation() {
           <NodeDetail
             node={selectedNodeData}
             chunkDict={displayChunkDict}
+            conversationId={conversationId}
             onClose={() => setSelectedNode(null)}
+            onSpeakerRenamed={() => setSpeakerRefreshKey((value) => value + 1)}
           />
         )}
       </div>

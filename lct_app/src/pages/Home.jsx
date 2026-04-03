@@ -1,9 +1,33 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Mic, FolderOpen, FileUp, Bookmark, BarChart3, Settings } from "lucide-react";
 import ServiceStatus from "../components/ServiceStatus";
+import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
 
 export default function Home() {
   const navigate = useNavigate();
+  const [draftSummary, setDraftSummary] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadDraft = async () => {
+      try {
+        const draft = await loadLatestDraft();
+        if (!cancelled) {
+          setDraftSummary(summarizeLocalDraft(draft));
+        }
+      } catch (error) {
+        console.warn("[Home] Failed to inspect local draft state:", error);
+      }
+    };
+
+    void loadDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col items-center justify-center overflow-hidden bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] font-sans">
@@ -28,6 +52,11 @@ export default function Home() {
             <Mic size={22} />
           </span>
           <span className="text-xs text-gray-500 group-hover:text-gray-700 transition">New</span>
+          {draftSummary && (
+            <span className="text-[10px] font-medium text-amber-600 group-hover:text-amber-700 transition">
+              Resume available
+            </span>
+          )}
         </button>
 
         <button

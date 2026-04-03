@@ -13,6 +13,7 @@ from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 from fastapi import Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lct_python_backend.services.audio_transcriber import _is_retryable_stt_error
 from lct_python_backend.services.import_persistence import persist_import_graph
 from lct_python_backend.services.import_bulk_telemetry import (
     attach_bottleneck_stage,
@@ -160,6 +161,24 @@ def _resolve_llm_backend_label(
     if str(config.get("mode") or "").strip().lower() == "online" and "gemini" in llm_model.lower():
         return f"online_{llm_model}" if llm_model else "online"
     return f"modal_{llm_model}" if "modal.run" in llm_base_url else f"local_{llm_model}"
+
+
+def _coerce_checkpoint_total(checkpoint: Optional[dict[str, Any]], telemetry: dict[str, Any]) -> Optional[int]:
+    raw_total = None
+    if isinstance(checkpoint, dict):
+        raw_total = checkpoint.get("total_chunks")
+    if raw_total in (None, ""):
+        raw_total = telemetry.get("checkpoint_total_chunks")
+    try:
+        return int(raw_total) if raw_total is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_retryable_import_failure(exc: Exception, *, active_stage: str) -> bool:
+    if str(active_stage or "").strip().lower() not in {"transcribing", "resuming", "segmented_transcribing"}:
+        return False
+    return _is_retryable_stt_error(exc)
 
 
 async def run_bulk_processing_worker(
@@ -310,6 +329,8 @@ async def run_bulk_processing_worker(
         existing_checkpoint: Optional[dict[str, Any]] = None
         checkpoint_transcript_parts: list[str] = []
         resume_from_chunk = 0
+        telemetry["checkpoint_chunks"] = 0
+        telemetry["resume_available"] = False
         if is_likely_audio:
             try:
                 file_hash = compute_file_hash(Path(temp_path))
@@ -317,6 +338,11 @@ async def run_bulk_processing_worker(
                 existing_checkpoint = await find_checkpoint(db, file_hash)
                 if existing_checkpoint and existing_checkpoint.get("completed_chunks", 0) > 0:
                     resume_from_chunk = existing_checkpoint["completed_chunks"]
+                    telemetry["checkpoint_chunks"] = resume_from_chunk
+                    telemetry["resume_available"] = True
+                    checkpoint_total = _coerce_checkpoint_total(existing_checkpoint, telemetry)
+                    if checkpoint_total is not None:
+                        telemetry["checkpoint_total_chunks"] = checkpoint_total
                     checkpoint_transcript_parts = [
                         ct["text"] for ct in existing_checkpoint.get("completed_chunk_texts", [])
                         if ct.get("text")
@@ -338,6 +364,8 @@ async def run_bulk_processing_worker(
                             "telemetry": {
                                 "total_elapsed_ms": elapsed_ms(pipeline_started_at),
                                 "checkpoint_chunks": resume_from_chunk,
+                                "checkpoint_total_chunks": checkpoint_total,
+                                "resume_available": True,
                             },
                         },
                     )
@@ -456,6 +484,9 @@ async def run_bulk_processing_worker(
             if normalized_chunk_text:
                 # Accumulate transcript for checkpoint
                 checkpoint_transcript_parts.append(normalized_chunk_text)
+                telemetry["checkpoint_chunks"] = len(checkpoint_transcript_parts)
+                telemetry["checkpoint_total_chunks"] = total
+                telemetry["resume_available"] = True
 
                 await emit(
                     "transcript",
@@ -1330,9 +1361,18 @@ async def run_bulk_processing_worker(
     except Exception as exc:  # noqa: BLE001
         logger.exception("Bulk file processing failed for %s", filename)
         err_msg = str(exc) or f"{type(exc).__name__}"
+        checkpoint_chunks = int(telemetry.get("checkpoint_chunks") or 0)
+        checkpoint_total_chunks = _coerce_checkpoint_total(existing_checkpoint, telemetry)
+        retryable = _is_retryable_import_failure(exc, active_stage=active_stage)
+        resume_available = checkpoint_chunks > 0
         error_telemetry = {
             **telemetry,
             "active_stage": active_stage,
+            "failure_stage": active_stage,
+            "retryable": retryable,
+            "resume_available": resume_available,
+            "checkpoint_chunks": checkpoint_chunks,
+            "checkpoint_total_chunks": checkpoint_total_chunks,
             "total_elapsed_ms": elapsed_ms(pipeline_started_at),
         }
         await emit(
@@ -1340,6 +1380,12 @@ async def run_bulk_processing_worker(
             {
                 "message": err_msg,
                 "file_name": filename,
+                "conversation_id": resolved_conversation_id,
+                "failure_stage": active_stage,
+                "retryable": retryable,
+                "resume_available": resume_available,
+                "checkpoint_chunks": checkpoint_chunks,
+                "checkpoint_total_chunks": checkpoint_total_chunks,
                 "telemetry": error_telemetry,
             },
         )

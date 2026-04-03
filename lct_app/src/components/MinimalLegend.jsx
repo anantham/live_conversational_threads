@@ -34,7 +34,7 @@ function buildDraftMap(rows) {
   return next;
 }
 
-export default function MinimalLegend({ speakerColorMap, conversationId }) {
+export default function MinimalLegend({ speakerColorMap, conversationId, refreshKey }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingSpeakerId, setSavingSpeakerId] = useState("");
@@ -79,7 +79,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId }) {
   useEffect(() => {
     if (!open) return;
     void loadSpeakers();
-  }, [loadSpeakers, open]);
+  }, [loadSpeakers, open, refreshKey]);
 
   useEffect(() => {
     if (speakers.length === 0) return;
@@ -246,4 +246,5 @@ export default function MinimalLegend({ speakerColorMap, conversationId }) {
 MinimalLegend.propTypes = {
   speakerColorMap: PropTypes.object,
   conversationId: PropTypes.string,
+  refreshKey: PropTypes.number,
 };
