@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-import { API_BASE_URL } from "../../services/apiClient";
+import { API_BASE_URL, apiHeaders } from "../../services/apiClient";
+import { useByok } from "../../contexts/byokContext";
 
-const LIVE_STT_LINES_MAX = 8;
+// No cap — accumulate all transcript lines so users can scroll back
+// through the full conversation history during long uploads.
 
 const clampProgress = (value) => {
   const parsed = Number(value);
@@ -57,6 +59,7 @@ export default function useFileUploadStream({
   setFileName,
   setMessage,
 }) {
+  const { ensureSessionToken } = useByok();
   const abortRef = useRef(null);
   const fallbackNoticeKeyRef = useRef("");
   const [isProcessing, setIsProcessing] = useState(false);
@@ -75,12 +78,9 @@ export default function useFileUploadStream({
     return () => window.clearTimeout(timeoutId);
   }, [fallbackToast]);
 
-  // Abort in-flight upload if component unmounts mid-stream
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
+  // NOTE: We intentionally do NOT abort on unmount. The upload stream is now
+  // owned by the app-level UploadContext and must survive page navigation.
+  // The user can explicitly cancel via cancelUpload().
 
   const clearLocalState = () => {
     setIsProcessing(false);
@@ -121,8 +121,14 @@ export default function useFileUploadStream({
     formData.append("conversation_id", nextConversationId);
 
     try {
+      const byokSessionToken = await ensureSessionToken();
+      if (byokSessionToken) {
+        formData.append("byok_session_token", byokSessionToken);
+        formData.append("provider", "openai_audio");
+      }
       const response = await fetch(`${API_BASE_URL}/api/import/process-file`, {
         method: "POST",
+        headers: apiHeaders(),
         body: formData,
         signal: abortController.signal,
       });
@@ -157,6 +163,11 @@ export default function useFileUploadStream({
               // Extract backend indicators from status events
               if (payload.stt_backend) {
                 setSttBackend(payload.stt_backend);
+                console.log(
+                  `[Upload] STT backend: ${payload.stt_backend}` +
+                  (payload.stt_http_url ? ` → ${payload.stt_http_url}` : "") +
+                  (telemetry.stt_http_url ? ` → ${telemetry.stt_http_url}` : "")
+                );
               }
               if (payload.llm_backend) {
                 setLlmBackend(payload.llm_backend);
@@ -169,20 +180,36 @@ export default function useFileUploadStream({
                 const chunksDone = Number(telemetry.stt_chunks_completed || 0);
                 const chunksTotal = Number(telemetry.stt_chunks_total || 0);
                 const elapsedMs = Number(telemetry.transcription_elapsed_ms || 0);
+                const initialEtaMs = Number(telemetry.initial_eta_ms || 0);
+                const hasHistory = initialEtaMs > 0;
+                // Chunk-based ETA is unreliable for first few chunks (cold start skew)
+                const MIN_CHUNKS_FOR_ETA = 3;
+
                 let etaMs = Number(telemetry.transcription_eta_ms);
                 if (!Number.isFinite(etaMs) || etaMs < 0) {
-                  if (chunksDone > 0 && chunksTotal > chunksDone && elapsedMs > 0) {
+                  if (chunksDone >= MIN_CHUNKS_FOR_ETA && chunksTotal > chunksDone && elapsedMs > 0) {
                     const avgChunkMs = elapsedMs / chunksDone;
                     etaMs = Math.max(0, Math.round(avgChunkMs * (chunksTotal - chunksDone)));
                   } else {
                     etaMs = Number.NaN;
                   }
                 }
+
                 const etaLabel = formatDuration(etaMs);
-                if (etaLabel) {
+                if (chunksDone >= MIN_CHUNKS_FOR_ETA && etaLabel) {
+                  // Enough chunks for a reliable estimate
                   setEtaText(`ETA ${etaLabel}`);
+                } else if (hasHistory) {
+                  // Use empirical estimate from past runs until chunk-based is reliable
+                  const remaining = Math.max(0, initialEtaMs - elapsedMs);
+                  const histLabel = formatDuration(Math.round(remaining));
+                  setEtaText(histLabel ? `ETA ~${histLabel}` : "Calibrating...");
                 } else {
-                  setEtaText("");
+                  // First run ever — be honest
+                  setEtaText(chunksDone > 0
+                    ? `Calibrating... (${chunksDone}/${chunksTotal} chunks)`
+                    : "Calibrating ETA (first run)..."
+                  );
                 }
               } else if (stage === "analyzing") {
                 // Calculate ETA for LLM analysis stage
@@ -252,14 +279,15 @@ export default function useFileUploadStream({
               const phase = String(payload.phase || "").trim().toLowerCase();
               const index = Number(payload.index || 0);
               const total = Number(payload.total || 0);
+              const elapsedMs = Number(payload.telemetry?.transcription_elapsed_ms || payload.telemetry?.total_elapsed_ms || 0);
               if (phase === "transcribing") {
                 const line = normalizeTranscriptLine(payload.text);
                 if (line) {
                   setLiveTranscriptLines((previous) => {
-                    if (previous[previous.length - 1] === line) {
+                    if (previous.length > 0 && previous[previous.length - 1].text === line) {
                       return previous;
                     }
-                    return [...previous, line].slice(-LIVE_STT_LINES_MAX);
+                    return [...previous, { text: line, chunkIndex: index, total, elapsedMs }];
                   });
                 }
               } else if (index > 0 && total > 0) {
@@ -280,6 +308,10 @@ export default function useFileUploadStream({
             if (eventName === "done") {
               setProgress(1);
               setStatusText(`Done: ${payload.node_count || 0} nodes`);
+              // Update conversation name if backend derived a better one
+              if (payload.file_name) {
+                setFileName?.(payload.file_name);
+              }
               const artifactExport = payload.artifact_export && typeof payload.artifact_export === "object"
                 ? payload.artifact_export
                 : null;

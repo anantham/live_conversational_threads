@@ -3,7 +3,7 @@ import PropTypes from "prop-types";
 import { Upload, X } from "lucide-react";
 
 import UploadProgressPanel from "./upload/UploadProgressPanel";
-import useFileUploadStream from "./upload/useFileUploadStream";
+import { useUpload } from "../contexts/UploadContext";
 
 const ACCEPTED_FILE_TYPES = [
   ".wav",
@@ -23,14 +23,7 @@ const ACCEPTED_FILE_TYPES = [
   ".pdf",
 ].join(",");
 
-export default function FileUpload({
-  onDataReceived,
-  onChunksReceived,
-  onGraphPatchReceived,
-  setConversationId,
-  setFileName,
-  setMessage,
-}) {
+export default function FileUpload() {
   const inputRef = useRef(null);
   const {
     audioDurationMs,
@@ -44,14 +37,7 @@ export default function FileUpload({
     progress,
     sttBackend,
     statusText,
-  } = useFileUploadStream({
-    onDataReceived,
-    onChunksReceived,
-    onGraphPatchReceived,
-    setConversationId,
-    setFileName,
-    setMessage,
-  });
+  } = useUpload();
 
   const handleFileChange = async (event) => {
     const file = event.target.files?.[0];
@@ -61,25 +47,24 @@ export default function FileUpload({
 
   return (
     <div className="relative flex items-center gap-2">
-      <button
-        type="button"
-        onClick={() => inputRef.current?.click()}
-        className="relative flex items-center justify-center w-11 h-11 rounded-full transition-all duration-200 focus:outline-none bg-gray-100 text-gray-500 hover:bg-gray-200"
-        aria-label="Upload file for bulk processing"
-        disabled={isProcessing}
-      >
-        <Upload size={18} />
-      </button>
-
-      {isProcessing && (
+      {isProcessing ? (
         <button
           type="button"
           onClick={cancelUpload}
-          className="w-8 h-8 rounded-full border border-gray-200 text-gray-500 hover:text-gray-700 hover:border-gray-300 transition"
+          className="relative flex items-center justify-center w-11 h-11 rounded-full transition-all duration-200 focus:outline-none bg-red-50 text-red-500 hover:bg-red-100"
           aria-label="Cancel upload"
           title="Cancel upload"
         >
-          <X size={14} className="mx-auto" />
+          <X size={18} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => inputRef.current?.click()}
+          className="relative flex items-center justify-center w-11 h-11 rounded-full transition-all duration-200 focus:outline-none bg-gray-100 text-gray-500 hover:bg-gray-200"
+          aria-label="Upload file for bulk processing"
+        >
+          <Upload size={18} />
         </button>
       )}
 
@@ -113,11 +98,4 @@ export default function FileUpload({
   );
 }
 
-FileUpload.propTypes = {
-  onDataReceived: PropTypes.func,
-  onChunksReceived: PropTypes.func,
-  onGraphPatchReceived: PropTypes.func,
-  setConversationId: PropTypes.func,
-  setFileName: PropTypes.func,
-  setMessage: PropTypes.func,
-};
+FileUpload.propTypes = {};

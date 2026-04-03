@@ -24,14 +24,21 @@ class AudioStorageManager:
         self.channels = channels
         self.sample_width = sample_width
 
-        self._lock = asyncio.Lock()
+        # Avoid binding an asyncio primitive at import time. Some test and CLI
+        # paths import the module before any event loop exists.
+        self._lock: Optional[asyncio.Lock] = None
         self._session_meta: Dict[str, Dict[str, int]] = defaultdict(lambda: {"bytes_written": 0})
+
+    def _get_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def append_chunk(self, conversation_id: str, chunk_bytes: bytes) -> None:
         if not chunk_bytes:
             return
 
-        async with self._lock:
+        async with self._get_lock():
             pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
             try:
                 with pcm_path.open("ab") as pcm_file:

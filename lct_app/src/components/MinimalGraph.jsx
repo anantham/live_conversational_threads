@@ -81,9 +81,9 @@ function extractContextualRelationEntries(contextualRelation) {
     .map(([name, text]) => [String(name), String(text)]);
 }
 
-function layoutWithDagre(nodes, edges, { nodeWidth = 120, nodeHeight = 40 } = {}) {
+function layoutWithDagre(nodes, edges, { nodeWidth = 240, nodeHeight = 80 } = {}) {
   const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", nodesep: 40, ranksep: 80 });
+  g.setGraph({ rankdir: "LR", nodesep: 50, ranksep: 100 });
   g.setDefaultEdgeLabel(() => ({}));
 
   nodes.forEach((n) => g.setNode(n.id, { width: nodeWidth, height: nodeHeight }));
@@ -106,10 +106,16 @@ const ZOOM_LEVEL_3 = 0.35; // < 0.35 → theme clusters (merge connected communi
 // Multi-scale graph clustering
 // ---------------------------------------------------------------------------
 
-/** Build name-based lookup for resolving edge_relations targets. */
+/** Build name-based lookup for resolving edge_relations targets.
+ * Stores both exact and lowercase keys for fuzzy matching. */
 function buildNameIndex(nodes) {
   const idx = new Map();
-  nodes.forEach((n) => idx.set(n.node_name, n.id));
+  nodes.forEach((n) => {
+    if (n.node_name) {
+      idx.set(n.node_name, n.id);
+      idx.set(n.node_name.toLowerCase(), n.id);
+    }
+  });
   return idx;
 }
 
@@ -390,10 +396,30 @@ function clusterMapToRfView(clusters, allNodes, speakerColorMap, prefix) {
       (a, b) => (b.edge_relations?.length || 0) - (a.edge_relations?.length || 0)
     );
     const bestName = sorted[0]?.node_name || "Cluster";
-    const truncName = bestName.length > 24 ? bestName.slice(0, 22) + "\u2026" : bestName;
-    const label = members.length === 1
-      ? truncName
-      : `${truncName} +${members.length - 1}`;
+    const truncName = bestName.length > 36 ? bestName.slice(0, 34) + "\u2026" : bestName;
+
+    // Collect summaries from members for the cluster body
+    const memberSummaries = members
+      .slice(0, 3)
+      .map((n) => n.summary || n.node_name || "")
+      .filter(Boolean)
+      .map((s) => s.length > 50 ? s.slice(0, 48) + "\u2026" : s);
+
+    const clusterLabel = (
+      <div style={{ lineHeight: 1.3, textAlign: "left" }}>
+        <div style={{ fontWeight: 600, fontSize: "12px", marginBottom: "3px" }}>
+          {truncName}
+          {members.length > 1 && <span style={{ fontWeight: 400, color: "#64748b" }}> ({members.length})</span>}
+        </div>
+        {memberSummaries.length > 0 && (
+          <div style={{ fontSize: "10px", color: "#475569", lineHeight: 1.35 }}>
+            {memberSummaries.map((s, i) => (
+              <div key={i} style={{ marginTop: i > 0 ? "2px" : 0 }}>{s}</div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
 
     // Dominant speaker
     const speakerCounts = {};
@@ -404,27 +430,24 @@ function clusterMapToRfView(clusters, allNodes, speakerColorMap, prefix) {
     const dominantSpeaker = Object.entries(speakerCounts)
       .sort((a, b) => b[1] - a[1])[0]?.[0] || "";
     const bgColor = speakerColorMap[dominantSpeaker] || "#e2e8f0";
-    const size = Math.min(220, 100 + members.length * 14);
 
     return {
       id: `${prefix}-${cid}`,
-      data: { label, memberCount: members.length, clusterId: cid },
+      data: { label: clusterLabel, memberCount: members.length, clusterId: cid },
       position: { x: 0, y: 0 },
       style: {
         background: bgColor,
         border: "2px solid #94a3b8",
-        borderRadius: "9999px",
-        padding: "10px 16px",
-        fontSize: members.length > 3 ? "13px" : "12px",
+        borderRadius: "10px",
+        padding: "10px 14px",
+        fontSize: "11px",
         fontFamily: "Inter, sans-serif",
-        fontWeight: 600,
         color: "#1e293b",
         cursor: "pointer",
-        width: `${size}px`,
-        textAlign: "center",
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
+        maxWidth: "260px",
+        minWidth: "140px",
+        wordBreak: "break-word",
+        whiteSpace: "normal",
       },
     };
   }).filter(Boolean);
@@ -468,7 +491,7 @@ function clusterMapToRfView(clusters, allNodes, speakerColorMap, prefix) {
       id: `ce-${key}`,
       source,
       target,
-      type: "smoothstep",
+      type: "default",
       label: count > 1 ? `${count}` : undefined,
       labelStyle: { fontSize: 9, fill: "#64748b" },
       labelBgStyle: { fill: "#fff", fillOpacity: 0.85 },
@@ -538,7 +561,7 @@ function MinimalGraphInner({
     [normalizedChunk, uniqueSpeakers]
   );
 
-  // Build ReactFlow nodes
+  // Build ReactFlow nodes — card-style with title + summary
   const rfNodes = useMemo(() => {
     return normalizedChunk.map((item) => {
       const isSelected = selectedNode === item.id;
@@ -546,10 +569,41 @@ function MinimalGraphInner({
       const speakerColor = uniqueSpeakers > 1
         ? (speakerColorMap[item.speaker_id] || "#e2e8f0")
         : (temporalColorMap[item.id] || "#e2e8f0");
-      const label =
-        item.node_name && item.node_name.length > 30
-          ? item.node_name.slice(0, 28) + "\u2026"
+
+      // Title: node_name truncated to ~40 chars
+      const title =
+        item.node_name && item.node_name.length > 40
+          ? item.node_name.slice(0, 38) + "\u2026"
           : item.node_name || "";
+
+      // Summary: show up to ~120 chars (a few sentences)
+      const summary = item.summary || item.full_text || "";
+      const summaryTruncated =
+        summary.length > 120
+          ? summary.slice(0, 118) + "\u2026"
+          : summary;
+      const showSummary = summaryTruncated && summaryTruncated !== title;
+
+      // Speaker badge
+      const speakerLabel = item.speaker_id || "";
+
+      const label = (
+        <div style={{ lineHeight: 1.3 }}>
+          <div style={{ fontWeight: 600, fontSize: "11px", marginBottom: showSummary ? "3px" : 0 }}>
+            {title}
+          </div>
+          {showSummary && (
+            <div style={{ fontWeight: 400, fontSize: "10px", color: "#475569", lineHeight: 1.35 }}>
+              {summaryTruncated}
+            </div>
+          )}
+          {speakerLabel && (
+            <div style={{ fontSize: "9px", color: "#64748b", marginTop: "3px" }}>
+              {speakerLabel}
+            </div>
+          )}
+        </div>
+      );
 
       return {
         id: item.id,
@@ -560,19 +614,18 @@ function MinimalGraphInner({
           border: isSelected ? "2px solid #f59e0b" : "1px solid #cbd5e1",
           boxShadow: isSelected
             ? "0 0 0 3px rgba(245,158,11,0.3)"
-            : "none",
-          borderRadius: "9999px",
-          padding: "6px 12px",
+            : "0 1px 3px rgba(0,0,0,0.06)",
+          borderRadius: "8px",
+          padding: "8px 12px",
           fontSize: "11px",
           fontFamily: "Inter, sans-serif",
-          fontWeight: 500,
           color: "#1e293b",
           cursor: "pointer",
           transition: "all 0.2s ease",
-          whiteSpace: "nowrap",
-          maxWidth: "150px",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
+          whiteSpace: "normal",
+          maxWidth: "240px",
+          minWidth: "120px",
+          wordBreak: "break-word",
         },
       };
     });
@@ -610,7 +663,16 @@ function MinimalGraphInner({
       // Contextual edges from edge_relations
       const relations = Array.isArray(item.edge_relations) ? item.edge_relations : [];
       relations.forEach((rel, i) => {
-        const related = normalizedChunk.find((n) => n.node_name === rel?.related_node);
+        const targetName = (rel?.related_node || "").trim();
+        if (!targetName) return;
+        // Fuzzy match: exact → case-insensitive → substring containment
+        const targetLower = targetName.toLowerCase();
+        const related = normalizedChunk.find((n) => n.node_name === targetName)
+          || normalizedChunk.find((n) => (n.node_name || "").toLowerCase() === targetLower)
+          || normalizedChunk.find((n) => {
+            const name = (n.node_name || "").toLowerCase();
+            return name.length > 5 && (name.includes(targetLower) || targetLower.includes(name));
+          });
         if (!related) return;
         const relType = rel.relation_type || "contextual";
         const color = EDGE_COLORS[relType] || EDGE_COLORS.contextual;
@@ -658,7 +720,13 @@ function MinimalGraphInner({
       // Fallback: contextual_relation map/object (backward compat)
       if (relations.length === 0 && item.contextual_relation) {
         extractContextualRelationEntries(item.contextual_relation).forEach(([relName, relText]) => {
-          const related = normalizedChunk.find((n) => n.node_name === relName);
+          const relNameLower = (relName || "").toLowerCase();
+          const related = normalizedChunk.find((n) => n.node_name === relName)
+            || normalizedChunk.find((n) => (n.node_name || "").toLowerCase() === relNameLower)
+            || normalizedChunk.find((n) => {
+              const name = (n.node_name || "").toLowerCase();
+              return name.length > 5 && (name.includes(relNameLower) || relNameLower.includes(name));
+            });
           if (!related) return;
           const fallbackPairKey = [item.id, related.id].sort().join("--");
           const fallbackEdgeId = `c-${fallbackPairKey}-contextual`;
@@ -699,19 +767,19 @@ function MinimalGraphInner({
   // Layout each cluster level
   const layoutedL1 = useMemo(
     () => l1.clusterNodes.length > 1
-      ? layoutWithDagre(l1.clusterNodes, l1.clusterEdges, { nodeWidth: 140, nodeHeight: 50 })
+      ? layoutWithDagre(l1.clusterNodes, l1.clusterEdges, { nodeWidth: 260, nodeHeight: 90 })
       : [],
     [l1]
   );
   const layoutedL2 = useMemo(
     () => l2.clusterNodes.length > 1
-      ? layoutWithDagre(l2.clusterNodes, l2.clusterEdges, { nodeWidth: 160, nodeHeight: 55 })
+      ? layoutWithDagre(l2.clusterNodes, l2.clusterEdges, { nodeWidth: 280, nodeHeight: 100 })
       : [],
     [l2]
   );
   const layoutedL3 = useMemo(
     () => l3.clusterNodes.length > 1
-      ? layoutWithDagre(l3.clusterNodes, l3.clusterEdges, { nodeWidth: 180, nodeHeight: 60 })
+      ? layoutWithDagre(l3.clusterNodes, l3.clusterEdges, { nodeWidth: 300, nodeHeight: 110 })
       : [],
     [l3]
   );
@@ -780,21 +848,6 @@ function MinimalGraphInner({
     });
     return () => cancelAnimationFrame(raf);
   }, [displayNodes, reactFlow]);
-
-  // Debug
-  useEffect(() => {
-    console.log("[MinimalGraph] clustering debug:", {
-      zoomLevel: zoomLevel.toFixed(2),
-      clusterLevel,
-      totalNodes: normalizedChunk.length,
-      l1Clusters: l1.clusterMap.size,
-      l2Clusters: l2.clusterMap.size,
-      l3Clusters: l3.clusterMap.size,
-      displaying: clusterLevelLabel || "individual",
-      displayNodeCount: displayNodes.length,
-      displayEdgeCount: displayEdges.length,
-    });
-  }, [zoomLevel, clusterLevel, normalizedChunk, l1, l2, l3, clusterLevelLabel, displayNodes, displayEdges]);
 
   const selectedLayoutNode = useMemo(
     () => layoutedNodes.find((node) => node.id === selectedNode) || null,
@@ -914,15 +967,14 @@ function MinimalGraphInner({
     setClickedEdge((prev) => (prev?.id === edge.id ? null : { id: edge.id, ...edge.data }));
   }, []);
 
+  const MIN_READABLE_ZOOM = 0.65;
   const ZOOM_PRESETS = [
     { label: "Center", action: () => {
       programmaticMoveRef.current = true;
-      reactFlow.fitView({ padding: 0.2, duration: 300 });
+      // Fit all nodes but enforce a minimum zoom so text stays readable
+      reactFlow.fitView({ padding: 0.3, duration: 300, minZoom: MIN_READABLE_ZOOM });
       setTimeout(() => { programmaticMoveRef.current = false; }, 350);
     }},
-    { label: "50%", action: () => reactFlow.zoomTo(0.5, { duration: 250 }) },
-    { label: "100%", action: () => reactFlow.zoomTo(1, { duration: 250 }) },
-    { label: "150%", action: () => reactFlow.zoomTo(1.5, { duration: 250 }) },
   ];
 
   return (
@@ -950,7 +1002,7 @@ function MinimalGraphInner({
       />
 
       {/* Zoom preset + graph display controls */}
-      <div className="absolute bottom-4 left-4 z-20 flex items-center gap-1">
+      <div className="absolute bottom-4 left-4 z-40 flex items-center gap-1">
         {ZOOM_PRESETS.map(({ label, action }) => (
           <button
             key={label}
@@ -1009,11 +1061,10 @@ function MinimalGraphInner({
         >
           {hideEdges ? "Edges off" : "Edges on"}
         </button>
-        <span className="ml-1 select-none text-[9px] text-gray-400">scroll = pan · pinch = zoom</span>
       </div>
 
       {/* Zoom / cluster HUD — top-left */}
-      <div className="absolute top-3 left-3 z-20 flex items-center gap-2 select-none">
+      <div className="absolute top-3 left-3 z-40 flex items-center gap-2 select-none">
         <div className="flex items-center gap-1.5 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm px-2.5 py-1.5">
           <span className="text-[10px] font-mono text-gray-500">{Math.round(zoomLevel * 100)}%</span>
           <span className="text-[9px] text-gray-300">|</span>
@@ -1184,6 +1235,87 @@ function MinimalGraphInner({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Context-sensitive color legend — adapts to current zoom level */}
+      {normalizedChunk.length > 0 && (
+        <div className="absolute bottom-14 right-4 z-40">
+          <details className="group">
+            <summary className="cursor-pointer list-none p-2 bg-white/80 hover:bg-white/95 backdrop-blur rounded-full shadow-sm border border-gray-200 text-gray-400 hover:text-gray-600 transition opacity-60 hover:opacity-100">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 16v-4M12 8h.01" />
+              </svg>
+            </summary>
+            <div className="absolute bottom-full right-0 mb-2 bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-2 min-w-[180px] animate-slideIn">
+              {effectiveClusterLevel === 0 ? (
+                <>
+                  <div>
+                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Node color = Speaker</span>
+                    <div className="mt-1 space-y-1">
+                      {Object.entries(speakerColorMap).slice(0, 5).map(([sid, color]) => (
+                        <div key={sid} className="flex items-center gap-2">
+                          <div className="w-3 h-3 rounded-full border border-gray-300" style={{ backgroundColor: color }} />
+                          <span className="text-gray-600">{sid}</span>
+                        </div>
+                      ))}
+                      {Object.keys(speakerColorMap).length === 0 && (
+                        <span className="text-gray-400 italic">No speakers detected</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Edge color = Relation</span>
+                    <div className="mt-1 space-y-1">
+                      {[
+                        { label: "supports", color: EDGE_COLORS.supports },
+                        { label: "rebuts", color: EDGE_COLORS.rebuts },
+                        { label: "clarifies", color: EDGE_COLORS.clarifies },
+                        { label: "tangent", color: EDGE_COLORS.tangent },
+                        { label: "temporal", color: EDGE_COLORS.temporal_next },
+                      ].map(({ label, color }) => (
+                        <div key={label} className="flex items-center gap-2">
+                          <div className="w-4 h-0.5" style={{ backgroundColor: color }} />
+                          <span className="text-gray-600">{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">
+                      Node color = {effectiveClusterLevel >= 2 ? "Theme" : "Speaker group"}
+                    </span>
+                    <div className="mt-1 text-[10px] text-gray-500">
+                      Clusters colored by dominant speaker or thematic grouping
+                    </div>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Edge color = Agreement</span>
+                    <div className="mt-1 space-y-1">
+                      {[
+                        { label: "supports / agrees", color: EDGE_COLORS.supports },
+                        { label: "rebuts / disagrees", color: EDGE_COLORS.rebuts },
+                        { label: "clarifies", color: EDGE_COLORS.clarifies },
+                        { label: "temporal flow", color: EDGE_COLORS.temporal_next },
+                      ].map(({ label, color }) => (
+                        <div key={label} className="flex items-center gap-2">
+                          <div className="w-4 h-0.5" style={{ backgroundColor: color }} />
+                          <span className="text-gray-600">{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-[10px] text-gray-400">
+                    Edge thickness = number of connections between clusters
+                  </div>
+                </>
+              )}
+            </div>
+          </details>
         </div>
       )}
     </div>

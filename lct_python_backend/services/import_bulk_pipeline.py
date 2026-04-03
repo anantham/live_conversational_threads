@@ -19,8 +19,25 @@ from lct_python_backend.services.import_bulk_telemetry import (
     calculate_segmented_progress,
     elapsed_ms,
     estimate_analysis_eta_ms,
+    estimate_initial_eta_ms,
     estimate_segment_eta_ms,
     estimate_transcription_eta_ms,
+    record_transcription_timing,
+)
+from lct_python_backend.services.import_checkpoint import (
+    clear_checkpoint,
+    compute_file_hash,
+    find_checkpoint,
+    save_chunk_checkpoint,
+)
+from lct_python_backend.services.byok_session_store import (
+    BYOK_SCOPE_LLM_IMPORT,
+    BYOK_SCOPE_STT_IMPORT,
+    ByokSessionLookupError,
+    build_runtime_llm_config_for_byok,
+    build_runtime_llm_providers_for_byok,
+    build_runtime_stt_settings_for_byok,
+    resolve_byok_session,
 )
 from lct_python_backend.services.provider_selection import resolve_import_audio_candidates
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
@@ -96,20 +113,53 @@ def _candidate_backend_label(candidate: Optional[dict[str, Any]], fallback_http_
     if isinstance(candidate, dict):
         transport = str(candidate.get("transport") or "").strip().lower()
         provider = str(candidate.get("provider") or "").strip().lower()
+        http_url = str(candidate.get("http_url") or candidate.get("base_url") or "").strip()
+        # Cloud transports: label with provider name + cloud indicator
         if transport in {"openai_audio", "openrouter_audio"}:
-            return transport
-        http_url = str(candidate.get("http_url") or "").strip()
+            return f"cloud_{transport}"
         if provider:
             if "modal" in http_url.lower():
                 return f"modal_{provider}"
             if "127.0.0.1" in http_url or "localhost" in http_url:
                 return f"local_{provider}"
-            return provider
+            return f"remote_{provider}" if http_url else provider
     if "modal" in fallback_http_url.lower():
         return "modal_whisperx"
     if "127.0.0.1" in fallback_http_url or "localhost" in fallback_http_url:
         return "local_whisperx"
     return "whisperx"
+
+
+def _resolve_llm_backend_label(
+    llm_config: Optional[dict[str, Any]],
+    llm_providers: Optional[list[dict[str, Any]]],
+) -> str:
+    enabled_providers = [
+        provider
+        for provider in (llm_providers or [])
+        if isinstance(provider, dict) and provider.get("enabled", True)
+    ]
+    if enabled_providers:
+        primary_provider = enabled_providers[0]
+        provider_type = str(primary_provider.get("type") or "openai_compatible").strip().lower()
+        base_url = str(primary_provider.get("base_url") or "").strip().lower()
+        model = str(primary_provider.get("model") or "").strip()
+        if provider_type == "openai":
+            return f"openai_{model}" if model else "openai"
+        if provider_type == "openrouter":
+            return f"openrouter_{model}" if model else "openrouter"
+        if "modal" in base_url:
+            return f"modal_{model}" if model else "modal"
+        if any(host in base_url for host in ("localhost", "127.0.0.1", "100.81.")):
+            return f"local_{model}" if model else "local"
+        return f"remote_{model}" if model else "remote"
+
+    config = llm_config or {}
+    llm_base_url = str(config.get("base_url", "")).strip()
+    llm_model = str(config.get("chat_model", "")).strip()
+    if str(config.get("mode") or "").strip().lower() == "online" and "gemini" in llm_model.lower():
+        return f"online_{llm_model}" if llm_model else "online"
+    return f"modal_{llm_model}" if "modal.run" in llm_base_url else f"local_{llm_model}"
 
 
 async def run_bulk_processing_worker(
@@ -120,6 +170,7 @@ async def run_bulk_processing_worker(
     conversation_id: Optional[str],
     speaker_id: Optional[str],
     provider: Optional[str],
+    byok_session_token: Optional[str],
     db: AsyncSession,
     temp_path: str,
     content_size: int,
@@ -210,15 +261,30 @@ async def run_bulk_processing_worker(
         )
 
         stt_settings = await load_stt_settings(db)
+        byok_session = None
+        if str(byok_session_token or "").strip():
+            try:
+                byok_session = resolve_byok_session(
+                    byok_session_token,
+                    required_scope=BYOK_SCOPE_STT_IMPORT,
+                )
+            except ByokSessionLookupError as exc:
+                raise ValueError(str(exc)) from exc
+        runtime_stt_settings = build_runtime_stt_settings_for_byok(
+            stt_settings,
+            byok_session,
+        )
+        provider_override = str((byok_session or {}).get("provider") or provider or "").strip() or None
 
-        stt_http_url = str(stt_settings.get("http_url", "")).strip()
+        stt_http_url = str(runtime_stt_settings.get("http_url", "")).strip()
         import_candidates = resolve_import_audio_candidates(
-            settings=stt_settings,
-            provider_override=provider,
+            settings=runtime_stt_settings,
+            provider_override=provider_override,
         )
         primary_import_candidate = import_candidates[0] if import_candidates else None
         stt_backend = _candidate_backend_label(primary_import_candidate, stt_http_url)
         telemetry["stt_backend"] = stt_backend
+        telemetry["stt_http_url"] = stt_http_url
         if isinstance(primary_import_candidate, dict):
             telemetry["stt_candidate_provider"] = str(primary_import_candidate.get("provider") or "")
             telemetry["stt_candidate_transport"] = str(primary_import_candidate.get("transport") or "")
@@ -239,6 +305,71 @@ async def run_bulk_processing_worker(
             audio_duration_ms = _get_audio_duration_ms(Path(temp_path))
             telemetry["audio_duration_ms"] = audio_duration_ms
 
+        # Compute file hash for checkpoint/resume support
+        file_hash: Optional[str] = None
+        existing_checkpoint: Optional[dict[str, Any]] = None
+        checkpoint_transcript_parts: list[str] = []
+        resume_from_chunk = 0
+        if is_likely_audio:
+            try:
+                file_hash = compute_file_hash(Path(temp_path))
+                telemetry["file_hash"] = file_hash
+                existing_checkpoint = await find_checkpoint(db, file_hash)
+                if existing_checkpoint and existing_checkpoint.get("completed_chunks", 0) > 0:
+                    resume_from_chunk = existing_checkpoint["completed_chunks"]
+                    checkpoint_transcript_parts = [
+                        ct["text"] for ct in existing_checkpoint.get("completed_chunk_texts", [])
+                        if ct.get("text")
+                    ]
+                    logger.info(
+                        "[PROCESS FILE] Found checkpoint for %s: %d/%s chunks completed, resuming from chunk %d",
+                        filename,
+                        resume_from_chunk,
+                        existing_checkpoint.get("total_chunks", "?"),
+                        resume_from_chunk + 1,
+                    )
+                    await emit(
+                        "status",
+                        {
+                            "stage": "resuming",
+                            "progress": 0.08,
+                            "message": f"Resuming from chunk {resume_from_chunk} (found checkpoint)...",
+                            "stt_backend": stt_backend if is_likely_audio else "",
+                            "telemetry": {
+                                "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                                "checkpoint_chunks": resume_from_chunk,
+                            },
+                        },
+                    )
+                    # Replay cached transcript lines to frontend
+                    for ct in existing_checkpoint.get("completed_chunk_texts", []):
+                        if ct.get("text"):
+                            await emit(
+                                "transcript",
+                                {
+                                    "phase": "transcribing",
+                                    "chunk_id": f"stt-chunk-{ct['index']}",
+                                    "index": ct["index"],
+                                    "total": existing_checkpoint.get("total_chunks", 0),
+                                    "text": ct["text"],
+                                    "resumed": True,
+                                    "telemetry": {"checkpoint_replayed": True},
+                                },
+                            )
+            except Exception as hash_exc:  # noqa: BLE001
+                logger.warning("[PROCESS FILE] Checkpoint lookup failed (non-fatal): %s", hash_exc)
+                file_hash = None
+
+        # Empirical initial ETA from past transcription timings
+        initial_eta_ms: Optional[float] = None
+        if is_likely_audio and audio_duration_ms and stt_backend:
+            initial_eta_ms = estimate_initial_eta_ms(
+                stt_backend=stt_backend,
+                audio_duration_ms=audio_duration_ms,
+            )
+            if initial_eta_ms is not None:
+                telemetry["initial_eta_ms"] = initial_eta_ms
+
         # Build transcription message with duration if available
         duration_str = _format_duration_for_display(audio_duration_ms)
         if is_likely_audio and duration_str:
@@ -255,19 +386,42 @@ async def run_bulk_processing_worker(
                 "progress": 0.10,
                 "message": transcribe_msg,
                 "stt_backend": stt_backend if is_likely_audio else "",
+                "stt_http_url": stt_http_url if is_likely_audio else "",
                 "audio_duration_ms": audio_duration_ms,
                 "telemetry": {
                     "total_elapsed_ms": elapsed_ms(pipeline_started_at),
                     "stt_backend": stt_backend if is_likely_audio else "",
+                    "stt_http_url": stt_http_url if is_likely_audio else "",
                     "audio_duration_ms": audio_duration_ms,
+                    "initial_eta_ms": initial_eta_ms,
                 },
             },
         )
         transcription_started_at = time.perf_counter()
 
+        # Progressive graph generation: feed transcript to LLM as STT chunks arrive
+        # instead of waiting for all chunks to finish. The processor ref is set once
+        # the processor is created (after LLM config is loaded).
+        progressive_processor_ref: list = []  # mutable container for closure
+        PROGRESSIVE_BATCH_CHARS = 400  # accumulate ~400 chars before triggering LLM
+        progressive_buffer: list[str] = []
+        progressive_buffer_chars = [0]
+
+        async def _flush_progressive_buffer():
+            if not progressive_processor_ref or not progressive_buffer:
+                return
+            batch_text = "\n".join(progressive_buffer)
+            progressive_buffer.clear()
+            progressive_buffer_chars[0] = 0
+            try:
+                await progressive_processor_ref[0].handle_final_text(batch_text)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[PROCESS FILE] Progressive graph gen failed (non-fatal): %s", exc)
+
         async def on_chunk_progress(chunk_idx: int, total: int, chunk_text: str):
             frac = chunk_idx / total
-            progress = 0.10 + frac * 0.25
+            # With progressive graph gen, STT+analysis happen together: 0.10 → 0.85
+            progress = 0.10 + frac * (0.75 if progressive_processor_ref else 0.25)
             telemetry["stt_chunks_completed"] = chunk_idx
             telemetry["stt_chunks_total"] = total
             transcription_elapsed_ms = (
@@ -300,6 +454,9 @@ async def run_bulk_processing_worker(
             )
             normalized_chunk_text = str(chunk_text or "").strip()
             if normalized_chunk_text:
+                # Accumulate transcript for checkpoint
+                checkpoint_transcript_parts.append(normalized_chunk_text)
+
                 await emit(
                     "transcript",
                     {
@@ -317,6 +474,34 @@ async def run_bulk_processing_worker(
                         },
                     },
                 )
+
+                # Checkpoint: persist this chunk so we can resume if connection drops
+                if file_hash:
+                    try:
+                        await save_chunk_checkpoint(
+                            db,
+                            conversation_id=resolved_conversation_id,
+                            file_hash=file_hash,
+                            chunk_index=chunk_idx,
+                            total_chunks=total,
+                            chunk_text=normalized_chunk_text,
+                            accumulated_transcript="\n".join(checkpoint_transcript_parts),
+                            stt_backend=telemetry.get("stt_backend", ""),
+                            elapsed_ms=transcription_elapsed_ms or 0,
+                            file_name=filename,
+                            file_size_bytes=content_size,
+                        )
+                    except Exception as ckpt_exc:  # noqa: BLE001
+                        logger.warning(
+                            "[PROCESS FILE] Checkpoint save failed (non-fatal): %s", ckpt_exc
+                        )
+
+                # Progressive graph generation: feed to LLM as text accumulates
+                if progressive_processor_ref:
+                    progressive_buffer.append(normalized_chunk_text)
+                    progressive_buffer_chars[0] += len(normalized_chunk_text)
+                    if progressive_buffer_chars[0] >= PROGRESSIVE_BATCH_CHARS:
+                        await _flush_progressive_buffer()
 
         async def on_provider_fallback(
             from_provider: str,
@@ -387,25 +572,37 @@ async def run_bulk_processing_worker(
             )
 
         llm_config = await load_llm_config(db)
+        llm_providers: list[dict[str, Any]] = []
         # Load LLM providers for fallback support
-        llm_providers = None
         if load_llm_providers:
             llm_providers_config = await load_llm_providers(db)
-            llm_providers = llm_providers_config.get("providers")
+            providers = llm_providers_config.get("providers")
+            if isinstance(providers, list):
+                llm_providers = providers
+
+        runtime_llm_config = build_runtime_llm_config_for_byok(
+            llm_config,
+            byok_session,
+            required_scope=BYOK_SCOPE_LLM_IMPORT,
+        )
+        runtime_llm_providers = build_runtime_llm_providers_for_byok(
+            llm_providers,
+            byok_session,
+            required_scope=BYOK_SCOPE_LLM_IMPORT,
+        )
 
         # Determine LLM backend for UI indicators (will be updated by processor)
-        llm_base_url = str(llm_config.get("base_url", "")).strip()
-        llm_model = str(llm_config.get("chat_model", "")).strip()
-        is_modal_llm = "modal.run" in llm_base_url
-        llm_backend = f"modal_{llm_model}" if is_modal_llm else f"local_{llm_model}"
+        llm_backend = _resolve_llm_backend_label(runtime_llm_config, runtime_llm_providers)
         telemetry["llm_backend"] = llm_backend
 
         processor = transcript_processor_cls(
             send_update=send_update,
             send_status=send_status,
-            llm_config=llm_config,
-            providers=llm_providers,
+            llm_config=runtime_llm_config,
+            providers=runtime_llm_providers,
         )
+        # Enable progressive graph generation during STT phase
+        progressive_processor_ref.append(processor)
         graph_started_at = time.perf_counter()
 
         # Track final source type (set by either path)
@@ -427,7 +624,7 @@ async def run_bulk_processing_worker(
             segmented_transcript_parts: list[str] = []
 
             # Get STT URL from settings
-            stt_http_url = str(stt_settings.get("http_url", "")).strip()
+            stt_http_url = str(runtime_stt_settings.get("http_url", "")).strip()
             if not stt_http_url:
                 logger.error("[PROCESS FILE] No STT HTTP URL configured for segmented transcription")
                 raise ValueError("No STT HTTP URL configured for segmented transcription.")
@@ -442,9 +639,9 @@ async def run_bulk_processing_worker(
             async for segment in transcribe_audio_segmented(
                 file_path=Path(temp_path),
                 http_url=stt_http_url,
-                model=str(stt_settings.get("http_model", "")).strip(),
-                language=str(stt_settings.get("http_language", "")).strip(),
-                timeout_seconds=float(stt_settings.get("http_timeout_seconds", 120.0) or 120.0),
+                model=str(runtime_stt_settings.get("http_model", "")).strip(),
+                language=str(runtime_stt_settings.get("http_language", "")).strip(),
+                timeout_seconds=float(runtime_stt_settings.get("http_timeout_seconds", 120.0) or 120.0),
             ):
                 segment_idx += 1
                 if await request.is_disconnected():
@@ -609,6 +806,13 @@ async def run_bulk_processing_worker(
             await processor.flush()
             telemetry["segment_count"] = segment_idx
             telemetry["transcript_chars"] = total_transcript_chars
+            # Record empirical timing for segmented transcription
+            if transcription_started_at is not None and audio_duration_ms and stt_backend:
+                record_transcription_timing(
+                    stt_backend=stt_backend,
+                    audio_duration_ms=audio_duration_ms,
+                    transcription_ms=elapsed_ms(transcription_started_at),
+                )
             final_source_type = "audio"
             final_source_utterances = accumulated_utterances
             final_transcript_text = "\n".join(segmented_transcript_parts).strip()
@@ -622,11 +826,13 @@ async def run_bulk_processing_worker(
                 temp_path=Path(temp_path),
                 filename=filename,
                 content_type=file.content_type,
-                stt_settings=stt_settings,
-                provider_override=provider,
+                stt_settings=runtime_stt_settings,
+                provider_override=provider_override,
                 source_type_override=resolved_source_type,
                 on_chunk_progress=on_chunk_progress if is_likely_audio else None,
                 on_provider_fallback=on_provider_fallback if is_likely_audio else None,
+                resume_from_chunk=resume_from_chunk,
+                resumed_chunk_texts=checkpoint_transcript_parts if resume_from_chunk > 0 else None,
             )
             source_timings = transcript_result.metadata.get("timings_ms", {})
             if isinstance(source_timings, dict):
@@ -642,6 +848,13 @@ async def run_bulk_processing_worker(
                 telemetry["stt_backend"] = transcript_result.metadata.get("stt_backend")
             if transcription_started_at is not None:
                 telemetry["transcription_ms"] = elapsed_ms(transcription_started_at)
+                # Record empirical timing for future ETA estimates
+                if audio_duration_ms and telemetry.get("stt_backend"):
+                    record_transcription_timing(
+                        stt_backend=telemetry["stt_backend"],
+                        audio_duration_ms=audio_duration_ms,
+                        transcription_ms=telemetry["transcription_ms"],
+                    )
             status_message = f"Got {transcript_result.source_type} transcript."
             if transcript_result.source_type == "audio" and transcript_result.metadata.get("provider_fallback_used"):
                 fallback_from = transcript_result.metadata.get("provider_fallback_from") or "local"
@@ -673,6 +886,10 @@ async def run_bulk_processing_worker(
             if not transcript_text:
                 raise ValueError("No transcript text could be extracted from file.")
 
+            # Flush any remaining progressive buffer from STT phase
+            await _flush_progressive_buffer()
+            progressive_nodes = len(processor.existing_json) if hasattr(processor, "existing_json") else 0
+
             chunking_started_at = time.perf_counter()
             transcript_chunks = chunk_transcript_lines(transcript_text)
             if not transcript_chunks:
@@ -680,27 +897,61 @@ async def run_bulk_processing_worker(
             telemetry["chunking_ms"] = elapsed_ms(chunking_started_at)
             telemetry["transcript_chars"] = len(transcript_text)
             telemetry["transcript_chunk_count"] = len(transcript_chunks)
+            telemetry["progressive_nodes"] = progressive_nodes
 
-            active_stage = "analyzing"
-            await emit(
-                "status",
-                {
-                    "stage": "analyzing",
-                    "progress": 0.55,
-                    "message": f"Generating graph from {len(transcript_chunks)} transcript chunks...",
-                    "stt_backend": transcript_result.metadata.get("stt_backend", ""),
-                    "llm_backend": llm_backend,
-                    "telemetry": {
-                        "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                        "chunking_ms": telemetry.get("chunking_ms"),
-                        "transcript_chunk_count": len(transcript_chunks),
+            if progressive_nodes > 0:
+                # Progressive generation already produced nodes during STT.
+                # Just flush to ensure all pending text is processed.
+                logger.info(
+                    "[PROCESS FILE] Progressive generation produced %d nodes during STT. "
+                    "Flushing final batch (skipping redundant re-analysis).",
+                    progressive_nodes,
+                )
+                active_stage = "analyzing"
+                await emit(
+                    "status",
+                    {
+                        "stage": "analyzing",
+                        "progress": 0.90,
+                        "message": f"Finalizing graph ({progressive_nodes} nodes from progressive analysis)...",
                         "stt_backend": transcript_result.metadata.get("stt_backend", ""),
                         "llm_backend": llm_backend,
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                            "progressive_nodes": progressive_nodes,
+                            "stt_backend": transcript_result.metadata.get("stt_backend", ""),
+                            "llm_backend": llm_backend,
+                        },
                     },
-                },
-            )
+                )
+                await processor.flush()
 
+            else:
+                # No progressive nodes — fall back to full post-STT analysis
+                active_stage = "analyzing"
+                await emit(
+                    "status",
+                    {
+                        "stage": "analyzing",
+                        "progress": 0.55,
+                        "message": f"Generating graph from {len(transcript_chunks)} transcript chunks...",
+                        "stt_backend": transcript_result.metadata.get("stt_backend", ""),
+                        "llm_backend": llm_backend,
+                        "telemetry": {
+                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                            "chunking_ms": telemetry.get("chunking_ms"),
+                            "transcript_chunk_count": len(transcript_chunks),
+                            "stt_backend": transcript_result.metadata.get("stt_backend", ""),
+                            "llm_backend": llm_backend,
+                        },
+                    },
+                )
+
+            # Analysis loop — only runs if progressive generation didn't handle it
             for index, chunk in enumerate(transcript_chunks, start=1):
+                if progressive_nodes > 0:
+                    break  # Already processed progressively
+
                 if await request.is_disconnected():
                     logger.info(
                         "[PROCESS FILE] Client disconnected, aborting at chunk %d/%d",
@@ -794,8 +1045,8 @@ async def run_bulk_processing_worker(
                 transcript_text=final_transcript_text,
                 utterances=final_source_utterances,
                 existing_nodes=processor.existing_json,
-                llm_config=llm_config,
-                providers=llm_providers,
+                llm_config=runtime_llm_config,
+                providers=runtime_llm_providers,
             )
             telemetry["graph_refinement"] = {
                 key: value
@@ -863,6 +1114,34 @@ async def run_bulk_processing_worker(
                     },
                 )
 
+        # Generate a descriptive conversation name from the graph nodes
+        def _derive_conversation_name(nodes: list, fallback: str) -> str:
+            """Build a short title from the first few node names."""
+            names = [
+                str(n.get("node_name") or "").strip()
+                for n in (nodes or [])
+                if isinstance(n, dict) and str(n.get("node_name") or "").strip()
+            ]
+            if not names:
+                return fallback
+            # Use up to 3 node names, max 60 chars total
+            parts = []
+            total = 0
+            for name in names[:3]:
+                if total + len(name) > 55:
+                    break
+                parts.append(name)
+                total += len(name)
+            title = " / ".join(parts)
+            if len(names) > len(parts):
+                title += " ..."
+            return title or fallback
+
+        derived_name = _derive_conversation_name(
+            processor.existing_json,
+            Path(filename).stem or "Imported conversation",
+        )
+
         # Persist graph to DB (enables canvas export and other DB-backed features)
         try:
             persisted_count = await persist_import_graph(
@@ -870,7 +1149,7 @@ async def run_bulk_processing_worker(
                 conversation_id=resolved_conversation_id,
                 existing_json=processor.existing_json,
                 utterances=final_source_utterances,
-                conversation_name=Path(filename).stem or "Imported conversation",
+                conversation_name=derived_name,
                 source_type=final_source_type,
                 source_metadata=(
                     final_source_metadata if isinstance(final_source_metadata, dict) else {}
@@ -878,6 +1157,14 @@ async def run_bulk_processing_worker(
             )
             logger.info("[PROCESS FILE] Persisted %d nodes to DB for %s", persisted_count, resolved_conversation_id)
             telemetry["graph_persisted_nodes"] = persisted_count
+
+            # Clear checkpoint after successful persistence — the work is saved
+            if file_hash:
+                try:
+                    await clear_checkpoint(db, file_hash)
+                    telemetry["checkpoint_cleared"] = True
+                except Exception as ckpt_clear_exc:  # noqa: BLE001
+                    logger.warning("[PROCESS FILE] Checkpoint clear failed (non-fatal): %s", ckpt_clear_exc)
         except Exception as persist_exc:  # noqa: BLE001
             logger.warning("[PROCESS FILE] Graph persistence failed (non-fatal): %s", persist_exc)
             telemetry["graph_persist_error"] = str(persist_exc) or type(persist_exc).__name__
@@ -989,10 +1276,10 @@ async def run_bulk_processing_worker(
                     filename=filename,
                     content_type=file.content_type,
                     source_type_override=resolved_source_type,
-                    provider_override=provider,
+                    provider_override=provider_override,
                     conversation_id=resolved_conversation_id,
                     speaker_id=resolved_speaker_id,
-                    stt_settings=stt_settings,
+                    stt_settings=runtime_stt_settings,
                     llm_config=llm_config,
                     source_metadata=final_source_metadata,
                 )
@@ -1034,6 +1321,7 @@ async def run_bulk_processing_worker(
                 "node_count": len(processor.existing_json),
                 "chunk_count": len(processor.chunk_dict),
                 "source_type": final_source_type,
+                "file_name": derived_name,
                 "telemetry": telemetry,
                 "artifact_export": artifact_export_payload,
                 "diarization_job": diarization_job_payload,

@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 from lct_python_backend.services.coercion_helpers import coerce_str, to_bool
 from lct_python_backend.services.stt_config import (
+    STT_CLOUD_PROVIDER_IDS,
     STT_PROVIDER_IDS,
     _normalize_provider,
     build_cloud_provider_api_url,
@@ -38,7 +39,13 @@ def resolve_live_stt_candidates(
     provider_http_urls = settings.get("provider_http_urls")
     provider_http_map = provider_http_urls if isinstance(provider_http_urls, dict) else {}
     configured_provider = _normalize_provider(settings.get("provider"))
-    selected_provider = _normalize_provider(provider_override or configured_provider)
+    normalized_override = coerce_str(provider_override).lower()
+    cloud_override_provider = (
+        normalized_override if normalized_override in STT_CLOUD_PROVIDER_IDS else ""
+    )
+    selected_provider = _normalize_provider(
+        configured_provider if cloud_override_provider else (provider_override or configured_provider)
+    )
     configured_http_url = coerce_str(
         provider_http_map.get(selected_provider) or settings.get("http_url")
     )
@@ -164,6 +171,17 @@ def resolve_live_stt_candidates(
                     "supports_diarization": False,
                     "degraded": True,
                 }
+
+    if cloud_override_provider:
+        add_candidate(fallback_candidates.get(cloud_override_provider) or {})
+        add_candidate(primary_candidate)
+        for route_id in fallback_priority:
+            if route_id == cloud_override_provider:
+                continue
+            candidate = fallback_candidates.get(route_id)
+            if candidate:
+                add_candidate(candidate)
+        return candidates
 
     prefer_openai_before_remote_whisper = (
         selected_provider == "whisper"

@@ -180,7 +180,7 @@ export default function ViewConversation() {
     return allNodes.find((node) => node?.id === selectedNode) || null;
   }, [allNodes, selectedNode]);
 
-  const speakerColorMap = useMemo(() => buildSpeakerColorMap(latestChunk), [latestChunk]);
+  const speakerColorMap = useMemo(() => buildSpeakerColorMap(allNodes), [allNodes]);
 
   useEffect(() => {
     if (!selectedNode) return;
@@ -206,9 +206,9 @@ export default function ViewConversation() {
           <p className="text-xs text-slate-500">Saved conversation view</p>
         </div>
 
-        {latestChunk.length > 0 && (
+        {allNodes.length > 0 && (
           <span className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-500">
-            {latestChunk.length} nodes
+            {allNodes.length} nodes
           </span>
         )}
       </header>
@@ -232,13 +232,13 @@ export default function ViewConversation() {
           </div>
         )}
 
-        {!isLoading && !loadError && latestChunk.length === 0 && (
+        {!isLoading && !loadError && allNodes.length === 0 && (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
             This conversation has no graph nodes yet.
           </div>
         )}
 
-        {!isLoading && !loadError && latestChunk.length > 0 && (
+        {!isLoading && !loadError && allNodes.length > 0 && (
           <div className="flex h-full flex-col">
             <div className="relative min-h-0 flex-1">
               <MinimalGraph

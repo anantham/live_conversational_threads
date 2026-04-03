@@ -1,7 +1,5 @@
 import PropTypes from "prop-types";
 
-import UploadTranscriptPreview from "./UploadTranscriptPreview";
-
 const clampProgress = (value) => {
   const parsed = Number(value);
   if (Number.isNaN(parsed)) return 0;
@@ -30,7 +28,10 @@ const formatBackend = (backend) => {
   if (!backend) return null;
   const lower = backend.toLowerCase();
   if (lower.startsWith("modal")) return "Modal";
-  if (lower.startsWith("openrouter") || lower.includes("openrouter")) return "OpenRouter";
+  if (lower.includes("openrouter")) return "OpenRouter";
+  if (lower.includes("openai_audio")) return "OpenAI";
+  if (lower.startsWith("cloud_")) return lower.replace("cloud_", "").replace("_audio", "").replace(/^\w/, c => c.toUpperCase());
+  if (lower.startsWith("remote_")) return "Remote";
   return "Local";
 };
 
@@ -43,8 +44,10 @@ const getBackendTooltip = (type, backend) => {
   const model = backend.replace(/^(local_|modal_|openrouter_)/i, "");
 
   if (type === "stt") {
-    if (label === "Local") return `WhisperX on local GPU (${model || "whisperx"})`;
+    if (label === "Local") return `Local STT provider (${model || "whisperx"})`;
+    if (label === "Remote") return `Remote STT provider (${model || "whisperx"})`;
     if (label === "Modal") return `WhisperX on Modal cloud (${model || "whisperx"})`;
+    if (label === "OpenAI") return `OpenAI cloud STT (${model || "whisper"})`;
     return `STT via ${label}`;
   }
 
@@ -94,6 +97,8 @@ export default function UploadProgressPanel({
               className={`cursor-help ${
                 sttLabel === "Modal" ? "text-yellow-600" :
                 sttLabel === "OpenRouter" ? "text-blue-600" :
+                sttLabel === "OpenAI" ? "text-purple-600" :
+                sttLabel === "Remote" ? "text-cyan-600" :
                 "text-green-600"
               }`}
             >
@@ -120,7 +125,6 @@ export default function UploadProgressPanel({
           style={{ width: `${Math.round(clampProgress(progress) * 100)}%` }}
         />
       </div>
-      <UploadTranscriptPreview lines={liveTranscriptLines} />
     </div>
   );
 }
@@ -129,7 +133,12 @@ UploadProgressPanel.propTypes = {
   audioDurationMs: PropTypes.number,
   etaText: PropTypes.string,
   isProcessing: PropTypes.bool.isRequired,
-  liveTranscriptLines: PropTypes.arrayOf(PropTypes.string),
+  liveTranscriptLines: PropTypes.arrayOf(
+    PropTypes.oneOfType([
+      PropTypes.string,
+      PropTypes.shape({ text: PropTypes.string.isRequired }),
+    ])
+  ),
   llmBackend: PropTypes.string,
   progress: PropTypes.number.isRequired,
   sttBackend: PropTypes.string,

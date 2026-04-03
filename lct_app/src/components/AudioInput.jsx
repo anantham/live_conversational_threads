@@ -5,6 +5,7 @@ import { Mic, ChevronDown } from "lucide-react";
 import { normalizeSttSettings } from "./audio/sttUtils";
 import LiveSessionHud from "./audio/LiveSessionHud";
 import useLiveSessionStatus from "./audio/useLiveSessionStatus";
+import { useUpload } from "../contexts/UploadContext";
 import {
   useAutoSaveConversation,
   useFilenameFromGraph,
@@ -88,6 +89,7 @@ const AudioInput = forwardRef(function AudioInput({
   fileName,
   setFileName,
 }, ref) {
+  const uploadCtx = useUpload();
   const [recording, setRecording] = useState(false);
   const [providerSocketState, setProviderSocketState] = useState("idle");
   const [backendSocketState, setBackendSocketState] = useState("idle");
@@ -354,6 +356,7 @@ const AudioInput = forwardRef(function AudioInput({
         onToggleDetails={() => setDetailOpen((open) => !open)}
         statusLine={statusLine}
         stt={liveStt}
+        uploadState={uploadCtx}
       />
 
       {/* Error toast (above footer) */}
