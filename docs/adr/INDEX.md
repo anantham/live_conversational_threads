@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-03-20 (ADR-019 approved)
+Last updated: 2026-04-03 (ADR-022 approved)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -23,6 +23,9 @@ Last updated: 2026-03-20 (ADR-019 approved)
 | [ADR-017](ADR-017-capability-oriented-live-runtime-pipeline.md) | Capability-Oriented Live Runtime Pipeline | 2026-03-19 | Approved |
 | [ADR-018](ADR-018-edit-history-training-data-export.md) | Edit History Contracts and Training Data Export | 2026-03-19 | Proposed |
 | [ADR-019](ADR-019-event-sourced-transcript-graph-and-artifact-materialization.md) | Event-Sourced Transcript, Graph, and Artifact Materialization | 2026-03-20 | Approved |
+| [ADR-020](ADR-020-session-scoped-openai-byok-for-stt-and-graph.md) | Session-Scoped OpenAI BYOK for Live/Import STT and Graph Generation | 2026-04-03 | Approved |
+| [ADR-021](ADR-021-browser-local-draft-recovery.md) | Browser-Local Draft Recovery for Interrupted Conversation Sessions | 2026-04-03 | Approved |
+| [ADR-022](ADR-022-checkpoint-aware-upload-retry-and-resume.md) | Checkpoint-Aware Upload Retry and Resume for Bulk Imports | 2026-04-03 | Approved |
 
 ## Status Definitions
 
