@@ -1,8 +1,31 @@
 import asyncio
+import sys
 import time
+import types
 import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
+
+try:
+    from google import genai as _google_genai  # noqa: F401
+except ImportError:
+    google_module = sys.modules.get("google")
+    if google_module is None:
+        google_module = types.ModuleType("google")
+        sys.modules["google"] = google_module
+
+    genai_module = types.ModuleType("google.genai")
+
+    class _UnavailableGenaiClient:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("google-genai test stub should not be used at runtime")
+
+    genai_module.Client = _UnavailableGenaiClient
+    types_module = types.ModuleType("google.genai.types")
+    genai_module.types = types_module
+    setattr(google_module, "genai", genai_module)
+    sys.modules["google.genai"] = genai_module
+    sys.modules["google.genai.types"] = types_module
 
 from lct_python_backend.services.stt_http_transcriber import pcm16le_to_wav
 from lct_python_backend.services import transcript_processing as transcript_mod
@@ -296,11 +319,11 @@ def test_transcripts_ws_session_meta_uses_byok_openai_candidate(monkeypatch):
         byok.create_byok_session(
             provider="openai_audio",
             api_key="sk-test-secret",
-            scopes=[byok.BYOK_SCOPE_STT_LIVE],
+            scopes=[byok.BYOK_SCOPE_STT_LIVE, byok.BYOK_SCOPE_LLM_LIVE],
         )
     )
 
-    captured = {}
+    captured = {"processor_inits": []}
 
     def runtime_factory(**kwargs):
         captured["kwargs"] = kwargs
@@ -337,6 +360,26 @@ def test_transcripts_ws_session_meta_uses_byok_openai_candidate(monkeypatch):
 
         return DummyRuntime()
 
+    class CapturingProcessor:
+        def __init__(self, send_update, llm_config, send_status=None, providers=None, **kwargs):
+            self._send_update = send_update
+            self._llm_config = llm_config
+            self._send_status = send_status
+            self._providers = list(providers or [])
+            captured["processor_inits"].append(
+                {
+                    "llm_config": dict(llm_config or {}),
+                    "providers": list(providers or []),
+                    "kwargs": kwargs,
+                }
+            )
+
+        async def handle_final_text(self, _text, speaker_segments=None):
+            return None
+
+        async def flush(self):
+            return None
+
     client = build_test_client(
         monkeypatch,
         stt_settings={
@@ -348,7 +391,7 @@ def test_transcripts_ws_session_meta_uses_byok_openai_candidate(monkeypatch):
             "http_url": "http://localhost:5092/v1/audio/transcriptions",
             "local_only": True,
         },
-        processor_cls=build_processor_class({"final": [], "flush": 0}),
+        processor_cls=CapturingProcessor,
         runtime_factory=runtime_factory,
     )
 
@@ -372,6 +415,22 @@ def test_transcripts_ws_session_meta_uses_byok_openai_candidate(monkeypatch):
     assert ack["model"] == "gpt-4o-mini-transcribe"
     assert captured["kwargs"]["candidates"][0]["api_key"] == "sk-test-secret"
     assert captured["kwargs"]["candidates"][0]["transport"] == "openai_audio"
+    runtime_processor = captured["processor_inits"][-1]
+    assert runtime_processor["llm_config"]["mode"] == "local"
+    assert runtime_processor["llm_config"]["backend"] == f"openai_{byok.DEFAULT_BYOK_OPENAI_CHAT_MODEL}"
+    assert runtime_processor["providers"] == [
+        {
+            "id": byok.BYOK_LLM_PROVIDER_ID,
+            "name": "BYOK OpenAI",
+            "type": "openai",
+            "base_url": byok.DEFAULT_OPENAI_BASE_URL,
+            "model": byok.DEFAULT_BYOK_OPENAI_CHAT_MODEL,
+            "api_key": "sk-test-secret",
+            "enabled": True,
+            "timeout_seconds": byok.DEFAULT_BYOK_OPENAI_TIMEOUT_SECONDS,
+            "session_scoped": True,
+        }
+    ]
 
 
 def test_transcripts_ws_background_refinement_persists_speaker_segments_with_window_timestamps(monkeypatch):

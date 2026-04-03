@@ -14,10 +14,12 @@ const useSttSettings = () => {
         if (active) setSttSettings(normalizeSttSettings(config));
       })
       .catch((err) => {
-        console.error("Failed to load STT settings:", err);
-        const isNetworkError = err.message?.includes("fetch") || err.name === "TypeError";
+        const isOffline = err.name === "BackendOfflineError" || (err instanceof TypeError && /fetch/i.test(err.message));
+        if (!isOffline) {
+          console.error("Failed to load STT settings:", err);
+        }
         if (active) {
-          setSettingsError(isNetworkError ? "Backend unavailable" : "Unable to load STT configuration.");
+          setSettingsError(isOffline ? "Backend unavailable" : "Unable to load STT configuration.");
         }
       });
     return () => {

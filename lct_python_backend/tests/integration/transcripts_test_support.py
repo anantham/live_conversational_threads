@@ -27,10 +27,11 @@ async def noop_persist(_session, _state, _payload, _event_type, _text):
 
 def build_processor_class(call_store, *, flush_delay=0.0):
     class Processor:
-        def __init__(self, send_update, llm_config, send_status=None):
+        def __init__(self, send_update, llm_config, send_status=None, providers=None, **_kwargs):
             self._send_update = send_update
             self._llm_config = llm_config
             self._send_status = send_status
+            self._providers = providers or []
 
         async def handle_final_text(self, text, speaker_segments=None):
             call_store["final"].append((text, speaker_segments))
@@ -97,6 +98,7 @@ def build_test_client(
     monkeypatch.setattr(stt_api, "check_ws_auth_message", _always_authed)
     monkeypatch.setattr(stt_api, "get_async_session_context", dummy_session_context)
     monkeypatch.setattr(stt_api, "load_llm_config", AsyncMock(return_value={}))
+    monkeypatch.setattr(stt_api, "_load_llm_providers", AsyncMock(return_value=[]))
     monkeypatch.setattr(
         stt_api,
         "_load_stt_settings",

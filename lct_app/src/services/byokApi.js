@@ -9,7 +9,7 @@ export async function createByokSession({ apiKey }) {
     body: JSON.stringify({
       provider: "openai_audio",
       api_key: String(apiKey || "").trim(),
-      scopes: ["stt_live", "stt_import"],
+      scopes: ["stt_live", "stt_import", "llm_live", "llm_import"],
     }),
   });
 

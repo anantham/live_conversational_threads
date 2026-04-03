@@ -26,17 +26,17 @@ export default function ByokSessionControl() {
 
   const helperText = useMemo(() => {
     if (error) return error;
-    if (status === "connecting") return "Validating key and creating a short-lived STT session...";
+    if (status === "connecting") return "Validating key and creating a short-lived OpenAI session...";
     if (isSessionReady) {
       const expiry = formatExpiry(sessionExpiresAt);
       return expiry
-        ? `STT BYOK ready until ${expiry}. Graph generation still uses the server-side LLM.`
-        : "STT BYOK ready. Graph generation still uses the server-side LLM.";
+        ? `OpenAI BYOK ready until ${expiry} for live audio, uploads, and graph generation.`
+        : "OpenAI BYOK ready for live audio, uploads, and graph generation.";
     }
     if (hasApiKey) {
-      return "Session-only. The raw key stays in browser memory and is only sent to mint a short-lived STT token.";
+      return "Session-only. The raw key stays in browser memory and is only sent to mint a short-lived OpenAI session token.";
     }
-    return "Optional BYOK for live and uploaded audio. Leave blank to use the hosted trial path.";
+    return "Optional OpenAI BYOK for live and uploaded audio plus graph generation. Leave blank to use the hosted trial path.";
   }, [error, hasApiKey, isSessionReady, sessionExpiresAt, status]);
 
   return (
@@ -44,7 +44,7 @@ export default function ByokSessionControl() {
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-gray-400">
-            BYOK STT
+            BYOK OPENAI
           </p>
           <input
             type="password"

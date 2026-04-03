@@ -529,6 +529,7 @@ function MinimalGraphInner({
   graphData,
   selectedNode,
   setSelectedNode,
+  viewportReservationKey,
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
@@ -662,7 +663,7 @@ function MinimalGraphInner({
 
       // Contextual edges from edge_relations
       const relations = Array.isArray(item.edge_relations) ? item.edge_relations : [];
-      relations.forEach((rel, i) => {
+      relations.forEach((rel) => {
         const targetName = (rel?.related_node || "").trim();
         if (!targetName) return;
         // Fuzzy match: exact → case-insensitive → substring containment
@@ -854,6 +855,35 @@ function MinimalGraphInner({
     [layoutedNodes, selectedNode]
   );
 
+  const centerViewportOnNode = useCallback(
+    (nodeId, options = {}) => {
+      if (!nodeId) return undefined;
+
+      const liveNode = reactFlow.getNode(nodeId);
+      const fallbackNode = layoutedNodes.find((node) => node.id === nodeId) || null;
+      const targetNode = liveNode || fallbackNode;
+      const targetPosition =
+        targetNode?.positionAbsolute || targetNode?.position || fallbackNode?.position || null;
+
+      if (!targetPosition) {
+        return undefined;
+      }
+
+      const width = targetNode?.width ?? targetNode?.measured?.width ?? 180;
+      const height = targetNode?.height ?? targetNode?.measured?.height ?? 96;
+
+      programmaticMoveRef.current = true;
+      reactFlow.setCenter(targetPosition.x + width / 2, targetPosition.y + height / 2, options);
+
+      const timeout = window.setTimeout(() => {
+        programmaticMoveRef.current = false;
+      }, (options.duration ?? 0) + 50);
+
+      return () => window.clearTimeout(timeout);
+    },
+    [layoutedNodes, reactFlow]
+  );
+
   // Sync ref with state so effects read the latest value
   useEffect(() => {
     autoFollowRef.current = autoFollow && !selectedNode;
@@ -885,28 +915,38 @@ function MinimalGraphInner({
   useEffect(() => {
     if (!autoFollow || selectedNode || layoutedNodes.length === 0) return;
     const last = layoutedNodes[layoutedNodes.length - 1];
-    if (last?.position) {
-      // Temporarily mark as programmatic so onMoveEnd doesn't disable follow
-      const wasProgrammatic = programmaticMoveRef.current;
-      programmaticMoveRef.current = true;
-      reactFlow.setCenter(last.position.x, last.position.y, {
-        zoom: 1,
-        duration: 400,
-      });
-      setTimeout(() => { programmaticMoveRef.current = wasProgrammatic; }, 450);
-    }
-  }, [lastNodeId, layoutedNodes, reactFlow, selectedNode, autoFollow]);
+    if (!last?.id) return;
+
+    // Temporarily mark as programmatic so onMoveEnd doesn't disable follow
+    const wasProgrammatic = programmaticMoveRef.current;
+    const cleanup = centerViewportOnNode(last.id, {
+      zoom: 1,
+      duration: 400,
+    });
+
+    return () => {
+      cleanup?.();
+      programmaticMoveRef.current = wasProgrammatic;
+    };
+  }, [autoFollow, centerViewportOnNode, lastNodeId, layoutedNodes, selectedNode]);
 
   // Center selected node when chosen from timeline or graph.
   useEffect(() => {
-    if (!selectedLayoutNode?.position) return;
-    programmaticMoveRef.current = true;
-    reactFlow.setCenter(selectedLayoutNode.position.x, selectedLayoutNode.position.y, {
-      zoom: 1.15,
-      duration: 280,
+    if (!selectedNode || !selectedLayoutNode?.position) return undefined;
+
+    let cleanup;
+    const raf = requestAnimationFrame(() => {
+      cleanup = centerViewportOnNode(selectedNode, {
+        zoom: 1.15,
+        duration: 280,
+      });
     });
-    setTimeout(() => { programmaticMoveRef.current = false; }, 330);
-  }, [reactFlow, selectedLayoutNode]);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      cleanup?.();
+    };
+  }, [centerViewportOnNode, selectedLayoutNode, selectedNode, viewportReservationKey]);
 
   // Cluster detail panel state
   const [selectedCluster, setSelectedCluster] = useState(null);
@@ -1020,10 +1060,8 @@ function MinimalGraphInner({
               autoFollowRef.current = next;
               if (next && layoutedNodes.length > 0) {
                 const last = layoutedNodes[layoutedNodes.length - 1];
-                if (last?.position) {
-                  programmaticMoveRef.current = true;
-                  reactFlow.setCenter(last.position.x, last.position.y, { zoom: 1, duration: 300 });
-                  setTimeout(() => { programmaticMoveRef.current = false; }, 350);
+                if (last?.id) {
+                  centerViewportOnNode(last.id, { zoom: 1, duration: 300 });
                 }
               }
               return next;
@@ -1326,6 +1364,7 @@ MinimalGraphInner.propTypes = {
   graphData: PropTypes.array,
   selectedNode: PropTypes.string,
   setSelectedNode: PropTypes.func.isRequired,
+  viewportReservationKey: PropTypes.string,
 };
 
 export default function MinimalGraph(props) {
@@ -1340,4 +1379,5 @@ MinimalGraph.propTypes = {
   graphData: PropTypes.array,
   selectedNode: PropTypes.string,
   setSelectedNode: PropTypes.func.isRequired,
+  viewportReservationKey: PropTypes.string,
 };

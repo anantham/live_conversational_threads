@@ -15,13 +15,13 @@ def test_create_byok_session_returns_opaque_token_and_overlay(monkeypatch):
         byok.create_byok_session(
             provider="openai_audio",
             api_key="sk-test-secret",
-            scopes=["stt_live"],
+            scopes=["stt_live", "llm_live"],
             ttl_seconds=900,
         )
     )
 
     assert payload["provider"] == "openai_audio"
-    assert payload["scopes"] == ["stt_live"]
+    assert payload["scopes"] == ["llm_live", "stt_live"]
     assert payload["byok_session_token"]
     assert "sk-test-secret" not in str(payload)
 
@@ -45,3 +45,31 @@ def test_create_byok_session_returns_opaque_token_and_overlay(monkeypatch):
     assert runtime_settings["live_cloud_fallback_enabled"] is True
     assert openai_provider["enabled"] is True
     assert openai_provider["api_key"] == "sk-test-secret"
+
+    runtime_llm_config = byok.build_runtime_llm_config_for_byok(
+        {"mode": "online", "timeout_seconds": 45},
+        resolved,
+        required_scope=byok.BYOK_SCOPE_LLM_LIVE,
+    )
+    runtime_llm_providers = byok.build_runtime_llm_providers_for_byok(
+        [{"id": "server-provider", "enabled": True}],
+        resolved,
+        required_scope=byok.BYOK_SCOPE_LLM_LIVE,
+    )
+
+    assert runtime_llm_config["mode"] == "local"
+    assert runtime_llm_config["backend"] == f"openai_{byok.DEFAULT_BYOK_OPENAI_CHAT_MODEL}"
+    assert runtime_llm_config["chat_model"] == byok.DEFAULT_BYOK_OPENAI_CHAT_MODEL
+    assert runtime_llm_providers == [
+        {
+            "id": byok.BYOK_LLM_PROVIDER_ID,
+            "name": "BYOK OpenAI",
+            "type": "openai",
+            "base_url": byok.DEFAULT_OPENAI_BASE_URL,
+            "model": byok.DEFAULT_BYOK_OPENAI_CHAT_MODEL,
+            "api_key": "sk-test-secret",
+            "enabled": True,
+            "timeout_seconds": byok.DEFAULT_BYOK_OPENAI_TIMEOUT_SECONDS,
+            "session_scoped": True,
+        }
+    ]

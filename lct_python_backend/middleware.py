@@ -4,8 +4,10 @@ P0 Security Middleware
 Bearer token auth, rate limiting, and request body size limits.
 Designed for "local + live with friends" deployment phase.
 
-When AUTH_TOKEN env var is set, all non-health endpoints require
-Authorization: Bearer <token>. When unset, auth is not enforced (dev mode).
+Auth supports two deployment modes:
+- AUTH_TOKEN: enforce bearer auth on all non-health endpoints
+- ADMIN_AUTH_TOKEN: when AUTH_TOKEN is unset, enforce bearer auth only on
+  admin/sensitive HTTP routes while keeping public trial flows anonymous
 """
 
 import logging
@@ -26,12 +28,26 @@ logger = logging.getLogger("lct_backend")
 # ---------------------------------------------------------------------------
 
 AUTH_TOKEN: Optional[str] = os.getenv("AUTH_TOKEN")
+ADMIN_AUTH_TOKEN: Optional[str] = os.getenv("ADMIN_AUTH_TOKEN")
 
 # Paths that never require auth (exact match after stripping trailing slash)
 HEALTH_PATHS: Set[str] = {
     "/health",
     "/api/import/health",
     "/api/bookmarks/health",
+}
+
+ADMIN_PATH_PREFIXES: Tuple[str, ...] = (
+    "/api/settings",
+    "/api/analytics",
+    "/api/costs",
+    "/api/cost-tracking",
+    "/api/bookmarks",
+    "/api/prompts",
+    "/api/graph",
+)
+ADMIN_PATH_EXACT: Set[str] = {
+    "/conversations",
 }
 
 # Env-gated endpoints (disabled by default)
@@ -107,6 +123,34 @@ def _check_bearer_token(auth_header: Optional[str]) -> bool:
     return parts[1] == AUTH_TOKEN
 
 
+def _check_admin_bearer_token(auth_header: Optional[str]) -> bool:
+    """Validate Authorization header against ADMIN_AUTH_TOKEN."""
+    if not ADMIN_AUTH_TOKEN:
+        return True
+    if not auth_header:
+        return False
+    parts = auth_header.split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return False
+    return parts[1] == ADMIN_AUTH_TOKEN
+
+
+def _requires_admin_auth(path: str, method: str) -> bool:
+    normalized_path = _normalize_path(path)
+    normalized_method = str(method or "GET").upper()
+
+    if normalized_path in ADMIN_PATH_EXACT:
+        return True
+    if any(
+        normalized_path == prefix or normalized_path.startswith(f"{prefix}/")
+        for prefix in ADMIN_PATH_PREFIXES
+    ):
+        return True
+    if normalized_method == "DELETE" and normalized_path.startswith("/conversations/"):
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Auth Middleware (HTTP)
 # ---------------------------------------------------------------------------
@@ -130,13 +174,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         auth_header = request.headers.get("authorization")
-        if not _check_bearer_token(auth_header):
-            logger.warning("[AUTH] Rejected request to %s - invalid/missing token", path)
-            return JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"detail": "Invalid or missing authorization token."},
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        if AUTH_TOKEN:
+            if not _check_bearer_token(auth_header):
+                logger.warning("[AUTH] Rejected request to %s - invalid/missing token", path)
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"detail": "Invalid or missing authorization token."},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        elif ADMIN_AUTH_TOKEN and _requires_admin_auth(path, request.method):
+            if not _check_admin_bearer_token(auth_header):
+                logger.warning("[AUTH] Rejected admin request to %s - invalid/missing admin token", path)
+                return JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"detail": "Invalid or missing admin authorization token."},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
 
         return await call_next(request)
 
@@ -386,7 +439,12 @@ def configure_p0_security(app):
     app.add_middleware(UrlImportGateMiddleware)
     app.add_middleware(AuthMiddleware)
 
-    token_status = "ENFORCED" if AUTH_TOKEN else "DISABLED (AUTH_TOKEN not set)"
+    if AUTH_TOKEN:
+        token_status = "ENFORCED (all non-health routes)"
+    elif ADMIN_AUTH_TOKEN:
+        token_status = "ENFORCED (admin routes only)"
+    else:
+        token_status = "DISABLED (AUTH_TOKEN / ADMIN_AUTH_TOKEN not set)"
     url_import = "ENABLED" if ENABLE_URL_IMPORT else "DISABLED"
     logger.info("[SECURITY] P0 middleware configured:")
     logger.info("[SECURITY]   Auth: %s", token_status)

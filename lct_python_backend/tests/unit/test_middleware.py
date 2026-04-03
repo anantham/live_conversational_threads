@@ -21,6 +21,7 @@ def _make_app(env_overrides: dict = None):
     """Create a fresh test app with middleware applied under given env."""
     env = {
         "AUTH_TOKEN": "",
+        "ADMIN_AUTH_TOKEN": "",
         "ENABLE_URL_IMPORT": "false",
         "MAX_JSON_BYTES": str(1024),  # 1 KB for testing
         "MAX_BODY_BYTES": str(2048),  # 2 KB for testing
@@ -135,6 +136,24 @@ class TestAuthMiddleware:
         app = _make_app({"AUTH_TOKEN": ""})
         client = TestClient(app)
         resp = client.get("/api/conversations")
+        assert resp.status_code == 200
+
+    def test_admin_auth_only_protects_sensitive_routes(self):
+        app = _make_app({"AUTH_TOKEN": "", "ADMIN_AUTH_TOKEN": "admin-secret"})
+        client = TestClient(app)
+        public_resp = client.post("/api/import/process-file")
+        admin_resp = client.put("/api/settings/llm")
+        assert public_resp.status_code == 200
+        assert admin_resp.status_code == 401
+
+    def test_admin_auth_accepts_valid_admin_token(self):
+        app = _make_app({"AUTH_TOKEN": "", "ADMIN_AUTH_TOKEN": "admin-secret"})
+        client = TestClient(app)
+        resp = client.put(
+            "/api/settings/llm",
+            headers={"Authorization": "Bearer admin-secret"},
+            json={"mode": "local"},
+        )
         assert resp.status_code == 200
 
     def test_ws_auth_rejects_without_token(self):
