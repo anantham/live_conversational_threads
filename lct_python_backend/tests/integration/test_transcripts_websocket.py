@@ -1,7 +1,10 @@
+import asyncio
 import time
 import uuid
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
+from lct_python_backend.services.stt_http_transcriber import pcm16le_to_wav
 from lct_python_backend.services import transcript_processing as transcript_mod
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
 from lct_python_backend.tests.integration.transcripts_test_support import (
@@ -284,6 +287,93 @@ def test_transcripts_ws_accepts_streaming_runtime_events(monkeypatch):
     assert processor_calls["final"] == [("hello from realtime", None)]
 
 
+def test_transcripts_ws_session_meta_uses_byok_openai_candidate(monkeypatch):
+    import lct_python_backend.services.byok_session_store as byok
+
+    byok._BYOK_SESSIONS.clear()
+    monkeypatch.setattr(byok, "validate_byok_api_key", AsyncMock(return_value=None))
+    session_payload = asyncio.run(
+        byok.create_byok_session(
+            provider="openai_audio",
+            api_key="sk-test-secret",
+            scopes=[byok.BYOK_SCOPE_STT_LIVE],
+        )
+    )
+
+    captured = {}
+
+    def runtime_factory(**kwargs):
+        captured["kwargs"] = kwargs
+
+        class DummyRuntime:
+            stt_mode = "openai_realtime"
+
+            def __init__(self):
+                primary_candidate = kwargs["candidates"][0]
+                self.provider = kwargs["provider"]
+                self.transport = primary_candidate.get("transport")
+                self.supports_diarization = bool(primary_candidate.get("supports_diarization"))
+                self.model = primary_candidate.get("model")
+                self.sample_rate_hz = kwargs.get("sample_rate_hz", 16000)
+                self.timeout_seconds = kwargs.get("timeout_seconds", 30.0)
+
+            def is_ready(self):
+                return True
+
+            def get_last_runtime_metadata(self):
+                return {}
+
+            async def start(self):
+                return None
+
+            async def push_audio_chunk(self, _chunk):
+                return []
+
+            async def flush(self):
+                return []
+
+            async def close(self):
+                return None
+
+        return DummyRuntime()
+
+    client = build_test_client(
+        monkeypatch,
+        stt_settings={
+            "provider": "parakeet",
+            "provider_http_urls": {
+                "parakeet": "http://localhost:5092/v1/audio/transcriptions",
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "http_url": "http://localhost:5092/v1/audio/transcriptions",
+            "local_only": True,
+        },
+        processor_cls=build_processor_class({"final": [], "flush": 0}),
+        runtime_factory=runtime_factory,
+    )
+
+    conversation_id = str(uuid.uuid4())
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": conversation_id,
+                "session_id": "session-byok",
+                "provider": "openai_audio",
+                "byok_session_token": session_payload["byok_session_token"],
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+
+    assert ack["type"] == "session_ack"
+    assert ack["provider"] == "openai_audio"
+    assert ack["transport"] == "openai_audio"
+    assert ack["model"] == "gpt-4o-mini-transcribe"
+    assert captured["kwargs"]["candidates"][0]["api_key"] == "sk-test-secret"
+    assert captured["kwargs"]["candidates"][0]["transport"] == "openai_audio"
+
+
 def test_transcripts_ws_background_refinement_persists_speaker_segments_with_window_timestamps(monkeypatch):
     persisted_events = []
     materialized = []
@@ -322,15 +412,15 @@ def test_transcripts_ws_background_refinement_persists_speaker_segments_with_win
                 {
                     "event_type": "final",
                     "text": "hello from realtime refinement",
-                    "metadata": {
-                        "provider": self.provider,
-                        "transport": self.transport,
-                        "sample_rate_hz": 24000,
+                        "metadata": {
+                            "provider": self.provider,
+                            "transport": self.transport,
+                            "sample_rate_hz": 24000,
+                        },
+                        "timestamps": {"start": 1.0, "end": 2.0},
+                        "_wav_payload": pcm16le_to_wav(b"\x00\x00" * 240, sample_rate_hz=24000),
                     },
-                    "timestamps": {"start": 1.0, "end": 2.0},
-                    "_wav_payload": b"fake-wav",
-                },
-            ]
+                ]
 
         async def flush(self):
             return []

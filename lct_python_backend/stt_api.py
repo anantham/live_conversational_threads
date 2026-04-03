@@ -19,7 +19,11 @@ from fastapi.responses import JSONResponse
 from lct_python_backend.db_session import get_async_session, get_async_session_context
 from lct_python_backend.middleware import check_ws_auth, check_ws_auth_message
 from lct_python_backend.services.audio_storage import AudioStorageManager
-from lct_python_backend.services.llm_config import load_llm_config
+from lct_python_backend.services.byok_session_store import create_byok_session
+from lct_python_backend.services.llm_config import (
+    load_llm_config,
+    load_llm_providers as _db_load_llm_providers,
+)
 from lct_python_backend.services.stt_config import (
     STT_CLOUD_PROVIDER_IDS,
     STT_PROVIDER_IDS,
@@ -61,6 +65,13 @@ audio_storage = AudioStorageManager(RECORDINGS_DIR)
 async def _load_stt_settings(session):
     """Wrapper for test_stt_api_settings.py monkeypatch compatibility."""
     return await load_stt_settings(session)
+
+
+async def _load_llm_providers(session):
+    """Wrapper for runtime provider loading with secrets preserved server-side."""
+    config = await _db_load_llm_providers(session, include_secrets=True)
+    providers = config.get("providers")
+    return providers if isinstance(providers, list) else []
 
 
 def _probe_health_url(health_url, timeout_seconds):
@@ -130,6 +141,30 @@ def _build_cloud_test_candidate(stt_settings: Dict[str, Any], provider_id: str) 
     if missing_fields:
         return candidate, "Missing " + ", ".join(missing_fields) + ". Save the provider settings before testing."
     return candidate, ""
+
+
+# ---------------------------------------------------------------------------
+# BYOK session routes
+# ---------------------------------------------------------------------------
+@router.post("/api/byok/session")
+async def create_byok_session_route(payload: Dict[str, Any]):
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload must be a JSON object.")
+
+    try:
+        return await create_byok_session(
+            provider=payload.get("provider") or "openai_audio",
+            api_key=payload.get("api_key"),
+            scopes=payload.get("scopes"),
+            ttl_seconds=payload.get("ttl_seconds"),
+            base_url=payload.get("base_url"),
+            model=payload.get("model"),
+            diarize_model=payload.get("diarize_model"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -341,11 +376,13 @@ async def transcripts_websocket(websocket: WebSocket):
         return
     async with get_async_session_context() as session:
         llm_config = await load_llm_config(session)
+        llm_providers = await _load_llm_providers(session)
         ctx = WsSessionContext(
             websocket=websocket,
             session=session,
             audio_storage=audio_storage,
             llm_config=llm_config,
+            llm_providers=llm_providers,
             load_stt_settings_fn=_load_stt_settings,
             download_token=DOWNLOAD_TOKEN,
         )

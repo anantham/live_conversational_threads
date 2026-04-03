@@ -192,6 +192,8 @@ async def transcribe_uploaded_file(
     on_chunk_progress: Optional[ProgressCallback] = None,
     enable_parakeet_pyannote: Optional[bool] = None,
     on_provider_fallback: Optional[ProviderFallbackCallback] = None,
+    resume_from_chunk: int = 0,
+    resumed_chunk_texts: Optional[List[str]] = None,
 ) -> FileTranscriptResult:
     """Resolve transcript text from uploaded audio/text/video-caption files."""
 
@@ -265,8 +267,19 @@ async def transcribe_uploaded_file(
                     )
                     chunk_texts: List[str] = []
                     all_segments: List[Dict[str, Any]] = []
+                    _resumed_texts = resumed_chunk_texts or []
                     try:
                         for chunk_idx, (chunk_path, _start_ms, _end_ms) in enumerate(chunks, start=1):
+                            # Skip chunks already transcribed in a previous run
+                            if chunk_idx <= resume_from_chunk and chunk_idx <= len(_resumed_texts):
+                                cached_text = _resumed_texts[chunk_idx - 1] if _resumed_texts else ""
+                                if cached_text:
+                                    chunk_texts.append(cached_text)
+                                if on_chunk_progress is not None:
+                                    await on_chunk_progress(chunk_idx, len(chunks), cached_text)
+                                chunk_path.unlink(missing_ok=True)
+                                continue
+
                             wav_payload = chunk_path.read_bytes()
                             chunk_result = await transcribe_wav_stt_candidate(
                                 candidate,

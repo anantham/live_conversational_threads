@@ -19,6 +19,15 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from lct_python_backend.services.audio_storage import AudioStorageManager
+from lct_python_backend.services.byok_session_store import (
+    BYOK_SCOPE_LLM_LIVE,
+    BYOK_SCOPE_STT_LIVE,
+    build_runtime_llm_config_for_byok,
+    build_runtime_llm_providers_for_byok,
+    build_runtime_stt_settings_for_byok,
+    resolve_byok_session,
+    ByokSessionLookupError,
+)
 from lct_python_backend.services.live_graph_persistence import persist_live_graph_snapshot
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
 from lct_python_backend.services.stt_http_transcriber import decode_audio_base64, pcm16le_to_wav, transcribe_wav_stt_candidate
@@ -75,6 +84,7 @@ class WsSessionContext:
         session,
         audio_storage: AudioStorageManager,
         llm_config: Dict[str, Any],
+        llm_providers: Optional[List[Dict[str, Any]]],
         load_stt_settings_fn,
         download_token: Optional[str] = None,
     ) -> None:
@@ -83,6 +93,10 @@ class WsSessionContext:
         self.audio_storage = audio_storage
         self.download_token = download_token
         self._load_stt_settings = load_stt_settings_fn
+        self._base_llm_config = copy.deepcopy(llm_config or {})
+        self._base_llm_providers = copy.deepcopy(llm_providers or [])
+        self._runtime_llm_config = copy.deepcopy(self._base_llm_config)
+        self._runtime_llm_providers = copy.deepcopy(self._base_llm_providers)
 
         # Session state
         self.state = SessionState(metadata={})
@@ -104,6 +118,7 @@ class WsSessionContext:
         self._refinement_sample_rate_hz: int = 16000
         self._refinement_window_start: Optional[float] = None
         self._refinement_window_end: Optional[float] = None
+        self._refinement_source_utterance_ids: set[str] = set()
         self._refinement_timer_task: Optional["asyncio.Task[Any]"] = None
         self.first_audio_chunk_logged: bool = False
         self.telemetry_state: Dict[str, Optional[int]] = {
@@ -131,7 +146,16 @@ class WsSessionContext:
         self.processor = TranscriptProcessor(
             send_update=self._processor_update,
             send_status=self._processor_status,
-            llm_config=llm_config,
+            llm_config=self._runtime_llm_config,
+            providers=self._runtime_llm_providers,
+        )
+
+    def _reset_processor(self) -> None:
+        self.processor = TranscriptProcessor(
+            send_update=self._processor_update,
+            send_status=self._processor_status,
+            llm_config=self._runtime_llm_config,
+            providers=self._runtime_llm_providers,
         )
 
     # ------------------------------------------------------------------
@@ -831,6 +855,7 @@ class WsSessionContext:
         text: str,
         sample_rate_hz: Optional[int] = None,
         window_timestamps: Optional[Dict[str, Any]] = None,
+        source_utterance_id: Optional[str] = None,
     ) -> None:
         """Append a WAV chunk to the refinement buffer.
 
@@ -845,10 +870,16 @@ class WsSessionContext:
             self._refinement_text_parts.append(text)
         if sample_rate_hz:
             self._refinement_sample_rate_hz = sample_rate_hz
+        if source_utterance_id:
+            self._refinement_source_utterance_ids.add(str(source_utterance_id))
 
         timestamps = window_timestamps or {}
-        start_s = timestamps.get("start_seconds")
-        end_s = timestamps.get("end_seconds")
+        start_s = timestamps.get("start")
+        if start_s is None:
+            start_s = timestamps.get("start_seconds")
+        end_s = timestamps.get("end")
+        if end_s is None:
+            end_s = timestamps.get("end_seconds")
         if start_s is not None and (self._refinement_window_start is None or start_s < self._refinement_window_start):
             self._refinement_window_start = float(start_s)
         if end_s is not None and (self._refinement_window_end is None or end_s > self._refinement_window_end):
@@ -889,11 +920,15 @@ class WsSessionContext:
         pcm_bytes = bytes(self._refinement_pcm_buffer)
         combined_text = " ".join(self._refinement_text_parts).strip()
         sample_rate = self._refinement_sample_rate_hz
+        text_parts_count = len(self._refinement_text_parts)
+        source_utterance_id = None
+        if len(self._refinement_source_utterance_ids) == 1:
+            source_utterance_id = next(iter(self._refinement_source_utterance_ids))
         window_timestamps = {}
         if self._refinement_window_start is not None:
-            window_timestamps["start_seconds"] = self._refinement_window_start
+            window_timestamps["start"] = self._refinement_window_start
         if self._refinement_window_end is not None:
-            window_timestamps["end_seconds"] = self._refinement_window_end
+            window_timestamps["end"] = self._refinement_window_end
 
         duration_s = self._refinement_buffer_duration_seconds()
 
@@ -902,6 +937,7 @@ class WsSessionContext:
         self._refinement_text_parts = []
         self._refinement_window_start = None
         self._refinement_window_end = None
+        self._refinement_source_utterance_ids = set()
         if self._refinement_timer_task and not self._refinement_timer_task.done():
             self._refinement_timer_task.cancel()
         self._refinement_timer_task = None
@@ -914,7 +950,7 @@ class WsSessionContext:
             self.state.conversation_id,
             reason,
             duration_s,
-            len(self._refinement_text_parts) if self._refinement_text_parts else 0,
+            text_parts_count,
             len(pcm_bytes),
         )
 
@@ -923,6 +959,7 @@ class WsSessionContext:
                 self._run_background_refinement(
                     wav_payload,
                     combined_text,
+                    source_utterance_id=source_utterance_id,
                     window_timestamps=window_timestamps,
                     sample_rate_hz=sample_rate,
                 )
@@ -1085,6 +1122,7 @@ class WsSessionContext:
                     text_value,
                     sample_rate_hz=metadata.get("sample_rate_hz"),
                     window_timestamps=event_timestamps,
+                    source_utterance_id=str(getattr(persisted_event, "utterance_id", "") or "") or None,
                 )
             return
 
@@ -1339,6 +1377,7 @@ class WsSessionContext:
         self._refinement_text_parts = []
         self._refinement_window_start = None
         self._refinement_window_end = None
+        self._refinement_source_utterance_ids = set()
         if self._refinement_timer_task and not self._refinement_timer_task.done():
             self._refinement_timer_task.cancel()
         self._refinement_timer_task = None
@@ -1380,35 +1419,75 @@ class WsSessionContext:
                 },
             )
 
-        normalized_provider = _normalize_provider(
-            payload.get("provider"),
-            stt_settings.get("provider"),
+        byok_session = None
+        byok_session_token = str(payload.get("byok_session_token") or "").strip()
+        if byok_session_token:
+            try:
+                byok_session = resolve_byok_session(
+                    byok_session_token,
+                    required_scope=BYOK_SCOPE_STT_LIVE,
+                )
+            except ByokSessionLookupError as exc:
+                await self._emit_ws_error(
+                    code="invalid_byok_session",
+                    detail=str(exc),
+                    stage="session_meta",
+                    level="error",
+                    context={"required_scope": BYOK_SCOPE_STT_LIVE},
+                )
+                return
+
+        runtime_stt_settings = build_runtime_stt_settings_for_byok(
+            stt_settings,
+            byok_session,
         )
+        self._runtime_llm_config = build_runtime_llm_config_for_byok(
+            self._base_llm_config,
+            byok_session,
+            required_scope=BYOK_SCOPE_LLM_LIVE,
+        )
+        self._runtime_llm_providers = build_runtime_llm_providers_for_byok(
+            self._base_llm_providers,
+            byok_session,
+            required_scope=BYOK_SCOPE_LLM_LIVE,
+        )
+        self._reset_processor()
+        requested_provider = (
+            str((byok_session or {}).get("provider") or "").strip().lower()
+            or str(payload.get("provider") or "").strip().lower()
+        )
+        if requested_provider in {"openai_audio", "openrouter_audio"}:
+            normalized_provider = requested_provider
+        else:
+            normalized_provider = _normalize_provider(
+                payload.get("provider"),
+                runtime_stt_settings.get("provider"),
+            )
         provider_http_urls = (
-            stt_settings.get("provider_http_urls")
-            if isinstance(stt_settings.get("provider_http_urls"), dict)
+            runtime_stt_settings.get("provider_http_urls")
+            if isinstance(runtime_stt_settings.get("provider_http_urls"), dict)
             else {}
         )
         provider_http_url = str(
             payload.get("provider_http_url")
             or provider_http_urls.get(normalized_provider)
-            or stt_settings.get("http_url")
+            or runtime_stt_settings.get("http_url")
             or ""
         ).strip()
         stt_candidates = resolve_live_stt_candidates(
-            settings=stt_settings,
-            provider_override=payload.get("provider"),
+            settings=runtime_stt_settings,
+            provider_override=requested_provider or payload.get("provider"),
         )
         primary_candidate = stt_candidates[0] if stt_candidates else {}
         self.refinement_candidate = build_live_stt_background_refinement_candidate(
-            settings=stt_settings,
+            settings=runtime_stt_settings,
             primary_candidate=primary_candidate,
         )
         active_provider = str(primary_candidate.get("provider") or normalized_provider).strip() or normalized_provider
         active_transport = str(primary_candidate.get("transport") or "backend_http").strip() or "backend_http"
         active_model = str(
             primary_candidate.get("model")
-            or stt_settings.get("http_model")
+            or runtime_stt_settings.get("http_model")
             or ""
         ).strip()
         active_supports_diarization = bool(
@@ -1425,22 +1504,28 @@ class WsSessionContext:
         self.state.conversation_id = conversation_id
         self.state.session_id = payload.get("session_id") or str(uuid.uuid4())
         self.state.provider = active_provider
-        default_store_audio = bool(stt_settings.get("store_audio"))
+        default_store_audio = bool(runtime_stt_settings.get("store_audio"))
         self.state.store_audio = bool(payload.get("store_audio", default_store_audio))
         self.state.speaker_id = payload.get("speaker_id", self.state.speaker_id)
         self.state.metadata = payload.get("metadata") or {}
+        if byok_session:
+            self.state.metadata = {
+                **(self.state.metadata if isinstance(self.state.metadata, dict) else {}),
+                "byok_provider": str(byok_session.get("provider") or ""),
+                "byok_llm_enabled": BYOK_SCOPE_LLM_LIVE in set(byok_session.get("scopes") or set()),
+            }
 
         requested_sample_rate_hz = _safe_int(
-            payload.get("sample_rate_hz") or stt_settings.get("sample_rate_hz"),
+            payload.get("sample_rate_hz") or runtime_stt_settings.get("sample_rate_hz"),
             16000,
         )
         chunk_seconds = _safe_float(
-            payload.get("http_chunk_seconds") or stt_settings.get("http_chunk_seconds"),
+            payload.get("http_chunk_seconds") or runtime_stt_settings.get("http_chunk_seconds"),
             1.2,
         )
-        timeout_seconds = _safe_float(stt_settings.get("http_timeout_seconds"), 30.0)
-        http_model = str(stt_settings.get("http_model") or "")
-        http_language = str(stt_settings.get("http_language") or "")
+        timeout_seconds = _safe_float(runtime_stt_settings.get("http_timeout_seconds"), 30.0)
+        http_model = str(runtime_stt_settings.get("http_model") or "")
+        http_language = str(runtime_stt_settings.get("http_language") or "")
 
         self.stt_runtime = build_live_stt_runtime(
             provider=active_provider,
@@ -1775,8 +1860,8 @@ class WsSessionContext:
                     task.cancel()
                 await asyncio.gather(*list(self.pending_stt_chunk_tasks), return_exceptions=True)
             if self.pending_refinement_tasks:
-                for task in list(self.pending_refinement_tasks):
-                    task.cancel()
+                # Let committed refinement windows finish so disconnecting after
+                # final_flush does not discard diarization evidence.
                 await asyncio.gather(*list(self.pending_refinement_tasks), return_exceptions=True)
             if self.graph_persist_task and not self.graph_persist_task.done():
                 await asyncio.gather(self.graph_persist_task, return_exceptions=True)

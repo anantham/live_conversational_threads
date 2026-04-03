@@ -6,6 +6,12 @@ from lct_python_backend.services import audio_storage
 from lct_python_backend.services.audio_storage import AudioStorageManager
 
 
+def test_audio_storage_init_does_not_require_event_loop(tmp_path):
+    manager = AudioStorageManager(str(tmp_path))
+
+    assert manager._lock is None
+
+
 @pytest.mark.asyncio
 async def test_finalize_preserves_pcm_on_wav_failure(tmp_path, monkeypatch):
     manager = AudioStorageManager(str(tmp_path))

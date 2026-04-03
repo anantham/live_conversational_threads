@@ -50,7 +50,11 @@ from lct_python_backend.services.file_transcriber import (
     transcribe_uploaded_file,
 )
 from lct_python_backend.services.import_graph_refinement import refine_import_graph_nodes
-from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers, get_env_llm_defaults
+from lct_python_backend.services.llm_config import (
+    load_llm_config,
+    load_llm_providers as _db_load_llm_providers,
+    get_env_llm_defaults,
+)
 from lct_python_backend.services.stt_settings_service import load_stt_settings
 from lct_python_backend.services.artifact_settings_service import load_artifact_export_settings
 from lct_python_backend.services.artifact_export_service import auto_export_conversation_artifacts
@@ -187,6 +191,11 @@ def _diarization_job_urls(job_id: str) -> dict:
 async def _probe_health_url_async(health_url: str, timeout_seconds: float) -> Dict[str, Any]:
     """Run blocking health probe in a worker thread to avoid event-loop stalls."""
     return await asyncio.to_thread(probe_health_url, health_url, timeout_seconds)
+
+
+async def load_llm_providers(session: Optional[AsyncSession] = None) -> Dict[str, Any]:
+    """Runtime wrapper that preserves provider secrets for server-side execution."""
+    return await _db_load_llm_providers(session, include_secrets=True)
 
 
 # ── Routes ───────────────────────────────────────────────────────────────────
@@ -487,6 +496,7 @@ async def process_file(
     conversation_id: Optional[str] = Form(None),
     speaker_id: Optional[str] = Form(None),
     provider: Optional[str] = Form(None),
+    byok_session_token: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_async_session),
 ):
     """Process uploaded file through STT/parsing + transcript-to-graph pipeline.
@@ -504,6 +514,7 @@ async def process_file(
         conversation_id=conversation_id,
         speaker_id=speaker_id,
         provider=provider,
+        byok_session_token=byok_session_token,
         db=db,
         save_upload_to_temp_file=save_upload_to_temp_file,
         load_stt_settings=load_stt_settings,

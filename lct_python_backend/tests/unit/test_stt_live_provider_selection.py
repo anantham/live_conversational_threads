@@ -200,3 +200,37 @@ def test_build_live_stt_background_refinement_candidate_uses_separate_diarize_mo
     assert candidate["route_id"] == "openai_audio_diarize_background"
     assert candidate["model"] == "gpt-4o-transcribe-diarize"
     assert candidate["request_diarization"] is True
+
+
+def test_resolve_live_stt_candidates_supports_openai_override_as_primary():
+    candidates = resolve_live_stt_candidates(
+        settings={
+            "provider": "parakeet",
+            "provider_http_urls": {
+                "parakeet": "http://localhost:5092/v1/audio/transcriptions",
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "http_url": "http://localhost:5092/v1/audio/transcriptions",
+            "local_only": False,
+            "live_cloud_fallback_enabled": True,
+            "live_require_diarization": True,
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
+                    "api_key": "sk-openai-secret",
+                },
+            },
+        },
+        provider_override="openai_audio",
+    )
+
+    assert [candidate["provider"] for candidate in candidates] == [
+        "openai_audio",
+        "parakeet",
+        "whisper",
+    ]
+    assert candidates[0]["transport"] == "openai_audio"
+    assert candidates[0]["api_key"] == "sk-openai-secret"
