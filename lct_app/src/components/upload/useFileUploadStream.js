@@ -100,6 +100,8 @@ export default function useFileUploadStream({
   setConversationId,
   setFileName,
   setMessage,
+  resetBuffered,
+  onStreamSettled,
 }) {
   const { ensureSessionToken } = useByok();
   const abortRef = useRef(null);
@@ -479,6 +481,7 @@ export default function useFileUploadStream({
     clearScheduledReset();
     clearRetryWait();
     manualCancelRef.current = false;
+    resetBuffered?.();
 
     const nextConversationId = crypto.randomUUID();
     setConversationId?.(nextConversationId);
@@ -581,6 +584,7 @@ export default function useFileUploadStream({
       setIsProcessing(false);
       setEtaText("");
       manualCancelRef.current = false;
+      onStreamSettled?.(outcome);
       if (outcome === "success" || outcome === "canceled") {
         scheduleVisualReset();
       }
