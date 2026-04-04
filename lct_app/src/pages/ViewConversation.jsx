@@ -273,7 +273,20 @@ export default function ViewConversation() {
             chunkDict={chunkDict}
             conversationId={conversationId}
             onClose={() => setSelectedNode(null)}
-            onSpeakerRenamed={() => setSpeakerRefreshKey((value) => value + 1)}
+            onSpeakerRenamed={(speakerId, newName) => {
+              setGraphData((prev) =>
+                prev.map((chunk) =>
+                  Array.isArray(chunk)
+                    ? chunk.map((node) =>
+                        node.speaker_id === speakerId
+                          ? { ...node, speaker_display: newName }
+                          : node
+                      )
+                    : chunk
+                )
+              );
+              setSpeakerRefreshKey((value) => value + 1);
+            }}
           />
         )}
       </main>

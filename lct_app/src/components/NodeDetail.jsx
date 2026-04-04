@@ -67,7 +67,7 @@ export default function NodeDetail({
   const relations = Array.isArray(safeNode?.edge_relations) ? safeNode.edge_relations : [];
   const contextualRelations = normalizeContextualRelations(safeNode?.contextual_relation);
   const canRenameSpeaker = Boolean(conversationId && safeNode?.speaker_id);
-  const displaySpeakerName = speakerNameDraft.trim() || safeNode?.speaker_id || "";
+  const displaySpeakerName = speakerNameDraft.trim() || safeNode?.speaker_display || safeNode?.speaker_id || "";
 
   // Raw transcript for this node's chunk
   const rawTranscript = safeNode?.chunk_id ? chunkDict?.[safeNode.chunk_id] || null : null;
