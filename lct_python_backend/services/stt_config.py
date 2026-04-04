@@ -19,7 +19,8 @@ DEFAULT_STT_HTTP_URL = "http://localhost:5092/v1/audio/transcriptions"
 # IndrasNet orchestrator endpoint (routes local WhisperX first, then Modal fallback).
 DEFAULT_STT_WHISPER_HTTP_URL = "http://100.81.65.74:7777/api/transcribe"
 DEFAULT_OPENAI_AUDIO_BASE_URL = "https://api.openai.com"
-DEFAULT_OPENAI_AUDIO_MODEL = "gpt-4o-transcribe-diarize"
+DEFAULT_OPENAI_AUDIO_MODEL = "gpt-4o-mini-transcribe"
+DEFAULT_OPENAI_AUDIO_DIARIZE_MODEL = "gpt-4o-transcribe-diarize"
 DEFAULT_OPENROUTER_AUDIO_BASE_URL = "https://openrouter.ai/api"
 DEFAULT_OPENROUTER_AUDIO_MODEL = "google/gemini-2.5-flash"
 
@@ -120,6 +121,9 @@ def _cloud_provider_defaults() -> Dict[str, Dict[str, Any]]:
                 os.getenv("STT_OPENAI_AUDIO_BASE_URL", DEFAULT_OPENAI_AUDIO_BASE_URL),
             ),
             "model": coerce_str(os.getenv("STT_OPENAI_AUDIO_MODEL", DEFAULT_OPENAI_AUDIO_MODEL)),
+            "diarize_model": coerce_str(
+                os.getenv("STT_OPENAI_DIARIZE_MODEL", DEFAULT_OPENAI_AUDIO_DIARIZE_MODEL)
+            ),
             "api_key": coerce_str(os.getenv("OPENAI_API_KEY", "")),
             "supports_diarization": True,
             "degraded": False,
@@ -158,10 +162,26 @@ def normalize_cloud_provider_record(
             normalized_provider_id,
             raw.get("base_url", existing.get("base_url", defaults.get("base_url"))),
         ),
-        "model": coerce_str(raw.get("model") or existing.get("model") or defaults.get("model")),
         "supports_diarization": bool(defaults.get("supports_diarization")),
         "degraded": bool(defaults.get("degraded")),
     }
+
+    model = coerce_str(raw.get("model") or existing.get("model") or defaults.get("model"))
+    provider["model"] = model
+    if normalized_provider_id == "openai_audio":
+        raw_model = coerce_str(raw.get("model"))
+        raw_diarize_model = coerce_str(raw.get("diarize_model"))
+        diarize_model = coerce_str(
+            raw_diarize_model
+            or existing.get("diarize_model")
+            or defaults.get("diarize_model")
+        )
+        if raw_model == DEFAULT_OPENAI_AUDIO_DIARIZE_MODEL and not raw_diarize_model:
+            # Legacy configs used the single model field for diarized OpenAI STT.
+            provider["model"] = defaults.get("model") or DEFAULT_OPENAI_AUDIO_MODEL
+            provider["diarize_model"] = DEFAULT_OPENAI_AUDIO_DIARIZE_MODEL
+        else:
+            provider["diarize_model"] = diarize_model or DEFAULT_OPENAI_AUDIO_DIARIZE_MODEL
 
     clear_api_key = to_bool(raw.get("clear_api_key", False))
     incoming_api_key = raw.get("api_key")
@@ -214,8 +234,10 @@ def sanitize_stt_config_for_client(config: Dict[str, Any]) -> Dict[str, Any]:
     sanitized["live_fallback_priority"] = normalize_live_fallback_priority(
         sanitized.get("live_fallback_priority")
     )
-    # Strip secrets that should not reach the browser
-    sanitized.pop("download_token", None)
+    # Mask download_token — it is a bearer-style secret for audio download URLs.
+    download_token = coerce_str(sanitized.get("download_token"))
+    sanitized["download_token"] = ""
+    sanitized["has_download_token"] = bool(download_token)
     return sanitized
 
 

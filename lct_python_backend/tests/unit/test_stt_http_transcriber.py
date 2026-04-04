@@ -13,6 +13,8 @@ from lct_python_backend.services.stt_http_transcriber import (
     extract_diarized_segments,
     extract_transcript_text,
     pcm16le_to_wav,
+    smoke_test_stt_candidate,
+    transcribe_wav_stt_candidate,
 )
 
 
@@ -149,6 +151,7 @@ async def test_realtime_http_session_pushes_and_flushes_chunks():
     assert result is not None
     assert result["text"] == "chunk text"
     assert result["is_final"] is False
+    assert result["timestamps"] == {"start": 0.0, "end": 0.25}
 
     session._transcribe_pcm = AsyncMock(return_value=("final text", None))
     await session.push_audio_chunk(b"\x00\x01" * 2000)
@@ -156,11 +159,12 @@ async def test_realtime_http_session_pushes_and_flushes_chunks():
     assert flush_result is not None
     assert flush_result["text"] == "final text"
     assert flush_result["is_final"] is True
+    assert flush_result["timestamps"] == {"start": 0.25, "end": 0.375}
 
 
 @pytest.mark.asyncio
 async def test_fixed_interval_does_not_flush_below_threshold():
-    session = _make_session(chunk_seconds=1.0)
+    session = _make_session(chunk_seconds=1.0, initial_chunk_seconds=1.0)
     session._transcribe_pcm = AsyncMock(return_value=("text", None))
 
     # Push 0.5s of audio (below 1.0s threshold)
@@ -178,6 +182,23 @@ async def test_metadata_includes_vad_and_diarize_flags():
     assert result is not None
     assert result["metadata"]["vad_enabled"] is False
     assert "diarize_enabled" in result["metadata"]
+
+
+@pytest.mark.asyncio
+async def test_initial_chunk_seconds_only_applies_before_first_success():
+    session = _make_session(chunk_seconds=1.2, initial_chunk_seconds=0.5)
+    session._transcribe_pcm = AsyncMock(side_effect=[("first", None), ("second", None)])
+
+    result = await session.push_audio_chunk(_pcm_bytes(0.5))
+    assert result is not None
+    assert result["text"] == "first"
+
+    second_result = await session.push_audio_chunk(_pcm_bytes(0.5))
+    assert second_result is None
+
+    third_result = await session.push_audio_chunk(_pcm_bytes(0.7))
+    assert third_result is not None
+    assert third_result["text"] == "second"
 
 
 # ---------------------------------------------------------------------------
@@ -271,10 +292,11 @@ async def test_primary_backend_candidate_can_fall_back_to_openai_audio():
                 "transport": "openai_audio",
                 "http_url": "https://api.openai.com/v1/audio/transcriptions",
                 "api_key": "sk-openai-secret",
-                "model": "gpt-4o-transcribe-diarize",
+                "model": "gpt-4o-mini-transcribe",
                 "supports_diarization": True,
                 "degraded": False,
                 "reason": "fallback_openai_audio",
+                "request_diarization": False,
             },
         ],
     )
@@ -311,7 +333,7 @@ async def test_primary_backend_candidate_can_fall_back_to_openai_audio():
 
     assert result is not None
     assert result["text"] == "speaker one speaker two"
-    assert len(result["segments"]) == 2
+    assert "segments" not in result
     assert result["metadata"]["fallback_used"] is True
     assert result["metadata"]["fallback_from"] == "whisper"
     assert result["metadata"]["fallback_to"] == "openai_audio"
@@ -321,9 +343,95 @@ async def test_primary_backend_candidate_can_fall_back_to_openai_audio():
     primary_form = mock_client.post.call_args_list[0].kwargs["data"]
     openai_form = mock_client.post.call_args_list[1].kwargs["data"]
     assert primary_form["diarize"] == "false"
-    assert openai_form["response_format"] == "diarized_json"
-    assert openai_form["chunking_strategy"] == "auto"
+    assert openai_form["response_format"] == "json"
+    assert "chunking_strategy" not in openai_form
     assert mock_client.post.call_args_list[1].kwargs["headers"]["Authorization"] == "Bearer sk-openai-secret"
+    assert result["metadata"]["candidate_count"] == 2
+    assert result["metadata"]["attempt_count"] == 2
+    assert result["metadata"]["stt_flow_started_at"].endswith("Z")
+    assert result["metadata"]["stt_flow_completed_at"].endswith("Z")
+    assert result["metadata"]["stt_flow_ms"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_empty_openai_transcript_does_not_fall_through_to_whisper():
+    session = _make_session(
+        pool_enabled=False,
+        provider="whisper",
+        http_url="http://primary.example/api/transcribe",
+        candidates=[
+            {
+                "provider": "openai_audio",
+                "transport": "openai_audio",
+                "http_url": "https://api.openai.com/v1/audio/transcriptions",
+                "api_key": "sk-openai-secret",
+                "model": "gpt-4o-mini-transcribe",
+                "supports_diarization": True,
+                "degraded": False,
+                "reason": "fallback_openai_audio",
+                "request_diarization": False,
+            },
+            {
+                "provider": "whisper",
+                "transport": "backend_http",
+                "http_url": "http://primary.example/api/transcribe",
+                "supports_diarization": True,
+                "degraded": False,
+                "reason": "configured_provider",
+            },
+        ],
+    )
+
+    openai_response = MagicMock()
+    openai_response.status_code = 200
+    openai_response.headers = {"content-type": "application/json"}
+    openai_response.json.return_value = {"text": ""}
+    openai_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=openai_response)
+    mock_client.aclose = AsyncMock()
+
+    with patch.object(mod, "STT_DIARIZE_ENABLED", False), \
+         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+        result = await session.push_audio_chunk(_pcm_bytes(0.5))
+
+    assert result is None
+    assert mock_client.post.call_count == 1
+    assert session.get_last_runtime_metadata()["empty_transcript"] is True
+
+
+@pytest.mark.asyncio
+async def test_timeout_opens_circuit_and_skips_repeat_attempts():
+    session = _make_session(
+        pool_enabled=False,
+        provider="whisper",
+        http_url="http://primary.example/api/transcribe",
+        candidates=[
+            {
+                "provider": "whisper",
+                "transport": "backend_http",
+                "http_url": "http://primary.example/api/transcribe",
+                "supports_diarization": True,
+                "degraded": False,
+                "reason": "configured_provider",
+            }
+        ],
+    )
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(side_effect=httpx.TimeoutException("Timed out waiting for STT provider response."))
+    mock_client.aclose = AsyncMock()
+
+    with patch.object(mod, "STT_CIRCUIT_TIMEOUT_TTL_SECONDS", 30.0), \
+         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+        with pytest.raises(RuntimeError, match="All live STT candidates failed"):
+            await session.push_audio_chunk(_pcm_bytes(0.5))
+
+        with pytest.raises(RuntimeError, match="circuit_open"):
+            await session.push_audio_chunk(_pcm_bytes(0.5))
+
+    assert mock_client.post.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -375,6 +483,92 @@ async def test_openrouter_candidate_posts_chat_completion_payload():
     assert request_payload["messages"][0]["content"][0]["text"].endswith("The audio language is en.")
     assert request_payload["messages"][0]["content"][1]["type"] == "input_audio"
     assert request_payload["messages"][0]["content"][1]["input_audio"]["format"] == "wav"
+
+
+@pytest.mark.asyncio
+async def test_smoke_test_stt_candidate_returns_ready_result():
+    candidate = {
+        "provider": "openai_audio",
+        "transport": "openai_audio",
+        "route_id": "openai_audio_manual_test",
+        "http_url": "https://api.openai.com/v1/audio/transcriptions",
+        "base_url": "https://api.openai.com",
+        "api_key": "sk-test",
+        "model": "gpt-4o-mini-transcribe",
+        "supports_diarization": True,
+        "degraded": False,
+        "request_diarization": False,
+    }
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "application/json"}
+    mock_response.json.return_value = {
+        "text": "hello from smoke test",
+        "segments": [{"speaker": "speaker_0", "start": 0.0, "end": 0.4, "text": "hello"}],
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.aclose = AsyncMock()
+
+    with patch.object(mod, "STT_HTTP_POOL_ENABLED", False), \
+         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+        result = await smoke_test_stt_candidate(candidate, sample_rate_hz=16000, timeout_seconds=12.0)
+
+    assert result["ok"] is True
+    assert result["status"] == "ready"
+    assert result["provider"] == "openai_audio"
+    assert result["latency_ms"] >= 0
+    assert result["segments_count"] == 0
+    assert result["transcript_preview"] == "hello from smoke test"
+    assert result["warning"] is None
+
+
+@pytest.mark.asyncio
+async def test_transcribe_wav_stt_candidate_supports_background_openai_diarization():
+    candidate = {
+        "provider": "openai_audio",
+        "transport": "openai_audio",
+        "route_id": "openai_audio_diarize_background",
+        "http_url": "https://api.openai.com/v1/audio/transcriptions",
+        "base_url": "https://api.openai.com",
+        "api_key": "sk-test",
+        "model": "gpt-4o-transcribe-diarize",
+        "supports_diarization": True,
+        "degraded": False,
+        "request_diarization": True,
+    }
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "application/json"}
+    mock_response.json.return_value = {
+        "text": "hello from refinement",
+        "segments": [{"speaker": "speaker_0", "start": 0.0, "end": 0.4, "text": "hello"}],
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.aclose = AsyncMock()
+
+    with patch.object(mod, "STT_HTTP_POOL_ENABLED", False), \
+         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+        result = await transcribe_wav_stt_candidate(
+            candidate,
+            wav_payload=pcm16le_to_wav(_pcm_bytes(0.5)),
+            sample_rate_hz=16000,
+            timeout_seconds=12.0,
+        )
+
+    assert result["ok"] is True
+    assert result["segments_count"] == 1
+    assert result["diarization_requested"] is True
+    request_form = mock_client.post.call_args.kwargs["data"]
+    assert request_form["response_format"] == "diarized_json"
+    assert request_form["chunking_strategy"] == "auto"
 
 
 # ---------------------------------------------------------------------------

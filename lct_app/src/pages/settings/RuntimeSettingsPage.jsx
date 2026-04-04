@@ -1,6 +1,8 @@
+import ByokSessionControl from "../../components/ByokSessionControl";
 import LlmModelsCard from "../../components/settings/LlmModelsCard";
 import LlmRoutingCard from "../../components/settings/LlmRoutingCard";
 import SttSettingsCard from "../../components/settings/SttSettingsCard";
+import ArtifactExportCard from "../../components/settings/ArtifactExportCard";
 
 export default function RuntimeSettingsPage() {
   return (
@@ -15,8 +17,10 @@ export default function RuntimeSettingsPage() {
 
       <div className="space-y-6">
         <SttSettingsCard />
+        <ByokSessionControl />
         <LlmRoutingCard />
         <LlmModelsCard />
+        <ArtifactExportCard />
       </div>
     </div>
   );

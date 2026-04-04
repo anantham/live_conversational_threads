@@ -136,16 +136,73 @@ async def safe_send_json(websocket: WebSocket, payload: Dict[str, Any]) -> bool:
         return False
 
 
+def build_ws_error_payload(
+    *,
+    message_type: str = "error",
+    code: str,
+    detail: str,
+    stage: str,
+    level: str = "error",
+    fatal: bool = False,
+    session_id: Optional[str] = None,
+    conversation_id: Optional[str] = None,
+    provider: Optional[str] = None,
+    transport: Optional[str] = None,
+    context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build a structured websocket error payload with correlation context."""
+    payload_context: Dict[str, Any] = dict(context or {})
+    payload_context.setdefault("stage", str(stage or "unknown"))
+    if session_id:
+        payload_context.setdefault("session_id", str(session_id))
+    if conversation_id:
+        payload_context.setdefault("conversation_id", str(conversation_id))
+    if provider:
+        payload_context.setdefault("provider", str(provider))
+    if transport:
+        payload_context.setdefault("transport", str(transport))
+
+    return {
+        "type": str(message_type or "error"),
+        "code": str(code or "unknown_error"),
+        "detail": str(detail or "Unknown websocket error"),
+        "level": str(level or "error"),
+        "fatal": bool(fatal),
+        "context": payload_context,
+    }
+
+
+async def send_graph_patch(
+    websocket: WebSocket,
+    patch: Optional[Dict[str, Any]],
+    logger: Any,
+) -> None:
+    """Push an incremental graph patch to the client."""
+    if not isinstance(patch, dict):
+        return
+    try:
+        if websocket.client_state.name != "CONNECTED":
+            return
+        await websocket.send_json({"type": "graph_patch", "data": patch})
+    except WebSocketDisconnect:
+        logger.info("[WS] Graph patch failed - client disconnected")
+    except RuntimeError:
+        logger.info("[WS] Graph patch failed - websocket already closed")
+
+
 async def send_processor_update(
     websocket: WebSocket,
     existing_json: Any,
     chunk_dict: Any,
     logger: Any,
+    patch: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Push graph snapshot (existing_json + chunk_dict) to the client."""
     try:
         if websocket.client_state.name != "CONNECTED":
             return
+        if isinstance(patch, dict):
+            await websocket.send_json({"type": "graph_patch", "data": patch})
         await websocket.send_json({"type": "existing_json", "data": existing_json})
         await websocket.send_json({"type": "chunk_dict", "data": chunk_dict})
     except WebSocketDisconnect:

@@ -1,3 +1,4 @@
+import PropTypes from "prop-types";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiFetch } from "../services/apiClient";
@@ -18,6 +19,7 @@ export default function ExportCanvas({ graphData, fileName }) {
     setIsExporting(true);
 
     const exportPath = `/export/obsidian-canvas/${conversationId}?include_chunks=${includeChunks}`;
+    const transcriptPath = `/export/obsidian-canvas/${conversationId}/transcript`;
     console.log('[ExportCanvas] Starting export...');
     console.log('[ExportCanvas] URL path:', exportPath);
     console.log('[ExportCanvas] conversationId:', conversationId);
@@ -71,7 +73,30 @@ export default function ExportCanvas({ graphData, fileName }) {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      console.log("[ExportCanvas] ✅ Canvas exported successfully");
+      const transcriptResponse = await apiFetch(transcriptPath, {
+        method: "POST",
+      });
+      if (!transcriptResponse.ok) {
+        let transcriptError = "Unknown transcript export error";
+        try {
+          const transcriptJson = await transcriptResponse.json();
+          transcriptError = transcriptJson?.detail || transcriptError;
+        } catch {
+          transcriptError = await transcriptResponse.text();
+        }
+        throw new Error(`Transcript export failed: ${transcriptError}`);
+      }
+      const transcriptBlob = await transcriptResponse.blob();
+      const transcriptUrl = URL.createObjectURL(transcriptBlob);
+      const transcriptAnchor = document.createElement("a");
+      transcriptAnchor.href = transcriptUrl;
+      transcriptAnchor.download = `${fileName || "conversation"}.txt`;
+      document.body.appendChild(transcriptAnchor);
+      transcriptAnchor.click();
+      document.body.removeChild(transcriptAnchor);
+      URL.revokeObjectURL(transcriptUrl);
+
+      console.log("[ExportCanvas] ✅ Canvas and transcript exported successfully");
     } catch (error) {
       console.error("[ExportCanvas] ❌ Export failed:");
       console.error("[ExportCanvas] Error type:", error.constructor.name);
@@ -121,3 +146,8 @@ export default function ExportCanvas({ graphData, fileName }) {
     </div>
   );
 }
+
+ExportCanvas.propTypes = {
+  graphData: PropTypes.array,
+  fileName: PropTypes.string,
+};

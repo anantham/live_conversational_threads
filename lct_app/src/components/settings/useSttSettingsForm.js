@@ -1,11 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getSttSettings, updateSttSettings } from "../../services/sttSettingsApi";
+import {
+  getSttSettings,
+  testSttCloudProvider,
+  updateSttSettings,
+} from "../../services/sttSettingsApi";
 import {
   normalizeLiveFallbackPriority,
   normalizeProvider,
   normalizeSttSettings,
 } from "../audio/sttUtils";
+
+const CLOUD_PROVIDER_LABELS = {
+  openai_audio: "OpenAI Audio",
+  openrouter_audio: "OpenRouter Audio",
+};
+
+function describeRequestError(err, fallbackMessage) {
+  const isNetworkError = err.message?.includes("fetch") || err.name === "TypeError";
+  return isNetworkError ? "Backend unavailable" : fallbackMessage;
+}
 
 export default function useSttSettingsForm() {
   const [settings, setSettings] = useState(null);
@@ -13,6 +27,8 @@ export default function useSttSettingsForm() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [feedback, setFeedback] = useState(null);
+  const [cloudProviderChecks, setCloudProviderChecks] = useState({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -22,10 +38,10 @@ export default function useSttSettingsForm() {
       const normalized = normalizeSttSettings(data);
       setSettings(normalized);
       setForm(normalized);
+      setCloudProviderChecks({});
     } catch (err) {
       console.error("Unable to load STT settings:", err);
-      const isNetworkError = err.message?.includes("fetch") || err.name === "TypeError";
-      setError(isNetworkError ? "Backend unavailable" : "Unable to load STT configuration.");
+      setError(describeRequestError(err, "Unable to load STT configuration."));
     } finally {
       setLoading(false);
     }
@@ -35,12 +51,23 @@ export default function useSttSettingsForm() {
     void load();
   }, [load]);
 
-  const handleSave = useCallback(async () => {
-    if (!form) return;
+  const clearCloudProviderCheck = useCallback((providerId) => {
+    setCloudProviderChecks((prev) => {
+      if (!prev?.[providerId]) {
+        return prev;
+      }
+      const next = { ...(prev || {}) };
+      delete next[providerId];
+      return next;
+    });
+  }, []);
+
+  const saveForm = useCallback(async (draft, successMessage = "Live STT settings saved.") => {
+    if (!draft) return null;
     setSaving(true);
     setError(null);
     try {
-      const normalized = normalizeSttSettings(form);
+      const normalized = normalizeSttSettings(draft, { preserveApiKeys: true });
       const payload = {
         ...normalized,
         ws_url: normalized.provider_urls?.[normalized.provider] || normalized.ws_url,
@@ -49,14 +76,77 @@ export default function useSttSettingsForm() {
       const updatedNormalized = normalizeSttSettings(updated);
       setSettings(updatedNormalized);
       setForm(updatedNormalized);
+      setFeedback({
+        tone: "success",
+        message: successMessage,
+      });
+      return updatedNormalized;
     } catch (err) {
       console.error("Failed to save STT settings:", err);
-      const isNetworkError = err.message?.includes("fetch") || err.name === "TypeError";
-      setError(isNetworkError ? "Backend unavailable" : "Unable to persist STT settings.");
+      setFeedback(null);
+      setError(describeRequestError(err, "Unable to persist STT settings."));
+      return null;
     } finally {
       setSaving(false);
     }
-  }, [form]);
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    await saveForm(form);
+  }, [form, saveForm]);
+
+  const handleCloudProviderTest = useCallback(async (providerId) => {
+    if (!form) return;
+
+    const providerName = CLOUD_PROVIDER_LABELS[providerId] || providerId;
+    const saved = await saveForm(form, "Live STT settings saved.");
+    if (!saved) return;
+
+    setError(null);
+    setCloudProviderChecks((prev) => ({
+      ...(prev || {}),
+      [providerId]: {
+        status: "testing",
+        checking: true,
+      },
+    }));
+
+    try {
+      const result = await testSttCloudProvider({ provider: providerId });
+      setCloudProviderChecks((prev) => ({
+        ...(prev || {}),
+        [providerId]: {
+          ...result,
+          checking: false,
+        },
+      }));
+      setFeedback({
+        tone: result?.ok ? "success" : "warning",
+        message: result?.ok
+          ? `${providerName} is ready for fallback tests.`
+          : `${providerName} test failed: ${result?.error || result?.status || "unknown error"}`,
+      });
+    } catch (err) {
+      console.error(`Failed to test cloud provider ${providerId}:`, err);
+      const message = describeRequestError(
+        err,
+        `Unable to test ${providerName}.`,
+      );
+      setCloudProviderChecks((prev) => ({
+        ...(prev || {}),
+        [providerId]: {
+          status: "provider_error",
+          checking: false,
+          ok: false,
+          error: message,
+        },
+      }));
+      setFeedback({
+        tone: "warning",
+        message,
+      });
+    }
+  }, [form, saveForm]);
 
   const handleChange = useCallback((key) => (event) => {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
@@ -114,6 +204,7 @@ export default function useSttSettingsForm() {
     (providerId, field, valueType = "text") =>
       (event) => {
         const value = valueType === "checkbox" ? Boolean(event.target.checked) : event.target.value;
+        clearCloudProviderCheck(providerId);
         setForm((prev) => {
           const currentProvider = prev?.cloud_fallback_providers?.[providerId] || {};
           return {
@@ -131,11 +222,12 @@ export default function useSttSettingsForm() {
           };
         });
       },
-    [],
+    [clearCloudProviderCheck],
   );
 
   const handleCloudProviderClearToggle = useCallback((providerId) => (event) => {
     const checked = Boolean(event.target.checked);
+    clearCloudProviderCheck(providerId);
     setForm((prev) => {
       const currentProvider = prev?.cloud_fallback_providers?.[providerId] || {};
       return {
@@ -150,7 +242,7 @@ export default function useSttSettingsForm() {
         },
       };
     });
-  }, []);
+  }, [clearCloudProviderCheck]);
 
   const handleFallbackPriorityMove = useCallback((index, direction) => {
     setForm((prev) => {
@@ -171,12 +263,15 @@ export default function useSttSettingsForm() {
   }, []);
 
   return {
+    cloudProviderChecks,
     error,
+    feedback,
     form,
     handleChange,
     handleCloudFallbackFlagChange,
     handleCloudProviderClearToggle,
     handleCloudProviderFieldChange,
+    handleCloudProviderTest,
     handleFallbackPriorityMove,
     handleProviderHttpUrlChange,
     handleProviderUrlChange,

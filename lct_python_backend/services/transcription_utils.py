@@ -163,6 +163,8 @@ class FileTranscriptResult:
     transcript_text: str
     source_type: str
     metadata: Dict[str, Any]
+    utterances: List[Dict[str, Any]] = field(default_factory=list)
+    speaker_segments: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass

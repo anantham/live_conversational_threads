@@ -1,5 +1,26 @@
 # Feature Roadmap & Prioritization
 
+> **Staleness note (2026-03-20):** This roadmap was written early in the project and
+> covers Phase 1–6 in week-based sprints. Since then, development has been driven by
+> Architecture Decision Records (ADRs). Several features below have been implemented,
+> superseded, or refined by later ADRs. See `docs/adr/INDEX.md` for the current
+> decision trail.
+>
+> **Implemented since this roadmap was written:**
+> - Google Meet transcript + speaker support (ADR-001) — shipped
+> - Guided runtime setup (Section 1.1 below) — shipped as stage-based settings (ADR-014, ADR-015)
+> - Live STT ingestion pipeline (ADR-008) — shipped with audio storage opt-in
+> - Hierarchical zoom / multi-scale graph (ADR-002) — shipped
+> - Externalized prompts system (ADR-005) — shipped
+> - Intent signals / prayers schema (ADR-013) — schema shipped, UI pending
+> - Observability / cost tracking (ADR-003) — instrumentation package shipped
+> - Edit history scaffolding (ADR-018) — partial, contracts in progress
+>
+> **Added but not in original roadmap:**
+> - Review experience MVP: thematic zoom tab, conversation series, cross-session signals (ADR-016 — approved, not yet started)
+> - Capability-oriented live runtime pipeline (ADR-017 — design only, implementation deferred)
+> - Real-time speaker diarization sidecar (ADR-012 — proposed)
+
 ## Analysis Framework
 
 Each feature is evaluated on:
@@ -25,6 +46,31 @@ Each feature is evaluated on:
   - **Risk**: 3 - Format parsing complexity
   - **ROI**: 0.7
   - **Status**: ADR written, ready for implementation
+
+### 1.1 Guided Runtime Setup & Confidence Checks (Week 2-3)
+**Description**: Make runtime setup approachable for non-technical users with progressive disclosure, saved provider credentials, and one-click confidence checks.
+
+- **Impact**: 5 - Removes clone-to-first-session friction and makes the product usable without editing env files
+- **Effort**: 3 - Primarily settings UX, server-side credential plumbing, and benchmark endpoints
+- **Dependencies**: Existing runtime settings pages and provider routing
+- **Risk**: 2 - Provider-specific status semantics need careful UX language
+- **ROI**: 1.0 ⭐
+- **Product Principles**:
+  - Green/orange/red should answer "am I ready?" in plain language
+  - Every status should support deeper inspection only when the user asks for it
+  - Advanced transport and telemetry detail should stay hidden by default
+- **Technical Approach**:
+  - Add a single guided runtime setup surface for Gemini, OpenAI, OpenRouter, and future remote providers
+  - Allow write-only API key entry in the UI so local `.env` editing is optional
+  - Replace health-only checks with canned real-request smoke tests
+  - Measure user-facing timings such as time to first caption, time to final caption, and time to graph update
+  - Distinguish `missing key`, `saved but unverified`, `ready`, `degraded`, and `blocked` states
+
+**Deliverables:**
+- Guided runtime setup and onboarding card with progressive disclosure
+- Unified credential status model across STT and LLM providers
+- One-click smoke tests using sample audio and sample graph prompts
+- Human-readable status copy so setup can be completed without touching code
 
 ---
 
@@ -406,9 +452,10 @@ Worldview: "Data-driven decisions are always better" → ideological assumption
 ### Immediate (Weeks 1-10) - MVP Features
 1. ✅ Obsidian Canvas interop (DONE)
 2. 🔨 Google Meet transcript + speaker support (ADR-001)
-3. 🎯 Bandwidth metrics (highest ROI: 2.0)
-4. 🎯 Shared transparent view (ROI: 1.3)
-5. 🎯 Claim taxonomy (unique value)
+3. 🎯 Guided runtime setup & confidence checks (activation/onboarding)
+4. 🎯 Bandwidth metrics (highest ROI: 2.0)
+5. 🎯 Shared transparent view (ROI: 1.3)
+6. 🎯 Claim taxonomy (unique value)
 
 ### Near-term (Weeks 11-20) - Differentiation
 6. 🎯 Parallel thread tracking (ROI: 1.0, core feature)
@@ -430,9 +477,10 @@ Worldview: "Data-driven decisions are always better" → ideological assumption
 
 **Sprint 1-5 (Weeks 1-10): Foundation + Quick Wins**
 1. Implement Google Meet transcript support (ADR-001)
-2. Build bandwidth metrics (fast ROI)
-3. Add shared transparent view (collaboration unlock)
-4. Implement claim taxonomy (unique value)
+2. Build guided runtime setup & confidence checks (activation and onboarding)
+3. Build bandwidth metrics (fast ROI)
+4. Add shared transparent view (collaboration unlock)
+5. Implement claim taxonomy (unique value)
 
 **Sprint 6-10 (Weeks 11-20): Core Intelligence**
 5. Parallel thread tracking (working memory solution)

@@ -5,9 +5,7 @@ Run with: pytest tests/test_graph_generation.py -v
 """
 
 import pytest
-import json
 from pathlib import Path
-from unittest.mock import Mock, AsyncMock, patch
 
 from lct_python_backend.services.graph_generation import GraphGenerationService
 from lct_python_backend.parsers.google_meet import ParsedTranscript, Utterance
@@ -15,23 +13,6 @@ from lct_python_backend.parsers.google_meet import ParsedTranscript, Utterance
 
 # Path to test fixtures
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
-
-
-@pytest.mark.skip(reason="PromptLoader class removed from graph_generation module")
-class TestPromptLoader:
-    """Tests for PromptLoader class (removed — prompts now managed via prompt_manager)."""
-
-    def test_load_prompts(self):
-        pass
-
-    def test_get_prompt(self):
-        pass
-
-    def test_get_nonexistent_prompt_raises_error(self):
-        pass
-
-    def test_render_template(self):
-        pass
 
 
 class TestGraphGenerationService:

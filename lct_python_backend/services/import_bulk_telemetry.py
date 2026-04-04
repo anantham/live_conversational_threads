@@ -2,8 +2,124 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import time
+from pathlib import Path
 from typing import Any, Optional
+
+logger = logging.getLogger("lct_backend")
+
+# ---------------------------------------------------------------------------
+# Empirical STT timing history — persisted per-backend realtime ratios
+# ---------------------------------------------------------------------------
+
+_HISTORY_DIR = Path(__file__).resolve().parent.parent.parent / ".run"
+_HISTORY_FILE = _HISTORY_DIR / "stt_timing_history.json"
+_MAX_SAMPLES = 20  # keep last N samples per backend
+
+
+def _read_history() -> dict:
+    """Read timing history from disk. Returns {} on any error."""
+    try:
+        if _HISTORY_FILE.exists():
+            return json.loads(_HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.debug("Could not read STT timing history: %s", exc)
+    return {}
+
+
+def _write_history(data: dict) -> None:
+    """Write timing history to disk. Silent on error."""
+    try:
+        _HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+        _HISTORY_FILE.write_text(
+            json.dumps(data, indent=2), encoding="utf-8"
+        )
+    except Exception as exc:
+        logger.debug("Could not write STT timing history: %s", exc)
+
+
+def record_transcription_timing(
+    *,
+    stt_backend: str,
+    audio_duration_ms: float,
+    transcription_ms: float,
+) -> None:
+    """Record a completed transcription for future ETA estimates.
+
+    Stores the realtime ratio (transcription_ms / audio_duration_ms) so that
+    future uploads can estimate how long transcription will take based on
+    empirical data from this machine/provider combination.
+    """
+    if not stt_backend or not audio_duration_ms or audio_duration_ms <= 0:
+        return
+    if not transcription_ms or transcription_ms <= 0:
+        return
+
+    ratio = transcription_ms / audio_duration_ms
+    history = _read_history()
+    key = str(stt_backend).strip().lower()
+    samples = history.get(key, [])
+    if not isinstance(samples, list):
+        samples = []
+
+    samples.append({
+        "ratio": round(ratio, 4),
+        "audio_ms": round(audio_duration_ms),
+        "transcription_ms": round(transcription_ms),
+        "timestamp": time.time(),
+    })
+
+    # Keep only the most recent N samples
+    history[key] = samples[-_MAX_SAMPLES:]
+    _write_history(history)
+    logger.info(
+        "[STT Timing] Recorded %s: %.2fx realtime (%.0fs audio -> %.0fs processing)",
+        key,
+        ratio,
+        audio_duration_ms / 1000,
+        transcription_ms / 1000,
+    )
+
+
+def estimate_initial_eta_ms(
+    *,
+    stt_backend: str,
+    audio_duration_ms: float,
+) -> Optional[float]:
+    """Estimate transcription time from historical data for this backend.
+
+    Returns estimated total transcription time in ms, or None if no history.
+    """
+    if not stt_backend or not audio_duration_ms or audio_duration_ms <= 0:
+        return None
+
+    history = _read_history()
+    key = str(stt_backend).strip().lower()
+    samples = history.get(key, [])
+    if not isinstance(samples, list) or len(samples) == 0:
+        # Try a generic fallback from any backend
+        all_ratios = []
+        for backend_samples in history.values():
+            if isinstance(backend_samples, list):
+                for s in backend_samples:
+                    if isinstance(s, dict) and isinstance(s.get("ratio"), (int, float)):
+                        all_ratios.append(s["ratio"])
+        if not all_ratios:
+            return None
+        avg_ratio = sum(all_ratios) / len(all_ratios)
+        return round(avg_ratio * audio_duration_ms)
+
+    ratios = [
+        s["ratio"] for s in samples
+        if isinstance(s, dict) and isinstance(s.get("ratio"), (int, float))
+    ]
+    if not ratios:
+        return None
+
+    avg_ratio = sum(ratios) / len(ratios)
+    return round(avg_ratio * audio_duration_ms)
 
 
 def elapsed_ms(started_at: float) -> int:

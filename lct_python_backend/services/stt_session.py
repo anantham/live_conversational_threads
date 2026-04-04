@@ -82,6 +82,15 @@ async def create_utterance(
         duration = max(0.0, float(timestamp_end) - float(timestamp_start))
 
     clean_text = metadata.get("text_cleaned") if metadata else None
+    speaker_source = (
+        str((metadata or {}).get("speaker_source") or "").strip()
+        or "session_default"
+    )
+    speaker_confidence = (metadata or {}).get("speaker_confidence")
+    try:
+        speaker_confidence = float(speaker_confidence) if speaker_confidence is not None else None
+    except (TypeError, ValueError):
+        speaker_confidence = None
 
     utterance = Utterance(
         conversation_id=conversation.id,
@@ -89,6 +98,9 @@ async def create_utterance(
         text_cleaned=clean_text or text,
         speaker_id=speaker_id or "speaker_1",
         speaker_name=speaker_name,
+        speaker_source=speaker_source,
+        speaker_confidence=speaker_confidence,
+        speaker_revision=0,
         sequence_number=seq,
         timestamp_start=timestamp_start,
         timestamp_end=timestamp_end,

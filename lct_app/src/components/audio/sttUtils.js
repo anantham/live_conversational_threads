@@ -14,7 +14,9 @@ const DEFAULT_STT_WHISPER_HTTP =
 const DEFAULT_OPENAI_AUDIO_BASE_URL =
   import.meta.env.VITE_STT_OPENAI_AUDIO_BASE_URL || "https://api.openai.com";
 const DEFAULT_OPENAI_AUDIO_MODEL =
-  import.meta.env.VITE_STT_OPENAI_AUDIO_MODEL || "gpt-4o-transcribe-diarize";
+  import.meta.env.VITE_STT_OPENAI_AUDIO_MODEL || "gpt-4o-mini-transcribe";
+const DEFAULT_OPENAI_AUDIO_DIARIZE_MODEL =
+  import.meta.env.VITE_STT_OPENAI_DIARIZE_MODEL || "gpt-4o-transcribe-diarize";
 const DEFAULT_OPENROUTER_AUDIO_BASE_URL =
   import.meta.env.VITE_STT_OPENROUTER_AUDIO_BASE_URL || "https://openrouter.ai/api";
 const DEFAULT_OPENROUTER_AUDIO_MODEL =
@@ -46,6 +48,7 @@ const DEFAULT_CLOUD_FALLBACK_PROVIDERS = {
     enabled: false,
     base_url: DEFAULT_OPENAI_AUDIO_BASE_URL,
     model: DEFAULT_OPENAI_AUDIO_MODEL,
+    diarize_model: DEFAULT_OPENAI_AUDIO_DIARIZE_MODEL,
     api_key: "",
     has_api_key: false,
     supports_diarization: true,

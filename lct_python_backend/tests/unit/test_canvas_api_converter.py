@@ -9,6 +9,7 @@ from lct_python_backend.canvas_api import (
     convert_canvas_to_conversation,
     convert_conversation_to_canvas,
 )
+from lct_python_backend.services.conversation_artifacts import build_linear_transcript_text
 
 
 def test_convert_conversation_to_canvas_normalizes_single_contextual_relation_object():
@@ -91,3 +92,75 @@ def test_convert_canvas_to_conversation_resolves_titles_from_canvas_ids():
     assert alpha["successor"] == "Beta"
     assert beta["predecessor"] == "Alpha"
     assert alpha["contextual_relation"].get("Beta") == "supports"
+
+
+def test_convert_conversation_to_canvas_prefers_contextual_hub_as_layout_root():
+    graph_data = [[
+        {
+            "id": "leaf-a",
+            "node_name": "Leaf A",
+            "summary": "First tangent",
+            "contextual_relation": {},
+        },
+        {
+            "id": "hub",
+            "node_name": "Hub",
+            "summary": "Central topic",
+            "edge_relations": [
+                {"related_node": "Leaf A", "relation_type": "supports", "relation_text": "connects"},
+                {"related_node": "Leaf B", "relation_type": "supports", "relation_text": "connects"},
+                {"related_node": "Leaf C", "relation_type": "supports", "relation_text": "connects"},
+            ],
+            "contextual_relation": {},
+        },
+        {
+            "id": "leaf-b",
+            "node_name": "Leaf B",
+            "summary": "Second tangent",
+            "contextual_relation": {},
+        },
+        {
+            "id": "leaf-c",
+            "node_name": "Leaf C",
+            "summary": "Third tangent",
+            "contextual_relation": {},
+        },
+    ]]
+
+    canvas = convert_conversation_to_canvas(graph_data, {}, "demo")
+    positions = {node.id: (node.x, node.y) for node in canvas.nodes}
+    x_values = {position[0] for position in positions.values()}
+    y_values = {position[1] for position in positions.values()}
+
+    assert len(y_values) > 1
+    assert positions["hub"][0] > min(x_values)
+    assert positions["hub"][0] < max(x_values)
+
+
+def test_build_linear_transcript_text_includes_timestamps_speakers_and_source():
+    class DummyConversation:
+        conversation_name = "Talking to Anand"
+        source_type = "audio"
+
+    class DummyUtterance:
+        def __init__(self, speaker_id, text, start, end, source, confidence):
+            self.speaker_id = speaker_id
+            self.text = text
+            self.timestamp_start = start
+            self.timestamp_end = end
+            self.speaker_source = source
+            self.speaker_confidence = confidence
+
+    transcript = build_linear_transcript_text(
+        conversation=DummyConversation(),
+        utterances=[
+            DummyUtterance("SPEAKER_00", "hello there", 0.0, 1.2, "diarization", 0.98),
+            DummyUtterance("SPEAKER_01", "hi", 1.3, 1.8, "diarization", 0.91),
+        ],
+        chunk_dict={},
+    )
+
+    assert "# Conversation: Talking to Anand" in transcript
+    assert "[00:00:00.000 - 00:00:01.200] SPEAKER_00: hello there" in transcript
+    assert "speaker_source=diarization" in transcript
+    assert "speaker_confidence=0.91" in transcript

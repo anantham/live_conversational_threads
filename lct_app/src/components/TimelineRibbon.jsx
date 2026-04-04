@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo } from "react";
+import { useRef, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { buildSpeakerColorMap } from "./graphConstants";
 
@@ -64,9 +64,11 @@ export default function TimelineRibbon({
   setSelectedNode,
 }) {
   const scrollRef = useRef(null);
-  const latestChunk = graphData?.[graphData.length - 1] || [];
+  const allNodes = useMemo(() => (graphData || []).flat(), [graphData]);
+  // Keep latestChunk as alias for backward compat within this component
+  const latestChunk = allNodes;
 
-  const speakerColorMap = useMemo(() => buildSpeakerColorMap(latestChunk), [latestChunk]);
+  const speakerColorMap = useMemo(() => buildSpeakerColorMap(allNodes), [allNodes]);
 
   // Auto-scroll to end when new nodes arrive (only if no node is selected)
   useEffect(() => {
@@ -85,6 +87,8 @@ export default function TimelineRibbon({
     const containerWidth = scrollRef.current.clientWidth;
     scrollRef.current.scrollLeft = centerX - containerWidth / 2;
   }, [selectedNode, latestChunk]);
+
+  const [hoveredIdx, setHoveredIdx] = useState(null);
 
   if (latestChunk.length === 0) return null;
 
@@ -118,12 +122,18 @@ export default function TimelineRibbon({
           const centerX = RAIL_START + i * DOT_SPACING;
           const titlePrefix = timestampLabel ? `[${timestampLabel}] ` : "";
 
+          const isHovered = hoveredIdx === i;
+          const posLabel = `${i + 1}/${latestChunk.length}`;
+          const tooltipText = node.node_name || `Node ${i + 1}`;
+
           return (
             <button
               key={node.id}
               onClick={() =>
                 setSelectedNode((prev) => (prev === node.id ? null : node.id))
               }
+              onMouseEnter={() => setHoveredIdx(i)}
+              onMouseLeave={() => setHoveredIdx(null)}
               className="absolute flex flex-col items-center transition-all duration-200"
               style={{
                 left: `${centerX - DOT_BUTTON_WIDTH / 2}px`,
@@ -131,30 +141,44 @@ export default function TimelineRibbon({
                 width: `${DOT_BUTTON_WIDTH}px`,
                 height: "52px",
               }}
-              title={`${titlePrefix}${node.node_name || `Node ${i + 1}`}`}
-              aria-label={`${titlePrefix}${node.node_name || `Node ${i + 1}`}`}
+              aria-label={`${titlePrefix}${tooltipText}`}
             >
+              {/* Hover tooltip */}
+              {isHovered && (
+                <div
+                  className="absolute bottom-full mb-2 px-2 py-1 rounded bg-gray-800 text-white text-[10px] leading-tight whitespace-nowrap shadow-lg pointer-events-none z-50"
+                  style={{ left: "50%", transform: "translateX(-50%)" }}
+                >
+                  <div className="font-medium truncate max-w-[180px]">{tooltipText}</div>
+                  <div className="text-gray-400 text-[9px]">
+                    {timestampLabel ? `${timestampLabel} · ` : ""}{posLabel}
+                    {node.speaker_id ? ` · ${node.speaker_id}` : ""}
+                  </div>
+                </div>
+              )}
               <div
                 className="rounded-full transition-all duration-200"
                 style={{
                   marginTop: "10px",
-                  width: isSelected ? "12px" : "8px",
-                  height: isSelected ? "12px" : "8px",
+                  width: isSelected || isHovered ? "12px" : "8px",
+                  height: isSelected || isHovered ? "12px" : "8px",
                   backgroundColor: color,
-                  border: isSelected ? "2px solid #f59e0b" : "1px solid #cbd5e1",
+                  border: isSelected ? "2px solid #f59e0b" : isHovered ? "2px solid #60a5fa" : "1px solid #cbd5e1",
                   boxShadow: isSelected
                     ? "0 0 0 3px rgba(245,158,11,0.25)"
+                    : isHovered
+                    ? "0 0 0 3px rgba(96,165,250,0.25)"
                     : "none",
-                  transform: `scale(${isSelected ? 1.2 : 1})`,
+                  transform: `scale(${isSelected || isHovered ? 1.2 : 1})`,
                 }}
               />
-              {timestampLabel && (
+              {(timestampLabel || isSelected) && (
                 <span
                   className={`mt-1 text-[9px] leading-none tracking-wide ${
                     isSelected ? "text-amber-700" : "text-gray-400"
                   }`}
                 >
-                  {timestampLabel}
+                  {timestampLabel || posLabel}
                 </span>
               )}
             </button>

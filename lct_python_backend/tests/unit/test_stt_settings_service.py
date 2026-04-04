@@ -123,6 +123,8 @@ async def test_load_stt_settings_for_client_masks_cloud_api_keys(monkeypatch):
     assert provider["api_key"] == ""
     assert provider["has_api_key"] is True
     assert provider["base_url"] == "https://api.openai.com"
+    assert provider["model"] == "gpt-4o-mini-transcribe"
+    assert provider["diarize_model"] == "gpt-4o-transcribe-diarize"
 
 
 @pytest.mark.asyncio
@@ -150,7 +152,8 @@ async def test_save_stt_settings_preserves_existing_cloud_api_key_when_blank(mon
                 "openai_audio": {
                     "enabled": True,
                     "base_url": "https://api.openai.com",
-                    "model": "gpt-4o-transcribe-diarize",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
                     "api_key": "",
                 }
             }
@@ -162,6 +165,8 @@ async def test_save_stt_settings_preserves_existing_cloud_api_key_when_blank(mon
     assert session.commit_calls == 1
     assert provider["api_key"] == "db-openai-secret"
     assert setting.value["cloud_fallback_providers"]["openai_audio"]["api_key"] == "db-openai-secret"
+    assert provider["model"] == "gpt-4o-mini-transcribe"
+    assert provider["diarize_model"] == "gpt-4o-transcribe-diarize"
 
 
 @pytest.mark.asyncio
@@ -176,7 +181,8 @@ async def test_save_stt_settings_can_clear_cloud_api_key_and_shadow_env_default(
                 "openai_audio": {
                     "enabled": True,
                     "base_url": "https://api.openai.com",
-                    "model": "gpt-4o-transcribe-diarize",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
                     "clear_api_key": True,
                 }
             }
@@ -188,3 +194,5 @@ async def test_save_stt_settings_can_clear_cloud_api_key_and_shadow_env_default(
     assert session.commit_calls == 1
     assert provider["api_key"] == ""
     assert session.added[0].value["cloud_fallback_providers"]["openai_audio"]["api_key"] == ""
+    assert provider["model"] == "gpt-4o-mini-transcribe"
+    assert provider["diarize_model"] == "gpt-4o-transcribe-diarize"

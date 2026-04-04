@@ -2,6 +2,7 @@
 import io
 import json
 import logging
+import math
 import re
 import uuid
 import zipfile
@@ -17,6 +18,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from lct_python_backend.db_session import get_async_session
 from lct_python_backend.models import Conversation
 from lct_python_backend.schemas import SaveJsonResponse
+from lct_python_backend.services.conversation_artifacts import (
+    build_linear_transcript_text,
+    sanitize_artifact_basename,
+)
+from lct_python_backend.services.conversation_reader import (
+    build_chunk_dict_from_utterances,
+    build_graph_data_from_nodes,
+    fetch_conversation_bundle,
+)
 from lct_python_backend.services.gcs_helpers import save_json_to_gcs
 
 logger = logging.getLogger(__name__)
@@ -316,13 +326,24 @@ def convert_conversation_to_canvas(
 
     # Build connected components using all known edges so related subgraphs are co-located.
     layout_pairs = {(source, target) for source, target in temporal_edges}
-    layout_pairs.update((source, target) for source, target, _, _ in contextual_edges)
+    contextual_layout_pairs = {(source, target) for source, target, _, _ in contextual_edges}
+    contextual_layout_pairs.update(
+        (source, target)
+        for source, target, label, _ in supplied_edges
+        if _clean_str(label).lower() not in {"next", "leads_to", "follows", "temporal"}
+    )
+    layout_pairs.update(contextual_layout_pairs)
     layout_pairs.update((source, target) for source, target, _, _ in supplied_edges)
     adjacency = {item["canvas_id"]: set() for item in canonical_nodes}
+    contextual_adjacency = {item["canvas_id"]: set() for item in canonical_nodes}
     for source, target in layout_pairs:
         if source in adjacency and target in adjacency:
             adjacency[source].add(target)
             adjacency[target].add(source)
+    for source, target in contextual_layout_pairs:
+        if source in contextual_adjacency and target in contextual_adjacency:
+            contextual_adjacency[source].add(target)
+            contextual_adjacency[target].add(source)
 
     components: List[List[str]] = []
     visited: set[str] = set()
@@ -356,47 +377,141 @@ def convert_conversation_to_canvas(
 
     for component in components:
         component_set = set(component)
-        depth = {node_id: 0 for node_id in component}
+        component_contextual_edges = sum(
+            1
+            for node_id in component
+            for neighbor_id in contextual_adjacency.get(node_id, set())
+            if neighbor_id in component_set and node_id < neighbor_id
+        )
+        component_temporal_edges = sum(
+            1
+            for source in component
+            for target in temporal_out.get(source, set())
+            if target in component_set
+        )
+        root_candidate = max(
+            component,
+            key=lambda node_id: (
+                len(contextual_adjacency.get(node_id, set()) & component_set),
+                len(adjacency.get(node_id, set()) & component_set),
+                -node_order_index.get(node_id, 0),
+            ),
+        )
+        use_contextual_layout = (
+            len(component) >= 4
+            and component_contextual_edges >= max(3, component_temporal_edges)
+            and len(contextual_adjacency.get(root_candidate, set()) & component_set) >= 2
+        )
 
-        for _ in range(len(component)):
-            changed = False
-            for source in component:
-                for target in temporal_out.get(source, set()):
-                    if target not in component_set:
+        local_positions: Dict[str, Dict[str, int]] = {}
+        if use_contextual_layout:
+            ring_distance = {root_candidate: 0}
+            queue = deque([root_candidate])
+            while queue:
+                current_id = queue.popleft()
+                current_distance = ring_distance[current_id]
+                neighbors = sorted(
+                    contextual_adjacency.get(current_id, set()) & component_set,
+                    key=lambda node_id: (
+                        -len(contextual_adjacency.get(node_id, set()) & component_set),
+                        node_order_index.get(node_id, 0),
+                    ),
+                )
+                for neighbor_id in neighbors:
+                    if neighbor_id in ring_distance:
                         continue
-                    candidate = depth[source] + 1
-                    if candidate > depth[target]:
-                        depth[target] = candidate
-                        changed = True
-            if not changed:
-                break
+                    ring_distance[neighbor_id] = current_distance + 1
+                    queue.append(neighbor_id)
 
-        if len(set(depth.values())) == 1 and len(component) > 1:
-            for index, node_id in enumerate(component):
-                depth[node_id] = index
+            fallback_queue = deque([root_candidate])
+            seen = {root_candidate}
+            while fallback_queue:
+                current_id = fallback_queue.popleft()
+                current_distance = ring_distance.get(current_id, 0)
+                for neighbor_id in sorted(
+                    adjacency.get(current_id, set()) & component_set,
+                    key=lambda node_id: node_order_index.get(node_id, 0),
+                ):
+                    if neighbor_id in seen:
+                        continue
+                    seen.add(neighbor_id)
+                    ring_distance.setdefault(neighbor_id, current_distance + 1)
+                    fallback_queue.append(neighbor_id)
 
-        levels: Dict[int, List[str]] = {}
-        for node_id in component:
-            levels.setdefault(depth[node_id], []).append(node_id)
-        for node_ids in levels.values():
-            node_ids.sort(key=lambda node_id: node_order_index.get(node_id, 0))
+            rings: Dict[int, List[str]] = {}
+            for node_id in component:
+                rings.setdefault(ring_distance.get(node_id, 0), []).append(node_id)
+            for node_ids in rings.values():
+                node_ids.sort(
+                    key=lambda node_id: (
+                        -len(contextual_adjacency.get(node_id, set()) & component_set),
+                        node_order_index.get(node_id, 0),
+                    )
+                )
 
-        max_level = max(levels) if levels else 0
-        max_nodes_in_level = max((len(node_ids) for node_ids in levels.values()), default=1)
-        component_width = (max_level + 1) * HORIZONTAL_SPACING + NODE_WIDTH
-        component_height = max_nodes_in_level * VERTICAL_SPACING + NODE_HEIGHT
+            local_positions[root_candidate] = {"x": 0, "y": 0}
+            for ring_index, node_ids in sorted(rings.items()):
+                if ring_index == 0:
+                    continue
+                count = len(node_ids)
+                radius_x = max(HORIZONTAL_SPACING, int(ring_index * HORIZONTAL_SPACING * 1.1))
+                radius_y = max(VERTICAL_SPACING, int(ring_index * VERTICAL_SPACING * 1.15))
+                for item_index, node_id in enumerate(node_ids):
+                    angle = (2 * math.pi * item_index) / max(1, count)
+                    local_positions[node_id] = {
+                        "x": int(round(math.cos(angle) * radius_x)),
+                        "y": int(round(math.sin(angle) * radius_y)),
+                    }
+        else:
+            depth = {node_id: 0 for node_id in component}
+
+            for _ in range(len(component)):
+                changed = False
+                for source in component:
+                    for target in temporal_out.get(source, set()):
+                        if target not in component_set:
+                            continue
+                        candidate = depth[source] + 1
+                        if candidate > depth[target]:
+                            depth[target] = candidate
+                            changed = True
+                if not changed:
+                    break
+
+            if len(set(depth.values())) == 1 and len(component) > 1:
+                for index, node_id in enumerate(component):
+                    depth[node_id] = index
+
+            levels: Dict[int, List[str]] = {}
+            for node_id in component:
+                levels.setdefault(depth[node_id], []).append(node_id)
+            for node_ids in levels.values():
+                node_ids.sort(key=lambda node_id: node_order_index.get(node_id, 0))
+
+            for level in sorted(levels.keys()):
+                for row_index, node_id in enumerate(levels[level]):
+                    local_positions[node_id] = {
+                        "x": level * HORIZONTAL_SPACING,
+                        "y": row_index * VERTICAL_SPACING,
+                    }
+
+        min_x = min((position["x"] for position in local_positions.values()), default=0)
+        max_x = max((position["x"] for position in local_positions.values()), default=0)
+        min_y = min((position["y"] for position in local_positions.values()), default=0)
+        max_y = max((position["y"] for position in local_positions.values()), default=0)
+        component_width = (max_x - min_x) + NODE_WIDTH
+        component_height = (max_y - min_y) + NODE_HEIGHT
 
         if cursor_x + component_width > MAX_ROW_WIDTH:
             cursor_x = 100
             cursor_y += current_row_height + COMPONENT_GAP
             current_row_height = 0
 
-        for level in sorted(levels.keys()):
-            for row_index, node_id in enumerate(levels[level]):
-                node_positions[node_id] = {
-                    "x": cursor_x + level * HORIZONTAL_SPACING,
-                    "y": cursor_y + row_index * VERTICAL_SPACING,
-                }
+        for node_id, local_position in local_positions.items():
+            node_positions[node_id] = {
+                "x": cursor_x + (local_position["x"] - min_x),
+                "y": cursor_y + (local_position["y"] - min_y),
+            }
 
         cursor_x += component_width + COMPONENT_GAP
         current_row_height = max(current_row_height, component_height)
@@ -896,124 +1011,42 @@ async def export_to_obsidian_canvas(
     """
     try:
         logger.info(f"Exporting conversation {conversation_id} to Obsidian Canvas (include_chunks={include_chunks})")
-
-        from sqlalchemy import select
-        from lct_python_backend.models import Conversation, Node, Utterance, Relationship
-
-        # Fetch conversation from PostgreSQL
-        result = await db.execute(
-            select(Conversation).where(Conversation.id == uuid.UUID(conversation_id))
+        conversation_uuid = uuid.UUID(conversation_id)
+        conversation, nodes, relationships, utterances = await fetch_conversation_bundle(
+            db,
+            conversation_uuid,
         )
-        conversation = result.scalar_one_or_none()
 
         if not conversation:
             logger.error(f"Conversation not found: {conversation_id}")
             raise HTTPException(status_code=404, detail="Conversation not found")
 
         logger.info(f"Found conversation: {conversation.conversation_name}")
-
-        # Fetch all nodes for this conversation
-        nodes_result = await db.execute(
-            select(Node).where(Node.conversation_id == uuid.UUID(conversation_id))
-        )
-        nodes = list(nodes_result.scalars().all())
         logger.info(f"Found {len(nodes)} nodes")
-
-        # Fetch all relationships for this conversation
-        relationships_result = await db.execute(
-            select(Relationship).where(Relationship.conversation_id == uuid.UUID(conversation_id))
-        )
-        relationships = list(relationships_result.scalars().all())
         logger.info(f"Found {len(relationships)} relationships")
-
-        # Fetch all utterances for this conversation
-        utterances_result = await db.execute(
-            select(Utterance)
-            .where(Utterance.conversation_id == uuid.UUID(conversation_id))
-            .order_by(Utterance.sequence_number)
-        )
-        utterances = list(utterances_result.scalars().all())
         logger.info(f"Found {len(utterances)} utterances")
 
-        # Build graph_data from nodes
-        graph_data = []
-        chunk_dict = {}
-
-        # Create mapping from node ID to node name
-        id_to_name = {node.id: node.node_name for node in nodes}
-
-        # Build relationship data structures (and collect edges for Canvas)
-        successor_map = {}           # node_id -> successor_node_name
-        contextual_map = {}          # node_id -> {related_node_name: relationship_type}
-        canvas_edges = []            # edges to emit in canvas
-
+        graph_data = build_graph_data_from_nodes(nodes, relationships)
+        chunk_dict = build_chunk_dict_from_utterances(utterances) if include_chunks else {}
+        canvas_edges = []
         for rel in relationships:
-            from_name = id_to_name.get(rel.from_node_id)
-            to_name = id_to_name.get(rel.to_node_id)
-
-            if not from_name or not to_name:
-                continue
-
             rel_type = rel.relationship_type or "related"
             rel_type_lower = rel_type.lower()
-
-            # Check relationship type to determine if it's temporal (successor) or contextual
-            if rel_type_lower in ['leads_to', 'next', 'follows']:
-                successor_map[rel.from_node_id] = to_name
-            else:
-                if rel.from_node_id not in contextual_map:
-                    contextual_map[rel.from_node_id] = {}
-                contextual_map[rel.from_node_id][to_name] = rel_type
-
-            # Map to Canvas edge color: 1=red (temporal here unused), 2=orange (chunks), 3=neutral, 4=green
             if rel_type_lower in ["supports", "informs", "builds_on", "enables", "affirms"]:
-                color = "4"  # green
-            elif rel_type_lower in ["contradicts", "opposes", "refutes", "challenges", "conflicts", "disagrees"]:
-                color = "1"  # red
-            elif rel_type_lower in ["leads_to", "next", "follows"]:
-                color = "3"  # neutral for temporal
+                color = "4"
+            elif rel_type_lower in ["contradicts", "opposes", "refutes", "challenges", "conflicts", "disagrees", "rebuts"]:
+                color = "1"
             else:
-                color = "3"  # neutral/default
-
-            canvas_edges.append({
-                "id": f"edge_{rel.id}",
-                "fromNode": str(rel.from_node_id),
-                "toNode": str(rel.to_node_id),
-                "label": rel_type,
-                "color": color,
-            })
-
-        for node in nodes:
-            node_data = {
-                "id": str(node.id),
-                "node_name": node.node_name,
-                "summary": node.summary,
-                "claims": [str(cid) for cid in (node.claim_ids or [])],
-                "key_points": node.key_points or [],
-                "predecessor": None,  # Will be computed from successor relationships
-                "successor": successor_map.get(node.id),
-                "contextual_relation": contextual_map.get(node.id, {}),
-                "linked_nodes": [],
-                "is_bookmark": node.is_bookmark,
-                "is_contextual_progress": node.is_contextual_progress,
-                "chunk_id": str(node.chunk_ids[0]) if node.chunk_ids else None,
-                "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])]
-            }
-            graph_data.append(node_data)
-
-            # Build chunk_dict if including chunks
-            if include_chunks and node.chunk_ids:
-                for chunk_id in node.chunk_ids:
-                    chunk_id_str = str(chunk_id)
-                    if chunk_id_str not in chunk_dict:
-                        # Get utterances for this chunk
-                        chunk_utterances = [
-                            utt for utt in utterances
-                            if utt.chunk_id and str(utt.chunk_id) == chunk_id_str
-                        ]
-                        # Combine utterance texts
-                        chunk_text = "\n".join([utt.text for utt in chunk_utterances])
-                        chunk_dict[chunk_id_str] = chunk_text
+                color = "3"
+            canvas_edges.append(
+                {
+                    "id": f"edge_{rel.id}",
+                    "fromNode": str(rel.from_node_id),
+                    "toNode": str(rel.to_node_id),
+                    "label": rel_type,
+                    "color": color,
+                }
+            )
 
         logger.info(f"Built graph_data with {len(graph_data)} nodes and {len(chunk_dict)} chunks")
 
@@ -1041,6 +1074,39 @@ async def export_to_obsidian_canvas(
     except Exception as e:
         logger.exception(f"Failed to export conversation to Canvas: {e}")
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+
+@router.post("/export/obsidian-canvas/{conversation_id}/transcript")
+async def export_transcript_artifact(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Export the canonical linear transcript artifact paired with canvas exports."""
+    try:
+        conversation_uuid = uuid.UUID(conversation_id)
+        conversation, _nodes, _relationships, utterances = await fetch_conversation_bundle(db, conversation_uuid)
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        chunk_dict = build_chunk_dict_from_utterances(utterances)
+        transcript_text = build_linear_transcript_text(
+            conversation=conversation,
+            utterances=utterances,
+            chunk_dict=chunk_dict,
+        )
+        base_name = sanitize_artifact_basename(conversation.conversation_name or "conversation")
+        return StreamingResponse(
+            io.BytesIO(transcript_text.encode("utf-8")),
+            media_type="text/plain; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{base_name}.txt"',
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Transcript export failed for %s", conversation_id)
+        raise HTTPException(status_code=500, detail=f"Transcript export failed: {exc}")
 
 
 @router.post("/export/obsidian-canvas/{conversation_id}/hierarchical")

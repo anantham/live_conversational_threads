@@ -71,6 +71,49 @@ logger.info("=" * 60)
 
 
 # ============================================================================
+# CORS CONFIGURATION
+# ============================================================================
+
+DEFAULT_LOCAL_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://localhost:5176",
+    "http://localhost:5177",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:5175",
+    "http://127.0.0.1:5176",
+    "http://127.0.0.1:5177",
+]
+
+
+def _parse_csv_env(name: str) -> list[str]:
+    raw = str(os.getenv(name, "")).strip()
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _resolve_cors_origins() -> tuple:
+    environment = str(os.getenv("ENVIRONMENT", "development")).strip().lower()
+    configured_origins = _parse_csv_env("CORS_ALLOW_ORIGINS")
+    frontend_url = str(os.getenv("FRONTEND_URL", "")).strip()
+    if frontend_url and frontend_url not in configured_origins:
+        configured_origins.append(frontend_url)
+
+    if configured_origins:
+        origins = configured_origins
+    elif environment == "production":
+        origins = []
+    else:
+        origins = DEFAULT_LOCAL_CORS_ORIGINS
+
+    allow_origin_regex = str(os.getenv("CORS_ALLOW_ORIGIN_REGEX", "")).strip() or None
+    return origins, allow_origin_regex
+
+
+# ============================================================================
 # APPLICATION LIFECYCLE
 # ============================================================================
 
@@ -94,23 +137,20 @@ async def lifespan(app: FastAPI):
 
 lct_app = FastAPI(lifespan=lifespan)
 
+cors_origins, cors_origin_regex = _resolve_cors_origins()
+
 lct_app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://localhost:5176",
-        "http://localhost:5177",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175",
-        "http://127.0.0.1:5176",
-        "http://127.0.0.1:5177",
-    ],
+    allow_origins=cors_origins,
+    allow_origin_regex=cors_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+logger.info(
+    "[SECURITY] CORS configured with origins=%s regex=%s",
+    cors_origins,
+    cors_origin_regex or "-",
 )
 
 # P0 Security middleware (auth, rate limits, body size limits, SSRF gate)
@@ -135,6 +175,8 @@ from lct_python_backend.analytics_api import router as analytics_router
 from lct_python_backend.graph_api import router as graph_router
 from lct_python_backend.canvas_api import router as canvas_router
 from lct_python_backend.thematic_api import router as thematic_router
+from lct_python_backend.artifact_api import router as artifact_router
+from lct_python_backend.speaker_naming_api import router as speaker_naming_router
 
 lct_app.include_router(import_router)
 lct_app.include_router(bookmarks_router)
@@ -150,6 +192,8 @@ lct_app.include_router(analytics_router)
 lct_app.include_router(graph_router)
 lct_app.include_router(canvas_router)
 lct_app.include_router(thematic_router)
+lct_app.include_router(artifact_router)
+lct_app.include_router(speaker_naming_router)
 
 # Alias for uvicorn compatibility
 app = lct_app
