@@ -652,7 +652,7 @@ async def run_bulk_processing_worker(
             active_stage = "segmented_transcribing"
             total_transcript_chars = 0
             total_nodes_generated = 0
-            segmented_transcript_parts: list[str] = []
+            segmented_transcript_parts: list[str] = list(checkpoint_transcript_parts)  # seed from checkpoint
 
             # Get STT URL from settings
             stt_http_url = str(runtime_stt_settings.get("http_url", "")).strip()
@@ -673,6 +673,8 @@ async def run_bulk_processing_worker(
                 model=str(runtime_stt_settings.get("http_model", "")).strip(),
                 language=str(runtime_stt_settings.get("http_language", "")).strip(),
                 timeout_seconds=float(runtime_stt_settings.get("http_timeout_seconds", 120.0) or 120.0),
+                resume_from_segment=resume_from_chunk,
+                resumed_segment_texts=checkpoint_transcript_parts if resume_from_chunk > 0 else None,
             ):
                 segment_idx += 1
                 if await request.is_disconnected():
@@ -742,8 +744,9 @@ async def run_bulk_processing_worker(
                     telemetry["stt_backend"] = segment.metadata.get("stt_backend")
 
                 # Emit transcript text for this segment
+                is_resumed_segment = bool(segment.metadata.get("resumed"))
                 normalized_segment_text = str(segment.transcript_text or "").strip()
-                if normalized_segment_text:
+                if normalized_segment_text and not is_resumed_segment:
                     segmented_transcript_parts.append(normalized_segment_text)
                 await emit(
                     "transcript",
@@ -752,11 +755,33 @@ async def run_bulk_processing_worker(
                         "segment_index": segment.segment_index,
                         "segment_total": segment.segment_total,
                         "text": segment.transcript_text,
+                        "resumed": is_resumed_segment,
                         "telemetry": {
                             "total_elapsed_ms": elapsed_ms(pipeline_started_at),
                         },
                     },
                 )
+
+                # Checkpoint: persist this segment so we can resume if connection drops
+                if file_hash and normalized_segment_text and not is_resumed_segment:
+                    try:
+                        await save_chunk_checkpoint(
+                            db,
+                            conversation_id=resolved_conversation_id,
+                            file_hash=file_hash,
+                            chunk_index=segment.segment_index,
+                            total_chunks=segment.segment_total,
+                            chunk_text=normalized_segment_text,
+                            accumulated_transcript="\n".join(segmented_transcript_parts),
+                            stt_backend=telemetry.get("stt_backend", ""),
+                            elapsed_ms=elapsed_ms(pipeline_started_at) or 0,
+                            file_name=filename,
+                            file_size_bytes=content_size,
+                        )
+                    except Exception as ckpt_exc:  # noqa: BLE001
+                        logger.warning(
+                            "[PROCESS FILE] Segment checkpoint save failed (non-fatal): %s", ckpt_exc
+                        )
 
                 # Now analyze this segment's transcript
                 active_stage = "analyzing"
