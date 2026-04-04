@@ -486,6 +486,8 @@ async def transcribe_audio_segmented(
     on_chunk_progress: Optional[ProgressCallback] = None,
     response_format: str = "",
     transport: Optional[httpx.AsyncBaseTransport] = None,
+    resume_from_segment: int = 0,
+    resumed_segment_texts: Optional[list[str]] = None,
 ) -> AsyncGenerator[SegmentResult, None]:
     """Yield transcripts per natural segment instead of waiting for full file.
 
@@ -512,9 +514,29 @@ async def transcribe_audio_segmented(
         file_path.name,
     )
 
+    _resumed_texts = resumed_segment_texts or []
+
     for i in range(segment_count):
         start_ms, end_ms = boundaries[i], boundaries[i + 1]
         segment_index = i + 1
+
+        # Skip segments already completed in a previous run (checkpoint resume)
+        if segment_index <= resume_from_segment and segment_index <= len(_resumed_texts):
+            cached_text = _resumed_texts[segment_index - 1] if _resumed_texts else ""
+            logger.info(
+                "[SEGMENT %d/%d] Skipped (checkpoint resume), cached %d chars",
+                segment_index, segment_count, len(cached_text),
+            )
+            yield SegmentResult(
+                segment_index=segment_index,
+                segment_total=segment_count,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                transcript_text=cached_text,
+                elapsed_ms=0,
+                metadata={"stt_backend": "", "duration_ms": end_ms - start_ms, "resumed": True},
+            )
+            continue
 
         logger.info(
             "[SEGMENT %d/%d] Processing %d-%d ms (%.1f min)",
