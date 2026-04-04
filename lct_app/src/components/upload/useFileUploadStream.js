@@ -112,6 +112,7 @@ export default function useFileUploadStream({
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState("");
   const [fallbackToast, setFallbackToast] = useState("");
+  const [resumeToast, setResumeToast] = useState("");
   const [etaText, setEtaText] = useState("");
   const [liveTranscriptLines, setLiveTranscriptLines] = useState([]);
   const [sttBackend, setSttBackend] = useState("");
@@ -123,6 +124,12 @@ export default function useFileUploadStream({
     const timeoutId = window.setTimeout(() => setFallbackToast(""), 8000);
     return () => window.clearTimeout(timeoutId);
   }, [fallbackToast]);
+
+  useEffect(() => {
+    if (!resumeToast) return undefined;
+    const timeoutId = window.setTimeout(() => setResumeToast(""), 10000);
+    return () => window.clearTimeout(timeoutId);
+  }, [resumeToast]);
 
   // NOTE: We intentionally do NOT abort on unmount. The upload stream is now
   // owned by the app-level UploadContext and must survive page navigation.
@@ -260,6 +267,14 @@ export default function useFileUploadStream({
             }
             if (payload.llm_backend) {
               setLlmBackend(payload.llm_backend);
+            }
+            if (stage === "resuming") {
+              const ckChunks = Number(telemetry.checkpoint_chunks || 0);
+              const ckTotal = Number(telemetry.checkpoint_total_chunks || 0);
+              const resumeMsg = ckTotal > 0
+                ? `Resuming from checkpoint (${ckChunks}/${ckTotal} chunks cached)`
+                : `Resuming from checkpoint (${ckChunks} chunks cached)`;
+              setResumeToast(resumeMsg);
             }
             if (payload.audio_duration_ms != null) {
               setAudioDurationMs(Number(payload.audio_duration_ms));
@@ -477,6 +492,7 @@ export default function useFileUploadStream({
     setProgress(0.02);
     setStatusText(`Uploading ${file.name}...`);
     setFallbackToast("");
+    setResumeToast("");
     fallbackNoticeKeyRef.current = "";
 
     let byokSessionToken = "";
@@ -576,6 +592,7 @@ export default function useFileUploadStream({
     cancelUpload,
     etaText,
     fallbackToast,
+    resumeToast,
     isProcessing,
     liveTranscriptLines,
     llmBackend,
