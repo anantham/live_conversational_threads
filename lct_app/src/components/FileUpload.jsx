@@ -30,6 +30,7 @@ export default function FileUpload() {
     cancelUpload,
     etaText,
     fallbackToast,
+    resumeToast,
     isProcessing,
     liveTranscriptLines,
     llmBackend,
@@ -91,6 +92,14 @@ export default function FileUpload() {
         <div className="absolute bottom-full left-0 right-0 mb-2 pointer-events-none">
           <div className="mx-auto max-w-md rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 shadow-sm">
             {fallbackToast}
+          </div>
+        </div>
+      )}
+
+      {resumeToast && (
+        <div className="absolute bottom-full left-0 right-0 mb-2 pointer-events-none">
+          <div className="mx-auto max-w-md rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 shadow-sm">
+            &#x21bb; {resumeToast}
           </div>
         </div>
       )}
