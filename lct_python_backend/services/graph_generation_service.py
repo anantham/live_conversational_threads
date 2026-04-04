@@ -64,18 +64,19 @@ def build_turn_based_nodes(utterances: Sequence[Utterance]) -> List[GeneratedNod
     for group in grouped_turns:
         first = group[0]
         last = group[-1]
-        speaker = (first.speaker_name or first.speaker_id or "Speaker").strip() or "Speaker"
+        real_speaker_id = (first.speaker_id or "unknown").strip() or "unknown"
+        speaker_display = (first.speaker_name or first.speaker_id or "Speaker").strip() or "Speaker"
         full_text = "\n".join((utterance.text or "").strip() for utterance in group if utterance.text)
         full_text = full_text or "(No content)"
         preview = truncate_summary(full_text, limit=90)
-        node_name = f"[{speaker_initials(speaker)}] {preview}"
+        node_name = f"[{speaker_initials(speaker_display)}] {preview}"
 
         node_specs.append(
             GeneratedNodeSpec(
                 id=uuid.uuid4(),
                 node_name=node_name,
                 summary=truncate_summary(full_text),
-                speaker_id=speaker,
+                speaker_id=real_speaker_id,
                 utterance_ids=[utterance.id for utterance in group],
                 start_time=first.timestamp_start,
                 end_time=last.timestamp_end,

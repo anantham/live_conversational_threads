@@ -152,7 +152,7 @@ export default function TimelineRibbon({
                   <div className="font-medium truncate max-w-[180px]">{tooltipText}</div>
                   <div className="text-gray-400 text-[9px]">
                     {timestampLabel ? `${timestampLabel} · ` : ""}{posLabel}
-                    {node.speaker_id ? ` · ${node.speaker_id}` : ""}
+                    {(node.speaker_display || node.speaker_id) ? ` · ${node.speaker_display || node.speaker_id}` : ""}
                   </div>
                 </div>
               )}

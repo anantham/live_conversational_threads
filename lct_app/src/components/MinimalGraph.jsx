@@ -585,8 +585,8 @@ function MinimalGraphInner({
           : summary;
       const showSummary = summaryTruncated && summaryTruncated !== title;
 
-      // Speaker badge
-      const speakerLabel = item.speaker_id || "";
+      // Speaker badge (prefer renamed display name over raw id)
+      const speakerLabel = item.speaker_display || item.speaker_id || "";
 
       const label = (
         <div style={{ lineHeight: 1.3 }}>
@@ -1260,8 +1260,8 @@ function MinimalGraphInner({
                   <p className="text-[10px] text-gray-400 mt-0.5 ml-6 line-clamp-2">{node.summary}</p>
                 )}
                 <div className="flex gap-2 mt-1 ml-6">
-                  {node.speaker_id && (
-                    <span className="text-[9px] text-gray-400">speaker: {node.speaker_id}</span>
+                  {(node.speaker_display || node.speaker_id) && (
+                    <span className="text-[9px] text-gray-400">speaker: {node.speaker_display || node.speaker_id}</span>
                   )}
                   {node.edge_relations?.length > 0 && (
                     <span className="text-[9px] text-gray-400">{node.edge_relations.length} edges</span>
