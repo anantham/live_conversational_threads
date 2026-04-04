@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-04-04T03:33:28Z — Upload buffer lifecycle fix for `/new` remounts
+
+Branch: current worktree
+
+- Context: PR #49 lifted file-upload state into `UploadContext`, but the first review surfaced two regressions in the new buffering model: completed uploads could be replayed on later visits to `/new`, and buffered `graph_patch` history could be re-applied on top of an already-updated `existing_json` snapshot after navigation.
+- Explicit hypotheses before patch:
+  - `H1`: stale conversation resurrection was caused by completed upload buffers never being cleared after the page either consumed them or never needed them.
+  - `H2`: duplicate graph mutations came from retaining the full patch history even after a fresh `existing_json` snapshot arrived, so remount hydration replayed obsolete patches.
+  - `H3`: the fix could stay frontend-only by tightening `UploadContext` buffer semantics rather than changing the backend SSE contract.
+- Files modified:
+  - `lct_app/src/contexts/UploadContext.jsx` (lines 17-24, 27-42, 64-87, 101-123): added an explicit buffer reset helper, reset buffered patch history when a full snapshot arrives, treated empty chunk payloads as a real reset instead of a no-op merge, cleared canceled uploads immediately, and cleared settled upload buffers once they were either consumed or already owned by the active `/new` subscriber.
+  - `lct_app/src/components/upload/useFileUploadStream.js` (lines 96-105, 478-491, 580-590): added `resetBuffered` / `onStreamSettled` hooks around the upload lifecycle so each new upload starts from a clean buffered state and completed uploads can hand off or retire their app-scoped buffer deterministically.
+- Why:
+  - keep app-scoped upload continuity during navigation without letting old upload state leak into unrelated future sessions;
+  - preserve the backend’s `graph_patch -> existing_json -> chunk_dict` stream ordering while buffering only the incremental patches that still matter after the latest snapshot.
+- Validation:
+  - `cd lct_app && ./node_modules/.bin/eslint src/contexts/UploadContext.jsx src/components/upload/useFileUploadStream.js` (`passed`; existing fast-refresh warning in `UploadContext.jsx` remains)
+  - `cd lct_app && npm run -s build` (`passed`; existing chunk-size warning remains)
+
 ## 2026-04-03T08:16:42Z — IndexedDB-backed latest-draft recovery for `/new`
 
 Branch: current worktree

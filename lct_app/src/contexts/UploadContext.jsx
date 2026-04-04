@@ -14,15 +14,31 @@ export function UploadProvider({ children }) {
   const [uploadMessage, setUploadMessage] = useState("");
   const subscribersRef = useRef({});
 
+  const clearBuffered = useCallback(() => {
+    setUploadGraphData(null);
+    setUploadChunkDict(null);
+    setUploadGraphPatches([]);
+    setUploadConversationId(null);
+    setUploadFileName(null);
+    setUploadMessage("");
+  }, []);
+
   // Callbacks that buffer data and forward to any active subscriber (the page)
   const onDataReceived = useCallback((data) => {
     setUploadGraphData(data);
+    // Keep only patches that arrive after the latest full snapshot.
+    setUploadGraphPatches([]);
     subscribersRef.current.onDataReceived?.(data);
   }, []);
 
   const onChunksReceived = useCallback((chunks) => {
-    setUploadChunkDict((prev) => ({ ...prev, ...chunks }));
-    subscribersRef.current.onChunksReceived?.(chunks);
+    const normalizedChunks =
+      chunks && typeof chunks === "object" && !Array.isArray(chunks) ? chunks : {};
+    const isReset = Object.keys(normalizedChunks).length === 0;
+    setUploadChunkDict((prev) =>
+      isReset ? {} : { ...(prev || {}), ...normalizedChunks }
+    );
+    subscribersRef.current.onChunksReceived?.(normalizedChunks);
   }, []);
 
   const onGraphPatchReceived = useCallback((patch) => {
@@ -45,6 +61,20 @@ export function UploadProvider({ children }) {
     subscribersRef.current.setMessage?.(msg);
   }, []);
 
+  const handleStreamSettled = useCallback(
+    (outcome) => {
+      const hasActiveSubscriber = Object.values(subscribersRef.current || {}).some(Boolean);
+      if (outcome === "canceled") {
+        clearBuffered();
+        return;
+      }
+      if (outcome === "success" && hasActiveSubscriber) {
+        clearBuffered();
+      }
+    },
+    [clearBuffered]
+  );
+
   const stream = useFileUploadStream({
     onDataReceived,
     onChunksReceived,
@@ -52,6 +82,8 @@ export function UploadProvider({ children }) {
     setConversationId,
     setFileName,
     setMessage,
+    resetBuffered: clearBuffered,
+    onStreamSettled: handleStreamSettled,
   });
 
   // Subscribe: page components register their own callbacks so they receive
@@ -75,17 +107,20 @@ export function UploadProvider({ children }) {
       fileName: uploadFileName,
       message: uploadMessage,
     };
+    if (!stream.isProcessing) {
+      clearBuffered();
+    }
     return data;
-  }, [uploadGraphData, uploadChunkDict, uploadGraphPatches, uploadConversationId, uploadFileName, uploadMessage]);
-
-  const clearBuffered = useCallback(() => {
-    setUploadGraphData(null);
-    setUploadChunkDict(null);
-    setUploadGraphPatches([]);
-    setUploadConversationId(null);
-    setUploadFileName(null);
-    setUploadMessage("");
-  }, []);
+  }, [
+    clearBuffered,
+    stream.isProcessing,
+    uploadChunkDict,
+    uploadConversationId,
+    uploadFileName,
+    uploadGraphData,
+    uploadGraphPatches,
+    uploadMessage,
+  ]);
 
   return (
     <UploadContext.Provider
