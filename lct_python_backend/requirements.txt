@@ -1,5 +1,6 @@
 fastapi==0.115.12
 python-multipart==0.0.20  # Required for FastAPI file uploads
+python-dotenv==1.0.1
 uvicorn==0.34.2
 websockets==15.0.1
 anthropic==0.52.1
@@ -27,6 +28,7 @@ opentelemetry-sdk==1.22.0
 opentelemetry-instrumentation-fastapi==0.43b0
 
 # Transcript parsing
+pydub==0.25.1
 pdfplumber==0.11.0
 python-dateutil==2.8.2
 httpx>=0.28.1

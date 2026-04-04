@@ -11,8 +11,11 @@
  *   const ws = new WebSocket(wsUrl('/ws/transcripts'));
  */
 
+// In dev mode (no VITE_BACKEND_API_URL set), use relative paths so Vite's
+// built-in proxy forwards requests to the backend — no CORS issues.
+// In production (Vercel etc.), set VITE_BACKEND_API_URL to the VPS URL.
 export const API_BASE_URL =
-  import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:8000';
+  import.meta.env.VITE_BACKEND_API_URL || '';
 
 const AUTH_TOKEN = import.meta.env.VITE_AUTH_TOKEN || '';
 const TRACE_FLAG_RAW = import.meta.env.VITE_API_TRACE;
@@ -76,8 +79,30 @@ export async function apiFetch(path, options = {}) {
     }
     return response;
   } catch (error) {
+    // "Failed to fetch" / TypeError means the server is unreachable.
+    // Browsers also log a misleading CORS error in this case — we can't
+    // suppress that, but we can surface a clearer message in our own logs.
+    const isNetworkDown =
+      error instanceof TypeError && /failed to fetch/i.test(error.message);
+    const isAborted = error?.name === 'AbortError';
     if (TRACE_API) {
-      console.error(`[API !!] ${method} ${url}`, error);
+      if (isNetworkDown) {
+        console.warn(
+          `[API !!] ${method} ${url} — backend unreachable (is the server running?${API_BASE_URL ? ` Target: ${API_BASE_URL}` : ' Check start.sh'})`
+        );
+      } else if (isAborted) {
+        console.info(`[API xx] ${method} ${url} aborted`);
+      } else {
+        console.error(`[API !!] ${method} ${url}`, error);
+      }
+    }
+    if (isNetworkDown) {
+      const wrapped = new Error(
+        `Backend unreachable${API_BASE_URL ? ` at ${API_BASE_URL}` : ''}. Is the server running? Try: ./start.sh`
+      );
+      wrapped.name = 'BackendOfflineError';
+      wrapped.cause = error;
+      throw wrapped;
     }
     throw error;
   }
@@ -91,7 +116,15 @@ export async function apiFetch(path, options = {}) {
  * @returns {string} Full WebSocket URL
  */
 export function wsUrl(path, params = {}) {
-  const base = API_BASE_URL.replace(/^http/, 'ws');
+  let base;
+  if (API_BASE_URL) {
+    // Production: explicit backend URL → convert http(s) to ws(s)
+    base = API_BASE_URL.replace(/^http/, 'ws');
+  } else {
+    // Dev: Vite proxy — use current page origin with ws protocol
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    base = `${proto}//${window.location.host}`;
+  }
   const url = new URL(`${base}${path}`);
   for (const [k, v] of Object.entries(params)) {
     url.searchParams.set(k, v);

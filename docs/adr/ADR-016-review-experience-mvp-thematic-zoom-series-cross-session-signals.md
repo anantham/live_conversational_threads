@@ -1,7 +1,7 @@
 # ADR-016: Review Experience MVP — Thematic Zoom Integration, Conversation Series, and Cross-Session Intent Signal Linking
 
 **Date:** 2026-03-17
-**Status:** Approved
+**Status:** Approved (implementation not yet started — 0/3 moves shipped as of 2026-03-20)
 **Group:** interaction + data
 **Extends:** ADR-013 (Intent Signals / Prayers)
 

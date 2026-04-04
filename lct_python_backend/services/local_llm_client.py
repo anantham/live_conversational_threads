@@ -3,6 +3,7 @@ import logging
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import httpx
 
@@ -207,8 +208,21 @@ class ProviderResult:
         self.total_providers_tried = total_providers_tried
 
     def backend_label(self) -> str:
-        """Return a label like 'local_qwen3-32b' or 'modal_qwen3-32b'."""
-        prefix = "modal" if "modal" in self.base_url.lower() else "local"
+        """Return a backend label that reflects the actual provider class."""
+        provider_type = str(self.provider_type or "").strip().lower()
+        if provider_type == "openai":
+            return f"openai_{self.model}"
+        if provider_type == "openrouter":
+            return f"openrouter_{self.model}"
+
+        parsed = urlparse(self.base_url)
+        host = parsed.netloc.lower()
+        if "modal" in host:
+            prefix = "modal"
+        elif any(token in host for token in ("localhost", "127.0.0.1", "100.81.")):
+            prefix = "local"
+        else:
+            prefix = "remote"
         return f"{prefix}_{self.model}"
 
     def attempt_info(self) -> str:

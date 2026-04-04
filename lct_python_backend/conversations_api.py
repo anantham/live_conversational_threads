@@ -227,9 +227,10 @@ async def patch_conversation_graph(
     """
     Upsert graph nodes + relationships for a live conversation.
 
-    Called periodically by the frontend auto-save hook while a live session
-    is active.  Reuses persist_import_graph() which is idempotent (deletes
-    stale rows before re-inserting) so repeated calls are safe.
+    Called by the browser autosave hook as a supplementary graph snapshot path.
+    Canonical live graph persistence is now backend-owned; this route remains
+    useful for browser-originated layout/presentation snapshots and as a
+    fallback persistence path during migration.
     """
     from lct_python_backend.services.import_persistence import persist_import_graph
 
@@ -250,14 +251,14 @@ async def patch_conversation_graph(
             source_type="live_audio",
         )
         logger.info(
-            "[auto-save] Persisted %d nodes for conversation %s",
+            "[browser graph snapshot] Persisted %d nodes for conversation %s",
             persisted,
             conversation_id,
         )
         return {"persisted": persisted, "conversation_id": conversation_id}
     except Exception as exc:
         logger.exception(
-            "[auto-save] Failed to persist graph for conversation %s", conversation_id
+            "[browser graph snapshot] Failed to persist graph for conversation %s", conversation_id
         )
         raise HTTPException(status_code=500, detail=f"Graph save failed: {exc}") from exc
 

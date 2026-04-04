@@ -1,6 +1,35 @@
+import asyncio
+import sys
 import time
+import types
 import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
+try:
+    from google import genai as _google_genai  # noqa: F401
+except ImportError:
+    google_module = sys.modules.get("google")
+    if google_module is None:
+        google_module = types.ModuleType("google")
+        sys.modules["google"] = google_module
+
+    genai_module = types.ModuleType("google.genai")
+
+    class _UnavailableGenaiClient:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("google-genai test stub should not be used at runtime")
+
+    genai_module.Client = _UnavailableGenaiClient
+    types_module = types.ModuleType("google.genai.types")
+    genai_module.types = types_module
+    setattr(google_module, "genai", genai_module)
+    sys.modules["google.genai"] = genai_module
+    sys.modules["google.genai.types"] = types_module
+
+from lct_python_backend.services.stt_http_transcriber import pcm16le_to_wav
+from lct_python_backend.services import transcript_processing as transcript_mod
+from lct_python_backend.services.transcript_processing import TranscriptProcessor
 from lct_python_backend.tests.integration.transcripts_test_support import (
     build_processor_class,
     build_test_client,
@@ -135,9 +164,12 @@ def test_transcripts_ws_accepts_audio_chunk_backend_owned_stt(monkeypatch):
 
         first_msg = ws.receive_json()
         second_msg = ws.receive_json()
-        assert first_msg["type"] == "transcript_partial"
-        assert second_msg["type"] == "transcript_final"
-        assert "quick transcript" in second_msg["text"]
+        third_msg = ws.receive_json()
+        assert first_msg["type"] == "graph_patch"
+        assert first_msg["data"]["kind"] == "draft"
+        assert second_msg["type"] == "transcript_partial"
+        assert third_msg["type"] == "transcript_final"
+        assert "quick transcript" in third_msg["text"]
 
         ws.send_json({"type": "final_flush"})
         flush_ack = ws.receive_json()
@@ -159,6 +191,579 @@ def test_transcripts_ws_accepts_audio_chunk_backend_owned_stt(monkeypatch):
         )
     ]
     assert processor_calls["flush"] == 1
+
+
+def test_transcripts_ws_accepts_streaming_runtime_events(monkeypatch):
+    persisted = []
+    processor_calls = {"final": [], "flush": 0}
+
+    async def fake_persist(_session, _state, payload, event_type, text):
+        persisted.append((event_type, text, payload))
+
+    class DummyRealtimeRuntime:
+        stt_mode = "openai_realtime"
+        provider = "openai_audio"
+        transport = "openai_realtime"
+        supports_diarization = False
+        model = "gpt-4o-mini-transcribe"
+
+        def __init__(self, **kwargs):
+            self.sample_rate_hz = kwargs.get("sample_rate_hz", 16000)
+            self.timeout_seconds = kwargs.get("timeout_seconds", 30.0)
+            self._started = False
+
+        def is_ready(self):
+            return self._started
+
+        def get_last_runtime_metadata(self):
+            return {"provider": self.provider, "transport": self.transport}
+
+        async def start(self):
+            self._started = True
+
+        async def push_audio_chunk(self, _chunk):
+            return [
+                {
+                    "event_type": "partial",
+                    "text": "hello from realtime",
+                    "metadata": {"provider": self.provider, "transport": self.transport},
+                },
+                {
+                    "event_type": "final",
+                    "text": "hello from realtime",
+                    "metadata": {
+                        "provider": self.provider,
+                        "transport": self.transport,
+                        "sample_rate_hz": 24000,
+                    },
+                },
+            ]
+
+        async def flush(self):
+            return []
+
+        async def close(self):
+            self._started = False
+
+    client = build_test_client(
+        monkeypatch,
+        stt_settings={
+            "provider": "whisper",
+            "provider_http_urls": {
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "http_url": "http://100.81.65.74:7777/api/transcribe",
+            "local_only": False,
+            "live_cloud_fallback_enabled": True,
+            "live_require_diarization": True,
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com",
+                    "api_key": "sk-test",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
+                }
+            },
+            "live_fallback_priority": ["openai_audio", "remote_whisper"],
+        },
+        processor_cls=build_processor_class(processor_calls),
+        runtime_factory=lambda **kwargs: DummyRealtimeRuntime(**kwargs),
+        persist_side_effect=fake_persist,
+    )
+
+    conversation_id = str(uuid.uuid4())
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": conversation_id,
+                "session_id": "session-realtime",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+        assert ack["type"] == "session_ack"
+        assert ack["stt_mode"] == "openai_realtime"
+        assert ack["transport"] == "openai_realtime"
+        assert ack["provider"] == "openai_audio"
+        assert ack["stt_ready"] is True
+
+        ws.send_json({"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.3)})
+        first_msg = ws.receive_json()
+        second_msg = ws.receive_json()
+        third_msg = ws.receive_json()
+        assert first_msg["type"] == "graph_patch"
+        assert first_msg["data"]["kind"] == "draft"
+        assert second_msg["type"] == "transcript_partial"
+        assert third_msg["type"] == "transcript_final"
+        assert third_msg["metadata"]["transport"] == "openai_realtime"
+
+        ws.send_json({"type": "final_flush"})
+        flush_ack = ws.receive_json()
+        assert flush_ack["type"] == "flush_ack"
+
+    time.sleep(0.05)
+    assert [event for event, *_rest in persisted] == ["partial", "final"]
+    assert processor_calls["final"] == [("hello from realtime", None)]
+
+
+def test_transcripts_ws_session_meta_uses_byok_openai_candidate(monkeypatch):
+    import lct_python_backend.services.byok_session_store as byok
+
+    byok._BYOK_SESSIONS.clear()
+    monkeypatch.setattr(byok, "validate_byok_api_key", AsyncMock(return_value=None))
+    session_payload = asyncio.run(
+        byok.create_byok_session(
+            provider="openai_audio",
+            api_key="sk-test-secret",
+            scopes=[byok.BYOK_SCOPE_STT_LIVE, byok.BYOK_SCOPE_LLM_LIVE],
+        )
+    )
+
+    captured = {"processor_inits": []}
+
+    def runtime_factory(**kwargs):
+        captured["kwargs"] = kwargs
+
+        class DummyRuntime:
+            stt_mode = "openai_realtime"
+
+            def __init__(self):
+                primary_candidate = kwargs["candidates"][0]
+                self.provider = kwargs["provider"]
+                self.transport = primary_candidate.get("transport")
+                self.supports_diarization = bool(primary_candidate.get("supports_diarization"))
+                self.model = primary_candidate.get("model")
+                self.sample_rate_hz = kwargs.get("sample_rate_hz", 16000)
+                self.timeout_seconds = kwargs.get("timeout_seconds", 30.0)
+
+            def is_ready(self):
+                return True
+
+            def get_last_runtime_metadata(self):
+                return {}
+
+            async def start(self):
+                return None
+
+            async def push_audio_chunk(self, _chunk):
+                return []
+
+            async def flush(self):
+                return []
+
+            async def close(self):
+                return None
+
+        return DummyRuntime()
+
+    class CapturingProcessor:
+        def __init__(self, send_update, llm_config, send_status=None, providers=None, **kwargs):
+            self._send_update = send_update
+            self._llm_config = llm_config
+            self._send_status = send_status
+            self._providers = list(providers or [])
+            captured["processor_inits"].append(
+                {
+                    "llm_config": dict(llm_config or {}),
+                    "providers": list(providers or []),
+                    "kwargs": kwargs,
+                }
+            )
+
+        async def handle_final_text(self, _text, speaker_segments=None):
+            return None
+
+        async def flush(self):
+            return None
+
+    client = build_test_client(
+        monkeypatch,
+        stt_settings={
+            "provider": "parakeet",
+            "provider_http_urls": {
+                "parakeet": "http://localhost:5092/v1/audio/transcriptions",
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "http_url": "http://localhost:5092/v1/audio/transcriptions",
+            "local_only": True,
+        },
+        processor_cls=CapturingProcessor,
+        runtime_factory=runtime_factory,
+    )
+
+    conversation_id = str(uuid.uuid4())
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": conversation_id,
+                "session_id": "session-byok",
+                "provider": "openai_audio",
+                "byok_session_token": session_payload["byok_session_token"],
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+
+    assert ack["type"] == "session_ack"
+    assert ack["provider"] == "openai_audio"
+    assert ack["transport"] == "openai_audio"
+    assert ack["model"] == "gpt-4o-mini-transcribe"
+    assert captured["kwargs"]["candidates"][0]["api_key"] == "sk-test-secret"
+    assert captured["kwargs"]["candidates"][0]["transport"] == "openai_audio"
+    runtime_processor = captured["processor_inits"][-1]
+    assert runtime_processor["llm_config"]["mode"] == "local"
+    assert runtime_processor["llm_config"]["backend"] == f"openai_{byok.DEFAULT_BYOK_OPENAI_CHAT_MODEL}"
+    assert runtime_processor["providers"] == [
+        {
+            "id": byok.BYOK_LLM_PROVIDER_ID,
+            "name": "BYOK OpenAI",
+            "type": "openai",
+            "base_url": byok.DEFAULT_OPENAI_BASE_URL,
+            "model": byok.DEFAULT_BYOK_OPENAI_CHAT_MODEL,
+            "api_key": "sk-test-secret",
+            "enabled": True,
+            "timeout_seconds": byok.DEFAULT_BYOK_OPENAI_TIMEOUT_SECONDS,
+            "session_scoped": True,
+        }
+    ]
+
+
+def test_transcripts_ws_background_refinement_persists_speaker_segments_with_window_timestamps(monkeypatch):
+    persisted_events = []
+    materialized = []
+    processor_calls = {"final": [], "flush": 0}
+    source_utterance_id = uuid.uuid4()
+
+    async def fake_persist(_session, _state, payload, event_type, text):
+        persisted_events.append((event_type, text, payload))
+        if event_type == "final":
+            return SimpleNamespace(utterance_id=source_utterance_id)
+        return None
+
+    class DummyRealtimeRuntime:
+        stt_mode = "openai_realtime"
+        provider = "openai_audio"
+        transport = "openai_realtime"
+        supports_diarization = False
+        model = "gpt-4o-mini-transcribe"
+
+        def __init__(self, **kwargs):
+            self.sample_rate_hz = kwargs.get("sample_rate_hz", 16000)
+            self.timeout_seconds = kwargs.get("timeout_seconds", 30.0)
+            self._started = False
+
+        def is_ready(self):
+            return self._started
+
+        def get_last_runtime_metadata(self):
+            return {"provider": self.provider, "transport": self.transport}
+
+        async def start(self):
+            self._started = True
+
+        async def push_audio_chunk(self, _chunk):
+            return [
+                {
+                    "event_type": "final",
+                    "text": "hello from realtime refinement",
+                        "metadata": {
+                            "provider": self.provider,
+                            "transport": self.transport,
+                            "sample_rate_hz": 24000,
+                        },
+                        "timestamps": {"start": 1.0, "end": 2.0},
+                        "_wav_payload": pcm16le_to_wav(b"\x00\x00" * 240, sample_rate_hz=24000),
+                    },
+                ]
+
+        async def flush(self):
+            return []
+
+        async def close(self):
+            self._started = False
+
+    async def fake_refine(*args, **kwargs):
+        return {
+            "ok": True,
+            "provider": "openai_audio",
+            "transport": "openai_audio",
+            "model": "gpt-4o-transcribe-diarize",
+            "latency_ms": 120.0,
+            "segments_count": 1,
+            "segments": [
+                {
+                    "speaker": "SPEAKER_00",
+                    "text": "hello from realtime refinement",
+                    "start": 0.0,
+                    "end": 1.0,
+                }
+            ],
+        }
+
+    async def fake_materialize(**kwargs):
+        materialized.append(kwargs)
+        return {
+            "persisted_segments": 1,
+            "updated_utterances": 1,
+            "ambiguous_utterances": 0,
+            "window_start": kwargs.get("window_timestamps", {}).get("start"),
+            "window_end": kwargs.get("window_timestamps", {}).get("end"),
+        }
+
+    client = build_test_client(
+        monkeypatch,
+        stt_settings={
+            "provider": "whisper",
+            "provider_http_urls": {
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "http_url": "http://100.81.65.74:7777/api/transcribe",
+            "local_only": False,
+            "live_cloud_fallback_enabled": True,
+            "live_require_diarization": True,
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com",
+                    "api_key": "sk-test",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
+                }
+            },
+            "live_fallback_priority": ["openai_audio", "remote_whisper"],
+        },
+        processor_cls=build_processor_class(processor_calls),
+        runtime_factory=lambda **kwargs: DummyRealtimeRuntime(**kwargs),
+        persist_side_effect=fake_persist,
+    )
+    import lct_python_backend.services.stt_ws_session as ws_mod
+
+    monkeypatch.setattr(ws_mod, "transcribe_wav_stt_candidate", fake_refine)
+    monkeypatch.setattr(ws_mod, "persist_speaker_refinement", fake_materialize)
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "session-realtime-refinement-materialize",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+        assert ack["type"] == "session_ack"
+        assert ack["stt_mode"] == "openai_realtime"
+
+        ws.send_json({"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.3)})
+        message = ws.receive_json()
+        assert message["type"] == "transcript_final"
+
+        ws.send_json({"type": "final_flush"})
+        flush_ack = None
+        for _ in range(6):
+            next_message = ws.receive_json()
+            if next_message["type"] == "flush_ack":
+                flush_ack = next_message
+                break
+        assert flush_ack["type"] == "flush_ack"
+
+    time.sleep(0.1)
+    assert materialized
+    assert materialized[-1]["window_timestamps"] == {"start": 1.0, "end": 2.0}
+    assert materialized[-1]["source_utterance_id"] == str(source_utterance_id)
+    assert materialized[-1]["segments"][0]["speaker"] == "SPEAKER_00"
+
+
+def test_transcripts_ws_graph_status_includes_queue_and_generation_metrics(monkeypatch):
+    monkeypatch.setattr(
+        transcript_mod,
+        "accumulate_text_json",
+        lambda input_text, **kwargs: (
+            {
+                "Completed_segment": input_text,
+                "Incomplete_segment": "",
+                "decision": "stop_accumulating",
+            },
+            "online_gemini-3-flash-preview",
+        ),
+    )
+    monkeypatch.setattr(
+        transcript_mod,
+        "generate_lct_json",
+        lambda mod_input, **kwargs: (
+            [{"node_name": "node-1", "summary": mod_input[:20]}],
+            "online_gemini-3-flash-preview",
+        ),
+    )
+
+    client = build_test_client(monkeypatch, processor_cls=TranscriptProcessor)
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "session-graph-metrics",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+        assert ack["type"] == "session_ack"
+
+        ws.send_json({"type": "transcript_final", "text": "graph me now"})
+
+        graph_statuses = []
+        snapshot_seen = False
+        for _ in range(6):
+            message = ws.receive_json()
+            if message["type"] == "processing_status" and message.get("context", {}).get("stage") == "graph":
+                graph_statuses.append(message)
+            if message["type"] == "existing_json":
+                snapshot_seen = True
+
+        assert snapshot_seen is True
+        completed_status = next(
+            status
+            for status in graph_statuses
+            if status.get("context", {}).get("phase") == "completed"
+        )
+        assert completed_status["context"]["queue_wait_ms"] is not None
+        assert completed_status["context"]["generation_ms"] is not None
+        assert completed_status["context"]["total_update_ms"] is not None
+        assert completed_status["context"]["trigger"] == "count_threshold"
+
+
+def test_transcripts_ws_emits_draft_then_finalized_graph_patch(monkeypatch):
+    monkeypatch.setattr(
+        transcript_mod,
+        "accumulate_text_json",
+        lambda input_text, **kwargs: (
+            {
+                "Completed_segment": input_text,
+                "Incomplete_segment": "",
+                "decision": "stop_accumulating",
+            },
+            "online_gemini-3-flash-preview",
+        ),
+    )
+    monkeypatch.setattr(
+        transcript_mod,
+        "generate_lct_json",
+        lambda mod_input, **kwargs: (
+            [{"id": "final-node-1", "node_name": "final node", "summary": mod_input[:20]}],
+            "online_gemini-3-flash-preview",
+        ),
+    )
+
+    client = build_test_client(monkeypatch, processor_cls=TranscriptProcessor)
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "session-draft-graph-patch",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+        assert ack["type"] == "session_ack"
+
+        ws.send_json({"type": "transcript_partial", "text": "this is a live draft node"})
+        draft_patch = ws.receive_json()
+        assert draft_patch["type"] == "graph_patch"
+        assert draft_patch["data"]["kind"] == "draft"
+        draft_node_id = draft_patch["data"]["nodes"][0]["id"]
+
+        ws.send_json({"type": "transcript_final", "text": "this is a live draft node"})
+
+        finalized_patch = None
+        snapshot_seen = False
+        for _ in range(6):
+            message = ws.receive_json()
+            if message["type"] == "graph_patch" and message["data"].get("kind") == "finalized":
+                finalized_patch = message
+            if message["type"] == "existing_json":
+                snapshot_seen = True
+
+    assert finalized_patch is not None
+    assert draft_node_id in finalized_patch["data"]["remove_node_ids"]
+    assert snapshot_seen is True
+
+
+def test_transcripts_ws_persists_canonical_graph_on_finalized_patch(monkeypatch):
+    persisted = []
+
+    async def fake_graph_persist(**kwargs):
+        persisted.append(kwargs)
+        return len(kwargs.get("existing_json") or [])
+
+    monkeypatch.setattr(
+        transcript_mod,
+        "accumulate_text_json",
+        lambda input_text, **kwargs: (
+            {
+                "Completed_segment": input_text,
+                "Incomplete_segment": "",
+                "decision": "stop_accumulating",
+            },
+            "online_gemini-3-flash-preview",
+        ),
+    )
+    monkeypatch.setattr(
+        transcript_mod,
+        "generate_lct_json",
+        lambda mod_input, **kwargs: (
+            [{"id": str(uuid.uuid4()), "node_name": "stable node", "summary": mod_input[:20]}],
+            "online_gemini-3-flash-preview",
+        ),
+    )
+    client = build_test_client(monkeypatch, processor_cls=TranscriptProcessor)
+    import lct_python_backend.services.stt_ws_session as ws_mod
+    monkeypatch.setattr(ws_mod, "persist_live_graph_snapshot", fake_graph_persist)
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "session-canonical-graph-persist",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+        assert ack["type"] == "session_ack"
+
+        ws.send_json({"type": "transcript_final", "text": "persist me canonically"})
+
+        for _ in range(6):
+            message = ws.receive_json()
+            if message["type"] == "existing_json":
+                break
+
+        ws.send_json({"type": "final_flush"})
+        flush_ack = None
+        for _ in range(6):
+            message = ws.receive_json()
+            if message["type"] == "flush_ack":
+                flush_ack = message
+                break
+        assert flush_ack["type"] == "flush_ack"
+
+    time.sleep(0.1)
+    assert persisted
+    latest = persisted[-1]
+    assert latest["source_type"] == "live_audio"
+    assert len(latest["existing_json"]) == 1
 
 
 def test_transcripts_ws_flush_ack_not_blocked_by_processor_flush(monkeypatch):
@@ -246,7 +851,8 @@ def test_transcripts_ws_session_ack_includes_live_fallback_candidates(monkeypatc
                 "openai_audio": {
                     "enabled": True,
                     "base_url": "https://api.openai.com",
-                    "model": "gpt-4o-transcribe-diarize",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
                     "api_key": "sk-openai-secret",
                 },
                 "openrouter_audio": {
@@ -295,3 +901,200 @@ def test_transcripts_ws_session_ack_includes_live_fallback_candidates(monkeypatc
             "degraded": False,
         },
     ]
+
+
+def test_transcripts_ws_requires_session_meta_before_audio(monkeypatch):
+    client = build_test_client(monkeypatch)
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json({"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.2)})
+        error = ws.receive_json()
+
+        assert error["type"] == "error"
+        assert error["code"] == "protocol_missing_session_meta"
+        assert error["detail"] == "session_meta must be sent first"
+        assert error["fatal"] is False
+        assert error["context"]["stage"] == "audio_chunk"
+        assert error["context"]["expected_message_type"] == "session_meta"
+
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "session-after-audio-error",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+
+    assert ack["type"] == "session_ack"
+
+
+def test_transcripts_ws_rejects_malformed_json_with_structured_error(monkeypatch):
+    client = build_test_client(monkeypatch)
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_text("{not valid json")
+        error = ws.receive_json()
+
+        assert error["type"] == "error"
+        assert error["code"] == "invalid_json"
+        assert error["detail"].startswith("Malformed JSON websocket payload:")
+        assert error["fatal"] is False
+        assert error["context"]["stage"] == "websocket_message"
+        assert error["context"]["payload_preview"] == "{not valid json"
+
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "session-after-json-error",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+
+    assert ack["type"] == "session_ack"
+
+
+def test_transcripts_ws_rejects_unsupported_message_type(monkeypatch):
+    client = build_test_client(monkeypatch)
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "session-unsupported-message",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+        assert ack["type"] == "session_ack"
+
+        ws.send_json({"type": "mystery_event", "payload": "???"})
+        error = ws.receive_json()
+
+    assert error["type"] == "error"
+    assert error["code"] == "unsupported_message_type"
+    assert error["detail"] == "Unsupported websocket message type: mystery_event"
+    assert error["fatal"] is False
+    assert error["context"]["stage"] == "websocket_message"
+    assert error["context"]["received_message_type"] == "mystery_event"
+
+
+def test_transcripts_ws_surfaces_runtime_start_failure_after_ack(monkeypatch):
+    persisted = []
+    processor_calls = {"final": [], "flush": 0}
+
+    async def fake_persist(_session, _state, payload, event_type, text):
+        persisted.append((event_type, text, payload))
+
+    class FailingRealtimeRuntime:
+        stt_mode = "openai_realtime"
+        provider = "openai_audio"
+        transport = "openai_realtime"
+        supports_diarization = False
+        model = "gpt-4o-mini-transcribe"
+
+        def is_ready(self):
+            return False
+
+        async def start(self):
+            raise RuntimeError("Missing required parameter: 'session.type'.")
+
+        async def push_audio_chunk(self, _chunk):
+            return []
+
+        async def flush(self):
+            return []
+
+        async def close(self):
+            return None
+
+    class FallbackHttpRuntime:
+        stt_mode = "backend_http"
+        provider = "openai_audio"
+        transport = "backend_http"
+        supports_diarization = False
+        model = "gpt-4o-mini-transcribe"
+
+        def __init__(self):
+            self._ready = False
+
+        def is_ready(self):
+            return self._ready
+
+        async def start(self):
+            self._ready = True
+
+        async def push_audio_chunk(self, _chunk):
+            return []
+
+        async def flush(self):
+            return []
+
+        async def close(self):
+            self._ready = False
+
+    def runtime_factory(**kwargs):
+        if kwargs.get("prefer_streaming"):
+            return FailingRealtimeRuntime()
+        return FallbackHttpRuntime()
+
+    client = build_test_client(
+        monkeypatch,
+        stt_settings={
+            "provider": "whisper",
+            "provider_http_urls": {
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "http_url": "http://100.81.65.74:7777/api/transcribe",
+            "local_only": False,
+            "live_cloud_fallback_enabled": True,
+            "live_require_diarization": True,
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com",
+                    "api_key": "sk-test",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
+                }
+            },
+            "live_fallback_priority": ["openai_audio", "remote_whisper"],
+        },
+        processor_cls=build_processor_class(processor_calls),
+        runtime_factory=runtime_factory,
+        persist_side_effect=fake_persist,
+    )
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "session-runtime-start-failure",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+        error = ws.receive_json()
+
+    assert ack["type"] == "session_ack"
+    assert ack["stt_mode"] == "backend_http"
+    assert ack["transport"] == "backend_http"
+    assert ack["stt_ready"] is True
+    assert ack["runtime_error"] == "Missing required parameter: 'session.type'."
+    assert error["type"] == "stt_provider_error"
+    assert error["code"] == "stt_runtime_start_failed"
+    assert error["detail"] == "Missing required parameter: 'session.type'."
+    assert error["level"] == "warning"
+    assert error["fatal"] is False
+    assert error["context"]["stage"] == "stt_setup"
+    assert error["context"]["stt_mode"] == "backend_http"
+    assert error["context"]["fallback_ready"] is True

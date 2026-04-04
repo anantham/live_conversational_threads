@@ -11,6 +11,7 @@ Sub-modules:
 """
 
 import asyncio
+import inspect
 import logging
 import time
 import uuid
@@ -53,7 +54,12 @@ class TranscriptProcessor:
         send_update,
         send_status: Optional[Callable[[str, str, Dict[str, Any]], Awaitable[None]]] = None,
         batch_size: int = 4,
+        initial_batch_size: int = 1,
         max_batch_size: int = 12,
+        graph_first_update_max_wait_ms: int = 3000,
+        graph_steady_update_max_wait_ms: int = 5000,
+        graph_min_flush_chars: int = 80,
+        early_batch_targets: Optional[List[int]] = None,
         llm_config: Optional[Dict[str, Any]] = None,
         providers: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
@@ -62,14 +68,38 @@ class TranscriptProcessor:
         self.existing_json: List[Dict[str, Any]] = []
         self.chunk_dict: Dict[str, str] = {}
         self.base_batch_size = batch_size
+        self.initial_batch_size = max(1, min(initial_batch_size, batch_size))
         self.max_batch_size = max_batch_size
-        self._current_batch_size = batch_size
+        self._current_batch_size = self.initial_batch_size
+        self.graph_first_update_max_wait_ms = max(0, int(graph_first_update_max_wait_ms))
+        self.graph_steady_update_max_wait_ms = max(0, int(graph_steady_update_max_wait_ms))
+        self.graph_min_flush_chars = max(0, int(graph_min_flush_chars))
+        configured_targets = early_batch_targets or [
+            self.initial_batch_size,
+            self.initial_batch_size,
+            min(2, self.base_batch_size),
+            min(2, self.base_batch_size),
+        ]
+        self._early_batch_targets = [
+            max(1, min(int(target), self.base_batch_size))
+            for target in configured_targets
+        ] or [self.initial_batch_size]
         self._continue_accumulating = True
         self._send_update = send_update
+        self._send_update_accepts_patch = False
+        if send_update is not None:
+            try:
+                self._send_update_accepts_patch = "patch" in inspect.signature(send_update).parameters
+            except (TypeError, ValueError):
+                self._send_update_accepts_patch = False
         self._send_status = send_status
         self._llm_config = _resolve_llm_config(llm_config)
         self._providers = providers
         self._last_llm_backend: Optional[str] = None
+        self._graph_update_count = 0
+        self._pending_since_perf: Optional[float] = None
+        self._batch_timer_task: Optional["asyncio.Task[None]"] = None
+        self._state_lock = asyncio.Lock()
 
     @property
     def last_llm_backend(self) -> Optional[str]:
@@ -132,6 +162,119 @@ class TranscriptProcessor:
         except Exception as exc:
             logger.debug("[PROCESSOR STATUS] failed to send status update: %s", exc)
 
+    async def _emit_graph_update(
+        self,
+        *,
+        patch: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        if not self._send_update:
+            return
+        if self._send_update_accepts_patch:
+            await self._send_update(self.existing_json, self.chunk_dict, patch=patch)
+            return
+        await self._send_update(self.existing_json, self.chunk_dict)
+
+    def _current_queue_wait_ms(self) -> Optional[float]:
+        if self._pending_since_perf is None:
+            return None
+        return round(max(0.0, (time.perf_counter() - self._pending_since_perf) * 1000.0), 2)
+
+    def _current_batch_target(self) -> int:
+        if self._graph_update_count < len(self._early_batch_targets):
+            return self._early_batch_targets[self._graph_update_count]
+        return min(self.base_batch_size, self.max_batch_size)
+
+    def _current_graph_wait_budget_ms(self) -> int:
+        return (
+            self.graph_first_update_max_wait_ms
+            if self._graph_update_count == 0
+            else self.graph_steady_update_max_wait_ms
+        )
+
+    def _cancel_batch_timer_locked(self) -> None:
+        if self._batch_timer_task and not self._batch_timer_task.done():
+            self._batch_timer_task.cancel()
+        self._batch_timer_task = None
+
+    def _ensure_batch_timer_locked(self) -> None:
+        if self._batch_timer_task or not self.accumulator or not self._continue_accumulating:
+            return
+        timeout_ms = self._current_graph_wait_budget_ms()
+        if timeout_ms <= 0:
+            return
+        pending_started_at = self._pending_since_perf
+        elapsed_ms = self._current_queue_wait_ms() or 0.0
+        remaining_ms = max(0.0, float(timeout_ms) - float(elapsed_ms))
+        self._batch_timer_task = asyncio.create_task(
+            self._run_batch_timer(remaining_ms, timeout_ms, pending_started_at)
+        )
+
+    async def _run_batch_timer(
+        self,
+        sleep_ms: float,
+        timeout_ms: int,
+        pending_started_at: Optional[float],
+    ) -> None:
+        try:
+            await asyncio.sleep(max(0.0, sleep_ms) / 1000.0)
+        except asyncio.CancelledError:
+            return
+
+        async with self._state_lock:
+            if self._batch_timer_task is not asyncio.current_task():
+                return
+            self._batch_timer_task = None
+            if (
+                not self.accumulator
+                or not self._continue_accumulating
+                or pending_started_at is None
+                or self._pending_since_perf != pending_started_at
+            ):
+                return
+
+            pending_chars = sum(len(str(item or "")) for item in self.accumulator)
+
+            # Don't force-flush tiny fragments — wait for more speech
+            if pending_chars < self.graph_min_flush_chars:
+                await self._emit_status(
+                    "info",
+                    "Timer fired but text too short; waiting for more speech.",
+                    {
+                        "stage": "graph",
+                        "phase": "waiting",
+                        "pending_chars": pending_chars,
+                        "min_flush_chars": self.graph_min_flush_chars,
+                        "queue_wait_ms": self._current_queue_wait_ms(),
+                        "trigger": "timer_deferred",
+                    },
+                )
+                # Schedule a fresh retry with a fixed backoff (2s) instead of
+                # re-using _ensure_batch_timer_locked which computes remaining_ms=0
+                # when the original budget is exhausted, causing a tight spin loop.
+                if not self._batch_timer_task or self._batch_timer_task.done():
+                    self._batch_timer_task = asyncio.create_task(
+                        self._run_batch_timer(2000.0, timeout_ms, pending_started_at)
+                    )
+                return
+
+            await self._emit_status(
+                "info",
+                "Graph batch waited long enough; forcing an incremental update.",
+                {
+                    "stage": "graph",
+                    "phase": "queued",
+                    "queued_finals": len(self.accumulator),
+                    "batch_target": self._current_batch_size,
+                    "pending_chars": pending_chars,
+                    "queue_wait_ms": self._current_queue_wait_ms(),
+                    "max_wait_ms": timeout_ms,
+                    "trigger": "timer",
+                },
+            )
+            await self._process_batches_locked(trigger="timer", force_flush=True)
+            if self.accumulator and self._continue_accumulating:
+                self._ensure_batch_timer_locked()
+
     async def handle_final_text(
         self,
         final_text: str,
@@ -139,34 +282,49 @@ class TranscriptProcessor:
     ) -> None:
         if not final_text:
             return
-        self.accumulator.append(final_text)
-        self.accumulator_segments.append(speaker_segments or [])
-        await self._emit_status(
-            "info",
-            "Queued finalized transcript for graph processing.",
-            {
-                "stage": "graph",
-                "phase": "queued",
-                "queued_finals": len(self.accumulator),
-                "batch_target": self._current_batch_size,
-                "pending_chars": sum(len(str(item or "")) for item in self.accumulator),
-            },
-        )
-        if len(self.accumulator) >= self._current_batch_size and self._continue_accumulating:
-            await self._process_batches()
+        async with self._state_lock:
+            if not self.accumulator:
+                self._pending_since_perf = time.perf_counter()
+            self.accumulator.append(final_text)
+            self.accumulator_segments.append(speaker_segments or [])
+            self._current_batch_size = self._current_batch_target()
+            await self._emit_status(
+                "info",
+                "Queued finalized transcript for graph processing.",
+                {
+                    "stage": "graph",
+                    "phase": "queued",
+                    "queued_finals": len(self.accumulator),
+                    "batch_target": self._current_batch_size,
+                    "pending_chars": sum(len(str(item or "")) for item in self.accumulator),
+                    "queue_wait_ms": self._current_queue_wait_ms(),
+                    "max_wait_ms": self._current_graph_wait_budget_ms(),
+                },
+            )
+            if len(self.accumulator) >= self._current_batch_size and self._continue_accumulating:
+                self._cancel_batch_timer_locked()
+                await self._process_batches_locked(trigger="count_threshold")
+            if self.accumulator and self._continue_accumulating:
+                self._ensure_batch_timer_locked()
 
     async def flush(self) -> None:
-        if not self.accumulator:
-            return
-        await self._process_batch(
-            self.accumulator,
-            self.accumulator_segments,
-            stop_accumulating_flag=True,
-        )
-        self.accumulator = []
-        self.accumulator_segments = []
-        self._current_batch_size = self.base_batch_size
-        self._continue_accumulating = True
+        async with self._state_lock:
+            self._cancel_batch_timer_locked()
+            if not self.accumulator:
+                return
+            graph_emitted, _continue_accumulating, _incomplete_seg, _carryover_segments = await self._process_batch(
+                self.accumulator,
+                self.accumulator_segments,
+                stop_accumulating_flag=True,
+                trigger="flush",
+            )
+            if graph_emitted:
+                self._graph_update_count += 1
+            self.accumulator = []
+            self.accumulator_segments = []
+            self._current_batch_size = self._current_batch_target()
+            self._continue_accumulating = True
+            self._pending_since_perf = None
 
     async def flush_segment(self) -> int:
         """Flush pending text for current segment without resetting existing_json.
@@ -178,50 +336,57 @@ class TranscriptProcessor:
         Returns:
             Number of nodes in existing_json after flush.
         """
-        if self.accumulator:
-            await self._process_batch(
-                self.accumulator,
-                self.accumulator_segments,
-                stop_accumulating_flag=True,
-            )
-        # Reset accumulator but keep existing_json for cross-segment context
-        self.accumulator = []
-        self.accumulator_segments = []
-        self._current_batch_size = self.base_batch_size
-        self._continue_accumulating = True
-        return len(self.existing_json)
-
-    async def _process_batches(self) -> None:
-        continue_accumulating, incomplete_seg, carryover_segments = await self._process_batch(
-            self.accumulator,
-            self.accumulator_segments,
-        )
-
-        if continue_accumulating:
-            if self._current_batch_size >= self.max_batch_size:
-                await self._process_batch(
+        async with self._state_lock:
+            self._cancel_batch_timer_locked()
+            if self.accumulator:
+                graph_emitted, _continue_accumulating, _incomplete_seg, _carryover_segments = await self._process_batch(
                     self.accumulator,
                     self.accumulator_segments,
                     stop_accumulating_flag=True,
+                    trigger="flush_segment",
                 )
-                self.accumulator = []
-                self.accumulator_segments = []
-                self._current_batch_size = self.base_batch_size
-                self._continue_accumulating = True
-            else:
-                self._current_batch_size += self.base_batch_size
-        else:
+                if graph_emitted:
+                    self._graph_update_count += 1
+            # Reset accumulator but keep existing_json for cross-segment context
+            self.accumulator = []
+            self.accumulator_segments = []
+            self._current_batch_size = self._current_batch_target()
+            self._continue_accumulating = True
+            self._pending_since_perf = None
+            return len(self.existing_json)
+
+    async def _process_batches_locked(self, *, trigger: str, force_flush: bool = False) -> None:
+        graph_emitted, continue_accumulating, incomplete_seg, carryover_segments = await self._process_batch(
+            self.accumulator,
+            self.accumulator_segments,
+            stop_accumulating_flag=force_flush,
+            trigger=trigger,
+        )
+
+        if graph_emitted:
+            self._graph_update_count += 1
+
+        if graph_emitted or not continue_accumulating:
             self.accumulator = [incomplete_seg] if incomplete_seg else []
             self.accumulator_segments = carryover_segments if incomplete_seg else []
-            self._current_batch_size = self.base_batch_size
+            self._current_batch_size = self._current_batch_target()
             self._continue_accumulating = True
+            self._pending_since_perf = time.perf_counter() if self.accumulator else None
+        else:
+            self._current_batch_size = self._current_batch_target()
+            self._continue_accumulating = True
+
+        if not self.accumulator:
+            self._cancel_batch_timer_locked()
+            self._pending_since_perf = None
 
     async def _process_batch(
         self,
         text_batch: List[str],
         segment_batch: List[List[Dict[str, Any]]],
         stop_accumulating_flag: bool = False,
-    ) -> Tuple[bool, str, List[List[Dict[str, Any]]]]:
+        trigger: str = "count_threshold",
+    ) -> Tuple[bool, bool, str, List[List[Dict[str, Any]]]]:
         input_text = " ".join(text_batch)
         accumulated_output, acc_backend = await asyncio.to_thread(
             accumulate_text_json,
@@ -236,9 +401,9 @@ class TranscriptProcessor:
             await self._emit_status(
                 "warning",
                 "Accumulator returned empty output; continuing accumulation.",
-                {"stage": "accumulate"},
+                {"stage": "accumulate", "trigger": trigger},
             )
-            return True, input_text, segment_batch
+            return False, True, input_text, segment_batch
 
         errors = []
         if isinstance(accumulated_output, dict):
@@ -256,6 +421,7 @@ class TranscriptProcessor:
                 {
                     "stage": "accumulate",
                     "attempt_errors": errors,
+                    "trigger": trigger,
                 },
             )
 
@@ -284,6 +450,7 @@ class TranscriptProcessor:
             stop_accumulating_flag=stop_accumulating_flag,
         )
 
+        output_json: List[Dict[str, Any]] = []
         if segmented_input_chunk.strip():
             transcript_for_llm = format_speaker_prefixed_transcript(
                 segmented_input_chunk,
@@ -295,6 +462,7 @@ class TranscriptProcessor:
                 f"\n\n Transcript Input: \n {transcript_for_llm}"
             )
             generation_status_messages: List[str] = []
+            queue_wait_ms = self._current_queue_wait_ms()
             generation_started_at = time.perf_counter()
             await self._emit_status(
                 "info",
@@ -306,6 +474,9 @@ class TranscriptProcessor:
                     "segment_chars": len(segmented_input_chunk),
                     "existing_node_count": len(self.existing_json),
                     "llm_backend": self._llm_config.get("backend"),
+                    "queue_wait_ms": queue_wait_ms,
+                    "generation_started_at_ms": round(time.time() * 1000),
+                    "trigger": trigger,
                 },
             )
             output_json, gen_backend = await asyncio.to_thread(
@@ -321,17 +492,37 @@ class TranscriptProcessor:
                 await self._emit_status(
                     "warning",
                     status_message,
-                    {"stage": "generate_lct_json"},
+                    {"stage": "generate_lct_json", "trigger": trigger},
                 )
 
             if output_json:
+                generation_ms = round(
+                    max(0.0, (time.perf_counter() - generation_started_at) * 1000.0),
+                    2,
+                )
+                total_update_ms = round(
+                    max(0.0, (queue_wait_ms or 0.0) + generation_ms),
+                    2,
+                )
                 chunk_id = str(uuid.uuid4())
                 self.chunk_dict[chunk_id] = segmented_input_chunk
                 for item in output_json:
                     item["chunk_id"] = chunk_id
 
                 self.existing_json.extend(output_json)
-                await self._send_update(self.existing_json, self.chunk_dict)
+                await self._emit_graph_update(
+                    patch={
+                        "kind": "finalized",
+                        "nodes": output_json,
+                        "chunks": {chunk_id: segmented_input_chunk},
+                        "node_count": len(self.existing_json),
+                        "chunk_count": len(self.chunk_dict),
+                        "remove_node_ids": [],
+                        "remove_chunk_ids": [],
+                        "source_text": segmented_input_chunk,
+                        "trigger": trigger,
+                    }
+                )
                 await self._emit_status(
                     "info",
                     "Graph update ready.",
@@ -339,16 +530,33 @@ class TranscriptProcessor:
                         "stage": "graph",
                         "phase": "completed",
                         "chunk_id": chunk_id,
-                        "latency_ms": round(
-                            max(0.0, (time.perf_counter() - generation_started_at) * 1000.0),
-                            2,
-                        ),
+                        "latency_ms": generation_ms,
+                        "generation_ms": generation_ms,
+                        "queue_wait_ms": queue_wait_ms,
+                        "total_update_ms": total_update_ms,
                         "node_delta": len(output_json),
                         "total_nodes": len(self.existing_json),
                         "llm_backend": gen_backend or self._last_llm_backend,
+                        "queued_finals": len(text_batch),
+                        "segment_chars": len(segmented_input_chunk),
+                        "trigger": trigger,
                     },
                 )
+                logger.info(
+                    "[GRAPH] trigger=%s queued_finals=%s queue_wait_ms=%s generation_ms=%s total_update_ms=%s node_delta=%s total_nodes=%s",
+                    trigger,
+                    len(text_batch),
+                    queue_wait_ms,
+                    generation_ms,
+                    total_update_ms,
+                    len(output_json),
+                    len(self.existing_json),
+                )
             else:
+                generation_ms = round(
+                    max(0.0, (time.perf_counter() - generation_started_at) * 1000.0),
+                    2,
+                )
                 await self._emit_status(
                     "error",
                     "LLM returned no structured graph output for a completed transcript segment.",
@@ -357,12 +565,16 @@ class TranscriptProcessor:
                         "phase": "empty",
                         "generation_stage": "generate_lct_json",
                         "segment_chars": len(segmented_input_chunk),
-                        "latency_ms": round(
-                            max(0.0, (time.perf_counter() - generation_started_at) * 1000.0),
+                        "latency_ms": generation_ms,
+                        "generation_ms": generation_ms,
+                        "queue_wait_ms": queue_wait_ms,
+                        "total_update_ms": round(
+                            max(0.0, (queue_wait_ms or 0.0) + generation_ms),
                             2,
                         ),
+                        "trigger": trigger,
                     },
                 )
 
         logger.info("[ACCUMULATE] Evaluated batch of %s transcripts", len(text_batch))
-        return decision, incomplete_seg, carryover_segments
+        return bool(segmented_input_chunk.strip() and output_json), decision, incomplete_seg, carryover_segments

@@ -36,7 +36,38 @@ export default function LiveSessionHud({
   onToggleDetails,
   statusLine,
   stt,
+  uploadState,
 }) {
+  // When a file upload is active, override the chips to reflect upload pipeline state
+  const isUploading = uploadState?.isProcessing;
+  const uploadProgress = Math.round((uploadState?.progress || 0) * 100);
+
+  const formatSttLabel = (raw) => {
+    if (!raw) return "STT active";
+    const lower = raw.toLowerCase();
+    if (lower.includes("openai")) return "STT OpenAI";
+    if (lower.includes("modal")) return "STT Modal";
+    if (lower.includes("openrouter")) return "STT OpenRouter";
+    if (lower.startsWith("remote")) return "STT Remote";
+    if (lower.startsWith("local")) return "STT Local";
+    return `STT ${raw}`;
+  };
+
+  const effectiveBackend = isUploading
+    ? { label: `Upload ${uploadProgress}%`, state: "processing", detail: uploadState?.statusText || "Processing file upload" }
+    : backend;
+  const effectiveStt = isUploading
+    ? { label: formatSttLabel(uploadState?.sttBackend), state: "processing", detail: uploadState?.etaText || "Transcribing" }
+    : stt;
+  const effectiveGraph = isUploading && uploadProgress > 50
+    ? { label: "Graph building", state: "processing", detail: "Generating nodes from transcript" }
+    : isUploading
+    ? { label: "Graph waiting", state: "connecting", detail: "Waiting for transcription to complete" }
+    : graph;
+  const effectiveStatusLine = isUploading
+    ? [uploadState?.statusText, uploadState?.etaText].filter(Boolean).join(" · ") || "Upload in progress"
+    : statusLine;
+
   return (
     <div className="relative min-w-[18rem] max-w-[34rem]">
       {detailOpen && (
@@ -71,12 +102,12 @@ export default function LiveSessionHud({
         aria-label="Toggle live session health details"
       >
         <div className="flex flex-wrap items-center gap-1.5">
-          <LiveStatusChip {...backend} />
-          <LiveStatusChip {...stt} />
-          <LiveStatusChip {...graph} />
+          <LiveStatusChip {...effectiveBackend} />
+          <LiveStatusChip {...effectiveStt} />
+          <LiveStatusChip {...effectiveGraph} />
         </div>
         <p className="mt-1.5 text-[11px] text-slate-500">
-          {statusLine}
+          {effectiveStatusLine}
         </p>
       </button>
     </div>
@@ -109,4 +140,11 @@ LiveSessionHud.propTypes = {
     label: PropTypes.string.isRequired,
     state: PropTypes.string.isRequired,
   }).isRequired,
+  uploadState: PropTypes.shape({
+    isProcessing: PropTypes.bool,
+    progress: PropTypes.number,
+    statusText: PropTypes.string,
+    etaText: PropTypes.string,
+    sttBackend: PropTypes.string,
+  }),
 };

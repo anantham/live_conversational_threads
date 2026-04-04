@@ -33,6 +33,7 @@ from lct_python_backend.services.audio_transcriber import (
 from lct_python_backend.services.provider_selection import (
     _is_local_http_url,
     _resolve_audio_provider_candidates,
+    resolve_import_audio_candidates,
 )
 from lct_python_backend.services.speaker_alignment import (
     _align_asr_segments_to_speakers,
@@ -40,6 +41,12 @@ from lct_python_backend.services.speaker_alignment import (
     _load_pyannote_pipeline,
     _run_pyannote_diarization,
 )
+from lct_python_backend.services.transcript_linearization import (
+    build_line_utterances,
+    build_segment_utterances,
+    offset_segments,
+)
+from lct_python_backend.services.stt_http_transcriber import transcribe_wav_stt_candidate
 from lct_python_backend.services.text_parsers import (
     _decode_text_bytes,
     _strip_markup,
@@ -149,6 +156,9 @@ __all__ = [
     # provider_selection
     "_is_local_http_url",
     "_resolve_audio_provider_candidates",
+    "resolve_import_audio_candidates",
+    "build_line_utterances",
+    "build_segment_utterances",
     # audio_transcriber
     "_extract_asr_segments",
     "_split_audio_to_chunks",
@@ -171,6 +181,72 @@ logger = logging.getLogger("lct_backend")
 # Orchestrator
 # ---------------------------------------------------------------------------
 
+
+async def _transcribe_cloud_chunk_with_retry(
+    candidate: Dict[str, Any],
+    *,
+    wav_payload: bytes,
+    timeout_seconds: float,
+    language: str,
+    chunk_idx: int,
+    total_chunks: int,
+    chunk_max_retries: int = DEFAULT_CHUNK_MAX_RETRIES,
+    chunk_retry_backoff_s: float = DEFAULT_CHUNK_RETRY_BACKOFF_S,
+) -> Dict[str, Any]:
+    attempts_allowed = max(0, int(chunk_max_retries)) + 1
+    backoff_base_s = max(0.0, float(chunk_retry_backoff_s))
+    provider = coerce_str(candidate.get("provider")).lower() or "unknown"
+    transport = coerce_str(candidate.get("transport")).lower() or "backend_http"
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, attempts_allowed + 1):
+        try:
+            chunk_result = await transcribe_wav_stt_candidate(
+                candidate,
+                wav_payload=wav_payload,
+                timeout_seconds=timeout_seconds,
+                language=language,
+            )
+        except Exception as exc:  # noqa: BLE001
+            last_error = exc
+        else:
+            if chunk_result.get("ok"):
+                if attempt > 1:
+                    logger.info(
+                        "[UPLOAD STT] Cloud chunk %d/%d recovered on attempt %d/%d via %s (%s)",
+                        chunk_idx,
+                        total_chunks,
+                        attempt,
+                        attempts_allowed,
+                        provider,
+                        transport,
+                    )
+                return chunk_result
+            last_error = RuntimeError(
+                coerce_str(chunk_result.get("error")) or f"{provider} transcription failed."
+            )
+
+        retryable = isinstance(last_error, Exception) and _is_retryable_stt_error(last_error)
+        if attempt >= attempts_allowed or not retryable:
+            raise last_error or RuntimeError(f"{provider} transcription failed.")
+
+        backoff_s = backoff_base_s * (2 ** (attempt - 1))
+        logger.warning(
+            "[UPLOAD STT] Cloud chunk %d/%d attempt %d/%d failed via %s (%s: %s), retrying in %.2fs",
+            chunk_idx,
+            total_chunks,
+            attempt,
+            attempts_allowed,
+            provider,
+            type(last_error).__name__,
+            str(last_error) or type(last_error).__name__,
+            backoff_s,
+        )
+        if backoff_s > 0:
+            await asyncio.sleep(backoff_s)
+
+    raise last_error or RuntimeError(f"{provider} transcription failed.")
+
 async def transcribe_uploaded_file(
     *,
     temp_path: Path,
@@ -182,6 +258,8 @@ async def transcribe_uploaded_file(
     on_chunk_progress: Optional[ProgressCallback] = None,
     enable_parakeet_pyannote: Optional[bool] = None,
     on_provider_fallback: Optional[ProviderFallbackCallback] = None,
+    resume_from_chunk: int = 0,
+    resumed_chunk_texts: Optional[List[str]] = None,
 ) -> FileTranscriptResult:
     """Resolve transcript text from uploaded audio/text/video-caption files."""
 
@@ -196,7 +274,7 @@ async def transcribe_uploaded_file(
 
     if file_kind == "audio":
         settings = stt_settings or {}
-        provider_candidates = _resolve_audio_provider_candidates(
+        provider_candidates = resolve_import_audio_candidates(
             settings=settings,
             provider_override=provider_override,
         )
@@ -207,8 +285,12 @@ async def transcribe_uploaded_file(
         provider_attempts: List[Dict[str, Any]] = []
         transcript_text = ""
         source_diarized_segments: Optional[List[Dict[str, Any]]] = None
+        source_asr_segments: Optional[List[Dict[str, Any]]] = None
+        source_utterances: List[Dict[str, Any]] = []
         active_provider = ""
         active_http_url = ""
+        active_transport = ""
+        active_model = ""
         timings_ms: Dict[str, int] = {}
         stt_backend = ""
         fallback_used = False
@@ -222,14 +304,18 @@ async def transcribe_uploaded_file(
         last_error: Optional[Exception] = None
         for attempt_idx, candidate in enumerate(provider_candidates):
             provider = coerce_str(candidate.get("provider")).lower() or "whisper"
+            transport = coerce_str(candidate.get("transport")).lower() or "backend_http"
             http_url = coerce_str(candidate.get("http_url"))
             if not http_url:
                 continue
 
             active_provider = provider
             active_http_url = http_url
+            active_transport = transport
+            active_model = coerce_str(candidate.get("model")) or coerce_str(settings.get("http_model"))
             attempt_record: Dict[str, Any] = {
                 "provider": provider,
+                "transport": transport,
                 "http_url": http_url,
                 "reason": coerce_str(candidate.get("reason")),
             }
@@ -237,7 +323,85 @@ async def transcribe_uploaded_file(
             try:
                 timings_ms = {}
                 source_diarized_segments = None
-                if provider == "parakeet" and pyannote_enabled:
+                if transport in {"openai_audio", "openrouter_audio"}:
+                    stt_started_at = time.perf_counter()
+                    candidate_timeout = max(30.0, timeout)
+                    chunks = _split_audio_to_chunks(
+                        temp_path,
+                        chunk_duration_s=DEFAULT_CHUNK_DURATION_S,
+                        overlap_s=DEFAULT_CHUNK_OVERLAP_S,
+                    )
+                    chunk_texts: List[str] = []
+                    all_segments: List[Dict[str, Any]] = []
+                    _resumed_texts = resumed_chunk_texts or []
+                    try:
+                        for chunk_idx, (chunk_path, _start_ms, _end_ms) in enumerate(chunks, start=1):
+                            # Skip chunks already transcribed in a previous run
+                            if chunk_idx <= resume_from_chunk and chunk_idx <= len(_resumed_texts):
+                                cached_text = _resumed_texts[chunk_idx - 1] if _resumed_texts else ""
+                                if cached_text:
+                                    chunk_texts.append(cached_text)
+                                if on_chunk_progress is not None:
+                                    # The pipeline already replays cached transcript text from the
+                                    # checkpoint. This callback only needs to advance progress.
+                                    await on_chunk_progress(chunk_idx, len(chunks), "")
+                                chunk_path.unlink(missing_ok=True)
+                                continue
+
+                            wav_payload = chunk_path.read_bytes()
+                            chunk_result = await _transcribe_cloud_chunk_with_retry(
+                                candidate,
+                                wav_payload=wav_payload,
+                                language=coerce_str(settings.get("http_language")),
+                                timeout_seconds=candidate_timeout,
+                                chunk_idx=chunk_idx,
+                                total_chunks=len(chunks),
+                            )
+                            chunk_segments = (
+                                chunk_result.get("segments")
+                                if isinstance(chunk_result.get("segments"), list)
+                                else []
+                            )
+                            if chunk_segments:
+                                all_segments.extend(
+                                    offset_segments(
+                                        chunk_segments,
+                                        offset_seconds=max(0.0, float(_start_ms) / 1000.0),
+                                    )
+                                )
+                            chunk_text = ""
+                            if chunk_segments and bool(candidate.get("request_diarization", False)):
+                                chunk_text = _format_speaker_transcript(
+                                    offset_segments(
+                                        chunk_segments,
+                                        offset_seconds=max(0.0, float(_start_ms) / 1000.0),
+                                    )
+                                )
+                            else:
+                                chunk_text = coerce_str(chunk_result.get("text"))
+                            if chunk_text:
+                                chunk_texts.append(chunk_text)
+                            if on_chunk_progress is not None:
+                                await on_chunk_progress(chunk_idx, len(chunks), chunk_text)
+                    finally:
+                        for chunk_path, _, _ in chunks:
+                            chunk_path.unlink(missing_ok=True)
+
+                    transcript_text = "\n".join(part for part in chunk_texts if part).strip()
+                    source_diarized_segments = all_segments or None
+                    source_asr_segments = None
+                    timings_ms["stt_ms"] = _elapsed_ms(stt_started_at)
+                    if source_diarized_segments:
+                        metadata["diarization_source"] = "stt_provider"
+                        metadata["speaker_count"] = len(
+                            {
+                                coerce_str(seg.get("speaker"))
+                                for seg in source_diarized_segments
+                                if coerce_str(seg.get("speaker"))
+                            }
+                        )
+                    stt_backend = transport
+                elif provider == "parakeet" and pyannote_enabled:
                     stt_started_at = time.perf_counter()
                     detail = await transcribe_audio_file_detailed(
                         temp_path,
@@ -251,6 +415,7 @@ async def transcribe_uploaded_file(
                     timings_ms["stt_ms"] = _elapsed_ms(stt_started_at)
                     transcript_text = detail.transcript_text
                     source_diarized_segments = detail.diarized_segments
+                    source_asr_segments = detail.asr_segments
 
                     if detail.diarized_segments:
                         metadata["diarization_source"] = "stt_provider"
@@ -305,6 +470,8 @@ async def transcribe_uploaded_file(
                     )
                     timings_ms["stt_ms"] = _elapsed_ms(stt_started_at)
                     stt_backend = _last_stt_backend.get("")
+                    source_diarized_segments = None
+                    source_asr_segments = None
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 attempt_record["status"] = "failed"
@@ -339,6 +506,12 @@ async def transcribe_uploaded_file(
             attempt_record["status"] = "success"
             attempt_record["duration_ms"] = _elapsed_ms(attempt_started_at)
             provider_attempts.append(attempt_record)
+            source_utterances = build_segment_utterances(
+                diarized_segments=source_diarized_segments,
+                asr_segments=source_asr_segments,
+                transcript_text=transcript_text,
+                default_speaker_id="SPEAKER_00",
+            )
             break
 
         if not transcript_text:
@@ -348,6 +521,8 @@ async def transcribe_uploaded_file(
 
         if source_diarized_segments is not None:
             metadata["stt_diarized_segment_count"] = len(source_diarized_segments)
+        if source_asr_segments is not None:
+            metadata["asr_segment_count"] = len(source_asr_segments)
         if timings_ms:
             metadata["timings_ms"] = timings_ms
         metadata["provider_attempts"] = provider_attempts
@@ -358,22 +533,41 @@ async def transcribe_uploaded_file(
             if failed_attempts:
                 metadata["provider_fallback_from"] = failed_attempts[-1].get("provider")
             metadata["provider_fallback_to"] = active_provider
-        metadata.update({"provider": active_provider, "http_url": active_http_url})
+        metadata.update(
+            {
+                "provider": active_provider,
+                "http_url": active_http_url,
+                "transport": active_transport,
+                "model": active_model,
+            }
+        )
         if stt_backend:
             metadata["stt_backend"] = stt_backend
         return FileTranscriptResult(
             transcript_text=parse_plain_text(transcript_text),
             source_type="audio",
             metadata=metadata,
+            utterances=source_utterances,
+            speaker_segments=list(source_diarized_segments or []),
         )
 
     if file_kind == "vtt":
         transcript_text = parse_vtt_text(_decode_text_bytes(raw_bytes))
-        return FileTranscriptResult(transcript_text=transcript_text, source_type="vtt", metadata=metadata)
+        return FileTranscriptResult(
+            transcript_text=transcript_text,
+            source_type="vtt",
+            metadata=metadata,
+            utterances=build_line_utterances(transcript_text),
+        )
 
     if file_kind == "srt":
         transcript_text = parse_srt_text(_decode_text_bytes(raw_bytes))
-        return FileTranscriptResult(transcript_text=transcript_text, source_type="srt", metadata=metadata)
+        return FileTranscriptResult(
+            transcript_text=transcript_text,
+            source_type="srt",
+            metadata=metadata,
+            utterances=build_line_utterances(transcript_text),
+        )
 
     if file_kind == "google_meet":
         if temp_path.suffix.lower() == ".pdf":
@@ -386,11 +580,17 @@ async def transcribe_uploaded_file(
             transcript_text=parse_plain_text(transcript_text),
             source_type="google_meet",
             metadata=metadata,
+            utterances=build_line_utterances(parse_plain_text(transcript_text)),
         )
 
     if file_kind == "text":
         transcript_text = parse_plain_text(_decode_text_bytes(raw_bytes))
-        return FileTranscriptResult(transcript_text=transcript_text, source_type="text", metadata=metadata)
+        return FileTranscriptResult(
+            transcript_text=transcript_text,
+            source_type="text",
+            metadata=metadata,
+            utterances=build_line_utterances(transcript_text),
+        )
 
     supported = (
         sorted(AUDIO_EXTENSIONS)

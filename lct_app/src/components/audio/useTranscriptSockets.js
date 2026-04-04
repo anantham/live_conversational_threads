@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 
 import { sendWsAuth } from "../../services/apiClient";
+import { useByok } from "../../contexts/byokContext";
 import { BACKEND_WS_URL } from "./sttUtils";
 import { createBackendMessageHandler } from "./audioMessages";
 
@@ -21,6 +22,7 @@ const arrayBufferToBase64 = (buffer) => {
 export default function useTranscriptSockets({
   onDataReceived,
   onChunksReceived,
+  onGraphPatchReceived,
   graphDataFromSocket,
   onSessionReady,
   onSessionAck,
@@ -32,10 +34,12 @@ export default function useTranscriptSockets({
   onProcessingStatus,
   onBackendMessage,
 }) {
+  const { ensureSessionToken } = useByok();
   const backendWsRef = useRef(null);
   const flushResolveRef = useRef(null);
   const conversationRef = useRef(null);
   const pingIntervalRef = useRef(null);
+  const sessionMetaSentRef = useRef(false);
 
   const logToServer = useCallback((text) => {
     console.log("[Client Log]", text);
@@ -49,6 +53,7 @@ export default function useTranscriptSockets({
   const handleBackendMessage = createBackendMessageHandler({
     onDataReceived,
     onChunksReceived,
+    onGraphPatchReceived,
     onSessionAck,
     onPong,
     onTranscriptEvent: onProviderTranscript,
@@ -71,7 +76,8 @@ export default function useTranscriptSockets({
   const onPCMFrame = useCallback((buffer) => {
     if (
       !backendWsRef.current ||
-      backendWsRef.current.readyState !== WebSocket.OPEN
+      backendWsRef.current.readyState !== WebSocket.OPEN ||
+      !sessionMetaSentRef.current
     ) {
       return;
     }
@@ -89,11 +95,13 @@ export default function useTranscriptSockets({
     (sessionId, sttConfig, conversationParam) => {
       onBackendSocketStateChange?.("connecting");
       onProviderSocketStateChange?.("connecting");
+      sessionMetaSentRef.current = false;
 
       const ws = new WebSocket(BACKEND_WS_URL);
       const failSession = () => {
         if (backendWsRef.current !== ws) return;
         clearPingLoop();
+        sessionMetaSentRef.current = false;
         flushResolveRef.current?.();
         flushResolveRef.current = null;
         backendWsRef.current?.close();
@@ -112,24 +120,37 @@ export default function useTranscriptSockets({
           if (ws.readyState !== WebSocket.OPEN) return;
           ws.send(JSON.stringify({ type: "ping", client_ts_ms: Date.now() }));
         }, 3000);
-        const convoId = conversationParam || conversationRef.current;
-        ws.send(
-          JSON.stringify({
-            type: "session_meta",
-            conversation_id: convoId,
-            session_id: sessionId,
-            provider: sttConfig?.provider || "parakeet",
-            store_audio: Boolean(sttConfig?.store_audio),
-            speaker_id: sttConfig?.speaker_id || "speaker_1",
-            sample_rate_hz: 16000,
-            metadata: {
-              source: "web_client",
-              local_only: sttConfig?.local_only !== false,
-              transport: "backend_http_stt",
-            },
-          })
-        );
-        onSessionReady?.();
+        void (async () => {
+          const byokSessionToken = await ensureSessionToken();
+          if (ws.readyState !== WebSocket.OPEN) return;
+          const convoId = conversationParam || conversationRef.current;
+          ws.send(
+            JSON.stringify({
+              type: "session_meta",
+              conversation_id: convoId,
+              session_id: sessionId,
+              provider: byokSessionToken ? "openai_audio" : (sttConfig?.provider || "parakeet"),
+              byok_session_token: byokSessionToken || undefined,
+              store_audio: Boolean(sttConfig?.store_audio),
+              speaker_id: sttConfig?.speaker_id || "speaker_1",
+              sample_rate_hz: 16000,
+              metadata: {
+                source: "web_client",
+                byok_enabled: Boolean(byokSessionToken),
+                local_only: byokSessionToken ? false : sttConfig?.local_only !== false,
+                transport: byokSessionToken ? "byok_openai_audio" : "backend_http_stt",
+              },
+            })
+          );
+          sessionMetaSentRef.current = true;
+          onSessionReady?.();
+        })().catch((error) => {
+          onProcessingStatus?.({
+            level: "error",
+            message: error?.message || "Failed to validate the BYOK session.",
+          });
+          failSession();
+        });
       };
       ws.onmessage = handleBackendMessage;
       ws.onerror = (err) => {
@@ -150,9 +171,11 @@ export default function useTranscriptSockets({
     [
       handleBackendMessage,
       clearPingLoop,
+      ensureSessionToken,
       logToServer,
       onBackendSocketStateChange,
       onFatalError,
+      onProcessingStatus,
       onProviderSocketStateChange,
       onSessionReady,
     ]
@@ -193,6 +216,7 @@ export default function useTranscriptSockets({
     }
 
     clearPingLoop();
+    sessionMetaSentRef.current = false;
     backendWsRef.current?.close();
     backendWsRef.current = null;
     onProviderSocketStateChange?.("closed");
@@ -202,6 +226,7 @@ export default function useTranscriptSockets({
   /** Emergency shutdown: resolve pending flush, close backend socket, reset states. */
   const cleanup = useCallback(() => {
     clearPingLoop();
+    sessionMetaSentRef.current = false;
     flushResolveRef.current?.();
     flushResolveRef.current = null;
     backendWsRef.current?.close();

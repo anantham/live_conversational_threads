@@ -25,8 +25,11 @@ function beaconSave(conversationId, nodes, conversationName) {
 }
 
 /**
- * useAutoSave — persists live graph state to the backend DB periodically
- * and on tab hide / page unload, preventing data loss when the tab closes.
+ * useAutoSave — browser-originated snapshot persistence.
+ *
+ * Canonical live semantic graph persistence is backend-owned. This hook now
+ * acts as a supplementary browser snapshot path so presentation/layout state
+ * can still be recovered during migration.
  *
  * @param {object} opts
  * @param {string}  opts.conversationId   - stable UUID for this session

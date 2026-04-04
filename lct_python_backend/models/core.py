@@ -1,10 +1,10 @@
-"""Core conversation models: Conversation, Utterance, TranscriptEvent."""
+"""Core conversation models: Conversation, Utterance, TranscriptEvent, SpeakerSegment."""
 
 import uuid
 
 from sqlalchemy import (
     Column, Integer, Float, Boolean, Text, DateTime,
-    ForeignKey, Index, CheckConstraint, ARRAY, text,
+    ForeignKey, Index, CheckConstraint, ARRAY, text as sql_text,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
 from sqlalchemy.sql import func
@@ -91,6 +91,9 @@ class Utterance(Base):
     speaker_id = Column(Text, nullable=False)
     speaker_name = Column(Text)
     speaker_role = Column(Text)
+    speaker_source = Column(Text, nullable=False, server_default=sql_text("'session_default'"))
+    speaker_confidence = Column(Float)
+    speaker_revision = Column(Integer, nullable=False, server_default=sql_text("0"))
 
     # Temporal
     sequence_number = Column(Integer, nullable=False)
@@ -123,6 +126,7 @@ class Utterance(Base):
         ),
         Index('idx_utterances_conversation', 'conversation_id', 'sequence_number'),
         Index('idx_utterances_speaker', 'conversation_id', 'speaker_id'),
+        Index('idx_utterances_speaker_source', 'conversation_id', 'speaker_source'),
         Index('idx_utterances_chunk', 'chunk_id'),
         Index('idx_utterances_node', 'node_id'),
         Index('idx_utterances_thread', 'thread_id'),
@@ -152,4 +156,58 @@ class TranscriptEvent(Base):
         Index('idx_transcript_events_event_type', 'event_type'),
         Index('idx_transcript_events_utterance', 'utterance_id'),
         CheckConstraint("event_type IN ('partial', 'final')", name='check_event_type'),
+    )
+
+
+class SpeakerSegment(Base):
+    """Immutable diarization evidence aligned to a conversation time window."""
+
+    __tablename__ = "speaker_segments"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('conversations.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    source_utterance_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('utterances.id', ondelete='SET NULL'),
+        nullable=True,
+    )
+
+    provider = Column(Text, nullable=False)
+    model = Column(Text)
+    transport = Column(Text)
+    speaker_id = Column(Text, nullable=False)
+    text = Column(Text)
+
+    timestamp_start = Column(Float)
+    timestamp_end = Column(Float)
+    relative_start = Column(Float)
+    relative_end = Column(Float)
+    window_timestamp_start = Column(Float)
+    window_timestamp_end = Column(Float)
+
+    confidence_score = Column(Float)
+    segment_metadata = Column(JSONB)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        CheckConstraint(
+            "(timestamp_start IS NULL AND timestamp_end IS NULL) OR "
+            "(timestamp_end IS NULL) OR "
+            "(timestamp_end >= timestamp_start)",
+            name='valid_speaker_segment_timestamps'
+        ),
+        CheckConstraint(
+            "(relative_start IS NULL AND relative_end IS NULL) OR "
+            "(relative_end IS NULL) OR "
+            "(relative_end >= relative_start)",
+            name='valid_speaker_segment_relative_timestamps'
+        ),
+        Index('idx_speaker_segments_conversation', 'conversation_id'),
+        Index('idx_speaker_segments_source_utterance', 'source_utterance_id'),
+        Index('idx_speaker_segments_speaker', 'conversation_id', 'speaker_id'),
+        Index('idx_speaker_segments_timestamp', 'conversation_id', 'timestamp_start'),
     )
