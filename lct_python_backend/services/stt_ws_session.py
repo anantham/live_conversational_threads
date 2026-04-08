@@ -13,6 +13,7 @@ import json
 import logging
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import WebSocket
@@ -106,6 +107,7 @@ class WsSessionContext:
         self.pending_partial_chars: int = 0
         self.pending_partial_timestamps: Dict[str, Optional[float]] = {"start": None, "end": None}
         self.pending_speaker_segments: List[Dict[str, Any]] = []
+        self.session_final_text_parts: List[str] = []
         self.active_draft_graph: Optional[Dict[str, str]] = None
         self.pending_draft_replacements: List[Dict[str, str]] = []
         self.pending_speaker_reconciliations: List[Dict[str, Any]] = []
@@ -686,6 +688,7 @@ class WsSessionContext:
             )
         elif event_type == "final":
             self._queue_active_draft_for_replacement(normalized_text)
+            self.session_final_text_parts.append(normalized_text)
 
         event_metadata = dict(metadata or {})
         raw_stage_metrics = (
@@ -839,6 +842,40 @@ class WsSessionContext:
                 },
             },
         )
+
+    async def _run_file_backed_refinement(
+        self,
+        wav_path: str,
+        source_text: str,
+    ) -> None:
+        if not wav_path or not self.refinement_candidate:
+            return
+        try:
+            wav_payload = await asyncio.to_thread(Path(wav_path).read_bytes)
+        except Exception as exc:
+            logger.warning(
+                "[WS][STT REFINE FILE] session=%s conversation=%s wav_path=%s read failed: %s",
+                self.state.session_id,
+                self.state.conversation_id,
+                wav_path,
+                exc,
+            )
+            await _safe_send_json(
+                self.websocket,
+                {
+                    "type": "processing_status",
+                    "level": "warning",
+                    "message": "Background speaker refinement could not read finalized audio.",
+                    "context": {
+                        "stage": "stt_refinement",
+                        "phase": "read_audio_failed",
+                        "wav_path": wav_path,
+                        "error": str(exc),
+                    },
+                },
+            )
+            return
+        await self._run_background_refinement(wav_payload, source_text)
 
     def _runtime_mode(self) -> str:
         return str(getattr(self.stt_runtime, "stt_mode", "backend_http") or "backend_http")
@@ -1322,6 +1359,24 @@ class WsSessionContext:
                         f"/api/conversations/{self.state.conversation_id}/audio?token={self.download_token}"
                     )
                 await _safe_send_json(self.websocket, audio_ready_payload)
+                finalized_wav_path = str(finalized.get("wav_path") or "").strip()
+                source_text_for_file_refinement = (
+                    final_text_for_post_flush or " ".join(self.session_final_text_parts).strip()
+                )
+                if (
+                    finalized_wav_path
+                    and source_text_for_file_refinement
+                    and self.refinement_candidate
+                    and self._runtime_mode() == "backend_ws"
+                ):
+                    self._track_refinement_task(
+                        asyncio.create_task(
+                            self._run_file_backed_refinement(
+                                finalized_wav_path,
+                                source_text_for_file_refinement,
+                            )
+                        )
+                    )
 
             if self.pending_processor_final_tasks:
                 await asyncio.gather(
@@ -1372,6 +1427,7 @@ class WsSessionContext:
         self.stt_unready_notified = False
         self.first_audio_chunk_logged = False
         self.refinement_candidate = None
+        self.session_final_text_parts = []
         # Reset refinement buffer
         self._refinement_pcm_buffer = bytearray()
         self._refinement_text_parts = []
@@ -1504,8 +1560,15 @@ class WsSessionContext:
         self.state.conversation_id = conversation_id
         self.state.session_id = payload.get("session_id") or str(uuid.uuid4())
         self.state.provider = active_provider
-        default_store_audio = bool(runtime_stt_settings.get("store_audio"))
-        self.state.store_audio = bool(payload.get("store_audio", default_store_audio))
+        default_store_audio = bool(runtime_stt_settings.get("store_audio")) or bool(self.refinement_candidate)
+        force_store_audio_for_backend_refinement = bool(
+            self.refinement_candidate
+            and str(primary_candidate.get("provider") or "").strip().lower() == "whisper"
+            and str(primary_candidate.get("ws_url") or "").strip()
+        )
+        self.state.store_audio = bool(payload.get("store_audio", default_store_audio)) or (
+            force_store_audio_for_backend_refinement
+        )
         self.state.speaker_id = payload.get("speaker_id", self.state.speaker_id)
         self.state.metadata = payload.get("metadata") or {}
         if byok_session:

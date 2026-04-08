@@ -2026,3 +2026,64 @@ Validation:
 
 Manual testing not run:
 - No browser upload click-through in this work session after wiring the new retry/resume state machine; verification here is backend unit coverage plus frontend lint/syntax checks.
+
+## 2026-04-08T18:13:06Z
+- Remote verification only, plus doc corrections for the active STT topology.
+- Verified via SSH on `100.81.65.74` that the Windows host has `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet` present and listening on `0.0.0.0:7777` via `C:\Users\adity\anaconda3\python.exe agents/web_server.py`.
+- Remote source checked:
+  - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\agents\web_server.py` (full file, 81 lines): compatibility stub that re-exports the real web server package.
+  - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\agents\routes\transcription.py` (full file, 122 lines): `POST /api/transcribe` routes uploads through `gpu_backends.transcribe_with_coordinator(...)` with local WhisperX first, Modal WhisperX fallback, `priority=0`, and `coordinator_timeout=5.0`.
+  - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\core\gpu_backends.py` (WhisperX/coordinator sections): defines `WhisperXBackend`, `ModalWhisperXBackend`, `MODAL_WHISPERX_URL`, and the priority-scheduled coordinator entry point used by the route.
+  - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\agents\routes\gpu_monitor.py` (full file, 120 lines): exposes `GET /api/gpu/status` for hardware/coordinator/backend visibility.
+- `docs/HANDOVER.md` (lines 17-18, 56, 73): replaced the stale claim that the remote Windows machine had no running WhisperX/orchestrator and updated the pending/resume text to reflect the verified IndrasNet route.
+- `ISSUES.md` (lines 3, 83-88): refreshed the last-updated stamp and logged the remaining backend comment drift (`lct_python_backend/import_api.py` still describes the remote WhisperX route as `127.0.0.1:7777` / "local WhisperX").
+- No repo runtime code paths were changed in this session; only local documentation was corrected to match the verified remote orchestrator.
+
+## 2026-04-08T18:25:14Z
+- Continued the remote STT latency investigation against the verified IndrasNet orchestrator at `100.81.65.74`.
+- Runtime measurements captured from the LCT machine:
+  - `ping 100.81.65.74`: warmed RTT settles around `269-279 ms`, but early packets spiked as high as `1748 ms`; network latency is noticeable but not alone sufficient to explain unusable live captions.
+  - `curl http://100.81.65.74:8001/health`: healthy direct WhisperX server responds in about `0.51s` once warm and reports `streaming=true`, `model=large-v3`, `device=cuda`.
+  - Direct POST to `http://100.81.65.74:8001/v1/audio/transcriptions` with a generated `3.8s` speech sample returns `200` in about `3.6-4.0s` with correct transcript text, both with and without diarization.
+  - POST to `http://100.81.65.74:7777/api/transcribe` with the same sample returns `500 {"error":"'_asyncio.Task' object has no attribute 'cancelling'"}` after about `10.1s`.
+  - `curl http://100.81.65.74:7777/api/gpu/status` takes about `7-10s` and reports an active BACKGROUND WhisperX task (for reprocessing), queue depth `0`, and backend health failures marked `Timeout (5.0s)`.
+- Remote orchestrator code examined in detail:
+  - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\agents\routes\transcription.py` (lines 44-89): LCT route already uses `priority=0` / `CRITICAL` with `coordinator_timeout=5.0`.
+  - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\core\gpu_coordinator.py` (lines 36-113, 131-198, 233-247): coordinator supports priority scheduling and cooperative preemption signals, but not force-kill of an in-flight backend call.
+  - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\core\gpu_backends.py` (lines 764-840): `transcribe_with_coordinator()` catches `asyncio.CancelledError` and incorrectly calls `task.cancelling()` directly, which breaks on the active Python runtime and prevents clean fallback to Modal WhisperX.
+  - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\core\gpu_backends.py` (lines 450-500): local WhisperX transcription is one long HTTP call to `localhost:8001/v1/audio/transcriptions`; preemption is only observed after that call returns.
+  - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\core\reprocessing/audio.py` (lines 221-383): chunked reprocessing is cooperative and can yield between chunks, but direct single-call transcription is not.
+- Conclusions recorded for future work:
+  - Primary bottleneck is not just Tailscale distance. The `7777` orchestrator path is currently broken on timeout/fallback and its priority model cannot forcibly interrupt an already-running single-call WhisperX transcription.
+  - Raising priority for LCT requests would not help further because the route already uses `CRITICAL`; improvement requires fixing the Python-compat bug and/or changing orchestration strategy (direct live path to `8001` or chunked/cooperative background jobs).
+- Files updated in this repo to preserve the finding:
+  - `ISSUES.md`: added explicit STT orchestrator findings covering the Python compatibility bug and the cooperative-only preemption limitation.
+
+## 2026-04-08T19:12:15Z
+- `/Users/aditya/Documents/Ongoing Local/TemporalCoordination/grimoire/IndrasNet/agents/routes/transcription.py` (lines 29-213): added a coordinator-owned `/api/transcribe/stream` websocket proxy that acquires a `CRITICAL` WhisperX slot, forwards frames to the upstream WhisperX `/v1/audio/stream` endpoint, and returns timeout/provider errors over the socket instead of forcing LCT to bypass the orchestrator.
+- `/Users/aditya/Documents/Ongoing Local/TemporalCoordination/grimoire/IndrasNet/core/gpu_backends.py` (lines 818-823): patched the `CancelledError` fallback branch to use the Python-3.9-safe `getattr(task, "cancelling", lambda: False)()` pattern so coordinator timeouts can fall through to Modal rather than raising `'_asyncio.Task' object has no attribute 'cancelling'`.
+- `lct_python_backend/services/stt_backend_realtime.py` (new file, lines 1-323): added the backend websocket runtime adapter for orchestrated live Whisper captions, including websocket startup, 16 kHz PCM normalization, provider-event mapping, bounded flush waiting, and descriptive runtime metadata.
+- `lct_python_backend/services/stt_live_runtime.py` (lines 132-166): upgraded runtime selection so a primary Whisper candidate with `supports_realtime_streaming` and `ws_url` now chooses the backend websocket adapter before falling back to HTTP chunking.
+- `lct_python_backend/services/stt_live_provider_selection.py` (lines 33-51, 112-139, 240-300): derived backend websocket URLs from configured Whisper HTTP endpoints and added a Whisper background-refinement candidate so text-first live sessions can still request post-flush diarization.
+- `lct_python_backend/services/stt_ws_session.py` (lines 110, 691, 846-878, 1351-1379, 1429-1430, 1563-1570, 1670-1689): recorded finalized live text for reuse, added file-backed refinement from finalized WAV output, forced audio retention for the backend-websocket Whisper path when refinement is enabled, and surfaced the text-first/runtime-refinement contract in `session_ack`.
+- `lct_python_backend/tests/unit/test_stt_live_runtime.py` (lines 97-124, 248-291), `lct_python_backend/tests/unit/test_stt_live_provider_selection.py` (lines 175-241), and `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 313-458): added coverage for Whisper websocket candidate resolution, backend runtime selection/event mapping, forced audio retention, and post-flush file-backed refinement scheduling.
+- `docs/adr/ADR-023-orchestrated-live-whisper-websocket-and-async-diarization.md` (lines 1-93) and `docs/adr/INDEX.md` (lines 1-29): documented the approved architecture change to keep the orchestrator in charge while making live Whisper text-first and diarization asynchronous.
+- `docs/TECH_DEBT.md` (lines 1-40): refreshed the large-file inventory after this slice, including the new `stt_backend_realtime.py` adapter and the now-larger `stt_ws_session.py` / `test_transcripts_websocket.py` seams.
+
+Validation:
+- `python3 -m pytest lct_python_backend/tests/unit/test_stt_live_runtime.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/integration/test_transcripts_websocket.py -q` (`32 passed`)
+- `./.venv/bin/python -m py_compile lct_python_backend/services/stt_backend_realtime.py lct_python_backend/services/stt_live_runtime.py lct_python_backend/services/stt_live_provider_selection.py lct_python_backend/services/stt_ws_session.py lct_python_backend/tests/unit/test_stt_live_runtime.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/integration/test_transcripts_websocket.py /Users/aditya/Documents/Ongoing Local/TemporalCoordination/grimoire/IndrasNet/agents/routes/transcription.py /Users/aditya/Documents/Ongoing Local/TemporalCoordination/grimoire/IndrasNet/core/gpu_backends.py` (passed)
+
+Manual testing not run:
+- No end-to-end live session was run against the remote `100.81.65.74:7777/api/transcribe/stream` route in this work session; validation here is targeted unit/integration coverage plus Python syntax checks.
+
+## 2026-04-08T20:50:55Z
+- Validation pass for the Option B slice:
+  - `./.venv/bin/python -m pytest lct_python_backend/tests/unit/test_stt_live_runtime.py lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/integration/test_transcripts_websocket.py -q` (`32 passed`; one preexisting `urllib3` LibreSSL warning from the venv).
+  - Generated a short spoken sample locally via `say`, converted it to `16 kHz` mono WAV with `ffmpeg`, and used it to smoke-test the remote IndrasNet routes on `100.81.65.74`.
+  - `POST http://100.81.65.74:7777/api/transcribe` with the `2.75s` sample returned `200` in `29.885721s` and produced correct text (`"Hello from live conversation threads validation."`) with `_backend=local_whisperx`; this confirms the Python timeout/fallback crash is no longer reproducing on that route, but the HTTP path remains far too slow for live captions.
+  - `ws://100.81.65.74:7777/api/transcribe/stream` failed websocket validation before application-level events: the handshake received plain `HTTP 200` HTML from the IndrasNet SPA instead of `101 Switching Protocols`.
+  - Read-only remote inspection over SSH showed the port-`7777` listener is still `C:\Users\adity\anaconda3\python.exe` started at `2026-04-06T15:30:25.753Z`, and the remote `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\agents\routes\transcription.py` file does not yet contain `/api/transcribe/stream`, so the new websocket route has not been deployed to the Windows host.
+
+Implication:
+- Local implementation is validated by tests, but remote end-to-end live websocket validation is currently blocked by deployment drift, not by a reproduced protocol/runtime bug in the local code.

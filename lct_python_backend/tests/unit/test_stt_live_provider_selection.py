@@ -172,6 +172,27 @@ def test_resolve_live_stt_candidates_prefers_openai_before_remote_whisper_when_w
     assert candidates[0]["request_diarization"] is False
 
 
+def test_resolve_live_stt_candidates_adds_backend_ws_url_for_remote_whisper_primary():
+    candidates = resolve_live_stt_candidates(
+        settings={
+            "provider": "whisper",
+            "provider_http_urls": {
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "http_url": "http://100.81.65.74:7777/api/transcribe",
+            "local_only": False,
+            "live_cloud_fallback_enabled": False,
+            "live_require_diarization": True,
+            "live_allow_text_only_fallback": False,
+        },
+        provider_override="whisper",
+    )
+
+    assert candidates[0]["provider"] == "whisper"
+    assert candidates[0]["ws_url"] == "ws://100.81.65.74:7777/api/transcribe/stream"
+    assert candidates[0]["supports_realtime_streaming"] is True
+
+
 def test_build_live_stt_background_refinement_candidate_uses_separate_diarize_model():
     primary_candidate = {
         "provider": "openai_audio",
@@ -200,6 +221,24 @@ def test_build_live_stt_background_refinement_candidate_uses_separate_diarize_mo
     assert candidate["route_id"] == "openai_audio_diarize_background"
     assert candidate["model"] == "gpt-4o-transcribe-diarize"
     assert candidate["request_diarization"] is True
+
+
+def test_build_live_stt_background_refinement_candidate_uses_whisper_backend_for_live_whisper():
+    candidate = build_live_stt_background_refinement_candidate(
+        settings={"live_require_diarization": True},
+        primary_candidate={
+            "provider": "whisper",
+            "transport": "backend_http",
+            "http_url": "http://100.81.65.74:7777/api/transcribe",
+            "ws_url": "ws://100.81.65.74:7777/api/transcribe/stream",
+        },
+    )
+
+    assert candidate is not None
+    assert candidate["route_id"] == "whisper_diarize_background"
+    assert candidate["provider"] == "whisper"
+    assert candidate["request_diarization"] is True
+    assert candidate["supports_realtime_streaming"] is False
 
 
 def test_resolve_live_stt_candidates_supports_openai_override_as_primary():

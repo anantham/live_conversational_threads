@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional, Protocol
 
+from lct_python_backend.services.stt_backend_realtime import BackendRealtimeTranscriptionRuntime
 from lct_python_backend.services.stt_http_transcriber import RealtimeHttpSttSession
 from lct_python_backend.services.stt_openai_realtime import OpenAIRealtimeTranscriptionRuntime
 
@@ -140,6 +141,23 @@ def build_live_stt_runtime(
             api_key=str(primary_candidate.get("api_key") or "").strip(),
             model=str(primary_candidate.get("model") or model or "").strip(),
             base_url=str(primary_candidate.get("base_url") or primary_candidate.get("http_url") or "").strip(),
+            sample_rate_hz=sample_rate_hz,
+            timeout_seconds=timeout_seconds,
+            language=str(primary_candidate.get("language") or language or "").strip(),
+            session_id=session_id,
+            conversation_id=conversation_id,
+        )
+
+    if (
+        prefer_streaming
+        and primary_provider == "whisper"
+        and bool(primary_candidate.get("supports_realtime_streaming"))
+        and str(primary_candidate.get("ws_url") or "").strip()
+    ):
+        return BackendRealtimeTranscriptionRuntime(
+            provider=primary_provider,
+            ws_url=str(primary_candidate.get("ws_url") or "").strip(),
+            model=str(primary_candidate.get("model") or model or "").strip(),
             sample_rate_hz=sample_rate_hz,
             timeout_seconds=timeout_seconds,
             language=str(primary_candidate.get("language") or language or "").strip(),

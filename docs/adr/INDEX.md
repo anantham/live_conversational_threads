@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-04-03 (ADR-022 approved)
+Last updated: 2026-04-08 (ADR-023 approved)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -26,6 +26,7 @@ Last updated: 2026-04-03 (ADR-022 approved)
 | [ADR-020](ADR-020-session-scoped-openai-byok-for-stt-and-graph.md) | Session-Scoped OpenAI BYOK for Live/Import STT and Graph Generation | 2026-04-03 | Approved |
 | [ADR-021](ADR-021-browser-local-draft-recovery.md) | Browser-Local Draft Recovery for Interrupted Conversation Sessions | 2026-04-03 | Approved |
 | [ADR-022](ADR-022-checkpoint-aware-upload-retry-and-resume.md) | Checkpoint-Aware Upload Retry and Resume for Bulk Imports | 2026-04-03 | Approved |
+| [ADR-023](ADR-023-orchestrated-live-whisper-websocket-and-async-diarization.md) | Orchestrated Live Whisper Websocket and Async Diarization | 2026-04-08 | Approved |
 
 ## Status Definitions
 

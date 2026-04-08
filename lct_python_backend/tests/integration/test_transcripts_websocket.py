@@ -310,6 +310,154 @@ def test_transcripts_ws_accepts_streaming_runtime_events(monkeypatch):
     assert processor_calls["final"] == [("hello from realtime", None)]
 
 
+def test_transcripts_ws_backend_realtime_forces_audio_storage_and_schedules_file_refinement(monkeypatch):
+    persisted = []
+    processor_calls = {"final": [], "flush": 0}
+    file_refinement_calls = []
+
+    async def fake_persist(_session, _state, payload, event_type, text):
+        persisted.append((event_type, text, payload))
+
+    class DummyBackendRealtimeRuntime:
+        stt_mode = "backend_ws"
+        provider = "whisper"
+        transport = "backend_ws"
+        supports_diarization = False
+        model = "turbo"
+
+        def __init__(self, **kwargs):
+            self.sample_rate_hz = kwargs.get("sample_rate_hz", 16000)
+            self.timeout_seconds = kwargs.get("timeout_seconds", 30.0)
+            self._started = False
+
+        def is_ready(self):
+            return self._started
+
+        def get_last_runtime_metadata(self):
+            return {"provider": self.provider, "transport": self.transport}
+
+        async def start(self):
+            self._started = True
+
+        async def push_audio_chunk(self, _chunk):
+            return [
+                {
+                    "event_type": "final",
+                    "text": "hello from backend ws",
+                    "metadata": {
+                        "provider": self.provider,
+                        "transport": self.transport,
+                        "sample_rate_hz": 16000,
+                    },
+                }
+            ]
+
+        async def flush(self):
+            return []
+
+        async def close(self):
+            self._started = False
+
+    class DummyAudioStorage:
+        def __init__(self):
+            self.appended = []
+            self.finalized = []
+
+        async def append_chunk(self, conversation_id, chunk_bytes):
+            self.appended.append((conversation_id, bytes(chunk_bytes)))
+
+        async def finalize(self, conversation_id):
+            self.finalized.append(conversation_id)
+            return {
+                "wav_path": "/tmp/backend-live.wav",
+                "flac_path": None,
+                "bytes_written": sum(len(chunk) for _, chunk in self.appended),
+            }
+
+    client = build_test_client(
+        monkeypatch,
+        stt_settings={
+            "provider": "whisper",
+            "provider_http_urls": {
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "http_url": "http://100.81.65.74:7777/api/transcribe",
+            "local_only": False,
+            "live_cloud_fallback_enabled": False,
+            "live_require_diarization": True,
+            "live_allow_text_only_fallback": False,
+        },
+        processor_cls=build_processor_class(processor_calls),
+        runtime_factory=lambda **kwargs: DummyBackendRealtimeRuntime(**kwargs),
+        persist_side_effect=fake_persist,
+    )
+
+    import lct_python_backend.services.stt_ws_session as ws_mod
+    import lct_python_backend.stt_api as stt_api
+
+    dummy_audio_storage = DummyAudioStorage()
+    monkeypatch.setattr(stt_api, "audio_storage", dummy_audio_storage)
+
+    async def fake_run_file_backed_refinement(self, wav_path, source_text):
+        file_refinement_calls.append((wav_path, source_text, self.state.conversation_id))
+
+    monkeypatch.setattr(ws_mod.WsSessionContext, "_run_file_backed_refinement", fake_run_file_backed_refinement)
+
+    conversation_id = str(uuid.uuid4())
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": conversation_id,
+                "session_id": "session-backend-ws",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+        assert ack["type"] == "session_ack"
+        assert ack["stt_mode"] == "backend_ws"
+        assert ack["transport"] == "backend_ws"
+        assert ack["store_audio"] is True
+        assert ack["background_refinement"]["enabled"] is True
+        assert ack["background_refinement"]["provider"] == "whisper"
+
+        ws.send_json({"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.3)})
+        transcript_final = None
+        for _ in range(4):
+            next_message = ws.receive_json()
+            if next_message["type"] == "transcript_final":
+                transcript_final = next_message
+                break
+        assert transcript_final is not None
+        assert transcript_final["text"] == "hello from backend ws"
+
+        ws.send_json({"type": "final_flush"})
+        flush_ack = None
+        audio_ready = None
+        for _ in range(12):
+            next_message = ws.receive_json()
+            if next_message["type"] == "audio_ready":
+                audio_ready = next_message
+            if next_message["type"] == "flush_ack":
+                flush_ack = next_message
+            if audio_ready is not None and flush_ack is not None:
+                break
+        assert audio_ready is not None
+        assert audio_ready["audio_paths"]["wav_path"] == "/tmp/backend-live.wav"
+        assert flush_ack is not None
+        assert flush_ack["type"] == "flush_ack"
+
+    time.sleep(0.05)
+    assert dummy_audio_storage.finalized == [conversation_id]
+    assert file_refinement_calls == [
+        ("/tmp/backend-live.wav", "hello from backend ws", conversation_id)
+    ]
+    assert [event for event, *_rest in persisted] == ["final"]
+    assert processor_calls["final"] == [("hello from backend ws", None)]
+
+
 def test_transcripts_ws_session_meta_uses_byok_openai_candidate(monkeypatch):
     import lct_python_backend.services.byok_session_store as byok
 
