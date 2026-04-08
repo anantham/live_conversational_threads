@@ -2087,3 +2087,8 @@ Manual testing not run:
 
 Implication:
 - Local implementation is validated by tests, but remote end-to-end live websocket validation is currently blocked by deployment drift, not by a reproduced protocol/runtime bug in the local code.
+
+- Additional remote-launch findings from the same read-only SSH pass:
+  - Port `7777` is being served from the expected `TemporalCoordination\grimoire\IndrasNet` tree, not from a second hidden checkout. The process chain is parent `...\grimoire\IndrasNet\.venv\Scripts\python.exe agents/web_server.py` spawning child/listener `C:\Users\adity\anaconda3\python.exe agents/web_server.py`.
+  - Remote `agents/web_server.py` is just the thin compatibility stub that re-exports `grimoire.IndrasNet.agents.web_server`, and the local source for `agents/web_server/app.py` shows `uvicorn.run(... reload=dev_mode)`; the observed parent/child process chain is therefore consistent with a dev/reloader-style launch rather than a Windows service wrapper.
+  - The remote `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet` repo is on branch `main` at `92bcbeb` and is already dirty with many unrelated modifications, so the safe deployment plan is file-level sync plus restart, not a branch checkout or pull.
