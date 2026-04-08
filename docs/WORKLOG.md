@@ -2092,3 +2092,32 @@ Implication:
   - Port `7777` is being served from the expected `TemporalCoordination\grimoire\IndrasNet` tree, not from a second hidden checkout. The process chain is parent `...\grimoire\IndrasNet\.venv\Scripts\python.exe agents/web_server.py` spawning child/listener `C:\Users\adity\anaconda3\python.exe agents/web_server.py`.
   - Remote `agents/web_server.py` is just the thin compatibility stub that re-exports `grimoire.IndrasNet.agents.web_server`, and the local source for `agents/web_server/app.py` shows `uvicorn.run(... reload=dev_mode)`; the observed parent/child process chain is therefore consistent with a dev/reloader-style launch rather than a Windows service wrapper.
   - The remote `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet` repo is on branch `main` at `92bcbeb` and is already dirty with many unrelated modifications, so the safe deployment plan is file-level sync plus restart, not a branch checkout or pull.
+
+## 2026-04-09T03:10:00Z
+- Remote deploy / restart investigation against `100.81.65.74` after the local Option B work:
+  - Synced the committed `TemporalCoordination/grimoire/IndrasNet/agents/routes/transcription.py` websocket-proxy changes onto the Windows host and patched the live host copy of `TemporalCoordination/grimoire/IndrasNet/core/gpu_backends.py` to use the Python-3.9-safe `getattr(task, "cancelling", lambda: False)()` fallback check.
+  - Created remote safety backups before syncing:
+    - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\agents\routes\transcription.py.bak.20260408T205500Z`
+    - `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\core\gpu_backends.py.bak.20260408T205500Z`
+  - Restart attempts exposed a missing remote dependency: the host `.venv` lacked `websockets`, so the first clean launch failed until `websockets==15.0.1` was installed into `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\.venv`.
+- Root-cause investigation after deploy:
+  - Fresh launches of `python -m grimoire.IndrasNet.agents.web_server.app` on the remote Windows host reached `INFO:     Waiting for application startup.` but never reached `INFO:     Application startup complete.` and never opened a `LISTEN` socket on `7777`.
+  - `netstat` on the Windows host confirmed there was no `LISTENING` socket on `7777`; only localhost websocket probe clients were stuck in `SYN_SENT`.
+  - A minimal diagnostic launch with `PYTEST_CURRENT_TEST=1` and `PORT=7778` reached `Application startup complete.` and `Uvicorn running on http://0.0.0.0:7778`, proving the base ASGI app and new websocket route can boot when the test-skipped startup block is disabled.
+  - The isolating difference is the non-test startup block in `TemporalCoordination/grimoire/IndrasNet/agents/web_server/lifecycle.py`, especially agent autostart (`start_agent_process`) and worker/service startup. Evidence points most strongly at agent autostart on Windows: `TemporalCoordination/grimoire/IndrasNet/agents/web_server/agents.py` uses `multiprocessing.get_context("spawn")`, and the failed full-start stderr repeatedly warned that `grimoire.IndrasNet.agents.web_server.app` was found in `sys.modules` prior to execution during startup.
+  - `7778` was healthy on `127.0.0.1` from the Windows host, but timed out from the LCT machine; that suggests a separate external-access rule on nonstandard ports. This is secondary, because the real production blocker remains that `7777` never finishes booting.
+- Cleanup / safety:
+  - Stopped all temporary diagnostic listeners and localhost probe clients after the investigation and removed the stale remote `agents/state/web_server.pid`. Final verification showed no listeners remained on `7777` or `7778`.
+- Files updated in this repo to preserve the finding:
+  - `ISSUES.md`: logged the new blocking issue that full IndrasNet startup can hang before bind on Windows after agent autostart, including the `7778` minimal-boot evidence and the likely multiprocessing-spawn fault line.
+
+Validation / evidence captured:
+- Remote host local probe:
+  - `python -m grimoire.IndrasNet.agents.web_server.app` redirected logs showed `Started server process [...]` and `Waiting for application startup.` with no subsequent `Application startup complete.` on `7777`.
+  - Minimal launch with `PYTEST_CURRENT_TEST=1 PORT=7778` showed `Application startup complete.` and `Uvicorn running on http://0.0.0.0:7778`.
+- Network probes:
+  - `netstat -ano | findstr :7777` on the remote host showed no `LISTENING` socket during the failed full-start state.
+  - `netstat -ano | findstr :7778` on the remote host showed `127.0.0.1:7778 LISTENING` during the minimal diagnostic launch.
+
+Manual testing not run:
+- No full end-to-end LCT live session was completed against the remote websocket route because the production `7777` IndrasNet boot sequence does not currently reach a listening state after full startup.
