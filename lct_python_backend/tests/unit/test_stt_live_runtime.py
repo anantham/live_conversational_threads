@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from lct_python_backend.services.stt_backend_realtime import BackendRealtimeTranscriptionRuntime
 from lct_python_backend.services.stt_live_runtime import (
     HttpLiveSttRuntime,
     build_live_stt_runtime,
@@ -91,6 +92,36 @@ def test_build_live_stt_runtime_uses_http_runtime_when_streaming_disabled():
 
     assert isinstance(runtime, HttpLiveSttRuntime)
     assert runtime.transport == "openai_audio"
+
+
+def test_build_live_stt_runtime_prefers_backend_realtime_for_whisper_streaming_candidate():
+    runtime = build_live_stt_runtime(
+        provider="whisper",
+        http_url="http://100.81.65.74:7777/api/transcribe",
+        sample_rate_hz=16000,
+        chunk_seconds=1.2,
+        timeout_seconds=30.0,
+        model="large-v3",
+        language="en",
+        candidates=[
+            {
+                "provider": "whisper",
+                "transport": "backend_http",
+                "http_url": "http://100.81.65.74:7777/api/transcribe",
+                "ws_url": "ws://100.81.65.74:7777/api/transcribe/stream",
+                "model": "large-v3",
+                "supports_diarization": True,
+                "supports_realtime_streaming": True,
+                "request_diarization": True,
+            }
+        ],
+        session_id="session-1",
+        conversation_id="conversation-1",
+        prefer_streaming=True,
+    )
+
+    assert isinstance(runtime, BackendRealtimeTranscriptionRuntime)
+    assert runtime.transport == "backend_ws"
 
 
 def test_resample_pcm16_mono_upsamples_to_24khz():
@@ -212,3 +243,49 @@ async def test_openai_realtime_runtime_emits_partial_and_final_events_from_serve
     assert events[1]["metadata"]["sample_rate_hz"] == DEFAULT_OPENAI_REALTIME_SAMPLE_RATE_HZ
     assert events[1]["timestamps"] == {"start": 0.0, "end": 0.01}
     assert isinstance(events[1]["_wav_payload"], (bytes, bytearray))
+
+
+@pytest.mark.asyncio
+async def test_backend_realtime_runtime_start_and_event_mapping(monkeypatch):
+    runtime = BackendRealtimeTranscriptionRuntime(
+        provider="whisper",
+        ws_url="ws://100.81.65.74:7777/api/transcribe/stream",
+        model="turbo",
+        sample_rate_hz=16000,
+        language="en",
+        session_id="session-1",
+        conversation_id="conversation-1",
+    )
+    dummy_socket = _DummyRealtimeSocket()
+
+    async def fake_connect(*args, **kwargs):
+        return dummy_socket
+
+    async def fake_receiver_loop():
+        await runtime._handle_server_event(
+            {
+                "type": "ready",
+                "model": "turbo",
+                "sample_rate": 16000,
+                "chunk_seconds": 1.0,
+            }
+        )
+
+    monkeypatch.setattr("lct_python_backend.services.stt_backend_realtime.websockets.connect", fake_connect)
+    monkeypatch.setattr(runtime, "_receiver_loop", fake_receiver_loop)
+
+    await runtime.start()
+    await runtime._handle_server_event({"type": "transcript", "text": "hello", "is_final": False})
+    await runtime._handle_server_event({"type": "transcript", "text": "hello world", "is_final": True})
+
+    payload = json.loads(dummy_socket.sent_payloads[0])
+    assert payload == {"type": "config", "language": "en"}
+
+    events = runtime._drain_events_nowait()
+    assert events[0]["event_type"] == "partial"
+    assert events[0]["text"] == "hello"
+    assert events[1]["event_type"] == "final"
+    assert events[1]["text"] == "hello world"
+    assert events[1]["metadata"]["transport"] == "backend_ws"
+
+    await runtime.close()

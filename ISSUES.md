@@ -1,6 +1,6 @@
 # ISSUES
 
-Last updated: 2026-04-03
+Last updated: 2026-04-08
 
 ## Runtime Blockers (2026-02-10)
 - Live/import LLM routing mismatch (confirmed 2026-04-03): import graph generation loads `llm_providers` and can honor the saved provider list, but `/ws/transcripts` only loads `llm_config` and constructs `TranscriptProcessor` without `providers`, so live graph generation silently falls back to `get_default_providers()` from `llm_config.py` instead of the saved provider order/credentials. Impact: live and import can use different LLM backends under the same visible settings, and any serious LLM BYOK implementation must fix the live seam first. Recommended next step: thread runtime provider lists into `WsSessionContext` and standardize runtime LLM overlay behavior across live + import.
@@ -80,11 +80,31 @@ Last updated: 2026-04-03
 - Blocker status: blocking public backend deployment and therefore blocking Vercel frontend cutover.
 - Recommended next step: open inbound `80/tcp` and `443/tcp` (and keep `22/tcp`) in the VPS provider firewall / AWS security group, then re-run the public smoke test and allow Caddy to obtain the certificate.
 
+## STT Orchestrator Findings (2026-04-08)
+
+### Remote IndrasNet `/api/transcribe` route returns 500 after coordinator timeout
+- Reproduced against the active Windows/Tailscale orchestrator at `http://100.81.65.74:7777/api/transcribe` with a short local sample posted from the LCT machine.
+- Observed behavior: request spends about `10s` in the orchestrator path and returns `500 {"error":"'_asyncio.Task' object has no attribute 'cancelling'"}` instead of falling back cleanly.
+- Root cause in remote orchestrator code: `core/gpu_backends.py:818-823` calls `asyncio.current_task().cancelling()` directly inside the `except asyncio.CancelledError` fallback path. That method exists on Python 3.11+, but the active Windows environment appears to be older (`_asyncio.Task` without `cancelling()`), so the fallback path itself crashes.
+- Impact: live and upload callers using the `7777` route can hard-fail instead of degrading to Modal WhisperX when the local GPU slot is busy.
+- Recommended next step: patch the remote orchestrator to use the same Python-3.9-safe pattern already present in `core/llm.py` (`getattr(task, "cancelling", lambda: False)()`), then re-test the `7777` path under load.
+
+### Coordinator priority does not forcibly interrupt in-flight WhisperX work
+- `agents/routes/transcription.py:75-84` already submits LCT requests at `priority=0` (`CRITICAL`), so there is no higher-priority knob available today for live transcription callers.
+- The GPU coordinator can signal preemption (`core/gpu_coordinator.py:233-247`), but the active single-file WhisperX route in `core/gpu_backends.py:797-807` awaits one long HTTP call to `localhost:8001` and only inspects `task.preempt_signal.is_set()` after that call returns.
+- Result: a CRITICAL live request can jump the queue for the next slot, but it does not forcibly stop an already-running background WhisperX transcription unless that background workflow is chunked/cooperative. Some reprocessing flows are cooperative (`core/reprocessing/audio.py:221-383`), but the direct `/api/transcribe` path is not.
+- Impact: priority helps only at chunk boundaries or between jobs; it does not solve long in-flight background transcriptions monopolizing WhisperX.
+- Recommended next step: either route live STT directly to the WhisperX server/streaming path, or make background WhisperX consumers chunked/cooperative so they can yield quickly to CRITICAL live requests.
+
 ## Developer Warnings (2026-02-14)
 - `lct_app/src/components/ContextualGraph.jsx` and `lct_app/src/components/StructuralGraph.jsx` still emit preexisting `react-hooks/exhaustive-deps` warnings in local lint runs. These do not block runtime but create noisy CI/dev output and should be addressed in a dedicated cleanup PR to avoid mixing legacy graph refactors with the minimal-live-ui scope.
 - Frontend production build still emits chunk-size warning (`dist/assets/index-*.js` > 500 kB). This is preexisting technical debt and not introduced by the bulk-upload patch; track for a separate code-splitting pass.
 - Runtime settings still lack a unified cross-service readiness model. STT cloud fallback providers now support backend-backed `Save & Test`, but Gemini online credentials, embeddings credentials, and broader runtime confidence/benchmark states are still env-driven or probe-limited.
 - Repo-wide `npm run lint` is currently red from a large preexisting ESLint backlog across unrelated UI files (`playwright.config.js`, thematic/formalism/export helpers, older graph components, analysis pages, etc.). New runtime-settings work can be linted file-by-file, but full frontend lint is not yet a reliable validation gate until that backlog is cleaned up.
+- Remote STT topology documentation remains partially stale: `docs/HANDOVER.md` was corrected on 2026-04-08 after verifying the active `TemporalCoordination/grimoire/IndrasNet` orchestrator on `100.81.65.74`, but backend comments in `lct_python_backend/import_api.py` still describe the WhisperX route as `127.0.0.1:7777` / "local WhisperX". Keep repo docs and comments aligned with the verified Tailscale endpoint `http://100.81.65.74:7777/api/transcribe`.
+- Validation on 2026-04-08 after the local Option B implementation found a deployment gap on the remote Windows host: `POST http://100.81.65.74:7777/api/transcribe` now succeeds again, but a 2.75s speech sample still took `29.9s` end-to-end and returned `_backend=local_whisperx`, which is too slow for live use.
+- The new websocket route is not live on the remote host yet: `ws://100.81.65.74:7777/api/transcribe/stream` rejects the websocket handshake with plain `HTTP 200` HTML, and a read-only remote file check showed `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination\grimoire\IndrasNet\agents\routes\transcription.py` does not yet contain `/api/transcribe/stream`. The listening Python process on port `7777` started at `2026-04-06T15:30:25.753Z`, so the remote service is still serving stale code relative to the local repo changes.
+- Recommended next step: sync/deploy the IndrasNet `agents/routes/transcription.py` websocket proxy changes to the remote host and restart the `7777` service before judging the live websocket path. After deployment, re-run the websocket smoke test and measure time-to-ready / time-to-final against the same sample.
 
 ## Resolved (2026-02-13)
 - Alembic DAG/startup blocker resolved:

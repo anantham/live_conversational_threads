@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from lct_python_backend.services.coercion_helpers import coerce_str, to_bool
 from lct_python_backend.services.stt_config import (
@@ -28,6 +28,27 @@ def _is_local_http_url(raw_url: str) -> bool:
     if host in {"localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal"}:
         return True
     return host.endswith(".local")
+
+
+def _build_backend_ws_url(raw_url: str) -> str:
+    if not raw_url:
+        return ""
+    try:
+        parsed = urlparse(raw_url)
+    except ValueError:
+        return ""
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+
+    scheme = "wss" if parsed.scheme == "https" else "ws"
+    path = parsed.path.rstrip("/")
+    if path.endswith("/api/transcribe"):
+        ws_path = f"{path}/stream"
+    elif path.endswith("/v1/audio/transcriptions"):
+        ws_path = f"{path[:-len('/v1/audio/transcriptions')]}/v1/audio/stream"
+    else:
+        return ""
+    return urlunparse((scheme, parsed.netloc, ws_path, "", parsed.query, ""))
 
 
 def resolve_live_stt_candidates(
@@ -88,6 +109,11 @@ def resolve_live_stt_candidates(
         "supports_diarization": selected_provider == "whisper",
         "degraded": False,
     }
+    if selected_provider == "whisper":
+        primary_ws_url = _build_backend_ws_url(configured_http_url)
+        if primary_ws_url:
+            primary_candidate["ws_url"] = primary_ws_url
+            primary_candidate["supports_realtime_streaming"] = True
 
     if local_only:
         add_candidate(primary_candidate)
@@ -97,7 +123,7 @@ def resolve_live_stt_candidates(
 
     whisper_http_url = coerce_str(provider_http_map.get("whisper"))
     if selected_provider != "whisper" and whisper_http_url and not _is_local_http_url(whisper_http_url):
-        fallback_candidates["remote_whisper"] = {
+        remote_whisper_candidate = {
             "route_id": "remote_whisper",
             "provider": "whisper",
             "transport": "backend_http",
@@ -106,6 +132,11 @@ def resolve_live_stt_candidates(
             "supports_diarization": True,
             "degraded": False,
         }
+        remote_ws_url = _build_backend_ws_url(whisper_http_url)
+        if remote_ws_url:
+            remote_whisper_candidate["ws_url"] = remote_ws_url
+            remote_whisper_candidate["supports_realtime_streaming"] = True
+        fallback_candidates["remote_whisper"] = remote_whisper_candidate
 
     if external_fallback_http_url:
         fallback_candidates["external_http"] = {
@@ -215,9 +246,22 @@ def build_live_stt_background_refinement_candidate(
     candidate = primary_candidate if isinstance(primary_candidate, dict) else {}
     primary_provider = coerce_str(candidate.get("provider")).lower()
     primary_transport = coerce_str(candidate.get("transport")).lower()
-    if primary_provider != "openai_audio" or primary_transport != "openai_audio":
-        return None
+    primary_http_url = coerce_str(candidate.get("http_url"))
     if not to_bool(settings.get("live_require_diarization"), True):
+        return None
+    if primary_provider != "openai_audio" or primary_transport != "openai_audio":
+        if primary_provider == "whisper" and primary_http_url:
+            return {
+                "route_id": "whisper_diarize_background",
+                "provider": "whisper",
+                "transport": "backend_http",
+                "http_url": primary_http_url,
+                "reason": "background_whisper_diarize",
+                "supports_diarization": True,
+                "supports_realtime_streaming": False,
+                "degraded": False,
+                "request_diarization": True,
+            }
         return None
 
     cloud_providers = (
