@@ -2121,3 +2121,21 @@ Validation / evidence captured:
 
 Manual testing not run:
 - No full end-to-end LCT live session was completed against the remote websocket route because the production `7777` IndrasNet boot sequence does not currently reach a listening state after full startup.
+
+## 2026-04-09T03:18:00Z
+- `TemporalCoordination/grimoire/IndrasNet/agents/web_server/lifecycle.py` (lines 38-40, 116-197): added explicit startup env gates for agent autostart, service autostart, and background workers so remote Windows boot could be isolated without changing normal behavior. This was committed in the sibling repo as `3a90cf2 fix(web-server): add startup env gates for boot isolation`.
+- `TemporalCoordination/grimoire/IndrasNet/agents/routes/transcription.py` (lines 49-63): patched the WhisperX realtime proxy URL builder to normalize `localhost` to `127.0.0.1` for websocket upstream connections on Windows. This was committed in the sibling repo as `3a999b1 fix(transcription): use IPv4 loopback for whisperx stream proxy`.
+- Remote validation findings against `100.81.65.74`:
+  - Tailscale transport is not the blocker. While the remote server was alive, `curl -I http://100.81.65.74:7777/` returned `405`, raw TCP connect to `100.81.65.74:7777` succeeded in about `0.28s`, and websocket handshakes to `ws://100.81.65.74:7777/ws` and `ws://100.81.65.74:7777/api/transcribe/stream` succeeded.
+  - The earlier proxy failure was inside IndrasNet itself: on the Windows host, `ws://127.0.0.1:8001/v1/audio/stream` succeeded immediately, but `ws://localhost:8001/v1/audio/stream` consistently timed out during opening handshake. That precisely matched the failure captured in `agents/routes/transcription.py` before the loopback fix.
+  - After the `127.0.0.1` proxy fix, end-to-end stream validation from LCT through `ws://100.81.65.74:7777/api/transcribe/stream` succeeded using `/tmp/lct_live_validation.wav`:
+    - first run: `ready` at `4.104s`, partial transcript at `6.877s`, final transcript at `7.385s`, `done` at `7.633s`
+    - second warm run: `ready` at `6.756s`, partial transcript at `9.305s`, final transcript at `10.035s`, `done` at `10.29s`
+    - returned text was split across events as expected for the current `2.0s` upstream chunking: `"Hello from live conversation threads."` then final `"validation."`
+  - Relative comparison: the old HTTP path on the same sample took about `29.9s`, so the websocket path is materially better, though still above the original `<2s perceived latency` target.
+- Interpretation:
+  - Tailscale streaming works.
+  - The websocket proxy route now works.
+  - The remaining latency issue is upstream session readiness / model-stream startup and `2.0s` chunking, not transport.
+- Operational caveat still unresolved:
+  - Foreground remote launches are stable enough for validation, but earlier detached SSH-launched processes did not remain reliably reachable. A durable Windows service/scheduled-task launch path for IndrasNet is still not established in this work session.
