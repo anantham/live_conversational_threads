@@ -94,6 +94,17 @@ Last updated: 2026-04-08
 - Blocker status: blocking remote end-to-end validation of the orchestrated live websocket path.
 - Recommended next step: make agent autostart deferrable or disable it during web-server boot on Windows, then confirm `7777` reaches `Application startup complete.` before re-testing `/api/transcribe/stream`. The lowest-risk diagnostic patch is an explicit env flag to skip only agent autostart (not the whole lifespan), which should confirm whether `start_agent_process(...)` is the true blocker.
 
+### WhisperX websocket proxy on Windows must use `127.0.0.1`, not `localhost`
+- During live validation on 2026-04-09, the Tailscale path itself was proven healthy: raw TCP, HTTP, and websocket handshakes to `100.81.65.74:7777` all worked while the remote IndrasNet server was alive.
+- The remaining realtime-stream failure came from the orchestrator proxy's upstream hop. On the Windows host:
+  - `http://127.0.0.1:8001/health` returned healthy status
+  - `ws://127.0.0.1:8001/v1/audio/stream` connected successfully
+  - `ws://localhost:8001/v1/audio/stream` timed out during opening handshake
+- Root cause: the websocket proxy in `TemporalCoordination/grimoire/IndrasNet/agents/routes/transcription.py` built its upstream URL from the WhisperX HTTP base URL and preserved `localhost` in the netloc. On this Windows host, the realtime websocket server is reachable via IPv4 loopback but not via `localhost`.
+- Impact: clients could connect to `/api/transcribe/stream` over Tailscale, but the proxy immediately failed when it tried to reach WhisperX upstream, so no transcripts were produced.
+- Status: fixed in sibling repo commit `3a999b1 fix(transcription): use IPv4 loopback for whisperx stream proxy`.
+- Validation: after the fix, end-to-end websocket transcription through `ws://100.81.65.74:7777/api/transcribe/stream` succeeded from the LCT machine, reducing the sample turnaround from about `29.9s` on the old HTTP path to about `7.6s` on the first streamed run.
+
 ### Remote IndrasNet `/api/transcribe` route returns 500 after coordinator timeout
 - Reproduced against the active Windows/Tailscale orchestrator at `http://100.81.65.74:7777/api/transcribe` with a short local sample posted from the LCT machine.
 - Observed behavior: request spends about `10s` in the orchestrator path and returns `500 {"error":"'_asyncio.Task' object has no attribute 'cancelling'"}` instead of falling back cleanly.
