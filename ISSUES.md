@@ -82,6 +82,18 @@ Last updated: 2026-04-08
 
 ## STT Orchestrator Findings (2026-04-08)
 
+### Full IndrasNet startup can hang before port bind on Windows after agent autostart
+- After surgically syncing the remote `agents/routes/transcription.py` websocket route and the Python-compat fallback fix to `100.81.65.74`, a controlled restart of the Windows `7777` web server no longer produced the old stale-HTML behavior, but the server still failed to accept traffic.
+- Evidence from redirected remote startup logs:
+  - `python -m grimoire.IndrasNet.agents.web_server.app` on port `7777` logs `Started server process [...]` and `Waiting for application startup.`, then never reaches `Application startup complete.` and never opens a `LISTEN` socket on `7777`.
+  - The same app started with `PYTEST_CURRENT_TEST=1` and `PORT=7778` reaches `Application startup complete.` and `Uvicorn running on http://0.0.0.0:7778`, proving the base FastAPI app and the new websocket route can boot when the test-skipped startup block is disabled.
+- The isolating difference is the lifespan block guarded by `if not os.getenv("PYTEST_CURRENT_TEST")` in `TemporalCoordination/grimoire/IndrasNet/agents/web_server/lifecycle.py`, which auto-starts agents/services and schedules background workers.
+- Most likely root cause: Windows multiprocessing spawn during agent autostart. `TemporalCoordination/grimoire/IndrasNet/agents/web_server/agents.py` starts `beeper` / `obsidian` / `meet` via `multiprocessing.get_context("spawn")` during web-server startup; on the affected host, that path repeatedly imports `grimoire.IndrasNet.agents.web_server.app` (matching the repeated `runpy` warnings in stderr) and appears to prevent the parent Uvicorn process from completing startup/binding `7777`.
+- Secondary observation: the temporary healthy diagnostic listener on `7778` was reachable on `127.0.0.1` from the Windows host, but timed out from the LCT machine over Tailscale. That suggests a separate external-access/firewall policy on nonstandard ports, but it is not the primary blocker for the real `7777` route.
+- Impact: even with the websocket route deployed, the production `7777` web server can fail before bind, leaving LCT unable to reach either `/api/transcribe` or `/api/transcribe/stream`.
+- Blocker status: blocking remote end-to-end validation of the orchestrated live websocket path.
+- Recommended next step: make agent autostart deferrable or disable it during web-server boot on Windows, then confirm `7777` reaches `Application startup complete.` before re-testing `/api/transcribe/stream`. The lowest-risk diagnostic patch is an explicit env flag to skip only agent autostart (not the whole lifespan), which should confirm whether `start_agent_process(...)` is the true blocker.
+
 ### Remote IndrasNet `/api/transcribe` route returns 500 after coordinator timeout
 - Reproduced against the active Windows/Tailscale orchestrator at `http://100.81.65.74:7777/api/transcribe` with a short local sample posted from the LCT machine.
 - Observed behavior: request spends about `10s` in the orchestrator path and returns `500 {"error":"'_asyncio.Task' object has no attribute 'cancelling'"}` instead of falling back cleanly.
