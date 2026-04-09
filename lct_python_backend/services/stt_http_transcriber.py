@@ -1073,6 +1073,11 @@ class RealtimeHttpSttSession:
         http_url = str(candidate.get("http_url") or "").strip()
         language = str(candidate.get("language") or self.language or "").strip()
         request_diarization = bool(candidate.get("request_diarization", True))
+        
+        # OpenAI supports streaming for already completed audio recordings.
+        # This is useful for low-latency feedback even for chunks.
+        should_stream = model in {"gpt-4o-mini-transcribe", "gpt-4o-transcribe"} and not request_diarization
+        
         response_format = "diarized_json" if request_diarization else "json"
         form_data = {
             "model": model,
@@ -1082,17 +1087,47 @@ class RealtimeHttpSttSession:
             form_data["chunking_strategy"] = "auto"
         if language:
             form_data["language"] = language
+        if should_stream:
+            form_data["stream"] = "true"
+            
         headers = {"Authorization": f"Bearer {api_key}"}
 
         if TRACE_API_CALLS:
             logger.info(
-                "[STT OpenAI] POST %s model=%s wav_bytes=%s response_format=%s language=%s",
+                "[STT OpenAI] POST %s model=%s wav_bytes=%s response_format=%s language=%s stream=%s",
                 http_url,
                 model or "-",
                 len(wav_payload),
                 response_format,
                 language or "-",
+                should_stream,
             )
+
+        if should_stream:
+            # Use request directly to handle streaming response
+            full_text = ""
+            async with client.stream(
+                "POST",
+                http_url,
+                headers=headers,
+                data=form_data,
+                files={"file": ("chunk.wav", wav_payload, "audio/wav")},
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[len("data: "):].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk_payload = json.loads(data_str)
+                        text_part = extract_transcript_text(chunk_payload)
+                        if text_part:
+                            full_text += text_part
+                    except json.JSONDecodeError:
+                        continue
+            return full_text, None, False
 
         response = await client.post(
             http_url,

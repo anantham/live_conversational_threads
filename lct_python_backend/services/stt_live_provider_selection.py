@@ -234,21 +234,12 @@ def build_live_stt_background_refinement_candidate(
     primary_provider = coerce_str(candidate.get("provider")).lower()
     primary_transport = coerce_str(candidate.get("transport")).lower()
     primary_http_url = coerce_str(candidate.get("http_url"))
-    if not to_bool(settings.get("live_require_diarization"), True):
+    
+    # If primary is already diarizing, we don't need a separate background refinement loop
+    if primary_provider == "whisper" and primary_http_url and to_bool(settings.get("live_require_diarization"), True):
         return None
-    if primary_provider != "openai_audio" or primary_transport != "openai_audio":
-        if primary_provider == "whisper" and primary_http_url:
-            return {
-                "route_id": "whisper_diarize_background",
-                "provider": "whisper",
-                "transport": "backend_http",
-                "http_url": primary_http_url,
-                "reason": "background_whisper_diarize",
-                "supports_diarization": True,
-                "supports_realtime_streaming": False,
-                "degraded": False,
-                "request_diarization": True,
-            }
+        
+    if primary_provider == "openai_audio" and primary_transport == "openai_audio" and to_bool(settings.get("live_require_diarization"), True):
         return None
 
     cloud_providers = (
