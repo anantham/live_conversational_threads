@@ -1,6 +1,6 @@
 # ISSUES
 
-Last updated: 2026-04-08
+Last updated: 2026-04-09
 
 ## Runtime Blockers (2026-02-10)
 - Live/import LLM routing mismatch (confirmed 2026-04-03): import graph generation loads `llm_providers` and can honor the saved provider list, but `/ws/transcripts` only loads `llm_config` and constructs `TranscriptProcessor` without `providers`, so live graph generation silently falls back to `get_default_providers()` from `llm_config.py` instead of the saved provider order/credentials. Impact: live and import can use different LLM backends under the same visible settings, and any serious LLM BYOK implementation must fix the live seam first. Recommended next step: thread runtime provider lists into `WsSessionContext` and standardize runtime LLM overlay behavior across live + import.
@@ -28,6 +28,13 @@ Last updated: 2026-04-08
 
 ## Validation & Testability (2026-04-03)
 - Optional dependency import-coupling in backend module graph (confirmed 2026-04-03): importing `import_api` or `transcript_processing` in focused tests currently requires `google-genai`, `pydub`, and `pdfplumber` to be installed because optional LLM/media/parser integrations are imported eagerly at module load time. Impact: unit/integration tests on lean dev environments fail during collection before exercising actual behavior, which hides logic regressions behind workstation setup. Recommended next step: lazy-import optional integrations in production modules or centralize shared stubs in `conftest.py` / test helpers instead of duplicating them per test file.
+
+## Sibling Repo UI Validation Debt (2026-04-09)
+- `TemporalCoordination/grimoire/IndrasNet/indras-ui` does not currently offer a clean whole-app TypeScript build signal. `npm run build` hits two kinds of preexisting failure:
+  - sandbox-unfriendly writes to `node_modules/.tmp/*.tsbuildinfo`
+  - broad unrelated TS errors in untouched files under `_drafts`, `database-viewer`, `media-router`, `DesignPlayground`, and other UI modules
+- Impact: non-blocking for the new GPU priority policy feature itself, but blocking for high-confidence frontend validation on future IndrasNet UI work until the baseline is cleaned up or a narrower CI target is introduced.
+- Recommended next step: add a targeted UI validation command for production surfaces only, or reduce the existing `indras-ui` TS error floor so feature work can use full `npm run build` as a meaningful signal again.
 
 ## Frontend Persistence / Autosave (2026-04-03)
 

@@ -2139,3 +2139,26 @@ Manual testing not run:
   - The remaining latency issue is upstream session readiness / model-stream startup and `2.0s` chunking, not transport.
 - Operational caveat still unresolved:
   - Foreground remote launches are stable enough for validation, but earlier detached SSH-launched processes did not remain reliably reachable. A durable Windows service/scheduled-task launch path for IndrasNet is still not established in this work session.
+
+## 2026-04-09T01:41:01Z
+- Implemented IndrasNet GPU priority policy controls in the sibling repo `TemporalCoordination/grimoire/IndrasNet` so scheduler intent is visible in UI instead of being hidden in call-site literals.
+- Backend policy + scheduler changes:
+  - `core/gpu_priority_policy.py` (new, lines 1-110): added a shared settings-backed workflow policy helper for `live_stt`, `retrieval`, `local_llm`, `local_vision`, `batch_transcription`, and `diarization`, including override resolution and the `live_stt_hard_preempt_enabled` guard.
+  - `core/gpu_coordinator.py` (lines 33-37, 89-92, 236-276, 294-298, 382-396): added task-handle tracking, live-STT-only hard-preempt checks, cancellation of lower-priority active tasks, and GPU status reporting for hard-preempt enablement / in-flight cancellation state.
+  - `core/llm.py` (lines 42, 631-639): changed implicit local LLM / vision priority inference to use the shared workflow policy instead of hardcoded critical/urgent context heuristics.
+  - `core/obsidian_fetch.py` (lines 482-491) and `services/unified_retrieval/service.py` (lines 15, 197, 248-249): moved retrieval off hardcoded `CRITICAL` and onto the operator-configurable retrieval workflow policy.
+  - `agents/routes/transcription.py` (lines 43, 130-137, 163-168): wired batch uploads to `batch_transcription` policy and live websocket transcription to `live_stt` policy.
+  - `agents/routes/settings.py` (lines 30-37, 238-264): validated persisted priority defaults/overrides and normalized the `live_stt_hard_preempt_enabled` boolean at save time.
+- Indras UI changes:
+  - `indras-ui/src/settings/types.ts` (lines 19-34) and `indras-ui/src/settings/constants.ts` (lines 29-52): added scheduler policy fields and priority option constants.
+  - `indras-ui/src/settings/sections/GpuPriorityPolicySection.tsx` (new, lines 1-98), `indras-ui/src/settings/sections/index.ts` (line 12), and `indras-ui/src/Settings.tsx` (lines 15, 160-164): added a Settings surface for stable workflow priority defaults plus the live-STT hard-preempt toggle.
+  - `indras-ui/src/agent-control/sections/GpuPriorityOverridesSection.tsx` (new, lines 1-94), `indras-ui/src/agent-control/sections/index.ts` (lines 23-24), and `indras-ui/src/AgentControl.tsx` (lines 46, 102-104, 162-199, 374, 619-639, 726-733): added Agent Control visibility + overrides for current effective workflow priority so operators can temporarily accelerate a workflow in the runtime UI.
+  - `indras-ui/src/agent-control/sections/GpuMonitorSection.tsx` (lines 97-104, 121-125, 137) and `indras-ui/src/agent-control/types.ts` (lines 118-126): surfaced live hard-preempt state and active-task cancellation badges in the GPU monitor.
+- Documentation:
+  - `docs/adr/ADR-024-indrasnet-gpu-priority-policy-and-live-stt-hard-preemption.md` (new): recorded the policy split between Settings defaults, Agent Control overrides, and live-STT-only hard preemption.
+  - `docs/adr/INDEX.md` (lines 1-28): added ADR-024 to the index.
+  - `docs/TECH_DEBT.md` (rows added near end): logged sibling-repo large-file follow-ups for `core/llm.py`, `agents/routes/settings.py`, and `indras-ui/src/AgentControl.tsx`.
+- Validation:
+  - `PYTHONPYCACHEPREFIX=/tmp/codex_pycache python3 -m py_compile .../core/gpu_priority_policy.py .../core/gpu_coordinator.py .../core/llm.py .../core/obsidian_fetch.py .../services/unified_retrieval/service.py .../agents/routes/settings.py .../agents/routes/transcription.py` (passed).
+  - `npm run build` in `TemporalCoordination/grimoire/IndrasNet/indras-ui` did not provide a clean signal because the repo already has broad preexisting TypeScript failures in untouched `_drafts`, database-viewer, media-router, and other files, plus sandbox-denied writes to `node_modules/.tmp`.
+  - `npx eslint` on the touched UI files still reports preexisting unused-import issues in `indras-ui/src/AgentControl.tsx`; the newly added scheduler sections themselves did not surface distinct lint failures beyond that existing file-level debt.

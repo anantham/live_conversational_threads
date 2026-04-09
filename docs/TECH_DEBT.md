@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-04-08
+Last updated: 2026-04-09
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -54,5 +54,8 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | ~~lct_python_backend/instrumentation/decorators.py~~ | ~~423~~ → 265 | **RESOLVED** — Extracted response parsing + DB mapping into helper modules and reduced `decorators.py` to wrapper-focused behavior. |
 | ~~lct_python_backend/instrumentation/aggregation.py~~ | ~~466~~ → 213 | **RESOLVED** — Split query execution, rollup math, and reporting into `cost_queries.py`, `cost_rollups.py`, and `cost_reporting.py`. |
 | lct_python_backend/instrumentation/alerts.py | 373 | Alert rule definitions, evaluation engine, and channel handlers all live in one module | Split into `alert_rules.py`, `alert_manager.py`, and `alert_handlers.py` |
+| ../TemporalCoordination/grimoire/IndrasNet/core/llm.py | 1147 | Local/provider routing, budget/privacy gates, GPU coordinator integration, telemetry, fallback semantics, and now workflow-priority policy inference still share one module | Extract workflow-priority resolution into a smaller policy adapter or `llm_priority.py`; keep `llm.py` focused on provider orchestration |
+| ../TemporalCoordination/grimoire/IndrasNet/agents/routes/settings.py | 598 | Generic settings CRUD, retrieval rebuild controls, AI model discovery, online-mode controls, and now GPU priority validation all live in one router module | Split into `settings_general.py`, `settings_ai.py`, and `settings_scheduler.py`; keep `/api/settings` validation rules modular |
+| ../TemporalCoordination/grimoire/IndrasNet/indras-ui/src/AgentControl.tsx | 755 | Service health, start/stop controls, polling, GPU monitor composition, and now workflow priority override orchestration all live in one component | Extract priority override fetching/mutations into a `useGpuPriorityOverrides` hook and keep `AgentControl.tsx` as layout/composition only |
 | ~~lct_python_backend/bookmarks_api.py~~ | ~~470~~ → 204 | **RESOLVED** — Extracted `bookmark_service.py` (155 LOC) with CRUD ops, serializer (eliminated 5× duplication), and UUID helper. Router is now a thin adapter. |
 | ~~lct_python_backend/cost_api.py~~ | ~~344~~ → 338 | **RESOLVED** — Already a thin router delegating to instrumentation layer. Fixed `get_db()` stub to use `get_async_session`. No structural decomposition needed. |
