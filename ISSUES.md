@@ -177,6 +177,10 @@ Last updated: 2026-04-09
 - Clicking a node in timeline should sync focus/scope in the top view.
 - Horizontal scrolling should be easy/smooth.
 
+## Infrastructure / Runtime Drift
+- IndrasNet Windows Scheduled Task `\IndrasNet-WebServer` was previously bypassed by a manual debug launcher `C:\Users\adity\run_web_server_skip_agents.ps1` that forced `INDRAS_SKIP_AGENT_AUTOSTART=1`; this disabled Beeper/Meet/Obsidian autostarts even though DB autostart settings were enabled. Status: mitigated in ops by repointing the task to the repo-owned `scripts/start_web_server_task.cmd` wrapper, but the historical drift explains earlier missing-ingestion incidents.
+- The healthy scheduled-task launch still results in a two-step Python chain (`.venv\Scripts\python.exe` parent spawning `C:\Users\adity\anaconda3\python.exe -m grimoire.IndrasNet.agents.web_server.app`) and repeated `runpy` warnings. Impact: currently non-blocking because `7777` binds and agents autostart, but startup behavior remains harder to reason about. Recommended next step: trace why the app re-enters through `anaconda3\python.exe` and whether a single-interpreter launch path is possible.
+
 ## Priorities & Scope
 - Focus first on core transcript viewing/search/retrieval and navigation; defer pipeline steps (e.g., contextual progress markers/formalism triggers) until basics are solid.
 
