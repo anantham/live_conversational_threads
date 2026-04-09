@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-04-09 (ADR-025 approved)
+Last updated: 2026-04-09 (ADR-026 approved)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -29,6 +29,7 @@ Last updated: 2026-04-09 (ADR-025 approved)
 | [ADR-023](ADR-023-orchestrated-live-whisper-websocket-and-async-diarization.md) | Orchestrated Live Whisper Websocket and Async Diarization | 2026-04-08 | Approved |
 | [ADR-024](ADR-024-indrasnet-gpu-priority-policy-and-live-stt-hard-preemption.md) | IndrasNet GPU Priority Policy and Live-STT Hard Preemption | 2026-04-09 | Approved |
 | [ADR-025](ADR-025-wsl-whisperx-launcher-ownership-and-line-ending-durability.md) | WSL WhisperX Launcher Ownership and Line-Ending Durability | 2026-04-09 | Approved |
+| [ADR-026](ADR-026-two-phase-live-flush-contract.md) | Two-Phase Live Flush Contract for `/ws/transcripts` | 2026-04-09 | Approved |
 
 ## Status Definitions
 
