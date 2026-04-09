@@ -1,5 +1,31 @@
 # WORKLOG
 
+## 2026-04-09T23:58:00Z — Resume local drafts with recoverable audio stitching/export
+
+Branch: current worktree
+
+- Context: after adding browser-local draft resume, interrupted live sessions still risked losing audio unless the websocket completed a graceful finalize. The approved Option B was to let `/new` detect orphaned audio for the same `conversationId`, recover/export it later, and keep resumed recording stitched onto the same conversation-owned audio artifact.
+- Explicit hypotheses before patch:
+  - `H1`: the existing conversation-centric storage model is already enough for recovery because local draft resume preserves `conversationId` and `AudioStorageManager` stores PCM/WAV/FLAC by that same identifier.
+  - `H2`: the smallest principled recovery API is a read-only status route plus an explicit recover/finalize route, rather than trying to reopen an old websocket session.
+  - `H3`: stitching resumed audio into the existing WAV is safer than inventing a multi-segment manifest first; if this proves too brittle, we can fall back to segment manifests later.
+- Files modified:
+  - `lct_python_backend/services/audio_storage.py` (lines 51-159): added `get_status(...)` so resume flows can inspect orphaned PCM/WAV/FLAC state without mutating it, and taught `finalize(...)` to stitch newly buffered PCM onto an existing WAV before regenerating exportable outputs.
+  - `lct_python_backend/stt_api.py` (lines 345-391): added `GET /api/conversations/{conversation_id}/audio/status` and `POST /api/conversations/{conversation_id}/audio/recover` so the frontend can discover recoverable audio buffers and finalize them on demand.
+  - `lct_app/src/services/audioRecoveryApi.js` (lines 1-19): added a small API client for the new audio status/recover routes.
+  - `lct_app/src/pages/NewConversation.jsx` (lines 13-13, 59-60, 203-282, 341-400): integrated draft-time audio recovery state into `/new`, fetched audio status for resumable drafts, exposed `Recover Audio` / `Download Audio` actions in the draft banner, and fixed the effect ordering so resume-state detection does not reference `hasRecoverableLocalState` before initialization.
+  - `lct_python_backend/tests/unit/test_audio_storage.py` (lines 62-101): added coverage for WAV stitching and `get_status(...)`.
+  - `lct_python_backend/tests/unit/test_stt_api_settings.py` (lines 405-472): added coverage for the new audio status/recover endpoints and download URL exposure.
+- Why:
+  - protect private-session audio from abrupt browser disconnects without requiring cloud persistence or a still-live websocket;
+  - keep recovery explicit and operator-visible instead of silently mutating stored audio behind the user’s back;
+  - preserve one conversation-owned audio lineage so resumed sessions can continue stitching into a single downloadable artifact.
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_audio_storage.py lct_python_backend/tests/unit/test_stt_api_settings.py` (`16 passed`)
+  - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/services/audioRecoveryApi.js` (`passed`)
+- Design note:
+  - `lct_python_backend/stt_api.py` and `lct_app/src/pages/NewConversation.jsx` remain large mixed-concern files; both are already tracked in `docs/TECH_DEBT.md`, and this slice intentionally reused them instead of widening scope into a decomposition refactor.
+
 ## 2026-04-04T03:33:28Z — Upload buffer lifecycle fix for `/new` remounts
 
 Branch: current worktree

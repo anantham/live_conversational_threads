@@ -48,6 +48,26 @@ class AudioStorageManager:
             except Exception as exc:
                 logger.exception("[AUDIO STORAGE] Failed to append chunk (%s): %s", conversation_id, exc)
 
+    def get_status(self, conversation_id: str) -> Dict[str, Optional[object]]:
+        pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
+        wav_path = self.recordings_dir / f"{conversation_id}.wav"
+        flac_path = self.recordings_dir / f"{conversation_id}.flac"
+        bytes_written = self._session_meta.get(conversation_id, {}).get("bytes_written", 0)
+        if bytes_written <= 0 and pcm_path.exists():
+            try:
+                bytes_written = pcm_path.stat().st_size
+            except OSError:
+                bytes_written = 0
+        return {
+            "pcm_path": str(pcm_path) if pcm_path.exists() else None,
+            "wav_path": str(wav_path) if wav_path.exists() else None,
+            "flac_path": str(flac_path) if flac_path.exists() else None,
+            "has_pcm": pcm_path.exists(),
+            "has_wav": wav_path.exists(),
+            "has_flac": flac_path.exists(),
+            "bytes_written": bytes_written,
+        }
+
     async def finalize(self, conversation_id: str) -> Dict[str, Optional[str]]:
         pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
         wav_path = self.recordings_dir / f"{conversation_id}.wav"
@@ -59,21 +79,35 @@ class AudioStorageManager:
         }
 
         if not pcm_path.exists():
+            if wav_path.exists():
+                result["wav_path"] = str(wav_path)
+            if flac_path.exists():
+                result["flac_path"] = str(flac_path)
             logger.debug("[AUDIO STORAGE] No PCM file to finalize for %s", conversation_id)
             return result
 
         wav_written = False
         try:
+            existing_wav_frames = b""
+            if wav_path.exists():
+                with wave.open(str(wav_path), "rb") as existing_wav_file:
+                    existing_wav_frames = existing_wav_file.readframes(existing_wav_file.getnframes())
+
+            with pcm_path.open("rb") as pcm_file:
+                new_pcm_frames = pcm_file.read()
+
             with wave.open(str(wav_path), "wb") as wav_file:
                 wav_file.setnchannels(self.channels)
                 wav_file.setsampwidth(self.sample_width)
                 wav_file.setframerate(self.sample_rate)
-                with pcm_path.open("rb") as pcm_file:
-                    wav_file.writeframes(pcm_file.read())
+                wav_file.writeframes(existing_wav_frames + new_pcm_frames)
 
             result["wav_path"] = str(wav_path)
             wav_written = True
-            logger.info("[AUDIO STORAGE] WAV generated at %s", wav_path)
+            if existing_wav_frames:
+                logger.info("[AUDIO STORAGE] WAV stitched and generated at %s", wav_path)
+            else:
+                logger.info("[AUDIO STORAGE] WAV generated at %s", wav_path)
         except Exception as exc:
             logger.exception("[AUDIO STORAGE] Failed to write WAV for %s: %s", conversation_id, exc)
 
@@ -117,10 +151,9 @@ class AudioStorageManager:
         return result
 
     def get_paths(self, conversation_id: str) -> Dict[str, Optional[str]]:
-        wav_path = self.recordings_dir / f"{conversation_id}.wav"
-        flac_path = self.recordings_dir / f"{conversation_id}.flac"
+        status = self.get_status(conversation_id)
         return {
-            "wav_path": str(wav_path) if wav_path.exists() else None,
-            "flac_path": str(flac_path) if flac_path.exists() else None,
-            "bytes_written": self._session_meta.get(conversation_id, {}).get("bytes_written", 0),
+            "wav_path": status["wav_path"],
+            "flac_path": status["flac_path"],
+            "bytes_written": status["bytes_written"],
         }
