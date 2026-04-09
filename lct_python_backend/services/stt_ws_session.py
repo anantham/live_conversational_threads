@@ -1235,6 +1235,7 @@ class WsSessionContext:
     # ------------------------------------------------------------------
 
     async def _run_post_flush_processing(self) -> None:
+        flush_started_at = time.perf_counter()
         try:
             if self.pending_stt_chunk_tasks:
                 await asyncio.gather(
@@ -1402,6 +1403,16 @@ class WsSessionContext:
                     "level": "error",
                     "message": "Final flush failed while generating graph updates.",
                     "context": {"error": str(exc), "stage": "flush"},
+                },
+            )
+        finally:
+            await _safe_send_json(
+                self.websocket,
+                {
+                    "type": "flush_complete",
+                    "telemetry": {
+                        "final_flush_total_ms": _elapsed_ms(flush_started_at),
+                    },
                 },
             )
 
@@ -1807,7 +1818,6 @@ class WsSessionContext:
         self.stt_flush_requested = True
         # Flush any buffered refinement audio before closing
         await self._flush_refinement_buffer(reason="session_flush")
-        flush_started_at = time.perf_counter()
         logger.info(
             "[WS][FLUSH] session=%s conversation=%s pending_stt_chunks=%s pending_partial_parts=%s",
             self.state.session_id,
@@ -1817,7 +1827,6 @@ class WsSessionContext:
         )
         flush_stage_metrics: Dict[str, Any] = {
             "pending_stt_chunks": len(self.pending_stt_chunk_tasks),
-            "final_flush_total_ms": _elapsed_ms(flush_started_at),
         }
         flush_payload: Dict[str, Any] = {
             "type": "flush_ack",

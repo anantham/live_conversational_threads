@@ -84,6 +84,13 @@ def test_transcripts_ws_persists_partial_and_final(monkeypatch):
         ws.send_json({"type": "final_flush"})
         flush_ack = ws.receive_json()
         assert flush_ack["type"] == "flush_ack"
+        flush_complete = None
+        for _ in range(8):
+            message = ws.receive_json()
+            if message["type"] == "flush_complete":
+                flush_complete = message
+                break
+        assert flush_complete["type"] == "flush_complete"
 
     time.sleep(0.05)
     assert [event for event, *_rest in persisted] == ["partial", "final"]
@@ -174,6 +181,13 @@ def test_transcripts_ws_accepts_audio_chunk_backend_owned_stt(monkeypatch):
         ws.send_json({"type": "final_flush"})
         flush_ack = ws.receive_json()
         assert flush_ack["type"] == "flush_ack"
+        flush_complete = None
+        for _ in range(8):
+            message = ws.receive_json()
+            if message["type"] == "flush_complete":
+                flush_complete = message
+                break
+        assert flush_complete["type"] == "flush_complete"
 
     time.sleep(0.05)
     assert [event for event, *_rest in persisted] == ["partial", "final"]
@@ -304,6 +318,13 @@ def test_transcripts_ws_accepts_streaming_runtime_events(monkeypatch):
         ws.send_json({"type": "final_flush"})
         flush_ack = ws.receive_json()
         assert flush_ack["type"] == "flush_ack"
+        flush_complete = None
+        for _ in range(8):
+            message = ws.receive_json()
+            if message["type"] == "flush_complete":
+                flush_complete = message
+                break
+        assert flush_complete["type"] == "flush_complete"
 
     time.sleep(0.05)
     assert [event for event, *_rest in persisted] == ["partial", "final"]
@@ -435,19 +456,24 @@ def test_transcripts_ws_backend_realtime_forces_audio_storage_and_schedules_file
 
         ws.send_json({"type": "final_flush"})
         flush_ack = None
+        flush_complete = None
         audio_ready = None
-        for _ in range(12):
+        for _ in range(16):
             next_message = ws.receive_json()
             if next_message["type"] == "audio_ready":
                 audio_ready = next_message
             if next_message["type"] == "flush_ack":
                 flush_ack = next_message
-            if audio_ready is not None and flush_ack is not None:
+            if next_message["type"] == "flush_complete":
+                flush_complete = next_message
+            if audio_ready is not None and flush_ack is not None and flush_complete is not None:
                 break
         assert audio_ready is not None
         assert audio_ready["audio_paths"]["wav_path"] == "/tmp/backend-live.wav"
         assert flush_ack is not None
         assert flush_ack["type"] == "flush_ack"
+        assert flush_complete is not None
+        assert flush_complete["type"] == "flush_complete"
 
     time.sleep(0.05)
     assert dummy_audio_storage.finalized == [conversation_id]
@@ -811,12 +837,17 @@ def test_transcripts_ws_background_refinement_persists_speaker_segments_with_win
 
         ws.send_json({"type": "final_flush"})
         flush_ack = None
-        for _ in range(6):
+        flush_complete = None
+        for _ in range(8):
             next_message = ws.receive_json()
             if next_message["type"] == "flush_ack":
                 flush_ack = next_message
+            if next_message["type"] == "flush_complete":
+                flush_complete = next_message
+            if flush_ack is not None and flush_complete is not None:
                 break
         assert flush_ack["type"] == "flush_ack"
+        assert flush_complete["type"] == "flush_complete"
 
     time.sleep(0.1)
     assert materialized
@@ -997,12 +1028,17 @@ def test_transcripts_ws_persists_canonical_graph_on_finalized_patch(monkeypatch)
 
         ws.send_json({"type": "final_flush"})
         flush_ack = None
-        for _ in range(6):
+        flush_complete = None
+        for _ in range(8):
             message = ws.receive_json()
             if message["type"] == "flush_ack":
                 flush_ack = message
+            if message["type"] == "flush_complete":
+                flush_complete = message
+            if flush_ack is not None and flush_complete is not None:
                 break
         assert flush_ack["type"] == "flush_ack"
+        assert flush_complete["type"] == "flush_complete"
 
     time.sleep(0.1)
     assert persisted
@@ -1011,7 +1047,7 @@ def test_transcripts_ws_persists_canonical_graph_on_finalized_patch(monkeypatch)
     assert len(latest["existing_json"]) == 1
 
 
-def test_transcripts_ws_flush_ack_not_blocked_by_processor_flush(monkeypatch):
+def test_transcripts_ws_flush_ack_precedes_flush_complete_when_processor_flush_is_slow(monkeypatch):
     processor_calls = {"final": [], "flush": 0}
 
     client = build_test_client(
@@ -1038,10 +1074,14 @@ def test_transcripts_ws_flush_ack_not_blocked_by_processor_flush(monkeypatch):
         started_at = time.perf_counter()
         ws.send_json({"type": "final_flush"})
         flush_ack = ws.receive_json()
-        elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+        ack_elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+        flush_complete = ws.receive_json()
+        complete_elapsed_ms = (time.perf_counter() - started_at) * 1000.0
 
         assert flush_ack["type"] == "flush_ack"
-        assert elapsed_ms < 250.0
+        assert flush_complete["type"] == "flush_complete"
+        assert ack_elapsed_ms < 250.0
+        assert complete_elapsed_ms >= 250.0
 
     time.sleep(0.4)
     assert processor_calls["final"] == [("quick final segment", None)]
