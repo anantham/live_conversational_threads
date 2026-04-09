@@ -45,7 +45,7 @@ export default function Home() {
       {/* Primary actions */}
       <div className="relative mb-12 flex items-center gap-6">
         <button
-          onClick={() => navigate("/new")}
+          onClick={() => navigate("/new?autostart=true")}
           className="flex flex-col items-center gap-2 group"
         >
           <span className="w-14 h-14 flex items-center justify-center rounded-full bg-gray-800 text-white group-hover:bg-gray-700 transition">

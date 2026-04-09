@@ -88,6 +88,7 @@ const AudioInput = forwardRef(function AudioInput({
   message,
   fileName,
   setFileName,
+  autostart,
 }, ref) {
   const uploadCtx = useUpload();
   const [recording, setRecording] = useState(false);
@@ -105,6 +106,15 @@ const AudioInput = forwardRef(function AudioInput({
   const lastAutoSaveRef = useRef({ graphData: null, chunkDict: null });
   const wasRecording = useRef(false);
   const transcriptLineIdRef = useRef(0);
+  const autostarted = useRef(false);
+
+  // Auto-start recording if requested
+  useEffect(() => {
+    if (autostart && !recording && sttSettings && !autostarted.current) {
+      autostarted.current = true;
+      startRecording();
+    }
+  }, [autostart, recording, sttSettings]); // eslint-disable-line react-hooks/exhaustive-deps
   const {
     backend: liveBackend,
     detailOpen,
@@ -403,6 +413,7 @@ AudioInput.propTypes = {
   message: PropTypes.string,
   fileName: PropTypes.string,
   setFileName: PropTypes.func,
+  autostart: PropTypes.bool,
 };
 
 export default AudioInput;
