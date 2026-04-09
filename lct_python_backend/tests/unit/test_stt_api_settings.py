@@ -400,3 +400,73 @@ def test_cloud_provider_test_reports_misconfigured_provider(monkeypatch):
     assert payload["status"] == "misconfigured"
     assert "API key" in payload["error"]
     smoke_test_mock.assert_not_called()
+
+
+def test_audio_status_returns_recoverable_pcm_and_download_url(monkeypatch):
+    stt_api = _load_stt_api_with_stubs(monkeypatch)
+    monkeypatch.setattr(stt_api, "DOWNLOAD_TOKEN", "token-123")
+    monkeypatch.setattr(
+        stt_api,
+        "audio_storage",
+        SimpleNamespace(
+            get_status=lambda conversation_id: {
+                "pcm_path": f"/tmp/{conversation_id}.pcm",
+                "wav_path": f"/tmp/{conversation_id}.wav",
+                "flac_path": None,
+                "has_pcm": True,
+                "has_wav": True,
+                "has_flac": False,
+                "bytes_written": 64,
+            }
+        ),
+    )
+
+    client = _build_test_client(stt_api)
+    response = client.get("/api/conversations/conv-audio/audio/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recoverable"] is True
+    assert payload["audio"]["has_wav"] is True
+    assert payload["download_url"] == "/api/conversations/conv-audio/audio?token=token-123"
+
+
+def test_audio_recover_finalizes_existing_pcm(monkeypatch):
+    stt_api = _load_stt_api_with_stubs(monkeypatch)
+    storage_calls = {"finalize": [], "status": []}
+
+    async def fake_finalize(conversation_id):
+        storage_calls["finalize"].append(conversation_id)
+        return {"wav_path": f"/tmp/{conversation_id}.wav", "flac_path": None, "bytes_written": 32}
+
+    def fake_status(conversation_id):
+        storage_calls["status"].append(conversation_id)
+        return {
+            "pcm_path": None,
+            "wav_path": f"/tmp/{conversation_id}.wav",
+            "flac_path": None,
+            "has_pcm": False,
+            "has_wav": True,
+            "has_flac": False,
+            "bytes_written": 32,
+        }
+
+    monkeypatch.setattr(stt_api, "DOWNLOAD_TOKEN", None)
+    monkeypatch.setattr(
+        stt_api,
+        "audio_storage",
+        SimpleNamespace(
+            finalize=fake_finalize,
+            get_status=fake_status,
+            get_paths=lambda conversation_id: fake_status(conversation_id),
+        ),
+    )
+
+    client = _build_test_client(stt_api)
+    response = client.post("/api/conversations/conv-recover/audio/recover")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["recovered"] is True
+    assert payload["audio"]["has_wav"] is True
+    assert storage_calls["finalize"] == ["conv-recover"]

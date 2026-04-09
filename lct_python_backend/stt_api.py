@@ -342,6 +342,21 @@ async def upload_audio_chunk(
     return {"status": "ok", "session_id": session_id, "bytes": len(chunk)}
 
 
+@router.get("/api/conversations/{conversation_id}/audio/status")
+async def get_audio_status(conversation_id: str):
+    status = audio_storage.get_status(conversation_id)
+    download_url = None
+    if status.get("wav_path") and DOWNLOAD_TOKEN:
+        download_url = f"/api/conversations/{conversation_id}/audio?token={DOWNLOAD_TOKEN}"
+    return {
+        "status": "ok",
+        "conversation_id": conversation_id,
+        "audio": status,
+        "recoverable": bool(status.get("has_pcm")),
+        "download_url": download_url,
+    }
+
+
 @router.post("/api/conversations/{conversation_id}/audio/complete")
 async def finalize_audio_upload(
     conversation_id: str,
@@ -356,6 +371,24 @@ async def finalize_audio_upload(
     if paths.get("wav_path") and DOWNLOAD_TOKEN:
         download_url = f"/api/conversations/{conversation_id}/audio?token={DOWNLOAD_TOKEN}"
     return {"status": "ok", "session_id": session_id, "paths": paths, "download_url": download_url}
+
+
+@router.post("/api/conversations/{conversation_id}/audio/recover")
+async def recover_audio(conversation_id: str):
+    result = await audio_storage.finalize(conversation_id)
+    status = audio_storage.get_status(conversation_id)
+    download_url = None
+    if status.get("wav_path") and DOWNLOAD_TOKEN:
+        download_url = f"/api/conversations/{conversation_id}/audio?token={DOWNLOAD_TOKEN}"
+    return {
+        "status": "ok",
+        "conversation_id": conversation_id,
+        "audio": status,
+        "paths": audio_storage.get_paths(conversation_id),
+        "recoverable": bool(status.get("has_pcm")),
+        "download_url": download_url,
+        "recovered": bool(result.get("wav_path") or result.get("flac_path")),
+    }
 
 
 @router.get("/ws/audio")

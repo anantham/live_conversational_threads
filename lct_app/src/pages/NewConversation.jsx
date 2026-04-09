@@ -10,6 +10,7 @@ import { buildSpeakerColorMap } from "../components/graphConstants";
 import { useAutoSave } from "../hooks/useAutoSave";
 import useLocalConversationDraft from "../hooks/useLocalConversationDraft";
 import { useUpload } from "../contexts/UploadContext";
+import { fetchAudioRecoveryStatus, recoverConversationAudio } from "../services/audioRecoveryApi";
 import {
   applyChunkPatch,
   applyGraphPatch,
@@ -55,6 +56,8 @@ export default function NewConversation() {
   const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
+  const [audioRecovery, setAudioRecovery] = useState(null);
+  const [audioRecoveryBusy, setAudioRecoveryBusy] = useState(false);
   const audioRef = useRef(null);
 
   const navigate = useNavigate();
@@ -206,6 +209,34 @@ export default function NewConversation() {
     [displayChunkDict, fileName, hasData, message]
   );
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const draftConversationId = String(availableDraftSummary?.conversationId || "").trim();
+    if (!draftConversationId || hasRecoverableLocalState) {
+      setAudioRecovery(null);
+      return undefined;
+    }
+
+    void (async () => {
+      try {
+        const status = await fetchAudioRecoveryStatus(draftConversationId);
+        if (!cancelled) {
+          setAudioRecovery(status);
+        }
+      } catch (error) {
+        console.warn("[AudioRecovery] Failed to load audio recovery status:", error);
+        if (!cancelled) {
+          setAudioRecovery(null);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [availableDraftSummary, hasRecoverableLocalState]);
+
   const handleResumeLocalDraft = useCallback(() => {
     const draft = restoreAvailableDraft();
     if (!draft) return;
@@ -221,11 +252,34 @@ export default function NewConversation() {
     setDraftChunkDict(normalizeObject(draft.draftChunkDict));
     setSelectedNode(null);
     setTranscriptMinimized(false);
-  }, [restoreAvailableDraft]);
+    if (audioRecovery?.recoverable) {
+      setMessage("Restored local draft. Existing audio buffer will continue stitching into this conversation.");
+    }
+  }, [audioRecovery?.recoverable, restoreAvailableDraft]);
 
   const handleDiscardLocalDraft = useCallback(() => {
     void discardAvailableDraft();
   }, [discardAvailableDraft]);
+
+  const handleRecoverAudio = useCallback(async () => {
+    const draftConversationId = String(availableDraftSummary?.conversationId || "").trim();
+    if (!draftConversationId || audioRecoveryBusy) return;
+    setAudioRecoveryBusy(true);
+    try {
+      const payload = await recoverConversationAudio(draftConversationId);
+      setAudioRecovery(payload);
+      if (payload.download_url) {
+        setMessage("Recovered audio is ready to download.");
+      } else {
+        setMessage("Recovered available audio for this draft.");
+      }
+    } catch (error) {
+      console.warn("[AudioRecovery] Failed to recover audio:", error);
+      setMessage(`Audio recovery failed: ${error?.message || "Unknown error"}`);
+    } finally {
+      setAudioRecoveryBusy(false);
+    }
+  }, [audioRecoveryBusy, availableDraftSummary, setMessage]);
 
   const handleBack = useCallback(() => {
     if (hasData) {
@@ -303,8 +357,34 @@ export default function NewConversation() {
                   ? ` · ${availableDraftSummary.chunkCount} chunks`
                   : ""}
               </p>
+              {audioRecovery && (
+                <p className="mt-1 text-xs text-slate-500">
+                  {audioRecovery.audio?.has_wav
+                    ? "Saved audio available."
+                    : audioRecovery.recoverable
+                      ? "Recoverable audio buffer found."
+                      : "No saved audio yet."}
+                </p>
+              )}
             </div>
             <div className="flex shrink-0 items-center gap-2">
+              {audioRecovery?.download_url && (
+                <a
+                  href={audioRecovery.download_url}
+                  className="rounded-full px-3 py-1.5 text-xs text-blue-600 transition hover:text-blue-700"
+                >
+                  Download Audio
+                </a>
+              )}
+              {audioRecovery?.recoverable && (
+                <button
+                  onClick={handleRecoverAudio}
+                  disabled={audioRecoveryBusy}
+                  className="rounded-full px-3 py-1.5 text-xs text-slate-600 transition hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {audioRecoveryBusy ? "Recovering..." : "Recover Audio"}
+                </button>
+              )}
               <button
                 onClick={handleDiscardLocalDraft}
                 className="rounded-full px-3 py-1.5 text-xs text-slate-500 transition hover:text-slate-700"
