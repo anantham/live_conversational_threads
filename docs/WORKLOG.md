@@ -2213,3 +2213,46 @@ Manual testing not run:
   - a real `/ws/transcripts` run over the 24s `Talking to Anand about love.m4a` slice finally acked `provider_http_url=http://100.81.65.74:7777/api/transcribe`, proving the live route now honors the configured Whisper primary
   - measured Whisper timings on that run: `ack=8.662s`, `first_partial=11.63s`, `flush_ack=33.118s`, `first_final=null`, `partials=11`, `finals=0`
   - implication: the routing bug is fixed, but remote Whisper still has a separate live-finalization/latency problem after routing is corrected
+
+## 2026-04-09T02:52:00Z
+- Investigated the now-exposed remote Whisper live bottleneck after routing was corrected.
+- Findings:
+  - A real `/ws/transcripts` Whisper run after the routing fix measured `ack=4.349s`, `first_partial=7.221s`, `flush_ack=28.612s`, `first_final=null`, `partials=11`, `finals=0`, `provider_http_url=http://100.81.65.74:7777/api/transcribe`
+  - This materially improved startup versus the first Whisper-only benchmark (`ack=8.662s`, `first_partial=11.63s`), but finals still did not appear.
+  - A raw direct websocket run against `ws://100.81.65.74:7777/api/transcribe/stream` proved the problem is upstream of LCT and upstream of the IndrasNet proxy: the stream emitted only `{"type":"transcript","is_final":false}` chunks and then `{"type":"done"}` with no final transcript event.
+  - Remote `web_server.log` shows the live stream acquiring the GPU immediately (`wait_ms=0`) for `context=lct_live_stream`, so this specific run was not delayed by coordinator queue wait.
+  - The same remote log continues to show unrelated but noisy background failures in reprocessing:
+    - `'GPUBackendManager' object has no attribute 'should_yield_for_priority'`
+    - `cannot import name 'queue_reprocessing_job'`
+- Attempted remediation:
+  - Patched local sibling file `TemporalCoordination/grimoire/IndrasNet/services/transcription/whisperx_server.py` so the websocket `end` path caches the latest emitted transcript text and should emit it as `is_final=true` even when the leftover buffer is too small for a fresh transcribe pass.
+  - Synced that file to the Windows host and forced a fresh on-demand live run with no stale `8001` listener.
+  - Result: raw stream behavior did not change; the live endpoint still returned `done` with no final.
+- Interpretation:
+  - The actual `8001` Whisper streaming implementation serving production traffic is likely not using the edited `whisperx_server.py` path we patched, or it is launched from a different source/deployment than expected.
+  - Therefore the missing-final bug is now narrowed to the real runtime behind `8001`, not the LCT runtime and not the IndrasNet proxy route.
+
+## 2026-04-09T03:05:00Z
+- Closed the `8001` source-of-truth ambiguity and revalidated the raw Whisper live stream against the real runtime.
+- Runtime/source investigation:
+  - On the Windows host, IndrasNet `.env` points `WHISPERX_BASE_URL` at `http://172.20.5.123:8001`, explicitly labeled `# WhisperX (local WSL)`.
+  - `wsl.exe -l -v` showed the `Ubuntu` WSL instance running.
+  - Inside WSL, the active listener on `0.0.0.0:8001` is `uvicorn` PID `15396` serving `whisperx_server:app`.
+  - The true launch command is `/home/adity/.venv-audio/bin/python /home/adity/.venv-audio/bin/uvicorn whisperx_server:app --host 0.0.0.0 --port 8001`.
+  - The true working directory is `/mnt/c/Users/adity/Documents/Ongoing Local/TemporalCoordination/grimoire/IndrasNet/services/transcription`.
+  - The imported module path is the WSL-side file `/home/adity/whisperx_server.py`, not the Windows path directly. `cmp` confirmed that `/home/adity/whisperx_server.py` is byte-identical to `TemporalCoordination/grimoire/IndrasNet/services/transcription/whisperx_server.py`.
+- Root cause refinement:
+  - The prior live-finalization code patch had been synced to the correct WSL-side file content, but the actual `8001` uvicorn process was a stale long-running server started before the current investigation (`Wed Apr 8 22:46:45 2026`).
+  - This is why the raw websocket stream continued returning only partials followed by `done`: the service process had not been restarted since the finalization patch landed on disk.
+- Deployment/remediation:
+  - Restarted the real WSL WhisperX listener by launching uvicorn from the WSL working tree with the `.venv-audio` interpreter and module `whisperx_server:app`.
+  - Verified the fresh process loaded the patched server code and bound `0.0.0.0:8001`.
+- Raw direct-stream validation after restart:
+  - Re-ran the same 24s raw websocket test against `ws://100.81.65.74:7777/api/transcribe/stream` using the `Talking to Anand about love.m4a` slice.
+  - Result changed from `partials only + done` to `12 partials`, `1 final`, then `done`.
+  - Final event emitted successfully:
+    - `13.085 {"type":"transcript","text":"December of 24, 25","language":"en","is_final":true}`
+    - `13.085 {"type":"done"}`
+- Conclusion:
+  - The upstream finalization fix is valid.
+  - The missing-final bug was operational deployment drift at the real WSL `8001` service, not a remaining protocol defect in LCT or the IndrasNet proxy.
