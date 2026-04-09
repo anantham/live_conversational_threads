@@ -95,6 +95,7 @@ const AudioInput = forwardRef(function AudioInput({
   const [backendSocketState, setBackendSocketState] = useState("idle");
   const [liveTranscriptLines, setLiveTranscriptLines] = useState([]);
   const [processingError, setProcessingError] = useState("");
+  const [audioDownloadUrl, setAudioDownloadUrl] = useState("");
   const [showDevicePicker, setShowDevicePicker] = useState(false);
   const { sttSettings, settingsError } = useSttSettings();
   const { devices: micDevices, selectedId: micDeviceId, setSelectedId: setMicDeviceId, refresh: refreshMicDevices } = useMicDevices();
@@ -146,6 +147,14 @@ const AudioInput = forwardRef(function AudioInput({
     }
   }, [handleLiveProcessingStatus]);
 
+  const handleAudioReady = useCallback((payload) => {
+    const downloadUrl = String(payload?.download_url || "").trim();
+    setAudioDownloadUrl(downloadUrl);
+    if (downloadUrl) {
+      setMessage?.("Audio stored. Download is ready.");
+    }
+  }, [setMessage]);
+
   // --- Transport hook ---
   const {
     backendWsRef,
@@ -171,6 +180,7 @@ const AudioInput = forwardRef(function AudioInput({
     onProviderTranscript: handleProviderTranscript,
     onProcessingStatus: handleProcessingStatus,
     onBackendMessage: handleBackendMessage,
+    onAudioReady: handleAudioReady,
   });
 
   // --- Capture hook ---
@@ -223,6 +233,7 @@ const AudioInput = forwardRef(function AudioInput({
     transcriptLineIdRef.current = 0;
     setLiveTranscriptLines([]);
     setProcessingError("");
+    setAudioDownloadUrl("");
     setProviderSocketState("connecting");
     setBackendSocketState("connecting");
     const captureStarted = await startCapture(micDeviceId);
@@ -358,6 +369,15 @@ const AudioInput = forwardRef(function AudioInput({
         stt={liveStt}
         uploadState={uploadCtx}
       />
+
+      {!recording && audioDownloadUrl && (
+        <a
+          href={audioDownloadUrl}
+          className="text-xs font-medium text-blue-600 hover:text-blue-700 underline underline-offset-2 whitespace-nowrap"
+        >
+          Download Audio
+        </a>
+      )}
 
       {/* Error toast (above footer) */}
       {(settingsError || processingError) && (
