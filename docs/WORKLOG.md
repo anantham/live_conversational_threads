@@ -2303,3 +2303,38 @@ Manual testing not run:
 - Documentation/design:
   - added ADR-025 to record that `run_whisperx_server.sh` is the canonical WhisperX WSL launch contract and that line-ending durability is part of the architecture, not just an editor preference
   - added `TECH_DEBT.md` entries for the large sibling files touched during this change (`agents/routes/services.py`, `core/gpu_backends.py`)
+
+## 2026-04-09T04:06:00Z
+- Investigated the `/ws/transcripts` event-shaping gap after Whisper benchmark runs showed `graph_patch` updates without `transcript_partial` / `transcript_final` events.
+- Findings from code inspection:
+  - `lct_python_backend/services/stt_ws_session.py:669-726` intentionally emits draft `graph_patch` updates before sending `transcript_partial`, so seeing graph patches first is expected and not itself a bug.
+  - The real protocol bug was that `handle_final_flush()` sent `flush_ack` immediately and then launched `_run_post_flush_processing()` in the background, while the frontend closed the socket as soon as `flush_ack` arrived.
+  - `lct_app/src/components/audio/audioMessages.js` and `lct_app/src/components/audio/useTranscriptSockets.js` therefore treated `flush_ack` as terminal completion even though late transcript events could still arrive afterward.
+- Fix implemented:
+  - `lct_python_backend/services/stt_ws_session.py`
+    - kept `flush_ack` as "flush accepted"
+    - added `flush_complete` in `_run_post_flush_processing()` finally-block so the backend explicitly signals when post-flush transcript delivery is done
+  - `lct_app/src/components/audio/audioMessages.js`
+    - changed the flush promise resolution to wait for `flush_complete` instead of `flush_ack`
+    - retained `flush_ack` handling for observability/logging
+  - `lct_python_backend/tests/integration/test_transcripts_websocket.py`
+    - updated websocket integration tests to wait for `flush_complete`
+    - replaced the old "flush ack not blocked by processor flush" test with a two-phase contract assertion proving `flush_ack` can arrive quickly while `flush_complete` arrives later
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/integration/test_transcripts_websocket.py` → `17 passed`
+  - `cd lct_app && npx eslint src/components/audio/audioMessages.js src/components/audio/useTranscriptSockets.js` → passed
+- End-to-end Whisper re-benchmark after the protocol fix:
+  - source audio: same 60s slice of `/Users/aditya/Downloads/Talking to Anand about love.m4a`
+  - provider ack remained Whisper: `provider_http_url=http://100.81.65.74:7777/api/transcribe`
+  - timings:
+    - `ack=4.171s`
+    - `flush_ack=68.203s`
+    - `flush_complete=68.975s`
+  - counts:
+    - `partials=0`
+    - `finals=0`
+    - `graph_patches=17`
+  - new critical finding:
+    - the backend now stays open long enough to expose the real post-flush blocker
+    - `_run_post_flush_processing()` emits `processing_status[level=error]` with `error="badly formed hexadecimal UUID string"` before `flush_complete`
+    - implication: the early-close bug is fixed, but Whisper-backed end-to-end transcript delivery is still blocked by a later UUID/persistence/graph-path crash during final flush
