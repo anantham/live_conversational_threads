@@ -30,13 +30,13 @@ export default function ByokSessionControl() {
     if (isSessionReady) {
       const expiry = formatExpiry(sessionExpiresAt);
       return expiry
-        ? `OpenAI BYOK ready until ${expiry} for live audio, uploads, and graph generation.`
-        : "OpenAI BYOK ready for live audio, uploads, and graph generation.";
+        ? `OpenAI BYOK ready until ${expiry}. It supplies OpenAI credentials when your configured live or upload fallback order reaches OpenAI.`
+        : "OpenAI BYOK ready. It supplies OpenAI credentials when your configured live or upload fallback order reaches OpenAI.";
     }
     if (hasApiKey) {
-      return "Session-only. The raw key stays in browser memory and is only sent to mint a short-lived OpenAI session token.";
+      return "Session-only. The raw key stays in browser memory and is only sent to mint a short-lived OpenAI session token. It does not change your selected primary provider by itself.";
     }
-    return "Optional OpenAI BYOK for live and uploaded audio plus graph generation. Leave blank to use the hosted trial path.";
+    return "Optional OpenAI BYOK for live audio, uploads, and graph generation. It makes OpenAI available to your configured fallback order; it does not make OpenAI primary on its own.";
   }, [error, hasApiKey, isSessionReady, sessionExpiresAt, status]);
 
   return (

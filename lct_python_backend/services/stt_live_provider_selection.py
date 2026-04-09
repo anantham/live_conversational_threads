@@ -214,22 +214,9 @@ def resolve_live_stt_candidates(
                 add_candidate(candidate)
         return candidates
 
-    prefer_openai_before_remote_whisper = (
-        selected_provider == "whisper"
-        and configured_http_url
-        and not _is_local_http_url(configured_http_url)
-        and "openai_audio" in fallback_priority
-        and "openai_audio" in fallback_candidates
-    )
-
-    if prefer_openai_before_remote_whisper:
-        add_candidate(fallback_candidates["openai_audio"])
-
     add_candidate(primary_candidate)
 
     for route_id in fallback_priority:
-        if prefer_openai_before_remote_whisper and route_id == "openai_audio":
-            continue
         candidate = fallback_candidates.get(route_id)
         if candidate:
             add_candidate(candidate)
