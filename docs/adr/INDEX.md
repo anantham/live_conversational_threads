@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-04-08 (ADR-023 approved)
+Last updated: 2026-04-09 (ADR-024 approved)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -27,6 +27,7 @@ Last updated: 2026-04-08 (ADR-023 approved)
 | [ADR-021](ADR-021-browser-local-draft-recovery.md) | Browser-Local Draft Recovery for Interrupted Conversation Sessions | 2026-04-03 | Approved |
 | [ADR-022](ADR-022-checkpoint-aware-upload-retry-and-resume.md) | Checkpoint-Aware Upload Retry and Resume for Bulk Imports | 2026-04-03 | Approved |
 | [ADR-023](ADR-023-orchestrated-live-whisper-websocket-and-async-diarization.md) | Orchestrated Live Whisper Websocket and Async Diarization | 2026-04-08 | Approved |
+| [ADR-024](ADR-024-indrasnet-gpu-priority-policy-and-live-stt-hard-preemption.md) | IndrasNet GPU Priority Policy and Live-STT Hard Preemption | 2026-04-09 | Approved |
 
 ## Status Definitions
 
