@@ -2256,3 +2256,50 @@ Manual testing not run:
 - Conclusion:
   - The upstream finalization fix is valid.
   - The missing-final bug was operational deployment drift at the real WSL `8001` service, not a remaining protocol defect in LCT or the IndrasNet proxy.
+
+## 2026-04-09T03:27:00Z
+- Extended raw Whisper live validation to a longer slice after standardizing the WSL launcher path.
+- Benchmark details:
+  - source audio: `/Users/aditya/Downloads/Talking to Anand about love.m4a`
+  - exported test slice: `ffmpeg -ss 00:10 -t 60 -ac 1 -ar 16000 /tmp/whisper_stream_test_60s.wav`
+  - exercised endpoint: `ws://100.81.65.74:7777/api/transcribe/stream`
+  - transport mode: websocket `start -> PCM chunks -> end` in realtime cadence (`0.1s` chunks)
+- Longer-slice result after the upstream finalization fix:
+  - `TOTAL_EVENTS=34`
+  - `PARTIALS=30`
+  - `FINALS=1`
+  - first final observed around `20.191s` in the earlier 60s run and `0.943s` after `end` in the post-restart verification run
+  - last events in the post-restart run:
+    - partial `"carry space for everything"`
+    - partial `"Yeah, part of me hates you, part of me loves you."`
+    - partial `"a part of me doesn't care but all the"`
+    - final `"a part of me doesn't care but all the"`
+    - `done`
+- Interpretation:
+  - the upstream `is_final=true` path now survives a materially longer stream and is not limited to the earlier 24s slice
+  - current stream semantics still emit exactly one final at graceful end rather than per-utterance finals during the stream
+
+## 2026-04-09T03:34:00Z
+- Made the WSL WhisperX launch/restart path explicit and durable in the sibling `TemporalCoordination` repo, and documented the operational trap that surfaced during validation.
+- Files modified in sibling repo:
+  - `TemporalCoordination/grimoire/IndrasNet/agents/routes/services.py:83-91`
+    - changed the WhisperX WSL service `command_builder` to launch `bash ./run_whisperx_server.sh` instead of embedding `uvicorn whisperx_server:app`
+    - rationale: keep repo-owned service start semantics aligned with the checked-in launcher script
+  - `TemporalCoordination/grimoire/IndrasNet/core/gpu_backends.py:424-430`
+    - changed the WhisperX restart path to `nohup bash ./run_whisperx_server.sh > /tmp/whisperx.log 2>&1 &`
+    - rationale: make on-demand CUDA-recovery restarts use the same launcher contract as the service registry
+  - `TemporalCoordination/.gitattributes:1-2`
+    - added `*.sh text eol=lf` and `*.bash text eol=lf`
+    - rationale: WSL-mounted shell launchers must keep LF endings; CRLF made the remote `run_whisperx_server.sh` die on `set -euo pipefail`
+- Remote host validation:
+  - confirmed the Windows repo copy of `services.py` and `gpu_backends.py` now references `run_whisperx_server.sh`
+  - discovered the mounted remote `run_whisperx_server.sh` had CRLF even though the local repo copy was LF-clean
+  - normalized the remote script to LF and verified with `od`/`cat -vet`
+  - foreground launch test in WSL succeeded:
+    - script printed `Starting WhisperX server on port 8001...`
+    - uvicorn reached `Application startup complete`
+  - detached launch through the canonical script also succeeded when invoked via `setsid -f bash ./run_whisperx_server.sh >/tmp/whisperx.log 2>&1`
+  - `ss -ltnp | grep :8001` showed the new `uvicorn` listener on `0.0.0.0:8001`
+- Documentation/design:
+  - added ADR-025 to record that `run_whisperx_server.sh` is the canonical WhisperX WSL launch contract and that line-ending durability is part of the architecture, not just an editor preference
+  - added `TECH_DEBT.md` entries for the large sibling files touched during this change (`agents/routes/services.py`, `core/gpu_backends.py`)
