@@ -2162,3 +2162,15 @@ Manual testing not run:
   - `PYTHONPYCACHEPREFIX=/tmp/codex_pycache python3 -m py_compile .../core/gpu_priority_policy.py .../core/gpu_coordinator.py .../core/llm.py .../core/obsidian_fetch.py .../services/unified_retrieval/service.py .../agents/routes/settings.py .../agents/routes/transcription.py` (passed).
   - `npm run build` in `TemporalCoordination/grimoire/IndrasNet/indras-ui` did not provide a clean signal because the repo already has broad preexisting TypeScript failures in untouched `_drafts`, database-viewer, media-router, and other files, plus sandbox-denied writes to `node_modules/.tmp`.
   - `npx eslint` on the touched UI files still reports preexisting unused-import issues in `indras-ui/src/AgentControl.tsx`; the newly added scheduler sections themselves did not surface distinct lint failures beyond that existing file-level debt.
+
+## 2026-04-09T01:53:32Z
+- `lct_python_backend/services/stt_backend_realtime.py` (lines 145-180, 169-180): fixed the backend websocket flush boundary so `flush()` now waits for `final` or `done` instead of stopping after the first post-`end` event, and promotes the last partial transcript to a synthetic final when upstream sends `done` without `is_final=true`.
+- `lct_python_backend/tests/unit/test_stt_live_runtime.py` (lines 1, 292-380): added focused coverage for:
+  - `done`-without-final promotion of the last partial into a final transcript
+  - waiting for a late final after an earlier partial rather than exiting flush too early
+- Remote startup investigation refinement (no code changes in sibling repo during this step):
+  - confirmed the Windows Scheduled Task `\IndrasNet-WebServer` launches `cmd.exe /c ... .venv\Scripts\python.exe agents\web_server.py` directly from the patched tree, not `start.bat`
+  - confirmed `start.bat` would instead run `scripts/start_all.py --autostart`, so the scheduled-task path and the manual startup-shortcut path are materially different launch mechanisms
+  - this explains why "autostart is configured" and "this specific boot skipped agent autostart" can both be true: a foreground or alternate launcher can inject `INDRAS_SKIP_AGENT_AUTOSTART`, while the Scheduled Task bypasses the richer `start.bat` orchestration entirely
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_live_runtime.py` (`10 passed`)

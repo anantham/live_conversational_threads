@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import pytest
@@ -287,5 +288,97 @@ async def test_backend_realtime_runtime_start_and_event_mapping(monkeypatch):
     assert events[1]["event_type"] == "final"
     assert events[1]["text"] == "hello world"
     assert events[1]["metadata"]["transport"] == "backend_ws"
+
+    await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_backend_realtime_flush_promotes_last_partial_when_done_arrives_without_final(monkeypatch):
+    runtime = BackendRealtimeTranscriptionRuntime(
+        provider="whisper",
+        ws_url="ws://100.81.65.74:7777/api/transcribe/stream",
+        model="turbo",
+        sample_rate_hz=16000,
+        language="en",
+        session_id="session-1",
+        conversation_id="conversation-1",
+    )
+    dummy_socket = _DummyRealtimeSocket()
+
+    async def fake_connect(*args, **kwargs):
+        return dummy_socket
+
+    async def fake_receiver_loop():
+        await runtime._handle_server_event(
+            {
+                "type": "ready",
+                "model": "turbo",
+                "sample_rate": 16000,
+                "chunk_seconds": 1.0,
+            }
+        )
+
+    monkeypatch.setattr("lct_python_backend.services.stt_backend_realtime.websockets.connect", fake_connect)
+    monkeypatch.setattr(runtime, "_receiver_loop", fake_receiver_loop)
+
+    await runtime.start()
+    await runtime._handle_server_event({"type": "transcript", "text": "hello world", "is_final": False})
+    await runtime._handle_server_event({"type": "done"})
+
+    events = await runtime.flush()
+
+    assert json.loads(dummy_socket.sent_payloads[-1]) == {"type": "end"}
+    assert events[0]["event_type"] == "final"
+    assert events[0]["text"] == "hello world"
+    assert events[0]["metadata"]["promoted_from_partial"] is True
+    assert events[1]["event_type"] == "status"
+    assert events[1]["message"] == "done"
+
+    await runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_backend_realtime_flush_waits_for_final_after_partial(monkeypatch):
+    runtime = BackendRealtimeTranscriptionRuntime(
+        provider="whisper",
+        ws_url="ws://100.81.65.74:7777/api/transcribe/stream",
+        model="turbo",
+        sample_rate_hz=16000,
+        language="en",
+        session_id="session-1",
+        conversation_id="conversation-1",
+    )
+    dummy_socket = _DummyRealtimeSocket()
+
+    async def fake_connect(*args, **kwargs):
+        return dummy_socket
+
+    async def fake_receiver_loop():
+        await runtime._handle_server_event(
+            {
+                "type": "ready",
+                "model": "turbo",
+                "sample_rate": 16000,
+                "chunk_seconds": 1.0,
+            }
+        )
+
+    monkeypatch.setattr("lct_python_backend.services.stt_backend_realtime.websockets.connect", fake_connect)
+    monkeypatch.setattr(runtime, "_receiver_loop", fake_receiver_loop)
+
+    await runtime.start()
+    await runtime._handle_server_event({"type": "transcript", "text": "hello", "is_final": False})
+
+    async def emit_final():
+        await runtime._handle_server_event({"type": "transcript", "text": "hello world", "is_final": True})
+        await runtime._handle_server_event({"type": "done"})
+
+    task = asyncio.create_task(emit_final())
+    events = await runtime.flush()
+    await task
+
+    assert [event["event_type"] for event in events[:2]] == ["partial", "final"]
+    assert events[1]["text"] == "hello world"
+    assert events[1]["metadata"].get("promoted_from_partial") is None
 
     await runtime.close()

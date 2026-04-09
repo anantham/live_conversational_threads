@@ -148,6 +148,8 @@ class BackendRealtimeTranscriptionRuntime:
 
         await self._send_json({"type": "end"})
         events = self._drain_events_nowait()
+        saw_final = any(event.get("event_type") == "final" for event in events)
+        saw_done = any(event.get("event_type") == "status" and event.get("message") == "done" for event in events)
         deadline = time.monotonic() + max(0.25, DEFAULT_BACKEND_REALTIME_FLUSH_WAIT_SECONDS)
         while time.monotonic() < deadline:
             remaining = deadline - time.monotonic()
@@ -157,14 +159,31 @@ class BackendRealtimeTranscriptionRuntime:
                     timeout=min(0.25, remaining),
                 )
             except asyncio.TimeoutError:
-                if events:
-                    break
                 continue
             events.append(next_event)
             if next_event.get("event_type") == "final":
+                saw_final = True
+                break
+            if next_event.get("event_type") == "status" and next_event.get("message") == "done":
+                saw_done = True
                 break
         events.extend(self._drain_events_nowait())
+        if not saw_final:
+            if not saw_done:
+                saw_done = any(event.get("event_type") == "status" and event.get("message") == "done" for event in events)
+            if saw_done:
+                self._promote_last_partial_to_final(events)
         return events
+
+    @staticmethod
+    def _promote_last_partial_to_final(events: List[Dict[str, Any]]) -> None:
+        for event in reversed(events):
+            if event.get("event_type") == "partial" and str(event.get("text") or "").strip():
+                event["event_type"] = "final"
+                metadata = dict(event.get("metadata") or {})
+                metadata["promoted_from_partial"] = True
+                event["metadata"] = metadata
+                return
 
     async def close(self) -> None:
         if self._receiver_task:
