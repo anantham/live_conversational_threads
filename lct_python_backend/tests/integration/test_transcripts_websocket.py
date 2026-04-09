@@ -1047,7 +1047,7 @@ def test_transcripts_ws_persists_canonical_graph_on_finalized_patch(monkeypatch)
     assert len(latest["existing_json"]) == 1
 
 
-def test_transcripts_ws_flush_ack_precedes_flush_complete_when_processor_flush_is_slow(monkeypatch):
+def test_transcripts_ws_flush_complete_is_not_blocked_by_slow_processor_flush(monkeypatch):
     processor_calls = {"final": [], "flush": 0}
 
     client = build_test_client(
@@ -1074,14 +1074,12 @@ def test_transcripts_ws_flush_ack_precedes_flush_complete_when_processor_flush_i
         started_at = time.perf_counter()
         ws.send_json({"type": "final_flush"})
         flush_ack = ws.receive_json()
-        ack_elapsed_ms = (time.perf_counter() - started_at) * 1000.0
         flush_complete = ws.receive_json()
         complete_elapsed_ms = (time.perf_counter() - started_at) * 1000.0
 
         assert flush_ack["type"] == "flush_ack"
         assert flush_complete["type"] == "flush_complete"
-        assert ack_elapsed_ms < 250.0
-        assert complete_elapsed_ms >= 250.0
+        assert complete_elapsed_ms < 250.0
 
     time.sleep(0.4)
     assert processor_calls["final"] == [("quick final segment", None)]

@@ -2338,3 +2338,67 @@ Manual testing not run:
     - the backend now stays open long enough to expose the real post-flush blocker
     - `_run_post_flush_processing()` emits `processing_status[level=error]` with `error="badly formed hexadecimal UUID string"` before `flush_complete`
     - implication: the early-close bug is fixed, but Whisper-backed end-to-end transcript delivery is still blocked by a later UUID/persistence/graph-path crash during final flush
+
+## 2026-04-09T04:42:00Z
+- Ran a real browser-driven Whisper session using Playwright + Chromium fake-media flags against `http://127.0.0.1:5173/new` so the app’s own `AudioInput -> useTranscriptSockets` path drove `/ws/transcripts`.
+- Inputs and evidence:
+  - fake mic source: `/tmp/fake_mic_20s.wav` generated from `/Users/aditya/Downloads/Talking to Anand about love.m4a`
+  - websocket trace captured to `/tmp/lct_real_browser_whisper_trace.json`
+  - provider was confirmed from `session_ack.provider_http_url=http://100.81.65.74:7777/api/transcribe`
+- Findings from the browser-ground-truth run:
+  - `graph_patch` events are not replacing transcript events; the session produced `11` `transcript_partial` events, `1` `transcript_final`, and `5` `graph_patch` events
+  - timing:
+    - `session_ack=9.573s`
+    - `first_graph_patch=11.499s`
+    - `first_transcript_partial=14.069s`
+    - `flush_ack=28.538s`
+    - `first_transcript_final=30.045s`
+    - no `flush_complete`
+    - frontend logged `Flush timeout` and closed the backend socket at ~`34.55s`
+- Root-cause refinement after code inspection:
+  - `lct_python_backend/services/stt_ws_session.py:1237-1415` sends `flush_complete` only after `_run_post_flush_processing()` finishes:
+    - waiting for pending STT chunk tasks
+    - draining `stt_runtime.flush()`
+    - final transcript persistence
+    - `TranscriptProcessor.flush()` graph generation
+    - `_ensure_graph_persisted(reason="final_flush")`
+  - `lct_python_backend/services/transcript_processing.py:310-324,465-540` shows `TranscriptProcessor.flush()` can synchronously invoke `generate_lct_json(...)` for finalized transcript graph generation before returning
+  - `lct_app/src/components/audio/useTranscriptSockets.js:192-205` still uses a hard `6000ms` stop timeout before closing the websocket if `flush_complete` does not arrive
+- Conclusion:
+  - the original early-close bug was real and is fixed, but the new two-phase contract still couples `flush_complete` to slow graph/LLM persistence work
+  - in Whisper runs the backend can legitimately deliver late transcript events and still miss the client’s `6000ms` timeout because `flush_complete` is gated behind graph generation/persistence, not just transcript delivery
+- No code changes were made in this investigation leg; this entry records the newly confirmed blocker and the relevant files inspected:
+  - `lct_app/src/components/audio/useTranscriptSockets.js`
+  - `lct_app/src/components/audio/audioMessages.js`
+  - `lct_python_backend/services/stt_ws_session.py`
+  - `lct_python_backend/services/stt_backend_realtime.py`
+  - `lct_python_backend/services/transcript_processing.py`
+  - `lct_python_backend/services/live_graph_persistence.py`
+
+## 2026-04-09T05:02:00Z
+- Implemented the approved Option A shutdown fix: decouple transcript completion from graph completion so `flush_complete` no longer waits on slow LLM graph generation or graph persistence.
+- Files modified:
+  - `lct_python_backend/services/stt_ws_session.py`
+    - moved `flush_complete` emission earlier in `_run_post_flush_processing()` so it fires immediately after transcript flush + optional `audio_ready`, before `TranscriptProcessor.flush()` and `_ensure_graph_persisted(reason="final_flush")`
+    - kept a `finally` fallback send so disconnect/error paths still attempt to emit `flush_complete` when possible
+  - `lct_python_backend/tests/integration/test_transcripts_websocket.py`
+    - updated the slow-flush integration test to assert that `flush_complete` is **not** blocked by slow processor flush work
+  - `docs/adr/ADR-026-two-phase-live-flush-contract.md`
+    - amended the ADR to explicitly scope `flush_complete` to transcript completion rather than graph completion
+  - `docs/adr/INDEX.md`
+    - updated ADR index metadata
+- Validation:
+  - `PYTHONPYCACHEPREFIX=/tmp/codex_pycache python3 -m py_compile lct_python_backend/services/stt_ws_session.py` → passed
+  - `./.venv/bin/pytest -q lct_python_backend/tests/integration/test_transcripts_websocket.py` → `17 passed`
+  - reran the real browser-driven Whisper trace with Chromium fake-media flags
+    - counts: `graph_patch=7`, `transcript_partial=11`, `flush_ack=1`, `audio_ready=1`, `flush_complete=1`
+    - provider remained Whisper: `provider_http_url=http://100.81.65.74:7777/api/transcribe`
+    - timings:
+      - `session_ack=16.544s`
+      - `first_transcript_partial=22.971s`
+      - `flush_ack=31.607s`
+      - `flush_complete=33.344s`
+      - `final_flush_total_ms=1738.2`
+    - the frontend no longer timed out waiting for `flush_complete`
+- Remaining behavior to investigate later:
+  - this validation run still produced `0` `transcript_final` events while partials were healthy, so the transport shutdown bug is fixed but Whisper end-of-session final quality/availability still needs separate tuning or upstream investigation

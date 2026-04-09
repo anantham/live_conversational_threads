@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-04-09 (ADR-026 approved)
+Last updated: 2026-04-09 (ADR-026 amended)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|

@@ -1236,6 +1236,7 @@ class WsSessionContext:
 
     async def _run_post_flush_processing(self) -> None:
         flush_started_at = time.perf_counter()
+        flush_complete_sent = False
         try:
             if self.pending_stt_chunk_tasks:
                 await asyncio.gather(
@@ -1379,6 +1380,19 @@ class WsSessionContext:
                         )
                     )
 
+            # Transcript delivery is complete at this point. Downstream graph
+            # generation and persistence may continue in the background, but the
+            # client can safely stop waiting for more transcript events.
+            flush_complete_sent = await _safe_send_json(
+                self.websocket,
+                {
+                    "type": "flush_complete",
+                    "telemetry": {
+                        "final_flush_total_ms": _elapsed_ms(flush_started_at),
+                    },
+                },
+            )
+
             if self.pending_processor_final_tasks:
                 await asyncio.gather(
                     *list(self.pending_processor_final_tasks),
@@ -1406,15 +1420,16 @@ class WsSessionContext:
                 },
             )
         finally:
-            await _safe_send_json(
-                self.websocket,
-                {
-                    "type": "flush_complete",
-                    "telemetry": {
-                        "final_flush_total_ms": _elapsed_ms(flush_started_at),
+            if not flush_complete_sent:
+                await _safe_send_json(
+                    self.websocket,
+                    {
+                        "type": "flush_complete",
+                        "telemetry": {
+                            "final_flush_total_ms": _elapsed_ms(flush_started_at),
+                        },
                     },
-                },
-            )
+                )
 
     # ------------------------------------------------------------------
     # Message handlers
