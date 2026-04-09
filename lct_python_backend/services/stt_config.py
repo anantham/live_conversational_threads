@@ -5,7 +5,7 @@ from urllib.parse import urlparse, urlunparse
 from lct_python_backend.services.coercion_helpers import to_bool, coerce_str, coerce_url
 
 STT_CONFIG_KEY = "stt_config"
-STT_PROVIDER_IDS = ("senko", "parakeet", "whisper", "ofc")
+STT_PROVIDER_IDS = ("senko", "parakeet", "whisper", "ofc", "openai_audio")
 STT_CLOUD_PROVIDER_IDS = ("openai_audio", "openrouter_audio")
 STT_LIVE_FALLBACK_ROUTE_IDS = (
     "remote_whisper",
@@ -27,7 +27,7 @@ DEFAULT_OPENROUTER_AUDIO_MODEL = "google/gemini-2.5-flash"
 
 def _normalize_provider(value: Any) -> str:
     provider = str(value or "").strip().lower()
-    if provider in STT_PROVIDER_IDS:
+    if provider in STT_PROVIDER_IDS or provider in STT_CLOUD_PROVIDER_IDS:
         return provider
     return DEFAULT_STT_PROVIDER
 
