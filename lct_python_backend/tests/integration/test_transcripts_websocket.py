@@ -581,6 +581,103 @@ def test_transcripts_ws_session_meta_uses_byok_openai_candidate(monkeypatch):
     ]
 
 
+def test_transcripts_ws_byok_token_does_not_override_whisper_primary(monkeypatch):
+    import lct_python_backend.services.byok_session_store as byok
+
+    byok._BYOK_SESSIONS.clear()
+    monkeypatch.setattr(byok, "validate_byok_api_key", AsyncMock(return_value=None))
+    session_payload = asyncio.run(
+        byok.create_byok_session(
+            provider="openai_audio",
+            api_key="sk-test-secret",
+            scopes=[byok.BYOK_SCOPE_STT_LIVE, byok.BYOK_SCOPE_LLM_LIVE],
+        )
+    )
+
+    captured = {}
+
+    def runtime_factory(**kwargs):
+        captured["kwargs"] = kwargs
+
+        class DummyRuntime:
+            stt_mode = "backend_ws"
+
+            def __init__(self):
+                primary_candidate = kwargs["candidates"][0]
+                self.provider = primary_candidate.get("provider")
+                self.transport = primary_candidate.get("transport")
+                self.supports_diarization = bool(primary_candidate.get("supports_diarization"))
+                self.model = primary_candidate.get("model")
+                self.sample_rate_hz = kwargs.get("sample_rate_hz", 16000)
+                self.timeout_seconds = kwargs.get("timeout_seconds", 30.0)
+
+            def is_ready(self):
+                return True
+
+            def get_last_runtime_metadata(self):
+                return {}
+
+            async def start(self):
+                return None
+
+            async def push_audio_chunk(self, _chunk):
+                return []
+
+            async def flush(self):
+                return []
+
+            async def close(self):
+                return None
+
+        return DummyRuntime()
+
+    client = build_test_client(
+        monkeypatch,
+        stt_settings={
+            "provider": "whisper",
+            "provider_http_urls": {
+                "whisper": "http://100.81.65.74:7777/api/transcribe",
+            },
+            "http_url": "http://100.81.65.74:7777/api/transcribe",
+            "local_only": False,
+            "live_cloud_fallback_enabled": True,
+            "live_require_diarization": True,
+            "live_fallback_priority": ["remote_whisper", "openai_audio"],
+            "cloud_fallback_providers": {
+                "openai_audio": {
+                    "enabled": True,
+                    "base_url": "https://api.openai.com",
+                    "api_key": "",
+                    "model": "gpt-4o-mini-transcribe",
+                    "diarize_model": "gpt-4o-transcribe-diarize",
+                    "has_api_key": True,
+                }
+            },
+        },
+        runtime_factory=runtime_factory,
+    )
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "session-byok-whisper-primary",
+                "provider": "whisper",
+                "byok_session_token": session_payload["byok_session_token"],
+                "store_audio": False,
+            }
+        )
+        ack = ws.receive_json()
+
+    assert ack["type"] == "session_ack"
+    assert ack["provider"] == "whisper"
+    assert ack["transport"] == "backend_http"
+    assert captured["kwargs"]["candidates"][0]["provider"] == "whisper"
+    assert captured["kwargs"]["candidates"][0]["route_id"] == "configured_provider"
+    assert captured["kwargs"]["candidates"][1]["provider"] == "openai_audio"
+
+
 def test_transcripts_ws_background_refinement_persists_speaker_segments_with_window_timestamps(monkeypatch):
     persisted_events = []
     materialized = []

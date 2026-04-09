@@ -1508,10 +1508,7 @@ class WsSessionContext:
             required_scope=BYOK_SCOPE_LLM_LIVE,
         )
         self._reset_processor()
-        requested_provider = (
-            str((byok_session or {}).get("provider") or "").strip().lower()
-            or str(payload.get("provider") or "").strip().lower()
-        )
+        requested_provider = str(payload.get("provider") or "").strip().lower()
         if requested_provider in {"openai_audio", "openrouter_audio"}:
             normalized_provider = requested_provider
         else:

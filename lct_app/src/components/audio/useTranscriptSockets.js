@@ -129,7 +129,7 @@ export default function useTranscriptSockets({
               type: "session_meta",
               conversation_id: convoId,
               session_id: sessionId,
-              provider: byokSessionToken ? "openai_audio" : (sttConfig?.provider || "parakeet"),
+              provider: sttConfig?.provider || "parakeet",
               byok_session_token: byokSessionToken || undefined,
               store_audio: Boolean(sttConfig?.store_audio),
               speaker_id: sttConfig?.speaker_id || "speaker_1",
@@ -137,8 +137,8 @@ export default function useTranscriptSockets({
               metadata: {
                 source: "web_client",
                 byok_enabled: Boolean(byokSessionToken),
-                local_only: byokSessionToken ? false : sttConfig?.local_only !== false,
-                transport: byokSessionToken ? "byok_openai_audio" : "backend_http_stt",
+                local_only: sttConfig?.local_only !== false,
+                transport: "backend_http_stt",
               },
             })
           );

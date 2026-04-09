@@ -2196,3 +2196,20 @@ Manual testing not run:
 - Residual non-blocking oddity discovered during validation:
   - the scheduled-task launch path still shows a two-step Python chain (`.venv\Scripts\python.exe` parent spawning `C:\Users\adity\anaconda3\python.exe -m grimoire.IndrasNet.agents.web_server.app`) along with repeated `runpy` warnings about `grimoire.IndrasNet.agents.web_server.app` already being in `sys.modules`
   - service health is acceptable now, but this child-interpreter handoff remains unexplained and should be investigated separately if startup reliability regresses again
+
+## 2026-04-09T02:31:00Z
+- Fixed live BYOK routing so OpenAI BYOK no longer silently overrides the configured primary STT provider for browser live sessions.
+- `lct_app/src/components/audio/useTranscriptSockets.js` (lines 124-141): changed live `session_meta` construction so the browser always sends the configured provider (e.g. `whisper`) even when a BYOK session token is present; BYOK now remains credentials-only metadata instead of forcing `provider=openai_audio`. Also stopped mutating `local_only`/`transport` metadata based on BYOK presence.
+- `lct_app/src/components/ByokSessionControl.jsx` (lines 22-34): rewrote helper text so BYOK is described as making OpenAI available to the configured fallback order rather than implicitly making OpenAI primary.
+- `lct_python_backend/services/stt_live_provider_selection.py` (removed the `prefer_openai_before_remote_whisper` special-case block near the end of `resolve_live_stt_candidates()`): candidate ordering now respects the configured primary plus explicit `live_fallback_priority` instead of unconditionally inserting OpenAI ahead of remote Whisper whenever Whisper is remote.
+- `lct_python_backend/services/stt_ws_session.py` (around `requested_provider` in `handle_session_meta`): stopped treating `byok_session.provider` as higher-priority than the provider requested by the browser payload. BYOK sessions now enrich runtime credentials without changing the requested live route.
+- `lct_python_backend/tests/unit/test_stt_live_provider_selection.py` (updated remote-whisper ordering assertion): now expects Whisper primary to stay first when it is selected and OpenAI appears later in fallback order.
+- `lct_python_backend/tests/integration/test_transcripts_websocket.py` (new BYOK regression test): added coverage proving that a live BYOK token plus `provider="whisper"` still yields a Whisper primary candidate and only keeps OpenAI as fallback.
+- Validation:
+  - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_live_provider_selection.py lct_python_backend/tests/integration/test_transcripts_websocket.py` (`25 passed`, one preexisting LibreSSL `urllib3` warning)
+  - `cd lct_app && npx eslint src/components/audio/useTranscriptSockets.js src/components/ByokSessionControl.jsx` (passed)
+- Runtime verification after the fix:
+  - `/api/settings/stt` showed `provider=whisper` and `live_fallback_priority=["remote_whisper","openai_audio",...]`
+  - a real `/ws/transcripts` run over the 24s `Talking to Anand about love.m4a` slice finally acked `provider_http_url=http://100.81.65.74:7777/api/transcribe`, proving the live route now honors the configured Whisper primary
+  - measured Whisper timings on that run: `ack=8.662s`, `first_partial=11.63s`, `flush_ack=33.118s`, `first_final=null`, `partials=11`, `finals=0`
+  - implication: the routing bug is fixed, but remote Whisper still has a separate live-finalization/latency problem after routing is corrected

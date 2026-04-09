@@ -130,7 +130,7 @@ def test_resolve_live_stt_candidates_allows_openrouter_when_text_only_fallback_i
     assert candidates[1]["supports_diarization"] is False
 
 
-def test_resolve_live_stt_candidates_prefers_openai_before_remote_whisper_when_whisper_is_primary_remote_route():
+def test_resolve_live_stt_candidates_keeps_primary_remote_whisper_first_when_whisper_is_primary():
     candidates = resolve_live_stt_candidates(
         settings={
             "provider": "whisper",
@@ -162,14 +162,14 @@ def test_resolve_live_stt_candidates_prefers_openai_before_remote_whisper_when_w
     )
 
     assert [candidate["route_id"] for candidate in candidates] == [
-        "openai_audio",
         "configured_provider",
+        "openai_audio",
     ]
     assert [candidate["provider"] for candidate in candidates] == [
-        "openai_audio",
         "whisper",
+        "openai_audio",
     ]
-    assert candidates[0]["request_diarization"] is False
+    assert candidates[1]["request_diarization"] is False
 
 
 def test_resolve_live_stt_candidates_adds_backend_ws_url_for_remote_whisper_primary():
