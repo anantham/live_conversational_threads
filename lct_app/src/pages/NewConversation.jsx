@@ -61,6 +61,8 @@ export default function NewConversation() {
   const audioRef = useRef(null);
 
   const navigate = useNavigate();
+  const searchParams = new URLSearchParams(window.location.search);
+  const autostart = searchParams.get("autostart") === "true";
 
   // Subscribe to app-level upload context so file upload events flow into this page
   const upload = useUpload();
@@ -642,6 +644,7 @@ export default function NewConversation() {
             message={message}
             fileName={fileName}
             setFileName={setFileName}
+            autostart={autostart}
           />
         </div>
       </div>
