@@ -2174,3 +2174,25 @@ Manual testing not run:
   - this explains why "autostart is configured" and "this specific boot skipped agent autostart" can both be true: a foreground or alternate launcher can inject `INDRAS_SKIP_AGENT_AUTOSTART`, while the Scheduled Task bypasses the richer `start.bat` orchestration entirely
 - Validation:
   - `./.venv/bin/pytest -q lct_python_backend/tests/unit/test_stt_live_runtime.py` (`10 passed`)
+
+## 2026-04-09T02:08:00Z
+- Remote Windows startup investigation reached a concrete root cause and mitigation:
+  - the active listener on `100.81.65.74:7777` was not the Scheduled Task at all; it was a manual debug launcher `C:\Users\adity\run_web_server_skip_agents.ps1` that explicitly set `INDRAS_SKIP_AGENT_AUTOSTART=1` before launching `grimoire.IndrasNet.agents.web_server.app`
+  - that debug script explains both the earlier `Startup env gate active: skipping agent autostart` lines in `web_server.log` and the broken Beeper ingestion/autostart state on those boots
+  - the registered Scheduled Task `\IndrasNet-WebServer` was still using the old brittle action `cmd.exe /c ... .venv\Scripts\python.exe agents\web_server.py`, returning `3221225786 (0xC000013A)`
+- Sibling-repo operational fix:
+  - `TemporalCoordination/grimoire/IndrasNet/scripts/start_web_server_task.ps1` (new, lines 1-34): added a repo-owned launcher that clears the temporary `INDRAS_SKIP_*` env gates, removes stale `web_server.pid`, logs each launcher step to `logs/web_server_task_launcher.log`, and starts the web server through `.venv\Scripts\python.exe -m grimoire.IndrasNet.agents.web_server.app`
+  - `TemporalCoordination/grimoire/IndrasNet/scripts/start_web_server_task.cmd` (new, lines 1-4): added a tiny cmd wrapper so Task Scheduler can execute a relative path without breaking on the repository’s space-containing Windows path
+  - updated the remote Scheduled Task action from the stale inline `cmd.exe /c ... agents\web_server.py` form to `cmd.exe /c scripts\start_web_server_task.cmd`
+- Remote validation:
+  - killed the debug-launched process tree that had been serving `7777`
+  - first Task Scheduler attempt through the raw PowerShell action failed because Task Scheduler serialized the `-File ...start_web_server_task.ps1` argument without quotes, so the script path broke on `Ongoing Local`
+  - after switching the task to `cmd.exe /c scripts\start_web_server_task.cmd`, the task entered `Running` state and `curl http://100.81.65.74:7777/` returned `200`
+  - `logs/web_server_task_launcher.log` shows the task reaching Python launch successfully from the scheduled-task context
+  - `web_server.log` now shows normal agent autostarts again instead of the skip gate:
+    - `Auto-started agent 'beeper'`
+    - `Auto-started agent 'obsidian'`
+    - `Auto-started agent 'meet'`
+- Residual non-blocking oddity discovered during validation:
+  - the scheduled-task launch path still shows a two-step Python chain (`.venv\Scripts\python.exe` parent spawning `C:\Users\adity\anaconda3\python.exe -m grimoire.IndrasNet.agents.web_server.app`) along with repeated `runpy` warnings about `grimoire.IndrasNet.agents.web_server.app` already being in `sys.modules`
+  - service health is acceptable now, but this child-interpreter handoff remains unexplained and should be investigated separately if startup reliability regresses again
