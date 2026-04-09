@@ -2402,3 +2402,20 @@ Manual testing not run:
     - the frontend no longer timed out waiting for `flush_complete`
 - Remaining behavior to investigate later:
   - this validation run still produced `0` `transcript_final` events while partials were healthy, so the transport shutdown bug is fixed but Whisper end-of-session final quality/availability still needs separate tuning or upstream investigation
+
+## 2026-04-09T05:18:00Z
+- Implemented the minimal live-session audio export affordance in the existing footer UI so stored audio can be downloaded without manually constructing the backend endpoint URL.
+- Files modified:
+  - `lct_app/src/components/audio/audioMessages.js`
+    - forwards `audio_ready` websocket payloads to the caller
+  - `lct_app/src/components/audio/useTranscriptSockets.js`
+    - plumbs `onAudioReady` through the existing backend websocket message handler
+  - `lct_app/src/components/AudioInput.jsx`
+    - stores `audio_ready.download_url` in component state
+    - clears the prior download URL when a new recording starts
+    - renders a minimal `Download Audio` link beside the existing live-session HUD when the session is not recording and a download URL is available
+    - updates the transient user message to `Audio stored. Download is ready.`
+- Validation:
+  - `cd lct_app && npx eslint src/components/AudioInput.jsx src/components/audio/audioMessages.js src/components/audio/useTranscriptSockets.js` → passed
+- Scope notes:
+  - no backend changes were needed; this surfaces the existing `/api/conversations/{conversation_id}/audio` download capability already emitted via `audio_ready.download_url`

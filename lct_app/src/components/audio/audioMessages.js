@@ -9,6 +9,7 @@ const createBackendMessageHandler =
     onSttProviderStateChange,
     onProcessingStatus,
     onBackendMessage,
+    onAudioReady,
     logToServer,
     flushResolveRef,
     graphDataFromSocket,
@@ -92,6 +93,9 @@ const createBackendMessageHandler =
         if (statusMessage) {
           emitProcessingStatus(level, statusMessage, message.context || {});
         }
+      }
+      if (message.type === "audio_ready") {
+        onAudioReady?.(message);
       }
       if (message.type === "flush_ack") {
         logToServer?.(

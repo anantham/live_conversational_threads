@@ -33,6 +33,7 @@ export default function useTranscriptSockets({
   onProviderTranscript,
   onProcessingStatus,
   onBackendMessage,
+  onAudioReady,
 }) {
   const { ensureSessionToken } = useByok();
   const backendWsRef = useRef(null);
@@ -60,6 +61,7 @@ export default function useTranscriptSockets({
     onSttProviderStateChange: onProviderSocketStateChange,
     onProcessingStatus,
     onBackendMessage,
+    onAudioReady,
     logToServer,
     flushResolveRef,
     graphDataFromSocket,
