@@ -94,8 +94,16 @@ const createBackendMessageHandler =
         }
       }
       if (message.type === "flush_ack") {
+        logToServer?.(
+          `Flush acknowledged${message.telemetry ? ` ${JSON.stringify(message.telemetry)}` : ""}`
+        );
+      }
+      if (message.type === "flush_complete") {
         flushResolveRef.current?.(message);
         flushResolveRef.current = null;
+        logToServer?.(
+          `Flush complete${message.telemetry ? ` ${JSON.stringify(message.telemetry)}` : ""}`
+        );
       }
       if (message.type === "error") {
         emitProcessingStatus(
