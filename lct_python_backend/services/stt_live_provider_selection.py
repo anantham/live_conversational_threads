@@ -103,12 +103,29 @@ def resolve_live_stt_candidates(
     primary_candidate = {
         "route_id": "configured_provider",
         "provider": selected_provider,
-        "transport": "backend_http",
+        "transport": "openai_audio" if selected_provider == "openai_audio" else "backend_http",
         "http_url": configured_http_url,
         "reason": "configured_provider",
         "supports_diarization": selected_provider == "whisper",
         "degraded": False,
     }
+    if selected_provider == "openai_audio":
+        cloud_providers = (
+            settings.get("cloud_fallback_providers")
+            if isinstance(settings.get("cloud_fallback_providers"), dict)
+            else {}
+        )
+        openai_provider = cloud_providers.get("openai_audio")
+        if isinstance(openai_provider, dict):
+            primary_candidate.update({
+                "api_key": coerce_str(openai_provider.get("api_key")),
+                "model": coerce_str(openai_provider.get("model")),
+                "diarize_model": coerce_str(openai_provider.get("diarize_model")),
+                "base_url": coerce_str(openai_provider.get("base_url")),
+                "supports_realtime_streaming": True,
+                "request_diarization": False,
+            })
+    
     if selected_provider == "whisper":
         primary_ws_url = _build_backend_ws_url(configured_http_url)
         if primary_ws_url:
