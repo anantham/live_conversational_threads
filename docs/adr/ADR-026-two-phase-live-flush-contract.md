@@ -77,3 +77,16 @@ That would be brittle under latency variation and would keep the contract implic
 
 - Investigate the newly exposed post-flush `badly formed hexadecimal UUID string` failure in Whisper end-to-end runs.
 - Decide whether `flush_complete` should mean "no more transcript events" only, or "all graph processing complete" as well. The current implementation scopes it to transcript/post-flush delivery completion.
+
+## Amendment — 2026-04-09
+
+Real browser-driven Whisper validation clarified the correct scope of `flush_complete`.
+
+The first implementation still emitted `flush_complete` only after transcript delivery, graph generation, and graph persistence all finished. In practice that meant `flush_complete` could sit behind slow `TranscriptProcessor.flush()` / `generate_lct_json(...)` work, while the frontend stop path still enforced a 6s timeout. The result was a valid late Whisper transcript final followed by a client-side flush timeout before `flush_complete`.
+
+The implementation is therefore narrowed:
+
+- `flush_complete` means transcript delivery is finished and `audio_ready` has been emitted when applicable
+- graph generation and graph persistence may continue afterward as background completion work
+
+This keeps the websocket shutdown contract aligned with what the client actually needs to know: no more transcript events will arrive.
