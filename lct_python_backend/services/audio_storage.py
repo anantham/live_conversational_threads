@@ -157,3 +157,47 @@ class AudioStorageManager:
             "flac_path": status["flac_path"],
             "bytes_written": status["bytes_written"],
         }
+
+    async def extract_audio_slice(
+        self,
+        conversation_id: str,
+        start_seconds: float,
+        end_seconds: float,
+    ) -> Optional[bytes]:
+        """Extract a PCM slice for a given time window."""
+        status = self.get_status(conversation_id)
+        pcm_path = status.get("pcm_path")
+        wav_path = status.get("wav_path")
+
+        # Try WAV first as it's more durable, fallback to PCM
+        path_to_read = Path(wav_path) if wav_path else (Path(pcm_path) if pcm_path else None)
+        if not path_to_read or not path_to_read.exists():
+            return None
+
+        bytes_per_sample = self.sample_width
+        samples_per_second = self.sample_rate
+        bytes_per_second = samples_per_second * bytes_per_sample * self.channels
+
+        start_offset = int(max(0, start_seconds) * bytes_per_second)
+        end_offset = int(max(start_seconds, end_seconds) * bytes_per_second)
+        length = end_offset - start_offset
+
+        if length <= 0:
+            return None
+
+        # Align to sample width
+        start_offset -= start_offset % bytes_per_sample
+
+        async with self._get_lock():
+            try:
+                if path_to_read.suffix == ".wav":
+                    with wave.open(str(path_to_read), "rb") as wav_file:
+                        wav_file.setpos(int(max(0, start_seconds) * samples_per_second))
+                        return wav_file.readframes(int((end_seconds - start_seconds) * samples_per_second))
+                else:
+                    with path_to_read.open("rb") as f:
+                        f.seek(start_offset)
+                        return f.read(length)
+            except Exception as exc:
+                logger.error("[AUDIO STORAGE] Slice extraction failed for %s: %s", conversation_id, exc)
+                return None

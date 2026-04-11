@@ -682,6 +682,8 @@ class RealtimeHttpSttSession:
         candidate: Dict[str, Any],
         pcm_bytes: bytes,
         wav_payload: bytes,
+        *,
+        known_speakers: Optional[List[Dict[str, str]]] = None,
     ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
         transport = str(candidate.get("transport") or "backend_http").strip().lower()
         if transport == "openai_audio":
@@ -689,6 +691,7 @@ class RealtimeHttpSttSession:
                 client,
                 candidate,
                 wav_payload,
+                known_speakers=known_speakers,
             )
         if transport == "openrouter_audio":
             return await self._transcribe_openrouter_audio_candidate(
@@ -1067,6 +1070,8 @@ class RealtimeHttpSttSession:
         client: httpx.AsyncClient,
         candidate: Dict[str, Any],
         wav_payload: bytes,
+        *,
+        known_speakers: Optional[List[Dict[str, str]]] = None,
     ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
         model = str(candidate.get("model") or "").strip()
         api_key = str(candidate.get("api_key") or "").strip()
@@ -1085,6 +1090,25 @@ class RealtimeHttpSttSession:
         }
         if request_diarization:
             form_data["chunking_strategy"] = "auto"
+            if known_speakers and model == "gpt-4o-transcribe-diarize":
+                # known_speakers is List[Dict[name, audio_base64]]
+                speaker_names = []
+                speaker_refs = []
+                for s in known_speakers:
+                    name = s.get("name")
+                    ref = s.get("audio_base64")
+                    if name and ref:
+                        speaker_names.append(name)
+                        # Reference must be a data URL
+                        if not ref.startswith("data:"):
+                            ref = f"data:audio/wav;base64,{ref}"
+                        speaker_refs.append(ref)
+                
+                if speaker_names:
+                    # httpx supports multiple values for the same key by passing a list
+                    form_data["known_speaker_names[]"] = speaker_names
+                    form_data["known_speaker_references[]"] = speaker_refs
+
         if language:
             form_data["language"] = language
         if should_stream:
@@ -1094,13 +1118,14 @@ class RealtimeHttpSttSession:
 
         if TRACE_API_CALLS:
             logger.info(
-                "[STT OpenAI] POST %s model=%s wav_bytes=%s response_format=%s language=%s stream=%s",
+                "[STT OpenAI] POST %s model=%s wav_bytes=%s response_format=%s language=%s stream=%s known_speakers=%s",
                 http_url,
                 model or "-",
                 len(wav_payload),
                 response_format,
                 language or "-",
                 should_stream,
+                len(known_speakers) if known_speakers else 0,
             )
 
         if should_stream:
@@ -1365,6 +1390,7 @@ async def transcribe_wav_stt_candidate(
     sample_rate_hz: int = DEFAULT_SAMPLE_RATE_HZ,
     timeout_seconds: float = DEFAULT_HTTP_TIMEOUT_SECONDS,
     language: str = DEFAULT_HTTP_LANGUAGE,
+    known_speakers: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     """Transcribe an existing WAV payload against a single STT candidate."""
     candidate_provider = str(candidate.get("provider") or "unknown").strip() or "unknown"
@@ -1392,6 +1418,7 @@ async def transcribe_wav_stt_candidate(
             candidate,
             b"",
             wav_payload,
+            known_speakers=known_speakers,
         )
         return {
             "ok": True,

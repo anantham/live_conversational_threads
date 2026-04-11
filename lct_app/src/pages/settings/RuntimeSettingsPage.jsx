@@ -3,6 +3,7 @@ import LlmModelsCard from "../../components/settings/LlmModelsCard";
 import LlmRoutingCard from "../../components/settings/LlmRoutingCard";
 import SttSettingsCard from "../../components/settings/SttSettingsCard";
 import ArtifactExportCard from "../../components/settings/ArtifactExportCard";
+import SpeakerVoiceLibraryCard from "../../components/settings/SpeakerVoiceLibraryCard";
 
 export default function RuntimeSettingsPage() {
   return (
@@ -17,6 +18,7 @@ export default function RuntimeSettingsPage() {
 
       <div className="space-y-6">
         <SttSettingsCard />
+        <SpeakerVoiceLibraryCard />
         <ByokSessionControl />
         <LlmRoutingCard />
         <LlmModelsCard />
