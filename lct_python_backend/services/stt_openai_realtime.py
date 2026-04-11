@@ -360,6 +360,7 @@ class OpenAIRealtimeTranscriptionRuntime:
         if event_type == "conversation.item.input_audio_transcription.delta":
             item_id = str(payload.get("item_id") or "").strip()
             delta = str(payload.get("delta") or "")
+            logprobs = payload.get("logprobs")
             if not item_id or not delta:
                 return
             next_text = f"{self._partial_text_by_item_id.get(item_id, '')}{delta}"
@@ -372,6 +373,7 @@ class OpenAIRealtimeTranscriptionRuntime:
                         **self._base_metadata(),
                         "item_id": item_id,
                         "provider_event_type": event_type,
+                        "logprobs": logprobs,
                     },
                 }
             )
@@ -380,6 +382,7 @@ class OpenAIRealtimeTranscriptionRuntime:
         if event_type == "conversation.item.input_audio_transcription.completed":
             item_id = str(payload.get("item_id") or "").strip()
             transcript = str(payload.get("transcript") or "").strip()
+            logprobs = payload.get("logprobs")
             wav_pcm = self._committed_pcm_by_item_id.pop(item_id, b"")
             window_timestamps = self._committed_window_by_item_id.pop(item_id, None)
             wav_payload = (
@@ -400,6 +403,7 @@ class OpenAIRealtimeTranscriptionRuntime:
                         "item_id": item_id,
                         "provider_event_type": event_type,
                         "sample_rate_hz": DEFAULT_OPENAI_REALTIME_SAMPLE_RATE_HZ,
+                        "logprobs": logprobs,
                     },
                     "timestamps": window_timestamps or {},
                     "_wav_payload": wav_payload,
