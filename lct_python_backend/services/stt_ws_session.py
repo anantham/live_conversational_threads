@@ -8,17 +8,20 @@ No public API change — the router in ``stt_api.py`` is the only caller.
 """
 
 import asyncio
+import base64
 import copy
 import json
 import logging
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
+from sqlalchemy import select
 
+from lct_python_backend.models import Utterance
 from lct_python_backend.services.audio_storage import AudioStorageManager
 from lct_python_backend.services.byok_session_store import (
     BYOK_SCOPE_LLM_LIVE,
@@ -31,6 +34,8 @@ from lct_python_backend.services.byok_session_store import (
 )
 from lct_python_backend.services.live_graph_persistence import persist_live_graph_snapshot
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
+from lct_python_backend.services.speaker_naming_service import is_confirmed_speaker_name
+from lct_python_backend.services.speaker_voice_library import get_speaker_audio_references
 from lct_python_backend.services.stt_http_transcriber import decode_audio_base64, pcm16le_to_wav, transcribe_wav_stt_candidate
 from lct_python_backend.services.stt_live_graph import (
     build_draft_graph_patch,
@@ -746,19 +751,103 @@ class WsSessionContext:
     ) -> None:
         if not wav_payload or not self.refinement_candidate:
             return
+
+        # 1. Determine sample rate for audio processing
         effective_sample_rate_hz = (
             max(8000, int(sample_rate_hz))
             if sample_rate_hz is not None
             else (self.stt_runtime.sample_rate_hz if self.stt_runtime else 16000)
         )
+
+        # 2. Identify confirmed speakers and gather reference audio slices
+        known_speakers: List[Dict[str, str]] = []
+        try:
+            # First, try cross-session references from voice library
+            cross_session_refs = await get_speaker_audio_references(
+                db=self.session,
+                conversation_id=self.state.conversation_id,
+            )
+            for ref in cross_session_refs[:4]:
+                if ref.get("audio_base64"):
+                    known_speakers.append({
+                        "name": ref["name"],
+                        "audio_base64": ref["audio_base64"]
+                    })
+
+            if known_speakers:
+                logger.info(
+                    "[WS][STT REFINE] session=%s conversation=%s using %s cross-session speaker references",
+                    self.state.session_id,
+                    self.state.conversation_id,
+                    len(known_speakers),
+                )
+
+            if len(known_speakers) < 4:
+                # Fall back to in-conversation confirmed speakers
+                in_conversation_speaker_names = [s["name"] for s in known_speakers]
+                
+                utterance_stmt = (
+                    select(Utterance)
+                    .where(Utterance.conversation_id == self.state.conversation_id)
+                    .where(Utterance.timestamp_start.is_not(None))
+                    .where(Utterance.timestamp_end.is_not(None))
+                    .order_by(Utterance.sequence_number.desc())
+                )
+                utterance_result = await self.session.execute(utterance_stmt)
+                recent_utterances = list(utterance_result.scalars().all())
+
+                confirmed_speaker_data: Dict[str, Utterance] = {}
+                for u in recent_utterances:
+                    if len(known_speakers) >= 4:
+                        break
+                    if u.speaker_id and u.speaker_name:
+                        if u.speaker_name in in_conversation_speaker_names:
+                            continue
+                        if is_confirmed_speaker_name(speaker_id=u.speaker_id, speaker_name=u.speaker_name):
+                            duration = (u.timestamp_end or 0) - (u.timestamp_start or 0)
+                            if 2.0 <= duration <= 10.0:
+                                if u.speaker_id not in confirmed_speaker_data:
+                                    confirmed_speaker_data[u.speaker_id] = u
+
+                for sid, u in confirmed_speaker_data.items():
+                    if len(known_speakers) >= 4:
+                        break
+                    slice_bytes = await self.audio_storage.extract_audio_slice(
+                    str(self.state.conversation_id),
+                    u.timestamp_start,
+                    u.timestamp_end,
+                )
+                if slice_bytes:
+                    # Wrap raw PCM in WAV header before encoding
+                    wav_header = pcm16le_to_wav(slice_bytes, effective_sample_rate_hz)
+                    b64 = base64.b64encode(wav_header).decode("utf-8")
+                    known_speakers.append({
+                        "name": u.speaker_name,
+                        "audio_base64": b64
+                    })
+            
+            if known_speakers:
+                logger.info(
+                    "[WS][STT REFINE] session=%s conversation=%s adding %s known speaker references: %s",
+                    self.state.session_id,
+                    self.state.conversation_id,
+                    len(known_speakers),
+                    [s["name"] for s in known_speakers],
+                )
+        except Exception as exc:
+            logger.warning("[WS][STT REFINE] Failed to gather known speaker references: %s", exc)
+
+        # 3. Trigger transcription with (optional) known speakers
         timeout_seconds = getattr(self.stt_runtime, "timeout_seconds", 30.0) if self.stt_runtime else 30.0
         language = getattr(self.stt_runtime, "language", "") if self.stt_runtime else ""
+        
         result = await transcribe_wav_stt_candidate(
             dict(self.refinement_candidate),
             wav_payload=wav_payload,
             sample_rate_hz=effective_sample_rate_hz,
             timeout_seconds=timeout_seconds,
             language=language,
+            known_speakers=known_speakers if known_speakers else None,
         )
         if result.get("ok"):
             refinement_segments = result.get("segments") if isinstance(result.get("segments"), list) else []

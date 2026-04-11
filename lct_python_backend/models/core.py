@@ -159,6 +159,36 @@ class TranscriptEvent(Base):
     )
 
 
+class SpeakerAudioReference(Base):
+    """Persisted audio clips for known speakers across sessions."""
+    __tablename__ = "speaker_audio_references"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    speaker_id = Column(Text, nullable=False)
+    speaker_name = Column(Text, nullable=False)
+
+    # Audio data (WAV format stored as bytes)
+    audio_wav = Column(LargeBinary(length=10_000_000))  # ~10MB max
+    sample_rate_hz = Column(Integer, nullable=False, default=16000)
+
+    # Source context
+    source_conversation_id = Column(UUID(as_uuid=True), ForeignKey('conversations.id', ondelete='CASCADE'))
+    source_utterance_id = Column(UUID(as_uuid=True), ForeignKey('utterances.id', ondelete='SET NULL'))
+    source_timestamp_start = Column(Float)
+    source_timestamp_end = Column(Float)
+
+    # Quality indicators
+    duration_seconds = Column(Float)
+    clip_quality_score = Column(Float)  # 0-1 confidence from STT
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (
+        Index('idx_speaker_audio_speaker', 'speaker_id', 'speaker_name'),
+        Index('idx_speaker_audio_conversation', 'source_conversation_id'),
+    )
+
+
 class SpeakerSegment(Base):
     """Immutable diarization evidence aligned to a conversation time window."""
 

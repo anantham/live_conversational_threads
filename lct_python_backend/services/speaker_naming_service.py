@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import select
 
 from lct_python_backend.models import Conversation, Node, Utterance
+from lct_python_backend.services.audio_storage import AudioStorageManager
 from lct_python_backend.services.coercion_helpers import coerce_str
 
 _GENERIC_SPEAKER_RE = re.compile(r"^(speaker[\s_:-]*\d+|speaker[\s_:-]*[a-z]\w*|[a-z]|\d+)$", re.IGNORECASE)
@@ -127,6 +128,7 @@ async def rename_conversation_speaker(
     conversation_id: str,
     speaker_id: str,
     speaker_name: str,
+    audio_storage: Optional[AudioStorageManager] = None,
 ) -> List[Dict[str, Any]]:
     conversation_uuid = uuid.UUID(str(conversation_id))
     normalized_speaker_id = normalize_speaker_name(speaker_id)
@@ -186,6 +188,16 @@ async def rename_conversation_speaker(
     conversation.participants = _build_conversation_participants(all_utterances)
     conversation.participant_count = len(conversation.participants or [])
     await db.commit()
+
+    if audio_storage and is_confirmed_speaker_name(speaker_id=normalized_speaker_id, speaker_name=normalized_speaker_name):
+        from lct_python_backend.services.speaker_voice_library import capture_best_clips_for_speaker
+        await capture_best_clips_for_speaker(
+            db=db,
+            audio_storage=audio_storage,
+            conversation_id=conversation_uuid,
+            speaker_id=normalized_speaker_id,
+            speaker_name=normalized_speaker_name,
+        )
 
     refreshed_result = await db.execute(
         select(Utterance)
