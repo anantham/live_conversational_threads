@@ -119,6 +119,29 @@ Threads is part of that governance layer.
 
 ---
 
+## Documentation
+
+| Guide | What It's For |
+|-------|---------------|
+| [LOCAL_SETUP.md](docs/LOCAL_SETUP.md) | How to run the project locally - one-time setup + daily startup |
+| [VISION.md](docs/VISION.md) | Why we're building this - the philosophy and long-term direction |
+| [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) | High-level codebase organization - what lives where |
+| [docs/adr/INDEX.md](docs/adr/INDEX.md) | Architecture Decision Records - why we made specific technical choices |
+| [docs/plans/](docs/plans/) | Implementation roadmaps - upcoming features and phased approaches |
+| [WORKLOG.md](docs/WORKLOG.md) | Development history - what was built, when, and why |
+| [ISSUES.md](ISSUES.md) | Known issues and technical debt tracking |
+| [FEATURE_ROADMAP.md](docs/FEATURE_ROADMAP.md) | Feature prioritization - **note: some entries are stale** |
+| [DATA_MODEL_V2.md](docs/DATA_MODEL_V2.md) | Database schema and data models |
+
+### Quick Paths
+
+- **New to the codebase?** Start with [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)
+- **Want to run it?** Follow [LOCAL_SETUP.md](docs/LOCAL_SETUP.md)
+- **Understanding a feature?** Check the corresponding ADR in `docs/adr/`
+- **Debugging an issue?** Search [WORKLOG.md](docs/WORKLOG.md) for context
+
+---
+
 <div align="center">
 
 <img src="docs/assets/conversation-nexus.png" alt="Two speakers, conversation threads radiating outward into geometric order" width="100%"/>

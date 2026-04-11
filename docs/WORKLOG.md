@@ -1,5 +1,34 @@
 # WORKLOG
 
+## 2026-04-10T14:30:00Z — Speaker Voice Library for cross-session diarization consistency
+
+Branch: current worktree
+
+- Context: OpenAI's `gpt-4o-transcribe-diarize` supports `known_speaker_names` and `known_speaker_references` to improve diarization consistency. We already capture audio and have a speaker-naming feature, so we built a persistent voice library that stores audio clips for named speakers and reuses them in future sessions.
+- Hypothesis: if we save high-quality audio clips (2-10s) when speakers are named, and pass up to 4 references in subsequent sessions, OpenAI will consistently identify the same speakers across conversations.
+- Files modified:
+  - `lct_python_backend/models/core.py` (lines 160-190): added `SpeakerAudioReference` model with audio blob, speaker identity, source context, and timestamps.
+  - `lct_python_backend/alembic/versions/add_speaker_audio_references.py` (new): migration to create the table.
+  - `lct_python_backend/services/speaker_voice_library.py` (new, 177 LOC): service with `save_speaker_audio_reference()`, `get_speaker_audio_references()`, and `capture_best_clips_for_speaker()`.
+  - `lct_python_backend/services/speaker_naming_service.py` (lines 12, 125, 192-199): integrated clip capture into `rename_conversation_speaker()` when a speaker is confirmed.
+  - `lct_python_backend/services/stt_http_transcriber.py` (lines 1074, 1093-1110, 1393, 1421): added `known_speakers` param to OpenAI transcription calls.
+  - `lct_python_backend/services/stt_ws_session.py` (lines 11, 22-24, 38, 755-830): loads cross-session references at refinement time, falls back to in-conversation speakers if needed.
+  - `lct_python_backend/services/audio_storage.py` (lines 161-203): added `extract_audio_slice()` for extracting time-windowed PCM.
+  - `lct_python_backend/speaker_naming_api.py` (lines 1-109): added `GET /api/speaker-voice-library` and `DELETE /api/speaker-voice-library/{id}` endpoints.
+  - `lct_app/src/components/settings/SpeakerVoiceLibraryCard.jsx` (new): UI card in Settings → Runtime for reviewing/deleting clips.
+  - `lct_app/src/pages/settings/RuntimeSettingsPage.jsx` (line 6): added the card to the settings page.
+- Why:
+  - OpenAI's diarization was inconsistent with speaker labels changing between sessions despite the same speakers;
+  - passing reference audio clips gives the model a voice signature to match;
+  - 1 clip per speaker (max 4) keeps API payload small while maximizing usefulness.
+- Validation:
+  - All Python files pass `python3 -m py_compile`.
+  - Migration file created at `alembic/versions/add_speaker_audio_references.py`.
+- Design notes:
+  - Query filters to speakers in the current conversation first to avoid fetching irrelevant clips;
+  - hard-capped at 4 total clips (OpenAI's max) with 1 per speaker to support 4-person conversations;
+  - UI allows reviewing and deleting clips to maintain quality in the voice library.
+
 ## 2026-04-09T23:58:00Z — Resume local drafts with recoverable audio stitching/export
 
 Branch: current worktree

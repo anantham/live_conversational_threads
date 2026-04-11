@@ -14,8 +14,8 @@ Major graph UX overhaul: progressive graph generation during file upload (nodes 
 ### Continue Immediately
 1. **Codex review on PR #49** — `@codex review` comment posted but review hasn't triggered. May need to verify Codex GitHub App is installed on the repo (GitHub → Settings → Applications). Code review quota shows 100% available so it's not a quota issue.
 
-### Blocked
-1. **Test buffered refinement pipeline for speaker diarization (#12)** — Needs a diarization-capable STT provider (WhisperX). Remote machine at 100.81.65.74 is a Windows box with no Docker/WhisperX. User has "Indra's Net orchestrator" there but it's not running. Resume when WhisperX is available.
+### Re-validated
+1. **Test buffered refinement pipeline for speaker diarization (#12)** — Previous handover note was stale. Verified on 2026-04-08 that the remote Windows machine at `100.81.65.74` has `TemporalCoordination/grimoire/IndrasNet` present and serving `POST /api/transcribe` from `agents/routes/transcription.py`. That route calls `gpu_backends.transcribe_with_coordinator(...)` with local WhisperX first, Modal WhisperX fallback, `priority=0`, and `coordinator_timeout=5.0`. Remaining work is latency and queue-path validation, not basic WhisperX availability.
 
 ### Deferred
 1. **BYOK popup on rate limit** — BYOK moved to settings but no popup-on-limit yet. Needs backend signal for quota exhaustion. Low priority.
@@ -53,7 +53,7 @@ Major graph UX overhaul: progressive graph generation during file upload (nodes 
 18. Curved cluster edges
 
 ### Remaining (1)
-12. Test buffered refinement pipeline (blocked: needs WhisperX)
+12. Test buffered refinement pipeline (pending: remote IndrasNet WhisperX route exists; validate latency, diarization output, and fallback behavior)
 
 ## Learnings Captured
 - Progressive gen on cloud STT transport works well — don't need to segment the audio, just segment the transcript
@@ -70,7 +70,7 @@ Major graph UX overhaul: progressive graph generation during file upload (nodes 
 2. If not, investigate GitHub App installation for `live_conversational_threads`
 3. Start the app (`bash start.command`) and test the full flow with a file upload
 4. Verify: nodes appear progressively, transcript panel works, cluster levels render, edges have colors
-5. If WhisperX becomes available on remote machine, test diarization pipeline (#12)
+5. Test diarization pipeline (#12) against the active IndrasNet route at `100.81.65.74`, and inspect `/api/gpu/status` plus coordinator fallback behavior if latency remains high
 
 ---
 *Handover by Claude Opus 4.6 at end of session*

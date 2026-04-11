@@ -30,6 +30,8 @@
 - [x] API endpoints implemented
 - [x] Error handling complete
 - [x] Environment variables documented
+- [x] OpenAI STT Optimized (gpt-4o-mini-transcribe for live, gpt-4o-transcribe-diarize for background)
+- [x] Background speaker refinement loop enabled
 - [ ] **TODO**: API keys secured in secrets manager
 - [ ] **TODO**: Rate limiting configured
 - [ ] **TODO**: CORS settings for production
