@@ -19,22 +19,28 @@ import useMicDevices from "./audio/useMicDevices";
 
 const LIVE_TRANSCRIPT_MAX_LINES = 240;
 
-function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef) {
+function calculateConfidence(logprobs) {
+  if (!logprobs || !Array.isArray(logprobs) || logprobs.length === 0) return 1.0;
+  // Use minimum confidence as the most conservative estimate for the "uncertainty" trigger
+  return Math.min(...logprobs.map(lp => Math.exp(lp.logprob || 0)));
+}
+
+function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef, logprobs) {
   if (!cleanText) {
     return previousLines;
   }
 
+  const confidence = calculateConfidence(logprobs);
   const lastLine = previousLines[previousLines.length - 1] || null;
   const trimLines = (lines) => lines.slice(-LIVE_TRANSCRIPT_MAX_LINES);
 
   if (!isFinal) {
-    // Keep exactly one active streaming line and update it in place.
     if (lastLine && !lastLine.isFinal) {
       if (lastLine.text === cleanText) {
         return previousLines;
       }
       const next = [...previousLines];
-      next[next.length - 1] = { ...lastLine, text: cleanText };
+      next[next.length - 1] = { ...lastLine, text: cleanText, confidence };
       return next;
     }
 
@@ -45,22 +51,22 @@ function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef) 
         id: lineIdRef.current,
         text: cleanText,
         isFinal: false,
+        confidence,
       },
     ]);
   }
 
-  // Finalized text replaces the in-progress streaming line.
   if (lastLine && !lastLine.isFinal) {
     const next = [...previousLines];
     next[next.length - 1] = {
       ...lastLine,
       text: cleanText,
       isFinal: true,
+      confidence,
     };
     return next;
   }
 
-  // Avoid duplicate final appends from repeated server messages.
   if (lastLine && lastLine.isFinal && lastLine.text === cleanText) {
     return previousLines;
   }
@@ -72,8 +78,18 @@ function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef) 
       id: lineIdRef.current,
       text: cleanText,
       isFinal: true,
+      confidence,
     },
   ]);
+}
+
+function getConfidenceColor(line) {
+  if (!line.isFinal) return "text-gray-400 italic";
+  const confidence = line.confidence;
+  if (confidence === undefined || confidence === null) return "text-gray-600";
+  if (confidence > 0.9) return "text-gray-700";
+  if (confidence > 0.7) return "text-red-800";
+  return "text-red-500 font-medium underline decoration-dotted";
 }
 
 const AudioInput = forwardRef(function AudioInput({
@@ -141,9 +157,10 @@ const AudioInput = forwardRef(function AudioInput({
     const cleanText = String(text || "").trim();
     if (!cleanText) return;
     const isFinal = eventType === "transcript_final";
+    const logprobs = metadata?.logprobs || null;
     handleLiveTranscriptEvent({ text: cleanText, eventType, metadata });
     setLiveTranscriptLines((previous) =>
-      upsertLiveTranscriptLine(previous, cleanText, isFinal, transcriptLineIdRef)
+      upsertLiveTranscriptLine(previous, cleanText, isFinal, transcriptLineIdRef, logprobs)
     );
   }, [handleLiveTranscriptEvent]);
 
@@ -290,7 +307,7 @@ const AudioInput = forwardRef(function AudioInput({
         <div className="absolute bottom-full left-0 right-0 mb-1 px-4 pointer-events-none">
           <div className="max-w-lg mx-auto bg-black/5 backdrop-blur-sm rounded-lg px-3 py-1.5 text-xs text-gray-500 space-y-0.5">
             {captionLines.map((line) => (
-              <p key={line.id} className={line.isFinal ? "text-gray-600" : "text-gray-400 italic"}>
+              <p key={line.id} className={getConfidenceColor(line)}>
                 {line.text}{!line.isFinal ? " ..." : ""}
               </p>
             ))}
