@@ -22,6 +22,11 @@ from lct_python_backend.services.cost_stats_service import (
 from lct_python_backend.services.factcheck_service import (
     generate_fact_check_json_perplexity as generate_fact_check_json_perplexity_service,
 )
+from lct_python_backend.services.fact_check_service import (
+    analyze_transcript_window,
+    check_conversation_facts,
+    format_transcript_window,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["factcheck"])
@@ -97,4 +102,25 @@ async def get_cost_stats(
         raise
     except Exception as exc:
         logger.exception("[COST_TRACKING] Failed to get cost stats for time_range=%s", time_range)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/api/conversations/{conversation_id}/fact_check")
+async def get_conversation_fact_check(
+    conversation_id: str,
+    turns: int = Query(10, ge=3, le=20),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Get fact-check analysis for a conversation's recent transcript window."""
+    try:
+        result = await check_conversation_facts(
+            conversation_id=conversation_id,
+            db_session=db,
+            window_turns=turns,
+        )
+        return {"ok": True, **result}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("[FACT_CHECK] Failed for conversation_id=%s", conversation_id)
         raise HTTPException(status_code=500, detail=str(exc))

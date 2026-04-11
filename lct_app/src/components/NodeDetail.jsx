@@ -5,6 +5,7 @@ import {
   fetchConversationSpeakers,
   updateConversationSpeakerName,
 } from "../services/speakerNamingApi";
+import { apiFetch } from "../services/apiClient";
 
 function normalizeContextualRelations(contextualRelation) {
   if (!contextualRelation || typeof contextualRelation !== "object" || Array.isArray(contextualRelation)) {
@@ -64,6 +65,9 @@ export default function NodeDetail({
   const [speakerError, setSpeakerError] = useState("");
   const [speakerFeedback, setSpeakerFeedback] = useState("");
 
+  const [factCheckData, setFactCheckData] = useState(null);
+  const [factCheckLoading, setFactCheckLoading] = useState(false);
+
   const relations = Array.isArray(safeNode?.edge_relations) ? safeNode.edge_relations : [];
   const contextualRelations = normalizeContextualRelations(safeNode?.contextual_relation);
   const canRenameSpeaker = Boolean(conversationId && safeNode?.speaker_id);
@@ -93,6 +97,42 @@ export default function NodeDetail({
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
   }, [safeNode, onClose]);
+
+  useEffect(() => {
+    if (!conversationId) {
+      setFactCheckData(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadFactCheck() {
+      setFactCheckLoading(true);
+      try {
+        const response = await apiFetch(
+          `/api/conversations/${conversationId}/fact_check?turns=10`
+        );
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json();
+        if (cancelled) return;
+        setFactCheckData(data);
+      } catch (error) {
+        console.warn("[NodeDetail] Fact check failed:", error);
+      } finally {
+        if (!cancelled) {
+          setFactCheckLoading(false);
+        }
+      }
+    }
+
+    void loadFactCheck();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
 
   useEffect(() => {
     if (!canRenameSpeaker) {
@@ -363,6 +403,68 @@ export default function NodeDetail({
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {/* Fact Check Analysis */}
+        {(factCheckLoading || factCheckData) && (
+          <div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Analysis</span>
+            {factCheckLoading && (
+              <div className="mt-1 text-[11px] text-gray-500">Analyzing transcript...</div>
+            )}
+            {factCheckData && factCheckData.summary && (
+              <div className="mt-1 text-xs text-gray-700 leading-relaxed bg-gray-50 rounded p-2">
+                {factCheckData.summary}
+              </div>
+            )}
+            {factCheckData && factCheckData.claims && factCheckData.claims.length > 0 && (
+              <ul className="mt-2 space-y-2">
+                {factCheckData.claims.map((claim, i) => (
+                  <li
+                    key={i}
+                    className={`text-xs rounded p-2 ${
+                      claim.flags?.includes("contradiction")
+                        ? "bg-orange-50 border border-orange-200"
+                        : claim.flags?.includes("fallacy") || claim.flags?.includes("uncertainty")
+                        ? "bg-yellow-50 border border-yellow-200"
+                        : "bg-gray-50 border border-gray-100"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span
+                        className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded ${
+                          claim.type === "factual"
+                            ? "bg-blue-100 text-blue-700"
+                            : claim.type === "normative"
+                            ? "bg-purple-100 text-purple-700"
+                            : "bg-teal-100 text-teal-700"
+                        }`}
+                      >
+                        {claim.type}
+                      </span>
+                      {claim.flags?.length > 0 &&
+                        claim.flags.map((flag) => (
+                          <span
+                            key={flag}
+                            className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded ${
+                              flag === "contradiction"
+                                ? "bg-orange-200 text-orange-800"
+                                : "bg-yellow-200 text-yellow-800"
+                            }`}
+                          >
+                            {flag}
+                          </span>
+                        ))}
+                    </div>
+                    <div className="text-gray-700">{claim.text}</div>
+                    {claim.speaker && (
+                      <div className="text-[10px] text-gray-400 mt-1">— {claim.speaker}</div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
       </div>
