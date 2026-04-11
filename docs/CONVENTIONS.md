@@ -184,6 +184,18 @@ Providers are identified by string `provider_id`, normalized via `_normalize_pro
 
 ---
 
+## Visualization Patterns
+
+### Temporal Wavelength Rainbow
+
+To provide visual differentiation before speaker diarization completes (~2 min delay), the graph uses a dynamic spectral rainbow based on light wavelengths:
+
+*   **Logic**: Maps node index to HSL hue spectrum (0° Red -> 280° Violet).
+*   **Behavior**: "Stretch-to-Fit" — the gradient recalculates as new nodes arrive, ensuring the graph always spans the full visible spectrum from the start of the conversation to the most recent utterance.
+*   **Transition**: Once the background diarization loop returns confirmed speaker IDs, nodes transition from the rainbow spectrum to persistent **Speaker Colors**.
+
+---
+
 ## Intentional Divergences
 
 These are NOT convention violations. `doc-audit` should skip them.
