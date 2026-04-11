@@ -48,15 +48,19 @@ export function buildSpeakerColorMap(nodes) {
 /**
  * When only 0-1 speakers are detected, build a positional color map
  * keyed by node id. Nodes are colored by their temporal position,
- * giving visual differentiation even without diarization.
+ * using a spectral rainbow (Red -> Violet) based on wavelengths.
  */
 export function buildTemporalColorMap(nodes) {
   const map = {};
   if (!nodes || nodes.length === 0) return map;
-  const bucketSize = Math.max(1, Math.ceil(nodes.length / TEMPORAL_COLORS.length));
+  
+  const total = nodes.length;
   nodes.forEach((n, i) => {
-    const bucket = Math.min(Math.floor(i / bucketSize), TEMPORAL_COLORS.length - 1);
-    map[n.id] = TEMPORAL_COLORS[bucket];
+    // Map index to a hue spectrum (0 to 280)
+    // 0 = Red (Long wavelength), 280 = Violet/Indigo (Short wavelength)
+    const hue = total > 1 ? (i / (total - 1)) * 280 : 200;
+    // Using high lightness (85%) and decent saturation (70%) for a vibrant but readable "sticker" look
+    map[n.id] = `hsl(${hue}, 75%, 88%)`;
   });
   return map;
 }

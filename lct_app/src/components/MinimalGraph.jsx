@@ -1324,11 +1324,19 @@ function MinimalGraphInner({
               ) : (
                 <>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">
-                      Node color = {effectiveClusterLevel >= 2 ? "Theme" : "Speaker group"}
-                    </span>
-                    <div className="mt-1 text-[10px] text-gray-500">
-                      Clusters colored by dominant speaker or thematic grouping
+                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Node color = Wavelength Rainbow</span>
+                    <div className="mt-2 flex flex-col gap-1">
+                      <div 
+                        className="h-2 w-full rounded-full" 
+                        style={{ background: 'linear-gradient(to right, hsl(0, 75%, 88%), hsl(140, 75%, 88%), hsl(280, 75%, 88%))' }}
+                      />
+                      <div className="flex justify-between text-[9px] text-gray-400 font-mono uppercase tracking-tight">
+                        <span>Start</span>
+                        <span>Now</span>
+                      </div>
+                    </div>
+                    <div className="mt-2 text-[10px] text-gray-500 leading-tight">
+                      Nodes stretch across the spectrum as the conversation grows. Labels update to speaker colors after ~2 mins.
                     </div>
                   </div>
                   <div>
