@@ -382,8 +382,8 @@ async def upload_audio_chunk(
 async def get_audio_status(conversation_id: str):
     status = audio_storage.get_status(conversation_id)
     download_url = None
-    if status.get("wav_path") and DOWNLOAD_TOKEN:
-        download_url = f"/api/conversations/{conversation_id}/audio?token={DOWNLOAD_TOKEN}"
+    if status.get("wav_path"):
+        download_url = f"/api/conversations/{conversation_id}/audio?token={DOWNLOAD_TOKEN}" if DOWNLOAD_TOKEN else f"/api/conversations/{conversation_id}/audio"
     return {
         "status": "ok",
         "conversation_id": conversation_id,
@@ -404,8 +404,8 @@ async def finalize_audio_upload(
     result = await audio_storage.finalize(conversation_id)
     paths = audio_storage.get_paths(conversation_id)
     download_url = None
-    if paths.get("wav_path") and DOWNLOAD_TOKEN:
-        download_url = f"/api/conversations/{conversation_id}/audio?token={DOWNLOAD_TOKEN}"
+    if paths.get("wav_path"):
+        download_url = f"/api/conversations/{conversation_id}/audio?token={DOWNLOAD_TOKEN}" if DOWNLOAD_TOKEN else f"/api/conversations/{conversation_id}/audio"
     return {"status": "ok", "session_id": session_id, "paths": paths, "download_url": download_url}
 
 
@@ -414,8 +414,8 @@ async def recover_audio(conversation_id: str):
     result = await audio_storage.finalize(conversation_id)
     status = audio_storage.get_status(conversation_id)
     download_url = None
-    if status.get("wav_path") and DOWNLOAD_TOKEN:
-        download_url = f"/api/conversations/{conversation_id}/audio?token={DOWNLOAD_TOKEN}"
+    if status.get("wav_path"):
+        download_url = f"/api/conversations/{conversation_id}/audio?token={DOWNLOAD_TOKEN}" if DOWNLOAD_TOKEN else f"/api/conversations/{conversation_id}/audio"
     return {
         "status": "ok",
         "conversation_id": conversation_id,

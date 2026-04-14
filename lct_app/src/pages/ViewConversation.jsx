@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { Download } from "lucide-react";
 
 import MinimalGraph from "../components/MinimalGraph";
 import MinimalLegend from "../components/MinimalLegend";
 import NodeDetail from "../components/NodeDetail";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
-import { apiFetch } from "../services/apiClient";
+import { apiFetch, API_BASE_URL } from "../services/apiClient";
 
 function sanitizeNodeArray(chunk) {
   return (Array.isArray(chunk) ? chunk : []).filter(
@@ -108,6 +109,7 @@ export default function ViewConversation() {
   const [speakerRefreshKey, setSpeakerRefreshKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [audioDownloadUrl, setAudioDownloadUrl] = useState("");
 
   useEffect(() => {
     if (!conversationId) {
@@ -138,6 +140,19 @@ export default function ViewConversation() {
             ? payload.chunk_dict
             : {}
         );
+
+        // Fetch audio status in parallel with metadata
+        try {
+          const audioStatusResponse = await apiFetch(`/api/conversations/${conversationId}/audio/status`);
+          if (audioStatusResponse.ok) {
+            const audioStatus = await audioStatusResponse.json();
+            if (!isCancelled && audioStatus.download_url) {
+              setAudioDownloadUrl(audioStatus.download_url);
+            }
+          }
+        } catch {
+          // audio status lookup is optional
+        }
 
         try {
           const listResponse = await apiFetch("/conversations/");
@@ -207,11 +222,22 @@ export default function ViewConversation() {
           <p className="text-xs text-slate-500">Saved conversation view</p>
         </div>
 
-        {allNodes.length > 0 && (
-          <span className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-500">
-            {allNodes.length} nodes
-          </span>
-        )}
+        <div className="flex shrink-0 items-center gap-3">
+          {audioDownloadUrl && (
+            <a
+              href={audioDownloadUrl.startsWith("http") ? audioDownloadUrl : `${API_BASE_URL}${audioDownloadUrl}`}
+              className="flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors p-1"
+              title="Download Audio"
+            >
+              <Download size={16} />
+            </a>
+          )}
+          {allNodes.length > 0 && (
+            <span className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-500">
+              {allNodes.length} nodes
+            </span>
+          )}
+        </div>
       </header>
 
       <main className="relative min-h-0 flex-1">
@@ -277,6 +303,7 @@ export default function ViewConversation() {
             node={selectedNodeData}
             chunkDict={chunkDict}
             conversationId={conversationId}
+            audioUrl={audioDownloadUrl ? (audioDownloadUrl.startsWith("http") ? audioDownloadUrl : `${API_BASE_URL}${audioDownloadUrl}`) : null}
             onClose={() => setSelectedNode(null)}
             onSpeakerRenamed={(speakerId, newName) => {
               setGraphData((prev) =>

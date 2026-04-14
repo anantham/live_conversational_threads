@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ImportCanvas from "../components/ImportCanvas";
-import { apiFetch } from "../services/apiClient";
+import { apiFetch, API_BASE_URL } from "../services/apiClient";
 
 function formatDuration(seconds) {
   if (!seconds) return null;
@@ -167,6 +167,16 @@ export default function Browse() {
                       )}
                     </div>
                   </div>
+
+                  {/* Download Audio */}
+                  <a
+                    href={`${API_BASE_URL}/api/conversations/${conv.file_id}/audio`}
+                    className="shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-xs text-blue-500 hover:text-blue-600 transition px-2 py-1"
+                    onClick={(e) => e.stopPropagation()}
+                    title="Download Audio"
+                  >
+                    Audio
+                  </a>
 
                   {/* Delete */}
                   <button
