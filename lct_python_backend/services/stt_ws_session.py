@@ -1662,10 +1662,15 @@ class WsSessionContext:
                     "type": "audio_ready",
                     "audio_paths": finalized,
                 }
-                if finalized.get("wav_path") and self.download_token:
-                    audio_ready_payload["download_url"] = (
-                        f"/api/conversations/{self.state.conversation_id}/audio?token={self.download_token}"
-                    )
+                if finalized.get("wav_path"):
+                    if self.download_token:
+                        audio_ready_payload["download_url"] = (
+                            f"/api/conversations/{self.state.conversation_id}/audio?token={self.download_token}"
+                        )
+                    else:
+                        audio_ready_payload["download_url"] = (
+                            f"/api/conversations/{self.state.conversation_id}/audio"
+                        )
                 logger.info("[WS][AUDIO] session=%s conversation=%s sending audio_ready to client download_url=%s",
                           self.state.session_id, self.state.conversation_id, 
                           audio_ready_payload.get("download_url"))

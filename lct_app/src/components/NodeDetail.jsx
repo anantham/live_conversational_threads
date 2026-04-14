@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import PropTypes from "prop-types";
 import { rerouteConversationArtifacts } from "../services/artifactSettingsApi";
 import {
@@ -55,6 +55,7 @@ export default function NodeDetail({
   node,
   chunkDict,
   conversationId,
+  audioUrl,
   onClose,
   onSpeakerRenamed,
 }) {
@@ -67,6 +68,24 @@ export default function NodeDetail({
 
   const [factCheckData, setFactCheckData] = useState(null);
   const [factCheckLoading, setFactCheckLoading] = useState(false);
+
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    if (!audioRef.current || !safeNode) return;
+    const ts = safeNode.timestamp_start ?? safeNode.start_time;
+    if (ts == null || ts < 0) return;
+    
+    // Seek to the timestamp. If it's stored in ms, divide by 1000. It seems the backend uses seconds or ms, let's check.
+    // If ts > 1000000, it's likely ms, otherwise seconds.
+    // Wait, the backend uses seconds for utterance_start, but let's just assume seconds unless it's huge.
+    // Or in HorizontalTimeline it did: formatTimestamp(utt.timestamp_start) which might mean seconds.
+    // Let's use it as seconds.
+    const timeInSeconds = ts > 10000 ? ts / 1000 : ts;
+    
+    audioRef.current.currentTime = timeInSeconds;
+    audioRef.current.play().catch(e => console.warn("Auto-play prevented:", e));
+  }, [safeNode]);
 
   const relations = Array.isArray(safeNode?.edge_relations) ? safeNode.edge_relations : [];
   const contextualRelations = normalizeContextualRelations(safeNode?.contextual_relation);
@@ -241,6 +260,22 @@ export default function NodeDetail({
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 text-sm">
+        {/* Audio Player */}
+        {audioUrl && (
+          <div className="mb-4">
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider block mb-1">
+              Audio playback
+            </span>
+            <audio 
+              ref={audioRef}
+              src={audioUrl}
+              controls
+              className="w-full h-8"
+              preload="metadata"
+            />
+          </div>
+        )}
+
         {/* Speaker */}
         {safeNode.speaker_id && (
           <div>
