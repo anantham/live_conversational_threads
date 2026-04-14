@@ -15,8 +15,8 @@ ENV_FILE="$ROOT_DIR/lct_python_backend/.env"
 PG_DATA="$ROOT_DIR/.postgres_data"
 PG_LOG="$ROOT_DIR/.postgres.log"
 PG_PORT="${PG_PORT:-5433}"
-BACKEND_PORT="${BACKEND_PORT:-8000}"
-FRONTEND_PORT="${FRONTEND_PORT:-5173}"
+BACKEND_PORT="${BACKEND_PORT:-43180}"
+FRONTEND_PORT="${FRONTEND_PORT:-43173}"
 DB_URL_DEFAULT="postgresql://lct_user:lct_password@localhost:${PG_PORT}/lct_dev"
 
 POSTGRES_BIN_ARM="/opt/homebrew/opt/postgresql@15/bin"
@@ -44,6 +44,12 @@ log() {
 fail() {
   log "ERROR: $*"
   exit 1
+}
+
+write_port_files() {
+  printf '%s\n' "$BACKEND_PORT" > "$ROOT_DIR/.backend-port"
+  printf '%s\n' "$FRONTEND_PORT" > "$ROOT_DIR/.frontend-port"
+  log "Resolved local ports: backend=${BACKEND_PORT}, frontend=${FRONTEND_PORT}"
 }
 
 ensure_postgres_path() {
@@ -326,6 +332,9 @@ start_backend() {
   log "Starting backend on port ${BACKEND_PORT}..."
   (
     export DATABASE_URL="$DATABASE_URL"
+    export BACKEND_PORT="$BACKEND_PORT"
+    export FRONTEND_PORT="$FRONTEND_PORT"
+    export FRONTEND_URL="${FRONTEND_URL:-http://localhost:${FRONTEND_PORT}}"
     export PYTHONPATH="$ROOT_DIR:${PYTHONPATH:-}"
     exec "$VENV_PY" -m uvicorn lct_python_backend.backend:lct_app --host 0.0.0.0 --port "$BACKEND_PORT" --reload
   ) > >(sed -u 's/^/[backend] /') 2>&1 &
@@ -341,6 +350,7 @@ start_frontend() {
   (
     cd "$ROOT_DIR/lct_app"
     export VITE_BACKEND_API_URL="http://localhost:${BACKEND_PORT}"
+    export VITE_BACKEND_PORT="$BACKEND_PORT"
     exec npm run dev -- --host 0.0.0.0 --port "$FRONTEND_PORT" --strictPort
   ) > >(sed -u 's/^/[frontend] /') 2>&1 &
 
@@ -404,6 +414,7 @@ stop_pidfile_process "$PID_BACKEND" "backend"
 stop_pidfile_process "$PID_FRONTEND" "frontend"
 cleanup_port "$BACKEND_PORT" "backend"
 cleanup_port "$FRONTEND_PORT" "frontend"
+write_port_files
 
 start_postgres
 run_migrations

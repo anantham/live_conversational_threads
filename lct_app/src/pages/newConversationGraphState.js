@@ -2,6 +2,14 @@ function isNodeObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function withGraphLayer(node, graphLayer) {
+  if (!isNodeObject(node) || !graphLayer) return node;
+  return {
+    ...node,
+    __graphLayer: graphLayer,
+  };
+}
+
 function normalizeChunkNode(node, index, fallbackChunkId) {
   if (!isNodeObject(node)) return null;
 
@@ -244,5 +252,11 @@ export function applyChunkPatch(previousChunkDict, patch) {
 export function mergeGraphLayers(finalizedGraphData, draftGraphData) {
   const finalized = Array.isArray(finalizedGraphData) ? finalizedGraphData.filter(Boolean) : [];
   const drafts = Array.isArray(draftGraphData) ? draftGraphData.filter(Boolean) : [];
-  return [...finalized, ...drafts];
+  const annotatedFinalized = finalized.map((chunk) =>
+    Array.isArray(chunk) ? chunk.map((node) => withGraphLayer(node, "finalized")) : chunk
+  );
+  const annotatedDrafts = drafts.map((chunk) =>
+    Array.isArray(chunk) ? chunk.map((node) => withGraphLayer(node, "draft")) : chunk
+  );
+  return [...annotatedFinalized, ...annotatedDrafts];
 }

@@ -62,9 +62,14 @@ export default function TimelineRibbon({
   graphData,
   selectedNode,
   setSelectedNode,
+  semanticLevel,
 }) {
   const scrollRef = useRef(null);
-  const allNodes = useMemo(() => (graphData || []).flat(), [graphData]);
+  const allNodes = useMemo(() => {
+    const nodes = (graphData || []).flat();
+    if (!semanticLevel) return nodes;
+    return nodes.filter((node) => Number(node?.semantic_level) === Number(semanticLevel));
+  }, [graphData, semanticLevel]);
   // Keep latestChunk as alias for backward compat within this component
   const latestChunk = allNodes;
 
@@ -193,4 +198,5 @@ TimelineRibbon.propTypes = {
   graphData: PropTypes.array,
   selectedNode: PropTypes.string,
   setSelectedNode: PropTypes.func.isRequired,
+  semanticLevel: PropTypes.number,
 };

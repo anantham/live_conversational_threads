@@ -12,8 +12,8 @@ import json
 import logging
 from typing import Any, Dict, List, Optional
 
-from services.local_llm_client import local_chat_json
-from services.llm_config import load_llm_config
+from lct_python_backend.services.local_llm_client import local_chat_json
+from lct_python_backend.services.llm_config import load_llm_config
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ async def check_conversation_facts(
         Fact-check results with claims and urgency
     """
     from sqlalchemy import select
-    from models import Utterance
+    from lct_python_backend.models import Utterance
 
     try:
         stmt = (

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import PropTypes from "prop-types";
 
 const CHIP_STYLES = {
@@ -38,6 +39,37 @@ export default function LiveSessionHud({
   stt,
   uploadState,
 }) {
+  const [hoveredSection, setHoveredSection] = useState(null);
+
+  const SectionTooltip = ({ section }) => {
+    if (!section) return null;
+    return (
+      <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+          {section.title}
+        </p>
+        <div className="mt-2 space-y-1.5">
+          {section.rows.map((row) => (
+            <div key={`${section.title}-${row.label}`} className="flex items-start justify-between gap-3 text-[11px]">
+              <span className="text-slate-500">{row.label}</span>
+              <span className="max-w-[11rem] text-right font-medium text-slate-700">
+                {row.value}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const showDetailPanel = detailOpen || hoveredSection !== null;
+  const showCombinedView = detailOpen && hoveredSection === null;
+
+  let tooltipContent = null;
+  if (hoveredSection !== null && details?.[hoveredSection]) {
+    tooltipContent = details[hoveredSection];
+  }
+
   // When a file upload is active, override the chips to reflect upload pipeline state
   const isUploading = uploadState?.isProcessing;
   const uploadProgress = Math.round((uploadState?.progress || 0) * 100);
@@ -70,27 +102,31 @@ export default function LiveSessionHud({
 
   return (
     <div className="relative min-w-[18rem] max-w-[34rem]">
-      {detailOpen && (
+      {showDetailPanel && (
         <div className="absolute bottom-full left-0 z-30 mb-3 w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur">
-          <div className="grid gap-3 sm:grid-cols-2">
-            {details.map((section) => (
-              <div key={section.title} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                  {section.title}
-                </p>
-                <div className="mt-2 space-y-1.5">
-                  {section.rows.map((row) => (
-                    <div key={`${section.title}-${row.label}`} className="flex items-start justify-between gap-3 text-[11px]">
-                      <span className="text-slate-500">{row.label}</span>
-                      <span className="max-w-[11rem] text-right font-medium text-slate-700">
-                        {row.value}
-                      </span>
-                    </div>
-                  ))}
+          {showCombinedView ? (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {details.map((section) => (
+                <div key={section.title} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    {section.title}
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {section.rows.map((row) => (
+                      <div key={`${section.title}-${row.label}`} className="flex items-start justify-between gap-3 text-[11px]">
+                        <span className="text-slate-500">{row.label}</span>
+                        <span className="max-w-[11rem] text-right font-medium text-slate-700">
+                          {row.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <SectionTooltip section={tooltipContent} />
+          )}
         </div>
       )}
 
@@ -102,9 +138,27 @@ export default function LiveSessionHud({
         aria-label="Toggle live session health details"
       >
         <div className="flex flex-wrap items-center gap-1.5">
-          <LiveStatusChip {...effectiveBackend} />
-          <LiveStatusChip {...effectiveStt} />
-          <LiveStatusChip {...effectiveGraph} />
+          <span
+            onMouseEnter={() => setHoveredSection(1)}
+            onMouseLeave={() => setHoveredSection(null)}
+            className="inline-flex"
+          >
+            <LiveStatusChip {...effectiveBackend} />
+          </span>
+          <span
+            onMouseEnter={() => setHoveredSection(2)}
+            onMouseLeave={() => setHoveredSection(null)}
+            className="inline-flex"
+          >
+            <LiveStatusChip {...effectiveStt} />
+          </span>
+          <span
+            onMouseEnter={() => setHoveredSection(3)}
+            onMouseLeave={() => setHoveredSection(null)}
+            className="inline-flex"
+          >
+            <LiveStatusChip {...effectiveGraph} />
+          </span>
         </div>
         <p className="mt-1.5 text-[11px] text-slate-500">
           {effectiveStatusLine}

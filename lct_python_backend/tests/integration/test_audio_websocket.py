@@ -26,7 +26,7 @@ class TestWebSocketConnection:
         # For now, document expected behavior
         
         # Expected flow:
-        # 1. Client connects to ws://localhost:8080/ws/audio
+        # 1. Client connects to ws://localhost:43180/ws/audio
         # 2. Server accepts connection
         # 3. Connection state = OPEN
         # 4. Server waits for session_meta or audio data

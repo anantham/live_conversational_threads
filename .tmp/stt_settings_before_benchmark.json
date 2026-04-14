@@ -1,0 +1,67 @@
+{
+  "provider": "whisper",
+  "provider_urls": {
+    "senko": "ws://localhost:43001/stream",
+    "parakeet": "ws://localhost:43001/stream",
+    "whisper": "ws://localhost:43001/stream",
+    "ofc": "ws://localhost:43001/stream"
+  },
+  "provider_http_urls": {
+    "senko": "http://localhost:5092/v1/audio/transcriptions",
+    "parakeet": "http://localhost:5092/v1/audio/transcriptions",
+    "whisper": "http://100.81.65.74:7777/api/transcribe",
+    "ofc": "http://localhost:5092/v1/audio/transcriptions"
+  },
+  "ws_url": "ws://localhost:43001/stream",
+  "http_url": "http://100.81.65.74:7777/api/transcribe",
+  "local_only": false,
+  "external_fallback_ws_url": "",
+  "external_fallback_http_url": "",
+  "live_cloud_fallback_enabled": true,
+  "live_require_diarization": true,
+  "live_allow_text_only_fallback": false,
+  "live_fallback_priority": [
+    "openai_audio",
+    "remote_whisper",
+    "external_http",
+    "openrouter_audio"
+  ],
+  "cloud_fallback_providers": {
+    "openai_audio": {
+      "id": "openai_audio",
+      "name": "OpenAI Audio",
+      "enabled": true,
+      "base_url": "https://api.openai.com",
+      "supports_diarization": true,
+      "degraded": false,
+      "model": "gpt-4o-mini-transcribe",
+      "diarize_model": "gpt-4o-transcribe-diarize",
+      "api_key": "",
+      "has_api_key": true
+    },
+    "openrouter_audio": {
+      "id": "openrouter_audio",
+      "name": "OpenRouter Audio",
+      "enabled": true,
+      "base_url": "https://openrouter.ai/api",
+      "supports_diarization": false,
+      "degraded": true,
+      "model": "google/gemini-2.5-flash",
+      "api_key": "",
+      "has_api_key": true
+    }
+  },
+  "store_audio": false,
+  "chunk_endpoint": "/api/conversations/{conversation_id}/audio/chunk",
+  "complete_endpoint": "/api/conversations/{conversation_id}/audio/complete",
+  "http_chunk_seconds": "1.2",
+  "http_timeout_seconds": "300",
+  "http_model": "",
+  "http_language": "",
+  "sample_rate_hz": "16000",
+  "retention": "forever",
+  "audio_recordings_dir": "./lct_python_backend/recordings",
+  "download_token": "",
+  "debug": false,
+  "has_download_token": false
+}

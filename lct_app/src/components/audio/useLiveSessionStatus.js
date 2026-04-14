@@ -85,6 +85,16 @@ export default function useLiveSessionStatus({
   const [lastGraphLatencyMs, setLastGraphLatencyMs] = useState(null);
   const [lastGraphTotalUpdateMs, setLastGraphTotalUpdateMs] = useState(null);
   const [lastGraphError, setLastGraphError] = useState("");
+  const [backgroundRefinementPhase, setBackgroundRefinementPhase] = useState("idle");
+  const [lastBackgroundRefinementAtMs, setLastBackgroundRefinementAtMs] = useState(null);
+  const [lastBackgroundRefinementLatencyMs, setLastBackgroundRefinementLatencyMs] = useState(null);
+  const [lastBackgroundRefinementError, setLastBackgroundRefinementError] = useState("");
+  const [backgroundRefinementStats, setBackgroundRefinementStats] = useState({
+    provider: "",
+    model: "",
+    segmentsCount: null,
+    updatedUtterances: null,
+  });
   const [detailOpen, setDetailOpen] = useState(false);
 
   const graphStartedAtRef = useRef(null);
@@ -117,6 +127,16 @@ export default function useLiveSessionStatus({
     setLastGraphLatencyMs(null);
     setLastGraphTotalUpdateMs(null);
     setLastGraphError("");
+    setBackgroundRefinementPhase("idle");
+    setLastBackgroundRefinementAtMs(null);
+    setLastBackgroundRefinementLatencyMs(null);
+    setLastBackgroundRefinementError("");
+    setBackgroundRefinementStats({
+      provider: "",
+      model: "",
+      segmentsCount: null,
+      updatedUtterances: null,
+    });
     setDetailOpen(false);
   }, []);
 
@@ -177,6 +197,24 @@ export default function useLiveSessionStatus({
     setSessionAck(message || null);
     setLastServerMessageAtMs(Date.now());
     setLastProviderError("");
+    if (message?.background_refinement?.enabled) {
+      setBackgroundRefinementPhase("ready");
+      setLastBackgroundRefinementError("");
+      setBackgroundRefinementStats({
+        provider: String(message?.background_refinement?.provider || ""),
+        model: String(message?.background_refinement?.model || ""),
+        segmentsCount: null,
+        updatedUtterances: null,
+      });
+    } else {
+      setBackgroundRefinementPhase("disabled");
+      setBackgroundRefinementStats({
+        provider: "",
+        model: "",
+        segmentsCount: null,
+        updatedUtterances: null,
+      });
+    }
   }, []);
 
   const handleBackendMessage = useCallback((message) => {
@@ -294,6 +332,39 @@ export default function useLiveSessionStatus({
       return;
     }
 
+    if (stage === "stt_refinement") {
+      const refinementLatencyMs = toLatency(context.latency_ms);
+      if (phase === "completed") {
+        setBackgroundRefinementPhase("completed");
+        setLastBackgroundRefinementAtMs(nextNow);
+        setLastBackgroundRefinementLatencyMs(refinementLatencyMs);
+        setLastBackgroundRefinementError("");
+        setBackgroundRefinementStats({
+          provider: String(context.provider || ""),
+          model: String(context.model || ""),
+          segmentsCount: Number.isFinite(Number(context.segments_count))
+            ? Number(context.segments_count)
+            : null,
+          updatedUtterances: Number.isFinite(Number(context.updated_utterances))
+            ? Number(context.updated_utterances)
+            : null,
+        });
+        return;
+      }
+      if (phase === "error" || level === "warning" || level === "error") {
+        setBackgroundRefinementPhase("error");
+        setLastBackgroundRefinementAtMs(nextNow);
+        setLastBackgroundRefinementLatencyMs(refinementLatencyMs);
+        setLastBackgroundRefinementError(message || String(context.error || "").trim());
+        setBackgroundRefinementStats((previous) => ({
+          ...previous,
+          provider: String(context.provider || previous.provider || ""),
+          model: String(context.model || previous.model || ""),
+        }));
+        return;
+      }
+    }
+
     if (stage !== "graph") {
       return;
     }
@@ -376,6 +447,20 @@ export default function useLiveSessionStatus({
         .filter(Boolean)
         .join(", ")
     : "";
+  const backgroundRefinementEnabled = Boolean(sessionAck?.background_refinement?.enabled);
+  const backgroundRefinementLabel = useMemo(() => {
+    if (!backgroundRefinementEnabled) return "off";
+    if (backgroundRefinementPhase === "error") {
+      return lastBackgroundRefinementError ? "error" : "failed";
+    }
+    if (backgroundRefinementPhase === "completed") return "completed";
+    if (backgroundRefinementPhase === "ready") return "pending";
+    return backgroundRefinementPhase || "pending";
+  }, [
+    backgroundRefinementEnabled,
+    backgroundRefinementPhase,
+    lastBackgroundRefinementError,
+  ]);
 
   const backendStaleMs = lastServerMessageAtMs ? nowMs - lastServerMessageAtMs : null;
   const lastTranscriptAgeMs = lastTranscriptAtMs ? nowMs - lastTranscriptAtMs : null;
@@ -672,8 +757,43 @@ export default function useLiveSessionStatus({
           value: fallbackLabels || "none",
         },
         {
+          label: "Background pass",
+          value: backgroundRefinementLabel,
+        },
+        {
+          label: "Refinement route",
+          value: backgroundRefinementEnabled
+            ? [
+                backgroundRefinementStats.provider || sessionAck?.background_refinement?.provider || "",
+                backgroundRefinementStats.model || sessionAck?.background_refinement?.model || "",
+              ].filter(Boolean).join(" · ") || "configured"
+            : "disabled",
+        },
+        {
+          label: "Last refinement",
+          value: lastBackgroundRefinementAtMs
+            ? `${formatAge(nowMs - lastBackgroundRefinementAtMs)}${
+                lastBackgroundRefinementLatencyMs !== null
+                  ? ` · ${formatLatency(lastBackgroundRefinementLatencyMs)}`
+                  : ""
+              }`
+            : "waiting",
+        },
+        {
+          label: "Refined segments",
+          value: backgroundRefinementStats.segmentsCount !== null
+            ? String(backgroundRefinementStats.segmentsCount)
+            : "waiting",
+        },
+        {
+          label: "Updated utterances",
+          value: backgroundRefinementStats.updatedUtterances !== null
+            ? String(backgroundRefinementStats.updatedUtterances)
+            : "waiting",
+        },
+        {
           label: "Latest error",
-          value: lastProviderError || "none",
+          value: lastBackgroundRefinementError || lastProviderError || "none",
         },
       ],
     },
@@ -721,6 +841,12 @@ export default function useLiveSessionStatus({
     backend.label,
     backendRttMs,
     backendStaleMs,
+    backgroundRefinementEnabled,
+    backgroundRefinementLabel,
+    backgroundRefinementStats.model,
+    backgroundRefinementStats.provider,
+    backgroundRefinementStats.segmentsCount,
+    backgroundRefinementStats.updatedUtterances,
     fallbackLabels,
     firstCaptionMs,
     firstFinalCaptionMs,
@@ -733,6 +859,9 @@ export default function useLiveSessionStatus({
     lastGraphLatencyMs,
     lastGraphTotalUpdateMs,
     lastGraphUpdateAtMs,
+    lastBackgroundRefinementAtMs,
+    lastBackgroundRefinementError,
+    lastBackgroundRefinementLatencyMs,
     lastProviderError,
     lastSpeechAgeMs,
     lastSttRequestMs,

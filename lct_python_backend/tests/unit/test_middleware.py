@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 # We need to set env vars BEFORE importing middleware
 # so the module-level constants pick them up.
+DEFAULT_FRONTEND_ORIGIN = "http://localhost:43173"
 
 
 def _make_app(env_overrides: dict = None):
@@ -41,7 +42,7 @@ def _make_app(env_overrides: dict = None):
         app = FastAPI()
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["http://localhost:5173"],
+            allow_origins=[DEFAULT_FRONTEND_ORIGIN],
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
@@ -178,7 +179,7 @@ class TestAuthMiddleware:
         resp = client.options(
             "/api/conversations",
             headers={
-                "Origin": "http://localhost:5173",
+                "Origin": DEFAULT_FRONTEND_ORIGIN,
                 "Access-Control-Request-Method": "GET",
             },
         )

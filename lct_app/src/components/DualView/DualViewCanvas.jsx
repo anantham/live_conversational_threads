@@ -253,6 +253,7 @@ export default function DualViewCanvas({ conversationId }) {
             onClose={() => zoomController.setSelectedNode(null)}
             onSave={handleSaveNode}
             utterancesMap={{}}
+            conversationId={conversationId}
           />
         )}
       </div>

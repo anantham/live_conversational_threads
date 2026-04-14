@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+const appBaseUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:43173';
+
 /**
  * H7: Multiple Component Interaction
  *
@@ -45,7 +47,7 @@ test.describe('H7: Incremental Loading Test', () => {
       {
         name: 'Stage 2: Actual app (full)',
         action: async () => {
-          await page.goto('http://localhost:5173/', {
+          await page.goto(`${appBaseUrl}/`, {
             waitUntil: 'domcontentloaded',
             timeout: 10000,
           });

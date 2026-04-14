@@ -22,9 +22,11 @@ from lct_python_backend.services.local_llm_client import (
 )
 from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
 from lct_python_backend.services.transcript_prompts import (
-    ACCUMULATE_SYSTEM_PROMPT,
-    GENERATE_LCT_PROMPT,
-    LOCAL_GENERATE_LCT_PROMPT,
+    PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT,
+    PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY,
+    PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY_LOCAL,
+    get_transcript_prompt_metadata,
+    get_transcript_prompt_text,
 )
 
 logger = logging.getLogger("lct_backend")
@@ -238,7 +240,8 @@ def generate_lct_json_gemini(
     if key_source:
         _trace_api_call("[GEMINI] Using key from %s for graph generation model=%s.", key_source, resolved_model)
 
-    generate_lct_prompt = GENERATE_LCT_PROMPT
+    prompt_metadata = get_transcript_prompt_metadata(PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY)
+    generate_lct_prompt = get_transcript_prompt_text(PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY)
 
     contents = [
         types.Content(
@@ -248,7 +251,7 @@ def generate_lct_json_gemini(
     ]
 
     config = types.GenerateContentConfig(
-        temperature=0.65,
+        temperature=float(prompt_metadata.get("temperature", 0.65)),
         thinking_config=types.ThinkingConfig(thinking_budget=0),
         response_mime_type="application/json",
         system_instruction=[types.Part.from_text(text=generate_lct_prompt)],
@@ -314,7 +317,8 @@ def genai_accumulate_text_json(
             "_errors": [message],
         }
 
-    system_prompt = ACCUMULATE_SYSTEM_PROMPT
+    prompt_metadata = get_transcript_prompt_metadata(PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT)
+    system_prompt = get_transcript_prompt_text(PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT)
 
     for attempt in range(retries):
         full_response = ""
@@ -331,7 +335,7 @@ def genai_accumulate_text_json(
             ]
 
             config = types.GenerateContentConfig(
-                temperature=0.65,
+                temperature=float(prompt_metadata.get("temperature", 0.65)),
                 thinking_config=types.ThinkingConfig(thinking_budget=0),
                 response_mime_type="application/json",
                 response_schema=genai.types.Schema(
@@ -401,15 +405,17 @@ def generate_lct_json_local(
     """
     if providers is None:
         providers = get_default_providers()
+    prompt_metadata = get_transcript_prompt_metadata(PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY_LOCAL)
+    system_prompt = get_transcript_prompt_text(PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY_LOCAL)
 
     for attempt in range(retries):
         try:
             parsed, provider_result = _call_local_chat_json_with_fallback(
                 prompt=transcript,
-                system_prompt=LOCAL_GENERATE_LCT_PROMPT,
+                system_prompt=system_prompt,
                 providers=providers,
-                temperature=0.65,
-                max_tokens=4000,
+                temperature=float(prompt_metadata.get("temperature", 0.65)),
+                max_tokens=int(prompt_metadata.get("max_tokens", 4000)),
             )
             normalized = _normalize_generated_output(parsed)
             if normalized:
@@ -443,16 +449,18 @@ def accumulate_text_json_local(
     """
     if providers is None:
         providers = get_default_providers()
+    prompt_metadata = get_transcript_prompt_metadata(PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT)
+    system_prompt = get_transcript_prompt_text(PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT)
 
     errors: List[str] = []
     for attempt in range(retries):
         try:
             parsed, provider_result = _call_local_chat_json_with_fallback(
                 prompt=input_text,
-                system_prompt=ACCUMULATE_SYSTEM_PROMPT,
+                system_prompt=system_prompt,
                 providers=providers,
-                temperature=0.65,
-                max_tokens=1200,
+                temperature=float(prompt_metadata.get("temperature", 0.65)),
+                max_tokens=int(prompt_metadata.get("max_tokens", 1200)),
             )
             if isinstance(parsed, dict):
                 if errors:

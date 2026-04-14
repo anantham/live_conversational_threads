@@ -6,6 +6,7 @@ import os
 import re
 import uuid
 from pathlib import Path
+from typing import Optional
 
 from fastapi import HTTPException
 from google.cloud import storage
@@ -124,30 +125,39 @@ _GCS_PATH_RE = re.compile(
 )
 
 
-def _validate_gcs_path(gcs_path: str) -> None:
-    """Raise HTTPException(400) if gcs_path looks like a traversal attempt."""
-    if not gcs_path:
-        return
-    # Reject traversal sequences regardless of format
-    if ".." in gcs_path or gcs_path.startswith("/") or "//" in gcs_path:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid conversation path.",
-        )
-    # When it looks like a short identifier (no path separators), enforce UUID format
-    if "/" not in gcs_path and not _GCS_PATH_RE.match(gcs_path):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid conversation path.",
-        )
+def _resolve_local_conversation_path(gcs_path: str) -> Optional[Path]:
+    """Return a safe local file path when gcs_path points inside LOCAL_SAVE_DIR."""
+    token = str(gcs_path or "").strip()
+    if not token:
+        return None
+
+    if "\x00" in token or ".." in token or "//" in token:
+        raise HTTPException(status_code=400, detail="Invalid conversation path.")
+
+    local_root = LOCAL_SAVE_DIR.resolve()
+    candidate = Path(token).expanduser()
+
+    if candidate.is_absolute():
+        resolved = candidate.resolve()
+    else:
+        if "/" not in token and not _GCS_PATH_RE.match(token):
+            raise HTTPException(status_code=400, detail="Invalid conversation path.")
+        resolved = (Path.cwd() / candidate).resolve()
+
+    try:
+        resolved.relative_to(local_root)
+    except ValueError:
+        if candidate.is_absolute():
+            raise HTTPException(status_code=400, detail="Invalid conversation path.")
+        return None
+
+    return resolved
 
 
 def load_conversation_from_gcs(gcs_path: str) -> dict:
     try:
-        _validate_gcs_path(gcs_path)
-        # Support local fallback files stored in gcs_path.
-        local_path = Path(str(gcs_path or "")).expanduser()
-        if local_path.exists():
+        local_path = _resolve_local_conversation_path(gcs_path)
+        if local_path and local_path.exists():
             data = json.loads(local_path.read_text(encoding="utf-8"))
             graph_data = data.get("graph_data")
             chunk_dict = data.get("chunks")

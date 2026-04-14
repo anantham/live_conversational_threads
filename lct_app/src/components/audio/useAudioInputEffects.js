@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { saveConversationToServer } from "../../utils/SaveConversation";
+import { deriveSuggestedConversationTitle } from "../../utils/conversationTitle";
 
 const useFilenameFromGraph = ({
   graphData,
@@ -13,9 +14,10 @@ const useFilenameFromGraph = ({
       fileNameWasReset.current &&
       graphData &&
       graphData !== lastAutoSaveRef.current.graphData &&
-      graphData?.[0]?.[0]?.node_name
+      graphData.length > 0
     ) {
-      const initialName = graphData[0][0].node_name.replace(/[/:*?"<>|]/g, "");
+      const initialName = deriveSuggestedConversationTitle(graphData);
+      if (!initialName) return;
       setFileName(initialName);
       fileNameWasReset.current = false;
     }

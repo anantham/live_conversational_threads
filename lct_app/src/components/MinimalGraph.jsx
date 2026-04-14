@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import ReactFlow, { useReactFlow, ReactFlowProvider, applyNodeChanges } from "reactflow";
@@ -7,6 +8,12 @@ import { EDGE_COLORS, buildSpeakerColorMap, buildTemporalColorMap } from "./grap
 
 const NODE_TYPES = {};
 const EDGE_TYPES = {};
+const AUTHORED_LEVELS = [
+  { level: 1, label: "chunks", type: "chunk", color: "text-teal-700", chip: "bg-teal-50", border: "border-teal-400" },
+  { level: 2, label: "ideas", type: "idea", color: "text-blue-700", chip: "bg-blue-50", border: "border-blue-400" },
+  { level: 3, label: "topics", type: "topic", color: "text-indigo-700", chip: "bg-indigo-50", border: "border-indigo-400" },
+  { level: 4, label: "themes", type: "theme", color: "text-purple-700", chip: "bg-purple-50", border: "border-purple-400" },
+];
 
 function normalizeGraphNode(item, index) {
   if (!item || typeof item !== "object" || Array.isArray(item)) {
@@ -26,6 +33,17 @@ function normalizeGraphNode(item, index) {
     id: rawId || `node-${index}`,
     node_name: rawName || fallbackName,
     speaker_id: typeof item.speaker_id === "string" ? item.speaker_id : "",
+    semantic_level:
+      Number.isInteger(item.semantic_level) && item.semantic_level >= 1 && item.semantic_level <= 4
+        ? item.semantic_level
+        : null,
+    semantic_type:
+      typeof item.semantic_type === "string" && item.semantic_type.trim()
+        ? item.semantic_type.trim().toLowerCase()
+        : "",
+    parent_id: typeof item.parent_id === "string" && item.parent_id.trim() ? item.parent_id.trim() : "",
+    children_ids: Array.isArray(item.children_ids) ? item.children_ids.map((value) => String(value || "").trim()).filter(Boolean) : [],
+    __graphLayer: typeof item.__graphLayer === "string" ? item.__graphLayer : "finalized",
     successor: typeof item.successor === "string" ? item.successor : "",
     edge_relations: Array.isArray(item.edge_relations) ? item.edge_relations : [],
     contextual_relation:
@@ -95,6 +113,21 @@ function layoutWithDagre(nodes, edges, { nodeWidth = 240, nodeHeight = 80 } = {}
     ...n,
     position: g.node(n.id) || { x: 0, y: 0 },
   }));
+}
+
+function getAuthoredSemanticLevel(node) {
+  const level = Number(node?.semantic_level);
+  if (!Number.isInteger(level) || level < 1 || level > 4) return null;
+  const semanticType = String(node?.semantic_type || "").trim().toLowerCase();
+  if (!semanticType) return null;
+  return level;
+}
+
+function resolveRequestedSemanticLevel(zoomLevel) {
+  if (zoomLevel < 0.42) return 4;
+  if (zoomLevel < 0.62) return 3;
+  if (zoomLevel < 0.82) return 2;
+  return 1;
 }
 
 // Zoom thresholds for multi-scale clustering
@@ -530,6 +563,7 @@ function MinimalGraphInner({
   selectedNode,
   setSelectedNode,
   viewportReservationKey,
+  onVisibleLevelChange,
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
@@ -538,9 +572,9 @@ function MinimalGraphInner({
   const [reduceMotion, setReduceMotion] = useState(false);
   const [hideEdges, setHideEdges] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [lockedLevel, setLockedLevel] = useState(null); // null = unlocked, 0-3 = locked to level
+  const [lockedLevel, setLockedLevel] = useState(null); // null = unlocked, semantic 1-4 or legacy 0-3
 
-  const clusterLevel = lockedLevel != null ? lockedLevel
+  const legacyClusterLevel = lockedLevel != null ? lockedLevel
     : zoomLevel < ZOOM_LEVEL_3 ? 3
     : zoomLevel < ZOOM_LEVEL_2 ? 2
     : zoomLevel < ZOOM_LEVEL_1 ? 1
@@ -562,10 +596,10 @@ function MinimalGraphInner({
     [normalizedChunk, uniqueSpeakers]
   );
 
-  // Build ReactFlow nodes — card-style with title + summary
-  const rfNodes = useMemo(() => {
-    return normalizedChunk.map((item) => {
+  const buildRfNodesForSource = useCallback((sourceNodes) => {
+    return sourceNodes.map((item) => {
       const isSelected = selectedNode === item.id;
+      const isDraftNode = item.__graphLayer === "draft";
       // Use speaker colors when multiple speakers detected, temporal position otherwise
       const speakerColor = uniqueSpeakers > 1
         ? (speakerColorMap[item.speaker_id] || "#e2e8f0")
@@ -587,6 +621,9 @@ function MinimalGraphInner({
 
       // Speaker badge (prefer renamed display name over raw id)
       const speakerLabel = item.speaker_display || item.speaker_id || "";
+      const footerLabel = isDraftNode
+        ? (speakerLabel ? `${speakerLabel} · provisional` : "provisional")
+        : speakerLabel;
 
       const label = (
         <div style={{ lineHeight: 1.3 }}>
@@ -598,9 +635,9 @@ function MinimalGraphInner({
               {summaryTruncated}
             </div>
           )}
-          {speakerLabel && (
+          {footerLabel && (
             <div style={{ fontSize: "9px", color: "#64748b", marginTop: "3px" }}>
-              {speakerLabel}
+              {footerLabel}
             </div>
           )}
         </div>
@@ -623,6 +660,7 @@ function MinimalGraphInner({
           color: "#1e293b",
           cursor: "pointer",
           transition: "all 0.2s ease",
+          opacity: isDraftNode ? 0.52 : 1,
           whiteSpace: "normal",
           maxWidth: "240px",
           minWidth: "120px",
@@ -630,19 +668,19 @@ function MinimalGraphInner({
         },
       };
     });
-  }, [normalizedChunk, selectedNode, speakerColorMap, temporalColorMap, uniqueSpeakers]);
+  }, [selectedNode, speakerColorMap, temporalColorMap, uniqueSpeakers]);
 
-  // Build ReactFlow edges
-  const rfEdges = useMemo(() => {
+  const buildRfEdgesForSource = useCallback((sourceNodes) => {
     if (hideEdges) return [];
 
     const edges = [];
     const seenEdgeKeys = new Set();
+    const nodeById = new Map(sourceNodes.map((node) => [node.id, node]));
 
-    normalizedChunk.forEach((item) => {
+    sourceNodes.forEach((item) => {
       // Temporal edges
       if (item.successor) {
-        const target = normalizedChunk.find((n) => n.id === item.successor);
+        const target = nodeById.get(item.successor);
         if (target) {
           edges.push({
             id: `t-${item.id}-${target.id}`,
@@ -668,9 +706,9 @@ function MinimalGraphInner({
         if (!targetName) return;
         // Fuzzy match: exact → case-insensitive → substring containment
         const targetLower = targetName.toLowerCase();
-        const related = normalizedChunk.find((n) => n.node_name === targetName)
-          || normalizedChunk.find((n) => (n.node_name || "").toLowerCase() === targetLower)
-          || normalizedChunk.find((n) => {
+        const related = sourceNodes.find((n) => n.node_name === targetName)
+          || sourceNodes.find((n) => (n.node_name || "").toLowerCase() === targetLower)
+          || sourceNodes.find((n) => {
             const name = (n.node_name || "").toLowerCase();
             return name.length > 5 && (name.includes(targetLower) || targetLower.includes(name));
           });
@@ -722,9 +760,9 @@ function MinimalGraphInner({
       if (relations.length === 0 && item.contextual_relation) {
         extractContextualRelationEntries(item.contextual_relation).forEach(([relName, relText]) => {
           const relNameLower = (relName || "").toLowerCase();
-          const related = normalizedChunk.find((n) => n.node_name === relName)
-            || normalizedChunk.find((n) => (n.node_name || "").toLowerCase() === relNameLower)
-            || normalizedChunk.find((n) => {
+          const related = sourceNodes.find((n) => n.node_name === relName)
+            || sourceNodes.find((n) => (n.node_name || "").toLowerCase() === relNameLower)
+            || sourceNodes.find((n) => {
               const name = (n.node_name || "").toLowerCase();
               return name.length > 5 && (name.includes(relNameLower) || relNameLower.includes(name));
             });
@@ -757,7 +795,57 @@ function MinimalGraphInner({
     });
 
     return edges;
-  }, [normalizedChunk, selectedNode, reduceMotion, hideEdges]);
+  }, [selectedNode, reduceMotion, hideEdges]);
+
+  // Build ReactFlow nodes — card-style with title + summary
+  const rfNodes = useMemo(
+    () => buildRfNodesForSource(normalizedChunk),
+    [buildRfNodesForSource, normalizedChunk]
+  );
+
+  // Build ReactFlow edges
+  const rfEdges = useMemo(
+    () => buildRfEdgesForSource(normalizedChunk),
+    [buildRfEdgesForSource, normalizedChunk]
+  );
+
+  const authoredSemanticLevels = useMemo(() => {
+    const levels = new Set();
+    normalizedChunk.forEach((node) => {
+      const level = getAuthoredSemanticLevel(node);
+      if (level != null) levels.add(level);
+    });
+    return [...levels].sort((a, b) => a - b);
+  }, [normalizedChunk]);
+  const hasAuthoredHierarchy = authoredSemanticLevels.length > 0;
+
+  const authoredViews = useMemo(() => {
+    if (!hasAuthoredHierarchy) return {};
+
+    return AUTHORED_LEVELS.reduce((acc, spec) => {
+      const levelNodes = normalizedChunk.filter((node) => getAuthoredSemanticLevel(node) === spec.level);
+      if (levelNodes.length === 0) {
+        acc[spec.level] = null;
+        return acc;
+      }
+      const rfLevelNodes = buildRfNodesForSource(levelNodes);
+      const rfLevelEdges = buildRfEdgesForSource(levelNodes);
+      acc[spec.level] = {
+        level: spec.level,
+        label: spec.label,
+        type: spec.type,
+        nodes: levelNodes.length > 1
+          ? layoutWithDagre(
+              rfLevelNodes,
+              rfLevelEdges,
+              { nodeWidth: spec.level >= 3 ? 280 : 250, nodeHeight: spec.level >= 3 ? 102 : 90 }
+            )
+          : rfLevelNodes,
+        edges: rfLevelEdges,
+      };
+      return acc;
+    }, {});
+  }, [buildRfEdgesForSource, buildRfNodesForSource, hasAuthoredHierarchy, normalizedChunk]);
 
   // Multi-scale clustering (recomputes when graph changes)
   const { l1, l2, l3 } = useMemo(
@@ -793,17 +881,20 @@ function MinimalGraphInner({
 
   // Select which level to display based on zoom.
   // Each level cascades to the next-finer level if it produces < 2 useful clusters.
-  const clusterViews = [
-    null, // level 0 = individual
-    layoutedL1.length > 1 ? { nodes: layoutedL1, edges: l1.clusterEdges, label: "sentences" } : null,
-    layoutedL2.length > 1 ? { nodes: layoutedL2, edges: l2.clusterEdges, label: "topics" } : null,
-    layoutedL3.length > 1 ? { nodes: layoutedL3, edges: l3.clusterEdges, label: "themes" } : null,
-  ];
+  const clusterViews = useMemo(
+    () => [
+      null, // level 0 = individual
+      layoutedL1.length > 1 ? { nodes: layoutedL1, edges: l1.clusterEdges, label: "sentences" } : null,
+      layoutedL2.length > 1 ? { nodes: layoutedL2, edges: l2.clusterEdges, label: "topics" } : null,
+      layoutedL3.length > 1 ? { nodes: layoutedL3, edges: l3.clusterEdges, label: "themes" } : null,
+    ],
+    [l1.clusterEdges, l2.clusterEdges, l3.clusterEdges, layoutedL1, layoutedL2, layoutedL3]
+  );
 
   // At the requested level, try that level first, then cascade down
   let activeCluster = null;
   let effectiveClusterLevel = 0;
-  for (let tryLevel = clusterLevel; tryLevel >= 1; tryLevel--) {
+  for (let tryLevel = legacyClusterLevel; tryLevel >= 1; tryLevel--) {
     if (clusterViews[tryLevel]) {
       activeCluster = clusterViews[tryLevel];
       effectiveClusterLevel = tryLevel;
@@ -811,9 +902,47 @@ function MinimalGraphInner({
     }
   }
 
-  const layoutedDisplayNodes = activeCluster?.nodes || layoutedNodes;
-  const displayEdges = activeCluster?.edges || rfEdges;
-  const clusterLevelLabel = activeCluster?.label || null;
+  const requestedSemanticLevel = lockedLevel != null ? Math.max(1, Math.min(4, lockedLevel)) : resolveRequestedSemanticLevel(zoomLevel);
+  let activeSemanticView = null;
+  let effectiveSemanticLevel = requestedSemanticLevel;
+  if (hasAuthoredHierarchy) {
+    for (let tryLevel = requestedSemanticLevel; tryLevel >= 1; tryLevel -= 1) {
+      if (authoredViews[tryLevel]?.nodes?.length) {
+        activeSemanticView = authoredViews[tryLevel];
+        effectiveSemanticLevel = tryLevel;
+        break;
+      }
+    }
+  }
+
+  const displayMode = activeSemanticView ? "semantic" : "legacy";
+  const layoutedDisplayNodes = activeSemanticView?.nodes || activeCluster?.nodes || layoutedNodes;
+  const displayEdges = activeSemanticView?.edges || activeCluster?.edges || rfEdges;
+  const clusterLevelLabel = activeSemanticView?.label || activeCluster?.label || null;
+
+  useEffect(() => {
+    if (!onVisibleLevelChange) return;
+    if (displayMode === "semantic") {
+      onVisibleLevelChange({
+        mode: "semantic",
+        level: effectiveSemanticLevel,
+        label: activeSemanticView?.label || null,
+      });
+      return;
+    }
+    onVisibleLevelChange({
+      mode: "legacy",
+      level: effectiveClusterLevel,
+      label: activeCluster?.label || null,
+    });
+  }, [
+    activeCluster,
+    activeSemanticView,
+    displayMode,
+    effectiveClusterLevel,
+    effectiveSemanticLevel,
+    onVisibleLevelChange,
+  ]);
 
   // Controlled node state — layout provides initial positions, drags persist
   const [interactiveNodes, setInteractiveNodes] = useState([]);
@@ -851,8 +980,8 @@ function MinimalGraphInner({
   }, [displayNodes, reactFlow]);
 
   const selectedLayoutNode = useMemo(
-    () => layoutedNodes.find((node) => node.id === selectedNode) || null,
-    [layoutedNodes, selectedNode]
+    () => layoutedDisplayNodes.find((node) => node.id === selectedNode) || null,
+    [layoutedDisplayNodes, selectedNode]
   );
 
   const centerViewportOnNode = useCallback(
@@ -911,10 +1040,10 @@ function MinimalGraphInner({
   }, [reactFlow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-pan to latest nodes (only when auto-follow is active)
-  const lastNodeId = layoutedNodes[layoutedNodes.length - 1]?.id ?? null;
+  const lastNodeId = layoutedDisplayNodes[layoutedDisplayNodes.length - 1]?.id ?? null;
   useEffect(() => {
-    if (!autoFollow || selectedNode || layoutedNodes.length === 0) return;
-    const last = layoutedNodes[layoutedNodes.length - 1];
+    if (!autoFollow || selectedNode || layoutedDisplayNodes.length === 0) return;
+    const last = layoutedDisplayNodes[layoutedDisplayNodes.length - 1];
     if (!last?.id) return;
 
     // Temporarily mark as programmatic so onMoveEnd doesn't disable follow
@@ -928,7 +1057,7 @@ function MinimalGraphInner({
       cleanup?.();
       programmaticMoveRef.current = wasProgrammatic;
     };
-  }, [autoFollow, centerViewportOnNode, lastNodeId, layoutedNodes, selectedNode]);
+  }, [autoFollow, centerViewportOnNode, lastNodeId, layoutedDisplayNodes, selectedNode]);
 
   // Center selected node when chosen from timeline or graph.
   useEffect(() => {
@@ -1109,14 +1238,20 @@ function MinimalGraphInner({
           {clusterLevelLabel ? (
             <>
               <span className={`text-[10px] font-semibold ${
-                effectiveClusterLevel === 3 ? "text-purple-600" :
-                effectiveClusterLevel === 2 ? "text-blue-600" :
-                "text-teal-600"
+                displayMode === "semantic"
+                  ? (AUTHORED_LEVELS.find((spec) => spec.level === effectiveSemanticLevel)?.color || "text-blue-600")
+                  : effectiveClusterLevel === 3
+                  ? "text-purple-600"
+                  : effectiveClusterLevel === 2
+                  ? "text-blue-600"
+                  : "text-teal-600"
               }`}>
                 {clusterLevelLabel}
               </span>
               <span className="text-[10px] text-gray-500">
-                {displayNodes.length} clusters · {normalizedChunk.length} nodes
+                {displayMode === "semantic"
+                  ? `${displayNodes.length} ${activeSemanticView?.type || "nodes"} · ${normalizedChunk.length} authored nodes`
+                  : `${displayNodes.length} clusters · ${normalizedChunk.length} nodes`}
               </span>
               {lockedLevel != null && (
                 <span className="text-[9px] text-amber-500 ml-1">locked</span>
@@ -1131,15 +1266,20 @@ function MinimalGraphInner({
             </span>
           )}
         </div>
-        {/* Zoom scale — click to lock clustering level, click again to unlock */}
+        {/* Zoom scale — click to lock semantic or clustered level, click again to unlock */}
         <div className="flex items-center gap-0 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm overflow-hidden">
-          {[
-            { label: "nodes", level: 0, color: "bg-gray-100", border: "border-gray-400", text: "text-gray-700" },
-            { label: "sentences", level: 1, color: "bg-teal-50", border: "border-teal-400", text: "text-teal-700" },
-            { label: "topics", level: 2, color: "bg-blue-50", border: "border-blue-400", text: "text-blue-700" },
-            { label: "themes", level: 3, color: "bg-purple-50", border: "border-purple-400", text: "text-purple-700" },
-          ].map(({ label, level, color, border, text }) => {
-            const isActive = clusterLevel === level;
+          {(displayMode === "semantic"
+            ? AUTHORED_LEVELS
+            : [
+                { label: "nodes", level: 0, chip: "bg-gray-100", border: "border-gray-400", color: "text-gray-700" },
+                { label: "sentences", level: 1, chip: "bg-teal-50", border: "border-teal-400", color: "text-teal-700" },
+                { label: "topics", level: 2, chip: "bg-blue-50", border: "border-blue-400", color: "text-blue-700" },
+                { label: "themes", level: 3, chip: "bg-purple-50", border: "border-purple-400", color: "text-purple-700" },
+              ]
+          ).map(({ label, level, chip, border, color }) => {
+            const isActive = displayMode === "semantic"
+              ? effectiveSemanticLevel === level
+              : legacyClusterLevel === level;
             const isLocked = lockedLevel === level;
             return (
               <button
@@ -1154,9 +1294,9 @@ function MinimalGraphInner({
                 title={isLocked ? `Locked to ${label} — click to unlock` : `Click to lock at ${label} level`}
                 className={`px-2 py-1 text-[9px] font-medium transition-colors cursor-pointer ${
                   isActive
-                    ? `${color} ${text} border-b-2 ${border}`
+                    ? `${chip} ${color} border-b-2 ${border}`
                     : isLocked
-                    ? `${color} ${text} border-b-2 border-dashed ${border}`
+                    ? `${chip} ${color} border-b-2 border-dashed ${border}`
                     : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
                 }`}
               >
@@ -1287,7 +1427,25 @@ function MinimalGraphInner({
               </svg>
             </summary>
             <div className="absolute bottom-full right-0 mb-2 bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-2 min-w-[180px] animate-slideIn">
-              {effectiveClusterLevel === 0 ? (
+              {displayMode === "semantic" ? (
+                <>
+                  <div>
+                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Current semantic level</span>
+                    <div className="mt-1 text-[11px] text-gray-600">
+                      {AUTHORED_LEVELS.find((spec) => spec.level === effectiveSemanticLevel)?.label || "authored"}
+                    </div>
+                    <div className="mt-1 text-[10px] text-gray-500 leading-tight">
+                      This view is using backend-authored hierarchy, not frontend clustering.
+                    </div>
+                  </div>
+                  <div>
+                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Node color = Speaker / temporal palette</span>
+                    <div className="mt-1 text-[10px] text-gray-500 leading-tight">
+                      Speaker colors appear when multiple speakers are detected. Otherwise colors fade by temporal position.
+                    </div>
+                  </div>
+                </>
+              ) : effectiveClusterLevel === 0 ? (
                 <>
                   <div>
                     <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Node color = Speaker</span>
@@ -1373,6 +1531,7 @@ MinimalGraphInner.propTypes = {
   selectedNode: PropTypes.string,
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
+  onVisibleLevelChange: PropTypes.func,
 };
 
 export default function MinimalGraph(props) {
@@ -1388,4 +1547,5 @@ MinimalGraph.propTypes = {
   selectedNode: PropTypes.string,
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
+  onVisibleLevelChange: PropTypes.func,
 };

@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-04-09 (ADR-026 amended)
+Last updated: 2026-04-14 (ADR-028 added)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -30,6 +30,8 @@ Last updated: 2026-04-09 (ADR-026 amended)
 | [ADR-024](ADR-024-indrasnet-gpu-priority-policy-and-live-stt-hard-preemption.md) | IndrasNet GPU Priority Policy and Live-STT Hard Preemption | 2026-04-09 | Approved |
 | [ADR-025](ADR-025-wsl-whisperx-launcher-ownership-and-line-ending-durability.md) | WSL WhisperX Launcher Ownership and Line-Ending Durability | 2026-04-09 | Approved |
 | [ADR-026](ADR-026-two-phase-live-flush-contract.md) | Two-Phase Live Flush Contract for `/ws/transcripts` | 2026-04-09 | Approved |
+| [ADR-027](ADR-027-prompt-manager-canonical-for-transcript-and-refinement-prompts.md) | PromptManager as the Canonical Runtime Source for Transcript and Refinement Prompts | 2026-04-13 | Approved |
+| [ADR-028](ADR-028-session-state-model-and-ux-terminology.md) | Session State Model and UX Terminology for Live Conversations | 2026-04-14 | Approved |
 
 ## Status Definitions
 

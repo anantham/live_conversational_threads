@@ -3,7 +3,7 @@
 import uuid
 
 from sqlalchemy import (
-    Column, Integer, Float, Boolean, Text, DateTime,
+    Column, Integer, Float, Boolean, Text, DateTime, LargeBinary,
     ForeignKey, Index, CheckConstraint, ARRAY, text as sql_text,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR

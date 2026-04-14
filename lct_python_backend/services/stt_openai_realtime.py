@@ -235,9 +235,22 @@ class OpenAIRealtimeTranscriptionRuntime:
 
     async def flush(self) -> List[Dict[str, Any]]:
         if not self.is_ready():
+            logger.warning("[OPENAI][REALTIME] session=%s flush called but not ready", self.session_id)
             return []
 
+        pending_bytes = len(self._pending_commit_pcm) if self._pending_commit_pcm else 0
+        logger.info("[OPENAI][REALTIME] session=%s flush: pending_bytes=%s provider_samples_sent=%s",
+                  self.session_id, pending_bytes, self._provider_samples_sent)
+        
+        if pending_bytes < 1600 and pending_bytes > 0:  # Less than 100ms
+            logger.warning("[OPENAI][REALTIME] session=%s flush: VERY SMALL BUFFER %s bytes (%s ms), may fail",
+                        self.session_id, pending_bytes, pending_bytes / 48)
+        elif pending_bytes == 0:
+            logger.warning("[OPENAI][REALTIME] session=%s flush: EMPTY BUFFER (0 bytes) - commit will likely fail",
+                        self.session_id)
+
         if self._pending_commit_pcm:
+            logger.info("[OPENAI][REALTIME] session=%s committing input_audio_buffer.commit", self.session_id)
             await self._send_json({"type": "input_audio_buffer.commit"})
 
         events = self._drain_events_nowait()
