@@ -9,6 +9,9 @@ from sqlalchemy import select, insert, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.models.system import UsageQuota
+from lct_python_backend.services.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Configuration from environment
 FREE_STT_DAILY_MINUTES = float(os.getenv("FREE_STT_DAILY_MINUTES", "10"))
@@ -60,16 +63,25 @@ class QuotaService:
         # Get limit for free tier
         limit_minutes = FREE_STT_DAILY_MINUTES if quota_type == "stt_live" else FREE_LLM_DAILY_TOKENS
         
-        # Query today's usage
-        stmt = select(UsageQuota).where(
-            UsageQuota.owner_id == owner_id,
-            UsageQuota.quota_type == quota_type,
-            UsageQuota.date == today,
-        )
-        result = await self.session.execute(stmt)
-        quota = result.scalar_one_or_none()
-
-        used_minutes = quota.minutes_used if quota else 0.0
+        # Query today's usage - handle case where table doesn't exist
+        try:
+            stmt = select(UsageQuota).where(
+                UsageQuota.owner_id == owner_id,
+                UsageQuota.quota_type == quota_type,
+                UsageQuota.date == today,
+            )
+            result = await self.session.execute(stmt)
+            quota = result.scalar_one_or_none()
+            used_minutes = quota.minutes_used if quota else 0.0
+        except Exception as e:
+            # Table doesn't exist yet - treat as no usage (first time)
+            logger.warning("[QUOTA] Table not found or query failed: %s - allowing session", e)
+            used_minutes = 0.0
+            # Rollback to clear any failed transaction state
+            try:
+                await self.session.rollback()
+            except Exception:
+                pass
         remaining = max(0, limit_minutes - used_minutes)
         percent_used = (used_minutes / limit_minutes * 100) if limit_minutes > 0 else 100
         
