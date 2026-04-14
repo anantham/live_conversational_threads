@@ -110,6 +110,16 @@ export default function SttSettingsCard() {
         </p>
       </section>
 
+      <label className="flex items-center gap-2 text-sm text-gray-700">
+        <input
+          type="checkbox"
+          checked={Boolean(form?.store_audio)}
+          onChange={handleChange("store_audio")}
+          className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
+        />
+        <span>Record audio (save for later use)</span>
+      </label>
+
       <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div className="space-y-3">
           <label className="block space-y-1 text-sm text-gray-700">

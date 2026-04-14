@@ -109,13 +109,25 @@ export default function useLocalConversationDraft({ snapshot, enabled = true }) 
     return draft;
   }, [availableDraft]);
 
-  const discardAvailableDraft = useCallback(async () => {
+  const removeAvailableDraft = useCallback(async (logLabel) => {
     try {
       await deleteLatestDraft();
       setAvailableDraft(null);
     } catch (error) {
-      console.warn("[LocalDraft] Failed to discard latest draft:", error);
+      console.warn(`[LocalDraft] Failed to ${logLabel} latest draft:`, error);
     }
+  }, []);
+
+  const discardAvailableDraft = useCallback(async () => {
+    await removeAvailableDraft("discard");
+  }, [removeAvailableDraft]);
+
+  const clearAvailableDraft = useCallback(async () => {
+    await removeAvailableDraft("clear");
+  }, [removeAvailableDraft]);
+
+  const dismissAvailableDraft = useCallback(() => {
+    setAvailableDraft(null);
   }, []);
 
   const availableDraftSummary = useMemo(
@@ -126,7 +138,9 @@ export default function useLocalConversationDraft({ snapshot, enabled = true }) 
   return {
     availableDraft,
     availableDraftSummary,
+    clearAvailableDraft,
     discardAvailableDraft,
+    dismissAvailableDraft,
     isCheckingDraft,
     persistDraftNow,
     restoreAvailableDraft,

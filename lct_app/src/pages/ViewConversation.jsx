@@ -104,6 +104,7 @@ export default function ViewConversation() {
   const [chunkDict, setChunkDict] = useState({});
   const [conversationName, setConversationName] = useState("");
   const [selectedNode, setSelectedNode] = useState(null);
+  const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   const [speakerRefreshKey, setSpeakerRefreshKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -251,6 +252,9 @@ export default function ViewConversation() {
                   selectedNode={selectedNode}
                   setSelectedNode={setSelectedNode}
                   viewportReservationKey={graphViewportKey}
+                  onVisibleLevelChange={(view) => {
+                    setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
+                  }}
                 />
                 <MinimalLegend
                   speakerColorMap={speakerColorMap}
@@ -263,6 +267,7 @@ export default function ViewConversation() {
               graphData={graphData}
               selectedNode={selectedNode}
               setSelectedNode={setSelectedNode}
+              semanticLevel={visibleGraphLevel}
             />
           </div>
         )}

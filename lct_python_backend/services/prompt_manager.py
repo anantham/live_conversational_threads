@@ -15,8 +15,10 @@ from datetime import datetime
 import shutil
 from string import Template
 import hashlib
+import re
 
 logger = logging.getLogger(__name__)
+_BRACE_VARIABLE_PATTERN = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
 
 class PromptManager:
@@ -111,9 +113,21 @@ class PromptManager:
         """
         prompt_config = self.get_prompt(prompt_name)
         template_str = prompt_config.get("template", "")
+        return self.render_prompt_string(template_str, variables, prompt_name=prompt_name)
 
-        # Use string.Template for safe variable substitution
-        # Supports $variable and ${variable} syntax
+    def render_prompt_string(
+        self,
+        template_str: str,
+        variables: Dict[str, Any],
+        prompt_name: str = "<inline>",
+    ) -> str:
+        """
+        Render a prompt template supporting both $variable and {variable} placeholders.
+
+        Historically the repo has used both conventions. Supporting both here keeps the
+        prompt library as the canonical runtime system while remaining compatible with
+        older prompts.json entries.
+        """
         template = Template(template_str)
 
         try:
@@ -122,6 +136,22 @@ class PromptManager:
             missing_var = str(e).strip("'")
             raise ValueError(
                 f"Missing required variable '{missing_var}' for prompt '{prompt_name}'"
+            )
+
+        # Backward compatibility for prompts written with brace placeholders.
+        for key, value in variables.items():
+            rendered = rendered.replace(f"{{{key}}}", str(value))
+
+        unresolved = sorted({
+            match.group(1)
+            for match in _BRACE_VARIABLE_PATTERN.finditer(rendered)
+            if match.group(1) not in variables
+        })
+        if unresolved:
+            logger.warning(
+                "Prompt '%s' still contains unresolved brace placeholders after rendering: %s",
+                prompt_name,
+                unresolved,
             )
 
         return rendered
@@ -336,11 +366,11 @@ class PromptManager:
             # Will use default, but warn
             pass
 
-        # Validate model if specified
+        # Model ids are provider-specific and evolve quickly; accept any non-empty string.
         if "model" in prompt_config:
-            valid_models = ["gpt-4", "gpt-3.5-turbo", "claude-sonnet-4"]
-            if prompt_config["model"] not in valid_models:
-                errors.append(f"Unknown model: {prompt_config['model']}. Valid: {valid_models}")
+            model = prompt_config["model"]
+            if not isinstance(model, str) or not model.strip():
+                errors.append("model must be a non-empty string when provided")
 
         # Validate temperature
         if "temperature" in prompt_config:

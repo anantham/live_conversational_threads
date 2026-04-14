@@ -21,7 +21,11 @@ from lct_python_backend.services.transcript_llm_callers import (
     _resolve_online_gemini_model,
 )
 from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
-from lct_python_backend.services.transcript_prompts import REFINE_LCT_SUBTHREAD_PROMPT
+from lct_python_backend.services.transcript_prompts import (
+    PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS,
+    get_transcript_prompt_metadata,
+    get_transcript_prompt_text,
+)
 
 logger = logging.getLogger("lct_backend")
 
@@ -213,11 +217,13 @@ def _refine_graph_nodes_gemini(
 
     model_name = _resolve_online_gemini_model(llm_config)
     client = genai.Client(api_key=api_key)
+    prompt_metadata = get_transcript_prompt_metadata(PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS)
+    system_prompt = get_transcript_prompt_text(PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS)
     config = types.GenerateContentConfig(
-        temperature=0.55,
+        temperature=float(prompt_metadata.get("temperature", 0.55)),
         thinking_config=types.ThinkingConfig(thinking_budget=0),
         response_mime_type="application/json",
-        system_instruction=[types.Part.from_text(text=REFINE_LCT_SUBTHREAD_PROMPT)],
+        system_instruction=[types.Part.from_text(text=system_prompt)],
     )
 
     last_error: Optional[str] = None
@@ -253,12 +259,13 @@ def _refine_graph_nodes_local(
     providers: Optional[List[Dict[str, Any]]],
 ) -> tuple[List[Dict[str, Any]], Optional[str], Optional[str]]:
     try:
+        prompt_metadata = get_transcript_prompt_metadata(PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS)
         parsed, provider_result = _call_local_chat_json_with_fallback(
             prompt=prompt,
-            system_prompt=REFINE_LCT_SUBTHREAD_PROMPT,
+            system_prompt=get_transcript_prompt_text(PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS),
             providers=providers,
-            temperature=0.55,
-            max_tokens=5000,
+            temperature=float(prompt_metadata.get("temperature", 0.55)),
+            max_tokens=int(prompt_metadata.get("max_tokens", 5000)),
         )
         normalized = _normalize_generated_output(parsed)
         if normalized:

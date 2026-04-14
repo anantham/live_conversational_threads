@@ -7,7 +7,7 @@
  * - Immediate save to backend
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import PropTypes from 'prop-types';
 import {
   getContextNodes,
@@ -17,6 +17,7 @@ import {
   validateNodeEdits,
   getNodeDiff,
 } from '../../utils/contextLoading';
+import { apiFetch } from '../../services/apiClient';
 
 export default function NodeDetailPanel({
   selectedNode,
@@ -26,7 +27,67 @@ export default function NodeDetailPanel({
   onClose,
   onSave,
   utterancesMap = {},
+  conversationId = '',
 }) {
+  // Audio state
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [audioLoading, setAudioLoading] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef(null);
+
+  const fetchAudioUrl = async () => {
+    if (!conversationId || audioUrl) return;
+    setAudioLoading(true);
+    try {
+      const response = await apiFetch(`/conversations/${conversationId}`);
+      if (response.ok) {
+        const convo = await response.json();
+        const url = convo?.audio_download_url || convo?.audio_url;
+        if (url) {
+          setAudioUrl(url);
+        }
+      }
+    } catch (err) {
+      console.warn('[NodeDetailPanel] Failed to fetch audio URL:', err);
+    } finally {
+      setAudioLoading(false);
+    }
+  };
+
+  // Fetch audio when panel opens
+  useEffect(() => {
+    if (selectedNode && conversationId) {
+      fetchAudioUrl();
+    }
+  }, [selectedNode, conversationId]);
+
+  // Handle play/pause
+  const togglePlayPause = () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+    } else {
+      audioRef.current.play();
+    }
+    setIsPlaying(!isPlaying);
+  };
+
+  // Seek to node timestamp (with 2s lead-in)
+  const seekToNode = () => {
+    if (!audioRef.current || !selectedNode) return;
+    const ts = selectedNode.data?.timestamp_start;
+    if (ts == null || ts < 0) return;
+    const seekTo = Math.max(0, ts - 2000); // 2 seconds before
+    audioRef.current.currentTime = seekTo / 1000; // convert ms to seconds
+    audioRef.current.play();
+    setIsPlaying(true);
+  };
+
+  const nodeStartMs = selectedNode?.data?.timestamp_start;
+  const nodeEndMs = selectedNode?.data?.timestamp_end;
+  const hasAudio = !!audioUrl;
+  const hasTimestamps = nodeStartMs != null && nodeEndMs != null;
+
   // Edit mode state
   const [isEditMode, setIsEditMode] = useState(false);
   const [editedNode, setEditedNode] = useState(null);
@@ -202,6 +263,46 @@ export default function NodeDetailPanel({
             {previous.map((node, idx) => (
               <div key={idx}>{renderContextNode(node, 'previous')}</div>
             ))}
+          </div>
+        )}
+
+        {/* Audio Player */}
+        {hasAudio && (
+          <div className="p-3 bg-slate-100 border border-slate-300 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs font-semibold text-slate-700">Audio</span>
+              {audioLoading && <span className="text-xs text-slate-500">Loading...</span>}
+            </div>
+            <audio
+              ref={audioRef}
+              src={audioUrl}
+              onEnded={() => setIsPlaying(false)}
+              onError={() => setIsPlaying(false)}
+              className="hidden"
+            />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={togglePlayPause}
+                disabled={!hasAudio}
+                className="px-3 py-1.5 text-xs font-semibold bg-slate-700 text-white rounded hover:bg-slate-800 disabled:opacity-50"
+              >
+                {isPlaying ? '⏸ Pause' : '▶ Play'}
+              </button>
+              {hasTimestamps && (
+                <button
+                  onClick={seekToNode}
+                  className="px-2 py-1.5 text-xs font-semibold bg-purple-600 text-white rounded hover:bg-purple-700"
+                >
+                  ▶ Jump to node
+                </button>
+              )}
+            </div>
+            {hasTimestamps && (
+              <div className="mt-2 text-xs text-slate-600">
+                Node: {Math.round(nodeStartMs / 1000)}s → {Math.round(nodeEndMs / 1000)}s
+                ({Math.round((nodeEndMs - nodeStartMs) / 1000)}s)
+              </div>
+            )}
           </div>
         )}
 
@@ -403,4 +504,5 @@ NodeDetailPanel.propTypes = {
   onClose: PropTypes.func.isRequired,
   onSave: PropTypes.func.isRequired,
   utterancesMap: PropTypes.object,
+  conversationId: PropTypes.string,
 };

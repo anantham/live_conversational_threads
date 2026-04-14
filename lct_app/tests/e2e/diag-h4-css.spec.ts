@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+const appBaseUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:43173';
+
 /**
  * H4: CSS/Tailwind Processing Issue
  *
@@ -25,7 +27,7 @@ test.describe('H4: CSS/Tailwind Test', () => {
     await page.route('**/*', async (route) => {
       const url = route.request().url();
 
-      if (url.includes('localhost:5173') && url.endsWith('/')) {
+      if (url === `${appBaseUrl}/`) {
         await route.fulfill({
           status: 200,
           contentType: 'text/html',
@@ -72,7 +74,7 @@ test.describe('H4: CSS/Tailwind Test', () => {
       }
     });
 
-    await page.goto('http://localhost:5173/', { waitUntil: 'load', timeout: 10000 });
+    await page.goto('/', { waitUntil: 'load', timeout: 10000 });
     console.log('[H4] Page loaded');
 
     await page.waitForTimeout(5000);
@@ -137,7 +139,7 @@ test.describe('H4: CSS/Tailwind Test', () => {
     });
 
     // Check package.json for Tailwind version
-    await page.goto('http://localhost:5173/', {
+    await page.goto('/', {
       waitUntil: 'domcontentloaded',
       timeout: 10000,
     });

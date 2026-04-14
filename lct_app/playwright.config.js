@@ -1,4 +1,20 @@
 import { defineConfig, devices } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
+
+function resolveFrontendPort() {
+  try {
+    const port = fs.readFileSync(path.resolve(__dirname, '../.frontend-port'), 'utf-8').trim();
+    if (/^\d+$/.test(port)) return port;
+  } catch {
+    // file missing - fall back to env/default
+  }
+
+  return process.env.FRONTEND_PORT || '43173';
+}
+
+const baseURL = `http://localhost:${resolveFrontendPort()}`;
+process.env.PLAYWRIGHT_BASE_URL = process.env.PLAYWRIGHT_BASE_URL || baseURL;
 
 export default defineConfig({
   testDir: './tests',
@@ -18,7 +34,7 @@ export default defineConfig({
   // Shared settings for all the projects below
   use: {
     // Base URL to use in actions like `await page.goto('/')`
-    baseURL: 'http://localhost:5175',
+    baseURL,
 
     // Collect trace when retrying the failed test
     trace: 'on-first-retry',
@@ -41,7 +57,7 @@ export default defineConfig({
   // Run your local dev server before starting the tests (optional - we already have it running)
   // webServer: {
   //   command: 'npm run dev',
-  //   url: 'http://localhost:5175',
+  //   url: baseURL,
   //   reuseExistingServer: !process.env.CI,
   // },
 });

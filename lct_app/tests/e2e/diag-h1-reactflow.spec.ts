@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+const appBaseUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:43173';
+
 /**
  * H1: ReactFlow Initialization Crash
  *
@@ -27,7 +29,7 @@ test.describe('H1: ReactFlow Test', () => {
     await page.route('**/*', async (route) => {
       const url = route.request().url();
 
-      if (url.includes('localhost:5173') && url.endsWith('/test-reactflow')) {
+      if (url === `${appBaseUrl}/test-reactflow`) {
         await route.fulfill({
           status: 200,
           contentType: 'text/html',
@@ -72,7 +74,7 @@ test.describe('H1: ReactFlow Test', () => {
     });
 
     console.log('[H1] Navigating to ReactFlow test page...');
-    await page.goto('http://localhost:5173/test-reactflow', {
+    await page.goto('/test-reactflow', {
       waitUntil: 'load',
       timeout: 15000,
     });

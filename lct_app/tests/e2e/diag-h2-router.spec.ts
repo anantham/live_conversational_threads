@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+const appBaseUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:43173';
+
 /**
  * H2: React Router BrowserRouter Issue
  *
@@ -28,7 +30,7 @@ test.describe('H2: Router Test', () => {
     await page.route('**/*', async (route) => {
       const url = route.request().url();
 
-      if (url.includes('localhost:5173') && url.endsWith('/')) {
+      if (url === `${appBaseUrl}/`) {
         // Serve minimal HTML
         await route.fulfill({
           status: 200,
@@ -68,7 +70,7 @@ test.describe('H2: Router Test', () => {
     });
 
     console.log('[H2] Navigating to test page...');
-    await page.goto('http://localhost:5173/', { waitUntil: 'load', timeout: 10000 });
+    await page.goto('/', { waitUntil: 'load', timeout: 10000 });
     console.log('[H2] Page loaded');
 
     // Wait to see if crash happens

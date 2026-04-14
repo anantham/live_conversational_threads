@@ -9,6 +9,7 @@ Domain split:
                 SimulacraAnalysis, BiasAnalysis, FrameAnalysis
   interaction — Bookmark, EditsLog
   system      — APICallsLog, AppSetting, PipelineArtifact, ServiceStatus
+  observability — ThreadSession, ThreadSessionEvent
 
 All public names are re-exported here so existing
 `from lct_python_backend.models import X` imports remain unchanged.
@@ -31,6 +32,7 @@ from .analysis import (  # noqa: F401
 )
 from .interaction import Bookmark, EditsLog  # noqa: F401
 from .system import APICallsLog, AppSetting, PipelineArtifact, ServiceStatus  # noqa: F401
+from .observability import ThreadSession, ThreadSessionEvent  # noqa: F401
 
 __all__ = [
     "Base",
@@ -61,4 +63,7 @@ __all__ = [
     "AppSetting",
     "PipelineArtifact",
     "ServiceStatus",
+    # observability
+    "ThreadSession",
+    "ThreadSessionEvent",
 ]

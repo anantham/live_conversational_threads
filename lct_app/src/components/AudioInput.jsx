@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Mic, ChevronDown } from "lucide-react";
+import { Mic, ChevronDown, Square } from "lucide-react";
 
 import { normalizeSttSettings } from "./audio/sttUtils";
 import LiveSessionHud from "./audio/LiveSessionHud";
@@ -18,6 +18,7 @@ import useAudioCapture from "./audio/useAudioCapture";
 import useMicDevices from "./audio/useMicDevices";
 
 const LIVE_TRANSCRIPT_MAX_LINES = 240;
+const SESSION_EVENT_LIMIT = 600;
 
 function calculateConfidence(logprobs) {
   if (!logprobs || !Array.isArray(logprobs) || logprobs.length === 0) return 1.0;
@@ -83,19 +84,11 @@ function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef, 
   ]);
 }
 
-function getConfidenceColor(line) {
-  if (!line.isFinal) return "text-gray-400 italic";
-  const confidence = line.confidence;
-  if (confidence === undefined || confidence === null) return "text-gray-600";
-  if (confidence > 0.9) return "text-gray-700";
-  if (confidence > 0.7) return "text-red-800";
-  return "text-red-500 font-medium underline decoration-dotted";
-}
-
 const AudioInput = forwardRef(function AudioInput({
   onDataReceived,
   onChunksReceived,
   onGraphPatchReceived,
+  onLiveTranscriptStateChange,
   chunkDict,
   graphData,
   conversationId,
@@ -113,6 +106,7 @@ const AudioInput = forwardRef(function AudioInput({
   const [liveTranscriptLines, setLiveTranscriptLines] = useState([]);
   const [processingError, setProcessingError] = useState("");
   const [audioDownloadUrl, setAudioDownloadUrl] = useState("");
+  const [sessionEvents, setSessionEvents] = useState([]);
   const [showDevicePicker, setShowDevicePicker] = useState(false);
   const { sttSettings, settingsError } = useSttSettings();
   const { devices: micDevices, selectedId: micDeviceId, setSelectedId: setMicDeviceId, refresh: refreshMicDevices } = useMicDevices();
@@ -123,6 +117,21 @@ const AudioInput = forwardRef(function AudioInput({
   const wasRecording = useRef(false);
   const transcriptLineIdRef = useRef(0);
   const autostarted = useRef(false);
+  const activeSettingsRef = useRef(null);
+  const sessionStartedAtRef = useRef(null);
+  const sessionEndedAtRef = useRef(null);
+
+  const appendSessionEvent = useCallback((type, payload = {}) => {
+    const event = {
+      ts: new Date().toISOString(),
+      type,
+      payload,
+    };
+    setSessionEvents((previous) => {
+      const next = [...previous, event];
+      return next.length > SESSION_EVENT_LIMIT ? next.slice(-SESSION_EVENT_LIMIT) : next;
+    });
+  }, []);
 
   // Auto-start recording if requested
   useEffect(() => {
@@ -144,6 +153,7 @@ const AudioInput = forwardRef(function AudioInput({
     handleTranscriptEvent: handleLiveTranscriptEvent,
     micLevel,
     resetSession,
+    sessionAck,
     setDetailOpen,
     statusLine,
     stt: liveStt,
@@ -159,28 +169,55 @@ const AudioInput = forwardRef(function AudioInput({
     const isFinal = eventType === "transcript_final";
     const logprobs = metadata?.logprobs || null;
     handleLiveTranscriptEvent({ text: cleanText, eventType, metadata });
+    appendSessionEvent(eventType, {
+      text: cleanText,
+      metadata: metadata || {},
+    });
     setLiveTranscriptLines((previous) =>
       upsertLiveTranscriptLine(previous, cleanText, isFinal, transcriptLineIdRef, logprobs)
     );
-  }, [handleLiveTranscriptEvent]);
+  }, [appendSessionEvent, handleLiveTranscriptEvent]);
 
   const handleProcessingStatus = useCallback((status) => {
     handleLiveProcessingStatus(status);
+    appendSessionEvent("processing_status", status || {});
     const level = String(status?.level || "").toLowerCase();
     const messageText = String(status?.message || "").trim();
     if (!messageText) return;
     if (level === "error" || level === "warning") {
       setProcessingError(messageText);
     }
-  }, [handleLiveProcessingStatus]);
+  }, [appendSessionEvent, handleLiveProcessingStatus]);
 
   const handleAudioReady = useCallback((payload) => {
     const downloadUrl = String(payload?.download_url || "").trim();
     setAudioDownloadUrl(downloadUrl);
+    appendSessionEvent("audio_ready", payload || {});
     if (downloadUrl) {
       setMessage?.("Audio stored. Download is ready.");
     }
-  }, [setMessage]);
+  }, [appendSessionEvent, setMessage]);
+
+  const handleSessionAckEvent = useCallback((payload) => {
+    appendSessionEvent("session_ack", payload || {});
+    handleSessionAck(payload);
+  }, [appendSessionEvent, handleSessionAck]);
+
+  const handleBackendMessageEvent = useCallback((payload) => {
+    handleBackendMessage(payload);
+    const messageType = String(payload?.type || "").trim().toLowerCase();
+    if (!messageType) return;
+    if (
+      messageType === "graph_patch"
+      || messageType === "existing_json"
+      || messageType === "chunk_dict"
+      || messageType === "flush_ack"
+      || messageType === "flush_complete"
+      || messageType === "error"
+    ) {
+      appendSessionEvent(`backend_${messageType}`, payload || {});
+    }
+  }, [appendSessionEvent, handleBackendMessage]);
 
   // --- Transport hook ---
   const {
@@ -196,8 +233,11 @@ const AudioInput = forwardRef(function AudioInput({
     onChunksReceived,
     onGraphPatchReceived,
     graphDataFromSocket,
-    onSessionReady: () => setRecording(true),
-    onSessionAck: handleSessionAck,
+    onSessionReady: () => {
+      setRecording(true);
+      appendSessionEvent("session_ready");
+    },
+    onSessionAck: handleSessionAckEvent,
     onFatalError: useCallback(() => {
       setRecording(false);
     }, []),
@@ -206,7 +246,7 @@ const AudioInput = forwardRef(function AudioInput({
     onPong: handlePong,
     onProviderTranscript: handleProviderTranscript,
     onProcessingStatus: handleProcessingStatus,
-    onBackendMessage: handleBackendMessage,
+    onBackendMessage: handleBackendMessageEvent,
     onAudioReady: handleAudioReady,
   });
 
@@ -245,6 +285,14 @@ const AudioInput = forwardRef(function AudioInput({
     wasRecording.current = recording;
   }, [recording]);
 
+  useEffect(() => {
+    onLiveTranscriptStateChange?.({
+      recording,
+      liveTranscriptLines,
+      statusLine,
+    });
+  }, [liveTranscriptLines, onLiveTranscriptStateChange, recording, statusLine]);
+
   // Auto-dismiss processing errors after 8s
   useEffect(() => {
     if (!processingError) return;
@@ -253,14 +301,18 @@ const AudioInput = forwardRef(function AudioInput({
   }, [processingError]);
 
   // --- Orchestration ---
-  const startRecording = async () => {
+  const startRecording = useCallback(async () => {
     if (recording) return;
     const activeSettings = normalizeSttSettings(sttSettings || {});
     resetSession();
+    sessionStartedAtRef.current = new Date().toISOString();
+    sessionEndedAtRef.current = null;
+    activeSettingsRef.current = activeSettings;
     transcriptLineIdRef.current = 0;
     setLiveTranscriptLines([]);
     setProcessingError("");
     setAudioDownloadUrl("");
+    setSessionEvents([]);
     setProviderSocketState("connecting");
     setBackendSocketState("connecting");
     const captureStarted = await startCapture(micDeviceId);
@@ -276,25 +328,84 @@ const AudioInput = forwardRef(function AudioInput({
 
     const sessionId = crypto.randomUUID();
     const newConversationId = crypto.randomUUID();
+    appendSessionEvent("session_start_requested", {
+      conversation_id: newConversationId,
+      session_id: sessionId,
+      provider: activeSettings?.provider || null,
+      store_audio: Boolean(activeSettings?.store_audio),
+    });
     setConversationId?.(newConversationId);
     setFileName?.("");
     fileNameWasReset.current = true;
     startSession({ activeSettings, newConversationId, sessionId });
-  };
+  }, [
+    micDeviceId,
+    recording,
+    refreshMicDevices,
+    resetSession,
+    setConversationId,
+    setFileName,
+    startCapture,
+    startSession,
+    sttSettings,
+    appendSessionEvent,
+    setProviderSocketState,
+    setBackendSocketState,
+  ]);
 
   const stopRecording = useCallback(async () => {
+    appendSessionEvent("session_stop_requested", {
+      conversation_id: conversationId || null,
+    });
     await stopCapture();
     await stopSession();
     resetSession();
     setRecording(false);
     setProviderSocketState("closed");
     setBackendSocketState("closed");
-  }, [resetSession, stopCapture, stopSession]);
+    sessionEndedAtRef.current = new Date().toISOString();
+  }, [appendSessionEvent, conversationId, resetSession, stopCapture, stopSession]);
 
-  useImperativeHandle(ref, () => ({ stopRecording }), [stopRecording]);
+  const getSessionDebugSnapshot = useCallback(() => ({
+    recording,
+    backend_socket_state: backendSocketState,
+    provider_socket_state: providerSocketState,
+    live_transcript_lines: liveTranscriptLines,
+    processing_error: processingError,
+    audio_download_url: audioDownloadUrl,
+    session_ack: sessionAck,
+    status_line: statusLine,
+    chips: {
+      backend: liveBackend,
+      stt: liveStt,
+      graph: liveGraph,
+    },
+    details,
+    event_timeline: sessionEvents,
+    active_settings: activeSettingsRef.current,
+    session_started_at: sessionStartedAtRef.current,
+    session_ended_at: sessionEndedAtRef.current,
+  }), [
+    audioDownloadUrl,
+    backendSocketState,
+    details,
+    liveBackend,
+    liveGraph,
+    liveStt,
+    liveTranscriptLines,
+    processingError,
+    providerSocketState,
+    recording,
+    sessionAck,
+    sessionEvents,
+    statusLine,
+  ]);
 
-  // Show last 3 transcript lines for live caption
-  const captionLines = liveTranscriptLines.slice(-3);
+  useImperativeHandle(ref, () => ({
+    startRecording,
+    stopRecording,
+    getSessionDebugSnapshot,
+  }), [getSessionDebugSnapshot, startRecording, stopRecording]);
   const micRingScale = 1 + micLevel * 0.42;
   const micRingOpacity = recording
     ? Math.min(0.85, 0.2 + micLevel * 0.65)
@@ -302,19 +413,6 @@ const AudioInput = forwardRef(function AudioInput({
 
   return (
     <div className="flex items-center gap-3">
-      {/* Live caption (above footer, positioned by parent) */}
-      {recording && captionLines.length > 0 && (
-        <div className="absolute bottom-full left-0 right-0 mb-1 px-4 pointer-events-none">
-          <div className="max-w-lg mx-auto bg-black/5 backdrop-blur-sm rounded-lg px-3 py-1.5 text-xs text-gray-500 space-y-0.5">
-            {captionLines.map((line) => (
-              <p key={line.id} className={getConfidenceColor(line)}>
-                {line.text}{!line.isFinal ? " ..." : ""}
-              </p>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* Mic button + device picker */}
       <div className="relative flex items-center">
         <button
@@ -325,6 +423,7 @@ const AudioInput = forwardRef(function AudioInput({
               : "bg-gray-100 text-gray-500 hover:bg-gray-200"
           }`}
           aria-label={recording ? "Stop recording" : "Start recording"}
+          title={recording ? "Stop recording" : "Start recording"}
         >
           {recording && (
             <span
@@ -335,7 +434,7 @@ const AudioInput = forwardRef(function AudioInput({
               }}
             />
           )}
-          <Mic size={18} />
+          {recording ? <Square size={16} fill="currentColor" /> : <Mic size={18} />}
           {recording && (
             <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
           )}
@@ -422,6 +521,7 @@ AudioInput.propTypes = {
   onDataReceived: PropTypes.func,
   onChunksReceived: PropTypes.func,
   onGraphPatchReceived: PropTypes.func,
+  onLiveTranscriptStateChange: PropTypes.func,
   chunkDict: PropTypes.object,
   graphData: PropTypes.array,
   conversationId: PropTypes.string,

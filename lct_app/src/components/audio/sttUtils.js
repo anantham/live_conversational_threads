@@ -2,7 +2,7 @@ import { API_BASE_URL, wsUrl } from "../../services/apiClient";
 
 const API_BASE = API_BASE_URL;
 const BACKEND_WS_URL = wsUrl("/ws/transcripts");
-const STT_PROVIDER_OPTIONS = ["senko", "parakeet", "whisper", "ofc"];
+const STT_PROVIDER_OPTIONS = ["senko", "parakeet", "whisper", "ofc", "openai_audio"];
 const DEFAULT_STT_PROVIDER = (import.meta.env.VITE_DEFAULT_STT_PROVIDER || "parakeet").toLowerCase();
 const DEFAULT_STT_WS = import.meta.env.VITE_DEFAULT_STT_WS || "ws://localhost:43001/stream";
 const DEFAULT_STT_HTTP =
@@ -38,9 +38,11 @@ const DEFAULT_STT_PROVIDER_HTTP_URLS = {
   parakeet: import.meta.env.VITE_DEFAULT_STT_PARAKEET_HTTP || DEFAULT_STT_HTTP,
   whisper: DEFAULT_STT_WHISPER_HTTP,
   ofc: import.meta.env.VITE_DEFAULT_STT_OFC_HTTP || DEFAULT_STT_HTTP,
+  openai_audio: `${DEFAULT_OPENAI_AUDIO_BASE_URL}/v1/audio/transcriptions`,
 };
 const DEFAULT_CHUNK_ENDPOINT = "/api/conversations/{conversation_id}/audio/chunk";
 const DEFAULT_COMPLETE_ENDPOINT = "/api/conversations/{conversation_id}/audio/complete";
+const DEFAULT_HTTP_LANGUAGE = import.meta.env.VITE_DEFAULT_STT_HTTP_LANGUAGE || "en";
 const DEFAULT_CLOUD_FALLBACK_PROVIDERS = {
   openai_audio: {
     id: "openai_audio",
@@ -156,6 +158,15 @@ const normalizeCloudFallbackProviders = (providers) => {
   return base;
 };
 
+const buildCloudProviderHttpUrl = (providerId, providerConfig = {}) => {
+  const baseUrl = String(providerConfig?.base_url || "").trim().replace(/\/$/, "");
+  if (!baseUrl) return "";
+  if (providerId === "openrouter_audio") {
+    return `${baseUrl}/v1/chat/completions`;
+  }
+  return `${baseUrl}/v1/audio/transcriptions`;
+};
+
 const normalizeSttSettings = (settings = {}) => {
   // The backend already normalizes provider, URLs, fallback priority, and
   // boolean flags in merge_stt_config + sanitize_stt_config_for_client.
@@ -163,13 +174,20 @@ const normalizeSttSettings = (settings = {}) => {
   // and apply lightweight defaults for missing fields.
   const provider = settings?.provider || DEFAULT_STT_PROVIDER;
   const cloud_fallback_providers = normalizeCloudFallbackProviders(settings?.cloud_fallback_providers);
+  const provider_http_urls = settings?.provider_http_urls || { ...DEFAULT_STT_PROVIDER_HTTP_URLS };
+  if (!provider_http_urls.openai_audio) {
+    provider_http_urls.openai_audio =
+      buildCloudProviderHttpUrl("openai_audio", cloud_fallback_providers.openai_audio) ||
+      DEFAULT_STT_PROVIDER_HTTP_URLS.openai_audio;
+  }
 
   return {
     ...settings,
     provider,
+    http_language: String(settings?.http_language || DEFAULT_HTTP_LANGUAGE).trim(),
     cloud_fallback_providers,
     provider_urls: settings?.provider_urls || { ...DEFAULT_STT_PROVIDER_URLS },
-    provider_http_urls: settings?.provider_http_urls || { ...DEFAULT_STT_PROVIDER_HTTP_URLS },
+    provider_http_urls,
     live_fallback_priority: settings?.live_fallback_priority || [...LIVE_FALLBACK_ROUTE_OPTIONS],
     ws_url: settings?.ws_url || DEFAULT_STT_WS,
     http_url: settings?.http_url || DEFAULT_STT_HTTP,
@@ -232,6 +250,7 @@ export {
   normalizeCloudFallbackProviders,
   normalizeLiveFallbackPriority,
   normalizeSttSettings,
+  buildCloudProviderHttpUrl,
   replaceConversationPlaceholder,
   resolveProviderWsUrl,
   LIVE_FALLBACK_ROUTE_OPTIONS,

@@ -4,6 +4,12 @@ import { apiFetch } from "../services/apiClient";
 
 const POLL_INTERVAL_MS = 30000;
 const REQUEST_TIMEOUT_MS = 3000;
+const DEFAULT_FALLBACK_PRIORITY = [
+  "remote_whisper",
+  "external_http",
+  "openai_audio",
+  "openrouter_audio",
+];
 
 const PILL_STYLES = {
   loading: {
@@ -57,6 +63,26 @@ async function fetchJson(path) {
   }
 }
 
+async function postJson(path, payload) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const response = await apiFetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+    return await response.json();
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 function StatusPill({ details, label, state, summary }) {
   const styles = PILL_STYLES[state] || PILL_STYLES.loading;
 
@@ -99,40 +125,310 @@ StatusPill.propTypes = {
   summary: PropTypes.string.isRequired,
 };
 
-function buildLlmSignal(importStatus, llmSettings, probeError) {
-  const llmProbe = importStatus?.services?.llm;
-  const mode = llmSettings?.mode || "local";
-  const model = llmSettings?.chat_model || "Not set";
-  const homeProbe =
-    llmProbe && llmProbe.healthy
-      ? llmProbe.latency_ms
-        ? `Healthy in ${llmProbe.latency_ms} ms`
-        : "Healthy"
-      : llmProbe?.error || probeError || "Not verified on home";
+function isConfiguredCloudProvider(provider) {
+  return Boolean(
+    provider?.enabled &&
+      provider?.base_url &&
+      provider?.model &&
+      (provider?.has_api_key || provider?.api_key)
+  );
+}
+
+function buildSttProbePlan(sttSettings) {
+  if (!sttSettings) {
+    return [];
+  }
+
+  const probes = [];
+  const seen = new Set();
+  const configuredProvider = String(sttSettings.provider || "").trim().toLowerCase();
+  const providerHttpUrls =
+    sttSettings.provider_http_urls && typeof sttSettings.provider_http_urls === "object"
+      ? sttSettings.provider_http_urls
+      : {};
+  const cloudProviders =
+    sttSettings.cloud_fallback_providers && typeof sttSettings.cloud_fallback_providers === "object"
+      ? sttSettings.cloud_fallback_providers
+      : {};
+  const fallbackPriority = Array.isArray(sttSettings.live_fallback_priority)
+    ? sttSettings.live_fallback_priority
+    : DEFAULT_FALLBACK_PRIORITY;
+
+  const addProbe = (probe) => {
+    const key = `${probe.routeId}:${probe.label}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    probes.push(probe);
+  };
+
+  if (configuredProvider) {
+    if (configuredProvider === "openai_audio" || configuredProvider === "openrouter_audio") {
+      addProbe({
+        routeId: "configured_provider",
+        label: toTitleCase(configuredProvider),
+        pathLabel: "Primary",
+        check: () =>
+          postJson("/api/settings/stt/cloud-provider-test", {
+            provider: configuredProvider,
+          }),
+      });
+    } else {
+      addProbe({
+        routeId: "configured_provider",
+        label: toTitleCase(configuredProvider),
+        pathLabel: "Primary",
+        check: () =>
+          postJson("/api/settings/stt/health-check", {
+            provider: configuredProvider,
+          }),
+      });
+    }
+  }
+
+  if (sttSettings.local_only) {
+    return probes;
+  }
+
+  for (const routeId of fallbackPriority) {
+    if (routeId === "remote_whisper") {
+      const whisperHttpUrl = String(providerHttpUrls.whisper || "").trim();
+      if (configuredProvider !== "whisper" && whisperHttpUrl) {
+        addProbe({
+          routeId,
+          label: "Remote Whisper",
+          pathLabel: "Fallback",
+          check: () =>
+            postJson("/api/settings/stt/health-check", {
+              provider: "whisper",
+              http_url: whisperHttpUrl,
+            }),
+        });
+      }
+    }
+
+    if (routeId === "openai_audio" || routeId === "openrouter_audio") {
+      const provider = cloudProviders[routeId];
+      if (isConfiguredCloudProvider(provider)) {
+        addProbe({
+          routeId,
+          label: provider.name || toTitleCase(routeId),
+          pathLabel: "Fallback",
+          check: () =>
+            postJson("/api/settings/stt/cloud-provider-test", {
+              provider: routeId,
+            }),
+        });
+      }
+    }
+
+    if (routeId === "external_http") {
+      const externalHttpUrl = String(sttSettings.external_fallback_http_url || "").trim();
+      if (externalHttpUrl) {
+        addProbe({
+          routeId,
+          label: "External HTTP",
+          pathLabel: "Fallback",
+          configuredOnly: true,
+          endpoint: externalHttpUrl,
+        });
+      }
+    }
+  }
+
+  return probes;
+}
+
+async function probeConfiguredStt(sttSettings) {
+  const plan = buildSttProbePlan(sttSettings);
+  if (!plan.length) {
+    return { plan: [], results: [] };
+  }
+
+  const settled = await Promise.all(
+    plan.map(async (probe) => {
+      if (probe.configuredOnly) {
+        return {
+          ...probe,
+          healthy: false,
+          configuredOnly: true,
+          error: "Configured but not directly probeable from the home chip",
+          url: probe.endpoint,
+        };
+      }
+
+      try {
+        const result = await probe.check();
+        return {
+          ...probe,
+          healthy: Boolean(result?.healthy ?? result?.ok),
+          latency_ms: result?.latency_ms,
+          error: result?.error || null,
+          status_code: result?.status_code,
+          url: result?.url || result?.health_url || probe.endpoint || null,
+        };
+      } catch (error) {
+        return {
+          ...probe,
+          healthy: false,
+          error: summarizeError(error),
+          url: probe.endpoint || null,
+        };
+      }
+    })
+  );
+
+  return { plan, results: settled };
+}
+
+function getEnabledLlmProviders(llmProvidersConfig) {
+  return Array.isArray(llmProvidersConfig?.providers)
+    ? llmProvidersConfig.providers.filter((provider) => provider?.enabled !== false)
+    : [];
+}
+
+function buildLlmProbePlan(llmSettings, llmProvidersConfig) {
+  if (!llmSettings) {
+    return [];
+  }
+
+  const plan = [];
+  const mode = String(llmSettings.mode || "local").trim().toLowerCase();
+  const enabledProviders = getEnabledLlmProviders(llmProvidersConfig);
 
   if (mode === "online") {
+    plan.push({
+      routeId: "online_primary",
+      label: llmSettings.chat_model || "Gemini Online",
+      pathLabel: "Primary",
+      check: () => fetchJson("/api/settings/llm/models?mode=online"),
+      normalizeResult: (result) => ({
+        healthy: Array.isArray(result?.models) && result.models.length > 0,
+        source: result?.source || "unknown",
+      }),
+    });
+  }
+
+  if (enabledProviders.length) {
+    enabledProviders.forEach((provider, index) => {
+      plan.push({
+        routeId: provider.id || `provider_${index}`,
+        label: provider.name || provider.id || "provider",
+        pathLabel: mode === "online" || index > 0 ? "Fallback" : "Primary",
+        providerType: provider.type || "openai_compatible",
+        check: () =>
+          postJson("/api/settings/llm/providers/health", {
+            provider,
+          }),
+      });
+    });
+  } else if (mode !== "online" && llmSettings.base_url) {
+    plan.push({
+      routeId: "legacy_local",
+      label: llmSettings.chat_model || "Configured endpoint",
+      pathLabel: "Primary",
+      providerType: "openai_compatible",
+      check: () =>
+        postJson("/api/settings/llm/providers/health", {
+          provider: {
+            id: "home-status",
+            base_url: llmSettings.base_url,
+            model: llmSettings.chat_model,
+            type: "openai_compatible",
+          },
+        }),
+    });
+  }
+
+  return plan;
+}
+
+async function probeConfiguredLlm(llmSettings, llmProvidersConfig) {
+  const plan = buildLlmProbePlan(llmSettings, llmProvidersConfig);
+  if (!plan.length) {
+    return { plan: [], results: [], mode: llmSettings?.mode || "local" };
+  }
+
+  const results = await Promise.all(
+    plan.map(async (probe) => {
+      try {
+        const result = await probe.check();
+        const normalized = probe.normalizeResult ? probe.normalizeResult(result) : {};
+        return {
+          ...probe,
+          healthy: Boolean(normalized.healthy ?? result?.healthy),
+          latency_ms: result?.latency_ms,
+          error: result?.error || null,
+          source: normalized.source || result?.source || null,
+          status_code: result?.status_code,
+          url: result?.url || probe.endpoint || null,
+        };
+      } catch (error) {
+        return {
+          ...probe,
+          healthy: false,
+          error: summarizeError(error),
+          url: probe.endpoint || null,
+        };
+      }
+    })
+  );
+
+  return {
+    mode: llmSettings?.mode || "local",
+    plan,
+    results,
+    model: llmSettings?.chat_model || "Not set",
+  };
+}
+
+function buildLlmSignal(llmSettings, llmProbe, probeError) {
+  const mode = llmSettings?.mode || "local";
+  const model = llmSettings?.chat_model || "Not set";
+  const results = Array.isArray(llmProbe?.results) ? llmProbe.results : [];
+  const healthyResult = results.find((result) => result.healthy);
+  const checkedCount = results.length;
+
+  if (healthyResult) {
     return {
       details: [
-        { label: "Mode", value: "Online" },
-        { label: "Model", value: model },
-        { label: "Home probe", value: "Legacy import check" },
-        { label: "Result", value: homeProbe },
+        {
+          label: "Active route",
+          value: `${healthyResult.pathLabel}: ${healthyResult.label}`,
+        },
+        { label: "Mode", value: toTitleCase(mode) },
+        {
+          label: "Probe",
+          value:
+            mode === "online" && healthyResult.routeId === "online_primary"
+              ? `Online catalog (${healthyResult.source || "ready"})`
+              : (healthyResult.url || "Configured endpoint"),
+        },
+        {
+          label: "Checked",
+          value: `${checkedCount} route${checkedCount === 1 ? "" : "s"}`,
+        },
       ],
-      state: "configured",
-      summary: "Online LLM is configured. Home still uses the older import probe.",
+      state: "healthy",
+      summary:
+        mode === "online"
+          ? "A configured intelligence route responded, using the current online-primary plus fallback chain."
+          : "A configured intelligence route responded through the current local provider chain.",
     };
   }
 
-  if (llmProbe?.healthy) {
+  if (results.length) {
+    const firstFailure = results.find((result) => result.error)?.error;
     return {
       details: [
-        { label: "Mode", value: "Local" },
-        { label: "Model", value: llmProbe.model || model },
-        { label: "Endpoint", value: llmProbe.url || "Configured backend" },
-        { label: "Latency", value: llmProbe.latency_ms ? `${llmProbe.latency_ms} ms` : "Healthy" },
+        { label: "Mode", value: toTitleCase(mode) || "Unknown" },
+        { label: "Primary", value: results[0]?.label || model },
+        { label: "Checked", value: `${checkedCount} route${checkedCount === 1 ? "" : "s"}` },
+        { label: "Probe", value: firstFailure || probeError || "No healthy configured routes" },
       ],
-      state: "healthy",
-      summary: "Local LLM backend responded to the home probe.",
+      state: llmSettings ? "configured" : "unavailable",
+      summary: llmSettings
+        ? "LLM routing is configured, but none of the current intelligence routes passed the home probe."
+        : "LLM settings are unavailable.",
     };
   }
 
@@ -140,81 +436,95 @@ function buildLlmSignal(importStatus, llmSettings, probeError) {
     details: [
       { label: "Mode", value: toTitleCase(mode) || "Unknown" },
       { label: "Model", value: model },
-      { label: "Home probe", value: homeProbe },
-      { label: "Meaning", value: "This chip is checking the older import health path." },
+      { label: "Probe", value: probeError || "Not verified" },
+      { label: "Endpoint", value: llmSettings?.base_url || "Not set" },
     ],
     state: llmSettings ? "configured" : "unavailable",
     summary: llmSettings
-      ? "LLM is configured, but the home probe did not verify it."
+      ? "LLM is configured, but the current settings probe did not verify it."
       : "LLM settings are unavailable.",
   };
 }
 
-function buildSttSignal(importStatus, sttSettings, probeError) {
-  const whisperx = importStatus?.services?.whisperx;
-  const modalWhisperx = importStatus?.services?.modal_whisperx;
-  const activeProbe = whisperx?.healthy ? whisperx : modalWhisperx?.healthy ? modalWhisperx : whisperx;
-  const providerName = toTitleCase(sttSettings?.provider || "") || "Not set";
-  const enabledFallbacks = Object.values(sttSettings?.cloud_fallback_providers || {})
-    .filter((provider) => provider?.enabled)
-    .map((provider) => provider.name);
-  const livePath = [
-    providerName !== "Not set" ? providerName : null,
-    enabledFallbacks.length ? `fallback ${enabledFallbacks.join(", ")}` : null,
-  ]
-    .filter(Boolean)
-    .join(" + ");
+function buildSttSignal(sttSettings, sttProbe, probeError) {
+  const results = Array.isArray(sttProbe?.results) ? sttProbe.results : [];
+  const healthyResult = results.find((result) => result.healthy);
+  const checkedCount = results.filter((result) => !result.configuredOnly).length;
+  const configuredOnlyCount = results.filter((result) => result.configuredOnly).length;
 
-  if (activeProbe?.healthy) {
+  if (healthyResult) {
     return {
       details: [
-        { label: "Live path", value: livePath || "Configured backend" },
         {
-          label: "Probe",
-          value:
-            activeProbe.backend === "modal"
-              ? "Modal fallback healthy"
-              : "Primary import probe healthy",
+          label: "Active route",
+          value: `${healthyResult.pathLabel}: ${healthyResult.label}`,
         },
-        { label: "Endpoint", value: activeProbe.url || "Configured backend" },
+        {
+          label: "Endpoint",
+          value: healthyResult.url || "Configured backend",
+        },
         {
           label: "Latency",
-          value: activeProbe.latency_ms ? `${activeProbe.latency_ms} ms` : "Healthy",
+          value: healthyResult.latency_ms ? `${healthyResult.latency_ms} ms` : "Healthy",
+        },
+        {
+          label: "Checked",
+          value: `${checkedCount} route${checkedCount === 1 ? "" : "s"}${configuredOnlyCount ? ` + ${configuredOnlyCount} configured-only` : ""}`,
         },
       ],
       state: "healthy",
-      summary: "STT responded to the home probe.",
+      summary: "A currently configured live STT route responded successfully.",
     };
   }
 
-  const homeProbe = activeProbe?.error || probeError || "Not verified on home";
-  const canFallback =
-    Boolean(sttSettings) &&
-    (!sttSettings.local_only ||
-      enabledFallbacks.length > 0 ||
-      Boolean(sttSettings.external_fallback_http_url || sttSettings.external_fallback_ws_url));
+  if (results.length) {
+    const firstFailure = results.find((result) => !result.configuredOnly)?.error;
+    return {
+      details: [
+        {
+          label: "Primary",
+          value: toTitleCase(sttSettings?.provider || "") || "Not set",
+        },
+        {
+          label: "Checked",
+          value: `${checkedCount} route${checkedCount === 1 ? "" : "s"}${configuredOnlyCount ? ` + ${configuredOnlyCount} configured-only` : ""}`,
+        },
+        {
+          label: "Probe",
+          value: firstFailure || probeError || "No healthy configured routes",
+        },
+        {
+          label: "Meaning",
+          value: "Home now checks the live routes configured in Settings.",
+        },
+      ],
+      state: checkedCount > 0 || configuredOnlyCount > 0 ? "configured" : "unavailable",
+      summary:
+        checkedCount > 0 || configuredOnlyCount > 0
+          ? "STT is configured, but none of the current live routes passed the home probe."
+          : "STT settings are unavailable.",
+    };
+  }
 
   return {
     details: [
-      { label: "Live path", value: livePath || "Configured backend" },
-      {
-        label: "Mode",
-        value: sttSettings ? (sttSettings.local_only ? "Local only" : "Remote + fallback") : "Unknown",
-      },
-      { label: "Home probe", value: homeProbe },
-      { label: "Meaning", value: "Home checks the import STT path, not the full live fallback chain." },
+      { label: "Primary", value: toTitleCase(sttSettings?.provider || "") || "Not set" },
+      { label: "Probe", value: probeError || "No configured live STT routes" },
+      { label: "Meaning", value: "Home checks the current settings-driven live STT routes." },
     ],
-    state: canFallback ? "configured" : "unavailable",
-    summary: canFallback
-      ? "STT is configured, but home is only checking the older import probe."
-      : "STT home probe is unavailable.",
+    state: sttSettings ? "configured" : "unavailable",
+    summary: sttSettings
+      ? "No probeable live STT routes are configured."
+      : "STT settings are unavailable.",
   };
 }
 
 export default function ServiceStatus({ className = "" }) {
-  const [importStatus, setImportStatus] = useState(null);
   const [llmSettings, setLlmSettings] = useState(null);
+  const [llmProvidersConfig, setLlmProvidersConfig] = useState(null);
   const [sttSettings, setSttSettings] = useState(null);
+  const [llmProbe, setLlmProbe] = useState(null);
+  const [sttProbe, setSttProbe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [probeError, setProbeError] = useState(null);
 
@@ -222,9 +532,11 @@ export default function ServiceStatus({ className = "" }) {
     let cancelled = false;
 
     const fetchStatus = async () => {
-      const [importResult, llmResult, sttResult] = await Promise.allSettled([
-        fetchJson("/api/import/status"),
+      setLoading(true);
+
+      const [llmResult, llmProvidersResult, sttResult] = await Promise.allSettled([
         fetchJson("/api/settings/llm"),
+        fetchJson("/api/settings/llm/providers"),
         fetchJson("/api/settings/stt"),
       ]);
 
@@ -232,22 +544,44 @@ export default function ServiceStatus({ className = "" }) {
         return;
       }
 
-      if (importResult.status === "fulfilled") {
-        setImportStatus(importResult.value);
-        setProbeError(null);
+      const nextLlmSettings = llmResult.status === "fulfilled" ? llmResult.value : null;
+      const nextLlmProvidersConfig =
+        llmProvidersResult.status === "fulfilled" ? llmProvidersResult.value : null;
+      const nextSttSettings = sttResult.status === "fulfilled" ? sttResult.value : null;
+
+      setLlmSettings(nextLlmSettings);
+      setLlmProvidersConfig(nextLlmProvidersConfig);
+      setSttSettings(nextSttSettings);
+
+      if (
+        llmResult.status === "rejected" ||
+        llmProvidersResult.status === "rejected" ||
+        sttResult.status === "rejected"
+      ) {
+        setProbeError(
+          summarizeError(
+            llmResult.status === "rejected"
+              ? llmResult.reason
+              : llmProvidersResult.status === "rejected"
+              ? llmProvidersResult.reason
+              : sttResult.reason
+          )
+        );
       } else {
-        setImportStatus(null);
-        setProbeError(summarizeError(importResult.reason));
+        setProbeError(null);
       }
 
-      if (llmResult.status === "fulfilled") {
-        setLlmSettings(llmResult.value);
+      const [resolvedLlmProbe, resolvedSttProbe] = await Promise.all([
+        probeConfiguredLlm(nextLlmSettings, nextLlmProvidersConfig),
+        probeConfiguredStt(nextSttSettings),
+      ]);
+
+      if (cancelled) {
+        return;
       }
 
-      if (sttResult.status === "fulfilled") {
-        setSttSettings(sttResult.value);
-      }
-
+      setLlmProbe(resolvedLlmProbe);
+      setSttProbe(resolvedSttProbe);
       setLoading(false);
     };
 
@@ -259,7 +593,7 @@ export default function ServiceStatus({ className = "" }) {
     };
   }, []);
 
-  if (loading && !llmSettings && !sttSettings && !importStatus) {
+  if (loading && !llmSettings && !llmProvidersConfig && !sttSettings && !llmProbe && !sttProbe) {
     return (
       <div className={`text-[11px] text-slate-400 ${className}`}>
         Checking live setup...
@@ -267,8 +601,8 @@ export default function ServiceStatus({ className = "" }) {
     );
   }
 
-  const llmSignal = buildLlmSignal(importStatus, llmSettings, probeError);
-  const sttSignal = buildSttSignal(importStatus, sttSettings, probeError);
+  const llmSignal = buildLlmSignal(llmSettings, llmProbe, probeError);
+  const sttSignal = buildSttSignal(sttSettings, sttProbe, probeError);
 
   return (
     <div className={`flex items-center gap-3 ${className}`}>

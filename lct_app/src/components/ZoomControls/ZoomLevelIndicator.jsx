@@ -119,7 +119,7 @@ export default function ZoomLevelIndicator({
         })}
       </div>
 
-      {/* Current Level Info */}
+      {/* Current Level Info - show only when hovering non-selected levels */}
       {showDescription && (
         <div className={`flex flex-col ${isHorizontal ? 'items-center' : 'items-start'} justify-center px-3 py-2 bg-white/90 rounded-lg border border-gray-200 shadow-sm`}>
           <div className="flex items-center gap-2">

@@ -19,6 +19,7 @@ _RELATION_TYPES = {
     "contextual",
     "temporal_next",
 }
+_SEMANTIC_TYPES = {"chunk", "idea", "topic", "theme"}
 
 
 def _as_clean_str(value: Any) -> str:
@@ -39,6 +40,19 @@ def _as_string_list(value: Any) -> List[str]:
         seen.add(text)
         output.append(text)
     return output
+
+
+def _as_clean_int(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    text = _as_clean_str(value)
+    if not text:
+        return None
+    if text.isdigit():
+        return int(text)
+    return None
 
 
 def _as_string_map(value: Any) -> Dict[str, str]:
@@ -167,6 +181,25 @@ def _normalize_relation_type(value: Any) -> str:
     return "contextual"
 
 
+def _normalize_semantic_level(value: Any) -> int:
+    raw = _as_clean_int(value)
+    if raw and 1 <= raw <= 4:
+        return raw
+    return 2
+
+
+def _normalize_semantic_type(value: Any, semantic_level: int) -> str:
+    raw = _as_clean_str(value).lower()
+    if raw in _SEMANTIC_TYPES:
+        return raw
+    return {
+        1: "chunk",
+        2: "idea",
+        3: "topic",
+        4: "theme",
+    }.get(semantic_level, "idea")
+
+
 def _normalize_edge_relations(value: Any) -> List[Dict[str, str]]:
     if not isinstance(value, list):
         return []
@@ -267,6 +300,13 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
         successor = _as_clean_str(raw.get("successor")) or None
         summary = _as_clean_str(raw.get("summary") or raw.get("node_text") or raw.get("text")) or node_name
         source_excerpt = _as_clean_str(raw.get("source_excerpt") or raw.get("source") or summary)
+        semantic_level = _normalize_semantic_level(
+            raw.get("semantic_level") or raw.get("level") or raw.get("zoom_level")
+        )
+        semantic_type = _normalize_semantic_type(
+            raw.get("semantic_type") or raw.get("unit_type") or raw.get("node_type"),
+            semantic_level,
+        )
         contextual_relation = _normalize_contextual_relation(raw.get("contextual_relation"))
         edge_relations = _normalize_edge_relations(raw.get("edge_relations"))
         edge_relations.extend(incoming_edges_by_target.get(node_name, []))
@@ -304,6 +344,8 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
 
         thread_id = _as_clean_str(raw.get("thread_id")) or f"thread::{_slugify(node_name)}"
         thread_state = _normalize_thread_state(raw.get("thread_state"), predecessor)
+        parent_id = _as_clean_str(raw.get("parent_id") or raw.get("parent_node_id")) or None
+        children_ids = _as_string_list(raw.get("children_ids") or raw.get("child_ids"))
 
         normalized_nodes.append(
             {
@@ -312,6 +354,12 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 "summary": summary,
                 "node_text": summary,
                 "source_excerpt": source_excerpt,
+                "semantic_level": semantic_level,
+                "semantic_type": semantic_type,
+                "level": semantic_level,
+                "node_type": semantic_type,
+                "parent_id": parent_id,
+                "children_ids": children_ids,
                 "predecessor": predecessor,
                 "successor": successor,
                 "contextual_relation": contextual_relation,

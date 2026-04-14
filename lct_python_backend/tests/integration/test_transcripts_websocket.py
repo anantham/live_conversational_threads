@@ -304,6 +304,8 @@ def test_transcripts_ws_accepts_streaming_runtime_events(monkeypatch):
         assert ack["transport"] == "openai_realtime"
         assert ack["provider"] == "openai_audio"
         assert ack["stt_ready"] is True
+        assert ack["background_refinement"]["enabled"] is True
+        assert ack["background_refinement"]["provider"] in {"whisper", "openai_audio"}
 
         ws.send_json({"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.3)})
         first_msg = ws.receive_json()

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from fastapi import HTTPException
 
 from lct_python_backend.services import gcs_helpers
 
@@ -53,3 +54,32 @@ def test_save_json_with_backend_invalid_backend_raises():
             graph_data=[],
             backend="unknown",
         )
+
+
+def test_load_conversation_from_gcs_accepts_absolute_local_path_within_save_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(gcs_helpers, "LOCAL_SAVE_DIR", tmp_path)
+    payload_path = tmp_path / "conv-absolute.json"
+    payload_path.write_text(
+        '{"graph_data":[[{"id":"n1","node_name":"Node 1"}]],"chunks":{"c1":"hello"}}',
+        encoding="utf-8",
+    )
+
+    result = gcs_helpers.load_conversation_from_gcs(str(payload_path))
+
+    assert len(result["graph_data"][0]) == 1
+    assert result["chunk_dict"] == {"c1": "hello"}
+
+
+def test_load_conversation_from_gcs_rejects_absolute_local_path_outside_save_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(gcs_helpers, "LOCAL_SAVE_DIR", tmp_path / "allowed")
+    outside_path = tmp_path / "outside.json"
+    outside_path.write_text(
+        '{"graph_data":[[]],"chunks":{}}',
+        encoding="utf-8",
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        gcs_helpers.load_conversation_from_gcs(str(outside_path))
+
+    assert excinfo.value.status_code == 400
+    assert "Invalid conversation path" in excinfo.value.detail

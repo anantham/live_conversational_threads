@@ -115,6 +115,8 @@ def build_graph_data_from_nodes(nodes, relationships) -> List[Dict[str, Any]]:
             "thread_state": cluster_info.get("thread_state"),
             "edge_relations": edge_relations_by_id.get(node.id, display_preferences.get("edge_relations") or []),
             "speaker_id": (node.speaker_info or {}).get("primary_speaker") or None,
+            **({"timestamp_start": node.timestamp_start} if node.timestamp_start else {}),
+            **({"timestamp_end": node.timestamp_end} if node.timestamp_end else {}),
         }
         graph_data.append(node_data)
 

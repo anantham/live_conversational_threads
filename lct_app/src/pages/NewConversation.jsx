@@ -6,11 +6,19 @@ import MinimalGraph from "../components/MinimalGraph";
 import TimelineRibbon from "../components/TimelineRibbon";
 import NodeDetail from "../components/NodeDetail";
 import MinimalLegend from "../components/MinimalLegend";
+import SessionTranscriptOverlay from "../components/transcript/SessionTranscriptOverlay";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { useAutoSave } from "../hooks/useAutoSave";
 import useLocalConversationDraft from "../hooks/useLocalConversationDraft";
 import { useUpload } from "../contexts/UploadContext";
 import { fetchAudioRecoveryStatus, recoverConversationAudio } from "../services/audioRecoveryApi";
+import { fetchConversationObservability } from "../services/conversationDiagnosticsApi";
+import { saveConversationToServer } from "../utils/SaveConversation";
+import {
+  buildConversationDebugExport,
+  downloadConversationDebugExport,
+} from "../components/audio/exportSessionDebug";
+import { deriveSuggestedConversationTitle } from "../utils/conversationTitle";
 import {
   applyChunkPatch,
   applyGraphPatch,
@@ -48,6 +56,7 @@ export default function NewConversation() {
   const [graphData, setGraphData] = useState([]);
   const [draftGraphData, setDraftGraphData] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   const [speakerRefreshKey, setSpeakerRefreshKey] = useState(0);
   const [chunkDict, setChunkDict] = useState({});
   const [draftChunkDict, setDraftChunkDict] = useState({});
@@ -56,8 +65,15 @@ export default function NewConversation() {
   const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
+  const [liveTranscriptState, setLiveTranscriptState] = useState({
+    recording: false,
+    liveTranscriptLines: [],
+    statusLine: "",
+  });
   const [audioRecovery, setAudioRecovery] = useState(null);
   const [audioRecoveryBusy, setAudioRecoveryBusy] = useState(false);
+  const [recoveredDraftSaveState, setRecoveredDraftSaveState] = useState("idle");
+  const [sessionActionBusy, setSessionActionBusy] = useState("");
   const audioRef = useRef(null);
 
   const navigate = useNavigate();
@@ -84,6 +100,11 @@ export default function NewConversation() {
 
   const hasData = allNodes.length > 0;
   const hasFinalizedData = (graphData?.[graphData.length - 1] || []).length > 0;
+  const hasChunkData = Object.keys(normalizeObject(displayChunkDict)).length > 0;
+  const sessionTitleSuggestion = useMemo(
+    () => deriveSuggestedConversationTitle(displayGraphData),
+    [displayGraphData]
+  );
 
   const { saveStatus, lastSavedAt, triggerSave } = useAutoSave({
     conversationId,
@@ -97,7 +118,44 @@ export default function NewConversation() {
     if (!selectedNode) return null;
     return allNodes.find((n) => n.id === selectedNode) || null;
   }, [selectedNode, allNodes]);
-  const transcriptOverlayVisible = upload.isProcessing && upload.liveTranscriptLines.length > 0;
+  const uploadTranscriptActive = upload.isProcessing && upload.liveTranscriptLines.length > 0;
+  const liveTranscriptActive = liveTranscriptState.liveTranscriptLines.length > 0;
+  const transcriptOverlay = useMemo(() => {
+    if (uploadTranscriptActive) {
+      return {
+        mode: "upload",
+        lines: upload.liveTranscriptLines,
+        statusText: upload.statusText || "Processing...",
+        etaText: upload.etaText || "",
+        progress: upload.progress,
+      };
+    }
+
+    if (liveTranscriptActive) {
+      return {
+        mode: "live",
+        lines: liveTranscriptState.liveTranscriptLines,
+        statusText: liveTranscriptState.recording
+          ? (liveTranscriptState.statusLine || "Live transcript")
+          : "Session paused",
+        etaText: "",
+        progress: null,
+      };
+    }
+
+    return null;
+  }, [
+    liveTranscriptActive,
+    liveTranscriptState.liveTranscriptLines,
+    liveTranscriptState.recording,
+    liveTranscriptState.statusLine,
+    upload.etaText,
+    upload.liveTranscriptLines,
+    upload.progress,
+    upload.statusText,
+    uploadTranscriptActive,
+  ]);
+  const transcriptOverlayVisible = Boolean(transcriptOverlay);
   const graphViewportKey = `${selectedNodeData ? "detail-open" : "detail-closed"}:${transcriptOverlayVisible ? (transcriptMinimized ? "captions" : "transcript") : "clear"}`;
   const graphViewportStyle = useMemo(() => {
     if (!transcriptOverlayVisible) {
@@ -167,13 +225,26 @@ export default function NewConversation() {
     [chunkDict, conversationId, draftChunkDict, draftGraphData, fileName, graphData, message]
   );
   const {
+    availableDraft,
     availableDraftSummary,
+    clearAvailableDraft,
     discardAvailableDraft,
+    dismissAvailableDraft,
     isCheckingDraft,
+    persistDraftNow,
     restoreAvailableDraft,
   } = useLocalConversationDraft({
     snapshot: localDraftSnapshot,
   });
+
+  const messageTone = useMemo(() => {
+    const normalized = String(message || "").toLowerCase();
+    if (!normalized) return "info";
+    if (normalized.includes("failed") || normalized.includes("error")) return "error";
+    if (normalized.includes("without backend observability") || normalized.includes("canceled")) return "warning";
+    if (normalized.includes("saved") || normalized.includes("exported") || normalized.includes("ready")) return "success";
+    return "info";
+  }, [message]);
   useEffect(() => {
     upload.subscribe({
       onDataReceived: handleDataReceived,
@@ -210,6 +281,11 @@ export default function NewConversation() {
       Boolean(String(message || "").trim()),
     [displayChunkDict, fileName, hasData, message]
   );
+  const sessionActionsVisible = !upload.isProcessing && !liveTranscriptState.recording && hasRecoverableLocalState;
+  const savePayload = useMemo(() => ({
+    graphData: graphData.length > 0 ? graphData : draftGraphData,
+    chunkDict: hasChunkData ? displayChunkDict : {},
+  }), [displayChunkDict, draftGraphData, graphData, hasChunkData]);
 
   useEffect(() => {
     let cancelled = false;
@@ -263,6 +339,30 @@ export default function NewConversation() {
     void discardAvailableDraft();
   }, [discardAvailableDraft]);
 
+  const resetForNewConversation = useCallback(() => {
+    setConversationId(crypto.randomUUID());
+    setFileName("");
+    setMessage("");
+    setGraphData([]);
+    setDraftGraphData([]);
+    setChunkDict({});
+    setDraftChunkDict({});
+    setSelectedNode(null);
+    setTranscriptMinimized(false);
+    setLiveTranscriptState({
+      recording: false,
+      liveTranscriptLines: [],
+      statusLine: "",
+    });
+    setAudioRecovery(null);
+    setSessionActionBusy("");
+  }, []);
+
+  const handleStartNewConversation = useCallback(() => {
+    dismissAvailableDraft();
+    resetForNewConversation();
+  }, [dismissAvailableDraft, resetForNewConversation]);
+
   const handleRecoverAudio = useCallback(async () => {
     const draftConversationId = String(availableDraftSummary?.conversationId || "").trim();
     if (!draftConversationId || audioRecoveryBusy) return;
@@ -298,6 +398,180 @@ export default function NewConversation() {
     ]);
     navigate("/");
   }, [navigate, triggerSave]);
+
+  useEffect(() => {
+    if (liveTranscriptState.recording) return;
+    if (String(fileName || "").trim()) return;
+    if (!sessionTitleSuggestion) return;
+    setFileName(sessionTitleSuggestion);
+  }, [fileName, liveTranscriptState.recording, sessionTitleSuggestion]);
+
+  const persistSessionArtifact = useCallback(async () => {
+    const normalizedName = String(fileName || sessionTitleSuggestion || "").trim();
+    if (!normalizedName) {
+      throw new Error("Add a conversation name before saving.");
+    }
+    if (!savePayload.graphData?.length || !Object.keys(savePayload.chunkDict || {}).length) {
+      throw new Error("No finalized conversation data is ready to save yet.");
+    }
+
+    setFileName(normalizedName);
+    const [artifactResult] = await Promise.all([
+      saveConversationToServer({
+        fileName: normalizedName,
+        chunkDict: savePayload.chunkDict,
+        graphData: savePayload.graphData,
+        conversationId,
+      }),
+      triggerSave(),
+    ]);
+
+    if (!artifactResult?.success) {
+      throw new Error(artifactResult?.message || "Save failed");
+    }
+
+    return { normalizedName, message: artifactResult.message || "Saved!" };
+  }, [conversationId, fileName, savePayload.chunkDict, savePayload.graphData, sessionTitleSuggestion, triggerSave]);
+
+  const handleSaveAndExit = useCallback(async () => {
+    setSessionActionBusy("save-exit");
+    try {
+      const result = await persistSessionArtifact();
+      setMessage(`Conversation "${result.normalizedName}" saved. ${result.message}`);
+      navigate("/");
+    } catch (error) {
+      setMessage(`Save failed: ${error?.message || "Unknown error"}`);
+    } finally {
+      setSessionActionBusy("");
+    }
+  }, [navigate, persistSessionArtifact]);
+
+  const handleSaveAndStartNew = useCallback(async () => {
+    setSessionActionBusy("save-new");
+    try {
+      const result = await persistSessionArtifact();
+      resetForNewConversation();
+      setMessage(`Conversation "${result.normalizedName}" saved. Starting a new recording.`);
+      window.setTimeout(() => {
+        void audioRef.current?.startRecording?.();
+      }, 0);
+    } catch (error) {
+      setMessage(`Save failed: ${error?.message || "Unknown error"}`);
+    } finally {
+      setSessionActionBusy("");
+    }
+  }, [persistSessionArtifact, resetForNewConversation]);
+
+  const handleDiscardCurrentSession = useCallback(() => {
+    resetForNewConversation();
+    setMessage("Discarded the current session draft.");
+  }, [resetForNewConversation]);
+
+  const handleSaveRecoveredDraft = useCallback(async () => {
+    if (recoveredDraftSaveState === "saving") {
+      return;
+    }
+
+    const draft = availableDraft;
+    if (!draft) {
+      setMessage("No recoverable draft is available to save.");
+      return;
+    }
+
+    const suggestedName = String(draft.fileName || availableDraftSummary?.title || "").trim();
+    const newName = prompt("Enter a name for this recovered draft:", suggestedName);
+    if (!newName) {
+      setMessage("Save canceled. No file name provided.");
+      return;
+    }
+
+    const normalizedDraft = {
+      ...draft,
+      fileName: newName.trim(),
+    };
+
+    const draftGraphLayers = Array.isArray(normalizedDraft.graphData)
+      ? normalizedDraft.graphData
+      : [];
+    const draftChunks = normalizeObject(normalizedDraft.chunkDict);
+
+    if (draftGraphLayers.length === 0 || Object.keys(draftChunks).length === 0) {
+      setMessage("Recovered draft is missing graph or chunk data.");
+      void persistDraftNow(normalizedDraft);
+      return;
+    }
+
+    setRecoveredDraftSaveState("saving");
+    try {
+      const result = await saveConversationToServer({
+        fileName: newName,
+        chunkDict: draftChunks,
+        graphData: draftGraphLayers,
+        conversationId: normalizedDraft.conversationId || crypto.randomUUID(),
+      });
+
+      if (!result.success) {
+        setRecoveredDraftSaveState("error");
+        setMessage(`Save failed: ${result.message}`);
+        void persistDraftNow(normalizedDraft);
+        return;
+      }
+
+      await clearAvailableDraft();
+      setRecoveredDraftSaveState("saved");
+      setAudioRecovery(null);
+      setMessage(`Recovered draft saved as "${newName.trim()}". ${result.message}`);
+    } catch (error) {
+      console.error("[NewConversation] Failed to save recovered draft:", error);
+      setRecoveredDraftSaveState("error");
+      setMessage(`Save failed: ${error?.message || "Unknown error"}`);
+      void persistDraftNow(normalizedDraft);
+    }
+  }, [
+    availableDraft,
+    availableDraftSummary?.title,
+    clearAvailableDraft,
+    persistDraftNow,
+    recoveredDraftSaveState,
+    setMessage,
+  ]);
+
+  const handleExportConversationDebug = useCallback(async () => {
+    const audioSession = audioRef.current?.getSessionDebugSnapshot?.() || null;
+    let backendObservability = {};
+    try {
+      backendObservability = conversationId
+        ? await fetchConversationObservability(conversationId)
+        : {};
+    } catch (error) {
+      console.warn("[NewConversation] Failed to load backend session observability:", error);
+      setMessage(`Exporting without backend observability: ${error?.message || "Unknown error"}`);
+    }
+    const exportPayload = buildConversationDebugExport({
+      conversationId,
+      fileName,
+      message,
+      graphData,
+      draftGraphData,
+      chunkDict,
+      draftChunkDict,
+      audioRecovery,
+      audioSession,
+      backendObservability,
+    });
+    downloadConversationDebugExport(exportPayload, conversationId, fileName);
+    setMessage("Session debug JSON exported.");
+  }, [
+    audioRecovery,
+    conversationId,
+    chunkDict,
+    draftChunkDict,
+    draftGraphData,
+    fileName,
+    graphData,
+    message,
+    setMessage,
+  ]);
 
   return (
     <div className="flex flex-col h-[100dvh] w-screen bg-[#fafafa] font-sans">
@@ -388,6 +662,19 @@ export default function NewConversation() {
                 </button>
               )}
               <button
+                onClick={handleSaveRecoveredDraft}
+                disabled={recoveredDraftSaveState === "saving"}
+                className="rounded-full px-3 py-1.5 text-xs text-slate-600 transition hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {recoveredDraftSaveState === "saving" ? "Saving..." : "Save As…"}
+              </button>
+              <button
+                onClick={handleStartNewConversation}
+                className="rounded-full px-3 py-1.5 text-xs text-slate-600 transition hover:text-slate-800"
+              >
+                Start New
+              </button>
+              <button
                 onClick={handleDiscardLocalDraft}
                 className="rounded-full px-3 py-1.5 text-xs text-slate-500 transition hover:text-slate-700"
               >
@@ -420,6 +707,9 @@ export default function NewConversation() {
                 selectedNode={selectedNode}
                 setSelectedNode={setSelectedNode}
                 viewportReservationKey={graphViewportKey}
+                onVisibleLevelChange={(view) => {
+                  setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
+                }}
               />
               <MinimalLegend
                 speakerColorMap={speakerColorMap}
@@ -430,154 +720,18 @@ export default function NewConversation() {
           </>
         )}
 
-        {/* Upload transcript overlay — shown during upload, minimizable */}
         {transcriptOverlayVisible && (
-          <div className={`absolute bottom-0 left-0 right-0 z-30 transition-all duration-300 ${
-            transcriptMinimized ? "" : hasData ? "h-[40%]" : "top-0"
-          }`}>
-            <div className={`${transcriptMinimized ? "" : "h-full"} bg-white/95 backdrop-blur border-t border-gray-200 shadow-lg flex flex-col`}>
-              {/* Minimized: closed captions bar */}
-              {transcriptMinimized ? (
-                <div className="px-4 py-2">
-                  <div className="flex items-center justify-between gap-3 mb-1">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <div className="w-16 h-1 bg-gray-200 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 rounded-full transition-all"
-                          style={{ width: `${Math.round((upload.progress || 0) * 100)}%` }}
-                        />
-                      </div>
-                      <span className="text-[10px] text-gray-500 truncate">
-                        {upload.statusText || "Processing..."}
-                        {upload.etaText ? ` · ${upload.etaText}` : ""}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setTranscriptMinimized(false)}
-                      className="p-1 text-gray-400 hover:text-gray-600 transition"
-                      title="Expand transcript"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="17 11 12 6 7 11" /></svg>
-                    </button>
-                  </div>
-                  {/* Last 3 lines — closed caption style */}
-                  <div className="space-y-0.5 overflow-hidden">
-                    {upload.liveTranscriptLines.slice(-3).map((entry, i, arr) => {
-                      const line = typeof entry === "string" ? entry : entry.text;
-                      const isNewest = i === arr.length - 1;
-                      const opacity = isNewest ? "text-gray-700" : i === arr.length - 2 ? "text-gray-400" : "text-gray-300";
-                      return (
-                        <p key={i} className={`text-[11px] leading-tight truncate ${opacity}`}>
-                          {line}
-                        </p>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : (
-              <>
-              {/* Expanded header */}
-              <div className="shrink-0 px-4 py-2 border-b border-gray-200 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <span className="text-xs font-medium text-gray-600 truncate">
-                    {upload.statusText || "Processing..."}
-                  </span>
-                  {upload.etaText && (
-                    <span className="text-[10px] text-gray-400 whitespace-nowrap">{upload.etaText}</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-gray-400">{upload.liveTranscriptLines.length} chunks</span>
-                  <div className="w-20 h-1 bg-gray-200 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 rounded-full transition-all duration-300"
-                      style={{ width: `${Math.round((upload.progress || 0) * 100)}%` }}
-                    />
-                  </div>
-                  <button
-                    onClick={() => setTranscriptMinimized(true)}
-                    className="p-1 text-gray-400 hover:text-gray-600 transition"
-                    title="Minimize to captions"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="7 13 12 18 17 13" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-              {/* Scrollable transcript body */}
-              <div className="flex-1 overflow-y-auto px-4 py-2" ref={(el) => {
-                if (el) el.scrollTop = el.scrollHeight;
-              }}>
-                <div className="max-w-2xl mx-auto">
-                  {(() => {
-                    const speakerColors = {
-                      A: "text-blue-700",
-                      B: "text-emerald-700",
-                      C: "text-amber-700",
-                      D: "text-purple-700",
-                      E: "text-rose-700",
-                    };
-                    const formatElapsed = (ms) => {
-                      if (!ms || !Number.isFinite(ms)) return null;
-                      const s = Math.floor(ms / 1000);
-                      const m = Math.floor(s / 60);
-                      const h = Math.floor(m / 60);
-                      if (h > 0) return `${h}h${String(m % 60).padStart(2, "0")}m`;
-                      if (m > 0) return `${m}m${String(s % 60).padStart(2, "0")}s`;
-                      return `${s}s`;
-                    };
-                    const segments = [];
-                    const labelRegex = /(?:^|(?<=\s))([A-Z]):\s/g;
-                    upload.liveTranscriptLines.forEach((entry) => {
-                      const line = typeof entry === "string" ? entry : entry.text;
-                      const chunkMeta = typeof entry === "object" ? entry : null;
-                      const matches = [...line.matchAll(labelRegex)];
-                      if (matches.length === 0) {
-                        if (line.trim()) segments.push({ speaker: null, text: line.trim(), meta: chunkMeta });
-                        return;
-                      }
-                      const preamble = line.slice(0, matches[0].index).trim();
-                      if (preamble) segments.push({ speaker: null, text: preamble, meta: chunkMeta });
-                      matches.forEach((m, mi) => {
-                        const speaker = m[1];
-                        const textStart = m.index + m[0].length;
-                        const textEnd = mi < matches.length - 1 ? matches[mi + 1].index : line.length;
-                        const text = line.slice(textStart, textEnd).trim();
-                        if (text) segments.push({ speaker, text, meta: mi === 0 ? chunkMeta : null });
-                      });
-                    });
-                    let prevSpeaker = null;
-                    return segments.map((seg, i) => {
-                      const isSpeakerChange = i > 0 && seg.speaker !== prevSpeaker;
-                      const color = seg.speaker ? (speakerColors[seg.speaker] || "text-gray-700") : "text-gray-500";
-                      const spacing = isSpeakerChange ? "mt-4" : i > 0 ? "mt-2" : "";
-                      prevSpeaker = seg.speaker;
-                      const elapsed = seg.meta ? formatElapsed(seg.meta.elapsedMs) : null;
-                      const chunkLabel = seg.meta?.chunkIndex && seg.meta?.total
-                        ? `${seg.meta.chunkIndex}/${seg.meta.total}`
-                        : null;
-                      return (
-                        <div key={i} className={spacing}>
-                          {(chunkLabel || elapsed) && (
-                            <div className="text-[9px] text-gray-400 font-mono select-none mb-0.5">
-                              {[chunkLabel, elapsed].filter(Boolean).join(" · ")}
-                            </div>
-                          )}
-                          <p className={`text-xs leading-relaxed ${color}`}>
-                            {seg.speaker && <span className="font-semibold">{seg.speaker}: </span>}
-                            {seg.text}
-                          </p>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-              </>
-              )}
-            </div>
-          </div>
+          <SessionTranscriptOverlay
+            hasData={hasData}
+            minimized={transcriptMinimized}
+            onExpand={() => setTranscriptMinimized(false)}
+            onMinimize={() => setTranscriptMinimized(true)}
+            lines={transcriptOverlay.lines}
+            mode={transcriptOverlay.mode}
+            progress={transcriptOverlay.progress}
+            statusText={transcriptOverlay.statusText}
+            etaText={transcriptOverlay.etaText}
+          />
         )}
 
         {/* Node detail panel */}
@@ -611,7 +765,66 @@ export default function NewConversation() {
           graphData={displayGraphData}
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
+          semanticLevel={visibleGraphLevel}
         />
+      )}
+
+      {sessionActionsVisible && (
+        <div className="pointer-events-none absolute bottom-20 left-1/2 z-20 w-[min(94vw,42rem)] -translate-x-1/2 px-3">
+          <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/95 px-4 py-4 shadow-lg backdrop-blur">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
+                  Session Ready
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  Recording has stopped. Name this conversation, then save and exit or start the next one.
+                </p>
+                <label className="mt-3 block">
+                  <span className="mb-1 block text-xs font-medium text-slate-700">Conversation Name</span>
+                  <input
+                    type="text"
+                    value={fileName}
+                    onChange={(event) => setFileName(event.target.value)}
+                    placeholder={sessionTitleSuggestion || "Conversation name"}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
+                  />
+                </label>
+                {sessionTitleSuggestion && !String(fileName || "").trim() && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Suggested title: {sessionTitleSuggestion}
+                  </p>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={handleDiscardCurrentSession}
+                  disabled={Boolean(sessionActionBusy)}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 transition hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Discard
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAndExit}
+                  disabled={Boolean(sessionActionBusy)}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sessionActionBusy === "save-exit" ? "Saving..." : "Save & Exit"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAndStartNew}
+                  disabled={Boolean(sessionActionBusy)}
+                  className="rounded-full bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sessionActionBusy === "save-new" ? "Saving..." : "Save & Start New"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Auto-save status indicator */}
@@ -627,15 +840,51 @@ export default function NewConversation() {
         </div>
       )}
 
+      {message && (
+        <div className="pointer-events-none absolute bottom-16 left-1/2 z-20 w-[min(92vw,32rem)] -translate-x-1/2 px-3">
+          <div
+            className={`pointer-events-auto flex items-start justify-between gap-3 rounded-xl border px-4 py-3 text-sm shadow-lg backdrop-blur ${
+              messageTone === "error"
+                ? "border-red-200 bg-red-50/95 text-red-700"
+                : messageTone === "warning"
+                  ? "border-amber-200 bg-amber-50/95 text-amber-800"
+                  : messageTone === "success"
+                    ? "border-emerald-200 bg-emerald-50/95 text-emerald-800"
+                    : "border-slate-200 bg-white/95 text-slate-700"
+            }`}
+            role="status"
+            aria-live="polite"
+          >
+            <p className="min-w-0 flex-1">{message}</p>
+            <button
+              type="button"
+              onClick={() => setMessage("")}
+              className="shrink-0 text-xs font-medium opacity-70 transition hover:opacity-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Audio footer */}
       <div className="shrink-0 w-full py-2 px-4 flex items-center justify-center border-t border-gray-100 bg-white/80 backdrop-blur-sm relative">
         <div className="w-full max-w-5xl flex items-center justify-center gap-4">
           <FileUpload />
+          <button
+            type="button"
+            onClick={handleExportConversationDebug}
+            className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+            title="Export graph, transcript, and session telemetry as JSON"
+          >
+            Export Session JSON
+          </button>
           <AudioInput
             ref={audioRef}
             onDataReceived={handleDataReceived}
             onChunksReceived={handleChunksReceived}
             onGraphPatchReceived={handleGraphPatchReceived}
+            onLiveTranscriptStateChange={setLiveTranscriptState}
             chunkDict={chunkDict}
             graphData={graphData}
             conversationId={conversationId}

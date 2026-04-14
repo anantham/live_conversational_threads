@@ -36,17 +36,32 @@ class AudioStorageManager:
 
     async def append_chunk(self, conversation_id: str, chunk_bytes: bytes) -> None:
         if not chunk_bytes:
+            logger.warning("[AUDIO STORAGE] conversation=%s empty chunk received, skipping", conversation_id)
             return
 
+        pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
+        chunk_size = len(chunk_bytes)
+        bytes_before = 0
+        if pcm_path.exists():
+            try:
+                bytes_before = pcm_path.stat().st_size
+            except OSError:
+                bytes_before = 0
+        
+        logger.info("[AUDIO STORAGE] conversation=%s appending chunk_bytes=%s bytes_before=%s path=%s",
+                   conversation_id, chunk_size, bytes_before, pcm_path)
+
         async with self._get_lock():
-            pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
             try:
                 with pcm_path.open("ab") as pcm_file:
                     pcm_file.write(chunk_bytes)
-                self._session_meta[conversation_id]["bytes_written"] += len(chunk_bytes)
-                logger.debug("[AUDIO STORAGE] Appended %s bytes for %s", len(chunk_bytes), conversation_id)
+                self._session_meta[conversation_id]["bytes_written"] += chunk_size
+                bytes_after = bytes_before + chunk_size
+                logger.info("[AUDIO STORAGE] conversation=%s append successful: chunk_bytes=%s bytes_before=%s bytes_after=%s total_tracked=%s",
+                        conversation_id, chunk_size, bytes_before, bytes_after, 
+                        self._session_meta[conversation_id]["bytes_written"])
             except Exception as exc:
-                logger.exception("[AUDIO STORAGE] Failed to append chunk (%s): %s", conversation_id, exc)
+                logger.exception("[AUDIO STORAGE] conversation=%s FAILED to append chunk: %s", conversation_id, exc)
 
     def get_status(self, conversation_id: str) -> Dict[str, Optional[object]]:
         pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
@@ -72,10 +87,15 @@ class AudioStorageManager:
         pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
         wav_path = self.recordings_dir / f"{conversation_id}.wav"
         flac_path = self.recordings_dir / f"{conversation_id}.flac"
+        
+        tracked_bytes = self._session_meta.get(conversation_id, {}).get("bytes_written", 0)
+        logger.info("[AUDIO STORAGE] conversation=%s FINALIZE start: tracked_bytes=%s pcm_exists=%s wav_exists=%s",
+                  conversation_id, tracked_bytes, pcm_path.exists(), wav_path.exists())
+        
         result = {
             "wav_path": None,
             "flac_path": None,
-            "bytes_written": self._session_meta.get(conversation_id, {}).get("bytes_written", 0),
+            "bytes_written": tracked_bytes,
         }
 
         if not pcm_path.exists():
@@ -83,7 +103,8 @@ class AudioStorageManager:
                 result["wav_path"] = str(wav_path)
             if flac_path.exists():
                 result["flac_path"] = str(flac_path)
-            logger.debug("[AUDIO STORAGE] No PCM file to finalize for %s", conversation_id)
+            logger.warning("[AUDIO STORAGE] conversation=%s finalize: NO PCM FILE FOUND tracked_bytes=%s", 
+                         conversation_id, tracked_bytes)
             return result
 
         wav_written = False
@@ -96,6 +117,21 @@ class AudioStorageManager:
             with pcm_path.open("rb") as pcm_file:
                 new_pcm_frames = pcm_file.read()
 
+            new_pcm_size = len(new_pcm_frames)
+            existing_wav_size = len(existing_wav_frames)
+            total_audio = existing_wav_size + new_pcm_size
+            
+            logger.info("[AUDIO STORAGE] conversation=%s PCM size=%s existing_wav_size=%s total_audio=%s",
+                     conversation_id, new_pcm_size, existing_wav_size, total_audio)
+            
+            if total_audio < 1600:  # Less than 100ms at 16kHz mono
+                logger.warning("[AUDIO STORAGE] conversation=%s AUDIO TOO SMALL: %s bytes (%s ms), expected at least 1600 bytes (100ms)",
+                            conversation_id, total_audio, total_audio / 32)
+                # Don't fail - still try to save what we have
+            else:
+                logger.info("[AUDIO STORAGE] conversation=%s AUDIO OK: %s bytes (%s ms)",
+                          conversation_id, total_audio, total_audio / 32)
+
             with wave.open(str(wav_path), "wb") as wav_file:
                 wav_file.setnchannels(self.channels)
                 wav_file.setsampwidth(self.sample_width)
@@ -104,10 +140,8 @@ class AudioStorageManager:
 
             result["wav_path"] = str(wav_path)
             wav_written = True
-            if existing_wav_frames:
-                logger.info("[AUDIO STORAGE] WAV stitched and generated at %s", wav_path)
-            else:
-                logger.info("[AUDIO STORAGE] WAV generated at %s", wav_path)
+            logger.info("[AUDIO STORAGE] conversation=%s WAV written successfully path=%s total_bytes=%s",
+                      conversation_id, wav_path, total_audio)
         except Exception as exc:
             logger.exception("[AUDIO STORAGE] Failed to write WAV for %s: %s", conversation_id, exc)
 

@@ -57,6 +57,8 @@ def test_normalize_generated_output_adds_required_defaults():
     assert node["thread_state"] == "continue_thread"
     assert isinstance(node["id"], str) and node["id"]
     assert node["node_text"] == node["summary"]
+    assert node["semantic_level"] == 2
+    assert node["semantic_type"] == "idea"
 
 
 def test_normalize_generated_output_coerces_single_contextual_relation_object():
@@ -256,6 +258,45 @@ def test_normalize_generated_output_speaker_id_null_when_missing():
     normalized = _normalize_generated_output(parsed)
     assert len(normalized) == 1
     assert normalized[0]["speaker_id"] is None
+
+
+def test_normalize_generated_output_preserves_authored_hierarchy_fields():
+    parsed = {
+        "nodes": [
+            {
+                "id": "chunk-1",
+                "node_name": "Need clearer defaults",
+                "summary": "They argue the defaults are confusing.",
+                "semantic_level": 1,
+                "semantic_type": "chunk",
+                "parent_id": "idea-1",
+                "successor": "chunk-2",
+                "speaker_id": "SPEAKER_00",
+            },
+            {
+                "id": "idea-1",
+                "node_name": "Config confusion",
+                "summary": "A full idea about settings confusion and what to rename.",
+                "semantic_level": 2,
+                "semantic_type": "idea",
+                "children_ids": ["chunk-1", "chunk-2"],
+                "thread_id": "thread-config",
+                "thread_state": "new_thread",
+            },
+        ]
+    }
+
+    normalized = _normalize_generated_output(parsed)
+    assert len(normalized) == 2
+
+    chunk = next(node for node in normalized if node["id"] == "chunk-1")
+    idea = next(node for node in normalized if node["id"] == "idea-1")
+
+    assert chunk["semantic_level"] == 1
+    assert chunk["semantic_type"] == "chunk"
+    assert chunk["parent_id"] == "idea-1"
+    assert idea["children_ids"] == ["chunk-1", "chunk-2"]
+    assert idea["node_type"] == "idea"
 
 
 def test_split_segments_for_completed_chunk_separates_carryover():

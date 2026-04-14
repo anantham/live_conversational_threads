@@ -45,7 +45,13 @@ from lct_python_backend.services.stt_settings_service import (
     load_stt_settings_for_client,
     save_stt_settings,
 )
+from lct_python_backend.services.session_observability import get_conversation_observability
 from lct_python_backend.services.stt_telemetry_service import aggregate_telemetry
+from lct_python_backend.services.thread_observability_service import (
+    get_thread_session_detail,
+    get_threads_error_breakdown,
+    get_threads_observability_summary,
+)
 from lct_python_backend.services.stt_ws_session import WsSessionContext
 
 logger = logging.getLogger("lct_backend")
@@ -192,6 +198,36 @@ async def read_stt_telemetry(
 ):
     stt_settings = await _load_stt_settings(session)
     return await aggregate_telemetry(session, limit, stt_settings)
+
+
+@router.get("/api/conversations/{conversation_id}/session-observability")
+async def read_conversation_session_observability(conversation_id: str):
+    return get_conversation_observability(conversation_id)
+
+
+@router.get("/api/conversations/{conversation_id}/thread-session-details")
+async def read_conversation_thread_session_details(
+    conversation_id: str,
+    session=Depends(get_async_session),
+):
+    return await get_thread_session_detail(session, conversation_id=conversation_id)
+
+
+@router.get("/api/threads/observability/summary")
+async def read_threads_observability_summary(
+    since_hours: int = Query(24, ge=1, le=24 * 30),
+    session=Depends(get_async_session),
+):
+    return await get_threads_observability_summary(session, since_hours=since_hours)
+
+
+@router.get("/api/threads/observability/errors")
+async def read_threads_observability_errors(
+    since_hours: int = Query(24, ge=1, le=24 * 30),
+    limit: int = Query(100, ge=1, le=500),
+    session=Depends(get_async_session),
+):
+    return await get_threads_error_breakdown(session, since_hours=since_hours, limit=limit)
 
 
 # ---------------------------------------------------------------------------

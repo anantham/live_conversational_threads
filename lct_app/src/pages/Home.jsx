@@ -7,6 +7,7 @@ import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStor
 export default function Home() {
   const navigate = useNavigate();
   const [draftSummary, setDraftSummary] = useState(null);
+  const [pendingFeatureToast, setPendingFeatureToast] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +29,20 @@ export default function Home() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!pendingFeatureToast) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setPendingFeatureToast("");
+    }, 2200);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [pendingFeatureToast]);
+
+  const showPendingFeatureToast = (featureName) => {
+    setPendingFeatureToast(`${featureName} is pending in this build.`);
+  };
 
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col items-center justify-center overflow-hidden bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] font-sans">
@@ -73,23 +88,27 @@ export default function Home() {
       {/* Secondary actions */}
       <div className="relative flex items-center gap-5">
         <button
-          onClick={() => navigate("/import")}
+          type="button"
+          onClick={() => showPendingFeatureToast("Import")}
+          aria-disabled="true"
           className="flex flex-col items-center gap-1.5 group"
         >
-          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-150 text-gray-400 group-hover:text-gray-600 group-hover:border-gray-300 transition">
+          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/60 backdrop-blur-sm border border-gray-150 text-gray-300 group-hover:text-amber-600 group-hover:border-amber-300 transition">
             <FileUp size={16} />
           </span>
-          <span className="text-[10px] text-gray-400 group-hover:text-gray-600 transition">Import</span>
+          <span className="text-[10px] text-gray-400 group-hover:text-amber-700 transition">Import</span>
         </button>
 
         <button
-          onClick={() => navigate("/bookmarks")}
+          type="button"
+          onClick={() => showPendingFeatureToast("Bookmarks")}
+          aria-disabled="true"
           className="flex flex-col items-center gap-1.5 group"
         >
-          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-150 text-gray-400 group-hover:text-gray-600 group-hover:border-gray-300 transition">
+          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/60 backdrop-blur-sm border border-gray-150 text-gray-300 group-hover:text-amber-600 group-hover:border-amber-300 transition">
             <Bookmark size={16} />
           </span>
-          <span className="text-[10px] text-gray-400 group-hover:text-gray-600 transition">Bookmarks</span>
+          <span className="text-[10px] text-gray-400 group-hover:text-amber-700 transition">Bookmarks</span>
         </button>
 
         <button
@@ -117,6 +136,14 @@ export default function Home() {
       <div className="absolute bottom-8 left-8">
         <ServiceStatus />
       </div>
+
+      {pendingFeatureToast && (
+        <div className="pointer-events-none absolute bottom-8 right-8 z-20">
+          <div className="rounded-lg border border-amber-200 bg-amber-50/95 px-3 py-2 text-xs font-medium text-amber-800 shadow-sm backdrop-blur">
+            {pendingFeatureToast}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
 
+const appBaseUrl = process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:43173';
+
 /**
  * H6: Async API Call Failure
  *
@@ -69,7 +71,7 @@ test.describe('H6: Network Test', () => {
 
       // Allow Vite HMR and local resources
       if (
-        url.includes('localhost:5173') &&
+        url.startsWith(appBaseUrl) &&
         (url.includes('/@vite/') ||
           url.includes('/@react-refresh') ||
           url.endsWith('.js') ||
@@ -78,7 +80,7 @@ test.describe('H6: Network Test', () => {
           url.endsWith('/'))
       ) {
         route.continue();
-      } else if (url.includes('localhost:5173')) {
+      } else if (url.startsWith(appBaseUrl)) {
         // Block other requests to localhost
         console.log('[H6-BLOCK] Blocked:', url);
         route.abort('blockedbyclient');

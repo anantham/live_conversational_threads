@@ -17,6 +17,7 @@ from typing import Callable
 import time
 
 logger = logging.getLogger(__name__)
+DEFAULT_FRONTEND_PORT = "43173"
 
 
 # ============================================================================
@@ -44,12 +45,10 @@ def configure_cors(app, environment="development"):
             "http://localhost:3000",  # For testing
         ]
     else:
-        # Development: Allow localhost
+        frontend_port = str(os.getenv("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)).strip() or DEFAULT_FRONTEND_PORT
         allowed_origins = [
-            "http://localhost:3000",
-            "http://localhost:5173",  # Vite default
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:5173",
+            f"http://localhost:{frontend_port}",
+            f"http://127.0.0.1:{frontend_port}",
         ]
 
     app.add_middleware(

@@ -1,6 +1,9 @@
 # ISSUES
 
-Last updated: 2026-04-09
+Last updated: 2026-04-13
+
+## Verification Follow-ups (2026-04-13)
+- `lct_python_backend/tests/unit/test_transcript_processing_runtime.py::test_graph_timer_forces_update_when_accumulator_keeps_accumulating` currently fails under local verification because `TranscriptProcessor._run_batch_timer()` defers flush when pending text remains below `graph_min_flush_chars` (default 80 chars), so the test's short `"First finalized transcript chunk."` input never forces a graph update after the timer. Impact: unrelated runtime verification noise during graph-work sessions; blocker status: non-blocking for authored-hierarchy rewrite, but it weakens confidence in timer-path coverage. Recommended next step: decide whether the test fixture should lower `graph_min_flush_chars` explicitly or whether the timer behavior has drifted from the intended product rule and should be changed in code.
 
 ## Runtime Blockers (2026-02-10)
 - Live/import LLM routing mismatch (confirmed 2026-04-03): import graph generation loads `llm_providers` and can honor the saved provider list, but `/ws/transcripts` only loads `llm_config` and constructs `TranscriptProcessor` without `providers`, so live graph generation silently falls back to `get_default_providers()` from `llm_config.py` instead of the saved provider order/credentials. Impact: live and import can use different LLM backends under the same visible settings, and any serious LLM BYOK implementation must fix the live seam first. Recommended next step: thread runtime provider lists into `WsSessionContext` and standardize runtime LLM overlay behavior across live + import.

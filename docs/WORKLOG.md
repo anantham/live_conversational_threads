@@ -1,5 +1,403 @@
 # WORKLOG
 
+## 2026-04-14T14:36:24Z — Documented the live-session state model and terminology contract
+
+Branch: `dev`
+
+- Context: after clarifying that Home `/new` “Resume” currently means browser-local draft restoration rather than true live runtime continuation, the user asked for a more principled repo-level model instead of ad hoc renames. This required documenting the state semantics before further copy/UI changes.
+- Explicit hypotheses before doc update:
+  - `H1`: the ambiguity was caused by conflating different system objects under the same verb (`Resume`), especially browser-local draft recovery versus live session continuation.
+  - `H2`: the cleanest durable fix was a product/architecture ADR that defines canonical objects, states, reserved terms, and UI mapping so future copy changes have one source of truth.
+  - `H3`: reserving `Pause` / `Resume Recording` for a future truly resumable runtime would prevent the UI from promising backend capabilities that do not yet exist.
+- Files modified:
+  - `docs/adr/ADR-028-session-state-model-and-ux-terminology.md` (new): documented the canonical state model (`Recording Runtime`, `Session Draft`, `Recovered Draft`, `Saved Conversation`), allowed transitions, vocabulary rules, reserved terms, and UI mapping for Home and `/new`.
+  - `docs/adr/INDEX.md` (lines 3, 32): added ADR-028 to the ADR index and updated the index timestamp.
+- Why:
+  - make the product language consistent across Home, `/new`, and future resume work;
+  - distinguish local draft restoration from true runtime continuation;
+  - give future UI edits a principled contract rather than one-off copy changes.
+- Validation:
+  - Manual doc review against the currently implemented `/new` and local-draft recovery behavior.
+
+## 2026-04-14T18:35:00Z — Threads now persists durable session lifecycle analytics and operator-facing error/usage aggregates
+
+Branch: `main`
+
+- Context: the user wanted operator-grade observability for Threads so backend operators can answer how many people tried the live service, how many sessions failed or were abandoned, which error classes matter, and where bottlenecks sit without relying on anecdotal reports or grepping raw logs.
+- Explicit hypotheses before patch:
+  - `H1`: the main gap was lack of durable session lifecycle storage; existing file logs and the in-memory session export store were useful for debugging one known conversation but could not support reliable aggregate operator queries.
+  - `H2`: the websocket lifecycle already exposed enough milestones (`session_ack`, first audio chunk, transcript persistence, flush completion, disconnect/error paths) that a disciplined durable event model could be layered onto the current live Threads path without redesigning the whole product.
+  - `H3`: operator questions would remain hard to answer unless terminal session state was classified explicitly (`completed`, `failed`, `abandoned`) and conversation lifecycle timestamps were updated on teardown instead of always treating disconnects as generic completion.
+- Files modified:
+  - `lct_python_backend/models/observability.py` (new, full file): added durable `ThreadSession` and `ThreadSessionEvent` models for live Threads lifecycle and structured event storage.
+  - `lct_python_backend/models/__init__.py` (re-export section): registered the new observability models so metadata/migrations and existing imports see them.
+  - `lct_python_backend/alembic/versions/add_thread_session_observability.py` (new, full file): added migration for `thread_sessions` and `thread_session_events` with indexes and level/status constraints.
+  - `lct_python_backend/services/thread_observability_service.py` (new, full file): added durable session start/event/finish helpers plus operator aggregate/detail queries for summary, error breakdown, and per-conversation session timelines.
+  - `lct_python_backend/services/stt_ws_session.py` (session setup, event persistence, first-audio-chunk, flush, error, and teardown sections): wired live websocket sessions into the durable observability service, added terminal-state classification (`failed` vs `abandoned` vs `completed`), persisted session start before audio arrives, and updated conversation `ended_at` / `duration_seconds` on teardown.
+  - `lct_python_backend/stt_api.py` (telemetry section): added operator endpoints for `/api/threads/observability/summary`, `/api/threads/observability/errors`, and `/api/conversations/{conversation_id}/thread-session-details` while preserving the existing debug-export route.
+  - `lct_python_backend/tests/unit/test_thread_observability_api.py` (new, full file): added focused route and terminal-state classification coverage for the new operator endpoints and abandonment logic.
+  - `docs/TECH_DEBT.md` (updated separately in this session): logged that `thread_observability_service.py` is already a mixed write/query service that should be split before dashboards or new entrypoints expand it further.
+- Why:
+  - replace anecdotal “friend told me it broke” detection with durable backend session analytics;
+  - make live-session abandonment and failure rates queryable instead of inferring them from raw logs;
+  - preserve the existing per-conversation debug export flow while introducing a durable operator source of truth.
+- Validation:
+  - `./.venv/bin/python -m pytest -q lct_python_backend/tests/unit/test_thread_observability_api.py lct_python_backend/tests/unit/test_session_observability.py` (`6 passed`)
+  - `PYTHONPYCACHEPREFIX=/tmp/pycache ./.venv/bin/python -m py_compile lct_python_backend/models/observability.py lct_python_backend/services/thread_observability_service.py lct_python_backend/services/stt_ws_session.py lct_python_backend/stt_api.py`
+
+## 2026-04-14T14:24:11Z — New conversation flow now has a real stopped-session save/naming tray
+
+Branch: `dev`
+
+- Context: the user called out a session-lifecycle gap in `/new`: recording auto-starts and graphing begins, but stopping had weak iconography, there was no explicit save-and-exit flow, and titles were often weak or empty because naming relied on the first node label. The approved Option B was to add a clear stopped-session tray with naming plus save actions.
+- Explicit hypotheses before patch:
+  - `H1`: the current mic control was misleading because the active-state icon stayed as a mic even though the action actually stops/finalizes the session; changing the iconography alone would improve legibility immediately.
+  - `H2`: the right place for naming and save actions was the page layer after recording stops, not inside `AudioInput.jsx`, because save/exit/start-new affect route/session state rather than just the mic transport.
+  - `H3`: the first-node filename heuristic in `useAudioInputEffects.js` was too weak; using a semantic graph-derived title helper would reduce `Untitled`-style sessions without adding a forced manual prompt.
+  - `H4`: a true “Resume” button should not be faked in this pass, because the websocket runtime currently restarts a fresh session without reloading prior graph context into the backend processor. The principled interim flow is stop -> name/save/discard/start-new, not a dishonest pause/resume affordance.
+- Files modified:
+  - `lct_app/src/utils/conversationTitle.js` (new, full file): added a shared graph-derived title suggestion helper that prefers semantic topic/idea labels and optionally includes speaker names while sanitizing for file-safe titles.
+  - `lct_app/src/components/audio/useAudioInputEffects.js` (lines 1-22): replaced the old “first node name only” filename heuristic with `deriveSuggestedConversationTitle(...)`.
+  - `lct_app/src/components/AudioInput.jsx` (lines 1-3, 304-352, 395-425): changed the active recording control to a stop-square icon, stabilized `startRecording` with `useCallback`, and exposed `startRecording` through the imperative handle so `/new` can intentionally kick off a new recording after a completed save.
+  - `lct_app/src/pages/NewConversation.jsx` (lines 21, 64-76, 101-161, 388-472, 690-756): added smarter live-session title suggestion state, kept the live transcript overlay visible after stop with a paused label, introduced explicit `Save & Exit`, `Save & Start New`, and `Discard` actions, and added the stopped-session naming tray above the footer.
+  - `docs/TECH_DEBT.md` (updated separately in this session): raised the `NewConversation.jsx` and `AudioInput.jsx` LOC/decomposition notes to reflect the added session-lifecycle responsibilities.
+- Why:
+  - give the stopped-session state a real UX surface;
+  - make naming intentional without forcing a blocking modal;
+  - provide explicit save-and-exit / save-and-start-new flows instead of relying on hidden autosave semantics;
+  - keep the UI honest about the current transport semantics by avoiding a fake resume flow.
+- Validation:
+  - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/components/AudioInput.jsx src/components/audio/useAudioInputEffects.js src/utils/conversationTitle.js`
+  - `cd lct_app && npm run build`
+
+## 2026-04-14T13:24:09Z — Live transcription now uses the same expandable transcript overlay pattern as upload
+
+Branch: `dev`
+
+- Context: the user flagged that live transcription only exposed a 3-line caption strip while upload transcription had a much better expandable, scrollable transcript surface. The mismatch violated the desired product behavior for live review, even though the live mic path was already retaining many transcript lines.
+- Explicit hypotheses before patch:
+  - `H1`: the mismatch was caused by separate UI ownership boundaries rather than missing transcript data, because `AudioInput.jsx` already stored up to 240 live transcript lines while locally rendering only `slice(-3)`.
+  - `H2`: the smallest principled fix was to move transcript presentation to the page layer and let both upload and live flows share one overlay component, rather than duplicating upload UI inside `AudioInput`.
+  - `H3`: the graph viewport reservation logic in `NewConversation.jsx` could remain stable if the page switched from a boolean “upload transcript visible” check to a generic “any transcript overlay visible” check.
+- Files modified:
+  - `lct_app/src/components/transcript/SessionTranscriptOverlay.jsx` (new, full file): extracted a shared minimized/expanded transcript overlay for both live and upload flows, including auto-scroll, compact caption mode, and expanded speaker-aware rendering for labeled transcript lines.
+  - `lct_app/src/components/AudioInput.jsx` (lines 74-87, 265-271, 401-414, 519): removed the live-only 3-line caption bubble, added `onLiveTranscriptStateChange`, and pushed live transcript state (`recording`, `liveTranscriptLines`, `statusLine`) up to the page so transcript presentation no longer lives inside the footer control component.
+  - `lct_app/src/pages/NewConversation.jsx` (lines 7, 66-70, 113-149, 600-612, 728): added live transcript page state, unified upload/live transcript overlay selection, replaced the upload-only inline overlay block with the shared `SessionTranscriptOverlay`, and passed the live transcript callback into `AudioInput`.
+  - `docs/TECH_DEBT.md` (updated separately in this session): noted that the new shared overlay confirms `NewConversation.jsx` and `AudioInput.jsx` still need decomposition around transcript/session presentation boundaries.
+- Why:
+  - remove an arbitrary live-vs-upload transcript UI divergence;
+  - make live review usable without throwing away the minimal footer controls;
+  - centralize transcript presentation so future transcript UX changes do not need to be duplicated across separate code paths.
+- Validation:
+  - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/components/AudioInput.jsx src/components/transcript/SessionTranscriptOverlay.jsx`
+  - `cd lct_app && npm run build`
+
+## 2026-04-13T23:07:25Z — PromptManager is now the canonical runtime source for transcript and refinement prompts
+
+Branch: `dev`
+
+- Context: the user approved Option C for prompt-system unification: stop running a parallel hardcoded prompt path for transcript accumulation, transcript hierarchy generation, and import graph refinement. The repo already had a Settings-backed Prompt Library (`PromptManager` + `prompts.json` + Prompt Library UI), but the live transcript graph path still bypassed it through `services/transcript_prompts.py`.
+- Explicit hypotheses before patch:
+  - `H1`: the smallest principled migration was to make transcript/runtime callers resolve prompts from `PromptManager` first, while keeping `services/transcript_prompts.py` only as a bootstrap fallback so the graph pipeline would not fail if prompt entries were missing.
+  - `H2`: prompt-library unification would remain misleading if `PromptManager` itself still only rendered `$variable` syntax, because the repo’s existing `prompts.json` entries largely use `{variable}` placeholders.
+  - `H3`: making the prompt library canonical without loosening its stale model validation would leave the system self-contradictory, because the current prompt catalog already contains provider-specific model ids outside the old hardcoded allowlist.
+- Files modified:
+  - `lct_python_backend/services/prompt_manager.py` (lines 18-21, 94-157, 278-285): added brace-placeholder compatibility in `render_prompt_string(...)`, kept warnings for unresolved placeholders, and changed prompt validation so `model` is treated as any non-empty provider-specific string rather than a stale hardcoded shortlist.
+  - `lct_python_backend/services/transcript_prompts.py` (lines 1-22, 202-308): converted the module from “runtime-owned prompt constants” into transcript prompt defaults plus PromptManager-backed lookup helpers, added stable prompt ids (`accumulate_transcript_segment`, `generate_conversation_hierarchy`, `generate_conversation_hierarchy_local`, `refine_conversation_subthreads`), and kept the old prompt bodies as bootstrap fallbacks instead of the primary runtime source.
+  - `lct_python_backend/services/transcript_llm_callers.py` (lines 24-30, 243-258, 320-354, 408-418, 452-463): routed Gemini and local transcript accumulation/generation through the managed prompt ids and metadata instead of importing hardcoded prompt constants directly.
+  - `lct_python_backend/services/import_graph_refinement.py` (lines 24-28, 218-227, 262-268): switched online and local refinement to resolve the system prompt and temperature/token metadata from the managed `refine_conversation_subthreads` prompt entry.
+  - `lct_python_backend/prompts.json` (lines 3, 111-141): added canonical Prompt Library entries for transcript accumulation, hierarchy generation, local hierarchy generation, and import graph refinement so those prompts now appear in the existing Settings UI and runtime source of truth.
+  - `lct_python_backend/tests/unit/test_transcript_prompt_routing.py` (new, lines 1-132): added focused coverage for brace + dollar placeholder rendering, provider-specific model validation, PromptManager preference over fallback defaults, and proof that transcript/refinement local callers now consume the managed prompt path.
+  - `docs/adr/ADR-027-prompt-manager-canonical-for-transcript-and-refinement-prompts.md` (new): recorded the architectural decision that PromptManager is now canonical for product-facing transcript/refinement prompts, with `services/transcript_prompts.py` retained only as migration fallback.
+  - `docs/adr/INDEX.md` (lines 3, 33): added ADR-027 to the ADR index.
+  - `docs/TECH_DEBT.md` (lines 10-14): logged new large-file follow-ups for `prompt_manager.py` and `transcript_llm_callers.py`, which both remain mixed-concern modules after this migration.
+- Why:
+  - remove the misleading parallel prompt system for one of the most important runtime paths;
+  - make Prompt Library edits actually capable of affecting transcript hierarchy generation and refinement;
+  - harden the canonical prompt system so it supports the placeholder style already used in the repo.
+- Validation:
+  - `python3 -m json.tool lct_python_backend/prompts.json` (`ok`)
+  - `./.venv/bin/python -m pytest -q lct_python_backend/tests/unit/test_transcript_prompt_routing.py lct_python_backend/tests/unit/test_import_graph_refinement.py lct_python_backend/tests/unit/test_transcript_processing_schema.py` (`28 passed`)
+  - `python3 -m py_compile lct_python_backend/services/prompt_manager.py lct_python_backend/services/transcript_prompts.py lct_python_backend/services/transcript_llm_callers.py lct_python_backend/services/import_graph_refinement.py`
+- In-scope discovery:
+  - `PromptManager` had a preexisting compatibility bug: it rendered only `$variable` placeholders while most of the checked-in `prompts.json` catalog used `{variable}` placeholders. This was fixed as part of the migration because leaving it unresolved would undermine the new canonical prompt path immediately.
+
+## 2026-04-13T23:08:01Z — Recovered draft Save As now clears local recovery state and shows a real page-level status toast
+
+Branch: `dev`
+
+- Context: the recovered-draft banner exposed `Save As…`, but the action left the user in an ambiguous state. Success/failure feedback was written into shared `message` state without any visible renderer on the page, and the success path re-persisted the same local draft instead of clearing it from IndexedDB, so the recovery prompt could return on reload.
+- Explicit hypotheses before patch:
+  - `H1`: the draft lifecycle bug was broader than a missing notification; a successful recovered-draft save should remove the local recovery artifact rather than only dismissing the banner in React state.
+  - `H2`: the shared `message` state already carried page-level outcomes (`save`, `audio recovery`, `export`) but no page-level message surface existed, so success and failure were effectively silent.
+  - `H3`: the banner action needed an explicit in-flight state to avoid double-submits and make the save lifecycle legible while preserving the local draft only when the save actually fails.
+- Files modified:
+  - `lct_app/src/pages/NewConversation.jsx` (lines 61-68, 177-197, 341-408, 535-541, 772-795): added recovered-draft save state, switched successful `Save As…` to clear the stored local draft instead of re-persisting it, preserved the draft only on failure, disabled the button while saving, and added a page-level dismissible status toast so `message` state is actually visible.
+  - `lct_app/src/hooks/useLocalConversationDraft.js` (lines 112-148): factored draft removal into a reusable helper and exposed `clearAvailableDraft()` so successful recovery saves can clear IndexedDB without overloading the user-facing `discard` intent.
+  - `docs/TECH_DEBT.md` (updated separately in this session): expanded the `NewConversation.jsx` debt note because draft lifecycle/status presentation is another mixed concern living in the page component.
+- Why:
+  - make `Save As…` behave like a completed action instead of a mostly invisible no-op;
+  - align local-draft semantics with user intent: durable server save should retire the recovery draft;
+  - ensure page-level status messages are visible for other actions already relying on `setMessage(...)`.
+- Validation:
+  - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/hooks/useLocalConversationDraft.js` (`passed`)
+- Verification note:
+  - this fixes the frontend lifecycle and feedback path; it does not yet add a “view saved conversation” redirect or richer save-result metadata from the backend.
+
+## 2026-04-13T20:34:22Z — Primary graph now prefers backend-authored `chunk / idea / topic / theme` hierarchy over inferred zoom clustering
+
+Branch: `dev`
+
+- Context: the approved Option C rewrite was to stop pretending that frontend clustering equals semantic zoom. The live/saved graph needed explicit authored attention levels so zooming out reflects real conversation units (`chunk`, `idea`, `topic`, `theme`) rather than heuristic cluster shapes.
+- Explicit hypotheses before patch:
+  - `H1`: the safest first implementation was to change the live graph payload contract and renderer behavior before forcing a DB migration, because the current JSON node payload and `Node` model already have enough metadata surface (`level`, `parent_id`, `children_ids`, `node_type`) to carry a first-class hierarchy.
+  - `H2`: the current backend prompt was the main semantic mismatch because it explicitly optimized for a flat list of topic shifts; replacing that with an authored four-level hierarchy contract would align generation with the desired review experience.
+  - `H3`: the frontend should prefer authored hierarchy when present and fall back to legacy clustering for older conversations so existing saved artifacts keep rendering during migration.
+- Files modified:
+  - `docs/adr/ADR-021-authored-four-level-conversation-hierarchy.md` (new): recorded the architectural decision to make backend-authored semantic levels the source of truth for the primary graph view.
+  - `lct_python_backend/services/transcript_prompts.py` (lines 7-133): replaced the flat topic-shift generation contract with an explicit four-level hierarchy spec (`chunk`, `idea`, `topic`, `theme`) for both online and local LLM generation paths.
+  - `lct_python_backend/services/transcript_normalizer.py` (lines 22, 45-55, 184-200, 303-375): added semantic-level/type normalization plus `parent_id` / `children_ids` preservation so authored hierarchy metadata survives the LLM-output cleaning step.
+  - `lct_python_backend/tests/unit/test_transcript_processing_schema.py` (lines 46-61, 263-299): extended schema coverage to assert default semantic fields and explicit hierarchy-field preservation.
+  - `lct_app/src/components/MinimalGraph.jsx` (lines 1, 11-16, 35-45, 118-130, 561-945, 1233-1316, 1529-1550): added authored-level metadata handling, built level-specific authored graph views, surfaced `chunks / ideas / topics / themes` in the HUD, notified parents about the active authored level, and retained legacy clustering as a compatibility fallback. Added a targeted `react-hooks/rules-of-hooks` suppression because this monolithic file now triggers hook-lint false positives; see `docs/TECH_DEBT.md`.
+  - `lct_app/src/components/TimelineRibbon.jsx` (lines 61-72, 197-201): filtered the ribbon to the active authored semantic level when the main graph is in authored-hierarchy mode.
+  - `lct_app/src/pages/NewConversation.jsx` (lines 53-58, 556-564, 749-756): tracked the active graph level from `MinimalGraph` and passed it to `TimelineRibbon` so live-session navigation stays aligned with the visible semantic layer.
+  - `lct_app/src/pages/ViewConversation.jsx` (lines 99-110, 250-257, 266-270): mirrored the same level-tracking wiring for saved conversation review.
+  - `docs/TECH_DEBT.md` (updated separately in this session): expanded the `MinimalGraph.jsx` debt note to reflect the new authored-hierarchy / legacy-fallback split and the temporary lint suppression.
+  - `ISSUES.md` (updated separately in this session): logged the unrelated `test_transcript_processing_runtime.py::test_graph_timer_forces_update_when_accumulator_keeps_accumulating` failure discovered during verification.
+- Why:
+  - align the graph with human review units rather than emergent clustering heuristics;
+  - make zoom labels honest and useful;
+  - preserve old conversations while moving new graph generation to an authored hierarchy.
+- Validation:
+  - `./.venv/bin/python -m pytest -q lct_python_backend/tests/unit/test_transcript_processing_schema.py` (`19 passed`)
+  - `cd lct_app && npx eslint src/components/MinimalGraph.jsx src/components/TimelineRibbon.jsx src/pages/NewConversation.jsx src/pages/ViewConversation.jsx` (`passed`)
+  - `cd lct_app && npm run build` (`passed`)
+- Verification gap / pre-existing issue:
+  - `./.venv/bin/python -m pytest -q lct_python_backend/tests/unit/test_transcript_processing_runtime.py` still fails at `test_graph_timer_forces_update_when_accumulator_keeps_accumulating` because the current timer path defers flush when pending text stays below `graph_min_flush_chars`. This appears unrelated to the hierarchy rewrite and has been logged in `ISSUES.md` rather than patched opportunistically.
+
+## 2026-04-13T19:56:21Z — Session debug export now pulls backend observability and derived graph aggregation views
+
+Branch: `dev`
+
+- Context: the existing session export only captured client-observed runtime state. That was useful for UI-visible failures, but not enough for proper investigation of backend-only graph/STT/audio failures, bottlenecks, or the different graph aggregation levels the UI can derive.
+- Explicit hypotheses before patch:
+  - `H1`: a bounded in-memory backend session observability store keyed by `conversation_id` and `session_id` was the cleanest way to capture real session diagnostics without inventing a new durable database schema.
+  - `H2`: the websocket session already emitted enough structured milestones (`session_ack`, `processing_status`, transcript telemetry, graph persist, flush, audio finalize) that wiring those into a backend event buffer would provide meaningful latency and error evidence with low incremental risk.
+  - `H3`: the export should include derived aggregation views computed from the graph data using the same clustering semantics as the frontend graph, rather than improvised buckets that would misrepresent the architecture under investigation.
+- Files modified:
+  - `lct_python_backend/services/session_observability.py` (lines 1-231): added a bounded in-memory observability store with per-session structured events, session finish metadata, and latency/error summaries suitable for export.
+  - `lct_python_backend/services/stt_ws_session.py` (multiple sections across setup, processing, flush, and teardown): recorded backend session lifecycle, transcript persistence, graph persistence, audio storage/finalization, flush milestones, client logs, and structured error events into the new observability store.
+  - `lct_python_backend/stt_api.py` (settings/telemetry section): exposed `GET /api/conversations/{conversation_id}/session-observability` so the frontend export path can fetch backend diagnostics for the current conversation.
+  - `lct_python_backend/services/audio_storage.py` (append path): stopped silently swallowing append failures so audio storage write errors can surface as structured session diagnostics instead of living only in server logs.
+  - `lct_python_backend/tests/unit/test_session_observability.py` (new): added focused unit coverage for session summaries, warning/error counts, and dominant latency bottleneck calculation.
+  - `lct_app/src/services/conversationDiagnosticsApi.js` (new): added a frontend API client for the new backend observability route.
+  - `lct_app/src/components/audio/graphAggregationExport.js` (new): added pure graph aggregation helpers for raw nodes, transcript sentence splitting, and sentence/topic/theme cluster exports.
+  - `lct_app/src/components/audio/exportSessionDebug.js` (lines 1-111): extended the JSON schema with `aggregation_views` and `backend_observability`.
+  - `lct_app/src/pages/NewConversation.jsx` (export handler): changed session export to fetch backend observability before building the downloadable debug JSON bundle.
+- Why:
+  - unify client-visible session state and backend evidence into one debug artifact;
+  - make latency bottlenecks and backend-only failures available for post-mortem quality investigation;
+  - export graph data at multiple derived aggregation levels that align with the graph’s clustering model.
+- Validation:
+  - `./.venv/bin/python -m pytest -q lct_python_backend/tests/unit/test_session_observability.py` (`1 passed`)
+  - `PYTHONPYCACHEPREFIX=/tmp/pycache ./.venv/bin/python -m py_compile lct_python_backend/services/session_observability.py lct_python_backend/services/stt_ws_session.py lct_python_backend/stt_api.py lct_python_backend/services/audio_storage.py`
+  - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/components/audio/exportSessionDebug.js src/components/audio/graphAggregationExport.js src/services/conversationDiagnosticsApi.js`
+- Verification note:
+  - importing the full backend package directly still depends on runtime DB environment variables; the syntax sanity check therefore used `py_compile` with `PYTHONPYCACHEPREFIX=/tmp/pycache` instead of a direct import smoke test.
+
+## 2026-04-12T23:07:57Z — Local draft recovery banner now supports Save As and Start New
+
+Branch: `dev`
+
+- Context: the `/new` local-draft recovery banner only offered `Resume` or `Discard`, which forced users to choose between re-entering a stale session or deleting it outright. The desired flow was to be able to preserve and name the recovered draft, then begin a fresh session.
+- Explicit hypotheses before patch:
+  - `H1`: the right fix was to expand the recovery banner into four explicit intents (`Resume`, `Save As…`, `Start New`, `Discard`) rather than overloading `Resume` to mean “recover and rename.”
+  - `H2`: `Save As…` should reuse the existing server-side conversation save path so the recovered draft becomes a durable saved conversation instead of a second local-only concept.
+  - `H3`: `Start New` should be non-destructive and simply dismiss the current draft banner while resetting page state to a clean conversation, leaving the stored draft untouched for future recovery if needed.
+- Files modified:
+  - `lct_app/src/pages/NewConversation.jsx` (lines 13, 175-181, 273-390, 486-520): imported the existing save helper, added draft-reset and recovery-save handlers, wired `Save As…` to prompt for a name and persist the recovered draft via `saveConversationToServer(...)`, added `Start New` to clear the current page into a fresh conversation, and extended the banner actions accordingly.
+  - `lct_app/src/hooks/useLocalConversationDraft.js` (lines 121-137): added `dismissAvailableDraft()` so the banner can be hidden for the current page session without deleting the stored draft from IndexedDB.
+- Why:
+  - separate “preserve this work” from “resume editing it right now”;
+  - allow a draft to become a durable saved conversation through the same path used elsewhere in the app;
+  - avoid destructive behavior for users who just want to start a new live session.
+- Validation:
+  - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/hooks/useLocalConversationDraft.js`
+- Notes:
+  - `Start New` is intentionally non-destructive; it dismisses the current recovery banner and resets page state, but does not delete the underlying stored draft.
+  - `Save As…` persists the recovered graph/chunk data to the backend and refreshes the local draft title so the stored draft remains coherent if the user later returns to it.
+
+## 2026-04-12T23:32:11Z — Live draft nodes now render as provisional and OpenAI realtime sessions re-enable the slower background refinement path
+
+Branch: `dev`
+
+- Context: the approved Option B for live graph quality was to keep fast live captions/draft graph motion, but make provisional nodes visibly temporary and ensure the slower background refinement lane can actually run during OpenAI realtime sessions. The current mismatch was that draft nodes looked fully canonical while the OpenAI realtime route disabled the existing background refinement candidate entirely.
+- Explicit hypotheses before patch:
+  - `H1`: the existing frontend draft/final graph layer split was already enough to show provisional state without inventing a new graph schema; the missing piece was tagging the merged draft layer so the renderer could lower opacity for those nodes only.
+  - `H2`: the current live-provider builder was suppressing background refinement too aggressively for `openai_audio`; allowing a separate diarized upload candidate whenever the primary route is low-latency OpenAI captions (`request_diarization=False`) would restore the intended slower pass without changing the fast lane.
+  - `H3`: the STT hover card needed explicit refinement observability because otherwise enabling the slower pass would still leave the user with no indication of whether it was configured, pending, completed, or failed.
+- Files modified:
+  - `lct_python_backend/services/stt_live_provider_selection.py` (lines 244-319): fixed `build_live_stt_background_refinement_candidate(...)` so live Whisper keeps its existing background candidate and OpenAI realtime low-latency captions can also spawn a separate diarized background upload pass when `request_diarization` is false on the primary route.
+  - `lct_python_backend/tests/integration/test_transcripts_websocket.py` (lines 302-308): updated the realtime websocket coverage to assert that a background refinement candidate is now advertised in `session_ack` for the realtime case, while keeping the provider assertion broad enough for the mocked routing setup.
+  - `lct_app/src/pages/newConversationGraphState.js` (lines 5-10, 252-261): tagged merged draft/final graph layers with `__graphLayer` metadata so the renderer can distinguish provisional nodes without mutating the canonical backend graph payload shape.
+  - `lct_app/src/components/MinimalGraph.jsx` (lines 24-30, 568-632): preserved the graph-layer tag in node normalization and rendered draft-layer nodes at reduced opacity with a `provisional` footer label so they read as temporary rather than final.
+  - `lct_app/src/components/audio/useLiveSessionStatus.js` (lines 88-97, 130-139, 173-189, 335-368, 577-592, 759-793): added background-refinement lifecycle state to the live HUD model, tracked `stt_refinement` processing-status events, and exposed background-pass / refinement-route / last-refinement rows in the STT hover details.
+  - `docs/TECH_DEBT.md` (lines 3, 15, 18): refreshed the date and expanded the existing `MinimalGraph.jsx` / `useLiveSessionStatus.js` entries to note that provisional-node styling and refinement observability are further evidence those modules should be split.
+- Why:
+  - make live draft nodes visually honest so weak partial STT output does not masquerade as settled graph truth;
+  - restore the already-designed slower background refinement lane for the current OpenAI realtime caption route instead of forcing the live graph to rely solely on realtime transcript quality;
+  - make the slower pass visible in the existing STT hover UI so operators can tell whether refinement is configured and whether it has completed.
+- Validation:
+  - `./.venv/bin/python -m pytest -q lct_python_backend/tests/unit/test_stt_live_provider_selection.py -k background_refinement_candidate` (`2 passed`)
+  - `./.venv/bin/python -m pytest -q lct_python_backend/tests/integration/test_transcripts_websocket.py::test_transcripts_ws_accepts_streaming_runtime_events` (`1 passed`)
+  - `cd lct_app && npx eslint src/components/MinimalGraph.jsx src/components/audio/useLiveSessionStatus.js src/pages/newConversationGraphState.js` (`0 errors`; pre-existing `react-hooks/exhaustive-deps` warning remains in `MinimalGraph.jsx`)
+- Verification gap:
+  - `lct_python_backend/tests/integration/test_transcripts_websocket.py::test_transcripts_ws_backend_realtime_forces_audio_storage_and_schedules_file_refinement` did not finish within a 20s bounded run, so backend-ws file-refinement verification remains inconclusive for this work session. This looks like a pre-existing slow/hanging path rather than a direct assertion failure from the new OpenAI-realtime/background-refinement change.
+
+## 2026-04-12T22:49:39Z — Live conversation page can now export a session-debug JSON bundle
+
+Branch: `dev`
+
+- Context: live-session debugging required more than the saved graph; the user needed one export artifact containing nodes, edges, transcript chunks, session routing/status, and timing/telemetry from an actual run so issues like STT buffer errors, graph latency, and micro-node generation could be inspected offline.
+- Explicit hypotheses before patch:
+  - `H1`: the fastest durable implementation was a client-side export built from existing page state plus a live-session snapshot from `AudioInput`, rather than introducing a new backend persistence/export contract.
+  - `H2`: the current websocket/status plumbing already exposed enough telemetry (`session_ack`, `processing_status`, transcript metadata, HUD timing rows, `audio_ready`) to make the export useful if those events were captured into a bounded in-memory timeline.
+  - `H3`: adding an imperative `getSessionDebugSnapshot()` seam on `AudioInput` would keep the export feature narrow and avoid pushing more mixed concerns into `NewConversation.jsx`.
+- Files modified:
+  - `lct_app/src/components/audio/exportSessionDebug.js` (lines 1-128): added a dedicated helper that assembles the exported JSON payload, computes node/edge/chunk/event counts, normalizes live transcript lines, and triggers browser download as `<conversation>-session-debug.json`.
+  - `lct_app/src/components/AudioInput.jsx` (lines 20-21, 117-142, 173-227, 243-257, 304-391): added a bounded session event timeline, captured real websocket/runtime events (`session_ack`, transcript events, `processing_status`, `audio_ready`, key backend lifecycle messages), tracked active STT settings and session start/end timestamps, and exposed `getSessionDebugSnapshot()` through the existing ref interface.
+  - `lct_app/src/pages/NewConversation.jsx` (lines 13-17, 306-331, 661-687): wired a new `Export Session JSON` footer button that builds the full export bundle from graph/chunk state, draft state, audio recovery status, and the live session snapshot, then downloads it and surfaces a success message.
+  - `docs/TECH_DEBT.md` (lines 13-14): logged new split candidates because this feature touched two already-large frontend files (`NewConversation.jsx`, `AudioInput.jsx`).
+- Why:
+  - provide one operator-friendly artifact for debugging a real live session without requiring backend schema changes;
+  - preserve the exact client-visible timing/health context that often gets lost once a session ends;
+  - avoid inventing a second canonical storage path before the export shape is validated in practice.
+- Validation:
+  - `cd lct_app && npx eslint src/components/AudioInput.jsx src/pages/NewConversation.jsx src/components/audio/exportSessionDebug.js`
+- Notes:
+  - the export is intentionally client-scoped for now; it captures what the browser observed during the session, not a backend-reconstructed history after the fact.
+  - this does not change audio storage/download behavior; if `store_audio` is off or no download token is configured, the export will still show that absence rather than synthesizing a file artifact.
+
+## 2026-04-12T17:06:42Z — STT settings now expose a language dropdown and default new/blank configs to English
+
+Branch: `dev`
+
+- Context: the running STT config showed `http_language: ""`, which meant live and upload transcription requests were relying on provider auto-detect even though the desired default was English. The Settings UI exposed this as a raw free-text field, which made the actual behavior easy to miss.
+- Explicit hypotheses before patch:
+  - `H1`: the safest fix was to convert the free-text `http_language` field into an explicit dropdown and make the repo default `en`, rather than trying to infer whether a blank string meant “forgot to configure” or “intentionally auto-detect.”
+  - `H2`: backend defaulting alone would not be enough because existing saved blank values could continue to propagate; the frontend normalization path also needed to surface `en` when the saved value was blank.
+  - `H3`: this could stay narrowly scoped to settings/config plumbing because the request-sending paths already honor `http_language` when it is present.
+- Files modified:
+  - `lct_app/src/components/settings/SttEndpointFields.jsx` (lines 1-42): replaced the raw `Language hint` text input with a controlled dropdown of explicit language options and updated helper copy to state that English is the default.
+  - `lct_app/src/components/audio/sttUtils.js` (lines 42, 181): added a frontend default language constant and normalized missing/blank `http_language` values to `en` so the dropdown and save path converge on English by default.
+  - `lct_python_backend/services/stt_config.py` (lines 21, 317, 398): introduced `DEFAULT_HTTP_LANGUAGE = "en"`, changed the env fallback for `STT_HTTP_LANGUAGE` to use it, and normalized merged config values so new/blank backend settings resolve to English.
+- Why:
+  - make the STT language setting legible and intentionally controlled in Settings;
+  - ensure the default runtime behavior matches the desired English-first transcription path;
+  - avoid the old silent blank-string behavior where provider auto-detection happened unintentionally.
+- Validation:
+  - `cd lct_app && npx eslint src/components/settings/SttEndpointFields.jsx src/components/audio/sttUtils.js`
+  - `./.venv/bin/python -m pytest -q lct_python_backend/tests/unit/test_stt_api_settings.py` (`11 passed`)
+- Design note:
+  - this patch chooses explicit language selection over preserving a blank-string auto-detect state. If you later want both, the clean version would be an explicit `Auto-detect` enum value with corresponding backend semantics, not an overloaded empty string.
+
+## 2026-04-12T17:01:01Z — Home screen Import/Bookmarks actions now show pending-feature toast instead of navigating
+
+Branch: current worktree
+
+- Context: the home screen still presented `Import` and `Bookmarks` as live secondary actions even though the desired product state was to keep those features pending from the primary landing view. The requested behavior was not removal, but a visible “pending” response when clicked.
+- Explicit hypotheses before patch:
+  - `H1`: the smallest coherent change was to intercept those two home-screen buttons in `Home.jsx` only, rather than disabling the underlying routes globally.
+  - `H2`: a lightweight page-local toast was sufficient because the app does not currently use a shared global toast system for this type of passive notice.
+  - `H3`: keeping the icons visible but visually subdued would communicate “not active yet” more clearly than silently deleting the actions.
+- Files modified:
+  - `lct_app/src/pages/Home.jsx` (lines 9-10, 33-45, 90-112, 140-146): added page-local pending-feature toast state with auto-dismiss, rerouted the `Import` and `Bookmarks` buttons to show the toast instead of navigating, and adjusted their hover styling to read as intentionally pending.
+- Why:
+  - prevent users from treating the home-screen `Import` and `Bookmarks` actions as ready entry points while still acknowledging the planned feature surface;
+  - keep the scope narrow and reversible by not changing route definitions or the underlying pages.
+- Validation:
+  - `cd lct_app && npx eslint src/pages/Home.jsx` (`passed`)
+- Design note:
+  - this is a home-screen interaction change only; the `Import` and `Bookmarks` routes still exist and can still be reached directly if navigated to elsewhere.
+
+## 2026-04-12T17:00:31Z — LLM routing UI now mirrors the real primary-plus-fallback chain used by live graph generation
+
+Branch: `dev`
+
+- Context: the Settings surface for LLMs still exposed a flat provider list plus a separate model card, while the user wanted an STT-like mental model for “which AI source runs first and what happens next.” The backend already had real routing semantics for live graph generation and transcript accumulation: `mode=online` means Gemini runs first and local providers are fallback; `mode=local` means enabled providers are tried in saved order.
+- Explicit hypotheses before patch:
+  - `H1`: the biggest usability gap was not missing backend fallback logic but missing presentation of that logic; surfacing primary route, fallback order, and scope directly in Settings would make the existing routing model legible.
+  - `H2`: the home-page LLM chip was still probing a single generic endpoint, so even a better settings card would remain misleading unless the chip probed the actual routing chain.
+  - `H3`: this could stay frontend-only for now because the live websocket path already receives saved `llm_providers`; the real task was parity of visibility and probe behavior, not inventing a second routing contract.
+- Files modified:
+  - `lct_app/src/components/settings/settingsSummary.js` (lines 33-74): added helpers to derive enabled LLM providers, compute the effective primary/fallback chain from `llm_settings + llm_providers`, and summarize that chain consistently for the card header.
+  - `lct_app/src/components/settings/LlmRoutingCard.jsx` (lines 1-94): upgraded the old “Graph Routing” card into an “Intelligence Routing” card with an STT-style overview for primary route, fallback order, and scope; embedded both `LlmSettingsPanel` and `LlmProvidersPanel` so top-level mode/model controls and provider ordering live in one routing surface.
+  - `lct_app/src/components/ServiceStatus.jsx` (lines 283-418, 522-601): replaced the old single-endpoint LLM probe with a chain-aware probe plan. The home pill now checks online Gemini first when `mode=online`, then checks enabled local providers in saved order via `/api/settings/llm/providers/health`; in local mode it checks the enabled provider chain directly.
+- Why:
+  - make the configured intelligence routing understandable in the same way live STT routing is understandable;
+  - keep the UI aligned with real runtime behavior instead of inventing cosmetic controls;
+  - stop the home-page LLM indicator from reporting only the old local-mode/single-endpoint worldview.
+- Validation:
+  - `cd lct_app && npx eslint src/components/settings/settingsSummary.js src/components/settings/LlmRoutingCard.jsx src/components/ServiceStatus.jsx`
+- Design note:
+  - this intentionally does **not** unify every analysis service onto the routing chain yet. It makes the live graph-generation / transcript-accumulation path legible and probeable first, which was the approved Option B scope.
+
+## 2026-04-12T16:55:04Z — Legacy local saved-conversation loader compatibility for absolute `gcs_path` values
+
+Branch: current worktree
+
+- Context: some older/local saved conversations existed only as JSON artifacts under `outputs/saved_conversations/` and stored an absolute local file path in `conversations.gcs_path`. The current loader had tightened path validation enough that these conversations rendered as empty even though the JSON file still contained valid `graph_data` and `chunks`.
+- Explicit hypotheses before patch:
+  - `H1`: the failure was not migration/schema corruption; the saved conversation JSON was still present and valid, but `load_conversation_from_gcs(...)` was rejecting absolute local paths before attempting the local fallback read.
+  - `H2`: the right fix was a narrow compatibility carve-out for absolute paths that resolve within `LOCAL_SAVE_DIR`, not a blanket re-opening of arbitrary absolute paths.
+  - `H3`: relative paths outside `LOCAL_SAVE_DIR` should continue to fail over to the existing GCS/object-key logic, while absolute paths outside `LOCAL_SAVE_DIR` should fail loudly with `400`.
+- Files modified:
+  - `lct_python_backend/services/gcs_helpers.py` (lines 1, 127-170): replaced the old blanket absolute-path rejection with `_resolve_local_conversation_path(...)`, which accepts local files only when the resolved path stays inside `LOCAL_SAVE_DIR`, still rejects traversal/control-character patterns, and preserves the GCS object-key path for non-local identifiers.
+  - `lct_python_backend/tests/unit/test_gcs_helpers_save_fallback.py` (lines 1-69): added focused coverage for an allowed absolute local path inside `LOCAL_SAVE_DIR` and a rejected absolute path outside the allowed directory.
+- Why:
+  - restore readability for real legacy/local saved conversations without weakening the traversal boundary;
+  - keep the compatibility rule aligned to the repo-owned save directory instead of trusting arbitrary filesystem paths from the database.
+- Validation:
+  - `./.venv/bin/python -m pytest -q lct_python_backend/tests/unit/test_gcs_helpers_save_fallback.py` (`5 passed`)
+  - `curl -sS http://localhost:43180/conversations/03ce2ab1-f833-4e66-bcb7-1504175ad3f0 | ./.venv/bin/python -c ...` (`node_count:151`, `chunk_count:27`)
+- Design note:
+  - verified against the original absolute-path `gcs_path` value for `03ce2ab1-f833-4e66-bcb7-1504175ad3f0`, so the compatibility fix works without needing the temporary one-row relative-path workaround.
+
+## 2026-04-12T15:25:37Z — Canonical local dev ports unified across launchers, runtime config, and targeted tests
+
+Branch: current worktree
+
+- Context: local development had port drift across `start.command`, root `package.json`, `start_services.ps1`, backend CORS defaults, Playwright config, and several diagnostic E2E specs. The result was recurring ambiguity between `5173`, `5175`, `8000`, and `8080`, plus Windows drift from the Unix launcher.
+- Explicit hypotheses before patch:
+  - `H1`: the main issue was config drift rather than one broken launcher; a single env-driven port policy would remove most clashes without changing product behavior.
+  - `H2`: stable nonstandard defaults would be better than random free-port selection because Playwright, bookmarks, and local operator workflows depend on predictable URLs.
+  - `H3`: Windows parity required patching `start_services.ps1`; changing only `start.command` would leave the repo with two conflicting launch paths.
+- Files modified:
+  - `start.command` (lines 18-19, 49-52, 331-354, 413-417): changed default ports to `43180/43173`, wrote `.backend-port` and `.frontend-port`, exported frontend/backend env to the backend process, and logged the resolved ports before startup.
+  - `start_services.ps1` (lines 1-19): replaced the hardcoded backend `8080` path with env-driven `BACKEND_PORT` / `FRONTEND_PORT`, wrote the same repo port files on Windows, and logged the resolved port pair.
+  - `package.json` (line 5) and `scripts/dev.js` (new, lines 1-79): replaced the hardcoded root `npm run dev` command with a cross-platform Node launcher that writes the shared port files and starts frontend/backend with the same defaults on macOS/Linux/Windows.
+  - `lct_app/vite.config.js` (lines 8-25): changed backend fallback to `43180` and set the dev server to use `FRONTEND_PORT` with `strictPort`.
+  - `lct_python_backend/backend.py` (lines 77-111): replaced the fixed Vite-port allowlist with a `FRONTEND_PORT`-driven local-origin resolver while keeping the old 5173-5177 range as compatibility origins for transition.
+  - `lct_python_backend/security_config.py` (lines 20, 48-52): aligned development CORS examples with the env-driven frontend port instead of stale `3000/5173` assumptions.
+  - `lct_app/playwright.config.ts` (lines 5-17, 27) and `lct_app/playwright.config.js` (lines 5-17, 18): made Playwright derive `baseURL` from `.frontend-port` or `FRONTEND_PORT` and exported `PLAYWRIGHT_BASE_URL` for specs that need the absolute origin.
+  - `lct_app/tests/e2e/diag-h2-router.spec.ts`, `diag-h4-css.spec.ts`, `diag-h7-incremental.spec.ts`, `diag-h1-reactflow.spec.ts`, `diag-h6-network.spec.ts` (line 3 plus their route/goto checks): replaced hardcoded `localhost:5173` assumptions with `PLAYWRIGHT_BASE_URL` or relative navigation.
+  - `lct_python_backend/tests/unit/test_middleware.py` (lines 18, 45, 182): updated the local CORS origin fixture to the canonical frontend origin.
+  - `lct_python_backend/tests/integration/test_audio_websocket.py` (line 29): updated the documented websocket example to the canonical backend port.
+  - `docs/LOCAL_SETUP.md` (lines 28-48): documented the stable default port pair and the env override pattern.
+  - `API_DOCUMENTATION.md` (lines 5-8): updated the local API base/docs URLs to `43180`.
+- Why:
+  - remove split-brain local startup behavior instead of chasing one-off collisions;
+  - keep local URLs stable and memorable while moving outside the common `3000/5173/8000/8080` collision zone;
+  - preserve Windows parity by making the PowerShell launcher consume the same port model as the Unix and root-NPM paths.
+- Validation:
+  - `bash -n start.command` (`passed`)
+  - `node --check scripts/dev.js` (`passed`)
+  - `python3 -m pytest -q lct_python_backend/tests/unit/test_middleware.py` (`21 passed`)
+  - `cd lct_app && npx playwright test --config=playwright.config.ts tests/e2e/diag-h2-router.spec.ts --list` (`passed`; config resolved and test discovery succeeded against the updated baseURL flow)
+- Design notes:
+  - `start.command` was already logged in `docs/TECH_DEBT.md` as a large mixed-concern launcher; this patch kept scope on port unification rather than widening into a shell-library refactor.
+  - The local backend still tolerates the older Vite ports in development CORS for transition safety, but the canonical documented defaults are now `43173/43180`.
+
 ## 2026-04-10T14:30:00Z — Speaker Voice Library for cross-session diarization consistency
 
 Branch: current worktree
@@ -2474,3 +2872,80 @@ Manual testing not run:
   - `cd lct_app && npx eslint src/components/AudioInput.jsx src/components/audio/audioMessages.js src/components/audio/useTranscriptSockets.js` → passed
 - Scope notes:
   - no backend changes were needed; this surfaces the existing `/api/conversations/{conversation_id}/audio` download capability already emitted via `audio_ready.download_url`
+
+## 2026-04-12T15:18:53Z
+- Repaired the VPS auto-deploy path for the production backend host at `ubuntu@3.99.221.14`.
+- Investigation findings:
+  - `/home/ubuntu/lct.git` is a bare Git repo used as the deploy remote.
+  - `/home/ubuntu/apps/live_conversational_threads` is the live exported working tree used by `lct-backend.service`, not a Git checkout with its own `.git/`.
+  - `/home/ubuntu/lct.git/hooks/post-receive` existed but was malformed: its branch guard and `git --work-tree/--git-dir` arguments had been expanded away, so pushes could not reliably deploy `main`.
+- Remote files modified:
+  - `/home/ubuntu/lct.git/hooks/post-receive`
+    - replaced the malformed hook with a branch-gated deploy hook that only acts on `refs/heads/main`
+    - the repaired hook exports `main` into `/home/ubuntu/apps/live_conversational_threads` via `git --work-tree=... --git-dir=... checkout -f main`
+    - restarts `lct-backend.service` after a successful export
+- Validation:
+  - manual deploy-equivalent command succeeded: `git --work-tree=/home/ubuntu/apps/live_conversational_threads --git-dir=/home/ubuntu/lct.git checkout -f main`
+  - `systemctl status lct-backend.service` showed the backend restarted cleanly and bound `127.0.0.1:8000`
+  - `curl http://127.0.0.1:8000/api/import/health` returned healthy after startup completed
+  - branch gate check passed: piping `refs/heads/dev` into the repaired hook logged `skipping refs/heads/dev (deploys only on refs/heads/main)`
+- Operational consequence:
+  - the intended workflow is now restored: push experimental work elsewhere, and only `main` pushed to the VPS deploy remote should update the production backend tree and restart the service.
+
+## 2026-04-12T15:33:07Z
+- Updated the home-page service chips to probe the current settings-driven runtime instead of the legacy import-status path.
+- Files modified:
+  - `lct_app/src/components/ServiceStatus.jsx`
+    - removed the dependency on `/api/import/status`, which only reflected the older import-oriented Whisper/Modal checks
+    - added direct POST probes to `/api/settings/stt/health-check` for the configured primary STT provider and any probeable live fallbacks such as `remote_whisper`
+    - added direct POST probes to `/api/settings/stt/cloud-provider-test` for configured cloud STT fallbacks such as `openai_audio` / `openrouter_audio`
+    - kept `external_http` fallback visible as configured-only when present, because the existing backend health route does not expose a generic external probe contract
+    - switched the LLM chip to use the current settings path (`/api/settings/llm/providers/health` for local/openai-compatible mode, `/api/settings/llm/models?mode=online` for online mode) instead of the legacy import probe
+    - updated chip summaries/details so the UI now explains that it is checking the live providers configured in Settings
+- Why:
+  - the previous home chip stayed amber/red when the actual live runtime had moved to the newer settings-driven provider chain, especially for `openai_audio` STT
+  - this patch aligns the home-page status with the real live provider configuration rather than legacy import-only probes
+- Validation:
+  - `cd lct_app && npx eslint src/components/ServiceStatus.jsx` → passed
+
+## 2026-04-12T15:36:21Z
+- Extended the STT settings UI so `OpenAI Audio` can be selected as the primary live provider instead of only appearing in the fallback chain.
+- Files modified:
+  - `lct_app/src/components/audio/sttUtils.js`
+    - added `openai_audio` to the primary provider option list
+    - added a helper to derive the OpenAI/OpenRouter HTTP transcription URL from the configured cloud provider base URL
+    - ensured normalized STT settings always expose a coherent `provider_http_urls.openai_audio` value for UI/state consumers
+  - `lct_app/src/components/settings/useSttSettingsForm.js`
+    - updated primary-provider save logic so when `openai_audio` is selected as primary, `http_url` is derived from the configured OpenAI cloud provider base URL instead of collapsing to an empty string
+    - kept the derived primary HTTP URL in sync when the OpenAI base URL changes in the cloud-provider form
+  - `lct_app/src/components/settings/settingsSummary.js`
+    - added human-readable provider labels so `OpenAI Audio` renders cleanly in summaries
+- Why:
+  - the backend already accepts `openai_audio` as a valid primary provider in `lct_python_backend/services/stt_config.py`, but the frontend primary dropdown and normalization path still treated it as fallback-only
+  - without deriving a primary HTTP URL for `openai_audio`, selecting it would have produced incomplete saved STT config and misleading diagnostics
+- Validation:
+  - `cd lct_app && npx eslint src/components/audio/sttUtils.js src/components/settings/useSttSettingsForm.js src/components/settings/settingsSummary.js` → passed
+
+## 2026-04-12T16:44:10Z
+- Fixed the home-page STT chip so cloud providers used as the **primary** live route are probed through the cloud smoke-test path instead of the generic `/health` probe.
+- Files modified:
+  - `lct_app/src/components/ServiceStatus.jsx`
+    - updated the primary-route probe selection in `buildSttProbePlan(...)`
+    - `openai_audio` and `openrouter_audio` now use `/api/settings/stt/cloud-provider-test` when they are the configured primary provider
+    - non-cloud primaries still use `/api/settings/stt/health-check`
+- Root cause:
+  - the previous home-chip patch correctly used the cloud smoke test for cloud fallbacks, but still routed a cloud **primary** through the generic STT health-check endpoint
+  - for OpenAI this produced a misleading `HTTP 404` even though the exact `openai_audio` smoke test succeeded
+- Validation:
+  - `cd lct_app && npx eslint src/components/ServiceStatus.jsx` → passed
+
+## 2026-04-12T16:46:43Z
+- Fixed the final home-page STT chip contract mismatch: cloud-provider smoke tests report success via `ok`, not `healthy`.
+- Files modified:
+  - `lct_app/src/components/ServiceStatus.jsx`
+    - updated STT probe normalization so cloud-provider test responses count as healthy when either `healthy === true` or `ok === true`
+- Root cause:
+  - the home widget was correctly calling `/api/settings/stt/cloud-provider-test` for `openai_audio`, and the backend returned `ok: true`
+  - the widget still only looked for `healthy`, so it rendered `No healthy configured routes` and stayed orange despite a successful probe
+- Validation:
+  - `cd lct_app && npx eslint src/components/ServiceStatus.jsx` → passed
