@@ -45,6 +45,7 @@ from lct_python_backend.services.stt_settings_service import (
     load_stt_settings_for_client,
     save_stt_settings,
 )
+from lct_python_backend.services.session_observability import get_conversation_observability
 from lct_python_backend.services.stt_telemetry_service import aggregate_telemetry
 from lct_python_backend.services.stt_ws_session import WsSessionContext
 
@@ -192,6 +193,11 @@ async def read_stt_telemetry(
 ):
     stt_settings = await _load_stt_settings(session)
     return await aggregate_telemetry(session, limit, stt_settings)
+
+
+@router.get("/api/conversations/{conversation_id}/session-observability")
+async def read_conversation_session_observability(conversation_id: str):
+    return get_conversation_observability(conversation_id)
 
 
 # ---------------------------------------------------------------------------

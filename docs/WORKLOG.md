@@ -1,5 +1,44 @@
 # WORKLOG
 
+## 2026-04-14T13:45:00Z — Release candidate A: runtime alignment for live provider probes, stable local ports, and session observability
+
+Branch: `release/a-main-candidate`
+
+- Context: the production deploy path should take the lowest-risk runtime fixes first rather than the full dirty `dev` worktree. Slice A isolates the operational/runtime improvements that make provider routing more truthful, standardize local startup ports, and add session-scoped observability for debugging STT/graph failures.
+- Explicit hypotheses before staging:
+  - `H1`: the home service chips and STT settings needed to reflect the settings-driven runtime path, otherwise operators would continue debugging the wrong health surface.
+  - `H2`: stable nonstandard local ports (`43173/43180`) would remove recurring launcher drift without changing production behavior.
+  - `H3`: adding structured session observability to the websocket/audio path would improve incident investigation without changing core graph semantics.
+- Files included in slice A:
+  - `lct_app/src/components/ServiceStatus.jsx`
+  - `lct_app/src/components/audio/sttUtils.js`
+  - `lct_app/src/components/settings/LlmRoutingCard.jsx`
+  - `lct_app/src/components/settings/SttEndpointFields.jsx`
+  - `lct_app/src/components/settings/SttSettingsCard.jsx`
+  - `lct_app/src/components/settings/settingsSummary.js`
+  - `lct_app/src/components/settings/useSttSettingsForm.js`
+  - `lct_app/vite.config.js`
+  - `lct_python_backend/backend.py`
+  - `lct_python_backend/security_config.py`
+  - `lct_python_backend/services/stt_config.py`
+  - `lct_python_backend/services/audio_storage.py`
+  - `lct_python_backend/services/stt_ws_session.py`
+  - `lct_python_backend/services/session_observability.py`
+  - `lct_python_backend/stt_api.py`
+  - `lct_python_backend/tests/unit/test_middleware.py`
+  - `lct_python_backend/tests/unit/test_session_observability.py`
+  - `package.json`
+  - `scripts/dev.js`
+  - `start.command`
+  - `start_services.ps1`
+  - `docs/LOCAL_SETUP.md`
+  - `API_DOCUMENTATION.md`
+- Validation in the clean worktree:
+  - `'/Users/aditya/Documents/Ongoing Local/live_conversational_threads/.venv/bin/python' -m pytest -q lct_python_backend/tests/unit/test_middleware.py lct_python_backend/tests/unit/test_session_observability.py` (`22 passed`)
+  - `bash -n start.command`
+  - `node --check scripts/dev.js`
+  - `eslint` passed for the touched settings/status frontend files using the existing repo `node_modules`
+
 ## 2026-04-10T14:30:00Z — Speaker Voice Library for cross-session diarization consistency
 
 Branch: current worktree
