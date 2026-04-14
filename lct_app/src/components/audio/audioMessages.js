@@ -47,6 +47,23 @@ const createBackendMessageHandler =
         const sttReady = message.stt_ready !== false;
         onSessionAck?.(message);
         onSttProviderStateChange?.(sttReady ? "connected" : "error");
+        
+        // Handle quota info from session_ack
+        const quota = message.quota || {};
+        if (quota.quota_warning || !quota.quota_allowed) {
+          const level = quota.quota_allowed ? "warning" : "error";
+          const detail = quota.quota_message || (quota.quota_allowed 
+            ? "Approaching daily usage limit" 
+            : "Daily usage limit exceeded");
+          emitProcessingStatus(level, detail, {
+            stage: "quota",
+            code: quota.quota_allowed ? "quota_warning" : "quota_exceeded",
+            remaining_minutes: quota.quota_remaining_minutes,
+            limit_minutes: quota.quota_limit_minutes,
+            percent_used: quota.quota_percent_used,
+          });
+        }
+        
         logToServer?.(
           `Session ack: ${message.conversation_id || "-"} (provider=${
             message.provider || "unknown"
