@@ -137,7 +137,7 @@ export default function NewConversation() {
         lines: liveTranscriptState.liveTranscriptLines,
         statusText: liveTranscriptState.recording
           ? (liveTranscriptState.statusLine || "Live transcript")
-          : "Session paused",
+          : "Session draft",
         etaText: "",
         progress: null,
       };
@@ -462,10 +462,11 @@ export default function NewConversation() {
     }
   }, [persistSessionArtifact, resetForNewConversation]);
 
-  const handleDiscardCurrentSession = useCallback(() => {
+  const handleDiscardCurrentSession = useCallback(async () => {
+    await clearAvailableDraft();
     resetForNewConversation();
     setMessage("Discarded the current session draft.");
-  }, [resetForNewConversation]);
+  }, [resetForNewConversation, clearAvailableDraft]);
 
   const handleSaveRecoveredDraft = useCallback(async () => {
     if (recoveredDraftSaveState === "saving") {
@@ -591,10 +592,10 @@ export default function NewConversation() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
           <div className="bg-white rounded-lg shadow-lg p-5 max-w-xs text-center space-y-3">
             <p className="text-sm text-gray-700">
-              End this recording?
+              Leave this session draft?
             </p>
             <p className="text-xs text-gray-400 mt-1">
-              Auto-save is active. If cloud storage is unavailable, local fallback is used.
+              Auto-save is active. Save the draft before leaving if you want a stable conversation artifact.
             </p>
             <div className="flex gap-2 justify-center">
               <button
@@ -607,7 +608,7 @@ export default function NewConversation() {
                 onClick={handleConfirmBack}
                 className="px-4 py-3 text-sm bg-gray-800 text-white rounded-md hover:bg-gray-700 transition"
               >
-                End & Exit
+                Save & Exit
               </button>
             </div>
           </div>
@@ -615,11 +616,11 @@ export default function NewConversation() {
       )}
 
       {!isCheckingDraft && availableDraftSummary && !hasRecoverableLocalState && (
-        <div className="absolute top-4 left-1/2 z-20 w-[min(92vw,30rem)] -translate-x-1/2 rounded-2xl border border-amber-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
-          <div className="flex items-start justify-between gap-4">
+        <div className="absolute top-4 left-1/2 z-20 w-[min(92vw,30rem)] -translate-x-1/2 rounded-2xl border border-amber-200 bg-white/95 px-5 py-4 shadow-lg backdrop-blur">
+          <div className="flex flex-col gap-3">
             <div className="min-w-0">
               <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-amber-600">
-                Local Draft
+                Recovered Draft
               </p>
               <h2 className="mt-1 truncate text-sm font-semibold text-slate-800">
                 {availableDraftSummary.title}
@@ -643,7 +644,7 @@ export default function NewConversation() {
                 </p>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {audioRecovery?.download_url && (
                 <a
                   href={audioRecovery.download_url}
@@ -672,19 +673,19 @@ export default function NewConversation() {
                 onClick={handleStartNewConversation}
                 className="rounded-full px-3 py-1.5 text-xs text-slate-600 transition hover:text-slate-800"
               >
-                Start New
+                Start New Session
               </button>
               <button
                 onClick={handleDiscardLocalDraft}
-                className="rounded-full px-3 py-1.5 text-xs text-slate-500 transition hover:text-slate-700"
+                className="rounded-full px-3 py-1.5 text-xs text-slate-400 transition hover:text-red-600"
               >
                 Discard
               </button>
               <button
                 onClick={handleResumeLocalDraft}
-                className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-700"
+                className="rounded-full bg-slate-900 px-4 py-1.5 text-xs font-medium text-white transition hover:bg-slate-700 ml-auto"
               >
-                Resume
+                Restore
               </button>
             </div>
           </div>
@@ -775,7 +776,7 @@ export default function NewConversation() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-0 flex-1">
                 <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
-                  Session Ready
+                  Session Draft
                 </p>
                 <p className="mt-1 text-sm text-slate-600">
                   Recording has stopped. Name this conversation, then save and exit or start the next one.
@@ -803,7 +804,7 @@ export default function NewConversation() {
                   disabled={Boolean(sessionActionBusy)}
                   className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-500 transition hover:border-slate-300 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Discard
+                  Discard Draft
                 </button>
                 <button
                   type="button"
