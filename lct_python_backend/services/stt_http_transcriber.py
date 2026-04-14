@@ -152,7 +152,11 @@ def _summarize_exception(exc: Exception) -> Dict[str, Any]:
     if isinstance(exc, httpx.HTTPStatusError):
         response = exc.response
         status_code = response.status_code if response is not None else None
-        body_preview = _preview_text(response.text if response is not None else "")
+        body_preview = ""
+        try:
+            body_preview = _preview_text(response.text if response is not None else "")
+        except Exception as read_exc:
+            logger.warning("[STT] Failed to read response body: %s", read_exc)
         reason_phrase = ""
         if response is not None:
             reason_phrase = str(getattr(response, "reason_phrase", "") or "").strip()
@@ -1081,7 +1085,8 @@ class RealtimeHttpSttSession:
         
         # OpenAI supports streaming for already completed audio recordings.
         # This is useful for low-latency feedback even for chunks.
-        should_stream = model in {"gpt-4o-mini-transcribe", "gpt-4o-transcribe"} and not request_diarization
+        # DISABLED: streaming causes httpx issues with error handling and fallback chain
+        should_stream = False  # model in {"gpt-4o-mini-transcribe", "gpt-4o-transcribe"} and not request_diarization
         
         response_format = "diarized_json" if request_diarization else "json"
         form_data = {
