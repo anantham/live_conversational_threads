@@ -157,6 +157,7 @@ const AudioInput = forwardRef(function AudioInput({
     setDetailOpen,
     statusLine,
     stt: liveStt,
+    quotaWarning,
   } = useLiveSessionStatus({
     recording,
     providerSocketState,
@@ -520,6 +521,7 @@ const AudioInput = forwardRef(function AudioInput({
         statusLine={statusLine}
         stt={liveStt}
         uploadState={uploadCtx}
+        quotaWarning={quotaWarning}
       />
 
       {!recording && audioDownloadUrl && (

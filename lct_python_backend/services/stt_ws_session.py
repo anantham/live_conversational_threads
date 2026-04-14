@@ -34,6 +34,7 @@ from lct_python_backend.services.byok_session_store import (
     ByokSessionLookupError,
 )
 from lct_python_backend.services.live_graph_persistence import persist_live_graph_snapshot
+from lct_python_backend.services.quota_service import QuotaService
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
 from lct_python_backend.services.speaker_naming_service import is_confirmed_speaker_name
 from lct_python_backend.services.speaker_voice_library import get_speaker_audio_references
@@ -2059,6 +2060,32 @@ class WsSessionContext:
             runtime_start_error or "-",
         )
 
+        # Check quota before allowing session
+        quota_info = {}
+        owner_id = str((self.state.metadata or {}).get("owner_id") or "anonymous")
+        is_byok = bool(byok_session and byok_session.get("api_key"))
+        
+        try:
+            quota_service = QuotaService(self.session)
+            quota_result = await quota_service.check_quota(
+                owner_id=owner_id,
+                quota_type="stt_live",
+                is_byok=is_byok,
+            )
+            quota_info = {
+                "quota_allowed": quota_result.allowed,
+                "quota_remaining_minutes": quota_result.remaining_minutes,
+                "quota_limit_minutes": quota_result.limit_minutes,
+                "quota_percent_used": quota_result.percent_used,
+                "quota_warning": quota_result.warning,
+                "quota_message": quota_result.message,
+            }
+            if not quota_result.allowed:
+                logger.warning("[WS][QUOTA] session=%s owner=%s quota exceeded - blocking session", 
+                    self.state.session_id, owner_id)
+        except Exception as quota_exc:
+            logger.warning("[WS][QUOTA] session=%s quota check failed: %s", self.state.session_id, quota_exc)
+
         await self.websocket.send_json({
             "type": "session_ack",
             "conversation_id": conversation_id,
@@ -2074,6 +2101,7 @@ class WsSessionContext:
             "stt_mode": self._runtime_mode(),
             "stt_ready": bool(self.stt_runtime.is_ready()),
             "runtime_error": runtime_start_error,
+            "quota": quota_info,
             "background_refinement": {
                 "enabled": bool(self.refinement_candidate),
                 "provider": str((self.refinement_candidate or {}).get("provider") or "") or None,

@@ -38,6 +38,7 @@ export default function LiveSessionHud({
   statusLine,
   stt,
   uploadState,
+  quotaWarning,
 }) {
   const [hoveredSection, setHoveredSection] = useState(null);
 
@@ -100,8 +101,47 @@ export default function LiveSessionHud({
     ? [uploadState?.statusText, uploadState?.etaText].filter(Boolean).join(" · ") || "Upload in progress"
     : statusLine;
 
+  // Build quota warning banner
+  const showQuotaWarning = quotaWarning && (!quotaWarning.allowed || quotaWarning.remaining_minutes <= 2);
+  const quotaMessage = quotaWarning?.message || "";
+  const quotaLink = !quotaWarning?.allowed 
+    ? " · Add your key → " 
+    : "";
+  const settingsUrl = "/settings/stt";
+
   return (
     <div className="relative min-w-[18rem] max-w-[34rem]">
+      {/* Quota Warning Banner */}
+      {showQuotaWarning && (
+        <div className={`mb-2 rounded-lg px-3 py-2 text-xs text-center ${
+          quotaWarning.allowed 
+            ? "bg-amber-50 border border-amber-200 text-amber-700" 
+            : "bg-red-50 border border-red-200 text-red-700"
+        }`}>
+          {quotaMessage}
+          {!quotaWarning.allowed && (
+            <a 
+              href={settingsUrl} 
+              className="ml-1 font-semibold underline hover:text-amber-800"
+            >
+              Add API Key
+            </a>
+          )}
+          {!quotaWarning.allowed && (
+            <span className="ml-1">
+              or get one at{" "}
+              <a 
+                href="https://platform.openai.com/api-keys" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="font-semibold underline"
+              >
+                platform.openai.com
+              </a>
+            </span>
+          )}
+        </div>
+      )}
       {showDetailPanel && (
         <div className="absolute bottom-full left-0 z-30 mb-3 w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur">
           {showCombinedView ? (
@@ -200,5 +240,12 @@ LiveSessionHud.propTypes = {
     statusText: PropTypes.string,
     etaText: PropTypes.string,
     sttBackend: PropTypes.string,
+  }),
+  quotaWarning: PropTypes.shape({
+    allowed: PropTypes.bool,
+    remaining_minutes: PropTypes.number,
+    limit_minutes: PropTypes.number,
+    percent_used: PropTypes.number,
+    message: PropTypes.string,
   }),
 };

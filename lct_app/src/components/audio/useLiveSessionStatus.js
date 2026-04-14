@@ -96,6 +96,7 @@ export default function useLiveSessionStatus({
     updatedUtterances: null,
   });
   const [detailOpen, setDetailOpen] = useState(false);
+  const [quotaWarning, setQuotaWarning] = useState(null);
 
   const graphStartedAtRef = useRef(null);
   const lastSpeechSignalAtRef = useRef(null);
@@ -197,6 +198,21 @@ export default function useLiveSessionStatus({
     setSessionAck(message || null);
     setLastServerMessageAtMs(Date.now());
     setLastProviderError("");
+    
+    // Handle quota info from session_ack
+    const quota = message?.quota || {};
+    if (quota.quota_warning || !quota.quota_allowed) {
+      setQuotaWarning({
+        allowed: quota.quota_allowed,
+        remaining_minutes: quota.quota_remaining_minutes,
+        limit_minutes: quota.quota_limit_minutes,
+        percent_used: quota.quota_percent_used,
+        message: quota.quota_message,
+      });
+    } else {
+      setQuotaWarning(null);
+    }
+    
     if (message?.background_refinement?.enabled) {
       setBackgroundRefinementPhase("ready");
       setLastBackgroundRefinementError("");
@@ -891,5 +907,6 @@ export default function useLiveSessionStatus({
     setDetailOpen,
     statusLine: summary,
     stt,
+    quotaWarning,
   };
 }
