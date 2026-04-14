@@ -138,6 +138,8 @@ def _classify_http_status(status_code: Optional[int], response_text: str = "") -
             return "quota_exceeded"
         return "rate_limited"
     if status_code == 400:
+        if "invalid_api_key" in preview or "incorrect api key" in preview:
+            return "auth_failed"
         return "bad_request"
     if status_code == 404:
         return "not_found"
@@ -153,21 +155,35 @@ def _summarize_exception(exc: Exception) -> Dict[str, Any]:
         response = exc.response
         status_code = response.status_code if response is not None else None
         body_preview = ""
+        error_type = _classify_http_status(status_code, "")
+        
+        # Try to read response body for better error messages
         try:
-            body_preview = _preview_text(response.text if response is not None else "")
+            if response is not None:
+                body_preview = _preview_text(response.text if response is not None else "")
+                # Re-classify based on actual body content
+                if status_code == 400 and body_preview:
+                    error_type = _classify_http_status(status_code, body_preview)
         except Exception as read_exc:
             logger.warning("[STT] Failed to read response body: %s", read_exc)
+        
         reason_phrase = ""
         if response is not None:
             reason_phrase = str(getattr(response, "reason_phrase", "") or "").strip()
+        
         status_label = f"HTTP {status_code}" if status_code is not None else "HTTP error"
         if reason_phrase:
             status_label = f"{status_label} {reason_phrase}"
+        
+        # Add helpful hint for auth failures
         detail = status_label
         if body_preview:
             detail = f"{detail}: {body_preview}"
+        if error_type == "auth_failed":
+            detail = f"{detail} - Check your API key is valid and not expired"
+        
         return {
-            "error_type": _classify_http_status(status_code, body_preview),
+            "error_type": error_type,
             "status_code": status_code,
             "body_preview": body_preview,
             "detail": detail,
