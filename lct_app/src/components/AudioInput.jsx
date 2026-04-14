@@ -285,6 +285,32 @@ const AudioInput = forwardRef(function AudioInput({
     wasRecording.current = recording;
   }, [recording]);
 
+  // Stop recording on unmount to prevent background audio capture
+  useEffect(() => {
+    return () => {
+      if (recording) {
+        console.warn("[AudioInput] Component unmounting while recording - stopping capture");
+        stopCapture();
+        stopSession();
+        resetSession();
+      }
+    };
+  }, [recording, stopCapture, stopSession, resetSession]);
+
+  // Also stop recording when user navigates away or closes tab
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      if (recording) {
+        e.preventDefault();
+        stopCapture();
+        stopSession();
+        resetSession();
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [recording, stopCapture, stopSession, resetSession]);
+
   useEffect(() => {
     onLiveTranscriptStateChange?.({
       recording,
