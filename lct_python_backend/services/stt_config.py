@@ -23,6 +23,7 @@ DEFAULT_OPENAI_AUDIO_MODEL = "gpt-4o-mini-transcribe"
 DEFAULT_OPENAI_AUDIO_DIARIZE_MODEL = "gpt-4o-transcribe-diarize"
 DEFAULT_OPENROUTER_AUDIO_BASE_URL = "https://openrouter.ai/api"
 DEFAULT_OPENROUTER_AUDIO_MODEL = "google/gemini-2.5-flash"
+DEFAULT_HTTP_LANGUAGE = "en"
 
 
 def _normalize_provider(value: Any) -> str:
@@ -314,7 +315,7 @@ def get_env_stt_defaults() -> Dict[str, Any]:
         "http_chunk_seconds": coerce_str(os.getenv("STT_HTTP_CHUNK_SECONDS", "1.2")),
         "http_timeout_seconds": coerce_str(os.getenv("STT_HTTP_TIMEOUT_SECONDS", "30")),
         "http_model": coerce_str(os.getenv("STT_HTTP_MODEL", "")),
-        "http_language": coerce_str(os.getenv("STT_HTTP_LANGUAGE", "")),
+        "http_language": coerce_str(os.getenv("STT_HTTP_LANGUAGE", DEFAULT_HTTP_LANGUAGE)),
         "sample_rate_hz": coerce_str(os.getenv("STT_SAMPLE_RATE_HZ", "16000")),
         "retention": os.getenv("STT_RETENTION_POLICY", "forever"),
         "audio_recordings_dir": os.getenv(
@@ -395,4 +396,5 @@ def merge_stt_config(overrides: Dict[str, Any]) -> Dict[str, Any]:
     if not active_provider_http_url:
         active_provider_http_url = coerce_str(config.get("http_url"))
     config["http_url"] = active_provider_http_url
+    config["http_language"] = coerce_str(config.get("http_language") or DEFAULT_HTTP_LANGUAGE)
     return config

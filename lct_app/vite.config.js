@@ -3,8 +3,8 @@ import react from "@vitejs/plugin-react-swc";
 import tailwindcss from "@tailwindcss/vite";
 import fs from "fs";
 
-// Backend port discovery: read from .backend-port file (written by start.sh),
-// fall back to VITE_BACKEND_PORT env var, then default 8000.
+// Backend port discovery: read from .backend-port (written by the repo launchers),
+// fall back to VITE_BACKEND_PORT env var, then default 43180.
 function resolveBackendPort() {
   try {
     const portFile = new URL("../.backend-port", import.meta.url);
@@ -13,7 +13,7 @@ function resolveBackendPort() {
   } catch {
     // file doesn't exist — use fallback
   }
-  return Number(process.env.VITE_BACKEND_PORT) || 8000;
+  return Number(process.env.VITE_BACKEND_PORT) || 43180;
 }
 
 const backendPort = resolveBackendPort();
@@ -22,6 +22,8 @@ const backendPort = resolveBackendPort();
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    port: Number(process.env.FRONTEND_PORT) || 43173,
+    strictPort: true,
     proxy: {
       // Proxy all backend routes to the Python backend — eliminates CORS in dev.
       // Routes are mixed: /api/..., /conversations/..., /save_json/, /export/..., etc.

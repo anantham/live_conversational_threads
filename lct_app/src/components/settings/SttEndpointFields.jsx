@@ -2,6 +2,17 @@ import PropTypes from "prop-types";
 
 import { STT_PROVIDER_OPTIONS } from "../audio/sttUtils";
 
+const STT_LANGUAGE_OPTIONS = [
+  { value: "en", label: "English" },
+  { value: "hi", label: "Hindi" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "de", label: "German" },
+  { value: "zh", label: "Chinese" },
+  { value: "ja", label: "Japanese" },
+  { value: "ko", label: "Korean" },
+];
+
 export default function SttEndpointFields({
   form,
   onChange,
@@ -24,13 +35,20 @@ export default function SttEndpointFields({
 
         <label className="space-y-1 text-sm text-gray-700">
           <span>Language hint</span>
-          <input
-            type="text"
+          <select
             value={form?.http_language || ""}
             onChange={onChange("http_language")}
             className="w-full rounded border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500"
-            placeholder="e.g. en, hi (blank = auto-detect)"
-          />
+          >
+            {STT_LANGUAGE_OPTIONS.map((option) => (
+              <option key={`${option.value || "auto"}-${option.label}`} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-gray-500">
+            Default is English for live and upload STT requests.
+          </p>
         </label>
 
         <label className="space-y-1 text-sm text-gray-700">

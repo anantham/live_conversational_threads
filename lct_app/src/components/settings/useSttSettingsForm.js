@@ -6,6 +6,7 @@ import {
   updateSttSettings,
 } from "../../services/sttSettingsApi";
 import {
+  buildCloudProviderHttpUrl,
   normalizeLiveFallbackPriority,
   normalizeProvider,
   normalizeSttSettings,
@@ -29,6 +30,18 @@ export default function useSttSettingsForm() {
   const [error, setError] = useState(null);
   const [feedback, setFeedback] = useState(null);
   const [cloudProviderChecks, setCloudProviderChecks] = useState({});
+
+  const resolvePrimaryProviderHttpUrl = useCallback((draft, providerId) => {
+    if (providerId === "openai_audio") {
+      return (
+        buildCloudProviderHttpUrl(
+          "openai_audio",
+          draft?.cloud_fallback_providers?.openai_audio,
+        ) || draft?.provider_http_urls?.openai_audio || ""
+      );
+    }
+    return draft?.provider_http_urls?.[providerId] || "";
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +84,7 @@ export default function useSttSettingsForm() {
       const payload = {
         ...normalized,
         ws_url: normalized.provider_urls?.[normalized.provider] || normalized.ws_url,
+        http_url: resolvePrimaryProviderHttpUrl(normalized, normalized.provider),
       };
       const updated = await updateSttSettings(payload);
       const updatedNormalized = normalizeSttSettings(updated);
@@ -89,7 +103,7 @@ export default function useSttSettingsForm() {
     } finally {
       setSaving(false);
     }
-  }, []);
+  }, [resolvePrimaryProviderHttpUrl]);
 
   const handleSave = useCallback(async () => {
     await saveForm(form);
@@ -156,11 +170,11 @@ export default function useSttSettingsForm() {
         const normalizedProvider = normalizeProvider(value);
         next.provider = normalizedProvider;
         next.ws_url = next.provider_urls?.[normalizedProvider] || "";
-        next.http_url = next.provider_http_urls?.[normalizedProvider] || "";
+        next.http_url = resolvePrimaryProviderHttpUrl(next, normalizedProvider);
       }
       return next;
     });
-  }, []);
+  }, [resolvePrimaryProviderHttpUrl]);
 
   const handleProviderUrlChange = useCallback((providerId) => (event) => {
     const value = event.target.value;
@@ -187,10 +201,19 @@ export default function useSttSettingsForm() {
       },
       http_url:
         normalizeProvider(prev?.provider) === providerId
-          ? value
+          ? resolvePrimaryProviderHttpUrl(
+              {
+                ...(prev || {}),
+                provider_http_urls: {
+                  ...(prev?.provider_http_urls || {}),
+                  [providerId]: value,
+                },
+              },
+              providerId,
+            )
           : prev?.http_url || "",
     }));
-  }, []);
+  }, [resolvePrimaryProviderHttpUrl]);
 
   const handleCloudFallbackFlagChange = useCallback((key) => (event) => {
     const checked = Boolean(event.target.checked);
@@ -207,22 +230,44 @@ export default function useSttSettingsForm() {
         clearCloudProviderCheck(providerId);
         setForm((prev) => {
           const currentProvider = prev?.cloud_fallback_providers?.[providerId] || {};
+          const nextCloudProviders = {
+            ...(prev?.cloud_fallback_providers || {}),
+            [providerId]: {
+              ...currentProvider,
+              [field]: value,
+              ...(field === "api_key" && String(value || "").trim()
+                ? { clear_api_key: false }
+                : {}),
+            },
+          };
+          const nextProviderHttpUrls = {
+            ...(prev?.provider_http_urls || {}),
+          };
+          if (providerId === "openai_audio" && field === "base_url") {
+            nextProviderHttpUrls.openai_audio = buildCloudProviderHttpUrl(
+              "openai_audio",
+              nextCloudProviders.openai_audio,
+            );
+          }
           return {
             ...(prev || {}),
-            cloud_fallback_providers: {
-              ...(prev?.cloud_fallback_providers || {}),
-              [providerId]: {
-                ...currentProvider,
-                [field]: value,
-                ...(field === "api_key" && String(value || "").trim()
-                  ? { clear_api_key: false }
-                  : {}),
-              },
-            },
+            cloud_fallback_providers: nextCloudProviders,
+            provider_http_urls: nextProviderHttpUrls,
+            http_url:
+              normalizeProvider(prev?.provider) === providerId
+                ? resolvePrimaryProviderHttpUrl(
+                    {
+                      ...(prev || {}),
+                      cloud_fallback_providers: nextCloudProviders,
+                      provider_http_urls: nextProviderHttpUrls,
+                    },
+                    providerId,
+                  )
+                : prev?.http_url || "",
           };
         });
       },
-    [clearCloudProviderCheck],
+    [clearCloudProviderCheck, resolvePrimaryProviderHttpUrl],
   );
 
   const handleCloudProviderClearToggle = useCallback((providerId) => (event) => {

@@ -34,11 +34,18 @@ What it does:
 - Keeps both processes attached until `Ctrl+C`, then shuts both down.
 - Prints a quick STT endpoint status summary (legacy WS + known HTTP services).
 - Prints local LLM endpoint status (`$LOCAL_LLM_BASE_URL/v1/models`) and active mode.
+- Uses stable local defaults `FRONTEND_PORT=43173` and `BACKEND_PORT=43180`, with env overrides when needed.
 
 If migrations are already applied and Alembic history is temporarily inconsistent, skip migration execution for that run:
 
 ```bash
 SKIP_MIGRATIONS=1 ./start.command
+```
+
+Override ports explicitly for one run:
+
+```bash
+FRONTEND_PORT=44173 BACKEND_PORT=44180 ./start.command
 ```
 
 ## Shared STT Autostart
