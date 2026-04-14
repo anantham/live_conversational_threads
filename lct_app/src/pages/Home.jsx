@@ -69,7 +69,7 @@ export default function Home() {
           <span className="text-xs text-gray-500 group-hover:text-gray-700 transition">New</span>
           {draftSummary && (
             <span className="text-[10px] font-medium text-amber-600 group-hover:text-amber-700 transition">
-              Resume available
+              Draft available
             </span>
           )}
         </button>

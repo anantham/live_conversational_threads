@@ -20,6 +20,18 @@ import useMicDevices from "./audio/useMicDevices";
 const LIVE_TRANSCRIPT_MAX_LINES = 240;
 const SESSION_EVENT_LIMIT = 600;
 
+function isAudioDebugEnabled() {
+  if (!import.meta.env.DEV || typeof window === "undefined") {
+    return false;
+  }
+  return window.__LCT_DEBUG_AUDIO === true;
+}
+
+function logAudioDebug(event, payload = {}) {
+  if (!isAudioDebugEnabled()) return;
+  console.log(`[AudioInput] ${event}`, payload);
+}
+
 function calculateConfidence(logprobs) {
   if (!logprobs || !Array.isArray(logprobs) || logprobs.length === 0) return 1.0;
   // Use minimum confidence as the most conservative estimate for the "uncertainty" trigger
@@ -328,9 +340,23 @@ const AudioInput = forwardRef(function AudioInput({
   }, [processingError]);
 
   // --- Orchestration ---
+  const isStartingRef = useRef(false);
+
   const startRecording = useCallback(async () => {
-    if (recording) return;
+    if (recording || isStartingRef.current) {
+      logAudioDebug("start_ignored", { recording, starting: isStartingRef.current });
+      return;
+    }
+    isStartingRef.current = true;
     const activeSettings = normalizeSttSettings(sttSettings || {});
+    logAudioDebug("start_requested", {
+      provider: activeSettings?.provider || null,
+      local_only: activeSettings?.local_only !== false,
+      store_audio: Boolean(activeSettings?.store_audio),
+      live_fallback_priority: Array.isArray(activeSettings?.live_fallback_priority)
+        ? activeSettings.live_fallback_priority
+        : [],
+    });
     resetSession();
     sessionStartedAtRef.current = new Date().toISOString();
     sessionEndedAtRef.current = null;
@@ -343,18 +369,31 @@ const AudioInput = forwardRef(function AudioInput({
     setProviderSocketState("connecting");
     setBackendSocketState("connecting");
     const captureStarted = await startCapture(micDeviceId);
+    logAudioDebug("capture_result", {
+      captureStarted,
+      hasSelectedMic: Boolean(micDeviceId),
+    });
+    
     if (captureStarted) {
       // Refresh device labels — browser only populates labels after permission is granted
       refreshMicDevices();
     }
     if (!captureStarted) {
+      logAudioDebug("capture_failed");
       setProviderSocketState("idle");
       setBackendSocketState("idle");
+      isStartingRef.current = false;
       return;
     }
 
     const sessionId = crypto.randomUUID();
     const newConversationId = crypto.randomUUID();
+    logAudioDebug("session_start", {
+      sessionId,
+      conversationId: newConversationId,
+      provider: activeSettings?.provider || null,
+      store_audio: Boolean(activeSettings?.store_audio),
+    });
     appendSessionEvent("session_start_requested", {
       conversation_id: newConversationId,
       session_id: sessionId,
@@ -381,6 +420,7 @@ const AudioInput = forwardRef(function AudioInput({
   ]);
 
   const stopRecording = useCallback(async () => {
+    isStartingRef.current = false;
     appendSessionEvent("session_stop_requested", {
       conversation_id: conversationId || null,
     });
@@ -466,6 +506,9 @@ const AudioInput = forwardRef(function AudioInput({
             <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
           )}
         </button>
+        <span className="ml-2 text-xs font-medium text-slate-500 select-none">
+          {recording ? "Stop Recording" : "Start Recording"}
+        </span>
 
         {/* Device picker chevron — only shown when not recording and multiple devices exist */}
         {!recording && micDevices.length > 1 && (
