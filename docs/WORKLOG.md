@@ -1,5 +1,59 @@
 # WORKLOG
 
+## 2026-04-14T19:40:20Z — Finished the remaining product-facing ADR-028 terminology cleanup
+
+Branch: `dev`
+
+- Context: after the broader terminology pass, three product-facing mismatches still remained in `/new`: the live transcript overlay said `Session paused`, the back dialog still used `End this recording? / End & Exit`, and the mic control exposed `Start/Stop recording` only via tooltip/ARIA rather than visible UI text.
+- Explicit hypotheses before patch:
+  - `H1`: these remaining labels were the last visible contradictions to the ADR-028 state model in the active `/new` flow.
+  - `H2`: changing them would improve conceptual clarity without requiring any behavior or backend changes.
+  - `H3`: adding a small visible start/stop label beside the icon button would make the control understandable without sacrificing the minimal layout.
+- Files modified:
+  - `lct_app/src/pages/NewConversation.jsx` (lines 140, 594-610): changed the stopped live overlay label from `Session paused` to `Session draft`, and updated the leave dialog copy to `Leave this session draft?` with a `Save & Exit` primary action.
+  - `lct_app/src/components/AudioInput.jsx` (lines 468-481): added a visible `Start Recording` / `Stop Recording` label next to the mic control.
+- Why:
+  - remove the last user-facing pause/resume implication from the current live conversation flow;
+  - make the primary recording control legible without relying on hover state.
+- Validation:
+  - `cd lct_app && npx eslint src/pages/NewConversation.jsx src/components/AudioInput.jsx`
+
+## 2026-04-14T19:37:34Z — Aligned Home and `/new` terminology to ADR-028 draft/session language
+
+Branch: `dev`
+
+- Context: after documenting ADR-028, the remaining product mismatch was visible copy: Home still advertised `Resume available`, the recovered-draft banner on `/new` still said `Local Draft`, and action labels still used ambiguous `Resume`/generic `Discard` wording even though the documented model distinguishes `Recovered Draft`, `Restore Draft`, and `Session Draft`.
+- Explicit hypotheses before patch:
+  - `H1`: the most important confusion was caused by a few high-surface labels rather than deeper behavior, so a targeted copy pass would materially improve conceptual clarity without changing any runtime logic.
+  - `H2`: Home and `/new` should use `Draft` language for recoverable browser state and reserve `Resume` for future true runtime continuation.
+  - `H3`: the stopped-session tray title should say `Session Draft` so the current unsaved work is clearly distinguished from a recovered draft.
+- Files modified:
+  - `lct_app/src/pages/Home.jsx` (line 72): changed the home badge from `Resume available` to `Draft available`.
+  - `lct_app/src/pages/NewConversation.jsx` (lines 622, 675, 681, 687, 778, 806): renamed the recovered-draft banner and actions to `Recovered Draft`, `Start New Session`, `Discard Draft`, and `Restore Draft`, and changed the stopped-session tray title from `Session Ready` to `Session Draft`.
+- Why:
+  - make visible product language match ADR-028 without implying unsupported pause/resume semantics;
+  - distinguish recoverable local draft state from the current stopped session draft.
+- Validation:
+  - `cd lct_app && npx eslint src/pages/Home.jsx src/pages/NewConversation.jsx`
+
+## 2026-04-14T22:20:00Z — Timeline ribbon now stops auto-scrolling after manual user scroll
+
+Branch: `main`
+
+- Context: the user reported that the bottom timeline kept shifting whenever a new node was inserted into the live graph, making it hard to inspect earlier content. The likely culprit was the ribbon, not the main graph viewport, because the ribbon explicitly auto-scrolled to the end on every new node insertion.
+- Explicit hypotheses before patch:
+  - `H1`: the distracting movement was caused by `TimelineRibbon.jsx` unconditionally forcing `scrollLeft = scrollWidth` whenever `latestChunk.length` changed and no node was selected.
+  - `H2`: the cleanest fix was to keep follow-live behavior only until the user manually scrolls the ribbon, then stop auto-following until they naturally return to the end.
+  - `H3`: this could be fixed entirely in the ribbon without touching the much larger `MinimalGraph.jsx`, reducing regression risk.
+- Files modified:
+  - `lct_app/src/components/TimelineRibbon.jsx` (lines 1-114): added follow-live state plus programmatic-scroll guarding so new nodes auto-scroll only while the ribbon is still in live-follow mode; manual user scroll now disables auto-follow, and scrolling back near the end re-enables it.
+- Why:
+  - preserve the useful “follow live” behavior at session start;
+  - stop fighting the user once they intentionally scroll away from the newest nodes;
+  - avoid riskier viewport changes in the main graph while directly addressing the reported symptom.
+- Validation:
+  - Pending user verification in the live `/new` flow with incoming nodes.
+
 ## 2026-04-14T14:36:24Z — Documented the live-session state model and terminology contract
 
 Branch: `dev`
