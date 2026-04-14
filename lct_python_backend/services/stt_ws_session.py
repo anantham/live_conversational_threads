@@ -2112,7 +2112,7 @@ class WsSessionContext:
                     for candidate in stt_candidates
                 ],
             },
-        )
+)
         await start_thread_session(
             self.session,
             conversation_id=self.state.conversation_id,
