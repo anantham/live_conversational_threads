@@ -13,6 +13,7 @@ import copy
 import json
 import logging
 import time
+import traceback
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -64,6 +65,11 @@ from lct_python_backend.services.stt_ws_helpers import (
     send_processor_update as _send_processor_update_helper,
     should_emit_final_segment as _should_emit_final_segment,
     ws_is_connected as _ws_is_connected,
+)
+from lct_python_backend.services.session_observability import (
+    finish_session as finish_observed_session,
+    record_event as record_observability_event,
+    start_session as start_observed_session,
 )
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
 
@@ -279,6 +285,14 @@ class WsSessionContext:
                         persisted,
                         _elapsed_ms(started_at),
                     )
+                    self._record_observability_event(
+                        event_type="graph_persist",
+                        stage="graph_persist",
+                        level="info",
+                        message="Persisted canonical live graph snapshot.",
+                        context={"reason": current_reason, "persisted_nodes": persisted},
+                        metrics={"graph_persist_ms": _elapsed_ms(started_at)},
+                    )
                 except Exception as exc:
                     logger.exception(
                         "[WS][GRAPH PERSIST] session=%s conversation=%s reason=%s failed: %s",
@@ -286,6 +300,17 @@ class WsSessionContext:
                         self.state.conversation_id,
                         current_reason,
                         exc,
+                    )
+                    self._record_observability_event(
+                        event_type="graph_persist_error",
+                        stage="graph_persist",
+                        level="error",
+                        message="Failed to persist canonical live graph state.",
+                        context={
+                            "reason": current_reason,
+                            "error": str(exc),
+                            "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                        },
                     )
                     await _safe_send_json(
                         self.websocket,
@@ -568,6 +593,13 @@ class WsSessionContext:
                     self.state.conversation_id,
                     max(0, now_ms - int(self.telemetry_state["audio_send_started_at_ms"] or now_ms)),
                 )
+        self._record_observability_event(
+            event_type="processing_status",
+            stage=stage or "processor",
+            level=str(level or "info"),
+            message=str(message or ""),
+            context=context,
+        )
         await _safe_send_json(
             self.websocket,
             {
@@ -590,6 +622,27 @@ class WsSessionContext:
             getattr(self.stt_runtime, "transport", None)
             or ""
         ).strip() or None
+
+    def _record_observability_event(
+        self,
+        *,
+        event_type: str,
+        stage: str,
+        level: str = "info",
+        message: str = "",
+        context: Optional[Dict[str, Any]] = None,
+        metrics: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        record_observability_event(
+            conversation_id=str(self.state.conversation_id or ""),
+            session_id=str(self.state.session_id or ""),
+            event_type=event_type,
+            stage=stage,
+            level=level,
+            message=message,
+            context=context,
+            metrics=metrics,
+        )
 
     async def _emit_ws_error(
         self,
@@ -622,6 +675,13 @@ class WsSessionContext:
             payload["code"],
             payload["detail"],
             json.dumps(payload.get("context") or {}, separators=(",", ":")),
+        )
+        self._record_observability_event(
+            event_type=str(message_type or "error"),
+            stage=str(stage or "unknown"),
+            level=str(level or "error"),
+            message=str(detail or ""),
+            context=payload.get("context") or {},
         )
         await _safe_send_json(self.websocket, payload)
         return payload
@@ -657,6 +717,16 @@ class WsSessionContext:
                 await self._processor_handle_final_text(text, speaker_segments=speaker_segments)
         except Exception as exc:
             logger.exception("[WS] Final transcript processing failed: %s", exc)
+            self._record_observability_event(
+                event_type="processor_final_error",
+                stage="handle_final_text",
+                level="error",
+                message="Final transcript processing failed.",
+                context={
+                    "error": str(exc),
+                    "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                },
+            )
             await _safe_send_json(
                 self.websocket,
                 {
@@ -716,6 +786,19 @@ class WsSessionContext:
         }
         event = await persist_transcript_event(self.session, self.state, payload, event_type, normalized_text)
         await self.session.commit()
+        self._record_observability_event(
+            event_type=f"transcript_{event_type}",
+            stage="transcript_event",
+            level="info",
+            message=f"Persisted transcript {event_type} event.",
+            context={
+                "text": normalized_text,
+                "text_length": len(normalized_text),
+                "speaker_segment_count": len(speaker_segments or []),
+                "timestamps": timestamps or {},
+            },
+            metrics=event_metadata.get("telemetry") if isinstance(event_metadata.get("telemetry"), dict) else {},
+        )
 
         if event_type == "final" and process_final:
             self._track_processor_final_task(
@@ -1176,6 +1259,13 @@ class WsSessionContext:
         metadata = event.get("metadata") if isinstance(event.get("metadata"), dict) else {}
 
         if event_type == "status":
+            self._record_observability_event(
+                event_type="stt_runtime_status",
+                stage="stt_realtime",
+                level="info",
+                message=str(event.get("message") or "Realtime STT status").strip(),
+                context=metadata,
+            )
             await _safe_send_json(
                 self.websocket,
                 {
@@ -1254,10 +1344,45 @@ class WsSessionContext:
 
     async def _process_audio_chunk(self, chunk_bytes: bytes, audio_decode_ms: float) -> None:
         if not chunk_bytes:
+            logger.warning("[WS][AUDIO] session=%s conversation=%s empty chunk received, skipping", 
+                        self.state.session_id, self.state.conversation_id)
             return
 
+        logger.info("[WS][AUDIO] session=%s conversation=%s processing chunk bytes=%s store_audio=%s",
+                  self.state.session_id, self.state.conversation_id, len(chunk_bytes), self.state.store_audio)
+
         if self.state.store_audio and self.state.conversation_id:
-            await self.audio_storage.append_chunk(self.state.conversation_id, chunk_bytes)
+            logger.info("[WS][AUDIO] session=%s conversation=%s appending to PCM store bytes=%s",
+                      self.state.session_id, self.state.conversation_id, len(chunk_bytes))
+            try:
+                await self.audio_storage.append_chunk(self.state.conversation_id, chunk_bytes)
+            except Exception as exc:
+                await self._emit_ws_error(
+                    message_type="stt_provider_error",
+                    code="audio_storage_append_failed",
+                    detail=f"Audio storage append failed: {exc}",
+                    stage="audio_storage",
+                    level="error",
+                    context={
+                        "chunk_bytes": len(chunk_bytes),
+                        "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                    },
+                )
+                return
+            logger.info("[WS][AUDIO] session=%s conversation=%s append complete, total stored so far=%s",
+                      self.state.session_id, self.state.conversation_id,
+                      self.audio_storage.get_status(self.state.conversation_id).get("bytes_written", 0))
+            self._record_observability_event(
+                event_type="audio_chunk_stored",
+                stage="audio_storage",
+                level="info",
+                message="Stored audio chunk for session recording.",
+                context={"chunk_bytes": len(chunk_bytes)},
+                metrics={
+                    "audio_decode_ms": audio_decode_ms,
+                    "bytes_written": self.audio_storage.get_status(self.state.conversation_id).get("bytes_written", 0),
+                },
+            )
 
         if not self.stt_runtime or not self.stt_runtime.is_ready():
             if not self.stt_unready_notified:
@@ -1440,7 +1565,18 @@ class WsSessionContext:
                 self._reset_pending_partial_state()
 
             if self.state.store_audio and self.state.conversation_id:
+                logger.info("[WS][AUDIO] session=%s conversation=%s finalizing audio storage",
+                          self.state.session_id, self.state.conversation_id)
                 finalized = await self.audio_storage.finalize(self.state.conversation_id)
+                logger.info("[WS][AUDIO] session=%s conversation=%s finalize result: %s",
+                          self.state.session_id, self.state.conversation_id, finalized)
+                self._record_observability_event(
+                    event_type="audio_finalize",
+                    stage="audio_storage",
+                    level="info",
+                    message="Finalized conversation audio artifacts.",
+                    context=finalized,
+                )
                 audio_ready_payload: Dict[str, Any] = {
                     "type": "audio_ready",
                     "audio_paths": finalized,
@@ -1449,7 +1585,17 @@ class WsSessionContext:
                     audio_ready_payload["download_url"] = (
                         f"/api/conversations/{self.state.conversation_id}/audio?token={self.download_token}"
                     )
+                logger.info("[WS][AUDIO] session=%s conversation=%s sending audio_ready to client download_url=%s",
+                          self.state.session_id, self.state.conversation_id, 
+                          audio_ready_payload.get("download_url"))
                 await _safe_send_json(self.websocket, audio_ready_payload)
+                self._record_observability_event(
+                    event_type="audio_ready",
+                    stage="audio_storage",
+                    level="info",
+                    message="Sent audio_ready payload to client.",
+                    context=audio_ready_payload,
+                )
                 finalized_wav_path = str(finalized.get("wav_path") or "").strip()
                 source_text_for_file_refinement = (
                     final_text_for_post_flush or " ".join(self.session_final_text_parts).strip()
@@ -1481,6 +1627,13 @@ class WsSessionContext:
                     },
                 },
             )
+            self._record_observability_event(
+                event_type="flush_complete",
+                stage="flush",
+                level="info",
+                message="Sent flush_complete to client.",
+                metrics={"final_flush_total_ms": _elapsed_ms(flush_started_at)},
+            )
 
             if self.pending_processor_final_tasks:
                 await asyncio.gather(
@@ -1499,6 +1652,16 @@ class WsSessionContext:
 
         except Exception as exc:
             logger.exception("[WS] Processor flush failed: %s", exc)
+            self._record_observability_event(
+                event_type="flush_error",
+                stage="flush",
+                level="error",
+                message="Final flush failed while generating graph updates.",
+                context={
+                    "error": str(exc),
+                    "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                },
+            )
             await _safe_send_json(
                 self.websocket,
                 {
@@ -1681,6 +1844,10 @@ class WsSessionContext:
         self.state.store_audio = bool(payload.get("store_audio", default_store_audio)) or (
             force_store_audio_for_backend_refinement
         )
+        logger.info("[WS][SESSION] session=%s conversation=%s store_audio decision: payload=%s default=%s force=%s final=%s",
+                  self.state.session_id, self.state.conversation_id,
+                  payload.get("store_audio"), default_store_audio, 
+                  force_store_audio_for_backend_refinement, self.state.store_audio)
         self.state.speaker_id = payload.get("speaker_id", self.state.speaker_id)
         self.state.metadata = payload.get("metadata") or {}
         if byok_session:
@@ -1689,6 +1856,15 @@ class WsSessionContext:
                 "byok_provider": str(byok_session.get("provider") or ""),
                 "byok_llm_enabled": BYOK_SCOPE_LLM_LIVE in set(byok_session.get("scopes") or set()),
             }
+        start_observed_session(
+            conversation_id=str(self.state.conversation_id),
+            session_id=str(self.state.session_id),
+            metadata={
+                "requested_provider": requested_provider,
+                "store_audio_requested": bool(payload.get("store_audio")),
+                "metadata": self.state.metadata,
+            },
+        )
 
         requested_sample_rate_hz = _safe_int(
             payload.get("sample_rate_hz") or runtime_stt_settings.get("sample_rate_hz"),
@@ -1810,6 +1986,29 @@ class WsSessionContext:
                 for candidate in stt_candidates[1:]
             ],
         })
+        self._record_observability_event(
+            event_type="session_ack",
+            stage="stt_setup",
+            level="warning" if runtime_start_error else "info",
+            message="Live STT session initialized.",
+            context={
+                "provider": getattr(self.stt_runtime, "provider", active_provider),
+                "transport": getattr(self.stt_runtime, "transport", active_transport),
+                "stt_mode": self._runtime_mode(),
+                "stt_ready": bool(self.stt_runtime.is_ready()),
+                "runtime_error": runtime_start_error,
+                "background_refinement_enabled": bool(self.refinement_candidate),
+                "fallback_candidates": [
+                    {
+                        "route_id": str(candidate.get("route_id") or ""),
+                        "provider": str(candidate.get("provider") or ""),
+                        "transport": str(candidate.get("transport") or ""),
+                        "degraded": bool(candidate.get("degraded")),
+                    }
+                    for candidate in stt_candidates
+                ],
+            },
+        )
 
         if runtime_start_error:
             await self._emit_ws_error(
@@ -1879,6 +2078,14 @@ class WsSessionContext:
                 len(chunk_bytes),
                 audio_decode_ms,
             )
+            self._record_observability_event(
+                event_type="first_audio_chunk",
+                stage="audio_chunk",
+                level="info",
+                message="Received first audio chunk for live session.",
+                context={"chunk_bytes": len(chunk_bytes)},
+                metrics={"audio_decode_ms": audio_decode_ms},
+            )
 
         self._track_stt_chunk_task(
             asyncio.create_task(self._process_audio_chunk(chunk_bytes, audio_decode_ms))
@@ -1941,6 +2148,13 @@ class WsSessionContext:
             },
         }
         await _safe_send_json(self.websocket, flush_payload)
+        self._record_observability_event(
+            event_type="flush_ack",
+            stage="flush",
+            level="info",
+            message="Acknowledged final flush request.",
+            context={"pending_stt_chunks": len(self.pending_stt_chunk_tasks)},
+        )
         self._track_background_task(asyncio.create_task(self._run_post_flush_processing()))
 
     # ------------------------------------------------------------------
@@ -1975,6 +2189,12 @@ class WsSessionContext:
                     await self.handle_final_flush(payload)
                 elif msg_type == "client_log":
                     logger.info("[CLIENT LOG] %s", payload.get("message"))
+                    self._record_observability_event(
+                        event_type="client_log",
+                        stage="client",
+                        level="info",
+                        message=str(payload.get("message") or ""),
+                    )
                 elif msg_type == "ping":
                     await self.websocket.send_json(
                         {
@@ -2043,3 +2263,25 @@ class WsSessionContext:
                     await self.stt_runtime.close()
                 except Exception as exc:
                     logger.debug("[WS] stt_runtime.close() failed: %s", exc)
+                    self._record_observability_event(
+                        event_type="runtime_close_error",
+                        stage="stt_runtime",
+                        level="warning",
+                        message="Failed closing STT runtime.",
+                        context={"error": str(exc)},
+                    )
+            finish_observed_session(
+                conversation_id=str(self.state.conversation_id or ""),
+                session_id=str(self.state.session_id or ""),
+                status="completed",
+                metadata={
+                    "provider": self._active_provider(),
+                    "transport": self._active_transport(),
+                    "runtime_mode": self._runtime_mode(),
+                    "first_graph_queued_at_ms": self.first_graph_queued_at_ms,
+                    "first_graph_completed_at_ms": self.first_graph_completed_at_ms,
+                    "audio_send_started_at_ms": self.telemetry_state.get("audio_send_started_at_ms"),
+                    "first_partial_at_ms": self.telemetry_state.get("first_partial_at_ms"),
+                    "first_final_at_ms": self.telemetry_state.get("first_final_at_ms"),
+                },
+            )
