@@ -94,9 +94,11 @@ const createBackendMessageHandler =
         });
       }
       if (message.type === "stt_provider_error") {
-        onSttProviderStateChange?.("error");
-        const detail = message.detail || "STT provider unavailable";
         const level = String(message.level || "error").toLowerCase();
+        if (level === "error" || message.fatal) {
+          onSttProviderStateChange?.("error");
+        }
+        const detail = message.detail || "STT provider unavailable";
         emitProcessingStatus(level, detail, {
           stage: "stt",
           code: message.code || "stt_provider_error",
