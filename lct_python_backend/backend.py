@@ -74,18 +74,19 @@ logger.info("=" * 60)
 # CORS CONFIGURATION
 # ============================================================================
 
-DEFAULT_LOCAL_CORS_ORIGINS = [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:5175",
-    "http://localhost:5176",
-    "http://localhost:5177",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174",
-    "http://127.0.0.1:5175",
-    "http://127.0.0.1:5176",
-    "http://127.0.0.1:5177",
-]
+DEFAULT_FRONTEND_PORT = "43173"
+
+
+def _default_local_cors_origins() -> list[str]:
+    frontend_port = str(os.getenv("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)).strip() or DEFAULT_FRONTEND_PORT
+    compatibility_ports = ("5173", "5174", "5175", "5176", "5177")
+    ports = [frontend_port, *[port for port in compatibility_ports if port != frontend_port]]
+
+    origins: list[str] = []
+    for host in ("localhost", "127.0.0.1"):
+        for port in ports:
+            origins.append(f"http://{host}:{port}")
+    return origins
 
 
 def _parse_csv_env(name: str) -> list[str]:
@@ -107,7 +108,7 @@ def _resolve_cors_origins() -> tuple:
     elif environment == "production":
         origins = []
     else:
-        origins = DEFAULT_LOCAL_CORS_ORIGINS
+        origins = _default_local_cors_origins()
 
     allow_origin_regex = str(os.getenv("CORS_ALLOW_ORIGIN_REGEX", "")).strip() or None
     return origins, allow_origin_regex

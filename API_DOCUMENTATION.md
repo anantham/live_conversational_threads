@@ -2,10 +2,10 @@
 
 Current backend API reference for Live Conversational Threads.
 
-- Base URL: `http://localhost:8000`
+- Base URL: `http://localhost:43180`
 - Interactive docs:
-  - Swagger: `http://localhost:8000/docs`
-  - ReDoc: `http://localhost:8000/redoc`
+  - Swagger: `http://localhost:43180/docs`
+  - ReDoc: `http://localhost:43180/redoc`
 
 Source of truth is the mounted FastAPI routers in `lct_python_backend/backend.py`.
 
