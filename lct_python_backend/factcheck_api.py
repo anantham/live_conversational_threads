@@ -2,6 +2,7 @@
 
 import logging
 import re
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -9,9 +10,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from lct_python_backend.config import AUDIO_DOWNLOAD_TOKEN, AUDIO_RECORDINGS_DIR
 from lct_python_backend.db_session import get_async_session
+from lct_python_backend.models import Conversation
 from lct_python_backend.models import APICallsLog
 from lct_python_backend.schemas import ClaimsResponse, FactCheckRequest
 from lct_python_backend.services.cost_stats_service import (
@@ -65,13 +68,59 @@ async def fact_check_claims_call(request: FactCheckRequest):
 _SAFE_CONVERSATION_ID = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
+def _slugify(text: str, max_len: int = 50) -> str:
+    """Convert text to a safe filename slug."""
+    import unicodedata
+    import re
+    # Normalize unicode and replace non-alphanumeric with underscore
+    text = unicodedata.normalize("NFKD", text)
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[-\s]+", "_", text)
+    return text[:max_len].strip("_-")
+
+
+def _sanitize_conversation_name(name: Optional[str], conversation_id: str) -> str:
+    """Create a safe filename from conversation name, fallback to UUID."""
+    if name:
+        slug = _slugify(name, max_len=40)
+        if slug:
+            return f"{conversation_id}_{slug}"
+    return conversation_id
+
+
 @router.get("/api/conversations/{conversation_id}/audio")
-async def download_audio(conversation_id: str, token: Optional[str] = Query(None)):
+async def download_audio(
+    conversation_id: str,
+    token: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_async_session),
+):
     if AUDIO_DOWNLOAD_TOKEN and token != AUDIO_DOWNLOAD_TOKEN:
         raise HTTPException(status_code=401, detail="Invalid or missing token")
 
     if not _SAFE_CONVERSATION_ID.match(conversation_id):
         raise HTTPException(status_code=400, detail="Invalid conversation_id format")
+
+    # Try to get conversation name for human-readable filename
+    display_name = conversation_id
+    try:
+        # conversation_id can be UUID string or UUID object
+        try:
+            conv_uuid = uuid.UUID(conversation_id)
+        except ValueError:
+            conv_uuid = None
+        
+        if conv_uuid:
+            result = await db.execute(
+                select(Conversation.conversation_name).where(Conversation.id == conv_uuid)
+            )
+            row = result.scalar_one_or_none()
+            if row:
+                display_name = _sanitize_conversation_name(row, conversation_id)
+    except Exception:
+        pass  # Use UUID fallback
+
+    wav_filename = f"{display_name}.wav"
+    flac_filename = f"{display_name}.flac"
 
     wav_path = Path(AUDIO_RECORDINGS_DIR) / f"{conversation_id}.wav"
     flac_path = Path(AUDIO_RECORDINGS_DIR) / f"{conversation_id}.flac"
@@ -81,9 +130,9 @@ async def download_audio(conversation_id: str, token: Optional[str] = Query(None
         raise HTTPException(status_code=400, detail="Invalid conversation_id format")
 
     if wav_path.exists():
-        return FileResponse(wav_path, media_type="audio/wav", filename=wav_path.name)
+        return FileResponse(wav_path, media_type="audio/wav", filename=wav_filename)
     if flac_path.exists():
-        return FileResponse(flac_path, media_type="audio/flac", filename=flac_path.name)
+        return FileResponse(flac_path, media_type="audio/flac", filename=flac_filename)
 
     raise HTTPException(status_code=404, detail="Recording not found")
 

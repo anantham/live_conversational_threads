@@ -9,9 +9,9 @@ from sqlalchemy import select, insert, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.models.system import UsageQuota
-from lct_python_backend.services.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # Configuration from environment
 FREE_STT_DAILY_MINUTES = float(os.getenv("FREE_STT_DAILY_MINUTES", "10"))
