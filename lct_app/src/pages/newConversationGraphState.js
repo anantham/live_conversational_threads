@@ -255,8 +255,14 @@ export function mergeGraphLayers(finalizedGraphData, draftGraphData) {
   const annotatedFinalized = finalized.map((chunk) =>
     Array.isArray(chunk) ? chunk.map((node) => withGraphLayer(node, "finalized")) : chunk
   );
-  const annotatedDrafts = drafts.map((chunk) =>
-    Array.isArray(chunk) ? chunk.map((node) => withGraphLayer(node, "draft")) : chunk
+  const annotatedDrafts = drafts.map((chunk, chunkIdx) =>
+    Array.isArray(chunk)
+      ? chunk.map((node) => {
+          const draftNode = withGraphLayer(node, "draft");
+          const uniqueId = `${node.id}-draft-${chunkIdx}`;
+          return { ...draftNode, id: uniqueId };
+        })
+      : chunk
   );
   return [...annotatedFinalized, ...annotatedDrafts];
 }

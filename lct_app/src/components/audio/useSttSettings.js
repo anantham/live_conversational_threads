@@ -17,6 +17,8 @@ const useSttSettings = () => {
         const isOffline = err.name === "BackendOfflineError" || (err instanceof TypeError && /fetch/i.test(err.message));
         if (!isOffline) {
           console.error("Failed to load STT settings:", err);
+        } else {
+          console.warn("[useSttSettings] Backend offline or STT settings unreachable:", err.message);
         }
         if (active) {
           setSettingsError(isOffline ? "Backend unavailable" : "Unable to load STT configuration.");
