@@ -65,6 +65,7 @@ export default function TimelineRibbon({
   semanticLevel,
 }) {
   const scrollRef = useRef(null);
+  const programmaticScrollRef = useRef(false);
   const allNodes = useMemo(() => {
     const nodes = (graphData || []).flat();
     if (!semanticLevel) return nodes;
@@ -74,14 +75,24 @@ export default function TimelineRibbon({
   const latestChunk = allNodes;
 
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(allNodes), [allNodes]);
+  const [isFollowingLive, setIsFollowingLive] = useState(true);
+
+  const setRibbonScrollLeft = (nextScrollLeft) => {
+    if (!scrollRef.current) return;
+    programmaticScrollRef.current = true;
+    scrollRef.current.scrollLeft = nextScrollLeft;
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
+    });
+  };
 
   // Auto-scroll to end when new nodes arrive (only if no node is selected)
   useEffect(() => {
-    if (selectedNode) return;
+    if (selectedNode || !isFollowingLive) return;
     if (scrollRef.current) {
-      scrollRef.current.scrollLeft = scrollRef.current.scrollWidth;
+      setRibbonScrollLeft(scrollRef.current.scrollWidth);
     }
-  }, [latestChunk.length, selectedNode]);
+  }, [isFollowingLive, latestChunk.length, selectedNode]);
 
   // Scroll ribbon to show the selected node (syncs when selection comes from the main graph)
   useEffect(() => {
@@ -90,10 +101,20 @@ export default function TimelineRibbon({
     if (idx < 0) return;
     const centerX = RAIL_START + idx * DOT_SPACING;
     const containerWidth = scrollRef.current.clientWidth;
-    scrollRef.current.scrollLeft = centerX - containerWidth / 2;
+    setRibbonScrollLeft(centerX - containerWidth / 2);
   }, [selectedNode, latestChunk]);
 
   const [hoveredIdx, setHoveredIdx] = useState(null);
+
+  const handleScroll = () => {
+    if (!scrollRef.current || programmaticScrollRef.current) return;
+    const maxScrollLeft = Math.max(
+      0,
+      scrollRef.current.scrollWidth - scrollRef.current.clientWidth
+    );
+    const distanceFromEnd = maxScrollLeft - scrollRef.current.scrollLeft;
+    setIsFollowingLive(distanceFromEnd <= DOT_SPACING);
+  };
 
   if (latestChunk.length === 0) return null;
 
@@ -102,6 +123,7 @@ export default function TimelineRibbon({
   return (
     <div
       ref={scrollRef}
+      onScroll={handleScroll}
       className="w-full h-14 overflow-x-auto overflow-y-hidden border-t border-gray-200 bg-white/80 backdrop-blur-sm"
       style={{ scrollBehavior: "smooth" }}
     >
