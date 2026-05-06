@@ -14,7 +14,7 @@ from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.parsers import GoogleMeetParser
-from lct_python_backend.services.import_persistence import persist_transcript
+from lct_python_backend.services.graph_persistence import persist_transcript
 
 logger = logging.getLogger(__name__)
 

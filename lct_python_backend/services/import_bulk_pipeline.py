@@ -14,7 +14,7 @@ from fastapi import Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.services.audio_transcriber import _is_retryable_stt_error
-from lct_python_backend.services.import_persistence import persist_import_graph
+from lct_python_backend.services.graph_persistence import persist_graph as persist_import_graph
 from lct_python_backend.services.import_bulk_telemetry import (
     attach_bottleneck_stage,
     calculate_segmented_progress,
