@@ -95,6 +95,8 @@ class LlmGateway:
         temperature: float = 0.3,
         max_tokens: int = 4000,
         response_format: Optional[Dict[str, Any]] = None,
+        prompt_name: Optional[str] = None,
+        prompt_version: Optional[str] = None,
     ) -> ProviderResult:
         """Async chat completion routed through the providers list with
         capability-sensitive policy applied.
@@ -103,6 +105,9 @@ class LlmGateway:
         ``response_format``, the gateway sets ``{"type": "json_object"}``.
         For ``CHAT_JSON_SCHEMA``, callers must supply ``response_format``
         with the full schema.
+
+        ``prompt_name`` and ``prompt_version`` (ADR-030 §D7) are stamped
+        onto the resulting ``ProviderResult`` for telemetry attribution.
         """
         require_json = capability in {Capability.CHAT_JSON_OBJECT, Capability.CHAT_JSON_SCHEMA}
         return await chat_with_provider_fallback(
@@ -112,6 +117,8 @@ class LlmGateway:
             max_tokens=max_tokens,
             response_format=response_format,
             require_json=require_json,
+            prompt_name=prompt_name,
+            prompt_version=prompt_version,
         )
 
     def chat_sync(
@@ -123,9 +130,12 @@ class LlmGateway:
         temperature: float = 0.3,
         max_tokens: int = 4000,
         response_format: Optional[Dict[str, Any]] = None,
+        prompt_name: Optional[str] = None,
+        prompt_version: Optional[str] = None,
     ) -> ProviderResult:
         """Synchronous variant of ``chat`` for callers running outside an
-        async context (legacy helpers). Same capability semantics."""
+        async context (legacy helpers). Same capability + prompt-version
+        semantics."""
         require_json = capability in {Capability.CHAT_JSON_OBJECT, Capability.CHAT_JSON_SCHEMA}
         return chat_with_provider_fallback_sync(
             messages,
@@ -134,6 +144,8 @@ class LlmGateway:
             max_tokens=max_tokens,
             response_format=response_format,
             require_json=require_json,
+            prompt_name=prompt_name,
+            prompt_version=prompt_version,
         )
 
     async def embed(

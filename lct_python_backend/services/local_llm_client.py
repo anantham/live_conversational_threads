@@ -213,7 +213,14 @@ async def local_chat_json(
 
 
 class ProviderResult:
-    """Result from provider fallback containing the response and metadata."""
+    """Result from provider fallback containing the response and metadata.
+
+    ``prompt_name`` and ``prompt_version`` (added per ADR-030 §D7) carry
+    the canonical prompt identity used to produce this response. They
+    default to ``None`` for back-compat; new callers passing through the
+    gateway should set them so cost/quality telemetry can attribute
+    output to a specific prompt revision.
+    """
 
     def __init__(
         self,
@@ -225,6 +232,8 @@ class ProviderResult:
         provider_type: str,
         attempt_number: int = 1,
         total_providers_tried: int = 1,
+        prompt_name: Optional[str] = None,
+        prompt_version: Optional[str] = None,
     ):
         self.data = data
         self.provider_id = provider_id
@@ -234,6 +243,8 @@ class ProviderResult:
         self.provider_type = provider_type
         self.attempt_number = attempt_number
         self.total_providers_tried = total_providers_tried
+        self.prompt_name = prompt_name
+        self.prompt_version = prompt_version
 
     def backend_label(self) -> str:
         """Return a backend label that reflects the actual provider class."""
@@ -267,6 +278,8 @@ async def chat_with_provider_fallback(
     max_tokens: int = 4000,
     response_format: Optional[Dict[str, Any]] = None,
     require_json: bool = True,
+    prompt_name: Optional[str] = None,
+    prompt_version: Optional[str] = None,
 ) -> ProviderResult:
     """
     Try LLM chat through providers in priority order until one succeeds.
@@ -388,6 +401,8 @@ async def chat_with_provider_fallback(
                     provider_type=provider_type,
                     attempt_number=attempt_number,
                     total_providers_tried=total_providers,
+                    prompt_name=prompt_name,
+                    prompt_version=prompt_version,
                 )
 
         except httpx.HTTPStatusError as exc:
@@ -435,6 +450,8 @@ def chat_with_provider_fallback_sync(
     max_tokens: int = 4000,
     response_format: Optional[Dict[str, Any]] = None,
     require_json: bool = True,
+    prompt_name: Optional[str] = None,
+    prompt_version: Optional[str] = None,
 ) -> ProviderResult:
     """
     Synchronous version of chat_with_provider_fallback.
@@ -555,6 +572,8 @@ def chat_with_provider_fallback_sync(
                     provider_type=provider_type,
                     attempt_number=attempt_number,
                     total_providers_tried=total_providers,
+                    prompt_name=prompt_name,
+                    prompt_version=prompt_version,
                 )
 
         except httpx.HTTPStatusError as exc:
