@@ -233,7 +233,7 @@ async def patch_conversation_graph(
     for presentation/recovery state instead. This route is retained only
     for backend-internal use during the D6 phase 2 migration window.
     """
-    from lct_python_backend.services.import_persistence import persist_import_graph
+    from lct_python_backend.services.graph_persistence import persist_graph as persist_import_graph
 
     try:
         uuid.UUID(conversation_id)

@@ -33,7 +33,7 @@ from lct_python_backend.services.byok_session_store import (
     resolve_byok_session,
     ByokSessionLookupError,
 )
-from lct_python_backend.services.live_graph_persistence import persist_live_graph_snapshot
+from lct_python_backend.services.graph_persistence import persist_live_graph_snapshot
 from lct_python_backend.services.quota_service import QuotaService
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
 from lct_python_backend.services.speaker_naming_service import is_confirmed_speaker_name
