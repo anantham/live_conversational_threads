@@ -33,7 +33,12 @@ router = APIRouter(prefix="/api/graph", tags=["graph"])
 
 
 class NodeResponse(BaseModel):
-    """Response model for a node."""
+    """Response model for a node.
+
+    ``semantic_level`` and ``semantic_type`` carry the canonical hierarchy
+    information per ADR-021 / ADR-030 §D2. ``level`` is retained for
+    backward compatibility but consumers should prefer the semantic fields.
+    """
 
     id: str
     conversation_id: str
@@ -41,6 +46,8 @@ class NodeResponse(BaseModel):
     summary: str
     node_type: str
     level: int
+    semantic_level: int
+    semantic_type: str
     zoom_level_visible: List[int]
     utterance_ids: List[str]
     start_time: Optional[float]

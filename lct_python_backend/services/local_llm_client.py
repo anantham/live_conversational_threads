@@ -17,8 +17,36 @@ logger = logging.getLogger("lct_backend")
 
 _CLIENT_CACHE: Dict[Tuple[str, float, bool], "LocalLLMClient"] = {}
 _JSON_OBJECT_UNSUPPORTED_BASE_URLS: set[str] = set()
+_LOGGED_MODEL_SUBSTITUTIONS: set[Tuple[str, str, str]] = set()
 TRACE_API_CALLS = os.getenv("TRACE_API_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
+
+
+def _resolve_served_model(result_json: Any, requested_model: str, provider_id: str) -> str:
+    """Extract the actual served model from a chat completion response.
+
+    Returns the response's ``model`` field when present, otherwise the requested
+    model. Logs a one-time warning per (provider_id, requested, served) tuple
+    when the provider substituted a different model — see ADR-030 §D5.
+    """
+    served = ""
+    if isinstance(result_json, dict):
+        candidate = result_json.get("model")
+        if isinstance(candidate, str) and candidate.strip():
+            served = candidate.strip()
+    if not served:
+        return requested_model
+    if served != requested_model:
+        key = (provider_id, requested_model, served)
+        if key not in _LOGGED_MODEL_SUBSTITUTIONS:
+            _LOGGED_MODEL_SUBSTITUTIONS.add(key)
+            logger.warning(
+                "[PROVIDER] %s requested=%s served=%s (model substitution; using served name for telemetry)",
+                provider_id,
+                requested_model,
+                served,
+            )
+    return served
 
 
 def _preview_text(value: Any, limit: int = API_LOG_PREVIEW_CHARS) -> str:
@@ -335,6 +363,7 @@ async def chat_with_provider_fallback(
                     )
 
                 result_json = response.json()
+                served_model = _resolve_served_model(result_json, model, provider_id)
                 content = result_json["choices"][0]["message"]["content"]
 
                 if require_json:
@@ -354,7 +383,7 @@ async def chat_with_provider_fallback(
                     data=data,
                     provider_id=provider_id,
                     provider_name=provider_name,
-                    model=model,
+                    model=served_model,
                     base_url=base_url,
                     provider_type=provider_type,
                     attempt_number=attempt_number,
@@ -501,6 +530,7 @@ def chat_with_provider_fallback_sync(
                     )
 
                 result_json = response.json()
+                served_model = _resolve_served_model(result_json, model, provider_id)
                 content = result_json["choices"][0]["message"]["content"]
 
                 if require_json:
@@ -520,7 +550,7 @@ def chat_with_provider_fallback_sync(
                     data=data,
                     provider_id=provider_id,
                     provider_name=provider_name,
-                    model=model,
+                    model=served_model,
                     base_url=base_url,
                     provider_type=provider_type,
                     attempt_number=attempt_number,

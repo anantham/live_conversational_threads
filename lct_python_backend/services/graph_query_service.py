@@ -10,6 +10,29 @@ from lct_python_backend.models import Node, Relationship
 
 TEMPORAL_RELATIONSHIP_TYPES = {"temporal", "leads_to", "next", "follows"}
 
+# ADR-021 / ADR-030 §D2: hierarchy levels are named by role, not by number.
+# Level 1 = most granular (chunks). Higher numbers = more abstract.
+# Level 5 (arcs) is unlocked only for very long conversations per ADR-030 §D2.
+SEMANTIC_LEVEL_NAMES = {
+    1: "chunk",
+    2: "idea",
+    3: "topic",
+    4: "theme",
+    5: "arc",
+}
+
+
+def derive_semantic_type(level: Optional[int]) -> str:
+    """Map a numeric hierarchy level to its canonical semantic name.
+
+    Returns "chunk" by default (most granular) for unknown levels, since
+    every node is at minimum a chunk per ADR-030 §P4.
+    """
+    try:
+        return SEMANTIC_LEVEL_NAMES.get(int(level or 1), "chunk")
+    except (TypeError, ValueError):
+        return "chunk"
+
 
 def parse_conversation_uuid(conversation_id: str) -> uuid.UUID:
     try:
@@ -32,10 +55,14 @@ def derive_zoom_levels(node: Node) -> List[int]:
 
 def node_to_response_payload(node: Node, sequence_number: int) -> Dict[str, Any]:
     zoom_levels = derive_zoom_levels(node)
+    semantic_level = int(node.level or 1)
+    semantic_type = derive_semantic_type(semantic_level)
     metadata = {
         "dialogue_type": node.dialogue_type,
         "is_bookmark": bool(node.is_bookmark),
         "is_contextual_progress": bool(node.is_contextual_progress),
+        "is_tangent": bool(node.is_tangent),
+        "is_crux": bool(node.is_crux),
     }
     if node.cluster_info:
         metadata["cluster_info"] = node.cluster_info
@@ -49,6 +76,8 @@ def node_to_response_payload(node: Node, sequence_number: int) -> Dict[str, Any]
         "summary": node.summary,
         "node_type": node.node_type or "conversational_thread",
         "level": int(node.level or 3),
+        "semantic_level": semantic_level,
+        "semantic_type": semantic_type,
         "zoom_level_visible": zoom_levels,
         "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])],
         "start_time": node.timestamp_start,
