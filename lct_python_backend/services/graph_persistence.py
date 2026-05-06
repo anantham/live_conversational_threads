@@ -499,6 +499,79 @@ async def persist_graph(
     return len(node_records)
 
 
+async def record_pipeline_artifact(
+    *,
+    conversation_id: str,
+    stage: str,
+    artifact_type: str,
+    artifact_json: Optional[Dict[str, Any]] = None,
+    artifact_path: Optional[str] = None,
+    artifact_metadata: Optional[Dict[str, Any]] = None,
+    stage_index: int = 0,
+    content_hash: Optional[str] = None,
+) -> Optional[str]:
+    """Write a row to ``pipeline_artifacts`` for a stage's output.
+
+    Per ADR-030 §D8 + §D9, every stage should leave an addressable
+    artifact behind so post-hoc analysis can reconstruct what each
+    stage produced (success and failure alike). This helper is the
+    canonical write path. ``stage`` is the stage's ``name`` attribute
+    (e.g. ``"unlock_hierarchy"``); ``artifact_type`` is one of
+    ``"audio" | "transcript" | "chunks" | "segment" | "nodes" |
+    "stage_failure"`` (free-form string — schema accepts any value).
+
+    Returns the new row's ID as a string, or None if persistence was
+    skipped (e.g. no DATABASE_URL in test environment, or invalid
+    conversation UUID — both common in unit tests).
+
+    The DB session is opened lazily so this helper is safe to call
+    from contexts that don't already have a session in scope.
+    """
+    # Lazy-import to preserve the legacy import_persistence property
+    # that this module's chat-side helpers can be imported without
+    # DATABASE_URL configured at module load.
+    from lct_python_backend.db_session import get_async_session_context
+    from lct_python_backend.models import PipelineArtifact
+
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except (TypeError, ValueError):
+        logger.warning(
+            "[ARTIFACT] skipping write — invalid conversation_id=%r", conversation_id
+        )
+        return None
+
+    artifact_id = uuid.uuid4()
+    try:
+        async with get_async_session_context() as db:
+            db.add(
+                PipelineArtifact(
+                    id=artifact_id,
+                    conversation_id=conv_uuid,
+                    stage=stage,
+                    stage_index=stage_index,
+                    content_hash=content_hash,
+                    artifact_type=artifact_type,
+                    artifact_path=artifact_path,
+                    artifact_json=artifact_json or {},
+                    artifact_metadata=artifact_metadata or {},
+                )
+            )
+            await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        # Artifact-write failure must NOT break the calling stage.
+        # ADR-030 §P2: failures in the interpretation layer never block
+        # fact-layer writes. Observability writes are even further from
+        # critical path; log and continue.
+        logger.warning(
+            "[ARTIFACT] write failed conversation=%s stage=%s: %s",
+            conversation_id, stage, exc,
+        )
+        return None
+
+    return str(artifact_id)
+
+
 async def persist_live_graph_snapshot(
     *,
     conversation_id: str,

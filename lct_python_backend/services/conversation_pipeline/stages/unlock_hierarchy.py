@@ -32,6 +32,12 @@ from ..protocol import EmitFn, Stage, StageError
 from ..state import PipelineState
 
 
+# Optional artifact-writer dependency injection. The default is the
+# canonical record_pipeline_artifact in graph_persistence; tests can
+# inject a fake to avoid touching the DB.
+ArtifactWriterFn = Callable[..., Awaitable[Optional[str]]]
+
+
 # Bucket thresholds at which the LLM-judge is consulted. Each bucket is
 # a count-of-items at the level below.
 UNLOCK_BUCKETS: Tuple[int, ...] = (5, 7, 10, 15, 25, 40, 60, 100)
@@ -61,8 +67,14 @@ class UnlockHierarchyStage:
 
     name = "unlock_hierarchy"
 
-    def __init__(self, judge_fn: Optional[JudgeFn] = None) -> None:
+    def __init__(
+        self,
+        judge_fn: Optional[JudgeFn] = None,
+        *,
+        artifact_writer: Optional[ArtifactWriterFn] = None,
+    ) -> None:
         self._judge_fn = judge_fn
+        self._artifact_writer = artifact_writer
 
     async def run(self, state: PipelineState, emit: EmitFn) -> None:
         nodes = list(state.graph.nodes or [])
@@ -120,8 +132,59 @@ class UnlockHierarchyStage:
                     node_count_at_unlock=count,
                 )
             )
+            # ADR-030 §D9: emit a pipeline_artifacts row for each unlock
+            # so cross-conversation telemetry can build a depth histogram
+            # without re-walking event streams.
+            await self._record_artifact(
+                state=state,
+                level=next_level,
+                semantic_type=TIER_NAME_BY_LEVEL[next_level],
+                node_count_below=count,
+                bucket=bucket,
+                judge_decision="yes_cluster",
+            )
 
         state.hierarchy.unlocked_levels = sorted(set(unlocked))
+
+    async def _record_artifact(
+        self,
+        *,
+        state: PipelineState,
+        level: int,
+        semantic_type: str,
+        node_count_below: int,
+        bucket: int,
+        judge_decision: str,
+    ) -> None:
+        """Write a pipeline_artifacts row for an unlock event.
+
+        Uses the injected ``artifact_writer`` if provided; otherwise
+        lazy-loads the canonical helper from graph_persistence. Failure
+        is silent — observability writes never block the pipeline (per
+        ADR-030 §P2).
+        """
+        if not state.conversation_id:
+            return
+        writer = self._artifact_writer or _load_default_artifact_writer()
+        if writer is None:
+            return
+        try:
+            await writer(
+                conversation_id=state.conversation_id,
+                stage=self.name,
+                stage_index=level,
+                artifact_type="hierarchy_unlock",
+                artifact_metadata={
+                    "level": level,
+                    "semantic_type": semantic_type,
+                    "node_count_below": node_count_below,
+                    "bucket": bucket,
+                    "judge_decision": judge_decision,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            # Already logged by the writer; never block the pipeline.
+            pass
 
     async def _consult_judge(self, items: List[Dict[str, Any]]) -> str:
         if self._judge_fn is None:
@@ -185,11 +248,28 @@ def content_hash_for(items: List[Dict[str, Any]]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def _load_default_artifact_writer() -> Optional[ArtifactWriterFn]:
+    """Best-effort import of ``services.graph_persistence.record_pipeline_artifact``.
+
+    Returns None in environments where graph_persistence can't be
+    imported (e.g. unit tests without DATABASE_URL). The stage handles
+    None by skipping the artifact write — see ``_record_artifact``.
+    """
+    try:
+        from lct_python_backend.services.graph_persistence import (
+            record_pipeline_artifact,
+        )
+        return record_pipeline_artifact
+    except Exception:  # noqa: BLE001
+        return None
+
+
 __all__ = [
     "UnlockHierarchyStage",
     "UNLOCK_BUCKETS",
     "TIER_NAME_BY_LEVEL",
     "MAX_LEVEL",
     "JudgeFn",
+    "ArtifactWriterFn",
     "content_hash_for",
 ]
