@@ -35,7 +35,7 @@ from .events import (
 )
 from .orchestrator import ConversationPipeline
 from .protocol import EmitFn, Stage, StageError
-from .stages import IngestStage
+from .stages import IngestStage, SegmentStage, TranscribeStage
 from .state import (
     GraphState,
     HierarchyState,
@@ -79,4 +79,6 @@ __all__ = [
     "LevelUnlocked",
     # Stages
     "IngestStage",
+    "SegmentStage",
+    "TranscribeStage",
 ]
