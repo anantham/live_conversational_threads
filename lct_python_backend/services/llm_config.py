@@ -54,10 +54,14 @@ def get_default_providers() -> List[Dict[str, Any]]:
 
 
 def get_env_providers_defaults() -> Dict[str, Any]:
-    """Return default provider settings from environment."""
+    """Return default provider settings from environment.
+
+    The ``embedding_provider_id`` field that lived here historically was
+    never consumed. ADR-030 §B4 removed it; embeddings now route through
+    ``services.llm_gateway`` with strict model-fidelity matching.
+    """
     return {
         "providers": get_default_providers(),
-        "embedding_provider_id": "local_lmstudio",
         "json_mode": to_bool(os.getenv("LOCAL_LLM_JSON_MODE", "true")),
     }
 
@@ -266,10 +270,6 @@ async def save_llm_providers(session: AsyncSession, payload: Dict[str, Any]) -> 
 
     normalized_payload = {
         "providers": normalized_providers,
-        "embedding_provider_id": payload.get(
-            "embedding_provider_id",
-            existing_value.get("embedding_provider_id", "local_lmstudio"),
-        ),
         "json_mode": to_bool(
             payload.get("json_mode", existing_value.get("json_mode", os.getenv("LOCAL_LLM_JSON_MODE", "true")))
         ),
