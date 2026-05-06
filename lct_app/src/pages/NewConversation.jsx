@@ -14,6 +14,7 @@ import { useUpload } from "../contexts/UploadContext";
 import { fetchAudioRecoveryStatus, recoverConversationAudio } from "../services/audioRecoveryApi";
 import { fetchConversationObservability } from "../services/conversationDiagnosticsApi";
 import { saveConversationToServer } from "../utils/SaveConversation";
+import { saveConversationDraft } from "../services/apiClient";
 import {
   buildConversationDebugExport,
   downloadConversationDebugExport,
@@ -411,26 +412,25 @@ export default function NewConversation() {
     if (!normalizedName) {
       throw new Error("Add a conversation name before saving.");
     }
+    // Activity gate: still require finalized work before treating this as
+    // a meaningful save. Contents are NOT transmitted (canonical state is
+    // already backend-persisted per ADR-030 §P7); we only check that the
+    // session has produced something worth naming.
     if (!savePayload.graphData?.length || !Object.keys(savePayload.chunkDict || {}).length) {
       throw new Error("No finalized conversation data is ready to save yet.");
     }
 
     setFileName(normalizedName);
-    const [artifactResult] = await Promise.all([
-      saveConversationToServer({
-        fileName: normalizedName,
-        chunkDict: savePayload.chunkDict,
-        graphData: savePayload.graphData,
-        conversationId,
-      }),
+    // Persist the user-edited name through the draft endpoint (browser-
+    // authoritative draft state per ADR-030 §D6). Trigger the autosave hook
+    // in parallel so its lastSavedAt clock advances; both paths now route
+    // through saveConversationDraft so this is essentially a single save.
+    await Promise.all([
+      saveConversationDraft(conversationId, { conversation_name: normalizedName }),
       triggerSave(),
     ]);
 
-    if (!artifactResult?.success) {
-      throw new Error(artifactResult?.message || "Save failed");
-    }
-
-    return { normalizedName, message: artifactResult.message || "Saved!" };
+    return { normalizedName, message: "Saved!" };
   }, [conversationId, fileName, savePayload.chunkDict, savePayload.graphData, sessionTitleSuggestion, triggerSave]);
 
   const handleSaveAndExit = useCallback(async () => {
@@ -504,6 +504,15 @@ export default function NewConversation() {
 
     setRecoveredDraftSaveState("saving");
     try {
+      // ADR-030 §D6 EXCEPTION: this is the one legitimate browser-side
+      // semantic write path. A recovered IndexedDB draft may contain
+      // graph data from a session whose live persistence failed (browser
+      // crash, network loss before flush). The backend has no canonical
+      // copy of this state, so the browser is the authoritative source.
+      // A future ADR (recovery-ingest-endpoint) will replace this with
+      // POST /api/conversations/{id}/recover-draft that materializes the
+      // submitted state through the canonical pipeline. Until that lands,
+      // this remains the only legacy path; do not add new callers.
       const result = await saveConversationToServer({
         fileName: newName,
         chunkDict: draftChunks,

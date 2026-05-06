@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
-import { saveConversationToServer } from "../utils/SaveConversation";
+import { useEffect } from "react";
+import { saveConversationDraft } from "../services/apiClient";
 
 export default function SaveJson({ chunkDict, graphData, conversationId, setMessage, message, fileName, setFileName }) {
-  
-
+  // Button is enabled only when there's actually content worth naming.
+  // graphData/chunkDict are read here purely as activity signals; their
+  // contents are never sent — the backend already has the canonical state
+  // (ADR-030 §P7). This button only updates the user-edited title.
   const isSaveDisabled =
     !chunkDict || Object.keys(chunkDict).length === 0 || !graphData || graphData.length === 0;
 
@@ -16,20 +18,20 @@ export default function SaveJson({ chunkDict, graphData, conversationId, setMess
       return;
     }
 
-    setFileName(newName);
+    const trimmed = String(newName).trim();
+    if (!trimmed) {
+      setMessage("Save canceled. Name cannot be empty.");
+      return;
+    }
+
+    setFileName(trimmed);
 
     try {
-      const result = await saveConversationToServer({
-        fileName: newName,
-        chunkDict,
-        graphData,
-        conversationId,
-      });
-
-      setMessage(`Conversation "${newName}" saved. ${result.message}`);
+      await saveConversationDraft(conversationId, { conversation_name: trimmed });
+      setMessage(`Renamed to "${trimmed}".`);
     } catch (err) {
-      console.error("Save failed:", err);
-      setMessage("Error saving conversation.");
+      console.error("Rename failed:", err);
+      setMessage(`Rename failed: ${err?.message || "Unknown error"}`);
     }
   };
 
