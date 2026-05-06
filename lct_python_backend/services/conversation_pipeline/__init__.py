@@ -14,10 +14,12 @@ invoke ``ConversationPipeline.run(state, emit)``. See the audit doc at
 ``docs/plans/pipeline-extract-state-audit.md`` for the state
 classification that shaped this package.
 
-Status (PR-A): package skeleton + ingest stage. Behaviour-neutral —
-no transport calls into this package yet. Subsequent PRs land
-transcribe / segment / accumulate / generate_graph / refine / persist /
-unlock_hierarchy stages and rewire the transports.
+Status (post PR-E): all stages are implemented and tested in isolation.
+The transports (``stt_ws_session.py`` for live, ``import_bulk_pipeline.py``
+for import) do NOT yet call into this package — that wiring is a
+follow-up sprint deliberately separated from the package construction
+to keep transport-runtime risk reviewable on its own. See the audit
+doc for the planned carve-out boundaries.
 """
 
 from .events import (
@@ -43,6 +45,7 @@ from .stages import (
     RefineStage,
     SegmentStage,
     TranscribeStage,
+    UnlockHierarchyStage,
 )
 from .state import (
     GraphState,
@@ -93,4 +96,5 @@ __all__ = [
     "RefineStage",
     "SegmentStage",
     "TranscribeStage",
+    "UnlockHierarchyStage",
 ]
