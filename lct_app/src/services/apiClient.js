@@ -157,6 +157,7 @@ const ALLOWED_DRAFT_KEYS = Object.freeze(new Set([
   'canvas_overrides',
   'dismissed_unlock_affordances',
   'active_tab',
+  'active_color_mode',
   'local_draft_text',
   'pinned_node_ids',
 ]));

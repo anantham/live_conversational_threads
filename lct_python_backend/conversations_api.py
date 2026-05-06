@@ -278,6 +278,7 @@ class DraftStateRequest(BaseModel):
       - canvas_overrides: per-node user-positioned coordinates {node_id: {x, y}}
       - dismissed_unlock_affordances: which level-unlock CTAs the user dismissed
       - active_tab: currently selected zoom-tier tab
+      - active_color_mode: graph color scheme — "tier" | "speaker" | "temporal"
       - local_draft_text: in-progress notes the user typed (explicitly draft, not authored)
       - pinned_node_ids: UI focus state
 
@@ -294,6 +295,7 @@ class DraftStateRequest(BaseModel):
     canvas_overrides: Optional[Dict[str, Any]] = None
     dismissed_unlock_affordances: Optional[List[str]] = None
     active_tab: Optional[str] = None
+    active_color_mode: Optional[str] = None
     local_draft_text: Optional[str] = None
     pinned_node_ids: Optional[List[str]] = None
 
@@ -348,6 +350,7 @@ async def save_conversation_draft(
         "canvas_overrides",
         "dismissed_unlock_affordances",
         "active_tab",
+        "active_color_mode",
         "local_draft_text",
         "pinned_node_ids",
     ):

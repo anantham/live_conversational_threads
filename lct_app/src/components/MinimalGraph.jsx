@@ -5,8 +5,20 @@ import ReactFlow, { useReactFlow, ReactFlowProvider, applyNodeChanges } from "re
 import dagre from "dagre";
 import "reactflow/dist/style.css";
 import { EDGE_COLORS, buildSpeakerColorMap, buildTemporalColorMap } from "./graphConstants";
+import { saveConversationDraft } from "../services/apiClient";
+import ConversationNode from "./graph/ConversationNode";
+import {
+  COLOR_MODES,
+  DEFAULT_COLOR_MODE,
+  buildSpeakerColorMapForNodes,
+  buildTemporalColorMapForNodes,
+  resolveNodeColors,
+} from "./graph/colorModes";
+import ColorModeToggle from "./graph/ColorModeToggle";
 
-const NODE_TYPES = {};
+// ADR-030 §D4: custom node renderer with three color modes + state markers.
+// Cluster nodes are still default ReactFlow rendering (separate concern).
+const NODE_TYPES = { conversational: ConversationNode };
 const EDGE_TYPES = {};
 const AUTHORED_LEVELS = [
   { level: 1, label: "chunks", type: "chunk", color: "text-teal-700", chip: "bg-teal-50", border: "border-teal-400" },
@@ -564,6 +576,8 @@ function MinimalGraphInner({
   setSelectedNode,
   viewportReservationKey,
   onVisibleLevelChange,
+  conversationId,
+  initialColorMode,
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
@@ -573,6 +587,22 @@ function MinimalGraphInner({
   const [hideEdges, setHideEdges] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [lockedLevel, setLockedLevel] = useState(null); // null = unlocked, semantic 1-4 or legacy 0-3
+  // ADR-030 §D4: color mode (tier | speaker | temporal). Default: tier.
+  // Persisted per conversation via saveConversationDraft when conversationId is provided.
+  const [colorMode, setColorMode] = useState(
+    COLOR_MODES.includes(initialColorMode) ? initialColorMode : DEFAULT_COLOR_MODE
+  );
+  const handleColorModeChange = useCallback(
+    (next) => {
+      setColorMode(next);
+      if (conversationId) {
+        saveConversationDraft(conversationId, { active_color_mode: next }).catch(
+          (err) => console.warn("[MinimalGraph] color-mode persist failed:", err)
+        );
+      }
+    },
+    [conversationId]
+  );
 
   const legacyClusterLevel = lockedLevel != null ? lockedLevel
     : zoomLevel < ZOOM_LEVEL_3 ? 3
@@ -589,21 +619,29 @@ function MinimalGraphInner({
     [allNodes]
   );
 
-  const speakerColorMap = useMemo(() => buildSpeakerColorMap(normalizedChunk), [normalizedChunk]);
-  const uniqueSpeakers = useMemo(() => Object.keys(speakerColorMap).length, [speakerColorMap]);
+  // ADR-030 §D4: build all three color maps; the active mode picks among them.
+  // No more auto-switching based on speaker count — user controls via toggle.
+  const speakerColorMap = useMemo(
+    () => buildSpeakerColorMapForNodes(normalizedChunk),
+    [normalizedChunk]
+  );
   const temporalColorMap = useMemo(
-    () => uniqueSpeakers <= 1 ? buildTemporalColorMap(normalizedChunk) : {},
-    [normalizedChunk, uniqueSpeakers]
+    () => buildTemporalColorMapForNodes(normalizedChunk),
+    [normalizedChunk]
   );
 
   const buildRfNodesForSource = useCallback((sourceNodes) => {
     return sourceNodes.map((item) => {
-      const isSelected = selectedNode === item.id;
       const isDraftNode = item.__graphLayer === "draft";
-      // Use speaker colors when multiple speakers detected, temporal position otherwise
-      const speakerColor = uniqueSpeakers > 1
-        ? (speakerColorMap[item.speaker_id] || "#e2e8f0")
-        : (temporalColorMap[item.id] || "#e2e8f0");
+
+      // ADR-030 \u00a7D4: resolve color via the active mode. The renderer
+      // (ConversationNode) reads fillColor/borderColor from data.
+      const { fill, border } = resolveNodeColors({
+        mode: colorMode,
+        node: item,
+        speakerColorMap,
+        temporalColorMap,
+      });
 
       // Title: node_name truncated to ~40 chars
       const title =
@@ -611,64 +649,43 @@ function MinimalGraphInner({
           ? item.node_name.slice(0, 38) + "\u2026"
           : item.node_name || "";
 
-      // Summary: show up to ~120 chars (a few sentences)
+      // Summary: passed through; ConversationNode handles truncation.
       const summary = item.summary || item.full_text || "";
-      const summaryTruncated =
-        summary.length > 120
-          ? summary.slice(0, 118) + "\u2026"
-          : summary;
-      const showSummary = summaryTruncated && summaryTruncated !== title;
 
       // Speaker badge (prefer renamed display name over raw id)
-      const speakerLabel = item.speaker_display || item.speaker_id || "";
-      const footerLabel = isDraftNode
-        ? (speakerLabel ? `${speakerLabel} · provisional` : "provisional")
-        : speakerLabel;
+      const speaker = item.speaker_display || item.speaker_id || "";
+      const speakerLabel = isDraftNode
+        ? (speaker ? `${speaker} · provisional` : "provisional")
+        : speaker;
 
-      const label = (
-        <div style={{ lineHeight: 1.3 }}>
-          <div style={{ fontWeight: 600, fontSize: "11px", marginBottom: showSummary ? "3px" : 0 }}>
-            {title}
-          </div>
-          {showSummary && (
-            <div style={{ fontWeight: 400, fontSize: "10px", color: "#475569", lineHeight: 1.35 }}>
-              {summaryTruncated}
-            </div>
-          )}
-          {footerLabel && (
-            <div style={{ fontSize: "9px", color: "#64748b", marginTop: "3px" }}>
-              {footerLabel}
-            </div>
-          )}
-        </div>
-      );
+      // Authored state markers per ADR-030 §D4. Frontend renders only what
+      // the backend authored; never invents these flags.
+      const isTangent = Boolean(item.is_tangent);
+      const isCrux = Boolean(item.is_crux);
+      const isBookmark = Boolean(item.is_bookmark);
+      const isContextualProgress = Boolean(item.is_contextual_progress);
 
       return {
         id: item.id,
-        data: { label, fullData: item },
+        type: "conversational",
         position: { x: 0, y: 0 },
-        style: {
-          background: speakerColor,
-          border: isSelected ? "2px solid #f59e0b" : "1px solid #cbd5e1",
-          boxShadow: isSelected
-            ? "0 0 0 3px rgba(245,158,11,0.3)"
-            : "0 1px 3px rgba(0,0,0,0.06)",
-          borderRadius: "8px",
-          padding: "8px 12px",
-          fontSize: "11px",
-          fontFamily: "Inter, sans-serif",
-          color: "#1e293b",
-          cursor: "pointer",
-          transition: "all 0.2s ease",
-          opacity: isDraftNode ? 0.52 : 1,
-          whiteSpace: "normal",
-          maxWidth: "240px",
-          minWidth: "120px",
-          wordBreak: "break-word",
+        data: {
+          title,
+          summary,
+          speakerLabel,
+          fillColor: fill,
+          borderColor: border,
+          isDraft: isDraftNode,
+          isTangent,
+          isCrux,
+          isBookmark,
+          isContextualProgress,
+          // fullData kept for downstream consumers (NodeDetail panel etc.)
+          fullData: item,
         },
       };
     });
-  }, [selectedNode, speakerColorMap, temporalColorMap, uniqueSpeakers]);
+  }, [colorMode, speakerColorMap, temporalColorMap]);
 
   const buildRfEdgesForSource = useCallback((sourceNodes) => {
     if (hideEdges) return [];
@@ -957,7 +974,24 @@ function MinimalGraphInner({
       layoutKeyRef.current = key;
       setInteractiveNodes(layoutedDisplayNodes.map((n) => ({ ...n, draggable: true })));
       pendingFitViewRef.current = true;
+      return;
     }
+    // Same node set — merge fresh `data` and `type` into existing nodes so
+    // updates that don't change node identity (e.g. color-mode toggle, draft
+    // → stable transitions, authored-flag updates) take effect without
+    // discarding the user's drag-positioned coordinates. ADR-030 §D4.
+    const layoutNodeMap = new Map(layoutedDisplayNodes.map((n) => [n.id, n]));
+    setInteractiveNodes((prev) =>
+      prev.map((node) => {
+        const next = layoutNodeMap.get(node.id);
+        if (!next) return node;
+        return {
+          ...node,
+          type: next.type ?? node.type,
+          data: next.data,
+        };
+      })
+    );
   }, [layoutedDisplayNodes]);
 
   const onNodesChange = useCallback((changes) => {
@@ -1228,6 +1262,8 @@ function MinimalGraphInner({
         >
           {hideEdges ? "Edges off" : "Edges on"}
         </button>
+        <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
+        <ColorModeToggle mode={colorMode} onChange={handleColorModeChange} />
       </div>
 
       {/* Zoom / cluster HUD — top-left */}
@@ -1532,6 +1568,8 @@ MinimalGraphInner.propTypes = {
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
+  conversationId: PropTypes.string,
+  initialColorMode: PropTypes.oneOf(COLOR_MODES),
 };
 
 export default function MinimalGraph(props) {
@@ -1548,4 +1586,6 @@ MinimalGraph.propTypes = {
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
+  conversationId: PropTypes.string,
+  initialColorMode: PropTypes.oneOf(COLOR_MODES),
 };
