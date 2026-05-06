@@ -10,14 +10,18 @@ Available stages:
   - SegmentStage        — text chunking for analyzer batches (PR-B)
   - AccumulateStage     — feed chunks into TranscriptProcessor.handle_final_text (PR-C)
   - GenerateGraphStage  — flush processor + materialise graph state (PR-C)
+  - RefineStage         — second-pass LLM densification (import path) (PR-D)
+  - PersistStage        — write canonical graph state via graph_persistence (PR-D)
 
 Coming in later PRs:
-  - RefineStage, PersistStage, UnlockHierarchyStage
+  - UnlockHierarchyStage
 """
 
 from .accumulate import AccumulateStage
 from .generate_graph import GenerateGraphStage
 from .ingest import IngestStage
+from .persist import PersistStage
+from .refine import RefineStage
 from .segment import SegmentStage
 from .transcribe import TranscribeStage
 
@@ -25,6 +29,8 @@ __all__ = [
     "AccumulateStage",
     "GenerateGraphStage",
     "IngestStage",
+    "PersistStage",
+    "RefineStage",
     "SegmentStage",
     "TranscribeStage",
 ]

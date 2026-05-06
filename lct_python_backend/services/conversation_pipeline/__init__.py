@@ -39,6 +39,8 @@ from .stages import (
     AccumulateStage,
     GenerateGraphStage,
     IngestStage,
+    PersistStage,
+    RefineStage,
     SegmentStage,
     TranscribeStage,
 )
@@ -87,6 +89,8 @@ __all__ = [
     "AccumulateStage",
     "GenerateGraphStage",
     "IngestStage",
+    "PersistStage",
+    "RefineStage",
     "SegmentStage",
     "TranscribeStage",
 ]
