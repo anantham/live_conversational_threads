@@ -321,3 +321,110 @@ def test_no_op_on_empty_graph():
     _run(stage.run(state, emit))
 
     assert state.hierarchy.unlocked_levels == [1]
+
+
+# ---------------------------------------------------------------------------
+# UnlockHierarchyStage — artifact write per ADR-030 §D9
+# ---------------------------------------------------------------------------
+
+
+def test_unlock_writes_pipeline_artifact_with_unlock_metadata():
+    """Each unlock event must produce a pipeline_artifacts row so
+    cross-conversation telemetry can build a depth histogram."""
+    writes = []
+
+    async def writer(**kwargs):
+        writes.append(kwargs)
+        return "fake-artifact-id"
+
+    async def judge(_items):
+        return "yes_cluster"
+
+    stage = UnlockHierarchyStage(judge_fn=judge, artifact_writer=writer)
+    state = PipelineState(conversation_id="conv-abc")
+    state.graph.nodes = _chunks(6)
+    emit, _events = _make_event_collector()
+
+    _run(stage.run(state, emit))
+
+    assert len(writes) == 1
+    rec = writes[0]
+    assert rec["conversation_id"] == "conv-abc"
+    assert rec["stage"] == "unlock_hierarchy"
+    assert rec["stage_index"] == 2  # the level that was unlocked
+    assert rec["artifact_type"] == "hierarchy_unlock"
+    md = rec["artifact_metadata"]
+    assert md["level"] == 2
+    assert md["semantic_type"] == "idea"
+    assert md["judge_decision"] == "yes_cluster"
+    assert md["node_count_below"] == 6
+    assert md["bucket"] == 5
+
+
+def test_unlock_skips_artifact_when_no_conversation_id():
+    """The conversation_id check guards against accidental writes in
+    tests / pipeline-state-only invocations that haven't bound a real
+    conversation yet."""
+    writes = []
+
+    async def writer(**kwargs):
+        writes.append(kwargs)
+        return "id"
+
+    async def judge(_items):
+        return "yes_cluster"
+
+    stage = UnlockHierarchyStage(judge_fn=judge, artifact_writer=writer)
+    state = PipelineState()  # no conversation_id
+    state.graph.nodes = _chunks(6)
+    emit, _events = _make_event_collector()
+
+    _run(stage.run(state, emit))
+
+    assert writes == []
+
+
+def test_unlock_artifact_writer_failure_does_not_break_stage():
+    """ADR-030 §P2: observability writes never block pipeline."""
+
+    async def boom(**kwargs):
+        raise RuntimeError("DB error")
+
+    async def judge(_items):
+        return "yes_cluster"
+
+    stage = UnlockHierarchyStage(judge_fn=judge, artifact_writer=boom)
+    state = PipelineState(conversation_id="c1")
+    state.graph.nodes = _chunks(6)
+    emit, events = _make_event_collector()
+
+    # Should NOT raise; unlock should still happen + LevelUnlocked emitted.
+    _run(stage.run(state, emit))
+
+    assert state.hierarchy.unlocked_levels == [1, 2]
+    unlocks = [e for e in events if isinstance(e, LevelUnlocked)]
+    assert len(unlocks) == 1
+
+
+def test_unlock_writes_one_artifact_per_unlocked_tier():
+    writes = []
+
+    async def writer(**kwargs):
+        writes.append(kwargs["stage_index"])
+        return "id"
+
+    async def judge(_items):
+        return "yes_cluster"
+
+    stage = UnlockHierarchyStage(judge_fn=judge, artifact_writer=writer)
+    state = PipelineState(conversation_id="c1")
+    state.graph.nodes = (
+        _chunks(10, prefix="c", level=1)
+        + _chunks(6, prefix="i", level=2)
+    )
+    emit, _events = _make_event_collector()
+
+    _run(stage.run(state, emit))
+
+    # ideas (lvl 2) and topics (lvl 3) both unlock → 2 artifacts.
+    assert writes == [2, 3]
