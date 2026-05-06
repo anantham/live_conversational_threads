@@ -5,17 +5,26 @@ file should be ≤300 LOC; if it grows past that, split (e.g.
 ``transcribe_partial.py`` + ``transcribe_final.py``).
 
 Available stages:
-  - IngestStage      — source classification (PR-A)
-  - TranscribeStage  — transcript-buffer state + typed event emission (PR-B)
-  - SegmentStage     — text chunking for analyzer batches (PR-B)
+  - IngestStage         — source classification (PR-A)
+  - TranscribeStage     — transcript-buffer state + typed event emission (PR-B)
+  - SegmentStage        — text chunking for analyzer batches (PR-B)
+  - AccumulateStage     — feed chunks into TranscriptProcessor.handle_final_text (PR-C)
+  - GenerateGraphStage  — flush processor + materialise graph state (PR-C)
 
 Coming in later PRs:
-  - AccumulateStage, GenerateGraphStage, RefineStage, PersistStage,
-    UnlockHierarchyStage
+  - RefineStage, PersistStage, UnlockHierarchyStage
 """
 
+from .accumulate import AccumulateStage
+from .generate_graph import GenerateGraphStage
 from .ingest import IngestStage
 from .segment import SegmentStage
 from .transcribe import TranscribeStage
 
-__all__ = ["IngestStage", "SegmentStage", "TranscribeStage"]
+__all__ = [
+    "AccumulateStage",
+    "GenerateGraphStage",
+    "IngestStage",
+    "SegmentStage",
+    "TranscribeStage",
+]
