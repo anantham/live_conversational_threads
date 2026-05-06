@@ -35,7 +35,13 @@ from .events import (
 )
 from .orchestrator import ConversationPipeline
 from .protocol import EmitFn, Stage, StageError
-from .stages import IngestStage, SegmentStage, TranscribeStage
+from .stages import (
+    AccumulateStage,
+    GenerateGraphStage,
+    IngestStage,
+    SegmentStage,
+    TranscribeStage,
+)
 from .state import (
     GraphState,
     HierarchyState,
@@ -78,6 +84,8 @@ __all__ = [
     "GraphPersisted",
     "LevelUnlocked",
     # Stages
+    "AccumulateStage",
+    "GenerateGraphStage",
     "IngestStage",
     "SegmentStage",
     "TranscribeStage",
