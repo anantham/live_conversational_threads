@@ -1,41 +1,55 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import { API_BASE_URL } from "../services/apiClient";
+import { API_BASE_URL, saveConversationDraft } from "../services/apiClient";
 
-const DEBOUNCE_MS = 30_000; // save at most once per 30 s while graph is changing
+const DEBOUNCE_MS = 30_000; // save at most once per 30 s while name is changing
 
 /**
- * Flatten chunked graphData (Array<Array<Node>>) to a flat node list.
- * The backend persist_import_graph expects a flat list.
+ * Build the beacon body for sendBeacon. We only send presentation/recovery
+ * state per ADR-030 §D6 — never the graph itself.
  */
-function flattenGraphData(graphData) {
-  if (!Array.isArray(graphData)) return [];
-  return graphData.flatMap((chunk) => (Array.isArray(chunk) ? chunk : []));
+function buildBeaconBody(conversationName) {
+  const payload = {};
+  if (conversationName && conversationName.trim()) {
+    payload.conversation_name = conversationName.trim();
+  }
+  return payload;
 }
 
 /**
  * Fire-and-forget beacon save used on tab close / visibility change.
  * navigator.sendBeacon is reliable even during page unload.
+ *
+ * Per ADR-030 §D6 only browser-authoritative draft keys are sent. Canonical
+ * semantic state (nodes, relationships, claims, etc.) is persisted by the
+ * backend and never originates from this hook.
  */
-function beaconSave(conversationId, nodes, conversationName) {
-  if (!conversationId || nodes.length === 0) return;
-  const url = `${API_BASE_URL}/conversations/${conversationId}/graph`;
-  const payload = JSON.stringify({ nodes, conversation_name: conversationName || null });
-  const blob = new Blob([payload], { type: "application/json" });
+function beaconDraftSave(conversationId, conversationName) {
+  if (!conversationId) return;
+  const payload = buildBeaconBody(conversationName);
+  if (Object.keys(payload).length === 0) return;
+  const url = `${API_BASE_URL}/api/conversations/${conversationId}/draft`;
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
   navigator.sendBeacon(url, blob);
 }
 
 /**
- * useAutoSave — browser-originated snapshot persistence.
+ * useAutoSave — browser-originated draft state persistence per ADR-030 §D6.
  *
- * Canonical live semantic graph persistence is backend-owned. This hook now
- * acts as a supplementary browser snapshot path so presentation/layout state
- * can still be recovered during migration.
+ * The browser MUST NOT write canonical semantic state. This hook persists
+ * only browser-authoritative draft fields (conversation_name; in future
+ * phases: viewport, canvas_overrides, dismissed_unlock_affordances, etc.).
+ *
+ * Canonical graph persistence is backend-owned (live_graph_persistence,
+ * import_persistence). Older versions of this hook also POSTed `nodes` to
+ * `PATCH /conversations/{id}/graph`; that path is removed and the endpoint
+ * is deprecated.
  *
  * @param {object} opts
- * @param {string}  opts.conversationId   - stable UUID for this session
- * @param {Array}   opts.graphData        - chunked graph (Array<Array<Node>>)
- * @param {string}  [opts.conversationName] - optional display name
- * @param {boolean} [opts.enabled=true]   - set false to pause saving
+ * @param {string}  opts.conversationId       - stable UUID for this session
+ * @param {Array}   opts.graphData            - kept for change-detection only;
+ *                                              graph data is NOT sent to server
+ * @param {string}  [opts.conversationName]   - user-edited title (browser-authoritative)
+ * @param {boolean} [opts.enabled=true]       - set false to pause saving
  *
  * @returns {{ saveStatus: string, lastSavedAt: Date|null, triggerSave: Function }}
  */
@@ -48,80 +62,77 @@ export function useAutoSave({
   const [saveStatus, setSaveStatus] = useState("idle"); // 'idle'|'saving'|'saved'|'error'
   const [lastSavedAt, setLastSavedAt] = useState(null);
 
-  // Track the node count that was last successfully saved so we skip no-op saves
-  const lastSavedCountRef = useRef(0);
+  const lastSavedNameRef = useRef("");
+  const lastSeenGraphLengthRef = useRef(0);
   const debounceTimerRef = useRef(null);
   const isSavingRef = useRef(false);
 
   const doSave = useCallback(
-    async (nodes) => {
-      if (!conversationId || nodes.length === 0) return;
+    async (name) => {
+      if (!conversationId) return;
       if (isSavingRef.current) return;
+      const trimmed = (name || "").trim();
+      if (!trimmed) return;
+      if (trimmed === lastSavedNameRef.current) return;
 
       isSavingRef.current = true;
       setSaveStatus("saving");
 
       try {
-        const resp = await fetch(
-          `${API_BASE_URL}/conversations/${conversationId}/graph`,
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              nodes,
-              conversation_name: conversationName || null,
-            }),
-          }
-        );
-
-        if (!resp.ok) {
-          const text = await resp.text().catch(() => "");
-          throw new Error(`HTTP ${resp.status}: ${text}`);
-        }
-
-        lastSavedCountRef.current = nodes.length;
+        await saveConversationDraft(conversationId, {
+          conversation_name: trimmed,
+        });
+        lastSavedNameRef.current = trimmed;
         setLastSavedAt(new Date());
         setSaveStatus("saved");
       } catch (err) {
-        console.warn("[useAutoSave] Save failed:", err);
+        console.warn("[useAutoSave] Draft save failed:", err);
         setSaveStatus("error");
       } finally {
         isSavingRef.current = false;
       }
     },
-    [conversationId, conversationName]
+    [conversationId]
   );
 
-  // Debounced save triggered by graphData changes
+  // Debounced save triggered by either graph activity (signaling the session
+  // is producing work worth keeping a name attached to) or name changes.
   useEffect(() => {
     if (!enabled) return;
 
-    const nodes = flattenGraphData(graphData);
-    if (nodes.length === 0) return;
-    // Skip if nothing new since last save
-    if (nodes.length === lastSavedCountRef.current) return;
+    const flatLength = Array.isArray(graphData)
+      ? graphData.reduce(
+          (acc, chunk) => acc + (Array.isArray(chunk) ? chunk.length : 0),
+          0
+        )
+      : 0;
+    const graphChanged = flatLength !== lastSeenGraphLengthRef.current;
+    lastSeenGraphLengthRef.current = flatLength;
+
+    const nameChanged =
+      (conversationName || "").trim() !== lastSavedNameRef.current;
+
+    if (!graphChanged && !nameChanged) return;
+    if (!conversationName || !conversationName.trim()) return;
 
     clearTimeout(debounceTimerRef.current);
-    debounceTimerRef.current = setTimeout(() => doSave(nodes), DEBOUNCE_MS);
+    debounceTimerRef.current = setTimeout(() => doSave(conversationName), DEBOUNCE_MS);
 
     return () => clearTimeout(debounceTimerRef.current);
-  }, [graphData, enabled, doSave]);
+  }, [graphData, conversationName, enabled, doSave]);
 
-  // Save on tab hide (visibilitychange) and page unload (beforeunload)
-  // Use beacon so the save survives the page being torn down
+  // Save on tab hide / page unload — beacon ensures the save survives teardown.
   useEffect(() => {
     if (!enabled) return;
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
-        const nodes = flattenGraphData(graphData);
-        beaconSave(conversationId, nodes, conversationName);
+        beaconDraftSave(conversationId, conversationName);
       }
     };
 
     const handleBeforeUnload = () => {
-      const nodes = flattenGraphData(graphData);
-      beaconSave(conversationId, nodes, conversationName);
+      beaconDraftSave(conversationId, conversationName);
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -131,14 +142,12 @@ export function useAutoSave({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  // graphData intentionally in deps: we want the latest snapshot captured in the closure
-  }, [conversationId, conversationName, enabled, graphData]);
+  }, [conversationId, conversationName, enabled]);
 
-  // Exposed manual trigger (e.g. for "End & Exit" button)
+  // Exposed manual trigger (e.g. for "End & Exit" button).
   const triggerSave = useCallback(() => {
-    const nodes = flattenGraphData(graphData);
-    return doSave(nodes);
-  }, [graphData, doSave]);
+    return doSave(conversationName);
+  }, [conversationName, doSave]);
 
   return { saveStatus, lastSavedAt, triggerSave };
 }

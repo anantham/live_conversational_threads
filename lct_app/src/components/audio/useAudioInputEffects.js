@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-import { saveConversationToServer } from "../../utils/SaveConversation";
+import { saveConversationDraft } from "../../services/apiClient";
 import { deriveSuggestedConversationTitle } from "../../utils/conversationTitle";
 
 const useFilenameFromGraph = ({
@@ -39,6 +39,15 @@ const useGraphDataSync = ({ graphData, graphDataFromSocket, backendWsRef, logToS
   }, [graphData, graphDataFromSocket, backendWsRef, logToServer]);
 };
 
+/**
+ * Auto-save the user-edited conversation name (browser-authoritative draft state)
+ * per ADR-030 §D6. Canonical graph/chunk persistence is backend-owned and is
+ * not sent from the browser through this hook.
+ *
+ * `graphData` and `chunkDict` are kept in the dependency list as activity
+ * signals — they tell us when there is work worth attaching a name to — but
+ * their contents are NOT transmitted.
+ */
 const useAutoSaveConversation = ({
   graphData,
   chunkDict,
@@ -49,24 +58,21 @@ const useAutoSaveConversation = ({
 }) => {
   useEffect(() => {
     if (!graphData || !chunkDict || !fileName) return;
+    if (!conversationId) return;
+    const trimmed = String(fileName || "").trim();
+    if (!trimmed) return;
+    if (lastAutoSaveRef.current?.fileName === trimmed) return;
+
     const timeoutId = setTimeout(async () => {
       try {
-        const result = await saveConversationToServer({
-          fileName,
-          graphData,
-          chunkDict,
-          conversationId,
+        await saveConversationDraft(conversationId, {
+          conversation_name: trimmed,
         });
-        if (!result?.success) {
-          const detail = result?.message || "Unknown error";
-          console.error("Auto-save failed:", detail);
-          setMessage?.(`Auto-save failed: ${detail}`);
-          return;
-        }
-        lastAutoSaveRef.current = { graphData, chunkDict };
+        lastAutoSaveRef.current = { fileName: trimmed };
       } catch (err) {
-        console.error("Auto-save failed:", err);
-        setMessage?.(`Auto-save failed: ${err?.message || "Unknown error"}`);
+        const detail = err?.message || "Unknown error";
+        console.error("Auto-save (draft) failed:", detail);
+        setMessage?.(`Auto-save failed: ${detail}`);
       }
     }, 1000);
     return () => clearTimeout(timeoutId);
