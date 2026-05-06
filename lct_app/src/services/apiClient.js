@@ -144,3 +144,60 @@ export function sendWsAuth(ws) {
     ws.send(JSON.stringify({ type: 'auth', token: AUTH_TOKEN }));
   }
 }
+
+/**
+ * Allowed keys for saveConversationDraft per ADR-030 §D6.
+ * The browser may only send presentation/recovery state through this path —
+ * never canonical semantic state (nodes, claims, intent_signals, etc.).
+ * The backend rejects unknown keys with HTTP 422 (Pydantic extra="forbid").
+ */
+const ALLOWED_DRAFT_KEYS = Object.freeze(new Set([
+  'conversation_name',
+  'viewport',
+  'canvas_overrides',
+  'dismissed_unlock_affordances',
+  'active_tab',
+  'local_draft_text',
+  'pinned_node_ids',
+]));
+
+/**
+ * Persist browser-originated presentation/recovery draft state per ADR-030 §D6.
+ *
+ * This is the ONE explicit save path for non-canonical conversation state.
+ * Semantic interpretation (nodes, relationships, claims, etc.) MUST NOT be sent
+ * through this function — the client-side check below catches violations early.
+ *
+ * @param {string} conversationId - target conversation UUID
+ * @param {object} payload - keys must be a subset of ALLOWED_DRAFT_KEYS
+ * @returns {Promise<{persisted: string[], deferred: string[], conversation_id: string}>}
+ * @throws {Error} if any payload key is forbidden
+ */
+export async function saveConversationDraft(conversationId, payload) {
+  if (!conversationId) {
+    throw new Error('saveConversationDraft: conversationId is required');
+  }
+  const forbidden = Object.keys(payload || {}).filter(
+    (k) => !ALLOWED_DRAFT_KEYS.has(k)
+  );
+  if (forbidden.length > 0) {
+    throw new Error(
+      `saveConversationDraft: forbidden key(s) ${JSON.stringify(forbidden)} ` +
+      `— only presentation/recovery state allowed (see ADR-030 §D6). ` +
+      `Allowed keys: ${[...ALLOWED_DRAFT_KEYS].join(', ')}.`
+    );
+  }
+  const response = await apiFetch(
+    `/api/conversations/${conversationId}/draft`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }
+  );
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`saveConversationDraft: HTTP ${response.status}: ${text}`);
+  }
+  return response.json();
+}

@@ -7,7 +7,8 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from google.cloud import storage
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql import func
 
@@ -227,10 +228,10 @@ async def patch_conversation_graph(
     """
     Upsert graph nodes + relationships for a live conversation.
 
-    Called by the browser autosave hook as a supplementary graph snapshot path.
-    Canonical live graph persistence is now backend-owned; this route remains
-    useful for browser-originated layout/presentation snapshots and as a
-    fallback persistence path during migration.
+    DEPRECATED for browser callers per ADR-030 §D6. The browser must not
+    write canonical semantic state; use POST /api/conversations/{id}/draft
+    for presentation/recovery state instead. This route is retained only
+    for backend-internal use during the D6 phase 2 migration window.
     """
     from lct_python_backend.services.import_persistence import persist_import_graph
 
@@ -261,6 +262,108 @@ async def patch_conversation_graph(
             "[browser graph snapshot] Failed to persist graph for conversation %s", conversation_id
         )
         raise HTTPException(status_code=500, detail=f"Graph save failed: {exc}") from exc
+
+
+class DraftStateRequest(BaseModel):
+    """Browser-originated presentation/recovery draft state per ADR-030 §D6.
+
+    Only the fields below are accepted. Any other key in the request body
+    is rejected by Pydantic with a 422 ValidationError, satisfying the ADR's
+    whitelist enforcement requirement (the ADR specifies "400 invalid_payload_key";
+    Pydantic's structured 422 response carries equivalent semantics with field-level detail).
+
+    Allowed (presentation/recovery, browser-authoritative):
+      - conversation_name: user-edited title for the conversation
+      - viewport: graph canvas zoom/pan state
+      - canvas_overrides: per-node user-positioned coordinates {node_id: {x, y}}
+      - dismissed_unlock_affordances: which level-unlock CTAs the user dismissed
+      - active_tab: currently selected zoom-tier tab
+      - local_draft_text: in-progress notes the user typed (explicitly draft, not authored)
+      - pinned_node_ids: UI focus state
+
+    Forbidden by construction (not declared as fields, rejected by extra="forbid"):
+      - nodes, relationships, clusters, claims, intent_signals, *_analysis,
+        utterances, transcript_events, speaker_segments,
+        is_tangent, is_crux, is_bookmark, is_contextual_progress, etc.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    conversation_name: Optional[str] = None
+    viewport: Optional[Dict[str, Any]] = None
+    canvas_overrides: Optional[Dict[str, Any]] = None
+    dismissed_unlock_affordances: Optional[List[str]] = None
+    active_tab: Optional[str] = None
+    local_draft_text: Optional[str] = None
+    pinned_node_ids: Optional[List[str]] = None
+
+
+@router.post("/api/conversations/{conversation_id}/draft")
+async def save_conversation_draft(
+    conversation_id: str,
+    body: DraftStateRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """
+    Persist browser-originated presentation/recovery draft state per ADR-030 §D6.
+
+    This is the ONE explicit save path from browser to backend for non-canonical
+    state. Semantic state (nodes, claims, etc.) must never pass through here —
+    Pydantic's `extra="forbid"` rejects any unknown key with 422.
+
+    Phase 1 (this commit) persists only `conversation_name` to the existing
+    `conversations.conversation_name` column. Other allowed keys are accepted
+    with debug logging; their persistence will land alongside D4 (custom node
+    renderer) when canvas overrides become a user-visible feature.
+    """
+    from lct_python_backend.models import Conversation
+
+    try:
+        conversation_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid conversation_id UUID")
+
+    payload = body.model_dump(exclude_none=True)
+    if not payload:
+        return {"persisted": [], "deferred": [], "conversation_id": conversation_id}
+
+    persisted: List[str] = []
+    deferred: List[str] = []
+
+    if "conversation_name" in payload:
+        new_name = payload["conversation_name"].strip() if payload["conversation_name"] else ""
+        if new_name:
+            await db.execute(
+                update(Conversation)
+                .where(Conversation.id == conversation_uuid)
+                .values(conversation_name=new_name, updated_at=func.now())
+            )
+            await db.commit()
+            persisted.append("conversation_name")
+
+    # Other allowed keys: ADR-030 §D6 phase 2 — backend persistence column not
+    # yet wired. Log and accept so the browser contract is honored.
+    for key in (
+        "viewport",
+        "canvas_overrides",
+        "dismissed_unlock_affordances",
+        "active_tab",
+        "local_draft_text",
+        "pinned_node_ids",
+    ):
+        if key in payload:
+            logger.debug(
+                "[draft] %s received for conversation %s but persistence is deferred to D6 phase 2",
+                key,
+                conversation_id,
+            )
+            deferred.append(key)
+
+    return {
+        "persisted": persisted,
+        "deferred": deferred,
+        "conversation_id": conversation_id,
+    }
 
 
 @router.get("/api/conversations/{conversation_id}/utterances")
