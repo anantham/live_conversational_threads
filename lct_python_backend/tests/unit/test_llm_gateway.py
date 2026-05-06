@@ -296,3 +296,77 @@ def test_get_env_providers_defaults_no_longer_carries_embedding_provider_id():
     from lct_python_backend.services.llm_config import get_env_providers_defaults
     defaults = get_env_providers_defaults()
     assert "embedding_provider_id" not in defaults
+
+
+# ---------------------------------------------------------------------------
+# ProviderResult prompt-metadata fields (ADR-030 §D7)
+# ---------------------------------------------------------------------------
+
+
+def test_provider_result_carries_prompt_metadata_when_set():
+    from lct_python_backend.services.local_llm_client import ProviderResult
+    pr = ProviderResult(
+        data={"x": 1},
+        provider_id="p",
+        provider_name="P",
+        model="m",
+        base_url="http://p.example",
+        provider_type="openai_compatible",
+        prompt_name="detect_claims_three_layer",
+        prompt_version="v3",
+    )
+    assert pr.prompt_name == "detect_claims_three_layer"
+    assert pr.prompt_version == "v3"
+
+
+def test_provider_result_prompt_metadata_defaults_to_none_for_back_compat():
+    from lct_python_backend.services.local_llm_client import ProviderResult
+    pr = ProviderResult(
+        data={},
+        provider_id="p",
+        provider_name="P",
+        model="m",
+        base_url="http://p.example",
+        provider_type="openai_compatible",
+    )
+    assert pr.prompt_name is None
+    assert pr.prompt_version is None
+
+
+def test_gateway_chat_threads_prompt_metadata_through_to_provider_result(monkeypatch):
+    """Gateway.chat must pass prompt_name + prompt_version to the
+    underlying fallback so telemetry attribution survives the call."""
+    captured = {}
+
+    async def fake_fallback(messages, **kwargs):
+        from lct_python_backend.services.local_llm_client import ProviderResult
+        captured.update(kwargs)
+        return ProviderResult(
+            data={"ok": True},
+            provider_id="p",
+            provider_name="P",
+            model="m",
+            base_url="http://p.example",
+            provider_type="openai_compatible",
+            prompt_name=kwargs.get("prompt_name"),
+            prompt_version=kwargs.get("prompt_version"),
+        )
+
+    monkeypatch.setattr(
+        "lct_python_backend.services.llm_gateway.chat_with_provider_fallback",
+        fake_fallback,
+    )
+
+    g = LlmGateway()
+    result = _run(g.chat(
+        messages=[{"role": "user", "content": "hi"}],
+        capability=Capability.CHAT_JSON_OBJECT,
+        prompt_name="detect_claims_three_layer",
+        prompt_version="v3",
+    ))
+
+    assert captured["prompt_name"] == "detect_claims_three_layer"
+    assert captured["prompt_version"] == "v3"
+    assert captured["require_json"] is True
+    assert result.prompt_name == "detect_claims_three_layer"
+    assert result.prompt_version == "v3"
