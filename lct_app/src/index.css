@@ -15,3 +15,10 @@
 .animate-slideIn {
   animation: slideIn 0.2s ease-out;
 }
+
+/* ADR-030 §D4: subtle opacity pulse on draft graph nodes (freshness signal).
+   Slow + low-amplitude so the graph stays calm during recording per ADR-011. */
+@keyframes lctDraftPulse {
+  0%, 100% { opacity: 0.7; }
+  50%      { opacity: 0.95; }
+}
