@@ -134,7 +134,8 @@ function layoutWithDagre(nodes, edges, { nodeWidth = 240, nodeHeight = 80 } = {}
 
 function getAuthoredSemanticLevel(node) {
   const level = Number(node?.semantic_level);
-  if (!Number.isInteger(level) || level < 1 || level > 4) return null;
+  // ADR-030 §D2: canonical hierarchy is 1-5 (chunks/ideas/topics/themes/arcs).
+  if (!Number.isInteger(level) || level < 1 || level > 5) return null;
   const semanticType = String(node?.semantic_type || "").trim().toLowerCase();
   if (!semanticType) return null;
   return level;
