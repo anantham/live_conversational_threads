@@ -21,7 +21,9 @@ from lct_python_backend.services.llm_gateway import (
     _embed_with_provider_fallback,
     _embed_model_for,
     _provider_supports_embed,
+    check_provider_models,
     gateway,
+    log_provider_model_audit,
 )
 
 
@@ -90,6 +92,11 @@ class _FakeAsyncClient:
         return False
 
     async def post(self, url, json=None, headers=None):
+        if self._raises is not None:
+            raise self._raises
+        return _FakeResponse(self._status, self._body)
+
+    async def get(self, url, headers=None):
         if self._raises is not None:
             raise self._raises
         return _FakeResponse(self._status, self._body)
@@ -331,6 +338,147 @@ def test_provider_result_prompt_metadata_defaults_to_none_for_back_compat():
     )
     assert pr.prompt_name is None
     assert pr.prompt_version is None
+
+
+# ---------------------------------------------------------------------------
+# check_provider_models — startup model-availability audit (ADR-030 §D5 Q2)
+# ---------------------------------------------------------------------------
+
+
+def _models_response(model_ids):
+    """Build the OpenAI-shaped /v1/models response body."""
+    return _FakeAsyncClient(200, {
+        "object": "list",
+        "data": [{"id": mid, "object": "model"} for mid in model_ids],
+    })
+
+
+def test_audit_reports_chat_model_loaded_when_in_served_catalogue(monkeypatch):
+    monkeypatch.setattr(
+        "lct_python_backend.services.llm_gateway.httpx.AsyncClient",
+        lambda *a, **k: _models_response(["qwen3-32b", "gemma-31b"]),
+    )
+    providers = [{
+        "id": "p1", "name": "P1", "type": "openai_compatible",
+        "base_url": "http://p1.example", "model": "qwen3-32b", "enabled": True,
+    }]
+
+    reports = _run(check_provider_models(providers))
+
+    assert len(reports) == 1
+    r = reports[0]
+    assert r["reachable"] is True
+    assert r["chat_model_loaded"] is True
+    assert r["error"] is None
+    assert "qwen3-32b" in r["served_models"]
+
+
+def test_audit_flags_chat_model_not_loaded(monkeypatch):
+    monkeypatch.setattr(
+        "lct_python_backend.services.llm_gateway.httpx.AsyncClient",
+        lambda *a, **k: _models_response(["qwen/qwen3-vl-8b", "gemma-31b"]),
+    )
+    providers = [{
+        "id": "lmstudio", "name": "LM Studio", "type": "openai_compatible",
+        "base_url": "http://lmstudio.example", "model": "qwen3-32b", "enabled": True,
+    }]
+
+    reports = _run(check_provider_models(providers))
+
+    r = reports[0]
+    assert r["reachable"] is True
+    assert r["chat_model_loaded"] is False
+    assert r["configured_chat_model"] == "qwen3-32b"
+    assert "qwen3-32b" not in r["served_models"]
+
+
+def test_audit_reports_unreachable_when_provider_returns_500(monkeypatch):
+    monkeypatch.setattr(
+        "lct_python_backend.services.llm_gateway.httpx.AsyncClient",
+        lambda *a, **k: _FakeAsyncClient(500, {}),
+    )
+    providers = [{
+        "id": "broken", "name": "B", "type": "openai_compatible",
+        "base_url": "http://broken.example", "model": "any", "enabled": True,
+    }]
+
+    reports = _run(check_provider_models(providers))
+
+    assert reports[0]["reachable"] is False
+    assert "HTTP 500" in (reports[0]["error"] or "")
+
+
+def test_audit_skips_disabled_providers(monkeypatch):
+    monkeypatch.setattr(
+        "lct_python_backend.services.llm_gateway.httpx.AsyncClient",
+        lambda *a, **k: _models_response(["any-model"]),
+    )
+    providers = [
+        {"id": "off1", "type": "openai_compatible",
+         "base_url": "http://off.example", "model": "any", "enabled": False},
+        {"id": "on1", "name": "On", "type": "openai_compatible",
+         "base_url": "http://on.example", "model": "any-model", "enabled": True},
+    ]
+
+    reports = _run(check_provider_models(providers))
+
+    ids = [r["provider_id"] for r in reports]
+    assert ids == ["on1"]  # disabled one filtered out
+
+
+def test_audit_handles_provider_with_no_base_url():
+    providers = [{
+        "id": "broken", "type": "openai_compatible",
+        "base_url": "", "model": "any", "enabled": True,
+    }]
+
+    reports = _run(check_provider_models(providers))
+
+    assert reports[0]["error"] == "no base_url configured"
+    assert reports[0]["reachable"] is False
+
+
+def test_audit_reports_embedding_model_separately(monkeypatch):
+    monkeypatch.setattr(
+        "lct_python_backend.services.llm_gateway.httpx.AsyncClient",
+        lambda *a, **k: _models_response([
+            "qwen3-32b",
+            "text-embedding-qwen3-embedding-8b",
+        ]),
+    )
+    providers = [{
+        "id": "p1", "type": "openai_compatible",
+        "base_url": "http://p1.example",
+        "model": "qwen3-32b",
+        "embedding_model": "text-embedding-3-small",  # NOT loaded
+        "enabled": True,
+    }]
+
+    reports = _run(check_provider_models(providers))
+
+    r = reports[0]
+    assert r["chat_model_loaded"] is True
+    assert r["embedding_model_loaded"] is False
+    assert r["configured_embedding_model"] == "text-embedding-3-small"
+
+
+def test_log_provider_model_audit_warns_on_missing_chat_model(caplog):
+    import logging
+    caplog.set_level(logging.WARNING, logger="lct_backend")
+    log_provider_model_audit([{
+        "provider_id": "lmstudio",
+        "base_url": "http://x",
+        "reachable": True,
+        "served_models": ["other-model"],
+        "configured_chat_model": "qwen3-32b",
+        "chat_model_loaded": False,
+        "configured_embedding_model": None,
+        "embedding_model_loaded": None,
+        "error": None,
+    }])
+    # Warning was emitted (at least one warning record matching our marker).
+    matches = [r for r in caplog.records if "PROVIDER AUDIT" in r.message and "NOT in served" in r.message]
+    assert len(matches) >= 1
 
 
 def test_gateway_chat_threads_prompt_metadata_through_to_provider_result(monkeypatch):

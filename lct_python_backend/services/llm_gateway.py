@@ -343,6 +343,144 @@ def _coerce_model(value: Any) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Provider model-availability check (ADR-030 §D5 follow-up: Q2)
+# ---------------------------------------------------------------------------
+
+
+async def check_provider_models(
+    providers: Optional[List[Dict[str, Any]]] = None,
+    *,
+    timeout_seconds: float = 5.0,
+) -> List[Dict[str, Any]]:
+    """Probe each enabled provider's ``GET /v1/models`` and report whether
+    the configured ``model`` (and ``embedding_model`` if set) is actually
+    in the served catalogue.
+
+    Returns one report dict per provider with shape::
+
+        {
+          "provider_id": "local_lmstudio",
+          "base_url": "http://...",
+          "reachable": True,
+          "served_models": ["qwen/qwen3.5-9b", ...],
+          "configured_chat_model": "qwen3-32b",
+          "chat_model_loaded": False,
+          "configured_embedding_model": "text-embedding-3-small",
+          "embedding_model_loaded": False,
+          "error": None,
+        }
+
+    Designed for startup-time logging, NOT for hot-path validation. ADR-030
+    §D5 already enforces strict-match policy on embeddings at request
+    time; this check just makes the misconfiguration visible at boot
+    rather than on the first inference call.
+    """
+    candidates = providers if providers is not None else get_default_providers()
+    enabled = [p for p in candidates if p.get("enabled", True)]
+    reports: List[Dict[str, Any]] = []
+
+    for provider in enabled:
+        provider_id = provider.get("id", "unknown")
+        base_url = str(provider.get("base_url", "")).rstrip("/")
+        chat_model = str(provider.get("model") or "")
+        embedding_model = str(provider.get("embedding_model") or "")
+        provider_type = provider.get("type", "openai_compatible")
+        api_key = provider.get("api_key")
+
+        report: Dict[str, Any] = {
+            "provider_id": provider_id,
+            "base_url": base_url,
+            "reachable": False,
+            "served_models": [],
+            "configured_chat_model": chat_model,
+            "chat_model_loaded": False,
+            "configured_embedding_model": embedding_model or None,
+            "embedding_model_loaded": None if not embedding_model else False,
+            "error": None,
+        }
+
+        if not base_url:
+            report["error"] = "no base_url configured"
+            reports.append(report)
+            continue
+
+        url = build_provider_api_url(base_url, provider_type, "models")
+        headers: Dict[str, str] = {"Content-Type": "application/json"}
+        if api_key:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        try:
+            async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+                body = response.json()
+        except httpx.HTTPStatusError as exc:
+            report["error"] = f"HTTP {exc.response.status_code}"
+            reports.append(report)
+            continue
+        except httpx.RequestError as exc:
+            report["error"] = f"{type(exc).__name__}: {exc}"
+            reports.append(report)
+            continue
+        except Exception as exc:  # noqa: BLE001
+            report["error"] = f"{type(exc).__name__}: {exc}"
+            reports.append(report)
+            continue
+
+        report["reachable"] = True
+        served = []
+        for entry in body.get("data") or []:
+            mid = entry.get("id") if isinstance(entry, dict) else None
+            if isinstance(mid, str):
+                served.append(mid)
+        report["served_models"] = served
+
+        if chat_model:
+            report["chat_model_loaded"] = chat_model in served
+        if embedding_model:
+            report["embedding_model_loaded"] = embedding_model in served
+
+        reports.append(report)
+
+    return reports
+
+
+def log_provider_model_audit(reports: List[Dict[str, Any]]) -> None:
+    """Pretty-log a model-availability audit. Warns prominently when a
+    configured model isn't loaded so misconfigurations show up at boot."""
+    for report in reports:
+        pid = report["provider_id"]
+        if report.get("error"):
+            logger.warning(
+                "[PROVIDER AUDIT] %s base_url=%s UNREACHABLE: %s",
+                pid, report["base_url"], report["error"],
+            )
+            continue
+
+        chat_loaded = report.get("chat_model_loaded")
+        chat_model = report.get("configured_chat_model")
+        if chat_model and not chat_loaded:
+            logger.warning(
+                "[PROVIDER AUDIT] %s configured chat model=%s NOT in served catalogue (%d models loaded). "
+                "Substitution will occur on every chat call. See ADR-030 §D5 / Q2.",
+                pid, chat_model, len(report.get("served_models", [])),
+            )
+        elif chat_model:
+            logger.info(
+                "[PROVIDER AUDIT] %s chat model=%s OK", pid, chat_model,
+            )
+
+        emb_loaded = report.get("embedding_model_loaded")
+        emb_model = report.get("configured_embedding_model")
+        if emb_model and not emb_loaded:
+            logger.warning(
+                "[PROVIDER AUDIT] %s configured embedding model=%s NOT in served catalogue. "
+                "Embedding requests will fail provider-fallback rejection per ADR-030 §D5.",
+                pid, emb_model,
+            )
+
+
+# ---------------------------------------------------------------------------
 # Module-level singleton + convenience accessor
 # ---------------------------------------------------------------------------
 
@@ -363,4 +501,6 @@ __all__ = [
     "Capability",
     "LlmGateway",
     "gateway",
+    "check_provider_models",
+    "log_provider_model_audit",
 ]
