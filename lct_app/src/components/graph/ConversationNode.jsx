@@ -35,14 +35,20 @@ function ConversationNodeImpl({ data, selected }) {
     summaryMaxLength = 120,
   } = data || {};
 
+  // Single border shorthand only — combining `border` (shorthand) with
+  // `borderStyle` (longhand) triggers a React rerender warning. Bake the
+  // dashed/solid choice into the shorthand directly.
+  const borderShorthand = isCrux
+    ? "3px solid #f59e0b"
+    : selected
+    ? "2px solid #f59e0b"
+    : isDraft
+    ? `1px dashed ${borderColor}`
+    : `1px solid ${borderColor}`;
+
   const cardStyle = {
     background: fillColor,
-    border: isCrux
-      ? "3px solid #f59e0b"
-      : selected
-      ? "2px solid #f59e0b"
-      : `1px solid ${borderColor}`,
-    borderStyle: isDraft ? "dashed" : isCrux || selected ? "solid" : "solid",
+    border: borderShorthand,
     borderRadius: "8px",
     padding: "8px 12px",
     fontSize: "11px",
