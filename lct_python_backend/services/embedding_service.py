@@ -41,54 +41,54 @@ class EmbeddingService:
         """
         Generate embedding for a single text.
 
+        Routes through ``LlmGateway.embed`` per ADR-030 §D5 so the
+        capability=embed strict-match substitution policy applies
+        (rejects model substitution; falls through providers).
+
         Args:
             text: Input text to embed
+            config: Optional legacy single-provider config dict.
+                Treated as a one-element provider list.
 
         Returns:
-            List of 1536 floats representing the embedding
+            List of 1536 floats representing the embedding (or whatever
+            dimensionality the served model produces).
 
         Raises:
-            Exception: If OpenAI API call fails
+            ValueError: If text is empty.
+            RuntimeError: If all providers fail (raised by gateway).
         """
         if not text or not text.strip():
             raise ValueError("Cannot embed empty text")
 
-        resolved = config or get_env_llm_defaults()
-        model = resolved.get("embedding_model", self.MODEL)
+        # Lazy import to avoid pulling httpx into module-load chain.
+        from lct_python_backend.services.llm_gateway import gateway
+        from lct_python_backend.services.local_llm_client import (
+            provider_from_legacy_config,
+        )
 
-        try:
-            if resolved.get("mode") == "local":
-                client = get_local_client(resolved)
-                response = await client.embeddings(
-                    model=model,
-                    input_data=text,
+        resolved = config or get_env_llm_defaults()
+        # Direct-OpenAI path: when no providers list, no local mode, but
+        # an OPENAI_API_KEY is set — keep this path for back-compat.
+        if resolved.get("mode") != "local":
+            api_key = os.getenv("OPENAI_API_KEY")
+            if api_key:
+                if self._openai_client is None or api_key != self._openai_key:
+                    self._openai_key = api_key
+                    self._openai_client = AsyncOpenAI(api_key=api_key)
+                response = await self._openai_client.embeddings.create(
+                    model=resolved.get("embedding_model", self.MODEL),
+                    input=text,
                     encoding_format="float",
                 )
-                return response["data"][0]["embedding"]
+                return response.data[0].embedding
 
-            api_key = os.getenv("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError(
-                    "OPENAI_API_KEY not found in environment. "
-                    "Please set it to use embedding service."
-                )
-
-            if self._openai_client is None or api_key != self._openai_key:
-                self._openai_key = api_key
-                self._openai_client = AsyncOpenAI(api_key=api_key)
-
-            response = await self._openai_client.embeddings.create(
-                model=model,
-                input=text,
-                encoding_format="float"
-            )
-
-            embedding = response.data[0].embedding
-            return embedding
-
-        except Exception as e:
-            logger.error(f"Error generating embedding: {e}")
-            raise
+        # Local path: route through the gateway with strict-match policy.
+        provider = provider_from_legacy_config(resolved)
+        # Ensure embedding_model is set for the gateway's _provider_supports_embed.
+        if not provider.get("embedding_model"):
+            provider["embedding_model"] = resolved.get("embedding_model", self.MODEL)
+        return await gateway().embed(text=text, providers=[provider])
 
     async def embed_batch(
         self,

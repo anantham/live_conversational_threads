@@ -242,10 +242,12 @@ The frontend gains a custom `<ConversationNode>` React component (replacing the 
 - **`useAutoSave.js` and `useAudioInputEffects.js` server-write paths are consolidated** into one explicit `saveConversationDraft(conversationId, payload)` function in `services/apiClient.js`.
 - **`saveConversationDraft` carries presentation/recovery state ONLY**, not canonical semantic state. This is the load-bearing constraint per P1/P7.
   - **Allowed `payload` keys** (presentation/recovery layer, browser-authoritative):
+    - `conversation_name` (user-edited title — name is user-authored metadata, not LLM-authored interpretation)
     - `viewport` (zoom/pan position on the graph canvas)
     - `canvas_overrides` (per-node `canvas_x`/`canvas_y` user-positioned coordinates)
     - `dismissed_unlock_affordances` (which level-unlock CTAs the user has dismissed inline)
     - `active_tab` (currently selected zoom-tier tab)
+    - `active_color_mode` (graph color scheme — `"tier"` | `"speaker"` | `"temporal"` per §D4)
     - `local_draft_text` (in-progress notes the user typed but hasn't committed — explicitly draft, not authored)
     - `pinned_node_ids` (UI focus state)
   - **Forbidden `payload` keys** (semantic layer, backend-authoritative — must NOT pass through this function):
@@ -369,6 +371,9 @@ Each step is independently reviewable.
    - PR-C: `accumulate` + `generate_graph` stages.
    - PR-D: `refine` + `persist` stages.
    - PR-E: `unlock_hierarchy` stage; dead-code removal in transport adapters; event taxonomy harmonization.
+
+   **Status (2026-05-07):** PRs A-E shipped the *package scaffold and stage definitions* with 79 unit tests, but the transport rewiring described above (cutting `stt_ws_session.py` and `import_bulk_pipeline.py` over to call `ConversationPipeline.run()` instead of mutating their inline state) is **not yet done**. Production live + import flows still execute through the old monolith paths. The "transport surgery" sub-step is a separate sprint deliverable; track it as **Step 5b**:
+   - 5b: rewire LiveTransport (stt_ws_session.py) and ImportTransport (import_bulk_pipeline.py) to invoke ConversationPipeline. Migrates ~33 + 19 pipeline_state items per the audit. **Pending.**
 
 6. **D2 — emergent hierarchy depth** (~2 days)
    - Implement unlock evaluator with bucketed re-evaluation (5, 7, 10, 15, 25, 40, 60, 100) gated by content-hash dedup of items at the level below.

@@ -340,6 +340,20 @@ async def persist_graph(
         thread_state = coerce_str(item.get("thread_state")) or None
         edge_relations = item.get("edge_relations") if isinstance(item.get("edge_relations"), list) else []
         linked_nodes = item.get("linked_nodes") if isinstance(item.get("linked_nodes"), list) else []
+        # ADR-021 / ADR-030 §P5: honour the LLM-authored hierarchy level
+        # if present. Falls back to 1 (chunk) for back-compat with legacy
+        # JSON snapshots that don't carry semantic_level. Clamp to [1, 5]
+        # — ADR-030 §D2 caps the canonical hierarchy at five tiers (arc).
+        authored_level = (
+            item.get("semantic_level")
+            if isinstance(item.get("semantic_level"), int)
+            else item.get("level")
+        )
+        try:
+            node_level = int(authored_level) if authored_level is not None else 1
+        except (TypeError, ValueError):
+            node_level = 1
+        node_level = max(1, min(5, node_level))
         db.add(Node(
             id=node_id,
             conversation_id=conv_uuid,
@@ -350,8 +364,8 @@ async def persist_graph(
             is_bookmark=bool(item.get("is_bookmark")),
             is_contextual_progress=bool(item.get("is_contextual_progress")),
             is_tangent=bool(item.get("is_tangent")) or thread_state in {"branch", "tangent"},
-            level=1,
-            zoom_level_visible=[1, 2, 3],
+            level=node_level,
+            zoom_level_visible=[node_level],
             cluster_info={
                 "thread_id": str(thread_id) if thread_id else coerce_str(item.get("thread_id")) or None,
                 "thread_state": thread_state,

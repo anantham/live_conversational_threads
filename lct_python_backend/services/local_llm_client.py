@@ -193,23 +193,71 @@ class LocalLLMClient:
             return response.json()
 
 
+def provider_from_legacy_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Build a single-provider dict from a legacy single-provider ``config``.
+
+    Used to bridge legacy callers (``local_chat_json``, EmbeddingService)
+    onto the gateway's provider-list interface without each call site
+    knowing about provider records. The result is shaped like an entry
+    in ``llm_providers`` so the gateway's substitution policy applies
+    uniformly. ADR-030 §D5.
+    """
+    base_url = str(config.get("base_url", "")).rstrip("/")
+    chat_model = str(config.get("chat_model") or "qwen3-32b")
+    embedding_model = config.get("embedding_model")
+    timeout = float(config.get("timeout_seconds", 120))
+    provider: Dict[str, Any] = {
+        "id": "legacy_config",
+        "name": "Legacy single-provider config",
+        "type": "openai_compatible",
+        "base_url": base_url,
+        "model": chat_model,
+        "enabled": True,
+        "timeout_seconds": timeout,
+    }
+    if embedding_model:
+        provider["embedding_model"] = embedding_model
+    return provider
+
+
 async def local_chat_json(
     config: Dict[str, Any],
     messages: list,
     temperature: float = 0.3,
     max_tokens: int = 4000,
     response_format: Optional[Dict[str, Any]] = None,
+    prompt_name: Optional[str] = None,
+    prompt_version: Optional[str] = None,
 ) -> Any:
-    client = get_local_client(config)
-    response = await client.chat(
-        model=config.get("chat_model", "zai-org/glm-4.6v-flash"),
+    """Legacy chat-with-JSON helper.
+
+    Routes through the LlmGateway per ADR-030 §D5 so that capability-
+    sensitive substitution policy (model fidelity, fallback semantics)
+    applies to every detector / clusterer / fact-checker that calls
+    this function. Preserves the legacy return shape (parsed JSON
+    payload) so call sites need no change.
+    """
+    # Lazy import to avoid circular dependency: llm_gateway imports
+    # ProviderResult / chat_with_provider_fallback from this module.
+    from lct_python_backend.services.llm_gateway import Capability, gateway
+
+    provider = provider_from_legacy_config(config)
+    capability = (
+        Capability.CHAT_JSON_OBJECT
+        if response_format is None
+        else Capability.CHAT_JSON_SCHEMA
+    )
+    result = await gateway().chat(
         messages=messages,
+        capability=capability,
+        providers=[provider],
         temperature=temperature,
         max_tokens=max_tokens,
         response_format=response_format,
+        prompt_name=prompt_name,
+        prompt_version=prompt_version,
     )
-    content = response["choices"][0]["message"]["content"]
-    return extract_json_from_text(content)
+    return result.data
 
 
 class ProviderResult:
