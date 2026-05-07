@@ -133,12 +133,21 @@ async def lifespan(app: FastAPI):
     # configured chat/embedding model isn't in the served catalogue —
     # makes silent substitution visible at boot rather than first call.
     # Audit failure must NEVER block startup; observability is best-effort.
+    #
+    # Loads providers from app_settings (with secrets) so DB-registered
+    # entries like a runtime-added OpenAI provider are audited too —
+    # not just env defaults.
     try:
+        from lct_python_backend.db_session import get_async_session_context
+        from lct_python_backend.services.llm_config import load_llm_providers
         from lct_python_backend.services.llm_gateway import (
             check_provider_models,
             log_provider_model_audit,
         )
-        reports = await check_provider_models()
+        async with get_async_session_context() as audit_session:
+            cfg = await load_llm_providers(audit_session, include_secrets=True)
+        providers = cfg.get("providers") if isinstance(cfg, dict) else None
+        reports = await check_provider_models(providers)
         log_provider_model_audit(reports)
     except Exception:  # noqa: BLE001
         logger.exception("[PROVIDER AUDIT] startup audit failed (non-fatal)")

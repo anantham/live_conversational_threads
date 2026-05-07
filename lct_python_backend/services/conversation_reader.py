@@ -94,10 +94,22 @@ def build_graph_data_from_nodes(nodes, relationships) -> List[Dict[str, Any]]:
         linked_nodes = linked_by_id.get(node.id, sorted(contextual_relation.keys()))
         cluster_info = node.cluster_info or {}
         display_preferences = node.display_preferences or {}
+        # ADR-021 / ADR-030 §P5: surface authored hierarchy fields so
+        # MinimalGraph.getAuthoredSemanticLevel() actually fires. Without
+        # these, the frontend silently falls back to legacy clustering
+        # heuristics and the chunk/idea/topic/theme tabs never light up.
+        node_level = int(node.level or 1)
+        node_level = max(1, min(5, node_level))
+        _SEMANTIC_TYPE_BY_LEVEL = {
+            1: "chunk", 2: "idea", 3: "topic", 4: "theme", 5: "arc",
+        }
         node_data = {
             "id": str(node.id),
             "node_name": node.node_name,
             "summary": node.summary,
+            "semantic_level": node_level,
+            "semantic_type": _SEMANTIC_TYPE_BY_LEVEL[node_level],
+            "level": node_level,  # legacy alias for back-compat
             "claims": [str(cid) for cid in (node.claim_ids or [])],
             "key_points": node.key_points or [],
             "predecessor": (
@@ -109,6 +121,7 @@ def build_graph_data_from_nodes(nodes, relationships) -> List[Dict[str, Any]]:
             "is_bookmark": node.is_bookmark,
             "is_contextual_progress": node.is_contextual_progress,
             "is_tangent": node.is_tangent,
+            "is_crux": getattr(node, "is_crux", False),
             "chunk_id": str(node.chunk_ids[0]) if node.chunk_ids else None,
             "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])],
             "thread_id": cluster_info.get("thread_id"),
