@@ -127,6 +127,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.exception("Failed to connect to database during startup:")
         raise e
+
+    # Provider model-availability audit per ADR-030 §D5 (Q2). Probes each
+    # enabled provider's GET /v1/models and logs a warning when the
+    # configured chat/embedding model isn't in the served catalogue —
+    # makes silent substitution visible at boot rather than first call.
+    # Audit failure must NEVER block startup; observability is best-effort.
+    try:
+        from lct_python_backend.services.llm_gateway import (
+            check_provider_models,
+            log_provider_model_audit,
+        )
+        reports = await check_provider_models()
+        log_provider_model_audit(reports)
+    except Exception:  # noqa: BLE001
+        logger.exception("[PROVIDER AUDIT] startup audit failed (non-fatal)")
+
     yield
     logger.info("Disconnecting from database...")
     await db.disconnect()

@@ -106,7 +106,16 @@ def save_json_with_backend(
     try:
         return save_json_to_gcs(file_name, chunks, graph_data, conversation_id)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("GCS save failed; using local fallback: %s", exc)
+        # Q7 fix: when GCS_BUCKET_NAME isn't configured at all, this
+        # path runs on every save with a "GCS_BUCKET_NAME is not
+        # configured" exception. That's a deployment-time choice, not
+        # a runtime anomaly — demote to debug so it doesn't pollute
+        # logs. Real runtime GCS failures (auth, bucket missing, etc.)
+        # still warn.
+        if not GCS_BUCKET_NAME:
+            logger.debug("GCS not configured; using local fallback (storage=local_fallback)")
+        else:
+            logger.warning("GCS save failed; using local fallback: %s", exc)
         fallback = save_json_to_local(file_name, chunks, graph_data, conversation_id)
         fallback["message"] = (
             f"Saved locally (GCS unavailable): {fallback['gcs_path']}"

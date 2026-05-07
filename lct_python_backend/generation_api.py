@@ -108,10 +108,17 @@ async def save_json_call(
             conv.gcs_path = result.get("gcs_path")
             conv.updated_at = datetime.utcnow()
         else:
+            # Q6 fix: this branch is hit when /save_json/ is called for a
+            # conversation row that doesn't already exist. In practice
+            # that's the IMPORT path (live sessions create the row via
+            # ensure_conversation before /save_json/ ever runs). Defaulting
+            # to "live_audio" here mis-tags every imported conversation —
+            # use "transcript" which is what graph_persistence and
+            # ensure_conversation use for non-streaming sources.
             conv = Conversation(
                 id=conv_uuid,
                 conversation_name=result["file_name"],
-                conversation_type="live_audio",
+                conversation_type="transcript",
                 source_type="save_json",
                 owner_id="default_user",
                 started_at=datetime.utcnow(),
