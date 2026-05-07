@@ -57,6 +57,10 @@ class Conversation(Base):
     total_nodes = Column(Integer, default=0)
     total_claims = Column(Integer, default=0)
 
+    # Emergent-depth tracking per ADR-030 §D9. NULL = chunks-only (legacy
+    # default); populated as the unlock cascade in §P4 approves higher tiers.
+    unlocked_levels = Column(ARRAY(Integer))
+
     # Full-text search
     tsv_search = Column(TSVECTOR)
 

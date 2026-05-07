@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Iterable, List, Optional
+from typing import Awaitable, Callable, Iterable, List, Optional
 
 from .events import (
     PipelineEvent,
@@ -27,6 +27,27 @@ from .protocol import EmitFn, Stage, StageError
 from .state import PipelineState
 
 logger = logging.getLogger("lct_backend")
+
+
+# Optional artifact-writer DI for test isolation. Same shape as
+# UnlockHierarchyStage's writer hook.
+ArtifactWriterFn = Callable[..., Awaitable[Optional[str]]]
+
+
+def _load_default_artifact_writer() -> Optional[ArtifactWriterFn]:
+    """Best-effort import of the canonical pipeline_artifacts writer.
+
+    Returns None in lean test environments. Failure mode: the
+    orchestrator silently skips persistence — observability is
+    best-effort and never blocks pipeline flow per ADR-030 §P2.
+    """
+    try:
+        from lct_python_backend.services.graph_persistence import (
+            record_pipeline_artifact,
+        )
+        return record_pipeline_artifact
+    except Exception:  # noqa: BLE001
+        return None
 
 
 class ConversationPipeline:
@@ -45,8 +66,14 @@ class ConversationPipeline:
     that contract holds even if the stage forgets.
     """
 
-    def __init__(self, stages: Optional[Iterable[Stage]] = None) -> None:
+    def __init__(
+        self,
+        stages: Optional[Iterable[Stage]] = None,
+        *,
+        artifact_writer: Optional[ArtifactWriterFn] = None,
+    ) -> None:
         self._stages: List[Stage] = list(stages or [])
+        self._artifact_writer = artifact_writer
 
     def add_stage(self, stage: Stage) -> "ConversationPipeline":
         """Append a stage. Returns self for chaining."""
@@ -110,6 +137,15 @@ class ConversationPipeline:
                     next_action=exc.next_action,
                 )
             )
+            await self._record_stage_failure(
+                state=state,
+                stage=stage.name,
+                code=exc.code,
+                detail=str(exc),
+                recoverable=exc.recoverable,
+                next_action=exc.next_action,
+                elapsed_ms=elapsed_ms,
+            )
             return exc.next_action == "continue"
         except Exception as exc:  # noqa: BLE001 — orchestrator catches all
             elapsed_ms = (time.perf_counter() - started_at) * 1000.0
@@ -127,6 +163,15 @@ class ConversationPipeline:
                     next_action="stop",
                 )
             )
+            await self._record_stage_failure(
+                state=state,
+                stage=stage.name,
+                code="unhandled_exception",
+                detail=f"{type(exc).__name__}: {exc}",
+                recoverable=False,
+                next_action="stop",
+                elapsed_ms=elapsed_ms,
+            )
             return False
 
         elapsed_ms = (time.perf_counter() - started_at) * 1000.0
@@ -137,6 +182,46 @@ class ConversationPipeline:
             )
         )
         return True
+
+    async def _record_stage_failure(
+        self,
+        *,
+        state: PipelineState,
+        stage: str,
+        code: str,
+        detail: str,
+        recoverable: bool,
+        next_action: str,
+        elapsed_ms: float,
+    ) -> None:
+        """Persist a ``stage_failure`` artifact for post-hoc analysis.
+
+        ADR-030 §D8 invariant: every stage failure is addressable in
+        ``pipeline_artifacts``. Failure to write is silenced so the
+        pipeline never blocks on observability — the ``StageFailed``
+        event has already been emitted to the transport regardless.
+        """
+        if not state.conversation_id:
+            return
+        writer = self._artifact_writer or _load_default_artifact_writer()
+        if writer is None:
+            return
+        try:
+            await writer(
+                conversation_id=state.conversation_id,
+                stage=stage,
+                artifact_type="stage_failure",
+                artifact_metadata={
+                    "code": code,
+                    "detail": detail,
+                    "recoverable": recoverable,
+                    "next_action": next_action,
+                    "elapsed_ms": elapsed_ms,
+                },
+            )
+        except Exception:  # noqa: BLE001
+            # Already logged by the writer; never block the pipeline.
+            pass
 
 
 __all__ = ["ConversationPipeline"]

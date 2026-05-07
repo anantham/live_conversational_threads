@@ -20,11 +20,16 @@ import ColorModeToggle from "./graph/ColorModeToggle";
 // Cluster nodes are still default ReactFlow rendering (separate concern).
 const NODE_TYPES = { conversational: ConversationNode };
 const EDGE_TYPES = {};
+// ADR-030 §D2: canonical hierarchy is up to five tiers. Level 5 (arc) is
+// optional — only unlocked when the conversation earns it via the
+// emergent-depth cascade. AUTHORED_LEVELS lists every possible tier;
+// MinimalGraph renders only the ones present in the data.
 const AUTHORED_LEVELS = [
   { level: 1, label: "chunks", type: "chunk", color: "text-teal-700", chip: "bg-teal-50", border: "border-teal-400" },
   { level: 2, label: "ideas", type: "idea", color: "text-blue-700", chip: "bg-blue-50", border: "border-blue-400" },
   { level: 3, label: "topics", type: "topic", color: "text-indigo-700", chip: "bg-indigo-50", border: "border-indigo-400" },
   { level: 4, label: "themes", type: "theme", color: "text-purple-700", chip: "bg-purple-50", border: "border-purple-400" },
+  { level: 5, label: "arcs", type: "arc", color: "text-slate-700", chip: "bg-slate-100", border: "border-slate-400" },
 ];
 
 function normalizeGraphNode(item, index) {
@@ -46,7 +51,7 @@ function normalizeGraphNode(item, index) {
     node_name: rawName || fallbackName,
     speaker_id: typeof item.speaker_id === "string" ? item.speaker_id : "",
     semantic_level:
-      Number.isInteger(item.semantic_level) && item.semantic_level >= 1 && item.semantic_level <= 4
+      Number.isInteger(item.semantic_level) && item.semantic_level >= 1 && item.semantic_level <= 5
         ? item.semantic_level
         : null,
     semantic_type:

@@ -128,9 +128,73 @@ async def test_persist_import_graph_adds_correct_node_types():
     assert contextual_flags["Alpha"] is False
     assert contextual_flags["Beta"] is False
     assert contextual_flags["Gamma"] is True
-    # All imported nodes are level 1 (individual conversation nodes, per ADR-002)
+    # ADR-030 §P5: persistence honours LLM-authored semantic_level. The
+    # SAMPLE_NODES fixture doesn't set semantic_level, so all default to 1
+    # (chunk). zoom_level_visible mirrors the assigned level (one entry per
+    # node, not the legacy [1, 2, 3] multi-level visibility).
     assert all(n.level == 1 for n in nodes)
-    assert all(n.zoom_level_visible == [1, 2, 3] for n in nodes)
+    assert all(n.zoom_level_visible == [1] for n in nodes)
+
+
+@pytest.mark.asyncio
+async def test_persist_import_graph_honours_authored_semantic_level():
+    """Regression test for the 'authored hierarchy lost on persistence'
+    bug: nodes with semantic_level set should land in the DB with that
+    level instead of the previous hardcoded 1."""
+    from lct_python_backend.models import Node
+
+    authored = [
+        {"id": "a1", "node_name": "Chunk", "summary": "s", "semantic_level": 1},
+        {"id": "a2", "node_name": "Idea", "summary": "s", "semantic_level": 2},
+        {"id": "a3", "node_name": "Topic", "summary": "s", "semantic_level": 3},
+        {"id": "a4", "node_name": "Theme", "summary": "s", "semantic_level": 4},
+        {"id": "a5", "node_name": "Arc", "summary": "s", "semantic_level": 5},
+    ]
+    conv = MagicMock()
+    db = _make_db_mock(conv=conv)
+
+    await persist_import_graph(
+        db=db,
+        conversation_id=CONVERSATION_ID,
+        existing_json=authored,
+    )
+
+    nodes = [c.args[0] for c in db.add.call_args_list if isinstance(c.args[0], Node)]
+    by_name = {n.node_name: n for n in nodes}
+    assert by_name["Chunk"].level == 1
+    assert by_name["Idea"].level == 2
+    assert by_name["Topic"].level == 3
+    assert by_name["Theme"].level == 4
+    assert by_name["Arc"].level == 5
+    # zoom_level_visible matches the authored level per ADR-021/030.
+    assert by_name["Idea"].zoom_level_visible == [2]
+    assert by_name["Arc"].zoom_level_visible == [5]
+
+
+@pytest.mark.asyncio
+async def test_persist_import_graph_clamps_authored_level_to_valid_range():
+    """Authored levels outside [1, 5] are clamped, not propagated."""
+    from lct_python_backend.models import Node
+
+    out_of_range = [
+        {"id": "lo", "node_name": "Below", "summary": "s", "semantic_level": 0},
+        {"id": "hi", "node_name": "Above", "summary": "s", "semantic_level": 99},
+        {"id": "neg", "node_name": "Neg", "summary": "s", "semantic_level": -3},
+    ]
+    conv = MagicMock()
+    db = _make_db_mock(conv=conv)
+
+    await persist_import_graph(
+        db=db,
+        conversation_id=CONVERSATION_ID,
+        existing_json=out_of_range,
+    )
+
+    nodes = [c.args[0] for c in db.add.call_args_list if isinstance(c.args[0], Node)]
+    by_name = {n.node_name: n for n in nodes}
+    assert by_name["Below"].level == 1   # clamped to min
+    assert by_name["Above"].level == 5   # clamped to max
+    assert by_name["Neg"].level == 1     # clamped to min
 
 
 @pytest.mark.asyncio

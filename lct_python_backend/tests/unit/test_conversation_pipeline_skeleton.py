@@ -264,6 +264,107 @@ def test_pipeline_state_in_place_mutation_persists():
 # ---------------------------------------------------------------------------
 
 
+def test_orchestrator_writes_stage_failure_artifact_on_unhandled_exception():
+    """ADR-030 §D8: every stage failure must be addressable in
+    pipeline_artifacts. The orchestrator routes failures through the
+    injected artifact writer."""
+    writes = []
+
+    async def writer(**kwargs):
+        writes.append(kwargs)
+        return "fake-artifact-id"
+
+    bad = _RecordingStage(raise_exc=RuntimeError("kaboom"))
+    pipeline = ConversationPipeline([bad], artifact_writer=writer)
+    state = PipelineState(conversation_id="c1")
+    emit, events = _make_event_collector()
+
+    asyncio.get_event_loop().run_until_complete(pipeline.run(state, emit))
+
+    failures = [e for e in events if isinstance(e, StageFailed)]
+    assert len(failures) == 1
+    assert len(writes) == 1
+    rec = writes[0]
+    assert rec["conversation_id"] == "c1"
+    assert rec["stage"] == "test_stage"
+    assert rec["artifact_type"] == "stage_failure"
+    md = rec["artifact_metadata"]
+    assert md["code"] == "unhandled_exception"
+    assert "RuntimeError: kaboom" in md["detail"]
+    assert md["recoverable"] is False
+    assert md["next_action"] == "stop"
+    assert md["elapsed_ms"] >= 0.0
+
+
+def test_orchestrator_writes_stage_failure_artifact_on_stage_error_continue():
+    """StageError(next_action='continue') still produces an artifact."""
+    writes = []
+
+    async def writer(**kwargs):
+        writes.append(kwargs)
+        return "id"
+
+    softfail = _RecordingStage(
+        raise_stage_error=StageError(
+            "soft",
+            stage="test_stage",
+            code="soft_code",
+            recoverable=True,
+            next_action="continue",
+        )
+    )
+    after = _RecordingStage()
+    pipeline = ConversationPipeline([softfail, after], artifact_writer=writer)
+    state = PipelineState(conversation_id="c1")
+    emit, _events = _make_event_collector()
+
+    asyncio.get_event_loop().run_until_complete(pipeline.run(state, emit))
+
+    assert len(writes) == 1
+    assert writes[0]["artifact_metadata"]["code"] == "soft_code"
+    assert writes[0]["artifact_metadata"]["recoverable"] is True
+    assert writes[0]["artifact_metadata"]["next_action"] == "continue"
+    # Pipeline continued — the second stage ran.
+    assert after.calls == 1
+
+
+def test_orchestrator_skips_failure_artifact_when_no_conversation_id():
+    """Synthetic state without conversation_id should not produce
+    artifact writes — that would be untraceable."""
+    writes = []
+
+    async def writer(**kwargs):
+        writes.append(kwargs)
+        return "id"
+
+    bad = _RecordingStage(raise_exc=RuntimeError("kaboom"))
+    pipeline = ConversationPipeline([bad], artifact_writer=writer)
+    state = PipelineState()  # no conversation_id
+    emit, _events = _make_event_collector()
+
+    asyncio.get_event_loop().run_until_complete(pipeline.run(state, emit))
+
+    assert writes == []
+
+
+def test_orchestrator_failure_artifact_writer_failure_does_not_propagate():
+    """ADR-030 §P2: observability writes never block pipeline."""
+
+    async def boom(**kwargs):
+        raise RuntimeError("DB error")
+
+    bad = _RecordingStage(raise_exc=RuntimeError("kaboom"))
+    pipeline = ConversationPipeline([bad], artifact_writer=boom)
+    state = PipelineState(conversation_id="c1")
+    emit, events = _make_event_collector()
+
+    # Should NOT raise — pipeline.run swallows the writer's failure.
+    asyncio.get_event_loop().run_until_complete(pipeline.run(state, emit))
+
+    failures = [e for e in events if isinstance(e, StageFailed)]
+    assert len(failures) == 1  # original failure event was still emitted
+
+
 def test_pipeline_run_with_just_ingest_emits_expected_event_sequence():
     pipeline = ConversationPipeline([IngestStage()])
     state = PipelineState(
