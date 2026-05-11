@@ -392,3 +392,157 @@ async def get_conversation_utterances(
     except Exception as exc:
         logger.exception("Failed to get utterances for conversation: %s", conversation_id)
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/api/conversations/{conversation_id}/diarization/repair")
+async def repair_diarization(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """LLM-based diarization repair: re-examines audio-only speaker labels
+    against semantic conversational patterns (continuations, disagreement
+    openers, Q->A structure, idiolect) and applies high-confidence flips.
+
+    Audio diarization is brittle; conversational context disambiguates.
+    """
+    import json
+    from lct_python_backend.models import Utterance
+    from lct_python_backend.services.local_llm_client import (
+        chat_with_provider_fallback_sync,
+    )
+    from lct_python_backend.services.llm_config import load_llm_providers
+
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation_id")
+
+    result = await db.execute(
+        select(Utterance)
+        .where(Utterance.conversation_id == conv_uuid)
+        .order_by(Utterance.sequence_number)
+    )
+    utterances = list(result.scalars().all())
+    if not utterances:
+        raise HTTPException(status_code=404, detail="No utterances for this conversation")
+
+    transcript_lines = [
+        f"[{u.sequence_number}:{u.speaker_id or '?'}] {(u.text or '').strip()}"
+        for u in utterances
+    ]
+    system_prompt = (
+        "You are a diarization-repair model. Audio-only speaker labels are "
+        "sometimes wrong. Review the diarized transcript and flag utterances "
+        "whose speaker label is probably incorrect based on conversational "
+        "patterns: continuations (yeah/and/also stay with prior speaker), "
+        "disagreement openers (but, no, wait flip the speaker), Q->A structure "
+        "(asker != answerer for genuine questions), and recurring idiolects. "
+        "Be CONSERVATIVE. Only flip when evidence is strong. "
+        "Output JSON: {\"flips\": [{\"sequence_number\": N, \"old\": \"B\", \"new\": \"A\", \"reason\": \"short reason\"}]}. "
+        "If unsure, do not flip. Empty list is fine."
+    )
+    user_prompt = "Diarized transcript (sequence:speaker tags):\n\n" + "\n".join(transcript_lines)
+
+    cfg = await load_llm_providers(db, include_secrets=True)
+    providers = cfg.get("providers") if isinstance(cfg, dict) else None
+    if not providers:
+        raise HTTPException(status_code=503, detail="No LLM providers configured")
+
+    try:
+        provider_result = chat_with_provider_fallback_sync(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            providers=providers,
+            temperature=0.1,
+            max_tokens=8000,
+            require_json=True,
+            prompt_name="diarization_repair",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"LLM call failed: {exc}")
+
+    # ProviderResult.data is the parsed payload (dict for JSON-mode responses).
+    payload = provider_result.data
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except json.JSONDecodeError:
+            payload = {}
+    flips = payload.get("flips") if isinstance(payload, dict) else None
+    if not isinstance(flips, list):
+        flips = []
+
+    valid_speakers = {u.speaker_id for u in utterances if u.speaker_id}
+    by_seq = {int(u.sequence_number): u for u in utterances if u.sequence_number is not None}
+    applied = []
+    for flip in flips:
+        if not isinstance(flip, dict):
+            continue
+        try:
+            seq = int(flip.get("sequence_number"))
+        except (TypeError, ValueError):
+            continue
+        new_speaker = str(flip.get("new") or "").strip()
+        if not new_speaker or new_speaker not in valid_speakers:
+            continue
+        utt = by_seq.get(seq)
+        if utt is None or utt.speaker_id == new_speaker:
+            continue
+        old = utt.speaker_id
+        utt.speaker_id = new_speaker
+        applied.append({"sequence_number": seq, "old": old, "new": new_speaker, "reason": str(flip.get("reason") or "")[:200]})
+
+    await db.commit()
+
+    # Post-repair: roll up new speaker labels from utterances to nodes via
+    # chunk_id join. Only works for imports that populated utterance.chunk_id
+    # (post-stitch fix in import_bulk_pipeline). For older conversations the
+    # join is empty and node speaker_info stays as last backfilled.
+    from lct_python_backend.models import Node
+    from collections import Counter
+    rollup_count = 0
+    nodes_result = await db.execute(
+        select(Node).where(Node.conversation_id == conv_uuid)
+    )
+    nodes_list = list(nodes_result.scalars().all())
+    # Build chunk_id -> Counter(speaker) from updated utterances
+    chunk_to_speakers: Dict[str, Counter] = {}
+    for utt in utterances:
+        if utt.chunk_id is None or not utt.speaker_id:
+            continue
+        chunk_to_speakers.setdefault(str(utt.chunk_id), Counter())[utt.speaker_id] += 1
+    if chunk_to_speakers:
+        for node in nodes_list:
+            chunk_ids = [str(cid) for cid in (node.chunk_ids or [])]
+            if not chunk_ids:
+                continue
+            agg = Counter()
+            for cid in chunk_ids:
+                if cid in chunk_to_speakers:
+                    agg.update(chunk_to_speakers[cid])
+            if not agg:
+                continue
+            primary, _ = agg.most_common(1)[0]
+            node.speaker_info = {
+                "primary_speaker": primary,
+                "speaker_distribution": dict(agg),
+            }
+            rollup_count += 1
+        await db.commit()
+
+    logger.info(
+        "[DIARIZE REPAIR] conversation=%s suggested=%d applied=%d node_rollup=%d",
+        conversation_id, len(flips), len(applied), rollup_count,
+    )
+
+    return {
+        "conversation_id": conversation_id,
+        "total_utterances": len(utterances),
+        "suggested_flips": len(flips),
+        "applied_flips": len(applied),
+        "rollup_nodes_updated": rollup_count,
+        "applied": applied[:50],
+        "backend": provider_result.provider_name,
+    }

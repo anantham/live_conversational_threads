@@ -75,7 +75,17 @@ def _thread_metrics(nodes: Iterable[Mapping[str, Any]]) -> Dict[str, int]:
     contextual_node_count = 0
     linked_node_count = 0
     contextual_entry_count = 0
+    chunk_node_count = 0
+    higher_tier_count = 0  # levels 2-5 (idea/topic/theme/arc)
     for node in node_list:
+        try:
+            level = int(node.get("semantic_level") or node.get("level") or 0)
+        except (TypeError, ValueError):
+            level = 0
+        if level == 1:
+            chunk_node_count += 1
+        elif 2 <= level <= 5:
+            higher_tier_count += 1
         thread_state = _clean_str(node.get("thread_state")).lower()
         if thread_state == "return_to_thread":
             return_count += 1
@@ -103,6 +113,8 @@ def _thread_metrics(nodes: Iterable[Mapping[str, Any]]) -> Dict[str, int]:
         "contextual_node_count": contextual_node_count,
         "linked_node_count": linked_node_count,
         "contextual_entry_count": contextual_entry_count,
+        "chunk_node_count": chunk_node_count,
+        "higher_tier_count": higher_tier_count,
     }
 
 
@@ -144,6 +156,13 @@ def _simplify_existing_nodes(existing_nodes: List[Dict[str, Any]]) -> List[Dict[
             continue
         simplified.append(
             {
+                # Pass id + level identity through so the refinement LLM can
+                # preserve them. Without these the LLM fabricates new ids and
+                # the level normalizer falls back to its default — which used
+                # to flatten chunks into ideas.
+                "id": _clean_str(node.get("id") or node.get("node_id")),
+                "semantic_level": node.get("semantic_level") or node.get("level") or 1,
+                "semantic_type": _clean_str(node.get("semantic_type") or node.get("node_type")),
                 "node_name": _clean_str(node.get("node_name")),
                 "summary": _clean_str(node.get("summary") or node.get("node_text")),
                 "source_excerpt": _clean_str(node.get("source_excerpt")),
@@ -168,15 +187,33 @@ def _refinement_semantics_degraded(
     original_contextual_nodes = int(original_metrics.get("contextual_node_count") or 0)
     original_edges = int(original_metrics.get("edge_count") or 0)
     original_links = int(original_metrics.get("linked_node_count") or 0)
+    original_chunks = int(original_metrics.get("chunk_node_count") or 0)
     refined_contextual_nodes = int(refined_metrics.get("contextual_node_count") or 0)
     refined_edges = int(refined_metrics.get("edge_count") or 0)
     refined_links = int(refined_metrics.get("linked_node_count") or 0)
+    refined_chunks = int(refined_metrics.get("chunk_node_count") or 0)
 
     if original_contextual_nodes > 0 and refined_contextual_nodes == 0:
         return True
     if original_edges > 0 and refined_edges == 0:
         return True
     if original_links > 0 and refined_links == 0:
+        return True
+    # Tier-loss guard (chunks): if the source had chunks (level=1) and
+    # refinement produced zero chunks, the LLM has flattened the hierarchy.
+    if original_chunks > 0 and refined_chunks == 0:
+        return True
+    # Higher-tier-loss guard: if the source had idea/topic/theme/arc nodes
+    # and refinement dropped ALL of them, the LLM has collapsed the upper
+    # tiers — this is the bug that produced 14-chunks-only artifacts on the
+    # 3-min test (refinement rewrote 23 nodes → 14 chunks, dropping 9 higher
+    # tier nodes). Reject and keep original output.
+    original_higher = int(original_metrics.get("higher_tier_count") or 0)
+    refined_higher = int(refined_metrics.get("higher_tier_count") or 0)
+    if original_higher > 0 and refined_higher == 0:
+        return True
+    # Also reject if refinement lost more than half of higher tiers
+    if original_higher > 0 and refined_higher < (original_higher / 2):
         return True
     return False
 

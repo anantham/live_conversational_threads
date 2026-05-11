@@ -132,6 +132,118 @@ function layoutWithDagre(nodes, edges, { nodeWidth = 240, nodeHeight = 80 } = {}
   }));
 }
 
+// Thread-row (swim-lane) layout. Each thread_id becomes a horizontal row;
+// rows are sorted largest-thread-first; within a row, nodes follow the
+// predecessor->successor chain. Falls back to dagre when there are fewer
+// than 2 distinct threads to avoid a degenerate single-row stack.
+function layoutByThread(nodes, edges, {
+  nodeWidth = 240,
+  nodeHeight = 80,
+  nodesep = 50,
+  ranksep = 100,
+  maxColsPerRow = 12,
+} = {}) {
+  if (!nodes || nodes.length === 0) return [];
+
+  const fullData = (n) => n?.data?.fullData || {};
+  const getThread = (n) =>
+    String(fullData(n).thread_id || n?.data?.thread_id || "default").trim() || "default";
+
+  // Group by thread
+  const threads = new Map(); // thread_id -> { firstIdx, nodes: [] }
+  nodes.forEach((n, idx) => {
+    const tid = getThread(n);
+    if (!threads.has(tid)) threads.set(tid, { firstIdx: idx, nodes: [] });
+    threads.get(tid).nodes.push(n);
+  });
+
+  // Degenerate case: 0 or 1 threads -> fallback to dagre so single-thread
+  // graphs still get a sensible left-to-right chain layout.
+  if (threads.size < 2) return layoutWithDagre(nodes, edges, { nodeWidth, nodeHeight });
+
+  // Sort threads by size descending; stable secondary by first-appearance.
+  const sortedThreads = [...threads.entries()].sort((a, b) => {
+    const sizeDiff = b[1].nodes.length - a[1].nodes.length;
+    if (sizeDiff !== 0) return sizeDiff;
+    return a[1].firstIdx - b[1].firstIdx;
+  });
+
+  // Within each thread, order by predecessor->successor chain. Fallback to
+  // chunk_id lexical, then sequence_number, then input order.
+  const orderThreadNodes = (threadNodes) => {
+    const byId = new Map(threadNodes.map((n) => [n.id, n]));
+
+    // Build incoming-edge count restricted to this thread
+    const incoming = new Map(threadNodes.map((n) => [n.id, 0]));
+    threadNodes.forEach((n) => {
+      const succ = fullData(n).successor;
+      if (succ && incoming.has(succ)) {
+        incoming.set(succ, (incoming.get(succ) || 0) + 1);
+      }
+    });
+
+    // Find heads (no predecessor inside this thread)
+    const heads = threadNodes.filter((n) => (incoming.get(n.id) || 0) === 0);
+
+    const visited = new Set();
+    const ordered = [];
+    const seed = heads.length > 0 ? heads : [threadNodes[0]];
+
+    // Pre-sort seeds by chunk_id / sequence_number for stable temporal start
+    const sortKey = (n) => {
+      const fd = fullData(n);
+      return [
+        String(fd.chunk_id || ""),
+        Number(fd.sequence_number ?? Number.MAX_SAFE_INTEGER),
+      ];
+    };
+    seed.sort((a, b) => {
+      const ka = sortKey(a), kb = sortKey(b);
+      if (ka[0] !== kb[0]) return ka[0] < kb[0] ? -1 : 1;
+      return ka[1] - kb[1];
+    });
+
+    const walk = (start) => {
+      let cur = start;
+      while (cur && !visited.has(cur.id)) {
+        visited.add(cur.id);
+        ordered.push(cur);
+        const succId = fullData(cur).successor;
+        cur = succId && byId.has(succId) ? byId.get(succId) : null;
+      }
+    };
+    seed.forEach(walk);
+
+    // Pick up any orphans not reachable via the chain (e.g. ring or stale refs)
+    threadNodes.forEach((n) => { if (!visited.has(n.id)) ordered.push(n); });
+    return ordered;
+  };
+
+  // Wrap long thread rows: a thread with >maxColsPerRow nodes folds into
+  // multiple sub-rows so a 90-idea mega-thread becomes ~8 stacked sub-rows
+  // (~3000px wide) instead of one 27000px row that's unreadable at any zoom.
+  const xStep = nodeWidth + nodesep;
+  const yStep = nodeHeight + ranksep;
+  const positioned = [];
+  let rowCursor = 0;
+  sortedThreads.forEach(([, entry]) => {
+    const orderedRow = orderThreadNodes(entry.nodes);
+    orderedRow.forEach((n, idx) => {
+      const colIdx = idx % maxColsPerRow;
+      const subRowOffset = Math.floor(idx / maxColsPerRow);
+      positioned.push({
+        ...n,
+        position: {
+          x: colIdx * xStep,
+          y: (rowCursor + subRowOffset) * yStep,
+        },
+      });
+    });
+    rowCursor += Math.max(1, Math.ceil(orderedRow.length / maxColsPerRow));
+  });
+  return positioned;
+}
+
 function getAuthoredSemanticLevel(node) {
   const level = Number(node?.semantic_level);
   // ADR-030 §D2: canonical hierarchy is 1-5 (chunks/ideas/topics/themes/arcs).
@@ -858,7 +970,7 @@ function MinimalGraphInner({
         label: spec.label,
         type: spec.type,
         nodes: levelNodes.length > 1
-          ? layoutWithDagre(
+          ? layoutByThread(
               rfLevelNodes,
               rfLevelEdges,
               { nodeWidth: spec.level >= 3 ? 280 : 250, nodeHeight: spec.level >= 3 ? 102 : 90 }
@@ -1006,17 +1118,31 @@ function MinimalGraphInner({
 
   const displayNodes = interactiveNodes.length > 0 ? interactiveNodes : layoutedDisplayNodes;
 
-  // Run fitView after React has committed the new nodes to DOM
+  // Run fitView after React has committed the new nodes to DOM and ReactFlow
+  // has measured their positions. A single rAF isn't enough — ReactFlow's
+  // nodeInternals lags one render cycle on tab switches, so fitView with
+  // no caps produces nonsense viewport (e.g. scale=1 + huge negative y).
+  // Two rAFs + explicit minZoom/maxZoom caps fix tab-switch auto-fit.
   useEffect(() => {
     if (!pendingFitViewRef.current || displayNodes.length === 0) return;
     pendingFitViewRef.current = false;
-    // Use requestAnimationFrame to ensure DOM is painted, then fitView
-    const raf = requestAnimationFrame(() => {
-      programmaticMoveRef.current = true;
-      reactFlow.fitView({ padding: 0.2, duration: 300 });
-      setTimeout(() => { programmaticMoveRef.current = false; }, 350);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        programmaticMoveRef.current = true;
+        reactFlow.fitView({
+          padding: 0.2,
+          duration: 300,
+          minZoom: 0.04,
+          maxZoom: 1.0,
+        });
+        setTimeout(() => { programmaticMoveRef.current = false; }, 350);
+      });
     });
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
   }, [displayNodes, reactFlow]);
 
   const selectedLayoutNode = useMemo(
@@ -1327,6 +1453,11 @@ function MinimalGraphInner({
               <button
                 key={label}
                 onClick={() => {
+                  // Explicit tier selection is a camera intent — disable
+                  // auto-follow so the fitView triggered by the layout change
+                  // isn't overridden by the autoFollow setCenter(zoom=1).
+                  autoFollowRef.current = false;
+                  setAutoFollow(false);
                   if (lockedLevel === level) {
                     setLockedLevel(null); // unlock
                   } else {

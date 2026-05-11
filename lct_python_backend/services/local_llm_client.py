@@ -603,12 +603,27 @@ def chat_with_provider_fallback_sync(
                 else:
                     data = content
 
+                # OpenAI prompt-cache hit telemetry — auto-cached when system
+                # prompt ≥1024 tokens and prefix is byte-stable. Visible as
+                # usage.prompt_tokens_details.cached_tokens. Logging this so
+                # we can verify caching kicks in for long imports (~40% cost
+                # reduction on cache hits).
+                usage = result_json.get("usage") or {}
+                prompt_tokens = usage.get("prompt_tokens", 0)
+                cached_tokens = (usage.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
+                completion_tokens = usage.get("completion_tokens", 0)
+                cache_pct = (cached_tokens / prompt_tokens * 100) if prompt_tokens else 0
                 logger.info(
-                    "[LLM Fallback Sync] Success with provider %d/%d: %s (%s)",
+                    "[LLM Fallback Sync] Success with provider %d/%d: %s (%s) "
+                    "tokens=in:%s cached:%s(%.0f%%) out:%s",
                     attempt_number,
                     total_providers,
                     provider_name,
                     provider_id,
+                    prompt_tokens,
+                    cached_tokens,
+                    cache_pct,
+                    completion_tokens,
                 )
 
                 return ProviderResult(

@@ -157,6 +157,90 @@ def extract_conversation_name(metadata: Optional[Dict[str, Any]]) -> Optional[st
     return candidate or None
 
 
+import re
+from collections import Counter
+
+_SPEAKER_PREFIX_RE = re.compile(r"(?:^|\n|\.\s+)([A-Z]{1,12}(?:_\d+)?):\s")
+
+
+def _dominant_speakers_from_excerpt(excerpt: str) -> Counter:
+    """Count speaker prefixes ('A: ', 'SPEAKER_00: ', ...) in a chunk's source_excerpt."""
+    if not excerpt:
+        return Counter()
+    matches = _SPEAKER_PREFIX_RE.findall(excerpt)
+    return Counter(matches)
+
+
+def _compute_speaker_rollup(
+    node_records: List[Tuple[uuid.UUID, Dict[str, Any]]],
+    ref_to_id: Dict[str, uuid.UUID],
+) -> Dict[uuid.UUID, Dict[str, Any]]:
+    """Compute per-node speaker_info by parsing diarized excerpt prefixes.
+
+    Chunks (level=1) read directly from their source_excerpt.
+    Higher tiers aggregate counts from their children_ids descendants.
+    Returns {node_id: {"primary_speaker": "A", "speaker_distribution": {"A": 5, "B": 1}}}.
+    """
+    # First pass: capture leaf counts + build children map keyed by node_id
+    leaf_counts: Dict[uuid.UUID, Counter] = {}
+    children_map: Dict[uuid.UUID, List[uuid.UUID]] = {}
+    level_by_id: Dict[uuid.UUID, int] = {}
+
+    for node_id, item in node_records:
+        try:
+            level = int(item.get("semantic_level") or item.get("level") or 1)
+        except (TypeError, ValueError):
+            level = 1
+        level_by_id[node_id] = max(1, min(5, level))
+
+        excerpt = str(item.get("source_excerpt") or item.get("node_text") or item.get("summary") or "")
+        own = _dominant_speakers_from_excerpt(excerpt)
+        if own:
+            leaf_counts[node_id] = own
+
+        # Resolve children_ids slug list to UUIDs we know about
+        kids_raw = item.get("children_ids") or []
+        resolved: List[uuid.UUID] = []
+        if isinstance(kids_raw, list):
+            for k in kids_raw:
+                ks = coerce_str(k)
+                if ks and ks in ref_to_id:
+                    resolved.append(ref_to_id[ks])
+        if resolved:
+            children_map[node_id] = resolved
+
+    # Second pass: for non-leaf nodes, aggregate via DFS over children. Falls
+    # back to the node's own excerpt-counts if children unresolved.
+    rollup: Dict[uuid.UUID, Dict[str, Any]] = {}
+    memo: Dict[uuid.UUID, Counter] = {}
+
+    def aggregate(nid: uuid.UUID, visiting: set) -> Counter:
+        if nid in memo:
+            return memo[nid]
+        if nid in visiting:
+            return Counter()  # cycle guard
+        visiting.add(nid)
+        total = Counter()
+        for child in children_map.get(nid, []):
+            total.update(aggregate(child, visiting))
+        if not total:
+            total.update(leaf_counts.get(nid, Counter()))
+        visiting.discard(nid)
+        memo[nid] = total
+        return total
+
+    for nid, _ in node_records:
+        counts = aggregate(nid, set())
+        if not counts:
+            continue
+        primary, _ = counts.most_common(1)[0]
+        rollup[nid] = {
+            "primary_speaker": primary,
+            "speaker_distribution": dict(counts),
+        }
+    return rollup
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -205,6 +289,44 @@ async def persist_transcript(
         db.add(db_utterance)
 
     await db.commit()
+
+
+async def ensure_conversation_row(
+    *,
+    db,
+    conversation_id: str,
+    conversation_name: Optional[str] = None,
+    source_type: Optional[str] = None,
+    owner_id: str = "default_user",
+    source_metadata: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Materialize a conversation row (idempotent) so child writes have a parent FK.
+
+    Called early in import/STT pipelines before pipeline_artifacts checkpoint
+    rows or any node/utterance writes fire — those have ON-FK to conversations.
+    Returns True if a new row was inserted, False if one already existed.
+    """
+    from sqlalchemy import select
+
+    conv_uuid = uuid.UUID(conversation_id)
+    existing = await db.execute(select(Conversation).where(Conversation.id == conv_uuid))
+    if existing.scalar_one_or_none() is not None:
+        return False
+
+    fallback_name = (conversation_name or "").strip() or f"import-{conv_uuid.hex[:8]}"
+    conv = Conversation(
+        id=conv_uuid,
+        conversation_name=fallback_name,
+        conversation_type="transcript",
+        source_type=(source_type or "import").strip() or "import",
+        source_metadata=source_metadata or {},
+        owner_id=(owner_id or "default_user").strip() or "default_user",
+        started_at=datetime.now(),
+        created_at=datetime.now(),
+    )
+    db.add(conv)
+    await db.commit()
+    return True
 
 
 async def persist_graph(
@@ -321,6 +443,11 @@ async def persist_graph(
             ref_to_id[raw_id] = node_id
         node_records.append((node_id, item))
 
+    # ADR-030 §D4: roll up speaker_info from diarized source_excerpt prefixes
+    # so the frontend Color:Speaker mode actually colors something. Without
+    # this, every node gets speaker_info=null even though the STT was diarized.
+    speaker_info_by_id = _compute_speaker_rollup(node_records, ref_to_id)
+
     if conv and conversation_name:
         clean_conversation_name = coerce_str(conversation_name)
         if clean_conversation_name:
@@ -375,6 +502,7 @@ async def persist_graph(
                 "edge_relations": edge_relations,
             },
             utterance_ids=_coerce_uuid_array(item.get("utterance_ids")),
+            speaker_info=speaker_info_by_id.get(node_id),
         ))
 
     # Step 3: Write Relationship rows

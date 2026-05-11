@@ -457,8 +457,26 @@ class TranscriptProcessor:
                 completed_segments if completed_segments else None,
             )
 
+            # Sliding-window context: cap to last N nodes + drop bulky fields.
+            # Previously sent `repr(self.existing_json)` (all nodes, all fields)
+            # which grew unbounded — caused gpt-4o-mini 128K context overflow at
+            # node ~470 during Q.m4a import. Capping to last 80 nodes with a
+            # trimmed shape keeps the LLM context-aware but bounds input tokens
+            # to a constant regardless of conversation length.
+            _CONTEXT_WINDOW_SIZE = 80
+            _CONTEXT_FIELDS = (
+                "id", "node_name", "summary", "semantic_level", "semantic_type",
+                "thread_id", "thread_state", "predecessor", "successor",
+                "parent_id",
+            )
+            recent_nodes = self.existing_json[-_CONTEXT_WINDOW_SIZE:]
+            trimmed_context = [
+                {k: n.get(k) for k in _CONTEXT_FIELDS if n.get(k) is not None}
+                for n in recent_nodes
+            ]
             mod_input = (
-                f"Existing JSON : \n {repr(self.existing_json)} "
+                f"Existing JSON (last {len(trimmed_context)} of {len(self.existing_json)} nodes) : \n"
+                f" {repr(trimmed_context)} "
                 f"\n\n Transcript Input: \n {transcript_for_llm}"
             )
             generation_status_messages: List[str] = []
