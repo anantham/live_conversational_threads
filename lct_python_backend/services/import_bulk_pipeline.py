@@ -14,7 +14,10 @@ from fastapi import Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.services.audio_transcriber import _is_retryable_stt_error
-from lct_python_backend.services.graph_persistence import persist_graph as persist_import_graph
+from lct_python_backend.services.graph_persistence import (
+    ensure_conversation_row,
+    persist_graph as persist_import_graph,
+)
 from lct_python_backend.services.import_bulk_telemetry import (
     attach_bottleneck_stage,
     calculate_segmented_progress,
@@ -336,6 +339,50 @@ async def run_bulk_processing_worker(
                 file_hash = compute_file_hash(Path(temp_path))
                 telemetry["file_hash"] = file_hash
                 existing_checkpoint = await find_checkpoint(db, file_hash)
+
+                # STT skip-on-complete: if this file_hash already maps to a
+                # conversation whose graph is fully persisted, redirect to it
+                # instead of re-running STT + LLM. Saves ~$1 + ~80min per
+                # Q.m4a re-import. Detected by: completed_chunks == total_chunks
+                # AND target conversation already has persisted nodes.
+                if existing_checkpoint and existing_checkpoint.get("conversation_id"):
+                    completed = int(existing_checkpoint.get("completed_chunks") or 0)
+                    total = int(existing_checkpoint.get("total_chunks") or 0)
+                    prior_conv = existing_checkpoint["conversation_id"]
+                    if total > 0 and completed >= total:
+                        from lct_python_backend.models import Node
+                        from sqlalchemy import select, func
+                        node_count_row = await db.execute(
+                            select(func.count(Node.id)).where(Node.conversation_id == prior_conv)
+                        )
+                        prior_node_count = int(node_count_row.scalar() or 0)
+                        if prior_node_count > 0:
+                            logger.info(
+                                "[PROCESS FILE] STT cache HIT for %s: redirecting to existing "
+                                "conversation %s (%d nodes, %d/%d chunks). Skipping STT+LLM.",
+                                filename, prior_conv, prior_node_count, completed, total,
+                            )
+                            await emit("status", {
+                                "stage": "done",
+                                "progress": 1.0,
+                                "message": f"Cache hit — reusing existing conversation ({prior_node_count} nodes).",
+                                "conversation_id": prior_conv,
+                                "cache_hit": True,
+                                "telemetry": {
+                                    "total_elapsed_ms": elapsed_ms(pipeline_started_at),
+                                    "file_hash": file_hash,
+                                    "cached_node_count": prior_node_count,
+                                    "cached_completed_chunks": completed,
+                                    "cached_total_chunks": total,
+                                },
+                            })
+                            return
+
+                # Reuse the prior run's conversation_id when resuming from a
+                # checkpoint, so re-runs accumulate into the same DB row instead
+                # of producing orphan partial conversations.
+                if existing_checkpoint and existing_checkpoint.get("conversation_id"):
+                    resolved_conversation_id = existing_checkpoint["conversation_id"]
                 if existing_checkpoint and existing_checkpoint.get("completed_chunks", 0) > 0:
                     resume_from_chunk = existing_checkpoint["completed_chunks"]
                     telemetry["checkpoint_chunks"] = resume_from_chunk
@@ -387,6 +434,29 @@ async def run_bulk_processing_worker(
             except Exception as hash_exc:  # noqa: BLE001
                 logger.warning("[PROCESS FILE] Checkpoint lookup failed (non-fatal): %s", hash_exc)
                 file_hash = None
+
+        # Materialize the parent conversation row up front so that
+        # pipeline_artifacts (checkpoint manifest, ADR-030 §D9 telemetry, etc.)
+        # have a valid FK to point at. Without this the FK-violation on every
+        # streaming write silently rolls back the checkpoint, breaking resume.
+        try:
+            inserted = await ensure_conversation_row(
+                db=db,
+                conversation_id=resolved_conversation_id,
+                conversation_name=Path(filename).stem or None,
+                source_type="audio" if is_likely_audio else "transcript",
+                source_metadata={"file_name": filename, "file_size_bytes": content_size},
+            )
+            if inserted:
+                logger.info(
+                    "[PROCESS FILE] Materialized conversation row %s for %s",
+                    resolved_conversation_id, filename,
+                )
+        except Exception as ensure_exc:  # noqa: BLE001
+            logger.warning(
+                "[PROCESS FILE] Early conversation row creation failed (non-fatal): %s",
+                ensure_exc,
+            )
 
         # Empirical initial ETA from past transcription timings
         initial_eta_ms: Optional[float] = None
@@ -1197,6 +1267,39 @@ async def run_bulk_processing_worker(
             processor.existing_json,
             Path(filename).stem or "Imported conversation",
         )
+
+        # Populate utterance.chunk_id from processor.chunk_dict ({chunk_uuid:
+        # transcript_text}) so the speaker rollup can later join utterances to
+        # nodes via chunk_id. Audio-only diarization writes utterances with
+        # null chunk_id; without this stitch, post-hoc diarization-repair
+        # updates on utterances can't propagate back to node.speaker_info.
+        chunk_text_by_id = getattr(processor, "chunk_dict", {}) or {}
+        if chunk_text_by_id and final_source_utterances:
+            normalized_chunks = [
+                (cid, (text or "").lower())
+                for cid, text in chunk_text_by_id.items()
+                if isinstance(cid, str) and text
+            ]
+            stitched = 0
+            for utterance in final_source_utterances:
+                if not isinstance(utterance, dict):
+                    continue
+                if utterance.get("chunk_id"):
+                    continue
+                utt_text = (utterance.get("text") or "").strip().lower()
+                if len(utt_text) < 4:
+                    continue
+                for cid, lower_chunk in normalized_chunks:
+                    if utt_text in lower_chunk:
+                        utterance["chunk_id"] = cid
+                        stitched += 1
+                        break
+            telemetry["utterance_chunk_stitched"] = stitched
+            if stitched:
+                logger.info(
+                    "[PROCESS FILE] Stitched chunk_id onto %d/%d utterances for %s",
+                    stitched, len(final_source_utterances), resolved_conversation_id,
+                )
 
         # Persist graph to DB (enables canvas export and other DB-backed features)
         try:

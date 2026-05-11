@@ -183,9 +183,12 @@ def _normalize_relation_type(value: Any) -> str:
 
 def _normalize_semantic_level(value: Any) -> int:
     raw = _as_clean_int(value)
-    if raw and 1 <= raw <= 4:
+    if raw and 1 <= raw <= 5:
         return raw
-    return 2
+    # Default to 1 (chunk) — the safe granular tier. Defaulting to 2 (idea)
+    # silently swallows missing-level LLM output and hides the chunk tier;
+    # this caused refinement to flatten level-1 chunks into ideas.
+    return 1
 
 
 def _normalize_semantic_type(value: Any, semantic_level: int) -> str:

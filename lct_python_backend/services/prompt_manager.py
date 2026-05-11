@@ -49,7 +49,9 @@ class PromptManager:
         if not self.prompts_file.exists():
             raise FileNotFoundError(f"Prompts file not found: {self.prompts_file}")
 
-        with open(self.prompts_file, 'r') as f:
+        # Force UTF-8 — Windows defaults to cp1252 which fails on the
+        # unicode chars (em-dash, smart quotes) present in our prompts.
+        with open(self.prompts_file, 'r', encoding='utf-8') as f:
             self._prompts_cache = json.load(f)
 
         self._file_mtime = self.prompts_file.stat().st_mtime

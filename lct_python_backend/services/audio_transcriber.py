@@ -363,6 +363,12 @@ def _is_retryable_stt_error(exc: Exception) -> bool:
         retryable_markers = (
             "timed out", "timeout", "connection reset", "readerror",
             "temporarily unavailable", "cuda", "unknown error",
+            # DNS / socket-layer transients — observed mid-import (e.g. Q.m4a
+            # aborted at chunk 65/163 with [Errno 11001] getaddrinfo failed).
+            "getaddrinfo", "gaierror", "name or service not known",
+            "name resolution", "temporary failure in name resolution",
+            "winerror 10054", "winerror 10060", "winerror 10061",
+            "connection failed", "network error",
         )
         return any(marker in message for marker in retryable_markers)
     return False

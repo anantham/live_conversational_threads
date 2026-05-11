@@ -13,11 +13,15 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 if DATABASE_URL and DATABASE_URL.startswith("postgresql://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-# Create async engine
 async_engine = create_async_engine(
     DATABASE_URL,
-    echo=False,  # Set to True for SQL query logging
+    echo=False,
     future=True,
+    # Native Windows postgres on localhost:5432 (migrated from WSL on 5433
+    # which had constant networking-bridge failures). SSL not needed for
+    # loopback; setting ssl=False keeps asyncpg from trying the broken
+    # negotiation path on Windows proactor loop.
+    connect_args={"ssl": False},
 )
 
 # Create async session factory

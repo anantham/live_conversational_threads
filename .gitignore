@@ -211,3 +211,5 @@ outputs/
 
 # Local replay / probe artifacts
 tmp/
+.tmp/
+.playwright-mcp/
