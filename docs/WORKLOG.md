@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-05-07T07:41:36+05:30
+- Hardened the frontend dependency tree after the deployment security review surfaced npm advisories.
+- Files modified:
+  - `lct_app/package.json` (lines 16-37): bumped the direct frontend/runtime and build-tool packages needed to clear audited vulnerable dependency paths (`@tailwindcss/vite`, `tailwindcss`, `react-markdown`, `react-router-dom`, `@vitejs/plugin-react-swc`, `vite`).
+  - `lct_app/package-lock.json`: refreshed the resolved dependency graph so vulnerable transitive packages resolve to fixed versions, including `lodash@4.18.1`, `mdast-util-to-hast@13.2.1`, `postcss@8.5.14`, `eslint@9.39.4`, `@eslint/plugin-kit@0.4.1`, `ajv@6.15.0`, `brace-expansion@1.1.14`, `flatted@3.4.2`, `js-yaml@4.1.1`, and `minimatch@3.1.5`.
+- Validation:
+  - `npm audit --package-lock-only --omit=dev --json --prefix lct_app` -> 0 vulnerabilities.
+  - `npm audit --package-lock-only --json --prefix lct_app` -> 0 vulnerabilities.
+  - `npm run build --prefix lct_app` -> passed with the existing large-chunk warning (`index-*.js` about 772 kB minified / 228 kB gzip).
+  - `npm run lint --prefix lct_app` -> failed on the known repo-wide ESLint backlog (132 errors, 15 warnings across old config/components/pages); no dependency-change-specific lint failure was isolated.
+- Notes:
+  - `npm install` emitted transient Windows cleanup `EPERM` warnings for locked native-package temp folders during the first sync, then completed successfully and subsequent validation passed.
+  - The parent `C:\Users\adity\Documents\.npmrc` still emits an invalid `before=null` warning for some npm commands unless an explicit `--before=...` value is supplied.
+
 ## 2026-04-14T19:40:20Z — Finished the remaining product-facing ADR-028 terminology cleanup
 
 Branch: `dev`

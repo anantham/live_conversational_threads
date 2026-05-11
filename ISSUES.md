@@ -1,6 +1,10 @@
 # ISSUES
 
-Last updated: 2026-04-13
+Last updated: 2026-05-07
+
+## Deployment Security Follow-ups (2026-05-07)
+- Docker build context can include local secrets because the repo currently has no `.dockerignore`, while `Dockerfile` copies `lct_app/` and `lct_python_backend/` into build stages. Impact: local `.env` files or other ignored-but-present credentials can be baked into an image or exposed to the Docker daemon during build; blocker status: deployment-blocking for public/server use. Recommended next step: add a restrictive `.dockerignore` that excludes `.env*`, local caches, virtualenvs, `node_modules`, `.tmp`, test artifacts, logs, and other non-source files before building deploy images.
+- Frontend dependency audit was cleaned on 2026-05-07 (`npm audit --package-lock-only --json --prefix lct_app` reports 0 vulnerabilities), but the Docker frontend build stage still uses `npm install` rather than a reproducible lockfile install. Impact: future image builds can drift from the audited lockfile within semver ranges. Recommended next step: switch the Docker frontend build stage to `npm ci` after confirming the lockfile is committed and CI/build cache behavior is acceptable.
 
 ## Verification Follow-ups (2026-04-13)
 - `lct_python_backend/tests/unit/test_transcript_processing_runtime.py::test_graph_timer_forces_update_when_accumulator_keeps_accumulating` currently fails under local verification because `TranscriptProcessor._run_batch_timer()` defers flush when pending text remains below `graph_min_flush_chars` (default 80 chars), so the test's short `"First finalized transcript chunk."` input never forces a graph update after the timer. Impact: unrelated runtime verification noise during graph-work sessions; blocker status: non-blocking for authored-hierarchy rewrite, but it weakens confidence in timer-path coverage. Recommended next step: decide whether the test fixture should lower `graph_min_flush_chars` explicitly or whether the timer behavior has drifted from the intended product rule and should be changed in code.
