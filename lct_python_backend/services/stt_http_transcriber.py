@@ -439,12 +439,21 @@ class RealtimeHttpSttSession:
                     "degraded": False,
                 }
             ]
-        # Connection pooling: create persistent client
+        # Connection pooling: create persistent client.
+        # We disable keep-alive (max_keepalive_connections=0) — OpenAI's edge
+        # routinely drops idle keep-alive sockets, then httpx reuses the
+        # dead socket → WinError 10054 ("Connection forcibly closed").
+        # Tradeoff: ~50-200ms TLS handshake per chunk, negligible vs the
+        # 30s per-chunk STT latency, and eliminates the most common
+        # transient class.
         if STT_HTTP_POOL_ENABLED:
             timeout = max(5.0, float(self.timeout_seconds or DEFAULT_HTTP_TIMEOUT_SECONDS))
-            self._client = httpx.AsyncClient(timeout=timeout)
+            self._client = httpx.AsyncClient(
+                timeout=timeout,
+                limits=httpx.Limits(max_keepalive_connections=0, max_connections=10),
+            )
             if TRACE_API_CALLS:
-                logger.debug("[HTTP Pool] Persistent httpx.AsyncClient created (timeout=%.1fs)", timeout)
+                logger.debug("[HTTP Pool] httpx.AsyncClient created (timeout=%.1fs, keepalive=off)", timeout)
 
         # VAD: load model per session (separate LSTM states)
         if STT_VAD_ENABLED and _check_silero_vad():

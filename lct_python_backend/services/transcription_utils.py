@@ -97,7 +97,11 @@ def _elapsed_ms(started_at: float) -> int:
 # Chunked audio transcription defaults
 DEFAULT_CHUNK_DURATION_S = _bounded_env_int("STT_CHUNK_DURATION_S", default=30, minimum=20, maximum=30)
 DEFAULT_CHUNK_OVERLAP_S = _bounded_env_int("STT_CHUNK_OVERLAP_S", default=1, minimum=0, maximum=3)
-DEFAULT_CHUNK_MAX_RETRIES = _bounded_env_int("STT_CHUNK_MAX_RETRIES", default=2, minimum=0, maximum=6)
+# Default to 4 retries (= 5 total attempts per chunk) — observed transient
+# rates on Windows + Tailscale stacks routinely exhausted the prior 2 retries
+# and aborted whole imports. 5 attempts with exponential backoff cover
+# essentially all real transients (10054 resets, getaddrinfo blips, 502s).
+DEFAULT_CHUNK_MAX_RETRIES = _bounded_env_int("STT_CHUNK_MAX_RETRIES", default=4, minimum=0, maximum=8)
 DEFAULT_CHUNK_RETRY_BACKOFF_S = max(0.0, _env_float("STT_CHUNK_RETRY_BACKOFF_S", default=1.5))
 
 # Dynamic silence-based segmentation defaults
