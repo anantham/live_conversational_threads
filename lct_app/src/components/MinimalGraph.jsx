@@ -1305,9 +1305,40 @@ function MinimalGraphInner({
   const MIN_READABLE_ZOOM = 0.65;
   const ZOOM_PRESETS = [
     { label: "Center", action: () => {
+      // Keep the user's current zoom and anchor the camera so the TOP-LEFT
+      // of the node bounding box lines up with the top-left of the viewport
+      // (with a small padding). fitView's previous behavior recomputed zoom
+      // AND centered on the bbox centroid — on tall wrapped layouts (147
+      // ideas in a swim-lane) the centroid was visually empty between
+      // column groups, putting the camera in negative space.
+      const nodes = displayNodes;
+      if (!nodes || nodes.length === 0) {
+        reactFlow.fitView({ padding: 0.3, duration: 300, minZoom: MIN_READABLE_ZOOM });
+        return;
+      }
+      // Compute bbox from node positions + measured sizes
+      let minX = Infinity, minY = Infinity;
+      nodes.forEach((n) => {
+        const px = n.position?.x ?? 0;
+        const py = n.position?.y ?? 0;
+        if (px < minX) minX = px;
+        if (py < minY) minY = py;
+      });
+      if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+        reactFlow.fitView({ padding: 0.3, duration: 300, minZoom: MIN_READABLE_ZOOM });
+        return;
+      }
+      const currentZoom = reactFlow.getZoom?.() ?? 1;
+      const PADDING_PX = 40;
       programmaticMoveRef.current = true;
-      // Fit all nodes but enforce a minimum zoom so text stays readable
-      reactFlow.fitView({ padding: 0.3, duration: 300, minZoom: MIN_READABLE_ZOOM });
+      reactFlow.setViewport(
+        {
+          x: -minX * currentZoom + PADDING_PX,
+          y: -minY * currentZoom + PADDING_PX,
+          zoom: currentZoom,
+        },
+        { duration: 300 },
+      );
       setTimeout(() => { programmaticMoveRef.current = false; }, 350);
     }},
   ];
@@ -1589,9 +1620,12 @@ function MinimalGraphInner({
         </div>
       )}
 
-      {/* Context-sensitive color legend — adapts to current zoom level */}
+      {/* Context-sensitive color legend — adapts to current zoom level.
+          Pinned bottom-LEFT (away from the SPEAKERS panel / edge-detail / cluster
+          panels that all live bottom-right). The tooltip opens upward from the
+          icon's LEFT edge, extending rightward into empty canvas space. */}
       {normalizedChunk.length > 0 && (
-        <div className="absolute bottom-14 right-4 z-40">
+        <div className="absolute bottom-14 left-4 z-40">
           <details className="group">
             <summary className="cursor-pointer list-none p-2 bg-white/80 hover:bg-white/95 backdrop-blur rounded-full shadow-sm border border-gray-200 text-gray-400 hover:text-gray-600 transition opacity-60 hover:opacity-100">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1599,7 +1633,7 @@ function MinimalGraphInner({
                 <path d="M12 16v-4M12 8h.01" />
               </svg>
             </summary>
-            <div className="absolute bottom-full right-0 mb-2 bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-2 min-w-[180px] animate-slideIn">
+            <div className="absolute bottom-full left-0 mb-2 bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-2 min-w-[180px] animate-slideIn">
               {displayMode === "semantic" ? (
                 <>
                   <div>
