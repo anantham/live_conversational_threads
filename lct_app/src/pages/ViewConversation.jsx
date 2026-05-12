@@ -104,6 +104,9 @@ export default function ViewConversation() {
   const [graphData, setGraphData] = useState([]);
   const [chunkDict, setChunkDict] = useState({});
   const [conversationName, setConversationName] = useState("");
+  const [conversationTitle, setConversationTitle] = useState("");
+  const [executiveSummary, setExecutiveSummary] = useState("");
+  const [summaryExpanded, setSummaryExpanded] = useState(true);
   const [selectedNode, setSelectedNode] = useState(null);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   const [speakerRefreshKey, setSpeakerRefreshKey] = useState(0);
@@ -140,6 +143,15 @@ export default function ViewConversation() {
             ? payload.chunk_dict
             : {}
         );
+        // A7: LLM-authored title + 3-sentence executive summary from the
+        // arcs consolidation pass. Empty for legacy conversations that
+        // pre-date the consolidation pipeline.
+        if (typeof payload.conversation_title === "string" && payload.conversation_title.trim()) {
+          setConversationTitle(payload.conversation_title.trim());
+        }
+        if (typeof payload.executive_summary === "string" && payload.executive_summary.trim()) {
+          setExecutiveSummary(payload.executive_summary.trim());
+        }
 
         // Fetch audio status in parallel with metadata
         try {
@@ -217,9 +229,21 @@ export default function ViewConversation() {
 
         <div className="min-w-0 flex-1 px-4">
           <h1 className="truncate text-sm font-semibold text-slate-800">
-            {conversationName || conversationId || "Conversation"}
+            {conversationTitle || conversationName || conversationId || "Conversation"}
           </h1>
-          <p className="text-xs text-slate-500">Saved conversation view</p>
+          <p className="text-xs text-slate-500">
+            {executiveSummary ? (
+              <button
+                type="button"
+                onClick={() => setSummaryExpanded((v) => !v)}
+                className="text-slate-500 underline-offset-2 hover:text-slate-700 hover:underline"
+              >
+                {summaryExpanded ? "Hide executive summary" : "Show executive summary"}
+              </button>
+            ) : (
+              "Saved conversation view"
+            )}
+          </p>
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
@@ -239,6 +263,12 @@ export default function ViewConversation() {
           )}
         </div>
       </header>
+
+      {executiveSummary && summaryExpanded && (
+        <div className="shrink-0 border-b border-slate-200 bg-white/70 px-6 py-3 text-xs leading-relaxed text-slate-600 backdrop-blur">
+          {executiveSummary}
+        </div>
+      )}
 
       <main className="relative min-h-0 flex-1">
         {isLoading && (

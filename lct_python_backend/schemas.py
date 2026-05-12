@@ -49,6 +49,11 @@ class SaveJsonResponseExtended(BaseModel):
 class ConversationResponse(BaseModel):
     graph_data: List[Any]
     chunk_dict: Dict[str, Any]
+    # A7: surfaced at the top of the conversation view as a banner.
+    # Populated by the arcs consolidation pass (A4). Optional so legacy
+    # imports without consolidation just don't render the banner.
+    conversation_title: Optional[str] = None
+    executive_summary: Optional[str] = None
 
 class Citation(BaseModel):
     title: str
