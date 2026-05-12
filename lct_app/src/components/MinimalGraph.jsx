@@ -705,6 +705,7 @@ function MinimalGraphInner({
   const [hideEdges, setHideEdges] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [lockedLevel, setLockedLevel] = useState(null); // null = unlocked, semantic 1-4 or legacy 0-3
+  const initialLockedAppliedRef = useRef(false);
   // ADR-030 §D4: color mode (tier | speaker | temporal). Default: tier.
   // Persisted per conversation via saveConversationDraft when conversationId is provided.
   const [colorMode, setColorMode] = useState(
@@ -736,6 +737,42 @@ function MinimalGraphInner({
     () => allNodes.map((item, index) => normalizeGraphNode(item, index)).filter(Boolean),
     [allNodes]
   );
+
+  // A6: pick a default tab that surfaces a digestible top-down view.
+  // Pick the TOPMOST tier where avg_children_per_parent >= 2.5 — i.e. the
+  // highest level of compression that's actually compressing. For Q.m4a-with-
+  // consolidation: arcs (5 nodes, ~3 themes each) wins. For a thin 3-min
+  // import: ideas wins. Skips degenerate tiers (1.07x "themes" pretending
+  // to compress).
+  useEffect(() => {
+    if (initialLockedAppliedRef.current) return;
+    if (!normalizedChunk || normalizedChunk.length === 0) return;
+    const byLevel = new Map();
+    normalizedChunk.forEach((n) => {
+      const level = Number(n.semantic_level);
+      if (!Number.isFinite(level) || level < 1 || level > 5) return;
+      byLevel.set(level, (byLevel.get(level) || 0) + 1);
+    });
+    if (byLevel.size === 0) return;
+    // Walk top-down (arcs → chunks) looking for a tier with real compression
+    // vs its next-finer tier. Default to the topmost tier with count >= 2.
+    let chosen = null;
+    for (let lvl = 5; lvl >= 1; lvl--) {
+      const cur = byLevel.get(lvl) || 0;
+      if (cur < 2) continue;
+      const next = byLevel.get(lvl - 1) || 0;
+      // Only pick a tier if it's the only populated tier above 1, OR if it
+      // genuinely compresses (>= 2.5x reduction from finer tier).
+      if (next === 0 || cur * 2.5 <= next) {
+        chosen = lvl;
+        break;
+      }
+    }
+    if (chosen) {
+      setLockedLevel(chosen);
+    }
+    initialLockedAppliedRef.current = true;
+  }, [normalizedChunk]);
 
   // ADR-030 §D4: build all three color maps; the active mode picks among them.
   // No more auto-switching based on speaker count — user controls via toggle.

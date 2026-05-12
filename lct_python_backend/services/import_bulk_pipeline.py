@@ -14,6 +14,11 @@ from fastapi import Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.services.audio_transcriber import _is_retryable_stt_error
+from lct_python_backend.services.hierarchy_consolidator import (
+    consolidate_ideas_to_topics,
+    consolidate_topics_to_themes,
+    consolidate_themes_to_arcs,
+)
 from lct_python_backend.services.graph_persistence import (
     ensure_conversation_row,
     persist_graph as persist_import_graph,
@@ -1240,6 +1245,79 @@ async def run_bulk_processing_worker(
                     },
                 )
 
+        # Post-streaming hierarchy consolidation passes (A5 — ideas → topics
+        # → themes → arcs + title + exec summary). The streaming LLM only
+        # authors chunks+ideas correctly per-batch; it cannot cluster across
+        # batches. These passes run on the COMPLETED graph and each see their
+        # whole input tier in one LLM call, producing meaningful compression.
+        consolidation_telemetry: dict[str, Any] = {}
+        conversation_title_from_arcs: Optional[str] = None
+        executive_summary: Optional[str] = None
+        try:
+            existing = list(processor.existing_json or [])
+
+            def _of_level(level: int) -> list[dict[str, Any]]:
+                return [
+                    n for n in existing
+                    if isinstance(n, dict) and int(n.get("semantic_level") or n.get("level") or 0) == level
+                ]
+
+            ideas_in = _of_level(2)
+            consolidation_telemetry["ideas_in"] = len(ideas_in)
+            if len(ideas_in) >= 4:
+                await emit("status", {
+                    "stage": "consolidating",
+                    "progress": 0.97,
+                    "message": f"Clustering {len(ideas_in)} ideas into topics...",
+                    "telemetry": {"total_elapsed_ms": elapsed_ms(pipeline_started_at)},
+                })
+                topics = await consolidate_ideas_to_topics(ideas_in, providers=runtime_llm_providers)
+                if topics:
+                    existing.extend(topics)
+                    consolidation_telemetry["topics_out"] = len(topics)
+                    logger.info("[CONSOLIDATE] ideas=%d -> topics=%d", len(ideas_in), len(topics))
+
+                    if len(topics) >= 3:
+                        await emit("status", {
+                            "stage": "consolidating",
+                            "progress": 0.975,
+                            "message": f"Clustering {len(topics)} topics into themes...",
+                            "telemetry": {"total_elapsed_ms": elapsed_ms(pipeline_started_at)},
+                        })
+                        themes = await consolidate_topics_to_themes(topics, providers=runtime_llm_providers)
+                        if themes:
+                            existing.extend(themes)
+                            consolidation_telemetry["themes_out"] = len(themes)
+                            logger.info("[CONSOLIDATE] topics=%d -> themes=%d", len(topics), len(themes))
+
+                            if len(themes) >= 2:
+                                await emit("status", {
+                                    "stage": "consolidating",
+                                    "progress": 0.98,
+                                    "message": f"Synthesizing {len(themes)} themes into arcs + executive summary...",
+                                    "telemetry": {"total_elapsed_ms": elapsed_ms(pipeline_started_at)},
+                                })
+                                arcs, title, summary = await consolidate_themes_to_arcs(
+                                    themes, providers=runtime_llm_providers,
+                                )
+                                if arcs:
+                                    existing.extend(arcs)
+                                    consolidation_telemetry["arcs_out"] = len(arcs)
+                                    logger.info("[CONSOLIDATE] themes=%d -> arcs=%d", len(themes), len(arcs))
+                                if title:
+                                    conversation_title_from_arcs = title
+                                if summary:
+                                    executive_summary = summary
+
+            processor.existing_json = existing
+            telemetry["consolidation"] = consolidation_telemetry
+        except Exception as cons_exc:  # noqa: BLE001
+            logger.warning(
+                "[PROCESS FILE] Hierarchy consolidation failed (non-fatal): %s",
+                cons_exc,
+            )
+            telemetry["consolidation_error"] = str(cons_exc) or type(cons_exc).__name__
+
         # Generate a descriptive conversation name from the graph nodes
         def _derive_conversation_name(nodes: list, fallback: str) -> str:
             """Build a short title from the first few node names."""
@@ -1267,6 +1345,11 @@ async def run_bulk_processing_worker(
             processor.existing_json,
             Path(filename).stem or "Imported conversation",
         )
+        # LLM-authored title from the arcs consolidation pass (A4) wins over
+        # the slug-concat fallback when available.
+        if conversation_title_from_arcs:
+            derived_name = conversation_title_from_arcs
+            telemetry["conversation_title_source"] = "arcs_consolidation"
 
         # Populate utterance.chunk_id from processor.chunk_dict ({chunk_uuid:
         # transcript_text}) so the speaker rollup can later join utterances to
@@ -1301,7 +1384,14 @@ async def run_bulk_processing_worker(
                     stitched, len(final_source_utterances), resolved_conversation_id,
                 )
 
-        # Persist graph to DB (enables canvas export and other DB-backed features)
+        # Persist graph to DB (enables canvas export and other DB-backed features).
+        # Merge executive_summary from arcs consolidation (A4) into source_metadata
+        # so the conversation banner can display it.
+        final_metadata = dict(final_source_metadata or {}) if isinstance(final_source_metadata, dict) else {}
+        if executive_summary:
+            final_metadata["executive_summary"] = executive_summary
+        if conversation_title_from_arcs:
+            final_metadata["conversation_title"] = conversation_title_from_arcs
         try:
             persisted_count = await persist_import_graph(
                 db=db,
@@ -1310,9 +1400,7 @@ async def run_bulk_processing_worker(
                 utterances=final_source_utterances,
                 conversation_name=derived_name,
                 source_type=final_source_type,
-                source_metadata=(
-                    final_source_metadata if isinstance(final_source_metadata, dict) else {}
-                ),
+                source_metadata=final_metadata,
             )
             logger.info("[PROCESS FILE] Persisted %d nodes to DB for %s", persisted_count, resolved_conversation_id)
             telemetry["graph_persisted_nodes"] = persisted_count

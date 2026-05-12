@@ -149,7 +149,21 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
             len(chunk_dict),
         )
 
-        return ConversationResponse(graph_data=graph_data_nested, chunk_dict=chunk_dict)
+        # A7: surface title + executive_summary from source_metadata so the
+        # frontend banner can render them above the canvas.
+        source_metadata = conversation.source_metadata or {}
+        conversation_title = None
+        executive_summary = None
+        if isinstance(source_metadata, dict):
+            conversation_title = (source_metadata.get("conversation_title") or "").strip() or None
+            executive_summary = (source_metadata.get("executive_summary") or "").strip() or None
+
+        return ConversationResponse(
+            graph_data=graph_data_nested,
+            chunk_dict=chunk_dict,
+            conversation_title=conversation_title,
+            executive_summary=executive_summary,
+        )
 
     except HTTPException:
         raise
