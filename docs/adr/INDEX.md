@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-04-14 (ADR-029 added)
+Last updated: 2026-05-12 (ADR-031 added)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -33,6 +33,8 @@ Last updated: 2026-04-14 (ADR-029 added)
 | [ADR-027](ADR-027-prompt-manager-canonical-for-transcript-and-refinement-prompts.md) | PromptManager as the Canonical Runtime Source for Transcript and Refinement Prompts | 2026-04-13 | Approved |
 | [ADR-028](ADR-028-session-state-model-and-ux-terminology.md) | Session State Model and UX Terminology for Live Conversations | 2026-04-14 | Approved |
 | [ADR-029](ADR-029-usage-quota-and-rate-limiting.md) | Usage Quota and Rate Limiting for STT Services | 2026-04-14 | Proposed |
+| [ADR-030](ADR-030-system-invariants-and-pipeline-standards.md) | System Invariants and Pipeline Standards | 2026-04-15 | Approved |
+| [ADR-031](ADR-031-post-streaming-hierarchy-consolidation.md) | Post-Streaming Hierarchy Consolidation (Option A) | 2026-05-12 | Approved |
 
 ## Status Definitions
 
