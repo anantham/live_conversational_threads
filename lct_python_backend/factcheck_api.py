@@ -22,10 +22,10 @@ from lct_python_backend.services.cost_stats_service import (
     fetch_cost_logs,
     parse_time_range_to_start,
 )
-from lct_python_backend.services.factcheck_service import (
+from lct_python_backend.services.perplexity_factcheck import (
     generate_fact_check_json_perplexity as generate_fact_check_json_perplexity_service,
 )
-from lct_python_backend.services.fact_check_service import (
+from lct_python_backend.services.openai_factcheck import (
     analyze_transcript_window,
     check_conversation_facts,
     format_transcript_window,

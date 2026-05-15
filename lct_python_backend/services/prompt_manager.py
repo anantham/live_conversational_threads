@@ -287,7 +287,7 @@ class PromptManager:
         history = []
         for version_file in history_files[:limit]:
             try:
-                with open(version_file, 'r') as f:
+                with open(version_file, 'r', encoding='utf-8') as f:
                     version_data = json.load(f)
                     history.append(version_data)
             except Exception as e:
@@ -320,7 +320,7 @@ class PromptManager:
             raise FileNotFoundError(f"Version not found: {version_timestamp}")
 
         # Load version
-        with open(version_file, 'r') as f:
+        with open(version_file, 'r', encoding='utf-8') as f:
             version_data = json.load(f)
 
         # Restore the prompt config from the version
@@ -393,8 +393,8 @@ class PromptManager:
 
     def _save_to_file(self) -> None:
         """Save prompts cache to JSON file"""
-        with open(self.prompts_file, 'w') as f:
-            json.dump(self._prompts_cache, f, indent=2)
+        with open(self.prompts_file, 'w', encoding='utf-8') as f:
+            json.dump(self._prompts_cache, f, indent=2, ensure_ascii=False)
 
         # Update mtime
         self._file_mtime = self.prompts_file.stat().st_mtime
@@ -422,8 +422,8 @@ class PromptManager:
 
         version_file = self.history_dir / f"{prompt_name}_{timestamp}.json"
 
-        with open(version_file, 'w') as f:
-            json.dump(version_data, f, indent=2)
+        with open(version_file, 'w', encoding='utf-8') as f:
+            json.dump(version_data, f, indent=2, ensure_ascii=False)
 
     def _hash_config(self, config: Dict[str, Any]) -> str:
         """Generate hash of config for deduplication"""
