@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 import uuid
 from pathlib import Path
@@ -13,7 +12,6 @@ from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
 from fastapi import Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from lct_python_backend.services.audio_transcriber import _is_retryable_stt_error
 from lct_python_backend.services.hierarchy_consolidator import (
     consolidate_ideas_to_topics,
     consolidate_topics_to_themes,
@@ -22,6 +20,17 @@ from lct_python_backend.services.hierarchy_consolidator import (
 from lct_python_backend.services.graph_persistence import (
     ensure_conversation_row,
     persist_graph as persist_import_graph,
+)
+from lct_python_backend.services.import_bulk_helpers import (
+    AUDIO_SUFFIXES as _AUDIO_SUFFIXES,
+    SEGMENT_PROCESSING_FORCE_ENABLED,
+    SEGMENT_PROCESSING_THRESHOLD_BYTES,
+    coerce_checkpoint_total as _coerce_checkpoint_total,
+    format_duration_for_display as _format_duration_for_display,
+    get_audio_duration_ms as _get_audio_duration_ms,
+    is_retryable_import_failure as _is_retryable_import_failure,
+    resolve_candidate_backend_label as _candidate_backend_label,
+    resolve_llm_backend_label as _resolve_llm_backend_label,
 )
 from lct_python_backend.services.import_bulk_telemetry import (
     attach_bottleneck_stage,
@@ -51,142 +60,6 @@ from lct_python_backend.services.byok_session_store import (
 from lct_python_backend.services.provider_selection import resolve_import_audio_candidates
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
 from lct_python_backend.services.transcript_linearization import build_line_utterances
-
-# Environment-tunable threshold for enabling interleaved segmentation (in bytes)
-# Files larger than this will use segmented processing for progressive feedback
-# Default: 10MB (roughly 10+ minutes of audio)
-SEGMENT_PROCESSING_THRESHOLD_BYTES = int(
-    os.getenv("SEGMENT_PROCESSING_THRESHOLD_BYTES", str(10 * 1024 * 1024))
-)
-# Set to "true" to enable segmented processing for all audio files
-SEGMENT_PROCESSING_FORCE_ENABLED = (
-    os.getenv("SEGMENT_PROCESSING_FORCE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
-)
-
-
-_AUDIO_SUFFIXES = {
-    ".wav",
-    ".mp3",
-    ".m4a",
-    ".ogg",
-    ".flac",
-    ".aac",
-    ".webm",
-    ".mp4",
-}
-
-
-def _get_audio_duration_ms(file_path: Path) -> Optional[float]:
-    """Get audio file duration in milliseconds using ffprobe.
-
-    Returns None if unable to determine duration.
-    """
-    import subprocess
-    try:
-        result = subprocess.run(
-            [
-                "ffprobe",
-                "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(file_path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            duration_seconds = float(result.stdout.strip())
-            return duration_seconds * 1000
-    except (subprocess.TimeoutExpired, ValueError, FileNotFoundError):
-        pass
-    return None
-
-
-def _format_duration_for_display(ms: Optional[float]) -> str:
-    """Format milliseconds as human-readable duration string."""
-    if ms is None or not isinstance(ms, (int, float)) or ms <= 0:
-        return ""
-    total_seconds = int(ms / 1000)
-    hours = total_seconds // 3600
-    minutes = (total_seconds % 3600) // 60
-    seconds = total_seconds % 60
-    if hours > 0:
-        return f"{hours}h {minutes}m"
-    if minutes > 0:
-        return f"{minutes}m {seconds}s"
-    return f"{seconds}s"
-
-
-def _candidate_backend_label(candidate: Optional[dict[str, Any]], fallback_http_url: str) -> str:
-    if isinstance(candidate, dict):
-        transport = str(candidate.get("transport") or "").strip().lower()
-        provider = str(candidate.get("provider") or "").strip().lower()
-        http_url = str(candidate.get("http_url") or candidate.get("base_url") or "").strip()
-        # Cloud transports: label with provider name + cloud indicator
-        if transport in {"openai_audio", "openrouter_audio"}:
-            return f"cloud_{transport}"
-        if provider:
-            if "modal" in http_url.lower():
-                return f"modal_{provider}"
-            if "127.0.0.1" in http_url or "localhost" in http_url:
-                return f"local_{provider}"
-            return f"remote_{provider}" if http_url else provider
-    if "modal" in fallback_http_url.lower():
-        return "modal_whisperx"
-    if "127.0.0.1" in fallback_http_url or "localhost" in fallback_http_url:
-        return "local_whisperx"
-    return "whisperx"
-
-
-def _resolve_llm_backend_label(
-    llm_config: Optional[dict[str, Any]],
-    llm_providers: Optional[list[dict[str, Any]]],
-) -> str:
-    enabled_providers = [
-        provider
-        for provider in (llm_providers or [])
-        if isinstance(provider, dict) and provider.get("enabled", True)
-    ]
-    if enabled_providers:
-        primary_provider = enabled_providers[0]
-        provider_type = str(primary_provider.get("type") or "openai_compatible").strip().lower()
-        base_url = str(primary_provider.get("base_url") or "").strip().lower()
-        model = str(primary_provider.get("model") or "").strip()
-        if provider_type == "openai":
-            return f"openai_{model}" if model else "openai"
-        if provider_type == "openrouter":
-            return f"openrouter_{model}" if model else "openrouter"
-        if "modal" in base_url:
-            return f"modal_{model}" if model else "modal"
-        if any(host in base_url for host in ("localhost", "127.0.0.1", "100.81.")):
-            return f"local_{model}" if model else "local"
-        return f"remote_{model}" if model else "remote"
-
-    config = llm_config or {}
-    llm_base_url = str(config.get("base_url", "")).strip()
-    llm_model = str(config.get("chat_model", "")).strip()
-    if str(config.get("mode") or "").strip().lower() == "online" and "gemini" in llm_model.lower():
-        return f"online_{llm_model}" if llm_model else "online"
-    return f"modal_{llm_model}" if "modal.run" in llm_base_url else f"local_{llm_model}"
-
-
-def _coerce_checkpoint_total(checkpoint: Optional[dict[str, Any]], telemetry: dict[str, Any]) -> Optional[int]:
-    raw_total = None
-    if isinstance(checkpoint, dict):
-        raw_total = checkpoint.get("total_chunks")
-    if raw_total in (None, ""):
-        raw_total = telemetry.get("checkpoint_total_chunks")
-    try:
-        return int(raw_total) if raw_total is not None else None
-    except (TypeError, ValueError):
-        return None
-
-
-def _is_retryable_import_failure(exc: Exception, *, active_stage: str) -> bool:
-    if str(active_stage or "").strip().lower() not in {"transcribing", "resuming", "segmented_transcribing"}:
-        return False
-    return _is_retryable_stt_error(exc)
 
 
 async def run_bulk_processing_worker(
