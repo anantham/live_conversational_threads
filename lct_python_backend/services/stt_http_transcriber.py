@@ -36,6 +36,12 @@ from lct_python_backend.services.stt_circuit_breaker import (  # noqa: F401 — 
     classify_http_status as _classify_http_status,
     summarize_exception as _summarize_exception,
 )
+from lct_python_backend.services.stt_provider_transports import (
+    SttSessionDefaults,
+    transcribe_backend_http_candidate,
+    transcribe_openai_audio_candidate,
+    transcribe_openrouter_audio_candidate,
+)
 
 TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=True)
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
@@ -172,7 +178,6 @@ from lct_python_backend.services.stt_response_parsers import (  # noqa: F401  re
     extract_openai_diarized_segments,
     extract_openrouter_transcript_text,
     extract_transcript_text,
-    text_from_segments as _text_from_segments,
 )
 
 
@@ -473,6 +478,14 @@ class RealtimeHttpSttSession:
             result["segments"] = segments
         return result
 
+    def _session_defaults(self) -> SttSessionDefaults:
+        return SttSessionDefaults(
+            provider=str(self.provider or ""),
+            http_url=str(self.http_url or ""),
+            model=str(self.model or ""),
+            language=str(self.language or ""),
+        )
+
     async def _transcribe_candidate(
         self,
         client: httpx.AsyncClient,
@@ -483,24 +496,29 @@ class RealtimeHttpSttSession:
         known_speakers: Optional[List[Dict[str, str]]] = None,
     ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
         transport = str(candidate.get("transport") or "backend_http").strip().lower()
+        defaults = self._session_defaults()
         if transport == "openai_audio":
-            return await self._transcribe_openai_audio_candidate(
+            return await transcribe_openai_audio_candidate(
                 client,
                 candidate,
                 wav_payload,
+                defaults=defaults,
                 known_speakers=known_speakers,
             )
         if transport == "openrouter_audio":
-            return await self._transcribe_openrouter_audio_candidate(
+            return await transcribe_openrouter_audio_candidate(
                 client,
                 candidate,
                 wav_payload,
+                defaults=defaults,
             )
-        return await self._transcribe_backend_http_candidate(
+        return await transcribe_backend_http_candidate(
             client,
             candidate,
             pcm_bytes,
             wav_payload,
+            defaults=defaults,
+            diarize_default=STT_DIARIZE_ENABLED,
         )
 
     async def _transcribe_pcm(self, pcm_bytes: bytes) -> Tuple[str, Optional[List[Dict[str, Any]]]]:
@@ -803,254 +821,6 @@ class RealtimeHttpSttSession:
             if should_close:
                 await client.aclose()
 
-    async def _transcribe_backend_http_candidate(
-        self,
-        client: httpx.AsyncClient,
-        candidate: Dict[str, Any],
-        pcm_bytes: bytes,
-        wav_payload: bytes,
-    ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
-        http_url = str(candidate.get("http_url") or self.http_url or "").strip()
-        model = str(candidate.get("model") or self.model or "").strip()
-        language = str(candidate.get("language") or self.language or "").strip()
-        diarize_enabled = bool(candidate.get("request_diarization", STT_DIARIZE_ENABLED))
-        form_data: Dict[str, str] = {"diarize": "true" if diarize_enabled else "false"}
-        if model:
-            form_data["model"] = model
-        if language:
-            form_data["language"] = language
-
-        if TRACE_API_CALLS:
-            logger.info(
-                "[STT HTTP] POST %s provider=%s chunk_bytes=%s wav_bytes=%s model=%s language=%s diarize=%s",
-                http_url,
-                candidate.get("provider") or self.provider,
-                len(pcm_bytes),
-                len(wav_payload),
-                model or "-",
-                language or "-",
-                diarize_enabled,
-            )
-
-        response = await client.post(
-            http_url,
-            data=form_data,
-            files={"file": ("chunk.wav", wav_payload, "audio/wav")},
-        )
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            if TRACE_API_CALLS:
-                logger.warning(
-                    "[STT HTTP] %s status=%s body_preview=%s",
-                    http_url,
-                    exc.response.status_code,
-                    _preview_text(exc.response.text),
-                )
-            raise
-
-        payload = _parse_response_payload(response)
-        text = extract_transcript_text(payload)
-        segments = extract_diarized_segments(payload) if diarize_enabled else None
-        if TRACE_API_CALLS:
-            logger.info(
-                "[STT HTTP] %s status=%s transcript_preview=%s speakers=%s",
-                http_url,
-                response.status_code,
-                _preview_text(text),
-                len(segments) if segments else 0,
-            )
-        return text, segments, diarize_enabled
-
-    async def _transcribe_openai_audio_candidate(
-        self,
-        client: httpx.AsyncClient,
-        candidate: Dict[str, Any],
-        wav_payload: bytes,
-        *,
-        known_speakers: Optional[List[Dict[str, str]]] = None,
-    ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
-        model = str(candidate.get("model") or "").strip()
-        api_key = str(candidate.get("api_key") or "").strip()
-        http_url = str(candidate.get("http_url") or "").strip()
-        language = str(candidate.get("language") or self.language or "").strip()
-        request_diarization = bool(candidate.get("request_diarization", True))
-        
-        # OpenAI supports streaming for already completed audio recordings.
-        # This is useful for low-latency feedback even for chunks.
-        # DISABLED: streaming causes httpx issues with error handling and fallback chain
-        should_stream = False  # model in {"gpt-4o-mini-transcribe", "gpt-4o-transcribe"} and not request_diarization
-        
-        response_format = "diarized_json" if request_diarization else "json"
-        form_data = {
-            "model": model,
-            "response_format": response_format,
-        }
-        if request_diarization:
-            form_data["chunking_strategy"] = "auto"
-            if known_speakers and model == "gpt-4o-transcribe-diarize":
-                # known_speakers is List[Dict[name, audio_base64]]
-                speaker_names = []
-                speaker_refs = []
-                for s in known_speakers:
-                    name = s.get("name")
-                    ref = s.get("audio_base64")
-                    if name and ref:
-                        speaker_names.append(name)
-                        # Reference must be a data URL
-                        if not ref.startswith("data:"):
-                            ref = f"data:audio/wav;base64,{ref}"
-                        speaker_refs.append(ref)
-                
-                if speaker_names:
-                    # httpx supports multiple values for the same key by passing a list
-                    form_data["known_speaker_names[]"] = speaker_names
-                    form_data["known_speaker_references[]"] = speaker_refs
-
-        if language:
-            form_data["language"] = language
-        if should_stream:
-            form_data["stream"] = "true"
-            
-        headers = {"Authorization": f"Bearer {api_key}"}
-
-        if TRACE_API_CALLS:
-            logger.info(
-                "[STT OpenAI] POST %s model=%s wav_bytes=%s response_format=%s language=%s stream=%s known_speakers=%s",
-                http_url,
-                model or "-",
-                len(wav_payload),
-                response_format,
-                language or "-",
-                should_stream,
-                len(known_speakers) if known_speakers else 0,
-            )
-
-        if should_stream:
-            # Use request directly to handle streaming response
-            full_text = ""
-            async with client.stream(
-                "POST",
-                http_url,
-                headers=headers,
-                data=form_data,
-                files={"file": ("chunk.wav", wav_payload, "audio/wav")},
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line or not line.startswith("data: "):
-                        continue
-                    data_str = line[len("data: "):].strip()
-                    if data_str == "[DONE]":
-                        break
-                    try:
-                        chunk_payload = json.loads(data_str)
-                        text_part = extract_transcript_text(chunk_payload)
-                        if text_part:
-                            full_text += text_part
-                    except json.JSONDecodeError:
-                        continue
-            return full_text, None, False
-
-        response = await client.post(
-            http_url,
-            headers=headers,
-            data=form_data,
-            files={"file": ("chunk.wav", wav_payload, "audio/wav")},
-        )
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            if TRACE_API_CALLS:
-                logger.warning(
-                    "[STT OpenAI] %s status=%s body_preview=%s",
-                    http_url,
-                    exc.response.status_code,
-                    _preview_text(exc.response.text),
-                )
-            raise
-        payload = _parse_response_payload(response)
-        segments = extract_openai_diarized_segments(payload) if request_diarization else None
-        text = extract_transcript_text(payload) or _text_from_segments(segments)
-        if TRACE_API_CALLS:
-            logger.info(
-                "[STT OpenAI] %s status=%s transcript_preview=%s speakers=%s",
-                http_url,
-                response.status_code,
-                _preview_text(text),
-                len(segments) if segments else 0,
-            )
-        return text, segments, request_diarization
-
-    async def _transcribe_openrouter_audio_candidate(
-        self,
-        client: httpx.AsyncClient,
-        candidate: Dict[str, Any],
-        wav_payload: bytes,
-    ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
-        model = str(candidate.get("model") or "").strip()
-        api_key = str(candidate.get("api_key") or "").strip()
-        http_url = str(candidate.get("http_url") or "").strip()
-        language = str(candidate.get("language") or self.language or "").strip()
-        prompt = OPENROUTER_TRANSCRIPTION_PROMPT
-        if language:
-            prompt = f"{prompt} The audio language is {language}."
-        base64_audio = base64.b64encode(wav_payload).decode("utf-8")
-        payload = {
-            "model": model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "input_audio",
-                            "input_audio": {
-                                "data": base64_audio,
-                                "format": "wav",
-                            },
-                        },
-                    ],
-                }
-            ],
-            "stream": False,
-        }
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
-
-        if TRACE_API_CALLS:
-            logger.info(
-                "[STT OpenRouter] POST %s model=%s wav_bytes=%s language=%s",
-                http_url,
-                model or "-",
-                len(wav_payload),
-                language or "-",
-            )
-
-        response = await client.post(http_url, headers=headers, json=payload)
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
-            if TRACE_API_CALLS:
-                logger.warning(
-                    "[STT OpenRouter] %s status=%s body_preview=%s",
-                    http_url,
-                    exc.response.status_code,
-                    _preview_text(exc.response.text),
-                )
-            raise
-        response_payload = _parse_response_payload(response)
-        text = extract_openrouter_transcript_text(response_payload)
-        if TRACE_API_CALLS:
-            logger.info(
-                "[STT OpenRouter] %s status=%s transcript_preview=%s",
-                http_url,
-                response.status_code,
-                _preview_text(text),
-            )
-        return text, None, False
 
 
 def _parse_response_payload(response: httpx.Response) -> Any:
