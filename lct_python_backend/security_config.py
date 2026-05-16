@@ -16,6 +16,8 @@ import os
 from typing import Callable
 import time
 
+from lct_python_backend.services.env_helpers import env_str
+
 logger = logging.getLogger(__name__)
 DEFAULT_FRONTEND_PORT = "43173"
 
@@ -45,7 +47,7 @@ def configure_cors(app, environment="development"):
             "http://localhost:3000",  # For testing
         ]
     else:
-        frontend_port = str(os.getenv("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)).strip() or DEFAULT_FRONTEND_PORT
+        frontend_port = env_str("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)
         allowed_origins = [
             f"http://localhost:{frontend_port}",
             f"http://127.0.0.1:{frontend_port}",
