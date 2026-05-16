@@ -15,6 +15,7 @@ from lct_python_backend.services.coercion_helpers import (
     coerce_str,
     to_bool,
 )
+from lct_python_backend.services.env_helpers import env_bool
 
 logger = logging.getLogger("lct_backend")
 
@@ -111,9 +112,7 @@ DEFAULT_SILENCE_THRESH_DB = _bounded_env_int("SEGMENT_SILENCE_DB", default=-40, 
 DEFAULT_MIN_SILENCE_MS = _bounded_env_int("SEGMENT_SILENCE_MS", default=2000, minimum=500, maximum=5000)
 
 # Pyannote diarization
-STT_PARAKEET_PYANNOTE_ENABLED = (
-    os.getenv("STT_PARAKEET_PYANNOTE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
-)
+STT_PARAKEET_PYANNOTE_ENABLED = env_bool("STT_PARAKEET_PYANNOTE_ENABLED", default=False)
 STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT = (
     str(os.getenv("STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT", "verbose_json")).strip().lower() or "verbose_json"
 )
@@ -126,10 +125,8 @@ STT_PYANNOTE_MIN_SPEAKERS = str(os.getenv("STT_PYANNOTE_MIN_SPEAKERS", "")).stri
 STT_PYANNOTE_MAX_SPEAKERS = str(os.getenv("STT_PYANNOTE_MAX_SPEAKERS", "")).strip()
 
 # Provider selection
-STT_UPLOAD_LOCAL_FIRST = os.getenv("STT_UPLOAD_LOCAL_FIRST", "true").strip().lower() in {"1", "true", "yes", "on"}
-STT_UPLOAD_REMOTE_FALLBACK = (
-    os.getenv("STT_UPLOAD_REMOTE_FALLBACK", "true").strip().lower() in {"1", "true", "yes", "on"}
-)
+STT_UPLOAD_LOCAL_FIRST = env_bool("STT_UPLOAD_LOCAL_FIRST", default=True)
+STT_UPLOAD_REMOTE_FALLBACK = env_bool("STT_UPLOAD_REMOTE_FALLBACK", default=True)
 STT_PROVIDER_ORDER: Tuple[str, ...] = ("parakeet", "senko", "ofc", "whisper")
 
 # File extension sets

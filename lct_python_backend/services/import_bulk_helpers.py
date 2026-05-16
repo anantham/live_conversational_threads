@@ -7,12 +7,12 @@ None of these touch the database, emit events, or hold mutable state.
 
 from __future__ import annotations
 
-import os
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
 
 from lct_python_backend.services.audio_transcriber import _is_retryable_stt_error
+from lct_python_backend.services.env_helpers import env_bool, env_int
 
 
 # ---------------------------------------------------------------------------
@@ -21,14 +21,13 @@ from lct_python_backend.services.audio_transcriber import _is_retryable_stt_erro
 
 # Files larger than this use segmented (progressive) transcription.
 # Default: 10 MB ≈ 10+ minutes of audio.
-SEGMENT_PROCESSING_THRESHOLD_BYTES: int = int(
-    os.getenv("SEGMENT_PROCESSING_THRESHOLD_BYTES", str(10 * 1024 * 1024))
+SEGMENT_PROCESSING_THRESHOLD_BYTES: int = env_int(
+    "SEGMENT_PROCESSING_THRESHOLD_BYTES", 10 * 1024 * 1024
 )
 
 # Override to force segmented processing on every audio file.
-SEGMENT_PROCESSING_FORCE_ENABLED: bool = (
-    os.getenv("SEGMENT_PROCESSING_FORCE_ENABLED", "false").strip().lower()
-    in {"1", "true", "yes", "on"}
+SEGMENT_PROCESSING_FORCE_ENABLED: bool = env_bool(
+    "SEGMENT_PROCESSING_FORCE_ENABLED", default=False
 )
 
 AUDIO_SUFFIXES: frozenset[str] = frozenset({
