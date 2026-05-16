@@ -21,6 +21,14 @@ const backendPort = resolveBackendPort();
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  test: {
+    environment: "jsdom",
+    globals: false,
+    // Vitest auto-discovers *.test.{js,jsx,ts,tsx} under src/.
+    include: ["src/**/*.{test,spec}.{js,jsx,ts,tsx}"],
+    // Keep e2e (Playwright) and unit (vitest) suites separate.
+    exclude: ["tests/**", "node_modules/**", "dist/**", "test-results/**"],
+  },
   server: {
     port: Number(process.env.FRONTEND_PORT) || 43173,
     strictPort: true,

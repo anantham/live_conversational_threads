@@ -57,36 +57,3 @@ def sliding_window_chunking(text: str, chunk_size: int = 10000, overlap: int = 2
     return chunks
 
 
-def get_node_by_name(graph_data, node_name):
-    for node in graph_data:
-        if node.get("node_name") == node_name:
-            return node
-    return None
-
-
-def generate_formalism(chunks: dict, graph_data: dict, user_pref: str) -> List:
-    formalism_list = []
-    for node in graph_data[0]:
-        contextual_node = ''
-        related_nodes = ''
-        raw_text = ''
-        loopy_url = None
-        if 'is_contextual_progress' in node and node['is_contextual_progress']:
-            contextual_node = str(node)
-            for n in node['linked_nodes']:
-                related_nodes += "\n" + str(get_node_by_name(graph_data[0], n))
-            chunk_id = node['chunk_id']
-            raw_text = chunks[chunk_id]
-
-            # NOTE: generate_individual_formalism is undefined — this branch
-            # would NameError if reached. Endpoint /generate_formalism/ has
-            # been latent-broken; leaving the structural code so the bug is
-            # visible. Fix or remove the endpoint separately.
-            formalism_input = f"conversation_data: \n contextual node : \n {contextual_node} \n related nodes : \n {related_nodes} \n user_research_background \n {user_pref} \n raw_text : \n {raw_text}"
-            loopy_url = generate_individual_formalism(formalism_input=formalism_input)  # noqa: F821
-            if loopy_url:
-                formalism_list.append({
-                    'formalism_node': node['node_name'],
-                    'formalism_graph_url': loopy_url,
-                })
-    return formalism_list
