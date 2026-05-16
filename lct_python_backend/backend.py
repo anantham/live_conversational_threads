@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from lct_python_backend.db import db
 from lct_python_backend.middleware import configure_p0_security
+from lct_python_backend.services.env_helpers import env_str, env_str_or_none
 
 # ============================================================================
 # LOGGING CONFIGURATION - Persistent file-based logging
@@ -78,7 +79,7 @@ DEFAULT_FRONTEND_PORT = "43173"
 
 
 def _default_local_cors_origins() -> list[str]:
-    frontend_port = str(os.getenv("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)).strip() or DEFAULT_FRONTEND_PORT
+    frontend_port = env_str("FRONTEND_PORT", DEFAULT_FRONTEND_PORT)
     compatibility_ports = ("5173", "5174", "5175", "5176", "5177")
     ports = [frontend_port, *[port for port in compatibility_ports if port != frontend_port]]
 
@@ -110,7 +111,7 @@ def _resolve_cors_origins() -> tuple:
     else:
         origins = _default_local_cors_origins()
 
-    allow_origin_regex = str(os.getenv("CORS_ALLOW_ORIGIN_REGEX", "")).strip() or None
+    allow_origin_regex = env_str_or_none("CORS_ALLOW_ORIGIN_REGEX")
     return origins, allow_origin_regex
 
 

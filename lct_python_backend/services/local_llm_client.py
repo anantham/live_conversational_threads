@@ -18,7 +18,9 @@ logger = logging.getLogger("lct_backend")
 _CLIENT_CACHE: Dict[Tuple[str, float, bool], "LocalLLMClient"] = {}
 _JSON_OBJECT_UNSUPPORTED_BASE_URLS: set[str] = set()
 _LOGGED_MODEL_SUBSTITUTIONS: set[Tuple[str, str, str]] = set()
-TRACE_API_CALLS = os.getenv("TRACE_API_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+from lct_python_backend.services.env_helpers import env_bool
+
+TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=True)
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
 
 
