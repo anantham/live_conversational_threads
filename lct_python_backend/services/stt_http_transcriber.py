@@ -23,17 +23,24 @@ DEFAULT_INITIAL_HTTP_CHUNK_SECONDS = float(os.getenv("STT_INITIAL_HTTP_CHUNK_SEC
 DEFAULT_HTTP_MODEL = os.getenv("STT_HTTP_MODEL", "")
 DEFAULT_HTTP_LANGUAGE = os.getenv("STT_HTTP_LANGUAGE", "en")
 from lct_python_backend.services.env_helpers import env_bool
+from lct_python_backend.services.stt_circuit_breaker import (  # noqa: F401 — re-exported for back-compat
+    STT_CIRCUIT_AUTH_TTL_SECONDS,
+    STT_CIRCUIT_BREAKER_ENABLED,
+    STT_CIRCUIT_NETWORK_TTL_SECONDS,
+    STT_CIRCUIT_PROVIDER_ERROR_TTL_SECONDS,
+    STT_CIRCUIT_RATE_LIMIT_TTL_SECONDS,
+    STT_CIRCUIT_TIMEOUT_TTL_SECONDS,
+    CircuitBreaker,
+    candidate_cache_key as _candidate_cache_key,
+    circuit_ttl_seconds as _circuit_ttl_seconds,
+    classify_http_status as _classify_http_status,
+    summarize_exception as _summarize_exception,
+)
 
 TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=True)
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
 SMOKE_TEST_DURATION_SECONDS = float(os.getenv("STT_SMOKE_TEST_DURATION_SECONDS", "1.2"))
 SMOKE_TEST_TIMEOUT_SECONDS = float(os.getenv("STT_SMOKE_TEST_TIMEOUT_SECONDS", "20"))
-STT_CIRCUIT_BREAKER_ENABLED = env_bool("STT_CIRCUIT_BREAKER_ENABLED", default=True)
-STT_CIRCUIT_TIMEOUT_TTL_SECONDS = float(os.getenv("STT_CIRCUIT_TIMEOUT_TTL_SECONDS", "45"))
-STT_CIRCUIT_NETWORK_TTL_SECONDS = float(os.getenv("STT_CIRCUIT_NETWORK_TTL_SECONDS", "30"))
-STT_CIRCUIT_PROVIDER_ERROR_TTL_SECONDS = float(os.getenv("STT_CIRCUIT_PROVIDER_ERROR_TTL_SECONDS", "30"))
-STT_CIRCUIT_RATE_LIMIT_TTL_SECONDS = float(os.getenv("STT_CIRCUIT_RATE_LIMIT_TTL_SECONDS", "20"))
-STT_CIRCUIT_AUTH_TTL_SECONDS = float(os.getenv("STT_CIRCUIT_AUTH_TTL_SECONDS", "300"))
 OPENROUTER_TRANSCRIPTION_PROMPT = (
     "Transcribe this audio accurately. Return plain text only. "
     "Do not summarize. Do not add speaker labels."
@@ -107,112 +114,8 @@ def _candidate_endpoint(candidate: Dict[str, Any]) -> str:
     return str(candidate.get("http_url") or candidate.get("base_url") or "").strip()
 
 
-def _candidate_cache_key(candidate: Dict[str, Any]) -> Tuple[str, str, str]:
-    return (
-        str(candidate.get("provider") or "").strip().lower(),
-        str(candidate.get("transport") or "").strip().lower(),
-        _candidate_endpoint(candidate),
-    )
-
-
-def _circuit_ttl_seconds(error_type: str) -> float:
-    normalized = str(error_type or "").strip().lower()
-    if normalized == "auth_failed":
-        return max(0.0, STT_CIRCUIT_AUTH_TTL_SECONDS)
-    if normalized in {"rate_limited", "quota_exceeded"}:
-        return max(0.0, STT_CIRCUIT_RATE_LIMIT_TTL_SECONDS)
-    if normalized == "timeout":
-        return max(0.0, STT_CIRCUIT_TIMEOUT_TTL_SECONDS)
-    if normalized == "network_error":
-        return max(0.0, STT_CIRCUIT_NETWORK_TTL_SECONDS)
-    if normalized in {"provider_error", "not_found"}:
-        return max(0.0, STT_CIRCUIT_PROVIDER_ERROR_TTL_SECONDS)
-    return 0.0
-
-
-def _classify_http_status(status_code: Optional[int], response_text: str = "") -> str:
-    if status_code in {401, 403}:
-        return "auth_failed"
-
-    preview = str(response_text or "").lower()
-    if status_code == 429:
-        if any(token in preview for token in ("quota", "insufficient_quota", "credit", "billing")):
-            return "quota_exceeded"
-        return "rate_limited"
-    if status_code == 400:
-        if "invalid_api_key" in preview or "incorrect api key" in preview:
-            return "auth_failed"
-        return "bad_request"
-    if status_code == 404:
-        return "not_found"
-    if status_code == 408:
-        return "timeout"
-    if status_code and status_code >= 500:
-        return "provider_error"
-    return "provider_error"
-
-
-def _summarize_exception(exc: Exception) -> Dict[str, Any]:
-    if isinstance(exc, httpx.HTTPStatusError):
-        response = exc.response
-        status_code = response.status_code if response is not None else None
-        body_preview = ""
-        error_type = _classify_http_status(status_code, "")
-        
-        # Try to read response body for better error messages
-        try:
-            if response is not None:
-                body_preview = _preview_text(response.text if response is not None else "")
-                # Re-classify based on actual body content
-                if status_code == 400 and body_preview:
-                    error_type = _classify_http_status(status_code, body_preview)
-        except Exception as read_exc:
-            logger.warning("[STT] Failed to read response body: %s", read_exc)
-        
-        reason_phrase = ""
-        if response is not None:
-            reason_phrase = str(getattr(response, "reason_phrase", "") or "").strip()
-        
-        status_label = f"HTTP {status_code}" if status_code is not None else "HTTP error"
-        if reason_phrase:
-            status_label = f"{status_label} {reason_phrase}"
-        
-        # Add helpful hint for auth failures
-        detail = status_label
-        if body_preview:
-            detail = f"{detail}: {body_preview}"
-        if error_type == "auth_failed":
-            detail = f"{detail} - Check your API key is valid and not expired"
-        
-        return {
-            "error_type": error_type,
-            "status_code": status_code,
-            "body_preview": body_preview,
-            "detail": detail,
-        }
-
-    if isinstance(exc, httpx.TimeoutException):
-        return {
-            "error_type": "timeout",
-            "status_code": None,
-            "body_preview": "",
-            "detail": str(exc) or "Timed out waiting for STT provider response.",
-        }
-
-    if isinstance(exc, httpx.RequestError):
-        return {
-            "error_type": "network_error",
-            "status_code": None,
-            "body_preview": "",
-            "detail": str(exc) or "Network error while contacting STT provider.",
-        }
-
-    return {
-        "error_type": "provider_error",
-        "status_code": None,
-        "body_preview": "",
-        "detail": str(exc) or exc.__class__.__name__,
-    }
+# _candidate_cache_key, _circuit_ttl_seconds, _classify_http_status,
+# _summarize_exception are re-exported from stt_circuit_breaker (see imports).
 
 
 def build_smoke_test_pcm(
@@ -301,8 +204,8 @@ class RealtimeHttpSttSession:
     _total_samples_seen: int = field(default=0, init=False)
     _last_runtime_metadata: Dict[str, Any] = field(default_factory=dict, init=False)
     _successful_transcripts: int = field(default=0, init=False)
-    _candidate_circuit_state: Dict[Tuple[str, str, str], Dict[str, Any]] = field(
-        default_factory=dict,
+    _circuit_breaker: CircuitBreaker = field(
+        default_factory=CircuitBreaker,
         init=False,
         repr=False,
     )
@@ -387,16 +290,7 @@ class RealtimeHttpSttSession:
         return int(max(1.0, float(self.sample_rate_hz)) * sample_width_bytes * seconds)
 
     def _circuit_state_for_candidate(self, candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        if not STT_CIRCUIT_BREAKER_ENABLED:
-            return None
-        key = _candidate_cache_key(candidate)
-        state = self._candidate_circuit_state.get(key)
-        if not state:
-            return None
-        if time.monotonic() >= float(state.get("until_monotonic") or 0.0):
-            self._candidate_circuit_state.pop(key, None)
-            return None
-        return dict(state)
+        return self._circuit_breaker.state_for(candidate)
 
     def _mark_candidate_failure(
         self,
@@ -406,21 +300,15 @@ class RealtimeHttpSttSession:
         detail: str,
         latency_ms: float,
     ) -> None:
-        ttl_seconds = _circuit_ttl_seconds(error_type)
-        if ttl_seconds <= 0.0 or not STT_CIRCUIT_BREAKER_ENABLED:
-            return
-        key = _candidate_cache_key(candidate)
-        self._candidate_circuit_state[key] = {
-            "error_type": str(error_type or "provider_error"),
-            "detail": str(detail or ""),
-            "latency_ms": latency_ms,
-            "opened_at": _utc_now_iso(),
-            "until_monotonic": time.monotonic() + ttl_seconds,
-            "ttl_seconds": ttl_seconds,
-        }
+        self._circuit_breaker.mark_failure(
+            candidate,
+            error_type=error_type,
+            detail=detail,
+            latency_ms=latency_ms,
+        )
 
     def _clear_candidate_failure(self, candidate: Dict[str, Any]) -> None:
-        self._candidate_circuit_state.pop(_candidate_cache_key(candidate), None)
+        self._circuit_breaker.clear(candidate)
 
     def _buffer_duration_seconds(self) -> float:
         """Duration of audio currently in the buffer."""
