@@ -7,11 +7,17 @@ from typing import Tuple
 import httpx
 from fastapi import HTTPException, UploadFile
 
+from lct_python_backend.services.import_validation import assert_url_resolves_to_public_host
+
 MAX_URL_IMPORT_BYTES = int(os.getenv("MAX_URL_IMPORT_BYTES", str(2 * 1024 * 1024)))
 
 
 async def download_url_text(url: str) -> str:
     """Download URL content as text with bounded size and strict redirect policy."""
+    # Defense in depth: even if the upstream caller forgot to run
+    # validate_import_url, refuse to fetch from internal hosts. This
+    # also catches public hostnames that resolve to internal IPs.
+    assert_url_resolves_to_public_host(url)
     timeout = httpx.Timeout(30.0, connect=10.0, read=30.0)
     total_bytes = 0
     content_chunks = []

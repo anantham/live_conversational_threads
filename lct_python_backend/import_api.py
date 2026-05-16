@@ -488,6 +488,51 @@ async def get_diarization_job_events(job_id: str, cursor: int = 0):
     return snapshot
 
 
+_ALLOWED_AUDIO_SUFFIXES = frozenset({
+    ".wav", ".mp3", ".m4a", ".ogg", ".flac", ".aac", ".webm", ".mp4",
+})
+_ALLOWED_TEXT_SUFFIXES = frozenset({
+    ".txt", ".md", ".markdown", ".json", ".html", ".htm", ".vtt", ".srt",
+})
+_ALLOWED_UPLOAD_SUFFIXES = _ALLOWED_AUDIO_SUFFIXES | _ALLOWED_TEXT_SUFFIXES
+_ALLOWED_UPLOAD_CONTENT_TYPES = frozenset({
+    "audio/wav", "audio/x-wav", "audio/wave",
+    "audio/mpeg", "audio/mp3",
+    "audio/mp4", "audio/x-m4a", "audio/m4a",
+    "audio/ogg", "audio/flac", "audio/x-flac",
+    "audio/aac", "audio/webm",
+    "video/mp4", "video/webm",
+    "text/plain", "text/markdown", "text/html",
+    "application/json", "application/octet-stream",
+})
+
+
+def _validate_upload_file(file: UploadFile) -> None:
+    """Reject uploads whose declared content-type and filename suffix are
+    both outside the allowed set. Accepts either signal individually so
+    clients that omit one don't get false 400s."""
+    filename = (file.filename or "").strip()
+    suffix = Path(filename).suffix.lower() if filename else ""
+    suffix_ok = suffix in _ALLOWED_UPLOAD_SUFFIXES
+
+    content_type = (file.content_type or "").strip().lower()
+    # Strip any "; charset=..." parameter
+    base_ct = content_type.split(";", 1)[0].strip()
+    ct_ok = base_ct in _ALLOWED_UPLOAD_CONTENT_TYPES or base_ct.startswith("audio/")
+
+    if suffix_ok or ct_ok:
+        return
+
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"Unsupported upload type: filename={filename!r}, "
+            f"content_type={content_type!r}. Allowed audio suffixes: "
+            f"{sorted(_ALLOWED_AUDIO_SUFFIXES)}; text: {sorted(_ALLOWED_TEXT_SUFFIXES)}."
+        ),
+    )
+
+
 @router.post("/process-file")
 async def process_file(
     request: Request,
@@ -507,6 +552,7 @@ async def process_file(
     - graph (existing_json/chunk_dict)
     - done / error
     """
+    _validate_upload_file(file)
     return await build_process_file_stream(
         request=request,
         file=file,
