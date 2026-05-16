@@ -21,6 +21,7 @@ from lct_python_backend.services.stt_http_transcriber import (
     extract_transcript_text,
 )
 from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
+from lct_python_backend.services.retry_policy import retry_async_with_backoff
 from lct_python_backend.services.transcription_utils import (
     DEFAULT_CHUNK_DURATION_S,
     DEFAULT_CHUNK_MAX_RETRIES,
@@ -424,41 +425,40 @@ async def transcribe_audio_chunked(
             )
             attempts_allowed = max_retries + 1
             text = ""
-            for attempt in range(1, attempts_allowed + 1):
-                try:
-                    text = await transcribe_audio_file(
-                        chunk_path,
+
+            def _log_retry(attempt: int, exc: BaseException, delay: float, _i=idx, _max=attempts_allowed) -> None:
+                logger.warning(
+                    "[CHUNK] Chunk %d/%d attempt %d/%d failed (%s: %s), retrying in %.2fs",
+                    _i + 1, total, attempt, _max,
+                    type(exc).__name__, str(exc) or type(exc).__name__, delay,
+                )
+
+            try:
+                text = await retry_async_with_backoff(
+                    lambda cp=chunk_path: transcribe_audio_file(
+                        cp,
                         http_url=http_url,
                         model=model,
                         language=language,
                         timeout_seconds=timeout_seconds,
                         response_format=response_format,
                         transport=transport,
-                    )
-                    if attempt > 1:
-                        logger.info(
-                            "[CHUNK] Chunk %d/%d recovered on attempt %d/%d",
-                            idx + 1, total, attempt, attempts_allowed,
-                        )
-                    break
-                except Exception as exc:  # noqa: BLE001
-                    retryable = _is_retryable_stt_error(exc)
-                    if attempt >= attempts_allowed or not retryable:
-                        if _is_empty_transcript_error(exc):
-                            logger.warning(
-                                "[CHUNK] Chunk %d/%d returned empty after %d attempt(s) — skipping silent chunk",
-                                idx + 1, total, attempt,
-                            )
-                            break
-                        raise
-                    backoff_s = backoff_base_s * (2 ** (attempt - 1))
+                    ),
+                    max_attempts=attempts_allowed,
+                    base_delay_s=backoff_base_s,
+                    backoff_factor=2.0,
+                    is_retryable=_is_retryable_stt_error,
+                    on_retry=_log_retry,
+                )
+            except Exception as exc:
+                if _is_empty_transcript_error(exc):
                     logger.warning(
-                        "[CHUNK] Chunk %d/%d attempt %d/%d failed (%s: %s), retrying in %.2fs",
-                        idx + 1, total, attempt, attempts_allowed,
-                        type(exc).__name__, str(exc) or type(exc).__name__, backoff_s,
+                        "[CHUNK] Chunk %d/%d returned empty — skipping silent chunk",
+                        idx + 1, total,
                     )
-                    if backoff_s > 0:
-                        await asyncio.sleep(backoff_s)
+                    text = ""
+                else:
+                    raise
             transcripts.append(text)
             if on_chunk_progress:
                 await on_chunk_progress(idx + 1, total, text)
