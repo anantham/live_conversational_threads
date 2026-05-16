@@ -81,7 +81,6 @@ EXPENSIVE_PATTERNS: Tuple[str, ...] = (
     "/generate",
     "/generate-context-stream",
     "/fact_check_claims",
-    "/generate_formalism",
     "/themes/generate",
 )
 

@@ -15,11 +15,10 @@ from lct_python_backend.models import Conversation
 from lct_python_backend.schemas import (
     TranscriptRequest, ChunkedTranscript, ChunkedRequest,
     SaveJsonRequest, SaveJsonResponse,
-    generateFormalismRequest, generateFormalismResponse,
 )
 from lct_python_backend.services.gcs_helpers import save_json_with_backend
 from lct_python_backend.services.llm_helpers import (
-    sliding_window_chunking, stream_generate_context_json, generate_formalism,
+    sliding_window_chunking, stream_generate_context_json,
 )
 
 logger = logging.getLogger(__name__)
@@ -150,22 +149,7 @@ async def save_json_call(
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
-@router.post("/generate_formalism/", response_model=generateFormalismResponse)
-async def generate_formalism_call(request: generateFormalismRequest):
-    try:
-        # Validate input data
-        if not isinstance(request.chunks, dict) or not isinstance(request.graph_data, List):
-            raise HTTPException(status_code=400, detail="Chunks must be a valid dictionary and Graph Data must be a valid list.")
-        try:
-            result = generate_formalism(request.chunks, request.graph_data, request.user_pref) # save json function
-        except Exception as formalism_error:
-            logger.error(f"Formalism Generation error: {formalism_error}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Formalism Generation error: {str(formalism_error)}")
-
-        return {"formalism_data": result}
-
-    except HTTPException as http_err:
-        raise http_err  # Re-raise HTTP exceptions as they are
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+# /generate_formalism/ endpoint removed 2026-05-17. The handler called a
+# function that referenced an undefined `generate_individual_formalism`,
+# so any invocation would NameError. Only caller was archive/TranscriptApp.jsx
+# (also dead). Restore from history if the formalism feature is revived.

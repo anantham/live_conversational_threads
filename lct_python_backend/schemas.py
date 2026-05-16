@@ -27,14 +27,6 @@ class SaveJsonResponse(BaseModel):
     file_id: str  # UUID of the saved file
     file_name: str  # Original file name provided by the user
 
-class generateFormalismRequest(BaseModel):
-    chunks: dict
-    graph_data: List
-    user_pref: str
-
-class generateFormalismResponse(BaseModel):
-    formalism_data: List
-
 class SaveJsonResponseExtended(BaseModel):
     file_id: str
     file_name: str
