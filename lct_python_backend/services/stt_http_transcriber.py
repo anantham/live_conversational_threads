@@ -22,11 +22,13 @@ DEFAULT_HTTP_CHUNK_SECONDS = float(os.getenv("STT_HTTP_CHUNK_SECONDS", "1.2"))
 DEFAULT_INITIAL_HTTP_CHUNK_SECONDS = float(os.getenv("STT_INITIAL_HTTP_CHUNK_SECONDS", "0.5"))
 DEFAULT_HTTP_MODEL = os.getenv("STT_HTTP_MODEL", "")
 DEFAULT_HTTP_LANGUAGE = os.getenv("STT_HTTP_LANGUAGE", "en")
-TRACE_API_CALLS = os.getenv("TRACE_API_CALLS", "true").strip().lower() in {"1", "true", "yes", "on"}
+from lct_python_backend.services.env_helpers import env_bool
+
+TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=True)
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
 SMOKE_TEST_DURATION_SECONDS = float(os.getenv("STT_SMOKE_TEST_DURATION_SECONDS", "1.2"))
 SMOKE_TEST_TIMEOUT_SECONDS = float(os.getenv("STT_SMOKE_TEST_TIMEOUT_SECONDS", "20"))
-STT_CIRCUIT_BREAKER_ENABLED = os.getenv("STT_CIRCUIT_BREAKER_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+STT_CIRCUIT_BREAKER_ENABLED = env_bool("STT_CIRCUIT_BREAKER_ENABLED", default=True)
 STT_CIRCUIT_TIMEOUT_TTL_SECONDS = float(os.getenv("STT_CIRCUIT_TIMEOUT_TTL_SECONDS", "45"))
 STT_CIRCUIT_NETWORK_TTL_SECONDS = float(os.getenv("STT_CIRCUIT_NETWORK_TTL_SECONDS", "30"))
 STT_CIRCUIT_PROVIDER_ERROR_TTL_SECONDS = float(os.getenv("STT_CIRCUIT_PROVIDER_ERROR_TTL_SECONDS", "30"))
@@ -38,15 +40,15 @@ OPENROUTER_TRANSCRIPTION_PROMPT = (
 )
 
 # --- Diarization feature flag ---
-STT_DIARIZE_ENABLED = os.getenv("STT_DIARIZE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+STT_DIARIZE_ENABLED = env_bool("STT_DIARIZE_ENABLED", default=False)
 
 # --- VAD + Pooling feature flags ---
-STT_VAD_ENABLED = os.getenv("STT_VAD_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+STT_VAD_ENABLED = env_bool("STT_VAD_ENABLED", default=False)
 STT_VAD_MIN_SECONDS = float(os.getenv("STT_VAD_MIN_SECONDS", "0.5"))
 STT_VAD_MAX_SECONDS = float(os.getenv("STT_VAD_MAX_SECONDS", "5.0"))
 STT_VAD_SILENCE_MS = int(os.getenv("STT_VAD_SILENCE_MS", "300"))
 STT_VAD_THRESHOLD = float(os.getenv("STT_VAD_THRESHOLD", "0.5"))
-STT_HTTP_POOL_ENABLED = os.getenv("STT_HTTP_POOL_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+STT_HTTP_POOL_ENABLED = env_bool("STT_HTTP_POOL_ENABLED", default=True)
 
 # --- Silero VAD availability (checked once at first use) ---
 _silero_vad_checked: bool = False
