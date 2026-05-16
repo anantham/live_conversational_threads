@@ -212,8 +212,9 @@ def _refinement_semantics_degraded(
     refined_higher = int(refined_metrics.get("higher_tier_count") or 0)
     if original_higher > 0 and refined_higher == 0:
         return True
-    # Also reject if refinement lost more than half of higher tiers
-    if original_higher > 0 and refined_higher < (original_higher / 2):
+    # Also reject if refinement lost more than the configured fraction of higher tiers
+    from lct_python_backend.services.tuning_constants import REFINEMENT_HIGHER_TIER_LOSS_THRESHOLD
+    if original_higher > 0 and refined_higher < original_higher * (1.0 - REFINEMENT_HIGHER_TIER_LOSS_THRESHOLD):
         return True
     return False
 

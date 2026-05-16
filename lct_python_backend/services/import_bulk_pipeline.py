@@ -60,6 +60,11 @@ from lct_python_backend.services.byok_session_store import (
 from lct_python_backend.services.provider_selection import resolve_import_audio_candidates
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
 from lct_python_backend.services.transcript_linearization import build_line_utterances
+from lct_python_backend.services.tuning_constants import (
+    MIN_IDEAS_FOR_TOPIC_CONSOLIDATION,
+    MIN_THEMES_FOR_ARC_CONSOLIDATION,
+    MIN_TOPICS_FOR_THEME_CONSOLIDATION,
+)
 
 
 async def run_bulk_processing_worker(
@@ -1137,7 +1142,7 @@ async def run_bulk_processing_worker(
 
             ideas_in = _of_level(2)
             consolidation_telemetry["ideas_in"] = len(ideas_in)
-            if len(ideas_in) >= 4:
+            if len(ideas_in) >= MIN_IDEAS_FOR_TOPIC_CONSOLIDATION:
                 await emit("status", {
                     "stage": "consolidating",
                     "progress": 0.97,
@@ -1150,7 +1155,7 @@ async def run_bulk_processing_worker(
                     consolidation_telemetry["topics_out"] = len(topics)
                     logger.info("[CONSOLIDATE] ideas=%d -> topics=%d", len(ideas_in), len(topics))
 
-                    if len(topics) >= 3:
+                    if len(topics) >= MIN_TOPICS_FOR_THEME_CONSOLIDATION:
                         await emit("status", {
                             "stage": "consolidating",
                             "progress": 0.975,
@@ -1163,7 +1168,7 @@ async def run_bulk_processing_worker(
                             consolidation_telemetry["themes_out"] = len(themes)
                             logger.info("[CONSOLIDATE] topics=%d -> themes=%d", len(topics), len(themes))
 
-                            if len(themes) >= 2:
+                            if len(themes) >= MIN_THEMES_FOR_ARC_CONSOLIDATION:
                                 await emit("status", {
                                     "stage": "consolidating",
                                     "progress": 0.98,
