@@ -136,9 +136,172 @@ def test_whitespace_only_returns_no_match():
 
 
 def test_result_to_dict():
-    result = aqd.AgendaQueryResult(matched=True, phrase="what was pending", source="default")
+    result = aqd.AgendaQueryResult(
+        matched=True, phrase="what was pending", source="default",
+    )
     d = result.to_dict()
-    assert d == {"matched": True, "phrase": "what was pending", "source": "default"}
+    assert d == {
+        "matched": True, "phrase": "what was pending", "source": "default",
+        "matched_contact_name": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Name-grounded matching — across all saved contacts
+# ---------------------------------------------------------------------------
+
+def test_name_grounded_match_pending_with_name():
+    """Speaker mentions 'pending with Vinay' → should match for Vinay."""
+    result = aqd.detect_agenda_query(
+        "What's pending with Vinay actually I forgot",
+        contact_names=["Sahil", "Vinay", "Bhishma"],
+    )
+    assert result.matched is True
+    assert result.source == "name-grounded"
+    assert result.matched_contact_name == "vinay"
+    assert "vinay" in result.phrase
+
+
+def test_name_grounded_match_agenda_with_name():
+    """When a contact is named, name-grounded wins even if a generic phrase also matches."""
+    result = aqd.detect_agenda_query(
+        "remind me what was the agenda with Sahil",
+        contact_names=["Sahil"],
+    )
+    assert result.matched is True
+    assert result.source == "name-grounded"
+    assert result.matched_contact_name == "sahil"
+
+
+def test_name_grounded_only_fires_for_known_contacts():
+    """If 'Vinay' isn't in the watch list, name-grounded can't pin Vinay as
+    the contact. But the segment ALSO contains "what's pending" (a generic
+    phrase) — so the detector still fires, just without resolving Vinay.
+    Caller falls back to whatever contact the conversation was started for."""
+    result = aqd.detect_agenda_query(
+        "what's pending with Vinay",
+        contact_names=["Sahil", "Bhishma"],  # Vinay not in list
+    )
+    assert result.matched is True
+    assert result.source == "default"  # generic, not name-grounded
+    assert result.matched_contact_name is None  # Vinay unresolved
+
+
+def test_no_match_when_segment_only_has_unknown_name_grounded_phrase():
+    """Segment uses ONLY a name-grounded template ('with Vinay pending')
+    AND Vinay isn't watched AND no generic phrase present → no match."""
+    result = aqd.detect_agenda_query(
+        "I have a meeting with Vinay pending tomorrow",  # only "with Vinay pending"
+        contact_names=["Sahil", "Bhishma"],
+    )
+    assert result.matched is False
+
+
+def test_name_grounded_case_insensitive():
+    result = aqd.detect_agenda_query(
+        "PENDING WITH SAHIL",
+        contact_names=["Sahil"],
+    )
+    assert result.matched is True
+    assert result.matched_contact_name == "sahil"
+
+
+def test_name_grounded_does_not_fire_on_generic_mention():
+    """'What did Sahil say about the movie' shouldn't fire as agenda query.
+    The name-grounded templates require pending/agenda/reach-back co-occur."""
+    result = aqd.detect_agenda_query(
+        "what did Sahil say about the movie",
+        contact_names=["Sahil"],
+    )
+    assert result.matched is False
+
+
+def test_name_grounded_handles_multiple_contact_names_safely():
+    """Lots of saved contacts shouldn't break anything."""
+    result = aqd.detect_agenda_query(
+        "pending with Sahil today",
+        contact_names=[f"contact_{i}" for i in range(100)] + ["Sahil"],
+    )
+    assert result.matched is True
+    assert result.matched_contact_name == "sahil"
+
+
+def test_name_grounded_handles_none_contact_names():
+    """None contact_names → only agnostic match path runs."""
+    result = aqd.detect_agenda_query(
+        "what was pending",
+        contact_names=None,
+    )
+    assert result.matched is True
+    assert result.matched_contact_name is None
+
+
+def test_name_grounded_handles_empty_list():
+    result = aqd.detect_agenda_query(
+        "pending with Sahil",
+        contact_names=[],
+    )
+    # Without Sahil in the list, name-grounded can't fire; no agnostic match here either
+    assert result.matched is False
+
+
+def test_name_grounded_skips_empty_or_none_entries():
+    """Defensive: stray None / empty strings in contact_names shouldn't crash."""
+    result = aqd.detect_agenda_query(
+        "pending with Sahil",
+        contact_names=["", None, "  ", "Sahil"],
+    )
+    assert result.matched is True
+    assert result.matched_contact_name == "sahil"
+
+
+def test_name_grounded_dedupes_repeated_names():
+    """Same name listed multiple times shouldn't produce duplicate work."""
+    phrases = aqd.get_name_grounded_phrases(["Sahil", "sahil", "SAHIL"])
+    sahil_phrases = [p for p, _, name in phrases if name == "sahil"]
+    # Each template appears once for 'sahil', not three times
+    assert len(sahil_phrases) == len(aqd.NAME_GROUNDED_TEMPLATES)
+
+
+def test_name_grounded_phrases_returns_empty_for_no_names():
+    assert aqd.get_name_grounded_phrases([]) == []
+    assert aqd.get_name_grounded_phrases(None) == []
+
+
+def test_name_grounded_wins_when_specific_contact_named():
+    """The specific overrides the general: naming a contact pins the lookup
+    to that contact even if the segment also contains a generic agenda phrase."""
+    result = aqd.detect_agenda_query(
+        "what was pending with Sahil",  # both 'what was pending' AND 'pending with sahil'
+        contact_names=["Sahil"],
+    )
+    assert result.matched is True
+    assert result.source == "name-grounded"
+    assert result.matched_contact_name == "sahil"
+    # The matched phrase is the name-grounded one
+    assert "sahil" in result.phrase
+
+
+def test_agnostic_fires_when_no_contact_named_in_segment():
+    """If the segment doesn't name any known contact, agnostic still works fine."""
+    result = aqd.detect_agenda_query(
+        "what was pending",  # no name mentioned
+        contact_names=["Sahil", "Vinay"],  # known contacts, but none in segment
+    )
+    assert result.matched is True
+    assert result.source == "default"
+    assert result.matched_contact_name is None
+
+
+def test_name_grounded_fires_when_only_name_phrase_matches():
+    """No agnostic phrase in segment, only name-grounded → name-grounded fires."""
+    result = aqd.detect_agenda_query(
+        "hmm what did Sahil and I want to follow up on",
+        contact_names=["Sahil"],
+    )
+    assert result.matched is True
+    assert result.source == "name-grounded"
+    assert result.matched_contact_name == "sahil"
 
 
 def test_no_match_returns_empty_phrase():
