@@ -204,6 +204,7 @@ from lct_python_backend.canvas_api import router as canvas_router
 from lct_python_backend.thematic_api import router as thematic_router
 from lct_python_backend.artifact_api import router as artifact_router
 from lct_python_backend.speaker_naming_api import router as speaker_naming_router, router as voice_library_router
+from lct_python_backend.consumption_prayer_api import router as consumption_prayer_router
 
 lct_app.include_router(import_router)
 lct_app.include_router(bookmarks_router)
@@ -222,6 +223,7 @@ lct_app.include_router(thematic_router)
 lct_app.include_router(artifact_router)
 lct_app.include_router(speaker_naming_router)
 lct_app.include_router(voice_library_router)
+lct_app.include_router(consumption_prayer_router)
 
 # Alias for uvicorn compatibility
 app = lct_app
