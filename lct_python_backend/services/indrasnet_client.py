@@ -196,6 +196,114 @@ async def match_prayers(
 
 
 # ---------------------------------------------------------------------------
+# Pending discussions per contact — the MVP read path
+# ---------------------------------------------------------------------------
+
+async def get_pending_discussions(
+    contact_ref: str,
+    *,
+    base_url: Optional[str] = None,
+    timeout_seconds: Optional[float] = None,
+) -> Dict[str, Any]:
+    """
+    Call IndrasNet's GET /api/contacts/{contact_ref}/pending-discussions.
+
+    Returns the contact's "## Pending discussions" section parsed into
+    structured items — what LCT surfaces when the user says "what's on
+    our agenda with this person?".
+
+    Args:
+        contact_ref: Either a contact_id ("c_abc123") or a display_name /
+            alias ("Sahil"). The IndrasNet route falls back to
+            resolve_contact_text for name lookups.
+        base_url: Override INDRASNET_BASE_URL for this call (test injection).
+        timeout_seconds: Override INDRASNET_MATCH_TIMEOUT_SECONDS for this call.
+
+    Returns:
+        Response body: {
+          "contact": {"contact_id": "...", "display_name": "..."},
+          "note_path": "/path/to/Sahil.md" | null,
+          "status": "ok" | "note_missing" | "no_note_path" | "<read err>",
+          "items": [{"text": "...", "prayer_id": 412, "added_at": "...",
+                     "source": "..."}, ...],
+          "item_count": 3,
+        }
+
+    Raises:
+        IndrasNetUnavailable: connection failure or timeout.
+        IndrasNetClientError: 4xx — 404 when contact not found, 400 if our
+            request is malformed.
+        IndrasNetServerError: 5xx — IndrasNet internal error.
+        IndrasNetProtocolError: malformed JSON or missing 'items' key.
+    """
+    import urllib.parse
+
+    if not contact_ref or not str(contact_ref).strip():
+        raise IndrasNetClientError("contact_ref is required and must be non-empty")
+
+    base = (base_url or get_indrasnet_base_url()).rstrip("/")
+    timeout = timeout_seconds if timeout_seconds is not None else get_match_timeout_seconds()
+    encoded = urllib.parse.quote(str(contact_ref).strip(), safe="")
+    url = f"{base}/api/contacts/{encoded}/pending-discussions"
+
+    logger.debug("[indrasnet_client] pending-discussions GET %s", url)
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(url)
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        msg = f"IndrasNet pending-discussions unreachable at {url}: {exc}"
+        logger.warning("[indrasnet_client] %s", msg)
+        raise IndrasNetUnavailable(msg) from exc
+    except httpx.ReadTimeout as exc:
+        msg = f"IndrasNet pending-discussions timed out after {timeout}s at {url}"
+        logger.warning("[indrasnet_client] %s", msg)
+        raise IndrasNetUnavailable(msg) from exc
+    except httpx.HTTPError as exc:
+        msg = f"IndrasNet pending-discussions HTTP transport error at {url}: {exc}"
+        logger.warning("[indrasnet_client] %s", msg)
+        raise IndrasNetUnavailable(msg) from exc
+
+    status = response.status_code
+    if 400 <= status < 500:
+        msg = (
+            f"IndrasNet pending-discussions returned {status} for contact "
+            f"{contact_ref!r}. Body: {response.text[:300]}"
+        )
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetClientError(msg)
+    if status >= 500:
+        msg = (
+            f"IndrasNet pending-discussions returned {status} for contact "
+            f"{contact_ref!r}. Body: {response.text[:300]}"
+        )
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetServerError(msg)
+
+    try:
+        body = response.json()
+    except ValueError as exc:
+        msg = f"IndrasNet pending-discussions returned non-JSON: {response.text[:200]}"
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetProtocolError(msg) from exc
+
+    if not isinstance(body, dict) or "items" not in body:
+        msg = f"IndrasNet pending-discussions response missing 'items': {body!r}"
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetProtocolError(msg)
+
+    logger.info(
+        "[indrasnet_client] pending-discussions ← %d items for contact %r "
+        "(status=%s, note_path=%s)",
+        body.get("item_count", len(body.get("items", []))),
+        contact_ref,
+        body.get("status"),
+        body.get("note_path"),
+    )
+    return body
+
+
+# ---------------------------------------------------------------------------
 # Health probe — exposed for the live pipeline to check at startup
 # ---------------------------------------------------------------------------
 

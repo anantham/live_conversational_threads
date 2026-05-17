@@ -19,6 +19,7 @@ from lct_python_backend.services.indrasnet_client import (
     IndrasNetUnavailable,
     get_indrasnet_base_url,
     get_match_timeout_seconds,
+    get_pending_discussions,
     match_prayers,
 )
 
@@ -210,6 +211,143 @@ async def test_missing_matches_key_raises_protocol_error(monkeypatch):
     with pytest.raises(IndrasNetProtocolError) as exc_info:
         await match_prayers(context_text="x", base_url="http://x")
     assert "matches" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# get_pending_discussions
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_pending_happy_path_by_contact_id(monkeypatch):
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["method"] = request.method
+        return httpx.Response(200, json={
+            "contact": {"contact_id": "c_sahil", "display_name": "Sahil"},
+            "note_path": "/path/Sahil.md",
+            "status": "ok",
+            "items": [
+                {"text": "discuss money", "prayer_id": 412, "added_at": "...", "source": "p_a"},
+                {"text": "check Deer Park", "prayer_id": 433, "added_at": "...", "source": None},
+            ],
+            "item_count": 2,
+        })
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    body = await get_pending_discussions("c_sahil", base_url="http://test:7777")
+
+    assert captured["method"] == "GET"
+    assert captured["url"] == "http://test:7777/api/contacts/c_sahil/pending-discussions"
+    assert body["item_count"] == 2
+    assert body["status"] == "ok"
+    assert body["items"][0]["prayer_id"] == 412
+
+
+@pytest.mark.asyncio
+async def test_pending_url_encodes_display_name_with_spaces(monkeypatch):
+    captured: dict = {}
+
+    def handler(request):
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"items": [], "item_count": 0, "status": "ok"})
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    await get_pending_discussions("Sahil Saxena", base_url="http://x")
+    # Space encoded as %20, slashes safe-escaped
+    assert "Sahil%20Saxena" in captured["url"]
+
+
+@pytest.mark.asyncio
+async def test_pending_url_encodes_unicode_name(monkeypatch):
+    captured: dict = {}
+
+    def handler(request):
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"items": [], "item_count": 0, "status": "ok"})
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    await get_pending_discussions("Bhīṣma", base_url="http://x")
+    # Unicode is percent-encoded
+    assert "%C4%AB" in captured["url"] or "Bh%C4%AB" in captured["url"]
+
+
+@pytest.mark.asyncio
+async def test_pending_empty_contact_ref_raises_client_error():
+    with pytest.raises(IndrasNetClientError, match="non-empty"):
+        await get_pending_discussions("")
+
+    with pytest.raises(IndrasNetClientError, match="non-empty"):
+        await get_pending_discussions("   ")
+
+
+@pytest.mark.asyncio
+async def test_pending_404_raises_client_error(monkeypatch):
+    def handler(request):
+        return httpx.Response(404, json={"detail": "Contact not found"})
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    with pytest.raises(IndrasNetClientError) as exc_info:
+        await get_pending_discussions("c_nope", base_url="http://x")
+    assert "404" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_pending_connect_failure_raises_unavailable(monkeypatch):
+    def handler(request):
+        raise httpx.ConnectError("dns failure")
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    with pytest.raises(IndrasNetUnavailable):
+        await get_pending_discussions("c_x", base_url="http://nope")
+
+
+@pytest.mark.asyncio
+async def test_pending_5xx_raises_server_error(monkeypatch):
+    def handler(request):
+        return httpx.Response(500, text="kaboom")
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    with pytest.raises(IndrasNetServerError):
+        await get_pending_discussions("c_x", base_url="http://x")
+
+
+@pytest.mark.asyncio
+async def test_pending_non_json_raises_protocol_error(monkeypatch):
+    def handler(request):
+        return httpx.Response(200, text="<html>oops</html>")
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    with pytest.raises(IndrasNetProtocolError):
+        await get_pending_discussions("c_x", base_url="http://x")
+
+
+@pytest.mark.asyncio
+async def test_pending_missing_items_key_raises_protocol_error(monkeypatch):
+    def handler(request):
+        return httpx.Response(200, json={"contact": "x", "status": "ok"})
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    with pytest.raises(IndrasNetProtocolError) as exc_info:
+        await get_pending_discussions("c_x", base_url="http://x")
+    assert "items" in str(exc_info.value)
 
 
 # ---------------------------------------------------------------------------
