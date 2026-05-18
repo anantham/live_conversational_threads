@@ -43,6 +43,48 @@ OPENROUTER_TRANSCRIPTION_PROMPT = (
 )
 
 
+def build_known_speakers_form_fields(
+    known_speakers: Optional[List[Dict[str, Any]]],
+) -> Dict[str, List[str]]:
+    """Build the OpenAI form-data fields for known_speakers, supporting
+    name-only entries (no voice clip).
+
+    Returns a dict ready to merge into the outgoing form payload. Empty
+    dict if there are no usable entries. The caller decides whether to
+    apply it (e.g. only for gpt-4o-transcribe-diarize).
+
+    Contract:
+        - `known_speaker_names[]` includes every entry with a non-empty
+          name (covers participant-picker name-only entries).
+        - `known_speaker_references[]` is included only when at least one
+          entry has audio_base64. References are wrapped in data: URI
+          form if not already so.
+    """
+    if not known_speakers:
+        return {}
+
+    speaker_names: List[str] = []
+    speaker_refs: List[str] = []
+    for s in known_speakers:
+        name = (s.get("name") or "").strip() if isinstance(s, dict) else ""
+        if not name:
+            continue
+        speaker_names.append(name)
+        ref = s.get("audio_base64") if isinstance(s, dict) else None
+        if ref:
+            if not ref.startswith("data:"):
+                ref = f"data:audio/wav;base64,{ref}"
+            speaker_refs.append(ref)
+
+    if not speaker_names:
+        return {}
+
+    fields: Dict[str, List[str]] = {"known_speaker_names[]": speaker_names}
+    if speaker_refs:
+        fields["known_speaker_references[]"] = speaker_refs
+    return fields
+
+
 @dataclass(frozen=True)
 class SttSessionDefaults:
     """Session-level fallback values consumed by per-provider transports.
@@ -166,20 +208,9 @@ async def transcribe_openai_audio_candidate(
     if request_diarization:
         form_data["chunking_strategy"] = "auto"
         if known_speakers and model == "gpt-4o-transcribe-diarize":
-            speaker_names: List[str] = []
-            speaker_refs: List[str] = []
-            for s in known_speakers:
-                name = s.get("name")
-                ref = s.get("audio_base64")
-                if name and ref:
-                    speaker_names.append(name)
-                    if not ref.startswith("data:"):
-                        ref = f"data:audio/wav;base64,{ref}"
-                    speaker_refs.append(ref)
-
-            if speaker_names:
-                form_data["known_speaker_names[]"] = speaker_names
-                form_data["known_speaker_references[]"] = speaker_refs
+            # Names always pass through; clip refs are gated upstream by
+            # privacy tier (we just see audio_base64 = None when restricted).
+            form_data.update(build_known_speakers_form_fields(known_speakers))
 
     if language:
         form_data["language"] = language

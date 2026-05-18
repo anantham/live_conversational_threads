@@ -175,3 +175,75 @@ async def capture_best_clips_for_speaker(
                 saved_refs.append(ref)
 
     return saved_refs
+
+
+async def gather_known_speakers_from_participants(
+    db: AsyncSession,
+    *,
+    conversation_id: uuid.UUID,
+    max_speakers: int = 4,
+) -> List[Dict[str, Any]]:
+    """Build the known_speakers payload from a conversation's picker selection.
+
+    Reads Conversation.participants (the participant picker's snapshot) and
+    enriches each entry with a voice clip from SpeakerAudioReference where
+    one exists. Honors `external_llm_ok` — contacts marked privacy-restricted
+    get their name passed but NOT their voice clip.
+
+    Returns up to `max_speakers` entries shaped for the STT provider:
+        [{"name": str, "audio_base64": Optional[str], "external_llm_ok": bool}]
+    Entries without a clip are still returned (name-only); the provider
+    transport decides whether OpenAI sees them.
+    """
+    from lct_python_backend.models import Conversation
+
+    conv_result = await db.execute(
+        select(Conversation).where(Conversation.id == conversation_id)
+    )
+    conversation = conv_result.scalar_one_or_none()
+    if conversation is None:
+        return []
+
+    raw_participants = conversation.participants or []
+    participants = [p for p in raw_participants if isinstance(p, dict)]
+    if not participants:
+        return []
+
+    # Slice early to OpenAI's cap so we don't pay for clip lookups we'll drop.
+    participants = participants[:max_speakers]
+
+    # Snapshot the names whose clips we're allowed to ship to a remote LLM.
+    allowed_names = [
+        str(p.get("display_name") or "").strip()
+        for p in participants
+        if bool(p.get("external_llm_ok"))
+    ]
+    allowed_names = [n for n in allowed_names if n]
+
+    # One round-trip for all allowed clips
+    clips_by_name: Dict[str, str] = {}
+    if allowed_names:
+        clip_records = await get_speaker_audio_references(
+            db=db,
+            speaker_names=allowed_names,
+            limit_per_speaker=1,
+        )
+        for rec in clip_records:
+            audio_b64 = rec.get("audio_base64")
+            if audio_b64:
+                clips_by_name[rec["name"]] = audio_b64
+
+    out: List[Dict[str, Any]] = []
+    for p in participants:
+        name = str(p.get("display_name") or "").strip()
+        if not name:
+            continue
+        allowed = bool(p.get("external_llm_ok"))
+        clip = clips_by_name.get(name) if allowed else None
+        out.append({
+            "name": name,
+            "audio_base64": clip,
+            "external_llm_ok": allowed,
+        })
+
+    return out
