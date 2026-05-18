@@ -203,7 +203,10 @@ from lct_python_backend.graph_api import router as graph_router
 from lct_python_backend.canvas_api import router as canvas_router
 from lct_python_backend.thematic_api import router as thematic_router
 from lct_python_backend.artifact_api import router as artifact_router
-from lct_python_backend.speaker_naming_api import router as speaker_naming_router, router as voice_library_router
+from lct_python_backend.speaker_naming_api import (
+    router as voice_library_router,
+    router_conversations as conversation_speakers_router,
+)
 from lct_python_backend.consumption_prayer_api import router as consumption_prayer_router
 
 lct_app.include_router(import_router)
@@ -221,8 +224,14 @@ lct_app.include_router(graph_router)
 lct_app.include_router(canvas_router)
 lct_app.include_router(thematic_router)
 lct_app.include_router(artifact_router)
-lct_app.include_router(speaker_naming_router)
+# voice_library_router has prefix /api (speaker-voice-library endpoints).
+# conversation_speakers_router has prefix /api/conversations and exposes
+# GET/PATCH /{id}/speakers — the NodeDetail panel's "speaker alias"
+# lookup. Before this fix, only `router` was imported twice under two
+# aliases and `router_conversations` was never mounted; every node-tap
+# rendered a red "Not Found" speaker pill.
 lct_app.include_router(voice_library_router)
+lct_app.include_router(conversation_speakers_router)
 lct_app.include_router(consumption_prayer_router)
 
 # Alias for uvicorn compatibility
