@@ -247,15 +247,39 @@ def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[D
 
 
 def build_chunk_dict_from_utterances(utterances) -> Dict[str, str]:
-    """Build chunk dictionary expected by frontend conversation view."""
+    """Build chunk dictionary expected by frontend conversation view.
+
+    Nodes carry ``chunk_id`` as the UUID of their owning chunk. The
+    frontend's NodeDetail panel looks up ``chunkDict[node.chunk_id]`` to
+    render the diarized "speaker: text" lines for that chunk. Keying the
+    whole transcript under a single ``"default_chunk"`` bucket (the prior
+    behaviour) meant every UUID lookup missed, so tapping a node never
+    showed any raw transcript.
+
+    We now bucket utterances by ``utterance.chunk_id`` and stringify the
+    UUID to match what the frontend sends. The legacy ``"default_chunk"``
+    key still gets populated (with everything) as a back-compat fallback
+    and for any utterance whose ``chunk_id`` is NULL.
+    """
     if not utterances:
         return {}
 
-    default_chunk_id = "default_chunk"
-    chunk_text = "\n".join(
-        [f"{(utt.speaker_name or utt.speaker_id)}: {utt.text}" for utt in utterances]
-    )
-    return {default_chunk_id: chunk_text}
+    by_chunk: Dict[str, List[str]] = {}
+    all_lines: List[str] = []
+    for utt in utterances:
+        speaker = getattr(utt, "speaker_name", None) or getattr(utt, "speaker_id", None) or ""
+        text = getattr(utt, "text", "") or ""
+        line = f"{speaker}: {text}" if speaker else text
+        all_lines.append(line)
+        chunk_uuid = getattr(utt, "chunk_id", None)
+        bucket_key = str(chunk_uuid) if chunk_uuid is not None else "default_chunk"
+        by_chunk.setdefault(bucket_key, []).append(line)
+
+    result: Dict[str, str] = {key: "\n".join(lines) for key, lines in by_chunk.items()}
+    # Always keep the legacy default_chunk fallback so older frontends or
+    # nodes with NULL chunk_ids still resolve to something.
+    result.setdefault("default_chunk", "\n".join(all_lines))
+    return result
 
 
 def wrap_graph_data_chunks(graph_data: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
