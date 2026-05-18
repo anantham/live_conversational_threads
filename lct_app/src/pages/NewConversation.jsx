@@ -7,6 +7,11 @@ import TimelineRibbon from "../components/TimelineRibbon";
 import NodeDetail from "../components/NodeDetail";
 import MinimalLegend from "../components/MinimalLegend";
 import SessionTranscriptOverlay from "../components/transcript/SessionTranscriptOverlay";
+import ConsumptionPrayerChip from "../components/conversation/ConsumptionPrayerChip";
+import ConsumptionPrayerDrawer from "../components/conversation/ConsumptionPrayerDrawer";
+import TranscriptSelectionToolbar from "../components/conversation/TranscriptSelectionToolbar";
+import useTextSelection from "../components/conversation/useTextSelection";
+import { triggerConsumptionPrayer, ConsumptionApiError } from "../services/consumptionApi";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { useAutoSave } from "../hooks/useAutoSave";
 import useLocalConversationDraft from "../hooks/useLocalConversationDraft";
@@ -76,6 +81,68 @@ export default function NewConversation() {
   const [recoveredDraftSaveState, setRecoveredDraftSaveState] = useState("idle");
   const [sessionActionBusy, setSessionActionBusy] = useState("");
   const audioRef = useRef(null);
+
+  // ----- Consumption-prayer state (Phase 6/7/20/21 ─ MVP manual-trigger UI) -----
+  // The chip surfaces in the bottom-right when results are present. The
+  // drawer opens on chip click and shows the pending-discussions list.
+  // The selection toolbar appears when the user drags-selects in the
+  // transcript pane and offers a prayer-type slot to trigger the lookup.
+  const [consumptionState, setConsumptionState] = useState("idle"); // "idle" | "loading" | "error"
+  const [consumptionResult, setConsumptionResult] = useState(null); // backend response body or null
+  const [consumptionError, setConsumptionError] = useState("");
+  const [consumptionDrawerOpen, setConsumptionDrawerOpen] = useState(false);
+  const [knownContacts, setKnownContacts] = useState([]);
+  const transcriptPaneRef = useRef(null);
+  const { selection: transcriptSelection, clearSelection: clearTranscriptSelection } =
+    useTextSelection(transcriptPaneRef);
+
+  // Fetch the picker's contact list once at session mount. Failure is
+  // non-fatal — toolbar just renders with no contact options.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/consumption-prayer/known-contacts")
+      .then((r) => (r.ok ? r.json() : { contacts: [] }))
+      .then((body) => {
+        if (cancelled) return;
+        setKnownContacts(Array.isArray(body?.contacts) ? body.contacts : []);
+      })
+      .catch(() => {
+        // logger isn't available; this is fine — empty list is graceful
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleShowAgenda = useCallback(
+    async ({ contactRef, selectedText }) => {
+      setConsumptionState("loading");
+      setConsumptionError("");
+      try {
+        const body = await triggerConsumptionPrayer({
+          conversationId,
+          contactRef,
+          selectedText,
+        });
+        setConsumptionResult(body);
+        setConsumptionState("idle");
+        // Auto-open drawer when items present; if 0 items, leave drawer closed
+        // so the chip shows a "0 pending" hint without forcing a takeover.
+        if ((body.item_count || 0) > 0) {
+          setConsumptionDrawerOpen(true);
+        }
+        clearTranscriptSelection();
+      } catch (err) {
+        const message =
+          err instanceof ConsumptionApiError
+            ? err.message
+            : `Lookup failed: ${err?.message || "unknown error"}`;
+        setConsumptionError(message);
+        setConsumptionState("error");
+      }
+    },
+    [conversationId, clearTranscriptSelection],
+  );
 
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(window.location.search);
@@ -731,18 +798,52 @@ export default function NewConversation() {
         )}
 
         {transcriptOverlayVisible && (
-          <SessionTranscriptOverlay
-            hasData={hasData}
-            minimized={transcriptMinimized}
-            onExpand={() => setTranscriptMinimized(false)}
-            onMinimize={() => setTranscriptMinimized(true)}
-            lines={transcriptOverlay.lines}
-            mode={transcriptOverlay.mode}
-            progress={transcriptOverlay.progress}
-            statusText={transcriptOverlay.statusText}
-            etaText={transcriptOverlay.etaText}
-          />
+          <div ref={transcriptPaneRef}>
+            <SessionTranscriptOverlay
+              hasData={hasData}
+              minimized={transcriptMinimized}
+              onExpand={() => setTranscriptMinimized(false)}
+              onMinimize={() => setTranscriptMinimized(true)}
+              lines={transcriptOverlay.lines}
+              mode={transcriptOverlay.mode}
+              progress={transcriptOverlay.progress}
+              statusText={transcriptOverlay.statusText}
+              etaText={transcriptOverlay.etaText}
+            />
+          </div>
         )}
+
+        {/* Consumption-prayer surfaces — chip (always-on), drawer (on demand),
+            and selection toolbar (when text selected in transcript). All three
+            populate via the same handleShowAgenda callback. */}
+        <ConsumptionPrayerChip
+          state={consumptionState}
+          itemCount={consumptionResult?.item_count || 0}
+          contactName={consumptionResult?.contact?.display_name || ""}
+          errorMessage={consumptionError}
+          onOpen={() => setConsumptionDrawerOpen(true)}
+        />
+
+        <ConsumptionPrayerDrawer
+          open={consumptionDrawerOpen && Boolean(consumptionResult)}
+          contact={consumptionResult?.contact}
+          items={consumptionResult?.items || []}
+          status={consumptionResult?.status || "ok"}
+          notePath={consumptionResult?.note_path || ""}
+          selectedText={consumptionResult?.selected_text || ""}
+          triggeredAt={consumptionResult?.triggered_at || ""}
+          onClose={() => setConsumptionDrawerOpen(false)}
+        />
+
+        <TranscriptSelectionToolbar
+          selection={transcriptSelection}
+          conversationContact={null /* future: from session-start contact picker */}
+          knownContacts={knownContacts}
+          onShowAgenda={handleShowAgenda}
+          onClose={clearTranscriptSelection}
+          loading={consumptionState === "loading"}
+        />
+
 
         {/* Node detail panel */}
         {selectedNodeData && (

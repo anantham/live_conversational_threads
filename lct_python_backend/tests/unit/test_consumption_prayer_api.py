@@ -198,3 +198,130 @@ def test_conversation_id_in_response(client, monkeypatch):
         json={"selected_text": "x", "contact_ref": "Sahil"},
     )
     assert response.json()["conversation_id"] == "some-uuid-here"
+
+
+# ---------------------------------------------------------------------------
+# /api/consumption-prayer/known-contacts
+# ---------------------------------------------------------------------------
+
+URL_KNOWN = "/api/consumption-prayer/known-contacts"
+
+
+def test_known_contacts_returns_sorted_simplified_list(client, monkeypatch):
+    """Happy path: IndrasNet returns a contacts list, endpoint returns the
+    simplified {contact_id, display_name} pairs sorted by name."""
+    import httpx
+
+    fake_payload = [
+        {"contact_id": "c_zoe", "display_name": "Zoe", "obsidian_note_path": "/x"},
+        {"contact_id": "c_alice", "display_name": "Alice", "extra_field": "ignored"},
+        {"contact_id": "c_bob", "display_name": "Bob", "privacy_tier": "T2"},
+    ]
+
+    class _MockResponse:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return fake_payload
+
+    class _MockClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url): return _MockResponse()
+
+    monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
+
+    response = client.get(URL_KNOWN)
+    assert response.status_code == 200
+    body = response.json()
+    names = [c["display_name"] for c in body["contacts"]]
+    assert names == ["Alice", "Bob", "Zoe"]
+    # Extra fields dropped
+    assert set(body["contacts"][0].keys()) == {"contact_id", "display_name"}
+
+
+def test_known_contacts_handles_dict_response_shape(client, monkeypatch):
+    """If IndrasNet returns {contacts: [...]} instead of a bare list,
+    we still extract correctly."""
+    class _MockResponse:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return {"contacts": [{"contact_id": "c_x", "display_name": "X"}]}
+
+    class _MockClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url): return _MockResponse()
+
+    monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
+    response = client.get(URL_KNOWN)
+    assert response.status_code == 200
+    assert response.json()["contacts"][0]["display_name"] == "X"
+
+
+def test_known_contacts_filters_invalid_entries(client, monkeypatch):
+    """Contacts missing contact_id or display_name are dropped silently."""
+    class _MockResponse:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return [
+            {"contact_id": "c_ok", "display_name": "OK"},
+            {"contact_id": "c_no_name"},  # missing display_name
+            {"display_name": "No ID"},   # missing contact_id
+            {"contact_id": "c_empty", "display_name": "   "},  # whitespace-only
+            "not_a_dict",
+        ]
+
+    class _MockClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url): return _MockResponse()
+
+    monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
+    response = client.get(URL_KNOWN)
+    contacts = response.json()["contacts"]
+    assert len(contacts) == 1
+    assert contacts[0]["display_name"] == "OK"
+
+
+def test_known_contacts_returns_empty_on_indrasnet_failure(client, monkeypatch):
+    """When IndrasNet is unreachable, the picker still loads — empty options
+    are better than blocking the entire toolbar."""
+    import httpx
+
+    class _MockClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url):
+            raise httpx.ConnectError("Tailscale down")
+
+    monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
+    response = client.get(URL_KNOWN)
+    assert response.status_code == 200  # NOT 502 — graceful degradation
+    body = response.json()
+    assert body["contacts"] == []
+    assert "indrasnet_error" in body
+    assert "Tailscale down" in body["indrasnet_error"]
+
+
+def test_known_contacts_returns_empty_on_non_json_response(client, monkeypatch):
+    class _MockResponse:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): raise ValueError("not json")
+
+    class _MockClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url): return _MockResponse()
+
+    monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
+    response = client.get(URL_KNOWN)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["contacts"] == []
+    assert body["indrasnet_error"] == "non-JSON response"

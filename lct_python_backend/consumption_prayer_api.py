@@ -26,8 +26,9 @@ from __future__ import annotations
 
 import datetime
 import logging
-from typing import Optional
+from typing import List, Optional
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -36,6 +37,8 @@ from lct_python_backend.services.indrasnet_client import (
     IndrasNetProtocolError,
     IndrasNetServerError,
     IndrasNetUnavailable,
+    get_indrasnet_base_url,
+    get_match_timeout_seconds,
     get_pending_discussions,
 )
 
@@ -119,3 +122,53 @@ async def manual_recommend_consumption_query(
         "triggered_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         **body,  # contact, note_path, status, items, item_count
     }
+
+
+@router.get("/api/consumption-prayer/known-contacts")
+async def known_contacts_for_picker():
+    """
+    Thin proxy that fetches IndrasNet's contact list and returns only the
+    fields the selection-toolbar dropdown needs (contact_id, display_name).
+    Frontend never talks to IndrasNet directly — all cross-repo coupling
+    stays on the backend.
+
+    Returns a list (possibly empty) of {contact_id, display_name}. Errors
+    from IndrasNet are NOT propagated as failures here — instead we return
+    an empty list so the toolbar can still render (just with no contact
+    options). The error is logged loudly for ops visibility.
+
+    Cached by the frontend per-session; refresh requires a page reload.
+    """
+    base = get_indrasnet_base_url()
+    url = f"{base}/api/contacts?limit=500"
+    try:
+        async with httpx.AsyncClient(timeout=get_match_timeout_seconds()) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            body = r.json()
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "[known-contacts] IndrasNet contacts fetch failed (%s); "
+            "returning empty list so the picker still renders.",
+            exc,
+        )
+        return {"contacts": [], "indrasnet_error": str(exc)[:200]}
+    except ValueError as exc:
+        logger.warning("[known-contacts] IndrasNet returned non-JSON: %s", exc)
+        return {"contacts": [], "indrasnet_error": "non-JSON response"}
+
+    raw = body if isinstance(body, list) else body.get("contacts", body.get("items", []))
+    contacts = []
+    for c in raw:
+        if not isinstance(c, dict):
+            continue
+        cid = c.get("contact_id")
+        name = (c.get("display_name") or "").strip()
+        if cid and name:
+            contacts.append({"contact_id": cid, "display_name": name})
+
+    # Stable sort by display_name so the dropdown is predictable
+    contacts.sort(key=lambda c: c["display_name"].lower())
+
+    logger.info("[known-contacts] returned %d contacts", len(contacts))
+    return {"contacts": contacts}
