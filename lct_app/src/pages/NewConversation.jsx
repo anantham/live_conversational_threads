@@ -9,6 +9,7 @@ import MinimalLegend from "../components/MinimalLegend";
 import SessionTranscriptOverlay from "../components/transcript/SessionTranscriptOverlay";
 import ConsumptionPrayerChip from "../components/conversation/ConsumptionPrayerChip";
 import ConsumptionPrayerDrawer from "../components/conversation/ConsumptionPrayerDrawer";
+import ParticipantPickerModal from "../components/conversation/ParticipantPickerModal";
 import TranscriptSelectionToolbar from "../components/conversation/TranscriptSelectionToolbar";
 import useTextSelection from "../components/conversation/useTextSelection";
 import { triggerConsumptionPrayer, ConsumptionApiError } from "../services/consumptionApi";
@@ -93,6 +94,13 @@ export default function NewConversation() {
   const [consumptionError, setConsumptionError] = useState("");
   const [consumptionDrawerOpen, setConsumptionDrawerOpen] = useState(false);
   const [knownContacts, setKnownContacts] = useState([]);
+
+  // ----- Participant picker state -----
+  // Auto-opens when arriving with ?autostart=true (i.e. New Conversation
+  // was clicked and recording is starting). Stays mounted afterwards so
+  // the late-joiner button can re-open it mid-recording.
+  const [participantPickerOpen, setParticipantPickerOpen] = useState(false);
+  const [savedParticipants, setSavedParticipants] = useState([]);
   const transcriptPaneRef = useRef(null);
   const { selection: transcriptSelection, clearSelection: clearTranscriptSelection } =
     useTextSelection(transcriptPaneRef);
@@ -148,6 +156,15 @@ export default function NewConversation() {
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(window.location.search);
   const autostart = searchParams.get("autostart") === "true";
+
+  // Auto-open the participant picker when recording is starting fresh. We
+  // wait a short tick so the STT WebSocket can call ensure_conversation()
+  // server-side — the picker's PUT targets that row.
+  useEffect(() => {
+    if (!autostart) return undefined;
+    const timer = setTimeout(() => setParticipantPickerOpen(true), 600);
+    return () => clearTimeout(timer);
+  }, [autostart]);
 
   // Subscribe to app-level upload context so file upload events flow into this page
   const upload = useUpload();
@@ -904,6 +921,35 @@ export default function NewConversation() {
           onClose={clearTranscriptSelection}
           loading={consumptionState === "loading"}
         />
+
+        <ParticipantPickerModal
+          open={participantPickerOpen}
+          conversationId={conversationId}
+          onClose={() => setParticipantPickerOpen(false)}
+          onSaved={(participants) => setSavedParticipants(participants)}
+        />
+
+        {/* Late-joiner re-open button. Hidden while modal is open and
+            during initial autostart bring-up. */}
+        {!participantPickerOpen ? (
+          <button
+            type="button"
+            onClick={() => setParticipantPickerOpen(true)}
+            className="fixed bottom-4 left-4 z-30 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-md backdrop-blur transition hover:bg-white"
+            title={
+              savedParticipants.length > 0
+                ? `${savedParticipants.length} participant${savedParticipants.length === 1 ? "" : "s"} — tap to edit`
+                : "Add participants"
+            }
+          >
+            <span aria-hidden="true">+</span>
+            <span>
+              {savedParticipants.length > 0
+                ? `${savedParticipants.length} participant${savedParticipants.length === 1 ? "" : "s"}`
+                : "Add participants"}
+            </span>
+          </button>
+        ) : null}
 
 
         {/* Node detail panel */}
