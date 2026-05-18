@@ -86,6 +86,13 @@ def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[D
     utterance_end_by_id: Dict[Any, float] = {}
     chunk_start_by_id: Dict[Any, float] = {}
     chunk_end_by_id: Dict[Any, float] = {}
+    # Conversation-wide min/max — used as a fallback for live-recorded
+    # conversations where the live-STT write path never linked
+    # utterance.chunk_id to node.chunk_ids. The graph nodes exist, the
+    # utterances exist, but nothing joins them. Better to seek to the
+    # start of the conversation than to fail silently.
+    convo_min_start: Optional[float] = None
+    convo_max_end: Optional[float] = None
     if utterances:
         for utt in utterances:
             uid = getattr(utt, "id", None)
@@ -104,6 +111,11 @@ def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[D
                     cur_end = chunk_end_by_id.get(cid)
                     if cur_end is None or te > cur_end:
                         chunk_end_by_id[cid] = float(te)
+            if ts is not None:
+                if convo_min_start is None or ts < convo_min_start:
+                    convo_min_start = float(ts)
+                if te is not None and (convo_max_end is None or te > convo_max_end):
+                    convo_max_end = float(te)
     # Build thread_id -> (min_start, max_end) by walking level-1/2 nodes whose
     # timestamps we can derive via chunk_ids. Higher-tier nodes (topic/theme/arc)
     # have no chunk_ids of their own, but share thread_id with their chunks.
@@ -206,11 +218,18 @@ def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[D
                     derived_start = thread_start_by_id[tid]
                     derived_end = thread_end_by_id.get(tid, derived_start)
             # Final fallback: conversation-wide min/max. Mostly for arc nodes
-            # which synthesize the whole conversation and have no thread_id.
-            if derived_start is None and chunk_start_by_id:
-                derived_start = min(chunk_start_by_id.values())
-                if chunk_end_by_id:
-                    derived_end = max(chunk_end_by_id.values())
+            # which synthesize the whole conversation and have no thread_id,
+            # AND for live-recorded conversations where the live-STT path
+            # never linked utterances to node chunk_ids (no join possible
+            # via any of the above paths).
+            if derived_start is None:
+                if chunk_start_by_id:
+                    derived_start = min(chunk_start_by_id.values())
+                    if chunk_end_by_id:
+                        derived_end = max(chunk_end_by_id.values())
+                elif convo_min_start is not None:
+                    derived_start = convo_min_start
+                    derived_end = convo_max_end if convo_max_end is not None else convo_min_start
         effective_start = node.timestamp_start if node.timestamp_start is not None else derived_start
         effective_end = node.timestamp_end if node.timestamp_end is not None else derived_end
         node_data = {
@@ -246,7 +265,7 @@ def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[D
     return graph_data
 
 
-def build_chunk_dict_from_utterances(utterances) -> Dict[str, str]:
+def build_chunk_dict_from_utterances(utterances, node_chunk_ids=None) -> Dict[str, str]:
     """Build chunk dictionary expected by frontend conversation view.
 
     Nodes carry ``chunk_id`` as the UUID of their owning chunk. The
@@ -256,29 +275,54 @@ def build_chunk_dict_from_utterances(utterances) -> Dict[str, str]:
     behaviour) meant every UUID lookup missed, so tapping a node never
     showed any raw transcript.
 
-    We now bucket utterances by ``utterance.chunk_id`` and stringify the
-    UUID to match what the frontend sends. The legacy ``"default_chunk"``
-    key still gets populated (with everything) as a back-compat fallback
-    and for any utterance whose ``chunk_id`` is NULL.
+    We bucket utterances by ``utterance.chunk_id`` (stringified) when
+    that link is populated — this is the import / Q.m4a path.
+
+    When NO utterances have ``chunk_id`` populated (the live-STT writer
+    skips this column), we fall back: every node's ``chunk_id`` gets a
+    copy of the entire conversation transcript. Coarse, but it means the
+    side panel actually shows the conversation text instead of empty
+    space when you tap a node from a live-recorded session.
+
+    ``node_chunk_ids`` is an optional iterable of node chunk_id UUIDs.
+    Pass it from the caller when you have the node list to seed the
+    fallback. If omitted, only the ``default_chunk`` legacy key is set.
     """
     if not utterances:
         return {}
 
     by_chunk: Dict[str, List[str]] = {}
     all_lines: List[str] = []
+    any_chunk_id_populated = False
     for utt in utterances:
         speaker = getattr(utt, "speaker_name", None) or getattr(utt, "speaker_id", None) or ""
         text = getattr(utt, "text", "") or ""
         line = f"{speaker}: {text}" if speaker else text
         all_lines.append(line)
         chunk_uuid = getattr(utt, "chunk_id", None)
-        bucket_key = str(chunk_uuid) if chunk_uuid is not None else "default_chunk"
+        if chunk_uuid is not None:
+            any_chunk_id_populated = True
+            bucket_key = str(chunk_uuid)
+        else:
+            bucket_key = "default_chunk"
         by_chunk.setdefault(bucket_key, []).append(line)
 
     result: Dict[str, str] = {key: "\n".join(lines) for key, lines in by_chunk.items()}
     # Always keep the legacy default_chunk fallback so older frontends or
     # nodes with NULL chunk_ids still resolve to something.
     result.setdefault("default_chunk", "\n".join(all_lines))
+
+    # Live-STT fallback: utterances had no chunk_id, but the graph nodes
+    # do. Copy the full transcript under every node's chunk_id so the
+    # frontend lookup hits.
+    if not any_chunk_id_populated and node_chunk_ids:
+        full_text = "\n".join(all_lines)
+        for cid in node_chunk_ids:
+            if cid is None:
+                continue
+            key = str(cid)
+            result.setdefault(key, full_text)
+
     return result
 
 
