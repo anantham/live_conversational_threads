@@ -98,6 +98,14 @@ def _is_health(path: str) -> bool:
     return _normalize_path(path) in HEALTH_PATHS
 
 
+def _is_audio_download(path: str) -> bool:
+    """Audio download URLs are opened via plain <a href=...> which cannot
+    send Authorization headers. The endpoint enforces its own query-string
+    AUDIO_DOWNLOAD_TOKEN check in factcheck_api.download_audio."""
+    norm = _normalize_path(path)
+    return norm.startswith("/api/conversations/") and norm.endswith("/audio")
+
+
 def _is_expensive(path: str) -> bool:
     return any(pat in path for pat in EXPENSIVE_PATTERNS)
 
@@ -170,6 +178,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if _is_health(path):
+            return await call_next(request)
+
+        if _is_audio_download(path):
             return await call_next(request)
 
         auth_header = request.headers.get("authorization")
