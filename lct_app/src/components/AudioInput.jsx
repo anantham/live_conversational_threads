@@ -16,6 +16,7 @@ import { useSttSettings } from "./audio/useSttSettings";
 import useTranscriptSockets from "./audio/useTranscriptSockets";
 import useAudioCapture from "./audio/useAudioCapture";
 import useMicDevices from "./audio/useMicDevices";
+import { randomUUID } from "../utils/uuid";
 
 const LIVE_TRANSCRIPT_MAX_LINES = 240;
 const SESSION_EVENT_LIMIT = 600;
@@ -386,8 +387,8 @@ const AudioInput = forwardRef(function AudioInput({
       return;
     }
 
-    const sessionId = crypto.randomUUID();
-    const newConversationId = crypto.randomUUID();
+    const sessionId = randomUUID();
+    const newConversationId = randomUUID();
     logAudioDebug("session_start", {
       sessionId,
       conversationId: newConversationId,
