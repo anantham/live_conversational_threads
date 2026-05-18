@@ -40,10 +40,12 @@ test.describe('App Initialization', () => {
     await page.goto('/');
     await page.waitForLoadState('domcontentloaded');
 
-    // Check for navigation/header elements
-    // Adjust selectors based on your actual app structure
-    const navigation = page.locator('nav, header, [role="navigation"]');
-    await expect(navigation.first()).toBeVisible({ timeout: 10000 });
+    // Home page uses plain <button>s — no <nav>/<header> semantics, no role.
+    // Treat "New" and "Browse" as the canonical nav signals.
+    const newButton = page.getByRole('button', { name: /^New$/ });
+    const browseButton = page.getByRole('button', { name: /^Browse$/ });
+    await expect(newButton).toBeVisible({ timeout: 10000 });
+    await expect(browseButton).toBeVisible({ timeout: 10000 });
   });
 
   test('should navigate to different routes', async ({ page }) => {

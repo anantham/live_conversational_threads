@@ -80,7 +80,10 @@ test.describe('H2: Router Test', () => {
       console.log('[H2] ✅ No crash after 5 seconds');
       const heading = await page.locator('h1').textContent();
       console.log('[H2] Found heading:', heading);
-      expect(heading).toContain('No Router');
+      // The minimal-React fixture renders <h1>H2 Test: React without Router</h1>.
+      // Earlier assertion looked for "No Router" — a stale string from before
+      // the heading was relabelled.
+      expect(heading).toContain('without Router');
 
       console.log('[H2] RESULT: If original app crashes but this works → H2 SUPPORTED');
       console.log('[H2] RESULT: If both crash → H2 falsified');
