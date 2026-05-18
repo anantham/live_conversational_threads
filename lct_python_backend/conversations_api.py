@@ -96,7 +96,7 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
 
         if nodes:
             # Preferred: use analyzed nodes from DB
-            graph_data = build_graph_data_from_nodes(nodes, relationships)
+            graph_data = build_graph_data_from_nodes(nodes, relationships, utterances=utterances)
             chunk_dict = build_chunk_dict_from_utterances(utterances)
         else:
             # Fallback: read graph data + chunks from saved JSON file
