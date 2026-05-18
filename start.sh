@@ -116,7 +116,7 @@ echo "==> Starting Python backend on :$BACKEND_PORT..."
   --reload --port "$BACKEND_PORT" --host 0.0.0.0 2>&1 &
 BACKEND_PID=$!
 
-wait_for_http "backend" "http://localhost:$BACKEND_PORT/api/settings/stt" 30
+wait_for_http "backend" "http://localhost:$BACKEND_PORT/api/import/health" 30
 
 # Start Vite frontend
 cleanup_port "$FRONTEND_PORT" "frontend"
