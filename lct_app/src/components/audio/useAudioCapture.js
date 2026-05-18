@@ -32,6 +32,19 @@ export default function useAudioCapture({ onPCMFrame, onAudioLevel, onError }) {
 
   const startCapture = useCallback(async (deviceId = "") => {
     try {
+      // navigator.mediaDevices is gated behind a secure context. Plain-http
+      // LAN IPs (Tailscale 100.x.x.x etc.) get `undefined` and the next line
+      // throws a generic TypeError. Catch it up front with a real message.
+      if (!navigator.mediaDevices?.getUserMedia) {
+        const reason = window.isSecureContext
+          ? "Your browser doesn't expose navigator.mediaDevices.getUserMedia."
+          : "Microphone access requires HTTPS or localhost. You're on an insecure origin " +
+            "(plain http://). Use Tailscale Serve (`tailscale serve https:/ " +
+            "http://localhost:43173`) or open the app via http://localhost:43173 instead.";
+        const err = new Error(`Cannot start recording — ${reason}`);
+        err.name = "InsecureContextError";
+        throw err;
+      }
       const audioConstraints = deviceId
         ? { deviceId: { exact: deviceId } }
         : true;
