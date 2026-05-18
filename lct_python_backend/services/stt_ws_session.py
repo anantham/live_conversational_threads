@@ -262,21 +262,30 @@ class WsSessionContext:
     async def _emit_graph_patch(self, patch: Optional[Dict[str, Any]]) -> None:
         await _send_graph_patch_helper(self.websocket, patch, logger)
 
-    async def _snapshot_existing_graph(self) -> List[Dict[str, Any]]:
+    async def _snapshot_existing_graph(self) -> Tuple[List[Dict[str, Any]], Dict[str, List[str]]]:
         async with self.processor_lock:
             existing_json = getattr(self.processor, "existing_json", None) or []
-            return [
+            nodes = [
                 copy.deepcopy(node)
                 for node in existing_json
                 if isinstance(node, dict)
             ]
+            # Option B: deep-copy chunk_utterance_map so callers can mutate
+            # freely without races against incremental updates.
+            raw_map = getattr(self.processor, "chunk_utterance_map", None) or {}
+            chunk_utt_map: Dict[str, List[str]] = {
+                str(chunk_id): [str(uid) for uid in (utt_ids or [])]
+                for chunk_id, utt_ids in raw_map.items()
+                if utt_ids
+            }
+            return nodes, chunk_utt_map
 
     async def _run_graph_persist_loop(self, *, reason: str) -> None:
         async with self.graph_persist_lock:
             current_reason = reason
             while self.graph_persist_requested:
                 self.graph_persist_requested = False
-                snapshot = await self._snapshot_existing_graph()
+                snapshot, chunk_utt_map = await self._snapshot_existing_graph()
                 if not snapshot or not self.state.conversation_id:
                     return
                 started_at = time.perf_counter()
@@ -286,6 +295,7 @@ class WsSessionContext:
                         existing_json=snapshot,
                         metadata=self.state.metadata if isinstance(self.state.metadata, dict) else {},
                         source_type="live_audio",
+                        utterance_chunk_map=chunk_utt_map or None,
                     )
                     logger.info(
                         "[WS][GRAPH PERSIST] session=%s conversation=%s reason=%s persisted_nodes=%s latency_ms=%s",
@@ -764,16 +774,41 @@ class WsSessionContext:
         self,
         text: str,
         speaker_segments: Optional[List[Dict[str, Any]]] = None,
+        utterance_id: Optional[Any] = None,
     ) -> None:
+        # Option B: thread the persisted utterance UUID into the LLM
+        # accumulator so emitted chunks/nodes can back-link to their source
+        # utterances at write time. Falls back gracefully for older processor
+        # surfaces that don't accept these kwargs (tests / pipeline fakes).
+        kwargs: Dict[str, Any] = {}
         if speaker_segments:
+            kwargs["speaker_segments"] = speaker_segments
+        if utterance_id is not None:
+            kwargs["utterance_id"] = utterance_id
+
+        if kwargs:
             try:
-                await self.processor.handle_final_text(text, speaker_segments=speaker_segments)
+                await self.processor.handle_final_text(text, **kwargs)
                 return
             except TypeError as exc:
-                if "speaker_segments" not in str(exc):
+                # Detect which unknown kwarg tripped us and retry without it.
+                err = str(exc)
+                if "utterance_id" in err and "utterance_id" in kwargs:
+                    kwargs.pop("utterance_id", None)
+                    try:
+                        await self.processor.handle_final_text(text, **kwargs)
+                        return
+                    except TypeError as exc2:
+                        if "speaker_segments" in str(exc2) and "speaker_segments" in kwargs:
+                            kwargs.pop("speaker_segments", None)
+                        else:
+                            raise
+                elif "speaker_segments" in err and "speaker_segments" in kwargs:
+                    kwargs.pop("speaker_segments", None)
+                else:
                     raise
                 logger.debug(
-                    "[WS] Processor handle_final_text does not accept speaker_segments; retrying without labels."
+                    "[WS] Processor handle_final_text rejected kwargs; retrying without: %s", err
                 )
         await self.processor.handle_final_text(text)
 
@@ -781,10 +816,15 @@ class WsSessionContext:
         self,
         text: str,
         speaker_segments: Optional[List[Dict[str, Any]]] = None,
+        utterance_id: Optional[Any] = None,
     ) -> None:
         try:
             async with self.processor_lock:
-                await self._processor_handle_final_text(text, speaker_segments=speaker_segments)
+                await self._processor_handle_final_text(
+                    text,
+                    speaker_segments=speaker_segments,
+                    utterance_id=utterance_id,
+                )
         except Exception as exc:
             logger.exception("[WS] Final transcript processing failed: %s", exc)
             self._record_observability_event(
@@ -882,9 +922,18 @@ class WsSessionContext:
         )
 
         if event_type == "final" and process_final:
+            # Option B: pass the persisted utterance UUID to the processor so
+            # the emitted chunk/nodes can record which utterances contributed.
+            # ``persist_transcript_event`` only assigns ``utterance_id`` for
+            # ``event_type == "final"`` (partials don't create utterances).
+            final_utterance_id = getattr(event, "utterance_id", None)
             self._track_processor_final_task(
                 asyncio.create_task(
-                    self._run_processor_final(normalized_text, speaker_segments=speaker_segments)
+                    self._run_processor_final(
+                        normalized_text,
+                        speaker_segments=speaker_segments,
+                        utterance_id=final_utterance_id,
+                    )
                 )
             )
 
@@ -1542,6 +1591,7 @@ class WsSessionContext:
             flush_final_metadata: Dict[str, Any] = {}
             final_text_for_post_flush: Optional[str] = None
             final_segments_for_post_flush: Optional[List[Dict[str, Any]]] = None
+            final_utterance_id_for_post_flush: Optional[Any] = None
 
             if self.stt_runtime and self.stt_runtime.is_ready():
                 async with self.stt_stream_lock:
@@ -1632,7 +1682,7 @@ class WsSessionContext:
                     "transport": "backend_http_stt",
                 }
                 final_timestamps = self._consume_pending_partial_timestamps()
-                await self._persist_event(
+                final_persist_event = await self._persist_event(
                     "final",
                     final_text,
                     metadata=final_event_metadata,
@@ -1643,6 +1693,12 @@ class WsSessionContext:
                 )
                 final_text_for_post_flush = final_text
                 final_segments_for_post_flush = flush_speaker_segments
+                # Option B: thread the persisted utterance UUID into the
+                # post-flush processor call so the very last chunk also
+                # links its utterances correctly.
+                final_utterance_id_for_post_flush = getattr(
+                    final_persist_event, "utterance_id", None
+                )
                 self._reset_pending_partial_state()
 
             if self.state.store_audio and self.state.conversation_id:
@@ -1739,6 +1795,7 @@ class WsSessionContext:
                     await self._processor_handle_final_text(
                         final_text_for_post_flush,
                         speaker_segments=final_segments_for_post_flush,
+                        utterance_id=final_utterance_id_for_post_flush,
                     )
                 await self.processor.flush()
                 await self._clear_pending_draft_graph(reason="flush")

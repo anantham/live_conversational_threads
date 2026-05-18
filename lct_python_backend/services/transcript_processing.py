@@ -65,8 +65,21 @@ class TranscriptProcessor:
     ) -> None:
         self.accumulator: List[str] = []
         self.accumulator_segments: List[List[Dict[str, Any]]] = []
+        # Parallel to ``accumulator``: each slot holds the utterance UUIDs whose
+        # text contributed to that accumulator entry. A slot may be empty if the
+        # caller didn't supply an utterance_id (e.g. bulk-import path which
+        # writes utterances *after* chunking). On chunk emission, all ids from
+        # the batch flow into ``chunk_utterance_map`` and each emitted node's
+        # ``utterance_ids`` field — this is the canonical link the live STT path
+        # was missing pre-Option-B.
+        self.accumulator_utterance_ids: List[List[Any]] = []
         self.existing_json: List[Dict[str, Any]] = []
         self.chunk_dict: Dict[str, str] = {}
+        # chunk_id (str) -> list of utterance UUID strings that contributed.
+        # Snapshot of this mapping is passed to ``persist_graph`` so the live
+        # path can UPDATE utterances.chunk_id and populate node.utterance_ids
+        # the same way the bulk-import path does (see ADR-030 §P5).
+        self.chunk_utterance_map: Dict[str, List[str]] = {}
         self.base_batch_size = batch_size
         self.initial_batch_size = max(1, min(initial_batch_size, batch_size))
         self.max_batch_size = max_batch_size
@@ -279,6 +292,7 @@ class TranscriptProcessor:
         self,
         final_text: str,
         speaker_segments: Optional[List[Dict[str, Any]]] = None,
+        utterance_id: Optional[Any] = None,
     ) -> None:
         if not final_text:
             return
@@ -287,6 +301,9 @@ class TranscriptProcessor:
                 self._pending_since_perf = time.perf_counter()
             self.accumulator.append(final_text)
             self.accumulator_segments.append(speaker_segments or [])
+            self.accumulator_utterance_ids.append(
+                [utterance_id] if utterance_id else []
+            )
             self._current_batch_size = self._current_batch_target()
             await self._emit_status(
                 "info",
@@ -315,6 +332,7 @@ class TranscriptProcessor:
             graph_emitted, _continue_accumulating, _incomplete_seg, _carryover_segments = await self._process_batch(
                 self.accumulator,
                 self.accumulator_segments,
+                self.accumulator_utterance_ids,
                 stop_accumulating_flag=True,
                 trigger="flush",
             )
@@ -322,6 +340,7 @@ class TranscriptProcessor:
                 self._graph_update_count += 1
             self.accumulator = []
             self.accumulator_segments = []
+            self.accumulator_utterance_ids = []
             self._current_batch_size = self._current_batch_target()
             self._continue_accumulating = True
             self._pending_since_perf = None
@@ -342,6 +361,7 @@ class TranscriptProcessor:
                 graph_emitted, _continue_accumulating, _incomplete_seg, _carryover_segments = await self._process_batch(
                     self.accumulator,
                     self.accumulator_segments,
+                    self.accumulator_utterance_ids,
                     stop_accumulating_flag=True,
                     trigger="flush_segment",
                 )
@@ -350,15 +370,28 @@ class TranscriptProcessor:
             # Reset accumulator but keep existing_json for cross-segment context
             self.accumulator = []
             self.accumulator_segments = []
+            self.accumulator_utterance_ids = []
             self._current_batch_size = self._current_batch_target()
             self._continue_accumulating = True
             self._pending_since_perf = None
             return len(self.existing_json)
 
     async def _process_batches_locked(self, *, trigger: str, force_flush: bool = False) -> None:
+        # Snapshot the utterance_ids batch so we can carry the over-link set
+        # forward verbatim if the LLM emits an Incomplete_segment. The
+        # carryover text is a substring of these utterances' audio, so any
+        # node materialized from the *next* chunk should also link to them
+        # (over-linking is correct here — better to associate too widely
+        # than to drop the link entirely).
+        carryover_utt_ids: List[Any] = []
+        if self.accumulator_utterance_ids:
+            for slot in self.accumulator_utterance_ids:
+                carryover_utt_ids.extend(slot or [])
+
         graph_emitted, continue_accumulating, incomplete_seg, carryover_segments = await self._process_batch(
             self.accumulator,
             self.accumulator_segments,
+            self.accumulator_utterance_ids,
             stop_accumulating_flag=force_flush,
             trigger=trigger,
         )
@@ -369,6 +402,9 @@ class TranscriptProcessor:
         if graph_emitted or not continue_accumulating:
             self.accumulator = [incomplete_seg] if incomplete_seg else []
             self.accumulator_segments = carryover_segments if incomplete_seg else []
+            self.accumulator_utterance_ids = (
+                [carryover_utt_ids] if incomplete_seg and carryover_utt_ids else []
+            )
             self._current_batch_size = self._current_batch_target()
             self._continue_accumulating = True
             self._pending_since_perf = time.perf_counter() if self.accumulator else None
@@ -384,6 +420,7 @@ class TranscriptProcessor:
         self,
         text_batch: List[str],
         segment_batch: List[List[Dict[str, Any]]],
+        utterance_ids_batch: Optional[List[List[Any]]] = None,
         stop_accumulating_flag: bool = False,
         trigger: str = "count_threshold",
     ) -> Tuple[bool, bool, str, List[List[Dict[str, Any]]]]:
@@ -516,8 +553,32 @@ class TranscriptProcessor:
                 )
                 chunk_id = str(uuid.uuid4())
                 self.chunk_dict[chunk_id] = segmented_input_chunk
+
+                # Option B: capture which utterance UUIDs flowed into this
+                # batch. Live STT supplies one id per text fragment; the
+                # bulk-import path passes None (it writes utterances *after*
+                # LLM chunking). Deduplicate while preserving order so the
+                # downstream UPDATE skips redundant rows.
+                flat_utt_ids: List[str] = []
+                if utterance_ids_batch:
+                    seen_ids: set = set()
+                    for slot in utterance_ids_batch:
+                        for raw_id in slot or []:
+                            if raw_id is None:
+                                continue
+                            id_str = str(raw_id)
+                            if id_str in seen_ids:
+                                continue
+                            seen_ids.add(id_str)
+                            flat_utt_ids.append(id_str)
+
+                if flat_utt_ids:
+                    self.chunk_utterance_map[chunk_id] = flat_utt_ids
+
                 for item in output_json:
                     item["chunk_id"] = chunk_id
+                    if flat_utt_ids and not item.get("utterance_ids"):
+                        item["utterance_ids"] = list(flat_utt_ids)
 
                 self.existing_json.extend(output_json)
                 await self._emit_graph_update(
@@ -530,6 +591,7 @@ class TranscriptProcessor:
                         "remove_node_ids": [],
                         "remove_chunk_ids": [],
                         "source_text": segmented_input_chunk,
+                        "utterance_chunk_map": {chunk_id: flat_utt_ids} if flat_utt_ids else {},
                         "trigger": trigger,
                     }
                 )
