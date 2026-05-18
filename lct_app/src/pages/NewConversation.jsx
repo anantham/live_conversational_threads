@@ -785,12 +785,12 @@ export default function NewConversation() {
             {typeof window !== "undefined" &&
               !window.isSecureContext &&
               !window.location.hostname.match(/^(localhost|127\.0\.0\.1)$/) && (
-                <p className="mt-3 max-w-[20rem] text-[11px] text-amber-700 bg-amber-50/90 border border-amber-200 rounded-lg px-3 py-2">
+                <p className="mt-3 max-w-[22rem] text-[11px] text-amber-700 bg-amber-50/90 border border-amber-200 rounded-lg px-3 py-2 text-left">
                   Microphone needs HTTPS or localhost. You're on{" "}
                   <code className="font-mono text-[10px]">{window.location.host}</code> —
-                  recording will fail. Use Tailscale Serve
-                  (<code className="font-mono text-[10px]">tailscale serve https:/ http://localhost:43173</code>)
-                  to get an HTTPS URL, or open via http://localhost:43173 from this machine.
+                  recording will fail. On the dev box run{" "}
+                  <code className="font-mono text-[10px] block mt-1 px-1 py-0.5 bg-white rounded border border-amber-200">tailscale serve --bg {window.location.port || 43173}</code>{" "}
+                  then open the resulting <code className="font-mono text-[10px]">https://&lt;machine&gt;.&lt;tailnet&gt;.ts.net</code> URL.
                 </p>
               )}
           </div>
