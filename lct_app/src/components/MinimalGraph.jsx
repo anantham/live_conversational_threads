@@ -517,6 +517,12 @@ function MinimalGraphInner({
   // nodeInternals lags one render cycle on tab switches, so fitView with
   // no caps produces nonsense viewport (e.g. scale=1 + huge negative y).
   // Two rAFs + explicit minZoom/maxZoom caps fix tab-switch auto-fit.
+  //
+  // Mobile (<640px viewport): the swim-lane layout produces 6 themes
+  // across ~1680px. fitView with minZoom=0.04 squishes them all into
+  // 360px at ~0.21 zoom — unreadable. Clamp minZoom higher on narrow
+  // viewports so cards stay legible; the user pans to see more rather
+  // than zooming out to nothing.
   useEffect(() => {
     if (!pendingFitViewRef.current || displayNodes.length === 0) return;
     pendingFitViewRef.current = false;
@@ -524,12 +530,40 @@ function MinimalGraphInner({
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
         programmaticMoveRef.current = true;
-        reactFlow.fitView({
-          padding: 0.2,
-          duration: 300,
-          minZoom: 0.04,
-          maxZoom: 1.0,
-        });
+        const isNarrow = typeof window !== "undefined" && window.innerWidth < 640;
+        if (isNarrow) {
+          // On mobile, fitView would either squish the whole 1680px
+          // swim-lane to 0.21 zoom (unreadable) or, with minZoom
+          // clamped, center the bbox so the first rows end up above
+          // the viewport top. Instead, anchor top-left of the node
+          // bbox at the top-left of the viewport at a readable zoom
+          // — same logic as the "Center" preset button. User pans to
+          // see the rest.
+          let minX = Infinity, minY = Infinity;
+          displayNodes.forEach((n) => {
+            const px = n.position?.x ?? 0;
+            const py = n.position?.y ?? 0;
+            if (px < minX) minX = px;
+            if (py < minY) minY = py;
+          });
+          if (Number.isFinite(minX) && Number.isFinite(minY)) {
+            const zoom = 0.85;
+            const padding = 24;
+            reactFlow.setViewport(
+              { x: -minX * zoom + padding, y: -minY * zoom + padding, zoom },
+              { duration: 300 },
+            );
+          } else {
+            reactFlow.fitView({ padding: 0.1, duration: 300, minZoom: 0.6, maxZoom: 1.0 });
+          }
+        } else {
+          reactFlow.fitView({
+            padding: 0.2,
+            duration: 300,
+            minZoom: 0.04,
+            maxZoom: 1.0,
+          });
+        }
         setTimeout(() => { programmaticMoveRef.current = false; }, 350);
       });
     });

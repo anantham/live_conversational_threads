@@ -771,6 +771,19 @@ export default function NewConversation() {
 
       {/* Main graph area */}
       <div className="flex-1 relative min-h-0">
+        {/* Empty-state hint when no recording / file has produced data yet.
+            Previously the canvas was just white space on mobile, leaving the
+            page feeling broken before the user taps "Start Recording". */}
+        {!hasData && !transcriptOverlayVisible && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+            <p className="text-sm font-medium text-slate-500">
+              Tap the mic below to start a live session
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              or upload an audio / transcript file
+            </p>
+          </div>
+        )}
         {/* Graph always renders when data exists */}
         {hasData && (
           <>
@@ -980,8 +993,12 @@ export default function NewConversation() {
       )}
 
       {/* Audio footer */}
-      <div className="shrink-0 w-full py-2 px-4 flex items-center justify-center border-t border-gray-100 bg-white/80 backdrop-blur-sm relative">
-        <div className="w-full max-w-5xl flex items-center justify-center gap-4">
+      {/* Audio footer.
+          Mobile (<sm): items stack with flex-wrap so AudioInput's HUD
+          chips don't get clipped off the right edge. Desktop: keep the
+          one-row layout. */}
+      <div className="shrink-0 w-full py-2 px-3 sm:px-4 flex items-center justify-center border-t border-gray-100 bg-white/80 backdrop-blur-sm relative">
+        <div className="w-full max-w-5xl flex flex-wrap items-center justify-center gap-2 sm:gap-4">
           <FileUpload />
           <button
             type="button"
