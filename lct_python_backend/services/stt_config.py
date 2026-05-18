@@ -303,7 +303,13 @@ def get_env_stt_defaults() -> Dict[str, Any]:
             )
         ),
         "cloud_fallback_providers": _cloud_provider_defaults(),
-        "store_audio": to_bool(os.getenv("STT_STORE_AUDIO_DEFAULT", "false")),
+        # Default ON: the audio download / per-node seek paths depend on a
+        # persisted wav, and users routinely tap Stop expecting to be able
+        # to replay or download what they just recorded. Off-by-default
+        # silently dropped the wav and produced "audio not found" surprises.
+        # Power users can still disable from /settings/stt (or
+        # STT_STORE_AUDIO_DEFAULT=false).
+        "store_audio": to_bool(os.getenv("STT_STORE_AUDIO_DEFAULT", "true")),
         "chunk_endpoint": os.getenv(
             "STT_AUDIO_CHUNK_ENDPOINT",
             "/api/conversations/{conversation_id}/audio/chunk",
