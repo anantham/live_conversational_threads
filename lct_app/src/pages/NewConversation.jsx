@@ -461,12 +461,17 @@ export default function NewConversation() {
   }, [hasData, navigate]);
 
   const handleConfirmBack = useCallback(async () => {
+    // Save & Exit: persist to the server, then clear the local
+    // safety-net draft. Without the clear() the next visit to /new
+    // re-loads the stale local draft and prompts the user to
+    // "recover" data they already saved.
     await Promise.all([
       audioRef.current?.stopRecording(),
       triggerSave(),
     ]);
+    await clearAvailableDraft();
     navigate("/");
-  }, [navigate, triggerSave]);
+  }, [clearAvailableDraft, navigate, triggerSave]);
 
   useEffect(() => {
     if (liveTranscriptState.recording) return;
@@ -505,6 +510,10 @@ export default function NewConversation() {
     setSessionActionBusy("save-exit");
     try {
       const result = await persistSessionArtifact();
+      // Clear the local safety-net draft now that the server has the
+      // canonical copy — otherwise next /new visit prompts to recover
+      // data that's already been saved.
+      await clearAvailableDraft();
       setMessage(`Conversation "${result.normalizedName}" saved. ${result.message}`);
       navigate("/");
     } catch (error) {
@@ -512,12 +521,15 @@ export default function NewConversation() {
     } finally {
       setSessionActionBusy("");
     }
-  }, [navigate, persistSessionArtifact]);
+  }, [clearAvailableDraft, navigate, persistSessionArtifact]);
 
   const handleSaveAndStartNew = useCallback(async () => {
     setSessionActionBusy("save-new");
     try {
       const result = await persistSessionArtifact();
+      // Clear the saved conversation's local draft slot so the new
+      // recording doesn't inherit a stale recover prompt.
+      await clearAvailableDraft();
       resetForNewConversation();
       setMessage(`Conversation "${result.normalizedName}" saved. Starting a new recording.`);
       window.setTimeout(() => {
@@ -528,7 +540,7 @@ export default function NewConversation() {
     } finally {
       setSessionActionBusy("");
     }
-  }, [persistSessionArtifact, resetForNewConversation]);
+  }, [clearAvailableDraft, persistSessionArtifact, resetForNewConversation]);
 
   const handleDiscardCurrentSession = useCallback(async () => {
     await clearAvailableDraft();
