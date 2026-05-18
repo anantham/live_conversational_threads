@@ -415,6 +415,104 @@ async def get_conversation_utterances(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+class ParticipantIn(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    contact_id: str
+    display_name: str
+    external_llm_ok: Optional[bool] = None
+    source: Optional[str] = None
+
+
+class ParticipantsUpdate(BaseModel):
+    participants: List[ParticipantIn]
+
+
+def _normalize_participants_payload(
+    incoming: List[ParticipantIn],
+) -> List[Dict[str, Any]]:
+    """Stamp added_at server-side, drop empty rows, dedupe by contact_id.
+
+    Last write wins on duplicate contact_ids — preserves the most recent
+    user intent if the client sends the same contact twice.
+    """
+    from datetime import datetime, timezone
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for p in incoming:
+        cid = (p.contact_id or "").strip()
+        name = (p.display_name or "").strip()
+        if not (cid and name):
+            continue
+        by_id[cid] = {
+            "contact_id": cid,
+            "display_name": name,
+            "external_llm_ok": bool(p.external_llm_ok) if p.external_llm_ok is not None else None,
+            "source": (p.source or "picker").strip() or "picker",
+            "added_at": now_iso,
+        }
+    return list(by_id.values())
+
+
+@router.get("/api/conversations/{conversation_id}/participants")
+async def get_conversation_participants(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Return the participants list stored on the conversation."""
+    from lct_python_backend.models import Conversation
+
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation_id")
+
+    result = await db.execute(select(Conversation).where(Conversation.id == conv_uuid))
+    conversation = result.scalar_one_or_none()
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    raw = conversation.participants or []
+    participants = [p for p in raw if isinstance(p, dict)]
+    return {"participants": participants}
+
+
+@router.put("/api/conversations/{conversation_id}/participants")
+async def put_conversation_participants(
+    conversation_id: str,
+    payload: ParticipantsUpdate,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Replace the participants list on the conversation.
+
+    Frontend sends the picker's selection enriched with display_name and
+    external_llm_ok (snapshot from /known-contacts). We persist that
+    snapshot so STT priming and later audit don't need to round-trip
+    IndrasNet again.
+    """
+    from lct_python_backend.models import Conversation
+
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid conversation_id")
+
+    result = await db.execute(select(Conversation).where(Conversation.id == conv_uuid))
+    conversation = result.scalar_one_or_none()
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    normalized = _normalize_participants_payload(payload.participants)
+    conversation.participants = normalized
+    conversation.participant_count = len(normalized)
+    await db.commit()
+    logger.info(
+        "[participants] conversation=%s set %d participants",
+        conversation_id, len(normalized),
+    )
+    return {"participants": normalized}
+
+
 @router.post("/api/conversations/{conversation_id}/diarization/repair")
 async def repair_diarization(
     conversation_id: str,

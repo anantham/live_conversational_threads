@@ -207,15 +207,30 @@ def test_conversation_id_in_response(client, monkeypatch):
 URL_KNOWN = "/api/consumption-prayer/known-contacts"
 
 
-def test_known_contacts_returns_sorted_simplified_list(client, monkeypatch):
-    """Happy path: IndrasNet returns a contacts list, endpoint returns the
-    simplified {contact_id, display_name} pairs sorted by name."""
-    import httpx
-
+def test_known_contacts_preserves_indrasnet_order_and_passes_ranking_fields(client, monkeypatch):
+    """IndrasNet returns contacts ordered by last_activity DESC. The proxy
+    must preserve that order (NOT alphabetize) and pass through ranking +
+    privacy fields the picker needs (last_activity, item_count,
+    external_llm_ok, privacy_tier)."""
     fake_payload = [
-        {"contact_id": "c_zoe", "display_name": "Zoe", "obsidian_note_path": "/x"},
-        {"contact_id": "c_alice", "display_name": "Alice", "extra_field": "ignored"},
-        {"contact_id": "c_bob", "display_name": "Bob", "privacy_tier": "T2"},
+        {
+            "contact_id": "c_zoe", "display_name": "Zoe",
+            "last_activity": "2026-05-18 20:48:38+00:00",
+            "item_count": 1248, "external_llm_ok": 0, "privacy_tier": "T3",
+            "obsidian_note_path": "/x",
+        },
+        {
+            "contact_id": "c_alice", "display_name": "Alice",
+            "last_activity": "2026-05-18 19:00:00+00:00",
+            "item_count": 88, "external_llm_ok": 1, "privacy_tier": "T2",
+            "extra_field": "ignored",
+        },
+        {
+            "contact_id": "c_bob", "display_name": "Bob",
+            "last_activity": "2026-02-23 09:30:21+00:00",
+            "item_count": 5,
+            # external_llm_ok and privacy_tier intentionally absent — must default safely
+        },
     ]
 
     class _MockResponse:
@@ -234,10 +249,29 @@ def test_known_contacts_returns_sorted_simplified_list(client, monkeypatch):
     response = client.get(URL_KNOWN)
     assert response.status_code == 200
     body = response.json()
-    names = [c["display_name"] for c in body["contacts"]]
-    assert names == ["Alice", "Bob", "Zoe"]
-    # Extra fields dropped
-    assert set(body["contacts"][0].keys()) == {"contact_id", "display_name"}
+    contacts = body["contacts"]
+
+    # Order preserved from IndrasNet (Zoe first because most recent activity)
+    assert [c["display_name"] for c in contacts] == ["Zoe", "Alice", "Bob"]
+
+    # Ranking + privacy fields surfaced
+    zoe = contacts[0]
+    assert zoe["last_activity"] == "2026-05-18 20:48:38+00:00"
+    assert zoe["item_count"] == 1248
+    assert zoe["external_llm_ok"] is False  # 0 from IndrasNet normalized to bool
+    assert zoe["privacy_tier"] == "T3"
+
+    alice = contacts[1]
+    assert alice["external_llm_ok"] is True  # 1 → True
+
+    # Missing optional fields default safely (None / False)
+    bob = contacts[2]
+    assert bob["external_llm_ok"] is False
+    assert bob["privacy_tier"] is None
+
+    # Unrelated extra fields from IndrasNet are still dropped
+    assert "obsidian_note_path" not in zoe
+    assert "extra_field" not in alice
 
 
 def test_known_contacts_handles_dict_response_shape(client, monkeypatch):

@@ -164,11 +164,20 @@ async def known_contacts_for_picker():
             continue
         cid = c.get("contact_id")
         name = (c.get("display_name") or "").strip()
-        if cid and name:
-            contacts.append({"contact_id": cid, "display_name": name})
-
-    # Stable sort by display_name so the dropdown is predictable
-    contacts.sort(key=lambda c: c["display_name"].lower())
+        if not (cid and name):
+            continue
+        # Pass through IndrasNet's ranking + privacy fields so the picker can
+        # render recency and gate voice-clip sharing. external_llm_ok comes
+        # back as 0/1 from IndrasNet; normalize to bool. Order is preserved
+        # from IndrasNet (last_activity DESC) — clients re-sort if they want.
+        contacts.append({
+            "contact_id": cid,
+            "display_name": name,
+            "last_activity": c.get("last_activity"),
+            "item_count": c.get("item_count"),
+            "external_llm_ok": bool(c.get("external_llm_ok", 0)),
+            "privacy_tier": c.get("privacy_tier"),
+        })
 
     logger.info("[known-contacts] returned %d contacts", len(contacts))
     return {"contacts": contacts}
