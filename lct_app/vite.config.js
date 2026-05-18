@@ -63,10 +63,13 @@ export default defineConfig({
         target: `http://localhost:${backendPort}`,
         changeOrigin: true,
       },
-      "/import": {
-        target: `http://localhost:${backendPort}`,
-        changeOrigin: true,
-      },
+      // NOTE: no top-level "/import" proxy entry — that path is a React
+      // route (lct_app/src/routes/AppRoutes.jsx). Backend import endpoints
+      // all live under /api/import/* which the "/api" proxy above already
+      // catches. Adding "/import" here intercepts the browser navigation
+      // to the React page and forwards the raw HTML request to FastAPI,
+      // which returns a JSON 401 / 404 — user sees raw JSON instead of
+      // the React app.
     },
   },
 });
