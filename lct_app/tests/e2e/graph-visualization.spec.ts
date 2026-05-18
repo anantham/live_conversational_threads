@@ -9,19 +9,25 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Graph Visualization', () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to the app
-    await page.goto('/');
+    // Land on /browse — that's where the conversation list lives. The
+    // home page is a landing page with no graph by design, so beforeEach
+    // can't usefully assert graph presence there.
+    await page.goto('/browse');
     await page.waitForLoadState('domcontentloaded');
   });
 
   test('should render canvas/graph container', async ({ page }) => {
-    // Look for graph/canvas elements
-    // Adjust selectors based on your actual implementation
+    // Need a conversation to render a graph. Pick the first one on /browse
+    // and follow it; skip the test gracefully if the DB is empty.
+    const firstConversation = page.locator('a[href^="/conversation/"]').first();
+    if ((await firstConversation.count()) === 0) {
+      test.skip(true, 'no conversations in DB — nothing to render a graph for');
+      return;
+    }
+    await firstConversation.click();
+    await page.waitForLoadState('domcontentloaded');
     const graphContainer = page.locator('[class*="graph"], [class*="canvas"], .react-flow, canvas');
-
-    // At least one graph element should be present
-    const count = await graphContainer.count();
-    expect(count).toBeGreaterThan(0);
+    await expect(graphContainer.first()).toBeVisible({ timeout: 10000 });
   });
 
   test('should load a conversation if available', async ({ page }) => {

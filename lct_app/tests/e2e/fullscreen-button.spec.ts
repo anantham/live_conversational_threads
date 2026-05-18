@@ -8,9 +8,16 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Thematic View Fullscreen Button', () => {
   test('should toggle fullscreen mode when clicking the fullscreen button', async ({ page }) => {
-    // Navigate directly to the conversation we created
-    const conversationId = '9b7363e2-fc51-4865-ac67-f355bac62570';
-    await page.goto(`/conversation/${conversationId}`);
+    // Pick the first available conversation from /browse instead of a
+    // hardcoded UUID that may not exist in any given env.
+    await page.goto('/browse');
+    await page.waitForLoadState('domcontentloaded');
+    const firstLink = page.locator('a[href^="/conversation/"]').first();
+    if ((await firstLink.count()) === 0) {
+      test.skip(true, 'no conversations in DB — cannot test thematic view fullscreen');
+      return;
+    }
+    await firstLink.click();
     await page.waitForLoadState('networkidle');
 
     // Take screenshot of conversation page

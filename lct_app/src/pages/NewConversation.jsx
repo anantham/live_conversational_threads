@@ -19,7 +19,7 @@ import { useUpload } from "../contexts/UploadContext";
 import { fetchAudioRecoveryStatus, recoverConversationAudio } from "../services/audioRecoveryApi";
 import { fetchConversationObservability } from "../services/conversationDiagnosticsApi";
 import { saveConversationToServer } from "../utils/SaveConversation";
-import { saveConversationDraft } from "../services/apiClient";
+import { apiFetch, saveConversationDraft } from "../services/apiClient";
 import {
   buildConversationDebugExport,
   downloadConversationDebugExport,
@@ -100,7 +100,7 @@ export default function NewConversation() {
   // non-fatal — toolbar just renders with no contact options.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/consumption-prayer/known-contacts")
+    apiFetch("/api/consumption-prayer/known-contacts")
       .then((r) => (r.ok ? r.json() : { contacts: [] }))
       .then((body) => {
         if (cancelled) return;
