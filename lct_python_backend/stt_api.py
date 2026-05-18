@@ -382,7 +382,7 @@ async def upload_audio_chunk(
 async def get_audio_status(conversation_id: str):
     status = audio_storage.get_status(conversation_id)
     download_url = None
-    if status.get("wav_path"):
+    if status.get("wav_path") or status.get("flac_path") or status.get("source_path"):
         download_url = f"/api/conversations/{conversation_id}/audio?token={DOWNLOAD_TOKEN}" if DOWNLOAD_TOKEN else f"/api/conversations/{conversation_id}/audio"
     return {
         "status": "ok",
