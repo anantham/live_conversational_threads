@@ -1,3 +1,100 @@
+# Handover: 2026-05-18
+
+## Session Summary
+Built the consumption-prayer MVP end-to-end across LCT + IndrasNet (sibling repo at `..\TemporalCoordination\`). Manual-trigger UX: speaker selects a sentence in the live transcript → floating toolbar with prayer-type slots → "Show agenda with [contact]" → POST to LCT proxy → IndrasNet reads `## Pending discussions` from contact's Obsidian note → chip + drawer render results. While doing this, also found and fixed two unrelated IndrasNet 500s (sqlite `detect_types` crashing on T-format timestamps; `/api/settings/watched-folders` crashing on `json.loads` of an already-parsed list). Both fixes still need a server restart to deploy.
+
+## Commits This Session
+
+**LCT (`live_conversational_threads`):**
+- `1f9e20e` feat(lct): async IndrasNet HTTP client for cross-repo prayer queries
+- `6aa6459` feat(consumption): pending-discussions client + agenda-query phrase detector
+- `036bd50` feat(agenda-detector): expand phrase list + name-grounded watch list
+- `9f3e19e` feat(consumption-prayer): manual-trigger endpoint for the live UI selection toolbar
+- `06db257` chore(scripts): e2e verification harness for consumption-prayer read path
+- `32267e2` feat(consumption-prayer): frontend MVP — chip, drawer, selection toolbar
+- `7d84f6e` docs(issues): capture consumption-prayer pending work + remove dead e2e script
+
+**TC / IndrasNet (`TemporalCoordination`):**
+- `fc3b3c8` test(contact_note): test suite for `core/contact_note.py` (the file itself was bundled into parallel-agent commit `1e850f9`)
+- `75f85ad` feat(prayers): append Confirmed Remind/Connect to participants' contact notes
+- `195a441` feat(pending-discussions): GET endpoint + backfill script
+- `68868cc` feat(scripts): bulk-populate contacts.obsidian_note_path from display_name (NOTE: this commit accidentally bundled in parallel-agent `scripts/backup_indrasnet_db.py` + tests)
+- `f3e63be` fix(db): drop `detect_types` — TIMESTAMP/DATETIME columns now return strings
+- `d50644e` fix(settings): handle both shapes get_setting() can return for watched_folders (bandaid)
+- `fe015db` refactor(settings): explicit typed accessors `get_setting_str` / `get_setting_json` (proper fix superseding `d50644e`)
+- `f3db493` fix(db): add get_setting_str + get_setting_json to `__all__`
+- `85e2ef4` docs(issues): capture LCT-integration session findings
+
+**~340 unit tests pass across both repos. 0 fail. All pushed locally; none pushed to origin.**
+
+## Pending Threads
+
+### Continue Immediately
+
+1. **User wants to share another conversation with the IndrasNet agent.** They asked for a `/handover` first, so this is the literal next move. I noted that the parallel agent has been busy this session (commits to telemetry, contacts perf materialization, transcription quality gates, google-auth, trust-boundaries audit) — if the new convo is recent it may reference work I haven't read yet. **Resume:** wait for them to paste a path or text; read it; pick up wherever they want to take the consumption-prayer / vision conversation next.
+
+2. **IndrasNet server restart needed to deploy 3 fixes.** PID 41280 (`python -m grimoire.IndrasNet.agents.web_server`) is on pre-fix code. Until restarted:
+   - `/api/contacts*` returns 500 (`detect_types` ValueError on T-format timestamps)
+   - `/api/settings/watched-folders` returns 500 (TypeError on already-parsed list)
+   - The Integrations UI shows "Failed to load watched folders"
+   
+   **Resume:** `Stop-Process -Id 41280` — start_all.py (PID 41904) should respawn it. After respawn, hit `http://127.0.0.1:7777/api/contacts/Mom/pending-discussions` to confirm 200 with `status=note_missing`.
+
+3. **Frontend MVP not yet browser-verified.** Components are syntactically clean, follow LCT React conventions (JSX + Tailwind v4 + PropTypes), 93 backend tests cover the API contract — but the live render is unverified. **Resume:** `cd lct_app && npm run dev`, open `/new`, drag-select any sentence in transcript, walk through toolbar → contact picker → "go" → chip → drawer. Smoke-test risks documented in LCT `ISSUES.md`: selection-rect positioning on narrow viewports, drawer animation collision with `animate-slideIn`, chip z-index against other floating overlays.
+
+### Blocked
+
+None right now — all open threads are decisions-pending or design-pending rather than waiting on external systems.
+
+### Deferred
+
+1. **Auto-detect path (task #17).** `agenda_query_detector.py` (51 tests, name-grounded + 56 phrases) is built but not wired into `stt_live_runtime`. Manual-trigger MVP is sufficient; auto comes back when we want voice-triggered surfacing. Decision-pending: WS-push vs HTTP-poll architecture for the trigger-to-frontend flow.
+2. **WS event emission + handler (tasks #5, #8).** Manual path uses HTTP response → state update. WS only needed when auto-detect lands.
+3. **Session-start contact picker (task #18).** Selection toolbar has its own per-selection picker; session-level may be unnecessary.
+4. **ADR for consumption-prayer design (task #9).** Design lives in commit message bodies + 5 memory files. Promote to ADR after the design weathers real use.
+5. **IndrasNet `get_prayer_agent_config` + `/api/settings/` migration to typed accessors.** Both work on the polymorphic legacy `get_setting`; migrating to `get_setting_json` would be no-functional-change explicitness cleanup. Noted in TC `docs/indrasnet/ISSUES_AND_GAPS.md`.
+6. **Historical participant resolution gap (deeper).** Backfill writes 0 for the 1 historical Confirmed Remind/Connect because its participant is `{contact_id: NULL, display_name: 'Self'}`. The consumption-prayer feature populates organically only from NEW conversations. The upstream fix is in IndrasNet's voice-resolution / participant-tagging pipeline. Not blocking us; flagged for IndrasNet team.
+
+## Key Context
+
+- **This machine `Asus-Strix-Scar` IS the IndrasNet host** (`100.81.65.74` on Tailscale). So `G:\My Drive\Exocortex` (the user's vault, where contact notes live) resolves identically from the IndrasNet server's perspective and from this PowerShell session's perspective.
+- **226 contacts now have `obsidian_note_path` configured.** Done this session via `scripts/populate_contact_note_paths.py --apply`. Paths under `G:/My Drive/Exocortex/Contacts/{sanitized_display_name}.md`. Collisions accepted: Bob×2, Alice×2, Vishnu GT×2, plus the `*_Voice` test-fixture contacts.
+- **Two new memory files created this session** (in addition to the ones from prior sessions): `indrasnet-settings-typed-accessors`, `indrasnet-db-timestamp-strings`, `parallel-agent-git-contention`. See `MEMORY.md` for the full index — that file is always loaded into context.
+- **The parallel agent has been actively committing during this session.** Their files sometimes get bundled into my commits via wide `git add` behavior — see the `parallel-agent-git-contention` memory entry for mitigations. Commit `68868cc` is the cleanest example (correctly named for my work but contains 2 extra files from their working tree). Not destructive; just messy attribution.
+- **LCT mothballed files stay uncommitted on disk:** `lct_python_backend/services/consumption_trigger.py` + `tests/unit/test_consumption_trigger.py` — implicit-detection LLM gate, 41 tests pass, intentionally not committed because we picked explicit-verbal-trigger as MVP. Available to revive if the implicit path becomes interesting.
+- **Encoding gotcha:** Python on Windows defaults to cp1252; any script that prints non-ASCII (Devanagari, IAST diacritics, arrows) must `sys.stdout.reconfigure(encoding='utf-8')` at script start. See `windows-cp1252-utf8-bug-class` memory.
+
+## Learnings Captured
+
+- [x] Memory: `indrasnet-settings-typed-accessors.md` — prefer get_setting_str / get_setting_json; legacy get_setting polymorphism preserved for back-compat
+- [x] Memory: `indrasnet-db-timestamp-strings.md` — sqlite3 connection deliberately omits `detect_types`; parse with `parse_db_timestamp` when needed
+- [x] Memory: `parallel-agent-git-contention.md` — chain stage+commit in one bash invocation; verify `git diff --cached --name-only` before every commit
+- [x] `MEMORY.md` index updated with the three new entries
+- [x] LCT `ISSUES.md` updated with consumption-prayer pending work + server-flap operational note
+- [x] TC `docs/indrasnet/ISSUES_AND_GAPS.md` updated with 5 findings: server-restart-needed, settings migration backlog, data-shape gap, server flapping, commit attribution
+- [ ] Skill update opportunity: none surfaced this session that wasn't already in the skill defs
+
+## Running Processes (as of session end)
+
+- **IndrasNet web server** — PID 41280 — listening on `0.0.0.0:7777`. **On pre-fix code; restart to deploy today's fixes.**
+- **LCT backend (uvicorn)** — PIDs 34572 + 38796 — listening on `0.0.0.0:43181`. Loaded the new `consumption_prayer_api.py` if restarted today; otherwise needs restart too.
+- **WhisperX inbox watcher** — PID 15972 — processing audio inbox at `C:\Users\adity\Downloads\transcription_transfer\inbox`.
+- **start_all.py autostart supervisor** — PID 41904 — respawns IndrasNet if it dies.
+- **Various multiprocessing children** (parent_pid=41280, 40900, 47784, 41796) — IndrasNet's agent workers (beeper, obsidian, meet).
+
+## Resume Instructions
+
+1. **Read this handover doc** and the 5 LCT memory files (auto-loaded via `MEMORY.md`).
+2. **Wait for the user** — they explicitly said the next move is sharing a conversation with the IndrasNet agent about LCT consumption prayers. Don't pre-empt; they'll paste a path or text.
+3. **When the new convo arrives**, scan it for: (a) any new design constraints on the consumption-prayer flow, (b) work the parallel agent already did that affects our paths, (c) requests for me to act on its content.
+4. **If the user instead asks "did the fixes deploy"** — run `Stop-Process -Id 41280; Start-Sleep 5; Test-NetConnection 127.0.0.1 -Port 7777` and check `/api/contacts/Mom/pending-discussions` returns 200 with `status=note_missing`.
+5. **If the user wants browser-verify** — `cd lct_app; npm run dev`, open `/new`, follow the smoke-test steps in LCT `ISSUES.md`.
+
+---
+*Handover by Claude Opus 4.7 (1M context) at end of long session — context usage high but not at compaction threshold; user requested explicit /handover.*
+
+---
+
 # Handover: 2026-05-17
 
 ## Session Summary
