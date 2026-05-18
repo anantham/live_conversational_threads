@@ -37,7 +37,10 @@ from lct_python_backend.services.graph_persistence import persist_live_graph_sna
 from lct_python_backend.services.quota_service import QuotaService
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
 from lct_python_backend.services.speaker_naming_service import is_confirmed_speaker_name
-from lct_python_backend.services.speaker_voice_library import get_speaker_audio_references
+from lct_python_backend.services.speaker_voice_library import (
+    gather_known_speakers_from_participants,
+    get_speaker_audio_references,
+)
 from lct_python_backend.services.stt_http_transcriber import decode_audio_base64, pcm16le_to_wav, transcribe_wav_stt_candidate
 from lct_python_backend.services.stt_live_graph import (
     build_draft_graph_patch,
@@ -972,22 +975,60 @@ class WsSessionContext:
             else (self.stt_runtime.sample_rate_hz if self.stt_runtime else 16000)
         )
 
-        # 2. Identify confirmed speakers and gather reference audio slices
-        known_speakers: List[Dict[str, str]] = []
+        # 2. Identify confirmed speakers and gather reference audio slices.
+        #    Source order:
+        #      (a) Conversation.participants (picker selection — durable
+        #          contact_id link, gated by external_llm_ok for clips).
+        #      (b) cross-session voice-library refs (legacy / fills gaps for
+        #          confirmed speakers not in the picker).
+        #      (c) in-conversation confirmed-speaker scan (legacy fallback).
+        known_speakers: List[Dict[str, Any]] = []
         try:
-            # First, try cross-session references from voice library
-            cross_session_refs = await get_speaker_audio_references(
+            participant_speakers = await gather_known_speakers_from_participants(
                 db=self.session,
                 conversation_id=self.state.conversation_id,
             )
-            for ref in cross_session_refs[:4]:
-                if ref.get("audio_base64"):
+            for entry in participant_speakers:
+                if entry.get("name"):
                     known_speakers.append({
-                        "name": ref["name"],
-                        "audio_base64": ref["audio_base64"]
+                        "name": entry["name"],
+                        # audio_base64 may be None when the contact is
+                        # T3/external_llm_ok=False or no clip exists yet —
+                        # the provider transport sends name-only in that case.
+                        "audio_base64": entry.get("audio_base64"),
                     })
+            if participant_speakers:
+                logger.info(
+                    "[WS][STT REFINE] session=%s conversation=%s using %d participant-picker speakers (%d with clips)",
+                    self.state.session_id,
+                    self.state.conversation_id,
+                    len(participant_speakers),
+                    sum(1 for s in participant_speakers if s.get("audio_base64")),
+                )
 
-            if known_speakers:
+            # Legacy path — only fill remaining slots if the picker hasn't
+            # accounted for all 4. Names already in the participant list are
+            # skipped to avoid double-counting.
+            existing_names = {s["name"] for s in known_speakers if s.get("name")}
+            if len(known_speakers) < 4:
+                cross_session_refs = await get_speaker_audio_references(
+                    db=self.session,
+                    conversation_id=self.state.conversation_id,
+                )
+                for ref in cross_session_refs:
+                    if len(known_speakers) >= 4:
+                        break
+                    name = ref.get("name")
+                    if not name or name in existing_names:
+                        continue
+                    if ref.get("audio_base64"):
+                        known_speakers.append({
+                            "name": name,
+                            "audio_base64": ref["audio_base64"],
+                        })
+                        existing_names.add(name)
+
+            if known_speakers and not participant_speakers:
                 logger.info(
                     "[WS][STT REFINE] session=%s conversation=%s using %s cross-session speaker references",
                     self.state.session_id,
