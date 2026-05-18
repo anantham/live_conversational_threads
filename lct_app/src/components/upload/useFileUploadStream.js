@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { API_BASE_URL, apiHeaders } from "../../services/apiClient";
+import { API_BASE_URL, apiHeaders, invalidateApiCache } from "../../services/apiClient";
 import { useByok } from "../../contexts/byokContext";
 
 // No cap — accumulate all transcript lines so users can scroll back
@@ -430,6 +430,16 @@ export default function useFileUploadStream({
             completed = true;
             setProgress(1);
             setStatusText(`Done: ${payload.node_count || 0} nodes`);
+            // Bust the conversation-list cache so the new (or backfilled-on-
+            // cache-hit) conversation shows up immediately. Also bust the
+            // specific conversation entry — re-imports may have refreshed
+            // graph_data or audio.
+            const finishedConvId = payload.conversation_id || payload.telemetry?.conversation_id || conversationId;
+            invalidateApiCache("/conversations/");
+            if (finishedConvId) {
+              invalidateApiCache(`/conversations/${finishedConvId}`);
+              invalidateApiCache(`/api/conversations/${finishedConvId}/audio/status`);
+            }
             if (payload.file_name) {
               setFileName?.(payload.file_name);
             }

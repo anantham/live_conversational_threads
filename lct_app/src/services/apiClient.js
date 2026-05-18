@@ -108,6 +108,95 @@ export async function apiFetch(path, options = {}) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Client-side response cache
+//
+// Keeps GET responses in memory keyed by URL. Each entry stores the raw text
+// body (so multiple readers each .json()-parse a fresh copy) plus headers.
+// Default TTL is 60s; callers can override per-fetch. Mutations should call
+// `invalidateApiCache(prefix)` so stale entries get evicted.
+// ─────────────────────────────────────────────────────────────────────────
+
+const apiCache = new Map(); // key -> {expiresAt, body, status, headers}
+
+function buildCacheKey(method, url) {
+  return `${method} ${url}`;
+}
+
+function makeResponseFromCache(entry) {
+  // Reconstruct a Response-like object. Use the real Response constructor so
+  // .json() / .text() / .clone() all work as expected.
+  return new Response(entry.body, {
+    status: entry.status,
+    headers: entry.headers,
+  });
+}
+
+export function invalidateApiCache(prefix = '') {
+  if (!prefix) {
+    apiCache.clear();
+    return;
+  }
+  // Match by path prefix on the URL portion of the key.
+  for (const key of [...apiCache.keys()]) {
+    const url = key.split(' ').slice(1).join(' ');
+    if (url.includes(prefix)) {
+      apiCache.delete(key);
+    }
+  }
+}
+
+/**
+ * apiFetch + in-memory cache for GETs.
+ *
+ * @param {string} path - API path
+ * @param {RequestInit & {ttlMs?: number, force?: boolean}} [options]
+ *   - ttlMs: cache freshness window in milliseconds (default 60000)
+ *   - force: bypass cache for this call
+ * @returns {Promise<Response>}
+ */
+export async function apiFetchCached(path, options = {}) {
+  const method = String(options.method || 'GET').toUpperCase();
+  // Only cache GETs — mutations don't have meaningful identity here.
+  if (method !== 'GET') {
+    return apiFetch(path, options);
+  }
+  const ttlMs = Number.isFinite(options.ttlMs) ? options.ttlMs : 60000;
+  const url = `${API_BASE_URL}${path}`;
+  const key = buildCacheKey(method, url);
+  const now = Date.now();
+  const cached = apiCache.get(key);
+  if (!options.force && cached && cached.expiresAt > now) {
+    if (TRACE_API) {
+      console.info(`[API cache HIT] ${method} ${url} (age=${Math.round((cached.fetchedAt && (now - cached.fetchedAt))/1000)}s)`);
+    }
+    return makeResponseFromCache(cached);
+  }
+  // Strip our extension fields before delegating to apiFetch.
+  const fetchOptions = { ...options };
+  delete fetchOptions.ttlMs;
+  delete fetchOptions.force;
+  const response = await apiFetch(path, fetchOptions);
+  // Only cache 2xx — 4xx/5xx mean retry on next call.
+  if (response.ok) {
+    try {
+      const body = await response.clone().text();
+      const headers = {};
+      response.headers.forEach((v, k) => { headers[k] = v; });
+      apiCache.set(key, {
+        body,
+        status: response.status,
+        headers,
+        fetchedAt: now,
+        expiresAt: now + ttlMs,
+      });
+    } catch {
+      // body unavailable (already consumed) — just don't cache.
+    }
+  }
+  return response;
+}
+
 /**
  * Build a WebSocket URL (no auth token in URL — use wsAuthMessage() after connect).
  *

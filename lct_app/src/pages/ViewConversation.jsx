@@ -7,7 +7,7 @@ import MinimalLegend from "../components/MinimalLegend";
 import NodeDetail from "../components/NodeDetail";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
-import { apiFetch, API_BASE_URL } from "../services/apiClient";
+import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
 
 function sanitizeNodeArray(chunk) {
   return (Array.isArray(chunk) ? chunk : []).filter(
@@ -129,7 +129,12 @@ export default function ViewConversation() {
       setSelectedNode(null);
 
       try {
-        const conversationResponse = await apiFetch(`/conversations/${conversationId}`);
+        // 5-minute TTL: a conversation's graph_data changes rarely (only on
+        // re-import or refinement). Instant nav-back is a huge UX win.
+        const conversationResponse = await apiFetchCached(
+          `/conversations/${conversationId}`,
+          { ttlMs: 5 * 60 * 1000 },
+        );
         if (!conversationResponse.ok) {
           throw new Error(await readErrorMessage(conversationResponse));
         }
@@ -153,9 +158,13 @@ export default function ViewConversation() {
           setExecutiveSummary(payload.executive_summary.trim());
         }
 
-        // Fetch audio status in parallel with metadata
+        // Audio status changes only when the user re-imports or finishes a
+        // live recording — cache 5 min, same as the conversation payload.
         try {
-          const audioStatusResponse = await apiFetch(`/api/conversations/${conversationId}/audio/status`);
+          const audioStatusResponse = await apiFetchCached(
+            `/api/conversations/${conversationId}/audio/status`,
+            { ttlMs: 5 * 60 * 1000 },
+          );
           if (audioStatusResponse.ok) {
             const audioStatus = await audioStatusResponse.json();
             if (!isCancelled && audioStatus.download_url) {
@@ -166,8 +175,11 @@ export default function ViewConversation() {
           // audio status lookup is optional
         }
 
+        // List is mostly stable but can grow on new imports. 60s is short
+        // enough that revisiting after a new upload sees it; the import
+        // success path calls invalidateApiCache('/conversations/') anyway.
         try {
-          const listResponse = await apiFetch("/conversations/");
+          const listResponse = await apiFetchCached("/conversations/", { ttlMs: 60 * 1000 });
           if (listResponse.ok) {
             const conversations = await listResponse.json();
             if (!isCancelled && Array.isArray(conversations)) {
