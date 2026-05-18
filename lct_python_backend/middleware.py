@@ -279,6 +279,58 @@ async def check_ws_auth_message(websocket: WebSocket) -> bool:
 # URL Import Gate
 # ---------------------------------------------------------------------------
 
+class ServerTimingMiddleware(BaseHTTPMiddleware):
+    """Emit a ``Server-Timing`` header on every HTTP response.
+
+    The browser's DevTools Network panel renders the value as a colored
+    bar next to each request, so per-request backend duration is visible
+    without leaving the browser. Format follows the W3C Server-Timing
+    spec: ``Server-Timing: total;dur=<float ms>``.
+
+    Slow requests (above ``SLOW_REQUEST_THRESHOLD_MS``) are also logged at
+    INFO so they're easy to spot in tailed logs.
+
+    Optional per-stage timings can be attached by handlers via
+    ``request.state.server_timings`` — a list of ``(name, ms)`` tuples
+    that get formatted into the same header (e.g. ``db;dur=120,
+    graph;dur=180, total;dur=320``).
+    """
+
+    SLOW_REQUEST_THRESHOLD_MS: float = float(os.getenv("SLOW_REQUEST_THRESHOLD_MS", "500"))
+
+    async def dispatch(self, request: Request, call_next: Callable):
+        # Use perf_counter for monotonic sub-millisecond resolution; time.time()
+        # can jump on clock sync.
+        started_at = time.perf_counter()
+        # Initialise the per-stage bucket so handlers can opportunistically
+        # add detail without first checking if the key exists.
+        request.state.server_timings = []
+        response = await call_next(request)
+        elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+
+        # Compose the header: stages first (if any), then total.
+        parts = []
+        stages = getattr(request.state, "server_timings", None) or []
+        for name, dur_ms in stages:
+            # Sanitize name — Server-Timing names must match `token` syntax.
+            safe_name = "".join(c for c in str(name) if c.isalnum() or c in "-_") or "stage"
+            parts.append(f"{safe_name};dur={float(dur_ms):.1f}")
+        parts.append(f"total;dur={elapsed_ms:.1f}")
+        response.headers["Server-Timing"] = ", ".join(parts)
+
+        if elapsed_ms >= self.SLOW_REQUEST_THRESHOLD_MS:
+            logger.info(
+                "[SLOW] %s %s -> %s in %.0fms%s",
+                request.method,
+                request.url.path,
+                response.status_code,
+                elapsed_ms,
+                f" | stages: {', '.join(f'{n}={d:.0f}ms' for n, d in stages)}" if stages else "",
+            )
+
+        return response
+
+
 class UrlImportGateMiddleware(BaseHTTPMiddleware):
     """
     Blocks /api/import/from-url unless ENABLE_URL_IMPORT=true.
@@ -441,13 +493,16 @@ def configure_p0_security(app):
         configure_p0_security(lct_app)
 
     Middleware executes in reverse registration order (last added = outermost).
-    Order: body limits -> rate limits -> url gate -> auth (auth is outermost).
+    Order (inner -> outer): body limits -> rate limits -> url gate -> auth ->
+    server-timing. Server-Timing wraps everything so the recorded duration
+    reflects total backend cost incl. auth and rate-limit checks.
     """
     # Innermost first
     app.add_middleware(BodySizeLimitMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(UrlImportGateMiddleware)
     app.add_middleware(AuthMiddleware)
+    app.add_middleware(ServerTimingMiddleware)
 
     if AUTH_TOKEN:
         token_status = "ENFORCED (all non-health routes)"
