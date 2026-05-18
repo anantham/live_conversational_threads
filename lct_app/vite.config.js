@@ -32,6 +32,18 @@ export default defineConfig({
   server: {
     port: Number(process.env.FRONTEND_PORT) || 43173,
     strictPort: true,
+    // Vite v6 enforces a Host-header allowlist (CVE-2025-31125 mitigation).
+    // The default rejects requests where Host doesn't match the dev-server
+    // bind. We want this app reachable via Tailscale Serve
+    // (https://<machine>.<tailnet>.ts.net), LAN IPs, etc. Listing the common
+    // ones explicitly; add more here if you proxy through another hostname.
+    allowedHosts: [
+      "localhost",
+      "127.0.0.1",
+      ".ts.net",     // Tailscale Serve / Funnel domains
+      ".tailscale.net",
+      ".local",      // mDNS / Bonjour hostnames
+    ],
     proxy: {
       // Proxy all backend routes to the Python backend — eliminates CORS in dev.
       // Routes are mixed: /api/..., /conversations/..., /save_json/, /export/..., etc.
