@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from typing import Dict, List, Any, Optional
 from uuid import UUID
 
-from lct_python_backend.db import db
+from sqlalchemy.ext.asyncio import AsyncSession
+from lct_python_backend.db_session import get_async_session
 from lct_python_backend.services.speaker_analytics import SpeakerAnalytics
 
 
@@ -37,121 +38,83 @@ class SpeakerStatsResponse(BaseModel):
 
 
 @router.get("/conversations/{conversation_id}/analytics", response_model=AnalyticsResponse)
-async def get_conversation_analytics(conversation_id: str):
-    """
-    Get comprehensive speaker analytics for a conversation
-
-    Returns:
-    - speakers: Dictionary of speaker statistics
-    - timeline: Chronological speaker activity
-    - roles: Detected speaker roles
-    - summary: Overall conversation statistics
-    """
+async def get_conversation_analytics(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Comprehensive speaker analytics for a conversation."""
     try:
-        # Get database session
-        async with db.session() as session:
-            analytics_service = SpeakerAnalytics(session)
-            analytics = await analytics_service.calculate_full_analytics(conversation_id)
-
-            if not analytics["speakers"]:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No analytics data found for conversation {conversation_id}"
-                )
-
-            return analytics
-
+        analytics_service = SpeakerAnalytics(db)
+        analytics = await analytics_service.calculate_full_analytics(conversation_id)
+        if not analytics["speakers"]:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No analytics data found for conversation {conversation_id}",
+            )
+        return analytics
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to calculate analytics: {str(e)}"
+            detail=f"Failed to calculate analytics: {str(e)}",
         )
 
 
 @router.get("/conversations/{conversation_id}/speakers/{speaker_id}", response_model=SpeakerStatsResponse)
-async def get_speaker_stats(conversation_id: str, speaker_id: str):
-    """
-    Get statistics for a specific speaker in a conversation
-
-    Returns detailed statistics for one speaker including:
-    - Time spoken (seconds and percentage)
-    - Turn count and percentage
-    - Topics dominated
-    - Detected role
-    - Average turn duration
-    """
+async def get_speaker_stats(
+    conversation_id: str,
+    speaker_id: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Statistics for a specific speaker in a conversation."""
     try:
-        # Get full analytics
-        async with db.session() as session:
-            analytics_service = SpeakerAnalytics(session)
-            analytics = await analytics_service.calculate_full_analytics(conversation_id)
-
-            # Find speaker
-            if speaker_id not in analytics["speakers"]:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Speaker {speaker_id} not found in conversation {conversation_id}"
-                )
-
-            return analytics["speakers"][speaker_id]
-
+        analytics_service = SpeakerAnalytics(db)
+        analytics = await analytics_service.calculate_full_analytics(conversation_id)
+        if speaker_id not in analytics["speakers"]:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Speaker {speaker_id} not found in conversation {conversation_id}",
+            )
+        return analytics["speakers"][speaker_id]
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get speaker stats: {str(e)}"
+            detail=f"Failed to get speaker stats: {str(e)}",
         )
 
 
 @router.get("/conversations/{conversation_id}/timeline", response_model=List[Dict[str, Any]])
-async def get_speaker_timeline(conversation_id: str):
-    """
-    Get chronological timeline of speaker activity
-
-    Returns list of timeline segments showing:
-    - Sequence number
-    - Speaker ID and name
-    - Timestamps
-    - Duration
-    - Text preview
-    - Speaker changes
-    """
+async def get_speaker_timeline(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Chronological timeline of speaker activity."""
     try:
-        async with db.session() as session:
-            analytics_service = SpeakerAnalytics(session)
-            analytics = await analytics_service.calculate_full_analytics(conversation_id)
-
-            return analytics["timeline"]
-
+        analytics_service = SpeakerAnalytics(db)
+        analytics = await analytics_service.calculate_full_analytics(conversation_id)
+        return analytics["timeline"]
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get timeline: {str(e)}"
+            detail=f"Failed to get timeline: {str(e)}",
         )
 
 
 @router.get("/conversations/{conversation_id}/roles", response_model=Dict[str, str])
-async def get_speaker_roles(conversation_id: str):
-    """
-    Get detected speaker roles for a conversation
-
-    Returns dictionary mapping speaker_id to role:
-    - facilitator: Speaks frequently but briefly
-    - contributor: Speaks extensively, dominates topics
-    - observer: Speaks infrequently
-    """
+async def get_speaker_roles(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Detected speaker roles (facilitator / contributor / observer)."""
     try:
-        async with db.session() as session:
-            analytics_service = SpeakerAnalytics(session)
-            analytics = await analytics_service.calculate_full_analytics(conversation_id)
-
-            return analytics["roles"]
-
+        analytics_service = SpeakerAnalytics(db)
+        analytics = await analytics_service.calculate_full_analytics(conversation_id)
+        return analytics["roles"]
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get roles: {str(e)}"
+            detail=f"Failed to get roles: {str(e)}",
         )
