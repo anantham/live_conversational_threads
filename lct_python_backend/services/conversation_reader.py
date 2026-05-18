@@ -66,12 +66,71 @@ def build_relationship_maps(nodes, relationships):
     return predecessor_by_id, successor_by_id, contextual_by_id, linked_by_id
 
 
-def build_graph_data_from_nodes(nodes, relationships) -> List[Dict[str, Any]]:
-    """Build frontend graph payload from persisted analyzed nodes + relationships."""
+def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[Dict[str, Any]]:
+    """Build frontend graph payload from persisted analyzed nodes + relationships.
+
+    When ``utterances`` is provided, nodes that have no ``timestamp_start`` of
+    their own (the common case for older imports) get one derived from the
+    earliest utterance they reference. The frontend's audio-seek wiring keys
+    off ``timestamp_start``; without this lookup, tapping a node never seeks.
+
+    Two lookup paths, in order: ``node.utterance_ids`` (newer schema),
+    falling back to ``node.chunk_ids`` joined via ``utterance.chunk_id``
+    (the path that's populated for older imports like the Q.m4a runs).
+    """
     predecessor_by_id, successor_by_id, contextual_by_id, linked_by_id = build_relationship_maps(
         nodes,
         relationships,
     )
+    utterance_start_by_id: Dict[Any, float] = {}
+    utterance_end_by_id: Dict[Any, float] = {}
+    chunk_start_by_id: Dict[Any, float] = {}
+    chunk_end_by_id: Dict[Any, float] = {}
+    if utterances:
+        for utt in utterances:
+            uid = getattr(utt, "id", None)
+            cid = getattr(utt, "chunk_id", None)
+            ts = getattr(utt, "timestamp_start", None)
+            te = getattr(utt, "timestamp_end", None)
+            if uid is not None and ts is not None:
+                utterance_start_by_id[uid] = float(ts)
+                if te is not None:
+                    utterance_end_by_id[uid] = float(te)
+            if cid is not None and ts is not None:
+                cur_start = chunk_start_by_id.get(cid)
+                if cur_start is None or ts < cur_start:
+                    chunk_start_by_id[cid] = float(ts)
+                if te is not None:
+                    cur_end = chunk_end_by_id.get(cid)
+                    if cur_end is None or te > cur_end:
+                        chunk_end_by_id[cid] = float(te)
+    # Build thread_id -> (min_start, max_end) by walking level-1/2 nodes whose
+    # timestamps we can derive via chunk_ids. Higher-tier nodes (topic/theme/arc)
+    # have no chunk_ids of their own, but share thread_id with their chunks.
+    thread_start_by_id: Dict[Any, float] = {}
+    thread_end_by_id: Dict[Any, float] = {}
+    for node in nodes:
+        node_lvl = int(getattr(node, "level", 1) or 1)
+        if node_lvl > 2:
+            continue
+        cluster_info = node.cluster_info or {}
+        thread_id = cluster_info.get("thread_id") if isinstance(cluster_info, dict) else None
+        if not thread_id:
+            continue
+        # Reuse the chunk-lookup we just did.
+        starts = [chunk_start_by_id[cid] for cid in (node.chunk_ids or []) if cid in chunk_start_by_id]
+        ends = [chunk_end_by_id[cid] for cid in (node.chunk_ids or []) if cid in chunk_end_by_id]
+        if starts:
+            cur_s = thread_start_by_id.get(thread_id)
+            min_s = min(starts)
+            if cur_s is None or min_s < cur_s:
+                thread_start_by_id[thread_id] = min_s
+        if ends:
+            cur_e = thread_end_by_id.get(thread_id)
+            max_e = max(ends)
+            if cur_e is None or max_e > cur_e:
+                thread_end_by_id[thread_id] = max_e
+
     id_to_name = {node.id: node.node_name for node in nodes}
     edge_relations_by_id = {}
     for rel in relationships:
@@ -103,6 +162,57 @@ def build_graph_data_from_nodes(nodes, relationships) -> List[Dict[str, Any]]:
         _SEMANTIC_TYPE_BY_LEVEL = {
             1: "chunk", 2: "idea", 3: "topic", 4: "theme", 5: "arc",
         }
+        derived_start = None
+        derived_end = None
+        if node.timestamp_start is None:
+            # Try utterance_ids first (newer schema).
+            if utterance_start_by_id and node.utterance_ids:
+                starts = [
+                    utterance_start_by_id[uid]
+                    for uid in node.utterance_ids
+                    if uid in utterance_start_by_id
+                ]
+                ends = [
+                    utterance_end_by_id[uid]
+                    for uid in node.utterance_ids
+                    if uid in utterance_end_by_id
+                ]
+                if starts:
+                    derived_start = min(starts)
+                if ends:
+                    derived_end = max(ends)
+            # Fall back to chunk_ids -> utterances grouped by chunk_id.
+            if derived_start is None and chunk_start_by_id and node.chunk_ids:
+                chunk_starts = [
+                    chunk_start_by_id[cid]
+                    for cid in node.chunk_ids
+                    if cid in chunk_start_by_id
+                ]
+                chunk_ends = [
+                    chunk_end_by_id[cid]
+                    for cid in node.chunk_ids
+                    if cid in chunk_end_by_id
+                ]
+                if chunk_starts:
+                    derived_start = min(chunk_starts)
+                if chunk_ends:
+                    derived_end = max(chunk_ends)
+            # Topic/theme/arc nodes have no chunk_ids of their own. They share
+            # thread_id with their descendant chunks, which we've indexed above.
+            if derived_start is None:
+                ci = node.cluster_info or {}
+                tid = ci.get("thread_id") if isinstance(ci, dict) else None
+                if tid and tid in thread_start_by_id:
+                    derived_start = thread_start_by_id[tid]
+                    derived_end = thread_end_by_id.get(tid, derived_start)
+            # Final fallback: conversation-wide min/max. Mostly for arc nodes
+            # which synthesize the whole conversation and have no thread_id.
+            if derived_start is None and chunk_start_by_id:
+                derived_start = min(chunk_start_by_id.values())
+                if chunk_end_by_id:
+                    derived_end = max(chunk_end_by_id.values())
+        effective_start = node.timestamp_start if node.timestamp_start is not None else derived_start
+        effective_end = node.timestamp_end if node.timestamp_end is not None else derived_end
         node_data = {
             "id": str(node.id),
             "node_name": node.node_name,
@@ -128,8 +238,8 @@ def build_graph_data_from_nodes(nodes, relationships) -> List[Dict[str, Any]]:
             "thread_state": cluster_info.get("thread_state"),
             "edge_relations": edge_relations_by_id.get(node.id, display_preferences.get("edge_relations") or []),
             "speaker_id": (node.speaker_info or {}).get("primary_speaker") or None,
-            **({"timestamp_start": node.timestamp_start} if node.timestamp_start else {}),
-            **({"timestamp_end": node.timestamp_end} if node.timestamp_end else {}),
+            **({"timestamp_start": effective_start} if effective_start is not None else {}),
+            **({"timestamp_end": effective_end} if effective_end is not None else {}),
         }
         graph_data.append(node_data)
 
