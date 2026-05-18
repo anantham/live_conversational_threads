@@ -97,7 +97,14 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
         if nodes:
             # Preferred: use analyzed nodes from DB
             graph_data = build_graph_data_from_nodes(nodes, relationships, utterances=utterances)
-            chunk_dict = build_chunk_dict_from_utterances(utterances)
+            # Collect all node chunk_id UUIDs so the chunk_dict builder can
+            # seed live-STT fallback entries (utterances with chunk_id=NULL
+            # but nodes with real UUIDs — the live-recording case).
+            node_chunk_ids = []
+            for n in nodes:
+                if n.chunk_ids:
+                    node_chunk_ids.extend(n.chunk_ids)
+            chunk_dict = build_chunk_dict_from_utterances(utterances, node_chunk_ids=node_chunk_ids)
         else:
             # Fallback: read graph data + chunks from saved JSON file
             # Try gcs_path first, then convention-based local path
