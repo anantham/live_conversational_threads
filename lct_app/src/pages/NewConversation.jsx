@@ -785,13 +785,37 @@ export default function NewConversation() {
             {typeof window !== "undefined" &&
               !window.isSecureContext &&
               !window.location.hostname.match(/^(localhost|127\.0\.0\.1)$/) && (
-                <p className="mt-3 max-w-[22rem] text-[11px] text-amber-700 bg-amber-50/90 border border-amber-200 rounded-lg px-3 py-2 text-left">
-                  Microphone needs HTTPS or localhost. You're on{" "}
-                  <code className="font-mono text-[10px]">{window.location.host}</code> —
-                  recording will fail. On the dev box run{" "}
-                  <code className="font-mono text-[10px] block mt-1 px-1 py-0.5 bg-white rounded border border-amber-200">tailscale serve --bg {window.location.port || 43173}</code>{" "}
-                  then open the resulting <code className="font-mono text-[10px]">https://&lt;machine&gt;.&lt;tailnet&gt;.ts.net</code> URL.
-                </p>
+                <div className="mt-3 max-w-[22rem] text-amber-800 bg-amber-50/90 border border-amber-200 rounded-lg px-3 py-2.5 text-left">
+                  <p className="text-xs font-medium">
+                    Recording isn't available on this connection.
+                  </p>
+                  <p className="mt-1 text-[11px] text-amber-700">
+                    The browser needs a secure (https://) link to access the microphone.
+                    Please ask the admin running this server to enable HTTPS, then re-open
+                    the app on the new URL.
+                  </p>
+                  <details className="mt-2 text-[10px] text-amber-600/90">
+                    <summary className="cursor-pointer hover:text-amber-800 select-none">
+                      Admin: how to enable HTTPS
+                    </summary>
+                    <div className="mt-1.5 space-y-1">
+                      <p>
+                        On the server host, run Tailscale Serve to publish this dev port over an
+                        https tailnet URL:
+                      </p>
+                      <code className="font-mono text-[10px] block mt-1 px-1.5 py-1 bg-white rounded border border-amber-200 text-amber-900">
+                        tailscale serve --bg {window.location.port || 43173}
+                      </code>
+                      <p className="mt-1">
+                        Tailscale prints the resulting <code className="font-mono">https://…ts.net</code> URL.
+                        Share that with end users. Stop with <code className="font-mono">tailscale serve --https=443 off</code>.
+                      </p>
+                      <p className="mt-1 text-amber-600/80">
+                        Current host: <code className="font-mono">{window.location.host}</code>
+                      </p>
+                    </div>
+                  </details>
+                </div>
               )}
           </div>
         )}
