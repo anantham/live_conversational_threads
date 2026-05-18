@@ -98,5 +98,29 @@ export default function useAudioCapture({ onPCMFrame, onAudioLevel, onError }) {
     await cleanupNodes();
   }, [cleanupNodes]);
 
-  return { startCapture, stopCapture, cleanupNodes };
+  /**
+   * Soft pause: mute the MediaStream tracks so no audio frames reach the
+   * processor. The AudioContext, ScriptProcessor, MediaStream, and WS
+   * upstream all stay alive — resuming is instant and doesn't re-prompt
+   * for mic permission. Returns true on success, false if no active
+   * capture is running.
+   *
+   * Caveat: the backend transcripts WS has its own idle timeout; pauses
+   * longer than that drop the session. Caller should warn the user.
+   */
+  const pauseCapture = useCallback(() => {
+    const tracks = streamRef.current?.getTracks?.();
+    if (!tracks || tracks.length === 0) return false;
+    tracks.forEach((track) => { track.enabled = false; });
+    return true;
+  }, []);
+
+  const resumeCapture = useCallback(() => {
+    const tracks = streamRef.current?.getTracks?.();
+    if (!tracks || tracks.length === 0) return false;
+    tracks.forEach((track) => { track.enabled = true; });
+    return true;
+  }, []);
+
+  return { startCapture, stopCapture, cleanupNodes, pauseCapture, resumeCapture };
 }
