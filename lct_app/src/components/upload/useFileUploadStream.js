@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { API_BASE_URL, apiHeaders, invalidateApiCache } from "../../services/apiClient";
 import { useByok } from "../../contexts/byokContext";
+import { randomUUID } from "../../utils/uuid";
 
 // No cap — accumulate all transcript lines so users can scroll back
 // through the full conversation history during long uploads.
@@ -493,7 +494,7 @@ export default function useFileUploadStream({
     manualCancelRef.current = false;
     resetBuffered?.();
 
-    const nextConversationId = crypto.randomUUID();
+    const nextConversationId = randomUUID();
     setConversationId?.(nextConversationId);
     setFileName?.(file.name.replace(/\.[^.]+$/, ""));
     onDataReceived?.([]);

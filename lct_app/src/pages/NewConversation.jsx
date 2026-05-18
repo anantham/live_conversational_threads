@@ -25,6 +25,7 @@ import {
   downloadConversationDebugExport,
 } from "../components/audio/exportSessionDebug";
 import { deriveSuggestedConversationTitle } from "../utils/conversationTitle";
+import { randomUUID } from "../utils/uuid";
 import {
   applyChunkPatch,
   applyGraphPatch,
@@ -68,7 +69,7 @@ export default function NewConversation() {
   const [draftChunkDict, setDraftChunkDict] = useState({});
   const [message, setMessage] = useState("");
   const [fileName, setFileName] = useState("");
-  const [conversationId, setConversationId] = useState(() => crypto.randomUUID());
+  const [conversationId, setConversationId] = useState(() => randomUUID());
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
   const [liveTranscriptState, setLiveTranscriptState] = useState({
@@ -387,7 +388,7 @@ export default function NewConversation() {
     const draft = restoreAvailableDraft();
     if (!draft) return;
 
-    setConversationId(draft.conversationId || crypto.randomUUID());
+    setConversationId(draft.conversationId || randomUUID());
     setFileName(String(draft.fileName || "").trim());
     setMessage(
       String(draft.message || "").trim() || "Restored local draft from this browser."
@@ -408,7 +409,7 @@ export default function NewConversation() {
   }, [discardAvailableDraft]);
 
   const resetForNewConversation = useCallback(() => {
-    setConversationId(crypto.randomUUID());
+    setConversationId(randomUUID());
     setFileName("");
     setMessage("");
     setGraphData([]);
@@ -584,7 +585,7 @@ export default function NewConversation() {
         fileName: newName,
         chunkDict: draftChunks,
         graphData: draftGraphLayers,
-        conversationId: normalizedDraft.conversationId || crypto.randomUUID(),
+        conversationId: normalizedDraft.conversationId || randomUUID(),
       });
 
       if (!result.success) {
