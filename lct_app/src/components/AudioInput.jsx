@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Mic, ChevronDown, Square, Pause, Play } from "lucide-react";
+import { Mic, ChevronDown, Square } from "lucide-react";
 
 import { normalizeSttSettings } from "./audio/sttUtils";
 import LiveSessionHud from "./audio/LiveSessionHud";
@@ -114,7 +114,6 @@ const AudioInput = forwardRef(function AudioInput({
 }, ref) {
   const uploadCtx = useUpload();
   const [recording, setRecording] = useState(false);
-  const [paused, setPaused] = useState(false);
   const [providerSocketState, setProviderSocketState] = useState("idle");
   const [backendSocketState, setBackendSocketState] = useState("idle");
   const [liveTranscriptLines, setLiveTranscriptLines] = useState([]);
@@ -266,7 +265,7 @@ const AudioInput = forwardRef(function AudioInput({
   });
 
   // --- Capture hook ---
-  const { startCapture, stopCapture, pauseCapture, resumeCapture } = useAudioCapture({
+  const { startCapture, stopCapture } = useAudioCapture({
     onPCMFrame,
     onAudioLevel: handleAudioLevel,
     onError: () => {
@@ -430,35 +429,10 @@ const AudioInput = forwardRef(function AudioInput({
     await stopSession();
     resetSession();
     setRecording(false);
-    setPaused(false);
     setProviderSocketState("closed");
     setBackendSocketState("closed");
     sessionEndedAtRef.current = new Date().toISOString();
   }, [appendSessionEvent, conversationId, resetSession, stopCapture, stopSession]);
-
-  /**
-   * Soft pause: mutes the mic but keeps the AudioContext, WS upstream,
-   * and graph state intact. Backend WS has its own idle timeout — long
-   * pauses (>~5 min) may drop the session; the UI surfaces this caveat
-   * next to the Pause button.
-   */
-  const pauseRecording = useCallback(() => {
-    if (!recording || paused) return;
-    if (!pauseCapture()) return;
-    appendSessionEvent("session_paused", {
-      conversation_id: conversationId || null,
-    });
-    setPaused(true);
-  }, [appendSessionEvent, conversationId, pauseCapture, paused, recording]);
-
-  const resumeRecording = useCallback(() => {
-    if (!recording || !paused) return;
-    if (!resumeCapture()) return;
-    appendSessionEvent("session_resumed", {
-      conversation_id: conversationId || null,
-    });
-    setPaused(false);
-  }, [appendSessionEvent, conversationId, paused, recording, resumeCapture]);
 
   const getSessionDebugSnapshot = useCallback(() => ({
     recording,
@@ -498,10 +472,8 @@ const AudioInput = forwardRef(function AudioInput({
   useImperativeHandle(ref, () => ({
     startRecording,
     stopRecording,
-    pauseRecording,
-    resumeRecording,
     getSessionDebugSnapshot,
-  }), [getSessionDebugSnapshot, pauseRecording, resumeRecording, startRecording, stopRecording]);
+  }), [getSessionDebugSnapshot, startRecording, stopRecording]);
   const micRingScale = 1 + micLevel * 0.42;
   const micRingOpacity = recording
     ? Math.min(0.85, 0.2 + micLevel * 0.65)
@@ -531,39 +503,13 @@ const AudioInput = forwardRef(function AudioInput({
             />
           )}
           {recording ? <Square size={16} fill="currentColor" /> : <Mic size={18} />}
-          {recording && !paused && (
+          {recording && (
             <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-          )}
-          {recording && paused && (
-            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-amber-500 rounded-full" />
           )}
         </button>
         <span className="ml-2 text-xs font-medium text-slate-500 select-none">
-          {recording ? (paused ? "Paused" : "Stop Recording") : "Start Recording"}
+          {recording ? "Stop Recording" : "Start Recording"}
         </span>
-
-        {/* Pause / Resume — only visible while recording. Soft pause:
-            mutes the mic but keeps the WS session alive. Long pauses
-            (>~5 min) may drop the backend session per its idle timeout. */}
-        {recording && (
-          <button
-            type="button"
-            onClick={paused ? resumeRecording : pauseRecording}
-            className={`ml-2 flex items-center justify-center w-9 h-9 rounded-full transition-all duration-200 focus:outline-none ${
-              paused
-                ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                : "bg-amber-100 text-amber-700 hover:bg-amber-200"
-            }`}
-            aria-label={paused ? "Resume recording" : "Pause recording"}
-            title={
-              paused
-                ? "Resume — re-enables the mic"
-                : "Pause — mutes mic, keeps the session. Long breaks (>5 min) may drop the connection."
-            }
-          >
-            {paused ? <Play size={14} fill="currentColor" /> : <Pause size={14} fill="currentColor" />}
-          </button>
-        )}
 
         {/* Device picker chevron — only shown when not recording and multiple devices exist */}
         {!recording && micDevices.length > 1 && (
