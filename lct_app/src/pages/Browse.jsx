@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ImportCanvas from "../components/ImportCanvas";
-import { apiFetch, API_BASE_URL } from "../services/apiClient";
+import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
 
 function formatDuration(seconds) {
   if (!seconds) return null;
@@ -71,7 +71,10 @@ export default function Browse() {
   useEffect(() => {
     const fetchConversations = async () => {
       try {
-        const response = await apiFetch("/conversations/");
+        // 60s TTL — short enough that returning here after a new import
+        // (which busts the cache via invalidateApiCache) shows the new
+        // entry immediately, long enough that tab-switches feel instant.
+        const response = await apiFetchCached("/conversations/", { ttlMs: 60 * 1000 });
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.detail || `HTTP ${response.status}`);
