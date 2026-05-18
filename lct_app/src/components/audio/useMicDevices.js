@@ -20,6 +20,9 @@ export default function useMicDevices() {
 
   const refresh = useCallback(async () => {
     try {
+      // Same insecure-context gating as getUserMedia — bail quietly when
+      // navigator.mediaDevices is undefined (plain http on a LAN IP).
+      if (!navigator.mediaDevices?.enumerateDevices) return;
       const all = await navigator.mediaDevices.enumerateDevices();
       const audioInputs = all
         .filter((d) => d.kind === "audioinput")
