@@ -32,7 +32,7 @@ function ConversationNodeImpl({ data, selected }) {
     isBookmark = false,
     isContextualProgress = false,
     showSummary = true,
-    summaryMaxLength = 120,
+    summaryMaxLength = 220,
   } = data || {};
 
   // Single border shorthand only — combining `border` (shorthand) with
@@ -58,8 +58,10 @@ function ConversationNodeImpl({ data, selected }) {
     transition: "transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease",
     opacity: isDraft ? 0.7 : 1,
     whiteSpace: "normal",
-    maxWidth: "240px",
-    minWidth: "120px",
+    // Grow with viewport on phones (90vw) but cap at 360px on tablets+.
+    // Old 240px cap chopped 60-char theme titles mid-word.
+    maxWidth: "min(90vw, 360px)",
+    minWidth: "180px",
     wordBreak: "break-word",
     transform: isTangent ? "rotate(8deg)" : undefined,
     boxShadow: isCrux
