@@ -245,6 +245,25 @@ async def run_bulk_processing_worker(
                                 "conversation %s (%d nodes, %d/%d chunks). Skipping STT+LLM.",
                                 filename, prior_conv, prior_node_count, completed, total,
                             )
+                            # Backfill path: cache hits land here whenever the
+                            # user re-imports a file. If the prior import
+                            # predates the source-audio-persistence fix, the
+                            # audio file is missing from recordings/. Copy it
+                            # now so the download/seek paths start working
+                            # without re-running STT.
+                            persisted_audio_path = None
+                            try:
+                                from lct_python_backend.stt_api import audio_storage
+                                existing = audio_storage.get_status(prior_conv)
+                                if not existing.get("has_source"):
+                                    persisted_audio_path = audio_storage.persist_source_audio(
+                                        prior_conv, temp_path, Path(temp_path).suffix.lower()
+                                    )
+                            except Exception as audio_exc:  # noqa: BLE001
+                                logger.warning(
+                                    "[PROCESS FILE] cache-hit audio backfill failed for %s: %s",
+                                    prior_conv, audio_exc,
+                                )
                             await emit("status", {
                                 "stage": "done",
                                 "progress": 1.0,
@@ -257,6 +276,7 @@ async def run_bulk_processing_worker(
                                     "cached_node_count": prior_node_count,
                                     "cached_completed_chunks": completed,
                                     "cached_total_chunks": total,
+                                    "source_audio_backfilled": str(persisted_audio_path) if persisted_audio_path else None,
                                 },
                             })
                             return
@@ -1282,6 +1302,24 @@ async def run_bulk_processing_worker(
             )
             logger.info("[PROCESS FILE] Persisted %d nodes to DB for %s", persisted_count, resolved_conversation_id)
             telemetry["graph_persisted_nodes"] = persisted_count
+
+            # Copy the source upload into recordings/ so the audio endpoint
+            # can serve it after the temp file is cleaned up.
+            if final_source_type == "audio":
+                try:
+                    from lct_python_backend.stt_api import audio_storage
+                    suffix = Path(temp_path).suffix.lower()
+                    dest = audio_storage.persist_source_audio(
+                        resolved_conversation_id, temp_path, suffix
+                    )
+                    if dest:
+                        telemetry["source_audio_persisted"] = str(dest)
+                except Exception as audio_exc:  # noqa: BLE001
+                    logger.warning(
+                        "[PROCESS FILE] source audio persist failed for %s: %s",
+                        resolved_conversation_id, audio_exc,
+                    )
+                    telemetry["source_audio_persist_error"] = str(audio_exc)
 
             # Clear checkpoint after successful persistence — the work is saved
             if file_hash:

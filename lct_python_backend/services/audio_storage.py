@@ -63,6 +63,37 @@ class AudioStorageManager:
             except Exception as exc:
                 logger.exception("[AUDIO STORAGE] conversation=%s FAILED to append chunk: %s", conversation_id, exc)
 
+    # Source-import formats kept alongside live-recorded wav/flac.
+    # Priority order: prefer wav/flac (lossless) then m4a/mp3/etc.
+    SOURCE_AUDIO_SUFFIXES = (".wav", ".flac", ".m4a", ".mp3", ".ogg", ".aac", ".webm", ".mp4")
+
+    def _find_source_audio(self, conversation_id: str) -> Optional[Path]:
+        """Return the first existing audio file for this conversation across
+        the known source suffixes (live wav/flac and source-imported formats)."""
+        for suffix in self.SOURCE_AUDIO_SUFFIXES:
+            candidate = self.recordings_dir / f"{conversation_id}{suffix}"
+            if candidate.exists():
+                return candidate
+        return None
+
+    def persist_source_audio(self, conversation_id: str, temp_path: str, suffix: str) -> Optional[Path]:
+        """Copy an imported audio file into recordings/ so the audio endpoint
+        can serve it. Called after a successful import. Suffix is taken from
+        the original upload filename (e.g. .m4a, .mp3). Returns the destination
+        path on success, None if the suffix isn't an audio format we recognize.
+        """
+        normalized_suffix = suffix.lower() if suffix else ""
+        if normalized_suffix not in self.SOURCE_AUDIO_SUFFIXES:
+            return None
+        dest = self.recordings_dir / f"{conversation_id}{normalized_suffix}"
+        try:
+            shutil.copy2(temp_path, dest)
+            logger.info("[AUDIO STORAGE] persisted source audio for %s -> %s", conversation_id, dest)
+            return dest
+        except OSError as exc:
+            logger.warning("[AUDIO STORAGE] persist_source_audio failed for %s: %s", conversation_id, exc)
+            return None
+
     def get_status(self, conversation_id: str) -> Dict[str, Optional[object]]:
         pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
         wav_path = self.recordings_dir / f"{conversation_id}.wav"
@@ -73,13 +104,17 @@ class AudioStorageManager:
                 bytes_written = pcm_path.stat().st_size
             except OSError:
                 bytes_written = 0
+        source_path = self._find_source_audio(conversation_id)
         return {
             "pcm_path": str(pcm_path) if pcm_path.exists() else None,
             "wav_path": str(wav_path) if wav_path.exists() else None,
             "flac_path": str(flac_path) if flac_path.exists() else None,
+            "source_path": str(source_path) if source_path else None,
+            "source_suffix": source_path.suffix.lower() if source_path else None,
             "has_pcm": pcm_path.exists(),
             "has_wav": wav_path.exists(),
             "has_flac": flac_path.exists(),
+            "has_source": source_path is not None,
             "bytes_written": bytes_written,
         }
 

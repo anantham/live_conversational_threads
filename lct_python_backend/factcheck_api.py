@@ -119,20 +119,26 @@ async def download_audio(
     except Exception:
         pass  # Use UUID fallback
 
-    wav_filename = f"{display_name}.wav"
-    flac_filename = f"{display_name}.flac"
-
-    wav_path = Path(AUDIO_RECORDINGS_DIR) / f"{conversation_id}.wav"
-    flac_path = Path(AUDIO_RECORDINGS_DIR) / f"{conversation_id}.flac"
-
     recordings_root = Path(AUDIO_RECORDINGS_DIR).resolve()
-    if not wav_path.resolve().is_relative_to(recordings_root):
-        raise HTTPException(status_code=400, detail="Invalid conversation_id format")
 
-    if wav_path.exists():
-        return FileResponse(wav_path, media_type="audio/wav", filename=wav_filename)
-    if flac_path.exists():
-        return FileResponse(flac_path, media_type="audio/flac", filename=flac_filename)
+    # Priority order: prefer the highest-fidelity format we have. Live STT
+    # writes wav/flac; imports preserve the original upload suffix.
+    _AUDIO_MEDIA_TYPES = {
+        ".wav": "audio/wav",
+        ".flac": "audio/flac",
+        ".m4a": "audio/mp4",
+        ".mp3": "audio/mpeg",
+        ".ogg": "audio/ogg",
+        ".aac": "audio/aac",
+        ".webm": "audio/webm",
+        ".mp4": "audio/mp4",
+    }
+    for suffix, media_type in _AUDIO_MEDIA_TYPES.items():
+        candidate = Path(AUDIO_RECORDINGS_DIR) / f"{conversation_id}{suffix}"
+        if not candidate.resolve().is_relative_to(recordings_root):
+            raise HTTPException(status_code=400, detail="Invalid conversation_id format")
+        if candidate.exists():
+            return FileResponse(candidate, media_type=media_type, filename=f"{display_name}{suffix}")
 
     raise HTTPException(status_code=404, detail="Recording not found")
 
