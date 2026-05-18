@@ -339,6 +339,7 @@ async def persist_graph(
     source_type: Optional[str] = None,
     owner_id: str = "default_user",
     source_metadata: Optional[Dict[str, Any]] = None,
+    utterance_chunk_map: Optional[Dict[str, List[str]]] = None,
 ) -> int:
     """
     Persist LLM-generated graph nodes and relationships to DB. Mode-agnostic:
@@ -448,6 +449,28 @@ async def persist_graph(
     # this, every node gets speaker_info=null even though the STT was diarized.
     speaker_info_by_id = _compute_speaker_rollup(node_records, ref_to_id)
 
+    # Option B: normalize the live-path utterance map (chunk_id -> [utt_id...])
+    # into UUID objects up front so we can both (a) UPDATE utterances rows
+    # below and (b) backfill node.utterance_ids when the LLM didn't author
+    # any. Bulk-import path passes None here (utterances carry chunk_id on
+    # the row directly via the ``utterances`` kwarg).
+    parsed_utterance_chunk_map: Dict[uuid.UUID, List[uuid.UUID]] = {}
+    if utterance_chunk_map:
+        for raw_chunk, raw_utt_ids in utterance_chunk_map.items():
+            chunk_uuid = _coerce_uuid(raw_chunk)
+            if chunk_uuid is None:
+                continue
+            seen_local: set = set()
+            normalized_utts: List[uuid.UUID] = []
+            for raw_utt in (raw_utt_ids or []):
+                parsed_utt = _coerce_uuid(raw_utt)
+                if parsed_utt is None or parsed_utt in seen_local:
+                    continue
+                seen_local.add(parsed_utt)
+                normalized_utts.append(parsed_utt)
+            if normalized_utts:
+                parsed_utterance_chunk_map[chunk_uuid] = normalized_utts
+
     if conv and conversation_name:
         clean_conversation_name = coerce_str(conversation_name)
         if clean_conversation_name:
@@ -458,6 +481,17 @@ async def persist_graph(
     # Step 2: Write Node rows
     for node_id, item in node_records:
         chunk_id = item.get("chunk_id")
+        # Option B: if the LLM didn't author utterance_ids for this node but
+        # the chunk_utterance_map names some, inherit them. The live path
+        # populates utterance_ids on each emitted node via the processor, so
+        # this fallback mostly covers test/legacy paths that pass utterance
+        # links out-of-band rather than embedded.
+        if not item.get("utterance_ids") and chunk_id and parsed_utterance_chunk_map:
+            chunk_uuid_for_node = _coerce_uuid(chunk_id)
+            if chunk_uuid_for_node and chunk_uuid_for_node in parsed_utterance_chunk_map:
+                item["utterance_ids"] = [
+                    str(uid) for uid in parsed_utterance_chunk_map[chunk_uuid_for_node]
+                ]
         node_type = (
             "bookmark" if item.get("is_bookmark")
             else "contextual_progress" if item.get("is_contextual_progress")
@@ -613,6 +647,26 @@ async def persist_graph(
                 )
             )
 
+    # Option B: backfill utterances.chunk_id from the live-path mapping.
+    # This is what makes the audio-seek-per-node feature work for live
+    # conversations: per-node timestamp lookup walks utterances -> chunk_id.
+    # We do this AFTER node writes (so any chunk_id we set is referentially
+    # consistent with the freshly persisted Node rows) but BEFORE the
+    # conversation aggregate counts since those don't depend on it.
+    if parsed_utterance_chunk_map:
+        from sqlalchemy import update as sa_update
+        for chunk_uuid, utt_uuids in parsed_utterance_chunk_map.items():
+            if not utt_uuids:
+                continue
+            await db.execute(
+                sa_update(DBUtterance)
+                .where(
+                    DBUtterance.conversation_id == conv_uuid,
+                    DBUtterance.id.in_(utt_uuids),
+                )
+                .values(chunk_id=chunk_uuid)
+            )
+
     # Step 4: Update conversation aggregate counts
     conv.total_nodes = len(node_records)
     if utterances is not None:
@@ -720,6 +774,7 @@ async def persist_live_graph_snapshot(
     existing_json: List[Dict[str, Any]],
     metadata: Optional[Dict[str, Any]] = None,
     source_type: str = "live_audio",
+    utterance_chunk_map: Optional[Dict[str, List[str]]] = None,
 ) -> int:
     """Persist the current best semantic graph for a live websocket session.
 
@@ -731,6 +786,12 @@ async def persist_live_graph_snapshot(
     This path is intentionally backend-owned per ADR-019 / ADR-030 §P7 so
     headless replays and live websocket sessions produce durable graph state
     even when no browser autosave fires.
+
+    ``utterance_chunk_map`` (Option B) carries the chunk_id -> [utterance_id]
+    links accumulated by ``TranscriptProcessor`` during live streaming so the
+    underlying ``persist_graph`` call can backfill ``utterances.chunk_id``
+    on existing rows. Bulk-import path doesn't supply this — utterances
+    written by that path already carry chunk_id directly.
     """
     # Lazy import — see top-of-module note for why this is not at module level.
     from lct_python_backend.db_session import get_async_session_context
@@ -752,6 +813,7 @@ async def persist_live_graph_snapshot(
             conversation_name=extract_conversation_name(metadata),
             source_type=source_type,
             source_metadata=metadata or {},
+            utterance_chunk_map=utterance_chunk_map,
         )
     logger.info(
         "[GRAPH PERSIST] conversation=%s nodes=%s source_type=%s latency_ms=%.2f",

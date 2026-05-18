@@ -34,6 +34,7 @@ class _ProcessorLike(Protocol):
         self,
         final_text: str,
         speaker_segments: list = ...,
+        utterance_id: Any = ...,
     ) -> None: ...
 
     existing_json: List[dict]
