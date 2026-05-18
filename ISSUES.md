@@ -1,6 +1,19 @@
 # ISSUES
 
-Last updated: 2026-05-07
+Last updated: 2026-05-18
+
+## Consumption-prayer feature follow-ups (2026-05-18)
+
+The manual-trigger consumption-prayer feature (chip + drawer + selection toolbar in `NewConversation.jsx`, talking to IndrasNet via the proxy in `lct_python_backend/consumption_prayer_api.py`) shipped this session. Backend tested (93 unit tests pass). What's pending:
+
+- **Frontend not browser-verified yet.** Components are syntactically clean and follow existing LCT React conventions (JSX + Tailwind + PropTypes), but the live render in `npm run dev` hasn't been smoke-tested. Risks: selection-rect positioning under specific viewport widths, drawer animation timing with the existing `animate-slideIn`, chip z-index against other floating overlays, contact picker dropdown overflow on narrow screens. Recommended next step: bring up dev server, open `/new`, drag-select a sentence, walk through chip → drawer round-trip.
+- **Auto-detect path deferred (task #17).** `agenda_query_detector.py` (51 tests, name-grounded watch list + 56 phrase substrings) is built but NOT wired into `stt_live_runtime`. Today only the manual selection-toolbar trigger fires lookups. Auto path requires: session-registry to push WS events from an HTTP-initiated lookup, OR routing the detector's HTTP call through the same response-return path the manual endpoint uses. Picking the shape is the open question.
+- **WS event emission (task #5) + WS handler in NewConversation (task #8) deferred.** Manual MVP uses HTTP response → state update; no WS push needed. These re-open only when auto-detect lands.
+- **Session-start contact picker (task #18) deferred.** The selection toolbar has its own per-selection picker with smart defaults (selection-mentioned names bump to top), so a session-level picker is optional UX rather than required wiring.
+- **ADR not yet written (task #9).** The consumption-prayer design — production/consumption distinction, prayer-type slot architecture for the toolbar, manual-first MVP rationale, HTTP-vs-WS choice — lives in commit message bodies and session memory entries. Promote to a proper ADR when the design has weathered some real use.
+- **`lct_python_backend/services/consumption_trigger.py` + tests stay uncommitted on disk** — the implicit-detection LLM gate (41 tests, all pass) was mothballed when the user picked explicit-verbal-trigger as MVP. Lives alongside committed code so it's available to revive without re-deriving. Should stay uncommitted unless/until the implicit path becomes interesting again.
+
+Operational note: deployed IndrasNet flapped under sustained load this session (the populate-contact-paths script triggered ~150+ rapid `POST /api/contacts/{id}` calls; the server started returning timeouts after ~50). Retry logic in `scripts/populate_contact_note_paths.py` handles it but suggests IndrasNet has a request-handling bottleneck that's worth investigating from their side — not blocking us.
 
 ## Deployment Security Follow-ups (2026-05-07)
 - Docker build context can include local secrets because the repo currently has no `.dockerignore`, while `Dockerfile` copies `lct_app/` and `lct_python_backend/` into build stages. Impact: local `.env` files or other ignored-but-present credentials can be baked into an image or exposed to the Docker daemon during build; blocker status: deployment-blocking for public/server use. Recommended next step: add a restrictive `.dockerignore` that excludes `.env*`, local caches, virtualenvs, `node_modules`, `.tmp`, test artifacts, logs, and other non-source files before building deploy images.
