@@ -148,7 +148,11 @@ export default function Browse() {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                    {/* Metadata row wraps on narrow widths so the 4
+                        items (date | duration | nodes | utterances) don't
+                        push the inline Audio/Delete actions off-screen on
+                        mobile. */}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs text-gray-400">
                       <span>{formatRelativeDate(conv.started_at || conv.created_at)}</span>
                       {duration && (
                         <>
@@ -165,7 +169,7 @@ export default function Browse() {
                       {conv.total_utterances > 0 && (
                         <>
                           <span className="text-gray-200">|</span>
-                          <span>{conv.total_utterances} utterances</span>
+                          <span>{conv.total_utterances} utt.</span>
                         </>
                       )}
                     </div>
