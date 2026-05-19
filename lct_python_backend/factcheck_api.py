@@ -80,12 +80,81 @@ def _slugify(text: str, max_len: int = 50) -> str:
 
 
 def _sanitize_conversation_name(name: Optional[str], conversation_id: str) -> str:
-    """Create a safe filename from conversation name, fallback to UUID."""
+    """Create a safe filename from conversation name, fallback to UUID.
+
+    Format: ``{slug} ({uuid8})``. The slug-first ordering matters — file
+    managers sort alphabetically by default, so users browsing their
+    Downloads folder see meaningful titles, not hash dumps. The short UUID
+    tail disambiguates when two conversations share a name.
+    """
     if name:
-        slug = _slugify(name, max_len=40)
+        slug = _slugify(name, max_len=50)
         if slug:
-            return f"{conversation_id}_{slug}"
+            short_id = conversation_id[:8] if conversation_id else ""
+            return f"{slug} ({short_id})" if short_id else slug
     return conversation_id
+
+
+def _format_duration_short(seconds: Optional[float]) -> str:
+    """Render duration as Hh Mm Ss / Mm Ss / Ss for filenames."""
+    if not seconds or seconds <= 0:
+        return ""
+    total = int(round(float(seconds)))
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours}h{minutes:02d}m{secs:02d}s"
+    if minutes:
+        return f"{minutes}m{secs:02d}s"
+    return f"{secs}s"
+
+
+def _build_audio_filename(
+    conversation,
+    conversation_id: str,
+    suffix: str,
+) -> str:
+    """Build a human-readable download filename for a conversation's audio.
+
+    Format: ``{name} ({YYYY-MM-DD}, {duration}, {N spk}) ({uuid8}){.ext}``.
+    Pieces only appear when their metadata is present, so a barely-tagged
+    conversation just gets the slug + short-id.
+    """
+    name = getattr(conversation, "conversation_name", None) or ""
+    slug_with_id = _sanitize_conversation_name(name, conversation_id)
+
+    parts = []
+    started_at = getattr(conversation, "started_at", None)
+    if started_at is not None:
+        try:
+            parts.append(started_at.strftime("%Y-%m-%d"))
+        except Exception:  # noqa: BLE001
+            pass
+
+    duration_str = _format_duration_short(getattr(conversation, "duration_seconds", None))
+    if duration_str:
+        parts.append(duration_str)
+
+    participant_count = getattr(conversation, "participant_count", None) or 0
+    if participant_count > 0:
+        parts.append(f"{int(participant_count)} spk")
+
+    suffix = suffix if suffix.startswith(".") else f".{suffix}"
+    if not parts:
+        return f"{slug_with_id}{suffix}"
+
+    # Pull the short_id off the end of slug_with_id so it lands AFTER the
+    # parens block — final shape: "Name (date, dur, spk) (uuid8).wav".
+    name_part = slug_with_id
+    short_id_tail = ""
+    if slug_with_id.endswith(")") and "(" in slug_with_id:
+        last_open = slug_with_id.rfind("(")
+        candidate = slug_with_id[last_open:].strip("()")
+        if len(candidate) <= 12:  # short_id is 8 chars
+            name_part = slug_with_id[:last_open].rstrip()
+            short_id_tail = f" ({candidate})"
+
+    return f"{name_part} ({', '.join(parts)}){short_id_tail}{suffix}"
 
 
 @router.get("/api/conversations/{conversation_id}/audio")
@@ -100,24 +169,23 @@ async def download_audio(
     if not _SAFE_CONVERSATION_ID.match(conversation_id):
         raise HTTPException(status_code=400, detail="Invalid conversation_id format")
 
-    # Try to get conversation name for human-readable filename
-    display_name = conversation_id
+    # Pull the conversation row so we can build a human-readable filename
+    # (slug + date + duration + speaker count). Falls back to the UUID
+    # alone if the row can't be fetched — never blocks the download.
+    conversation_row = None
     try:
-        # conversation_id can be UUID string or UUID object
         try:
             conv_uuid = uuid.UUID(conversation_id)
         except ValueError:
             conv_uuid = None
-        
+
         if conv_uuid:
             result = await db.execute(
-                select(Conversation.conversation_name).where(Conversation.id == conv_uuid)
+                select(Conversation).where(Conversation.id == conv_uuid)
             )
-            row = result.scalar_one_or_none()
-            if row:
-                display_name = _sanitize_conversation_name(row, conversation_id)
+            conversation_row = result.scalar_one_or_none()
     except Exception:
-        pass  # Use UUID fallback
+        pass  # filename falls back to UUID
 
     recordings_root = Path(AUDIO_RECORDINGS_DIR).resolve()
 
@@ -138,7 +206,8 @@ async def download_audio(
         if not candidate.resolve().is_relative_to(recordings_root):
             raise HTTPException(status_code=400, detail="Invalid conversation_id format")
         if candidate.exists():
-            return FileResponse(candidate, media_type=media_type, filename=f"{display_name}{suffix}")
+            filename = _build_audio_filename(conversation_row, conversation_id, suffix)
+            return FileResponse(candidate, media_type=media_type, filename=filename)
 
     raise HTTPException(status_code=404, detail="Recording not found")
 

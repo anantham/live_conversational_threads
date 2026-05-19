@@ -319,8 +319,17 @@ export default function ViewConversation() {
       </header>
 
       {executiveSummary && summaryExpanded && (
-        <div className="shrink-0 border-b border-slate-200 bg-white/70 px-6 py-3 text-xs leading-relaxed text-slate-600 backdrop-blur">
+        <div className="relative shrink-0 border-b border-slate-200 bg-white/70 px-6 py-3 pr-10 text-xs leading-relaxed text-slate-600 backdrop-blur">
           {executiveSummary}
+          <button
+            type="button"
+            onClick={() => setSummaryExpanded(false)}
+            className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-full text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
+            title="Hide summary"
+            aria-label="Hide executive summary"
+          >
+            <span className="text-base leading-none">×</span>
+          </button>
         </div>
       )}
 
