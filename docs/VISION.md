@@ -252,3 +252,96 @@ across conversations and platforms.
 - `docs/PRODUCT_VISION.md`
 - `docs/adr/ADR-009-local-llm-defaults.md`
 - `docs/adr/ADR-010-minimal-conversation-schema-and-pause-resume.md`
+
+---
+
+## Addendum — Argument Visualization and Active Learning (2026-05-19)
+
+This addendum captures the structural directions surfaced during the May 2026 design discussion that produced ADR-032 (temporal swim-lane + semantic edge taxonomy + enrichment context). These are spirit-level commitments — ADRs implement specifics, this section preserves *why*.
+
+### Argument scaffolding as the visualization primitive
+
+A conversation is not a stream of words — it is a structure of claims supporting (or undermining) other claims. The most informative thing the canvas can show is **how an argument was built**: which earlier nodes set up the groundwork, which later node was the payoff, where the scaffold broke down.
+
+User formulation: *"narratives, linear ones as castles, people say A, B, C all to set the groundwork to make a point X."*
+
+The semantic edges (supports, implies, clarifies, rebuts, etc.) are the structural primitives. The argument-scaffold-trace interaction (click X, walk ancestors) is the first viewing affordance. Temporal flow already lives in spatial positioning (X = timestamp_start); we don't need temporal edges cluttering the view.
+
+### Structural integrity as the future evaluation layer
+
+Beyond rendering arguments, the system should eventually be able to evaluate them. Per-arc questions like:
+- How many of this arc's claims are supported by evidence elsewhere in the conversation?
+- How many contradictions never get resolved?
+- Which questions were asked but never answered?
+- Which assumptions remained unstated?
+
+This isn't truth arbitration — it's structural quality. It surfaces gaps in reasoning, not verdicts on rightness. **Deferred to a future ADR** (currently flagged as ADR-036). Required pre-requisite: reliable semantic edges from ADR-032's enrichment pipeline.
+
+The product framing: LCT helps you *see your own reasoning* clearly enough to improve it. Not to replace your judgment with the system's.
+
+### Active learning loops as the compounding mechanism
+
+The system should get better the more it's used, without retraining model weights. Three loops:
+
+1. **Voice identity loop** (ADR-033 future). Every user correction of speaker labels is a labeled training sample. Voice embeddings propagate corrections to similar utterances. The system converges on accurate speaker ID per contact over time.
+
+2. **IndrasNet retrieval loop** (ADR-032 Part E + future feedback). Every LCT enrichment call queries IndrasNet's `/api/retrieval/search`. Confirmed-as-helpful retrievals get written into the IndrasNet trail_index and Obsidian vault. The corpus literally amends itself. **LCT becomes the first heavy consumer that activates this dormant loop.** Feedback signals — passive (did the user keep the enriched output?) and active (did they correct an edge?) — feed back to IndrasNet.
+
+3. **Argument-quality loop** (ADR-036 future). User correcting or accepting auto-generated edges accumulates ground truth for what good vs bad edge classifications look like. Future enrichment passes use this as in-context examples.
+
+None of these require gradient descent. All of them require *persistence of evidence* (raw source_excerpt, word_timings, correction events, retrieval traces) and *intelligence applied at query time*. This is the autostructures commitment.
+
+### The autostructures commitment
+
+**Persist raw evidence. Apply intelligence at query time.**
+
+What this means concretely:
+- `source_excerpt` is persisted on every Node, not just held in LLM output and discarded.
+- `word_timings` is persisted per Utterance, not regenerated.
+- `speaker_correction_events` log captures every rename with timestamp + window + source.
+- IndrasNet retrieval results are cached but not pre-aggregated — the LLM re-ranks at query time.
+- The hierarchy LLM consolidates at session end, but re-consolidation is cheap and re-runnable.
+
+Why: changing taxonomies, evolving LLM capabilities, and shifts in product priorities all happen faster than we can predict. Precomputed structure that locks us into yesterday's choices is fragile. Raw evidence with LLM interpretation is durable.
+
+User formulation: *"local intelligence on edge, we can query and do more interesting stuff now that we have LLMs. Don't get stuck in old school ways of precomputing."*
+
+### External resources as future first-class nodes
+
+Today every node is a conversational element (chunk, idea, topic, theme, arc). Tomorrow, when a conversation references an article, a book, an anime episode, a Slack thread — those references should become nodes in the graph with edges pointing at the conversational chunks that mentioned them.
+
+This unlocks cross-conversation argument tracing ("every time we've discussed that paper"), retrospective context-building ("what did Bob say about live theory last month"), and the kind of personal knowledge graph that makes LCT a memory tool, not just a transcription tool.
+
+Pre-requisite — ADR-032 Part G's "don't preclude" rule: `Node.node_type` is free-text; swim-lane code handles nodes without `thread_id` or `timestamp_start`. We don't build this in v1, but we don't break it either.
+
+### Streaming animation as cognitive respect
+
+When the canvas changes — new node appears, edge is drawn, tier auto-promotes — the change must be *calm*. No sudden whiplash. No camera jumps. Stagger, fade, ease.
+
+User formulation: *"slow stable calm... I do not want sudden whiplash."*
+
+Why: the user is in flow during a recording. The canvas is showing the structure of their thinking. Disorienting transitions interrupt cognition. Animation budgets (ADR-032 Part I) treat the canvas as a thinking partner that gestures softly, not a dashboard that demands attention.
+
+### Telemetry-first development
+
+For any pipeline change that touches latency or token cost: **measure before optimizing**. Don't presume slowness; ship with telemetry and tune from data.
+
+User formulation: *"we must have telemetry so we know what and where the latency hits are coming from. Let's build and see rather than presume performance issues."*
+
+This is a development-process commitment as much as a product one. ADR-032 Part J specifies what's measured. Future ADRs adopt the same default.
+
+### What this addendum does NOT commit to
+
+These are explicit *future* directions, not v1 promises:
+
+- Voice identity that learns globally (today: ±5 min local relabel only)
+- Structural-integrity scoring view
+- External resource nodes + cross-conversation edges
+- Manual edge editing UI
+- Edge confidence display
+- Mobile-optimized layouts
+- IndrasNet feedback channel for active learning
+- Argument-quality coaching during live conversations
+
+Each will land via its own ADR when the time comes. This addendum just preserves the spirit so future contributors (human or AI) know what we're aiming at.
+
