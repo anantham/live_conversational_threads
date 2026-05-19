@@ -247,6 +247,7 @@ const ALLOWED_DRAFT_KEYS = Object.freeze(new Set([
   'dismissed_unlock_affordances',
   'active_tab',
   'active_color_mode',
+  'show_temporal_edges',  // ADR-032 Part C — per-conversation toggle
   'local_draft_text',
   'pinned_node_ids',
 ]));

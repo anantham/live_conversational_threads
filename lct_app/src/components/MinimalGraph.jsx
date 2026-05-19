@@ -3,7 +3,13 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import ReactFlow, { useReactFlow, ReactFlowProvider, applyNodeChanges } from "reactflow";
 import "reactflow/dist/style.css";
-import { EDGE_COLORS, buildSpeakerColorMap, buildTemporalColorMap } from "./graphConstants";
+import {
+  EDGE_COLORS,
+  EDGE_CATEGORY_STYLES,
+  categorizeEdgeRelation,
+  buildSpeakerColorMap,
+  buildTemporalColorMap,
+} from "./graphConstants";
 import {
   ZOOM_LEVEL_1,
   ZOOM_LEVEL_2,
@@ -53,6 +59,7 @@ function MinimalGraphInner({
   onVisibleLevelChange,
   conversationId,
   initialColorMode,
+  initialShowTemporalEdges,
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
@@ -68,6 +75,23 @@ function MinimalGraphInner({
   // Each click on a non-leaf node pushes one entry; the visible nodes
   // become the parent's children_ids at level-1.
   const [drilldownPath, setDrilldownPath] = useState([]);
+  // ADR-032 Part C: temporal edges hidden by default. Toggle persists
+  // per-conversation via saveConversationDraft (same channel as color
+  // mode). Initial value comes from the conversation's stored preference.
+  const [showTemporalEdges, setShowTemporalEdges] = useState(
+    Boolean(initialShowTemporalEdges)
+  );
+  const handleShowTemporalEdgesChange = useCallback(
+    (next) => {
+      setShowTemporalEdges(next);
+      if (conversationId) {
+        saveConversationDraft(conversationId, { show_temporal_edges: next }).catch(
+          (err) => console.warn("[MinimalGraph] temporal-edges persist failed:", err)
+        );
+      }
+    },
+    [conversationId]
+  );
   // ADR-030 §D4: color mode (tier | speaker | temporal). Default: tier.
   // Persisted per conversation via saveConversationDraft when conversationId is provided.
   const [colorMode, setColorMode] = useState(
@@ -218,20 +242,33 @@ function MinimalGraphInner({
     const nodeById = new Map(sourceNodes.map((node) => [node.id, node]));
 
     sourceNodes.forEach((item) => {
-      // Temporal edges
-      if (item.successor) {
+      // ADR-032 Part C: temporal edges are persisted in the data model
+      // but hidden by default. Spatial X-position already encodes time
+      // via the swim-lane layout (`timeBased: true`); rendering temporal
+      // arrows on top would be visual noise. Reveal them only when the
+      // per-conversation toggle is on (showTemporalEdges, default false).
+      if (item.successor && showTemporalEdges) {
         const target = nodeById.get(item.successor);
         if (target) {
+          const tempStyle = EDGE_CATEGORY_STYLES.temporal;
           edges.push({
             id: `t-${item.id}-${target.id}`,
             source: item.id,
             target: target.id,
             type: "smoothstep",
-            style: { stroke: EDGE_COLORS.temporal_next, strokeWidth: 1, opacity: 0.4 },
-            markerEnd: { type: "arrowclosed", width: 6, height: 6, color: EDGE_COLORS.temporal_next },
+            style: {
+              stroke: tempStyle.stroke,
+              strokeWidth: tempStyle.strokeWidth,
+              strokeDasharray: tempStyle.strokeDasharray,
+              opacity: 0.5,
+            },
+            markerEnd: tempStyle.markerEnd
+              ? { type: "arrowclosed", width: 6, height: 6, color: tempStyle.stroke }
+              : undefined,
             data: {
               relationType: "temporal_next",
               relationText: "",
+              category: "temporal",
               sourceLabel: item.node_name,
               targetLabel: target.node_name,
             },
@@ -254,7 +291,13 @@ function MinimalGraphInner({
           });
         if (!related) return;
         const relType = rel.relation_type || "contextual";
-        const color = EDGE_COLORS[relType] || EDGE_COLORS.contextual;
+        // ADR-032 Part C: categorize the free-text relation_type and
+        // apply the category's style. Suppresses temporal edges here
+        // (already handled by the dedicated successor block above);
+        // the toggle still applies.
+        const category = categorizeEdgeRelation(relType);
+        if (category === "temporal" && !showTemporalEdges) return;
+        const catStyle = EDGE_CATEGORY_STYLES[category] || EDGE_CATEGORY_STYLES.other;
         const isConnectedToSelected = selectedNode === item.id || selectedNode === related.id;
 
         const edgeLabel = relType && relType !== "contextual"
@@ -270,7 +313,10 @@ function MinimalGraphInner({
           id: edgeId,
           source: related.id,
           target: item.id,
-          animated: !reduceMotion && relType !== "supports" && relType !== "temporal_next",
+          // Only "soft" relation types animate (asks/clarifies). Solid
+          // logical edges (supports/rebuts/implies) stay static — they're
+          // structural claims, not transient signals.
+          animated: !reduceMotion && (category === "conversational-q" || category === "conversational-flow"),
           label: edgeLabel || undefined,
           labelStyle: { fontSize: 9, fill: "#64748b", fontFamily: "Inter, sans-serif" },
           labelBgStyle: { fill: "#fff", fillOpacity: 0.85 },
@@ -278,21 +324,23 @@ function MinimalGraphInner({
           data: {
             relationType: relType,
             relationText: rel.relation_text || "",
+            category,
             sourceLabel: related.node_name,
             targetLabel: item.node_name,
           },
           style: {
-            stroke: isConnectedToSelected ? "#f59e0b" : color,
-            strokeWidth: isConnectedToSelected ? 2.5 : 1.5,
-            opacity: isConnectedToSelected ? 1 : 0.6,
+            stroke: isConnectedToSelected ? "#f59e0b" : catStyle.stroke,
+            strokeWidth: isConnectedToSelected ? 2.5 : (catStyle.strokeWidth || 1.5),
+            strokeDasharray: catStyle.strokeDasharray,
+            opacity: isConnectedToSelected ? 1 : 0.7,
             transition: "all 0.2s ease",
           },
-          markerEnd: {
+          markerEnd: catStyle.markerEnd ? {
             type: "arrowclosed",
             width: 8,
             height: 8,
-            color: isConnectedToSelected ? "#f59e0b" : color,
-          },
+            color: isConnectedToSelected ? "#f59e0b" : catStyle.stroke,
+          } : undefined,
         });
       });
 
@@ -335,7 +383,7 @@ function MinimalGraphInner({
     });
 
     return edges;
-  }, [selectedNode, reduceMotion, hideEdges]);
+  }, [selectedNode, reduceMotion, hideEdges, showTemporalEdges]);
 
   // Build ReactFlow nodes — card-style with title + summary
   const rfNodes = useMemo(
@@ -362,6 +410,25 @@ function MinimalGraphInner({
   const authoredViews = useMemo(() => {
     if (!hasAuthoredHierarchy) return {};
 
+    // ADR-032 Part A: compute pixelsPerSecond from the overall
+    // conversation duration so the swim-lane fills a reasonable width.
+    // Target: roughly 3000px wide for the timeline (gives the viewport
+    // some room to scroll while keeping nodes readable). Falls back to
+    // a fixed value if duration can't be derived.
+    let pixelsPerSecond = 6;
+    const tsValues = normalizedChunk
+      .map((n) => Number(n.timestamp_start))
+      .filter((v) => Number.isFinite(v));
+    const tsEndValues = normalizedChunk
+      .map((n) => Number(n.timestamp_end))
+      .filter((v) => Number.isFinite(v));
+    if (tsValues.length > 0 && tsEndValues.length > 0) {
+      const totalDuration = Math.max(...tsEndValues) - Math.min(...tsValues);
+      if (totalDuration > 0) {
+        pixelsPerSecond = Math.max(2, Math.min(20, 3000 / totalDuration));
+      }
+    }
+
     return AUTHORED_LEVELS.reduce((acc, spec) => {
       const levelNodes = normalizedChunk.filter((node) => getAuthoredSemanticLevel(node) === spec.level);
       if (levelNodes.length === 0) {
@@ -378,7 +445,16 @@ function MinimalGraphInner({
           ? layoutByThread(
               rfLevelNodes,
               rfLevelEdges,
-              { nodeWidth: spec.level >= 3 ? 280 : 250, nodeHeight: spec.level >= 3 ? 102 : 90 }
+              {
+                nodeWidth: spec.level >= 3 ? 280 : 250,
+                nodeHeight: spec.level >= 3 ? 102 : 90,
+                // ADR-032 Part A: X=timestamp_start, Y=thread row.
+                // Falls back to column-index automatically when too few
+                // nodes have timestamps (legacy / unrecorded conversations).
+                timeBased: true,
+                pixelsPerSecond,
+                minNodeWidth: spec.level >= 3 ? 280 : 200,
+              }
             )
           : rfLevelNodes,
         edges: rfLevelEdges,
@@ -954,6 +1030,24 @@ function MinimalGraphInner({
         >
           {hideEdges ? "Edges off" : "Edges on"}
         </button>
+        {/* ADR-032 Part C: temporal edges hidden by default. The spatial
+            X position of nodes already encodes time — rendering temporal
+            arrows on top is redundant. Toggle on if you want to see the
+            successor chain explicitly. */}
+        <button
+          onClick={() => handleShowTemporalEdgesChange(!showTemporalEdges)}
+          title={showTemporalEdges ? "Hide temporal-next edges (default)" : "Show temporal-next edges"}
+          disabled={hideEdges}
+          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+            hideEdges
+              ? "bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed"
+              : showTemporalEdges
+                ? "bg-blue-50 border-blue-300 text-blue-700"
+                : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          {showTemporalEdges ? "Temporal on" : "Temporal off"}
+        </button>
         <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
         <ColorModeToggle mode={colorMode} onChange={handleColorModeChange} />
       </div>
@@ -1310,6 +1404,7 @@ MinimalGraphInner.propTypes = {
   onVisibleLevelChange: PropTypes.func,
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
+  initialShowTemporalEdges: PropTypes.bool,
 };
 
 export default function MinimalGraph(props) {
@@ -1328,4 +1423,5 @@ MinimalGraph.propTypes = {
   onVisibleLevelChange: PropTypes.func,
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
+  initialShowTemporalEdges: PropTypes.bool,
 };

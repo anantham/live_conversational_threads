@@ -317,6 +317,10 @@ class DraftStateRequest(BaseModel):
     dismissed_unlock_affordances: Optional[List[str]] = None
     active_tab: Optional[str] = None
     active_color_mode: Optional[str] = None
+    # ADR-032 Part C: per-conversation toggle. Temporal edges are
+    # hidden by default; this records whether the user has opted to
+    # see them for this conversation.
+    show_temporal_edges: Optional[bool] = None
     local_draft_text: Optional[str] = None
     pinned_node_ids: Optional[List[str]] = None
 
@@ -372,6 +376,7 @@ async def save_conversation_draft(
         "dismissed_unlock_affordances",
         "active_tab",
         "active_color_mode",
+        "show_temporal_edges",
         "local_draft_text",
         "pinned_node_ids",
     ):

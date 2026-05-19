@@ -12,6 +12,130 @@ export const EDGE_COLORS = {
   temporal_next: "#d1d5db",
 };
 
+// ADR-032 Part C+D: categorize free-text relationship_type via fuzzy
+// match. The LLM enrichment prompt may invent new types
+// (lowercase_with_underscores). Frontend assigns each known type to a
+// category for color + line-style; unknown types fall back to "other".
+//
+// Categories map to visual treatment:
+//   logical-pos (green solid arrow):    supports, agrees
+//   logical-neg (red solid arrow):      rebuts, disagrees, prevents
+//   logical-causal (indigo solid):      implies, causes, enables, triggers
+//   logical-meta (gray dashed):         clarifies, exemplifies, generalizes, references_back
+//   conversational-q (amber dotted):    asks
+//   conversational-flow (orange):       interrupts
+//   thread-flow (light blue dotted curve): tangent, return_to_thread
+//   temporal (very light gray):         temporal_next, predecessor, successor — hidden by default
+//   other (slate dashed):               anything else
+const EDGE_TYPE_TO_CATEGORY = {
+  supports: "logical-pos",
+  agrees: "logical-pos",
+  rebuts: "logical-neg",
+  disagrees: "logical-neg",
+  prevents: "logical-neg",
+  implies: "logical-causal",
+  causes: "logical-causal",
+  enables: "logical-causal",
+  triggers: "logical-causal",
+  clarifies: "logical-meta",
+  exemplifies: "logical-meta",
+  generalizes: "logical-meta",
+  references_back: "logical-meta",
+  asks: "conversational-q",
+  interrupts: "conversational-flow",
+  tangent: "thread-flow",
+  return_to_thread: "thread-flow",
+  contextual: "other",
+  temporal_next: "temporal",
+  predecessor: "temporal",
+  successor: "temporal",
+};
+
+export const EDGE_CATEGORY_STYLES = {
+  "logical-pos": {
+    stroke: "#16a34a",
+    strokeDasharray: undefined,
+    strokeWidth: 1.6,
+    markerEnd: true,
+    label: "supports",
+  },
+  "logical-neg": {
+    stroke: "#dc2626",
+    strokeDasharray: undefined,
+    strokeWidth: 1.6,
+    markerEnd: true,
+    label: "rebuts",
+  },
+  "logical-causal": {
+    stroke: "#6366f1",
+    strokeDasharray: undefined,
+    strokeWidth: 1.6,
+    markerEnd: true,
+    label: "implies",
+  },
+  "logical-meta": {
+    stroke: "#94a3b8",
+    strokeDasharray: "5 3",
+    strokeWidth: 1.2,
+    markerEnd: true,
+    label: "clarifies",
+  },
+  "conversational-q": {
+    stroke: "#d97706",
+    strokeDasharray: "2 4",
+    strokeWidth: 1.4,
+    markerEnd: false,
+    label: "asks",
+  },
+  "conversational-flow": {
+    stroke: "#ea580c",
+    strokeDasharray: "1 3",
+    strokeWidth: 1.4,
+    markerEnd: true,
+    label: "interrupts",
+  },
+  "thread-flow": {
+    stroke: "#0284c7",
+    strokeDasharray: "4 2 2 2",
+    strokeWidth: 1.2,
+    markerEnd: true,
+    label: "thread-flow",
+  },
+  temporal: {
+    stroke: "#e5e7eb",
+    strokeDasharray: undefined,
+    strokeWidth: 0.8,
+    markerEnd: false,
+    label: "temporal",
+  },
+  other: {
+    stroke: "#94a3b8",
+    strokeDasharray: "3 3",
+    strokeWidth: 1.2,
+    markerEnd: true,
+    label: "other",
+  },
+};
+
+export function categorizeEdgeRelation(relationType) {
+  const norm = String(relationType || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+  if (!norm) return "other";
+  if (EDGE_TYPE_TO_CATEGORY[norm]) return EDGE_TYPE_TO_CATEGORY[norm];
+  // Heuristic fuzzy match for invented types — pick the closest
+  // category by keyword. The taxonomy in ADR-032 covers most authored
+  // types; this is a fallback so the LLM can still invent without
+  // crashing the renderer.
+  if (norm.includes("support") || norm.includes("agree") || norm.includes("affirm")) return "logical-pos";
+  if (norm.includes("rebut") || norm.includes("disagree") || norm.includes("oppose") || norm.includes("contradict")) return "logical-neg";
+  if (norm.includes("imply") || norm.includes("cause") || norm.includes("entail") || norm.includes("lead")) return "logical-causal";
+  if (norm.includes("clarif") || norm.includes("explain") || norm.includes("example") || norm.includes("instance") || norm.includes("reference")) return "logical-meta";
+  if (norm.includes("ask") || norm.includes("question") || norm.includes("query")) return "conversational-q";
+  if (norm.includes("interrupt") || norm.includes("cut_off")) return "conversational-flow";
+  if (norm.includes("tangent") || norm.includes("thread") || norm.includes("return")) return "thread-flow";
+  if (norm.includes("temporal") || norm.includes("next") || norm.includes("prev") || norm.includes("succ")) return "temporal";
+  return "other";
+}
+
 // Muted speaker palette — enough contrast to distinguish, not enough to scream
 export const SPEAKER_COLORS = [
   "#94a3b8", // slate-400
