@@ -211,6 +211,14 @@ async def transcribe_openai_audio_candidate(
             # Names always pass through; clip refs are gated upstream by
             # privacy tier (we just see audio_base64 = None when restricted).
             form_data.update(build_known_speakers_form_fields(known_speakers))
+    # ADR-032 Part F: request word-level timestamps from the diarization
+    # refinement call. One slow pass, double duty: speaker reconciliation
+    # AND word_timings for the Descript-style synced transcript UI.
+    # OpenAI's API takes ``timestamp_granularities[]`` as a repeated form
+    # field; httpx-multipart accepts a list value. If diarized_json doesn't
+    # surface word_timings, we'll see it in the response and adjust.
+    if model in ("gpt-4o-transcribe-diarize", "gpt-4o-transcribe", "gpt-4o-mini-transcribe"):
+        form_data["timestamp_granularities[]"] = "word"
 
     if language:
         form_data["language"] = language

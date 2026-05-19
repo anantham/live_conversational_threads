@@ -488,6 +488,155 @@ class WsSessionContext:
                 },
             )
 
+    async def _run_edge_enrichment_locked(self) -> None:
+        """ADR-032 Part D: author semantic edges between consolidated nodes.
+
+        Called holding ``self.processor_lock`` AFTER
+        ``_run_hierarchy_consolidation_locked`` has produced the full 5-tier
+        graph. Uses ``edge_enrichment.run_edge_enrichment`` which fetches
+        IndrasNet retrieval context (Part E), applies the external_llm_ok
+        privacy filter, and runs the ``enrich_semantic_edges`` prompt.
+
+        Emitted edges are written ONTO each source node's ``edge_relations``
+        list so ``persist_graph`` picks them up the same way it handles
+        any other authored edges. Non-fatal: if enrichment fails, the
+        graph still persists, just without the semantic edge layer.
+        """
+        try:
+            from lct_python_backend.services.edge_enrichment import run_edge_enrichment
+
+            existing = list(self.processor.existing_json or [])
+            if not existing:
+                logger.info("[WS][ENRICH] skipped — no nodes to enrich")
+                return
+
+            # Build a compact query for IndrasNet retrieval: title +
+            # executive_summary if consolidation produced them, falling back
+            # to a sample of top-tier node names.
+            query_parts: List[str] = []
+            metadata = self.state.metadata or {}
+            title = (metadata.get("conversation_name") or "").strip()
+            if title:
+                query_parts.append(title)
+            # source_metadata may carry title/summary from consolidation
+            src_md = metadata.get("source_metadata") or {}
+            if isinstance(src_md, dict):
+                cs_title = (src_md.get("conversation_title") or "").strip()
+                if cs_title:
+                    query_parts.append(cs_title)
+                cs_summary = (src_md.get("executive_summary") or "").strip()
+                if cs_summary:
+                    query_parts.append(cs_summary)
+            # Add the top-tier node names as additional query material.
+            top_tier_names = [
+                (n.get("node_name") or "").strip()
+                for n in existing
+                if isinstance(n, dict) and int(n.get("semantic_level") or n.get("level") or 0) >= 4
+            ]
+            if top_tier_names:
+                query_parts.extend(top_tier_names[:5])
+            query_summary = "  |  ".join(p for p in query_parts if p) or "(untitled live conversation)"
+
+            # Privacy gate set. None = no participants confirmed; we then
+            # default to "drop all items with any participant attribution"
+            # rather than allow leakage. The picker should populate
+            # participants on conversation_metadata before flush.
+            allow_set: Optional[set] = None
+            participants_meta = metadata.get("participants") or []
+            if isinstance(participants_meta, list) and participants_meta:
+                allow_set = set()
+                for p in participants_meta:
+                    if not isinstance(p, dict):
+                        continue
+                    if p.get("external_llm_ok") is True:
+                        for key in ("contact_id", "display_name", "name"):
+                            val = p.get(key)
+                            if val:
+                                allow_set.add(str(val))
+
+            await _safe_send_json(
+                self.websocket,
+                {
+                    "type": "processing_status",
+                    "level": "info",
+                    "message": "Enriching with semantic edges...",
+                    "context": {"stage": "enrichment", "phase": "started"},
+                },
+            )
+
+            edges, telemetry = await run_edge_enrichment(
+                nodes=existing,
+                query_summary=query_summary,
+                participant_external_llm_ok_set=allow_set,
+                providers=self._runtime_llm_providers,
+            )
+
+            # Attach edges to source nodes' edge_relations so persist_graph
+            # writes them as Relationship rows. Each node's edge_relations
+            # is a list; we extend with the new entries keyed by from_node_id.
+            edges_by_from: Dict[str, List[Dict[str, Any]]] = {}
+            for e in edges:
+                edges_by_from.setdefault(str(e["from_node_id"]), []).append({
+                    "related_node": str(e["to_node_id"]),
+                    "relation_type": e["relation_type"],
+                    "explanation": e.get("explanation") or "",
+                })
+
+            for node in existing:
+                if not isinstance(node, dict):
+                    continue
+                nid = str(node.get("id") or "")
+                if not nid or nid not in edges_by_from:
+                    continue
+                existing_edges = node.get("edge_relations")
+                if not isinstance(existing_edges, list):
+                    existing_edges = []
+                # Append new edges, dedupe by (related_node, relation_type)
+                seen_keys = {
+                    (str(ee.get("related_node") or ""), str(ee.get("relation_type") or ""))
+                    for ee in existing_edges
+                    if isinstance(ee, dict)
+                }
+                for new_edge in edges_by_from[nid]:
+                    key = (new_edge["related_node"], new_edge["relation_type"])
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    existing_edges.append(new_edge)
+                node["edge_relations"] = existing_edges
+
+            self.processor.existing_json = existing
+
+            logger.info(
+                "[WS][ENRICH] DONE: edges=%d total_ms=%.1f context_items=%d/%d (raw/filtered) error=%s",
+                telemetry.get("edges_emitted", 0),
+                telemetry.get("total_ms", 0),
+                (telemetry.get("context_telemetry") or {}).get("raw_items", 0),
+                (telemetry.get("context_telemetry") or {}).get("filtered_items", 0),
+                (telemetry.get("context_telemetry") or {}).get("error"),
+            )
+            self._record_observability_event(
+                event_type="edge_enrichment",
+                stage="enrichment",
+                level="info",
+                message=f"Edge enrichment authored {telemetry.get('edges_emitted', 0)} edges.",
+                context=telemetry,
+                metrics={"enrichment_ms": telemetry.get("total_ms", 0)},
+            )
+        except Exception as exc:  # noqa: BLE001
+            # Per ADR-032: non-fatal. Persist still proceeds.
+            logger.warning("[WS][ENRICH] non-fatal failure: %s", exc)
+            self._record_observability_event(
+                event_type="enrichment_error",
+                stage="enrichment",
+                level="warning",
+                message="Edge enrichment failed (non-fatal).",
+                context={
+                    "error": str(exc),
+                    "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                },
+            )
+
     def _last_final_node_id(self) -> Optional[str]:
         existing_json = getattr(self.processor, "existing_json", None)
         if not isinstance(existing_json, list) or not existing_json:
@@ -1963,6 +2112,13 @@ class WsSessionContext:
                 # Failures are non-fatal — persist proceeds with whatever
                 # tiers did materialize.
                 await self._run_hierarchy_consolidation_locked()
+                # ADR-032 Part D: semantic edge enrichment via the new
+                # enrich_semantic_edges prompt, with IndrasNet retrieval
+                # injecting cross-conversation context (Part E). Runs after
+                # consolidation so it sees the full 5-tier graph. Failures
+                # are non-fatal — without semantic edges, the conversation
+                # still saves; edges just won't be there to author.
+                await self._run_edge_enrichment_locked()
             await self._ensure_graph_persisted(reason="final_flush")
 
         except Exception as exc:
