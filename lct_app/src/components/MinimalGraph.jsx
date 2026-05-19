@@ -480,6 +480,29 @@ function MinimalGraphInner({
     onVisibleLevelChange,
   ]);
 
+  // Auto-fit the viewport when the displayed semantic tier changes (e.g.
+  // initial mount lands on arcs but the camera was anchored on the
+  // chunk-level layout — leaving arc nodes off-screen until the user
+  // clicks Center). Fires once per tier change; defers one paint so React
+  // Flow has the new node positions in its store before measuring.
+  // Live-streaming nuance: if consolidation produces a new tier mid-
+  // stream, this will yank the camera to that tier's nodes. Acceptable
+  // for now since tier-emergence is a rare one-time event per session.
+  const lastFittedSemanticLevelRef = useRef(null);
+  useEffect(() => {
+    const key = displayMode === "semantic" ? effectiveSemanticLevel : null;
+    if (key == null) return;
+    if (lastFittedSemanticLevelRef.current === key) return;
+    lastFittedSemanticLevelRef.current = key;
+    const id = setTimeout(() => {
+      reactFlow.fitView({
+        padding: 0.15,
+        duration: reduceMotion ? 0 : 300,
+      });
+    }, 50);
+    return () => clearTimeout(id);
+  }, [displayMode, effectiveSemanticLevel, reactFlow, reduceMotion]);
+
   // Controlled node state — layout provides initial positions, drags persist
   const [interactiveNodes, setInteractiveNodes] = useState([]);
   const layoutKeyRef = useRef("");
