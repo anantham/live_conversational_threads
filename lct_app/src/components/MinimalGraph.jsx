@@ -155,11 +155,13 @@ function MinimalGraphInner({
         temporalColorMap,
       });
 
-      // Title: node_name truncated to ~40 chars
+      // Title: node_name truncated to ~40 chars for the visible label,
+      // but keep the full string so ConversationNode can expose it as
+      // a native tooltip (hover) \u2014 the truncation made long names
+      // unreadable from the graph alone.
+      const fullTitle = item.node_name || "";
       const title =
-        item.node_name && item.node_name.length > 40
-          ? item.node_name.slice(0, 38) + "\u2026"
-          : item.node_name || "";
+        fullTitle.length > 40 ? fullTitle.slice(0, 38) + "\u2026" : fullTitle;
 
       // Summary: passed through; ConversationNode handles truncation.
       const summary = item.summary || item.full_text || "";
@@ -183,6 +185,7 @@ function MinimalGraphInner({
         position: { x: 0, y: 0 },
         data: {
           title,
+          fullTitle,
           summary,
           speakerLabel,
           fillColor: fill,

@@ -22,6 +22,7 @@ import { Handle, Position } from "reactflow";
 function ConversationNodeImpl({ data, selected }) {
   const {
     title,
+    fullTitle,
     summary,
     speakerLabel,
     fillColor = "#f1f5f9",
@@ -87,7 +88,9 @@ function ConversationNodeImpl({ data, selected }) {
 
       {isBookmark && <BookmarkCorner />}
 
-      <div style={titleStyle}>{title || "Untitled"}</div>
+      <div style={titleStyle} title={fullTitle || title || undefined}>
+        {title || "Untitled"}
+      </div>
       {showSummary && truncatedSummary && (
         <div style={summaryStyle}>{truncatedSummary}</div>
       )}
@@ -166,6 +169,7 @@ function ProgressArrow() {
 ConversationNodeImpl.propTypes = {
   data: PropTypes.shape({
     title: PropTypes.string,
+    fullTitle: PropTypes.string,
     summary: PropTypes.string,
     speakerLabel: PropTypes.string,
     fillColor: PropTypes.string,
