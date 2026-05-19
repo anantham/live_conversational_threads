@@ -5,6 +5,7 @@ const createBackendMessageHandler =
     onGraphPatchReceived,
     onTranscriptEvent,
     onSessionAck,
+    onSessionStarted,
     onPong,
     onSttProviderStateChange,
     onProcessingStatus,
@@ -42,6 +43,12 @@ const createBackendMessageHandler =
       if (message.type === "graph_patch") {
         graphDataFromSocket.current = true;
         onGraphPatchReceived?.(message.data);
+      }
+      if (message.type === "session_started") {
+        onSessionStarted?.(message);
+        logToServer?.(
+          `Session started: ${message.conversation_id || "-"}`
+        );
       }
       if (message.type === "session_ack") {
         const sttReady = message.stt_ready !== false;

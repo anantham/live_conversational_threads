@@ -2064,6 +2064,17 @@ class WsSessionContext:
                 "byok_llm_enabled": BYOK_SCOPE_LLM_LIVE in set(byok_session.get("scopes") or set()),
             }
         await ensure_conversation(self.session, conversation_id, self.state.metadata or {})
+        # Tell the client the conversation row exists. The participant
+        # picker waits for this before opening so its PUT can't 404 on
+        # a row that doesn't exist yet.
+        await _safe_send_json(
+            self.websocket,
+            {
+                "type": "session_started",
+                "conversation_id": str(conversation_id),
+                "session_id": str(self.state.session_id),
+            },
+        )
         start_observed_session(
             conversation_id=str(self.state.conversation_id),
             session_id=str(self.state.session_id),

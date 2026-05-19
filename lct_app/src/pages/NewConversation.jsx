@@ -157,13 +157,18 @@ export default function NewConversation() {
   const searchParams = new URLSearchParams(window.location.search);
   const autostart = searchParams.get("autostart") === "true";
 
-  // Auto-open the participant picker when recording is starting fresh. We
-  // wait a short tick so the STT WebSocket can call ensure_conversation()
-  // server-side — the picker's PUT targets that row.
-  useEffect(() => {
-    if (!autostart) return undefined;
-    const timer = setTimeout(() => setParticipantPickerOpen(true), 600);
-    return () => clearTimeout(timer);
+  // Auto-open the participant picker once the backend confirms the
+  // Conversation row exists. The signal arrives as a `session_started` WS
+  // message right after stt_ws_session.ensure_conversation() runs — see
+  // AudioInput → useTranscriptSockets → audioMessages plumbing. We only
+  // auto-open on the first signal per autostart visit (subsequent reconnects
+  // shouldn't re-pop the modal).
+  const pickerAutoOpenedRef = useRef(false);
+  const handleSessionStarted = useCallback(() => {
+    if (!autostart) return;
+    if (pickerAutoOpenedRef.current) return;
+    pickerAutoOpenedRef.current = true;
+    setParticipantPickerOpen(true);
   }, [autostart]);
 
   // Subscribe to app-level upload context so file upload events flow into this page
@@ -1116,6 +1121,7 @@ export default function NewConversation() {
             fileName={fileName}
             setFileName={setFileName}
             autostart={autostart}
+            onSessionStarted={handleSessionStarted}
           />
         </div>
       </div>
