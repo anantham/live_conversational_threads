@@ -197,8 +197,15 @@ async def gather_known_speakers_from_participants(
     """
     from lct_python_backend.models import Conversation
 
+    # populate_existing=True forces SQLAlchemy to refresh the cached row
+    # from the DB. Without this, a long-lived WS session would keep using
+    # the participants list it saw on the first refinement call — mid-
+    # session PUTs from the picker would never propagate to in-flight
+    # transcription.
     conv_result = await db.execute(
-        select(Conversation).where(Conversation.id == conversation_id)
+        select(Conversation)
+        .where(Conversation.id == conversation_id)
+        .execution_options(populate_existing=True)
     )
     conversation = conv_result.scalar_one_or_none()
     if conversation is None:
