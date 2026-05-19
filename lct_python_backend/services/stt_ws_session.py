@@ -34,6 +34,11 @@ from lct_python_backend.services.byok_session_store import (
     ByokSessionLookupError,
 )
 from lct_python_backend.services.graph_persistence import persist_live_graph_snapshot
+from lct_python_backend.services.hierarchy_consolidator import (
+    consolidate_ideas_to_topics,
+    consolidate_topics_to_themes,
+    consolidate_themes_to_arcs,
+)
 from lct_python_backend.services.quota_service import QuotaService
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
 from lct_python_backend.services.speaker_naming_service import is_confirmed_speaker_name
@@ -371,6 +376,117 @@ class WsSessionContext:
                 await self._run_graph_persist_loop(reason=reason)
             return
         await self._run_graph_persist_loop(reason=reason)
+
+    async def _run_hierarchy_consolidation_locked(self) -> None:
+        """Run the three post-streaming consolidation passes against
+        ``processor.existing_json``. Called holding ``self.processor_lock``.
+
+        The streaming prompt is deliberately scoped to L1 (chunks) + L2 (ideas)
+        only — topics, themes, and arcs come from this consolidation pass which
+        sees the WHOLE conversation in one LLM call per tier. Without it the
+        macro view (1-5 arc nodes the user wants to land on by default)
+        stays empty for live recordings.
+
+        Failures here are non-fatal: persist will proceed with whatever tiers
+        DID materialize.
+        """
+        try:
+            existing = list(self.processor.existing_json or [])
+
+            def _of_level(level: int) -> List[Dict[str, Any]]:
+                return [
+                    n for n in existing
+                    if isinstance(n, dict)
+                    and int(n.get("semantic_level") or n.get("level") or 0) == level
+                ]
+
+            # Pull from constants the import path uses for symmetry.
+            from lct_python_backend.services.tuning_constants import (
+                MIN_IDEAS_FOR_TOPIC_CONSOLIDATION,
+                MIN_TOPICS_FOR_THEME_CONSOLIDATION,
+                MIN_THEMES_FOR_ARC_CONSOLIDATION,
+            )
+
+            ideas_in = _of_level(2)
+            if len(ideas_in) < MIN_IDEAS_FOR_TOPIC_CONSOLIDATION:
+                logger.info(
+                    "[WS][CONSOLIDATE] skipped — only %d ideas (need >=%d)",
+                    len(ideas_in), MIN_IDEAS_FOR_TOPIC_CONSOLIDATION,
+                )
+                return
+
+            await _safe_send_json(
+                self.websocket,
+                {
+                    "type": "processing_status",
+                    "level": "info",
+                    "message": f"Clustering {len(ideas_in)} ideas into topics...",
+                    "context": {"stage": "consolidating", "phase": "ideas_to_topics"},
+                },
+            )
+            topics = await consolidate_ideas_to_topics(
+                ideas_in, providers=self._runtime_llm_providers
+            ) or []
+            if topics:
+                existing.extend(topics)
+                logger.info("[WS][CONSOLIDATE] ideas=%d -> topics=%d", len(ideas_in), len(topics))
+
+                if len(topics) >= MIN_TOPICS_FOR_THEME_CONSOLIDATION:
+                    await _safe_send_json(
+                        self.websocket,
+                        {
+                            "type": "processing_status",
+                            "level": "info",
+                            "message": f"Clustering {len(topics)} topics into themes...",
+                            "context": {"stage": "consolidating", "phase": "topics_to_themes"},
+                        },
+                    )
+                    themes = await consolidate_topics_to_themes(
+                        topics, providers=self._runtime_llm_providers
+                    ) or []
+                    if themes:
+                        existing.extend(themes)
+                        logger.info("[WS][CONSOLIDATE] topics=%d -> themes=%d", len(topics), len(themes))
+
+                        if len(themes) >= MIN_THEMES_FOR_ARC_CONSOLIDATION:
+                            await _safe_send_json(
+                                self.websocket,
+                                {
+                                    "type": "processing_status",
+                                    "level": "info",
+                                    "message": f"Synthesizing {len(themes)} themes into arcs...",
+                                    "context": {"stage": "consolidating", "phase": "themes_to_arcs"},
+                                },
+                            )
+                            arcs_result = await consolidate_themes_to_arcs(
+                                themes, providers=self._runtime_llm_providers
+                            )
+                            arcs: List[Dict[str, Any]] = []
+                            if isinstance(arcs_result, tuple) and len(arcs_result) == 3:
+                                arcs, _title, _summary = arcs_result
+                                arcs = arcs or []
+                            else:
+                                arcs = arcs_result or []
+                            if arcs:
+                                existing.extend(arcs)
+                                logger.info("[WS][CONSOLIDATE] themes=%d -> arcs=%d", len(themes), len(arcs))
+
+            # Write the augmented set back so _ensure_graph_persisted picks it up.
+            self.processor.existing_json = existing
+        except Exception as exc:  # noqa: BLE001
+            # Same policy as import_bulk_pipeline: log + telemetry, don't fail
+            # the session. The L1+L2 nodes still get persisted.
+            logger.warning("[WS][CONSOLIDATE] non-fatal failure: %s", exc)
+            self._record_observability_event(
+                event_type="consolidation_error",
+                stage="consolidation",
+                level="warning",
+                message="Hierarchy consolidation failed (non-fatal).",
+                context={
+                    "error": str(exc),
+                    "traceback": "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                },
+            )
 
     def _last_final_node_id(self) -> Optional[str]:
         existing_json = getattr(self.processor, "existing_json", None)
@@ -1840,6 +1956,13 @@ class WsSessionContext:
                     )
                 await self.processor.flush()
                 await self._clear_pending_draft_graph(reason="flush")
+                # Post-streaming hierarchy consolidation (matches the import path
+                # at import_bulk_pipeline.py:1145+). The streaming LLM authors
+                # chunks (L1) + ideas (L2) only; this pass adds topics (L3),
+                # themes (L4), and arcs (L5) so the macro view has content.
+                # Failures are non-fatal — persist proceeds with whatever
+                # tiers did materialize.
+                await self._run_hierarchy_consolidation_locked()
             await self._ensure_graph_persisted(reason="final_flush")
 
         except Exception as exc:
