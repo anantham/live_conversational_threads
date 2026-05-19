@@ -164,13 +164,12 @@ function MinimalGraphInner({
         temporalColorMap,
       });
 
-      // Title: node_name truncated to ~40 chars for the visible label,
-      // but keep the full string so ConversationNode can expose it as
-      // a native tooltip (hover) \u2014 the truncation made long names
-      // unreadable from the graph alone.
+      // Title: pass the full node_name through. titleStyle has no
+      // white-space: nowrap, so multi-line names wrap naturally inside
+      // the card. fullTitle is retained as the hover-tooltip in case
+      // we ever bring back truncation for a denser tier.
       const fullTitle = item.node_name || "";
-      const title =
-        fullTitle.length > 40 ? fullTitle.slice(0, 38) + "\u2026" : fullTitle;
+      const title = fullTitle;
 
       // Summary: passed through; ConversationNode handles truncation.
       const summary = item.summary || item.full_text || "";
@@ -766,26 +765,8 @@ function MinimalGraphInner({
         setClickedEdge(null);
         return;
       }
-      // Drill-down: if this node has children, single-click drills into them
-      // instead of (or in addition to) opening the NodeDetail panel. Leaf
-      // nodes (no children_ids) fall through to the existing toggle behavior.
-      const fullData = node.data?.fullData || {};
-      const childIds = Array.isArray(fullData.children_ids) ? fullData.children_ids : [];
-      const ownLevel = Number(fullData.semantic_level || fullData.level || 1);
-      if (childIds.length > 0 && ownLevel > 1) {
-        autoFollowRef.current = false;
-        setDrilldownPath((prev) => [
-          ...prev,
-          {
-            level: ownLevel,
-            nodeId: node.id,
-            nodeName: fullData.node_name || node.data?.title || "(unnamed)",
-          },
-        ]);
-        setSelectedCluster(null);
-        setClickedEdge(null);
-        return;
-      }
+      // Single-click opens the NodeDetail drawer (original behavior).
+      // Drill-down moved to onNodeDoubleClick — see handleNodeDoubleClick.
       setSelectedCluster(null);
       setSelectedNode((prev) => {
         const next = prev === node.id ? null : node.id;
@@ -795,6 +776,30 @@ function MinimalGraphInner({
       setClickedEdge(null);
     },
     [setSelectedNode]
+  );
+
+  const handleNodeDoubleClick = useCallback(
+    (_, node) => {
+      // Double-click on a non-leaf drills into its children. Leaf nodes
+      // (no children_ids) ignore the double-click — single-click already
+      // opened their drawer on the first event.
+      const fullData = node.data?.fullData || {};
+      const childIds = Array.isArray(fullData.children_ids) ? fullData.children_ids : [];
+      const ownLevel = Number(fullData.semantic_level || fullData.level || 1);
+      if (childIds.length === 0 || ownLevel <= 1) return;
+      autoFollowRef.current = false;
+      setDrilldownPath((prev) => [
+        ...prev,
+        {
+          level: ownLevel,
+          nodeId: node.id,
+          nodeName: fullData.node_name || node.data?.title || "(unnamed)",
+        },
+      ]);
+      setSelectedCluster(null);
+      setClickedEdge(null);
+    },
+    []
   );
 
   const handlePaneClick = useCallback(() => {
@@ -875,6 +880,7 @@ function MinimalGraphInner({
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
         onNodeClick={handleNodeClick}
+        onNodeDoubleClick={handleNodeDoubleClick}
         onPaneClick={handlePaneClick}
         onEdgeClick={handleEdgeClick}
         onMoveEnd={handleMoveEnd}
