@@ -262,6 +262,37 @@ def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[D
         }
         graph_data.append(node_data)
 
+    # Defensive temporal chain: when neither the DB nor the LLM authored a
+    # predecessor/successor for a node, derive one from timestamp_start
+    # ordering within the same semantic_level. The live-STT path emits zero
+    # cross-batch relationships (the per-batch LLM can only see the last few
+    # nodes, so it can't reliably reference earlier successor ids), which
+    # leaves the frontend timeline ribbon with no arrows to draw and the
+    # NodeDetail "Relations" section empty. Read-time synthesis here is
+    # cheap, lossless (we never overwrite an authored chain), and survives
+    # any future persist_graph wipe.
+    by_level: Dict[int, List[Dict[str, Any]]] = {}
+    for nd in graph_data:
+        by_level.setdefault(int(nd.get("level") or 1), []).append(nd)
+
+    for level_nodes in by_level.values():
+        ordered = sorted(
+            level_nodes,
+            key=lambda n: (
+                n.get("timestamp_start") if n.get("timestamp_start") is not None else float("inf"),
+                str(n.get("id") or ""),
+            ),
+        )
+        # Drop nodes with no timestamp from the chain — we can't place them.
+        ordered = [n for n in ordered if n.get("timestamp_start") is not None]
+        for idx, current in enumerate(ordered):
+            prev_id = ordered[idx - 1]["id"] if idx > 0 else None
+            next_id = ordered[idx + 1]["id"] if idx + 1 < len(ordered) else None
+            if current.get("predecessor") is None and prev_id is not None:
+                current["predecessor"] = prev_id
+            if current.get("successor") is None and next_id is not None:
+                current["successor"] = next_id
+
     return graph_data
 
 
