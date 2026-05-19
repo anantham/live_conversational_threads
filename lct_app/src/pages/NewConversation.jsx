@@ -13,6 +13,7 @@ import ParticipantPickerModal from "../components/conversation/ParticipantPicker
 import TranscriptSelectionToolbar from "../components/conversation/TranscriptSelectionToolbar";
 import useTextSelection from "../components/conversation/useTextSelection";
 import { triggerConsumptionPrayer, ConsumptionApiError } from "../services/consumptionApi";
+import { fetchConversationParticipants } from "../services/participantsApi";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { useAutoSave } from "../hooks/useAutoSave";
 import useLocalConversationDraft from "../hooks/useLocalConversationDraft";
@@ -170,6 +171,19 @@ export default function NewConversation() {
     pickerAutoOpenedRef.current = true;
     setParticipantPickerOpen(true);
   }, [autostart]);
+
+  // Refresh the persistent name pill whenever the conversation_id changes
+  // (e.g. recovered draft) so the user sees who's already in.
+  useEffect(() => {
+    if (!conversationId) return undefined;
+    let cancelled = false;
+    fetchConversationParticipants(conversationId).then((participants) => {
+      if (!cancelled) setSavedParticipants(participants);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
 
   // Subscribe to app-level upload context so file upload events flow into this page
   const upload = useUpload();
@@ -934,25 +948,41 @@ export default function NewConversation() {
           onSaved={(participants) => setSavedParticipants(participants)}
         />
 
-        {/* Late-joiner re-open button. Hidden while modal is open and
-            during initial autostart bring-up. */}
+        {/* Persistent participants strip + re-open trigger. Shows the
+            actual names so the user can see the cast without opening the
+            modal. Hidden while the modal is open. */}
         {!participantPickerOpen ? (
           <button
             type="button"
             onClick={() => setParticipantPickerOpen(true)}
-            className="fixed bottom-4 left-4 z-30 flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-md backdrop-blur transition hover:bg-white"
+            className="fixed bottom-4 left-4 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-md backdrop-blur transition hover:bg-white"
             title={
               savedParticipants.length > 0
-                ? `${savedParticipants.length} participant${savedParticipants.length === 1 ? "" : "s"} — tap to edit`
+                ? `${savedParticipants.map((p) => p.display_name).join(", ")} — tap to edit`
                 : "Add participants"
             }
           >
             <span aria-hidden="true">+</span>
-            <span>
-              {savedParticipants.length > 0
-                ? `${savedParticipants.length} participant${savedParticipants.length === 1 ? "" : "s"}`
-                : "Add participants"}
-            </span>
+            {savedParticipants.length === 0 ? (
+              <span>Add participants</span>
+            ) : (
+              <span className="flex items-center gap-1 truncate">
+                {savedParticipants.slice(0, 3).map((p, idx) => (
+                  <span
+                    key={p.contact_id}
+                    className="truncate rounded-full bg-slate-100 px-2 py-0.5"
+                  >
+                    {p.display_name}
+                    {idx < Math.min(savedParticipants.length, 3) - 1 ? "" : ""}
+                  </span>
+                ))}
+                {savedParticipants.length > 3 ? (
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">
+                    +{savedParticipants.length - 3}
+                  </span>
+                ) : null}
+              </span>
+            )}
           </button>
         ) : null}
 
