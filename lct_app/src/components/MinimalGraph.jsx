@@ -959,8 +959,8 @@ function MinimalGraphInner({
       </div>
 
       {/* Zoom / cluster HUD — top-left */}
-      <div className="absolute top-3 left-3 z-40 flex items-center gap-2 select-none">
-        <div className="flex items-center gap-1.5 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm px-2.5 py-1.5">
+      <div className="absolute top-3 left-3 right-3 z-40 flex items-center gap-2 select-none overflow-x-auto flex-nowrap whitespace-nowrap">
+        <div className="flex-shrink-0 flex items-center gap-1.5 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm px-2.5 py-1.5">
           <span className="text-[10px] font-mono text-gray-500">{Math.round(zoomLevel * 100)}%</span>
           <span className="text-[9px] text-gray-300">|</span>
           {clusterLevelLabel ? (
@@ -996,7 +996,7 @@ function MinimalGraphInner({
         </div>
         {/* Drill-down breadcrumb — click any crumb to jump back to that level. */}
         {drilldownPath.length > 0 && (
-          <div className="flex items-center gap-1 text-[11px] text-gray-600 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-md px-2 py-1">
+          <div className="flex-shrink-0 flex items-center gap-1 text-[11px] text-gray-600 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-md px-2 py-1">
             <button
               type="button"
               className="text-blue-600 hover:underline font-medium cursor-pointer"
@@ -1032,7 +1032,7 @@ function MinimalGraphInner({
           </div>
         )}
         {/* Zoom scale — click to lock semantic or clustered level, click again to unlock */}
-        <div className="flex items-center gap-0 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm overflow-hidden">
+        <div className="flex-shrink-0 flex items-center gap-0 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm overflow-hidden">
           {(displayMode === "semantic"
             ? AUTHORED_LEVELS
             : [
