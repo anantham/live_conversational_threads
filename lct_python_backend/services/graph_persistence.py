@@ -449,6 +449,67 @@ async def persist_graph(
     # this, every node gets speaker_info=null even though the STT was diarized.
     speaker_info_by_id = _compute_speaker_rollup(node_records, ref_to_id)
 
+    # ADR-032 Part G: persist timestamp_start/timestamp_end on Node rows
+    # at write time. Read-time derivation (conversation_reader.py) becomes a
+    # drift-check that asserts these match. Computing at write time means
+    # the swim-lane layout can position nodes directly from Node.timestamp_start
+    # without re-deriving on every read.
+    #
+    # Algorithm: for each node, collect its utterance_ids (authored OR mapped
+    # via utterance_chunk_map) plus its chunk_ids. Query utterances matching
+    # either set. min(timestamp_start) and max(timestamp_end) define the
+    # node's temporal span. Honor any LLM-authored timestamp_start verbatim.
+    referenced_utt_ids: set = set()
+    referenced_chunk_ids: set = set()
+    for _, item in node_records:
+        for uid in (item.get("utterance_ids") or []):
+            parsed = _coerce_uuid(uid)
+            if parsed:
+                referenced_utt_ids.add(parsed)
+        cid = item.get("chunk_id")
+        if cid:
+            parsed_cid = _coerce_uuid(cid)
+            if parsed_cid:
+                referenced_chunk_ids.add(parsed_cid)
+    # Also pull utterance ids from utterance_chunk_map for nodes whose
+    # chunk_id is in the map.
+    for chunk_uuid, utt_uuids in parsed_utterance_chunk_map.items():
+        if chunk_uuid in referenced_chunk_ids:
+            referenced_utt_ids.update(utt_uuids)
+
+    utterance_timestamps: Dict[uuid.UUID, Tuple[Optional[float], Optional[float]]] = {}
+    utterance_to_chunk: Dict[uuid.UUID, Optional[uuid.UUID]] = {}
+    if referenced_utt_ids or referenced_chunk_ids:
+        from sqlalchemy import or_
+        utt_query = select(
+            DBUtterance.id,
+            DBUtterance.timestamp_start,
+            DBUtterance.timestamp_end,
+            DBUtterance.chunk_id,
+        ).where(DBUtterance.conversation_id == conv_uuid)
+        clauses = []
+        if referenced_utt_ids:
+            clauses.append(DBUtterance.id.in_(referenced_utt_ids))
+        if referenced_chunk_ids:
+            clauses.append(DBUtterance.chunk_id.in_(referenced_chunk_ids))
+        if clauses:
+            utt_query = utt_query.where(or_(*clauses))
+        r = await db.execute(utt_query)
+        for uid, ts_start, ts_end, chunk_id_row in r:
+            utterance_timestamps[uid] = (
+                float(ts_start) if ts_start is not None else None,
+                float(ts_end) if ts_end is not None else None,
+            )
+            if chunk_id_row is not None:
+                utterance_to_chunk[uid] = chunk_id_row
+
+    # Group utterances by chunk_id so chunk_id->derive falls out naturally.
+    chunk_to_utt_ids: Dict[uuid.UUID, List[uuid.UUID]] = {}
+    for uid, cid in utterance_to_chunk.items():
+        if cid is None:
+            continue
+        chunk_to_utt_ids.setdefault(cid, []).append(uid)
+
     # Option B: normalize the live-path utterance map (chunk_id -> [utt_id...])
     # into UUID objects up front so we can both (a) UPDATE utterances rows
     # below and (b) backfill node.utterance_ids when the LLM didn't author
@@ -538,11 +599,59 @@ async def persist_graph(
                 if resolved is not None and resolved != node_id:
                     children_resolved.append(resolved)
 
+        # ADR-032 Part G: compute timestamp_start/timestamp_end at write
+        # time. Three tiers of fallback: (1) LLM-authored values on the
+        # item dict; (2) min/max from utterance_ids' timestamps; (3) same
+        # via chunk_ids' utterances.
+        authored_ts_start = item.get("timestamp_start")
+        authored_ts_end = item.get("timestamp_end")
+        node_ts_start: Optional[float] = (
+            float(authored_ts_start) if authored_ts_start is not None else None
+        )
+        node_ts_end: Optional[float] = (
+            float(authored_ts_end) if authored_ts_end is not None else None
+        )
+        if node_ts_start is None or node_ts_end is None:
+            candidate_utt_ids: List[uuid.UUID] = []
+            for uid in (item.get("utterance_ids") or []):
+                parsed = _coerce_uuid(uid)
+                if parsed and parsed in utterance_timestamps:
+                    candidate_utt_ids.append(parsed)
+            if not candidate_utt_ids and chunk_id:
+                chunk_uuid_for_node = _coerce_uuid(chunk_id)
+                if chunk_uuid_for_node:
+                    candidate_utt_ids = chunk_to_utt_ids.get(chunk_uuid_for_node, [])
+            ts_starts: List[float] = [
+                ts[0]
+                for ts in (utterance_timestamps.get(uid) for uid in candidate_utt_ids)
+                if ts and ts[0] is not None
+            ]
+            ts_ends: List[float] = [
+                ts[1]
+                for ts in (utterance_timestamps.get(uid) for uid in candidate_utt_ids)
+                if ts and ts[1] is not None
+            ]
+            if node_ts_start is None and ts_starts:
+                node_ts_start = min(ts_starts)
+            if node_ts_end is None and ts_ends:
+                node_ts_end = max(ts_ends)
+
+        node_duration: Optional[float] = None
+        if node_ts_start is not None and node_ts_end is not None and node_ts_end >= node_ts_start:
+            node_duration = round(node_ts_end - node_ts_start, 4)
+
+        # ADR-032 Part G: persist verbatim LLM-authored source_excerpt so
+        # post-hoc passes don't need to re-call the LLM to recover it.
+        source_excerpt_value = item.get("source_excerpt")
+        if source_excerpt_value is not None:
+            source_excerpt_value = str(source_excerpt_value)
+
         db.add(Node(
             id=node_id,
             conversation_id=conv_uuid,
             node_name=item.get("node_name", ""),
             summary=item.get("summary", ""),
+            source_excerpt=source_excerpt_value,
             chunk_ids=_coerce_uuid_array([chunk_id] if chunk_id else []),
             node_type=node_type,
             is_bookmark=bool(item.get("is_bookmark")),
@@ -562,6 +671,9 @@ async def persist_graph(
             },
             utterance_ids=_coerce_uuid_array(item.get("utterance_ids")),
             speaker_info=speaker_info_by_id.get(node_id),
+            timestamp_start=node_ts_start,
+            timestamp_end=node_ts_end,
+            duration_seconds=node_duration,
         ))
 
     # Step 3: Write Relationship rows
