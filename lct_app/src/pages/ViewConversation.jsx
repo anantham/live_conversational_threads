@@ -5,6 +5,7 @@ import { Download } from "lucide-react";
 import MinimalGraph from "../components/MinimalGraph";
 import MinimalLegend from "../components/MinimalLegend";
 import NodeDetail from "../components/NodeDetail";
+import SearchDialog from "../components/SearchDialog";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
@@ -115,6 +116,36 @@ export default function ViewConversation() {
   const [loadError, setLoadError] = useState("");
   const [audioDownloadUrl, setAudioDownloadUrl] = useState("");
   const [participants, setParticipants] = useState([]);
+  // ADR-032 Part B pattern 3: argument-scaffold trace lifted to page so
+  // NodeDetail's "Trace ancestors" button can trigger it and MinimalGraph
+  // can dim accordingly.
+  const [argumentTraceFrom, setArgumentTraceFrom] = useState(null);
+  // ADR-032 Part K: Cmd+K / "/" opens search.
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+      } else if (event.key === "/" && !event.target?.matches?.("input, textarea, [contenteditable]")) {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  const allFlatNodes = useMemo(() => {
+    const out = [];
+    (graphData || []).forEach((chunk) => {
+      if (Array.isArray(chunk)) {
+        chunk.forEach((node) => {
+          if (node && typeof node === "object" && !Array.isArray(node)) out.push(node);
+        });
+      }
+    });
+    return out;
+  }, [graphData]);
 
   useEffect(() => {
     if (!conversationId) {
@@ -374,6 +405,8 @@ export default function ViewConversation() {
                   onVisibleLevelChange={(view) => {
                     setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
                   }}
+                  argumentTraceFrom={argumentTraceFrom}
+                  setArgumentTraceFrom={setArgumentTraceFrom}
                 />
                 <MinimalLegend
                   speakerColorMap={speakerColorMap}
@@ -398,6 +431,7 @@ export default function ViewConversation() {
             conversationId={conversationId}
             audioUrl={audioDownloadUrl ? (audioDownloadUrl.startsWith("http") ? audioDownloadUrl : `${API_BASE_URL}${audioDownloadUrl}`) : null}
             onClose={() => setSelectedNode(null)}
+            onTraceAncestors={setArgumentTraceFrom}
             onSpeakerRenamed={(speakerId, newName) => {
               setGraphData((prev) =>
                 prev.map((chunk) =>
@@ -415,6 +449,12 @@ export default function ViewConversation() {
           />
         )}
       </main>
+      <SearchDialog
+        open={searchOpen}
+        nodes={allFlatNodes}
+        onSelect={(nodeId) => setSelectedNode(nodeId)}
+        onClose={() => setSearchOpen(false)}
+      />
     </div>
   );
 }

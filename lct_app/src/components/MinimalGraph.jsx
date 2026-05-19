@@ -60,6 +60,8 @@ function MinimalGraphInner({
   conversationId,
   initialColorMode,
   initialShowTemporalEdges,
+  argumentTraceFrom,
+  setArgumentTraceFrom,
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
@@ -81,6 +83,22 @@ function MinimalGraphInner({
   const [showTemporalEdges, setShowTemporalEdges] = useState(
     Boolean(initialShowTemporalEdges)
   );
+  // ADR-032 Part B pattern 3: argument-scaffold trace mode. State is
+  // lifted to the page (argumentTraceFrom + setArgumentTraceFrom props)
+  // so NodeDetail can trigger trace via "↑ Trace ancestors" button.
+  // Broaden toggle stays local.
+  const [traceBroaden, setTraceBroaden] = useState(false);
+  useEffect(() => {
+    if (!argumentTraceFrom) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        setArgumentTraceFrom?.(null);
+        setTraceBroaden(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [argumentTraceFrom, setArgumentTraceFrom]);
   const handleShowTemporalEdgesChange = useCallback(
     (next) => {
       setShowTemporalEdges(next);
@@ -463,6 +481,75 @@ function MinimalGraphInner({
     }, {});
   }, [buildRfEdgesForSource, buildRfNodesForSource, hasAuthoredHierarchy, normalizedChunk]);
 
+  // ADR-032 Part B pattern 3: walk incoming edges from argumentTraceFrom.
+  // Default: only logical-pos / logical-causal / logical-meta categories
+  // (the strict "argument scaffolding" view). With traceBroaden, include
+  // conversational and causal-style categories too. Depth-limited to 3.
+  const traceResult = useMemo(() => {
+    if (!argumentTraceFrom) return { nodes: null, edges: null };
+
+    const allowedCategories = traceBroaden
+      ? new Set([
+          "logical-pos",
+          "logical-neg",
+          "logical-causal",
+          "logical-meta",
+          "conversational-q",
+          "conversational-flow",
+          "thread-flow",
+          "other",
+        ])
+      : new Set(["logical-pos", "logical-causal", "logical-meta"]);
+
+    // Build adjacency: incomingByTarget[target] = [{from, category, relType}, ...]
+    const incomingByTarget = new Map();
+    normalizedChunk.forEach((item) => {
+      const rels = Array.isArray(item.edge_relations) ? item.edge_relations : [];
+      rels.forEach((rel) => {
+        const targetName = (rel?.related_node || "").trim();
+        if (!targetName) return;
+        const targetLower = targetName.toLowerCase();
+        const targetNode = normalizedChunk.find((n) => n.id === targetName)
+          || normalizedChunk.find((n) => n.node_name === targetName)
+          || normalizedChunk.find((n) => (n.node_name || "").toLowerCase() === targetLower);
+        if (!targetNode) return;
+        const category = categorizeEdgeRelation(rel.relation_type || "contextual");
+        // Edge stored on item points AT targetNode. For ancestor walk we
+        // want incoming edges TO each node — so the source-of-edge is
+        // ``item`` (which "supports" targetNode), and targetNode receives.
+        const arr = incomingByTarget.get(targetNode.id) || [];
+        arr.push({
+          fromId: item.id,
+          category,
+          relType: rel.relation_type || "contextual",
+        });
+        incomingByTarget.set(targetNode.id, arr);
+      });
+    });
+
+    const visited = new Set([argumentTraceFrom]);
+    const tracedEdges = new Set();
+    const queue = [{ id: argumentTraceFrom, depth: 0 }];
+    const MAX_DEPTH = 3;
+    while (queue.length > 0) {
+      const { id, depth } = queue.shift();
+      if (depth >= MAX_DEPTH) continue;
+      const incoming = incomingByTarget.get(id) || [];
+      for (const edge of incoming) {
+        if (!allowedCategories.has(edge.category)) continue;
+        // Edge id mirrors what buildRfEdgesForSource produced — the
+        // pair-key + relType pattern.
+        const pairKey = [edge.fromId, id].sort().join("--");
+        tracedEdges.add(`c-${pairKey}-${edge.relType}`);
+        if (!visited.has(edge.fromId)) {
+          visited.add(edge.fromId);
+          queue.push({ id: edge.fromId, depth: depth + 1 });
+        }
+      }
+    }
+    return { nodes: visited, edges: tracedEdges };
+  }, [argumentTraceFrom, traceBroaden, normalizedChunk]);
+
   // Drill-down: when the user clicks an aggregate node, show only its
   // descendants at level-1. The path is a stack so nested drills are supported.
   // children_ids is normalized as an array of UUID strings on every node;
@@ -660,7 +747,39 @@ function MinimalGraphInner({
     setInteractiveNodes((nds) => applyNodeChanges(changes, nds));
   }, []);
 
-  const displayNodes = interactiveNodes.length > 0 ? interactiveNodes : layoutedDisplayNodes;
+  const baseDisplayNodes = interactiveNodes.length > 0 ? interactiveNodes : layoutedDisplayNodes;
+  // ADR-032 Part B pattern 3: when argument-scaffold trace is active,
+  // dim non-traced nodes + edges. Untraced opacity 0.18 keeps them
+  // discoverable (you can still see their layout) without competing
+  // for attention. Selected payoff node + its ancestors stay at full.
+  const displayNodes = useMemo(() => {
+    if (!traceResult.nodes) return baseDisplayNodes;
+    return baseDisplayNodes.map((n) => {
+      const inTrace = traceResult.nodes.has(n.id);
+      return {
+        ...n,
+        style: {
+          ...(n.style || {}),
+          opacity: inTrace ? 1 : 0.18,
+          transition: "opacity 200ms ease",
+        },
+      };
+    });
+  }, [baseDisplayNodes, traceResult.nodes]);
+  const displayEdgesWithTrace = useMemo(() => {
+    if (!traceResult.edges) return displayEdges;
+    return displayEdges.map((edge) => {
+      const inTrace = traceResult.edges.has(edge.id);
+      return {
+        ...edge,
+        style: {
+          ...(edge.style || {}),
+          opacity: inTrace ? 1 : 0.08,
+          strokeWidth: inTrace ? Math.max(2, edge.style?.strokeWidth || 1.5) : edge.style?.strokeWidth,
+        },
+      };
+    });
+  }, [displayEdges, traceResult.edges]);
 
   // Run fitView after React has committed the new nodes to DOM and ReactFlow
   // has measured their positions. A single rAF isn't enough — ReactFlow's
@@ -949,9 +1068,43 @@ function MinimalGraphInner({
 
   return (
     <div className="relative w-full h-full">
+      {/* ADR-032 Part B pattern 3: argument-scaffold trace banner.
+          Appears at top-center when trace mode is active. */}
+      {argumentTraceFrom && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-md bg-amber-50 border border-amber-300 shadow-md px-3 py-1.5 text-[11px] text-amber-900">
+          <span className="font-medium">Argument scaffold:</span>
+          <span className="max-w-[260px] truncate text-amber-700">
+            {normalizedChunk.find((n) => n.id === argumentTraceFrom)?.node_name || "node"}
+          </span>
+          <span className="text-amber-400">·</span>
+          <span className="text-amber-600">
+            {traceResult.nodes ? `${traceResult.nodes.size - 1} ancestors` : "0 ancestors"}
+          </span>
+          <button
+            type="button"
+            onClick={() => setTraceBroaden((v) => !v)}
+            className={`ml-2 rounded border px-2 py-0.5 text-[10px] transition-colors ${
+              traceBroaden
+                ? "bg-amber-200 border-amber-400 text-amber-900"
+                : "bg-white border-amber-200 text-amber-700 hover:bg-amber-100"
+            }`}
+            title={traceBroaden ? "Strict: only logical edges" : "Broaden: include conversational + causal"}
+          >
+            {traceBroaden ? "Broadened" : "Broaden"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setArgumentTraceFrom?.(null); setTraceBroaden(false); }}
+            className="rounded border border-amber-300 bg-white px-2 py-0.5 text-[10px] text-amber-700 hover:bg-amber-100"
+            title="Exit trace mode (Esc)"
+          >
+            Exit
+          </button>
+        </div>
+      )}
       <ReactFlow
         nodes={displayNodes}
-        edges={displayEdges}
+        edges={displayEdgesWithTrace}
         onNodesChange={onNodesChange}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
@@ -1405,6 +1558,8 @@ MinimalGraphInner.propTypes = {
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
   initialShowTemporalEdges: PropTypes.bool,
+  argumentTraceFrom: PropTypes.string,
+  setArgumentTraceFrom: PropTypes.func,
 };
 
 export default function MinimalGraph(props) {
@@ -1424,4 +1579,6 @@ MinimalGraph.propTypes = {
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
   initialShowTemporalEdges: PropTypes.bool,
+  argumentTraceFrom: PropTypes.string,
+  setArgumentTraceFrom: PropTypes.func,
 };

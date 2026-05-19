@@ -6,6 +6,7 @@ import MinimalGraph from "../components/MinimalGraph";
 import TimelineRibbon from "../components/TimelineRibbon";
 import NodeDetail from "../components/NodeDetail";
 import MinimalLegend from "../components/MinimalLegend";
+import SearchDialog from "../components/SearchDialog";
 import SessionTranscriptOverlay from "../components/transcript/SessionTranscriptOverlay";
 import ConsumptionPrayerChip from "../components/conversation/ConsumptionPrayerChip";
 import ConsumptionPrayerDrawer from "../components/conversation/ConsumptionPrayerDrawer";
@@ -66,6 +67,24 @@ export default function NewConversation() {
   const [draftGraphData, setDraftGraphData] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
+  // ADR-032 Part B pattern 3: argument-scaffold trace state lifted here
+  // so NodeDetail can request a trace and MinimalGraph can dim.
+  const [argumentTraceFrom, setArgumentTraceFrom] = useState(null);
+  // ADR-032 Part K: Cmd+K / "/" opens search.
+  const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "k") {
+        event.preventDefault();
+        setSearchOpen(true);
+      } else if (event.key === "/" && !event.target?.matches?.("input, textarea, [contenteditable]")) {
+        event.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const [speakerRefreshKey, setSpeakerRefreshKey] = useState(0);
   const [chunkDict, setChunkDict] = useState({});
   const [draftChunkDict, setDraftChunkDict] = useState({});
@@ -884,6 +903,8 @@ export default function NewConversation() {
                 onVisibleLevelChange={(view) => {
                   setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
                 }}
+                argumentTraceFrom={argumentTraceFrom}
+                setArgumentTraceFrom={setArgumentTraceFrom}
               />
               <MinimalLegend
                 speakerColorMap={speakerColorMap}
@@ -994,6 +1015,7 @@ export default function NewConversation() {
             chunkDict={displayChunkDict}
             conversationId={conversationId}
             onClose={() => setSelectedNode(null)}
+            onTraceAncestors={setArgumentTraceFrom}
             onSpeakerRenamed={(speakerId, newName) => {
               setGraphData((prev) =>
                 prev.map((chunk) =>
@@ -1155,6 +1177,12 @@ export default function NewConversation() {
           />
         </div>
       </div>
+      <SearchDialog
+        open={searchOpen}
+        nodes={(displayGraphData || []).flat().filter((n) => n && typeof n === "object" && !Array.isArray(n))}
+        onSelect={(nodeId) => setSelectedNode(nodeId)}
+        onClose={() => setSearchOpen(false)}
+      />
     </div>
   );
 }
