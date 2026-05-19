@@ -318,6 +318,141 @@ async def get_pending_discussions(
 
 
 # ---------------------------------------------------------------------------
+# Unified retrieval — used by LCT enrichment passes (ADR-032 Part E)
+# ---------------------------------------------------------------------------
+
+DEFAULT_RETRIEVAL_TIMEOUT_SECONDS = 10.0
+DEFAULT_RETRIEVAL_TOP_K = 10
+DEFAULT_RETRIEVAL_CANDIDATE_K = 50
+
+
+def get_retrieval_timeout_seconds() -> float:
+    try:
+        return float(
+            os.getenv(
+                "INDRASNET_RETRIEVAL_TIMEOUT_SECONDS",
+                str(DEFAULT_RETRIEVAL_TIMEOUT_SECONDS),
+            )
+        )
+    except (TypeError, ValueError):
+        return DEFAULT_RETRIEVAL_TIMEOUT_SECONDS
+
+
+async def retrieval_search(
+    *,
+    query: str,
+    top_k: int = DEFAULT_RETRIEVAL_TOP_K,
+    candidate_k: int = DEFAULT_RETRIEVAL_CANDIDATE_K,
+    rerank: bool = True,
+    base_url: Optional[str] = None,
+    timeout_seconds: Optional[float] = None,
+) -> Dict[str, Any]:
+    """ADR-032 Part E: unified BM25 + HNSW + RRF + reranker retrieval over
+    IndrasNet's full knowledge graph (notes, prior conversations, messages,
+    media items).
+
+    LCT calls this during enrichment passes to fetch contextually salient
+    items that ground the LLM in shared user context. Without it, the
+    consolidation + edge-enrichment LLMs see only the transcript and can't
+    interpret in-group references / jargon / prior arguments.
+
+    PRIVACY GATE: IndrasNet does NOT enforce ``external_llm_ok`` on this
+    endpoint. Callers MUST filter results by participant privacy flag
+    before passing retrieved items into any prompt that ships to a remote
+    LLM. See ``edge_enrichment.py`` for the filter implementation.
+
+    Failure mode: callers should catch ``IndrasNetUnavailable`` and proceed
+    with empty context (enrichment runs without the boost). A banner is
+    surfaced to the user, the failure is logged, the session continues.
+
+    Args:
+        query: Free-text query — typically the recent transcript chunk +
+            a one-line thread summary. ~200-1000 chars works well.
+        top_k: Final number of results returned after reranking. Server
+            clamps to [1, 100].
+        candidate_k: How many candidates to retrieve before reranking.
+            Server clamps. Larger = slower but better recall.
+        rerank: Whether to apply the cross-encoder + LLM context-pack step.
+            Set False for low-latency probes.
+
+    Returns:
+        Response body with ranked items and `why_relevant` annotations.
+        Shape per IndrasNet ADR-017.
+
+    Raises:
+        Same exception hierarchy as ``match_prayers``.
+    """
+    base = (base_url or get_indrasnet_base_url()).rstrip("/")
+    timeout = timeout_seconds if timeout_seconds is not None else get_retrieval_timeout_seconds()
+    url = f"{base}/api/retrieval/search"
+
+    payload = {
+        "query": query or "",
+        "top_k": int(top_k),
+        "candidate_k": int(candidate_k),
+        "rerank": bool(rerank),
+    }
+
+    logger.debug(
+        "[indrasnet_client] retrieval → %s (query_len=%d top_k=%d rerank=%s)",
+        url, len(payload["query"]), payload["top_k"], payload["rerank"],
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(url, json=payload)
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        msg = f"IndrasNet retrieval endpoint unreachable at {url}: {exc}"
+        logger.warning("[indrasnet_client] %s", msg)
+        raise IndrasNetUnavailable(msg) from exc
+    except httpx.ReadTimeout as exc:
+        msg = f"IndrasNet retrieval call timed out after {timeout}s at {url}"
+        logger.warning("[indrasnet_client] %s", msg)
+        raise IndrasNetUnavailable(msg) from exc
+    except httpx.HTTPError as exc:
+        msg = f"IndrasNet retrieval HTTP transport error at {url}: {exc}"
+        logger.warning("[indrasnet_client] %s", msg)
+        raise IndrasNetUnavailable(msg) from exc
+
+    status = response.status_code
+    if 400 <= status < 500:
+        msg = (
+            f"IndrasNet retrieval returned {status} — payload rejected. "
+            f"Body: {response.text[:300]}"
+        )
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetClientError(msg)
+    if status >= 500:
+        msg = (
+            f"IndrasNet retrieval returned {status} — server error. "
+            f"Body: {response.text[:300]}"
+        )
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetServerError(msg)
+
+    try:
+        body = response.json()
+    except ValueError as exc:
+        msg = f"IndrasNet retrieval returned non-JSON body: {response.text[:200]}"
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetProtocolError(msg) from exc
+
+    if not isinstance(body, dict):
+        msg = f"IndrasNet retrieval response is not a JSON object: {body!r}"
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetProtocolError(msg)
+
+    items = body.get("items") or body.get("results") or []
+    logger.info(
+        "[indrasnet_client] retrieval ← %d items (rerank=%s top_k=%d)",
+        len(items),
+        rerank,
+        top_k,
+    )
+    return body
+
+
+# ---------------------------------------------------------------------------
 # Health probe — exposed for the live pipeline to check at startup
 # ---------------------------------------------------------------------------
 
