@@ -58,6 +58,7 @@ export default function NodeDetail({
   audioUrl,
   onClose,
   onSpeakerRenamed,
+  onTraceAncestors,
 }) {
   const safeNode = node ?? null;
   const [speakerNameDraft, setSpeakerNameDraft] = useState("");
@@ -552,6 +553,21 @@ export default function NodeDetail({
           </div>
         )}
 
+        {/* ADR-032 Part B pattern 3: argument-scaffold trace. Only meaningful
+            if this node has incoming semantic edges authored. Render the button
+            unconditionally for now — the trace shows 0 ancestors when the
+            graph is sparse, which is itself useful signal. */}
+        {onTraceAncestors && safeNode?.id && (
+          <button
+            type="button"
+            onClick={() => onTraceAncestors(safeNode.id)}
+            className="self-start rounded border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+            title="Dim everything except the nodes that support, imply, or clarify this one. Press Esc to exit."
+          >
+            ↑ Trace ancestors
+          </button>
+        )}
+
         {/* Fallback contextual relations */}
         {relations.length === 0 && contextualRelations.length > 0 && (
           <div>
@@ -581,8 +597,15 @@ export default function NodeDetail({
           </div>
         )}
 
-        {/* Fact Check Analysis */}
-        {(factCheckLoading || factCheckData) && (
+        {/* Fact Check Analysis — only render when there's actual content
+            to show. Empty {} or {claims:[]} returns no value and clutters
+            the panel; suppress entirely. Loading spinner still shows so
+            the user knows something's happening. */}
+        {(factCheckLoading
+          || (factCheckData
+              && (factCheckData.summary
+                  || (Array.isArray(factCheckData.claims) && factCheckData.claims.length > 0)))
+        ) && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Analysis</span>
             {factCheckLoading && (
@@ -654,4 +677,5 @@ NodeDetail.propTypes = {
   audioUrl: PropTypes.string,
   onClose: PropTypes.func.isRequired,
   onSpeakerRenamed: PropTypes.func,
+  onTraceAncestors: PropTypes.func,
 };
