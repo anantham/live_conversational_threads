@@ -253,6 +253,8 @@ def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[D
             "is_crux": getattr(node, "is_crux", False),
             "chunk_id": str(node.chunk_ids[0]) if node.chunk_ids else None,
             "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])],
+            "parent_id": str(node.parent_id) if node.parent_id else None,
+            "children_ids": [str(cid) for cid in (node.children_ids or [])],
             "thread_id": cluster_info.get("thread_id"),
             "thread_state": cluster_info.get("thread_state"),
             "edge_relations": edge_relations_by_id.get(node.id, display_preferences.get("edge_relations") or []),
