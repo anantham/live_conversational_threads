@@ -95,12 +95,14 @@ function MinimalGraphInner({
     [allNodes]
   );
 
-  // A6: pick a default tab that surfaces a digestible top-down view.
-  // Pick the TOPMOST tier where avg_children_per_parent >= 2.5 — i.e. the
-  // highest level of compression that's actually compressing. For Q.m4a-with-
-  // consolidation: arcs (5 nodes, ~3 themes each) wins. For a thin 3-min
-  // import: ideas wins. Skips degenerate tiers (1.07x "themes" pretending
-  // to compress).
+  // Default landing tier: the TOPMOST populated tier so the canvas opens on
+  // the macro view (1-5 arcs / themes), not 100+ chunks. User can step down
+  // via the tier-lock UI or by clicking into nodes. Earlier heuristic
+  // demanded >=2.5x compression vs the next tier, but on conversations
+  // where the LLM produces equal counts at L4 and L5 (no genuine
+  // compression — 772ac0cc: 4 themes -> 4 arcs) it landed at L2, which
+  // defeats the point. Pick the highest tier with content; if that tier
+  // only has 1 node and a finer tier exists, drop down to the finer one.
   useEffect(() => {
     if (initialLockedAppliedRef.current) return;
     if (!normalizedChunk || normalizedChunk.length === 0) return;
@@ -111,19 +113,21 @@ function MinimalGraphInner({
       byLevel.set(level, (byLevel.get(level) || 0) + 1);
     });
     if (byLevel.size === 0) return;
-    // Walk top-down (arcs → chunks) looking for a tier with real compression
-    // vs its next-finer tier. Default to the topmost tier with count >= 2.
+    // Walk top-down. Land at the topmost tier with at least 1 node, UNLESS
+    // that tier has only 1 node and a finer tier exists with more — in
+    // that case prefer the finer tier so the user sees parallelism.
     let chosen = null;
     for (let lvl = 5; lvl >= 1; lvl--) {
       const cur = byLevel.get(lvl) || 0;
-      if (cur < 2) continue;
+      if (cur < 1) continue;
       const next = byLevel.get(lvl - 1) || 0;
-      // Only pick a tier if it's the only populated tier above 1, OR if it
-      // genuinely compresses (>= 2.5x reduction from finer tier).
-      if (next === 0 || cur * 2.5 <= next) {
-        chosen = lvl;
+      if (cur === 1 && next >= 2) {
+        // Solo node at the top is a degenerate macro view; drop one tier.
+        chosen = lvl - 1;
         break;
       }
+      chosen = lvl;
+      break;
     }
     if (chosen) {
       setLockedLevel(chosen);
@@ -434,7 +438,7 @@ function MinimalGraphInner({
     }
   }
 
-  const requestedSemanticLevel = lockedLevel != null ? Math.max(1, Math.min(4, lockedLevel)) : resolveRequestedSemanticLevel(zoomLevel);
+  const requestedSemanticLevel = lockedLevel != null ? Math.max(1, Math.min(5, lockedLevel)) : resolveRequestedSemanticLevel(zoomLevel);
   let activeSemanticView = null;
   let effectiveSemanticLevel = requestedSemanticLevel;
   if (hasAuthoredHierarchy) {
