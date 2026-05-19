@@ -242,7 +242,7 @@ def test_known_contacts_preserves_indrasnet_order_and_passes_ranking_fields(clie
         def __init__(self, *args, **kwargs): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
-        async def get(self, url): return _MockResponse()
+        async def get(self, url, params=None): return _MockResponse()
 
     monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
 
@@ -286,7 +286,7 @@ def test_known_contacts_handles_dict_response_shape(client, monkeypatch):
         def __init__(self, *args, **kwargs): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
-        async def get(self, url): return _MockResponse()
+        async def get(self, url, params=None): return _MockResponse()
 
     monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
     response = client.get(URL_KNOWN)
@@ -311,7 +311,7 @@ def test_known_contacts_filters_invalid_entries(client, monkeypatch):
         def __init__(self, *args, **kwargs): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
-        async def get(self, url): return _MockResponse()
+        async def get(self, url, params=None): return _MockResponse()
 
     monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
     response = client.get(URL_KNOWN)
@@ -329,7 +329,7 @@ def test_known_contacts_returns_empty_on_indrasnet_failure(client, monkeypatch):
         def __init__(self, *args, **kwargs): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
-        async def get(self, url):
+        async def get(self, url, params=None):
             raise httpx.ConnectError("Tailscale down")
 
     monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
@@ -351,7 +351,7 @@ def test_known_contacts_returns_empty_on_non_json_response(client, monkeypatch):
         def __init__(self, *args, **kwargs): pass
         async def __aenter__(self): return self
         async def __aexit__(self, *a): pass
-        async def get(self, url): return _MockResponse()
+        async def get(self, url, params=None): return _MockResponse()
 
     monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
     response = client.get(URL_KNOWN)
@@ -359,3 +359,175 @@ def test_known_contacts_returns_empty_on_non_json_response(client, monkeypatch):
     body = response.json()
     assert body["contacts"] == []
     assert body["indrasnet_error"] == "non-JSON response"
+
+
+# ---------------------------------------------------------------------------
+# /known-contacts — pagination behavior (Option B fix)
+# ---------------------------------------------------------------------------
+
+
+def _capture_params_client(captured: dict, payload):
+    """Build a MockClient that records the params= passed by the proxy."""
+    class _MockResponse:
+        status_code = 200
+        def raise_for_status(self): pass
+        def json(self): return payload
+
+    class _MockClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url, params=None):
+            captured["url"] = url
+            captured["params"] = dict(params or {})
+            return _MockResponse()
+
+    return _MockClient
+
+
+def test_known_contacts_defaults_to_limit_50(client, monkeypatch):
+    """Picker mount should ask IndrasNet for only the top-N most-recent
+    contacts — the previous limit=500 took ~5s and frequently timed out."""
+    captured = {}
+    monkeypatch.setattr(
+        consumption_prayer_api.httpx, "AsyncClient",
+        _capture_params_client(captured, []),
+    )
+    response = client.get(URL_KNOWN)
+    assert response.status_code == 200
+    assert captured["params"]["limit"] == "50"
+    assert "search" not in captured["params"]
+
+
+def test_known_contacts_honors_explicit_limit_query_param(client, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        consumption_prayer_api.httpx, "AsyncClient",
+        _capture_params_client(captured, []),
+    )
+    response = client.get(URL_KNOWN + "?limit=10")
+    assert response.status_code == 200
+    assert captured["params"]["limit"] == "10"
+
+
+def test_known_contacts_clamps_limit_to_max(client, monkeypatch):
+    """Prevent a client from asking for the full list and DOSing the proxy
+    timeout. Hard cap at PICKER_MAX_LIMIT."""
+    captured = {}
+    monkeypatch.setattr(
+        consumption_prayer_api.httpx, "AsyncClient",
+        _capture_params_client(captured, []),
+    )
+    response = client.get(URL_KNOWN + "?limit=9999")
+    assert response.status_code == 200
+    assert int(captured["params"]["limit"]) == consumption_prayer_api.PICKER_MAX_LIMIT
+
+
+def test_known_contacts_clamps_zero_and_negative_limit(client, monkeypatch):
+    """A nonsensical limit shouldn't ask IndrasNet for 0 rows."""
+    captured = {}
+    monkeypatch.setattr(
+        consumption_prayer_api.httpx, "AsyncClient",
+        _capture_params_client(captured, []),
+    )
+    client.get(URL_KNOWN + "?limit=0")
+    assert int(captured["params"]["limit"]) >= 1
+
+
+# ---------------------------------------------------------------------------
+# /known-contacts/search — long-tail lookup
+# ---------------------------------------------------------------------------
+
+URL_SEARCH = "/api/consumption-prayer/known-contacts/search"
+
+
+def test_search_returns_empty_for_empty_query(client, monkeypatch):
+    """Empty q skips the upstream call entirely — the top-N endpoint
+    handles the initial render. No reason to round-trip IndrasNet here."""
+    captured = {}
+    monkeypatch.setattr(
+        consumption_prayer_api.httpx, "AsyncClient",
+        _capture_params_client(captured, []),
+    )
+    response = client.get(URL_SEARCH + "?q=")
+    assert response.status_code == 200
+    body = response.json()
+    assert body == {"contacts": [], "query": ""}
+    # IndrasNet was NOT called
+    assert captured == {}
+
+
+def test_search_forwards_query_to_indrasnet(client, monkeypatch):
+    """Server-side search across all contacts (covers names outside top-50)."""
+    fake_payload = [
+        {
+            "contact_id": "c_vinay", "display_name": "Vinay",
+            "external_llm_ok": 0, "privacy_tier": "T3",
+            "last_activity": "2024-01-01", "item_count": 5,
+        },
+    ]
+    captured = {}
+    monkeypatch.setattr(
+        consumption_prayer_api.httpx, "AsyncClient",
+        _capture_params_client(captured, fake_payload),
+    )
+    response = client.get(URL_SEARCH + "?q=vinay")
+    assert response.status_code == 200
+    body = response.json()
+    assert captured["params"]["search"] == "vinay"
+    assert body["query"] == "vinay"
+    assert len(body["contacts"]) == 1
+    assert body["contacts"][0]["display_name"] == "Vinay"
+    # Same field shape as /known-contacts so the frontend can render either
+    assert body["contacts"][0]["external_llm_ok"] is False
+    assert body["contacts"][0]["privacy_tier"] == "T3"
+
+
+def test_search_strips_whitespace_in_query(client, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        consumption_prayer_api.httpx, "AsyncClient",
+        _capture_params_client(captured, []),
+    )
+    client.get(URL_SEARCH + "?q=%20%20saksham%20%20")  # "  saksham  "
+    assert captured["params"]["search"] == "saksham"
+
+
+def test_search_returns_empty_on_indrasnet_failure(client, monkeypatch):
+    """Same graceful-degradation contract as /known-contacts."""
+    import httpx
+
+    class _MockClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url, params=None):
+            raise httpx.ReadTimeout("timed out")
+
+    monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
+    response = client.get(URL_SEARCH + "?q=anything")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["contacts"] == []
+    assert body["query"] == "anything"
+    assert "indrasnet_error" in body
+
+
+def test_search_empty_exception_string_does_not_swallow_error(client, monkeypatch):
+    """ReadTimeout's str() is empty — must not return '' as indrasnet_error
+    (silently hides the failure). Helper falls back to exception class name."""
+    import httpx
+
+    class _MockClient:
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def get(self, url, params=None):
+            raise httpx.ReadTimeout("")  # empty message
+
+    monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _MockClient)
+    response = client.get(URL_SEARCH + "?q=anything")
+    body = response.json()
+    # Either the empty message or the class name — but never silently blank.
+    assert body.get("indrasnet_error"), \
+        f"expected a non-empty indrasnet_error, got {body!r}"

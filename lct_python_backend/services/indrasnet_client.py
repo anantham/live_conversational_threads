@@ -37,6 +37,11 @@ logger = logging.getLogger("lct_backend")
 
 DEFAULT_INDRASNET_BASE_URL = "http://100.81.65.74:7777"
 DEFAULT_MATCH_TIMEOUT_SECONDS = 5.0
+# Contacts endpoint is a bulk read and observably slower than match/pending —
+# probes regularly show 1-15s round-trips at limit=50, with occasional
+# timeouts. Keep this separate from MATCH so the live STT path (match) does
+# NOT get a slower budget when we accommodate contacts.
+DEFAULT_CONTACTS_TIMEOUT_SECONDS = 15.0
 DEFAULT_MAX_RESULTS = 3
 DEFAULT_MIN_SCORE = 0.05
 
@@ -80,6 +85,15 @@ def get_match_timeout_seconds() -> float:
         return float(os.getenv("INDRASNET_MATCH_TIMEOUT_SECONDS", str(DEFAULT_MATCH_TIMEOUT_SECONDS)))
     except (TypeError, ValueError):
         return DEFAULT_MATCH_TIMEOUT_SECONDS
+
+
+def get_contacts_timeout_seconds() -> float:
+    """Timeout for the bulk /api/contacts call from the participant picker.
+    Deliberately decoupled from match_timeout — see DEFAULT_CONTACTS_TIMEOUT_SECONDS."""
+    try:
+        return float(os.getenv("INDRASNET_CONTACTS_TIMEOUT_SECONDS", str(DEFAULT_CONTACTS_TIMEOUT_SECONDS)))
+    except (TypeError, ValueError):
+        return DEFAULT_CONTACTS_TIMEOUT_SECONDS
 
 
 # ---------------------------------------------------------------------------

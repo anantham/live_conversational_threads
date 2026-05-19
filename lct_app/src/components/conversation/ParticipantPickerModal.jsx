@@ -1,13 +1,16 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import PropTypes from "prop-types";
 import {
   fetchKnownContacts,
   fetchUserIdentity,
   fetchConversationParticipants,
   putConversationParticipants,
+  searchKnownContacts,
 } from "../../services/participantsApi";
 
 const DEFAULT_INITIAL_VISIBLE = 5;
+const SEARCH_DEBOUNCE_MS = 250;
+const SEARCH_MIN_CHARS = 2;
 
 /**
  * Non-blocking modal that overlays a fresh recording on New Conversation.
@@ -32,6 +35,9 @@ export default function ParticipantPickerModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [searchResults, setSearchResults] = useState([]); // server-side matches for long tail
+  const [searching, setSearching] = useState(false);
+  const searchSeqRef = useRef(0); // guard against out-of-order responses
 
   useEffect(() => {
     if (!open) return undefined;
@@ -71,13 +77,45 @@ export default function ParticipantPickerModal({
     };
   }, [open, conversationId]);
 
+  // Server-side search for the long tail (names beyond the top-50 default).
+  // Debounced so we don't spam IndrasNet per keystroke. We still do the
+  // client-side filter immediately for snappy feedback on the top-N.
+  useEffect(() => {
+    if (!open) return undefined;
+    const q = searchText.trim();
+    if (q.length < SEARCH_MIN_CHARS) {
+      setSearchResults([]);
+      setSearching(false);
+      return undefined;
+    }
+    const mySeq = ++searchSeqRef.current;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      searchKnownContacts(q).then((rows) => {
+        // Discard if a newer keystroke superseded us — prevents flicker
+        // when fast input arrives faster than IndrasNet responds.
+        if (mySeq !== searchSeqRef.current) return;
+        setSearchResults(rows);
+        setSearching(false);
+      });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [open, searchText]);
+
   const filteredContacts = useMemo(() => {
     const query = searchText.trim().toLowerCase();
     if (!query) return contacts;
-    return contacts.filter((c) =>
+    // Client-side: instant hit from the top-N already in memory.
+    const localMatches = contacts.filter((c) =>
       (c.display_name || "").toLowerCase().includes(query),
     );
-  }, [contacts, searchText]);
+    if (!searchResults.length) return localMatches;
+    // Merge with server-side results, deduping by contact_id. Local-first
+    // so the user sees consistent ordering (their recent contacts at top).
+    const seen = new Set(localMatches.map((c) => c.contact_id));
+    const extras = searchResults.filter((c) => !seen.has(c.contact_id));
+    return [...localMatches, ...extras];
+  }, [contacts, searchText, searchResults]);
 
   // Pin self to the top so the user notices the pre-selection (and can
   // uncheck it for trick conversations where they're just recording
@@ -180,6 +218,11 @@ export default function ParticipantPickerModal({
             placeholder="Search contacts…"
             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
           />
+          {searching ? (
+            <p className="mt-1 text-[11px] text-gray-400">
+              Searching all contacts…
+            </p>
+          ) : null}
         </div>
 
         <div className="max-h-[50vh] overflow-y-auto px-2 pb-1 pt-2">
