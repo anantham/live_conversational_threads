@@ -8,6 +8,7 @@ import NodeDetail from "../components/NodeDetail";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
+import { fetchConversationParticipants } from "../services/participantsApi";
 
 function sanitizeNodeArray(chunk) {
   return (Array.isArray(chunk) ? chunk : []).filter(
@@ -113,6 +114,7 @@ export default function ViewConversation() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [audioDownloadUrl, setAudioDownloadUrl] = useState("");
+  const [participants, setParticipants] = useState([]);
 
   useEffect(() => {
     if (!conversationId) {
@@ -209,6 +211,20 @@ export default function ViewConversation() {
     };
   }, [conversationId]);
 
+  // Participants are a separate concern from the graph payload, so we fetch
+  // independently — a 404 / empty list shouldn't fail the whole view. Legacy
+  // conversations recorded before the picker shipped just render no chips.
+  useEffect(() => {
+    if (!conversationId) return undefined;
+    let cancelled = false;
+    fetchConversationParticipants(conversationId).then((rows) => {
+      if (!cancelled) setParticipants(Array.isArray(rows) ? rows : []);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
+
   const allNodes = useMemo(
     () => graphData.flatMap((chunk) => (Array.isArray(chunk) ? chunk : [])),
     [graphData]
@@ -259,6 +275,29 @@ export default function ViewConversation() {
               "Saved conversation view"
             )}
           </p>
+          {participants.length > 0 ? (
+            <div
+              className="mt-1 flex flex-wrap items-center gap-1"
+              title={participants.map((p) => p.display_name).join(", ")}
+            >
+              {participants.map((p) => (
+                <span
+                  key={p.contact_id}
+                  className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600"
+                >
+                  {p.display_name}
+                  {p.external_llm_ok === false ? (
+                    <span
+                      className="ml-1 text-amber-600"
+                      title="Voice clip stays local (privacy tier)"
+                    >
+                      •
+                    </span>
+                  ) : null}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
