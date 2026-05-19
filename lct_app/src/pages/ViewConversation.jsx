@@ -240,7 +240,10 @@ export default function ViewConversation() {
         </button>
 
         <div className="min-w-0 flex-1 px-4">
-          <h1 className="truncate text-sm font-semibold text-slate-800">
+          <h1
+            className="truncate text-sm font-semibold text-slate-800"
+            title={conversationTitle || conversationName || conversationId || "Conversation"}
+          >
             {conversationTitle || conversationName || conversationId || "Conversation"}
           </h1>
           <p className="text-xs text-slate-500">

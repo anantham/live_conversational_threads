@@ -70,30 +70,88 @@ export default function NodeDetail({
   const [factCheckLoading, setFactCheckLoading] = useState(false);
 
   const audioRef = useRef(null);
+  const pendingSeekRef = useRef(null);
+  const [audioState, setAudioState] = useState("idle");
+
+  // Backend timestamps are seconds (Float on DBUtterance.timestamp_start,
+  // derived from utterance.start_time which is seconds throughout the
+  // pipeline). Don't try to auto-detect ms — the old heuristic
+  // `ts > 10000 ? ts/1000 : ts` silently mis-seeked anything past ~2.8h.
+  const seekTo = useCallback((timeInSeconds) => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.readyState >= 1) {
+      audio.currentTime = timeInSeconds;
+      audio.play().catch((e) => console.warn("Auto-play prevented:", e));
+    } else {
+      // Audio hasn't loaded metadata yet — assigning currentTime now
+      // would be silently dropped. Defer until loadedmetadata fires.
+      pendingSeekRef.current = timeInSeconds;
+    }
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return undefined;
+
+    const onLoadedMetadata = () => {
+      setAudioState((s) => (s === "playing" ? s : "ready"));
+      if (pendingSeekRef.current != null) {
+        const t = pendingSeekRef.current;
+        pendingSeekRef.current = null;
+        audio.currentTime = t;
+        audio.play().catch((e) => console.warn("Auto-play prevented:", e));
+      }
+    };
+    const onWaiting = () => setAudioState("loading");
+    const onSeeking = () => setAudioState("seeking");
+    const onCanPlay = () => setAudioState((s) => (s === "playing" ? s : "ready"));
+    const onPlaying = () => setAudioState("playing");
+    const onPause = () => setAudioState("paused");
+    const onError = () => setAudioState("error");
+    const onStalled = () => setAudioState("loading");
+
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("waiting", onWaiting);
+    audio.addEventListener("seeking", onSeeking);
+    audio.addEventListener("canplay", onCanPlay);
+    audio.addEventListener("playing", onPlaying);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("error", onError);
+    audio.addEventListener("stalled", onStalled);
+    return () => {
+      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("waiting", onWaiting);
+      audio.removeEventListener("seeking", onSeeking);
+      audio.removeEventListener("canplay", onCanPlay);
+      audio.removeEventListener("playing", onPlaying);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("error", onError);
+      audio.removeEventListener("stalled", onStalled);
+    };
+  }, [audioUrl]);
 
   useEffect(() => {
     if (!audioRef.current || !safeNode) return;
     const ts = safeNode.timestamp_start ?? safeNode.start_time;
     if (ts == null || ts < 0) return;
-    
-    // Seek to the timestamp. If it's stored in ms, divide by 1000. It seems the backend uses seconds or ms, let's check.
-    // If ts > 1000000, it's likely ms, otherwise seconds.
-    // Wait, the backend uses seconds for utterance_start, but let's just assume seconds unless it's huge.
-    // Or in HorizontalTimeline it did: formatTimestamp(utt.timestamp_start) which might mean seconds.
-    // Let's use it as seconds.
-    const timeInSeconds = ts > 10000 ? ts / 1000 : ts;
-    
-    audioRef.current.currentTime = timeInSeconds;
-    audioRef.current.play().catch(e => console.warn("Auto-play prevented:", e));
-  }, [safeNode]);
+    seekTo(ts);
+  }, [safeNode, seekTo]);
 
   const relations = Array.isArray(safeNode?.edge_relations) ? safeNode.edge_relations : [];
   const contextualRelations = normalizeContextualRelations(safeNode?.contextual_relation);
   const canRenameSpeaker = Boolean(conversationId && safeNode?.speaker_id);
   const displaySpeakerName = speakerNameDraft.trim() || safeNode?.speaker_display || safeNode?.speaker_id || "";
 
-  // Raw transcript for this node's chunk
+  // Raw transcript for this node's chunk. NOTE: for live-recorded
+  // conversations the backend (conversation_reader.build_chunk_dict...)
+  // stores the WHOLE transcript under every chunk_id because
+  // utterance.chunk_id wasn't linked to node.chunk_ids by the live-STT
+  // writer. So `rawTranscript` is often the entire conversation, not
+  // just this node's slice — hence the windowing below.
   const rawTranscript = safeNode?.chunk_id ? chunkDict?.[safeNode.chunk_id] || null : null;
+  const [showFullTranscript, setShowFullTranscript] = useState(false);
+  const TRANSCRIPT_CONTEXT_LINES = 4;
 
   // Split raw transcript into lines and find the node's text within it
   const highlightedTranscript = useMemo(() => {
@@ -105,6 +163,43 @@ export default function NodeDetail({
     const nodeLineCount = safeNode.full_text.split("\n").length;
     return { lines, startIdx, nodeLineCount };
   }, [rawTranscript, safeNode?.full_text]);
+
+  // Render a window around the highlighted lines (or full transcript if
+  // toggled, or if we couldn't locate the node's text).
+  const visibleTranscript = useMemo(() => {
+    if (!highlightedTranscript) return null;
+    const { lines, startIdx, nodeLineCount } = highlightedTranscript;
+    if (showFullTranscript || startIdx === -1) {
+      return { lines, startIdx, nodeLineCount, sliceOffset: 0, truncated: false };
+    }
+    const from = Math.max(0, startIdx - TRANSCRIPT_CONTEXT_LINES);
+    const to = Math.min(lines.length, startIdx + nodeLineCount + TRANSCRIPT_CONTEXT_LINES);
+    return {
+      lines: lines.slice(from, to),
+      startIdx: startIdx - from,
+      nodeLineCount,
+      sliceOffset: from,
+      truncated: from > 0 || to < lines.length,
+    };
+  }, [highlightedTranscript, showFullTranscript]);
+
+  // Reset full-transcript toggle when switching nodes.
+  useEffect(() => {
+    setShowFullTranscript(false);
+  }, [safeNode?.id]);
+
+  // Scroll the highlighted block into view *within the transcript box*
+  // (not the whole page). scrollIntoView would walk up scrollable
+  // ancestors and could jump the panel itself; scrollTop is local.
+  const highlightedLineRef = useRef(null);
+  const transcriptScrollRef = useRef(null);
+  useEffect(() => {
+    const line = highlightedLineRef.current;
+    const box = transcriptScrollRef.current;
+    if (!line || !box) return;
+    const target = line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2;
+    box.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+  }, [visibleTranscript]);
 
   useEffect(() => {
     if (!safeNode) return undefined;
@@ -244,7 +339,10 @@ export default function NodeDetail({
     <div className="fixed top-0 right-0 h-full w-full sm:w-80 sm:max-w-[85vw] bg-white shadow-lg border-l border-gray-200 z-40 flex flex-col animate-slideIn">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <h3 className="text-sm font-semibold text-gray-800 truncate pr-2">
+        <h3
+          className="text-sm font-semibold text-gray-800 pr-2 break-words leading-snug"
+          title={safeNode.node_name}
+        >
           {safeNode.node_name}
         </h3>
         <button
@@ -263,10 +361,24 @@ export default function NodeDetail({
         {/* Audio Player */}
         {audioUrl && (
           <div className="mb-4">
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider block mb-1">
-              Audio playback
-            </span>
-            <audio 
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Audio playback
+              </span>
+              {(audioState === "loading" || audioState === "seeking") && (
+                <span className="flex items-center gap-1 text-[10px] text-gray-500">
+                  <span
+                    aria-hidden="true"
+                    className="inline-block h-2.5 w-2.5 animate-spin rounded-full border border-gray-300 border-t-gray-600"
+                  />
+                  {audioState === "seeking" ? "Seeking…" : "Buffering…"}
+                </span>
+              )}
+              {audioState === "error" && (
+                <span className="text-[10px] text-red-600">Audio error</span>
+              )}
+            </div>
+            <audio
               ref={audioRef}
               src={audioUrl}
               controls
@@ -353,22 +465,50 @@ export default function NodeDetail({
           </div>
         )}
 
-        {/* Raw transcript chunk (what the LLM saw) */}
+        {/* Raw transcript chunk (what the LLM saw) \u2014 windowed around the
+            node's contributing lines, with an Expand toggle to see the
+            full chunk (or the full conversation, in live-recording mode
+            where the backend stores the whole transcript per chunk). */}
         {rawTranscript && (
           <div>
-            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-              Raw Transcript
-            </span>
-            <div className="mt-1 max-h-48 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs text-gray-600 leading-relaxed whitespace-pre-wrap">
-              {highlightedTranscript
-                ? highlightedTranscript.lines.map((line, i) => {
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Raw Transcript
+              </span>
+              {visibleTranscript?.truncated && (
+                <button
+                  type="button"
+                  onClick={() => setShowFullTranscript(true)}
+                  className="text-[10px] text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline"
+                >
+                  Show full
+                </button>
+              )}
+              {showFullTranscript && highlightedTranscript?.lines?.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowFullTranscript(false)}
+                  className="text-[10px] text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline"
+                >
+                  Collapse
+                </button>
+              )}
+            </div>
+            <div
+              ref={transcriptScrollRef}
+              className="mt-1 max-h-48 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs text-gray-600 leading-relaxed whitespace-pre-wrap"
+            >
+              {visibleTranscript
+                ? visibleTranscript.lines.map((line, i) => {
                     const isHL =
-                      highlightedTranscript.startIdx !== -1 &&
-                      i >= highlightedTranscript.startIdx &&
-                      i < highlightedTranscript.startIdx + highlightedTranscript.nodeLineCount;
+                      visibleTranscript.startIdx !== -1 &&
+                      i >= visibleTranscript.startIdx &&
+                      i < visibleTranscript.startIdx + visibleTranscript.nodeLineCount;
+                    const isFirstHL = isHL && i === visibleTranscript.startIdx;
                     return (
                       <div
-                        key={i}
+                        key={`${visibleTranscript.sliceOffset}-${i}`}
+                        ref={isFirstHL ? highlightedLineRef : undefined}
                         className={isHL ? "bg-amber-100 rounded px-0.5" : ""}
                       >
                         {line || "\u00A0"}
@@ -511,6 +651,7 @@ NodeDetail.propTypes = {
   node: PropTypes.object,
   chunkDict: PropTypes.object,
   conversationId: PropTypes.string,
+  audioUrl: PropTypes.string,
   onClose: PropTypes.func.isRequired,
   onSpeakerRenamed: PropTypes.func,
 };
