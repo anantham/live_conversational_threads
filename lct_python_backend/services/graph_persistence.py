@@ -515,6 +515,29 @@ async def persist_graph(
         except (TypeError, ValueError):
             node_level = 1
         node_level = max(1, min(5, node_level))
+
+        # Resolve hierarchy links. The Node model has parent_id (single FK) and
+        # children_ids (array). Authors supply either slug-style ids ("topic-001")
+        # that we already mapped into ref_to_id, or raw UUIDs. Skip ids that
+        # don't resolve to a node we're about to persist — referential integrity
+        # matters for parent_id since it's a foreign key.
+        def _resolve_node_ref(value: Any) -> Optional[uuid.UUID]:
+            key = coerce_str(value)
+            if not key:
+                return None
+            if key in ref_to_id:
+                return ref_to_id[key]
+            return _coerce_uuid(key)
+
+        parent_id_resolved = _resolve_node_ref(item.get("parent_id"))
+        raw_children = item.get("children_ids")
+        children_resolved: List[uuid.UUID] = []
+        if isinstance(raw_children, list):
+            for child_ref in raw_children:
+                resolved = _resolve_node_ref(child_ref)
+                if resolved is not None and resolved != node_id:
+                    children_resolved.append(resolved)
+
         db.add(Node(
             id=node_id,
             conversation_id=conv_uuid,
@@ -527,6 +550,8 @@ async def persist_graph(
             is_tangent=bool(item.get("is_tangent")) or thread_state in {"branch", "tangent"},
             level=node_level,
             zoom_level_visible=[node_level],
+            parent_id=parent_id_resolved,
+            children_ids=children_resolved or None,
             cluster_info={
                 "thread_id": str(thread_id) if thread_id else coerce_str(item.get("thread_id")) or None,
                 "thread_state": thread_state,
