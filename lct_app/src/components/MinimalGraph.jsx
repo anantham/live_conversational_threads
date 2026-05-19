@@ -63,6 +63,11 @@ function MinimalGraphInner({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [lockedLevel, setLockedLevel] = useState(null); // null = unlocked, semantic 1-4 or legacy 0-3
   const initialLockedAppliedRef = useRef(false);
+  // Drilldown stack: array of { level, nodeId, nodeName } breadcrumbs.
+  // Empty = top-level (whatever tier the user is currently locked to).
+  // Each click on a non-leaf node pushes one entry; the visible nodes
+  // become the parent's children_ids at level-1.
+  const [drilldownPath, setDrilldownPath] = useState([]);
   // ADR-030 §D4: color mode (tier | speaker | temporal). Default: tier.
   // Persisted per conversation via saveConversationDraft when conversationId is provided.
   const [colorMode, setColorMode] = useState(
@@ -383,6 +388,37 @@ function MinimalGraphInner({
     }, {});
   }, [buildRfEdgesForSource, buildRfNodesForSource, hasAuthoredHierarchy, normalizedChunk]);
 
+  // Drill-down: when the user clicks an aggregate node, show only its
+  // descendants at level-1. The path is a stack so nested drills are supported.
+  // children_ids is normalized as an array of UUID strings on every node;
+  // empty array means leaf (don't allow drilling into it).
+  const drilledView = useMemo(() => {
+    if (drilldownPath.length === 0) return null;
+    const tail = drilldownPath[drilldownPath.length - 1];
+    const parentNode = normalizedChunk.find((n) => n.id === tail.nodeId);
+    if (!parentNode) return null;
+    const childIds = new Set(parentNode.children_ids || []);
+    if (childIds.size === 0) return null;
+    const targetLevel = tail.level - 1;
+    if (targetLevel < 1) return null;
+    const tierSpec = AUTHORED_LEVELS.find((spec) => spec.level === targetLevel);
+    const tierView = authoredViews[targetLevel];
+    const baseNodes = tierView?.nodes || [];
+    const filteredNodes = baseNodes.filter((rfNode) => childIds.has(rfNode.id));
+    if (filteredNodes.length === 0) return null;
+    const allowed = new Set(filteredNodes.map((rfNode) => rfNode.id));
+    const filteredEdges = (tierView?.edges || []).filter(
+      (e) => allowed.has(e.source) && allowed.has(e.target)
+    );
+    return {
+      level: targetLevel,
+      label: tierSpec?.label || `level ${targetLevel}`,
+      type: tierSpec?.type || "node",
+      nodes: filteredNodes,
+      edges: filteredEdges,
+    };
+  }, [drilldownPath, normalizedChunk, authoredViews]);
+
   // Multi-scale clustering (recomputes when graph changes)
   const { l1, l2, l3 } = useMemo(
     () => buildMultiScaleClusters(normalizedChunk, speakerColorMap),
@@ -451,10 +487,11 @@ function MinimalGraphInner({
     }
   }
 
-  const displayMode = activeSemanticView ? "semantic" : "legacy";
-  const layoutedDisplayNodes = activeSemanticView?.nodes || activeCluster?.nodes || layoutedNodes;
-  const displayEdges = activeSemanticView?.edges || activeCluster?.edges || rfEdges;
-  const clusterLevelLabel = activeSemanticView?.label || activeCluster?.label || null;
+  const displayMode = (drilledView || activeSemanticView) ? "semantic" : "legacy";
+  const effectiveView = drilledView || activeSemanticView;
+  const layoutedDisplayNodes = effectiveView?.nodes || activeCluster?.nodes || layoutedNodes;
+  const displayEdges = effectiveView?.edges || activeCluster?.edges || rfEdges;
+  const clusterLevelLabel = effectiveView?.label || activeCluster?.label || null;
 
   useEffect(() => {
     if (!onVisibleLevelChange) return;
@@ -490,8 +527,16 @@ function MinimalGraphInner({
   // for now since tier-emergence is a rare one-time event per session.
   const lastFittedSemanticLevelRef = useRef(null);
   useEffect(() => {
-    const key = displayMode === "semantic" ? effectiveSemanticLevel : null;
-    if (key == null) return;
+    // Compose a fit-key from displayMode + visible-tier + drilldown depth so
+    // drilling INTO a parent re-fits even when the user's locked tier didn't
+    // change. The drill path's tail id stops the fit from re-firing on
+    // unrelated re-renders (e.g. selectedNode toggle).
+    const drillKey = drilldownPath.length
+      ? `${drilldownPath.length}:${drilldownPath[drilldownPath.length - 1].nodeId}`
+      : "";
+    const tierKey = displayMode === "semantic" ? `s${effectiveSemanticLevel}` : null;
+    if (tierKey == null) return;
+    const key = `${tierKey}|${drillKey}`;
     if (lastFittedSemanticLevelRef.current === key) return;
     lastFittedSemanticLevelRef.current = key;
     const id = setTimeout(() => {
@@ -501,7 +546,7 @@ function MinimalGraphInner({
       });
     }, 50);
     return () => clearTimeout(id);
-  }, [displayMode, effectiveSemanticLevel, reactFlow, reduceMotion]);
+  }, [displayMode, effectiveSemanticLevel, drilldownPath, reactFlow, reduceMotion]);
 
   // Controlled node state — layout provides initial positions, drags persist
   const [interactiveNodes, setInteractiveNodes] = useState([]);
@@ -721,6 +766,26 @@ function MinimalGraphInner({
         setClickedEdge(null);
         return;
       }
+      // Drill-down: if this node has children, single-click drills into them
+      // instead of (or in addition to) opening the NodeDetail panel. Leaf
+      // nodes (no children_ids) fall through to the existing toggle behavior.
+      const fullData = node.data?.fullData || {};
+      const childIds = Array.isArray(fullData.children_ids) ? fullData.children_ids : [];
+      const ownLevel = Number(fullData.semantic_level || fullData.level || 1);
+      if (childIds.length > 0 && ownLevel > 1) {
+        autoFollowRef.current = false;
+        setDrilldownPath((prev) => [
+          ...prev,
+          {
+            level: ownLevel,
+            nodeId: node.id,
+            nodeName: fullData.node_name || node.data?.title || "(unnamed)",
+          },
+        ]);
+        setSelectedCluster(null);
+        setClickedEdge(null);
+        return;
+      }
       setSelectedCluster(null);
       setSelectedNode((prev) => {
         const next = prev === node.id ? null : node.id;
@@ -907,7 +972,7 @@ function MinimalGraphInner({
               </span>
               <span className="text-[10px] text-gray-500">
                 {displayMode === "semantic"
-                  ? `${displayNodes.length} ${activeSemanticView?.type || "nodes"} · ${normalizedChunk.length} authored nodes`
+                  ? `${displayNodes.length} ${effectiveView?.type || "nodes"} · ${normalizedChunk.length} authored nodes`
                   : `${displayNodes.length} clusters · ${normalizedChunk.length} nodes`}
               </span>
               {lockedLevel != null && (
@@ -923,6 +988,43 @@ function MinimalGraphInner({
             </span>
           )}
         </div>
+        {/* Drill-down breadcrumb — click any crumb to jump back to that level. */}
+        {drilldownPath.length > 0 && (
+          <div className="flex items-center gap-1 text-[11px] text-gray-600 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-md px-2 py-1">
+            <button
+              type="button"
+              className="text-blue-600 hover:underline font-medium cursor-pointer"
+              onClick={() => {
+                autoFollowRef.current = false;
+                setDrilldownPath([]);
+              }}
+              title="Back to top tier"
+            >
+              {AUTHORED_LEVELS.find((spec) => spec.level === (lockedLevel ?? drilldownPath[0]?.level))?.label || "top"}
+            </button>
+            {drilldownPath.map((crumb, idx) => (
+              <span key={`${crumb.nodeId}-${idx}`} className="flex items-center gap-1">
+                <span className="text-gray-400">/</span>
+                <button
+                  type="button"
+                  className={
+                    idx === drilldownPath.length - 1
+                      ? "text-gray-900 font-medium cursor-default"
+                      : "text-blue-600 hover:underline cursor-pointer"
+                  }
+                  onClick={() => {
+                    if (idx === drilldownPath.length - 1) return;
+                    autoFollowRef.current = false;
+                    setDrilldownPath((prev) => prev.slice(0, idx + 1));
+                  }}
+                  title={crumb.nodeName}
+                >
+                  {crumb.nodeName.length > 28 ? `${crumb.nodeName.slice(0, 28)}…` : crumb.nodeName}
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         {/* Zoom scale — click to lock semantic or clustered level, click again to unlock */}
         <div className="flex items-center gap-0 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm overflow-hidden">
           {(displayMode === "semantic"
@@ -947,6 +1049,9 @@ function MinimalGraphInner({
                   // isn't overridden by the autoFollow setCenter(zoom=1).
                   autoFollowRef.current = false;
                   setAutoFollow(false);
+                  // Switching tiers exits any drill-down context — the user
+                  // wants the FULL tier view, not a filtered subset.
+                  setDrilldownPath([]);
                   if (lockedLevel === level) {
                     setLockedLevel(null); // unlock
                   } else {
