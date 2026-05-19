@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import datetime
 import logging
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -37,6 +37,7 @@ from lct_python_backend.services.indrasnet_client import (
     IndrasNetProtocolError,
     IndrasNetServerError,
     IndrasNetUnavailable,
+    get_contacts_timeout_seconds,
     get_indrasnet_base_url,
     get_match_timeout_seconds,
     get_pending_discussions,
@@ -124,60 +125,110 @@ async def manual_recommend_consumption_query(
     }
 
 
-@router.get("/api/consumption-prayer/known-contacts")
-async def known_contacts_for_picker():
-    """
-    Thin proxy that fetches IndrasNet's contact list and returns only the
-    fields the selection-toolbar dropdown needs (contact_id, display_name).
-    Frontend never talks to IndrasNet directly — all cross-repo coupling
-    stays on the backend.
+PICKER_DEFAULT_LIMIT = 50
+PICKER_MAX_LIMIT = 200
+PICKER_DEFAULT_SEARCH_LIMIT = 30
 
-    Returns a list (possibly empty) of {contact_id, display_name}. Errors
-    from IndrasNet are NOT propagated as failures here — instead we return
-    an empty list so the toolbar can still render (just with no contact
-    options). The error is logged loudly for ops visibility.
 
-    Cached by the frontend per-session; refresh requires a page reload.
+def _normalize_indrasnet_contact(c: Any) -> Optional[dict]:
+    """Reduce an IndrasNet contact record to the picker's wire shape.
+    Returns None if required fields are missing."""
+    if not isinstance(c, dict):
+        return None
+    cid = c.get("contact_id")
+    name = (c.get("display_name") or "").strip()
+    if not (cid and name):
+        return None
+    # external_llm_ok comes back as 0/1 — normalize to bool. Order is
+    # preserved from IndrasNet's recent_activity sort.
+    return {
+        "contact_id": cid,
+        "display_name": name,
+        "last_activity": c.get("last_activity"),
+        "item_count": c.get("item_count"),
+        "external_llm_ok": bool(c.get("external_llm_ok", 0)),
+        "privacy_tier": c.get("privacy_tier"),
+    }
+
+
+async def _fetch_indrasnet_contacts(
+    *,
+    limit: int,
+    search: str = "",
+) -> tuple[list, Optional[str]]:
+    """Fetch contacts from IndrasNet with the given limit/search and shape
+    them for the picker. Returns (contacts, error_str_or_None). Errors are
+    NEVER propagated as HTTP failures — picker degrades to empty list.
+
+    Uses the dedicated CONTACTS timeout (separate from match_timeout) so
+    accommodating IndrasNet's slow bulk reads doesn't make the live STT
+    match path more patient than it should be.
     """
     base = get_indrasnet_base_url()
-    url = f"{base}/api/contacts?limit=500"
+    params = {"limit": str(limit)}
+    if search:
+        params["search"] = search
+    url = f"{base}/api/contacts"
+
     try:
-        async with httpx.AsyncClient(timeout=get_match_timeout_seconds()) as client:
-            r = await client.get(url)
+        async with httpx.AsyncClient(timeout=get_contacts_timeout_seconds()) as client:
+            r = await client.get(url, params=params)
             r.raise_for_status()
             body = r.json()
     except httpx.HTTPError as exc:
+        msg = str(exc) or type(exc).__name__  # ReadTimeout has empty str()
         logger.warning(
-            "[known-contacts] IndrasNet contacts fetch failed (%s); "
+            "[known-contacts] IndrasNet fetch failed (limit=%d search=%r): %s; "
             "returning empty list so the picker still renders.",
-            exc,
+            limit, search, msg,
         )
-        return {"contacts": [], "indrasnet_error": str(exc)[:200]}
+        return [], msg[:200]
     except ValueError as exc:
         logger.warning("[known-contacts] IndrasNet returned non-JSON: %s", exc)
-        return {"contacts": [], "indrasnet_error": "non-JSON response"}
+        return [], "non-JSON response"
 
     raw = body if isinstance(body, list) else body.get("contacts", body.get("items", []))
-    contacts = []
-    for c in raw:
-        if not isinstance(c, dict):
-            continue
-        cid = c.get("contact_id")
-        name = (c.get("display_name") or "").strip()
-        if not (cid and name):
-            continue
-        # Pass through IndrasNet's ranking + privacy fields so the picker can
-        # render recency and gate voice-clip sharing. external_llm_ok comes
-        # back as 0/1 from IndrasNet; normalize to bool. Order is preserved
-        # from IndrasNet (last_activity DESC) — clients re-sort if they want.
-        contacts.append({
-            "contact_id": cid,
-            "display_name": name,
-            "last_activity": c.get("last_activity"),
-            "item_count": c.get("item_count"),
-            "external_llm_ok": bool(c.get("external_llm_ok", 0)),
-            "privacy_tier": c.get("privacy_tier"),
-        })
+    contacts = [c for c in (_normalize_indrasnet_contact(item) for item in raw) if c]
+    return contacts, None
 
-    logger.info("[known-contacts] returned %d contacts", len(contacts))
+
+@router.get("/api/consumption-prayer/known-contacts")
+async def known_contacts_for_picker(limit: int = PICKER_DEFAULT_LIMIT):
+    """Top-N most-recently-active contacts for the participant picker.
+
+    Default `limit=50` covers ~95% of real picks (you usually record with
+    someone you've talked to recently). Use the /search variant below for
+    the long tail. `limit` is clamped to [1, PICKER_MAX_LIMIT].
+
+    Frontend never talks to IndrasNet directly — all cross-repo coupling
+    stays on the backend. Errors from IndrasNet are swallowed; picker
+    just renders empty rather than blocking the page.
+    """
+    effective_limit = max(1, min(int(limit or PICKER_DEFAULT_LIMIT), PICKER_MAX_LIMIT))
+    contacts, err = await _fetch_indrasnet_contacts(limit=effective_limit)
+    logger.info("[known-contacts] returned %d contacts (limit=%d)", len(contacts), effective_limit)
+    if err is not None:
+        return {"contacts": contacts, "indrasnet_error": err}
     return {"contacts": contacts}
+
+
+@router.get("/api/consumption-prayer/known-contacts/search")
+async def search_known_contacts(q: str = "", limit: int = PICKER_DEFAULT_SEARCH_LIMIT):
+    """Server-side search across IndrasNet contacts — for the long tail
+    that the top-N default doesn't cover.
+
+    Empty `q` returns empty list (clients use the top-N endpoint above
+    for the initial render). `limit` is clamped to [1, PICKER_MAX_LIMIT].
+    """
+    query = (q or "").strip()
+    if not query:
+        return {"contacts": [], "query": ""}
+    effective_limit = max(1, min(int(limit or PICKER_DEFAULT_SEARCH_LIMIT), PICKER_MAX_LIMIT))
+    contacts, err = await _fetch_indrasnet_contacts(limit=effective_limit, search=query)
+    logger.info(
+        "[known-contacts/search] q=%r returned %d (limit=%d)",
+        query, len(contacts), effective_limit,
+    )
+    if err is not None:
+        return {"contacts": contacts, "query": query, "indrasnet_error": err}
+    return {"contacts": contacts, "query": query}
