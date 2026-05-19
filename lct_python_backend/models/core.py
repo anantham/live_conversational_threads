@@ -118,6 +118,12 @@ class Utterance(Base):
 
     # Source-specific
     platform_metadata = Column(JSONB)
+    # Word-level timings populated by the diarization-refinement pass
+    # (live STT post-flush) OR the openai_audio HTTP import with
+    # timestamp_granularities=["word"]. Shape:
+    # [{word: str, start: float, end: float, confidence?: float}, ...]
+    # Pre-requisite for the Descript-style word-synced transcript UI.
+    word_timings = Column(JSONB)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -244,4 +250,44 @@ class SpeakerSegment(Base):
         Index('idx_speaker_segments_source_utterance', 'source_utterance_id'),
         Index('idx_speaker_segments_speaker', 'conversation_id', 'speaker_id'),
         Index('idx_speaker_segments_timestamp', 'conversation_id', 'timestamp_start'),
+    )
+
+
+class SpeakerCorrectionEvent(Base):
+    """Audit log of every user-driven speaker rename. Per ADR-032 Part H.
+
+    v1: writes happen when the user renames a speaker via the transcript
+    inline edit OR the NodeDetail panel. ``time_window_seconds`` records
+    the ± window around the corrected utterance that gets hard-relabeled.
+
+    v2 (ADR-033 future): same rows serve as labeled training data for
+    voice-embedding-based propagation. The ``source`` field grows to
+    include ``voice_propagation_auto`` for system-applied corrections.
+    """
+
+    __tablename__ = "speaker_correction_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    conversation_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('conversations.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    utterance_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey('utterances.id', ondelete='CASCADE'),
+        nullable=False,
+    )
+    prior_speaker = Column(Text, nullable=False)
+    new_speaker = Column(Text, nullable=False)
+    time_window_seconds = Column(Integer, nullable=False, server_default=sql_text("300"))
+    # Free-text source: "transcript_inline" | "node_detail_panel" |
+    # "imported" | future "voice_propagation_auto".
+    source = Column(Text, nullable=False)
+    user_id = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index('idx_speaker_corrections_conversation', 'conversation_id', 'created_at'),
+        Index('idx_speaker_corrections_utterance', 'utterance_id'),
     )
