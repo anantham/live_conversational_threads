@@ -24,6 +24,11 @@ class Node(Base):
     # Content
     summary = Column(Text, nullable=False)
     key_points = Column(ARRAY(Text))
+    # Verbatim LLM-authored excerpt for this node. Per ADR-032's
+    # autostructures commitment: persist raw evidence so post-hoc passes
+    # (speaker rollup, edge enrichment, re-classification) don't need to
+    # re-call the LLM. Nullable for legacy rows pre-migration.
+    source_excerpt = Column(Text)
 
     # Type & Hierarchy
     node_type = Column(Text, default='conversational_thread')
