@@ -7,8 +7,12 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env from backend directory before any other imports
-load_dotenv(Path(__file__).parent / ".env")
+# Load .env from backend directory before any other imports. override=True so
+# LCT's .env wins when this backend is launched as a child of another
+# supervisor (e.g. IndrasNet's start_all.py) whose own .env has already
+# populated the parent process env. Without override, conflicting keys like
+# DATABASE_URL or AUTH_TOKEN would silently inherit the supervisor's values.
+load_dotenv(Path(__file__).parent / ".env", override=True)
 import logging
 from logging.handlers import RotatingFileHandler
 from contextlib import asynccontextmanager
