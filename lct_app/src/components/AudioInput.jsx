@@ -111,6 +111,7 @@ const AudioInput = forwardRef(function AudioInput({
   fileName,
   setFileName,
   autostart,
+  onSessionStarted,
 }, ref) {
   const uploadCtx = useUpload();
   const [recording, setRecording] = useState(false);
@@ -252,6 +253,7 @@ const AudioInput = forwardRef(function AudioInput({
       appendSessionEvent("session_ready");
     },
     onSessionAck: handleSessionAckEvent,
+    onSessionStarted,
     onFatalError: useCallback(() => {
       setRecording(false);
     }, []),
