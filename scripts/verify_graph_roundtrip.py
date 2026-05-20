@@ -1,22 +1,34 @@
-"""Verify the DB-graph <-> existing_json round-trip is lossless.
+"""Verify the segment-and-stitch resume persist preserves the prior segment.
 
-Segment-and-stitch pause/resume depends on this: when a recording resumes,
-the backend reconstructs the prior segment's graph from DB Node rows and
-seeds the new session's TranscriptProcessor. The session's `persist_graph`
-then does a destructive DELETE-all + re-INSERT. That's only SAFE if
+Segment-and-stitch pause/resume re-attaches a new recording to an existing
+conversation_id. The danger: ``persist_graph`` is destructive — it DELETEs every
+Node/Relationship row for the conversation before re-INSERTing. A naive resume
+would wipe the prior segment's graph.
 
-    DB nodes  ->  build_graph_data_from_nodes  ->  persist_graph  ->  DB nodes
+The fix (see ``persist_graph``'s ``protect_node_ids`` param): on resume, the
+prior segment's node ids are passed as ``protect_node_ids`` and the delete is
+scoped to *exclude* them. The prior segment is frozen — never deleted, never
+reconstructed.
 
-preserves every node (id, level, structure, relationships). If it's lossy,
-every pause/resume silently corrupts the prior segment's graph.
+An earlier version of this script proved the *rejected* approach was unsafe:
+reconstructing the prior segment via ``build_graph_data_from_nodes`` and letting
+the destructive persist "self-correct" loses ~3% of relationships per cycle
+(``build_graph_data_from_nodes`` folds edges into singular predecessor/successor
+fields). That finding stands — see commit c0c4e4a. This script now verifies the
+shipped fix instead.
 
-This script proves it WITHOUT risking a real conversation:
-  1. Pick the real conversation with the most nodes as the source graph.
-  2. Reconstruct it to the existing_json shape (build_graph_data_from_nodes).
-  3. persist_graph it into a fresh THROWAWAY conversation_id.
-  4. Read the throwaway back, reconstruct again.
-  5. Diff. Report PASS/FAIL with specifics.
-  6. Delete the throwaway. The source conversation is only ever READ.
+What it does (never touches a real conversation destructively):
+  1. Reconstruct the largest real conversation's graph -> id-remapped "segment 1".
+  2. persist_graph it FRESH (protect_node_ids=None) into a throwaway conversation.
+  3. Snapshot segment 1's node ids + every relationship row (id + all fields).
+  4. Build a synthetic "segment 2" (fresh, disjoint ids).
+  5. persist_graph segment 2 with protect_node_ids = segment 1's ids — twice,
+     simulating two live-flush persists of the resumed session.
+  6. After each, assert segment 1 is byte-identical: every node id present,
+     every relationship row present with an UNCHANGED id and unchanged fields
+     (an unchanged relationship id proves the row was never deleted).
+  7. Assert segment 2's nodes landed and conv.total_nodes == seg1 + seg2.
+  8. Delete the throwaway. The source conversation is only ever READ.
 
 Run:  .venv/Scripts/python.exe scripts/verify_graph_roundtrip.py
 """
@@ -26,6 +38,10 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+
+# Windows consoles default to cp1252 — the report below prints em-dashes.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
 
 # Running as `python scripts/foo.py` puts scripts/ on sys.path, not the repo
 # root — add the root so `lct_python_backend` is importable.
@@ -49,11 +65,10 @@ from lct_python_backend.services.conversation_reader import (
 )
 from lct_python_backend.services.graph_persistence import persist_graph
 
-
-# Fields whose change would mean real graph corruption. Derived fields like
-# timestamps (build_graph_data_from_nodes backfills them from utterances —
-# absent here since the throwaway has no utterances) are NOT compared.
-COMPARED_FIELDS = ["level", "name", "summary", "title", "chunk_id"]
+# A synthetic segment 2 produces exactly this many relationships:
+# seg2-A --successor--> seg2-B  (1 temporal)
+# seg2-B --contextual-> seg2-C  (1 contextual)
+SEG2_EXPECTED_RELS = 2
 
 
 def _node_id(node: Dict[str, Any]) -> str:
@@ -72,56 +87,12 @@ def _flatten(graph: Any) -> List[Dict[str, Any]]:
     return out
 
 
-def _diff(graph_a: List[Dict[str, Any]], graph_b: List[Dict[str, Any]]) -> List[str]:
-    """Return a list of human-readable problems. Empty list == lossless."""
-    problems: List[str] = []
-
-    a_by_id = {_node_id(n): n for n in graph_a if _node_id(n)}
-    b_by_id = {_node_id(n): n for n in graph_b if _node_id(n)}
-
-    if len(a_by_id) != len(graph_a):
-        problems.append(
-            f"source: {len(graph_a)} nodes but only {len(a_by_id)} unique ids "
-            f"(some nodes have no id)"
-        )
-    if len(b_by_id) != len(graph_b):
-        problems.append(
-            f"round-tripped: {len(graph_b)} nodes but only {len(b_by_id)} unique ids"
-        )
-
-    missing = set(a_by_id) - set(b_by_id)
-    extra = set(b_by_id) - set(a_by_id)
-    if missing:
-        problems.append(
-            f"{len(missing)} node id(s) LOST in the round-trip — "
-            f"e.g. {list(missing)[:3]}"
-        )
-    if extra:
-        problems.append(
-            f"{len(extra)} node id(s) APPEARED (ids not preserved — "
-            f"persist_graph minted new ones) — e.g. {list(extra)[:3]}"
-        )
-
-    # Field-level drift on the ids that DID survive.
-    for nid in set(a_by_id) & set(b_by_id):
-        a, b = a_by_id[nid], b_by_id[nid]
-        for field in COMPARED_FIELDS:
-            if a.get(field) != b.get(field):
-                problems.append(
-                    f"node {nid[:8]}: field '{field}' changed "
-                    f"{a.get(field)!r} -> {b.get(field)!r}"
-                )
-
-    return problems
-
-
 def _remap_ids(graph: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Give every node a fresh uuid, consistently rewriting every field that
     references a node id (parent_id, children_ids, predecessor, successor,
     linked_nodes, ...). Needed because node ids are a GLOBAL primary key —
     seeding a throwaway conversation with a real graph's ids would collide
-    with the source rows. After remapping, the graph is structurally
-    identical but id-disjoint from anything in the DB."""
+    with the source rows."""
     id_map = {_node_id(n): str(uuid.uuid4()) for n in graph if _node_id(n)}
 
     def _remap_value(value: Any) -> Any:
@@ -131,11 +102,82 @@ def _remap_ids(graph: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             return [_remap_value(v) for v in value]
         return value
 
-    remapped: List[Dict[str, Any]] = []
-    for node in graph:
-        new_node = {k: _remap_value(v) for k, v in node.items()}
-        remapped.append(new_node)
-    return remapped
+    return [{k: _remap_value(v) for k, v in node.items()} for node in graph]
+
+
+def _build_seg2_graph() -> List[Dict[str, Any]]:
+    """A synthetic 'segment 2' — 3 fresh nodes + 2 relationships among them
+    (A->B temporal via successor, B->C contextual). Fresh uuids, disjoint
+    from segment 1 (the resume path never seeds segment-2 ids from the DB)."""
+    a, b, c = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    return [
+        {"id": a, "node_name": "seg2-A", "summary": "segment 2 node A",
+         "level": 1, "successor": "seg2-B"},
+        {"id": b, "node_name": "seg2-B", "summary": "segment 2 node B",
+         "level": 1, "contextual_relation": {"seg2-C": "B relates to C"}},
+        {"id": c, "node_name": "seg2-C", "summary": "segment 2 node C",
+         "level": 1},
+    ]
+
+
+def _snapshot_rels(rels) -> Dict[Any, tuple]:
+    """Map each Relationship row to a comparable tuple, keyed by its id. An
+    unchanged id across a re-persist proves the row was never deleted +
+    re-inserted (persist_graph mints a fresh uuid for every relationship it
+    writes)."""
+    return {
+        r.id: (
+            r.from_node_id, r.to_node_id, r.relationship_type,
+            r.relationship_subtype, r.explanation, r.strength, r.confidence,
+        )
+        for r in rels
+    }
+
+
+async def _check_after_resume(
+    db, throwaway, seg1_node_ids: set, seg1_rels: Dict[Any, tuple],
+    seg2_ids: set, label: str,
+) -> List[str]:
+    """Re-fetch the throwaway and assert segment 1 is intact + segment 2 landed."""
+    problems: List[str] = []
+    conv, nodes, rels, _ = await fetch_conversation_bundle(db, throwaway)
+    node_ids_now = {n.id for n in nodes}
+    rels_now = _snapshot_rels(rels)
+
+    lost_nodes = seg1_node_ids - node_ids_now
+    if lost_nodes:
+        problems.append(f"[{label}] {len(lost_nodes)} segment-1 node(s) LOST")
+
+    missing_seg2 = seg2_ids - node_ids_now
+    if missing_seg2:
+        problems.append(f"[{label}] {len(missing_seg2)} segment-2 node(s) missing")
+
+    for rid, fields in seg1_rels.items():
+        if rid not in rels_now:
+            problems.append(
+                f"[{label}] segment-1 relationship {str(rid)[:8]} LOST "
+                f"(id no longer in DB — row was deleted)"
+            )
+        elif rels_now[rid] != fields:
+            problems.append(
+                f"[{label}] segment-1 relationship {str(rid)[:8]} MUTATED "
+                f"{fields} -> {rels_now[rid]}"
+            )
+
+    expected_total = len(seg1_node_ids) + len(seg2_ids)
+    if conv is not None and conv.total_nodes != expected_total:
+        problems.append(
+            f"[{label}] conv.total_nodes={conv.total_nodes}, "
+            f"expected {expected_total}"
+        )
+
+    print(
+        f"  {label}: {len(node_ids_now)} nodes "
+        f"({len(seg1_node_ids)} seg1 + {len(seg2_ids)} seg2), "
+        f"{len(rels_now)} rels (seg1 had {len(seg1_rels)}, seg2 adds "
+        f"{SEG2_EXPECTED_RELS}), total_nodes={getattr(conv, 'total_nodes', '?')}"
+    )
+    return problems
 
 
 async def main() -> int:
@@ -151,60 +193,64 @@ async def main() -> int:
         if row is None:
             print("FAIL: no conversations with graph nodes in the DB to test against.")
             return 1
-        source_id, source_node_count = row[0], row[1]
-        print(f"Source conversation: {source_id} ({source_node_count} nodes) — read-only")
-
+        source_id = row[0]
         _conv, nodes_a, rels_a, _utts = await fetch_conversation_bundle(db, source_id)
-        source_graph = _flatten(build_graph_data_from_nodes(nodes_a, rels_a))
-        print(f"Reconstructed source graph: {len(source_graph)} nodes, {len(rels_a)} rels")
-        if source_graph:
-            print(f"  node-dict keys: {sorted(source_graph[0].keys())}")
-
-        # 2. Remap ids so the test graph is id-disjoint from the source.
-        seg1 = _remap_ids(source_graph)
+        seg1_graph = _remap_ids(_flatten(build_graph_data_from_nodes(nodes_a, rels_a)))
+        print(f"Source conversation {source_id} ({row[1]} nodes) — read-only")
+        print(f"Reconstructed + id-remapped segment 1: {len(seg1_graph)} nodes")
 
         throwaway = uuid.uuid4()
         print(f"Throwaway conversation: {throwaway}")
         problems: List[str] = []
-        rel_delta = 0
-        r1_count = 0
-        r2_count = 0
         try:
-            # 3. Seed the throwaway — this stands in for "segment 1 already
-            #    recorded". persist_graph creates the conversation row.
+            # 2. Persist segment 1 FRESH (protect_node_ids=None) — this stands
+            #    in for "segment 1 already recorded".
             await persist_graph(
-                db=db, conversation_id=str(throwaway), existing_json=seg1,
-                conversation_name="roundtrip-verify (delete me)",
+                db=db, conversation_id=str(throwaway), existing_json=seg1_graph,
+                conversation_name="roundtrip-verify seg1 (delete me)",
                 source_type="roundtrip_test", source_metadata={},
             )
             await db.commit()
 
-            # 4. Reconstruct it — this is what resume does to seed the
-            #    resumed session's processor.
-            _c1, n1, r1, _ = await fetch_conversation_bundle(db, throwaway)
-            graph_e1 = _flatten(build_graph_data_from_nodes(n1, r1))
-            print(f"After seed:        {len(graph_e1)} nodes, {len(r1)} rels")
+            # 3. Snapshot segment 1's exact DB state.
+            _c, n1, r1, _ = await fetch_conversation_bundle(db, throwaway)
+            seg1_node_ids = {n.id for n in n1}
+            seg1_rels = _snapshot_rels(r1)
+            print(f"Segment 1 persisted: {len(seg1_node_ids)} nodes, {len(seg1_rels)} relationships")
 
-            # 5. THE RESUME MECHANIC: re-persist the reconstructed graph back
-            #    into the SAME conversation (segment 2's persist_graph call,
-            #    minus the appended new nodes — which are just more INSERTs).
+            # 4. Synthetic segment 2 (fresh ids, disjoint from segment 1).
+            seg2_graph = _build_seg2_graph()
+            seg2_ids = {uuid.UUID(_node_id(n)) for n in seg2_graph}
+
+            # 5. RESUME PERSIST #1 — scoped: freeze segment 1.
             await persist_graph(
-                db=db, conversation_id=str(throwaway), existing_json=graph_e1,
+                db=db, conversation_id=str(throwaway), existing_json=seg2_graph,
+                protect_node_ids=seg1_node_ids,
                 conversation_name="roundtrip-verify (delete me)",
                 source_type="roundtrip_test", source_metadata={},
             )
             await db.commit()
+            problems += await _check_after_resume(
+                db, throwaway, seg1_node_ids, seg1_rels, seg2_ids,
+                "after resume-persist #1",
+            )
 
-            # 6. Reconstruct again + diff against the post-seed state.
-            _c2, n2, r2, _ = await fetch_conversation_bundle(db, throwaway)
-            graph_e2 = _flatten(build_graph_data_from_nodes(n2, r2))
-            print(f"After re-persist:  {len(graph_e2)} nodes, {len(r2)} rels")
-
-            problems = _diff(graph_e1, graph_e2)
-            r1_count, r2_count = len(r1), len(r2)
-            rel_delta = r1_count - r2_count
+            # 6. RESUME PERSIST #2 — a second live-flush of the resumed
+            #    session. The old destructive path would have re-minted every
+            #    relationship id here; the scoped path must not touch segment 1.
+            await persist_graph(
+                db=db, conversation_id=str(throwaway), existing_json=seg2_graph,
+                protect_node_ids=seg1_node_ids,
+                conversation_name="roundtrip-verify (delete me)",
+                source_type="roundtrip_test", source_metadata={},
+            )
+            await db.commit()
+            problems += await _check_after_resume(
+                db, throwaway, seg1_node_ids, seg1_rels, seg2_ids,
+                "after resume-persist #2",
+            )
         finally:
-            # 7. Always delete the throwaway — even on diff failure.
+            # 7. Always delete the throwaway — even on assertion failure.
             await db.execute(delete(Relationship).where(Relationship.conversation_id == throwaway))
             await db.execute(delete(Node).where(Node.conversation_id == throwaway))
             await db.execute(delete(Conversation).where(Conversation.id == throwaway))
@@ -212,30 +258,22 @@ async def main() -> int:
             print(f"Cleaned up throwaway {throwaway}")
 
     print()
-    if rel_delta != 0:
-        problems.append(
-            f"relationship count dropped by {rel_delta} on a single re-persist "
-            f"({r1_count} -> {r2_count}) — build_graph_data_from_nodes does not "
-            f"round-trip all relationships"
-        )
-
     if not problems:
-        print("=" * 60)
-        print("PASS — round-trip is lossless. Seeding the resumed processor")
-        print("with build_graph_data_from_nodes is SAFE.")
-        print("=" * 60)
+        print("=" * 64)
+        print("PASS — the scoped resume persist preserves the prior segment")
+        print("byte-identical across repeated live-flush persists. Every")
+        print("segment-1 node and relationship row survived with an unchanged")
+        print("id. Segment-and-stitch resume does not erode the prior graph.")
+        print("=" * 64)
         return 0
 
-    print("=" * 60)
-    print(f"FAIL — round-trip is LOSSY ({len(problems)} problem(s)):")
+    print("=" * 64)
+    print(f"FAIL — the resume persist corrupted the prior segment ({len(problems)} problem(s)):")
     for p in problems[:20]:
         print(f"  - {p}")
     if len(problems) > 20:
         print(f"  ... and {len(problems) - 20} more")
-    print()
-    print("Seeding with build_graph_data_from_nodes is NOT safe as-is —")
-    print("a different reconstruction is needed before resume can ship.")
-    print("=" * 60)
+    print("=" * 64)
     return 1
 
 

@@ -340,11 +340,25 @@ async def persist_graph(
     owner_id: str = "default_user",
     source_metadata: Optional[Dict[str, Any]] = None,
     utterance_chunk_map: Optional[Dict[str, List[str]]] = None,
+    protect_node_ids: Optional[Iterable[uuid.UUID]] = None,
 ) -> int:
     """
     Persist LLM-generated graph nodes and relationships to DB. Mode-agnostic:
     works for live, import, and any other transport that materializes graph
     state through the canonical pipeline.
+
+    ``protect_node_ids`` enables the segment-and-stitch resume path. Normally
+    this function is destructive — it DELETEs every Node/Relationship row for
+    the conversation, then re-INSERTs from ``existing_json``. When a recording
+    resumes, a prior segment's graph already lives under this conversation_id;
+    pass that prior segment's node ids here and the delete is scoped to
+    *exclude* them: only this segment's nodes are deleted + rewritten, and the
+    prior segment's Node + Relationship rows are frozen — never deleted, never
+    reconstructed. (Relationships among this segment's nodes drop via the
+    ondelete=CASCADE FK on relationships.from_node_id/to_node_id.) Invariant:
+    ``protect_node_ids`` and ``existing_json``'s node ids must be disjoint —
+    the resume path does NOT seed this segment's processor from the DB, so
+    they always are.
 
     Returns the count of nodes written.
     """
@@ -373,9 +387,28 @@ async def persist_graph(
         # Ensure parent row exists before inserting child node/relationship rows.
         await db.flush()
 
-    # Delete any stale rows (idempotent re-runs)
-    await db.execute(delete(Relationship).where(Relationship.conversation_id == conv_uuid))
-    await db.execute(delete(Node).where(Node.conversation_id == conv_uuid))
+    # Delete any stale rows before the re-INSERT below.
+    protected_ids = list(protect_node_ids or [])
+    if protected_ids:
+        # Resume path (segment-and-stitch): a prior segment's graph already
+        # lives under this conversation_id. Freeze it — delete only THIS
+        # segment's nodes (everything not protected). Relationships among the
+        # deleted nodes drop via the ondelete=CASCADE FK on
+        # relationships.from_node_id / to_node_id; the prior segment's
+        # Relationship rows survive untouched because both their endpoints are
+        # protected. The prior segment is never reconstructed, so the
+        # relationship-lossy build_graph_data_from_nodes round-trip can't
+        # reach it.
+        await db.execute(
+            delete(Node).where(
+                Node.conversation_id == conv_uuid,
+                Node.id.not_in(protected_ids),
+            )
+        )
+    else:
+        # Fresh / import path: idempotent full re-materialization.
+        await db.execute(delete(Relationship).where(Relationship.conversation_id == conv_uuid))
+        await db.execute(delete(Node).where(Node.conversation_id == conv_uuid))
     if utterances is not None:
         await db.execute(delete(DBUtterance).where(DBUtterance.conversation_id == conv_uuid))
 
@@ -892,7 +925,10 @@ async def persist_graph(
             )
 
     # Step 4: Update conversation aggregate counts
-    conv.total_nodes = len(node_records)
+    # On the resume path node_records holds only THIS segment's nodes; the
+    # protected prior-segment nodes are still in the DB and must be counted.
+    # protected_ids is [] on the fresh/import path, so this is a no-op there.
+    conv.total_nodes = len(protected_ids) + len(node_records)
     if utterances is not None:
         speaker_counts: Dict[str, int] = {}
         timestamp_values = []
@@ -999,6 +1035,7 @@ async def persist_live_graph_snapshot(
     metadata: Optional[Dict[str, Any]] = None,
     source_type: str = "live_audio",
     utterance_chunk_map: Optional[Dict[str, List[str]]] = None,
+    protect_node_ids: Optional[Iterable[uuid.UUID]] = None,
 ) -> int:
     """Persist the current best semantic graph for a live websocket session.
 
@@ -1016,6 +1053,10 @@ async def persist_live_graph_snapshot(
     underlying ``persist_graph`` call can backfill ``utterances.chunk_id``
     on existing rows. Bulk-import path doesn't supply this — utterances
     written by that path already carry chunk_id directly.
+
+    ``protect_node_ids`` (segment-and-stitch resume) is forwarded to
+    ``persist_graph`` — when set, the prior recording segment's nodes are
+    frozen instead of wiped. See ``persist_graph``'s docstring.
     """
     # Lazy import — see top-of-module note for why this is not at module level.
     from lct_python_backend.db_session import get_async_session_context
@@ -1038,6 +1079,7 @@ async def persist_live_graph_snapshot(
             source_type=source_type,
             source_metadata=metadata or {},
             utterance_chunk_map=utterance_chunk_map,
+            protect_node_ids=protect_node_ids,
         )
     logger.info(
         "[GRAPH PERSIST] conversation=%s nodes=%s source_type=%s latency_ms=%.2f",
