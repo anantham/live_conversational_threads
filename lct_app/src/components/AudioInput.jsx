@@ -482,10 +482,9 @@ const AudioInput = forwardRef(function AudioInput({
     : 0;
 
   return (
-    // Mobile: stack the mic group above the status HUD so neither
-    // overflows a narrow viewport (the mic was clipping off the left
-    // edge). Desktop: original single horizontal row.
-    <div className="flex flex-col items-center gap-2 sm:flex-row sm:gap-3">
+    // Horizontal row on every viewport — fits a phone now that the status
+    // HUD collapses to a single dot on mobile (see LiveSessionHud).
+    <div className="flex items-center gap-2 sm:gap-3">
       {/* Mic button + device picker */}
       <div className="relative flex items-center">
         <button
