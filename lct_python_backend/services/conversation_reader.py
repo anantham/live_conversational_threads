@@ -255,6 +255,11 @@ def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[D
             "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])],
             "parent_id": str(node.parent_id) if node.parent_id else None,
             "children_ids": [str(cid) for cid in (node.children_ids or [])],
+            # ADR-032 Part G: surface persisted source_excerpt so re-persist
+            # round-trips preserve it. Without this the enrich/consolidate
+            # scripts wipe it when they call build_graph_data_from_nodes
+            # then re-feed into persist_graph.
+            "source_excerpt": node.source_excerpt,
             "thread_id": cluster_info.get("thread_id"),
             "thread_state": cluster_info.get("thread_state"),
             "edge_relations": edge_relations_by_id.get(node.id, display_preferences.get("edge_relations") or []),
