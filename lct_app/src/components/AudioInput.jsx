@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Mic, ChevronDown, Square } from "lucide-react";
+import { Mic, ChevronDown, Pause } from "lucide-react";
 
 import { normalizeSttSettings } from "./audio/sttUtils";
 import LiveSessionHud from "./audio/LiveSessionHud";
@@ -115,6 +115,10 @@ const AudioInput = forwardRef(function AudioInput({
 }, ref) {
   const uploadCtx = useUpload();
   const [recording, setRecording] = useState(false);
+  // Segment-and-stitch: paused = stopped cleanly but resumable. The
+  // conversationId is retained; tapping the mic again re-attaches a new
+  // recording segment to the same conversation.
+  const [paused, setPaused] = useState(false);
   const [providerSocketState, setProviderSocketState] = useState("idle");
   const [backendSocketState, setBackendSocketState] = useState("idle");
   const [liveTranscriptLines, setLiveTranscriptLines] = useState([]);
@@ -330,10 +334,11 @@ const AudioInput = forwardRef(function AudioInput({
   useEffect(() => {
     onLiveTranscriptStateChange?.({
       recording,
+      paused,
       liveTranscriptLines,
       statusLine,
     });
-  }, [liveTranscriptLines, onLiveTranscriptStateChange, recording, statusLine]);
+  }, [liveTranscriptLines, onLiveTranscriptStateChange, recording, paused, statusLine]);
 
   // Auto-dismiss processing errors after 8s
   useEffect(() => {
@@ -345,14 +350,20 @@ const AudioInput = forwardRef(function AudioInput({
   // --- Orchestration ---
   const isStartingRef = useRef(false);
 
-  const startRecording = useCallback(async () => {
+  // Starts a live STT session. `resume=true` re-attaches to the existing
+  // conversationId — segment-and-stitch: the backend freezes the prior
+  // segment's graph and appends a new one. `resume=false` mints a fresh
+  // conversation. startRecording / resumeRecording below are thin wrappers.
+  const runSession = useCallback(async (resume) => {
     if (recording || isStartingRef.current) {
       logAudioDebug("start_ignored", { recording, starting: isStartingRef.current });
       return;
     }
+    // Resume needs an existing conversation to re-attach to.
+    const isResume = Boolean(resume) && Boolean(conversationId);
     isStartingRef.current = true;
     const activeSettings = normalizeSttSettings(sttSettings || {});
-    logAudioDebug("start_requested", {
+    logAudioDebug(isResume ? "resume_requested" : "start_requested", {
       provider: activeSettings?.provider || null,
       local_only: activeSettings?.local_only !== false,
       store_audio: Boolean(activeSettings?.store_audio),
@@ -364,8 +375,14 @@ const AudioInput = forwardRef(function AudioInput({
     sessionStartedAtRef.current = new Date().toISOString();
     sessionEndedAtRef.current = null;
     activeSettingsRef.current = activeSettings;
-    transcriptLineIdRef.current = 0;
-    setLiveTranscriptLines([]);
+    if (!isResume) {
+      // Fresh recording — clear the prior segment's transcript + filename.
+      // A resume keeps them so the new segment's lines append on screen.
+      transcriptLineIdRef.current = 0;
+      setLiveTranscriptLines([]);
+      setFileName?.("");
+      fileNameWasReset.current = true;
+    }
     setProcessingError("");
     setAudioDownloadUrl("");
     setSessionEvents([]);
@@ -376,7 +393,7 @@ const AudioInput = forwardRef(function AudioInput({
       captureStarted,
       hasSelectedMic: Boolean(micDeviceId),
     });
-    
+
     if (captureStarted) {
       // Refresh device labels — browser only populates labels after permission is granted
       refreshMicDevices();
@@ -390,26 +407,30 @@ const AudioInput = forwardRef(function AudioInput({
     }
 
     const sessionId = randomUUID();
-    const newConversationId = randomUUID();
-    logAudioDebug("session_start", {
+    // Resume re-uses the conversation_id so the backend recognises the
+    // re-attach (stt_ws_session._detect_resume); a fresh start mints one.
+    const sessionConversationId = isResume ? conversationId : randomUUID();
+    logAudioDebug(isResume ? "session_resume" : "session_start", {
       sessionId,
-      conversationId: newConversationId,
+      conversationId: sessionConversationId,
       provider: activeSettings?.provider || null,
       store_audio: Boolean(activeSettings?.store_audio),
     });
-    appendSessionEvent("session_start_requested", {
-      conversation_id: newConversationId,
+    appendSessionEvent(isResume ? "session_resume_requested" : "session_start_requested", {
+      conversation_id: sessionConversationId,
       session_id: sessionId,
       provider: activeSettings?.provider || null,
       store_audio: Boolean(activeSettings?.store_audio),
     });
-    setConversationId?.(newConversationId);
-    setFileName?.("");
-    fileNameWasReset.current = true;
-    startSession({ activeSettings, newConversationId, sessionId });
+    if (!isResume) {
+      setConversationId?.(sessionConversationId);
+    }
+    setPaused(false);
+    startSession({ activeSettings, newConversationId: sessionConversationId, sessionId });
   }, [
     micDeviceId,
     recording,
+    conversationId,
     refreshMicDevices,
     resetSession,
     setConversationId,
@@ -421,6 +442,9 @@ const AudioInput = forwardRef(function AudioInput({
     setProviderSocketState,
     setBackendSocketState,
   ]);
+
+  const startRecording = useCallback(() => runSession(false), [runSession]);
+  const resumeRecording = useCallback(() => runSession(true), [runSession]);
 
   const stopRecording = useCallback(async () => {
     isStartingRef.current = false;
@@ -435,6 +459,15 @@ const AudioInput = forwardRef(function AudioInput({
     setBackendSocketState("closed");
     sessionEndedAtRef.current = new Date().toISOString();
   }, [appendSessionEvent, conversationId, resetSession, stopCapture, stopSession]);
+
+  // Pause = a clean, resumable stop. Same backend teardown as stopRecording
+  // (WS closes, STT billing stops, the segment is finalized) — `paused` just
+  // tells the UI the conversation can be resumed. Tapping the mic again
+  // re-attaches a new segment via resumeRecording.
+  const pauseRecording = useCallback(async () => {
+    await stopRecording();
+    setPaused(true);
+  }, [stopRecording]);
 
   const getSessionDebugSnapshot = useCallback(() => ({
     recording,
@@ -481,6 +514,21 @@ const AudioInput = forwardRef(function AudioInput({
     ? Math.min(0.85, 0.2 + micLevel * 0.65)
     : 0;
 
+  // Mic button is a 3-state control: idle -> start, recording -> pause,
+  // paused -> resume. Pause/resume is segment-and-stitch (see runSession).
+  const micMode = recording ? "recording" : paused ? "paused" : "idle";
+  const micLabel = {
+    recording: "Pause recording",
+    paused: "Resume recording",
+    idle: "Start recording",
+  }[micMode];
+  const micButtonClass = {
+    recording: "bg-red-100 text-red-600 hover:bg-red-200",
+    paused: "bg-amber-100 text-amber-600 hover:bg-amber-200",
+    idle: "bg-gray-100 text-gray-500 hover:bg-gray-200",
+  }[micMode];
+  const onMicClick = recording ? pauseRecording : paused ? resumeRecording : startRecording;
+
   return (
     // Horizontal row on every viewport — fits a phone now that the status
     // HUD collapses to a single dot on mobile (see LiveSessionHud).
@@ -488,14 +536,10 @@ const AudioInput = forwardRef(function AudioInput({
       {/* Mic button + device picker */}
       <div className="relative flex items-center">
         <button
-          onClick={recording ? stopRecording : startRecording}
-          className={`relative flex items-center justify-center w-14 h-14 sm:w-11 sm:h-11 rounded-full transition-all duration-200 focus:outline-none ${
-            recording
-              ? "bg-red-100 text-red-600 hover:bg-red-200"
-              : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-          }`}
-          aria-label={recording ? "Stop recording" : "Start recording"}
-          title={recording ? "Stop recording" : "Start recording"}
+          onClick={onMicClick}
+          className={`relative flex items-center justify-center w-14 h-14 sm:w-11 sm:h-11 rounded-full transition-all duration-200 focus:outline-none ${micButtonClass}`}
+          aria-label={micLabel}
+          title={micLabel}
         >
           {recording && (
             <span
@@ -506,7 +550,7 @@ const AudioInput = forwardRef(function AudioInput({
               }}
             />
           )}
-          {recording ? <Square size={16} fill="currentColor" /> : <Mic size={18} />}
+          {recording ? <Pause size={16} fill="currentColor" /> : <Mic size={18} />}
           {recording && (
             <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
           )}
@@ -607,6 +651,7 @@ AudioInput.propTypes = {
   fileName: PropTypes.string,
   setFileName: PropTypes.func,
   autostart: PropTypes.bool,
+  onSessionStarted: PropTypes.func,
 };
 
 export default AudioInput;
