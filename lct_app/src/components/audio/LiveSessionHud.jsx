@@ -101,6 +101,26 @@ export default function LiveSessionHud({
     ? [uploadState?.statusText, uploadState?.etaText].filter(Boolean).join(" · ") || "Upload in progress"
     : statusLine;
 
+  // Overall health = the worst of the three sections. Drives the single
+  // dot shown on mobile (the 3-chip row needs ~288px and won't fit a phone
+  // footer horizontally).
+  const STATE_SEVERITY = { idle: 0, healthy: 1, connecting: 2, processing: 2, degraded: 3, error: 4 };
+  const DOT_COLORS = {
+    idle: "bg-slate-300",
+    healthy: "bg-emerald-500",
+    connecting: "bg-sky-500",
+    processing: "bg-sky-500",
+    degraded: "bg-amber-500",
+    error: "bg-rose-500",
+  };
+  const overallState = [effectiveBackend, effectiveStt, effectiveGraph].reduce(
+    (worst, section) =>
+      (STATE_SEVERITY[section?.state] ?? 0) > (STATE_SEVERITY[worst] ?? 0)
+        ? section.state
+        : worst,
+    "idle",
+  );
+
   // Build quota warning banner
   const showQuotaWarning = quotaWarning && (!quotaWarning.allowed || quotaWarning.remaining_minutes <= 2);
   const quotaMessage = quotaWarning?.message || "";
@@ -110,7 +130,7 @@ export default function LiveSessionHud({
   const settingsUrl = "/settings/stt";
 
   return (
-    <div className="relative min-w-[18rem] max-w-[34rem]">
+    <div className="relative sm:min-w-[18rem] sm:max-w-[34rem]">
       {/* Quota Warning Banner */}
       {showQuotaWarning && (
         <div className={`mb-2 rounded-lg px-3 py-2 text-xs text-center ${
@@ -170,10 +190,28 @@ export default function LiveSessionHud({
         </div>
       )}
 
+      {/* Mobile: a single health dot — tap to expand the same detail
+          panel. The 3-chip row below needs ~288px and won't fit a phone
+          footer horizontally. */}
       <button
         type="button"
         onClick={onToggleDetails}
-        className="w-full rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-left shadow-sm transition hover:border-slate-300 hover:bg-white"
+        className="flex items-center justify-center rounded-full border border-slate-200 bg-white/90 p-3 shadow-sm transition hover:border-slate-300 sm:hidden"
+        aria-expanded={detailOpen}
+        aria-label={`Live session health — ${effectiveStatusLine}`}
+        title={effectiveStatusLine}
+      >
+        <span
+          className={`h-3 w-3 rounded-full ${DOT_COLORS[overallState] || DOT_COLORS.idle}`}
+          aria-hidden="true"
+        />
+      </button>
+
+      {/* Desktop: the full 3-chip row + status line. */}
+      <button
+        type="button"
+        onClick={onToggleDetails}
+        className="hidden w-full rounded-2xl border border-slate-200 bg-white/90 px-3 py-2 text-left shadow-sm transition hover:border-slate-300 hover:bg-white sm:block"
         aria-expanded={detailOpen}
         aria-label="Toggle live session health details"
       >

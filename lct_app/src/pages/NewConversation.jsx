@@ -1103,23 +1103,21 @@ export default function NewConversation() {
         </div>
       )}
 
-      {/* Audio footer.
-          Mobile (<sm): a vertical stack — participants row, then the mic
-          row — so nothing overlaps or clips. The mic is the hero (bigger
-          tap target via AudioInput's `compact` prop). Export JSON is
-          desktop-only (it's a power/debug action — not for the live
-          recording surface on a phone).
-          Desktop (>=sm): the original one-row layout; the participants
-          pill floats bottom-left as before. */}
+      {/* Audio footer — a single horizontal toolbar on every viewport.
+          Fits a phone now that each control is compact: mic is icon-only,
+          the status HUD collapses to one dot on mobile, upload hides
+          while recording. Export JSON is desktop-only (power/debug
+          action, not for the live recording surface on a phone). The
+          participants pill floats bottom-left on desktop (sm:fixed). */}
       <div className="shrink-0 w-full py-2 px-3 sm:px-4 flex items-center justify-center border-t border-gray-100 bg-white/80 backdrop-blur-sm relative">
-        <div className="w-full max-w-5xl flex flex-col items-center gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-4">
-          {/* Participants — own row in the mobile stack; floats bottom-left
+        <div className="w-full max-w-5xl flex flex-row flex-wrap items-center justify-center gap-3 sm:gap-4">
+          {/* Participants — a toolbar item on mobile; floats bottom-left
               on desktop (sm:fixed pulls it out of flow). */}
           {!participantPickerOpen ? (
             <button
               type="button"
               onClick={() => setParticipantPickerOpen(true)}
-              className="order-first flex max-w-full items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-white sm:fixed sm:bottom-4 sm:left-4 sm:z-30 sm:order-none sm:max-w-[calc(100vw-2rem)] sm:py-1.5 sm:shadow-md sm:backdrop-blur"
+              className="flex max-w-[40vw] items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-white sm:fixed sm:bottom-4 sm:left-4 sm:z-30 sm:max-w-[calc(100vw-2rem)] sm:py-1.5 sm:shadow-md sm:backdrop-blur"
               title={
                 savedParticipants.length > 0
                   ? `${savedParticipants.map((p) => p.display_name).join(", ")} — tap to edit`
