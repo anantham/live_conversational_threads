@@ -512,9 +512,9 @@ const AudioInput = forwardRef(function AudioInput({
             <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
           )}
         </button>
-        <span className="ml-2 text-xs font-medium text-slate-500 select-none">
-          {recording ? "Stop Recording" : "Start Recording"}
-        </span>
+        {/* No text label — the mic/stop icon + red pulse is self-evident,
+            and the empty state already says "tap the mic". aria-label +
+            title on the button keep screen readers / hover covered. */}
 
         {/* Device picker chevron — only shown when not recording and multiple devices exist */}
         {!recording && micDevices.length > 1 && (
