@@ -157,6 +157,16 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001
         logger.exception("[PROVIDER AUDIT] startup audit failed (non-fatal)")
 
+    # Warm the IndrasNet contacts cache in the background so the participant
+    # picker has data ready on first open. IndrasNet's /api/contacts is slow
+    # (15s+, frequent timeouts) — never block startup or the picker on it.
+    try:
+        from lct_python_backend.consumption_prayer_api import warm_contacts_cache
+        warm_contacts_cache()
+        logger.info("[STARTUP] contacts-cache warm-up scheduled")
+    except Exception:  # noqa: BLE001
+        logger.exception("[STARTUP] contacts-cache warm-up failed to schedule (non-fatal)")
+
     yield
     logger.info("Disconnecting from database...")
     await db.disconnect()

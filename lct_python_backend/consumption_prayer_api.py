@@ -29,9 +29,16 @@ import logging
 from typing import Any, List, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from lct_python_backend.db_session import get_async_session, get_async_session_context
+from lct_python_backend.services.contacts_cache import (
+    is_cache_stale,
+    read_contacts_cache,
+    schedule_refresh,
+)
 from lct_python_backend.services.indrasnet_client import (
     IndrasNetClientError,
     IndrasNetProtocolError,
@@ -192,24 +199,54 @@ async def _fetch_indrasnet_contacts(
     return contacts, None
 
 
+async def _fetch_contacts_for_cache():
+    """Adapter passed to the cache refresher — fetches the full picker
+    window (PICKER_MAX_LIMIT) so one cache entry serves every `limit`."""
+    return await _fetch_indrasnet_contacts(limit=PICKER_MAX_LIMIT)
+
+
+def warm_contacts_cache():
+    """Fire-and-forget background refresh of the contacts cache.
+    Called on backend startup (lifespan) and on stale/cold picker reads."""
+    schedule_refresh(_fetch_contacts_for_cache, get_async_session_context)
+
+
 @router.get("/api/consumption-prayer/known-contacts")
-async def known_contacts_for_picker(limit: int = PICKER_DEFAULT_LIMIT):
+async def known_contacts_for_picker(
+    limit: int = PICKER_DEFAULT_LIMIT,
+    db: AsyncSession = Depends(get_async_session),
+):
     """Top-N most-recently-active contacts for the participant picker.
 
-    Default `limit=50` covers ~95% of real picks (you usually record with
-    someone you've talked to recently). Use the /search variant below for
-    the long tail. `limit` is clamped to [1, PICKER_MAX_LIMIT].
+    Served from a last-known-good cache (app_settings row, refreshed in
+    the background) — IndrasNet's /api/contacts is too slow (15s+,
+    frequent timeouts) to call inline. The picker gets an instant answer;
+    a stale cache triggers a background revalidate but still returns
+    immediately. See services/contacts_cache.py.
 
-    Frontend never talks to IndrasNet directly — all cross-repo coupling
-    stays on the backend. Errors from IndrasNet are swallowed; picker
-    just renders empty rather than blocking the page.
+    `limit` is clamped to [1, PICKER_MAX_LIMIT]; the cache always holds
+    the full window so any limit slices from the same entry.
     """
     effective_limit = max(1, min(int(limit or PICKER_DEFAULT_LIMIT), PICKER_MAX_LIMIT))
-    contacts, err = await _fetch_indrasnet_contacts(limit=effective_limit)
-    logger.info("[known-contacts] returned %d contacts (limit=%d)", len(contacts), effective_limit)
-    if err is not None:
-        return {"contacts": contacts, "indrasnet_error": err}
-    return {"contacts": contacts}
+    cache = await read_contacts_cache(db)
+
+    if cache and cache.get("contacts"):
+        stale = is_cache_stale(cache)
+        if stale:
+            warm_contacts_cache()  # revalidate, but serve what we have now
+        contacts = cache["contacts"][:effective_limit]
+        logger.info(
+            "[known-contacts] served %d/%d cached contacts (stale=%s)",
+            len(contacts), len(cache["contacts"]), stale,
+        )
+        return {"contacts": contacts, "cached": True, "stale": stale}
+
+    # Cold cache (first call after a fresh DB, or never populated). Kick a
+    # refresh and return empty now rather than blocking the picker for 15s.
+    # Backend startup also warms the cache, so this path is rare.
+    warm_contacts_cache()
+    logger.info("[known-contacts] cache cold — returning empty, refresh scheduled")
+    return {"contacts": [], "cached": False, "indrasnet_error": "cache warming"}
 
 
 @router.get("/api/consumption-prayer/known-contacts/search")
