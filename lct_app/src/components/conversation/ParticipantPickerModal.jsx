@@ -30,6 +30,9 @@ export default function ParticipantPickerModal({
   const [contacts, setContacts] = useState([]);
   const [selfContactId, setSelfContactId] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  // Ad-hoc "guest" participants — names typed for people not in the
+  // IndrasNet contact list. Plain strings; persisted with contact_id=null.
+  const [adHocNames, setAdHocNames] = useState([]);
   const [searchText, setSearchText] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -57,14 +60,17 @@ export default function ParticipantPickerModal({
         // Seed selection: existing participants from a prior open in this
         // session take priority. Otherwise pre-check self if known.
         const seed = new Set();
+        const adHoc = [];
         if (existing.length > 0) {
           for (const p of existing) {
             if (p?.contact_id) seed.add(p.contact_id);
+            else if (p?.display_name) adHoc.push(p.display_name);
           }
         } else if (identity?.self_contact_id) {
           seed.add(identity.self_contact_id);
         }
         setSelectedIds(seed);
+        setAdHocNames(adHoc);
       })
       .catch(() => {
         if (!cancelled) setError("Failed to load contacts");
@@ -140,6 +146,8 @@ export default function ParticipantPickerModal({
     orderedContacts.length - visibleContacts.length,
   );
 
+  const totalSelected = selectedIds.size + adHocNames.length;
+
   const toggleContact = useCallback((contactId) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -150,6 +158,22 @@ export default function ParticipantPickerModal({
       }
       return next;
     });
+  }, []);
+
+  // Add the typed name as an ad-hoc guest (someone not in contacts).
+  const addAdHocGuest = useCallback(() => {
+    const name = searchText.trim();
+    if (!name) return;
+    setAdHocNames((prev) =>
+      prev.some((n) => n.toLowerCase() === name.toLowerCase())
+        ? prev
+        : [...prev, name],
+    );
+    setSearchText("");
+  }, [searchText]);
+
+  const removeAdHocGuest = useCallback((name) => {
+    setAdHocNames((prev) => prev.filter((n) => n !== name));
   }, []);
 
   const handleConfirm = useCallback(async () => {
@@ -168,6 +192,17 @@ export default function ParticipantPickerModal({
           source: "picker",
         });
       }
+      // Ad-hoc guests: name-only, no contact_id. external_llm_ok stays null
+      // so the STT priming passes the name but never grabs a clip by a
+      // name collision (an ad-hoc guest has no voice library entry).
+      for (const name of adHocNames) {
+        participants.push({
+          contact_id: null,
+          display_name: name,
+          external_llm_ok: null,
+          source: "manual",
+        });
+      }
       const saved = await putConversationParticipants({
         conversationId,
         participants,
@@ -179,7 +214,7 @@ export default function ParticipantPickerModal({
     } finally {
       setSaving(false);
     }
-  }, [contacts, selectedIds, conversationId, onSaved, onClose]);
+  }, [contacts, selectedIds, adHocNames, conversationId, onSaved, onClose]);
 
   if (!open) return null;
 
@@ -194,7 +229,7 @@ export default function ParticipantPickerModal({
         <header className="flex items-center justify-between border-b border-gray-100 px-5 py-4">
           <div>
             <h2 className="text-base font-semibold text-gray-900">
-              Who's in this conversation?
+              Who&apos;s in this conversation?
             </h2>
             <p className="mt-0.5 text-xs text-gray-500">
               Tap to add. Recording continues in the background.
@@ -215,7 +250,7 @@ export default function ParticipantPickerModal({
             type="text"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            placeholder="Search contacts…"
+            placeholder="Search contacts or add a name…"
             className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-gray-400 focus:outline-none"
           />
           {searching ? (
@@ -226,6 +261,32 @@ export default function ParticipantPickerModal({
         </div>
 
         <div className="max-h-[50vh] overflow-y-auto px-2 pb-1 pt-2">
+          {adHocNames.length > 0 ? (
+            <ul className="mb-0.5 space-y-0.5">
+              {adHocNames.map((name) => (
+                <li key={`adhoc-${name}`}>
+                  <button
+                    type="button"
+                    onClick={() => removeAdHocGuest(name)}
+                    className="flex w-full items-center gap-3 rounded-lg bg-blue-50 px-3 py-2 text-left transition hover:bg-blue-100"
+                  >
+                    <span
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-blue-600 bg-blue-600 text-white"
+                      aria-hidden="true"
+                    >
+                      ✓
+                    </span>
+                    <span className="flex flex-1 items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">{name}</span>
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-gray-600">
+                        guest
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           {loading ? (
             <p className="px-3 py-6 text-center text-sm text-gray-500">
               Loading contacts…
@@ -296,6 +357,21 @@ export default function ParticipantPickerModal({
               Show {hiddenCount} more
             </button>
           ) : null}
+
+          {/* Add someone not in the IndrasNet contact list — type a name,
+              add them as an ad-hoc guest (name-only, no contact record). */}
+          {searchText.trim() ? (
+            <button
+              type="button"
+              onClick={addAdHocGuest}
+              className="mt-1 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-blue-600 hover:bg-blue-50"
+            >
+              <span className="text-base font-semibold leading-none">+</span>
+              <span>
+                Add <span className="font-medium">{searchText.trim()}</span> as a guest
+              </span>
+            </button>
+          ) : null}
         </div>
 
         {error ? (
@@ -320,7 +396,7 @@ export default function ParticipantPickerModal({
           >
             {saving
               ? "Saving…"
-              : `Confirm${selectedIds.size > 0 ? ` (${selectedIds.size})` : ""}`}
+              : `Confirm${totalSelected > 0 ? ` (${totalSelected})` : ""}`}
           </button>
         </footer>
       </div>
