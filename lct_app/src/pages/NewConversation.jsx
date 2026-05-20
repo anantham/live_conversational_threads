@@ -1148,7 +1148,9 @@ export default function NewConversation() {
               )}
             </button>
           ) : null}
-          <FileUpload />
+          {/* Upload is an ALTERNATIVE to live recording — irrelevant once
+              the mic is capturing. Phase-aware: hide it while recording. */}
+          {!liveTranscriptState.recording ? <FileUpload /> : null}
           <button
             type="button"
             onClick={handleExportConversationDebug}
