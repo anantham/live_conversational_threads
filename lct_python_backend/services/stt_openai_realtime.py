@@ -38,6 +38,11 @@ DEFAULT_OPENAI_REALTIME_PREFIX_PADDING_MS = int(
 DEFAULT_OPENAI_REALTIME_SILENCE_DURATION_MS = int(
     os.getenv("STT_OPENAI_REALTIME_SILENCE_DURATION_MS", "500")
 )
+# OpenAI's realtime API rejects an input_audio_buffer.commit carrying under
+# 100ms of audio ("buffer too small ... buffer only has 0.00ms"). flush()
+# skips the manual commit below this many bytes of uncommitted PCM.
+# 100ms of pcm16 mono = sample_rate_hz * 2 bytes/sample * 0.1s.
+OPENAI_REALTIME_MIN_COMMIT_BYTES = DEFAULT_OPENAI_REALTIME_SAMPLE_RATE_HZ * 2 // 10
 
 
 def build_openai_realtime_ws_url(base_url: str) -> str:
@@ -238,20 +243,26 @@ class OpenAIRealtimeTranscriptionRuntime:
             logger.warning("[OPENAI][REALTIME] session=%s flush called but not ready", self.session_id)
             return []
 
-        pending_bytes = len(self._pending_commit_pcm) if self._pending_commit_pcm else 0
-        logger.info("[OPENAI][REALTIME] session=%s flush: pending_bytes=%s provider_samples_sent=%s",
-                  self.session_id, pending_bytes, self._provider_samples_sent)
-        
-        if pending_bytes < 1600 and pending_bytes > 0:  # Less than 100ms
-            logger.warning("[OPENAI][REALTIME] session=%s flush: VERY SMALL BUFFER %s bytes (%s ms), may fail",
-                        self.session_id, pending_bytes, pending_bytes / 48)
-        elif pending_bytes == 0:
-            logger.warning("[OPENAI][REALTIME] session=%s flush: EMPTY BUFFER (0 bytes) - commit will likely fail",
-                        self.session_id)
-
-        if self._pending_commit_pcm:
+        # Server-side VAD (turn_detection in session.update) already
+        # auto-commits the input buffer on every detected silence. A manual
+        # commit here only finalizes a trailing utterance that didn't end on
+        # a silence. OpenAI rejects a commit carrying under 100ms of audio
+        # ("buffer too small ... only has 0.00ms"), so commit only when at
+        # least that much uncommitted audio is pending — otherwise the
+        # sub-100ms (sub-syllable) tail is dropped, which is inaudible.
+        pending_bytes = len(self._pending_commit_pcm)
+        logger.info(
+            "[OPENAI][REALTIME] session=%s flush: pending_bytes=%s provider_samples_sent=%s",
+            self.session_id, pending_bytes, self._provider_samples_sent,
+        )
+        if pending_bytes >= OPENAI_REALTIME_MIN_COMMIT_BYTES:
             logger.info("[OPENAI][REALTIME] session=%s committing input_audio_buffer.commit", self.session_id)
             await self._send_json({"type": "input_audio_buffer.commit"})
+        elif pending_bytes > 0:
+            logger.debug(
+                "[OPENAI][REALTIME] session=%s flush: skipping commit — %s bytes (<100ms) trailing audio",
+                self.session_id, pending_bytes,
+            )
 
         events = self._drain_events_nowait()
         deadline = time.monotonic() + max(0.25, DEFAULT_OPENAI_REALTIME_FLUSH_WAIT_SECONDS)

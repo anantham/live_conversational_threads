@@ -10,6 +10,7 @@ from lct_python_backend.services.stt_live_runtime import (
 )
 from lct_python_backend.services.stt_openai_realtime import (
     DEFAULT_OPENAI_REALTIME_SAMPLE_RATE_HZ,
+    OPENAI_REALTIME_MIN_COMMIT_BYTES,
     OpenAIRealtimeTranscriptionRuntime,
     resample_pcm16_mono,
 )
@@ -244,6 +245,52 @@ async def test_openai_realtime_runtime_emits_partial_and_final_events_from_serve
     assert events[1]["metadata"]["sample_rate_hz"] == DEFAULT_OPENAI_REALTIME_SAMPLE_RATE_HZ
     assert events[1]["timestamps"] == {"start": 0.0, "end": 0.01}
     assert isinstance(events[1]["_wav_payload"], (bytes, bytearray))
+
+
+@pytest.mark.asyncio
+async def test_openai_realtime_flush_skips_commit_for_sub_100ms_buffer(monkeypatch):
+    """OpenAI rejects an input_audio_buffer.commit carrying under 100ms of
+    audio ("buffer too small ... only has 0.00ms"). flush() must skip the
+    manual commit below that threshold — server-side VAD has already
+    auto-committed the real speech; the sub-syllable tail is dropped."""
+    # No events arrive — keep the post-commit wait short.
+    monkeypatch.setattr(
+        "lct_python_backend.services.stt_openai_realtime.DEFAULT_OPENAI_REALTIME_FLUSH_WAIT_SECONDS",
+        0.0,
+    )
+
+    def _ready_runtime():
+        runtime = OpenAIRealtimeTranscriptionRuntime(
+            provider="openai_audio",
+            api_key="sk-test",
+            model="gpt-4o-mini-transcribe",
+            base_url="https://api.openai.com",
+            sample_rate_hz=DEFAULT_OPENAI_REALTIME_SAMPLE_RATE_HZ,
+            session_id="session-1",
+            conversation_id="conversation-1",
+        )
+        runtime._socket = _DummyRealtimeSocket()
+        runtime._ready_event.set()
+        return runtime
+
+    def _commit_count(socket):
+        return sum(
+            1
+            for p in socket.sent_payloads
+            if json.loads(p).get("type") == "input_audio_buffer.commit"
+        )
+
+    # Sub-100ms buffer — manual commit is skipped (would fail otherwise).
+    small = _ready_runtime()
+    small._pending_commit_pcm.extend(b"\x00" * (OPENAI_REALTIME_MIN_COMMIT_BYTES - 2))
+    await small.flush()
+    assert _commit_count(small._socket) == 0
+
+    # >= 100ms buffer — manual commit is sent to finalize the trailing audio.
+    big = _ready_runtime()
+    big._pending_commit_pcm.extend(b"\x00" * OPENAI_REALTIME_MIN_COMMIT_BYTES)
+    await big.flush()
+    assert _commit_count(big._socket) == 1
 
 
 @pytest.mark.asyncio
