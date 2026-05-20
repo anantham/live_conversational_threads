@@ -96,6 +96,7 @@ export default function NewConversation() {
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
   const [liveTranscriptState, setLiveTranscriptState] = useState({
     recording: false,
+    paused: false,
     liveTranscriptLines: [],
     statusLine: "",
   });
@@ -1142,8 +1143,9 @@ export default function NewConversation() {
             </button>
           ) : null}
           {/* Upload is an ALTERNATIVE to live recording — irrelevant once
-              the mic is capturing. Phase-aware: hide it while recording. */}
-          {!liveTranscriptState.recording ? <FileUpload /> : null}
+              the mic is capturing. Phase-aware: hide it while recording AND
+              while paused (a paused conversation is mid-flight, not idle). */}
+          {!liveTranscriptState.recording && !liveTranscriptState.paused ? <FileUpload /> : null}
           <button
             type="button"
             onClick={handleExportConversationDebug}
