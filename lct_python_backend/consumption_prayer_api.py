@@ -162,23 +162,27 @@ async def _fetch_indrasnet_contacts(
     *,
     limit: int,
     search: str = "",
+    timeout: Optional[float] = None,
 ) -> tuple[list, Optional[str]]:
     """Fetch contacts from IndrasNet with the given limit/search and shape
     them for the picker. Returns (contacts, error_str_or_None). Errors are
     NEVER propagated as HTTP failures — picker degrades to empty list.
 
-    Uses the dedicated CONTACTS timeout (separate from match_timeout) so
-    accommodating IndrasNet's slow bulk reads doesn't make the live STT
-    match path more patient than it should be.
+    `timeout` overrides the default CONTACTS timeout — the background cache
+    refresher passes a generous value (nobody waits on it), while the live
+    /search path uses the shorter default. The CONTACTS timeout is separate
+    from match_timeout so IndrasNet's slow bulk reads don't make the live
+    STT match path more patient than it should be.
     """
     base = get_indrasnet_base_url()
     params = {"limit": str(limit)}
     if search:
         params["search"] = search
     url = f"{base}/api/contacts"
+    effective_timeout = timeout if timeout is not None else get_contacts_timeout_seconds()
 
     try:
-        async with httpx.AsyncClient(timeout=get_contacts_timeout_seconds()) as client:
+        async with httpx.AsyncClient(timeout=effective_timeout) as client:
             r = await client.get(url, params=params)
             r.raise_for_status()
             body = r.json()
@@ -199,10 +203,20 @@ async def _fetch_indrasnet_contacts(
     return contacts, None
 
 
+CACHE_REFRESH_LIMIT = PICKER_DEFAULT_LIMIT  # 50 — covers the realistic picker
+CACHE_REFRESH_TIMEOUT_SECONDS = 60.0  # background task, nobody waits on it
+
+
 async def _fetch_contacts_for_cache():
-    """Adapter passed to the cache refresher — fetches the full picker
-    window (PICKER_MAX_LIMIT) so one cache entry serves every `limit`."""
-    return await _fetch_indrasnet_contacts(limit=PICKER_MAX_LIMIT)
+    """Adapter passed to the cache refresher. Runs in the background, so it
+    gets a generous timeout — IndrasNet's /api/contacts is observably slow
+    (10s+ even at small limits) and a tight timeout means the cache never
+    populates. Fetches the top-50 (the picker only ever shows the top-N by
+    recency; the long tail is served by /search)."""
+    return await _fetch_indrasnet_contacts(
+        limit=CACHE_REFRESH_LIMIT,
+        timeout=CACHE_REFRESH_TIMEOUT_SECONDS,
+    )
 
 
 def warm_contacts_cache():
