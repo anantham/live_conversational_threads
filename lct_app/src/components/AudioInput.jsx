@@ -40,6 +40,13 @@ function calculateConfidence(logprobs) {
   return Math.min(...logprobs.map(lp => Math.exp(lp.logprob || 0)));
 }
 
+function formatElapsed(ms) {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef, logprobs) {
   if (!cleanText) {
     return previousLines;
@@ -120,6 +127,8 @@ const AudioInput = forwardRef(function AudioInput({
   // conversationId is retained; tapping the mic again re-attaches a new
   // recording segment to the same conversation.
   const [paused, setPaused] = useState(false);
+  // Elapsed recording time (ms), accumulated across pause/resume segments.
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [providerSocketState, setProviderSocketState] = useState("idle");
   const [backendSocketState, setBackendSocketState] = useState("idle");
   const [liveTranscriptLines, setLiveTranscriptLines] = useState([]);
@@ -139,6 +148,8 @@ const AudioInput = forwardRef(function AudioInput({
   const activeSettingsRef = useRef(null);
   const sessionStartedAtRef = useRef(null);
   const sessionEndedAtRef = useRef(null);
+  const elapsedAccumulatedRef = useRef(0); // banked ms from prior segments
+  const segmentStartedAtRef = useRef(null); // Date.now() when this segment began
 
   const appendSessionEvent = useCallback((type, payload = {}) => {
     const event = {
@@ -316,6 +327,29 @@ const AudioInput = forwardRef(function AudioInput({
     wasRecording.current = recording;
   }, [recording]);
 
+  // Elapsed recording timer. Ticks once a second while recording; when
+  // recording stops it banks this segment's duration so a pause/resume
+  // keeps counting a running total rather than restarting at 0:00.
+  useEffect(() => {
+    if (!recording) return undefined;
+    segmentStartedAtRef.current = Date.now();
+    const tick = () => {
+      setElapsedMs(
+        elapsedAccumulatedRef.current + (Date.now() - segmentStartedAtRef.current),
+      );
+    };
+    tick();
+    const intervalId = setInterval(tick, 1000);
+    return () => {
+      clearInterval(intervalId);
+      if (segmentStartedAtRef.current != null) {
+        elapsedAccumulatedRef.current += Date.now() - segmentStartedAtRef.current;
+        segmentStartedAtRef.current = null;
+        setElapsedMs(elapsedAccumulatedRef.current);
+      }
+    };
+  }, [recording]);
+
   // Stop recording on unmount to prevent background audio capture
   useEffect(() => {
     return () => {
@@ -387,12 +421,15 @@ const AudioInput = forwardRef(function AudioInput({
     sessionEndedAtRef.current = null;
     activeSettingsRef.current = activeSettings;
     if (!isResume) {
-      // Fresh recording — clear the prior segment's transcript + filename.
-      // A resume keeps them so the new segment's lines append on screen.
+      // Fresh recording — clear the prior segment's transcript, filename,
+      // and the accumulated elapsed time. A resume keeps all three so the
+      // new segment continues on screen and the timer keeps counting.
       transcriptLineIdRef.current = 0;
       setLiveTranscriptLines([]);
       setFileName?.("");
       fileNameWasReset.current = true;
+      elapsedAccumulatedRef.current = 0;
+      setElapsedMs(0);
     }
     setProcessingError("");
     setAudioDownloadUrl("");
@@ -614,6 +651,18 @@ const AudioInput = forwardRef(function AudioInput({
           </div>
         )}
       </div>
+
+      {(recording || paused) && (
+        <span
+          className={`text-sm font-semibold tabular-nums ${
+            recording ? "text-red-600" : "text-amber-600"
+          }`}
+          aria-label={`Recording time ${formatElapsed(elapsedMs)}`}
+          title="Recording time"
+        >
+          {formatElapsed(elapsedMs)}
+        </span>
+      )}
 
       <LiveSessionHud
         backend={liveBackend}
