@@ -34,3 +34,33 @@ export async function updateConversationSpeakerName(conversationId, speakerId, s
   );
   return handleJson(response, "Unable to update speaker name.");
 }
+
+export async function fetchConversationUtterances(conversationId) {
+  const response = await apiFetch(`/api/conversations/${conversationId}/utterances`, {
+    headers: { "Cache-Control": "no-cache" },
+  });
+  return handleJson(response, "Unable to load conversation utterances.");
+}
+
+// ADR-032 Part H: windowed speaker correction from the transcript. Relabels
+// every utterance sharing the target's speaker_id within +/-timeWindowSeconds
+// of its timestamp. timeWindowSeconds <= 0 means the whole conversation.
+export async function applySpeakerCorrection(
+  conversationId,
+  { utteranceId, newSpeaker, timeWindowSeconds = 300, source = "transcript_inline" }
+) {
+  const response = await apiFetch(
+    `/api/conversations/${conversationId}/speaker-correction`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        utterance_id: utteranceId,
+        new_speaker: newSpeaker,
+        time_window_seconds: timeWindowSeconds,
+        source,
+      }),
+    }
+  );
+  return handleJson(response, "Unable to apply speaker correction.");
+}
