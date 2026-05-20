@@ -969,45 +969,6 @@ export default function NewConversation() {
           onSaved={(participants) => setSavedParticipants(participants)}
         />
 
-        {/* Persistent participants strip + re-open trigger. Shows the
-            actual names so the user can see the cast without opening the
-            modal. Hidden while the modal is open. */}
-        {!participantPickerOpen ? (
-          <button
-            type="button"
-            onClick={() => setParticipantPickerOpen(true)}
-            className="fixed bottom-4 left-4 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-medium text-slate-700 shadow-md backdrop-blur transition hover:bg-white"
-            title={
-              savedParticipants.length > 0
-                ? `${savedParticipants.map((p) => p.display_name).join(", ")} — tap to edit`
-                : "Add participants"
-            }
-          >
-            <span aria-hidden="true">+</span>
-            {savedParticipants.length === 0 ? (
-              <span>Add participants</span>
-            ) : (
-              <span className="flex items-center gap-1 truncate">
-                {savedParticipants.slice(0, 3).map((p, idx) => (
-                  <span
-                    key={p.contact_id}
-                    className="truncate rounded-full bg-slate-100 px-2 py-0.5"
-                  >
-                    {p.display_name}
-                    {idx < Math.min(savedParticipants.length, 3) - 1 ? "" : ""}
-                  </span>
-                ))}
-                {savedParticipants.length > 3 ? (
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">
-                    +{savedParticipants.length - 3}
-                  </span>
-                ) : null}
-              </span>
-            )}
-          </button>
-        ) : null}
-
-
         {/* Node detail panel */}
         {selectedNodeData && (
           <NodeDetail
@@ -1142,18 +1103,56 @@ export default function NewConversation() {
         </div>
       )}
 
-      {/* Audio footer */}
       {/* Audio footer.
-          Mobile (<sm): items stack with flex-wrap so AudioInput's HUD
-          chips don't get clipped off the right edge. Desktop: keep the
-          one-row layout. */}
+          Mobile (<sm): a vertical stack — participants row, then the mic
+          row — so nothing overlaps or clips. The mic is the hero (bigger
+          tap target via AudioInput's `compact` prop). Export JSON is
+          desktop-only (it's a power/debug action — not for the live
+          recording surface on a phone).
+          Desktop (>=sm): the original one-row layout; the participants
+          pill floats bottom-left as before. */}
       <div className="shrink-0 w-full py-2 px-3 sm:px-4 flex items-center justify-center border-t border-gray-100 bg-white/80 backdrop-blur-sm relative">
-        <div className="w-full max-w-5xl flex flex-wrap items-center justify-center gap-2 sm:gap-4">
+        <div className="w-full max-w-5xl flex flex-col items-center gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-4">
+          {/* Participants — own row in the mobile stack; floats bottom-left
+              on desktop (sm:fixed pulls it out of flow). */}
+          {!participantPickerOpen ? (
+            <button
+              type="button"
+              onClick={() => setParticipantPickerOpen(true)}
+              className="order-first flex max-w-full items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-white sm:fixed sm:bottom-4 sm:left-4 sm:z-30 sm:order-none sm:max-w-[calc(100vw-2rem)] sm:py-1.5 sm:shadow-md sm:backdrop-blur"
+              title={
+                savedParticipants.length > 0
+                  ? `${savedParticipants.map((p) => p.display_name).join(", ")} — tap to edit`
+                  : "Add participants"
+              }
+            >
+              <span aria-hidden="true">+</span>
+              {savedParticipants.length === 0 ? (
+                <span>Add participants</span>
+              ) : (
+                <span className="flex items-center gap-1 truncate">
+                  {savedParticipants.slice(0, 3).map((p) => (
+                    <span
+                      key={p.contact_id}
+                      className="truncate rounded-full bg-slate-100 px-2 py-0.5"
+                    >
+                      {p.display_name}
+                    </span>
+                  ))}
+                  {savedParticipants.length > 3 ? (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">
+                      +{savedParticipants.length - 3}
+                    </span>
+                  ) : null}
+                </span>
+              )}
+            </button>
+          ) : null}
           <FileUpload />
           <button
             type="button"
             onClick={handleExportConversationDebug}
-            className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-800"
+            className="hidden rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-800 sm:inline-flex"
             title="Export graph, transcript, and session telemetry as JSON"
           >
             Export Session JSON
