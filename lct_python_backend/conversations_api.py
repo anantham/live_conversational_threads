@@ -420,6 +420,155 @@ async def get_conversation_utterances(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/api/conversations/{conversation_id}/export.json")
+async def export_conversation_json(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """ADR-032 Part L: full-state JSON export of a conversation.
+
+    Returns the COMPLETE durable state in one document — every node
+    (all 5 tiers, all columns), every relationship (temporal + semantic),
+    every utterance (with word_timings + chunk_id), and the speaker
+    correction event log. Use cases: archival, re-import, sharing,
+    debugging.
+
+    Deliberately NOT filtered or summarized — this is the raw graph.
+    The view-layer endpoints (/conversations/{id}) shape data for the
+    UI; this one is the source of truth dump.
+    """
+    from datetime import datetime, date
+    from lct_python_backend.models import (
+        Conversation,
+        Node,
+        Relationship,
+        Utterance,
+        SpeakerCorrectionEvent,
+    )
+
+    try:
+        conv_uuid = uuid.UUID(conversation_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid conversation_id UUID")
+
+    def _ser(value: Any) -> Any:
+        """JSON-safe coercion for UUIDs / datetimes / nested structures."""
+        if value is None:
+            return None
+        if isinstance(value, uuid.UUID):
+            return str(value)
+        if isinstance(value, (datetime, date)):
+            return value.isoformat()
+        if isinstance(value, (list, tuple)):
+            return [_ser(v) for v in value]
+        if isinstance(value, dict):
+            return {k: _ser(v) for k, v in value.items()}
+        return value
+
+    def _row_to_dict(row, columns) -> Dict[str, Any]:
+        return {col: _ser(getattr(row, col, None)) for col in columns}
+
+    try:
+        conv = (
+            await db.execute(select(Conversation).where(Conversation.id == conv_uuid))
+        ).scalar_one_or_none()
+        if conv is None:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        nodes = list(
+            (await db.execute(select(Node).where(Node.conversation_id == conv_uuid)
+                              .order_by(Node.level, Node.timestamp_start))).scalars().all()
+        )
+        relationships = list(
+            (await db.execute(select(Relationship).where(Relationship.conversation_id == conv_uuid))).scalars().all()
+        )
+        utterances = list(
+            (await db.execute(select(Utterance).where(Utterance.conversation_id == conv_uuid)
+                              .order_by(Utterance.sequence_number))).scalars().all()
+        )
+        # speaker_correction_events table is new (ADR-032 Part H) — tolerate
+        # its absence on databases that predate the migration.
+        try:
+            corrections = list(
+                (await db.execute(
+                    select(SpeakerCorrectionEvent)
+                    .where(SpeakerCorrectionEvent.conversation_id == conv_uuid)
+                    .order_by(SpeakerCorrectionEvent.created_at)
+                )).scalars().all()
+            )
+        except Exception:  # noqa: BLE001
+            corrections = []
+
+        node_cols = [
+            "id", "node_name", "summary", "source_excerpt", "key_points",
+            "node_type", "level", "parent_id", "children_ids",
+            "is_bookmark", "is_contextual_progress", "is_tangent", "is_crux",
+            "chunk_ids", "utterance_ids", "speaker_info",
+            "timestamp_start", "timestamp_end", "duration_seconds",
+            "cluster_info", "display_preferences", "zoom_level_visible",
+            "created_at", "updated_at",
+        ]
+        rel_cols = [
+            "id", "from_node_id", "to_node_id", "relationship_type",
+            "relationship_subtype", "explanation", "strength", "confidence",
+            "is_bidirectional", "created_at",
+        ]
+        utt_cols = [
+            "id", "sequence_number", "text", "text_cleaned",
+            "speaker_id", "speaker_name", "speaker_source",
+            "speaker_confidence", "speaker_revision",
+            "timestamp_start", "timestamp_end", "duration_seconds",
+            "chunk_id", "node_id", "thread_id",
+            "word_timings", "platform_metadata", "created_at",
+        ]
+        corr_cols = [
+            "id", "utterance_id", "prior_speaker", "new_speaker",
+            "time_window_seconds", "source", "user_id", "created_at",
+        ]
+
+        export = {
+            "export_version": "adr032-v1",
+            "exported_at": datetime.now().isoformat(),
+            "conversation": {
+                "id": str(conv.id),
+                "conversation_name": conv.conversation_name,
+                "conversation_type": conv.conversation_type,
+                "source_type": conv.source_type,
+                "owner_id": conv.owner_id,
+                "participant_count": conv.participant_count,
+                "participants": _ser(conv.participants),
+                "total_nodes": conv.total_nodes,
+                "total_utterances": conv.total_utterances,
+                "total_words": conv.total_words,
+                "duration_seconds": conv.duration_seconds,
+                "started_at": _ser(conv.started_at),
+                "created_at": _ser(conv.created_at),
+                "source_metadata": _ser(conv.source_metadata),
+            },
+            "nodes": [_row_to_dict(n, node_cols) for n in nodes],
+            "relationships": [_row_to_dict(r, rel_cols) for r in relationships],
+            "utterances": [_row_to_dict(u, utt_cols) for u in utterances],
+            "speaker_correction_events": [_row_to_dict(c, corr_cols) for c in corrections],
+            "counts": {
+                "nodes": len(nodes),
+                "relationships": len(relationships),
+                "utterances": len(utterances),
+                "speaker_correction_events": len(corrections),
+            },
+        }
+        logger.info(
+            "[export] conversation=%s nodes=%d rels=%d utts=%d corrections=%d",
+            conversation_id, len(nodes), len(relationships), len(utterances), len(corrections),
+        )
+        return export
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to export conversation %s", conversation_id)
+        raise HTTPException(status_code=500, detail=f"Export failed: {exc}")
+
+
 class ParticipantIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
     contact_id: str
