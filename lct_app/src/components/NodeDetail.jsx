@@ -4,8 +4,31 @@ import { rerouteConversationArtifacts } from "../services/artifactSettingsApi";
 import {
   fetchConversationSpeakers,
   updateConversationSpeakerName,
+  fetchConversationUtterances,
+  applySpeakerCorrection,
 } from "../services/speakerNamingApi";
 import { apiFetch } from "../services/apiClient";
+
+// ADR-032 Part H — windowed speaker correction. The scope selector lives
+// inline in the rename editor; the last-used choice is sticky per browser.
+const SPEAKER_WINDOW_OPTIONS = [
+  { label: "±1 min", value: 60 },
+  { label: "±5 min", value: 300 },
+  { label: "±15 min", value: 900 },
+  { label: "whole conversation", value: 0 },
+];
+const SPEAKER_WINDOW_STORAGE_KEY = "lct.speakerCorrectionWindowSeconds";
+
+function readStoredSpeakerWindow() {
+  try {
+    const raw = window.localStorage.getItem(SPEAKER_WINDOW_STORAGE_KEY);
+    if (raw == null) return 300;
+    const parsed = Number.parseInt(raw, 10);
+    return SPEAKER_WINDOW_OPTIONS.some((opt) => opt.value === parsed) ? parsed : 300;
+  } catch {
+    return 300;
+  }
+}
 
 function normalizeContextualRelations(contextualRelation) {
   if (!contextualRelation || typeof contextualRelation !== "object" || Array.isArray(contextualRelation)) {
@@ -66,6 +89,15 @@ export default function NodeDetail({
   const [speakerSaving, setSpeakerSaving] = useState(false);
   const [speakerError, setSpeakerError] = useState("");
   const [speakerFeedback, setSpeakerFeedback] = useState("");
+
+  // ADR-032 Part H — structured utterances + windowed inline correction.
+  const [utterances, setUtterances] = useState(null);
+  const [editingUtteranceId, setEditingUtteranceId] = useState(null);
+  const [correctionDraft, setCorrectionDraft] = useState("");
+  const [correctionWindow, setCorrectionWindow] = useState(readStoredSpeakerWindow);
+  const [correctionSaving, setCorrectionSaving] = useState(false);
+  const [correctionError, setCorrectionError] = useState("");
+  const [correctionFeedback, setCorrectionFeedback] = useState("");
 
   const [factCheckData, setFactCheckData] = useState(null);
   const [factCheckLoading, setFactCheckLoading] = useState(false);
@@ -184,6 +216,35 @@ export default function NodeDetail({
     };
   }, [highlightedTranscript, showFullTranscript]);
 
+  // ADR-032 Part H: window the structured utterance list around this node's
+  // own utterances (node.utterance_ids), mirroring the plain-text windowing
+  // above. Falls back to the full list when the node has no utterance
+  // linkage (live-STT conversations) or when expanded.
+  const UTTERANCE_CONTEXT_ROWS = 4;
+  const nodeUtteranceIds = useMemo(
+    () => new Set((safeNode?.utterance_ids || []).map(String)),
+    [safeNode?.utterance_ids]
+  );
+  const visibleUtterances = useMemo(() => {
+    if (!Array.isArray(utterances) || utterances.length === 0) return null;
+    const rows = utterances.map((u) => ({ ...u, _hl: nodeUtteranceIds.has(String(u.id)) }));
+    const firstHL = rows.findIndex((r) => r._hl);
+    const firstHlId = firstHL === -1 ? null : rows[firstHL].id;
+    if (showFullTranscript || firstHL === -1) {
+      return { rows, truncated: false, firstHlId };
+    }
+    let lastHL = firstHL;
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      if (rows[i]._hl) {
+        lastHL = i;
+        break;
+      }
+    }
+    const from = Math.max(0, firstHL - UTTERANCE_CONTEXT_ROWS);
+    const to = Math.min(rows.length, lastHL + 1 + UTTERANCE_CONTEXT_ROWS);
+    return { rows: rows.slice(from, to), truncated: from > 0 || to < rows.length, firstHlId };
+  }, [utterances, nodeUtteranceIds, showFullTranscript]);
+
   // Reset full-transcript toggle when switching nodes.
   useEffect(() => {
     setShowFullTranscript(false);
@@ -200,18 +261,23 @@ export default function NodeDetail({
     if (!line || !box) return;
     const target = line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2;
     box.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
-  }, [visibleTranscript]);
+  }, [visibleTranscript, visibleUtterances]);
 
   useEffect(() => {
     if (!safeNode) return undefined;
     const handleKeydown = (event) => {
       if (event.key === "Escape") {
-        onClose();
+        // Escape cancels an open rename editor first, then closes the panel.
+        if (editingUtteranceId) {
+          setEditingUtteranceId(null);
+        } else {
+          onClose();
+        }
       }
     };
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
-  }, [safeNode, onClose]);
+  }, [safeNode, onClose, editingUtteranceId]);
 
   useEffect(() => {
     if (!conversationId) {
@@ -333,6 +399,94 @@ export default function NodeDetail({
     speakerNameDraft,
     speakerSaving,
   ]);
+
+  // Load structured utterances for the inline-rename transcript (Part H).
+  // On failure or empty result, fall back to the plain-text chunk render.
+  useEffect(() => {
+    if (!conversationId) {
+      setUtterances(null);
+      return undefined;
+    }
+    let cancelled = false;
+    async function loadUtterances() {
+      try {
+        const payload = await fetchConversationUtterances(conversationId);
+        if (cancelled) return;
+        setUtterances(Array.isArray(payload?.utterances) ? payload.utterances : []);
+      } catch (error) {
+        if (cancelled) return;
+        console.warn("[NodeDetail] utterance load failed:", error);
+        setUtterances([]);
+      }
+    }
+    void loadUtterances();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
+
+  const refetchUtterances = useCallback(async () => {
+    if (!conversationId) return;
+    try {
+      const payload = await fetchConversationUtterances(conversationId);
+      setUtterances(Array.isArray(payload?.utterances) ? payload.utterances : []);
+    } catch (error) {
+      console.warn("[NodeDetail] utterance refetch failed:", error);
+    }
+  }, [conversationId]);
+
+  const startEditUtterance = useCallback((utt) => {
+    setEditingUtteranceId(utt.id);
+    setCorrectionDraft(utt.speaker_name || "");
+    setCorrectionError("");
+    setCorrectionFeedback("");
+  }, []);
+
+  const cancelEditUtterance = useCallback(() => {
+    setEditingUtteranceId(null);
+    setCorrectionDraft("");
+    setCorrectionError("");
+  }, []);
+
+  const handleWindowChange = useCallback((seconds) => {
+    setCorrectionWindow(seconds);
+    try {
+      window.localStorage.setItem(SPEAKER_WINDOW_STORAGE_KEY, String(seconds));
+    } catch {
+      /* localStorage unavailable — keep the in-memory value */
+    }
+  }, []);
+
+  const handleSaveCorrection = useCallback(
+    async (utt) => {
+      const newSpeaker = correctionDraft.trim();
+      if (!newSpeaker || correctionSaving) return;
+      setCorrectionSaving(true);
+      setCorrectionError("");
+      setCorrectionFeedback("");
+      try {
+        const result = await applySpeakerCorrection(conversationId, {
+          utteranceId: utt.id,
+          newSpeaker,
+          timeWindowSeconds: correctionWindow,
+          source: "node_detail_panel",
+        });
+        setCorrectionFeedback(
+          `Relabeled ${result?.relabeled_count ?? 0} utterance(s) (${result?.scope || "?"}).`
+        );
+        setEditingUtteranceId(null);
+        setCorrectionDraft("");
+        await refetchUtterances();
+        onSpeakerRenamed?.(utt.speaker_id, newSpeaker);
+      } catch (error) {
+        console.error("Speaker correction failed:", error);
+        setCorrectionError(error?.message || "Unable to apply speaker correction.");
+      } finally {
+        setCorrectionSaving(false);
+      }
+    },
+    [conversationId, correctionDraft, correctionWindow, correctionSaving, onSpeakerRenamed, refetchUtterances]
+  );
 
   if (!safeNode) return null;
 
@@ -466,26 +620,28 @@ export default function NodeDetail({
           </div>
         )}
 
-        {/* Raw transcript chunk (what the LLM saw) \u2014 windowed around the
-            node's contributing lines, with an Expand toggle to see the
-            full chunk (or the full conversation, in live-recording mode
-            where the backend stores the whole transcript per chunk). */}
-        {rawTranscript && (
+        {/* Raw transcript. ADR-032 Part H: when structured utterances are
+            available, render them as rows with a clickable speaker label
+            for windowed inline rename; otherwise fall back to the plain-text
+            chunk (legacy / live-STT conversations with no utterance rows).
+            The node's own utterances stay highlighted + windowed either way. */}
+        {(visibleUtterances || rawTranscript) && (
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
                 Raw Transcript
               </span>
-              {visibleTranscript?.truncated && (
-                <button
-                  type="button"
-                  onClick={() => setShowFullTranscript(true)}
-                  className="text-[10px] text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline"
-                >
-                  Show full
-                </button>
-              )}
-              {showFullTranscript && highlightedTranscript?.lines?.length > 0 && (
+              {!showFullTranscript &&
+                (visibleUtterances?.truncated || visibleTranscript?.truncated) && (
+                  <button
+                    type="button"
+                    onClick={() => setShowFullTranscript(true)}
+                    className="text-[10px] text-gray-500 underline-offset-2 hover:text-gray-700 hover:underline"
+                  >
+                    Show full
+                  </button>
+                )}
+              {showFullTranscript && (
                 <button
                   type="button"
                   onClick={() => setShowFullTranscript(false)}
@@ -495,29 +651,128 @@ export default function NodeDetail({
                 </button>
               )}
             </div>
-            <div
-              ref={transcriptScrollRef}
-              className="mt-1 max-h-48 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs text-gray-600 leading-relaxed whitespace-pre-wrap"
-            >
-              {visibleTranscript
-                ? visibleTranscript.lines.map((line, i) => {
-                    const isHL =
-                      visibleTranscript.startIdx !== -1 &&
-                      i >= visibleTranscript.startIdx &&
-                      i < visibleTranscript.startIdx + visibleTranscript.nodeLineCount;
-                    const isFirstHL = isHL && i === visibleTranscript.startIdx;
-                    return (
-                      <div
-                        key={`${visibleTranscript.sliceOffset}-${i}`}
-                        ref={isFirstHL ? highlightedLineRef : undefined}
-                        className={isHL ? "bg-amber-100 rounded px-0.5" : ""}
-                      >
-                        {line || "\u00A0"}
-                      </div>
-                    );
-                  })
-                : rawTranscript}
-            </div>
+
+            {visibleUtterances ? (
+              <div
+                ref={transcriptScrollRef}
+                className="mt-1 max-h-56 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs text-gray-600 leading-relaxed"
+              >
+                {visibleUtterances.rows.map((u) => {
+                  const label = u.speaker_name || u.speaker_id || "?";
+                  const isEditing = editingUtteranceId === u.id;
+                  return (
+                    <div
+                      key={u.id}
+                      ref={
+                        u.id === visibleUtterances.firstHlId && !editingUtteranceId
+                          ? highlightedLineRef
+                          : undefined
+                      }
+                      className={`py-0.5 ${u._hl ? "bg-amber-100 rounded px-0.5" : ""}`}
+                    >
+                      {isEditing ? (
+                        <span className="font-medium text-gray-400">{label}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => startEditUtterance(u)}
+                          title="Rename this speaker (windowed correction)"
+                          className="font-medium text-gray-500 hover:text-amber-700 hover:underline underline-offset-2"
+                        >
+                          {label}
+                        </button>
+                      )}
+                      <span className="text-gray-300">: </span>
+                      <span>{u.text}</span>
+
+                      {isEditing && (
+                        <div className="my-1 rounded border border-gray-300 bg-white p-2 space-y-1.5">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={correctionDraft}
+                            onChange={(event) => setCorrectionDraft(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") void handleSaveCorrection(u);
+                            }}
+                            placeholder={u.speaker_id || "Speaker name"}
+                            className="w-full rounded border border-gray-300 px-2 py-1 text-xs text-gray-700"
+                          />
+                          <div className="flex flex-wrap items-center gap-1">
+                            {SPEAKER_WINDOW_OPTIONS.map((opt) => (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => handleWindowChange(opt.value)}
+                                className={`rounded border px-1.5 py-0.5 text-[10px] ${
+                                  correctionWindow === opt.value
+                                    ? "border-amber-400 bg-amber-100 text-amber-800"
+                                    : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveCorrection(u)}
+                              disabled={correctionSaving || !correctionDraft.trim()}
+                              className="rounded border border-gray-300 px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {correctionSaving ? "Saving..." : "Save"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelEditUtterance}
+                              className="rounded px-2 py-0.5 text-[11px] text-gray-500 hover:text-gray-700"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div
+                ref={transcriptScrollRef}
+                className="mt-1 max-h-48 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs text-gray-600 leading-relaxed whitespace-pre-wrap"
+              >
+                {visibleTranscript
+                  ? visibleTranscript.lines.map((line, i) => {
+                      const isHL =
+                        visibleTranscript.startIdx !== -1 &&
+                        i >= visibleTranscript.startIdx &&
+                        i < visibleTranscript.startIdx + visibleTranscript.nodeLineCount;
+                      const isFirstHL = isHL && i === visibleTranscript.startIdx;
+                      return (
+                        <div
+                          key={`${visibleTranscript.sliceOffset}-${i}`}
+                          ref={isFirstHL ? highlightedLineRef : undefined}
+                          className={isHL ? "bg-amber-100 rounded px-0.5" : ""}
+                        >
+                          {line || "\u00A0"}
+                        </div>
+                      );
+                    })
+                  : rawTranscript}
+              </div>
+            )}
+
+            {correctionError && (
+              <div className="mt-1 rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-600">
+                {correctionError}
+              </div>
+            )}
+            {correctionFeedback && (
+              <div className="mt-1 rounded border border-green-200 bg-green-50 px-2 py-1 text-[11px] text-green-700">
+                {correctionFeedback}
+              </div>
+            )}
           </div>
         )}
 
