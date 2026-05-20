@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { UserPlus } from "lucide-react";
 import AudioInput from "../components/AudioInput";
 import FileUpload from "../components/FileUpload";
 import MinimalGraph from "../components/MinimalGraph";
@@ -1111,39 +1112,33 @@ export default function NewConversation() {
           participants pill floats bottom-left on desktop (sm:fixed). */}
       <div className="shrink-0 w-full py-2 px-3 sm:px-4 flex items-center justify-center border-t border-gray-100 bg-white/80 backdrop-blur-sm relative">
         <div className="w-full max-w-5xl flex flex-row flex-wrap items-center justify-center gap-3 sm:gap-4">
-          {/* Participants — a toolbar item on mobile; floats bottom-left
-              on desktop (sm:fixed pulls it out of flow). */}
+          {/* Participants — icon-only toolbar button. Tapping opens the
+              picker modal (check/uncheck, search) — that modal is where
+              you see + manage the cast, so the footer button itself
+              carries no names. Tinted blue when participants are set. */}
           {!participantPickerOpen ? (
             <button
               type="button"
               onClick={() => setParticipantPickerOpen(true)}
-              className="flex max-w-[40vw] items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-white sm:fixed sm:bottom-4 sm:left-4 sm:z-30 sm:max-w-[calc(100vw-2rem)] sm:py-1.5 sm:shadow-md sm:backdrop-blur"
+              className={`flex h-11 w-11 items-center justify-center rounded-full border transition ${
+                savedParticipants.length > 0
+                  ? "border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100"
+                  : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
+              }`}
               title={
                 savedParticipants.length > 0
                   ? `${savedParticipants.map((p) => p.display_name).join(", ")} — tap to edit`
                   : "Add participants"
               }
+              aria-label={
+                savedParticipants.length > 0
+                  ? `Participants: ${savedParticipants
+                      .map((p) => p.display_name)
+                      .join(", ")}. Tap to edit.`
+                  : "Add participants"
+              }
             >
-              <span aria-hidden="true">+</span>
-              {savedParticipants.length === 0 ? (
-                <span>Add participants</span>
-              ) : (
-                <span className="flex items-center gap-1 truncate">
-                  {savedParticipants.slice(0, 3).map((p) => (
-                    <span
-                      key={p.contact_id}
-                      className="truncate rounded-full bg-slate-100 px-2 py-0.5"
-                    >
-                      {p.display_name}
-                    </span>
-                  ))}
-                  {savedParticipants.length > 3 ? (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">
-                      +{savedParticipants.length - 3}
-                    </span>
-                  ) : null}
-                </span>
-              )}
+              <UserPlus size={18} />
             </button>
           ) : null}
           {/* Upload is an ALTERNATIVE to live recording — irrelevant once
