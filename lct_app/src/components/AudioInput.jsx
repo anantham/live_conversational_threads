@@ -487,7 +487,7 @@ const AudioInput = forwardRef(function AudioInput({
       <div className="relative flex items-center">
         <button
           onClick={recording ? stopRecording : startRecording}
-          className={`relative flex items-center justify-center w-11 h-11 rounded-full transition-all duration-200 focus:outline-none ${
+          className={`relative flex items-center justify-center w-14 h-14 sm:w-11 sm:h-11 rounded-full transition-all duration-200 focus:outline-none ${
             recording
               ? "bg-red-100 text-red-600 hover:bg-red-200"
               : "bg-gray-100 text-gray-500 hover:bg-gray-200"
