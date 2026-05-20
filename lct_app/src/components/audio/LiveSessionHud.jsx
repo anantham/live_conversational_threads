@@ -1,5 +1,6 @@
 import { useState } from "react";
 import PropTypes from "prop-types";
+import { Activity } from "lucide-react";
 
 const CHIP_STYLES = {
   idle: "border-slate-200 bg-slate-100 text-slate-500",
@@ -101,17 +102,19 @@ export default function LiveSessionHud({
     ? [uploadState?.statusText, uploadState?.etaText].filter(Boolean).join(" · ") || "Upload in progress"
     : statusLine;
 
-  // Overall health = the worst of the three sections. Drives the single
-  // dot shown on mobile (the 3-chip row needs ~288px and won't fit a phone
-  // footer horizontally).
+  // Overall health = the worst of the three sections. Drives the compact
+  // status glyph shown on mobile (the 3-chip row needs ~288px and won't
+  // fit a phone footer horizontally).
   const STATE_SEVERITY = { idle: 0, healthy: 1, connecting: 2, processing: 2, degraded: 3, error: 4 };
-  const DOT_COLORS = {
-    idle: "bg-slate-300",
-    healthy: "bg-emerald-500",
-    connecting: "bg-sky-500",
-    processing: "bg-sky-500",
-    degraded: "bg-amber-500",
-    error: "bg-rose-500",
+  // Text colours for the Activity glyph — a pulse line, NOT a dot. A solid
+  // dot reads as a record symbol and got confused with the mic button.
+  const STATUS_ICON_COLOR = {
+    idle: "text-slate-400",
+    healthy: "text-emerald-500",
+    connecting: "text-sky-500",
+    processing: "text-sky-500",
+    degraded: "text-amber-500",
+    error: "text-rose-500",
   };
   const overallState = [effectiveBackend, effectiveStt, effectiveGraph].reduce(
     (worst, section) =>
@@ -190,21 +193,22 @@ export default function LiveSessionHud({
         </div>
       )}
 
-      {/* Mobile: a single health dot — tap to expand the same detail
-          panel. The 3-chip row below needs ~288px and won't fit a phone
-          footer horizontally. */}
+      {/* Mobile: a compact status glyph — an Activity pulse line tinted
+          by health. Deliberately NOT a circle-button: a round button
+          with a dot got mistaken for a second record control next to
+          the mic. This reads as a status readout. Tap still expands the
+          same detail panel. */}
       <button
         type="button"
         onClick={onToggleDetails}
-        className="flex items-center justify-center rounded-full border border-slate-200 bg-white/90 p-3 shadow-sm transition hover:border-slate-300 sm:hidden"
+        className={`flex items-center justify-center rounded-md p-1.5 transition hover:bg-slate-100 sm:hidden ${
+          STATUS_ICON_COLOR[overallState] || STATUS_ICON_COLOR.idle
+        }`}
         aria-expanded={detailOpen}
         aria-label={`Live session health — ${effectiveStatusLine}`}
         title={effectiveStatusLine}
       >
-        <span
-          className={`h-3 w-3 rounded-full ${DOT_COLORS[overallState] || DOT_COLORS.idle}`}
-          aria-hidden="true"
-        />
+        <Activity size={18} aria-hidden="true" />
       </button>
 
       {/* Desktop: the full 3-chip row + status line. */}
