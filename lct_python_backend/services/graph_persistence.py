@@ -449,6 +449,25 @@ async def persist_graph(
     # this, every node gets speaker_info=null even though the STT was diarized.
     speaker_info_by_id = _compute_speaker_rollup(node_records, ref_to_id)
 
+    # Option B: normalize utterance_chunk_map BEFORE the timestamp lookup
+    # below so my new write-time-timestamps logic can reference it.
+    parsed_utterance_chunk_map: Dict[uuid.UUID, List[uuid.UUID]] = {}
+    if utterance_chunk_map:
+        for raw_chunk, raw_utt_ids in utterance_chunk_map.items():
+            chunk_uuid = _coerce_uuid(raw_chunk)
+            if chunk_uuid is None:
+                continue
+            seen_local: set = set()
+            normalized_utts: List[uuid.UUID] = []
+            for raw_utt in (raw_utt_ids or []):
+                parsed_utt = _coerce_uuid(raw_utt)
+                if parsed_utt is None or parsed_utt in seen_local:
+                    continue
+                seen_local.add(parsed_utt)
+                normalized_utts.append(parsed_utt)
+            if normalized_utts:
+                parsed_utterance_chunk_map[chunk_uuid] = normalized_utts
+
     # ADR-032 Part G: persist timestamp_start/timestamp_end on Node rows
     # at write time. Read-time derivation (conversation_reader.py) becomes a
     # drift-check that asserts these match. Computing at write time means
@@ -510,27 +529,7 @@ async def persist_graph(
             continue
         chunk_to_utt_ids.setdefault(cid, []).append(uid)
 
-    # Option B: normalize the live-path utterance map (chunk_id -> [utt_id...])
-    # into UUID objects up front so we can both (a) UPDATE utterances rows
-    # below and (b) backfill node.utterance_ids when the LLM didn't author
-    # any. Bulk-import path passes None here (utterances carry chunk_id on
-    # the row directly via the ``utterances`` kwarg).
-    parsed_utterance_chunk_map: Dict[uuid.UUID, List[uuid.UUID]] = {}
-    if utterance_chunk_map:
-        for raw_chunk, raw_utt_ids in utterance_chunk_map.items():
-            chunk_uuid = _coerce_uuid(raw_chunk)
-            if chunk_uuid is None:
-                continue
-            seen_local: set = set()
-            normalized_utts: List[uuid.UUID] = []
-            for raw_utt in (raw_utt_ids or []):
-                parsed_utt = _coerce_uuid(raw_utt)
-                if parsed_utt is None or parsed_utt in seen_local:
-                    continue
-                seen_local.add(parsed_utt)
-                normalized_utts.append(parsed_utt)
-            if normalized_utts:
-                parsed_utterance_chunk_map[chunk_uuid] = normalized_utts
+
 
     if conv and conversation_name:
         clean_conversation_name = coerce_str(conversation_name)
