@@ -244,7 +244,10 @@ export default function NewConversation() {
     if (!selectedNode) return null;
     return allNodes.find((n) => n.id === selectedNode) || null;
   }, [selectedNode, allNodes]);
-  const uploadTranscriptActive = upload.isProcessing && upload.liveTranscriptLines.length > 0;
+  // Engage the upload overlay from the moment processing starts — not just
+  // once transcript lines arrive — so the uploading + pre-first-line window
+  // still shows status (#115: "no indication... left hanging").
+  const uploadTranscriptActive = upload.isProcessing;
   const liveTranscriptActive = liveTranscriptState.liveTranscriptLines.length > 0;
   const transcriptOverlay = useMemo(() => {
     if (uploadTranscriptActive) {
