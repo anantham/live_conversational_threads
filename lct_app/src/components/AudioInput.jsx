@@ -17,6 +17,7 @@ import useTranscriptSockets from "./audio/useTranscriptSockets";
 import useAudioCapture from "./audio/useAudioCapture";
 import useMicDevices from "./audio/useMicDevices";
 import { randomUUID } from "../utils/uuid";
+import { isTouchPrimaryDevice } from "../utils/device";
 
 const LIVE_TRANSCRIPT_MAX_LINES = 240;
 const SESSION_EVENT_LIMIT = 600;
@@ -151,9 +152,19 @@ const AudioInput = forwardRef(function AudioInput({
     });
   }, []);
 
-  // Auto-start recording if requested
+  // Auto-start recording if requested. Desktop only: mobile browsers block
+  // getUserMedia outside a user gesture, and the gesture from tapping "New
+  // Conversation" doesn't survive the navigation to /new — so autostart on
+  // load can't work on touch devices. There the user taps the mic instead
+  // (the /new page prompts "Tap the mic below").
   useEffect(() => {
-    if (autostart && !recording && sttSettings && !autostarted.current) {
+    if (
+      autostart &&
+      !recording &&
+      sttSettings &&
+      !autostarted.current &&
+      !isTouchPrimaryDevice()
+    ) {
       autostarted.current = true;
       startRecording();
     }
