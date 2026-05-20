@@ -522,6 +522,33 @@ async def persist_graph(
             if chunk_id_row is not None:
                 utterance_to_chunk[uid] = chunk_id_row
 
+    # Import path: utterances passed via the ``utterances`` kwarg haven't
+    # been INSERTed yet when the DB query above runs, so they don't show
+    # up. Merge them in from the in-memory list so node timestamp
+    # derivation works for fresh imports too. (Live STT path doesn't pass
+    # utterances; the DB query above is its source.)
+    if utterances:
+        for raw in utterances:
+            if not isinstance(raw, dict):
+                continue
+            utt_id = _coerce_uuid(raw.get("id"))
+            if utt_id is None:
+                continue
+            ts_start = raw.get("timestamp_start")
+            ts_end = raw.get("timestamp_end")
+            try:
+                ts_start_f = float(ts_start) if ts_start is not None else None
+            except (TypeError, ValueError):
+                ts_start_f = None
+            try:
+                ts_end_f = float(ts_end) if ts_end is not None else None
+            except (TypeError, ValueError):
+                ts_end_f = None
+            utterance_timestamps[utt_id] = (ts_start_f, ts_end_f)
+            chunk_id_raw = _coerce_uuid(raw.get("chunk_id"))
+            if chunk_id_raw is not None:
+                utterance_to_chunk[utt_id] = chunk_id_raw
+
     # Group utterances by chunk_id so chunk_id->derive falls out naturally.
     chunk_to_utt_ids: Dict[uuid.UUID, List[uuid.UUID]] = {}
     for uid, cid in utterance_to_chunk.items():
@@ -537,6 +564,83 @@ async def persist_graph(
             conv.conversation_name = clean_conversation_name
     if conv and source_metadata:
         conv.source_metadata = source_metadata
+
+    # ADR-032 Part G: bubble timestamps UP through the hierarchy so higher
+    # tiers (topics/themes/arcs) get a temporal span derived from their
+    # descendants' chunks. Higher-tier nodes don't have utterance_ids or
+    # chunk_id themselves — they have children_ids pointing at lower-tier
+    # nodes. Walk the children_ids tree (slug names or UUIDs both resolve
+    # via ref_to_id) and aggregate min/max of leaf timestamps.
+    #
+    # Without this pass, only L1 chunks and L2 ideas that have utterance_ids
+    # get timestamps; the swim-lane layout falls back to column-index for
+    # arcs/themes/topics which kills the time-axis at the macro view.
+    item_by_node_id: Dict[uuid.UUID, Dict[str, Any]] = {nid: itm for nid, itm in node_records}
+
+    # First pass: compute the L1 chunk's own ts from its utterance_ids /
+    # chunk_id (we already have utterance_timestamps + chunk_to_utt_ids).
+    node_ts_cache: Dict[uuid.UUID, Tuple[Optional[float], Optional[float]]] = {}
+
+    def _compute_leaf_ts(node_id: uuid.UUID, item: Dict[str, Any]) -> Tuple[Optional[float], Optional[float]]:
+        candidate_utt_ids: List[uuid.UUID] = []
+        for uid in (item.get("utterance_ids") or []):
+            parsed = _coerce_uuid(uid)
+            if parsed and parsed in utterance_timestamps:
+                candidate_utt_ids.append(parsed)
+        if not candidate_utt_ids:
+            cid_raw = item.get("chunk_id")
+            if cid_raw:
+                cuid = _coerce_uuid(cid_raw)
+                if cuid:
+                    candidate_utt_ids = chunk_to_utt_ids.get(cuid, [])
+        if not candidate_utt_ids:
+            return (None, None)
+        starts = [utterance_timestamps[u][0] for u in candidate_utt_ids if utterance_timestamps.get(u) and utterance_timestamps[u][0] is not None]
+        ends = [utterance_timestamps[u][1] for u in candidate_utt_ids if utterance_timestamps.get(u) and utterance_timestamps[u][1] is not None]
+        return (min(starts) if starts else None, max(ends) if ends else None)
+
+    # Second pass: recursively resolve via children_ids for non-leaf tiers.
+    visited_resolve: set = set()
+
+    def _resolve_ts(node_id: uuid.UUID) -> Tuple[Optional[float], Optional[float]]:
+        if node_id in node_ts_cache:
+            return node_ts_cache[node_id]
+        if node_id in visited_resolve:  # cycle guard
+            return (None, None)
+        visited_resolve.add(node_id)
+        item = item_by_node_id.get(node_id)
+        if item is None:
+            node_ts_cache[node_id] = (None, None)
+            visited_resolve.discard(node_id)
+            return (None, None)
+        # First try the leaf computation.
+        ts = _compute_leaf_ts(node_id, item)
+        if ts[0] is not None:
+            node_ts_cache[node_id] = ts
+            visited_resolve.discard(node_id)
+            return ts
+        # Then bubble up from children_ids.
+        starts: List[float] = []
+        ends: List[float] = []
+        raw_children = item.get("children_ids") or []
+        for child_ref in raw_children:
+            ref_str = coerce_str(child_ref)
+            child_uuid = ref_to_id.get(ref_str) if ref_str in ref_to_id else _coerce_uuid(ref_str)
+            if child_uuid is None or child_uuid == node_id:
+                continue
+            cs, ce = _resolve_ts(child_uuid)
+            if cs is not None:
+                starts.append(cs)
+            if ce is not None:
+                ends.append(ce)
+        result = (min(starts) if starts else None, max(ends) if ends else None)
+        node_ts_cache[node_id] = result
+        visited_resolve.discard(node_id)
+        return result
+
+    # Resolve for every node up front so the writes below just look them up.
+    for nid, itm in node_records:
+        _resolve_ts(nid)
 
     # Step 2: Write Node rows
     for node_id, item in node_records:
@@ -598,42 +702,20 @@ async def persist_graph(
                 if resolved is not None and resolved != node_id:
                     children_resolved.append(resolved)
 
-        # ADR-032 Part G: compute timestamp_start/timestamp_end at write
-        # time. Three tiers of fallback: (1) LLM-authored values on the
-        # item dict; (2) min/max from utterance_ids' timestamps; (3) same
-        # via chunk_ids' utterances.
+        # ADR-032 Part G: timestamps were resolved in the pre-pass above.
+        # node_ts_cache contains the min/max for every node, derived from
+        # utterance_ids for L1 chunks and from children_ids recursively
+        # for higher tiers. LLM-authored item.timestamp_start wins when
+        # present (rare — most authors don't supply it).
         authored_ts_start = item.get("timestamp_start")
         authored_ts_end = item.get("timestamp_end")
+        cached_ts = node_ts_cache.get(node_id, (None, None))
         node_ts_start: Optional[float] = (
-            float(authored_ts_start) if authored_ts_start is not None else None
+            float(authored_ts_start) if authored_ts_start is not None else cached_ts[0]
         )
         node_ts_end: Optional[float] = (
-            float(authored_ts_end) if authored_ts_end is not None else None
+            float(authored_ts_end) if authored_ts_end is not None else cached_ts[1]
         )
-        if node_ts_start is None or node_ts_end is None:
-            candidate_utt_ids: List[uuid.UUID] = []
-            for uid in (item.get("utterance_ids") or []):
-                parsed = _coerce_uuid(uid)
-                if parsed and parsed in utterance_timestamps:
-                    candidate_utt_ids.append(parsed)
-            if not candidate_utt_ids and chunk_id:
-                chunk_uuid_for_node = _coerce_uuid(chunk_id)
-                if chunk_uuid_for_node:
-                    candidate_utt_ids = chunk_to_utt_ids.get(chunk_uuid_for_node, [])
-            ts_starts: List[float] = [
-                ts[0]
-                for ts in (utterance_timestamps.get(uid) for uid in candidate_utt_ids)
-                if ts and ts[0] is not None
-            ]
-            ts_ends: List[float] = [
-                ts[1]
-                for ts in (utterance_timestamps.get(uid) for uid in candidate_utt_ids)
-                if ts and ts[1] is not None
-            ]
-            if node_ts_start is None and ts_starts:
-                node_ts_start = min(ts_starts)
-            if node_ts_end is None and ts_ends:
-                node_ts_end = max(ts_ends)
 
         node_duration: Optional[float] = None
         if node_ts_start is not None and node_ts_end is not None and node_ts_end >= node_ts_start:
@@ -705,7 +787,13 @@ async def persist_graph(
     for node_id, item in node_records:
         for related_name, relation_text in _iter_contextual_relations(item.get("contextual_relation")):
             if related_name in ref_to_id:
-                relation_key = (node_id, ref_to_id[related_name], "contextual", relation_text)
+                related_id = ref_to_id[related_name]
+                # CHECK constraint no_self_reference blocks from==to. The
+                # LLM occasionally fuzzy-matches a node to itself via name
+                # overlap; skip silently.
+                if related_id == node_id:
+                    continue
+                relation_key = (node_id, related_id, "contextual", relation_text)
                 if relation_key in contextual_seen:
                     continue
                 contextual_seen.add(relation_key)
@@ -713,7 +801,7 @@ async def persist_graph(
                     id=uuid.uuid4(),
                     conversation_id=conv_uuid,
                     from_node_id=node_id,
-                    to_node_id=ref_to_id[related_name],
+                    to_node_id=related_id,
                     relationship_type="contextual",
                     explanation=relation_text,
                     strength=0.8,
