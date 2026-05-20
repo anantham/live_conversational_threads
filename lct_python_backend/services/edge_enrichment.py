@@ -226,9 +226,6 @@ async def _call_enrich_llm(
     Edge shape (per prompt contract):
         {from_node_id, to_node_id, relation_type, explanation}
     """
-    from lct_python_backend.services.prompt_manager import get_prompt
-    from lct_python_backend.services.transcript_llm_callers import _call_llm_with_providers
-
     telemetry: Dict[str, Any] = {
         "ms": 0,
         "input_tokens": None,
