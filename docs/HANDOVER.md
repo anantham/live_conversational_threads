@@ -1,3 +1,18 @@
+# Handover Index
+
+The newest handovers are **dated files** in `docs/` (newest first):
+
+- `HANDOVER_2026-05-20_participant-picker-pause-resume.md` — participant picker,
+  contacts cache, mobile footer, Vercel/Tailscale routing, LCT under the
+  IndrasNet supervisor, and the pause/resume design + round-trip verification.
+- `HANDOVER_2026-05-20_adr032-speaker-rename.md` — ADR-032 swim-lane layout,
+  semantic edge taxonomy, enrichment pipeline, windowed speaker rename.
+
+Older entries (2026-05-18, 2026-05-17, 2026-04-03) are stacked below in this
+file — kept for history; new handovers should be dated files, not appended here.
+
+---
+
 # Handover: 2026-05-18
 
 ## Session Summary
