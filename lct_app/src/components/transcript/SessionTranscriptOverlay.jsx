@@ -92,7 +92,14 @@ export default function SessionTranscriptOverlay({
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [minimized, segments.length]);
 
-  if (normalizedLines.length === 0) return null;
+  // Render even with no lines yet when there is upload status to show — the
+  // early "Uploading…" phase needs an indicator. Bail only when there is
+  // genuinely nothing (no lines, no status, no progress).
+  if (normalizedLines.length === 0 && !statusText && progress == null) return null;
+
+  // Before any transcript line arrives, force the compact strip — a full
+  // empty panel would be a lot of nothing during the upload phase.
+  const showCompact = minimized || normalizedLines.length === 0;
 
   const progressPercent = typeof progress === "number" ? Math.max(0, Math.min(100, Math.round(progress * 100))) : null;
   const recentLines = normalizedLines.slice(-3);
@@ -108,11 +115,11 @@ export default function SessionTranscriptOverlay({
   return (
     <div
       className={`absolute bottom-0 left-0 right-0 z-30 transition-all duration-300 ${
-        minimized ? "" : hasData ? "h-[40%]" : "top-0"
+        showCompact ? "" : hasData ? "h-[40%]" : "top-0"
       }`}
     >
-      <div className={`${minimized ? "" : "h-full"} bg-white/95 backdrop-blur border-t border-gray-200 shadow-lg flex flex-col`}>
-        {minimized ? (
+      <div className={`${showCompact ? "" : "h-full"} bg-white/95 backdrop-blur border-t border-gray-200 shadow-lg flex flex-col`}>
+        {showCompact ? (
           <div className="px-4 py-2">
             <div className="mb-1 flex items-center justify-between gap-3">
               <div className="flex min-w-0 flex-1 items-center gap-2">
