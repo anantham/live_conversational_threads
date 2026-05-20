@@ -167,6 +167,12 @@ class WsSessionContext:
         self.session_terminal_status: str = "completed"
         self.session_terminal_reason: str = "completed"
         self.session_started_committed: bool = False
+        # Segment-and-stitch resume: when this WS session attaches to a
+        # conversation that already has graph nodes (a prior recording
+        # segment), these are that segment's node ids. They're forwarded to
+        # persist_graph as protect_node_ids so the live graph-persist freezes
+        # the prior segment instead of wiping it. None for a fresh recording.
+        self.protected_node_ids: Optional[set] = None
 
         # Locks
         self.processor_lock = asyncio.Lock()
@@ -188,6 +194,38 @@ class WsSessionContext:
             llm_config=self._runtime_llm_config,
             providers=self._runtime_llm_providers,
         )
+
+    async def _detect_resume(self, conversation_id) -> None:
+        """Segment-and-stitch resume detection.
+
+        A WS session whose conversation_id already has graph Node rows is a
+        RESUME of a prior recording segment. Capture that segment's node ids
+        into ``self.protected_node_ids`` — they're forwarded to persist_graph
+        as ``protect_node_ids`` so the live graph-persist freezes the prior
+        segment instead of wiping it. No-op for a fresh recording.
+
+        Deliberately NOT seeding the processor from the prior segment: that
+        would require reconstructing the graph via build_graph_data_from_nodes,
+        which is relationship-lossy (see scripts/verify_graph_roundtrip.py).
+        Cross-segment stitch is left to the post-flush consolidation pass.
+        """
+        from sqlalchemy import select
+        from lct_python_backend.models import Node
+
+        conv_uuid = uuid.UUID(str(conversation_id))
+        result = await self.session.execute(
+            select(Node.id).where(Node.conversation_id == conv_uuid)
+        )
+        existing_ids = set(result.scalars().all())
+        if existing_ids:
+            self.protected_node_ids = existing_ids
+            logger.info(
+                "[WS][RESUME] session=%s conversation=%s — re-attaching; "
+                "%d prior-segment node(s) frozen",
+                self.state.session_id,
+                conversation_id,
+                len(existing_ids),
+            )
 
     # ------------------------------------------------------------------
     # Task tracking helpers
@@ -304,6 +342,7 @@ class WsSessionContext:
                         metadata=self.state.metadata if isinstance(self.state.metadata, dict) else {},
                         source_type="live_audio",
                         utterance_chunk_map=chunk_utt_map or None,
+                        protect_node_ids=self.protected_node_ids,
                     )
                     logger.info(
                         "[WS][GRAPH PERSIST] session=%s conversation=%s reason=%s persisted_nodes=%s latency_ms=%s",
@@ -2399,6 +2438,11 @@ class WsSessionContext:
                 "byok_llm_enabled": BYOK_SCOPE_LLM_LIVE in set(byok_session.get("scopes") or set()),
             }
         await ensure_conversation(self.session, conversation_id, self.state.metadata or {})
+        # Segment-and-stitch resume detection: if this conversation already
+        # has graph nodes, a prior recording segment was persisted here and
+        # this WS session is a RESUME. Freeze that segment so the live
+        # graph-persist scopes its destructive delete around it.
+        await self._detect_resume(conversation_id)
         # Tell the client the conversation row exists. The participant
         # picker waits for this before opening so its PUT can't 404 on
         # a row that doesn't exist yet.
