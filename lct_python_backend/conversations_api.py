@@ -571,7 +571,9 @@ async def export_conversation_json(
 
 class ParticipantIn(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    contact_id: str
+    # Optional: an ad-hoc "guest" participant — a name typed into the picker
+    # for someone not in the IndrasNet contact list — has no contact_id.
+    contact_id: Optional[str] = None
     display_name: str
     external_llm_ok: Optional[bool] = None
     source: Optional[str] = None
@@ -584,28 +586,33 @@ class ParticipantsUpdate(BaseModel):
 def _normalize_participants_payload(
     incoming: List[ParticipantIn],
 ) -> List[Dict[str, Any]]:
-    """Stamp added_at server-side, drop empty rows, dedupe by contact_id.
+    """Stamp added_at server-side, drop nameless rows, dedupe.
 
-    Last write wins on duplicate contact_ids — preserves the most recent
-    user intent if the client sends the same contact twice.
+    Contacts dedupe on contact_id; ad-hoc "guest" participants (a name typed
+    into the picker for someone not in the IndrasNet contact list — no
+    contact_id) dedupe on display_name. Last write wins on a duplicate.
     """
     from datetime import datetime, timezone
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    by_id: Dict[str, Dict[str, Any]] = {}
+    by_key: Dict[str, Dict[str, Any]] = {}
     for p in incoming:
         cid = (p.contact_id or "").strip()
         name = (p.display_name or "").strip()
-        if not (cid and name):
+        if not name:
+            # A row needs at least a name; a bare contact_id is unusable.
             continue
-        by_id[cid] = {
-            "contact_id": cid,
+        # Ad-hoc guests have no contact_id — dedupe them on the typed name
+        # so the same guest can't be added twice.
+        dedupe_key = cid or f"name:{name.lower()}"
+        by_key[dedupe_key] = {
+            "contact_id": cid or None,
             "display_name": name,
             "external_llm_ok": bool(p.external_llm_ok) if p.external_llm_ok is not None else None,
             "source": (p.source or "picker").strip() or "picker",
             "added_at": now_iso,
         }
-    return list(by_id.values())
+    return list(by_key.values())
 
 
 @router.get("/api/conversations/{conversation_id}/participants")

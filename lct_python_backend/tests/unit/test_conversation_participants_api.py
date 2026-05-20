@@ -25,15 +25,31 @@ from lct_python_backend.db_session import get_async_session
 # ---------------------------------------------------------------------------
 
 
-def test_normalize_drops_blank_contact_id_and_display_name():
+def test_normalize_drops_nameless_rows_but_keeps_ad_hoc_guests():
+    """A row needs a name. A blank contact_id with a name is a valid ad-hoc
+    guest (someone not in the IndrasNet contact list) — kept, contact_id None."""
     inputs = [
         ParticipantIn(contact_id="c_sahil", display_name="Sahil"),
-        ParticipantIn(contact_id="", display_name="Anon"),
-        ParticipantIn(contact_id="c_x", display_name="   "),
+        ParticipantIn(contact_id="", display_name="Anon"),     # ad-hoc guest — kept
+        ParticipantIn(contact_id="c_x", display_name="   "),   # nameless — dropped
+    ]
+    result = _normalize_participants_payload(inputs)
+    assert len(result) == 2
+    by_name = {r["display_name"]: r for r in result}
+    assert by_name["Sahil"]["contact_id"] == "c_sahil"
+    assert by_name["Anon"]["contact_id"] is None
+
+
+def test_normalize_dedupes_ad_hoc_guests_by_name():
+    """Ad-hoc guests have no contact_id — they dedupe on display_name so the
+    same guest can't be added twice. Last write wins."""
+    inputs = [
+        ParticipantIn(display_name="Bob", source="manual"),
+        ParticipantIn(display_name="bob", source="manual"),
     ]
     result = _normalize_participants_payload(inputs)
     assert len(result) == 1
-    assert result[0]["contact_id"] == "c_sahil"
+    assert result[0]["contact_id"] is None
 
 
 def test_normalize_dedupes_by_contact_id_last_wins():
@@ -193,6 +209,32 @@ def test_put_persists_normalized_participants(make_client):
     assert isinstance(conv.participants, list)
     assert {p["contact_id"] for p in conv.participants} == {"c_aditya", "c_sahil"}
     assert session.commits == 1
+
+
+def test_put_persists_ad_hoc_guest(make_client):
+    """An ad-hoc guest (contact_id null — someone not in the contact list)
+    round-trips through the PUT endpoint alongside a regular contact."""
+    conv = SimpleNamespace(
+        id=uuid.UUID(CONV_ID),
+        participants=None,
+        participant_count=0,
+    )
+    client, _ = make_client(conversation=conv)
+
+    payload = {
+        "participants": [
+            {"contact_id": "c_aditya", "display_name": "Aditya"},
+            {"contact_id": None, "display_name": "Guest Speaker", "source": "manual"},
+        ]
+    }
+    r = client.put(f"/api/conversations/{CONV_ID}/participants", json=payload)
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body["participants"]) == 2
+    guest = next(p for p in body["participants"] if p["display_name"] == "Guest Speaker")
+    assert guest["contact_id"] is None
+    assert guest["source"] == "manual"
+    assert conv.participant_count == 2
 
 
 def test_put_empty_list_clears_participants(make_client):
