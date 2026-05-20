@@ -377,6 +377,58 @@ class WsSessionContext:
             return
         await self._run_graph_persist_loop(reason=reason)
 
+    async def _run_utterance_node_reconciliation(self) -> None:
+        """Link utterances <-> nodes after the final graph persist.
+
+        The live STT path writes Utterance rows and Node rows as two
+        disconnected sets (utterances stream in before the chunk that covers
+        them is emitted, so Option B's chunk_utterance_map ends up empty).
+        This pass matches them after both are persisted and derives each
+        node's speaker_info from the diarized utterance speaker_id.
+
+        Non-fatal: the conversation already saved; a failure here just leaves
+        the links unset (the windowed transcript rename still works without
+        them — it is utterance-anchored).
+        """
+        if not self.state.conversation_id:
+            return
+        try:
+            from lct_python_backend.services.utterance_node_reconciler import (
+                reconcile_conversation_links,
+            )
+
+            summary = await reconcile_conversation_links(str(self.state.conversation_id))
+            logger.info(
+                "[WS][RECONCILE] session=%s conversation=%s linked=%s/%s "
+                "nodes_with_speaker_info=%s",
+                self.state.session_id,
+                self.state.conversation_id,
+                summary.get("linked_utterances"),
+                summary.get("utterances"),
+                summary.get("nodes_with_speaker_info"),
+            )
+            self._record_observability_event(
+                event_type="utterance_node_reconciliation",
+                stage="reconciliation",
+                level="info",
+                message="Linked utterances to nodes after final persist.",
+                context=summary,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[WS][RECONCILE] non-fatal failure: %s", exc)
+            self._record_observability_event(
+                event_type="reconciliation_error",
+                stage="reconciliation",
+                level="warning",
+                message="Utterance<->node reconciliation failed (non-fatal).",
+                context={
+                    "error": str(exc),
+                    "traceback": "".join(
+                        traceback.format_exception(type(exc), exc, exc.__traceback__)
+                    ),
+                },
+            )
+
     async def _run_hierarchy_consolidation_locked(self) -> None:
         """Run the three post-streaming consolidation passes against
         ``processor.existing_json``. Called holding ``self.processor_lock``.
@@ -2120,6 +2172,10 @@ class WsSessionContext:
                 # still saves; edges just won't be there to author.
                 await self._run_edge_enrichment_locked()
             await self._ensure_graph_persisted(reason="final_flush")
+            # Live-linkage fix: nodes + utterances are now both persisted but
+            # unlinked — reconcile them so speaker rollup / rename / audio-seek
+            # work. Runs last; nothing re-persists after this.
+            await self._run_utterance_node_reconciliation()
 
         except Exception as exc:
             logger.exception("[WS] Processor flush failed: %s", exc)
