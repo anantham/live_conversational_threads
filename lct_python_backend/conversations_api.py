@@ -650,18 +650,21 @@ async def put_conversation_participants(
     external_llm_ok (snapshot from /known-contacts). We persist that
     snapshot so STT priming and later audit don't need to round-trip
     IndrasNet again.
+
+    The conversation row is lazily created by stt_session.ensure_conversation
+    on first transcript event, but the frontend PUTs participants immediately
+    at session start — before any audio has arrived. To avoid a race where
+    the picker's selection is rejected with 404, we auto-create the row here
+    if it doesn't exist yet (same defaults as ensure_conversation).
     """
-    from lct_python_backend.models import Conversation
+    from lct_python_backend.services.stt_session import ensure_conversation
 
     try:
-        conv_uuid = uuid.UUID(conversation_id)
+        uuid.UUID(conversation_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid conversation_id")
 
-    result = await db.execute(select(Conversation).where(Conversation.id == conv_uuid))
-    conversation = result.scalar_one_or_none()
-    if conversation is None:
-        raise HTTPException(status_code=404, detail="Conversation not found")
+    conversation = await ensure_conversation(db, conversation_id, metadata={})
 
     normalized = _normalize_participants_payload(payload.participants)
     conversation.participants = normalized
