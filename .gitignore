@@ -193,6 +193,7 @@ outputs/
 /.claude/
 /.serena/
 /TheWhisper/
+/backups/
 **/recordings/
 /diagnostic_db_check.py
 /.coverage
