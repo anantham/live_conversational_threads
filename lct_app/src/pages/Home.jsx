@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Mic, FolderOpen, FileUp, Bookmark, BarChart3, Settings } from "lucide-react";
 import ServiceStatus from "../components/ServiceStatus";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
+import { getAutostartOnNew } from "../utils/homeBehavior";
 
 export default function Home() {
   const navigate = useNavigate();
@@ -60,7 +61,7 @@ export default function Home() {
       {/* Primary actions */}
       <div className="relative mb-12 flex items-center gap-6">
         <button
-          onClick={() => navigate("/new?autostart=true")}
+          onClick={() => navigate(getAutostartOnNew() ? "/new?autostart=true" : "/new")}
           className="flex flex-col items-center gap-2 group"
         >
           <span className="w-14 h-14 flex items-center justify-center rounded-full bg-gray-800 text-white group-hover:bg-gray-700 transition">
