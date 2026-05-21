@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Download } from "lucide-react";
+import { Download, FileJson } from "lucide-react";
+
+import {
+  buildConversationDebugExport,
+  downloadConversationDebugExport,
+} from "../components/audio/exportSessionDebug";
+import { fetchConversationObservability } from "../services/conversationDiagnosticsApi";
 
 import MinimalGraph from "../components/MinimalGraph";
 import MinimalLegend from "../components/MinimalLegend";
@@ -8,7 +14,7 @@ import NodeDetail from "../components/NodeDetail";
 import SearchDialog from "../components/SearchDialog";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
-import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
+import { apiFetchCached, API_BASE_URL } from "../services/apiClient";
 import { fetchConversationParticipants } from "../services/participantsApi";
 
 function sanitizeNodeArray(chunk) {
@@ -261,6 +267,51 @@ export default function ViewConversation() {
     [graphData]
   );
 
+  // Download the conversation as a JSON debug bundle. Uses the same
+  // exportSessionDebug helpers as the legacy NewConversation export, but
+  // populates only the fields that exist for a saved conversation —
+  // there's no draft state, no live audio session, no live transcript
+  // lines. Backend observability is best-effort: failure to fetch it
+  // still produces a usable export.
+  const [exportBusy, setExportBusy] = useState(false);
+  const handleExportJson = useCallback(async () => {
+    if (exportBusy) return;
+    setExportBusy(true);
+    let backendObservability = {};
+    try {
+      backendObservability = conversationId
+        ? await fetchConversationObservability(conversationId)
+        : {};
+    } catch (error) {
+      console.warn("[ViewConversation] backend observability fetch failed:", error);
+    }
+    const payload = buildConversationDebugExport({
+      conversationId,
+      fileName: conversationName || conversationTitle || conversationId,
+      message: "",
+      graphData,
+      draftGraphData: [],
+      chunkDict,
+      draftChunkDict: {},
+      audioRecovery: null,
+      audioSession: null,
+      backendObservability,
+    });
+    downloadConversationDebugExport(
+      payload,
+      conversationId,
+      conversationName || conversationTitle || conversationId,
+    );
+    setExportBusy(false);
+  }, [
+    chunkDict,
+    conversationId,
+    conversationName,
+    conversationTitle,
+    exportBusy,
+    graphData,
+  ]);
+
   const selectedNodeData = useMemo(() => {
     if (!selectedNode) return null;
     return allNodes.find((node) => node?.id === selectedNode) || null;
@@ -340,6 +391,18 @@ export default function ViewConversation() {
             >
               <Download size={16} />
             </a>
+          )}
+          {allNodes.length > 0 && (
+            <button
+              type="button"
+              onClick={handleExportJson}
+              disabled={exportBusy}
+              className="flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors p-1 disabled:cursor-wait disabled:opacity-50"
+              title="Download graph + transcript as JSON"
+              aria-label="Download conversation JSON"
+            >
+              <FileJson size={16} />
+            </button>
           )}
           {allNodes.length > 0 && (
             <span className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-500">
