@@ -1105,8 +1105,11 @@ export default function NewConversation() {
           ) : null}
           {/* Upload is an ALTERNATIVE to live recording — irrelevant once
               the mic is capturing. Phase-aware: hide it while recording AND
-              while paused (a paused conversation is mid-flight, not idle). */}
-          {!liveTranscriptState.recording && !liveTranscriptState.paused ? <FileUpload /> : null}
+              while paused (a paused conversation is mid-flight, not idle).
+              Also hide when ?autostart=true: the URL itself declares live-
+              streaming intent, so the upload option is noise — and it would
+              otherwise flash for a frame before recording flips on. */}
+          {!autostart && !liveTranscriptState.recording && !liveTranscriptState.paused ? <FileUpload /> : null}
           <AudioInput
             ref={audioRef}
             onDataReceived={handleDataReceived}
