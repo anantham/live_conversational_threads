@@ -19,7 +19,7 @@ async function snap(page: Page, label: string) {
 test.describe('Authored hierarchy tabs render correctly post-backfill', () => {
   test.setTimeout(60_000);
 
-  test('chunks / ideas / topics / themes each show their populated nodes', async ({ page }) => {
+  test('moments / ideas / topics / themes each show their populated nodes', async ({ page }) => {
     await page.goto(`${FRONTEND_URL}/conversation/${CONV_ID}`, {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
@@ -29,8 +29,8 @@ test.describe('Authored hierarchy tabs render correctly post-backfill', () => {
     const tabResults: Array<{ tab: string; nodeCount: number }> = [];
 
     // The tabs are buttons/links labeled with the tier names.
-    // After the backfill: chunks=4, ideas=1, topics=1, themes=1.
-    const tabs = ['chunks', 'ideas', 'topics', 'themes'];
+    // After the backfill: moments=4, ideas=1, topics=1, themes=1.
+    const tabs = ['moments', 'ideas', 'topics', 'themes'];
     for (const tab of tabs) {
       // Find tab by accessible name (case-insensitive contains)
       const button = page.getByRole('button', { name: new RegExp(`^${tab}`, 'i') }).first();
