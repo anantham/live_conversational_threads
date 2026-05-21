@@ -957,6 +957,7 @@ export default function NewConversation() {
             node={selectedNodeData}
             chunkDict={displayChunkDict}
             conversationId={conversationId}
+            participantNames={savedParticipants.map((p) => p.display_name).filter(Boolean)}
             onClose={() => setSelectedNode(null)}
             onTraceAncestors={setArgumentTraceFrom}
             onSpeakerRenamed={(speakerId, newName) => {
