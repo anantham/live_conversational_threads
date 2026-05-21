@@ -25,7 +25,9 @@ test.describe('D4 — color mode toggle smoke', () => {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     });
-    await page.waitForTimeout(4000); // settle graph
+    // Wait for the graph to actually render — not a blind sleep. Under
+    // parallel-suite load the HUD can take well over 4s to mount.
+    await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 30000 });
 
     // Initial: button should read "Color: Tier"
     const btn = page.getByRole('button', { name: /Color: (Tier|Speaker|Time)/i });

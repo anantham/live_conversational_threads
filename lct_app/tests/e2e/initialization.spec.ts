@@ -63,9 +63,9 @@ test.describe('App Initialization', () => {
       await page.goto(route.path);
       await page.waitForLoadState('domcontentloaded');
 
-      // Verify we're on the right page
-      const bodyText = await page.locator('body').textContent();
-      expect(bodyText).toMatch(route.expectedText);
+      // Verify we're on the right page. Retrying assertion — the SPA may
+      // still be mounting right after domcontentloaded.
+      await expect(page.locator('body')).toContainText(route.expectedText);
     }
   });
 
