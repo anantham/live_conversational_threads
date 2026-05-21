@@ -124,6 +124,18 @@ export default function LiveSessionHud({
     "idle",
   );
 
+  // #114: the mobile expanded panel shows only status + the 3 chips + any
+  // errors — not the full developer telemetry. Pull "...error" rows that
+  // carry a real value out of `details` for that curated view.
+  const errorRows = (details || []).flatMap((section) =>
+    (section?.rows || []).filter(
+      (row) =>
+        /error/i.test(row.label) &&
+        row.value &&
+        !/^(none|n\/a|-|—|null)$/i.test(String(row.value).trim()),
+    ),
+  );
+
   // Build quota warning banner
   const showQuotaWarning = quotaWarning && (!quotaWarning.allowed || quotaWarning.remaining_minutes <= 2);
   const quotaMessage = quotaWarning?.message || "";
@@ -166,30 +178,54 @@ export default function LiveSessionHud({
         </div>
       )}
       {showDetailPanel && (
-        <div className="absolute bottom-full left-0 z-30 mb-3 w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur">
-          {showCombinedView ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {details.map((section) => (
-                <div key={section.title} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
-                    {section.title}
-                  </p>
-                  <div className="mt-2 space-y-1.5">
-                    {section.rows.map((row) => (
-                      <div key={`${section.title}-${row.label}`} className="flex items-start justify-between gap-3 text-[11px]">
-                        <span className="text-slate-500">{row.label}</span>
-                        <span className="max-w-[11rem] text-right font-medium text-slate-700">
-                          {row.value}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+        <div className="absolute bottom-full right-0 z-30 mb-3 w-[min(28rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-xl backdrop-blur sm:left-0 sm:right-auto">
+          {/* Mobile (#114): curated — status line + the 3 state chips + any
+              errors. The full telemetry grid is a desktop-only dev view; on
+              a phone it overflowed off-screen and read as noise. */}
+          <div className="space-y-2 sm:hidden">
+            <p className="text-[11px] text-slate-500">{effectiveStatusLine}</p>
+            <div className="flex flex-col items-start gap-1.5">
+              <LiveStatusChip {...effectiveBackend} />
+              <LiveStatusChip {...effectiveStt} />
+              <LiveStatusChip {...effectiveGraph} />
             </div>
-          ) : (
-            <SectionTooltip section={tooltipContent} />
-          )}
+            {errorRows.length > 0 && (
+              <div className="space-y-1 border-t border-slate-100 pt-2">
+                {errorRows.map((row, index) => (
+                  <p key={`err-${index}`} className="text-[11px] text-rose-600">
+                    <span className="font-medium">{row.label}:</span> {row.value}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Desktop: the full diagnostics grid / hover tooltip. */}
+          <div className="hidden sm:block">
+            {showCombinedView ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {details.map((section) => (
+                  <div key={section.title} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      {section.title}
+                    </p>
+                    <div className="mt-2 space-y-1.5">
+                      {section.rows.map((row) => (
+                        <div key={`${section.title}-${row.label}`} className="flex items-start justify-between gap-3 text-[11px]">
+                          <span className="text-slate-500">{row.label}</span>
+                          <span className="max-w-[11rem] text-right font-medium text-slate-700">
+                            {row.value}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <SectionTooltip section={tooltipContent} />
+            )}
+          </div>
         </div>
       )}
 
