@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Mic, ChevronDown, Pause } from "lucide-react";
+import { Mic, ChevronDown, Pause, Square } from "lucide-react";
 
 import { normalizeSttSettings } from "./audio/sttUtils";
 import LiveSessionHud from "./audio/LiveSessionHud";
@@ -120,6 +120,7 @@ const AudioInput = forwardRef(function AudioInput({
   setFileName,
   autostart,
   onSessionStarted,
+  onFinalize,
 }, ref) {
   const uploadCtx = useUpload();
   const [recording, setRecording] = useState(false);
@@ -577,6 +578,20 @@ const AudioInput = forwardRef(function AudioInput({
   }[micMode];
   const onMicClick = recording ? pauseRecording : paused ? resumeRecording : startRecording;
 
+  // Stop is distinct from pause: pause is "I might add more to this graph";
+  // stop is "this conversation is done — finalize and save under a name."
+  // Mechanically both call stopRecording (clean WS/STT teardown); the
+  // difference is what comes next. Stop hands control to NewConversation's
+  // onFinalize, which scrolls to and focuses the Session Draft name input
+  // so the user can confirm/edit the suggested title and click Save & Exit.
+  const onStopClick = useCallback(async () => {
+    if (recording) {
+      await pauseRecording();
+    }
+    onFinalize?.();
+  }, [onFinalize, pauseRecording, recording]);
+  const stopVisible = recording || paused;
+
   return (
     // Horizontal row on every viewport — fits a phone now that the status
     // HUD collapses to a single dot on mobile (see LiveSessionHud).
@@ -606,6 +621,22 @@ const AudioInput = forwardRef(function AudioInput({
         {/* No text label — the mic/stop icon + red pulse is self-evident,
             and the empty state already says "tap the mic". aria-label +
             title on the button keep screen readers / hover covered. */}
+
+        {/* Stop button — distinct from pause. Pause (mic click while
+            recording) keeps the session in a resumable state; Stop ends
+            the conversation, then onFinalize jumps focus to the Session
+            Draft name input so the user can confirm and Save & Exit. */}
+        {stopVisible && (
+          <button
+            type="button"
+            onClick={onStopClick}
+            className="ml-2 flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition focus:outline-none"
+            aria-label="Stop and save conversation"
+            title="Stop & save (prompts for name)"
+          >
+            <Square size={14} fill="currentColor" />
+          </button>
+        )}
 
         {/* Device picker chevron — only shown when not recording and multiple devices exist */}
         {!recording && micDevices.length > 1 && (
@@ -712,6 +743,7 @@ AudioInput.propTypes = {
   setFileName: PropTypes.func,
   autostart: PropTypes.bool,
   onSessionStarted: PropTypes.func,
+  onFinalize: PropTypes.func,
 };
 
 export default AudioInput;
