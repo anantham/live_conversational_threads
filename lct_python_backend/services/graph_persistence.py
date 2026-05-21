@@ -790,95 +790,141 @@ async def persist_graph(
             duration_seconds=node_duration,
         ))
 
-    # Step 3: Write Relationship rows
-    # 3a. Temporal chain via successor/predecessor fields
-    temporal_pairs = set()
-    for node_id, item in node_records:
-        successor_name = coerce_str(item.get("successor"))
-        if successor_name and successor_name in ref_to_id:
-            temporal_pairs.add((node_id, ref_to_id[successor_name]))
-        predecessor_name = coerce_str(item.get("predecessor"))
-        if predecessor_name and predecessor_name in ref_to_id:
-            temporal_pairs.add((ref_to_id[predecessor_name], node_id))
+    # Step 3: Write Relationship rows.
+    #
+    # Faithful path — when the graph carries `edges_out` (each node's outgoing
+    # Relationship rows verbatim, emitted by conversation_reader.
+    # build_graph_data_from_nodes(..., include_edges_out=True)): persist every
+    # relationship with its ORIGINAL id and all fields, so a DB-graph ->
+    # reconstruct -> re-persist round-trip is lossless. The legacy path (3a/3b)
+    # folds edges into singular predecessor/successor fields + a name-keyed
+    # dict and re-mints ids — correct for LLM-authored graphs (no `edges_out`),
+    # lossy for a reconstruction. A graph carries one representation, not both.
+    node_record_ids = {nid for nid, _ in node_records}
+    graph_has_faithful_edges = any("edges_out" in item for _, item in node_records)
 
-    for from_node_id, to_node_id in temporal_pairs:
-        if from_node_id == to_node_id:
-            continue
-        db.add(Relationship(
-            id=uuid.uuid4(),
-            conversation_id=conv_uuid,
-            from_node_id=from_node_id,
-            to_node_id=to_node_id,
-            relationship_type="temporal",
-            explanation="Sequential conversation flow",
-            strength=1.0,
-            confidence=1.0,
-        ))
-
-    # 3b. Contextual relations
-    contextual_seen = set()
-    for node_id, item in node_records:
-        for related_name, relation_text in _iter_contextual_relations(item.get("contextual_relation")):
-            if related_name in ref_to_id:
-                related_id = ref_to_id[related_name]
-                # CHECK constraint no_self_reference blocks from==to. The
-                # LLM occasionally fuzzy-matches a node to itself via name
-                # overlap; skip silently.
-                if related_id == node_id:
+    if graph_has_faithful_edges:
+        seen_rel_ids: set = set()
+        for node_id, item in node_records:
+            edges_out = item.get("edges_out")
+            if not isinstance(edges_out, list):
+                continue
+            for edge in edges_out:
+                if not isinstance(edge, dict):
                     continue
-                relation_key = (node_id, related_id, "contextual", relation_text)
-                if relation_key in contextual_seen:
+                to_node_id = _coerce_uuid(edge.get("to"))
+                # to-node must be one of the rows we're inserting (FK), and
+                # the no_self_reference CHECK forbids from == to.
+                if to_node_id is None or to_node_id == node_id:
+                    continue
+                if to_node_id not in node_record_ids:
+                    continue
+                rel_id = _coerce_uuid(edge.get("id")) or uuid.uuid4()
+                if rel_id in seen_rel_ids:
+                    continue
+                seen_rel_ids.add(rel_id)
+                db.add(Relationship(
+                    id=rel_id,
+                    conversation_id=conv_uuid,
+                    from_node_id=node_id,
+                    to_node_id=to_node_id,
+                    relationship_type=coerce_str(edge.get("relationship_type")) or "related",
+                    relationship_subtype=coerce_str(edge.get("relationship_subtype")) or None,
+                    explanation=edge.get("explanation"),
+                    strength=coerce_float(edge.get("strength")),
+                    confidence=coerce_float(edge.get("confidence")),
+                    is_bidirectional=bool(edge.get("is_bidirectional")),
+                    supporting_utterance_ids=_coerce_uuid_array(edge.get("supporting_utterance_ids")),
+                ))
+    else:
+        # 3a. Temporal chain via successor/predecessor fields
+        temporal_pairs = set()
+        for node_id, item in node_records:
+            successor_name = coerce_str(item.get("successor"))
+            if successor_name and successor_name in ref_to_id:
+                temporal_pairs.add((node_id, ref_to_id[successor_name]))
+            predecessor_name = coerce_str(item.get("predecessor"))
+            if predecessor_name and predecessor_name in ref_to_id:
+                temporal_pairs.add((ref_to_id[predecessor_name], node_id))
+
+        for from_node_id, to_node_id in temporal_pairs:
+            if from_node_id == to_node_id:
+                continue
+            db.add(Relationship(
+                id=uuid.uuid4(),
+                conversation_id=conv_uuid,
+                from_node_id=from_node_id,
+                to_node_id=to_node_id,
+                relationship_type="temporal",
+                explanation="Sequential conversation flow",
+                strength=1.0,
+                confidence=1.0,
+            ))
+
+        # 3b. Contextual relations
+        contextual_seen = set()
+        for node_id, item in node_records:
+            for related_name, relation_text in _iter_contextual_relations(item.get("contextual_relation")):
+                if related_name in ref_to_id:
+                    related_id = ref_to_id[related_name]
+                    # CHECK constraint no_self_reference blocks from==to. The
+                    # LLM occasionally fuzzy-matches a node to itself via name
+                    # overlap; skip silently.
+                    if related_id == node_id:
+                        continue
+                    relation_key = (node_id, related_id, "contextual", relation_text)
+                    if relation_key in contextual_seen:
+                        continue
+                    contextual_seen.add(relation_key)
+                    db.add(Relationship(
+                        id=uuid.uuid4(),
+                        conversation_id=conv_uuid,
+                        from_node_id=node_id,
+                        to_node_id=related_id,
+                        relationship_type="contextual",
+                        explanation=relation_text,
+                        strength=0.8,
+                        confidence=0.9,
+                    ))
+
+            raw_edge_relations = item.get("edge_relations")
+            if not isinstance(raw_edge_relations, list):
+                continue
+            for relation in raw_edge_relations:
+                if not isinstance(relation, dict):
+                    continue
+                related_name = coerce_str(
+                    relation.get("related_node")
+                    or relation.get("related_node_name")
+                    or relation.get("relatedNode")
+                    or relation.get("source")
+                    or relation.get("from")
+                    or relation.get("node")
+                )
+                if related_name not in ref_to_id:
+                    continue
+                relation_type = coerce_str(relation.get("relation_type") or relation.get("type")).lower() or "contextual"
+                relation_text = coerce_str(
+                    relation.get("relation_text")
+                    or relation.get("relationText")
+                    or relation.get("description")
+                    or relation.get("explanation")
+                ) or relation_type
+                relation_key = (ref_to_id[related_name], node_id, relation_type, relation_text)
+                if relation_key in contextual_seen or ref_to_id[related_name] == node_id:
                     continue
                 contextual_seen.add(relation_key)
                 db.add(Relationship(
                     id=uuid.uuid4(),
                     conversation_id=conv_uuid,
-                    from_node_id=node_id,
-                    to_node_id=related_id,
-                    relationship_type="contextual",
+                    from_node_id=ref_to_id[related_name],
+                    to_node_id=node_id,
+                    relationship_type=relation_type,
+                    relationship_subtype=relation_type if relation_type != "contextual" else None,
                     explanation=relation_text,
                     strength=0.8,
                     confidence=0.9,
                 ))
-
-        raw_edge_relations = item.get("edge_relations")
-        if not isinstance(raw_edge_relations, list):
-            continue
-        for relation in raw_edge_relations:
-            if not isinstance(relation, dict):
-                continue
-            related_name = coerce_str(
-                relation.get("related_node")
-                or relation.get("related_node_name")
-                or relation.get("relatedNode")
-                or relation.get("source")
-                or relation.get("from")
-                or relation.get("node")
-            )
-            if related_name not in ref_to_id:
-                continue
-            relation_type = coerce_str(relation.get("relation_type") or relation.get("type")).lower() or "contextual"
-            relation_text = coerce_str(
-                relation.get("relation_text")
-                or relation.get("relationText")
-                or relation.get("description")
-                or relation.get("explanation")
-            ) or relation_type
-            relation_key = (ref_to_id[related_name], node_id, relation_type, relation_text)
-            if relation_key in contextual_seen or ref_to_id[related_name] == node_id:
-                continue
-            contextual_seen.add(relation_key)
-            db.add(Relationship(
-                id=uuid.uuid4(),
-                conversation_id=conv_uuid,
-                from_node_id=ref_to_id[related_name],
-                to_node_id=node_id,
-                relationship_type=relation_type,
-                relationship_subtype=relation_type if relation_type != "contextual" else None,
-                explanation=relation_text,
-                strength=0.8,
-                confidence=0.9,
-            ))
 
     persisted_utterances = _normalize_utterances(utterances)
     if utterances is not None:

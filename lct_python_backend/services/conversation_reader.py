@@ -66,8 +66,15 @@ def build_relationship_maps(nodes, relationships):
     return predecessor_by_id, successor_by_id, contextual_by_id, linked_by_id
 
 
-def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[Dict[str, Any]]:
+def build_graph_data_from_nodes(
+    nodes, relationships, utterances=None, include_edges_out=False
+) -> List[Dict[str, Any]]:
     """Build frontend graph payload from persisted analyzed nodes + relationships.
+
+    ``include_edges_out=True`` adds an ``edges_out`` list to every node — its
+    outgoing Relationship rows verbatim (id + every field). ``persist_graph``
+    consumes that for a lossless DB-graph -> reconstruct -> re-persist
+    round-trip; default-off keeps read/export payloads lean.
 
     When ``utterances`` is provided, nodes that have no ``timestamp_start`` of
     their own (the common case for older imports) get one derived from the
@@ -158,6 +165,28 @@ def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[D
                 "relation_text": rel.explanation or rel.relationship_type or "related",
             }
         )
+
+    # Faithful per-node outgoing-edge list. Off by default — read/export
+    # callers don't need it. Re-persist callers (migrations, the round-trip
+    # verifier) pass include_edges_out=True so persist_graph can rewrite every
+    # Relationship row verbatim (id + all fields) instead of re-deriving edges
+    # from the lossy singular predecessor/successor/contextual fields.
+    edges_out_by_id: Dict[Any, List[Dict[str, Any]]] = {}
+    if include_edges_out:
+        for rel in relationships:
+            edges_out_by_id.setdefault(rel.from_node_id, []).append({
+                "id": str(rel.id),
+                "to": str(rel.to_node_id),
+                "relationship_type": rel.relationship_type,
+                "relationship_subtype": rel.relationship_subtype,
+                "explanation": rel.explanation,
+                "strength": rel.strength,
+                "confidence": rel.confidence,
+                "is_bidirectional": bool(getattr(rel, "is_bidirectional", False)),
+                "supporting_utterance_ids": [
+                    str(u) for u in (getattr(rel, "supporting_utterance_ids", None) or [])
+                ],
+            })
 
     graph_data = []
     for node in nodes:
@@ -266,6 +295,7 @@ def build_graph_data_from_nodes(nodes, relationships, utterances=None) -> List[D
             "speaker_id": (node.speaker_info or {}).get("primary_speaker") or None,
             **({"timestamp_start": effective_start} if effective_start is not None else {}),
             **({"timestamp_end": effective_end} if effective_end is not None else {}),
+            **({"edges_out": edges_out_by_id.get(node.id, [])} if include_edges_out else {}),
         }
         graph_data.append(node_data)
 
