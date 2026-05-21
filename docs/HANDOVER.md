@@ -2,9 +2,11 @@
 
 The newest handovers are **dated files** in `docs/` (newest first):
 
-- `HANDOVER_2026-05-20_participant-picker-pause-resume.md` — participant picker,
-  contacts cache, mobile footer, Vercel/Tailscale routing, LCT under the
-  IndrasNet supervisor, and the pause/resume design + round-trip verification.
+- `HANDOVER_2026-05-20_participant-picker-pause-resume.md` — participant picker
+  (incl. ad-hoc guests), contacts cache, mobile footer, Vercel/Tailscale, LCT
+  under the IndrasNet supervisor, and segment-and-stitch pause/resume **shipped
+  end-to-end**. Updated 2026-05-21; ends with the remaining work flagged by
+  context-sensitivity.
 - `HANDOVER_2026-05-20_adr032-speaker-rename.md` — ADR-032 swim-lane layout,
   semantic edge taxonomy, enrichment pipeline, windowed speaker rename.
 

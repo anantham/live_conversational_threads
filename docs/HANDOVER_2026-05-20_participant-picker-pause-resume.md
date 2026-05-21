@@ -39,9 +39,31 @@ Then: investigated why pause/resume was reverted (ADR-028), designed
 **segment-and-stitch** pause/resume, and wrote a round-trip verification script
 that **proved the cheap implementation silently erodes the graph**.
 
-**20 commits on LCT `main` + 2 on the TC repo. Nothing pushed on LCT** — LCT
-`main` is **45 commits ahead of origin** (this session + the ADR-032 session
-interleaved). The TC repo is at 0 ahead — its 2 commits are already on origin.
+## Continuation (2026-05-21) — segment-and-stitch shipped
+
+The same arc continued the next day and **shipped pause/resume end-to-end**,
+plus three follow-ups:
+
+- **Stage 1 — backend (`865d2c6`).** `persist_graph` gained `protect_node_ids`:
+  on resume its destructive delete is *scoped* to exclude the prior segment,
+  which is frozen — never deleted, never reconstructed. This replaced the dead
+  "seed processor + self-correcting persist" plan. Verified by the rewritten
+  `verify_graph_roundtrip.py` — segment 1 survives two resume-persists
+  byte-identical (687 relationships stay 687).
+- **Stage 2 — frontend (`aeb41da`).** The mic button is a 3-state control —
+  idle → start, recording → pause, paused → resume. Resume reuses the existing
+  `conversationId`; transcript + timer carry across the gap.
+- **Ad-hoc guest speakers (`21f8de0`).** The picker can add someone not in the
+  IndrasNet contact list — type a name, "Add as a guest".
+- **Realtime commit bug (`ab7b685`).** `flush()` no longer fires a sub-100ms
+  `input_audio_buffer.commit` (server VAD already auto-commits) — kills the
+  recurring "error committing audio / buffer too small / 0.00ms" log noise.
+- **Elapsed recording timer (`d3602ec`).** MM:SS by the mic, cumulative across
+  pause/resume segments.
+
+**LCT `main` is 9 commits ahead of origin** — the parallel ADR-032 session
+pushed the earlier backlog; nothing from this arc is pushed. The TC repo's 2
+commits are already on origin.
 
 ## Commits This Session
 
@@ -100,11 +122,27 @@ so these commits and the LCT ones are in separate repos) **(2)**
 > (ViewConversation chips) was built on top of it — but this session did not
 > create it. An earlier draft of this handover wrongly listed it.
 
+### Continuation session (2026-05-21)
+
+- `865d2c6` feat(stt): segment-and-stitch resume — scoped graph persist (Stage 1)
+- `aeb41da` feat(audio): segment-and-stitch pause/resume UI (Stage 2)
+- `21f8de0` feat(participants): ad-hoc guest speakers in the picker
+- `ab7b685` fix(stt): skip realtime commit for sub-100ms audio buffers
+- `d3602ec` feat(audio): elapsed recording timer
+- `02f838a` docs(handover) — the first cut of this file
+
+Interleaved parallel-session commits this stretch (`0976a9e`, `c0b09d2`,
+`4da94b3`, `8bd07a4`, `4fe154c`) are **NOT** this session.
+
 ---
 
 ## Pause/Resume — Design Decision + Verification Finding
 
-This is the unfinished centerpiece. The user asked to get pause back; it had
+> **STATUS (2026-05-21): SHIPPED end-to-end** — Stage 1 `865d2c6`, Stage 2
+> `aeb41da`. The design discussion below is kept as the rationale record;
+> "What shipped" at the end records the final implementation.
+
+The user asked to get pause back; it had
 been reverted (`192efbf` reverts `4b62961 feat(audio): soft pause / resume`)
 because **ADR-028** deliberately decided NOT to ship pause/resume — the backend
 cannot truly resume a session.
@@ -199,15 +237,26 @@ would lose ~8% of its edges.
 **Verdict: the "seed processor + self-correcting destructive persist" plan is
 dead.** Shipping it would silently thin every prior segment's graph.
 
-### The real fix (for the next session)
+### What shipped — frozen-segment scoped persist
 
-An **additive / upsert persist path** for the resume path: INSERT new
-nodes/rels, UPDATE changed ones, **never DELETE segment 1's rows.** This
-sidesteps the lossy reconstruction entirely — segment 1's relationship rows are
-never read-back-and-rewritten, they just stay. It is a genuinely new persist
-path: it **cannot reuse** the destructive `persist_graph` (which `import`
-depends on), and it needs **its own round-trip verification** before any
-frontend wiring. Recorded as a memory:
+The verification killed the "seed + self-correct" plan, so the design pivoted
+(and Stage 1 `865d2c6` shipped) as a **scoped destructive persist**, not the
+additive/upsert path first imagined:
+
+- `persist_graph` gained `protect_node_ids`. When set, its `DELETE` becomes
+  `Node WHERE conversation_id AND id NOT IN protect` — only the *current*
+  segment's nodes are deleted + rewritten; the prior segment's rows are
+  frozen. Its relationships survive (both endpoints protected); the current
+  segment's edges drop via the `ondelete=CASCADE` FK.
+- The resumed processor is deliberately **NOT seeded** from the DB — so the
+  lossy `build_graph_data_from_nodes` reconstruction is never on the resume
+  path at all. Cross-segment stitch is left to the post-flush consolidation.
+- `stt_ws_session._detect_resume()` captures the prior segment's node ids at
+  WS-session start and threads them through every live graph-persist.
+
+`build_graph_data_from_nodes`'s lossiness is therefore **dodged, not fixed** —
+still latent for any *other* DB-graph read→re-persist (re-enrichment,
+migration). See task #1 in "Remaining Work" below. Memory:
 `build-graph-data-from-nodes-loses-relationships`.
 
 ---
@@ -271,48 +320,74 @@ frontend wiring. Recorded as a memory:
 
 ---
 
-## Pending Threads
+## Remaining Work — flagged by context-sensitivity
 
-### Continue Immediately
-1. **Pause/resume — design the additive/upsert persist path** (see "The real
-   fix" above). Order: design the upsert path → write its round-trip
-   verification → Stage 1 backend (WS re-attach) → Stage 2 frontend (pause =
-   stop, resume = reuse `conversationId`). This is a focused backend task, not
-   a tail-of-session patch.
-2. **Task #11 — add ad-hoc unknown speaker to the picker** (someone not in the
-   IndrasNet contact list).
+The deciding question for a handover: does a task need **this session's
+accumulated context**, or does a fresh session do it equally well? This
+session's expensive-to-rebuild context is the `persist_graph` /
+`build_graph_data_from_nodes` internals, the segment-and-stitch design, the
+`stt_openai_realtime.py` VAD/commit mechanics, the `AudioInput` recording state
+machine, and the parallel-session interleaving.
 
-### Blocked
-1. **OpenAI `known_speaker` mismatched-array behavior** is unverifiable while
-   the OpenAI key is at quota (`429 insufficient_quota`). Re-run
-   `scripts/probe_openai_known_speakers.py` once quota is restored.
+### Context-sensitive — better done now (capture cost is high)
 
-### Deferred (from the user's "affordances" message — capture so they aren't lost)
-- **Elapsed recording timer** — user wants to see how long they've been recording.
-- **Manual bookmark button + verbal marker** during a live recording.
-- **Graph legibility redesign.** User is confused by *chunks vs nodes vs ideas*;
-  wants no tangent color; the themes/topics/arc tabs are empty for live
-  recordings (memory: `live-recording-no-auto-consolidation`; ADR-032's
-  `6e873d9` runs consolidation in live post-flush — may partially address this).
-- **Log noise:** `"error committing audio"` immediately followed by
-  `"audio saved"` — the realtime buffer-flush bug (`buffer too small` /
-  `0.00ms of audio`). User asked "is all this logged?"
+1. **Fix `build_graph_data_from_nodes`'s relationship lossiness.** It folds
+   edges into singular `predecessor`/`successor` fields + a name-keyed
+   `contextual_relation` dict, drops multi-edges, mints fresh relationship ids
+   each persist, and resets `strength`/`confidence` to defaults — proven by
+   `verify_graph_roundtrip.py` (706→687→678). **Not currently blocking** —
+   segment-and-stitch's "don't seed" design sidesteps it — but it silently
+   corrupts ANY future DB-graph read→re-persist (re-enrichment, migration, a
+   consolidation re-run). Doing it well needs exactly the persist-path +
+   verification knowledge built this session; a fresh session re-derives all of
+   it. **The one task where "do it now" clearly pays.**
+
+### Moderately context-sensitive — judgment call
+
+2. **e2e WS-resume test.** No automated test exercises the resume path — the WS
+   integration harness (`test_transcripts_websocket.py`'s `DummySession`) is
+   pre-existingly rotted (missing `.get()`, 17 failures). This session knows the
+   resume wiring (`_detect_resume`, `protect_node_ids`); un-rotting the harness
+   is a separate, larger effort.
+3. **Live graph display during a resumed session.** During segment 2 the live
+   canvas shows only segment-2's incremental patches; the full seg1+seg2 graph
+   is correct in the DB and on ViewConversation. Whether the live canvas should
+   show both is a small frontend follow-up.
+4. **Realtime commit — server-VAD race residue.** The shipped `<100ms` guard
+   (`ab7b685`) fixes the dominant "buffer too small" case; a rarer race (full
+   client buffer, server already VAD-committed) could still emit an occasional
+   "0.00ms". Low priority.
+
+### Design-shaped — needs the USER's design input, not code-context (defer)
+
+A fresh session, given the design decisions, does these as well as this one.
+
+5. **Graph legibility redesign** — chunks vs nodes vs ideas naming, no tangent
+   color, empty themes/topics/arc tabs for live recordings. Needs real design
+   decisions AND collides with the ADR-032 session's active graph rework —
+   building here now risks conflicts. Defer; design first.
+6. **Manual bookmark button** — contained once you decide what a "mark"
+   attaches to (a bare timestamp / the current chunk / a flagged node) and how
+   it surfaces. The blocker is that decision, not context.
+7. **Verbal marker** ("just say *this is important*") — voice-trigger
+   detection; should reuse the existing agenda-detector, not rebuild it.
+
+### Operational / blocked — no context advantage (defer)
+
+8. **OpenAI `known_speaker` mismatched-array probe** — blocked on the OpenAI key
+   being at quota; re-run `scripts/probe_openai_known_speakers.py` later.
+   Standalone, zero context needed.
+9. **Push** — LCT `main` is 9 commits ahead of origin (the parallel session
+   pushed the earlier ~36). Needs explicit user authorization + coordination
+   with the ADR-032 session.
+10. **Supervise LCT** — re-fire the `IndraSupervisor` task to pick up
+    `ENABLE_LCT_BACKEND=1`; self-activates on the next Windows login anyway.
 
 ## Open Tasks (in-session list)
-- `#7` WS `session_started` event — **done**
-- `#8` show selected participants on recording screen — **done**
-- `#9` Settings UI for `self_contact_id` — **done**
-- `#10` show participants on ViewConversation — **done** (`fc8d0d3`)
-- `#11` add ad-hoc unknown speaker to picker — **pending**
-- `#12` mid-session re-open affects in-flight refinement — **done** (`d9b873d`)
-- `#13` paginate `/known-contacts` + search — **done** (`ced25ae`)
-- `#14` Vercel CDN + Tailscale-only backend — **done**
-- `#15` hook LCT into `start_all.py` — **done** (`24e0a3c`)
-- `#16` segment-and-stitch: map the resume path — **done**
-- `#17` segment-and-stitch: backend WS re-attach — **in progress; approach
-  changed** — the verification killed the "seed + self-correct" plan; needs the
-  additive/upsert persist path instead.
-- `#18` segment-and-stitch: pause/resume UI — **pending** (blocked on #17)
+All of `#7`–`#18` are **done** — participant picker (incl. ad-hoc guests,
+`#11`), contacts cache, mobile footer, Vercel/Tailscale, supervisor, and
+segment-and-stitch pause/resume: map (`#16`), backend Stage 1 (`#17`,
+`865d2c6`), frontend Stage 2 (`#18`, `aeb41da`).
 
 ## Key Context
 - **`persist_graph` is DESTRUCTIVE** — `services/graph_persistence.py` does
@@ -359,17 +434,21 @@ Not re-verified at handover time. This session left the runtime like so:
 
 ## Resume Instructions
 1. Read this handover + the memory index (auto-loaded via `MEMORY.md`).
-2. `git status` — working tree should show only untracked debug artifacts
+2. `git status` — the working tree should show only untracked debug artifacts
    (`consumption_trigger.py`, `*.png` screenshots, ADR-032's `scripts/*_772*`,
-   `.tmp_validation/`). None of those are pending work.
-3. **Pause/resume:** start by designing the additive/upsert persist path, then
-   write its round-trip verification (adapt `verify_graph_roundtrip.py`), then
-   Stage 1, then Stage 2. Do **not** revive the "seed + self-correct" plan.
-4. Push is **not** authorized — LCT `main` is 45 ahead of origin; needs explicit
-   user go-ahead, and the history is interleaved with the ADR-032 session. (The
-   TC repo's 2 commits are already on its origin.)
+   `.tmp_validation/`, `scripts/digest_transcript.py`). None are pending work.
+3. **Pick from "Remaining Work" above by context-sensitivity.** The one task
+   that genuinely wants this session's context is #1 — fixing
+   `build_graph_data_from_nodes`'s relationship lossiness. Everything else is
+   design-shaped (needs user input) or operational.
+4. **Pause/resume is shipped** but the live record→pause→resume flow is not yet
+   exercised end-to-end — needs a real mic and an OpenAI key with quota (STT
+   currently 429s). Verify on a real recording.
+5. Push is **not** authorized — LCT `main` is 9 ahead of origin; needs explicit
+   user go-ahead. History is interleaved with the ADR-032 session.
 
 ---
-*Handover by Claude Opus 4.7 (1M context) — post-compaction; user requested an
-explicit /handover and asked that the pause/resume design discussion be
-preserved in formatted form.*
+*Handover by Claude Opus 4.7 (1M context). First cut 2026-05-20 (participant
+picker + pause/resume design); updated 2026-05-21 after segment-and-stitch
+shipped, with the remaining work re-framed by context-sensitivity per the
+user's ask.*
