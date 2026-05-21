@@ -88,16 +88,21 @@ export default function Home() {
 
       {/* Secondary actions */}
       <div className="relative flex items-center gap-5">
+        {/* Import / Upload entry point. Routes to /new without ?autostart
+            so FileUpload remains visible on arrival (the autostart path
+            hides it — see NewConversation.jsx). Flashes to make it
+            obvious this is the upload affordance now that the secondary
+            row is no longer a noop. */}
         <button
           type="button"
-          onClick={() => showPendingFeatureToast("Import")}
-          aria-disabled="true"
+          onClick={() => navigate("/new")}
           className="flex flex-col items-center gap-1.5 group"
+          title="Upload an audio file instead of recording live"
         >
-          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/60 backdrop-blur-sm border border-gray-150 text-gray-300 group-hover:text-amber-600 group-hover:border-amber-300 transition">
+          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-amber-50 backdrop-blur-sm border border-amber-300 text-amber-600 group-hover:bg-amber-100 group-hover:border-amber-400 transition animate-lct-cta-flash">
             <FileUp size={16} />
           </span>
-          <span className="text-[10px] text-gray-400 group-hover:text-amber-700 transition">Import</span>
+          <span className="text-[10px] font-medium text-amber-700 group-hover:text-amber-800 transition">Upload</span>
         </button>
 
         <button
