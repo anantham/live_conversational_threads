@@ -229,23 +229,55 @@ export default function LiveSessionHud({
         </div>
       )}
 
-      {/* Mobile: a compact status glyph — an Activity pulse line tinted
-          by health. Deliberately NOT a circle-button: a round button
-          with a dot got mistaken for a second record control next to
-          the mic. This reads as a status readout. Tap still expands the
-          same detail panel. */}
-      <button
-        type="button"
-        onClick={onToggleDetails}
-        className={`flex items-center justify-center rounded-md p-1.5 transition hover:bg-slate-100 sm:hidden ${
-          STATUS_ICON_COLOR[overallState] || STATUS_ICON_COLOR.idle
-        }`}
-        aria-expanded={detailOpen}
-        aria-label={`Live session health — ${effectiveStatusLine}`}
-        title={effectiveStatusLine}
-      >
-        <Activity size={18} aria-hidden="true" />
-      </button>
+      {/* Mobile diagnostics, quiet-by-default.
+
+          Healthy or idle  → render nothing. The phone has no room for a
+                             status readout on the happy path; the existing
+                             error toast covers anything urgent.
+          Connecting/processing → tiny inline Activity glyph. Subtle: it
+                                  just acknowledges work in progress.
+          Degraded or error → a full-width banner above the footer with a
+                              one-line summary; tap to expand the popover.
+                              Hidden once the popover is open so they don't
+                              visually compete. */}
+      {(overallState === "connecting" || overallState === "processing") && (
+        <button
+          type="button"
+          onClick={onToggleDetails}
+          className={`flex items-center justify-center rounded-md p-1.5 transition hover:bg-slate-100 sm:hidden ${
+            STATUS_ICON_COLOR[overallState] || STATUS_ICON_COLOR.idle
+          }`}
+          aria-expanded={detailOpen}
+          aria-label={`Live session health — ${effectiveStatusLine}`}
+          title={effectiveStatusLine}
+        >
+          <Activity size={18} aria-hidden="true" />
+        </button>
+      )}
+
+      {(overallState === "degraded" || overallState === "error") && !detailOpen && (
+        <button
+          type="button"
+          onClick={onToggleDetails}
+          className={`sm:hidden fixed left-2 right-2 bottom-20 z-30 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs shadow-lg backdrop-blur ${
+            overallState === "error"
+              ? "border-rose-200 bg-rose-50/95 text-rose-700"
+              : "border-amber-200 bg-amber-50/95 text-amber-700"
+          }`}
+          aria-expanded={detailOpen}
+          aria-label={`Live session health — ${effectiveStatusLine}`}
+        >
+          <Activity size={14} className="shrink-0" aria-hidden="true" />
+          <span className="flex-1 text-left truncate font-medium">
+            {effectiveStatusLine || (
+              overallState === "error"
+                ? "Live session error — tap for detail"
+                : "Live session degraded — tap for detail"
+            )}
+          </span>
+          <span className="text-[10px] uppercase tracking-wide opacity-60">tap</span>
+        </button>
+      )}
 
       {/* Desktop: the full 3-chip row + status line. */}
       <button
