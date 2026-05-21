@@ -100,6 +100,12 @@ export default function NewConversation() {
   const [recoveredDraftSaveState, setRecoveredDraftSaveState] = useState("idle");
   const [sessionActionBusy, setSessionActionBusy] = useState("");
   const audioRef = useRef(null);
+  // Ref on the Session Draft name input so the AudioInput Stop button can
+  // jump focus there after a clean teardown. The user's mental model is
+  // "stop = prompts for name"; the panel already prompts, we just need
+  // the cursor to land on it without a window.prompt.
+  const sessionNameInputRef = useRef(null);
+  const sessionDraftPanelRef = useRef(null);
 
   // ----- Consumption-prayer state (Phase 6/7/20/21 ─ MVP manual-trigger UI) -----
   // The chip surfaces in the bottom-right when results are present. The
@@ -561,6 +567,19 @@ export default function NewConversation() {
     return { normalizedName, message: "Saved!" };
   }, [conversationId, fileName, savePayload.chunkDict, savePayload.graphData, sessionTitleSuggestion, triggerSave]);
 
+  // Handler invoked by the AudioInput Stop button. Recording is already
+  // stopped by AudioInput at this point — our job is to surface the
+  // existing Session Draft panel (which sessionActionsVisible flips on
+  // once recording=false). Defer one frame so the panel mounts before
+  // we try to scroll/focus, then drop the cursor into the name input.
+  const handleFinalizeFromAudio = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      sessionDraftPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      sessionNameInputRef.current?.focus();
+      sessionNameInputRef.current?.select?.();
+    });
+  }, []);
+
   const handleSaveAndExit = useCallback(async () => {
     setSessionActionBusy("save-exit");
     try {
@@ -969,7 +988,10 @@ export default function NewConversation() {
       )}
 
       {sessionActionsVisible && (
-        <div className="pointer-events-none absolute bottom-20 left-1/2 z-20 w-[min(94vw,42rem)] -translate-x-1/2 px-3">
+        <div
+          ref={sessionDraftPanelRef}
+          className="pointer-events-none absolute bottom-20 left-1/2 z-20 w-[min(94vw,42rem)] -translate-x-1/2 px-3"
+        >
           <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/95 px-4 py-4 shadow-lg backdrop-blur">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-0 flex-1">
@@ -982,6 +1004,7 @@ export default function NewConversation() {
                 <label className="mt-3 block">
                   <span className="mb-1 block text-xs font-medium text-slate-700">Conversation Name</span>
                   <input
+                    ref={sessionNameInputRef}
                     type="text"
                     value={fileName}
                     onChange={(event) => setFileName(event.target.value)}
@@ -1126,6 +1149,7 @@ export default function NewConversation() {
             setFileName={setFileName}
             autostart={autostart}
             onSessionStarted={handleSessionStarted}
+            onFinalize={handleFinalizeFromAudio}
           />
         </div>
       </div>
