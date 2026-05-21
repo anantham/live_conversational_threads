@@ -492,6 +492,7 @@ export default function ViewConversation() {
             node={selectedNodeData}
             chunkDict={chunkDict}
             conversationId={conversationId}
+            participantNames={participants.map((p) => p.display_name).filter(Boolean)}
             audioUrl={audioDownloadUrl ? (audioDownloadUrl.startsWith("http") ? audioDownloadUrl : `${API_BASE_URL}${audioDownloadUrl}`) : null}
             onClose={() => setSelectedNode(null)}
             onTraceAncestors={setArgumentTraceFrom}

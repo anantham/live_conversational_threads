@@ -80,6 +80,7 @@ export default function NodeDetail({
   onClose,
   onSpeakerRenamed,
   onTraceAncestors,
+  participantNames = [],
 }) {
   const safeNode = node ?? null;
 
@@ -557,6 +558,27 @@ export default function NodeDetail({
 
                       {isEditing && (
                         <div className="my-1 rounded border border-gray-300 bg-white p-2 space-y-1.5">
+                          {/* Scoped quick-picks: the conversation's picker
+                              participants. Tapping one fills the draft so a
+                              multi-speaker rename is a tap, not typing. */}
+                          {participantNames.length > 0 && (
+                            <div className="flex flex-wrap items-center gap-1">
+                              {participantNames.map((name) => (
+                                <button
+                                  key={name}
+                                  type="button"
+                                  onClick={() => setCorrectionDraft(name)}
+                                  className={`rounded-full border px-2 py-0.5 text-[11px] ${
+                                    correctionDraft.trim() === name
+                                      ? "border-amber-400 bg-amber-100 text-amber-800"
+                                      : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                  }`}
+                                >
+                                  {name}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                           <input
                             type="text"
                             autoFocus
@@ -803,4 +825,5 @@ NodeDetail.propTypes = {
   onClose: PropTypes.func.isRequired,
   onSpeakerRenamed: PropTypes.func,
   onTraceAncestors: PropTypes.func,
+  participantNames: PropTypes.arrayOf(PropTypes.string),
 };
