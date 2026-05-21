@@ -596,46 +596,64 @@ const AudioInput = forwardRef(function AudioInput({
     // Horizontal row on every viewport — fits a phone now that the status
     // HUD collapses to a single dot on mobile (see LiveSessionHud).
     <div className="flex items-center gap-2 sm:gap-3">
-      {/* Mic button + device picker */}
-      <div className="relative flex items-center">
-        <button
-          onClick={onMicClick}
-          className={`relative flex items-center justify-center w-14 h-14 sm:w-11 sm:h-11 rounded-full transition-all duration-200 focus:outline-none ${micButtonClass}`}
-          aria-label={micLabel}
-          title={micLabel}
-        >
-          {recording && (
-            <span
-              className="absolute inset-0 rounded-full border-2 border-emerald-400 transition-transform duration-75"
-              style={{
-                opacity: micRingOpacity,
-                transform: `scale(${micRingScale})`,
-              }}
-            />
-          )}
-          {recording ? <Pause size={16} fill="currentColor" /> : <Mic size={18} />}
-          {recording && (
-            <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-          )}
-        </button>
-        {/* No text label — the mic/stop icon + red pulse is self-evident,
-            and the empty state already says "tap the mic". aria-label +
-            title on the button keep screen readers / hover covered. */}
+      {/* Mic button + device picker.
+
+          Labels under the buttons are critical on mobile: no hover
+          tooltip means an icon-only button reads as ornament rather
+          than a control. The mic shows three different actions over
+          its lifecycle (Start / Pause / Resume) — every one of those
+          deserves a visible word, especially the pause/resume swap
+          that's the whole point of the 3-state design. */}
+      <div className="relative flex items-end gap-2">
+        <div className="flex flex-col items-center">
+          <button
+            onClick={onMicClick}
+            className={`relative flex items-center justify-center w-14 h-14 sm:w-11 sm:h-11 rounded-full transition-all duration-200 focus:outline-none ${micButtonClass}`}
+            aria-label={micLabel}
+            title={micLabel}
+          >
+            {recording && (
+              <span
+                className="absolute inset-0 rounded-full border-2 border-emerald-400 transition-transform duration-75"
+                style={{
+                  opacity: micRingOpacity,
+                  transform: `scale(${micRingScale})`,
+                }}
+              />
+            )}
+            {recording ? <Pause size={16} fill="currentColor" /> : <Mic size={18} />}
+            {recording && (
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
+            )}
+          </button>
+          <span
+            className={`mt-1 text-[10px] font-semibold uppercase tracking-wide select-none ${
+              recording ? "text-red-600" : paused ? "text-amber-600" : "text-slate-500"
+            }`}
+          >
+            {recording ? "Pause" : paused ? "Resume" : "Start"}
+          </span>
+        </div>
 
         {/* Stop button — distinct from pause. Pause (mic click while
             recording) keeps the session in a resumable state; Stop ends
             the conversation, then onFinalize jumps focus to the Session
             Draft name input so the user can confirm and Save & Exit. */}
         {stopVisible && (
-          <button
-            type="button"
-            onClick={onStopClick}
-            className="ml-2 flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition focus:outline-none"
-            aria-label="Stop and save conversation"
-            title="Stop & save (prompts for name)"
-          >
-            <Square size={14} fill="currentColor" />
-          </button>
+          <div className="flex flex-col items-center">
+            <button
+              type="button"
+              onClick={onStopClick}
+              className="flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition focus:outline-none"
+              aria-label="Stop and save conversation"
+              title="Stop & save (prompts for name)"
+            >
+              <Square size={14} fill="currentColor" />
+            </button>
+            <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 select-none">
+              Stop
+            </span>
+          </div>
         )}
 
         {/* Device picker chevron — only shown when not recording and multiple devices exist */}
