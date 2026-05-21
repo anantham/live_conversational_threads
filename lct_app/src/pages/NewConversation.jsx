@@ -990,7 +990,7 @@ export default function NewConversation() {
       {sessionActionsVisible && (
         <div
           ref={sessionDraftPanelRef}
-          className="pointer-events-none absolute bottom-20 left-1/2 z-20 w-[min(94vw,42rem)] -translate-x-1/2 px-3"
+          className="pointer-events-none absolute bottom-20 left-1/2 z-40 w-[min(94vw,42rem)] -translate-x-1/2 px-3"
         >
           <div className="pointer-events-auto rounded-2xl border border-slate-200 bg-white/95 px-4 py-4 shadow-lg backdrop-blur">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1096,7 +1096,11 @@ export default function NewConversation() {
           action, not for the live recording surface on a phone). The
           participants pill floats bottom-left on desktop (sm:fixed). */}
       <div className="shrink-0 w-full py-2 px-3 sm:px-4 flex items-center justify-center border-t border-gray-100 bg-white/80 backdrop-blur-sm relative">
-        <div className="w-full max-w-5xl flex flex-row flex-wrap items-center justify-center gap-3 sm:gap-4">
+        {/* justify-between pushes participants to the left and the audio
+            cluster (pause/stop/hud) to the right so the recording
+            controls don't fight a tiny utility icon for the optical
+            center. flex-wrap keeps it civil on very narrow viewports. */}
+        <div className="w-full max-w-5xl flex flex-row flex-wrap items-center justify-between gap-3 sm:gap-4">
           {/* Participants — icon-only toolbar button. Tapping opens the
               picker modal (check/uncheck, search) — that modal is where
               you see + manage the cast, so the footer button itself

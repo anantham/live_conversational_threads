@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import PropTypes from "prop-types";
-import { Mic, ChevronDown, Pause, Square } from "lucide-react";
+import { Mic, ChevronDown, Pause, Play, Square } from "lucide-react";
 
 import { normalizeSttSettings } from "./audio/sttUtils";
 import LiveSessionHud from "./audio/LiveSessionHud";
@@ -220,6 +220,20 @@ const AudioInput = forwardRef(function AudioInput({
     );
   }, [appendSessionEvent, handleLiveTranscriptEvent]);
 
+  // Map known noisy/technical provider errors to short, friendly text.
+  // The raw OpenAI buffer error is the most common one users hit when they
+  // tap stop instantly — surface it as a recognizable nudge instead of the
+  // verbatim "Error committing input audio buffer: buffer too small" wall.
+  const humanizeProcessingError = useCallback((raw) => {
+    const text = String(raw || "").trim();
+    if (!text) return text;
+    const lower = text.toLowerCase();
+    if (lower.includes("buffer too small") || lower.includes("expected at least")) {
+      return "That clip was too short to save — keep talking for a couple of seconds, then try again.";
+    }
+    return text;
+  }, []);
+
   const handleProcessingStatus = useCallback((status) => {
     handleLiveProcessingStatus(status);
     appendSessionEvent("processing_status", status || {});
@@ -227,9 +241,9 @@ const AudioInput = forwardRef(function AudioInput({
     const messageText = String(status?.message || "").trim();
     if (!messageText) return;
     if (level === "error" || level === "warning") {
-      setProcessingError(messageText);
+      setProcessingError(humanizeProcessingError(messageText));
     }
-  }, [appendSessionEvent, handleLiveProcessingStatus]);
+  }, [appendSessionEvent, handleLiveProcessingStatus, humanizeProcessingError]);
 
   const handleAudioReady = useCallback((payload) => {
     const downloadUrl = String(payload?.download_url || "").trim();
@@ -563,21 +577,6 @@ const AudioInput = forwardRef(function AudioInput({
     ? Math.min(0.85, 0.2 + micLevel * 0.65)
     : 0;
 
-  // Mic button is a 3-state control: idle -> start, recording -> pause,
-  // paused -> resume. Pause/resume is segment-and-stitch (see runSession).
-  const micMode = recording ? "recording" : paused ? "paused" : "idle";
-  const micLabel = {
-    recording: "Pause recording",
-    paused: "Resume recording",
-    idle: "Start recording",
-  }[micMode];
-  const micButtonClass = {
-    recording: "bg-red-100 text-red-600 hover:bg-red-200",
-    paused: "bg-amber-100 text-amber-600 hover:bg-amber-200",
-    idle: "bg-gray-100 text-gray-500 hover:bg-gray-200",
-  }[micMode];
-  const onMicClick = recording ? pauseRecording : paused ? resumeRecording : startRecording;
-
   // Stop is distinct from pause: pause is "I might add more to this graph";
   // stop is "this conversation is done — finalize and save under a name."
   // Mechanically both call stopRecording (clean WS/STT teardown); the
@@ -596,23 +595,48 @@ const AudioInput = forwardRef(function AudioInput({
     // Horizontal row on every viewport — fits a phone now that the status
     // HUD collapses to a single dot on mobile (see LiveSessionHud).
     <div className="flex items-center gap-2 sm:gap-3">
-      {/* Mic button + device picker.
+      {/* Recording controls.
 
-          Labels under the buttons are critical on mobile: no hover
-          tooltip means an icon-only button reads as ornament rather
-          than a control. The mic shows three different actions over
-          its lifecycle (Start / Pause / Resume) — every one of those
-          deserves a visible word, especially the pause/resume swap
-          that's the whole point of the 3-state design. */}
-      <div className="relative flex items-end gap-2">
-        <div className="flex flex-col items-center">
-          <button
-            onClick={onMicClick}
-            className={`relative flex items-center justify-center w-14 h-14 sm:w-11 sm:h-11 rounded-full transition-all duration-200 focus:outline-none ${micButtonClass}`}
-            aria-label={micLabel}
-            title={micLabel}
-          >
-            {recording && (
+          Three discrete buttons over the session lifecycle, each with a
+          visible label (mobile has no hover tooltip — icon alone reads
+          as ornament):
+
+            idle      → [ Mic / Start ]
+            recording → [ Pause ]  [ Stop ]
+            paused    → [ Resume ] [ Stop ]
+
+          Earlier the mic morphed (Mic → Pause → Mic-but-clicking-resumes),
+          which was opaque on touch. Discrete buttons keep one control per
+          purpose. Pause and Stop both end the audio stream; Stop also
+          hands off to onFinalize so the name-the-conversation flow takes
+          over. */}
+      <div className="relative flex items-end gap-3 sm:gap-4">
+        {/* Start (idle only) */}
+        {!recording && !paused && (
+          <div className="flex flex-col items-center">
+            <button
+              onClick={startRecording}
+              className="relative flex items-center justify-center w-14 h-14 sm:w-11 sm:h-11 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition focus:outline-none"
+              aria-label="Start recording"
+              title="Start recording"
+            >
+              <Mic size={18} />
+            </button>
+            <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 select-none">
+              Start
+            </span>
+          </div>
+        )}
+
+        {/* Pause (recording only) */}
+        {recording && (
+          <div className="flex flex-col items-center">
+            <button
+              onClick={pauseRecording}
+              className="relative flex items-center justify-center w-14 h-14 sm:w-11 sm:h-11 rounded-full bg-red-100 text-red-600 hover:bg-red-200 transition focus:outline-none"
+              aria-label="Pause recording"
+              title="Pause — resumes the same graph"
+            >
               <span
                 className="absolute inset-0 rounded-full border-2 border-emerald-400 transition-transform duration-75"
                 style={{
@@ -620,37 +644,45 @@ const AudioInput = forwardRef(function AudioInput({
                   transform: `scale(${micRingScale})`,
                 }}
               />
-            )}
-            {recording ? <Pause size={16} fill="currentColor" /> : <Mic size={18} />}
-            {recording && (
+              <Pause size={18} fill="currentColor" />
               <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-            )}
-          </button>
-          <span
-            className={`mt-1 text-[10px] font-semibold uppercase tracking-wide select-none ${
-              recording ? "text-red-600" : paused ? "text-amber-600" : "text-slate-500"
-            }`}
-          >
-            {recording ? "Pause" : paused ? "Resume" : "Start"}
-          </span>
-        </div>
+            </button>
+            <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-red-600 select-none">
+              Pause
+            </span>
+          </div>
+        )}
 
-        {/* Stop button — distinct from pause. Pause (mic click while
-            recording) keeps the session in a resumable state; Stop ends
-            the conversation, then onFinalize jumps focus to the Session
-            Draft name input so the user can confirm and Save & Exit. */}
+        {/* Resume (paused only) */}
+        {paused && !recording && (
+          <div className="flex flex-col items-center">
+            <button
+              onClick={resumeRecording}
+              className="flex items-center justify-center w-14 h-14 sm:w-11 sm:h-11 rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 transition focus:outline-none"
+              aria-label="Resume recording"
+              title="Resume — keeps adding to the same graph"
+            >
+              <Play size={18} fill="currentColor" />
+            </button>
+            <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 select-none">
+              Resume
+            </span>
+          </div>
+        )}
+
+        {/* Stop (recording or paused) — finalize + save flow */}
         {stopVisible && (
           <div className="flex flex-col items-center">
             <button
               type="button"
               onClick={onStopClick}
-              className="flex items-center justify-center w-11 h-11 sm:w-9 sm:h-9 rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200 transition focus:outline-none"
+              className="flex items-center justify-center w-14 h-14 sm:w-11 sm:h-11 rounded-full bg-slate-200 text-slate-800 hover:bg-slate-300 transition focus:outline-none"
               aria-label="Stop and save conversation"
-              title="Stop & save (prompts for name)"
+              title="Stop & save — prompts for a name"
             >
-              <Square size={14} fill="currentColor" />
+              <Square size={18} fill="currentColor" />
             </button>
-            <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500 select-none">
+            <span className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700 select-none">
               Stop
             </span>
           </div>
