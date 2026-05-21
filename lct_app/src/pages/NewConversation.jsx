@@ -21,13 +21,8 @@ import { useAutoSave } from "../hooks/useAutoSave";
 import useLocalConversationDraft from "../hooks/useLocalConversationDraft";
 import { useUpload } from "../contexts/UploadContext";
 import { fetchAudioRecoveryStatus, recoverConversationAudio } from "../services/audioRecoveryApi";
-import { fetchConversationObservability } from "../services/conversationDiagnosticsApi";
 import { saveConversationToServer } from "../utils/SaveConversation";
 import { apiFetch, saveConversationDraft } from "../services/apiClient";
-import {
-  buildConversationDebugExport,
-  downloadConversationDebugExport,
-} from "../components/audio/exportSessionDebug";
 import { deriveSuggestedConversationTitle } from "../utils/conversationTitle";
 import { randomUUID } from "../utils/uuid";
 import {
@@ -686,43 +681,6 @@ export default function NewConversation() {
     setMessage,
   ]);
 
-  const handleExportConversationDebug = useCallback(async () => {
-    const audioSession = audioRef.current?.getSessionDebugSnapshot?.() || null;
-    let backendObservability = {};
-    try {
-      backendObservability = conversationId
-        ? await fetchConversationObservability(conversationId)
-        : {};
-    } catch (error) {
-      console.warn("[NewConversation] Failed to load backend session observability:", error);
-      setMessage(`Exporting without backend observability: ${error?.message || "Unknown error"}`);
-    }
-    const exportPayload = buildConversationDebugExport({
-      conversationId,
-      fileName,
-      message,
-      graphData,
-      draftGraphData,
-      chunkDict,
-      draftChunkDict,
-      audioRecovery,
-      audioSession,
-      backendObservability,
-    });
-    downloadConversationDebugExport(exportPayload, conversationId, fileName);
-    setMessage("Session debug JSON exported.");
-  }, [
-    audioRecovery,
-    conversationId,
-    chunkDict,
-    draftChunkDict,
-    draftGraphData,
-    fileName,
-    graphData,
-    message,
-    setMessage,
-  ]);
-
   return (
     <div className="flex flex-col h-[100dvh] w-screen bg-[#fafafa] font-sans">
       {/* Back button */}
@@ -1149,14 +1107,6 @@ export default function NewConversation() {
               the mic is capturing. Phase-aware: hide it while recording AND
               while paused (a paused conversation is mid-flight, not idle). */}
           {!liveTranscriptState.recording && !liveTranscriptState.paused ? <FileUpload /> : null}
-          <button
-            type="button"
-            onClick={handleExportConversationDebug}
-            className="hidden rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-800 sm:inline-flex"
-            title="Export graph, transcript, and session telemetry as JSON"
-          >
-            Export Session JSON
-          </button>
           <AudioInput
             ref={audioRef}
             onDataReceived={handleDataReceived}
