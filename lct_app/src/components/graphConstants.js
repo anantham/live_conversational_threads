@@ -1,6 +1,19 @@
 // Shared constants for graph visualization components
 // Used by MinimalGraph, TimelineRibbon, MinimalLegend, NewConversation
 
+// ADR-030 §D2: the canonical conversation hierarchy is up to five tiers.
+// Level 5 (arc) is optional — unlocked only when the conversation earns it
+// via the emergent-depth cascade. Components render only the tiers present
+// in the data. `type` is the backend semantic_type value — do not change it;
+// `label` (plural) and `singular` are display-only user-facing tier names.
+export const AUTHORED_LEVELS = [
+  { level: 1, label: "moments", singular: "moment", type: "chunk", color: "text-teal-700", chip: "bg-teal-50", border: "border-teal-400" },
+  { level: 2, label: "ideas", singular: "idea", type: "idea", color: "text-blue-700", chip: "bg-blue-50", border: "border-blue-400" },
+  { level: 3, label: "topics", singular: "topic", type: "topic", color: "text-indigo-700", chip: "bg-indigo-50", border: "border-indigo-400" },
+  { level: 4, label: "themes", singular: "theme", type: "theme", color: "text-purple-700", chip: "bg-purple-50", border: "border-purple-400" },
+  { level: 5, label: "arcs", singular: "arc", type: "arc", color: "text-slate-700", chip: "bg-slate-100", border: "border-slate-400" },
+];
+
 export const EDGE_COLORS = {
   supports: "#16a34a",
   rebuts: "#dc2626",

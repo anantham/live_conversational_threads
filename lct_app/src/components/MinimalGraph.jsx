@@ -4,6 +4,7 @@ import PropTypes from "prop-types";
 import ReactFlow, { useReactFlow, ReactFlowProvider, applyNodeChanges } from "reactflow";
 import "reactflow/dist/style.css";
 import {
+  AUTHORED_LEVELS,
   EDGE_COLORS,
   EDGE_CATEGORY_STYLES,
   categorizeEdgeRelation,
@@ -38,17 +39,6 @@ import ColorModeToggle from "./graph/ColorModeToggle";
 // Cluster nodes are still default ReactFlow rendering (separate concern).
 const NODE_TYPES = { conversational: ConversationNode };
 const EDGE_TYPES = {};
-// ADR-030 §D2: canonical hierarchy is up to five tiers. Level 5 (arc) is
-// optional — only unlocked when the conversation earns it via the
-// emergent-depth cascade. AUTHORED_LEVELS lists every possible tier;
-// MinimalGraph renders only the ones present in the data.
-const AUTHORED_LEVELS = [
-  { level: 1, label: "chunks", type: "chunk", color: "text-teal-700", chip: "bg-teal-50", border: "border-teal-400" },
-  { level: 2, label: "ideas", type: "idea", color: "text-blue-700", chip: "bg-blue-50", border: "border-blue-400" },
-  { level: 3, label: "topics", type: "topic", color: "text-indigo-700", chip: "bg-indigo-50", border: "border-indigo-400" },
-  { level: 4, label: "themes", type: "theme", color: "text-purple-700", chip: "bg-purple-50", border: "border-purple-400" },
-  { level: 5, label: "arcs", type: "arc", color: "text-slate-700", chip: "bg-slate-100", border: "border-slate-400" },
-];
 
 
 function MinimalGraphInner({
@@ -766,6 +756,22 @@ function MinimalGraphInner({
       };
     });
   }, [baseDisplayNodes, traceResult.nodes]);
+
+  // momentCount = raw L1 total, shown as a size signal in the count readout.
+  // Suppressed when L1 is the active tier (else it reads "134 moments · 134 moments").
+  const momentCount = useMemo(
+    () => normalizedChunk.filter((n) => getAuthoredSemanticLevel(n) === 1).length,
+    [normalizedChunk],
+  );
+  const semanticTierSpec = AUTHORED_LEVELS.find((s) => s.level === effectiveView?.level);
+  const semanticTierWord = displayNodes.length === 1
+    ? (semanticTierSpec?.singular || "node")
+    : (semanticTierSpec?.label || "nodes");
+  const semanticCountLabel = `${displayNodes.length} ${semanticTierWord}`
+    + (effectiveView?.level !== 1 && momentCount > 0
+      ? ` · ${momentCount} moment${momentCount === 1 ? "" : "s"}`
+      : "");
+
   const displayEdgesWithTrace = useMemo(() => {
     if (!traceResult.edges) return displayEdges;
     return displayEdges.map((edge) => {
@@ -1225,7 +1231,7 @@ function MinimalGraphInner({
               </span>
               <span className="text-[10px] text-gray-500">
                 {displayMode === "semantic"
-                  ? `${displayNodes.length} ${effectiveView?.type || "nodes"} · ${normalizedChunk.length} authored nodes`
+                  ? semanticCountLabel
                   : `${displayNodes.length} clusters · ${normalizedChunk.length} nodes`}
               </span>
               {lockedLevel != null && (

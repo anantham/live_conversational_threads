@@ -140,7 +140,7 @@ export default function ExportCanvas({ graphData, fileName }) {
             onChange={(e) => setIncludeChunks(e.target.checked)}
             className="cursor-pointer"
           />
-          Include chunks
+          Include moments
         </label>
       )}
     </div>
