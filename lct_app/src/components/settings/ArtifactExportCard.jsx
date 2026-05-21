@@ -264,7 +264,7 @@ export default function ArtifactExportCard() {
                 onChange={handleCheckboxChange("include_chunks")}
                 className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
               />
-              <span>Include chunk nodes</span>
+              <span>Include moments</span>
             </label>
           </div>
         </div>

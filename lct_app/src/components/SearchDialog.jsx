@@ -15,6 +15,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
+import { AUTHORED_LEVELS } from "./graphConstants";
 
 function scoreMatch(query, text) {
   if (!query || !text) return 0;
@@ -54,7 +55,11 @@ function scoreNode(query, node) {
   return nameScore + summaryScore + excerptScore + speakerScore + relationsScore;
 }
 
-const TIER_LABEL = { 5: "arc", 4: "theme", 3: "topic", 2: "idea", 1: "chunk" };
+// Derived from the shared tier vocabulary so search labels can't drift from
+// the canvas. Shape: { [level]: singular } — e.g. { 1: "moment" }.
+const TIER_LABEL = Object.fromEntries(
+  AUTHORED_LEVELS.map((tier) => [tier.level, tier.singular]),
+);
 
 export default function SearchDialog({ open, nodes, onSelect, onClose }) {
   const [query, setQuery] = useState("");
