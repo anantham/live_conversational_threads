@@ -1,4 +1,5 @@
 import ByokSessionControl from "../../components/ByokSessionControl";
+import HomeBehaviorCard from "../../components/settings/HomeBehaviorCard";
 import LlmModelsCard from "../../components/settings/LlmModelsCard";
 import LlmRoutingCard from "../../components/settings/LlmRoutingCard";
 import SttSettingsCard from "../../components/settings/SttSettingsCard";
@@ -19,6 +20,7 @@ export default function RuntimeSettingsPage() {
 
       <div className="space-y-6">
         <UserIdentityCard />
+        <HomeBehaviorCard />
         <SttSettingsCard />
         <SpeakerVoiceLibraryCard />
         <ByokSessionControl />
