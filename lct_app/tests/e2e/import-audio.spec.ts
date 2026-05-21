@@ -4,7 +4,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:43180';
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:43181';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:43173';
 const AUDIO_FIXTURE = path.resolve(HERE, '../../../.tmp/lct_anand_compare_10_34.wav');
 const REPORT_PATH = path.resolve(HERE, '../../../.tmp/e2e_audio_report.md');
@@ -48,14 +48,14 @@ test.describe('Audio import → graph → documented features', () => {
     });
 
     // ---- 1. Home loads ----
-    await page.goto(`${FRONTEND_URL}/`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(`${FRONTEND_URL}/`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await snap(page, '01_home');
     const homeTitle = await page.locator('h1').first().textContent();
     record('Home page loads', homeTitle?.includes('Threads') ? 'PASS' : 'FAIL',
       `h1="${homeTitle}"`);
 
     // ---- 2. /new loads ----
-    await page.goto(`${FRONTEND_URL}/new`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(`${FRONTEND_URL}/new`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(1500);
     await snap(page, '02_new_page');
     record('NewConversation page loads', 'PASS', 'navigated to /new');
@@ -141,7 +141,7 @@ test.describe('Audio import → graph → documented features', () => {
       `body length=${bodyText?.length || 0}`);
 
     // ---- 9. /browse shows conversations ----
-    await page.goto(`${FRONTEND_URL}/browse`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(`${FRONTEND_URL}/browse`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
     await snap(page, '06_browse');
     const browseBody = await page.locator('body').textContent();
@@ -151,7 +151,7 @@ test.describe('Audio import → graph → documented features', () => {
     // ---- 10. If we have an id, open the conversation directly ----
     if (conversationId) {
       await page.goto(`${FRONTEND_URL}/conversation/${conversationId}`, {
-        waitUntil: 'networkidle',
+        waitUntil: 'domcontentloaded',
         timeout: 30000,
       });
       await page.waitForTimeout(3000);
@@ -164,13 +164,13 @@ test.describe('Audio import → graph → documented features', () => {
     }
 
     // ---- 11. Settings page (smoke) ----
-    await page.goto(`${FRONTEND_URL}/settings`, { waitUntil: 'networkidle', timeout: 20000 });
+    await page.goto(`${FRONTEND_URL}/settings`, { waitUntil: 'domcontentloaded', timeout: 20000 });
     await page.waitForTimeout(1500);
     await snap(page, '08_settings');
     record('Settings page loads', 'PASS', 'navigation ok');
 
     // ---- 12. Cost dashboard ----
-    await page.goto(`${FRONTEND_URL}/cost-dashboard`, { waitUntil: 'networkidle', timeout: 20000 });
+    await page.goto(`${FRONTEND_URL}/cost-dashboard`, { waitUntil: 'domcontentloaded', timeout: 20000 });
     await page.waitForTimeout(1500);
     await snap(page, '09_cost_dashboard');
     record('Cost dashboard loads', 'PASS', 'navigation ok');
@@ -179,7 +179,7 @@ test.describe('Audio import → graph → documented features', () => {
     if (conversationId) {
       for (const slug of ['frames', 'biases', 'simulacra'] as const) {
         await page.goto(`${FRONTEND_URL}/${slug}/${conversationId}`, {
-          waitUntil: 'networkidle',
+          waitUntil: 'domcontentloaded',
           timeout: 20000,
         }).catch(() => {});
         await page.waitForTimeout(1500);

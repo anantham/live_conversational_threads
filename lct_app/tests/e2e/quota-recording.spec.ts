@@ -18,7 +18,7 @@ test.describe('Live Session Quota and Recording', () => {
       pageErrors.push(error);
     });
 
-    await page.goto(`${FRONTEND_URL}/new`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(`${FRONTEND_URL}/new`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     
     // Wait for page to be interactive
     await page.waitForTimeout(3000);
@@ -37,7 +37,7 @@ test.describe('Live Session Quota and Recording', () => {
   });
 
   test('should start recording when clicking mic button', async ({ page }) => {
-    await page.goto(`${FRONTEND_URL}/new?autostart=true`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(`${FRONTEND_URL}/new?autostart=true`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     
     await page.waitForTimeout(2000);
     
@@ -58,7 +58,7 @@ test.describe('Live Session Quota and Recording', () => {
     // This test checks if quota info is in session_ack
     // We can't easily trigger quota exceeded without DB setup, but we can verify the UI doesn't crash
     
-    await page.goto(`${FRONTEND_URL}/new`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(`${FRONTEND_URL}/new`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForTimeout(2000);
     
     // Check LiveSessionHud is visible
@@ -78,7 +78,7 @@ test.describe('Live Session Quota and Recording', () => {
     const wsUrl = `ws://localhost:43180/ws/transcripts`;
     
     // We'll test via the frontend receiving the session_ack
-    await page.goto(`${FRONTEND_URL}/new?autostart=true`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto(`${FRONTEND_URL}/new?autostart=true`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     
     // Wait for potential session_ack
     await page.waitForTimeout(5000);
