@@ -47,6 +47,7 @@ from lct_python_backend.services.speaker_voice_library import (
     get_speaker_audio_references,
 )
 from lct_python_backend.services.stt_http_transcriber import decode_audio_base64, pcm16le_to_wav, transcribe_wav_stt_candidate
+from lct_python_backend.services.no_audio_guard import NoAudioGuard
 from lct_python_backend.services.stt_live_graph import (
     build_draft_graph_patch,
     build_speaker_reconciliation_patch,
@@ -153,6 +154,10 @@ class WsSessionContext:
             "first_partial_at_ms": None,
             "first_final_at_ms": None,
         }
+        # No-audio guard — halts STT forwarding once a dead/muted-mic session
+        # has produced no real audio for a while, so OpenAI credits aren't
+        # burned on silence. Dormant the instant any real audio is heard.
+        self._no_audio_guard = NoAudioGuard()
 
         # Task tracking
         self.background_tasks: set = set()
@@ -460,6 +465,53 @@ class WsSessionContext:
                 stage="reconciliation",
                 level="warning",
                 message="Utterance<->node reconciliation failed (non-fatal).",
+                context={
+                    "error": str(exc),
+                    "traceback": "".join(
+                        traceback.format_exception(type(exc), exc, exc.__traceback__)
+                    ),
+                },
+            )
+
+    async def _run_participant_speaker_inference(self) -> None:
+        """Auto-name utterances when the conversation is unambiguously single-speaker.
+
+        If diarization yields one substantive speaker and the participant
+        picker recorded exactly one person, that person IS the speaker — set
+        their name so the user need not rename. Non-fatal: a failure just
+        leaves utterances un-named (the windowed transcript rename still works).
+        """
+        if not self.state.conversation_id:
+            return
+        try:
+            from lct_python_backend.services.participant_speaker_inference import (
+                infer_participant_speaker,
+            )
+
+            summary = await infer_participant_speaker(str(self.state.conversation_id))
+            logger.info(
+                "[WS][SPEAKER-INFER] session=%s conversation=%s assigned=%s "
+                "participant=%s reason=%s",
+                self.state.session_id,
+                self.state.conversation_id,
+                summary.get("assigned"),
+                summary.get("participant"),
+                summary.get("skipped_reason"),
+            )
+            self._record_observability_event(
+                event_type="participant_speaker_inference",
+                stage="reconciliation",
+                level="info",
+                message="Auto-assigned the participant speaker name.",
+                context=summary,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[WS][SPEAKER-INFER] non-fatal failure: %s", exc)
+            self._record_observability_event(
+                event_type="participant_speaker_inference_error",
+                stage="reconciliation",
+                level="warning",
+                message="Participant speaker inference failed (non-fatal).",
                 context={
                     "error": str(exc),
                     "traceback": "".join(
@@ -1927,6 +1979,45 @@ class WsSessionContext:
                 )
             return
 
+        # No-audio guard: a dead/muted mic streams silence to OpenAI exactly
+        # like speech, and OpenAI bills every uploaded second. Stop forwarding
+        # once a session is judged dead-silent; dormant the instant real audio
+        # is heard, so genuine recordings (and their timestamps) are untouched.
+        guard = self._no_audio_guard.observe(
+            chunk_bytes,
+            getattr(self.stt_runtime, "sample_rate_hz", 16000) or 16000,
+        )
+        if guard["warn"]:
+            await self._emit_ws_error(
+                message_type="stt_no_audio",
+                code="no_audio_detected",
+                detail="No audio detected — check that your microphone is working.",
+                stage="audio_guard",
+                level="warning",
+                context={"silent_seconds": round(float(guard["silent_run_s"]), 1)},
+            )
+        if guard["stop"]:
+            logger.warning(
+                "[WS][AUDIO-GUARD] session=%s conversation=%s — no audio for %.0fs; "
+                "halting STT forwarding to stop credit spend",
+                self.state.session_id,
+                self.state.conversation_id,
+                float(guard["silent_run_s"]),
+            )
+            await self._emit_ws_error(
+                message_type="stt_no_audio",
+                code="no_audio_halted",
+                detail=(
+                    "No audio for an extended period — transcription paused so "
+                    "credits aren't spent on silence. Speak or restart to resume."
+                ),
+                stage="audio_guard",
+                level="warning",
+                context={"silent_seconds": round(float(guard["silent_run_s"]), 1)},
+            )
+        if not guard["forward"]:
+            return
+
         async with self.stt_stream_lock:
             try:
                 runtime_events = await self.stt_runtime.push_audio_chunk(chunk_bytes)
@@ -2215,6 +2306,10 @@ class WsSessionContext:
             # unlinked — reconcile them so speaker rollup / rename / audio-seek
             # work. Runs last; nothing re-persists after this.
             await self._run_utterance_node_reconciliation()
+            # Single-speaker convenience: if diarization + the participant
+            # picker agree there is exactly one person, name the utterances
+            # automatically. Independent of the reconciler; neither re-persists.
+            await self._run_participant_speaker_inference()
 
         except Exception as exc:
             logger.exception("[WS] Processor flush failed: %s", exc)
