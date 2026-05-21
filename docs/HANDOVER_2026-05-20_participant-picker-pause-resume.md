@@ -42,7 +42,7 @@ that **proved the cheap implementation silently erodes the graph**.
 ## Continuation (2026-05-21) — segment-and-stitch shipped
 
 The same arc continued the next day and **shipped pause/resume end-to-end**,
-plus three follow-ups:
+plus four follow-ups:
 
 - **Stage 1 — backend (`865d2c6`).** `persist_graph` gained `protect_node_ids`:
   on resume its destructive delete is *scoped* to exclude the prior segment,
@@ -60,10 +60,14 @@ plus three follow-ups:
   recurring "error committing audio / buffer too small / 0.00ms" log noise.
 - **Elapsed recording timer (`d3602ec`).** MM:SS by the mic, cumulative across
   pause/resume segments.
+- **Lossless graph round-trip (`b9d5d59`).** `build_graph_data_from_nodes(...,
+  include_edges_out=True)` + a faithful `persist_graph` path: a DB-graph
+  reconstruct→re-persist now preserves every relationship verbatim. This was
+  "Remaining Work" task #1 — done.
 
-**LCT `main` is 9 commits ahead of origin** — the parallel ADR-032 session
-pushed the earlier backlog; nothing from this arc is pushed. The TC repo's 2
-commits are already on origin.
+**LCT `main` is well ahead of origin** — the parallel ADR-032 session pushed
+the earlier backlog; nothing from this arc is pushed. The TC repo's 2 commits
+are already on origin.
 
 ## Commits This Session
 
@@ -129,7 +133,8 @@ so these commits and the LCT ones are in separate repos) **(2)**
 - `21f8de0` feat(participants): ad-hoc guest speakers in the picker
 - `ab7b685` fix(stt): skip realtime commit for sub-100ms audio buffers
 - `d3602ec` feat(audio): elapsed recording timer
-- `02f838a` docs(handover) — the first cut of this file
+- `b9d5d59` fix(graph): lossless DB-graph reconstruction round-trip
+- `02f838a` + `cd14bc0` docs(handover) — first cut + this update
 
 Interleaved parallel-session commits this stretch (`0976a9e`, `c0b09d2`,
 `4da94b3`, `8bd07a4`, `4fe154c`) are **NOT** this session.
@@ -254,10 +259,10 @@ additive/upsert path first imagined:
 - `stt_ws_session._detect_resume()` captures the prior segment's node ids at
   WS-session start and threads them through every live graph-persist.
 
-`build_graph_data_from_nodes`'s lossiness is therefore **dodged, not fixed** —
-still latent for any *other* DB-graph read→re-persist (re-enrichment,
-migration). See task #1 in "Remaining Work" below. Memory:
-`build-graph-data-from-nodes-loses-relationships`.
+`build_graph_data_from_nodes`'s lossiness was both **dodged** (the resume path
+never reconstructs) and **later fixed outright** — continuation commit
+`b9d5d59` adds `include_edges_out=True`, making any DB-graph read→re-persist
+lossless. Memory: `build-graph-data-from-nodes-loses-relationships`.
 
 ---
 
@@ -329,18 +334,16 @@ session's expensive-to-rebuild context is the `persist_graph` /
 `stt_openai_realtime.py` VAD/commit mechanics, the `AudioInput` recording state
 machine, and the parallel-session interleaving.
 
-### Context-sensitive — better done now (capture cost is high)
+### Context-sensitive — DONE this session
 
-1. **Fix `build_graph_data_from_nodes`'s relationship lossiness.** It folds
-   edges into singular `predecessor`/`successor` fields + a name-keyed
-   `contextual_relation` dict, drops multi-edges, mints fresh relationship ids
-   each persist, and resets `strength`/`confidence` to defaults — proven by
-   `verify_graph_roundtrip.py` (706→687→678). **Not currently blocking** —
-   segment-and-stitch's "don't seed" design sidesteps it — but it silently
-   corrupts ANY future DB-graph read→re-persist (re-enrichment, migration, a
-   consolidation re-run). Doing it well needs exactly the persist-path +
-   verification knowledge built this session; a fresh session re-derives all of
-   it. **The one task where "do it now" clearly pays.**
+1. **Fix `build_graph_data_from_nodes`'s relationship lossiness — DONE
+   (`b9d5d59`).** It folded edges into singular `predecessor`/`successor`
+   fields + a name-keyed dict, dropping multi-edges, ids, strength/confidence
+   (`verify_graph_roundtrip.py` once measured 706→687→678). Fixed:
+   `build_graph_data_from_nodes(..., include_edges_out=True)` emits a faithful
+   per-node `edges_out` list and `persist_graph` re-persists from it with
+   original ids — round-trip now 706→706→706 across 3 cycles. This was the
+   one task flagged as genuinely needing this session's context.
 
 ### Moderately context-sensitive — judgment call
 
@@ -437,15 +440,15 @@ Not re-verified at handover time. This session left the runtime like so:
 2. `git status` — the working tree should show only untracked debug artifacts
    (`consumption_trigger.py`, `*.png` screenshots, ADR-032's `scripts/*_772*`,
    `.tmp_validation/`, `scripts/digest_transcript.py`). None are pending work.
-3. **Pick from "Remaining Work" above by context-sensitivity.** The one task
-   that genuinely wants this session's context is #1 — fixing
-   `build_graph_data_from_nodes`'s relationship lossiness. Everything else is
-   design-shaped (needs user input) or operational.
+3. **Pick from "Remaining Work" above by context-sensitivity.** Task #1 — the
+   `build_graph_data_from_nodes` round-trip fix, the one task that needed this
+   session's context — is **done** (`b9d5d59`). Everything left is
+   design-shaped (needs user design input) or operational.
 4. **Pause/resume is shipped** but the live record→pause→resume flow is not yet
    exercised end-to-end — needs a real mic and an OpenAI key with quota (STT
    currently 429s). Verify on a real recording.
-5. Push is **not** authorized — LCT `main` is 9 ahead of origin; needs explicit
-   user go-ahead. History is interleaved with the ADR-032 session.
+5. Push is **not** authorized — LCT `main` is well ahead of origin; needs
+   explicit user go-ahead. History is interleaved with the ADR-032 session.
 
 ---
 *Handover by Claude Opus 4.7 (1M context). First cut 2026-05-20 (participant
