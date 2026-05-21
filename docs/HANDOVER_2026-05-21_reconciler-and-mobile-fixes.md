@@ -1,71 +1,84 @@
 # Handover: 2026-05-21 — live link reconciler, Speaker-section retirement, mobile fixes, deploy
 
 > File: `docs/HANDOVER_2026-05-21_reconciler-and-mobile-fixes.md`
-> Continues the long ADR-032 session. Earlier arcs are in
-> `docs/HANDOVER_2026-05-20_adr032-speaker-rename.md` (Part H + reconciler design)
-> and the parallel session's `02f838a` handover (participant picker / pause-resume).
+> Continues the long ADR-032 session. Earlier arcs:
+> `docs/HANDOVER_2026-05-20_adr032-speaker-rename.md` (Part H + reconciler design).
+> The parallel session's work is in
+> `docs/HANDOVER_2026-05-20_participant-picker-pause-resume.md`.
+> **Updated 2026-05-21 (end of session)** — supersedes the mid-session snapshot
+> that was committed as `e3e036b`.
 
 ## Session Summary
 
 Closed the speaker thread end-to-end: built the **live utterance↔node
 reconciler** (`4fe154c`) that fixed the root cause of the "SPEAKER_00 not found"
 rename bug on live recordings, **retired** the redundant/buggy NodeDetail global
-Speaker section (`8bd07a4`, option A), shipped the **Part H** transcript-inline
-rename frontend (`dd8ee43`). Then pushed the speaker stack + restarted the
-backend cleanly on 43181. Added a **private-beta gate** (`0976a9e`) and fixed two
-mobile critiques — **autostart** (`c0b09d2`, #116) and **upload status**
-(`4da94b3`, #115). **#114 (mobile stats panel) is mid-flight** — a curation
-proposal is on the table awaiting the user's confirm.
+Speaker section (`8bd07a4`), shipped the **Part H** transcript-inline rename UI
+(`dd8ee43`). Added a **private-beta gate** (`0976a9e`) and shipped all three
+mobile critiques — **autostart** (`c0b09d2`, #116), **upload status** (`4da94b3`,
+#115), and the **mobile-curated stats panel** (`055736a`, #114). **All 8 commits
+are pushed**; pushing triggered Vercel's frontend auto-deploy.
 
-## Commits This Session (post the 2026-05-20 handover)
+The session's final open thread is a **"blocked by CORS policy" error on the
+deployed `threads.adityaarpitha.com`** — diagnosed but not resolved. See Pending
+Threads #1.
 
-- `dd8ee43` feat(ui): windowed speaker rename in NodeDetail transcript (Part H) — *pushed*
-- `4fe154c` fix(stt): reconcile live utterance↔node links after final persist — *pushed*
-- `8bd07a4` refactor(ui): retire the old global Speaker section in NodeDetail — *pushed*
-- `0976a9e` feat(ui): private-beta gate when the backend is unreachable — **NOT pushed**
-- `c0b09d2` fix(audio): skip live-recording autostart on touch devices (#116) — **NOT pushed**
-- `4da94b3` feat(ui): show upload status on /new from the start of processing (#115) — **NOT pushed**
+## Commits This Session — all pushed
 
-**PUSHED:** partial. `main` is **9 ahead of origin** — 3 mine (`0976a9e`,
-`c0b09d2`, `4da94b3`) + 6 the parallel session's. Clean fast-forward (0 behind).
-Not pushed this session — no fresh push authorization after the speaker-stack
-push. Pushing triggers Vercel's frontend auto-deploy.
+- `dd8ee43` feat(ui): windowed speaker rename in NodeDetail transcript (ADR-032 Part H)
+- `4fe154c` fix(stt): reconcile live utterance↔node links after final persist
+- `8bd07a4` refactor(ui): retire the old global Speaker section in NodeDetail
+- `0976a9e` feat(ui): private-beta gate when the backend is unreachable
+- `c0b09d2` fix(audio): skip live-recording autostart on touch devices (#116)
+- `4da94b3` feat(ui): show upload status on /new from the start of processing (#115)
+- `e3e036b` docs(handover): 2026-05-21 reconciler + mobile fixes session (mid-session snapshot)
+- `055736a` feat(ui): mobile-curated stats panel — fix overflow + trim content (#114)
+
+**PUSHED: yes — all 8.** `main` is level with `origin/main` (0 ahead, 0 behind).
+The parallel session's commits (`b9d5d59` graph round-trip, `d3602ec` elapsed
+timer, `21f8de0` guest speakers, `aeb41da`/`865d2c6` segment-and-stitch, etc.)
+are interleaved on `main` — see *their* handover doc; not covered here.
 
 ## Pending Threads — triaged by context-dependency
 
-The user asked: spend session-context on the tasks that *need* it; let a fresh
-instance take the rest from the ADRs/docs.
-
 ### Context-warm — do these with this session's context
 
-1. **#114 Mobile stats panel — IN PROGRESS.** A curation proposal is on the
-   table, awaiting the user's confirm/tweak:
-   - *Proposed mobile expanded HUD:* status line + the 3 state chips
-     (Backend/STT/Graph) + any "Latest error" — **nothing else**. Hide all dev
-     telemetry (timings, latencies, queue waits, ms counters, provider/model,
-     segment counts). Desktop keeps the full panel.
-   - *Also a real bug:* the detail panel overflows off the **right edge** on
-     mobile — it's `absolute left-0` relative to the HUD container, but the HUD
-     sits on the right of the footer. Fix the positioning.
-   - File: `lct_app/src/components/audio/LiveSessionHud.jsx` (mobile glyph is the
-     `sm:hidden` block; `details` is an array of `{title, rows:[{label,value}]}`).
-   - Next: user confirms keep-list → build positioning fix + curated mobile view.
+1. **CORS error on `threads.adityaarpitha.com` — TOP PRIORITY, diagnosed not fixed.**
+   - The user reported the deployed Vercel frontend is "blocked by CORS policy."
+   - **Ruled out — the backend CORS allow-list is correct.** `.env` has
+     `CORS_ALLOW_ORIGINS=https://threads.adityaarpitha.com,...` plus
+     `CORS_ALLOW_ORIGIN_REGEX=https://.*\.vercel\.app`; the running backend's log
+     confirmed `threads.adityaarpitha.com` was in the resolved allow-list. Do
+     **not** re-investigate the allow-list.
+   - **Most likely cause (found while writing this handover): the backend on
+     port 43181 is DOWN.** Verified — nothing listening on 43181; only stale
+     zombie sockets on 43180/82/83. The Vercel frontend calls the backend over
+     the Tailscale URL; with the backend down, Tailscale Serve returns 502, and a
+     502 carries no `Access-Control-Allow-Origin` header — so the browser
+     surfaces it as a CORS error. This matches the symptom exactly.
+   - **Next:** restart the backend on 43181 (memory `lct-backend-windows-startup`),
+     reload `threads.adityaarpitha.com`. If the error clears — done. If it
+     persists with the backend up: get the user's **exact console error line**
+     (distinguishes "No 'Access-Control-Allow-Origin' header" from a network
+     failure) and confirm Tailscale Serve routes
+     `asus-strix-scar.tail4741ad.ts.net` → backend :43181.
 
 2. **Auto-assign 1-speaker→contact.** User's idea: when diarization yields
    exactly one speaker and exactly one participant contact was selected,
-   auto-set the speaker name (no manual rename). Now feasible — the reconciler
-   gives nodes real `speaker_info`. Context: the participant-picker →
-   `known_speakers` flow and the reconciler were traced this session; a fresh
-   instance would re-trace. A post-diarization step.
+   auto-set the speaker name (no manual rename). Design confirmed: exactly 1
+   speaker + exactly 1 contact → set `utterance.speaker_name`,
+   `speaker_source="participant_inferred"`. Feasible now — the reconciler gives
+   nodes real `speaker_info`. A post-diarization step; the participant-picker →
+   `known_speakers` flow was traced this session.
 
 ### Blocked
 
-1. **#98 word_timings.** OpenAI `diarized_json` doesn't carry word-level timing;
-   `stt_response_parsers.py` only extracts segment-level. Real path = WhisperX
+1. **#98 word_timings.** OpenAI `diarized_json` carries no word-level timing;
+   `stt_response_parsers.py` extracts segment-level only. Real path = WhisperX
    (word timing native). Multi-step feature, not a quick fix.
-2. **#106 IndrasNet retrieval.** `/api/retrieval/search` 500s — host RAM ~91%
-   blocks LM Studio loading the embedding model. **Operational (host-side), not
-   LCT code.** Fully diagnosed; LCT degrades gracefully.
+2. **#106 IndrasNet retrieval.** `/api/retrieval/search` 500s — host RAM
+   pressure blocks LM Studio loading the embedding model. Operational
+   (host-side), not LCT code. LCT degrades gracefully.
 
 ### Context-cold — safe for a fresh instance (ADR/docs cover them)
 
@@ -73,55 +86,62 @@ instance take the rest from the ADRs/docs.
 2. **Remaining ADR-032 parts** — Part B navigation (thread filters + multi-row
    ribbon), Part I calm animations, Part J telemetry strip, Part L `.canvas`
    swim-lane embed, edge-category filter UI. All ADR-documented.
-3. **Push + deploy** the 3 unpushed commits (#115/#116/beta-gate) — needs the
-   user's go-ahead; Vercel auto-deploys the frontend on push.
 
 ### Deferred
 
 - `consumption_trigger.py` + its test — intentionally mothballed, untracked on disk.
-- The user is in rapid-fire critique mode ("I'll keep the critiques coming") —
-  expect more mobile UX issues.
+- The user is in rapid-fire mobile-critique mode — expect more UX issues.
 
 ## Key Context
 
-- **Backend** is freshly restarted on **43181** (detached `Start-Process`, **no
-  `--reload`**, current code — has the reconciler + speaker-correction routes).
-  43181 is the Tailscale-served port. See memory `lct-backend-windows-startup`.
-- **`start_services.ps1` is stale** — wrong module path; would `ModuleNotFoundError`.
-  Restart via the repo-root `lct_python_backend.backend:lct_app` invocation.
-- **#115/#116 are committed but not verified on mobile** — they need a
-  push→Vercel-deploy round-trip; the user verifies on their phone after.
-- **The parallel session is very active** (segment-and-stitch pause/resume,
-  guest speakers, elapsed timer) — its commits are interleaved on `main`; never
-  `git add -A`, stage explicit paths.
-- The backfill reconciled 3 of 14 live conversations (`e845e79c` fixed); 9 old
-  ones lack `source_excerpt`/timestamps and can't be linked. Run
+- **The backend is DOWN.** Port 43181 has no listener (verified end of session).
+  Restart per memory `lct-backend-windows-startup`: from the repo root,
+  `uvicorn lct_python_backend.backend:lct_app --host 0.0.0.0 --port 43181`,
+  launched as a *detached* `Start-Process`, **no `--reload`**. `start_services.ps1`
+  is stale (wrong module path — would `ModuleNotFoundError`).
+- **The CORS config is correct** — the "blocked by CORS policy" error is a
+  *masked* backend-down failure, not a missing-origin problem.
+- **The parallel session is very active** — its commits interleave on `main`;
+  never `git add -A`, always stage explicit paths.
+- **Untracked scratch on disk** (intentional — not deliverables, leave them):
+  validation screenshots (`*.png`), `scripts/` investigation scripts
+  (`replay_772ac0cc.py`, `critique_772.py`, `inspect_772.py`, etc.),
+  `.tmp_validation/`, and `consumption_trigger.py` + its test (mothballed).
+- The backfill reconciled the live conversations that carry `source_excerpt` +
+  timestamps; ~9 old pre-ADR-032 conversations can't be linked (no match key) —
+  documented limitation, not a bug. Run
   `scripts/backfill_live_utterance_links.py --apply` for the live backlog.
-- Standing hazards (memories): `persist_graph` is destructive;
-  `external_llm_ok` privacy gate; Vite/Tailscale binding.
+- Standing hazards (memories): `persist_graph` is destructive; the
+  `external_llm_ok` privacy gate; Vite must bind `0.0.0.0` for Tailscale Serve.
 
 ## Learnings Captured
 
-- [x] Memory `lct-backend-windows-startup` — how to restart the backend cleanly;
-  zombie backends come from `run_in_background` launches; `start_services.ps1` stale.
+- [x] Memory `lct-backend-windows-startup` — clean backend restart; zombie
+  backends come from `run_in_background` launches; **added**: a down 43181
+  backend surfaces as a "CORS policy" error on the deployed frontend.
 - [x] Memory `user-prefers-context-triaged-handovers` — triage task lists by
   context-dependency, not a flat dump.
+- [x] Memory `shared-ai-services-registry` — the canonical machine-wide AI
+  services registry; consult before STT/LLM/service-path/GPU work.
 
 ## Running Processes
 
-- **LCT backend** — detached `cmd`/uvicorn on **43181** (started this session,
-  no `--reload`). Log: `.run/backend.log`. Health: `GET /api/import/health`.
-- **Vite dev server** — port 43173 (the user's local dev frontend).
-- Phantom zombie sockets on 43180/82/83 — dead processes, kernel-reclaimed; ignore.
+- **LCT backend — NOT running.** Port 43181 has no listener. Stale zombie
+  sockets linger on 43180/43182/43183 (dead processes, kernel-reclaimed — ignore).
+- **Vite dev server** — port 43173 (the user's local dev frontend, if still up).
 
 ## Resume Instructions
 
-1. **#114** — get the user's confirm on the mobile HUD keep-list (status line +
-   3 chips + errors), then build it in `LiveSessionHud.jsx` (curated mobile view
-   + fix the right-edge overflow).
-2. Offer to **push** when the user's ready — 9 commits, clean fast-forward;
-   Vercel auto-deploys the frontend.
-3. Expect more mobile critiques from the user — triage into the task list.
+1. **Restart the backend on 43181** — memory `lct-backend-windows-startup` has
+   the exact invocation. This is the first move; it almost certainly clears the
+   CORS error.
+2. **Reload `threads.adityaarpitha.com`** — confirm the CORS error is gone.
+3. If CORS persists with the backend up: get the user's exact browser console
+   error text, and verify Tailscale Serve routes
+   `asus-strix-scar.tail4741ad.ts.net` → backend :43181.
+4. Then: **auto-assign 1-speaker→contact** (context-warm).
+5. Expect more mobile critiques from the user — triage into the task list.
 
 ---
-*Handover by Claude Opus 4.7 (1M context) — user-requested wrap-up.*
+*Handover by Claude Opus 4.7 (1M context) — end-of-session; supersedes the
+mid-session snapshot in `e3e036b`.*

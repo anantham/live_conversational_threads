@@ -2,6 +2,10 @@
 
 The newest handovers are **dated files** in `docs/` (newest first):
 
+- `HANDOVER_2026-05-21_reconciler-and-mobile-fixes.md` — live utterance↔node
+  reconciler, NodeDetail Speaker-section retirement, Part H rename UI,
+  private-beta gate, the three mobile fixes (#114/#115/#116) — all pushed.
+  Ends mid-CORS-thread: the backend on 43181 is down; restart it first.
 - `HANDOVER_2026-05-20_participant-picker-pause-resume.md` — participant picker
   (incl. ad-hoc guests), contacts cache, mobile footer, Vercel/Tailscale, LCT
   under the IndrasNet supervisor, and segment-and-stitch pause/resume **shipped
