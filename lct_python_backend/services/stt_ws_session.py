@@ -2015,6 +2015,22 @@ class WsSessionContext:
                 level="warning",
                 context={"silent_seconds": round(float(guard["silent_run_s"]), 1)},
             )
+        if guard["auto_pause"]:
+            logger.info(
+                "[WS][AUDIO-GUARD] session=%s conversation=%s — %.0fs trailing silence "
+                "after speech; signalling auto-pause to the client",
+                self.state.session_id,
+                self.state.conversation_id,
+                float(guard["silent_run_s"]),
+            )
+            await _safe_send_json(
+                self.websocket,
+                {
+                    "type": "auto_pause",
+                    "reason": "trailing_silence",
+                    "silent_seconds": round(float(guard["silent_run_s"]), 1),
+                },
+            )
         if not guard["forward"]:
             return
 

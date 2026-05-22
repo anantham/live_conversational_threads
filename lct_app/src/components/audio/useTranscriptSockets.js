@@ -35,6 +35,7 @@ export default function useTranscriptSockets({
   onProcessingStatus,
   onBackendMessage,
   onAudioReady,
+  onAutoPause,
 }) {
   const { ensureSessionToken } = useByok();
   const backendWsRef = useRef(null);
@@ -64,6 +65,7 @@ export default function useTranscriptSockets({
     onProcessingStatus,
     onBackendMessage,
     onAudioReady,
+    onAutoPause,
     logToServer,
     flushResolveRef,
     graphDataFromSocket,

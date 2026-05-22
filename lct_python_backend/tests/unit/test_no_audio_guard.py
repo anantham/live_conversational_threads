@@ -47,15 +47,16 @@ def test_guard_warns_then_halts_on_a_silent_session():
     assert decisions[-1]["forward"] is False
 
 
-def test_guard_is_dormant_once_speech_is_heard():
-    guard = NoAudioGuard(warn_after_s=2.0, stop_after_s=4.0)
+def test_short_lull_after_speech_does_not_trip_the_guard():
+    """A real conversation's pauses (short trailing silence) never trip guard B."""
+    guard = NoAudioGuard(warn_after_s=2.0, stop_after_s=4.0, pause_after_s=60.0)
     first = guard.observe(_speech(1.0), SAMPLE_RATE)
     assert first["forward"] is True
     assert guard.heard_speech is True
-    # A real recording with long pauses must never trip the guard.
-    for _ in range(20):  # 100s of silence after speech
+    for _ in range(10):  # 50s of trailing silence — under the 60s pause threshold
         d = guard.observe(_silence(5.0), SAMPLE_RATE)
         assert d["forward"] is True
+        assert d["auto_pause"] is False
         assert d["warn"] is False
         assert d["stop"] is False
 
@@ -71,9 +72,39 @@ def test_guard_recovers_if_audio_appears_after_silence():
 
 
 def test_disabled_guard_always_forwards():
-    guard = NoAudioGuard(enabled=False, warn_after_s=1.0, stop_after_s=2.0)
+    guard = NoAudioGuard(enabled=False, warn_after_s=1.0, stop_after_s=2.0, pause_after_s=2.0)
     for _ in range(20):
         d = guard.observe(_silence(5.0), SAMPLE_RATE)
         assert d["forward"] is True
         assert d["warn"] is False
         assert d["stop"] is False
+        assert d["auto_pause"] is False
+
+
+def test_trailing_silence_after_speech_triggers_auto_pause():
+    """Guard B: speech, then sustained silence -> a one-shot auto-pause signal."""
+    guard = NoAudioGuard(pause_after_s=60.0)
+    guard.observe(_speech(1.0), SAMPLE_RATE)
+    decisions = [guard.observe(_silence(5.0), SAMPLE_RATE) for _ in range(20)]  # 100s
+
+    auto_pauses = [d for d in decisions if d["auto_pause"]]
+    assert len(auto_pauses) == 1, "auto_pause fires exactly once"
+    assert auto_pauses[0]["silent_run_s"] >= 60.0
+    assert decisions[-1]["forward"] is False  # forwarding halts past the pause point
+    # Guard A's signals never fire once speech has been heard.
+    assert all(d["warn"] is False and d["stop"] is False for d in decisions)
+
+
+def test_silence_run_resets_when_speech_resumes():
+    """Guard B's trailing-silence run restarts whenever real audio returns —
+    intermittent speech never accumulates toward a false auto-pause."""
+    guard = NoAudioGuard(pause_after_s=60.0)
+    guard.observe(_speech(1.0), SAMPLE_RATE)
+    for _ in range(10):  # 50s silence — just under the threshold
+        assert guard.observe(_silence(5.0), SAMPLE_RATE)["auto_pause"] is False
+    # A burst of speech resets the run...
+    reset = guard.observe(_speech(1.0), SAMPLE_RATE)
+    assert reset["silent_run_s"] == 0.0
+    # ...so another 50s of silence still doesn't trip it.
+    for _ in range(10):
+        assert guard.observe(_silence(5.0), SAMPLE_RATE)["auto_pause"] is False

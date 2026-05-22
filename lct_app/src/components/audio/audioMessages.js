@@ -11,6 +11,7 @@ const createBackendMessageHandler =
     onProcessingStatus,
     onBackendMessage,
     onAudioReady,
+    onAutoPause,
     logToServer,
     flushResolveRef,
     graphDataFromSocket,
@@ -134,6 +135,12 @@ const createBackendMessageHandler =
         logToServer?.(
           `Flush complete${message.telemetry ? ` ${JSON.stringify(message.telemetry)}` : ""}`
         );
+      }
+      if (message.type === "auto_pause") {
+        logToServer?.(
+          `Auto-pause: no audio for ${message.silent_seconds ?? "?"}s — pausing the recording`
+        );
+        onAutoPause?.(message);
       }
       if (message.type === "error") {
         emitProcessingStatus(
