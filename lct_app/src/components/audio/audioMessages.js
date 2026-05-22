@@ -6,6 +6,7 @@ const createBackendMessageHandler =
     onTranscriptEvent,
     onSessionAck,
     onSessionStarted,
+    onSecondSpeakerDetected,
     onPong,
     onSttProviderStateChange,
     onProcessingStatus,
@@ -49,6 +50,12 @@ const createBackendMessageHandler =
         onSessionStarted?.(message);
         logToServer?.(
           `Session started: ${message.conversation_id || "-"}`
+        );
+      }
+      if (message.type === "second_speaker_detected") {
+        onSecondSpeakerDetected?.(message);
+        logToServer?.(
+          `Second speaker detected: ${(message.speaker_ids || []).join(", ") || "?"}`
         );
       }
       if (message.type === "session_ack") {

@@ -205,6 +205,17 @@ export default function NewConversation() {
     }
   }, [autostart]);
 
+  // Stage 2: diarization fired the `second_speaker_detected` WS event — a 2nd
+  // voice showed up. Badge the participants button so the user can name them;
+  // no mid-recording modal. The badge clears once they name the 2nd person
+  // (savedParticipants grows past the lone seeded owner).
+  const [secondSpeakerDetected, setSecondSpeakerDetected] = useState(false);
+  const handleSecondSpeakerDetected = useCallback(() => {
+    setSecondSpeakerDetected(true);
+  }, []);
+  const secondSpeakerNudge =
+    secondSpeakerDetected && savedParticipants.length < 2;
+
   // Load the conversation's participants whenever conversation_id changes
   // (recovered draft, fresh session). For a live recording with none set
   // yet, seed the configured self-identity contact as participant 1 — so a
@@ -1162,18 +1173,22 @@ export default function NewConversation() {
             <button
               type="button"
               onClick={() => setParticipantPickerOpen(true)}
-              className={`flex h-11 w-11 items-center justify-center rounded-full border transition ${
+              className={`relative flex h-11 w-11 items-center justify-center rounded-full border transition ${
                 savedParticipants.length > 0
                   ? "border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100"
                   : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
               }`}
               title={
-                savedParticipants.length > 0
+                secondSpeakerNudge
+                  ? "New speaker detected — tap to name participants"
+                  : savedParticipants.length > 0
                   ? `${savedParticipants.map((p) => p.display_name).join(", ")} — tap to edit`
                   : "Add participants"
               }
               aria-label={
-                savedParticipants.length > 0
+                secondSpeakerNudge
+                  ? "A new speaker was detected. Tap to add participants."
+                  : savedParticipants.length > 0
                   ? `Participants: ${savedParticipants
                       .map((p) => p.display_name)
                       .join(", ")}. Tap to edit.`
@@ -1181,6 +1196,12 @@ export default function NewConversation() {
               }
             >
               <UserPlus size={18} />
+              {secondSpeakerNudge ? (
+                <span
+                  className="absolute -right-0.5 -top-0.5 h-3.5 w-3.5 rounded-full bg-rose-500 ring-2 ring-white"
+                  aria-hidden="true"
+                />
+              ) : null}
             </button>
           ) : null}
           {/* Upload is an ALTERNATIVE to live recording — irrelevant once
@@ -1206,6 +1227,7 @@ export default function NewConversation() {
             setFileName={setFileName}
             autostart={autostart}
             onSessionStarted={handleSessionStarted}
+            onSecondSpeakerDetected={handleSecondSpeakerDetected}
             onFinalize={handleFinalizeFromAudio}
           />
         </div>

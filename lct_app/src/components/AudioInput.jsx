@@ -120,6 +120,7 @@ const AudioInput = forwardRef(function AudioInput({
   setFileName,
   autostart,
   onSessionStarted,
+  onSecondSpeakerDetected,
   onFinalize,
 }, ref) {
   const uploadCtx = useUpload();
@@ -300,6 +301,7 @@ const AudioInput = forwardRef(function AudioInput({
     },
     onSessionAck: handleSessionAckEvent,
     onSessionStarted,
+    onSecondSpeakerDetected,
     onFatalError: useCallback(() => {
       setRecording(false);
     }, []),
@@ -802,6 +804,7 @@ AudioInput.propTypes = {
   setFileName: PropTypes.func,
   autostart: PropTypes.bool,
   onSessionStarted: PropTypes.func,
+  onSecondSpeakerDetected: PropTypes.func,
   onFinalize: PropTypes.func,
 };
 
