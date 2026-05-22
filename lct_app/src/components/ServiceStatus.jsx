@@ -3,7 +3,12 @@ import PropTypes from "prop-types";
 import { apiFetch } from "../services/apiClient";
 
 const POLL_INTERVAL_MS = 30000;
-const REQUEST_TIMEOUT_MS = 3000;
+// Quick settings GETs.
+const SETTINGS_TIMEOUT_MS = 8000;
+// Live provider probes do a real round-trip — the backend cloud-provider-test
+// alone allows up to 20s — so the client must wait well past that, or every
+// probe falsely reports a timeout before the backend has even answered.
+const PROBE_TIMEOUT_MS = 25000;
 const DEFAULT_FALLBACK_PRIORITY = [
   "remote_whisper",
   "external_http",
@@ -42,45 +47,48 @@ function summarizeError(error) {
   if (!error) {
     return "Not checked yet";
   }
-  if (error.name === "AbortError") {
-    return `Timed out after ${REQUEST_TIMEOUT_MS / 1000}s`;
-  }
   const message = String(error.message || error).trim();
   return message || "Unavailable";
 }
 
-async function fetchJson(path) {
+async function fetchWithTimeout(path, options, timeoutMs) {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await apiFetch(path, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+    return await apiFetch(path, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`Timed out after ${Math.round(timeoutMs / 1000)}s`);
     }
-    return await response.json();
+    throw error;
   } finally {
     window.clearTimeout(timeoutId);
   }
 }
 
-async function postJson(path, payload) {
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await apiFetch(path, {
+async function fetchJson(path, timeoutMs = SETTINGS_TIMEOUT_MS) {
+  const response = await fetchWithTimeout(path, {}, timeoutMs);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+async function postJson(path, payload, timeoutMs = PROBE_TIMEOUT_MS) {
+  const response = await fetchWithTimeout(
+    path,
+    {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      throw new Error(text || `HTTP ${response.status}`);
-    }
-    return await response.json();
-  } finally {
-    window.clearTimeout(timeoutId);
+    },
+    timeoutMs,
+  );
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(text || `HTTP ${response.status}`);
   }
+  return response.json();
 }
 
 function StatusPill({ details, label, state, summary }) {
@@ -98,7 +106,7 @@ function StatusPill({ details, label, state, summary }) {
         <span>{label}</span>
       </button>
 
-      <div className="pointer-events-none absolute bottom-full left-0 z-20 mb-3 w-[min(22rem,calc(100vw-3rem))] translate-y-2 rounded-2xl border border-slate-200 bg-white/95 p-3 text-left opacity-0 shadow-xl backdrop-blur transition duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100">
+      <div className="pointer-events-none fixed inset-x-3 bottom-16 z-20 translate-y-2 rounded-2xl border border-slate-200 bg-white/95 p-3 text-left opacity-0 shadow-xl backdrop-blur transition duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 sm:absolute sm:inset-x-auto sm:bottom-full sm:left-0 sm:mb-3 sm:w-[min(22rem,calc(100vw-3rem))]">
         <p className="text-[11px] font-semibold text-slate-800">{summary}</p>
         <div className="mt-2 space-y-1.5">
           {details.map((detail) => (
