@@ -1,16 +1,15 @@
 import { useState, useEffect, useRef } from "react";
-
-const API_BASE = "";
+import { apiFetch } from "../../services/apiClient";
 
 async function fetchSpeakerClips(speakerName = null) {
   const params = speakerName ? `?speaker_name=${encodeURIComponent(speakerName)}` : "";
-  const res = await fetch(`${API_BASE}/api/speaker-voice-library${params}`);
+  const res = await apiFetch(`/api/speaker-voice-library${params}`);
   if (!res.ok) throw new Error("Failed to fetch clips");
   return res.json();
 }
 
 async function deleteSpeakerClip(clipId) {
-  const res = await fetch(`${API_BASE}/api/speaker-voice-library/${clipId}`, {
+  const res = await apiFetch(`/api/speaker-voice-library/${clipId}`, {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to delete clip");
