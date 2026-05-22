@@ -2,13 +2,17 @@
 
 A dead or muted microphone — or an automated test with a fake mic — streams
 silent audio to OpenAI exactly like real speech, and OpenAI bills for every
-uploaded second. This guard watches incoming PCM16 chunks and, once a session
-has produced no real audio at all for a sustained stretch, stops forwarding to
-the STT provider so credits aren't spent on silence.
+uploaded second. This guard watches incoming PCM16 chunks and acts on
+sustained silence so credits aren't spent on nothing:
 
-It is deliberately a *dead-session* guard, not a per-chunk silence filter: the
-moment any real audio is heard it goes permanently dormant, so genuine
-recordings — and their transcript timestamps — are never affected.
+* Guard A — *no real audio ever*: warn the client, then stop forwarding to the
+  STT provider entirely (a dead/muted mic, or a fake-mic automated session).
+* Guard B — *trailing silence after real speech*: a recording left running
+  after the conversation ended. Signal a clean, resumable auto-pause.
+
+It is deliberately not a per-chunk silence filter — silence inside an active
+conversation is forwarded normally, so genuine recordings and their transcript
+timestamps are never affected. The guard only acts on *sustained* silence.
 """
 
 from __future__ import annotations
@@ -40,10 +44,14 @@ def _env_bool(name: str, default: bool) -> bool:
 # real audio. Set well below even quiet speech (~500+ RMS) — a muted/dead mic
 # sits near zero. Erring low is safe: the guard simply never engages.
 DEFAULT_SILENCE_RMS = _env_float("STT_NO_AUDIO_RMS_THRESHOLD", 90.0)
-# Seconds of unbroken silence from session start before the client is warned.
+# Guard A — seconds of silence from session start before the client is warned.
 DEFAULT_WARN_AFTER_S = _env_float("STT_NO_AUDIO_WARN_AFTER_S", 20.0)
-# Seconds before forwarding to the STT provider stops entirely.
+# Guard A — seconds before forwarding to the STT provider stops entirely.
 DEFAULT_STOP_AFTER_S = _env_float("STT_NO_AUDIO_STOP_AFTER_S", 60.0)
+# Guard B — seconds of trailing silence *after* real speech before a clean
+# auto-pause is signalled. Generous, so a natural conversation lull doesn't
+# trip it; a 5-minute unbroken silence really does mean "walked away".
+DEFAULT_PAUSE_AFTER_S = _env_float("STT_NO_AUDIO_PAUSE_AFTER_S", 300.0)
 # Kill switch — set STT_NO_AUDIO_GUARD_ENABLED=false to disable (always forward).
 DEFAULT_ENABLED = _env_bool("STT_NO_AUDIO_GUARD_ENABLED", True)
 
@@ -60,19 +68,19 @@ def chunk_rms(chunk_bytes: bytes) -> float:
 
 
 class NoAudioGuard:
-    """Tracks whether a live STT session has produced any real audio.
+    """Tracks the real-audio history of a live STT session.
 
     Feed every incoming PCM16 chunk to ``observe()``. It returns a decision:
 
     * ``forward`` — send this chunk to the STT provider? Becomes False once the
-      session is judged dead-silent, and stays False until real audio appears.
-    * ``warn`` — True exactly once, when silence first crosses the warn
-      threshold, so the caller can notify the client.
-    * ``stop`` — True exactly once, when forwarding first halts.
-    * ``silent_run_s`` / ``rms`` — diagnostics.
-
-    The moment any real audio is heard the guard is permanently dormant:
-    ``forward`` is True forever, so genuine recordings are never touched.
+      session is judged dead-silent (guard A) or has crossed the trailing-
+      silence auto-pause threshold (guard B).
+    * ``warn`` — True exactly once: guard A's "no audio yet" client warning.
+    * ``stop`` — True exactly once: guard A halts forwarding.
+    * ``auto_pause`` — True exactly once: guard B — sustained silence after real
+      speech; the caller should pause the recording.
+    * ``silent_run_s`` / ``rms`` — diagnostics. ``silent_run_s`` is the current
+      unbroken run of silence; it resets to 0 whenever real audio arrives.
     """
 
     def __init__(
@@ -81,44 +89,74 @@ class NoAudioGuard:
         silence_rms: float = DEFAULT_SILENCE_RMS,
         warn_after_s: float = DEFAULT_WARN_AFTER_S,
         stop_after_s: float = DEFAULT_STOP_AFTER_S,
+        pause_after_s: float = DEFAULT_PAUSE_AFTER_S,
         enabled: bool = DEFAULT_ENABLED,
     ) -> None:
         self.silence_rms = silence_rms
         self.warn_after_s = warn_after_s
         self.stop_after_s = stop_after_s
+        self.pause_after_s = pause_after_s
         self.enabled = enabled
         self.heard_speech = False
         self.silent_run_s = 0.0
         self._warned = False
         self._stopped = False
+        self._auto_paused = False
+
+    def _decision(
+        self,
+        rms: float,
+        *,
+        forward: bool = True,
+        warn: bool = False,
+        stop: bool = False,
+        auto_pause: bool = False,
+    ) -> Dict[str, object]:
+        return {
+            "forward": forward,
+            "warn": warn,
+            "stop": stop,
+            "auto_pause": auto_pause,
+            "silent_run_s": self.silent_run_s,
+            "rms": rms,
+        }
 
     def observe(self, chunk_bytes: bytes, sample_rate_hz: int) -> Dict[str, object]:
-        """Classify one PCM16 chunk and return the forward/warn/stop decision."""
+        """Classify one PCM16 chunk and return the guard decision."""
         rms = chunk_rms(chunk_bytes)
 
-        if not self.enabled or self.heard_speech:
-            return {"forward": True, "warn": False, "stop": False,
-                    "silent_run_s": self.silent_run_s, "rms": rms}
+        if not self.enabled:
+            return self._decision(rms, forward=True)
 
         if rms >= self.silence_rms:
-            # First real audio — the guard is dormant for the rest of the session.
+            # Real audio — mark speech heard and reset the trailing-silence run.
             self.heard_speech = True
-            return {"forward": True, "warn": False, "stop": False,
-                    "silent_run_s": self.silent_run_s, "rms": rms}
+            self.silent_run_s = 0.0
+            return self._decision(rms, forward=True)
 
+        # Silent chunk — extend the consecutive-silence run.
         rate = sample_rate_hz if sample_rate_hz and sample_rate_hz > 0 else 16000
         self.silent_run_s += (len(chunk_bytes) // 2) / float(rate)
 
-        warn = False
-        if not self._warned and self.silent_run_s >= self.warn_after_s:
-            self._warned = True
-            warn = True
+        if not self.heard_speech:
+            # Guard A — the session has produced no real audio at all.
+            warn = False
+            if not self._warned and self.silent_run_s >= self.warn_after_s:
+                self._warned = True
+                warn = True
+            forward = self.silent_run_s < self.stop_after_s
+            stop = False
+            if not forward and not self._stopped:
+                self._stopped = True
+                stop = True
+            return self._decision(rms, forward=forward, warn=warn, stop=stop)
 
-        forward = self.silent_run_s < self.stop_after_s
-        stop = False
-        if not forward and not self._stopped:
-            self._stopped = True
-            stop = True
-
-        return {"forward": forward, "warn": warn, "stop": stop,
-                "silent_run_s": self.silent_run_s, "rms": rms}
+        # Guard B — real speech was heard, now a sustained trailing silence
+        # (a recording left running after the conversation). Signal a clean,
+        # resumable auto-pause once it crosses the threshold.
+        auto_pause = False
+        if not self._auto_paused and self.silent_run_s >= self.pause_after_s:
+            self._auto_paused = True
+            auto_pause = True
+        forward = self.silent_run_s < self.pause_after_s
+        return self._decision(rms, forward=forward, auto_pause=auto_pause)

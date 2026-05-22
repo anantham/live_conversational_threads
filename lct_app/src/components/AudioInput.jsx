@@ -275,6 +275,11 @@ const AudioInput = forwardRef(function AudioInput({
     }
   }, [appendSessionEvent, handleBackendMessage]);
 
+  // pauseRecording is defined below this hook; a ref lets the hook's
+  // auto_pause message handler reach the latest pauseRecording without a
+  // forward reference.
+  const pauseRecordingRef = useRef(null);
+
   // --- Transport hook ---
   const {
     backendWsRef,
@@ -305,6 +310,7 @@ const AudioInput = forwardRef(function AudioInput({
     onProcessingStatus: handleProcessingStatus,
     onBackendMessage: handleBackendMessageEvent,
     onAudioReady: handleAudioReady,
+    onAutoPause: () => pauseRecordingRef.current?.(),
   });
 
   // --- Capture hook ---
@@ -531,6 +537,9 @@ const AudioInput = forwardRef(function AudioInput({
     await stopRecording();
     setPaused(true);
   }, [stopRecording]);
+  // Keep the ref current so the WS auto_pause handler (wired into the
+  // transport hook above, before pauseRecording exists) calls the latest one.
+  pauseRecordingRef.current = pauseRecording;
 
   const getSessionDebugSnapshot = useCallback(() => ({
     recording,
