@@ -119,15 +119,16 @@ class QuotaService:
     ) -> None:
         """Record usage for today."""
         today = date.today()
-        today_datetime = datetime.combine(today, datetime.min.time())
 
-        # Try to update existing record
+        # Try to update today's row. UsageQuota.date is a Date column on
+        # PostgreSQL — key on a plain date so this matches check_quota (which
+        # queries date.today()); a datetime here risked missing the row.
         stmt = (
             update(UsageQuota)
             .where(
                 UsageQuota.owner_id == owner_id,
                 UsageQuota.quota_type == quota_type,
-                UsageQuota.date == today_datetime,
+                UsageQuota.date == today,
             )
             .values(
                 minutes_used=UsageQuota.minutes_used + minutes,
@@ -142,7 +143,7 @@ class QuotaService:
             stmt = insert(UsageQuota).values(
                 owner_id=owner_id,
                 quota_type=quota_type,
-                date=today_datetime,
+                date=today,
                 minutes_used=minutes,
                 requests_count=requests,
             )
