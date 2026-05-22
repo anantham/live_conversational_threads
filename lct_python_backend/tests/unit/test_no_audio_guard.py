@@ -108,3 +108,21 @@ def test_silence_run_resets_when_speech_resumes():
     # ...so another 50s of silence still doesn't trip it.
     for _ in range(10):
         assert guard.observe(_silence(5.0), SAMPLE_RATE)["auto_pause"] is False
+
+
+def test_forwarded_audio_seconds_counts_only_forwarded_chunks():
+    """forwarded_audio_s = audio actually sent to the provider. Silence the
+    guard halts on is not counted, so the STT quota isn't charged for it."""
+    guard = NoAudioGuard(stop_after_s=60.0)
+    for _ in range(10):  # 100s of pure silence, no speech ever
+        guard.observe(_silence(10.0), SAMPLE_RATE)
+    # Forwarding halts once silence hits 60s — only the chunks before that count.
+    assert abs(guard.forwarded_audio_s - 50.0) < 0.01
+
+
+def test_forwarded_audio_seconds_counts_a_normal_recording_in_full():
+    """A normal recording (all speech) is metered in full."""
+    guard = NoAudioGuard()
+    for _ in range(6):
+        guard.observe(_speech(10.0), SAMPLE_RATE)
+    assert abs(guard.forwarded_audio_s - 60.0) < 0.01

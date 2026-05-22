@@ -2370,6 +2370,44 @@ class WsSessionContext:
                         },
                     },
                 )
+            # Debit the STT quota for the audio this segment actually forwarded
+            # to the provider (the no-audio guard halts forwarding on silence,
+            # so silent stretches aren't charged).
+            await self._record_stt_quota_usage()
+
+    async def _record_stt_quota_usage(self) -> None:
+        """Debit this segment's forwarded-audio time against the STT quota.
+
+        QuotaService.check_quota runs at session start, but until now nothing
+        debited usage — so the daily free limit never actually bit. BYOK
+        sessions have unlimited quota and are skipped. Non-fatal.
+        """
+        if getattr(self, "_quota_is_byok", False):
+            return
+        forwarded_s = getattr(self._no_audio_guard, "forwarded_audio_s", 0.0)
+        if forwarded_s <= 0:
+            return
+        minutes = forwarded_s / 60.0
+        owner_id = getattr(self, "_quota_owner_id", "anonymous")
+        try:
+            await QuotaService(self.session).record_usage(
+                owner_id=owner_id,
+                quota_type="stt_live",
+                minutes=minutes,
+            )
+            logger.info(
+                "[WS][QUOTA] session=%s owner=%s — debited %.2f STT minutes (%.0fs forwarded)",
+                self.state.session_id,
+                owner_id,
+                minutes,
+                forwarded_s,
+            )
+        except Exception as quota_exc:
+            logger.warning(
+                "[WS][QUOTA] session=%s — record_usage failed: %s",
+                self.state.session_id,
+                quota_exc,
+            )
 
     # ------------------------------------------------------------------
     # Message handlers
@@ -2668,6 +2706,9 @@ class WsSessionContext:
         quota_info = {}
         owner_id = str((self.state.metadata or {}).get("owner_id") or "anonymous")
         is_byok = bool(byok_session and byok_session.get("api_key"))
+        # Remembered for the post-flush quota debit (see _record_stt_quota_usage).
+        self._quota_owner_id = owner_id
+        self._quota_is_byok = is_byok
         
         try:
             quota_service = QuotaService(self.session)

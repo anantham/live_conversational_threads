@@ -13,6 +13,10 @@ sustained silence so credits aren't spent on nothing:
 It is deliberately not a per-chunk silence filter — silence inside an active
 conversation is forwarded normally, so genuine recordings and their transcript
 timestamps are never affected. The guard only acts on *sustained* silence.
+
+It also tallies ``forwarded_audio_s`` — the audio actually sent to the
+provider — so STT quota accounting can charge for billed time only (silence
+the guard halts on is not counted).
 """
 
 from __future__ import annotations
@@ -81,6 +85,9 @@ class NoAudioGuard:
       speech; the caller should pause the recording.
     * ``silent_run_s`` / ``rms`` — diagnostics. ``silent_run_s`` is the current
       unbroken run of silence; it resets to 0 whenever real audio arrives.
+
+    The instance also accumulates ``forwarded_audio_s`` — total seconds of
+    audio actually forwarded to the provider — for STT quota accounting.
     """
 
     def __init__(
@@ -99,6 +106,7 @@ class NoAudioGuard:
         self.enabled = enabled
         self.heard_speech = False
         self.silent_run_s = 0.0
+        self.forwarded_audio_s = 0.0
         self._warned = False
         self._stopped = False
         self._auto_paused = False
@@ -106,12 +114,17 @@ class NoAudioGuard:
     def _decision(
         self,
         rms: float,
+        chunk_s: float,
         *,
         forward: bool = True,
         warn: bool = False,
         stop: bool = False,
         auto_pause: bool = False,
     ) -> Dict[str, object]:
+        # Tally audio that actually reaches the (paid) provider — the single
+        # point every observe() path funnels through.
+        if forward:
+            self.forwarded_audio_s += chunk_s
         return {
             "forward": forward,
             "warn": warn,
@@ -124,19 +137,20 @@ class NoAudioGuard:
     def observe(self, chunk_bytes: bytes, sample_rate_hz: int) -> Dict[str, object]:
         """Classify one PCM16 chunk and return the guard decision."""
         rms = chunk_rms(chunk_bytes)
+        rate = sample_rate_hz if sample_rate_hz and sample_rate_hz > 0 else 16000
+        chunk_s = (len(chunk_bytes) // 2) / float(rate)
 
         if not self.enabled:
-            return self._decision(rms, forward=True)
+            return self._decision(rms, chunk_s, forward=True)
 
         if rms >= self.silence_rms:
             # Real audio — mark speech heard and reset the trailing-silence run.
             self.heard_speech = True
             self.silent_run_s = 0.0
-            return self._decision(rms, forward=True)
+            return self._decision(rms, chunk_s, forward=True)
 
         # Silent chunk — extend the consecutive-silence run.
-        rate = sample_rate_hz if sample_rate_hz and sample_rate_hz > 0 else 16000
-        self.silent_run_s += (len(chunk_bytes) // 2) / float(rate)
+        self.silent_run_s += chunk_s
 
         if not self.heard_speech:
             # Guard A — the session has produced no real audio at all.
@@ -149,7 +163,7 @@ class NoAudioGuard:
             if not forward and not self._stopped:
                 self._stopped = True
                 stop = True
-            return self._decision(rms, forward=forward, warn=warn, stop=stop)
+            return self._decision(rms, chunk_s, forward=forward, warn=warn, stop=stop)
 
         # Guard B — real speech was heard, now a sustained trailing silence
         # (a recording left running after the conversation). Signal a clean,
@@ -159,4 +173,4 @@ class NoAudioGuard:
             self._auto_paused = True
             auto_pause = True
         forward = self.silent_run_s < self.pause_after_s
-        return self._decision(rms, forward=forward, auto_pause=auto_pause)
+        return self._decision(rms, chunk_s, forward=forward, auto_pause=auto_pause)
