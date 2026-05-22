@@ -133,6 +133,10 @@ class WsSessionContext:
         self.pending_partial_chars: int = 0
         self.pending_partial_timestamps: Dict[str, Optional[float]] = {"start": None, "end": None}
         self.pending_speaker_segments: List[Dict[str, Any]] = []
+        # Distinct diarization speaker labels seen this session. The one-shot
+        # 2nd-speaker WS nudge fires the first time this reaches 2.
+        self.seen_speaker_ids: set = set()
+        self._second_speaker_announced: bool = False
         self.session_final_text_parts: List[str] = []
         self.active_draft_graph: Optional[Dict[str, str]] = None
         self.pending_draft_replacements: List[Dict[str, str]] = []
@@ -1530,6 +1534,30 @@ class WsSessionContext:
                     source_text,
                     refinement_segments,
                 )
+                # One-shot nudge: the first time diarization shows a 2nd
+                # distinct speaker, tell the frontend so it can badge the
+                # participants button. The picker no longer nags every
+                # (usually solo) session — this re-surfaces it on demand.
+                if not self._second_speaker_announced:
+                    for _seg in refinement_segments:
+                        _spk = str((_seg or {}).get("speaker") or "").strip()
+                        if _spk:
+                            self.seen_speaker_ids.add(_spk)
+                    if len(self.seen_speaker_ids) >= 2:
+                        self._second_speaker_announced = True
+                        await _safe_send_json(
+                            self.websocket,
+                            {
+                                "type": "second_speaker_detected",
+                                "speaker_count": len(self.seen_speaker_ids),
+                                "speaker_ids": sorted(self.seen_speaker_ids),
+                            },
+                        )
+                        logger.info(
+                            "[WS][SPEAKER] session=%s 2nd speaker detected speakers=%s",
+                            self.state.session_id,
+                            sorted(self.seen_speaker_ids),
+                        )
             logger.info(
                 "[WS][STT REFINE] session=%s conversation=%s provider=%s model=%s latency_ms=%s segments=%s reconciliation_applied=%s persisted_segments=%s updated_utterances=%s ambiguous_utterances=%s source_preview=%s",
                 self.state.session_id,
