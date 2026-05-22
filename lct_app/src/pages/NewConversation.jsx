@@ -15,7 +15,12 @@ import ParticipantPickerModal from "../components/conversation/ParticipantPicker
 import TranscriptSelectionToolbar from "../components/conversation/TranscriptSelectionToolbar";
 import useTextSelection from "../components/conversation/useTextSelection";
 import { triggerConsumptionPrayer, ConsumptionApiError } from "../services/consumptionApi";
-import { fetchConversationParticipants } from "../services/participantsApi";
+import {
+  fetchConversationParticipants,
+  fetchUserIdentity,
+  fetchKnownContacts,
+  putConversationParticipants,
+} from "../services/participantsApi";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { useAutoSave } from "../hooks/useAutoSave";
 import useLocalConversationDraft from "../hooks/useLocalConversationDraft";
@@ -180,32 +185,79 @@ export default function NewConversation() {
   const searchParams = new URLSearchParams(window.location.search);
   const autostart = searchParams.get("autostart") === "true";
 
-  // Auto-open the participant picker once the backend confirms the
-  // Conversation row exists. The signal arrives as a `session_started` WS
-  // message right after stt_ws_session.ensure_conversation() runs — see
-  // AudioInput → useTranscriptSockets → audioMessages plumbing. We only
-  // auto-open on the first signal per autostart visit (subsequent reconnects
-  // shouldn't re-pop the modal).
+  // The participant picker is deferred so solo recordings (the common case)
+  // aren't nagged. `session_started` arrives right after
+  // stt_ws_session.ensure_conversation() runs (AudioInput →
+  // useTranscriptSockets → audioMessages). It marks the session live, which
+  // lets the effect below seed the configured self-identity as participant 1.
+  // The picker only auto-opens (once per autostart visit) as a fallback when
+  // no self-identity is set. Stage 2 re-surfaces it via a badge on a 2nd speaker.
   const pickerAutoOpenedRef = useRef(false);
-  const handleSessionStarted = useCallback(() => {
-    if (!autostart) return;
+  const [liveSessionStarted, setLiveSessionStarted] = useState(false);
+  const handleSessionStarted = useCallback(async () => {
+    setLiveSessionStarted(true);
     if (pickerAutoOpenedRef.current) return;
     pickerAutoOpenedRef.current = true;
-    setParticipantPickerOpen(true);
+    if (!autostart) return;
+    const identity = await fetchUserIdentity();
+    if (!identity?.self_contact_id) {
+      setParticipantPickerOpen(true);
+    }
   }, [autostart]);
 
-  // Refresh the persistent name pill whenever the conversation_id changes
-  // (e.g. recovered draft) so the user sees who's already in.
+  // Load the conversation's participants whenever conversation_id changes
+  // (recovered draft, fresh session). For a live recording with none set
+  // yet, seed the configured self-identity contact as participant 1 — so a
+  // solo recording auto-names without the picker (the backend's
+  // participant_speaker_inference keys off Conversation.participants).
+  // Uploads are left untouched — liveSessionStarted is only set by the STT
+  // session_started event, never by a file upload.
   useEffect(() => {
     if (!conversationId) return undefined;
     let cancelled = false;
-    fetchConversationParticipants(conversationId).then((participants) => {
-      if (!cancelled) setSavedParticipants(participants);
-    });
+    (async () => {
+      const participants = await fetchConversationParticipants(conversationId);
+      if (cancelled) return;
+      if (participants.length > 0 || !liveSessionStarted) {
+        setSavedParticipants(participants);
+        return;
+      }
+      // Live recording, no participants yet — seed the owner.
+      const identity = await fetchUserIdentity();
+      if (cancelled) return;
+      const selfId = identity?.self_contact_id || null;
+      if (!selfId) {
+        setSavedParticipants([]);
+        return;
+      }
+      const contacts = await fetchKnownContacts();
+      if (cancelled) return;
+      const self = contacts.find((c) => c.contact_id === selfId);
+      if (!self) {
+        setSavedParticipants([]);
+        return;
+      }
+      try {
+        const saved = await putConversationParticipants({
+          conversationId,
+          participants: [
+            {
+              contact_id: self.contact_id,
+              display_name: self.display_name,
+              external_llm_ok: Boolean(self.external_llm_ok),
+              source: "self_identity",
+            },
+          ],
+        });
+        if (!cancelled) setSavedParticipants(saved);
+      } catch {
+        if (!cancelled) setSavedParticipants([]);
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [conversationId]);
+  }, [conversationId, liveSessionStarted]);
 
   // Subscribe to app-level upload context so file upload events flow into this page
   const upload = useUpload();
