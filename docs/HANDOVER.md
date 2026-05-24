@@ -30,10 +30,10 @@ file — kept for history; new handovers should be dated files, not appended her
 > **STALENESS NOTE (audited 2026-05-24):** Several items below are out of date.
 > Audit results:
 > - Frontend MVP (line 70): **DONE** — chip/drawer/toolbar wired in `NewConversation.jsx`
-> - Auto-detect path / task #17 (line 78): **STILL PENDING**
-> - WS event tasks #5, #8 (line 79): **SUPERSEDED** — picker-nudge now rides on `second_speaker_detected` (`stt_ws_session.py:1551` → `audioMessages.js:55`, commits 71e3b01 + d26e4dd)
+> - Auto-detect path / task #17 (line 78): **DONE (2026-05-24)** — `consumption_match_runner.py` wired into `stt_ws_session._persist_event` final branch; gated on `AGENDA_QUERY_DETECTOR_ENABLED`; 14 runner tests + 51 detector tests pass
+> - WS event tasks #5, #8 (line 79): **SUPERSEDED** — picker-nudge rides on `second_speaker_detected` (`stt_ws_session.py:1551` → `audioMessages.js:55`, commits 71e3b01 + d26e4dd). New `consumption_match` WS event added 2026-05-24 for the auto-detect path.
 > - Session-start contact picker / task #18 (line 80): **DONE** — `ParticipantPickerModal` (82ea2e0); deferred + auto-nudged in 71e3b01 + d26e4dd
-> - ADR / task #9 (line 81): **STILL PENDING**
+> - ADR / task #9 (line 81): **DONE (2026-05-24)** — `docs/adr/ADR-033-consumption-prayer-matching.md`
 > - IndrasNet typed-accessor migration (line 82): **DONE**
 > - IndrasNet server restart for `detect_types` fix (lines 63-68): **DONE**
 > - `consumption_trigger.py` mothballing (line 91): **STILL UNCOMMITTED**
