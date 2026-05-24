@@ -30,6 +30,7 @@ from lct_python_backend.services.consumption_match_runner import (
     should_run as should_run_consumption_match,
 )
 from lct_python_backend.services.contacts_cache import read_contacts_cache
+from lct_python_backend.services.user_identity_service import get_self_contact_id
 from lct_python_backend.services.byok_session_store import (
     BYOK_SCOPE_LLM_LIVE,
     BYOK_SCOPE_STT_LIVE,
@@ -173,9 +174,12 @@ class WsSessionContext:
         # finalized-transcript path. Off by default (feature-flag in
         # consumption_match_runner.should_run / AGENDA_QUERY_DETECTOR_ENABLED).
         # Contact names are lazy-loaded on first final from the picker's
-        # cache (services/contacts_cache.read_contacts_cache).
+        # cache (services/contacts_cache.read_contacts_cache); the fallback
+        # contact_ref is resolved on first final from the conversation's
+        # participants list (first non-self entry).
         self._consumption_contact_names: Optional[List[str]] = None
         self._consumption_contact_ref: Optional[str] = None
+        self._consumption_contact_ref_resolved: bool = False
         self._consumption_match_deduper = ConsumptionMatchDeduper()
 
         # Task tracking
@@ -316,6 +320,62 @@ class WsSessionContext:
         self._consumption_contact_names = names
         return names
 
+    async def _ensure_consumption_contact_ref(self) -> Optional[str]:
+        """Lazy-resolve the fallback contact for contact-agnostic agenda
+        queries — pick the first non-self participant on the conversation.
+
+        "Non-self" is decided by comparing each participant's contact_id to
+        the configured self_contact_id (user_identity_service). When that
+        identity isn't configured, fall back to the first participant; for
+        a typical solo recording this is the seeded self, which makes
+        "what was pending" point at the user's own list — harmless.
+
+        Result is cached on the WS session — picker writes mid-recording
+        won't re-resolve until the next session. Acceptable for MVP; the
+        toolbar manual-trigger always supplies its own contact_ref so this
+        only affects the auto path.
+        """
+        if self._consumption_contact_ref_resolved:
+            return self._consumption_contact_ref
+
+        ref: Optional[str] = None
+        try:
+            conversation_id = self.state.conversation_id
+            if conversation_id:
+                from lct_python_backend.models import Conversation as _Conversation
+                try:
+                    conv_uuid = uuid.UUID(str(conversation_id))
+                except (ValueError, TypeError):
+                    conv_uuid = None
+                if conv_uuid is not None:
+                    row = (
+                        await self.session.execute(
+                            select(_Conversation).where(_Conversation.id == conv_uuid)
+                        )
+                    ).scalar_one_or_none()
+                    participants = []
+                    if row is not None and isinstance(row.participants, list):
+                        participants = [p for p in row.participants if isinstance(p, dict)]
+                    if participants:
+                        self_cid = await get_self_contact_id(self.session)
+                        non_self = [
+                            p for p in participants
+                            if not self_cid or (p.get("contact_id") and p["contact_id"] != self_cid)
+                        ]
+                        chosen = (non_self or participants)[0]
+                        ref = (chosen.get("display_name") or chosen.get("contact_id") or "").strip() or None
+        except Exception as exc:  # noqa: BLE001 — best-effort
+            logger.debug("[consumption-match] participant resolution failed: %s", exc)
+
+        self._consumption_contact_ref = ref
+        self._consumption_contact_ref_resolved = True
+        if ref:
+            logger.info(
+                "[consumption-match] resolved fallback contact_ref=%r for conv=%s",
+                ref, self.state.conversation_id,
+            )
+        return ref
+
     async def _send_consumption_match_event(self, payload: Dict[str, Any]) -> None:
         """Adapter passed to the runner so it doesn't import _safe_send_json."""
         await _safe_send_json(self.websocket, payload)
@@ -326,10 +386,11 @@ class WsSessionContext:
         the session-level dependencies."""
         try:
             contact_names = await self._ensure_consumption_contact_names()
+            fallback_ref = await self._ensure_consumption_contact_ref()
             await run_consumption_match_for_segment(
                 segment_text=text,
                 contact_names=contact_names,
-                fallback_contact_ref=self._consumption_contact_ref,
+                fallback_contact_ref=fallback_ref,
                 conversation_id=self.state.conversation_id,
                 deduper=self._consumption_match_deduper,
                 send_ws_event=self._send_consumption_match_event,

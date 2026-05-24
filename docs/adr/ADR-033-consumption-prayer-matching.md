@@ -58,8 +58,8 @@ Per the `indrasnet-external-llm-ok-privacy-gate` memory: IndrasNet contacts carr
 
 1. **Contact cache window.** The known-contacts list is the picker's top-50 by recent activity. Speakers naming a contact outside that window won't fire name-grounded; contact-agnostic phrases still work if a participant is set.
 2. **Historical participant gap.** Confirmed Remind/Connect prayers from before this feature only have "Self" as participant. The auto-append-to-contact-note hook (IndrasNet `_auto_execute_after_approve`) populates organically only for NEW conversations. Backfill of historical participants is an IndrasNet-side task.
-3. **No participant-ref auto-population yet.** `self._consumption_contact_ref` is initialized to None in the WS session and not yet set from the participant picker. Until wired, contact-agnostic auto-matches in a session with a chosen participant will skip. Manual trigger is unaffected.
-4. **Single prayer type.** Recommend-consumption is the only active toolbar slot. Formalism / SendTo / Remind / Connect are documented placeholders in `TranscriptSelectionToolbar` — they'll come back when their semantics are designed.
+3. **Single prayer type.** Recommend-consumption is the only active toolbar slot. Formalism / SendTo / Remind / Connect are documented placeholders in `TranscriptSelectionToolbar` — they'll come back when their semantics are designed.
+4. **Fallback contact-ref snapshotted at first final, not live.** `_ensure_consumption_contact_ref` resolves the first non-self participant once per WS session and caches the result. If the user changes participants mid-recording, contact-agnostic auto-matches will still target the original. Acceptable: the toolbar's manual-trigger always carries its own contact_ref, and contact name-grounded phrases are unaffected.
 
 ## Alternatives Considered
 
