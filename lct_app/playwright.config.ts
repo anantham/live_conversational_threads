@@ -72,12 +72,15 @@ export default defineConfig({
     // },
   ],
 
-  /* Run your local dev server before starting the tests */
-  // webServer commented out - dev server already running on the configured frontend port
-  // webServer: {
-  //   command: 'npm run dev',
-  //   url: baseURL,
-  //   reuseExistingServer: !process.env.CI,
-  //   timeout: 120 * 1000, // 2 minutes to start dev server
-  // },
+  /* Run the local dev server before starting the tests. reuseExistingServer
+   * means a dev server already on the resolved port (typical local workflow)
+   * is reused; otherwise Vite is spun up automatically. CI always boots fresh. */
+  webServer: {
+    command: 'npm run dev -- --host 0.0.0.0',
+    url: baseURL,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000, // 2 minutes to start dev server
+    stdout: 'ignore',
+    stderr: 'pipe',
+  },
 });
