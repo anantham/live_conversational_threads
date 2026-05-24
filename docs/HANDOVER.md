@@ -2,10 +2,16 @@
 
 The newest handovers are **dated files** in `docs/` (newest first):
 
+- `HANDOVER_2026-05-23_no-audio-guards-e2e-quota.md` — no-audio guards A+B
+  (stop streaming dead-air to OpenAI), STT usage accounting wired
+  (`record_usage` was never called), e2e suite triage + partial de-flake,
+  `chunks`→`moments` terminology cleanup. 7 commits, all pushed. The
+  2026-05-21 CORS thread is **closed** (backend was just down — now up).
+  Open: finish e2e de-flake (#30) + config consolidation (#29).
 - `HANDOVER_2026-05-21_reconciler-and-mobile-fixes.md` — live utterance↔node
   reconciler, NodeDetail Speaker-section retirement, Part H rename UI,
   private-beta gate, the three mobile fixes (#114/#115/#116) — all pushed.
-  Ends mid-CORS-thread: the backend on 43181 is down; restart it first.
+  Ended mid-CORS-thread; that thread is resolved in the 2026-05-23 handover.
 - `HANDOVER_2026-05-20_participant-picker-pause-resume.md` — participant picker
   (incl. ad-hoc guests), contacts cache, mobile footer, Vercel/Tailscale, LCT
   under the IndrasNet supervisor, and segment-and-stitch pause/resume **shipped
@@ -20,6 +26,19 @@ file — kept for history; new handovers should be dated files, not appended her
 ---
 
 # Handover: 2026-05-18
+
+> **STALENESS NOTE (audited 2026-05-24):** Several items below are out of date.
+> Audit results:
+> - Frontend MVP (line 70): **DONE** — chip/drawer/toolbar wired in `NewConversation.jsx`
+> - Auto-detect path / task #17 (line 78): **STILL PENDING**
+> - WS event tasks #5, #8 (line 79): **SUPERSEDED** — picker-nudge now rides on `second_speaker_detected` (`stt_ws_session.py:1551` → `audioMessages.js:55`, commits 71e3b01 + d26e4dd)
+> - Session-start contact picker / task #18 (line 80): **DONE** — `ParticipantPickerModal` (82ea2e0); deferred + auto-nudged in 71e3b01 + d26e4dd
+> - ADR / task #9 (line 81): **STILL PENDING**
+> - IndrasNet typed-accessor migration (line 82): **DONE**
+> - IndrasNet server restart for `detect_types` fix (lines 63-68): **DONE**
+> - `consumption_trigger.py` mothballing (line 91): **STILL UNCOMMITTED**
+>
+> For work after 2026-05-18, see the dated handover files listed at the top of this index.
 
 ## Session Summary
 Built the consumption-prayer MVP end-to-end across LCT + IndrasNet (sibling repo at `..\TemporalCoordination\`). Manual-trigger UX: speaker selects a sentence in the live transcript → floating toolbar with prayer-type slots → "Show agenda with [contact]" → POST to LCT proxy → IndrasNet reads `## Pending discussions` from contact's Obsidian note → chip + drawer render results. While doing this, also found and fixed two unrelated IndrasNet 500s (sqlite `detect_types` crashing on T-format timestamps; `/api/settings/watched-folders` crashing on `json.loads` of an already-parsed list). Both fixes still need a server restart to deploy.
