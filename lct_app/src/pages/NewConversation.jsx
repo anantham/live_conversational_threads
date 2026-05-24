@@ -216,6 +216,17 @@ export default function NewConversation() {
   const secondSpeakerNudge =
     secondSpeakerDetected && savedParticipants.length < 2;
 
+  // Task #17 — auto-detect agenda-query WS event. Per the 2026-05-24 UX
+  // decision, this updates the chip but does NOT auto-open the drawer
+  // (manual-trigger does auto-open when items>0 — that path is the user
+  // initiating, this path is the AI surfacing). User clicks the chip to
+  // inspect; less visually disruptive during live conversation.
+  const handleConsumptionMatch = useCallback((message) => {
+    setConsumptionResult(message);
+    setConsumptionState("idle");
+    setConsumptionError("");
+  }, []);
+
   // Load the conversation's participants whenever conversation_id changes
   // (recovered draft, fresh session). For a live recording with none set
   // yet, seed the configured self-identity contact as participant 1 — so a
@@ -1228,6 +1239,7 @@ export default function NewConversation() {
             autostart={autostart}
             onSessionStarted={handleSessionStarted}
             onSecondSpeakerDetected={handleSecondSpeakerDetected}
+            onConsumptionMatch={handleConsumptionMatch}
             onFinalize={handleFinalizeFromAudio}
           />
         </div>

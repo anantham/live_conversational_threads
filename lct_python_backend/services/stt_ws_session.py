@@ -24,6 +24,12 @@ from sqlalchemy import select
 
 from lct_python_backend.models import Utterance
 from lct_python_backend.services.audio_storage import AudioStorageManager
+from lct_python_backend.services.consumption_match_runner import (
+    ConsumptionMatchDeduper,
+    run_match_for_segment as run_consumption_match_for_segment,
+    should_run as should_run_consumption_match,
+)
+from lct_python_backend.services.contacts_cache import read_contacts_cache
 from lct_python_backend.services.byok_session_store import (
     BYOK_SCOPE_LLM_LIVE,
     BYOK_SCOPE_STT_LIVE,
@@ -163,6 +169,15 @@ class WsSessionContext:
         # burned on silence. Dormant the instant any real audio is heard.
         self._no_audio_guard = NoAudioGuard()
 
+        # Auto consumption-match (#17) — agenda-query detector wired to the
+        # finalized-transcript path. Off by default (feature-flag in
+        # consumption_match_runner.should_run / AGENDA_QUERY_DETECTOR_ENABLED).
+        # Contact names are lazy-loaded on first final from the picker's
+        # cache (services/contacts_cache.read_contacts_cache).
+        self._consumption_contact_names: Optional[List[str]] = None
+        self._consumption_contact_ref: Optional[str] = None
+        self._consumption_match_deduper = ConsumptionMatchDeduper()
+
         # Task tracking
         self.background_tasks: set = set()
         self.pending_processor_final_tasks: set = set()
@@ -272,6 +287,55 @@ class WsSessionContext:
                 self.graph_persist_task = None
 
         task.add_done_callback(_clear_graph_task)
+
+    # ------------------------------------------------------------------
+    # Auto consumption-match (#17)
+    # ------------------------------------------------------------------
+
+    async def _ensure_consumption_contact_names(self) -> List[str]:
+        """Lazy-load the known-contacts list from the picker's cache.
+
+        Cached per session — refresh happens implicitly because the cache
+        itself is stale-while-revalidate (services/contacts_cache.py).
+        Empty list on failure; the detector still runs (contact-agnostic
+        phrases work) but name-grounded templates can't expand.
+        """
+        if self._consumption_contact_names is not None:
+            return self._consumption_contact_names
+        names: List[str] = []
+        try:
+            cache = await read_contacts_cache(self.session)
+            if cache and isinstance(cache.get("contacts"), list):
+                names = [
+                    str(c.get("display_name") or "").strip()
+                    for c in cache["contacts"]
+                    if isinstance(c, dict) and c.get("display_name")
+                ]
+        except Exception as exc:  # noqa: BLE001 — best-effort cache read
+            logger.debug("[consumption-match] contact cache read failed: %s", exc)
+        self._consumption_contact_names = names
+        return names
+
+    async def _send_consumption_match_event(self, payload: Dict[str, Any]) -> None:
+        """Adapter passed to the runner so it doesn't import _safe_send_json."""
+        await _safe_send_json(self.websocket, payload)
+
+    async def _run_consumption_match(self, text: str) -> None:
+        """Fire-and-forget agenda-query detector for one final segment.
+        Errors are swallowed inside the runner — this wrapper just adds
+        the session-level dependencies."""
+        try:
+            contact_names = await self._ensure_consumption_contact_names()
+            await run_consumption_match_for_segment(
+                segment_text=text,
+                contact_names=contact_names,
+                fallback_contact_ref=self._consumption_contact_ref,
+                conversation_id=self.state.conversation_id,
+                deduper=self._consumption_match_deduper,
+                send_ws_event=self._send_consumption_match_event,
+            )
+        except Exception as exc:  # noqa: BLE001 — fire-and-forget
+            logger.warning("[consumption-match] runner failed: %s", exc)
 
     def _merge_pending_partial_timestamps(self, timestamps: Optional[Dict[str, Any]]) -> None:
         if not isinstance(timestamps, dict):
@@ -1351,6 +1415,13 @@ class WsSessionContext:
                     )
                 )
             )
+            # Task #17 — fire-and-forget agenda-query detector. Off behind
+            # AGENDA_QUERY_DETECTOR_ENABLED; gated so an unhandled error
+            # here never affects the live STT path.
+            if should_run_consumption_match():
+                self._track_background_task(
+                    asyncio.create_task(self._run_consumption_match(normalized_text))
+                )
 
         if emit_to_client:
             await _safe_send_json(
