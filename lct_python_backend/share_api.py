@@ -40,20 +40,26 @@ Two security boundaries this carries:
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
 import secrets
+import time
 import uuid
 from datetime import datetime
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from lct_python_backend.config import AUDIO_RECORDINGS_DIR
 from lct_python_backend.db import get_async_session
 
 logger = logging.getLogger(__name__)
@@ -61,6 +67,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+
+# Server secret for HMAC-signing per-share audio URLs. The signature
+# carries (share_token, expiry) so a leaked audio URL only works until
+# expiry and only for the specific share. Auto-generated at import time
+# if not set, with a loud warning — the audio URLs minted in one server
+# process will stop verifying after a restart, but that's acceptable
+# (the recipient just hits the share page again and gets a fresh URL).
+SHARE_AUDIO_SIGNING_KEY = os.getenv("SHARE_AUDIO_SIGNING_KEY")
+if not SHARE_AUDIO_SIGNING_KEY:
+    SHARE_AUDIO_SIGNING_KEY = secrets.token_urlsafe(48)
+    logger.warning(
+        "SHARE_AUDIO_SIGNING_KEY not set; using a per-process random key. "
+        "Audio URLs minted by this process will stop working after restart. "
+        "Set a stable value in .env for persistent share audio links."
+    )
+
+# How long a signed audio URL is valid. Refreshed on every share-fetch.
+# 1 hour is enough for a recipient to listen through a long conversation
+# without re-fetching; short enough that a leaked URL has a tight window.
+SHARE_AUDIO_SIGNATURE_TTL_SECONDS = 60 * 60
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +193,69 @@ async def _verify_google_id_token(id_token_str: str) -> str:
     if not info.get("email_verified", False):
         raise HTTPException(status_code=403, detail="Google account email is not verified.")
     return str(email).strip().lower()
+
+
+_AUDIO_MEDIA_TYPES = {
+    ".wav": "audio/wav",
+    ".flac": "audio/flac",
+    ".m4a": "audio/mp4",
+    ".mp3": "audio/mpeg",
+    ".ogg": "audio/ogg",
+    ".aac": "audio/aac",
+    ".webm": "audio/webm",
+    ".mp4": "audio/mp4",
+}
+
+
+def _resolve_audio_file(conversation_id: str) -> Optional[Tuple[Path, str]]:
+    """Look up the recording file for a conversation; return (path,
+    media_type) or None. Mirrors factcheck_api.download_audio resolution
+    logic — we don't import that function because it's wrapped in HTTP
+    auth checks that don't apply here."""
+    recordings_root = Path(AUDIO_RECORDINGS_DIR).resolve()
+    for suffix, media_type in _AUDIO_MEDIA_TYPES.items():
+        candidate = Path(AUDIO_RECORDINGS_DIR) / f"{conversation_id}{suffix}"
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            continue
+        if not str(resolved).startswith(str(recordings_root)):
+            # Path-traversal guard. resolve() collapses ../ etc., so we
+            # check that the resolved path lives inside the recordings
+            # root before trusting it.
+            continue
+        if candidate.exists():
+            return candidate, media_type
+    return None
+
+
+def _sign_audio_url(share_token: str, expires_unix: int) -> str:
+    """HMAC-SHA256 over '<share_token>|<expires_unix>' → base64url. Both
+    inputs go into the payload so a sig for one share can't unlock
+    another, and so the signer can verify expiry without trusting the
+    client."""
+    msg = f"{share_token}|{expires_unix}".encode("utf-8")
+    digest = hmac.new(
+        SHARE_AUDIO_SIGNING_KEY.encode("utf-8"),
+        msg,
+        hashlib.sha256,
+    ).digest()
+    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+
+def _verify_audio_signature(share_token: str, expires_unix: int, sig: str) -> bool:
+    """Constant-time compare against the expected HMAC."""
+    expected = _sign_audio_url(share_token, expires_unix)
+    return hmac.compare_digest(expected, sig)
+
+
+def _build_share_audio_url(share_token: str) -> Tuple[str, int]:
+    """Mint a signed audio URL valid for SHARE_AUDIO_SIGNATURE_TTL_SECONDS.
+    Returns (url, expires_unix)."""
+    expires_unix = int(time.time()) + SHARE_AUDIO_SIGNATURE_TTL_SECONDS
+    sig = _sign_audio_url(share_token, expires_unix)
+    url = f"/api/share/{share_token}/audio?expires={expires_unix}&sig={sig}"
+    return url, expires_unix
 
 
 def _share_row_to_model(row) -> ShareRow:
@@ -403,6 +492,16 @@ async def fetch_share(
     except Exception:
         logger.exception("Failed to bump share view counters (token=%s)", token)
 
+    # Per-share audio URL (Phase 3). Recipients hit this URL via the
+    # <audio> tag, which doesn't send Authorization headers — so auth
+    # rides in the URL itself as a short-lived HMAC signature. The
+    # signature binds (share_token, expiry); leaking the URL only
+    # leaks audio access for this share until expiry.
+    audio_url: Optional[str] = None
+    audio_url_expires: Optional[int] = None
+    if _resolve_audio_file(str(conversation.id)) is not None:
+        audio_url, audio_url_expires = _build_share_audio_url(token)
+
     return {
         "conversation_id": str(conversation.id),
         "conversation_name": conversation.conversation_name,
@@ -410,9 +509,59 @@ async def fetch_share(
         "executive_summary": getattr(conversation, "executive_summary", None),
         "graph_data": graph_data,
         "chunk_dict": chunk_dict,
+        "audio_url": audio_url,
+        "audio_url_expires": audio_url_expires,
         "share": {
             "token": token,
             "viewer_email": verified_email,
             "restricted": allowed_emails is not None,
         },
     }
+
+
+@router.get("/api/share/{token}/audio")
+async def fetch_share_audio(
+    token: str,
+    expires: int = Query(..., description="Unix epoch seconds the signed URL is valid until."),
+    sig: str = Query(..., description="HMAC signature over '<token>|<expires>'."),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """
+    Per-share audio download.
+
+    Auth: the URL itself carries (expires, sig). HMAC-signed over
+    (share_token, expires) using SHARE_AUDIO_SIGNING_KEY. Constant-time
+    verified. No Google ID token needed here — the recipient already
+    passed the Google gate to obtain this URL in the share-fetch
+    response, and the short expiry (1 hour) bounds how long a leak is
+    useful.
+
+    The endpoint also re-checks the share row's revoke/expiry state so
+    revoking a share kills audio access immediately (within the
+    HMAC's lifetime; an outstanding signed URL is still walking around
+    in the recipient's browser until it expires, but the underlying
+    share row is now revoked, so this endpoint refuses).
+    """
+    if int(time.time()) > expires:
+        raise HTTPException(status_code=410, detail="Audio URL has expired.")
+    if not _verify_audio_signature(token, expires, sig):
+        raise HTTPException(status_code=403, detail="Invalid audio URL signature.")
+
+    row = (
+        await db.execute(
+            text("SELECT conversation_id, revoked_at, expires_at FROM shared_conversation_links WHERE token = :token"),
+            {"token": token},
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Share not found.")
+    if row.revoked_at is not None:
+        raise HTTPException(status_code=410, detail="Share has been revoked.")
+    if row.expires_at is not None and row.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=410, detail="Share has expired.")
+
+    audio = _resolve_audio_file(str(row.conversation_id))
+    if audio is None:
+        raise HTTPException(status_code=404, detail="Audio recording not found.")
+    path, media_type = audio
+    return FileResponse(path, media_type=media_type)

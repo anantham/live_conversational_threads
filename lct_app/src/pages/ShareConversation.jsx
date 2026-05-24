@@ -127,19 +127,16 @@ export default function ShareConversation() {
         const payload = await resp.json();
         setConversationPayload(payload);
 
-        // Audio URL — share endpoint doesn't proxy audio (Phase 2 work).
-        // For now, the share response carries the conversation_id so we
-        // can construct the standard audio download URL; that endpoint
-        // bypasses AUTH_TOKEN per its own AUDIO_DOWNLOAD_TOKEN gate.
-        const convId = payload?.conversation_id;
-        if (convId) {
-          // Best-effort — endpoint may 404 if no audio exists; that's fine.
-          fetch(`${API_BASE_URL}/api/conversations/${convId}/audio/status`)
-            .then((r) => (r.ok ? r.json() : null))
-            .then((s) => {
-              if (s?.download_url) setAudioDownloadUrl(s.download_url);
-            })
-            .catch(() => {});
+        // Phase 3 — the share-fetch returns a per-share HMAC-signed
+        // audio URL. Replaces the previous Phase 2 path that hit the
+        // global conversation audio endpoint and inherited
+        // AUDIO_DOWNLOAD_TOKEN. The signed URL binds to the share
+        // token + a 1-hour expiry; revoking the share kills audio
+        // access at the next request (the audio endpoint re-checks).
+        if (payload?.audio_url) {
+          setAudioDownloadUrl(payload.audio_url);
+        } else {
+          setAudioDownloadUrl("");
         }
 
         setStatus("ready");
