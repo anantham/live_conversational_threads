@@ -37,6 +37,15 @@ HEALTH_PATHS: Set[str] = {
     "/api/bookmarks/health",
 }
 
+# Share-link endpoints enforce their own auth (Google ID token + per-share
+# email allowlist; see share_api.py). The fetch endpoint is invoked by
+# recipients who don't have the global AUTH_TOKEN, so it must bypass this
+# middleware. Owner-side share endpoints (POST/DELETE/GET-list) live under
+# /api/conversations/{id}/share and stay on the main AUTH_TOKEN path.
+PUBLIC_PATH_PREFIXES: Tuple[str, ...] = (
+    "/api/share/",
+)
+
 ADMIN_PATH_PREFIXES: Tuple[str, ...] = (
     "/api/settings",
     "/api/analytics",
@@ -96,6 +105,13 @@ def _normalize_path(path: str) -> str:
 
 def _is_health(path: str) -> bool:
     return _normalize_path(path) in HEALTH_PATHS
+
+
+def _is_public_share(path: str) -> bool:
+    """Share-link endpoints enforce their own per-share Google gate;
+    AUTH_TOKEN middleware must not block recipients who don't have it."""
+    norm = _normalize_path(path)
+    return any(norm.startswith(prefix.rstrip("/")) for prefix in PUBLIC_PATH_PREFIXES)
 
 
 def _is_audio_download(path: str) -> bool:
@@ -181,6 +197,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if _is_audio_download(path):
+            return await call_next(request)
+
+        if _is_public_share(path):
+            # Share-fetch enforces its own Google ID token check per share's
+            # email allowlist. AUTH_TOKEN does not apply to recipients.
             return await call_next(request)
 
         auth_header = request.headers.get("authorization")
