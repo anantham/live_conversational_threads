@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import Home from "../pages/Home";
 import NewConversation from "../pages/NewConversation";
 import ViewConversation from "../pages/ViewConversation";
+import ShareConversation from "../pages/ShareConversation";
 import Browse from "../pages/Browse";
 import Import from "../pages/Import";
 import Analytics from "../pages/Analytics";
@@ -23,6 +24,10 @@ export default function AppRoutes() {
       <Route path="/browse" element={<Browse />} />
       <Route path="/import" element={<Import />} />
       <Route path="/conversation/:conversationId" element={<ViewConversation />} />
+      {/* Public read-only share. AUTH_TOKEN does not apply to recipients;
+          /share/<token> renders the conversation in read-only mode after
+          per-share Google ID verification (when the share is restricted). */}
+      <Route path="/share/:token" element={<ShareConversation />} />
       <Route path="/analytics/:conversationId" element={<Analytics />} />
       <Route path="/edit-history/:conversationId" element={<EditHistory />} />
       <Route path="/simulacra/:conversationId" element={<SimulacraAnalysis />} />
