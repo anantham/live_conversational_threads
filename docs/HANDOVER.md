@@ -2,6 +2,12 @@
 
 The newest handovers are **dated files** in `docs/` (newest first):
 
+- `HANDOVER_2026-05-25_auto-detect-and-staleness-audit.md` — audited the
+  2026-05-18 inline entry (substantially stale: 3 done, 2 superseded, 2
+  still pending); closed both real pending items by wiring auto-detect
+  agenda-query into the live STT path (#17) and writing ADR-033 (#9).
+  Bonus: resolved fallback `_consumption_contact_ref` from conversation
+  participants, closing ADR-033 limitation #3. 4 commits, all pushed.
 - `HANDOVER_2026-05-23_no-audio-guards-e2e-quota.md` — no-audio guards A+B
   (stop streaming dead-air to OpenAI), STT usage accounting wired
   (`record_usage` was never called), e2e suite triage + partial de-flake,
