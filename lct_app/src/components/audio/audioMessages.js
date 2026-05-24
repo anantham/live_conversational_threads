@@ -7,6 +7,7 @@ const createBackendMessageHandler =
     onSessionAck,
     onSessionStarted,
     onSecondSpeakerDetected,
+    onConsumptionMatch,
     onPong,
     onSttProviderStateChange,
     onProcessingStatus,
@@ -56,6 +57,16 @@ const createBackendMessageHandler =
         onSecondSpeakerDetected?.(message);
         logToServer?.(
           `Second speaker detected: ${(message.speaker_ids || []).join(", ") || "?"}`
+        );
+      }
+      if (message.type === "consumption_match") {
+        onConsumptionMatch?.(message);
+        logToServer?.(
+          `Consumption match (${message.source || "auto"}): phrase=${
+            message.matched_phrase || "?"
+          } contact=${message.contact?.display_name || "?"} items=${
+            message.item_count ?? 0
+          }`
         );
       }
       if (message.type === "session_ack") {
