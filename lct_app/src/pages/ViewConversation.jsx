@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Download, FileJson } from "lucide-react";
+import { Download, FileJson, Share2 } from "lucide-react";
+import ShareManagerModal from "../components/share/ShareManagerModal";
 
 import {
   buildConversationDebugExport,
@@ -274,6 +275,7 @@ export default function ViewConversation() {
   // lines. Backend observability is best-effort: failure to fetch it
   // still produces a usable export.
   const [exportBusy, setExportBusy] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
   const handleExportJson = useCallback(async () => {
     if (exportBusy) return;
     setExportBusy(true);
@@ -405,6 +407,17 @@ export default function ViewConversation() {
             </button>
           )}
           {allNodes.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShareModalOpen(true)}
+              className="flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors p-1"
+              title="Share this conversation"
+              aria-label="Share conversation"
+            >
+              <Share2 size={16} />
+            </button>
+          )}
+          {allNodes.length > 0 && (
             <span className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[11px] text-slate-500">
               {allNodes.length} nodes
             </span>
@@ -519,6 +532,12 @@ export default function ViewConversation() {
         onSelect={(nodeId) => setSelectedNode(nodeId)}
         onClose={() => setSearchOpen(false)}
       />
+      {shareModalOpen && (
+        <ShareManagerModal
+          conversationId={conversationId}
+          onClose={() => setShareModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
