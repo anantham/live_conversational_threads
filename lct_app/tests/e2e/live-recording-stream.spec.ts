@@ -82,6 +82,13 @@ async function captureSnapshot(page: Page, t0: number): Promise<Snapshot> {
 }
 
 test('watch live recording stream + graph construction', async ({ page }) => {
+  // Opt-in: this spec needs a real STT path (OpenAI key + live backend) and
+  // burns up to 8 minutes per run. Off by default so CI / normal runs stay
+  // fast. Set RUN_STT_E2E=1 to enable.
+  test.skip(
+    !process.env.RUN_STT_E2E,
+    'set RUN_STT_E2E=1 to run the live STT recording spec (needs OpenAI key + real STT)'
+  );
   test.setTimeout(8 * 60 * 1000); // 8 minutes max for a 24s clip; gives slack for STT/LLM
 
   expect(fs.existsSync(AUDIO_FIXTURE), `fixture missing: ${AUDIO_FIXTURE}`).toBe(true);

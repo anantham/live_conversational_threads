@@ -24,7 +24,8 @@ test.describe('Authored hierarchy tabs render correctly post-backfill', () => {
       waitUntil: 'domcontentloaded',
       timeout: 30000,
     });
-    await page.waitForTimeout(4000);
+    // Wait for React Flow to render at least one node instead of a blind sleep.
+    await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 30000 });
 
     const tabResults: Array<{ tab: string; nodeCount: number }> = [];
 
@@ -47,7 +48,9 @@ test.describe('Authored hierarchy tabs render correctly post-backfill', () => {
       } else {
         await candidate.click().catch(() => {});
       }
-      await page.waitForTimeout(1500);
+      // Wait for the new tab's nodes to render; the assertion below requires
+      // nodeCount > 0, so polling for first-node visibility is the right wait.
+      await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 10000 });
       const nodeCount = await page.locator('.react-flow__node').count();
       tabResults.push({ tab, nodeCount });
       console.log(`tab=${tab}: rendered ${nodeCount} react-flow nodes`);
