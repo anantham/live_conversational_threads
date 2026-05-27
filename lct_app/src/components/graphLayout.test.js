@@ -47,17 +47,65 @@ describe("layoutByThread", () => {
     expect(layoutByThread([], [])).toEqual([]);
   });
 
-  it("falls back to Dagre with <2 distinct threads", () => {
-    // Single-thread input — should not produce a degenerate single-row stack.
+  it("uses column-walk grid for single-thread with no edges", () => {
+    // Dagre with no edges puts every node at rank 0 and stacks them at x=0.
+    // The column-walk loop spreads them across distinct x positions instead.
+    const nodes = [
+      makeNode("a", { fullData: { thread_id: "T1" } }),
+      makeNode("b", { fullData: { thread_id: "T1" } }),
+      makeNode("c", { fullData: { thread_id: "T1" } }),
+    ];
+    const out = layoutByThread(nodes, []);
+    expect(out).toHaveLength(3);
+    const xs = new Set(out.map((n) => n.position.x));
+    expect(xs.size).toBe(3);
+  });
+
+  it("uses Dagre for single-thread when edges are present", () => {
+    // Dagre's rank-based layout is still useful when edges define an order.
     const nodes = [
       makeNode("a", { fullData: { thread_id: "T1" } }),
       makeNode("b", { fullData: { thread_id: "T1" } }),
     ];
-    const out = layoutByThread(nodes, []);
+    const edges = [{ source: "a", target: "b" }];
+    const out = layoutByThread(nodes, edges);
     expect(out).toHaveLength(2);
-    // Each node has a position from Dagre — but Dagre may place same-rank
-    // siblings at the same x without an edge to disambiguate.
     out.forEach((n) => expect(n.position).toBeDefined());
+  });
+
+  it("spreads degenerate-timestamp nodes (all timestamp_start identical)", () => {
+    // Consolidated tiers can carry the full conversation span on every
+    // node — timestamp_start=0, timestamp_end=duration. Without a guard,
+    // the time-axis collapses every node to x=0 and they stack.
+    const nodes = Array.from({ length: 5 }, (_, i) =>
+      makeNode(`n-${i}`, {
+        fullData: {
+          thread_id: "shared-thread",
+          timestamp_start: 0,
+          timestamp_end: 469.504,
+        },
+      })
+    );
+    const out = layoutByThread(nodes, [], { timeBased: true });
+    expect(out).toHaveLength(5);
+    const xs = new Set(out.map((n) => n.position.x));
+    expect(xs.size).toBe(5);
+  });
+
+  it("uses time-axis layout when timestamps have positive span", () => {
+    // Sanity check: positive span still routes to time-axis, x scales
+    // with timestamp_start.
+    const nodes = [
+      makeNode("early", {
+        fullData: { thread_id: "T1", timestamp_start: 0, timestamp_end: 10 },
+      }),
+      makeNode("late", {
+        fullData: { thread_id: "T1", timestamp_start: 100, timestamp_end: 110 },
+      }),
+    ];
+    const out = layoutByThread(nodes, [], { timeBased: true, pixelsPerSecond: 5 });
+    const xByName = new Map(out.map((n) => [n.id, n.position.x]));
+    expect(xByName.get("early")).toBeLessThan(xByName.get("late"));
   });
 
   it("places largest thread on the top row", () => {
