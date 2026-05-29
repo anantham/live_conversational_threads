@@ -73,7 +73,14 @@ This preserves the *sound* (readable inline) and the *exact word* (native script
 | **IndicWhisper** | open | 12 Indian langs incl. Hindi | mlx-whisper-compatible | Whisper-medium fine-tune; strong Hindi |
 | **Meta Omnilingual ASR 300M/1B** | Apache-2.0 | 1,600+ langs incl. Hindi, **Malayalam** | PyTorch (300M viable on 8 GB) | long-tail / Sanskrit-adjacent; zero-shot new langs |
 
-**Recommended future default for Malayalam code-switch:** **Whisper large-v3** (broad, Malayalam-capable, already in our stack) for capture, with **IndicConformer-600M** as the higher-Indic-fidelity option when Malayalam/Sanskrit accuracy matters. Transliteration via **IndicXlit**.
+**Recommended future default for Malayalam code-switch:** **Whisper large-v3** (broad, Malayalam-capable, already in our stack) for capture; **`mlx-community/whisper-medium-malayalam-mlx`** (Apache-2.0, 1.52 GB, Metal/MLX, ~4× realtime) as a Malayalam-fine-tuned on-device option; **IndicConformer-600M** when Malayalam/Sanskrit fidelity matters. Transliteration via **IndicXlit** (AI4Bharat). Concrete recipes captured in `.tmp/stt_bench/` research output.
+
+### Tooling reality (2026 research — why this is a post-process, not an ASR feature)
+The deciding finding: **no production-grade Malayalam-English *code-switch-trained* ASR exists.** Consequences for whoever builds this:
+- ASR models emit **one script per segment** (pure Malayalam *or* pure English), not mixed — so the `roman (native)` rendering **must** be produced by the post-processing/LLM step, not expected from the recognizer. (This is why the pipeline splits recognize/render.)
+- `initial_prompt` seeding helps but only biases the **first ~30 s**; longer audio reverts to learned behavior. Don't rely on it for sustained code-switch.
+- `language="ml"` forces Malayalam (suppresses English); `language=None` risks misclassifying Malayalam as Tamil/Punjabi given training scarcity. Neither yields clean mixed output alone.
+- Production accuracy on real Manglish would require **fine-tuning** (soft-prompt / synthetic code-switch data). Budget for it before promising quality. `kurianbenoy/vegam-whisper-medium-ml` (CTranslate2, CPU-only on Mac) is the maintained Malayalam baseline to fine-tune from.
 
 ### Sanskrit / Pali — experimental
 Genuinely immature: existing models approach ~99% WER on Vedic/poetic Sanskrit; Pali has no production-grade open model. IndicConformer and Omnilingual *list* Sanskrit, but treat it as research-grade and **budget for fine-tuning + validation on real audio** before promising it.
