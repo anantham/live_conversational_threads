@@ -1,6 +1,19 @@
 # ISSUES
 
-Last updated: 2026-05-18
+Last updated: 2026-05-29
+
+## Full-offline local bring-up: bugs + config gaps (2026-05-29)
+
+Found wiring a fully-local (no-cloud) run + E2E on branch `feat/e2e-audio-graph-zoom`.
+
+- **[FIXED] `share_api` wrong-module import (blocking, on `main`).** `lct_python_backend/share_api.py:63` imported `get_async_session` from `lct_python_backend.db` (only exposes `Database`), not `lct_python_backend.db_session` (canonical; ~18 other API modules use it). Backend crashed at import (`ImportError: cannot import name 'get_async_session'`). Any fresh boot of `backend.py` hits this. Fixed.
+- **[FIXED] Missing `greenlet` dependency (blocking).** SQLAlchemy async (`db_session.py` `create_async_engine`/`AsyncSession`) requires `greenlet`; pinned `sqlalchemy==2.0.25` markers didn't pull it on this platform → every async-DB request 500'd ("the greenlet library is required... No module named 'greenlet'"). Added `greenlet>=3.0.0` to `lct_python_backend/requirements.txt`.
+- **[CONFIG] `STT_HTTP_TIMEOUT_SECONDS` default too low for file STT.** `.env.example` ships `10` (code default 30). Multi-minute audio via remote whisper exceeds it → `WriteTimeout` after retries (~77s) and the upload SSE errors. Worked around with 600 locally. Recommend a larger default for the upload/file path or a dedicated upload-timeout knob separate from the live-STT chunk timeout.
+- **[CONFIG] Default local chat model `glm-4.6v-flash` unusable for graph-gen.** It is a vision model; the transcript→graph JSON call takes >120s on the RTX LM Studio → hits `LOCAL_LLM_TIMEOUT_SECONDS=120`, then falls back to Modal Qwen (unreachable) → graph never generates. Switched to `openai/gpt-oss-20b` (~6s warm). Recommend a fast text default.
+- **[CONFIG] LM Studio rejects `response_format: json_object`.** Errors `'response_format.type' must be 'json_schema' or 'text'`. With `LOCAL_LLM_JSON_MODE=true` the gateway 400s then retries text-mode. Set `LOCAL_LLM_JSON_MODE=false` to avoid the churn; consider gateway `json_schema` support.
+- **[CONFIG] Dead online fallbacks remain in offline mode.** With `DEFAULT_LLM_MODE=local` the provider chain still includes Modal Qwen + OpenRouter; Modal is unreachable (ReadTimeout) and is tried on any local failure, adding latency. True-offline should make the provider list local-only.
+- **[LATENT BUG] `ZoomControls.jsx:11` imports `useEffect` from `'prop-types'`** (should be `'react'`). If that component mounts, its keyboard-shortcut `useEffect` throws. The live level-of-detail UI is the `MinimalGraph` tier-tab strip (`moments/ideas/topics/themes/arcs`), not `ZoomControls`, so this is currently latent. Fix the import or remove the unused component.
+- **[PERF] IndrasNet whisper (:7777) ~4× realtime.** 20s→86s; full 8-min file ≈ 25–35 min. Not blocking but slow for large imports; worth profiling the orchestrator (model size / diarization cost) from the IndrasNet side.
 
 ## Consumption-prayer feature follow-ups (2026-05-18)
 

@@ -1,5 +1,16 @@
 # WORKLOG
 
+## 2026-05-29 — Full-offline local bring-up + E2E audio→graph→levels-of-detail (branch `feat/e2e-audio-graph-zoom`)
+
+Goal (user-directed, autonomous-on-a-branch): run the app fully locally with NO cloud STT/LLM, and a Playwright test that uploads `Voice message.ogg` and shows the conversation graph at different levels of detail.
+
+- **Environment built from scratch** (machine had none): Homebrew `ffmpeg`, `node@26`, `python@3.12`, `postgresql@15`. `.venv` on **Python 3.12** (system default 3.14 breaks pinned `numpy`/`asyncpg`/`psycopg2` wheels). `npm install` (root + `lct_app`) + `npx playwright install chromium`. Local Postgres cluster `initdb` at `.postgres_data` on **:5433**, db `lct_dev`, 12 alembic migrations applied (pgvector extension absent → claim-embedding index skipped; non-blocking).
+- **`.env`** (gitignored) from `.env.example` with offline overrides: `DEFAULT_LLM_MODE=local`, `LOCAL_LLM_BASE_URL=http://100.81.65.74:1234` (RTX LM Studio over Tailscale = user-owned hw), `LOCAL_LLM_CHAT_MODEL=openai/gpt-oss-20b`, `LOCAL_LLM_JSON_MODE=false`, `DEFAULT_STT_PROVIDER=whisper` → `DEFAULT_STT_WHISPER_HTTP_URL=http://100.81.65.74:7777/api/transcribe` (IndrasNet), `STT_UPLOAD_LOCAL_FIRST=false` (local Parakeet :5092 not running), `STT_HTTP_TIMEOUT_SECONDS=600`. Run via `npm run dev` (`scripts/dev.js` → frontend :43173, backend :43180).
+- **Bugs fixed (preexisting on `main`; see ISSUES.md 2026-05-29):** `share_api.py:63` imported `get_async_session` from `.db` (no symbol) instead of `.db_session` → backend crashed on import. Missing `greenlet` (SQLAlchemy async) → every async-DB request 500'd; added to `lct_python_backend/requirements.txt`.
+- **Config worked around in `.env` (not code):** the shipped `STT_HTTP_TIMEOUT_SECONDS=10` is far too low for file transcription (`WriteTimeout`); default local chat model `glm-4.6v-flash` is a vision model, >120s for graph-gen → switched to `gpt-oss-20b` (~6s warm); LM Studio rejects `response_format: json_object` → `LOCAL_LLM_JSON_MODE=false`.
+- **Test:** `lct_app/tests/e2e/audio-graph-zoom.spec.ts` — uploads audio on `/new` (or opens an existing conversation via `CONVERSATION_ID`), opens `/conversation/<id>`, then walks the MinimalGraph tier tabs (`moments/ideas/topics/themes/arcs`) clicking each and recording node counts + sample labels + full-page screenshots; writes `.tmp/e2e_zoom_report.md`.
+- **Result:** full pipeline verified offline — RTX whisper transcription + speaker diarization (SPEAKER_00/01/02) → local `gpt-oss-20b` graph gen → graph rendered. Levels of detail confirmed on a 3-min slice: **moments=23 → ideas=4 → topics/themes/arcs=2** (`detailVaries=true`). Screenshots in `.tmp/e2e_zoom_screenshots/`. Full 8-min `Voice message.ogg` build running via the import endpoint for the final artifact (transcription ~4× realtime).
+
 ## 2026-05-07T07:41:36+05:30
 - Hardened the frontend dependency tree after the deployment security review surfaced npm advisories.
 - Files modified:
