@@ -34,10 +34,13 @@ In `lct_python_backend/.env` (gitignored), set the whisper provider URL to local
 
 ```bash
 DEFAULT_STT_PROVIDER=whisper
-DEFAULT_STT_WHISPER_HTTP_URL=http://localhost:5095/v1/audio/transcriptions
+DEFAULT_STT_WHISPER_HTTP_URL=http://127.0.0.1:5095/v1/audio/transcriptions  # 127.0.0.1, NOT localhost
 STT_UPLOAD_LOCAL_FIRST=true      # prefer on-device for uploads
 # STT_LOCAL_ONLY=true            # optional: fully offline (no cloud fallback)
 ```
+
+> **Use `127.0.0.1`, not `localhost`.** The server binds IPv4; some clients resolve
+> `localhost` to IPv6 `::1` and fail with `ConnectError: All connection attempts failed`.
 
 To use **cloud** instead (e.g. on a thin laptop): set `STT_LOCAL_ONLY=false` and
 select a cloud provider (OpenAI / OpenRouter) in Settings, or point the URL back
