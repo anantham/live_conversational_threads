@@ -1,0 +1,6 @@
+# LCT local on-device STT server (Apple Silicon). Kept separate from the backend
+# venv so heavy ML deps don't bloat the main app.
+mlx-whisper>=0.4.0      # Whisper on MLX (Metal/ANE); multilingual incl. Malayalam
+fastapi>=0.115.0
+uvicorn>=0.34.0
+python-multipart>=0.0.20  # required for multipart file uploads
