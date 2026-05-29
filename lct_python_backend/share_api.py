@@ -60,7 +60,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.config import AUDIO_RECORDINGS_DIR
-from lct_python_backend.db import get_async_session
+from lct_python_backend.db_session import get_async_session
 
 logger = logging.getLogger(__name__)
 
