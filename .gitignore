@@ -213,4 +213,26 @@ outputs/
 # Local replay / probe artifacts
 tmp/
 .tmp/
+.tmp_validation/
 .playwright-mcp/
+
+# Syncthing conflict/temp files
+~syncthing~*
+**/~syncthing~*
+*.sync-conflict-*
+
+# Local visual verification screenshots and snapshots
+/*.png
+/overlap-snapshot.yml
+
+# Ad-hoc replay/probe artifacts from ADR/debug sessions
+/scripts/ab_test_prompts.py
+/scripts/consolidation_observations.json
+/scripts/critique_772.py
+/scripts/critique_772/
+/scripts/dump_llm_inputs_772.py
+/scripts/enrich_conversation.py
+/scripts/inspect_772.py
+/scripts/probe_openai_known_speakers.py
+/scripts/replay_772ac0cc.py
+/scripts/replay_observations.json
