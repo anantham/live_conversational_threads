@@ -19,6 +19,11 @@ export default function CruxAnalysis() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState(null);
+  // Whether crux detection has run THIS session. GET /cruxes returns total_nodes
+  // for any conversation with a graph, so node-count alone must NOT count as
+  // "analyzed" — otherwise first-time visitors see a false "no cruxes" instead of
+  // the Find-cruxes CTA.
+  const [analyzed, setAnalyzed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,6 +49,7 @@ export default function CruxAnalysis() {
     try {
       const data = await analyzeCruxes(conversationId, true);
       setResults(data);
+      setAnalyzed(true);
       if (data.error) setError(data.error);
     } catch (err) {
       setError(`Analysis failed: ${err.message}`);
@@ -64,7 +70,9 @@ export default function CruxAnalysis() {
   }
 
   const cruxes = (results && results.cruxes) || [];
-  const hasRun = results && (results.crux_count > 0 || (results.total_nodes || 0) > 0);
+  // Show the results view only once cruxes exist or detection ran this session;
+  // otherwise show the "Find cruxes" CTA (a non-empty graph alone isn't analysis).
+  const hasRun = analyzed || (results && results.crux_count > 0);
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
