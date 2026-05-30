@@ -76,8 +76,19 @@ export default function InferenceLanes() {
   // ── per-capability "make primary" handlers (load → merge → save) ───────────
 
   const setSttPrimary = useCallback(
-    (entry) =>
-      guarded(async () => {
+    (entry) => {
+      // Whisper-family engines share provider_key 'whisper'. Without their own HTTP
+      // endpoint, saving provider='whisper' silently resolves back to the default
+      // local server — so don't fake the switch; point the user at Advanced.
+      if (entry.provider_key === 'whisper' && !entry.endpoint) {
+        setNotice({
+          kind: 'warn',
+          text: `${entry.display_name} needs its own HTTP endpoint first — set the whisper URL under Advanced → STT endpoints, then it can be the active engine.`,
+        });
+        setTimeout(() => setNotice(null), 7000);
+        return undefined;
+      }
+      return guarded(async () => {
         const cur = sttSettings || (await getSttSettings());
         const next = { ...cur, provider: entry.provider_key };
         if (entry.provider_key === 'whisper' && entry.endpoint) {
@@ -85,16 +96,29 @@ export default function InferenceLanes() {
           next.http_url = entry.endpoint;
         }
         await updateSttSettings(next);
-      }, `STT set to ${entry.display_name}`),
+      }, `STT set to ${entry.display_name}`);
+    },
     [guarded, sttSettings],
   );
 
   const setLlmPrimary = useCallback(
     (entry) => {
       const isCloud = (entry.runtime || '').startsWith('cloud-');
-      const override = isCloud
-        ? { kind: 'warn', text: `Switched to online mode — add the ${entry.display_name} key in Advanced before it can serve.` }
-        : undefined;
+      // Only Gemini is reachable via the online-mode switch (generate_lct_json
+      // routes online→Gemini). Other cloud providers live in the Advanced provider
+      // chain (need an API-key entry), so don't fake a switch that resolves to Gemini.
+      if (isCloud && entry.id !== 'cloud-gemini') {
+        setNotice({
+          kind: 'warn',
+          text: `${entry.display_name} is added under Advanced → Providers (with an API key); it then serves via the provider chain. The online-mode switch only routes to Gemini.`,
+        });
+        setTimeout(() => setNotice(null), 8000);
+        return undefined;
+      }
+      const override =
+        entry.id === 'cloud-gemini'
+          ? { kind: 'warn', text: 'Switched to online (Gemini) mode — ensure a Gemini API key is set in Advanced.' }
+          : undefined;
       return guarded(
         async () => {
           const cur = llmSettings || (await getLlmSettings());
@@ -102,7 +126,7 @@ export default function InferenceLanes() {
           if (entry.is_local && entry.endpoint) {
             next.mode = 'local';
             next.base_url = entry.endpoint;
-          } else if (isCloud) {
+          } else if (entry.id === 'cloud-gemini') {
             next.mode = 'online';
           }
           await updateLlmSettings(next);
