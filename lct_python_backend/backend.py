@@ -224,6 +224,8 @@ from lct_python_backend.speaker_naming_api import (
 from lct_python_backend.consumption_prayer_api import router as consumption_prayer_router
 from lct_python_backend.user_identity_api import router as user_identity_router
 from lct_python_backend.share_api import router as share_router
+from lct_python_backend.backend_catalog_api import router as backend_catalog_router
+from lct_python_backend.diarization_api import router as diarization_router
 
 lct_app.include_router(import_router)
 lct_app.include_router(bookmarks_router)
@@ -251,6 +253,8 @@ lct_app.include_router(conversation_speakers_router)
 lct_app.include_router(consumption_prayer_router)
 lct_app.include_router(user_identity_router)
 lct_app.include_router(share_router)
+lct_app.include_router(backend_catalog_router)
+lct_app.include_router(diarization_router)
 
 # Alias for uvicorn compatibility
 app = lct_app
