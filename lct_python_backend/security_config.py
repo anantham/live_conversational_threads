@@ -11,7 +11,6 @@ from fastapi import HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 import os
 from typing import Callable
 import time
@@ -171,11 +170,14 @@ async def add_security_headers(request: Request, call_next):
     # Enable XSS protection
     response.headers["X-XSS-Protection"] = "1; mode=block"
 
-    # Content Security Policy
-    response.headers["Content-Security-Policy"] = "default-src 'self'"
-
-    # Strict Transport Security (HTTPS only)
+    # Content-Security-Policy + HSTS only in production. A strict CSP on dev
+    # responses (Swagger /docs, any HTML the backend serves) breaks local tooling
+    # more than it helps; operators opt in via ENVIRONMENT=production and can
+    # override the policy with CONTENT_SECURITY_POLICY.
     if os.getenv("ENVIRONMENT") == "production":
+        response.headers["Content-Security-Policy"] = os.getenv(
+            "CONTENT_SECURITY_POLICY", "default-src 'self'"
+        )
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
     return response

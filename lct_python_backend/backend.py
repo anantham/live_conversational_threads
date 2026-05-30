@@ -197,6 +197,16 @@ logger.info(
 # P0 Security middleware (auth, rate limits, body size limits, SSRF gate)
 configure_p0_security(lct_app)
 
+# Production hardening (previously defined in security_config but never wired —
+# surface-tech-debt review 2026-05-30). Safe in development: the benign response
+# headers (X-Frame-Options/X-Content-Type-Options/X-XSS-Protection) apply always;
+# CSP + HSTS only when ENVIRONMENT=production; TrustedHost is a no-op unless a prod
+# host allowlist is configured.
+from lct_python_backend.security_config import add_security_headers, configure_trusted_hosts
+
+lct_app.middleware("http")(add_security_headers)
+configure_trusted_hosts(lct_app, environment=os.getenv("ENVIRONMENT", "development"))
+
 
 # ============================================================================
 # ROUTER MOUNTING
