@@ -162,6 +162,22 @@ async def read_llm_settings(session=Depends(get_async_session)):
     return merge_llm_config(overrides)
 
 
+@router.get("/api/settings/llm/telemetry")
+async def read_llm_telemetry(
+    limit: int = 400,
+    session=Depends(get_async_session),
+):
+    """Per-provider live LLM speed telemetry (tokens/sec, total ms, samples).
+
+    Mirrors GET /api/settings/stt/telemetry. Backed by the append-only LLM
+    telemetry log, so numbers persist across restarts ("keep collecting").
+    """
+    from lct_python_backend.services.llm_telemetry_service import aggregate_llm_telemetry
+
+    limit = min(max(int(limit), 50), 5000)
+    return await aggregate_llm_telemetry(session, limit)
+
+
 @router.get("/api/settings/llm/models")
 async def read_llm_model_options(
     mode: str = "local",

@@ -214,3 +214,6 @@ outputs/
 tmp/
 .tmp/
 .playwright-mcp/
+
+# LLM live telemetry log (seed-then-refine; seed JSON is committed, this is not)
+lct_python_backend/data/llm_telemetry.jsonl
