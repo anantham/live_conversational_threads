@@ -22,6 +22,8 @@ from datetime import datetime
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
+from lct_python_backend.services.llm_telemetry_service import catalog_provider_key
+
 logger = logging.getLogger("lct_backend")
 
 _SEED_FILENAME = "backend_catalog_seed.json"
@@ -92,36 +94,60 @@ def _active_stt_id(stt_entries: List[Dict[str, Any]], stt_settings: Dict[str, An
     return matching[0]["id"]
 
 
+def _llm_first(llm_entries: List[Dict[str, Any]], predicate) -> Optional[str]:
+    for entry in llm_entries:
+        if predicate(entry):
+            return entry["id"]
+    return None
+
+
+def _llm_id_for_base_url(llm_entries: List[Dict[str, Any]], base_url: str) -> Optional[str]:
+    base_url = _norm(base_url)
+    if "11434" in base_url:
+        return _llm_first(llm_entries, lambda e: e["id"] == "local-ollama")
+    if "100.81.65.74" in base_url or "tailscale" in base_url:
+        return _llm_first(llm_entries, lambda e: e["id"] == "tailscale-rtx-llm")
+    if "1234" in base_url:
+        return _llm_first(llm_entries, lambda e: e["id"] == "local-lmstudio")
+    return None
+
+
 def _active_llm_id(llm_entries: List[Dict[str, Any]], llm_settings: Dict[str, Any]) -> Optional[str]:
-    """Heuristically map the live LLM config (mode + base_url) to a catalog entry."""
+    """The SELECTED LLM (what the lane edits via llm_config: mode + base_url).
+
+    This is a preference, not necessarily what graph-gen runs — see
+    _effective_llm_id. Online mode is Gemini (generate_lct_json routes online→Gemini).
+    """
     mode = _norm(llm_settings.get("mode"))
-    base_url = _norm(llm_settings.get("base_url"))
-
-    def first(predicate) -> Optional[str]:
-        for entry in llm_entries:
-            if predicate(entry):
-                return entry["id"]
-        return None
-
-    if mode == "local" and base_url:
-        if "11434" in base_url:
-            return first(lambda e: e["id"] == "local-ollama")
-        if "100.81.65.74" in base_url or "tailscale" in base_url:
-            return first(lambda e: e["id"] == "tailscale-rtx-llm")
-        if "1234" in base_url:
-            return first(lambda e: e["id"] == "local-lmstudio")
     if mode == "online":
-        if "openrouter" in base_url:
-            return first(lambda e: e["id"] == "cloud-openrouter")
-        if "openai" in base_url:
-            return first(lambda e: e["id"] == "cloud-openai")
-        if "anthropic" in base_url:
-            return first(lambda e: e["id"] == "cloud-anthropic")
-        if "gemini" in base_url or "google" in base_url:
-            return first(lambda e: e["id"] == "cloud-gemini")
-        return first(lambda e: e.get("runtime", "").startswith("cloud-"))
-    # Fallback: default local entry.
-    return first(lambda e: e.get("is_default_local"))
+        return _llm_first(llm_entries, lambda e: e["id"] == "cloud-gemini")
+    return _llm_id_for_base_url(llm_entries, llm_settings.get("base_url")) or _llm_first(
+        llm_entries, lambda e: e.get("is_default_local")
+    )
+
+
+def _effective_llm_id(
+    llm_entries: List[Dict[str, Any]],
+    llm_settings: Dict[str, Any],
+    llm_providers: Optional[List[Dict[str, Any]]] = None,
+) -> Optional[str]:
+    """The LLM graph-gen ACTUALLY uses (mirrors generate_lct_json).
+
+    Online → Gemini; local → the first ENABLED provider in the llm_providers list
+    (generate_lct_json_local ignores llm_config.base_url), falling back to the
+    config heuristic only when no providers resolve.
+    """
+    if _norm(llm_settings.get("mode")) == "online":
+        return _llm_first(llm_entries, lambda e: e["id"] == "cloud-gemini")
+    for provider in llm_providers or []:
+        if not isinstance(provider, dict) or not provider.get("enabled", True):
+            continue
+        provider_key = catalog_provider_key(provider.get("base_url"), provider.get("type"))
+        match = _llm_first(llm_entries, lambda e, pk=provider_key: _norm(e.get("provider_key")) == pk)
+        if match:
+            return match
+        break  # first enabled provider decides; if no catalog entry, fall through
+    return _active_llm_id(llm_entries, llm_settings)
 
 
 def _active_diar_id(diar_entries: List[Dict[str, Any]], diar_settings: Optional[Dict[str, Any]]) -> Optional[str]:
@@ -309,7 +335,7 @@ def build_catalog(
             # runnable fallback). Differs from the selected id when a chosen backend
             # isn't built/configured (e.g. FluidAudio sidecar not running yet).
             "stt_effective": _effective_simple_id(stt_entries, active_stt),
-            "llm_effective": _effective_simple_id(llm_entries, active_llm),
+            "llm_effective": _effective_llm_id(llm_entries, llm_settings, llm_providers),
             "diarization_effective": _effective_diar_id(diar_entries, diar_settings, active_diar),
         },
         "stt": stt_entries,

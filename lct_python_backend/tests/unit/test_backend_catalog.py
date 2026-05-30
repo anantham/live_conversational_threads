@@ -75,3 +75,31 @@ def test_stt_llm_effective_equals_selected_when_runnable():
     )
     assert cat["active"]["stt_effective"] == cat["active"]["stt"]
     assert cat["active"]["llm_effective"] == cat["active"]["llm"]
+
+
+def test_llm_selected_vs_effective_differ_when_providers_override():
+    # llm_config points at Ollama (the SELECTED LLM the lane edits), but live
+    # graph-gen uses the first enabled provider (Tailscale LM Studio) — they differ.
+    cat = build_catalog(
+        llm_settings={"mode": "local", "base_url": "http://127.0.0.1:11434"},
+        llm_providers=[{"base_url": "http://100.81.65.74:1234", "type": "openai_compatible", "enabled": True}],
+    )
+    assert cat["active"]["llm"] == "local-ollama"  # selected (config)
+    assert cat["active"]["llm_effective"] == "tailscale-rtx-llm"  # graph-gen (providers-first)
+
+
+def test_llm_online_is_gemini():
+    cat = build_catalog(llm_settings={"mode": "online", "base_url": ""})
+    assert cat["active"]["llm"] == "cloud-gemini"
+    assert cat["active"]["llm_effective"] == "cloud-gemini"
+
+
+def test_llm_effective_uses_first_enabled_provider():
+    cat = build_catalog(
+        llm_settings={"mode": "local", "base_url": "http://127.0.0.1:11434"},
+        llm_providers=[
+            {"base_url": "http://100.81.65.74:1234", "type": "openai_compatible", "enabled": False},
+            {"base_url": "http://127.0.0.1:11434", "type": "openai_compatible", "enabled": True},
+        ],
+    )
+    assert cat["active"]["llm_effective"] == "local-ollama"  # skipped the disabled Tailscale entry
