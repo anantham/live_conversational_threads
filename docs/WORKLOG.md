@@ -3055,3 +3055,17 @@ Manual testing not run:
   - the widget still only looked for `healthy`, so it rendered `No healthy configured routes` and stayed orange despite a successful probe
 - Validation:
   - `cd lct_app && npx eslint src/components/ServiceStatus.jsx` → passed
+
+## 2026-05-30T00:00:00+05:30
+- Prepared a selective cleanup commit series for untracked LCT files instead of sweeping all local artifacts into git.
+- Files modified:
+  - `.gitignore`: added ignore rules for `.tmp_validation/`, Syncthing temp/conflict files, root verification screenshots, `overlap-snapshot.yml`, and ADR/debug replay scripts.
+  - `docs/VESTIGIAL_CLEANUP.md`: corrected the stale claim that `graph_api.py` is verified dead; it is still registered by `backend.py`, so it is now documented as cold-path compatibility/admin surface rather than safe-delete code.
+  - `docs/TECH_DEBT.md`: logged `lct_python_backend/services/consumption_trigger.py` as a >300 LOC mothballed detector refactor candidate if revived.
+  - `docs/WORKLOG.md`: recorded this selective commit plan and validation.
+- Commit selection:
+  - include `lct_python_backend/services/consumption_trigger.py` and `lct_python_backend/tests/unit/test_consumption_trigger.py` as a mothballed detector archive, not active runtime wiring.
+  - exclude `lct_app/tests/e2e/diag-h6-network.spec.ts` for now because it is diagnostic-only and not CI-grade regression coverage.
+  - exclude screenshots, `.tmp_validation/`, Syncthing artifacts, replay outputs, and ad-hoc probe scripts.
+- Validation:
+  - `python -m pytest -q lct_python_backend/tests/unit/test_consumption_trigger.py` passed (`41 passed`).
