@@ -27,6 +27,11 @@ export default function CruxAnalysis() {
 
   useEffect(() => {
     let cancelled = false;
+    // Reset per-conversation: the component instance is reused across /cruxes/<id>
+    // navigations, so a new id must start un-analyzed (show the CTA, not a stale
+    // "no cruxes") and without a stale error.
+    setAnalyzed(false);
+    setError(null);
     (async () => {
       setLoading(true);
       try {
