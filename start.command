@@ -8,6 +8,7 @@ mkdir -p "$RUN_DIR"
 
 PID_BACKEND="$RUN_DIR/backend.pid"
 PID_FRONTEND="$RUN_DIR/frontend.pid"
+PID_LOCAL_STT="$RUN_DIR/local_stt.pid"
 
 VENV_PY="$ROOT_DIR/.venv/bin/python3"
 ENV_FILE="$ROOT_DIR/lct_python_backend/.env"
@@ -33,8 +34,18 @@ STT_AUTOSTART_PROVIDER="${STT_AUTOSTART_PROVIDER:-parakeet}"
 SHARED_PARAKEET_DIR="${SHARED_PARAKEET_DIR:-$ROOT_DIR/../parakeet-tdt-0.6b-v3-fastapi-openai}"
 STT_START_TIMEOUT_S="${STT_START_TIMEOUT_S:-120}"
 
+# On-device local STT server (lct_python_backend/local_stt, mlx-whisper). One
+# command brings it up alongside backend/frontend. Set LOCAL_STT_AUTOSTART=0 to
+# skip it (e.g. when using a remote/cloud STT provider configured in Settings).
+LOCAL_STT_AUTOSTART="${LOCAL_STT_AUTOSTART:-1}"
+LOCAL_STT_PORT="${LOCAL_STT_PORT:-5095}"
+LOCAL_STT_DIR="$ROOT_DIR/lct_python_backend/local_stt"
+LOCAL_STT_PY="$LOCAL_STT_DIR/.venv/bin/python"
+LOCAL_STT_HEALTH_URL="http://127.0.0.1:${LOCAL_STT_PORT}/health"
+
 BACKEND_PID=""
 FRONTEND_PID=""
+LOCAL_STT_PID=""
 CLEANED_UP=0
 
 log() {
@@ -192,6 +203,41 @@ wait_for_http() {
   done
 
   return 1
+}
+
+start_local_stt_server() {
+  if [ "$LOCAL_STT_AUTOSTART" != "1" ]; then
+    log "On-device STT autostart disabled (LOCAL_STT_AUTOSTART=$LOCAL_STT_AUTOSTART)."
+    return 0
+  fi
+
+  if curl -fsS --max-time 2 "$LOCAL_STT_HEALTH_URL" >/dev/null 2>&1; then
+    log "On-device STT server already healthy: $LOCAL_STT_HEALTH_URL"
+    return 0
+  fi
+
+  if [ ! -x "$LOCAL_STT_PY" ]; then
+    log "NOTE: on-device STT venv missing at $LOCAL_STT_DIR/.venv."
+    log "      One-time setup: (cd $LOCAL_STT_DIR && uv venv .venv --python 3.12 && uv pip install --python .venv/bin/python -r requirements.txt)"
+    log "      Skipping local STT autostart; the app will use whatever STT provider is configured in Settings."
+    return 0
+  fi
+
+  log "Starting on-device STT server (mlx-whisper) on port ${LOCAL_STT_PORT}..."
+  (
+    cd "$LOCAL_STT_DIR"
+    export LOCAL_STT_PORT="$LOCAL_STT_PORT"
+    exec "$LOCAL_STT_PY" server.py
+  ) > >(sed -u 's/^/[stt] /') 2>&1 &
+
+  LOCAL_STT_PID="$!"
+  echo "$LOCAL_STT_PID" > "$PID_LOCAL_STT"
+
+  if wait_for_http "On-device STT" "$LOCAL_STT_HEALTH_URL" "$STT_START_TIMEOUT_S"; then
+    log "On-device STT (mlx-whisper) is ready at $LOCAL_STT_HEALTH_URL"
+  else
+    log "NOTE: on-device STT server started but health check failed at $LOCAL_STT_HEALTH_URL"
+  fi
 }
 
 start_shared_parakeet_if_needed() {
@@ -361,6 +407,11 @@ start_frontend() {
 }
 
 stt_readiness_hint() {
+  if curl -fsS --max-time 2 "$LOCAL_STT_HEALTH_URL" >/dev/null 2>&1; then
+    log "Detected on-device STT server (mlx-whisper) at $LOCAL_STT_HEALTH_URL"
+    return
+  fi
+
   if curl -fsS --max-time 2 "$PARAKEET_HEALTH_URL" >/dev/null 2>&1; then
     log "Detected local STT HTTP provider (Parakeet) at $PARAKEET_HEALTH_URL"
     return
@@ -399,6 +450,11 @@ cleanup_on_exit() {
   fi
   stop_pidfile_process "$PID_BACKEND" "backend"
 
+  if [ -n "$LOCAL_STT_PID" ]; then
+    kill_pid_gracefully "$LOCAL_STT_PID" "on-device STT"
+  fi
+  stop_pidfile_process "$PID_LOCAL_STT" "on-device STT"
+
   log "Shutdown complete."
   exit "$code"
 }
@@ -412,12 +468,15 @@ ensure_prereqs
 
 stop_pidfile_process "$PID_BACKEND" "backend"
 stop_pidfile_process "$PID_FRONTEND" "frontend"
+stop_pidfile_process "$PID_LOCAL_STT" "on-device STT"
 cleanup_port "$BACKEND_PORT" "backend"
 cleanup_port "$FRONTEND_PORT" "frontend"
+cleanup_port "$LOCAL_STT_PORT" "on-device STT"
 write_port_files
 
 start_postgres
 run_migrations
+start_local_stt_server
 start_backend
 start_frontend
 start_optional_stt_services
@@ -429,6 +488,7 @@ stt_readiness_hint
 log "All services are up."
 log "Backend:  http://localhost:${BACKEND_PORT}"
 log "Frontend: http://localhost:${FRONTEND_PORT}"
-log "Press Ctrl+C to stop both services."
+log "On-device STT: http://127.0.0.1:${LOCAL_STT_PORT} (set LOCAL_STT_AUTOSTART=0 to use a remote/cloud STT instead)"
+log "Press Ctrl+C to stop all services."
 
-wait "$BACKEND_PID" "$FRONTEND_PID"
+wait "$BACKEND_PID" "$FRONTEND_PID" ${LOCAL_STT_PID:+"$LOCAL_STT_PID"}
