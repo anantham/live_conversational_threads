@@ -218,3 +218,63 @@ async def get_node_frames(node_id: str):
     except Exception as e:
         logger.error(f"Failed to get node frames: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Crux Detection (ADR-035) — load-bearing beliefs / disagreement pivots.
+# Graph-level (one LLM call over nodes + agree/disagree edges); sets Node.is_crux.
+# ============================================================================
+
+@router.post("/api/conversations/{conversation_id}/cruxes/analyze")
+async def analyze_cruxes(conversation_id: str, force_reanalysis: bool = False):
+    """
+    Detect cruxes across a conversation and persist Node.is_crux.
+
+    Returns {total_nodes, crux_count, by_type, cruxes:[{node_id, node_name, crux_type, confidence, reason}]}.
+    """
+    try:
+        async with get_async_session_context() as session:
+            from lct_python_backend.services.crux_detector import CruxDetector
+
+            detector = CruxDetector(session)
+            return await detector.analyze_conversation(conversation_id, force_reanalysis=force_reanalysis)
+
+    except Exception as e:
+        logger.error(f"Crux analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/conversations/{conversation_id}/cruxes")
+async def get_crux_results(conversation_id: str):
+    """Get persisted crux results for a conversation (no LLM call)."""
+    try:
+        async with get_async_session_context() as session:
+            from lct_python_backend.services.crux_detector import CruxDetector
+
+            detector = CruxDetector(session)
+            return await detector.get_conversation_results(conversation_id)
+
+    except Exception as e:
+        logger.error(f"Failed to get crux results: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/nodes/{node_id}/crux")
+async def get_node_crux(node_id: str):
+    """Get the crux record for a specific node (404 if the node is not a crux)."""
+    try:
+        async with get_async_session_context() as session:
+            from lct_python_backend.services.crux_detector import CruxDetector
+
+            detector = CruxDetector(session)
+            result = await detector.get_node_crux(node_id)
+
+            if result is None:
+                raise HTTPException(status_code=404, detail="Node is not flagged as a crux")
+            return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get node crux: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
