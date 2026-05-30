@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-05-12 (ADR-031 added)
+Last updated: 2026-05-30 (ADR-032–035 added; see the ADR-021 number-collision note below)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -25,6 +25,7 @@ Last updated: 2026-05-12 (ADR-031 added)
 | [ADR-019](ADR-019-event-sourced-transcript-graph-and-artifact-materialization.md) | Event-Sourced Transcript, Graph, and Artifact Materialization | 2026-03-20 | Approved |
 | [ADR-020](ADR-020-session-scoped-openai-byok-for-stt-and-graph.md) | Session-Scoped OpenAI BYOK for Live/Import STT and Graph Generation | 2026-04-03 | Approved |
 | [ADR-021](ADR-021-browser-local-draft-recovery.md) | Browser-Local Draft Recovery for Interrupted Conversation Sessions | 2026-04-03 | Approved |
+| [ADR-021 ⚠](ADR-021-authored-four-level-conversation-hierarchy.md) | Authored Four-Level Conversation Hierarchy | 2026-04-13 | Approved |
 | [ADR-022](ADR-022-checkpoint-aware-upload-retry-and-resume.md) | Checkpoint-Aware Upload Retry and Resume for Bulk Imports | 2026-04-03 | Approved |
 | [ADR-023](ADR-023-orchestrated-live-whisper-websocket-and-async-diarization.md) | Orchestrated Live Whisper Websocket and Async Diarization | 2026-04-08 | Approved |
 | [ADR-024](ADR-024-indrasnet-gpu-priority-policy-and-live-stt-hard-preemption.md) | IndrasNet GPU Priority Policy and Live-STT Hard Preemption | 2026-04-09 | Approved |
@@ -35,6 +36,12 @@ Last updated: 2026-05-12 (ADR-031 added)
 | [ADR-029](ADR-029-usage-quota-and-rate-limiting.md) | Usage Quota and Rate Limiting for STT Services | 2026-04-14 | Proposed |
 | [ADR-030](ADR-030-system-invariants-and-pipeline-standards.md) | System Invariants and Pipeline Standards | 2026-04-15 | Approved |
 | [ADR-031](ADR-031-post-streaming-hierarchy-consolidation.md) | Post-Streaming Hierarchy Consolidation (Option A) | 2026-05-12 | Approved |
+| [ADR-032](ADR-032-temporal-swim-lane-layout-and-semantic-edges.md) | Temporal Swim-Lane Layout + Semantic Edge Taxonomy + Enrichment Context | 2026-05-19 | Accepted |
+| [ADR-033](ADR-033-consumption-prayer-matching.md) | Consumption Prayer Matching in the Live Conversation Path | 2026-05-24 | Accepted |
+| [ADR-034](ADR-034-inference-backend-catalog-and-three-lane-settings.md) | Inference Backend Catalog & Three-Lane Settings | 2026-05-30 | Decided |
+| [ADR-035](ADR-035-crux-detection.md) | Crux Detection | 2026-05-30 | Decided |
+
+> **⚠ ADR-021 number collision:** two ADRs shipped as 021 — *Browser-Local Draft Recovery* (2026-04-03) and *Authored Four-Level Conversation Hierarchy* (2026-04-13). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.
 
 ## Status Definitions
 
