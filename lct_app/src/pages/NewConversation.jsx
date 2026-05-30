@@ -485,7 +485,15 @@ export default function NewConversation() {
       Boolean(String(message || "").trim()),
     [displayChunkDict, fileName, hasData, message]
   );
-  const sessionActionsVisible = !upload.isProcessing && !liveTranscriptState.recording && hasRecoverableLocalState;
+  // Show the Session Draft / name-and-save panel only when the session is truly
+  // STOPPED — not when merely PAUSED. Pause sets recording=false but paused=true
+  // (a paused conversation is mid-flight, not finished), so we must also require
+  // !paused, matching the "idle" test used elsewhere (e.g. the FileUpload gate).
+  const sessionActionsVisible =
+    !upload.isProcessing &&
+    !liveTranscriptState.recording &&
+    !liveTranscriptState.paused &&
+    hasRecoverableLocalState;
   const savePayload = useMemo(() => ({
     graphData: graphData.length > 0 ? graphData : draftGraphData,
     chunkDict: hasChunkData ? displayChunkDict : {},

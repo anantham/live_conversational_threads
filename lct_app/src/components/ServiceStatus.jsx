@@ -514,16 +514,26 @@ function buildSttSignal(sttSettings, sttProbe, probeError) {
     };
   }
 
+  // No probe results yet (results.length === 0). Don't claim "nothing configured"
+  // when a provider IS set in Settings — that's misleading (it's usually just the
+  // pre-probe / loading window). Reflect the configured provider instead.
+  const configuredProviderName = toTitleCase(String(sttSettings?.provider || "").trim());
   return {
     details: [
-      { label: "Primary", value: toTitleCase(sttSettings?.provider || "") || "Not set" },
-      { label: "Probe", value: probeError || "No configured live STT routes" },
+      { label: "Primary", value: configuredProviderName || "Not set" },
+      {
+        label: "Probe",
+        value:
+          probeError || (configuredProviderName ? "Probing configured route…" : "No configured live STT routes"),
+      },
       { label: "Meaning", value: "Home checks the current settings-driven live STT routes." },
     ],
     state: sttSettings ? "configured" : "unavailable",
-    summary: sttSettings
-      ? "No probeable live STT routes are configured."
-      : "STT settings are unavailable.",
+    summary: !sttSettings
+      ? "STT settings are unavailable."
+      : configuredProviderName
+        ? `${configuredProviderName} is configured; probing its live route…`
+        : "No probeable live STT routes are configured.",
   };
 }
 
