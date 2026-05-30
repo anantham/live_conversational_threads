@@ -1,6 +1,24 @@
 # ISSUES
 
-Last updated: 2026-05-29
+Last updated: 2026-05-30
+
+## Rationality features & stubs audit (2026-05-30)
+
+8-agent audit (full report + status table: `docs/AUDIT_RATIONALITY_2026-05-30.md`). Branch `feat/e2e-audio-graph-zoom`. Nothing deleted. Key gaps:
+
+- **[ABSENT] Crux detection.** `is_crux` (`models/graph.py:43`) is a DB boolean **never set True by any code** — yet there is live read-plumbing (`conversation_reader.py:282`, `conversations_api.py:505`) and a dead amber node-styling branch (`MinimalGraph.jsx:218,235`). No `crux_detector.py`, no crux prompt. The "crux" zoom concept is a dead flag.
+- **[ABSENT] Double-crux, Ideological Turing Test, steelmanning, devil's-advocate, charitable-interpretation.** No code anywhere — only roadmap docs + a hardcoded "Steelmanning Score: 7/10" mockup (`FEATURE_SIMULACRA_LEVELS.md:762`). "ITT" never appears in the repo.
+- **[ABSENT] Cross-speaker agree/disagree map.** Node↔node `agrees`/`disagrees` edges exist + render, but with **no speaker attribution**. "Where does speaker A disagree with speaker B" does not exist; `speaker_analytics.py` does time/turns/roles only. New build.
+- **[ORPHANED] Real fact-check verification unreachable.** `POST /fact_check_claims/` (`perplexity_factcheck.py:111` — verdict + citations) is only called by `archive/TranscriptApp.jsx`. The live banner (`openai_factcheck`, `NodeDetail.jsx:285`) is classification only, not verification, and is **not persisted** (`Claim.verification_status` hardcoded `None`; save fn commented out in `db_helpers.py:31`).
+- **[ORPHANED] Three detectors built but unlinked in UI.** Bias (`/biases`), Frame (`/frames`), Simulacra (`/simulacra`) have complete backends + pages + routes (`AppRoutes.jsx:33-35`) but **no nav link** — reachable only by typing the URL. Quick win: add links.
+- **[ORPHANED] ClaimDetector / ArgumentMapper / IsOughtDetector.** `claim_api.py`/`argument_api.py` define handlers but **no APIRouter** and are never mounted in `backend.py`; broken root-relative imports. Wire or delete.
+- **[ORPHANED] intent_signal ("prayer") extraction (ADR-013 Contract C).** Persistence complete + tested (`intent_signal_persistence.py`) but **no detection prompt and zero callers** — the consumption side has no live producer.
+- **[ORPHANED] `conversation_pipeline/` orchestrator + 8 stages (ADR-030 §D3).** Fully built + tested, imported only by tests; the 3308-LOC `stt_ws_session.py` + 1523-LOC `import_bulk_pipeline.py` still own the live flow. Finish cutover or delete (tracked in TECH_DEBT).
+
+## Settings status honesty + 3-lane redesign (2026-05-30)
+
+- **[FIXED] Home "ACTIVE" chip could show green for a not-running backend.** Original FluidAudio case (planned, no sidecar) fixed; adversarial review then found it survived for cloud backends (status "configurable", no key, no probe) and for local servers in the pre-probe window. Fixed: green now = probe-verified running only (`lct_app/src/components/settings/backendState.js` shared `runState`/`isServing`, consumed by `BackendCard.jsx` + `CapabilityLane.jsx`). Selected-but-not-running → amber; cloud/unprobed → neutral "SELECTED".
+- **[KNOWN] Diarization lane models only the dedicated post-flush diarizer.** Speaker labels can also come from the STT provider (whisper/openai routes with `supports_diarization`); the UI now says "via STT" when the active STT entry has `provides_diarization`, but the two diarization sources are not unified.
 
 ## Full-offline local bring-up: bugs + config gaps (2026-05-29)
 
