@@ -156,8 +156,8 @@ class SimulacraDetector:
             "simulacra_detection",
             {
                 "node_name": node.node_name or "Untitled",
-                "node_summary": node.node_summary or "",
-                "keywords": ", ".join(node.keywords or [])
+                "node_summary": node.summary or "",
+                "keywords": ", ".join(node.key_points or [])
             }
         )
 
