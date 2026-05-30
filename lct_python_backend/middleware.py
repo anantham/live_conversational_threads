@@ -54,6 +54,9 @@ ADMIN_PATH_PREFIXES: Tuple[str, ...] = (
     "/api/bookmarks",
     "/api/prompts",
     "/api/graph",
+    # Backend catalog powers Settings + status chips and triggers server-side
+    # probes; treat it like the other settings/admin surfaces.
+    "/api/backend-catalog",
 )
 ADMIN_PATH_EXACT: Set[str] = {
     "/conversations",
