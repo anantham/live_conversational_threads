@@ -78,7 +78,7 @@ class PromptManager:
         Get a specific prompt configuration
 
         Args:
-            prompt_name: Name of the prompt (e.g., "initial_clustering")
+            prompt_name: Name of the prompt (e.g., "bias_detection")
 
         Returns:
             Prompt configuration dict
@@ -106,7 +106,7 @@ class PromptManager:
 
         Example:
             >>> pm = PromptManager()
-            >>> rendered = pm.render_prompt("initial_clustering", {
+            >>> rendered = pm.render_prompt("bias_detection", {
             ...     "utterance_count": 50,
             ...     "participant_count": 3,
             ...     "participants": "Alice, Bob, Carol",
