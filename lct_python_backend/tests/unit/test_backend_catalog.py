@@ -1,0 +1,77 @@
+"""Tests for the inference backend catalog (ADR-034).
+
+build_catalog is pure (reads the committed seed, takes config/telemetry dicts), so
+these run without a DB. They pin the honesty-critical invariants: exactly one active
+per lane, observed telemetry attaches ONLY to the active backend, and the
+`*_effective` resolution falls past a non-runnable selection (the FluidAudio trap).
+"""
+
+from lct_python_backend.services.backend_catalog import build_catalog, load_seed
+
+
+def _diar(primary="fluidaudio", pyannote=True):
+    return {
+        "primary": primary,
+        "fallback_priority": ["senko", "pyannote"],
+        "backends": {
+            "fluidaudio": {"url": ""},
+            "senko": {"url": ""},
+            "pyannote": {"enabled": pyannote, "hf_token_set": pyannote},
+        },
+    }
+
+
+def test_seed_loads():
+    seed = load_seed()
+    assert {len(seed["stt"]) > 0, len(seed["llm"]) > 0, len(seed["diarization"]) > 0} == {True}
+
+
+def test_one_active_per_lane():
+    cat = build_catalog(
+        stt_settings={"provider": "whisper", "http_url": "http://127.0.0.1:5095/v1/audio/transcriptions"},
+        llm_settings={"mode": "local", "base_url": "http://127.0.0.1:11434"},
+        diar_settings=_diar(),
+    )
+    for lane in ("stt", "llm", "diarization"):
+        actives = [e for e in cat[lane] if e["is_active"]]
+        assert len(actives) == 1, f"{lane} should have exactly one active entry"
+    assert cat["active"]["stt"] == "whisper-local-mlx"
+    assert cat["active"]["llm"] == "local-ollama"
+    assert cat["active"]["diarization"] == "fluidaudio"
+
+
+def test_effective_falls_past_non_runnable_diarizer():
+    # FluidAudio is selected but planned (no sidecar) -> effective is the next
+    # runnable backend (pyannote, enabled + token), NOT the selected one.
+    cat = build_catalog(diar_settings=_diar(primary="fluidaudio", pyannote=True))
+    fa = next(e for e in cat["diarization"] if e["id"] == "fluidaudio")
+    assert fa["runnable"] is False  # planned -> not runnable
+    assert cat["active"]["diarization"] == "fluidaudio"  # selected
+    assert cat["active"]["diarization_effective"] == "pyannote"  # actually serving
+
+
+def test_effective_none_when_nothing_runnable():
+    cat = build_catalog(diar_settings=_diar(primary="fluidaudio", pyannote=False))
+    assert cat["active"]["diarization_effective"] is None
+
+
+def test_observed_attaches_only_to_active():
+    cat = build_catalog(
+        stt_settings={"provider": "whisper", "http_url": "http://127.0.0.1:5095/v1/audio/transcriptions"},
+        stt_telemetry={"providers": {"whisper": {"final_samples": 9, "avg_final_ms": 200.0,
+                                                  "avg_stt_request_ms": 180.0, "last_event_at": "2026-05-30T10:00:00"}}},
+    )
+    active = [e for e in cat["stt"] if e["is_active"]][0]
+    assert active["observed"] and active["observed"]["samples"] >= 9
+    # a non-active whisper-family engine must NOT carry the live numbers
+    others = [e for e in cat["stt"] if not e["is_active"]]
+    assert all(e["observed"] is None for e in others)
+
+
+def test_stt_llm_effective_equals_selected_when_runnable():
+    cat = build_catalog(
+        stt_settings={"provider": "whisper", "http_url": "http://127.0.0.1:5095/v1/audio/transcriptions"},
+        llm_settings={"mode": "local", "base_url": "http://127.0.0.1:11434"},
+    )
+    assert cat["active"]["stt_effective"] == cat["active"]["stt"]
+    assert cat["active"]["llm_effective"] == cat["active"]["llm"]
