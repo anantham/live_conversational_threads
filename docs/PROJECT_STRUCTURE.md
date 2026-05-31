@@ -43,7 +43,6 @@ live_conversational_threads/
 - `canvas_api.py` (`/export/obsidian-canvas/*`, `/import/obsidian-canvas/`)
 - `thematic_api.py` (`/api/conversations/*/themes*`)
 - `cost_api.py` (`/api/cost-tracking/*`)
-- `claim_api.py` (`/api/conversations/*/claims*`)
 
 ### Data and Services
 
