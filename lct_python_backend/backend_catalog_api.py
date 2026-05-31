@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from lct_python_backend.db_session import get_async_session
 from lct_python_backend.services.backend_catalog import build_catalog, load_seed
 from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers
+from lct_python_backend.services.stt_config import STT_CLOUD_PROVIDER_IDS
 from lct_python_backend.services.stt_health_service import (
     derive_health_url_from_http_url,
     probe_health_url,
@@ -45,6 +46,13 @@ async def _resolve_probe_url(
     seed_probe = ((entry.get("health") or {}).get("probe_url")) if isinstance(entry.get("health"), dict) else None
 
     if capability == "stt":
+        # Cloud STT providers have no HTTP /health endpoint. Deriving one from the
+        # configured provider_http_urls (which has no cloud entry, so falls back to
+        # the Whisper URL) would falsely mark the cloud backend healthy whenever
+        # Whisper answers. Report no_probe; the UI uses the cloud-provider-test
+        # (/api/settings/stt/cloud-provider-test) for these instead.
+        if str(entry.get("provider_key") or "").lower() in STT_CLOUD_PROVIDER_IDS:
+            return None
         # For the active local whisper server use the configured endpoint's /health,
         # so a user who repointed the URL still probes the right place.
         if entry.get("is_active"):
