@@ -11,6 +11,7 @@ import pytest
 
 from lct_python_backend.services import crux_detector
 from lct_python_backend.services.crux_detector import (
+    CruxConfigurationError,
     CruxDetector,
     build_detection_inputs,
     parse_crux_response,
@@ -210,3 +211,40 @@ def test_analyze_llm_failure_preserves_flags(monkeypatch):
     assert "error" in result
     assert node.is_crux is True  # untouched on failure
     assert session.commits == 0
+
+
+def test_detect_rejects_online_mode(monkeypatch):
+    # The gateway is openai-compatible only; online (Gemini) mode can't be served
+    # by crux. _detect must fail honestly (CruxConfigurationError) instead of
+    # silently posting to a local endpoint. See ISSUES.md (crux online-mode gap).
+    called = {"chat": False}
+
+    async def _online_config(_db):
+        return {"mode": "online", "base_url": ""}
+
+    async def _tracking_chat(_config, _messages, **_kw):
+        called["chat"] = True
+        return {"cruxes": []}
+
+    monkeypatch.setattr(crux_detector, "load_llm_config", _online_config)
+    monkeypatch.setattr(crux_detector, "local_chat_json", _tracking_chat)
+    detector = CruxDetector(_FakeSession([]))
+    with pytest.raises(CruxConfigurationError):
+        asyncio.run(detector._detect(2, "nodes", "edges"))
+    assert called["chat"] is False  # never reached the local endpoint
+
+
+def test_analyze_online_mode_surfaces_error_without_writing(monkeypatch):
+    # End-to-end: online mode -> analyze_conversation catches CruxConfigurationError
+    # and returns it in the `error` field (the crux page renders this), and never
+    # writes is_crux flags.
+    async def _online_config(_db):
+        return {"mode": "online", "base_url": ""}
+
+    monkeypatch.setattr(crux_detector, "load_llm_config", _online_config)
+    node = FakeNode("Some claim")
+    session = _FakeSession([[node], []])
+    detector = CruxDetector(session)
+    result = asyncio.run(detector.analyze_conversation(str(node.conversation_id)))
+    assert "error" in result and "online" in result["error"].lower()
+    assert session.commits == 0  # no flags written on a config error

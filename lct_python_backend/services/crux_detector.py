@@ -8,10 +8,19 @@ agreement/disagreement edges — and it sets the existing ``Node.is_crux`` flag
 (which the frontend already renders amber), storing the rationale in
 ``Node.display_preferences["crux"]`` (no migration). See ADR-035.
 
-Routed through the LlmGateway (via ``local_chat_json``) so it respects the
-configured local/online provider, captures LLM telemetry (ADR-034), and never
-hardcodes a model — deliberately avoiding the gateway-bypass pattern in the other
-detectors (see docs/AUDIT_RATIONALITY_2026-05-30.md).
+Routed through the LlmGateway (via ``local_chat_json``), which captures LLM
+telemetry (ADR-034) and never hardcodes a model — deliberately avoiding the
+gateway-bypass pattern in the other detectors (see
+docs/AUDIT_RATIONALITY_2026-05-30.md).
+
+LIMITATION: the gateway is openai-compatible only — online (Gemini) generation
+lives in ``transcript_llm_callers`` and is NOT reachable from here. When the LLM
+lane is in online mode, ``_detect`` raises ``CruxConfigurationError`` rather than
+silently posting to a likely-down local endpoint; ``analyze_conversation`` catches
+it (like any detection failure) and surfaces the message in the response's
+``error`` field, which the crux page displays. Crux runs on a local/
+openai-compatible provider; wiring it to Gemini would need a general Gemini
+chat-JSON caller, deferred as out-of-proportion for this path (see ISSUES.md).
 """
 
 import logging
@@ -28,6 +37,15 @@ from lct_python_backend.services.llm_config import load_llm_config
 from lct_python_backend.services.local_llm_client import local_chat_json
 
 logger = logging.getLogger("lct_backend")
+
+
+class CruxConfigurationError(ValueError):
+    """Crux can't run under the current LLM configuration (e.g. online/Gemini mode).
+
+    Raised by ``_detect``; ``analyze_conversation`` catches it with other detection
+    failures and returns the message in the response's ``error`` field (HTTP 200),
+    which the crux page surfaces to the user.
+    """
 
 CRUX_TYPES = {
     "disagreement_pivot",
@@ -151,6 +169,15 @@ class CruxDetector:
             {"node_count": node_count, "nodes_block": nodes_block, "edges_block": edges_block},
         )
         config = await load_llm_config(self.db)
+        # The gateway is openai-compatible only; online (Gemini) mode is not
+        # reachable from local_chat_json. Fail honestly with a clear message
+        # rather than silently posting to a (likely-down) local endpoint.
+        if str(config.get("mode") or "").lower() == "online":
+            raise CruxConfigurationError(
+                "Crux detection runs on a local/openai-compatible LLM and can't use "
+                "online (Gemini) mode. Switch the LLM lane to a local engine in "
+                "Settings → Active engines, then re-run crux analysis."
+            )
         messages = [
             {"role": "system", "content": "You identify cruxes in conversations and return valid JSON only."},
             {"role": "user", "content": prompt_text},

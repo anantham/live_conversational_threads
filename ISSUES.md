@@ -1,6 +1,27 @@
 # ISSUES
 
-Last updated: 2026-05-30
+Last updated: 2026-05-31
+
+## 2026-05-31 — Crux detection has no online (Gemini) LLM path
+
+**Summary:** `CruxDetector._detect` routes through `local_chat_json` → the LLM
+gateway, which is **openai-compatible only** by design (online/Gemini generation
+lives in `transcript_llm_callers`, unreachable from the gateway). So when the LLM
+lane is set to online/Gemini mode, crux can't run.
+
+**Impact:** Low. As of 2026-05-31 crux now **fails honestly** — `_detect` raises
+`CruxConfigurationError`, which `analyze_conversation` surfaces in the response's
+`error` field (HTTP 200) and the crux page renders, telling the user to switch the
+LLM lane to a local engine — instead of silently posting to a likely-down local
+endpoint. (Found by codex re-review of PR #52, finding B.)
+
+**Blocker status:** Not blocking. Crux works on any local/openai-compatible
+provider; only pure online-Gemini mode is unsupported.
+
+**Recommended next step (deferred — out of proportion for this path):** if crux
+must run under online-Gemini, add a general Gemini chat-JSON caller (messages in,
+JSON out) reusing `_resolve_gemini_api_key` / `_resolve_online_gemini_model` from
+`transcript_llm_callers`, and dispatch on `mode=='online'` in `_detect`.
 
 ## Rationality features & stubs audit (2026-05-30)
 
