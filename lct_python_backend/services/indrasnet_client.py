@@ -2,9 +2,12 @@
 IndrasNet HTTP client — async wrapper around the sibling orchestrator's
 prayer-matching endpoint.
 
-Used by LCT's live STT pipeline (consumption_trigger.py) to surface prior
-held intentions when the listening AI detects the speaker is reaching for
-one. See ADR-NNN (consumption prayer matching) and ADR-013 (intent signals
+Intended for LCT's live STT pipeline to surface prior held intentions when
+the listening AI detects the speaker is reaching for one. The implicit
+detector that would gate this (experimental/consumption_trigger.py) is
+mothballed; the live path currently reaches the prayer-match endpoint via
+the explicit agenda_query_detector. See ADR-033 (consumption prayer
+matching) and ADR-013 (intent signals
 schema, shared between LCT and IndrasNet).
 
 Configuration:
