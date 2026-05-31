@@ -140,6 +140,7 @@ export default function useTranscriptSockets({
               conversation_id: convoId,
               session_id: sessionId,
               provider: sttConfig?.provider || "parakeet",
+              http_language: sttConfig?.http_language || undefined,
               byok_session_token: byokSessionToken || undefined,
               store_audio: Boolean(sttConfig?.store_audio),
               speaker_id: sttConfig?.speaker_id || "speaker_1",
