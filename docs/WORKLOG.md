@@ -2,6 +2,34 @@
 
 ## 2026-05-30 (later) — Settings honesty/minimalism fixes + rationality/stub audit (branch `feat/e2e-audio-graph-zoom`)
 
+## 2026-05-30 — Settings: dedup primary-STT-engine control + clearer labels
+
+Branch `feat/stt-settings-clarity` (off `feat/e2e-audio-graph-zoom`).
+
+`/settings/runtime` exposed the primary live-STT provider in two editable
+places — the "Inference runtime" hero (`InferenceLanes.jsx`) and the
+"Live STT" card (`SttSettingsCard.jsx`) — both writing the same `provider`
+field via the same `/api/settings/stt`. Two sources of truth that could
+disagree after a save, plus inconsistent vocabulary across the page.
+
+Changes (frontend only):
+- `lct_app/src/components/audio/sttUtils.js`: add `STT_PROVIDER_LABELS` +
+  exported `formatProviderLabel()` (`ofc` -> "SenseVoice", etc.).
+- `lct_app/src/components/settings/SttSettingsCard.jsx`: primary-provider
+  `<select>` -> read-only display deferring to "Active engines"; reworded
+  header/intro and the local-only / cloud-fallback checkbox labels.
+- `lct_app/src/components/settings/InferenceLanes.jsx`: "Inference runtime"
+  -> "Active engines"; clarified subtitle.
+- `lct_app/src/components/settings/settingsSummary.js`: `ofc` -> "SenseVoice".
+
+Verification: `npx eslint` clean on the 4 files; `npx vite build` passed.
+
+Tradeoff (next session): the primary engine is now chosen only from the
+catalog-backed hero. If the backend catalog endpoint is unreachable, the
+engine can't be changed until it returns (the card still shows the current
+value). Shipped as 2 commits: formatProviderLabel helper, then the dedup +
+rewording refactor.
+
 Two follow-ups after the user reviewed the 3-lane Settings UI.
 
 - **UI honesty (user caught FluidAudio showing green ACTIVE + red dot + "Planned").** Confirmed FluidAudio diarization runtime is NOT built (only the lane/config/probe exist; numbers are vendor-published). Fixed the contradiction + adversarially verified via a 4-agent review workflow (`wf_56021fd7`), which found the fix had holes (cloud "configurable" + pre-probe windows still went green; lane/card computed "running" differently). Resolved by a single shared rule — **green = probe-verified running** — in new `lct_app/src/components/settings/backendState.js` (`runState`/`isServing`), consumed by `BackendCard.jsx` (rewritten: collapsed-by-default progressive disclosure, badge/dot/border all from one state, degraded shown on primary, a11y, nowrap badges, PropTypes) and `CapabilityLane.jsx`. Backend `services/backend_catalog.py` gained per-entry `runnable` + per-lane `*_effective` (what actually serves); seed gained `provides_diarization` on cloud/remote whisper; home `ServiceStatus.jsx` diarization chip now reflects the effective diarizer and says "via STT" when speakers come from the STT provider. Frontend build clean.
