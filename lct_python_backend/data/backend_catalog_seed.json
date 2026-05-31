@@ -22,6 +22,7 @@
   "stt": [
     {
       "id": "whisper-local-mlx",
+      "languages": { "total": 99, "indic": ["hi", "ml", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ur"], "note": "Whisper multilingual (99 langs) — strong Hindi/Malayalam; Sanskrit is listed but experimental" },
       "capability": "stt",
       "provider_key": "whisper",
       "display_name": "Whisper (on-device, MLX)",
@@ -51,6 +52,7 @@
     },
     {
       "id": "parakeet-mlx",
+      "languages": { "total": 1, "indic": [], "note": "English ONLY (parakeet-tdt-0.6b-v2); even v3 adds only 25 European langs — no Indic" },
       "capability": "stt",
       "provider_key": "parakeet",
       "display_name": "Parakeet (MLX)",
@@ -78,6 +80,7 @@
     },
     {
       "id": "whisper-cpp",
+      "languages": { "total": 99, "indic": ["hi", "ml", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ur"], "note": "Whisper multilingual (99) via whisper.cpp; strong Hindi/Malayalam" },
       "capability": "stt",
       "provider_key": "whisper",
       "display_name": "Whisper.cpp (Metal)",
@@ -105,6 +108,7 @@
     },
     {
       "id": "funasr-sensevoice",
+      "languages": { "total": 5, "indic": [], "note": "SenseVoice: zh/en/ja/ko/yue — strong CJK; NO Indic" },
       "capability": "stt",
       "provider_key": "ofc",
       "display_name": "SenseVoice (FunASR)",
@@ -133,6 +137,7 @@
     },
     {
       "id": "faster-whisper",
+      "languages": { "total": 99, "indic": ["hi", "ml", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ur"], "note": "Whisper multilingual (99) via faster-whisper; strong Hindi/Malayalam" },
       "capability": "stt",
       "provider_key": "whisper",
       "display_name": "Faster-Whisper (CPU int8)",
@@ -160,6 +165,7 @@
     },
     {
       "id": "mlx-qwen3-asr",
+      "languages": { "total": 52, "indic": ["hi"], "note": "Qwen3-ASR 52 langs/dialects incl. Hindi; NO Malayalam/Sanskrit. On-device here measured ~0.8x realtime (vendor's 2000x is batched-server)" },
       "capability": "stt",
       "provider_key": "whisper",
       "display_name": "Qwen3-ASR (MLX)",
@@ -188,6 +194,7 @@
     },
     {
       "id": "openai-whisper-local",
+      "languages": { "total": 99, "indic": ["hi", "ml", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ur"], "note": "OpenAI Whisper (99 langs) running locally; strong Hindi/Malayalam" },
       "capability": "stt",
       "provider_key": "whisper",
       "display_name": "OpenAI Whisper (local, MPS)",
@@ -215,6 +222,7 @@
     },
     {
       "id": "lightning-whisper-mlx",
+      "languages": { "total": 99, "indic": ["hi", "ml", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ur"], "note": "Whisper-class (99) — but install_failed in this env; coverage is theoretical until it runs" },
       "capability": "stt",
       "provider_key": "whisper",
       "display_name": "Lightning Whisper (MLX)",
@@ -236,6 +244,7 @@
     },
     {
       "id": "remote-whisper-rtx",
+      "languages": { "total": 99, "indic": ["hi", "ml", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ur"], "note": "Whisper multilingual (99) on the RTX box; strong Hindi/Malayalam" },
       "capability": "stt",
       "provider_key": "whisper",
       "display_name": "Whisper (Tailscale RTX 3080)",
@@ -260,6 +269,7 @@
     },
     {
       "id": "openai-audio-cloud",
+      "languages": { "total": 99, "indic": ["hi", "ml", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ur"], "note": "OpenAI cloud (gpt-4o-transcribe / whisper-1): 99 langs incl. Hindi/Malayalam" },
       "capability": "stt",
       "provider_key": "openai_audio",
       "display_name": "OpenAI Audio (cloud)",
@@ -284,6 +294,7 @@
     },
     {
       "id": "openrouter-audio-cloud",
+      "languages": { "total": 99, "indic": ["hi", "ml", "ta", "te", "bn"], "note": "Model-dependent (routes to a Whisper-class cloud model); Indic coverage follows the selected model" },
       "capability": "stt",
       "provider_key": "openrouter_audio",
       "display_name": "OpenRouter Audio (cloud)",

@@ -131,3 +131,21 @@ def test_llm_effective_uses_first_enabled_provider():
         ],
     )
     assert cat["active"]["llm_effective"] == "local-ollama"  # skipped the disabled Tailscale entry
+
+
+def test_every_stt_entry_declares_language_coverage():
+    # The report's #1 filter: a fast engine that can't do Hindi must SAY so.
+    # Every STT entry carries languages={total, indic[list], note}; indic is the
+    # set of supported Indic ISO codes (empty => English/European only).
+    seed = load_seed()
+    for e in seed["stt"]:
+        lang = e.get("languages")
+        assert isinstance(lang, dict), f"{e['id']} missing languages"
+        assert isinstance(lang.get("indic"), list), f"{e['id']} languages.indic must be a list"
+        assert isinstance(lang.get("total"), int), f"{e['id']} languages.total must be int"
+        assert lang.get("note"), f"{e['id']} languages.note must be non-empty"
+    by_id = {e["id"]: e["languages"] for e in seed["stt"]}
+    # Parakeet (English-only) must NOT claim Indic; Whisper must; Qwen3 = Hindi but not Malayalam.
+    assert by_id["parakeet-mlx"]["indic"] == []
+    assert "hi" in by_id["whisper-local-mlx"]["indic"] and "ml" in by_id["whisper-local-mlx"]["indic"]
+    assert by_id["mlx-qwen3-asr"]["indic"] == ["hi"]
