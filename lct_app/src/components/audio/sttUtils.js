@@ -3,6 +3,22 @@ import { API_BASE_URL, wsUrl } from "../../services/apiClient";
 const API_BASE = API_BASE_URL;
 const BACKEND_WS_URL = wsUrl("/ws/transcripts");
 const STT_PROVIDER_OPTIONS = ["senko", "parakeet", "whisper", "ofc", "openai_audio"];
+// Human-readable names for STT provider keys. Keep in sync with the backend
+// catalog's display_name values (data/backend_catalog_seed.json). Falls back to
+// a Title-Cased key for anything not listed (e.g. catalog-only providers).
+const STT_PROVIDER_LABELS = {
+  whisper: "Whisper",
+  parakeet: "Parakeet",
+  ofc: "SenseVoice",
+  senko: "Senko",
+  openai_audio: "OpenAI Audio",
+  openrouter_audio: "OpenRouter Audio",
+};
+const formatProviderLabel = (providerId) => {
+  const value = String(providerId || "").trim();
+  if (!value) return "Unconfigured";
+  return STT_PROVIDER_LABELS[value.toLowerCase()] || value.charAt(0).toUpperCase() + value.slice(1);
+};
 const DEFAULT_STT_PROVIDER = (import.meta.env.VITE_DEFAULT_STT_PROVIDER || "parakeet").toLowerCase();
 const DEFAULT_STT_WS = import.meta.env.VITE_DEFAULT_STT_WS || "ws://localhost:43001/stream";
 const DEFAULT_STT_HTTP =
@@ -242,6 +258,7 @@ export {
   DEFAULT_CHUNK_ENDPOINT,
   DEFAULT_COMPLETE_ENDPOINT,
   STT_PROVIDER_OPTIONS,
+  formatProviderLabel,
   buildApiUrl,
   appendSessionQuery,
   normalizeProvider,
