@@ -1,0 +1,146 @@
+name: nightly STT e2e (manual)
+
+# Runs the live-recording-stream spec — the 8-minute headed STT test that
+# burns real OpenAI minutes. Currently MANUAL-TRIGGER ONLY because the
+# spec needs an audio fixture at lct_app/.tmp/lct_anand_compare_10_34.wav
+# (override via FAKE_AUDIO_PATH). That fixture is local-only and is not
+# committed to the repo.
+#
+# To enable the nightly schedule:
+#   1. Add a short (~24s) WAV with real speech under tests/fixtures/ — make
+#      sure it's CC-licensed or your own recording.
+#   2. Set FAKE_AUDIO_PATH below to point at it.
+#   3. Uncomment the `schedule` block.
+#
+# The spec uses `headless: false` (test.use), so we wrap the run in xvfb-run
+# to give Chromium a virtual display on the headless runner.
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: '0 9 * * *'  # 09:00 UTC daily (~02:30 IST). Enable after fixture lands.
+
+concurrency:
+  group: nightly-stt-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-recording:
+    name: live-recording-stream (xvfb + RUN_STT_E2E=1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: lct_user
+          POSTGRES_PASSWORD: lct_password
+          POSTGRES_DB: lct_dev
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U lct_user -d lct_dev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://lct_user:lct_password@localhost:5433/lct_dev
+      AUTH_TOKEN: ""
+      DEBUG: "false"
+      ENVIRONMENT: "test"
+      LOG_LEVEL: "INFO"
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      FRONTEND_PORT: "43173"
+      VITE_BACKEND_PORT: "43181"
+
+      # The spec checks this env to decide whether to skip.
+      RUN_STT_E2E: "1"
+
+      # Point at a committed fixture once one exists. Until then the
+      # "Verify audio fixture" step below will fail fast — that's intentional.
+      # FAKE_AUDIO_PATH: ${{ github.workspace }}/tests/fixtures/sample-24s.wav
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify audio fixture
+        run: |
+          FIXTURE="${FAKE_AUDIO_PATH:-lct_app/.tmp/lct_anand_compare_10_34.wav}"
+          if [ ! -f "$FIXTURE" ]; then
+            echo "::error::Audio fixture missing at $FIXTURE"
+            echo "Commit a CC-licensed WAV under tests/fixtures/ and set"
+            echo "FAKE_AUDIO_PATH in this workflow to point at it."
+            exit 1
+          fi
+          echo "fixture ok: $FIXTURE"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: lct_python_backend/requirements.txt
+
+      - name: Install backend deps
+        working-directory: lct_python_backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run alembic migrations
+        working-directory: lct_python_backend
+        run: alembic upgrade head
+
+      - name: Start backend (uvicorn :43181)
+        run: |
+          nohup uvicorn lct_python_backend.backend:lct_app \
+            --host 0.0.0.0 --port 43181 \
+            > backend.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:43181/openapi.json > /dev/null; then
+              echo "backend ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "backend failed to start within 60s"
+          cat backend.log
+          exit 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: lct_app/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: lct_app
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: lct_app
+        run: npx playwright install --with-deps chromium
+
+      - name: Run live-recording-stream (headed via xvfb)
+        working-directory: lct_app
+        env:
+          CI: "true"
+        run: xvfb-run -a npx playwright test live-recording-stream
+
+      - name: Backend log on failure
+        if: failure()
+        run: |
+          echo "=== backend.log ==="
+          cat backend.log || true
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: lct_app/playwright-report/
+          retention-days: 14
