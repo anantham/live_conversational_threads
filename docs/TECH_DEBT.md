@@ -68,3 +68,15 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | ../TemporalCoordination/grimoire/IndrasNet/services/transcription/whisperx_server.py | 818 | Batch transcription, diarization, embeddings, realtime websocket streaming, model lifecycle/reset logic, and server boot wiring all live in one file. The live-finalization patch required touching the streaming protocol inside the monolith. | Split streaming realtime behavior into `whisperx_stream_server.py` or at least `whisperx_streaming.py`; keep batch transcription/diarization endpoints and model lifecycle separate so live protocol fixes do not require editing the full service. |
 | ~~lct_python_backend/bookmarks_api.py~~ | ~~470~~ → 204 | **RESOLVED** — Extracted `bookmark_service.py` (155 LOC) with CRUD ops, serializer (eliminated 5× duplication), and UUID helper. Router is now a thin adapter. |
 | ~~lct_python_backend/cost_api.py~~ | ~~344~~ → 338 | **RESOLVED** — Already a thin router delegating to instrumentation layer. Fixed `get_db()` stub to use `get_async_session`. No structural decomposition needed. |
+
+## Known failing / non-running unit tests (filed 2026-05-31)
+
+All verified PRE-EXISTING (identical at merge-base `4e313f3` and `main` tip `2f99913`; not caused by the 2026-05-31 merge work). Full suite at tip: **1000 passed / 6 failed**. Detail + repro command in `docs/HANDOVER_2026-05-31_merge-to-main-and-feat-rebase-plan.md`.
+
+| Test | Failures | Root cause | Fix |
+|---|---|---|---|
+| 6 files: `test_canvas_api_converter`, `test_consumption_prayer_api`, `test_conversation_export_api`, `test_conversation_participants_api`, `test_gcs_helpers_save_fallback`, `test_thread_observability_api` | collection errors (don't run) | `google-cloud-storage` not installed (`ImportError: google.cloud.storage`) | `pip install google-cloud-storage` or stub it in a conftest; ~50–100 tests currently silently skipped |
+| `test_conversations_api_relationship_maps` | 2 | same missing `google.cloud.storage`, fails at run not collection | same as above |
+| `test_speaker_naming_api` | 2 | `GET /api/conversations/{id}/speakers` → 404: test app mounts `router` but not `router_conversations` | include the conversations router in the test fixture |
+| `test_transcript_processing_runtime::test_graph_timer_forces_update` | 1 | known "~69-test asyncio cross-pollution" (passes alone, fails in full-suite) | likely fixed by `feat` branch `a214644` (per-test event-loop isolation conftest); verify post-merge |
+| `test_transcript_processing_schema::test_normalize_generated_output_adds_required_defaults` | 1 | asserts `semantic_level==2` but code defaults `1` since `d5ca1ee` (2026-04-14) | align test or default to the intended value |
