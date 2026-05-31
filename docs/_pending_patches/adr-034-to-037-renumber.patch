@@ -1,0 +1,207 @@
+From d231b2a2b4c2a89d2639ddce9c0ad09fc06164bc Mon Sep 17 00:00:00 2001
+From: anantham <adityaprasadiskool@gmail.com>
+Date: Sun, 31 May 2026 18:17:20 +0530
+Subject: [PATCH] docs(adr): renumber catalog ADR 034 -> 037 (collision-free)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+The inference-backend-catalog ADR shipped on this branch as ADR-034, which
+collides with main's ADR-034 (public-deployment, tiered isolation). It also
+could not take 036 — ADR-032's "Future work" list + VISION.md reserve 036 for
+the planned argument-quality-metrics ADR. 037 is the next truly-free number.
+
+Renames the file and updates every catalog reference (INDEX, ADR-035, crux_
+detector.py, the two catalog test docstrings, PROJECT_STRUCTURE, WORKLOG, two
+handovers). Leaves ADR-032's own forward-reference list (034 external-resources,
+036 argument-quality) untouched — those are a separate numbering reconciliation.
+
+NOT pushed — staged locally per operator instruction; land when feat is stable.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ docs/HANDOVER.md                                            | 2 +-
+ ...-05-30_inference-catalog-3lane-settings-crux-techdebt.md | 6 +++---
+ docs/PROJECT_STRUCTURE.md                                   | 4 ++--
+ docs/WORKLOG.md                                             | 2 +-
+ docs/adr/ADR-035-crux-detection.md                          | 4 ++--
+ ...37-inference-backend-catalog-and-three-lane-settings.md} | 2 +-
+ docs/adr/INDEX.md                                           | 4 ++--
+ lct_python_backend/services/crux_detector.py                | 2 +-
+ lct_python_backend/tests/unit/test_backend_catalog.py       | 2 +-
+ lct_python_backend/tests/unit/test_llm_telemetry_service.py | 2 +-
+ 10 files changed, 15 insertions(+), 15 deletions(-)
+ rename docs/adr/{ADR-034-inference-backend-catalog-and-three-lane-settings.md => ADR-037-inference-backend-catalog-and-three-lane-settings.md} (99%)
+
+diff --git a/docs/HANDOVER.md b/docs/HANDOVER.md
+index b7f73ec..171a1b4 100644
+--- a/docs/HANDOVER.md
++++ b/docs/HANDOVER.md
+@@ -4,7 +4,7 @@ The newest handovers are **dated files** in `docs/` (newest first):
+ 
+ - `HANDOVER_2026-05-30_inference-catalog-3lane-settings-crux-techdebt.md` —
+   built the inference backend catalog + 3-lane Settings UI + per-provider LLM
+-  telemetry + crux detection (ADR-034/035); fixed 2 security holes (audio
++  telemetry + crux detection (ADR-037/035); fixed 2 security holes (audio
+   path-traversal, share-revoke auth) + quota fail-closed + wired prod security
+   headers; ran `surface-tech-debt` → deleted dead code (claim/argument/is_ought
+   detectors+APIs, graph_generation, orphaned frontend incl. ThematicView, 8
+diff --git a/docs/HANDOVER_2026-05-30_inference-catalog-3lane-settings-crux-techdebt.md b/docs/HANDOVER_2026-05-30_inference-catalog-3lane-settings-crux-techdebt.md
+index 0f21539..05c94a2 100644
+--- a/docs/HANDOVER_2026-05-30_inference-catalog-3lane-settings-crux-techdebt.md
++++ b/docs/HANDOVER_2026-05-30_inference-catalog-3lane-settings-crux-techdebt.md
+@@ -1,7 +1,7 @@
+ # Handover: 2026-05-30 — Inference catalog + 3-lane Settings + crux + tech-debt + Codex review
+ 
+ ## Session Summary (narrative)
+-Long autonomous session on branch `feat/e2e-audio-graph-zoom`. Built the **inference backend catalog** + a **3-lane Settings UI** (STT / Diarization / LLM) showing per-backend model · where-it-runs · empirical speed/accuracy · cost · live probe (ADR-034), added **per-provider LLM telemetry**, and **crux detection** (ADR-035, lights up the pre-existing `is_crux` amber UI). Fixed **2 real security holes** (audio path-traversal, share-revoke auth bypass). Ran a **`surface-tech-debt`** sweep (the `anantham/expansion` plugin skill) → **deleted dead code** (claim/argument/is_ought detectors+APIs, `graph_generation.py`, orphaned frontend incl. the whole ThematicView subtree, 8 orphan prompts) and **consolidated bias/frame/simulacra detectors onto `LlmGateway`** (dropped the hardcoded-`claude-3-5-sonnet` anthropic branch). Then ran an independent **`codex exec review`**, fixed its 5 findings, **re-reviewed**, and fixed the one regression that re-review caught. ~22 commits, all **on the branch, not pushed**. The user has a **parallel uncommitted "prayer-cards" feature** I never touched.
++Long autonomous session on branch `feat/e2e-audio-graph-zoom`. Built the **inference backend catalog** + a **3-lane Settings UI** (STT / Diarization / LLM) showing per-backend model · where-it-runs · empirical speed/accuracy · cost · live probe (ADR-037), added **per-provider LLM telemetry**, and **crux detection** (ADR-035, lights up the pre-existing `is_crux` amber UI). Fixed **2 real security holes** (audio path-traversal, share-revoke auth bypass). Ran a **`surface-tech-debt`** sweep (the `anantham/expansion` plugin skill) → **deleted dead code** (claim/argument/is_ought detectors+APIs, `graph_generation.py`, orphaned frontend incl. the whole ThematicView subtree, 8 orphan prompts) and **consolidated bias/frame/simulacra detectors onto `LlmGateway`** (dropped the hardcoded-`claude-3-5-sonnet` anthropic branch). Then ran an independent **`codex exec review`**, fixed its 5 findings, **re-reviewed**, and fixed the one regression that re-review caught. ~22 commits, all **on the branch, not pushed**. The user has a **parallel uncommitted "prayer-cards" feature** I never touched.
+ 
+ ## Commits This Session (93a2d8a..HEAD, 22 — grouped)
+ - **Catalog/Settings/telemetry/crux:** `437cd42` catalog+diarization config · `efe4a37` LLM speed telemetry · `28d2374` 3-lane Settings + status chips · `7430b41` crux detection (ADR-035) · `efecb93` docs: rationality audit
+@@ -22,7 +22,7 @@ Long autonomous session on branch `feat/e2e-audio-graph-zoom`. Built the **infer
+ - Earlier arc (catalog/settings): *"I want you to review the settings and look into that"*, *"we need similar statistics for the LLM intelligence we use also right"*, *"can we also make the UI more simplistic and minimal? … progressive disclosure"*, *"why does it say planned? is it done?"* (caught the FluidAudio ACTIVE+planned+red-dot contradiction → drove the honesty model).
+ 
+ ## ADRs Written This Session
+-- **ADR-034: Inference Backend Catalog & Three-Lane Settings** — seed+refine catalog, 3 lanes, server-side SSRF-safe probe, honesty model (green = probe-verified).
++- **ADR-037: Inference Backend Catalog & Three-Lane Settings** — seed+refine catalog, 3 lanes, server-side SSRF-safe probe, honesty model (green = probe-verified).
+ - **ADR-035: Crux Detection** — graph-level detector via LlmGateway sets `Node.is_crux` + rationale in `display_preferences["crux"]`; no migration.
+ 
+ ## Pending Threads
+@@ -75,7 +75,7 @@ Long autonomous session on branch `feat/e2e-audio-graph-zoom`. Built the **infer
+ - [x] Memory `lct-llm-config-seam.md` (project) — the two-config landmine.
+ - [x] Memory `lct-session-working-style.md` (feedback) — verify-before-delete, delete-vestigial, never-touch-parallel-WIP, independent-Codex-review-then-re-review.
+ - [x] `MEMORY.md` index updated.
+-- [x] ADR-034, ADR-035 written; INDEX updated (+ ADR-021 collision flagged).
++- [x] ADR-037, ADR-035 written; INDEX updated (+ ADR-021 collision flagged).
+ - [x] `docs/AUDIT_RATIONALITY_2026-05-30.md` (8-agent audit) committed.
+ 
+ ## Calibration moments
+diff --git a/docs/PROJECT_STRUCTURE.md b/docs/PROJECT_STRUCTURE.md
+index 837456e..05e0d86 100644
+--- a/docs/PROJECT_STRUCTURE.md
++++ b/docs/PROJECT_STRUCTURE.md
+@@ -36,7 +36,7 @@ live_conversational_threads/
+ - `factcheck_api.py` (`/fact_check_claims/`, `/api/cost-tracking/stats`)
+ - `analysis_api.py` (`/api/conversations/*/{simulacra|biases|frames}*`)
+ - `analytics_api.py` (`/api/analytics/*`)
+-- `backend_catalog_api.py` (`/api/backend-catalog`, `/api/backend-catalog/probe`): inference backend catalog + live probes (ADR-034)
++- `backend_catalog_api.py` (`/api/backend-catalog`, `/api/backend-catalog/probe`): inference backend catalog + live probes (ADR-037)
+ - `user_identity_api.py` (`/api/user-identity`): "which contact is me" self-identity
+ - `consumption_prayer_api.py` (`/api/consumption-prayer/*`): intent/prayer matching + known-contacts picker cache (ADR-033)
+ - `graph_api.py` (`/api/graph/*`)
+@@ -59,7 +59,7 @@ live_conversational_threads/
+   - `llm_config.py`, `llm_helpers.py`, `local_llm_client.py`: LLM provider configuration and wrappers.
+   - `hierarchical_themes/`: multi-level topic clustering (Level 1–5 clusterers).
+   - `coercion_helpers.py`: shared type coercion utilities (`to_bool`, `coerce_str`, `safe_float`, etc.).
+-  - `backend_catalog.py`: merges benchmark seed + live telemetry + active config into the 3-lane catalog (ADR-034); seed in `data/backend_catalog_seed.json`.
++  - `backend_catalog.py`: merges benchmark seed + live telemetry + active config into the 3-lane catalog (ADR-037); seed in `data/backend_catalog_seed.json`.
+   - `llm_telemetry_service.py`: per-provider LLM speed telemetry that feeds the catalog.
+   - `indrasnet_client.py`, `edge_enrichment.py`: IndrasNet HTTP client (prayers/contacts/retrieval) + semantic edge enrichment.
+   - `conversation_pipeline/`: staged transcript→graph orchestrator — **built + tested but NOT yet on the live path** (live flow still uses `stt_ws_session` + bulk import); see ISSUES.md.
+diff --git a/docs/WORKLOG.md b/docs/WORKLOG.md
+index f020270..4420610 100644
+--- a/docs/WORKLOG.md
++++ b/docs/WORKLOG.md
+@@ -21,7 +21,7 @@ Two follow-ups after the user reviewed the 3-lane Settings UI.
+ 
+ ## 2026-05-30 — Inference backend catalog + 3-lane Settings (STT/Diarization/LLM) + LLM telemetry (branch `feat/e2e-audio-graph-zoom`)
+ 
+-Goal (user-directed): "rethink how the UI works" for inference settings/status — show per backend the **model, where it runs, empirical latency, accuracy, cost**, independently control STT / Diarization / LLM, and **live-probe** each. User chose **full 3-lane UI in one go** + **FluidAudio** as the diarization default. Mid-build the user added: "we need similar statistics for the LLM intelligence too" → added LLM telemetry + an LLM benchmark. See ADR-034.
++Goal (user-directed): "rethink how the UI works" for inference settings/status — show per backend the **model, where it runs, empirical latency, accuracy, cost**, independently control STT / Diarization / LLM, and **live-probe** each. User chose **full 3-lane UI in one go** + **FluidAudio** as the diarization default. Mid-build the user added: "we need similar statistics for the LLM intelligence too" → added LLM telemetry + an LLM benchmark. See ADR-037.
+ 
+ - **Backend catalog (seed + refine):** new committed seed `lct_python_backend/data/backend_catalog_seed.json` (11 STT + 3 diarization + 7 LLM entries) carrying model · runtime/location · empirical speed (RTF/×realtime) + accuracy (WER vs `openai-whisper` reference) + cost, seeded from `.tmp/stt_bench` (2026-05-29) and `.tmp/llm_bench` (2026-05-30). `services/backend_catalog.py` merges seed + live telemetry (observed numbers attached **only to the active backend** — telemetry is per-provider, not per-engine) + active-config flags. `backend_catalog_api.py`: `GET /api/backend-catalog`, `POST /api/backend-catalog/probe` (server-side, SSRF-safe — client names an entry, server resolves the URL).
+ - **Diarization is now first-class:** `services/diarization_config.py` + `diarization_settings_service.py` (`diarization_config` AppSetting: enabled/primary/fallback_priority/backends) + `diarization_api.py` (`/api/settings/diarization` GET/PUT + health-check). Default primary **FluidAudio** (ANE, emits embeddings → voice-ID); honestly marked `status:"planned"` (Swift sidecar not yet bundled). pyannote marked `degraded` (MPS gives wrong results).
+diff --git a/docs/adr/ADR-035-crux-detection.md b/docs/adr/ADR-035-crux-detection.md
+index 199934f..aca0726 100644
+--- a/docs/adr/ADR-035-crux-detection.md
++++ b/docs/adr/ADR-035-crux-detection.md
+@@ -13,7 +13,7 @@ LCT's graph models a `Node.is_crux` flag, the backend serializes it (`conversati
+ Build a **crux detector** that completes this feature end-to-end:
+ 
+ 1. **Graph-level, relational detection.** A crux is a *load-bearing* belief/claim — one where, if it changed, downstream positions would change — and often the pivot of (dis)agreement. That is inherently relational, so the detector makes **one LLM call over the whole conversation graph** (node names + summaries + the `agrees`/`disagrees`/`supports`/`contradicts` relationships), not a per-node loop like the bias/frame/simulacra detectors.
+-2. **Route through `LlmGateway`.** The detector calls `local_chat_json(config, …)` (which routes through `gateway().chat(capability=CHAT_JSON_OBJECT)`), respecting the user's configured LLM (e.g. local Ollama), capturing LLM telemetry (ADR-034), and applying capability-sensitive substitution policy. It does **not** call `anthropic` directly or hardcode a model — explicitly avoiding the ×5 copy-paste anti-pattern the audit flagged in the existing detectors.
++2. **Route through `LlmGateway`.** The detector calls `local_chat_json(config, …)` (which routes through `gateway().chat(capability=CHAT_JSON_OBJECT)`), respecting the user's configured LLM (e.g. local Ollama), capturing LLM telemetry (ADR-037), and applying capability-sensitive substitution policy. It does **not** call `anthropic` directly or hardcode a model — explicitly avoiding the ×5 copy-paste anti-pattern the audit flagged in the existing detectors.
+ 3. **Persist via the existing flag + JSONB, no migration.** For each node, set `Node.is_crux` and store the rationale in `Node.display_preferences["crux"] = {reason, confidence, crux_type, analyzed_at}`. This reuses the already-serialized flag (so the amber UI lights up automatically) and persists the "why" without a schema change.
+ 4. **On-demand endpoints**, mirroring the existing analysis surface: `POST /api/conversations/{id}/cruxes/analyze`, `GET /api/conversations/{id}/cruxes`, `GET /api/nodes/{id}/crux` (added to the already-mounted `analysis_api`).
+ 5. **Prompt in the library** (ADR-027): a `crux_detection` entry in `prompts.json`, rendered via `PromptManager`.
+@@ -40,7 +40,7 @@ Graph-level + gateway-routed + flag-reuse is the smallest correct slice that (a)
+ ## Implications
+ 
+ - **New:** `lct_python_backend/services/crux_detector.py`; `crux_detection` prompt in `prompts.json`; three routes in `analysis_api.py`; `tests/unit/test_crux_detector.py`.
+-- The detector's LLM calls appear in LLM telemetry (ADR-034) and the cost ledger automatically (gateway path).
++- The detector's LLM calls appear in LLM telemetry (ADR-037) and the cost ledger automatically (gateway path).
+ - The frontend amber crux styling becomes reachable for the first time once `analyze` runs.
+ - **Triggers follow-ups:** a UI trigger / nav surface (the analysis pages are currently unlinked — see audit); optional auto-run flag; **double-crux** (pair cruxes across speakers) as its own ADR; possible promotion of crux rationale to a dedicated table.
+ - Discovered en route (logged in ISSUES): `bias_detector._analyze_node` reads `node.node_summary`/`node.keywords`, which don't exist on the `Node` model (fields are `summary`/`key_points`) — the crux detector uses the correct fields.
+diff --git a/docs/adr/ADR-034-inference-backend-catalog-and-three-lane-settings.md b/docs/adr/ADR-037-inference-backend-catalog-and-three-lane-settings.md
+similarity index 99%
+rename from docs/adr/ADR-034-inference-backend-catalog-and-three-lane-settings.md
+rename to docs/adr/ADR-037-inference-backend-catalog-and-three-lane-settings.md
+index c0be008..40f78c6 100644
+--- a/docs/adr/ADR-034-inference-backend-catalog-and-three-lane-settings.md
++++ b/docs/adr/ADR-037-inference-backend-catalog-and-three-lane-settings.md
+@@ -1,4 +1,4 @@
+-# ADR-034: Inference Backend Catalog & Three-Lane Settings
++# ADR-037: Inference Backend Catalog & Three-Lane Settings
+ 
+ - **Status:** Decided (2026-05-30) — implemented on branch `feat/e2e-audio-graph-zoom`, pending human review.
+ - **Group:** presentation + integration
+diff --git a/docs/adr/INDEX.md b/docs/adr/INDEX.md
+index ff20a4b..383ba1a 100644
+--- a/docs/adr/INDEX.md
++++ b/docs/adr/INDEX.md
+@@ -1,6 +1,6 @@
+ # Architecture Decision Records — Index
+ 
+-Last updated: 2026-05-30 (ADR-032–035 added; see the ADR-021 number-collision note below)
++Last updated: 2026-05-30 (ADR-032/033/035 added; catalog ADR renumbered 034→037 to avoid collision with main's ADR-034 public-deployment AND ADR-032's reserved 036 argument-quality slot; see the ADR-021 number-collision note below)
+ 
+ | ADR | Title | Date | Status |
+ |-----|-------|------|--------|
+@@ -38,8 +38,8 @@ Last updated: 2026-05-30 (ADR-032–035 added; see the ADR-021 number-collision
+ | [ADR-031](ADR-031-post-streaming-hierarchy-consolidation.md) | Post-Streaming Hierarchy Consolidation (Option A) | 2026-05-12 | Approved |
+ | [ADR-032](ADR-032-temporal-swim-lane-layout-and-semantic-edges.md) | Temporal Swim-Lane Layout + Semantic Edge Taxonomy + Enrichment Context | 2026-05-19 | Accepted |
+ | [ADR-033](ADR-033-consumption-prayer-matching.md) | Consumption Prayer Matching in the Live Conversation Path | 2026-05-24 | Accepted |
+-| [ADR-034](ADR-034-inference-backend-catalog-and-three-lane-settings.md) | Inference Backend Catalog & Three-Lane Settings | 2026-05-30 | Decided |
+ | [ADR-035](ADR-035-crux-detection.md) | Crux Detection | 2026-05-30 | Decided |
++| [ADR-037](ADR-037-inference-backend-catalog-and-three-lane-settings.md) | Inference Backend Catalog & Three-Lane Settings | 2026-05-30 | Decided |
+ 
+ > **⚠ ADR-021 number collision:** two ADRs shipped as 021 — *Browser-Local Draft Recovery* (2026-04-03) and *Authored Four-Level Conversation Hierarchy* (2026-04-13). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.
+ 
+diff --git a/lct_python_backend/services/crux_detector.py b/lct_python_backend/services/crux_detector.py
+index 832eac4..d494776 100644
+--- a/lct_python_backend/services/crux_detector.py
++++ b/lct_python_backend/services/crux_detector.py
+@@ -9,7 +9,7 @@ agreement/disagreement edges — and it sets the existing ``Node.is_crux`` flag
+ ``Node.display_preferences["crux"]`` (no migration). See ADR-035.
+ 
+ Routed through the LlmGateway (via ``local_chat_json``) so it respects the
+-configured local/online provider, captures LLM telemetry (ADR-034), and never
++configured local/online provider, captures LLM telemetry (ADR-037), and never
+ hardcodes a model — deliberately avoiding the gateway-bypass pattern in the other
+ detectors (see docs/AUDIT_RATIONALITY_2026-05-30.md).
+ """
+diff --git a/lct_python_backend/tests/unit/test_backend_catalog.py b/lct_python_backend/tests/unit/test_backend_catalog.py
+index 9be544f..c31f111 100644
+--- a/lct_python_backend/tests/unit/test_backend_catalog.py
++++ b/lct_python_backend/tests/unit/test_backend_catalog.py
+@@ -1,4 +1,4 @@
+-"""Tests for the inference backend catalog (ADR-034).
++"""Tests for the inference backend catalog (ADR-037).
+ 
+ build_catalog is pure (reads the committed seed, takes config/telemetry dicts), so
+ these run without a DB. They pin the honesty-critical invariants: exactly one active
+diff --git a/lct_python_backend/tests/unit/test_llm_telemetry_service.py b/lct_python_backend/tests/unit/test_llm_telemetry_service.py
+index 4e0e203..105faf1 100644
+--- a/lct_python_backend/tests/unit/test_llm_telemetry_service.py
++++ b/lct_python_backend/tests/unit/test_llm_telemetry_service.py
+@@ -1,4 +1,4 @@
+-"""Tests for LLM live telemetry (ADR-034).
++"""Tests for LLM live telemetry (ADR-037).
+ 
+ JSONL-backed; we point the log at a temp file so nothing touches the real data dir.
+ """
+-- 
+2.34.1.windows.1
+

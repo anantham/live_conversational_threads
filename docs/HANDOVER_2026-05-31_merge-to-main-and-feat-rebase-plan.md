@@ -95,11 +95,13 @@ Fail at import (`ImportError: cannot import name 'storage' from 'google.cloud'`)
 **BLOCKER 1 (HARD) — graph files must take MAIN's side.**
 feat's tree predates main's graph fixes, so its `MinimalGraph.jsx` / `graphLayout.js` are the **OLD pre-fix copies**. `git diff main origin/feat/e2e-audio-graph-zoom -- lct_app/src/components/MinimalGraph.jsx lct_app/src/components/graphLayout.js` is **non-empty** — feat's side would **REVERT** `MIN_READABLE_ZOOM`, 360×280 sizing, and degenerate-timestamp spread (`2df0014`+`73e2bef`). During rebase, **resolve both files to MAIN's version**, then visually confirm the saved-view graph renders before pushing.
 
-**BLOCKER 2 (HARD) — ADR-034 number collision.**
+**BLOCKER 2 (HARD) — ADR-034 number collision. → RESOLVED LOCALLY (patch ready, NOT yet on feat).**
 - main: `ADR-034-public-lct-deployment-tiered-isolation.md` (Proposed, 2026-05-31) — shipped this session.
-- feat: `ADR-034-inference-backend-catalog-and-three-lane-settings.md` (Decided, 2026-05-30) — different decision.
-Renumber feat's catalog ADR (suggest **036**): rename file + its INDEX row + in-repo references. Reconcile status vocabulary ("Decided" vs main's "Accepted"/"Approved"/"Proposed").
-- **Bonus pre-existing (feat commit `5d8872e` flags it):** main already has **two ADR-021 files** (`ADR-021-browser-local-draft-recovery.md` + `ADR-021-authored-four-level-conversation-hierarchy.md`, both indexed). Renumber one while touching INDEX.
+- feat: `ADR-034-inference-backend-catalog-and-three-lane-settings.md` (Decided, 2026-05-30) — different decision, same number.
+- **DONE this session:** the catalog ADR was renumbered **034 → 037** (NOT 036 — 036 is reserved by ADR-032's "Future ADRs" wishlist + `VISION.md` for the planned argument-quality view; 037 has no real ADR-file collision). All 10 catalog references updated (file rename + INDEX row + ADR-035 + `crux_detector.py` + the two catalog test docstrings + `PROJECT_STRUCTURE.md` + `WORKLOG.md` + two handovers). ADR-032's stale wishlist lines (which list 033–038, mostly already overrun by unrelated ADRs) were deliberately left **untouched** — that wishlist is junk and needs a separate holistic cleanup.
+- **HOW TO APPLY:** the renumber is committed on a local worktree feat branch and exported as **`docs/_pending_patches/adr-034-to-037-renumber.patch`** (committed to main). It was NOT pushed to `origin/feat` because a parallel session is actively advancing that branch (tip moved `4966675` → `7591633 feat(prayer-cards)` mid-session). During the feat rebase, after resolving the graph files (Blocker 1), apply the patch: `git am docs/_pending_patches/adr-034-to-037-renumber.patch` (or `git apply` for an uncommitted version), then re-verify `git grep "ADR-034"` shows only ADR-032's wishlist line.
+- **Still a human call:** reconcile the status vocabulary ("Decided" on feat's ADRs vs main's "Accepted"/"Approved"/"Proposed").
+- **Bonus pre-existing (feat commit `5d8872e` flags it):** main already has **two ADR-021 files** (`ADR-021-browser-local-draft-recovery.md` + `ADR-021-authored-four-level-conversation-hierarchy.md`, both indexed). Plus ADR-032's "Future ADRs flagged by this work" list (lines ~315–320) reserves 033–038 but is stale — most of those numbers were taken by unrelated ADRs. Both want a holistic renumber pass.
 
 **BLOCKER 3 (MEDIUM) — e2e env coupling.** `audio-graph-zoom.spec.ts` hardcodes `100.81.65.74:7777` + `gpt-oss-20b`. Parameterize via env / gate behind a `@local-only` marker / CI-skip, else CI goes red off-LAN.
 
