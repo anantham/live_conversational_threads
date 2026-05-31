@@ -13,7 +13,7 @@ function scrollToAdvanced() {
 }
 
 /**
- * The 3-lane "Inference runtime" hero of the Settings page. Reads the backend
+ * The 3-lane "Active engines" hero of the Settings page. Reads the backend
  * catalog (benchmark seed + live telemetry + active config) and lets the user
  * independently pick the active backend per capability (STT / Diarization / LLM),
  * see model · where-it-runs · empirical speed/accuracy · cost, and live-probe each.
@@ -228,9 +228,10 @@ export default function InferenceLanes() {
     <section className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Inference runtime</h2>
+          <h2 className="text-base font-semibold text-gray-900">Active engines</h2>
           <p className="text-[12px] text-gray-500">
-            Pick the active backend per capability. Numbers are empirical — benchmark seed, refined by your live usage.
+            Choose the engine for each job — speech-to-text, diarization, and the LLM. Numbers are
+            empirical: a benchmark seed, refined by your live usage. Deep settings live in the cards below.
           </p>
         </div>
         <button
