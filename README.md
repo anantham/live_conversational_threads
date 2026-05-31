@@ -19,7 +19,7 @@ Two double-clickable files in the project root:
 1. **First time only —** double-click **`setup-once.command`**. Installs Postgres + Python/Node deps, creates the local database, writes `lct_python_backend/.env`, and runs migrations.
 2. **Every time —** double-click **`start.command`**. Starts Postgres, the on-device STT server, the backend, and the frontend, then prints the URLs. Open **http://localhost:43173**. Press **Ctrl+C** in that window to stop everything.
 
-> **The LLM runs separately.** Make sure **Ollama** (or your configured LM Studio / remote box) is running with a model pulled — `start.command` does not manage it. Settings → Runtime → *Inference runtime* shows each backend's live status, model, where it runs, and empirical speed/cost.
+> **The LLM runs separately.** Make sure **Ollama** (or your configured LM Studio / remote box) is running with a model pulled — `start.command` does not manage it. Settings → Runtime → *Active engines* shows each backend's live status, model, where it runs, and empirical speed/cost.
 >
 > If macOS blocks a `.command` ("unidentified developer"), right-click it → **Open** once.
 
