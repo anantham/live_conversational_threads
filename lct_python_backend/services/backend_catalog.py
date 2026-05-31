@@ -94,6 +94,54 @@ def _active_stt_id(stt_entries: List[Dict[str, Any]], stt_settings: Dict[str, An
     return matching[0]["id"]
 
 
+def _synth_remote_whisper_entry(
+    stt_entries: List[Dict[str, Any]], stt_settings: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """Honesty guard: a configured whisper URL that matches NO seed endpoint must
+    not be reported as the bundled on-device server (``whisper-local-mlx``).
+
+    `_active_stt_id` falls back to ``is_default_local`` for any unmatched whisper
+    URL, so the catalog/home status would claim local MLX while live STT actually
+    posts to the configured (often remote/Tailscale) endpoint. When that happens,
+    synthesize an explicit "custom endpoint" entry the caller can mark active
+    instead. Returns None when the URL is unset (local default is honest) or when
+    it genuinely matches a seed endpoint.
+    """
+    if _norm(stt_settings.get("provider")) != "whisper":
+        return None
+    provider_http_urls = (
+        stt_settings.get("provider_http_urls")
+        if isinstance(stt_settings.get("provider_http_urls"), dict)
+        else {}
+    )
+    configured_url = str(provider_http_urls.get("whisper") or stt_settings.get("http_url") or "").strip()
+    if not configured_url:
+        return None  # nothing configured — default-local is the honest answer
+
+    cfg = _norm(configured_url)
+    for entry in stt_entries:
+        if _norm(entry.get("provider_key")) != "whisper":
+            continue
+        endpoint = _norm(entry.get("endpoint"))
+        if endpoint and (endpoint == cfg or endpoint.split("/v1/")[0] in cfg):
+            return None  # genuine seed match — no synthesis needed
+
+    from urllib.parse import urlparse
+
+    host = urlparse(configured_url).hostname or "remote"
+    is_local = host in {"127.0.0.1", "localhost", "::1"}
+    return {
+        "id": "whisper-remote-custom",
+        "provider_key": "whisper",
+        "display_name": f"Whisper (custom: {host})",
+        "runtime": "local-http" if is_local else "remote-http",
+        "is_local": is_local,
+        "endpoint": configured_url,
+        "status": "configured",
+        "summary": "Whisper HTTP endpoint configured in Settings — not a bundled engine, so no benchmark numbers.",
+    }
+
+
 def _llm_first(llm_entries: List[Dict[str, Any]], predicate) -> Optional[str]:
     for entry in llm_entries:
         if predicate(entry):
@@ -292,6 +340,14 @@ def build_catalog(
     diar_entries = [dict(e) for e in seed.get("diarization", [])]
 
     active_stt = _active_stt_id(stt_entries, stt_settings)
+    # Honesty: if a configured whisper URL matches no seed endpoint, _active_stt_id
+    # falls back to the bundled local MLX entry. Surface an explicit custom-endpoint
+    # entry and make it active instead, so the UI never claims local MLX while audio
+    # actually posts to a remote URL.
+    _synth_stt = _synth_remote_whisper_entry(stt_entries, stt_settings)
+    if _synth_stt is not None:
+        stt_entries.append(_synth_stt)
+        active_stt = _synth_stt["id"]
     active_llm = _active_llm_id(llm_entries, llm_settings)
     active_diar = _active_diar_id(diar_entries, diar_settings)
 

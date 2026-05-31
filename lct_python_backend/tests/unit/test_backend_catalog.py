@@ -40,6 +40,34 @@ def test_one_active_per_lane():
     assert cat["active"]["diarization"] == "fluidaudio"
 
 
+def test_remote_whisper_url_is_not_labeled_local_mlx():
+    # A configured whisper URL that matches no seed endpoint (e.g. the Tailscale
+    # IndrasNet orchestrator) must NOT be reported as the bundled on-device MLX
+    # server — that would be a dishonest "active engine" claim.
+    cat = build_catalog(
+        stt_settings={"provider": "whisper", "http_url": "http://100.81.65.74:7777/api/transcribe"},
+    )
+    active = [e for e in cat["stt"] if e["is_active"]]
+    assert len(active) == 1
+    assert active[0]["id"] == "whisper-remote-custom"
+    assert active[0]["is_local"] is False
+    assert "100.81.65.74" in active[0]["endpoint"]
+    assert cat["active"]["stt"] == "whisper-remote-custom"
+    assert cat["active"]["stt_effective"] == "whisper-remote-custom"
+    # the bundled local entry must NOT be marked active
+    local = next(e for e in cat["stt"] if e["id"] == "whisper-local-mlx")
+    assert local["is_active"] is False
+
+
+def test_local_whisper_url_still_matches_bundled_mlx():
+    # The genuine local default must still resolve to the bundled entry (no synth).
+    cat = build_catalog(
+        stt_settings={"provider": "whisper", "http_url": "http://127.0.0.1:5095/v1/audio/transcriptions"},
+    )
+    assert cat["active"]["stt"] == "whisper-local-mlx"
+    assert not any(e["id"] == "whisper-remote-custom" for e in cat["stt"])
+
+
 def test_effective_falls_past_non_runnable_diarizer():
     # FluidAudio is selected but planned (no sidecar) -> effective is the next
     # runnable backend (pyannote, enabled + token), NOT the selected one.
