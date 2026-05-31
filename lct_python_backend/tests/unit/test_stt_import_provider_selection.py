@@ -52,6 +52,37 @@ def test_local_first_wins_primary_when_local_url_configured():
     assert "openai_audio" in providers
 
 
+def test_local_first_is_the_default_for_uploads(monkeypatch):
+    """``upload_local_first`` defaults to STT_UPLOAD_LOCAL_FIRST (True), so a
+    configured local URL wins for uploads even when the flag is not passed.
+
+    This documents the behavior the older file_transcriber quality-first test
+    used to rely on being a no-op: the default now actually takes effect, so a
+    local parakeet URL beats cloud OpenAI for uploads unless local-first is
+    explicitly disabled. Pinned to True via monkeypatch for determinism
+    regardless of the ambient STT_UPLOAD_LOCAL_FIRST env value.
+    """
+    import lct_python_backend.services.provider_selection as ps
+
+    monkeypatch.setattr(ps, "STT_UPLOAD_LOCAL_FIRST", True)
+    candidates = ps.resolve_import_audio_candidates(
+        settings={
+            "provider": "whisper",
+            "provider_http_urls": {
+                "parakeet": "http://127.0.0.1:5092/v1/audio/transcriptions",
+            },
+            # upload_local_first intentionally NOT set → inherits default True
+            "live_cloud_fallback_enabled": True,
+            "cloud_fallback_providers": {"openai_audio": _openai_provider_block()},
+        },
+        provider_override=None,
+    )
+
+    assert candidates
+    assert candidates[0]["provider"] == "parakeet"
+    assert candidates[0]["reason"] == "local_first"
+
+
 def test_cloud_remains_primary_when_no_local_url():
     """No local URL configured → cloud (OpenAI) is still the primary.
 
