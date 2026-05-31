@@ -32,6 +32,8 @@ const formatBackend = (backend) => {
   if (lower.includes("openai_audio")) return "OpenAI";
   if (lower.startsWith("cloud_")) return lower.replace("cloud_", "").replace("_audio", "").replace(/^\w/, c => c.toUpperCase());
   if (lower.startsWith("remote_")) return "Remote";
+  if (lower.startsWith("online_gemini")) return "Gemini";
+  if (lower.startsWith("online")) return "Online";
   return "Local";
 };
 
@@ -41,7 +43,7 @@ const formatBackend = (backend) => {
 const getBackendTooltip = (type, backend) => {
   if (!backend) return "";
   const label = formatBackend(backend);
-  const model = backend.replace(/^(local_|modal_|openrouter_)/i, "");
+  const model = backend.replace(/^(local_|modal_|openrouter_|online_)/i, "");
 
   if (type === "stt") {
     if (label === "Local") return `Local STT provider (${model || "whisperx"})`;
@@ -55,6 +57,8 @@ const getBackendTooltip = (type, backend) => {
     if (label === "Local") return `LLM on local GPU (${model || "local model"})`;
     if (label === "Modal") return `LLM on Modal cloud (${model || "qwen3-32b"})`;
     if (label === "OpenRouter") return `LLM via OpenRouter API (${model || "gemini-3-flash"})`;
+    if (label === "Gemini") return `Google Gemini via cloud API (${model || "gemini-2.5-flash"})`;
+    if (label === "Online") return `LLM via cloud API (${model || "gemini"})`;
     return `LLM via ${label}`;
   }
 

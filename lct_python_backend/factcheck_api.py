@@ -184,8 +184,12 @@ async def download_audio(
                 select(Conversation).where(Conversation.id == conv_uuid)
             )
             conversation_row = result.scalar_one_or_none()
-    except Exception:
-        pass  # filename falls back to UUID
+    except Exception as exc:
+        logger.warning(
+            "[AUDIO_DOWNLOAD] Falling back to UUID filename for conversation_id=%s: %s",
+            conversation_id,
+            exc,
+        )
 
     recordings_root = Path(AUDIO_RECORDINGS_DIR).resolve()
 
