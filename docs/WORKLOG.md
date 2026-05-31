@@ -1,34 +1,17 @@
 # WORKLOG
 
+## 2026-05-30 14:11 EDT — LCT live prayer-card bridge for IndrasNet Fetch prayers
+
+Goal (user-approved): complete the first loop where LCT captures selected live transcript evidence, sends it to IndrasNet for prayer detection/urgency routing, and renders returned Fetch prayer cards in the live conversation UI.
+
+- **Hypotheses / predicted outcomes:** H1 existing `consumption_prayer_api.py` proxy pattern is the right low-blast LCT boundary; H2 IndrasNet should own prayer semantics, urgency/salience, and auto-actuation; H3 LCT can render returned cards without knowing retrieval internals. Predicted tests: mocked backend client/API tests pass offline; a focused Vitest service test proves selected text becomes explicit `fetch: ...`; frontend build catches JSX wiring errors.
+- **Backend bridge:** `lct_python_backend/services/indrasnet_client.py:459` adds `detect_lct_prayer(...)` for `POST /api/lct/prayers/detect` with loud transport/client/server/protocol errors. `lct_python_backend/consumption_prayer_api.py:70` adds `LctPrayerDetectionRequest`; `lct_python_backend/consumption_prayer_api.py:149` adds `POST /api/conversations/{conversation_id}/prayer-detect`.
+- **Frontend trigger/surface:** `lct_app/src/services/prayerCardsApi.js` wraps selected text as `signal_text: "fetch: <selection>"` while preserving `selected_text`. `TranscriptSelectionToolbar.jsx:37,115,167` adds the Fetch memory slot. `NewConversation.jsx:128-131,191-234,1087-1109` wires ephemeral prayer-card state, manual selection handler, chip, and drawer. New UI files: `PrayerCardChip.jsx`, `PrayerCardDrawer.jsx`.
+- **Tests:** `lct_python_backend/tests/unit/test_indrasnet_client.py` and `test_consumption_prayer_api.py` gained Test Intent notes plus mocked regression tests for the LCT prayer detect client/route. `lct_app/src/services/prayerCardsApi.test.js` covers frontend payload shaping and typed errors.
+- **Validation:** `./.venv/bin/python -m pytest -q lct_python_backend/tests/unit/test_indrasnet_client.py lct_python_backend/tests/unit/test_consumption_prayer_api.py` → `60 passed` (pytest cache write warnings only, caused by sandbox permissions). `npm run test -- src/services/prayerCardsApi.test.js` → `3 passed`. `npm run build` → passed with the existing large chunk warning.
+- **Deferred intentionally:** durable LCT persistence for prayer cards still needs its own model/migration/API read path. This slice keeps parity with the existing live agenda card behavior: render now, clear on new session.
+
 ## 2026-05-30 (later) — Settings honesty/minimalism fixes + rationality/stub audit (branch `feat/e2e-audio-graph-zoom`)
-
-## 2026-05-30 — Settings: dedup primary-STT-engine control + clearer labels
-
-Branch `feat/stt-settings-clarity` (off `feat/e2e-audio-graph-zoom`).
-
-`/settings/runtime` exposed the primary live-STT provider in two editable
-places — the "Inference runtime" hero (`InferenceLanes.jsx`) and the
-"Live STT" card (`SttSettingsCard.jsx`) — both writing the same `provider`
-field via the same `/api/settings/stt`. Two sources of truth that could
-disagree after a save, plus inconsistent vocabulary across the page.
-
-Changes (frontend only):
-- `lct_app/src/components/audio/sttUtils.js`: add `STT_PROVIDER_LABELS` +
-  exported `formatProviderLabel()` (`ofc` -> "SenseVoice", etc.).
-- `lct_app/src/components/settings/SttSettingsCard.jsx`: primary-provider
-  `<select>` -> read-only display deferring to "Active engines"; reworded
-  header/intro and the local-only / cloud-fallback checkbox labels.
-- `lct_app/src/components/settings/InferenceLanes.jsx`: "Inference runtime"
-  -> "Active engines"; clarified subtitle.
-- `lct_app/src/components/settings/settingsSummary.js`: `ofc` -> "SenseVoice".
-
-Verification: `npx eslint` clean on the 4 files; `npx vite build` passed.
-
-Tradeoff (next session): the primary engine is now chosen only from the
-catalog-backed hero. If the backend catalog endpoint is unreachable, the
-engine can't be changed until it returns (the card still shows the current
-value). Shipped as 2 commits: formatProviderLabel helper, then the dedup +
-rewording refactor.
 
 Two follow-ups after the user reviewed the 3-lane Settings UI.
 
