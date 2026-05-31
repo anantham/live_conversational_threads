@@ -11,10 +11,13 @@ import SearchDialog from "../components/SearchDialog";
 import SessionTranscriptOverlay from "../components/transcript/SessionTranscriptOverlay";
 import ConsumptionPrayerChip from "../components/conversation/ConsumptionPrayerChip";
 import ConsumptionPrayerDrawer from "../components/conversation/ConsumptionPrayerDrawer";
+import PrayerCardChip from "../components/conversation/PrayerCardChip";
+import PrayerCardDrawer from "../components/conversation/PrayerCardDrawer";
 import ParticipantPickerModal from "../components/conversation/ParticipantPickerModal";
 import TranscriptSelectionToolbar from "../components/conversation/TranscriptSelectionToolbar";
 import useTextSelection from "../components/conversation/useTextSelection";
 import { triggerConsumptionPrayer, ConsumptionApiError } from "../services/consumptionApi";
+import { detectPrayerFromSelection, PrayerCardsApiError } from "../services/prayerCardsApi";
 import {
   fetchConversationParticipants,
   fetchUserIdentity,
@@ -122,6 +125,10 @@ export default function NewConversation() {
   const [consumptionError, setConsumptionError] = useState("");
   const [consumptionDrawerOpen, setConsumptionDrawerOpen] = useState(false);
   const [knownContacts, setKnownContacts] = useState([]);
+  const [prayerCardState, setPrayerCardState] = useState("idle"); // "idle" | "loading" | "error"
+  const [prayerCardEvents, setPrayerCardEvents] = useState([]);
+  const [prayerCardError, setPrayerCardError] = useState("");
+  const [prayerCardDrawerOpen, setPrayerCardDrawerOpen] = useState(false);
 
   // ----- Participant picker state -----
   // Auto-opens when arriving with ?autostart=true (i.e. New Conversation
@@ -181,6 +188,52 @@ export default function NewConversation() {
     [conversationId, clearTranscriptSelection],
   );
 
+  const appendPrayerCardEvent = useCallback((body) => {
+    const cards = Array.isArray(body?.cards) ? body.cards : [];
+    const event = {
+      event_id: body?.detected_at || body?.triggered_at || `${Date.now()}`,
+      ...body,
+      cards,
+    };
+    setPrayerCardEvents((previous) => [event, ...previous].slice(0, 25));
+    return cards;
+  }, []);
+
+  const handleFetchPrayerSelection = useCallback(
+    async ({ selectedText }) => {
+      setPrayerCardState("loading");
+      setPrayerCardError("");
+      try {
+        const body = await detectPrayerFromSelection({
+          conversationId,
+          selectedText,
+          maxResults: 5,
+        });
+        const cards = appendPrayerCardEvent(body);
+        setPrayerCardState("idle");
+        if (
+          cards.some(
+            (card) =>
+              card.status === "executed" ||
+              card.status === "error" ||
+              card.surface_mode === "interrupt",
+          )
+        ) {
+          setPrayerCardDrawerOpen(true);
+        }
+        clearTranscriptSelection();
+      } catch (err) {
+        const message =
+          err instanceof PrayerCardsApiError
+            ? err.message
+            : `Prayer routing failed: ${err?.message || "unknown error"}`;
+        setPrayerCardError(message);
+        setPrayerCardState("error");
+      }
+    },
+    [appendPrayerCardEvent, clearTranscriptSelection, conversationId],
+  );
+
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(window.location.search);
   const autostart = searchParams.get("autostart") === "true";
@@ -226,6 +279,15 @@ export default function NewConversation() {
     setConsumptionState("idle");
     setConsumptionError("");
   }, []);
+
+  const prayerCardCount = useMemo(
+    () =>
+      prayerCardEvents.reduce(
+        (count, event) => count + (Array.isArray(event.cards) ? event.cards.length : 0),
+        0,
+      ),
+    [prayerCardEvents],
+  );
 
   // Load the conversation's participants whenever conversation_id changes
   // (recovered draft, fresh session). For a live recording with none set
@@ -563,9 +625,14 @@ export default function NewConversation() {
     setTranscriptMinimized(false);
     setLiveTranscriptState({
       recording: false,
+      paused: false,
       liveTranscriptLines: [],
       statusLine: "",
     });
+    setPrayerCardState("idle");
+    setPrayerCardEvents([]);
+    setPrayerCardError("");
+    setPrayerCardDrawerOpen(false);
     setAudioRecovery(null);
     setSessionActionBusy("");
   }, []);
@@ -1017,13 +1084,29 @@ export default function NewConversation() {
           onClose={() => setConsumptionDrawerOpen(false)}
         />
 
+        <PrayerCardChip
+          state={prayerCardState}
+          cardCount={prayerCardCount}
+          latestEvent={prayerCardEvents[0] || null}
+          errorMessage={prayerCardError}
+          onOpen={() => setPrayerCardDrawerOpen(true)}
+        />
+
+        <PrayerCardDrawer
+          open={prayerCardDrawerOpen}
+          events={prayerCardEvents}
+          onClose={() => setPrayerCardDrawerOpen(false)}
+        />
+
         <TranscriptSelectionToolbar
           selection={transcriptSelection}
           conversationContact={null /* future: from session-start contact picker */}
           knownContacts={knownContacts}
           onShowAgenda={handleShowAgenda}
+          onFetchPrayer={handleFetchPrayerSelection}
           onClose={clearTranscriptSelection}
           loading={consumptionState === "loading"}
+          fetchLoading={prayerCardState === "loading"}
         />
 
         <ParticipantPickerModal

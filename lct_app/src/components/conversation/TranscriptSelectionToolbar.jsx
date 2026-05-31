@@ -23,6 +23,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
+import { Search } from "lucide-react";
 
 const TOOLBAR_WIDTH = 320;
 const TOOLBAR_OFFSET_TOP = 8; // gap between top of toolbar and bottom of selection
@@ -33,8 +34,10 @@ export default function TranscriptSelectionToolbar({
   conversationContact, // optional: {contact_id, display_name} from picker
   knownContacts = [], // [{contact_id, display_name}, ...] for the dropdown
   onShowAgenda, // ({contactRef, selectedText}) => void
+  onFetchPrayer, // ({selectedText}) => void
   onClose,
   loading = false,
+  fetchLoading = false,
 }) {
   const [pickedContactRef, setPickedContactRef] = useState("");
 
@@ -99,6 +102,7 @@ export default function TranscriptSelectionToolbar({
     (c) => c.contact_id === pickedContactRef,
   );
   const canTrigger = Boolean(pickedContactRef) && !loading;
+  const canFetch = Boolean(selection.text?.trim()) && !fetchLoading;
 
   const handleShowAgenda = () => {
     if (!canTrigger) return;
@@ -106,6 +110,11 @@ export default function TranscriptSelectionToolbar({
       contactRef: pickedContactRef,
       selectedText: selection.text,
     });
+  };
+
+  const handleFetchPrayer = () => {
+    if (!canFetch) return;
+    onFetchPrayer?.({ selectedText: selection.text });
   };
 
   return (
@@ -149,6 +158,25 @@ export default function TranscriptSelectionToolbar({
           }
         >
           {loading ? "…" : "go"}
+        </button>
+      </div>
+
+      {/* Active slot: Fetch prayer */}
+      <div className="flex items-center gap-2 px-2 py-1.5 border-t border-gray-100">
+        <Search size={14} className="text-blue-500 shrink-0" aria-hidden="true" />
+        <span className="text-sm text-gray-700 flex-1">Fetch memory</span>
+        <button
+          type="button"
+          onClick={handleFetchPrayer}
+          disabled={!canFetch}
+          className={`text-xs px-2.5 py-1 rounded font-medium transition-colors ${
+            canFetch
+              ? "bg-blue-100 text-blue-800 hover:bg-blue-200"
+              : "bg-gray-100 text-gray-400 cursor-not-allowed"
+          }`}
+          title="Route this selection as a Fetch prayer"
+        >
+          {fetchLoading ? "..." : "go"}
         </button>
       </div>
 
@@ -204,8 +232,10 @@ TranscriptSelectionToolbar.propTypes = {
     }),
   ),
   onShowAgenda: PropTypes.func.isRequired,
+  onFetchPrayer: PropTypes.func,
   onClose: PropTypes.func.isRequired,
   loading: PropTypes.bool,
+  fetchLoading: PropTypes.bool,
 };
 
 

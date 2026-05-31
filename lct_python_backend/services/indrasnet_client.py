@@ -453,6 +453,112 @@ async def retrieval_search(
 
 
 # ---------------------------------------------------------------------------
+# LCT live prayer detection — route live evidence through IndrasNet semantics
+# ---------------------------------------------------------------------------
+
+async def detect_lct_prayer(
+    *,
+    signal_text: str = "",
+    selected_text: str = "",
+    conversation_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    utterance_ids: Optional[List[str]] = None,
+    context_window: str = "",
+    participants: Optional[List[Dict[str, Any]]] = None,
+    source: str = "lct_live",
+    max_results: int = 5,
+    base_url: Optional[str] = None,
+    timeout_seconds: Optional[float] = None,
+) -> Dict[str, Any]:
+    """Call IndrasNet's POST /api/lct/prayers/detect.
+
+    LCT supplies transcript evidence; IndrasNet decides whether it is a
+    prayer, how urgent/salient it is, and whether a low-blast Fetch prayer
+    should be actuated into a card immediately.
+    """
+    base = (base_url or get_indrasnet_base_url()).rstrip("/")
+    timeout = timeout_seconds if timeout_seconds is not None else get_match_timeout_seconds()
+    url = f"{base}/api/lct/prayers/detect"
+
+    payload = {
+        "signal_text": signal_text or "",
+        "selected_text": selected_text or "",
+        "conversation_id": conversation_id,
+        "session_id": session_id,
+        "utterance_ids": list(utterance_ids or []),
+        "context_window": context_window or "",
+        "participants": list(participants or []),
+        "source": source or "lct_live",
+        "max_results": int(max_results),
+    }
+
+    logger.debug(
+        "[indrasnet_client] lct-prayer-detect → %s "
+        "(signal_len=%d selected_len=%d max_results=%d)",
+        url,
+        len(payload["signal_text"]),
+        len(payload["selected_text"]),
+        payload["max_results"],
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(url, json=payload)
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        msg = f"IndrasNet LCT prayer endpoint unreachable at {url}: {exc}"
+        logger.warning("[indrasnet_client] %s", msg)
+        raise IndrasNetUnavailable(msg) from exc
+    except httpx.ReadTimeout as exc:
+        msg = f"IndrasNet LCT prayer call timed out after {timeout}s at {url}"
+        logger.warning("[indrasnet_client] %s", msg)
+        raise IndrasNetUnavailable(msg) from exc
+    except httpx.HTTPError as exc:
+        msg = f"IndrasNet LCT prayer HTTP transport error at {url}: {exc}"
+        logger.warning("[indrasnet_client] %s", msg)
+        raise IndrasNetUnavailable(msg) from exc
+
+    status = response.status_code
+    if 400 <= status < 500:
+        msg = (
+            f"IndrasNet LCT prayer detect returned {status} — payload rejected. "
+            f"Body: {response.text[:300]}"
+        )
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetClientError(msg)
+    if status >= 500:
+        msg = (
+            f"IndrasNet LCT prayer detect returned {status} — server error. "
+            f"Body: {response.text[:300]}"
+        )
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetServerError(msg)
+
+    try:
+        body = response.json()
+    except ValueError as exc:
+        msg = f"IndrasNet LCT prayer detect returned non-JSON body: {response.text[:200]}"
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetProtocolError(msg) from exc
+
+    if not isinstance(body, dict) or "decision" not in body or "cards" not in body:
+        msg = f"IndrasNet LCT prayer detect response missing decision/cards: {body!r}"
+        logger.error("[indrasnet_client] %s", msg)
+        raise IndrasNetProtocolError(msg)
+
+    cards = body.get("cards") if isinstance(body.get("cards"), list) else []
+    decision = body.get("decision") if isinstance(body.get("decision"), dict) else {}
+    logger.info(
+        "[indrasnet_client] lct-prayer-detect ← %d cards "
+        "(urgency=%s surface=%s auto=%s)",
+        len(cards),
+        decision.get("urgency"),
+        decision.get("surface_mode"),
+        decision.get("auto_actuate"),
+    )
+    return body
+
+
+# ---------------------------------------------------------------------------
 # Health probe — exposed for the live pipeline to check at startup
 # ---------------------------------------------------------------------------
 
