@@ -640,10 +640,19 @@ async def test_transcribe_uploaded_file_falls_back_to_remote_provider(monkeypatc
 
 
 def test_resolve_import_audio_candidates_prefers_openai_diarized_for_quality():
+    """With ``upload_local_first`` disabled, uploads prefer the OpenAI diarized
+    cloud path for transcript quality even when a local URL is configured.
+
+    Note: ``upload_local_first`` defaults to True, in which case the local URL
+    wins instead — that default-on path is covered by
+    test_stt_import_provider_selection.py. This test pins the quality-first
+    branch by explicitly opting out of local-first.
+    """
     candidates = resolve_import_audio_candidates(
         settings={
             "provider": "whisper",
             "local_only": False,
+            "upload_local_first": False,
             "live_cloud_fallback_enabled": True,
             "provider_http_urls": {
                 "parakeet": "http://localhost:5092/v1/audio/transcriptions",

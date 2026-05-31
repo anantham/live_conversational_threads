@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-05-30 (ADR-032–035 added; see the ADR-021 number-collision note below)
+Last updated: 2026-05-31 (ADR-032/033 indexed; ADR-035 added; ADR-034 shipped on both branches as two different ADRs — see the ADR-034 collision note below, alongside the ADR-021 collision)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -38,14 +38,17 @@ Last updated: 2026-05-30 (ADR-032–035 added; see the ADR-021 number-collision 
 | [ADR-031](ADR-031-post-streaming-hierarchy-consolidation.md) | Post-Streaming Hierarchy Consolidation (Option A) | 2026-05-12 | Approved |
 | [ADR-032](ADR-032-temporal-swim-lane-layout-and-semantic-edges.md) | Temporal Swim-Lane Layout + Semantic Edge Taxonomy + Enrichment Context | 2026-05-19 | Accepted |
 | [ADR-033](ADR-033-consumption-prayer-matching.md) | Consumption Prayer Matching in the Live Conversation Path | 2026-05-24 | Accepted |
-| [ADR-034](ADR-034-inference-backend-catalog-and-three-lane-settings.md) | Inference Backend Catalog & Three-Lane Settings | 2026-05-30 | Decided |
+| [ADR-034 ⚠](ADR-034-inference-backend-catalog-and-three-lane-settings.md) | Inference Backend Catalog & Three-Lane Settings | 2026-05-30 | Decided |
+| [ADR-034 ⚠](ADR-034-public-lct-deployment-tiered-isolation.md) | Public LCT Deployment — Tiered Access with an Isolated Public Instance | 2026-05-31 | Proposed |
 | [ADR-035](ADR-035-crux-detection.md) | Crux Detection | 2026-05-30 | Decided |
 
 > **⚠ ADR-021 number collision:** two ADRs shipped as 021 — *Browser-Local Draft Recovery* (2026-04-03) and *Authored Four-Level Conversation Hierarchy* (2026-04-13). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.
+> **⚠ ADR-034 number collision:** two ADRs shipped as 034 — *Inference Backend Catalog & Three-Lane Settings* (2026-05-30, Decided, this branch) and *Public LCT Deployment — Tiered Access* (2026-05-31, Proposed, main). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.
 
 ## Status Definitions
 
 - **Proposed** — Under discussion, not yet committed to
 - **Approved** — Accepted and implemented (or in implementation)
+- **Accepted** — Synonym for Approved used by some later ADRs (e.g. ADR-032/033); decision is locked and built
 - **Deprecated** — No longer relevant, superseded by another ADR
 - **Superseded** — Replaced by a newer ADR (link to successor)

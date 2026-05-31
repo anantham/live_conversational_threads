@@ -5,7 +5,7 @@ Runs on each finalized live segment to decide: did the speaker explicitly
 ask to see the pending-discussions list for the current contact? This is
 the explicit-verbal-trigger path the user described as MVP scope —
 distinct from implicit reaching-for detection (which lives in the
-mothballed consumption_trigger.py).
+mothballed experimental/consumption_trigger.py).
 
 Examples that should match (case-insensitive substring):
   "I pray I could see the agenda for this conversation"

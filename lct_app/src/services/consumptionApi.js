@@ -10,7 +10,7 @@
  * meaningful copy ("contact not found" vs "IndrasNet down").
  */
 
-const DEFAULT_BASE = ""; // same-origin by default — Vite proxies to backend
+import { apiFetch } from "./apiClient";
 
 export class ConsumptionApiError extends Error {
   constructor(kind, message, status) {
@@ -27,14 +27,12 @@ export class ConsumptionApiError extends Error {
  * @param {string} args.conversationId
  * @param {string} args.contactRef - contact_id or display_name
  * @param {string} [args.selectedText] - source sentence from transcript (telemetry)
- * @param {string} [args.baseUrl] - override the API base (test injection)
  * @returns {Promise<object>} normalized response with items / contact / status
  */
 export async function triggerConsumptionPrayer({
   conversationId,
   contactRef,
   selectedText = "",
-  baseUrl = DEFAULT_BASE,
 }) {
   if (!conversationId) {
     throw new ConsumptionApiError("validation", "conversationId required", 0);
@@ -43,10 +41,10 @@ export async function triggerConsumptionPrayer({
     throw new ConsumptionApiError("validation", "contactRef required", 0);
   }
 
-  const url = `${baseUrl}/api/conversations/${encodeURIComponent(conversationId)}/recommend-consumption-query`;
+  const path = `/api/conversations/${encodeURIComponent(conversationId)}/recommend-consumption-query`;
   let response;
   try {
-    response = await fetch(url, {
+    response = await apiFetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

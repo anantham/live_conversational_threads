@@ -130,9 +130,17 @@ def resolve_import_audio_candidates(
 ) -> List[Dict[str, Any]]:
     """Resolve ordered import/upload STT candidates.
 
-    Import audio favors final transcript quality over time-to-first-token:
-    when cloud fallback is enabled and OpenAI diarization is configured,
-    prefer that path before the older local/remote backend-http chain.
+    Routing honors ``upload_local_first`` (default ``STT_UPLOAD_LOCAL_FIRST``,
+    env-overridable, currently True): when it is enabled and a local provider
+    URL is configured, the local backend is the primary candidate for uploads.
+    Batch transcription is not latency-bound, so local is preferred for the
+    privacy/offline goal; cloud (OpenAI diarized) remains reachable as a
+    fallback via ``upload_remote_fallback`` / ``live_fallback_priority``.
+
+    When ``upload_local_first`` is disabled, uploads instead prefer the OpenAI
+    diarized cloud path for final transcript quality before the local/remote
+    backend-http chain. ``local_only`` removes cloud candidates entirely, and
+    an explicit ``provider_override`` wins over both.
     """
     provider_http_urls = settings.get("provider_http_urls")
     provider_url_map = provider_http_urls if isinstance(provider_http_urls, dict) else {}
@@ -284,8 +292,26 @@ def resolve_import_audio_candidates(
         )
     else:
         primary_added = False
+        # Try local first when upload_local_first is enabled — before cloud
+        # primary. Previously the cloud-primary block (now below) would set
+        # primary_added=True and short-circuit the local_first block,
+        # making upload_local_first a no-op whenever OpenAI was configured.
+        # For the offline/privacy goal, local should win for uploads
+        # (latency is not the binding constraint for batch); OpenAI remains
+        # reachable via the `fallback_enabled` block at end of function.
+        if local_first_enabled and not override_provider:
+            for provider_name in STT_PROVIDER_ORDER:
+                local_url = provider_url(provider_name)
+                if local_url and _is_local_http_url(local_url):
+                    add_candidate(
+                        build_backend_http_candidate(provider_name, "local_first") or {}
+                    )
+                    if len(candidates) > 0:
+                        primary_added = True
+                        break
+
         cloud_primary_allowed = not override_provider and not local_only
-        if cloud_primary_allowed:
+        if not primary_added and cloud_primary_allowed:
             openai_candidate = fallback_candidates.get("openai_audio")
             if openai_candidate:
                 add_candidate(openai_candidate)
@@ -296,17 +322,6 @@ def resolve_import_audio_candidates(
                 build_backend_http_candidate(override_provider, "override") or {}
             )
             primary_added = len(candidates) > 0
-
-        if not primary_added and local_first_enabled:
-            for provider_name in STT_PROVIDER_ORDER:
-                local_url = provider_url(provider_name)
-                if local_url and _is_local_http_url(local_url):
-                    add_candidate(
-                        build_backend_http_candidate(provider_name, "local_first") or {}
-                    )
-                    primary_added = len(candidates) > 0
-                    if primary_added:
-                        break
 
         if not primary_added:
             add_candidate(

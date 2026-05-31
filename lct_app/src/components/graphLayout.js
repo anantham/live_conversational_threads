@@ -87,21 +87,34 @@ export function layoutByThread(nodes, edges, {
   if (timeBased) {
     const nodesWithTime = nodes.filter((n) => getTsStart(n) != null);
     if (nodesWithTime.length >= Math.max(2, Math.floor(nodes.length * 0.5))) {
-      return layoutByThreadTimeAxis(nodes, {
-        nodeHeight,
-        ranksep,
-        pixelsPerSecond,
-        minNodeWidth,
-        threads,
-        getThread,
-        getTsStart,
-        getTsEnd,
-      });
+      // Consolidated tiers sometimes carry the full conversation duration
+      // on every node (timestamp_start=0, timestamp_end=total). When the
+      // span is zero the time-axis collapses every node to x=0. Fall
+      // through to column-index layout in that case.
+      const starts = nodesWithTime.map(getTsStart);
+      const timeSpan = Math.max(...starts) - Math.min(...starts);
+      if (timeSpan > 0) {
+        return layoutByThreadTimeAxis(nodes, {
+          nodeHeight,
+          ranksep,
+          pixelsPerSecond,
+          minNodeWidth,
+          threads,
+          getThread,
+          getTsStart,
+          getTsEnd,
+        });
+      }
     }
     // Falls through to column-index layout below.
   }
 
-  if (threads.size < 2) return layoutWithDagre(nodes, edges, { nodeWidth, nodeHeight });
+  // Dagre needs edges to spread nodes across ranks; with no edges every
+  // node lands at rank 0 and stacks. Only short-circuit to Dagre when
+  // there's at least one edge to lay against.
+  if (threads.size < 2 && edges && edges.length > 0) {
+    return layoutWithDagre(nodes, edges, { nodeWidth, nodeHeight });
+  }
 
   const sortedThreads = [...threads.entries()].sort((a, b) => {
     const sizeDiff = b[1].nodes.length - a[1].nodes.length;

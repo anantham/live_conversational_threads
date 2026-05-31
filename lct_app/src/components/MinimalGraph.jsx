@@ -40,6 +40,11 @@ import ColorModeToggle from "./graph/ColorModeToggle";
 const NODE_TYPES = { conversational: ConversationNode };
 const EDGE_TYPES = {};
 
+// Floor on auto-fit zoom — below this card text gets unreadable. The user
+// can still mouse-wheel zoom out past it for a macro overview; this only
+// caps the auto-fit behaviour on tier change / drilldown / center reset.
+const MIN_READABLE_ZOOM = 0.65;
+
 
 function MinimalGraphInner({
   graphData,
@@ -454,8 +459,11 @@ function MinimalGraphInner({
               rfLevelNodes,
               rfLevelEdges,
               {
-                nodeWidth: spec.level >= 3 ? 280 : 250,
-                nodeHeight: spec.level >= 3 ? 102 : 90,
+                // ConversationNode caps at 360w; summary text pushes
+                // heights to ~280. Layout must reserve that footprint
+                // or rows overlap horizontally + vertically.
+                nodeWidth: 360,
+                nodeHeight: 280,
                 // ADR-032 Part A: X=timestamp_start, Y=thread row.
                 // Falls back to column-index automatically when too few
                 // nodes have timestamps (legacy / unrecorded conversations).
@@ -695,6 +703,7 @@ function MinimalGraphInner({
       reactFlow.fitView({
         padding: 0.15,
         duration: reduceMotion ? 0 : 300,
+        minZoom: MIN_READABLE_ZOOM,
       });
     }, 50);
     return () => clearTimeout(id);
@@ -1031,7 +1040,6 @@ function MinimalGraphInner({
     setClickedEdge((prev) => (prev?.id === edge.id ? null : { id: edge.id, ...edge.data }));
   }, []);
 
-  const MIN_READABLE_ZOOM = 0.65;
   const ZOOM_PRESETS = [
     { label: "Center", action: () => {
       // Keep the user's current zoom and anchor the camera so the TOP-LEFT
