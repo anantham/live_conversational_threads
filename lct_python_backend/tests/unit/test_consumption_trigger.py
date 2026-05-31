@@ -14,7 +14,7 @@ Focus areas:
 
 import pytest
 
-from lct_python_backend.services import consumption_trigger as ct
+from lct_python_backend.experimental import consumption_trigger as ct
 
 
 @pytest.fixture(autouse=True)
@@ -262,7 +262,7 @@ def _patch_client(monkeypatch):
     """Returns a function that installs a stub client + returns it."""
     def _install(stub: _StubClient):
         monkeypatch.setattr(
-            "lct_python_backend.services.consumption_trigger.get_local_client",
+            "lct_python_backend.experimental.consumption_trigger.get_local_client",
             lambda config=None: stub,
         )
         return stub
