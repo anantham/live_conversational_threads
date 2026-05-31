@@ -315,6 +315,121 @@
       "requires": ["openrouter-api-key"],
       "status": "configurable",
       "tags": ["cloud", "paid", "off-device", "degraded"]
+    },
+    {
+      "id": "indic-conformer-600m",
+      "capability": "stt",
+      "provider_key": "indic-conformer",
+      "display_name": "IndicConformer-600M (AI4Bharat)",
+      "model": "ai4bharat/indic-conformer-600m-multilingual",
+      "runtime": "m5-cpu",
+      "is_local": true,
+      "languages": { "total": 22, "indic": ["hi", "ml", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ur", "or", "as", "sa"], "note": "All 22 official Indian languages incl. Hindi, Malayalam, Sanskrit, Tamil — best free open Indic coverage (MIT). No per-language WER on the model card; pull from IndicVoices/Vistaar." },
+      "cost": { "model": "free_local", "free_local": true, "per_minute": 0.0 },
+      "measured": {
+        "source": "vendor_published",
+        "rtf": null,
+        "wer_vs_ref": null,
+        "note": "Conformer hybrid CTC+RNNT; AI4Bharat 'country's first open-source ASR' for 22 langs. PyTorch/ONNX on M2 (no MLX). UNMEASURED here — flip to available only after wiring + a local Indic benchmark."
+      },
+      "health": { "probe_url": null },
+      "install_hint": "Gated HF download (ai4bharat/indic-conformer-600m-multilingual); needs a PyTorch/ONNX runner.",
+      "start_hint": "Run behind an OpenAI-compatible HTTP shim (planned).",
+      "requires": ["pytorch-or-onnx", "hf-gated-access"],
+      "status": "planned",
+      "tags": ["on-device", "indic", "multilingual", "mit", "sanskrit"]
+    },
+    {
+      "id": "indic-whisper",
+      "capability": "stt",
+      "provider_key": "indic-whisper",
+      "display_name": "IndicWhisper (AI4Bharat)",
+      "model": "ai4bharat/indicwhisper (whisper-medium fine-tuned)",
+      "runtime": "m5-gpu-mlx",
+      "is_local": true,
+      "languages": { "total": 12, "indic": ["hi", "ml", "ta", "te", "bn", "mr", "kn", "gu", "pa", "or", "as"], "note": "12 Indian languages; lowest WER in 39/59 Vistaar benchmarks (Hindi ~10.3). Whisper-based -> mlx-whisper compatible." },
+      "cost": { "model": "free_local", "free_local": true, "per_minute": 0.0 },
+      "measured": {
+        "source": "vendor_published",
+        "rtf": null,
+        "wer_vs_ref": null,
+        "note": "Whisper-medium fine-tuned for Indic. Vistaar numbers are vendor-published; not measured on this fleet."
+      },
+      "health": { "probe_url": null },
+      "install_hint": "mlx-whisper with the IndicWhisper checkpoint.",
+      "start_hint": "Run behind the OpenAI-compatible whisper shim, then point the provider URL at it (planned).",
+      "requires": [],
+      "status": "planned",
+      "tags": ["on-device", "indic", "whisper"]
+    },
+    {
+      "id": "omnilingual-asr-300m",
+      "capability": "stt",
+      "provider_key": "omnilingual",
+      "display_name": "Meta Omnilingual ASR 300M",
+      "model": "facebook/omnilingual-asr-300m",
+      "runtime": "m5-cpu",
+      "is_local": true,
+      "languages": { "total": 1600, "indic": ["hi", "ml", "mr", "ta", "te", "bn", "sa"], "note": "1,600+ langs incl. Hindi, Malayalam, Marathi; zero-shot new langs. 300M variant viable on 8GB (7B too big). CER<10 for 78% of langs (vendor)." },
+      "cost": { "model": "free_local", "free_local": true, "per_minute": 0.0 },
+      "measured": {
+        "source": "vendor_published",
+        "rtf": null,
+        "wer_vs_ref": null,
+        "note": "wav2vec2 7B + LLM decoder family; 300M/1B viable on 8GB, 7B too big. Long-tail / Sanskrit-adjacent coverage. Unmeasured here."
+      },
+      "health": { "probe_url": null },
+      "install_hint": "Meta Omnilingual ASR (facebook/omnilingual-asr-300m); PyTorch runner.",
+      "start_hint": "Run behind an OpenAI-compatible HTTP shim (planned).",
+      "requires": ["pytorch"],
+      "status": "planned",
+      "tags": ["on-device", "indic", "multilingual", "long-tail"]
+    },
+    {
+      "id": "whisperkit-ane",
+      "capability": "stt",
+      "provider_key": "whisperkit",
+      "display_name": "WhisperKit (CoreML / ANE)",
+      "model": "whisper-large-v3-turbo (CoreML via WhisperKit)",
+      "runtime": "m5-ane",
+      "is_local": true,
+      "languages": { "total": 99, "indic": ["hi", "ml", "ta", "te", "bn", "mr", "kn", "gu", "pa", "ur"], "note": "Whisper 99-lang coverage but on the Apple Neural Engine — frees the GPU and uses far less RAM (key on an 8GB Air). Sub-100ms streaming." },
+      "cost": { "model": "free_local", "free_local": true, "per_minute": 0.0 },
+      "measured": {
+        "source": "vendor_published",
+        "rtf": null,
+        "wer_vs_ref": null,
+        "note": "Argmax WhisperKit: 2.2% WER on large-v3-turbo (ICML 2025, vendor). CoreML/ANE = low RAM vs MLX-GPU. Needs a Swift/CoreML sidecar (not built) — same shape as the FluidAudio sidecar."
+      },
+      "health": { "probe_url": null },
+      "install_hint": "WhisperKit Swift package / CLI; CoreML models auto-download.",
+      "start_hint": "Build a WhisperKit sidecar exposing an OpenAI-compatible endpoint (planned).",
+      "requires": ["whisperkit-sidecar", "macos-apple-silicon"],
+      "status": "planned",
+      "tags": ["on-device", "ane", "whisper", "streaming", "low-ram"]
+    },
+    {
+      "id": "voxtral-mini-3b",
+      "capability": "stt",
+      "provider_key": "voxtral",
+      "display_name": "Voxtral Mini 3B (Mistral)",
+      "model": "mistralai/Voxtral-Mini-3B (mlx-voxtral)",
+      "runtime": "m5-gpu-mlx",
+      "is_local": true,
+      "languages": { "total": 13, "indic": ["hi"], "note": "13 langs incl. Hindi (its ONLY Indic — no Malayalam/Sanskrit). 3B fits 8GB quantized; ~10.3% Hindi FLEURS (vendor). Audio Q&A capable." },
+      "cost": { "model": "free_local", "free_local": true, "per_minute": 0.0 },
+      "measured": {
+        "source": "vendor_published",
+        "rtf": null,
+        "wer_vs_ref": null,
+        "note": "Whisper-v3 encoder + Ministral 3B (Apache-2.0); has an mlx-voxtral port. Hindi-only Indic — lower priority than IndicConformer/Whisper. Unmeasured here."
+      },
+      "health": { "probe_url": null },
+      "install_hint": "mlx-voxtral (Voxtral-Mini-3B).",
+      "start_hint": "Run behind an OpenAI-compatible HTTP shim (planned).",
+      "requires": [],
+      "status": "planned",
+      "tags": ["on-device", "indic", "mlx"]
     }
   ],
   "diarization": [

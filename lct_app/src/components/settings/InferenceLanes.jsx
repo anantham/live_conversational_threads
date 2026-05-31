@@ -77,6 +77,16 @@ export default function InferenceLanes() {
 
   const setSttPrimary = useCallback(
     (entry) => {
+      // Planned engines (vendor-listed but not wired/built here) can't actually
+      // serve — saving one would silently fall back. Block with the install hint.
+      if (entry.status === 'planned') {
+        setNotice({
+          kind: 'warn',
+          text: `${entry.display_name} isn't wired yet (planned)${entry.install_hint ? ` — ${entry.install_hint}` : ''}. It can't be the active engine until built.`,
+        });
+        setTimeout(() => setNotice(null), 8000);
+        return undefined;
+      }
       // Whisper-family engines share provider_key 'whisper'. Without their own HTTP
       // endpoint, saving provider='whisper' silently resolves back to the default
       // local server — so don't fake the switch; point the user at Advanced.

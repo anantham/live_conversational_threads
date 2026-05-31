@@ -149,3 +149,19 @@ def test_every_stt_entry_declares_language_coverage():
     assert by_id["parakeet-mlx"]["indic"] == []
     assert "hi" in by_id["whisper-local-mlx"]["indic"] and "ml" in by_id["whisper-local-mlx"]["indic"]
     assert by_id["mlx-qwen3-asr"]["indic"] == ["hi"]
+
+
+def test_planned_indic_rows_are_honest():
+    # Added Indic engines must stay honest: planned + vendor_published + NO faked
+    # measured numbers (they flip to available only after wiring + a real benchmark).
+    seed = load_seed()
+    planned = {e["id"]: e for e in seed["stt"] if e.get("status") == "planned"}
+    expected = {"indic-conformer-600m", "indic-whisper", "omnilingual-asr-300m", "whisperkit-ane", "voxtral-mini-3b"}
+    assert expected <= set(planned), f"missing planned rows: {expected - set(planned)}"
+    for pid, e in planned.items():
+        m = e.get("measured") or {}
+        assert m.get("source") == "vendor_published", f"{pid} must be vendor_published, not faked"
+        assert m.get("rtf") is None and m.get("wer_vs_ref") is None, f"{pid} must not claim measured numbers"
+        assert (e.get("languages") or {}).get("indic"), f"{pid} should declare Indic coverage"
+    assert "ml" in planned["indic-conformer-600m"]["languages"]["indic"]  # broad-Indic
+    assert planned["voxtral-mini-3b"]["languages"]["indic"] == ["hi"]      # Hindi-only
