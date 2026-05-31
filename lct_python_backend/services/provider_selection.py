@@ -130,9 +130,17 @@ def resolve_import_audio_candidates(
 ) -> List[Dict[str, Any]]:
     """Resolve ordered import/upload STT candidates.
 
-    Import audio favors final transcript quality over time-to-first-token:
-    when cloud fallback is enabled and OpenAI diarization is configured,
-    prefer that path before the older local/remote backend-http chain.
+    Routing honors ``upload_local_first`` (default ``STT_UPLOAD_LOCAL_FIRST``,
+    env-overridable, currently True): when it is enabled and a local provider
+    URL is configured, the local backend is the primary candidate for uploads.
+    Batch transcription is not latency-bound, so local is preferred for the
+    privacy/offline goal; cloud (OpenAI diarized) remains reachable as a
+    fallback via ``upload_remote_fallback`` / ``live_fallback_priority``.
+
+    When ``upload_local_first`` is disabled, uploads instead prefer the OpenAI
+    diarized cloud path for final transcript quality before the local/remote
+    backend-http chain. ``local_only`` removes cloud candidates entirely, and
+    an explicit ``provider_override`` wins over both.
     """
     provider_http_urls = settings.get("provider_http_urls")
     provider_url_map = provider_http_urls if isinstance(provider_http_urls, dict) else {}
