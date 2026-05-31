@@ -155,10 +155,14 @@ async def transcribe(
 
 
 if __name__ == "__main__":
+    # Loopback by default — the endpoint is unauthenticated, so don't expose it
+    # on the LAN unless the operator explicitly opts in via LOCAL_STT_HOST.
+    host = os.getenv("LOCAL_STT_HOST", "127.0.0.1").strip() or "127.0.0.1"
     log.info(
-        "LCT local STT starting on 0.0.0.0:%d — reach via http://127.0.0.1:%d (IPv4; "
+        "LCT local STT starting on %s:%d — reach via http://127.0.0.1:%d (IPv4; "
         "do NOT use 'localhost' if the caller may resolve it to IPv6 ::1). "
+        "Set LOCAL_STT_HOST=0.0.0.0 to expose on the LAN (UNAUTHENTICATED). "
         "engine=mlx-whisper model=%s debug=%s",
-        PORT, PORT, DEFAULT_MODEL, DEBUG,
+        host, PORT, PORT, DEFAULT_MODEL, DEBUG,
     )
-    uvicorn.run(app, host="0.0.0.0", port=PORT, log_level="debug" if DEBUG else "info", access_log=True)
+    uvicorn.run(app, host=host, port=PORT, log_level="debug" if DEBUG else "info", access_log=True)
