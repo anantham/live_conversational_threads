@@ -76,10 +76,19 @@ def configure_trusted_hosts(app, environment="development"):
     """
 
     if environment == "production":
-        allowed_hosts = [
-            os.getenv("BACKEND_DOMAIN", "api.yourdomain.com"),
-            "api.yourdomain.com",
-        ]
+        backend_domain = os.getenv("BACKEND_DOMAIN", "").strip()
+        if not backend_domain:
+            # No real allowlist configured. Installing the placeholder
+            # "api.yourdomain.com" would reject every request to the actual
+            # deployment host (Host header mismatch), taking the service down.
+            # Skip TrustedHost rather than hard-block prod on a default.
+            logger.warning(
+                "[SECURITY] ENVIRONMENT=production but BACKEND_DOMAIN is unset; "
+                "skipping TrustedHostMiddleware. Set BACKEND_DOMAIN to enable "
+                "Host-header hardening."
+            )
+            return
+        allowed_hosts = [backend_domain]
     elif environment == "staging":
         allowed_hosts = [
             "staging-api.yourdomain.com",
