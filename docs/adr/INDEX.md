@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-05-12 (ADR-031 added)
+Last updated: 2026-05-31 (ADR-032 and ADR-033 indexed — files existed since 2026-05-19/05-24 but were never listed; ADR-034 added)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -35,10 +35,14 @@ Last updated: 2026-05-12 (ADR-031 added)
 | [ADR-029](ADR-029-usage-quota-and-rate-limiting.md) | Usage Quota and Rate Limiting for STT Services | 2026-04-14 | Proposed |
 | [ADR-030](ADR-030-system-invariants-and-pipeline-standards.md) | System Invariants and Pipeline Standards | 2026-04-15 | Approved |
 | [ADR-031](ADR-031-post-streaming-hierarchy-consolidation.md) | Post-Streaming Hierarchy Consolidation (Option A) | 2026-05-12 | Approved |
+| [ADR-032](ADR-032-temporal-swim-lane-layout-and-semantic-edges.md) | Temporal Swim-Lane Layout + Semantic Edge Taxonomy + Enrichment Context | 2026-05-19 | Accepted |
+| [ADR-033](ADR-033-consumption-prayer-matching.md) | Consumption Prayer Matching in the Live Conversation Path | 2026-05-24 | Accepted |
+| [ADR-034](ADR-034-public-lct-deployment-tiered-isolation.md) | Public LCT Deployment — Tiered Access with an Isolated Public Instance | 2026-05-31 | Proposed |
 
 ## Status Definitions
 
 - **Proposed** — Under discussion, not yet committed to
 - **Approved** — Accepted and implemented (or in implementation)
+- **Accepted** — Synonym for Approved used by some later ADRs (e.g. ADR-032/033); decision is locked and built
 - **Deprecated** — No longer relevant, superseded by another ADR
 - **Superseded** — Replaced by a newer ADR (link to successor)
