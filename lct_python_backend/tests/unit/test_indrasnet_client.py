@@ -14,12 +14,14 @@ import pytest
 
 from lct_python_backend.services.indrasnet_client import (
     IndrasNetClientError,
+    IndrasNetDisabled,
     IndrasNetProtocolError,
     IndrasNetServerError,
     IndrasNetUnavailable,
     get_indrasnet_base_url,
     get_match_timeout_seconds,
     get_pending_discussions,
+    indrasnet_enabled,
     match_prayers,
 )
 
@@ -27,17 +29,17 @@ from lct_python_backend.services.indrasnet_client import (
 @pytest.fixture(autouse=True)
 def _clear_env(monkeypatch):
     """Each test starts with no INDRASNET_* env vars unless it sets them."""
-    for var in ("INDRASNET_BASE_URL", "INDRASNET_MATCH_TIMEOUT_SECONDS"):
+    for var in (
+        "INDRASNET_BASE_URL",
+        "INDRASNET_MATCH_TIMEOUT_SECONDS",
+        "ENABLE_INDRASNET",
+    ):
         monkeypatch.delenv(var, raising=False)
 
 
 # ---------------------------------------------------------------------------
-# Config defaults
+# Capability gate (ADR-034 §D2) — fail CLOSED, no hardcoded fallback
 # ---------------------------------------------------------------------------
-
-def test_default_base_url():
-    assert get_indrasnet_base_url() == "http://100.81.65.74:7777"
-
 
 def test_base_url_env_override(monkeypatch):
     monkeypatch.setenv("INDRASNET_BASE_URL", "http://localhost:9999/")
@@ -45,9 +47,59 @@ def test_base_url_env_override(monkeypatch):
     assert get_indrasnet_base_url() == "http://localhost:9999"
 
 
-def test_base_url_empty_env_falls_back_to_default(monkeypatch):
+def test_disabled_when_nothing_configured():
+    """No URL + no flag → disabled, and resolving the URL fails CLOSED
+    (no silent fall-back to the owner's live instance — the old bug)."""
+    assert indrasnet_enabled() is False
+    with pytest.raises(IndrasNetDisabled):
+        get_indrasnet_base_url()
+
+
+def test_enabled_via_url_only(monkeypatch):
+    """Owner profile: URL set, flag unset → enabled (backward compatible)."""
+    monkeypatch.setenv("INDRASNET_BASE_URL", "http://localhost:9999")
+    assert indrasnet_enabled() is True
+    assert get_indrasnet_base_url() == "http://localhost:9999"
+
+
+def test_empty_url_is_disabled(monkeypatch):
+    """Empty URL is 'not configured' → disabled (no hardcoded default)."""
     monkeypatch.setenv("INDRASNET_BASE_URL", "")
-    assert get_indrasnet_base_url() == "http://100.81.65.74:7777"
+    assert indrasnet_enabled() is False
+    with pytest.raises(IndrasNetDisabled):
+        get_indrasnet_base_url()
+
+
+def test_explicit_flag_off_overrides_set_url(monkeypatch):
+    """Public-profile kill switch: ENABLE_INDRASNET=0 disables even if a URL
+    leaked into the env."""
+    monkeypatch.setenv("INDRASNET_BASE_URL", "http://localhost:9999")
+    monkeypatch.setenv("ENABLE_INDRASNET", "0")
+    assert indrasnet_enabled() is False
+    with pytest.raises(IndrasNetDisabled):
+        get_indrasnet_base_url()
+
+
+def test_explicit_flag_on_without_url_fails_closed(monkeypatch):
+    """ENABLE_INDRASNET=1 but no URL → enabled gate, but resolving refuses to
+    guess an endpoint (fails closed rather than dialing a hardcoded IP)."""
+    monkeypatch.setenv("ENABLE_INDRASNET", "1")
+    assert indrasnet_enabled() is True
+    with pytest.raises(IndrasNetDisabled):
+        get_indrasnet_base_url()
+
+
+def test_explicit_flag_on_with_url(monkeypatch):
+    monkeypatch.setenv("ENABLE_INDRASNET", "true")
+    monkeypatch.setenv("INDRASNET_BASE_URL", "http://localhost:9999")
+    assert indrasnet_enabled() is True
+    assert get_indrasnet_base_url() == "http://localhost:9999"
+
+
+def test_disabled_is_subclass_of_unavailable():
+    """Callers that already degrade on IndrasNetUnavailable get 'disabled'
+    handling for free."""
+    assert issubclass(IndrasNetDisabled, IndrasNetUnavailable)
 
 
 def test_timeout_default():

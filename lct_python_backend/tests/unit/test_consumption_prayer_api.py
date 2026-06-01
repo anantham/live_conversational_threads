@@ -26,6 +26,16 @@ from lct_python_backend.services.indrasnet_client import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _enable_indrasnet(monkeypatch):
+    """These tests exercise the IndrasNet-backed paths, so the capability gate
+    (ADR-034 §D2) must be ON. A real owner deployment sets INDRASNET_BASE_URL;
+    without it the gate now fails closed (no hardcoded fallback), which is the
+    point of the gate but would short-circuit these fetch tests."""
+    monkeypatch.setenv("INDRASNET_BASE_URL", "http://test-indras:7777")
+    monkeypatch.delenv("ENABLE_INDRASNET", raising=False)
+
+
 @pytest.fixture
 def client():
     """Mount just the consumption-prayer router for isolation."""
@@ -312,6 +322,22 @@ async def test_fetch_returns_error_on_indrasnet_failure(monkeypatch):
     contacts, err = await consumption_prayer_api._fetch_indrasnet_contacts(limit=50)
     assert contacts == []
     assert err and "Tailscale down" in err
+
+
+@pytest.mark.asyncio
+async def test_fetch_degrades_when_indrasnet_disabled(monkeypatch):
+    """ADR-034 §D2: when the gate is OFF (public profile), the picker must
+    degrade to (empty, reason) — never 500 and never dial the owner's box.
+    httpx must NOT be touched (we fail closed before any network call)."""
+    monkeypatch.setenv("ENABLE_INDRASNET", "0")
+
+    def _boom(*a, **k):
+        raise AssertionError("disabled gate must not make an HTTP call")
+
+    monkeypatch.setattr(consumption_prayer_api.httpx, "AsyncClient", _boom)
+    contacts, err = await consumption_prayer_api._fetch_indrasnet_contacts(limit=50)
+    assert contacts == []
+    assert err and "disabled" in err.lower()
 
 
 @pytest.mark.asyncio
