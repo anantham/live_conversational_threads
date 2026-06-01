@@ -61,6 +61,17 @@ class IndrasNetUnavailable(IndrasNetError):
     """Endpoint unreachable — connect refused, DNS failure, timeout."""
 
 
+class IndrasNetDisabled(IndrasNetUnavailable):
+    """IndrasNet is disabled for this deployment profile (ADR-034 §D2).
+
+    Subclasses ``IndrasNetUnavailable`` deliberately: every caller already
+    degrades gracefully on "unreachable" (empty matches, banner, continue),
+    so "disabled" reuses that exact path with no call-site changes. The
+    public profile sets ``ENABLE_INDRASNET=0`` and omits ``INDRASNET_BASE_URL``;
+    this exception is how a disabled gate surfaces to the live/import paths.
+    """
+
+
 class IndrasNetClientError(IndrasNetError):
     """4xx — request was malformed. Indicates an LCT bug."""
 
@@ -77,10 +88,56 @@ class IndrasNetProtocolError(IndrasNetError):
 # Config
 # ---------------------------------------------------------------------------
 
+def _configured_base_url() -> str:
+    """Raw INDRASNET_BASE_URL from env, trailing slash stripped, or "".
+
+    Note: unlike the old behavior, there is NO hardcoded fallback to the live
+    Tailscale IP — an unset/empty URL now means "not configured" (see
+    ``indrasnet_enabled``). This is the fail-CLOSED fix from ADR-034 §D2: a
+    public profile that forgets to disable IndrasNet must not silently dial
+    the owner's instance.
+    """
+    return os.getenv("INDRASNET_BASE_URL", "").strip().rstrip("/")
+
+
+def indrasnet_enabled() -> bool:
+    """Single capability gate for all IndrasNet access (ADR-034 §D2).
+
+    Policy: the explicit ``ENABLE_INDRASNET`` flag wins when set; otherwise
+    fall back to "is a base URL configured?". So:
+      - owner profile (``INDRASNET_BASE_URL`` set, flag unset)  -> enabled
+      - public profile (``ENABLE_INDRASNET=0``, no URL)         -> disabled
+      - explicit kill switch (``ENABLE_INDRASNET=0``) overrides even a set URL
+      - explicit opt-in (``ENABLE_INDRASNET=1``) enables (URL still required
+        at call time; a true value with no URL will fail closed in
+        ``get_indrasnet_base_url``).
+    """
+    flag = os.getenv("ENABLE_INDRASNET")
+    if flag is not None and flag.strip() != "":
+        return flag.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(_configured_base_url())
+
+
 def get_indrasnet_base_url() -> str:
-    """Returns the IndrasNet base URL, stripped of trailing slash."""
-    url = os.getenv("INDRASNET_BASE_URL", DEFAULT_INDRASNET_BASE_URL).strip()
-    return url.rstrip("/") or DEFAULT_INDRASNET_BASE_URL
+    """Returns the IndrasNet base URL, stripped of trailing slash.
+
+    Fail-closed (ADR-034 §D2): raises ``IndrasNetDisabled`` when IndrasNet is
+    gated off or no URL is configured, instead of falling back to a hardcoded
+    address. Callers already handle ``IndrasNetUnavailable`` (the parent), so
+    a disabled gate degrades gracefully everywhere with no call-site changes.
+    """
+    if not indrasnet_enabled():
+        raise IndrasNetDisabled(
+            "IndrasNet is disabled for this deployment profile "
+            "(ENABLE_INDRASNET=0 or no INDRASNET_BASE_URL configured)."
+        )
+    url = _configured_base_url()
+    if not url:
+        raise IndrasNetDisabled(
+            "IndrasNet is enabled (ENABLE_INDRASNET) but INDRASNET_BASE_URL "
+            "is not configured — refusing to guess an endpoint."
+        )
+    return url
 
 
 def get_match_timeout_seconds() -> float:

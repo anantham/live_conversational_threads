@@ -174,7 +174,17 @@ async def _fetch_indrasnet_contacts(
     from match_timeout so IndrasNet's slow bulk reads don't make the live
     STT match path more patient than it should be.
     """
-    base = get_indrasnet_base_url()
+    try:
+        base = get_indrasnet_base_url()
+    except IndrasNetUnavailable as exc:
+        # IndrasNet disabled/unconfigured for this profile (ADR-034 §D2) —
+        # IndrasNetDisabled subclasses IndrasNetUnavailable. Mirror the
+        # network-failure contract: empty list + reason, never a 500.
+        logger.info(
+            "[known-contacts] IndrasNet unavailable (%s); returning empty list.",
+            exc,
+        )
+        return [], str(exc)[:200]
     params = {"limit": str(limit)}
     if search:
         params["search"] = search
