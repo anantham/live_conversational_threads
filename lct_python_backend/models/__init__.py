@@ -18,6 +18,7 @@ All public names are re-exported here so existing
 from .base import Base  # noqa: F401 — must be imported before submodules
 
 # Import submodules so Base.metadata is fully populated (required by Alembic)
+from .identity import User  # noqa: F401
 from .core import Conversation, Utterance, TranscriptEvent, SpeakerSegment, SpeakerAudioReference, SpeakerCorrectionEvent  # noqa: F401
 from .graph import Node, Relationship, Cluster  # noqa: F401
 from .analysis import (  # noqa: F401
@@ -36,6 +37,8 @@ from .observability import ThreadSession, ThreadSessionEvent  # noqa: F401
 
 __all__ = [
     "Base",
+    # identity
+    "User",
     # core
     "Conversation",
     "Utterance",

@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy import func, select
 
 from lct_python_backend.models import Conversation, TranscriptEvent, Utterance
+from lct_python_backend.services.owner_context import resolve_owner_id
 
 
 @dataclass
@@ -26,7 +27,10 @@ async def ensure_conversation(session, conversation_id: str, metadata: Dict[str,
 
     safe_metadata = metadata or {}
     conversation_name = safe_metadata.get("conversation_name", "Live Conversation")
-    owner_id = safe_metadata.get("owner_id", "default_user")
+    # ADR-034 §F hazard #2: owner is the authenticated single owner, NOT the
+    # client-supplied metadata value (which is spoofable). resolve_owner_id
+    # ignores the passed value today; post-OAuth it returns the session owner.
+    owner_id = resolve_owner_id(safe_metadata.get("owner_id"))
 
     conv = Conversation(
         id=conv_uuid,

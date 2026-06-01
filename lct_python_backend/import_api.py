@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.db_session import get_async_session
+from lct_python_backend.services.owner_context import resolve_owner_id
 from lct_python_backend.services.import_fetchers import (
     download_url_text,
     save_upload_to_temp_file,
@@ -219,7 +220,7 @@ async def import_google_meet_transcript(
             db, temp_path, is_file=True,
             source_type="google_meet",
             conversation_name=conversation_name or file.filename or "Google Meet Transcript",
-            owner_id=owner_id or "anonymous",
+            owner_id=resolve_owner_id(owner_id),
             metadata={"source_file": file.filename},
         )
     except ValueError as exc:
@@ -307,7 +308,7 @@ async def import_from_url(
             db, content, is_file=False,
             source_type="url",
             conversation_name=request.conversation_name or f"Transcript from {validated_url}",
-            owner_id=request.owner_id or "anonymous",
+            owner_id=resolve_owner_id(request.owner_id),
             metadata={"source_url": validated_url},
         )
     except ValueError as exc:
@@ -337,7 +338,7 @@ async def import_from_text(
             db, request.text, is_file=False,
             source_type="text",
             conversation_name=request.conversation_name or "Pasted Transcript",
-            owner_id=request.owner_id or "anonymous",
+            owner_id=resolve_owner_id(request.owner_id),
             metadata={"source": "pasted_text"},
         )
     except ValueError as exc:
