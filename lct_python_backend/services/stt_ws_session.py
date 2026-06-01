@@ -47,6 +47,7 @@ from lct_python_backend.services.hierarchy_consolidator import (
     consolidate_themes_to_arcs,
 )
 from lct_python_backend.services.quota_service import QuotaService
+from lct_python_backend.services.owner_context import resolve_owner_id
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
 from lct_python_backend.services.speaker_naming_service import is_confirmed_speaker_name
 from lct_python_backend.services.speaker_voice_library import (
@@ -2864,7 +2865,10 @@ class WsSessionContext:
 
         # Check quota before allowing session
         quota_info = {}
-        owner_id = str((self.state.metadata or {}).get("owner_id") or "anonymous")
+        # ADR-034 §F hazard #2: owner from the authenticated session, not the
+        # client-supplied WS metadata (spoofable). resolve_owner_id ignores the
+        # passed value today; post-OAuth it returns the session owner.
+        owner_id = resolve_owner_id((self.state.metadata or {}).get("owner_id"))
         is_byok = bool(byok_session and byok_session.get("api_key"))
         # Remembered for the post-flush quota debit (see _record_stt_quota_usage).
         self._quota_owner_id = owner_id
@@ -2950,7 +2954,7 @@ class WsSessionContext:
             self.session,
             conversation_id=self.state.conversation_id,
             session_id=self.state.session_id,
-            owner_id=str((self.state.metadata or {}).get("owner_id") or "anonymous"),
+            owner_id=resolve_owner_id((self.state.metadata or {}).get("owner_id")),
             entrypoint="live_threads",
             client_metadata={
                 "visibility": str((self.state.metadata or {}).get("visibility") or "private"),

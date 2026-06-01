@@ -24,6 +24,7 @@ from lct_python_backend.services.conversation_reader import (
     wrap_graph_data_chunks,
 )
 from lct_python_backend.services.gcs_helpers import LOCAL_SAVE_DIR, load_conversation_from_gcs
+from lct_python_backend.services.owner_context import get_current_owner_id
 from lct_python_backend.services.turn_synthesizer import build_turn_graph_from_utterances
 
 logger = logging.getLogger(__name__)
@@ -41,9 +42,15 @@ async def list_saved_conversations(db: AsyncSession = Depends(get_async_session)
         from sqlalchemy import select
         from lct_python_backend.models import Conversation
 
+        # ADR-034 Step 1: scope to the current owner. Today single-user
+        # (get_current_owner_id() returns the configured owner); post-OAuth
+        # this becomes the per-request session owner. Closes the IDOR where
+        # this endpoint returned every conversation in the DB.
+        owner_id = get_current_owner_id()
         result = await db.execute(
             select(Conversation)
             .where(Conversation.deleted_at.is_(None))
+            .where(Conversation.owner_id == owner_id)
             .order_by(Conversation.created_at.desc())
         )
         conversations_db = result.scalars().all()
@@ -81,6 +88,18 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
 
         if not conversation:
             logger.error("Conversation not found: %s", conversation_id)
+            raise HTTPException(status_code=404, detail="Conversation not found in database.")
+
+        # ADR-034 Step 1: ownership check at this owner-facing caller (NOT in
+        # the shared fetch_conversation_bundle, which the recipient share path
+        # also uses — guarding the helper would break sharing). Return 404
+        # (not 403) so a non-owner can't even confirm the id exists.
+        owner_id = get_current_owner_id()
+        if conversation.owner_id != owner_id:
+            logger.warning(
+                "Ownership mismatch on %s (owner=%s, requester=%s) — returning 404",
+                conversation_id, conversation.owner_id, owner_id,
+            )
             raise HTTPException(status_code=404, detail="Conversation not found in database.")
 
         logger.info(
