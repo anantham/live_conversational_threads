@@ -1,6 +1,42 @@
 # ISSUES
 
-Last updated: 2026-05-31
+Last updated: 2026-06-01
+
+## 2026-06-01 — Diarization selection saves but doesn't steer the runtime
+
+**Summary:** The "Active engines" Diarization lane (`InferenceLanes.jsx` →
+`updateDiarizationSettings`) persists the chosen diarizer (`primary` +
+`fallback_priority`) to the DB and reflects it in the catalog/UI, but
+`load_diarization_settings` has **no consumer in the live transcription
+pipeline** — the saved choice does not change which diarizer actually runs
+(the legacy per-provider `diarize_model` path still governs).
+
+**Impact:** Low/cosmetic-but-misleading. The control looks effective; it isn't
+yet wired downstream. Honest (no crash, documented here), just inert. Confirmed
+by the 2026-06-01 feature-state audit of `feat/e2e-audio-graph-zoom`.
+
+**Blocker status:** Not blocking — surfaced via the lane's "isn't running yet"
+override notice. Deferred per maintainer.
+
+**Recommended next step:** wire `load_diarization_settings` into the
+transcription pipeline's diarizer selection (or remove the control until it's
+consumed). Pairs with the FluidAudio-sidecar-not-bundled gap.
+
+## 2026-06-01 — Active-engines LLM picker: partial-wiring gaps (FIXED 2026-06-01)
+
+Codex re-review of PR #52 (findings D/E/F/G) flagged two LLM-selection gaps in
+`InferenceLanes.setLlmPrimary`. Both fixed this session:
+- **Gemini switch 400 (D):** switching the LLM lane to Gemini saved `mode=online`
+  while keeping the local `chat_model`, which `llm_api.update_llm_settings`
+  rejects (validates `chat_model` against the Gemini model list). Fix: resolve a
+  real Gemini model (`getLlmModelOptions({mode:'online'})`, fallback
+  `gemini-2.5-flash`) and send it on the switch.
+- **Local-LLM selection silently overridden (E/F/G):** selecting a local engine
+  only sets `llm_config.base_url`, but graph generation runs the first enabled
+  `llm_providers` entry — so the choice could be inert. Fix: when the catalog's
+  `llm_effective` differs from the selected entry, the save now warns that the
+  provider chain governs and must be reordered/disabled (the
+  [[lct-llm-config-seam]] divergence, surfaced honestly rather than a false toast).
 
 ## 2026-05-31 — Crux detection has no online (Gemini) LLM path
 

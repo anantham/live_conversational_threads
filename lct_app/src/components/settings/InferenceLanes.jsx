@@ -4,7 +4,7 @@ import { Loader2, Mic, RefreshCw, Sparkles, Users } from 'lucide-react';
 import CapabilityLane from './CapabilityLane';
 import useBackendCatalog from './useBackendCatalog';
 import { getSttSettings, updateSttSettings } from '../../services/sttSettingsApi';
-import { getLlmSettings, updateLlmSettings } from '../../services/llmSettingsApi';
+import { getLlmModelOptions, getLlmSettings, updateLlmSettings } from '../../services/llmSettingsApi';
 import { getDiarizationSettings, updateDiarizationSettings } from '../../services/backendCatalogApi';
 
 function scrollToAdvanced() {
@@ -115,9 +115,24 @@ export default function InferenceLanes() {
         setTimeout(() => setNotice(null), 8000);
         return undefined;
       }
+      // When the selected local engine won't actually serve graph generation —
+      // an enabled provider chain (Advanced → Providers) governs that, and the
+      // catalog reports it as the *effective* LLM — say so instead of a bare
+      // success toast. active.llm = selected (llm_config); active.llm_effective =
+      // what graph-gen really runs (providers-first). See [[lct-llm-config-seam]].
+      const active = catalog?.active || {};
+      const providerChainOverrides =
+        entry.is_local &&
+        active.llm_effective &&
+        active.llm_effective !== entry.id;
       const override =
         entry.id === 'cloud-gemini'
           ? { kind: 'warn', text: 'Switched to online (Gemini) mode — ensure a Gemini API key is set in Advanced.' }
+          : providerChainOverrides
+          ? {
+              kind: 'warn',
+              text: `Saved ${entry.display_name} as the selected local LLM, but graph generation runs on the first enabled provider in Advanced → Providers. Disable/reorder that chain for this choice to take effect.`,
+            }
           : undefined;
       return guarded(
         async () => {
@@ -127,7 +142,22 @@ export default function InferenceLanes() {
             next.mode = 'local';
             next.base_url = entry.endpoint;
           } else if (entry.id === 'cloud-gemini') {
+            // Online mode validates chat_model against the Gemini model list
+            // (llm_api.update_llm_settings 400s otherwise). A local setup carries
+            // a non-Gemini chat_model, so resolve a real Gemini model on switch.
             next.mode = 'online';
+            const curModel = String(next.chat_model || '');
+            if (!curModel.toLowerCase().includes('gemini')) {
+              let geminiModel = '';
+              try {
+                const opts = await getLlmModelOptions({ mode: 'online' });
+                geminiModel = Array.isArray(opts?.models) ? (opts.models[0] || '') : '';
+              } catch {
+                geminiModel = '';
+              }
+              // Fall back to a known-accepted model if the options call fails.
+              next.chat_model = geminiModel || 'gemini-2.5-flash';
+            }
           }
           await updateLlmSettings(next);
         },
@@ -135,7 +165,7 @@ export default function InferenceLanes() {
         override,
       );
     },
-    [guarded, llmSettings],
+    [guarded, llmSettings, catalog],
   );
 
   const setDiarPrimary = useCallback(
