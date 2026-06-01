@@ -37,7 +37,7 @@ Last updated: 2026-05-31 (ADR-032 and ADR-033 indexed — files existed since 20
 | [ADR-031](ADR-031-post-streaming-hierarchy-consolidation.md) | Post-Streaming Hierarchy Consolidation (Option A) | 2026-05-12 | Approved |
 | [ADR-032](ADR-032-temporal-swim-lane-layout-and-semantic-edges.md) | Temporal Swim-Lane Layout + Semantic Edge Taxonomy + Enrichment Context | 2026-05-19 | Accepted |
 | [ADR-033](ADR-033-consumption-prayer-matching.md) | Consumption Prayer Matching in the Live Conversation Path | 2026-05-24 | Accepted |
-| [ADR-034](ADR-034-public-lct-deployment-tiered-isolation.md) | Public LCT Deployment — Tiered Access with an Isolated Public Instance | 2026-05-31 | Proposed |
+| [ADR-034](ADR-034-public-lct-deployment-tiered-isolation.md) | Public LCT Deployment — Tiered Access with an Isolated Public Instance | 2026-05-31 | Approved |
 
 ## Status Definitions
 
