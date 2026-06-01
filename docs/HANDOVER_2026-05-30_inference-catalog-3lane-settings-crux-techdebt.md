@@ -1,7 +1,7 @@
 # Handover: 2026-05-30 — Inference catalog + 3-lane Settings + crux + tech-debt + Codex review
 
 ## Session Summary (narrative)
-Long autonomous session on branch `feat/e2e-audio-graph-zoom`. Built the **inference backend catalog** + a **3-lane Settings UI** (STT / Diarization / LLM) showing per-backend model · where-it-runs · empirical speed/accuracy · cost · live probe (ADR-034), added **per-provider LLM telemetry**, and **crux detection** (ADR-035, lights up the pre-existing `is_crux` amber UI). Fixed **2 real security holes** (audio path-traversal, share-revoke auth bypass). Ran a **`surface-tech-debt`** sweep (the `anantham/expansion` plugin skill) → **deleted dead code** (claim/argument/is_ought detectors+APIs, `graph_generation.py`, orphaned frontend incl. the whole ThematicView subtree, 8 orphan prompts) and **consolidated bias/frame/simulacra detectors onto `LlmGateway`** (dropped the hardcoded-`claude-3-5-sonnet` anthropic branch). Then ran an independent **`codex exec review`**, fixed its 5 findings, **re-reviewed**, and fixed the one regression that re-review caught. ~22 commits, all **on the branch, not pushed**. The user has a **parallel uncommitted "prayer-cards" feature** I never touched.
+Long autonomous session on branch `feat/e2e-audio-graph-zoom`. Built the **inference backend catalog** + a **3-lane Settings UI** (STT / Diarization / LLM) showing per-backend model · where-it-runs · empirical speed/accuracy · cost · live probe (ADR-037), added **per-provider LLM telemetry**, and **crux detection** (ADR-035, lights up the pre-existing `is_crux` amber UI). Fixed **2 real security holes** (audio path-traversal, share-revoke auth bypass). Ran a **`surface-tech-debt`** sweep (the `anantham/expansion` plugin skill) → **deleted dead code** (claim/argument/is_ought detectors+APIs, `graph_generation.py`, orphaned frontend incl. the whole ThematicView subtree, 8 orphan prompts) and **consolidated bias/frame/simulacra detectors onto `LlmGateway`** (dropped the hardcoded-`claude-3-5-sonnet` anthropic branch). Then ran an independent **`codex exec review`**, fixed its 5 findings, **re-reviewed**, and fixed the one regression that re-review caught. ~22 commits, all **on the branch, not pushed**. The user has a **parallel uncommitted "prayer-cards" feature** I never touched.
 
 ## Commits This Session (93a2d8a..HEAD, 22 — grouped)
 - **Catalog/Settings/telemetry/crux:** `437cd42` catalog+diarization config · `efe4a37` LLM speed telemetry · `28d2374` 3-lane Settings + status chips · `7430b41` crux detection (ADR-035) · `efecb93` docs: rationality audit
@@ -22,7 +22,7 @@ Long autonomous session on branch `feat/e2e-audio-graph-zoom`. Built the **infer
 - Earlier arc (catalog/settings): *"I want you to review the settings and look into that"*, *"we need similar statistics for the LLM intelligence we use also right"*, *"can we also make the UI more simplistic and minimal? … progressive disclosure"*, *"why does it say planned? is it done?"* (caught the FluidAudio ACTIVE+planned+red-dot contradiction → drove the honesty model).
 
 ## ADRs Written This Session
-- **ADR-034: Inference Backend Catalog & Three-Lane Settings** — seed+refine catalog, 3 lanes, server-side SSRF-safe probe, honesty model (green = probe-verified).
+- **ADR-037: Inference Backend Catalog & Three-Lane Settings** — seed+refine catalog, 3 lanes, server-side SSRF-safe probe, honesty model (green = probe-verified).
 - **ADR-035: Crux Detection** — graph-level detector via LlmGateway sets `Node.is_crux` + rationale in `display_preferences["crux"]`; no migration.
 
 ## Pending Threads
@@ -75,7 +75,7 @@ Long autonomous session on branch `feat/e2e-audio-graph-zoom`. Built the **infer
 - [x] Memory `lct-llm-config-seam.md` (project) — the two-config landmine.
 - [x] Memory `lct-session-working-style.md` (feedback) — verify-before-delete, delete-vestigial, never-touch-parallel-WIP, independent-Codex-review-then-re-review.
 - [x] `MEMORY.md` index updated.
-- [x] ADR-034, ADR-035 written; INDEX updated (+ ADR-021 collision flagged).
+- [x] ADR-037, ADR-035 written; INDEX updated (+ ADR-021 collision flagged).
 - [x] `docs/AUDIT_RATIONALITY_2026-05-30.md` (8-agent audit) committed.
 
 ## Calibration moments

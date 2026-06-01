@@ -1,4 +1,4 @@
-# ADR-034: Inference Backend Catalog & Three-Lane Settings
+# ADR-037: Inference Backend Catalog & Three-Lane Settings
 
 - **Status:** Decided (2026-05-30) — implemented on branch `feat/e2e-audio-graph-zoom`, pending human review.
 - **Group:** presentation + integration

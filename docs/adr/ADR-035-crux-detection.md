@@ -13,7 +13,7 @@ LCT's graph models a `Node.is_crux` flag, the backend serializes it (`conversati
 Build a **crux detector** that completes this feature end-to-end:
 
 1. **Graph-level, relational detection.** A crux is a *load-bearing* belief/claim — one where, if it changed, downstream positions would change — and often the pivot of (dis)agreement. That is inherently relational, so the detector makes **one LLM call over the whole conversation graph** (node names + summaries + the `agrees`/`disagrees`/`supports`/`contradicts` relationships), not a per-node loop like the bias/frame/simulacra detectors.
-2. **Route through `LlmGateway`.** The detector calls `local_chat_json(config, …)` (which routes through `gateway().chat(capability=CHAT_JSON_OBJECT)`), respecting the user's configured LLM (e.g. local Ollama), capturing LLM telemetry (ADR-034), and applying capability-sensitive substitution policy. It does **not** call `anthropic` directly or hardcode a model — explicitly avoiding the ×5 copy-paste anti-pattern the audit flagged in the existing detectors.
+2. **Route through `LlmGateway`.** The detector calls `local_chat_json(config, …)` (which routes through `gateway().chat(capability=CHAT_JSON_OBJECT)`), respecting the user's configured LLM (e.g. local Ollama), capturing LLM telemetry (ADR-037), and applying capability-sensitive substitution policy. It does **not** call `anthropic` directly or hardcode a model — explicitly avoiding the ×5 copy-paste anti-pattern the audit flagged in the existing detectors.
 3. **Persist via the existing flag + JSONB, no migration.** For each node, set `Node.is_crux` and store the rationale in `Node.display_preferences["crux"] = {reason, confidence, crux_type, analyzed_at}`. This reuses the already-serialized flag (so the amber UI lights up automatically) and persists the "why" without a schema change.
 4. **On-demand endpoints**, mirroring the existing analysis surface: `POST /api/conversations/{id}/cruxes/analyze`, `GET /api/conversations/{id}/cruxes`, `GET /api/nodes/{id}/crux` (added to the already-mounted `analysis_api`).
 5. **Prompt in the library** (ADR-027): a `crux_detection` entry in `prompts.json`, rendered via `PromptManager`.
@@ -40,7 +40,7 @@ Graph-level + gateway-routed + flag-reuse is the smallest correct slice that (a)
 ## Implications
 
 - **New:** `lct_python_backend/services/crux_detector.py`; `crux_detection` prompt in `prompts.json`; three routes in `analysis_api.py`; `tests/unit/test_crux_detector.py`.
-- The detector's LLM calls appear in LLM telemetry (ADR-034) and the cost ledger automatically (gateway path).
+- The detector's LLM calls appear in LLM telemetry (ADR-037) and the cost ledger automatically (gateway path).
 - The frontend amber crux styling becomes reachable for the first time once `analyze` runs.
 - **Triggers follow-ups:** a UI trigger / nav surface (the analysis pages are currently unlinked — see audit); optional auto-run flag; **double-crux** (pair cruxes across speakers) as its own ADR; possible promotion of crux rationale to a dedicated table.
 - Discovered en route (logged in ISSUES): `bias_detector._analyze_node` reads `node.node_summary`/`node.keywords`, which don't exist on the `Node` model (fields are `summary`/`key_points`) — the crux detector uses the correct fields.

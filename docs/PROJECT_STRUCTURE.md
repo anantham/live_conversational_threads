@@ -36,7 +36,7 @@ live_conversational_threads/
 - `factcheck_api.py` (`/fact_check_claims/`, `/api/cost-tracking/stats`)
 - `analysis_api.py` (`/api/conversations/*/{simulacra|biases|frames}*`)
 - `analytics_api.py` (`/api/analytics/*`)
-- `backend_catalog_api.py` (`/api/backend-catalog`, `/api/backend-catalog/probe`): inference backend catalog + live probes (ADR-034)
+- `backend_catalog_api.py` (`/api/backend-catalog`, `/api/backend-catalog/probe`): inference backend catalog + live probes (ADR-037)
 - `user_identity_api.py` (`/api/user-identity`): "which contact is me" self-identity
 - `consumption_prayer_api.py` (`/api/consumption-prayer/*`): intent/prayer matching + known-contacts picker cache (ADR-033)
 - `graph_api.py` (`/api/graph/*`)
@@ -58,7 +58,7 @@ live_conversational_threads/
   - `llm_config.py`, `llm_helpers.py`, `local_llm_client.py`: LLM provider configuration and wrappers.
   - `hierarchical_themes/`: multi-level topic clustering (Level 1–5 clusterers).
   - `coercion_helpers.py`: shared type coercion utilities (`to_bool`, `coerce_str`, `safe_float`, etc.).
-  - `backend_catalog.py`: merges benchmark seed + live telemetry + active config into the 3-lane catalog (ADR-034); seed in `data/backend_catalog_seed.json`.
+  - `backend_catalog.py`: merges benchmark seed + live telemetry + active config into the 3-lane catalog (ADR-037); seed in `data/backend_catalog_seed.json`.
   - `llm_telemetry_service.py`: per-provider LLM speed telemetry that feeds the catalog.
   - `indrasnet_client.py`, `edge_enrichment.py`: IndrasNet HTTP client (prayers/contacts/retrieval) + semantic edge enrichment.
   - `conversation_pipeline/`: staged transcript→graph orchestrator — **built + tested but NOT yet on the live path** (live flow still uses `stt_ws_session` + bulk import); see ISSUES.md.
