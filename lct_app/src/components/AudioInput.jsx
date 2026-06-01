@@ -600,6 +600,12 @@ const AudioInput = forwardRef(function AudioInput({
     if (recording) {
       await pauseRecording();
     }
+    // Stop = "this conversation is done", NOT resumable. pauseRecording sets
+    // paused=true (and a stop-from-paused arrives already paused); both leave
+    // paused=true, which the Session Draft gate treats as "mid-flight" and
+    // hides — so onFinalize would scroll to a panel that never mounts. Clear
+    // paused here so the emitted state is truly idle and the save panel shows.
+    setPaused(false);
     onFinalize?.();
   }, [onFinalize, pauseRecording, recording]);
   const stopVisible = recording || paused;
