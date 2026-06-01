@@ -1,4 +1,4 @@
-"""Tests for LLM live telemetry (ADR-034).
+"""Tests for LLM live telemetry (ADR-037).
 
 JSONL-backed; we point the log at a temp file so nothing touches the real data dir.
 """

@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-05-31 (ADR-032/033 indexed; ADR-035 added; ADR-034 shipped on both branches as two different ADRs — see the ADR-034 collision note below, alongside the ADR-021 collision)
+Last updated: 2026-06-01 (ADR-034 collision resolved: the inference-catalog ADR renumbered 034 → 037, leaving public-deployment as the sole ADR-034; ADR-021 collision still open — see note below)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -38,12 +38,12 @@ Last updated: 2026-05-31 (ADR-032/033 indexed; ADR-035 added; ADR-034 shipped on
 | [ADR-031](ADR-031-post-streaming-hierarchy-consolidation.md) | Post-Streaming Hierarchy Consolidation (Option A) | 2026-05-12 | Approved |
 | [ADR-032](ADR-032-temporal-swim-lane-layout-and-semantic-edges.md) | Temporal Swim-Lane Layout + Semantic Edge Taxonomy + Enrichment Context | 2026-05-19 | Accepted |
 | [ADR-033](ADR-033-consumption-prayer-matching.md) | Consumption Prayer Matching in the Live Conversation Path | 2026-05-24 | Accepted |
-| [ADR-034 ⚠](ADR-034-inference-backend-catalog-and-three-lane-settings.md) | Inference Backend Catalog & Three-Lane Settings | 2026-05-30 | Decided |
-| [ADR-034 ⚠](ADR-034-public-lct-deployment-tiered-isolation.md) | Public LCT Deployment — Tiered Access with an Isolated Public Instance | 2026-05-31 | Proposed |
+| [ADR-034](ADR-034-public-lct-deployment-tiered-isolation.md) | Public LCT Deployment — Tiered Access with an Isolated Public Instance | 2026-05-31 | Proposed |
 | [ADR-035](ADR-035-crux-detection.md) | Crux Detection | 2026-05-30 | Decided |
+| [ADR-037](ADR-037-inference-backend-catalog-and-three-lane-settings.md) | Inference Backend Catalog & Three-Lane Settings | 2026-05-30 | Decided |
 
 > **⚠ ADR-021 number collision:** two ADRs shipped as 021 — *Browser-Local Draft Recovery* (2026-04-03) and *Authored Four-Level Conversation Hierarchy* (2026-04-13). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.
-> **⚠ ADR-034 number collision:** two ADRs shipped as 034 — *Inference Backend Catalog & Three-Lane Settings* (2026-05-30, Decided, this branch) and *Public LCT Deployment — Tiered Access* (2026-05-31, Proposed, main). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.
+> **ADR-034 number collision — RESOLVED (2026-06-01):** two ADRs had shipped as 034 — *Inference Backend Catalog & Three-Lane Settings* (2026-05-30, feat branch) and *Public LCT Deployment — Tiered Access* (2026-05-31, main). The catalog ADR was renumbered **034 → 037** (no ADR-036/037 file existed; 036 is reserved by ADR-032's future-work list); public-deployment keeps 034. Gap: there is no ADR-036 yet (reserved). Note ADR-037's "Decided (pending human review)" status still wants reconciliation with the index's standard vocabulary.
 
 ## Status Definitions
 

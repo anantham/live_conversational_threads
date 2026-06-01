@@ -4,7 +4,7 @@ The newest handovers are **dated files** in `docs/` (newest first):
 
 - `HANDOVER_2026-05-30_inference-catalog-3lane-settings-crux-techdebt.md` —
   built the inference backend catalog + 3-lane Settings UI + per-provider LLM
-  telemetry + crux detection (ADR-034/035); fixed 2 security holes (audio
+  telemetry + crux detection (ADR-037/035); fixed 2 security holes (audio
   path-traversal, share-revoke auth) + quota fail-closed + wired prod security
   headers; ran `surface-tech-debt` → deleted dead code (claim/argument/is_ought
   detectors+APIs, graph_generation, orphaned frontend incl. ThematicView, 8

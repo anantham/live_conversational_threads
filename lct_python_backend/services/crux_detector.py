@@ -9,7 +9,7 @@ agreement/disagreement edges — and it sets the existing ``Node.is_crux`` flag
 ``Node.display_preferences["crux"]`` (no migration). See ADR-035.
 
 Routed through the LlmGateway (via ``local_chat_json``), which captures LLM
-telemetry (ADR-034) and never hardcodes a model — deliberately avoiding the
+telemetry (ADR-037) and never hardcodes a model — deliberately avoiding the
 gateway-bypass pattern in the other detectors (see
 docs/AUDIT_RATIONALITY_2026-05-30.md).
 

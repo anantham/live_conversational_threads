@@ -1,4 +1,4 @@
-"""Tests for the inference backend catalog (ADR-034).
+"""Tests for the inference backend catalog (ADR-037).
 
 build_catalog is pure (reads the committed seed, takes config/telemetry dicts), so
 these run without a DB. They pin the honesty-critical invariants: exactly one active
