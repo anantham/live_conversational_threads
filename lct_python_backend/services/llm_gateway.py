@@ -48,6 +48,10 @@ from lct_python_backend.services.local_llm_client import (
 logger = logging.getLogger("lct_backend")
 
 from lct_python_backend.services.env_helpers import env_bool
+from lct_python_backend.services.egress_guard import (
+    CloudEgressBlocked,
+    assert_local_egress,
+)
 
 TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=True)
 
@@ -256,10 +260,15 @@ async def _embed_with_provider_fallback(
             )
 
         try:
+            assert_local_egress(url, purpose=f"embeddings ({provider_id})")
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
                 body = response.json()
+        except CloudEgressBlocked as exc:
+            logger.warning("[EMBED] %s: %s", provider_id, exc)
+            errors.append(f"{provider_id}: blocked by local-only egress guard")
+            continue
         except httpx.HTTPStatusError as exc:
             err = f"HTTP {exc.response.status_code}"
             logger.warning("[EMBED] %s: %s", provider_id, err)

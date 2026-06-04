@@ -285,6 +285,10 @@ class BiasDetector:
             if not api_key:
                 raise ValueError("ANTHROPIC_API_KEY not found in environment")
 
+            # Local-only guard: direct cloud Anthropic call (non-local mode only).
+            from services.egress_guard import assert_local_egress
+            assert_local_egress("https://api.anthropic.com", purpose="direct Anthropic biases")
+
             if self.client is None:
                 self.client = anthropic.Anthropic(api_key=api_key)
 

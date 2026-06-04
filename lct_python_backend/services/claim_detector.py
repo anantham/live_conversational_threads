@@ -214,6 +214,11 @@ class ClaimDetector:
             if not api_key:
                 raise ValueError("ANTHROPIC_API_KEY not found in environment")
 
+            # Local-only guard: this is a direct cloud Anthropic call (only
+            # reached in non-local mode). Refuse it when LCT_LOCAL_ONLY is on.
+            from services.egress_guard import assert_local_egress
+            assert_local_egress("https://api.anthropic.com", purpose="direct Anthropic claims")
+
             if self.client is None:
                 self.client = anthropic.Anthropic(api_key=api_key)
 

@@ -27,6 +27,14 @@ from lct_python_backend.services.llm_gateway import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _allow_egress(monkeypatch):
+    """These tests exercise gateway ROUTING (fallthrough/substitution) using
+    non-local *.example hosts; the local-only egress guard (default ON) would
+    block them. Egress policy itself is covered by test_egress_guard.py."""
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+
+
 def _run(coro):
     return asyncio.get_event_loop().run_until_complete(coro)
 
