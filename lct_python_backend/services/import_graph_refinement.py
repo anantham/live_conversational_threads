@@ -253,6 +253,16 @@ def _refine_graph_nodes_gemini(
     if not api_key:
         return [], None, _missing_gemini_key_message()
 
+    # Local-only guard: Gemini is cloud-only (genai SDK -> generativelanguage.
+    # googleapis.com over httpx). The chokepoint also covers this, but guard
+    # per-site for consistency with the other genai callers + fast-fail before
+    # building the client.
+    from lct_python_backend.services.egress_guard import assert_local_egress
+    assert_local_egress(
+        "https://generativelanguage.googleapis.com",
+        purpose="Gemini graph refinement",
+    )
+
     model_name = _resolve_online_gemini_model(llm_config)
     client = genai.Client(api_key=api_key)
     prompt_metadata = get_transcript_prompt_metadata(PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS)

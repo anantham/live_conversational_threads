@@ -50,6 +50,14 @@ def probe_health_url(health_url: str, timeout_seconds: float) -> Dict[str, Any]:
     error: Optional[str] = None
 
     try:
+        # Local-only guard: probe_health_url imports urlopen by value at module
+        # load (before the lifespan chokepoint installs), so the global urllib
+        # patch does NOT reach this binding. Guard here directly so a Modal /
+        # cloud health probe fails closed under LCT_LOCAL_ONLY. A local provider
+        # health URL (loopback/Tailscale/LAN) still passes.
+        from lct_python_backend.services.egress_guard import assert_local_egress
+        assert_local_egress(health_url, purpose="STT health probe")
+
         req = UrlRequest(health_url, headers={"Accept": "application/json,text/plain,*/*"})
         with urlopen(req, timeout=timeout_seconds) as response:
             status_code = int(getattr(response, "status", response.getcode()))

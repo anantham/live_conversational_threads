@@ -85,6 +85,30 @@ def test_gemini_accumulation_blocked_under_local_only():
         )
 
 
+def test_stt_health_probe_blocked_under_local_only():
+    """probe_health_url imports urlopen by value (defeating the global urllib
+    patch), so it carries its own per-site guard. A cloud health URL must be
+    refused; the function returns a result dict with the block as its error,
+    NOT a raised exception (it's a probe utility)."""
+    from lct_python_backend.services.stt_health_service import probe_health_url
+
+    result = probe_health_url(
+        "https://adityaarpitha--whisperx.modal.run/health", timeout_seconds=1.0
+    )
+    assert result["ok"] is False
+    assert "CloudEgressBlocked" in str(result.get("error", "")), result
+
+
+def test_stt_health_probe_allows_local(monkeypatch):
+    """A local health URL passes the guard (then fails on connection, not on
+    the egress guard) — no false positive on local providers."""
+    from lct_python_backend.services.stt_health_service import probe_health_url
+
+    result = probe_health_url("http://127.0.0.1:59999/health", timeout_seconds=0.3)
+    # Guard let it through -> error is a connection error, NOT an egress block.
+    assert "CloudEgressBlocked" not in str(result.get("error", "")), result
+
+
 @pytest.mark.asyncio
 async def test_embed_batch_allowed_when_local_only_off(monkeypatch):
     """With local-only OFF, embed_batch passes the guard and proceeds to the
