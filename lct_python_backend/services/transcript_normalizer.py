@@ -373,6 +373,12 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 "claims": _as_string_list(raw.get("claims")),
                 "is_bookmark": bool(raw.get("is_bookmark")),
                 "is_contextual_progress": bool(raw.get("is_contextual_progress")),
+                # Carry the tangent/crux flags through to persistence. They were
+                # silently dropped here, so the Node columns were always 0 no
+                # matter what the model emitted — tangent/crux capture was never
+                # actually exercised (see accumulate-echo-truncation-and-flag-drop).
+                "is_tangent": bool(raw.get("is_tangent")),
+                "is_crux": bool(raw.get("is_crux")),
                 "chunk_id": raw.get("chunk_id"),
                 "speaker_id": _as_clean_str(raw.get("speaker_id")) or None,
             }

@@ -198,6 +198,7 @@ class LocalLLMClient:
                     )
                     _JSON_OBJECT_UNSUPPORTED_BASE_URLS.add(self.base_url)
                     payload.pop("response_format", None)
+                    payload.pop("reasoning_effort", None)
                     retry = await client.post(url, json=payload)
                     retry.raise_for_status()
                     if TRACE_API_CALLS:
@@ -425,6 +426,16 @@ async def chat_with_provider_fallback(
                 "max_tokens": max_tokens,
             }
 
+            # Reasoning models (e.g. Ollama qwen3.6/gemma4) route chain-of-thought
+            # into a separate 'reasoning' field and leave 'content' EMPTY, which
+            # made extract_json_from_text fail on every structured call. Disabling
+            # thinking makes them emit JSON directly in content. Non-reasoning
+            # servers (LM Studio, vLLM) ignore the unknown field harmlessly; if one
+            # rejects it with 400/422 we strip it on retry (below) and the
+            # reasoning-field fallback at parse time still recovers the output.
+            if provider_type == "openai_compatible":
+                payload["reasoning_effort"] = provider.get("reasoning_effort", "none")
+
             # Add response format if supported
             supports_json_object = base_url not in _JSON_OBJECT_UNSUPPORTED_BASE_URLS
             if response_format:
@@ -466,7 +477,12 @@ async def chat_with_provider_fallback(
 
                 result_json = response.json()
                 served_model = _resolve_served_model(result_json, model, provider_id)
-                content = result_json["choices"][0]["message"]["content"]
+                _msg = result_json["choices"][0]["message"]
+                content = _msg.get("content") or ""
+                if not content:
+                    # Reasoning model whose server ignored reasoning_effort: the
+                    # answer is in a separate field. Recover it rather than drop it.
+                    content = _msg.get("reasoning") or _msg.get("thinking") or ""
 
                 if require_json:
                     data = extract_json_from_text(content)
@@ -599,6 +615,16 @@ def chat_with_provider_fallback_sync(
                 "max_tokens": max_tokens,
             }
 
+            # Reasoning models (e.g. Ollama qwen3.6/gemma4) route chain-of-thought
+            # into a separate 'reasoning' field and leave 'content' EMPTY, which
+            # made extract_json_from_text fail on every structured call. Disabling
+            # thinking makes them emit JSON directly in content. Non-reasoning
+            # servers (LM Studio, vLLM) ignore the unknown field harmlessly; if one
+            # rejects it with 400/422 we strip it on retry (below) and the
+            # reasoning-field fallback at parse time still recovers the output.
+            if provider_type == "openai_compatible":
+                payload["reasoning_effort"] = provider.get("reasoning_effort", "none")
+
             # Add response format if supported
             supports_json_object = base_url not in _JSON_OBJECT_UNSUPPORTED_BASE_URLS
             if response_format:
@@ -633,6 +659,9 @@ def chat_with_provider_fallback_sync(
                     )
                     _JSON_OBJECT_UNSUPPORTED_BASE_URLS.add(base_url)
                     payload.pop("response_format", None)
+                    # Also drop reasoning_effort in case this server is the one
+                    # rejecting it; the reasoning-field fallback still recovers output.
+                    payload.pop("reasoning_effort", None)
                     response = client.post(url, json=payload, headers=headers)
 
                 response.raise_for_status()
@@ -648,7 +677,12 @@ def chat_with_provider_fallback_sync(
 
                 result_json = response.json()
                 served_model = _resolve_served_model(result_json, model, provider_id)
-                content = result_json["choices"][0]["message"]["content"]
+                _msg = result_json["choices"][0]["message"]
+                content = _msg.get("content") or ""
+                if not content:
+                    # Reasoning model whose server ignored reasoning_effort: the
+                    # answer is in a separate field. Recover it rather than drop it.
+                    content = _msg.get("reasoning") or _msg.get("thinking") or ""
 
                 if require_json:
                     data = extract_json_from_text(content)

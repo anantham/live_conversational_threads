@@ -772,6 +772,7 @@ async def persist_graph(
             is_bookmark=bool(item.get("is_bookmark")),
             is_contextual_progress=bool(item.get("is_contextual_progress")),
             is_tangent=bool(item.get("is_tangent")) or thread_state in {"branch", "tangent"},
+            is_crux=bool(item.get("is_crux")),
             level=node_level,
             zoom_level_visible=[node_level],
             parent_id=parent_id_resolved,

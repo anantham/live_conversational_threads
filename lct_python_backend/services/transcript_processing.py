@@ -42,6 +42,7 @@ from lct_python_backend.services.transcript_llm_callers import (  # noqa: F401
     _resolve_llm_config,
     _resolve_online_gemini_model,
     accumulate_text_json,
+    accumulate_text_json_local_indexed,
     generate_lct_json,
 )
 
@@ -425,12 +426,37 @@ class TranscriptProcessor:
         trigger: str = "count_threshold",
     ) -> Tuple[bool, bool, str, List[List[Dict[str, Any]]]]:
         input_text = " ".join(text_batch)
-        accumulated_output, acc_backend = await asyncio.to_thread(
-            accumulate_text_json,
-            input_text,
-            llm_config=self._llm_config,
-            providers=self._providers,
+
+        # Local models choke on the legacy "echo the transcript back" accumulate
+        # prompt: output scales with input -> truncation -> every batch silently
+        # dropped (qwen3.6 AND gemma4 fail identically; proven by the
+        # .tmp_accumulate_experiment matrix). For local mode use the boundary-
+        # index prompt: feed NUMBERED text fragments, get back a single
+        # completed_through_index, split the batch on that index. We number the
+        # TEXT fragments (not speaker segments) so this also works on the
+        # bulk-import path, which passes no per-utterance diarization. Online
+        # (Gemini) keeps the echo path untouched.
+        use_index_mode = (
+            str(self._llm_config.get("mode", "")).lower() == "local"
+            and bool(text_batch)
         )
+
+        if use_index_mode:
+            numbered_input = "\n".join(
+                f"[{i}] {str(frag).strip()}" for i, frag in enumerate(text_batch)
+            )
+            accumulated_output, acc_backend = await asyncio.to_thread(
+                accumulate_text_json_local_indexed,
+                numbered_input,
+                providers=self._providers,
+            )
+        else:
+            accumulated_output, acc_backend = await asyncio.to_thread(
+                accumulate_text_json,
+                input_text,
+                llm_config=self._llm_config,
+                providers=self._providers,
+            )
         if acc_backend:
             self._last_llm_backend = acc_backend
         if not accumulated_output:
@@ -462,10 +488,15 @@ class TranscriptProcessor:
                 },
             )
 
-        segmented_input_chunk = accumulated_output.get("Completed_segment", "")
-        incomplete_seg = accumulated_output.get("Incomplete_segment", "")
-
-        decision_flag = accumulated_output.get("decision", "continue_accumulating")
+        # Decision flag — tolerate both "decision" and legacy "Decision" casing.
+        # The old prompt emits "Decision" but the reader only checked "decision",
+        # so the model's stop/continue judgment was never honored (B2). Reading
+        # both fixes it for the online path too without changing its prompt.
+        decision_flag = (
+            accumulated_output.get("decision")
+            or accumulated_output.get("Decision")
+            or "continue_accumulating"
+        )
         if decision_flag == "continue_accumulating":
             decision = True
         elif decision_flag == "stop_accumulating":
@@ -474,18 +505,71 @@ class TranscriptProcessor:
             logger.info("[ACCUMULATE] Unexpected decision flag: %s", decision_flag)
             decision = True
 
-        if stop_accumulating_flag:
-            decision = False
-            segmented_input_chunk = input_text
-            incomplete_seg = ""
+        if use_index_mode:
+            # Index split over text_batch fragments: completed_through_index is
+            # the last completed fragment; everything after carries forward. No
+            # fuzzy text matching, no transcript echo. Carried fragments are
+            # collapsed back into the single-slot accumulator shape the caller
+            # expects (one joined string + one flattened segment slot).
+            def _flatten_slots(slots: Any) -> List[Dict[str, Any]]:
+                return [
+                    seg
+                    for slot in (slots or [])
+                    if isinstance(slot, list)
+                    for seg in slot
+                    if isinstance(seg, dict)
+                ]
 
-        completed_segments, carryover_segments = self._split_segments_for_completed_chunk(
-            text_batch=text_batch,
-            segment_batch=segment_batch,
-            completed_text=segmented_input_chunk,
-            incomplete_text=incomplete_seg,
-            stop_accumulating_flag=stop_accumulating_flag,
-        )
+            raw_idx = accumulated_output.get("completed_through_index", -1)
+            try:
+                idx = int(raw_idx)
+            except (TypeError, ValueError):
+                idx = -1
+
+            if stop_accumulating_flag:
+                # Force-flush: take everything regardless of the model's split.
+                completed_segments = _flatten_slots(segment_batch)
+                carryover_segments = []
+                segmented_input_chunk = input_text
+                incomplete_seg = ""
+                decision = False
+            elif decision or idx < 0:
+                # Nothing complete yet — keep accumulating (caller leaves the
+                # accumulator intact in this branch, so carry values are moot).
+                completed_segments = []
+                carryover_segments = []
+                segmented_input_chunk = ""
+                incomplete_seg = input_text
+                decision = True
+            else:
+                idx = min(idx, len(text_batch) - 1)
+                completed_segments = _flatten_slots(segment_batch[: idx + 1]) if segment_batch else []
+                carry_segs = _flatten_slots(segment_batch[idx + 1 :]) if segment_batch else []
+                carryover_segments = [carry_segs] if carry_segs else []
+                segmented_input_chunk = " ".join(
+                    str(frag).strip() for frag in text_batch[: idx + 1]
+                ).strip()
+                incomplete_seg = " ".join(
+                    str(frag).strip() for frag in text_batch[idx + 1 :]
+                ).strip()
+                # Continue accumulating only if a leftover tail remains.
+                decision = bool(text_batch[idx + 1 :])
+        else:
+            segmented_input_chunk = accumulated_output.get("Completed_segment", "")
+            incomplete_seg = accumulated_output.get("Incomplete_segment", "")
+
+            if stop_accumulating_flag:
+                decision = False
+                segmented_input_chunk = input_text
+                incomplete_seg = ""
+
+            completed_segments, carryover_segments = self._split_segments_for_completed_chunk(
+                text_batch=text_batch,
+                segment_batch=segment_batch,
+                completed_text=segmented_input_chunk,
+                incomplete_text=incomplete_seg,
+                stop_accumulating_flag=stop_accumulating_flag,
+            )
 
         output_json: List[Dict[str, Any]] = []
         if segmented_input_chunk.strip():
