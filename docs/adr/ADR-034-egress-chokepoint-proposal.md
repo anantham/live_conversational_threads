@@ -74,8 +74,20 @@ Keep them — they become **defense-in-depth + better errors**: a per-site `asse
 
 - It does **not** replace the owner-scoping / RLS work — that is separate (and already fixed).
 - It does **not** make the branch public-tenancy-complete (still deferred; public ingress stays off).
-- It does **not** intercept subprocesses or non-Python transports (none exist in this tree today; note it as a known boundary).
-- `genai` SDK: if a pinned `google-genai` version bypasses httpx, the per-site genai guards already added remain the cover for that path; verify the installed version routes through httpx as part of landing this.
+
+### Known boundaries (verified by codex review 2026-06-05) — residual gaps NOT closed by the httpx/ws/urllib wrap
+
+These were surfaced by independent review and are documented here rather than silently left:
+
+1. **`urlopen` imported by value (FIXED via per-site guard).** `stt_health_service.py` does `from urllib.request import urlopen` at module load — *before* lifespan installs the chokepoint — so the global `urllib` patch never reaches that local binding. Fixed by a direct `assert_local_egress()` inside `probe_health_url()` (covers the Modal/cloud STT health probe at `import_api.py` + `backend_catalog_api.py`). **Lesson: any `from urllib.request import urlopen`-style by-value import defeats the global patch; prefer `import urllib.request; urllib.request.urlopen(...)` OR a per-site guard.**
+2. **google-genai (COVERED + per-site guarded).** Verified the installed `google-genai` routes through `httpx` (`_api_client` uses httpx, not requests), so the chokepoint covers all 3 genai callers; a per-site guard was also added to `import_graph_refinement` for consistency. If the pin ever changes to a non-httpx transport, the per-site guards remain the cover.
+3. **`google-cloud-storage` SDK (OUT OF SCOPE).** `storage.Client()` in `gcs_helpers.py` / `conversations_api.py` is a non-httpx Google transport. It is a *pre-existing* path (not introduced by ADR-034), only active when the GCS storage backend is configured (local uses the filesystem). Not blocked by the chokepoint. **Action: if the public profile must block GCS, gate the storage backend by profile; do not rely on the egress chokepoint for it.**
+4. **google-auth token verification (OUT OF SCOPE, inbound).** `share_api.py` uses `google.auth.transport.requests` to *verify inbound* Google ID tokens (share-link auth) — it is authentication, not data egress, and pre-existing.
+5. **Shell `curl` in `start.command`/`start.sh` (OUT OF SCOPE).** Outside the Python process entirely.
+6. **Entrypoints that bypass FastAPI startup.** Standalone scripts, Alembic, and the `.tmp_pipeline_telemetry` harness do not call `install_egress_chokepoint()`. The harness sets `LCT_LOCAL_ONLY=1` + blanks cloud keys already, but for belt-and-suspenders it (and any future cloud-touching script) should call the installer at the top. **Action: call `install_egress_chokepoint()` at each non-server entrypoint that can touch the network.**
+7. **Installer failure is fail-open.** `backend.py` wraps the install in try/except so a buggy installer never blocks startup — but that means a process-level install failure silently disables the chokepoint. Consider logging at ERROR + a startup self-check that the wrap is present when `LCT_LOCAL_ONLY` is on.
+
+The net: the chokepoint + per-site guards now cover **all httpx/SDK/websocket cloud paths and the urllib health probe**. The remaining items (GCS SDK, google-auth, shell curl, non-server entrypoints) are either pre-existing/out-of-scope or belt-and-suspenders, and are listed so the author/public-tier work can close them deliberately rather than discovering them later.
 
 ## Testing
 
