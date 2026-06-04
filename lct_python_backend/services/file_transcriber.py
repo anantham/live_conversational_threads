@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -68,6 +69,7 @@ from lct_python_backend.services.coercion_helpers import (
 from lct_python_backend.services.transcription_utils import (
     AUDIO_EXTENSIONS,
     DEFAULT_CHUNK_DURATION_S,
+    LOCAL_STT_CHUNK_DURATION_S,
     DEFAULT_CHUNK_MAX_RETRIES,
     DEFAULT_CHUNK_OVERLAP_S,
     DEFAULT_CHUNK_RETRY_BACKOFF_S,
@@ -459,12 +461,24 @@ async def transcribe_uploaded_file(
                         metadata["diarization_skipped"] = "no_asr_timestamps_from_stt"
                 else:
                     stt_started_at = time.perf_counter()
+                    # Local backend_http (IndrasNet WhisperX): no upload cap +
+                    # resident model, so use a LARGE chunk (~10min) instead of
+                    # the 30s cloud default — one coordinator call + one
+                    # diarization pass per big chunk, not per 30s. This is the
+                    # ~8x fix from docs/STT_ORCHESTRATION_OVERHEAD_RCA.md.
+                    # A 10-min chunk + WhisperX cold-start (~80-115s) needs a
+                    # generous timeout; floor it well above the 120s cloud
+                    # default (backend allows up to 900s).
+                    local_timeout = max(timeout, float(
+                        os.getenv("LOCAL_STT_TIMEOUT_SECONDS", "900")
+                    ))
                     transcript_text = await transcribe_audio_chunked(
                         temp_path,
                         http_url=http_url,
                         model=coerce_str(settings.get("http_model")),
                         language=coerce_str(settings.get("http_language")),
-                        timeout_seconds=timeout,
+                        timeout_seconds=local_timeout,
+                        chunk_duration_s=LOCAL_STT_CHUNK_DURATION_S,
                         on_chunk_progress=on_chunk_progress,
                         response_format=response_format,
                     )
