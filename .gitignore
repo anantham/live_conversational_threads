@@ -214,7 +214,11 @@ outputs/
 tmp/
 .tmp/
 .tmp_validation/
+.tmp_*
 .playwright-mcp/
+
+# LLM live telemetry log (seed-then-refine; seed JSON is committed, this is not)
+lct_python_backend/data/llm_telemetry.jsonl
 
 # Syncthing conflict/temp files
 ~syncthing~*

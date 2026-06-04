@@ -44,6 +44,7 @@ from lct_python_backend.services.indrasnet_client import (
     IndrasNetProtocolError,
     IndrasNetServerError,
     IndrasNetUnavailable,
+    detect_lct_prayer,
     get_contacts_timeout_seconds,
     get_indrasnet_base_url,
     get_match_timeout_seconds,
@@ -64,6 +65,18 @@ class ConsumptionQueryRequest(BaseModel):
     """
     selected_text: str = Field(default="", max_length=4000)
     contact_ref: str = Field(..., min_length=1, max_length=200)
+
+
+class LctPrayerDetectionRequest(BaseModel):
+    """Body for live/selection evidence sent to IndrasNet's prayer router."""
+    selected_text: str = Field(default="", max_length=4000)
+    signal_text: str = Field(default="", max_length=4000)
+    context_window: str = Field(default="", max_length=8000)
+    session_id: Optional[str] = Field(default=None, max_length=200)
+    utterance_ids: List[str] = Field(default_factory=list)
+    participants: List[dict] = Field(default_factory=list)
+    source: str = Field(default="lct_manual_selection", max_length=120)
+    max_results: int = Field(default=5, ge=1, le=10)
 
 
 @router.post("/api/conversations/{conversation_id}/recommend-consumption-query")
@@ -129,6 +142,74 @@ async def manual_recommend_consumption_query(
         "selected_text": request.selected_text,
         "triggered_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         **body,  # contact, note_path, status, items, item_count
+    }
+
+
+@router.post("/api/conversations/{conversation_id}/prayer-detect")
+async def manual_lct_prayer_detect(
+    conversation_id: str,
+    request: LctPrayerDetectionRequest,
+):
+    """Route selected/live evidence through IndrasNet's prayer detector.
+
+    This is the generic LCT → IndrasNet bridge. The existing
+    recommend-consumption endpoint remains as a specialized contact agenda
+    reader; this route is for prayer semantics and live card actuation.
+    """
+    selected_text = request.selected_text.strip()
+    signal_text = request.signal_text.strip()
+    if not selected_text and not signal_text and not request.context_window.strip():
+        raise HTTPException(
+            status_code=400,
+            detail="selected_text, signal_text, or context_window is required",
+        )
+
+    source = request.source.strip() or "lct_manual_selection"
+    logger.info(
+        "[manual-lct-prayer-detect] conv=%s source=%s signal_len=%d "
+        "selected_len=%d max_results=%d",
+        conversation_id,
+        source,
+        len(signal_text),
+        len(selected_text),
+        request.max_results,
+    )
+
+    try:
+        body = await detect_lct_prayer(
+            signal_text=signal_text,
+            selected_text=selected_text,
+            conversation_id=conversation_id,
+            session_id=request.session_id,
+            utterance_ids=request.utterance_ids,
+            context_window=request.context_window,
+            participants=request.participants,
+            source=source,
+            max_results=request.max_results,
+        )
+    except IndrasNetUnavailable as exc:
+        msg = f"IndrasNet unreachable: {exc}"
+        logger.error("[manual-lct-prayer-detect] %s", msg)
+        raise HTTPException(status_code=502, detail=msg) from exc
+    except IndrasNetClientError as exc:
+        msg = str(exc)
+        logger.warning("[manual-lct-prayer-detect] client error: %s", msg)
+        raise HTTPException(status_code=400, detail=msg) from exc
+    except IndrasNetServerError as exc:
+        msg = f"IndrasNet server error: {exc}"
+        logger.error("[manual-lct-prayer-detect] %s", msg)
+        raise HTTPException(status_code=502, detail=msg) from exc
+    except IndrasNetProtocolError as exc:
+        msg = f"IndrasNet protocol error: {exc}"
+        logger.error("[manual-lct-prayer-detect] %s", msg)
+        raise HTTPException(status_code=502, detail=msg) from exc
+
+    return {
+        **body,
+        "source": source,
+        "conversation_id": conversation_id,
+        "selected_text": request.selected_text,
+        "triggered_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
     }
 
 

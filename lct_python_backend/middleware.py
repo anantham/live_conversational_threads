@@ -54,6 +54,9 @@ ADMIN_PATH_PREFIXES: Tuple[str, ...] = (
     "/api/bookmarks",
     "/api/prompts",
     "/api/graph",
+    # Backend catalog powers Settings + status chips and triggers server-side
+    # probes; treat it like the other settings/admin surfaces.
+    "/api/backend-catalog",
 )
 ADMIN_PATH_EXACT: Set[str] = {
     "/conversations",
@@ -107,9 +110,12 @@ def _is_health(path: str) -> bool:
     return _normalize_path(path) in HEALTH_PATHS
 
 
-def _is_public_share(path: str) -> bool:
-    """Share-link endpoints enforce their own per-share Google gate;
-    AUTH_TOKEN middleware must not block recipients who don't have it."""
+def _is_public_share(path: str, method: str = "GET") -> bool:
+    """Public share GETs (recipient fetch + audio) bypass AUTH_TOKEN — they enforce
+    their own per-share Google gate. ONLY GET is exempt: owner-side mutations under
+    /api/share/ (notably DELETE revoke) MUST stay on the auth path."""
+    if (method or "").upper() != "GET":
+        return False
     norm = _normalize_path(path)
     return any(norm.startswith(prefix.rstrip("/")) for prefix in PUBLIC_PATH_PREFIXES)
 
@@ -199,9 +205,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if _is_audio_download(path):
             return await call_next(request)
 
-        if _is_public_share(path):
-            # Share-fetch enforces its own Google ID token check per share's
-            # email allowlist. AUTH_TOKEN does not apply to recipients.
+        if _is_public_share(path, request.method):
+            # Share-fetch (GET only) enforces its own Google ID token check per
+            # share's email allowlist. AUTH_TOKEN does not apply to recipients.
+            # DELETE/other methods under /api/share/ fall through to auth below.
             return await call_next(request)
 
         auth_header = request.headers.get("authorization")

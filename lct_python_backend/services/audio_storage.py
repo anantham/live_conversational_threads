@@ -34,12 +34,24 @@ class AudioStorageManager:
             self._lock = asyncio.Lock()
         return self._lock
 
+    def _conversation_path(self, conversation_id: str, suffix: str) -> Path:
+        """Build ``recordings_dir/<conversation_id><suffix>``, refusing any id that
+        escapes the recordings directory. Defense-in-depth against path traversal —
+        the API layer validates ``conversation_id`` too, but a crafted id like
+        ``../../../../tmp/evil`` must never reach an open()/copy() here."""
+        candidate = (self.recordings_dir / f"{conversation_id}{suffix}").resolve()
+        if candidate.parent != self.recordings_dir.resolve():
+            raise ValueError(
+                f"unsafe conversation_id (path escapes recordings dir): {conversation_id!r}"
+            )
+        return candidate
+
     async def append_chunk(self, conversation_id: str, chunk_bytes: bytes) -> None:
         if not chunk_bytes:
             logger.warning("[AUDIO STORAGE] conversation=%s empty chunk received, skipping", conversation_id)
             return
 
-        pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
+        pcm_path = self._conversation_path(conversation_id, ".pcm")
         chunk_size = len(chunk_bytes)
         bytes_before = 0
         if pcm_path.exists():
@@ -71,7 +83,10 @@ class AudioStorageManager:
         """Return the first existing audio file for this conversation across
         the known source suffixes (live wav/flac and source-imported formats)."""
         for suffix in self.SOURCE_AUDIO_SUFFIXES:
-            candidate = self.recordings_dir / f"{conversation_id}{suffix}"
+            try:
+                candidate = self._conversation_path(conversation_id, suffix)
+            except ValueError:
+                return None
             if candidate.exists():
                 return candidate
         return None
@@ -85,7 +100,11 @@ class AudioStorageManager:
         normalized_suffix = suffix.lower() if suffix else ""
         if normalized_suffix not in self.SOURCE_AUDIO_SUFFIXES:
             return None
-        dest = self.recordings_dir / f"{conversation_id}{normalized_suffix}"
+        try:
+            dest = self._conversation_path(conversation_id, normalized_suffix)
+        except ValueError as exc:
+            logger.warning("[AUDIO STORAGE] persist_source_audio refused unsafe id %r: %s", conversation_id, exc)
+            return None
         try:
             shutil.copy2(temp_path, dest)
             logger.info("[AUDIO STORAGE] persisted source audio for %s -> %s", conversation_id, dest)
@@ -95,9 +114,9 @@ class AudioStorageManager:
             return None
 
     def get_status(self, conversation_id: str) -> Dict[str, Optional[object]]:
-        pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
-        wav_path = self.recordings_dir / f"{conversation_id}.wav"
-        flac_path = self.recordings_dir / f"{conversation_id}.flac"
+        pcm_path = self._conversation_path(conversation_id, ".pcm")
+        wav_path = self._conversation_path(conversation_id, ".wav")
+        flac_path = self._conversation_path(conversation_id, ".flac")
         bytes_written = self._session_meta.get(conversation_id, {}).get("bytes_written", 0)
         if bytes_written <= 0 and pcm_path.exists():
             try:
@@ -119,9 +138,9 @@ class AudioStorageManager:
         }
 
     async def finalize(self, conversation_id: str) -> Dict[str, Optional[str]]:
-        pcm_path = self.recordings_dir / f"{conversation_id}.pcm"
-        wav_path = self.recordings_dir / f"{conversation_id}.wav"
-        flac_path = self.recordings_dir / f"{conversation_id}.flac"
+        pcm_path = self._conversation_path(conversation_id, ".pcm")
+        wav_path = self._conversation_path(conversation_id, ".wav")
+        flac_path = self._conversation_path(conversation_id, ".flac")
         
         tracked_bytes = self._session_meta.get(conversation_id, {}).get("bytes_written", 0)
         logger.info("[AUDIO STORAGE] conversation=%s FINALIZE start: tracked_bytes=%s pcm_exists=%s wav_exists=%s",

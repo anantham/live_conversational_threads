@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import re
 from datetime import datetime
 from typing import Any, Dict, Optional
 
@@ -63,6 +64,16 @@ DOWNLOAD_TOKEN = os.getenv("AUDIO_DOWNLOAD_TOKEN")
 STT_DEBUG = os.getenv("STT_DEBUG", "false").lower() in {"1", "true", "yes"}
 
 audio_storage = AudioStorageManager(RECORDINGS_DIR)
+
+# conversation_id reaches the filesystem (recordings/<id>.pcm). Reject anything
+# that isn't a plain id so a crafted value like "../../../tmp/evil" can't escape
+# the recordings directory (path traversal → arbitrary file write).
+_SAFE_CONVERSATION_ID = re.compile(r"^[A-Za-z0-9_-]{1,200}$")
+
+
+def _validate_conversation_id(conversation_id: str) -> None:
+    if not _SAFE_CONVERSATION_ID.match(conversation_id or ""):
+        raise HTTPException(status_code=400, detail="Invalid conversation_id")
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +380,7 @@ async def upload_audio_chunk(
     request: Request,
     session_id: Optional[str] = Query(None),
 ):
+    _validate_conversation_id(conversation_id)
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required")
     chunk = await request.body()
@@ -380,6 +392,7 @@ async def upload_audio_chunk(
 
 @router.get("/api/conversations/{conversation_id}/audio/status")
 async def get_audio_status(conversation_id: str):
+    _validate_conversation_id(conversation_id)
     status = audio_storage.get_status(conversation_id)
     download_url = None
     if status.get("wav_path") or status.get("flac_path") or status.get("source_path"):
@@ -399,6 +412,7 @@ async def finalize_audio_upload(
     request: Request,
     session_id: Optional[str] = Query(None),
 ):
+    _validate_conversation_id(conversation_id)
     if not session_id:
         raise HTTPException(status_code=400, detail="session_id is required")
     result = await audio_storage.finalize(conversation_id)
@@ -411,6 +425,7 @@ async def finalize_audio_upload(
 
 @router.post("/api/conversations/{conversation_id}/audio/recover")
 async def recover_audio(conversation_id: str):
+    _validate_conversation_id(conversation_id)
     result = await audio_storage.finalize(conversation_id)
     status = audio_storage.get_status(conversation_id)
     download_url = None

@@ -18,6 +18,7 @@ numpy==1.26.4
 # Database migrations and ORM
 alembic==1.13.1
 sqlalchemy==2.0.25
+greenlet>=3.0.0  # required by SQLAlchemy async (AsyncSession / create_async_engine)
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
 

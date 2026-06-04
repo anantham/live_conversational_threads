@@ -1,6 +1,6 @@
 # Project Structure
 
-Last updated: 2026-03-20
+Last updated: 2026-05-30
 
 ## Top Level
 
@@ -36,11 +36,13 @@ live_conversational_threads/
 - `factcheck_api.py` (`/fact_check_claims/`, `/api/cost-tracking/stats`)
 - `analysis_api.py` (`/api/conversations/*/{simulacra|biases|frames}*`)
 - `analytics_api.py` (`/api/analytics/*`)
+- `backend_catalog_api.py` (`/api/backend-catalog`, `/api/backend-catalog/probe`): inference backend catalog + live probes (ADR-037)
+- `user_identity_api.py` (`/api/user-identity`): "which contact is me" self-identity
+- `consumption_prayer_api.py` (`/api/consumption-prayer/*`): intent/prayer matching + known-contacts picker cache (ADR-033)
 - `graph_api.py` (`/api/graph/*`)
 - `canvas_api.py` (`/export/obsidian-canvas/*`, `/import/obsidian-canvas/`)
 - `thematic_api.py` (`/api/conversations/*/themes*`)
 - `cost_api.py` (`/api/cost-tracking/*`)
-- `claim_api.py` (`/api/conversations/*/claims*`)
 
 ### Data and Services
 
@@ -50,12 +52,18 @@ live_conversational_threads/
 - `services/`: processing, provider clients, normalization, and orchestration.
   - `stt_*`: STT pipeline (config, WS session, HTTP transcriber, health, telemetry, live runtime, provider selection, OpenAI realtime client).
   - `transcript_*`: transcript processing (orchestrator, normalizer, LLM callers, prompts).
-  - `*_detector.py`: analysis detectors (frame, bias, claim, is-ought, simulacra, argument mapper).
+  - `*_detector.py`: analysis detectors (frame, bias, simulacra, crux — ADR-035). Routed through `llm_gateway`.
   - `graph_generation*.py`, `graph_query_service.py`: graph synthesis and querying.
   - `import_*`: bulk import pipeline (orchestrator, pipeline, diarization queue, validation, persistence, SSE, telemetry).
   - `llm_config.py`, `llm_helpers.py`, `local_llm_client.py`: LLM provider configuration and wrappers.
   - `hierarchical_themes/`: multi-level topic clustering (Level 1–5 clusterers).
   - `coercion_helpers.py`: shared type coercion utilities (`to_bool`, `coerce_str`, `safe_float`, etc.).
+  - `backend_catalog.py`: merges benchmark seed + live telemetry + active config into the 3-lane catalog (ADR-037); seed in `data/backend_catalog_seed.json`.
+  - `llm_telemetry_service.py`: per-provider LLM speed telemetry that feeds the catalog.
+  - `indrasnet_client.py`, `edge_enrichment.py`: IndrasNet HTTP client (prayers/contacts/retrieval) + semantic edge enrichment.
+  - `conversation_pipeline/`: staged transcript→graph orchestrator — **built + tested but NOT yet on the live path** (live flow still uses `stt_ws_session` + bulk import); see ISSUES.md.
+
+  The on-device STT server lives outside `services/` in `local_stt/` — a standalone mlx-whisper FastAPI server `start.command` can boot as a drop-in HTTP provider.
 - `instrumentation/`: cost/telemetry aggregation and alerting.
 - `parsers/`: transcript format parsers (Google Meet PDF/text).
 - `tests/`: unit and integration tests.

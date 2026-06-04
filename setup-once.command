@@ -71,6 +71,42 @@ ensure_frontend_deps() {
   npm --prefix "$ROOT_DIR/lct_app" install
 }
 
+ensure_local_stt_env() {
+  # On-device STT (mlx-whisper) runs from its own venv so its heavy deps don't
+  # bloat the backend venv. start.command autostarts it (LOCAL_STT_AUTOSTART=1)
+  # but only if this venv exists — so create it here. Best-effort: a failure
+  # (e.g. non-Apple-Silicon host where mlx-whisper has no wheel) is non-fatal;
+  # the app falls back to whatever STT provider is configured in Settings.
+  local stt_dir="$ROOT_DIR/lct_python_backend/local_stt"
+  local stt_py="$stt_dir/.venv/bin/python"
+
+  if [ -x "$stt_py" ]; then
+    log "On-device STT venv already present ($stt_dir/.venv)."
+    return 0
+  fi
+
+  if [ ! -f "$stt_dir/requirements.txt" ]; then
+    log "NOTE: $stt_dir/requirements.txt missing; skipping on-device STT venv."
+    return 0
+  fi
+
+  log "Creating on-device STT venv (mlx-whisper) at $stt_dir/.venv..."
+  if command -v uv >/dev/null 2>&1; then
+    ( cd "$stt_dir" && uv venv .venv --python 3.12 \
+        && uv pip install --python .venv/bin/python -r requirements.txt ) \
+      || log "NOTE: on-device STT venv setup failed (uv). The app will use the STT provider configured in Settings."
+  else
+    ( python3 -m venv "$stt_dir/.venv" \
+        && "$stt_py" -m pip install --upgrade pip >/dev/null \
+        && "$stt_py" -m pip install -r "$stt_dir/requirements.txt" ) \
+      || log "NOTE: on-device STT venv setup failed (pip). The app will use the STT provider configured in Settings."
+  fi
+
+  if [ -x "$stt_py" ]; then
+    log "On-device STT venv ready."
+  fi
+}
+
 ensure_postgres_cluster() {
   if [ ! -d "$PG_DATA" ]; then
     log "Initializing local PostgreSQL data directory at .postgres_data..."
@@ -128,6 +164,7 @@ log "Starting one-time setup for Live Conversational Threads..."
 ensure_postgres_path
 ensure_python_env
 ensure_frontend_deps
+ensure_local_stt_env
 ensure_postgres_cluster
 ensure_env_file
 run_migrations

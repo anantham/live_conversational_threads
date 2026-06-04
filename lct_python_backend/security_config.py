@@ -11,7 +11,6 @@ from fastapi import HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from starlette.middleware.sessions import SessionMiddleware
 import os
 from typing import Callable
 import time
@@ -77,10 +76,19 @@ def configure_trusted_hosts(app, environment="development"):
     """
 
     if environment == "production":
-        allowed_hosts = [
-            os.getenv("BACKEND_DOMAIN", "api.yourdomain.com"),
-            "api.yourdomain.com",
-        ]
+        backend_domain = os.getenv("BACKEND_DOMAIN", "").strip()
+        if not backend_domain:
+            # No real allowlist configured. Installing the placeholder
+            # "api.yourdomain.com" would reject every request to the actual
+            # deployment host (Host header mismatch), taking the service down.
+            # Skip TrustedHost rather than hard-block prod on a default.
+            logger.warning(
+                "[SECURITY] ENVIRONMENT=production but BACKEND_DOMAIN is unset; "
+                "skipping TrustedHostMiddleware. Set BACKEND_DOMAIN to enable "
+                "Host-header hardening."
+            )
+            return
+        allowed_hosts = [backend_domain]
     elif environment == "staging":
         allowed_hosts = [
             "staging-api.yourdomain.com",
@@ -171,11 +179,14 @@ async def add_security_headers(request: Request, call_next):
     # Enable XSS protection
     response.headers["X-XSS-Protection"] = "1; mode=block"
 
-    # Content Security Policy
-    response.headers["Content-Security-Policy"] = "default-src 'self'"
-
-    # Strict Transport Security (HTTPS only)
+    # Content-Security-Policy + HSTS only in production. A strict CSP on dev
+    # responses (Swagger /docs, any HTML the backend serves) breaks local tooling
+    # more than it helps; operators opt in via ENVIRONMENT=production and can
+    # override the policy with CONTENT_SECURITY_POLICY.
     if os.getenv("ENVIRONMENT") == "production":
+        response.headers["Content-Security-Policy"] = os.getenv(
+            "CONTENT_SECURITY_POLICY", "default-src 'self'"
+        )
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
     return response

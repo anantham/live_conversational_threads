@@ -388,7 +388,11 @@ async def get_services_status(
 
     services: Dict[str, ServiceHealthInfo] = {}
 
-    # ── Check local WhisperX (via IndrasNet at 127.0.0.1:7777) ──────────────
+    # ── Resolve the Whisper HTTP endpoint from STT settings ─────────────────
+    # In practice http_url is the configured IndrasNet orchestrator over
+    # Tailscale (default 100.81.65.74:7777, see indrasnet_client.py /
+    # docs/INDRASNET_INTEGRATION.md). The 127.0.0.1:7777 literal is only a
+    # last-resort fallback for a co-located IndrasNet; it is NOT "local WhisperX".
     local_stt_url = stt_settings.get("http_url", "http://127.0.0.1:7777/api/transcribe")
     local_stt_health_url = derive_health_url_from_http_url(local_stt_url)
     if not local_stt_health_url:

@@ -1,6 +1,94 @@
 # ISSUES
 
-Last updated: 2026-05-18
+Last updated: 2026-06-01
+
+## 2026-06-01 — Diarization selection saves but doesn't steer the runtime
+
+**Summary:** The "Active engines" Diarization lane (`InferenceLanes.jsx` →
+`updateDiarizationSettings`) persists the chosen diarizer (`primary` +
+`fallback_priority`) to the DB and reflects it in the catalog/UI, but
+`load_diarization_settings` has **no consumer in the live transcription
+pipeline** — the saved choice does not change which diarizer actually runs
+(the legacy per-provider `diarize_model` path still governs).
+
+**Impact:** Low/cosmetic-but-misleading. The control looks effective; it isn't
+yet wired downstream. Honest (no crash, documented here), just inert. Confirmed
+by the 2026-06-01 feature-state audit of `feat/e2e-audio-graph-zoom`.
+
+**Blocker status:** Not blocking — surfaced via the lane's "isn't running yet"
+override notice. Deferred per maintainer.
+
+**Recommended next step:** wire `load_diarization_settings` into the
+transcription pipeline's diarizer selection (or remove the control until it's
+consumed). Pairs with the FluidAudio-sidecar-not-bundled gap.
+
+## 2026-06-01 — Active-engines LLM picker: partial-wiring gaps (FIXED 2026-06-01)
+
+Codex re-review of PR #52 (findings D/E/F/G) flagged two LLM-selection gaps in
+`InferenceLanes.setLlmPrimary`. Both fixed this session:
+- **Gemini switch 400 (D):** switching the LLM lane to Gemini saved `mode=online`
+  while keeping the local `chat_model`, which `llm_api.update_llm_settings`
+  rejects (validates `chat_model` against the Gemini model list). Fix: resolve a
+  real Gemini model (`getLlmModelOptions({mode:'online'})`, fallback
+  `gemini-2.5-flash`) and send it on the switch.
+- **Local-LLM selection silently overridden (E/F/G):** selecting a local engine
+  only sets `llm_config.base_url`, but graph generation runs the first enabled
+  `llm_providers` entry — so the choice could be inert. Fix: when the catalog's
+  `llm_effective` differs from the selected entry, the save now warns that the
+  provider chain governs and must be reordered/disabled (the
+  [[lct-llm-config-seam]] divergence, surfaced honestly rather than a false toast).
+
+## 2026-05-31 — Crux detection has no online (Gemini) LLM path
+
+**Summary:** `CruxDetector._detect` routes through `local_chat_json` → the LLM
+gateway, which is **openai-compatible only** by design (online/Gemini generation
+lives in `transcript_llm_callers`, unreachable from the gateway). So when the LLM
+lane is set to online/Gemini mode, crux can't run.
+
+**Impact:** Low. As of 2026-05-31 crux now **fails honestly** — `_detect` raises
+`CruxConfigurationError`, which `analyze_conversation` surfaces in the response's
+`error` field (HTTP 200) and the crux page renders, telling the user to switch the
+LLM lane to a local engine — instead of silently posting to a likely-down local
+endpoint. (Found by codex re-review of PR #52, finding B.)
+
+**Blocker status:** Not blocking. Crux works on any local/openai-compatible
+provider; only pure online-Gemini mode is unsupported.
+
+**Recommended next step (deferred — out of proportion for this path):** if crux
+must run under online-Gemini, add a general Gemini chat-JSON caller (messages in,
+JSON out) reusing `_resolve_gemini_api_key` / `_resolve_online_gemini_model` from
+`transcript_llm_callers`, and dispatch on `mode=='online'` in `_detect`.
+
+## Rationality features & stubs audit (2026-05-30)
+
+8-agent audit (full report + status table: `docs/AUDIT_RATIONALITY_2026-05-30.md`). Branch `feat/e2e-audio-graph-zoom`. Nothing deleted. Key gaps:
+
+- **[ABSENT] Crux detection.** `is_crux` (`models/graph.py:43`) is a DB boolean **never set True by any code** — yet there is live read-plumbing (`conversation_reader.py:282`, `conversations_api.py:505`) and a dead amber node-styling branch (`MinimalGraph.jsx:218,235`). No `crux_detector.py`, no crux prompt. The "crux" zoom concept is a dead flag.
+- **[ABSENT] Double-crux, Ideological Turing Test, steelmanning, devil's-advocate, charitable-interpretation.** No code anywhere — only roadmap docs + a hardcoded "Steelmanning Score: 7/10" mockup (`FEATURE_SIMULACRA_LEVELS.md:762`). "ITT" never appears in the repo.
+- **[ABSENT] Cross-speaker agree/disagree map.** Node↔node `agrees`/`disagrees` edges exist + render, but with **no speaker attribution**. "Where does speaker A disagree with speaker B" does not exist; `speaker_analytics.py` does time/turns/roles only. New build.
+- **[ORPHANED] Real fact-check verification unreachable.** `POST /fact_check_claims/` (`perplexity_factcheck.py:111` — verdict + citations) is only called by `archive/TranscriptApp.jsx`. The live banner (`openai_factcheck`, `NodeDetail.jsx:285`) is classification only, not verification, and is **not persisted** (`Claim.verification_status` hardcoded `None`; save fn commented out in `db_helpers.py:31`).
+- **[ORPHANED] Three detectors built but unlinked in UI.** Bias (`/biases`), Frame (`/frames`), Simulacra (`/simulacra`) have complete backends + pages + routes (`AppRoutes.jsx:33-35`) but **no nav link** — reachable only by typing the URL. Quick win: add links.
+- **[ORPHANED] ClaimDetector / ArgumentMapper / IsOughtDetector.** `claim_api.py`/`argument_api.py` define handlers but **no APIRouter** and are never mounted in `backend.py`; broken root-relative imports. Wire or delete.
+- **[ORPHANED] intent_signal ("prayer") extraction (ADR-013 Contract C).** Persistence complete + tested (`intent_signal_persistence.py`) but **no detection prompt and zero callers** — the consumption side has no live producer.
+- **[ORPHANED] `conversation_pipeline/` orchestrator + 8 stages (ADR-030 §D3).** Fully built + tested, imported only by tests; the 3308-LOC `stt_ws_session.py` + 1523-LOC `import_bulk_pipeline.py` still own the live flow. Finish cutover or delete (tracked in TECH_DEBT).
+
+## Settings status honesty + 3-lane redesign (2026-05-30)
+
+- **[FIXED] Home "ACTIVE" chip could show green for a not-running backend.** Original FluidAudio case (planned, no sidecar) fixed; adversarial review then found it survived for cloud backends (status "configurable", no key, no probe) and for local servers in the pre-probe window. Fixed: green now = probe-verified running only (`lct_app/src/components/settings/backendState.js` shared `runState`/`isServing`, consumed by `BackendCard.jsx` + `CapabilityLane.jsx`). Selected-but-not-running → amber; cloud/unprobed → neutral "SELECTED".
+- **[KNOWN] Diarization lane models only the dedicated post-flush diarizer.** Speaker labels can also come from the STT provider (whisper/openai routes with `supports_diarization`); the UI now says "via STT" when the active STT entry has `provides_diarization`, but the two diarization sources are not unified.
+
+## Full-offline local bring-up: bugs + config gaps (2026-05-29)
+
+Found wiring a fully-local (no-cloud) run + E2E on branch `feat/e2e-audio-graph-zoom`.
+
+- **[FIXED] `share_api` wrong-module import (blocking, on `main`).** `lct_python_backend/share_api.py:63` imported `get_async_session` from `lct_python_backend.db` (only exposes `Database`), not `lct_python_backend.db_session` (canonical; ~18 other API modules use it). Backend crashed at import (`ImportError: cannot import name 'get_async_session'`). Any fresh boot of `backend.py` hits this. Fixed.
+- **[FIXED] Missing `greenlet` dependency (blocking).** SQLAlchemy async (`db_session.py` `create_async_engine`/`AsyncSession`) requires `greenlet`; pinned `sqlalchemy==2.0.25` markers didn't pull it on this platform → every async-DB request 500'd ("the greenlet library is required... No module named 'greenlet'"). Added `greenlet>=3.0.0` to `lct_python_backend/requirements.txt`.
+- **[CONFIG] `STT_HTTP_TIMEOUT_SECONDS` default too low for file STT.** `.env.example` ships `10` (code default 30). Multi-minute audio via remote whisper exceeds it → `WriteTimeout` after retries (~77s) and the upload SSE errors. Worked around with 600 locally. Recommend a larger default for the upload/file path or a dedicated upload-timeout knob separate from the live-STT chunk timeout.
+- **[CONFIG] Default local chat model `glm-4.6v-flash` unusable for graph-gen.** It is a vision model; the transcript→graph JSON call takes >120s on the RTX LM Studio → hits `LOCAL_LLM_TIMEOUT_SECONDS=120`, then falls back to Modal Qwen (unreachable) → graph never generates. Switched to `openai/gpt-oss-20b` (~6s warm). Recommend a fast text default.
+- **[CONFIG] LM Studio rejects `response_format: json_object`.** Errors `'response_format.type' must be 'json_schema' or 'text'`. With `LOCAL_LLM_JSON_MODE=true` the gateway 400s then retries text-mode. Set `LOCAL_LLM_JSON_MODE=false` to avoid the churn; consider gateway `json_schema` support.
+- **[CONFIG] Dead online fallbacks remain in offline mode.** With `DEFAULT_LLM_MODE=local` the provider chain still includes Modal Qwen + OpenRouter; Modal is unreachable (ReadTimeout) and is tried on any local failure, adding latency. True-offline should make the provider list local-only.
+- **[LATENT BUG] `ZoomControls.jsx:11` imports `useEffect` from `'prop-types'`** (should be `'react'`). If that component mounts, its keyboard-shortcut `useEffect` throws. The live level-of-detail UI is the `MinimalGraph` tier-tab strip (`moments/ideas/topics/themes/arcs`), not `ZoomControls`, so this is currently latent. Fix the import or remove the unused component.
+- **[PERF] IndrasNet whisper (:7777) ~4× realtime.** 20s→86s; full 8-min file ≈ 25–35 min. Not blocking but slow for large imports; worth profiling the orchestrator (model size / diarization cost) from the IndrasNet side.
 
 ## Consumption-prayer feature follow-ups (2026-05-18)
 

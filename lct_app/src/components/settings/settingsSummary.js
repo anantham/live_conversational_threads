@@ -8,7 +8,7 @@ const STT_ROUTE_LABELS = {
   whisper: "Whisper",
   parakeet: "Parakeet",
   senko: "Senko",
-  ofc: "OFC",
+  ofc: "SenseVoice",
 };
 
 const titleCaseProvider = (providerId) => {

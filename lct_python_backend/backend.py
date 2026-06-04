@@ -197,6 +197,16 @@ logger.info(
 # P0 Security middleware (auth, rate limits, body size limits, SSRF gate)
 configure_p0_security(lct_app)
 
+# Production hardening (previously defined in security_config but never wired —
+# surface-tech-debt review 2026-05-30). Safe in development: the benign response
+# headers (X-Frame-Options/X-Content-Type-Options/X-XSS-Protection) apply always;
+# CSP + HSTS only when ENVIRONMENT=production; TrustedHost is a no-op unless a prod
+# host allowlist is configured.
+from lct_python_backend.security_config import add_security_headers, configure_trusted_hosts
+
+lct_app.middleware("http")(add_security_headers)
+configure_trusted_hosts(lct_app, environment=os.getenv("ENVIRONMENT", "development"))
+
 
 # ============================================================================
 # ROUTER MOUNTING
@@ -224,6 +234,8 @@ from lct_python_backend.speaker_naming_api import (
 from lct_python_backend.consumption_prayer_api import router as consumption_prayer_router
 from lct_python_backend.user_identity_api import router as user_identity_router
 from lct_python_backend.share_api import router as share_router
+from lct_python_backend.backend_catalog_api import router as backend_catalog_router
+from lct_python_backend.diarization_api import router as diarization_router
 
 lct_app.include_router(import_router)
 lct_app.include_router(bookmarks_router)
@@ -251,6 +263,8 @@ lct_app.include_router(conversation_speakers_router)
 lct_app.include_router(consumption_prayer_router)
 lct_app.include_router(user_identity_router)
 lct_app.include_router(share_router)
+lct_app.include_router(backend_catalog_router)
+lct_app.include_router(diarization_router)
 
 # Alias for uvicorn compatibility
 app = lct_app
