@@ -33,6 +33,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 # ``DATABASE_URL`` is not configured at import time.
 from lct_python_backend.models import Conversation, Utterance as DBUtterance
 from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
+from lct_python_backend.services.owner_context import resolve_owner_id
 
 logger = logging.getLogger("lct_backend")
 
@@ -297,7 +298,7 @@ async def ensure_conversation_row(
     conversation_id: str,
     conversation_name: Optional[str] = None,
     source_type: Optional[str] = None,
-    owner_id: str = "default_user",
+    owner_id: Optional[str] = None,
     source_metadata: Optional[Dict[str, Any]] = None,
 ) -> bool:
     """Materialize a conversation row (idempotent) so child writes have a parent FK.
@@ -320,7 +321,7 @@ async def ensure_conversation_row(
         conversation_type="transcript",
         source_type=(source_type or "import").strip() or "import",
         source_metadata=source_metadata or {},
-        owner_id=(owner_id or "default_user").strip() or "default_user",
+        owner_id=(owner_id or "").strip() or resolve_owner_id(),
         started_at=datetime.now(),
         created_at=datetime.now(),
     )
@@ -337,7 +338,7 @@ async def persist_graph(
     utterances: Optional[List[Dict[str, Any]]] = None,
     conversation_name: Optional[str] = None,
     source_type: Optional[str] = None,
-    owner_id: str = "default_user",
+    owner_id: Optional[str] = None,
     source_metadata: Optional[Dict[str, Any]] = None,
     utterance_chunk_map: Optional[Dict[str, List[str]]] = None,
     protect_node_ids: Optional[Iterable[uuid.UUID]] = None,
@@ -379,7 +380,7 @@ async def persist_graph(
             conversation_type="transcript",
             source_type=(source_type or "import").strip() or "import",
             source_metadata=source_metadata or {},
-            owner_id=(owner_id or "default_user").strip() or "default_user",
+            owner_id=(owner_id or "").strip() or resolve_owner_id(),
             started_at=datetime.now(),
             created_at=datetime.now(),
         )

@@ -161,6 +161,12 @@ class EmbeddingService:
                 "Please set it to use embedding service."
             )
 
+        # Local-only guard: this is a direct cloud OpenAI batch-embeddings call
+        # (only reached in non-local mode). Refuse it when LCT_LOCAL_ONLY is on.
+        assert_local_egress(
+            "https://api.openai.com", purpose="direct OpenAI batch embeddings"
+        )
+
         if self._openai_client is None or api_key != self._openai_key:
             self._openai_key = api_key
             self._openai_client = AsyncOpenAI(api_key=api_key)

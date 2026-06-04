@@ -121,6 +121,12 @@ class OpenAIRealtimeTranscriptionRuntime:
         if not self.api_key or not self.model:
             raise RuntimeError("OpenAI realtime STT requires an API key and model.")
 
+        # Local-only guard: this dials a realtime STT websocket (default
+        # wss://api.openai.com). Refuse non-local egress when LCT_LOCAL_ONLY is
+        # on, before opening the socket. A local realtime endpoint still passes.
+        from lct_python_backend.services.egress_guard import assert_local_egress
+        assert_local_egress(self.base_url, purpose="OpenAI realtime STT websocket")
+
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
             self._socket = await websockets.connect(

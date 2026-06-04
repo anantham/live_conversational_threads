@@ -20,6 +20,7 @@ from lct_python_backend.services.gcs_helpers import save_json_with_backend
 from lct_python_backend.services.llm_helpers import (
     sliding_window_chunking, stream_generate_context_json,
 )
+from lct_python_backend.services.owner_context import resolve_owner_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["generation"])
@@ -119,7 +120,7 @@ async def save_json_call(
                 conversation_name=result["file_name"],
                 conversation_type="transcript",
                 source_type="save_json",
-                owner_id="default_user",
+                owner_id=resolve_owner_id(),
                 started_at=datetime.utcnow(),
                 total_nodes=number_of_nodes,
                 gcs_path=result.get("gcs_path"),
