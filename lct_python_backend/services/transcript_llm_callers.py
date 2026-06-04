@@ -238,6 +238,15 @@ def generate_lct_json_gemini(
             status_messages.append(message)
         return []
 
+    # Local-only guard: Gemini is a cloud-only provider (genai SDK dials
+    # generativelanguage.googleapis.com). Refuse it when LCT_LOCAL_ONLY is on,
+    # before constructing the client / spending the key.
+    from lct_python_backend.services.egress_guard import assert_local_egress
+    assert_local_egress(
+        "https://generativelanguage.googleapis.com",
+        purpose="Gemini graph generation",
+    )
+
     client = genai.Client(api_key=resolved_key)
     if key_source:
         _trace_api_call("[GEMINI] Using key from %s for graph generation model=%s.", key_source, resolved_model)
@@ -318,6 +327,15 @@ def genai_accumulate_text_json(
             "detected_threads": [],
             "_errors": [message],
         }
+
+    # Local-only guard: Gemini is cloud-only (genai SDK dials
+    # generativelanguage.googleapis.com). Refuse it when LCT_LOCAL_ONLY is on,
+    # before the retry loop constructs the client / spends the key.
+    from lct_python_backend.services.egress_guard import assert_local_egress
+    assert_local_egress(
+        "https://generativelanguage.googleapis.com",
+        purpose="Gemini transcript accumulation",
+    )
 
     prompt_metadata = get_transcript_prompt_metadata(PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT)
     system_prompt = get_transcript_prompt_text(PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT)

@@ -42,73 +42,90 @@ OWNER_DISPLAY = "Aditya"
 LEGACY_OWNER_IDS = ("default_user", "anonymous", "aditya")
 
 
+def _table_exists(bind, name: str) -> bool:
+    return sa.inspect(bind).has_table(name)
+
+
+def _relabel_owner(bind, table: str) -> None:
+    """Relabel legacy owner ids -> the canonical owner, dialect-portable.
+
+    Uses an ``IN (...)`` expansion (works on Postgres AND sqlite) rather than
+    Postgres-only ``= ANY(:legacy)``. Skips tables that don't exist so the
+    migration is safe on partially-provisioned / test databases.
+    """
+    if not _table_exists(bind, table):
+        return
+    params = {"owner": OWNER_ID}
+    placeholders = []
+    for i, legacy in enumerate(LEGACY_OWNER_IDS):
+        key = f"legacy_{i}"
+        params[key] = legacy
+        placeholders.append(f":{key}")
+    bind.execute(
+        sa.text(
+            f"UPDATE {table} SET owner_id = :owner "
+            f"WHERE owner_id IN ({', '.join(placeholders)})"
+        ).bindparams(**params)
+    )
+
+
 def upgrade() -> None:
-    op.create_table(
-        "users",
-        sa.Column("id", sa.String(length=255), primary_key=True),
-        sa.Column("email", sa.String(length=320), nullable=True, unique=True),
-        sa.Column("google_sub", sa.String(length=255), nullable=True, unique=True),
-        sa.Column("display_name", sa.String(length=255), nullable=True),
-        sa.Column(
-            "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
-        ),
-        sa.Column(
-            "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
-        ),
-    )
+    bind = op.get_bind()
 
-    # Seed the single owner. ON CONFLICT keeps this idempotent if re-run.
-    op.execute(
-        sa.text(
-            """
-            INSERT INTO users (id, email, display_name)
-            VALUES (:id, :email, :display)
-            ON CONFLICT (id) DO NOTHING
-            """
-        ).bindparams(id=OWNER_ID, email=OWNER_EMAIL, display=OWNER_DISPLAY)
-    )
+    # Idempotent: only create the users table if it isn't already present
+    # (re-running the migration on a DB that already has it must not error).
+    if not _table_exists(bind, "users"):
+        op.create_table(
+            "users",
+            sa.Column("id", sa.String(length=255), primary_key=True),
+            sa.Column("email", sa.String(length=320), nullable=True, unique=True),
+            sa.Column("google_sub", sa.String(length=255), nullable=True, unique=True),
+            sa.Column("display_name", sa.String(length=255), nullable=True),
+            sa.Column(
+                "created_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+            ),
+            sa.Column(
+                "updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()
+            ),
+        )
 
-    # Backfill conversations: relabel legacy/default tenants to the owner.
-    op.execute(
-        sa.text(
-            "UPDATE conversations SET owner_id = :owner "
-            "WHERE owner_id = ANY(:legacy)"
-        ).bindparams(owner=OWNER_ID, legacy=list(LEGACY_OWNER_IDS))
-    )
+    # Seed the single owner only if not already present (dialect-portable
+    # idempotency via a SELECT-guard rather than Postgres ON CONFLICT).
+    already = bind.execute(
+        sa.text("SELECT 1 FROM users WHERE id = :id").bindparams(id=OWNER_ID)
+    ).first()
+    if already is None:
+        bind.execute(
+            sa.text(
+                "INSERT INTO users (id, email, display_name) "
+                "VALUES (:id, :email, :display)"
+            ).bindparams(id=OWNER_ID, email=OWNER_EMAIL, display=OWNER_DISPLAY)
+        )
 
-    # usage_quotas also carry owner_id directly — relabel for consistency so
-    # quota history follows the same tenant after isolation lands.
-    op.execute(
-        sa.text(
-            "UPDATE usage_quotas SET owner_id = :owner "
-            "WHERE owner_id = ANY(:legacy)"
-        ).bindparams(owner=OWNER_ID, legacy=list(LEGACY_OWNER_IDS))
-    )
-
-    # thread_sessions also carry owner_id directly.
-    op.execute(
-        sa.text(
-            "UPDATE thread_sessions SET owner_id = :owner "
-            "WHERE owner_id = ANY(:legacy)"
-        ).bindparams(owner=OWNER_ID, legacy=list(LEGACY_OWNER_IDS))
-    )
+    # Backfill: relabel legacy/default tenants to the owner across every table
+    # that carries owner_id. Skips absent tables; portable across PG + sqlite.
+    for table in ("conversations", "usage_quotas", "thread_sessions"):
+        _relabel_owner(bind, table)
 
 
 def downgrade() -> None:
-    # Relabel back to the historical default and drop the users table.
-    op.execute(
-        sa.text(
-            "UPDATE conversations SET owner_id = 'default_user' WHERE owner_id = :owner"
-        ).bindparams(owner=OWNER_ID)
-    )
-    op.execute(
-        sa.text(
-            "UPDATE usage_quotas SET owner_id = 'default_user' WHERE owner_id = :owner"
-        ).bindparams(owner=OWNER_ID)
-    )
-    op.execute(
-        sa.text(
-            "UPDATE thread_sessions SET owner_id = 'default_user' WHERE owner_id = :owner"
-        ).bindparams(owner=OWNER_ID)
-    )
-    op.drop_table("users")
+    """Relabel the owner back to the historical default and drop ``users``.
+
+    LOSSY-BY-DESIGN: this collapses *every* row currently owned by ``usr_aditya``
+    back to ``default_user``, including any conversations created AFTER upgrade.
+    A label-collapse cannot distinguish pre-existing rows from new ones — the
+    original (default_user / anonymous / aditya) distinction is not recoverable.
+    For a single-owner deployment this is harmless (one tenant either way); do
+    NOT rely on it to perfectly restore multi-tenant state. Skips absent tables.
+    """
+    bind = op.get_bind()
+    for table in ("conversations", "usage_quotas", "thread_sessions"):
+        if _table_exists(bind, table):
+            bind.execute(
+                sa.text(
+                    f"UPDATE {table} SET owner_id = 'default_user' "
+                    f"WHERE owner_id = :owner"
+                ).bindparams(owner=OWNER_ID)
+            )
+    if _table_exists(bind, "users"):
+        op.drop_table("users")

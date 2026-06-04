@@ -28,6 +28,7 @@ from lct_python_backend.services.conversation_reader import (
     fetch_conversation_bundle,
 )
 from lct_python_backend.services.gcs_helpers import save_json_to_gcs
+from lct_python_backend.services.owner_context import resolve_owner_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["canvas"])
@@ -1222,7 +1223,7 @@ async def import_from_obsidian_canvas(
             conversation_name=result["file_name"],
             conversation_type="transcript",
             source_type="obsidian_canvas",
-            owner_id="default_user",
+            owner_id=resolve_owner_id(),
             started_at=datetime.utcnow(),
             total_nodes=number_of_nodes,
             gcs_path=result["gcs_path"],

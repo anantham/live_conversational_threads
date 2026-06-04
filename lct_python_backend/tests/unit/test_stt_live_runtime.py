@@ -135,6 +135,10 @@ def test_resample_pcm16_mono_upsamples_to_24khz():
 
 @pytest.mark.asyncio
 async def test_openai_realtime_runtime_start_sends_transcription_session_type(monkeypatch):
+    # This test exercises the OpenAI realtime *protocol* against a mocked
+    # socket, so it opts out of the local-only egress guard (which otherwise
+    # correctly blocks the api.openai.com base_url).
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
     runtime = OpenAIRealtimeTranscriptionRuntime(
         provider="openai_audio",
         api_key="sk-test",
@@ -172,6 +176,9 @@ async def test_openai_realtime_runtime_start_sends_transcription_session_type(mo
 
 @pytest.mark.asyncio
 async def test_openai_realtime_runtime_start_fails_fast_on_startup_error(monkeypatch):
+    # Exercises the realtime startup-error path with a mocked socket; opt out
+    # of the local-only egress guard that otherwise blocks api.openai.com.
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
     runtime = OpenAIRealtimeTranscriptionRuntime(
         provider="openai_audio",
         api_key="sk-test",
