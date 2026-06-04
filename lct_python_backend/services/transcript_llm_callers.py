@@ -23,6 +23,7 @@ from lct_python_backend.services.local_llm_client import (
 from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
 from lct_python_backend.services.transcript_prompts import (
     PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT,
+    PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT_LOCAL,
     PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY,
     PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY_LOCAL,
     get_transcript_prompt_metadata,
@@ -480,7 +481,7 @@ def accumulate_text_json_local(
                 system_prompt=system_prompt,
                 providers=providers,
                 temperature=float(prompt_metadata.get("temperature", 0.65)),
-                max_tokens=int(prompt_metadata.get("max_tokens", 1200)),
+                max_tokens=int(prompt_metadata.get("max_tokens", 4000)),
             )
             if isinstance(parsed, dict):
                 if errors:
@@ -502,6 +503,64 @@ def accumulate_text_json_local(
         "Incomplete_segment": input_text,
         "detected_threads": [],
         "_errors": errors or ["Local accumulation attempts exhausted"],
+    }, None
+
+
+def accumulate_text_json_local_indexed(
+    numbered_input: str,
+    providers: Optional[List[Dict[str, Any]]] = None,
+    retries: int = 3,
+    backoff_base: float = 1.5,
+) -> Tuple[Dict[str, Any], Optional[str]]:
+    """Local accumulate using the boundary-index prompt (no transcript echo).
+
+    ``numbered_input`` is the batch's utterances pre-numbered as "[i] text"
+    lines. The model returns ``{decision, completed_through_index,
+    detected_threads}`` — a few dozen chars regardless of input size — instead
+    of echoing the transcript back. This avoids the output-scales-with-input
+    truncation that silently dropped every batch on local models (both qwen3.6
+    and gemma4 failed identically on the old echo prompt; see
+    docs/plans/2026-06-05-stt-llm-pipeline-landing.md and the
+    .tmp_accumulate_experiment matrix).
+
+    Returns ``(result_dict, backend_label)``. On exhaustion returns a
+    conservative continue_accumulating fallback (index -1) so the buffer keeps
+    growing until a force-flush rather than dropping content.
+    """
+    if providers is None:
+        providers = get_default_providers()
+    prompt_metadata = get_transcript_prompt_metadata(PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT_LOCAL)
+    system_prompt = get_transcript_prompt_text(PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT_LOCAL)
+
+    errors: List[str] = []
+    for attempt in range(retries):
+        try:
+            parsed, provider_result = _call_local_chat_json_with_fallback(
+                prompt=numbered_input,
+                system_prompt=system_prompt,
+                providers=providers,
+                temperature=float(prompt_metadata.get("temperature", 0.65)),
+                max_tokens=int(prompt_metadata.get("max_tokens", 4000)),
+            )
+            if isinstance(parsed, dict):
+                if errors:
+                    parsed["_warnings"] = errors
+                backend_label = provider_result.backend_label() if provider_result else None
+                return parsed, backend_label
+            logger.warning("[ACCUMULATE-IDX] Local response was not a dict; attempt %s", attempt + 1)
+            errors.append(f"Attempt {attempt + 1} returned non-dict payload")
+        except Exception as e:
+            logger.warning("[ACCUMULATE-IDX] Local attempt %s failed: %s", attempt + 1, e)
+            errors.append(f"Attempt {attempt + 1} failed: {e}")
+
+        _sleep_backoff(attempt, backoff_base)
+
+    logger.error("[ACCUMULATE-IDX] Local attempts exhausted - using fallback (continue).")
+    return {
+        "decision": "continue_accumulating",
+        "completed_through_index": -1,
+        "detected_threads": [],
+        "_errors": errors or ["Local indexed accumulation attempts exhausted"],
     }, None
 
 
