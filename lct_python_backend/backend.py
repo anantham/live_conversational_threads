@@ -125,6 +125,18 @@ def _resolve_cors_origins() -> tuple:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Install the network-layer egress chokepoint FIRST — before the provider
+    # audit below (which itself probes cloud /v1/models). When LCT_LOCAL_ONLY
+    # is on, every httpx/websocket/urllib call to a non-local host now
+    # fail-closes regardless of per-site guards (ADR-034 egress chokepoint).
+    try:
+        from lct_python_backend.services.egress_chokepoint import (
+            install_egress_chokepoint,
+        )
+        install_egress_chokepoint()
+    except Exception:  # never block startup on the guard installer
+        logger.exception("[egress-chokepoint] install failed (non-fatal)")
+
     logger.info("Connecting to database...")
     try:
         await db.connect()
