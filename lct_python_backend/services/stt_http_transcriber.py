@@ -497,6 +497,14 @@ class RealtimeHttpSttSession:
     ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
         transport = str(candidate.get("transport") or "backend_http").strip().lower()
         defaults = self._session_defaults()
+        if transport in ("openai_audio", "openrouter_audio"):
+            # Local-only guard: cloud STT transports are refused when
+            # LCT_LOCAL_ONLY is on. Raise so the candidate loop records a
+            # failure and falls through to the next (local) candidate, same
+            # as any provider error.
+            from lct_python_backend.services.egress_guard import assert_local_egress
+            base = str(candidate.get("base_url") or candidate.get("http_url") or transport)
+            assert_local_egress(base, purpose=f"cloud STT ({transport})")
         if transport == "openai_audio":
             return await transcribe_openai_audio_candidate(
                 client,

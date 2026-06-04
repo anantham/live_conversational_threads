@@ -12,6 +12,7 @@ from lct_python_backend.services.llm_config import (
     get_env_llm_defaults,
     get_default_providers,
 )
+from lct_python_backend.services.egress_guard import assert_local_egress
 
 logger = logging.getLogger("lct_backend")
 
@@ -405,6 +406,10 @@ async def chat_with_provider_fallback(
                 headers["Authorization"] = f"Bearer {api_key}"
 
             url = build_provider_api_url(base_url, provider_type, "chat/completions")
+            # Local-only egress guard: refuse non-local providers (cloud/Modal)
+            # when LCT_LOCAL_ONLY is on. Treated like any provider failure, so
+            # the fallback loop simply skips to the next (local) provider.
+            assert_local_egress(url, purpose=f"LLM chat ({provider_id})")
             if TRACE_API_CALLS:
                 logger.info(
                     "[LLM Fallback] POST %s model=%s messages=%s",
@@ -565,6 +570,7 @@ def chat_with_provider_fallback_sync(
                 headers["Authorization"] = f"Bearer {api_key}"
 
             url = build_provider_api_url(base_url, provider_type, "chat/completions")
+            assert_local_egress(url, purpose=f"LLM chat sync ({provider_id})")
             if TRACE_API_CALLS:
                 logger.info(
                     "[LLM Fallback Sync] POST %s model=%s messages=%s",

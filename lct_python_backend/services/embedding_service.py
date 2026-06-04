@@ -14,6 +14,7 @@ from openai import AsyncOpenAI
 
 from lct_python_backend.services.llm_config import get_env_llm_defaults
 from lct_python_backend.services.local_llm_client import get_local_client
+from lct_python_backend.services.egress_guard import assert_local_egress
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,11 @@ class EmbeddingService:
         if resolved.get("mode") != "local":
             api_key = os.getenv("OPENAI_API_KEY")
             if api_key:
+                # Local-only guard: this is a direct cloud OpenAI call that
+                # bypasses the gateway. Refuse it when LCT_LOCAL_ONLY is on.
+                assert_local_egress(
+                    "https://api.openai.com", purpose="direct OpenAI embeddings"
+                )
                 if self._openai_client is None or api_key != self._openai_key:
                     self._openai_key = api_key
                     self._openai_client = AsyncOpenAI(api_key=api_key)

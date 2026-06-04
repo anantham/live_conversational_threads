@@ -116,6 +116,17 @@ async def generate_fact_check_json_perplexity(claims: List[str]) -> Dict[str, An
             "Perplexity integration is not configured on the server.",
         )
 
+    # Perplexity is cloud-only (no local fallback exists). Under local-only
+    # mode, degrade to Unverified instead of spending — matches the
+    # "no key" branch above rather than raising into the caller.
+    from lct_python_backend.services.egress_guard import local_only_enabled
+    if local_only_enabled():
+        logger.warning("[FACTCHECK] local-only mode on; skipping Perplexity, returning Unverified.")
+        return build_unverified_results(
+            claims,
+            "Skipped: server is in local-only mode (no cloud fact-check).",
+        )
+
     system_prompt = (
         "You are a factual verification assistant. "
         "For each claim, return JSON with verdict (True/False/Unverified), explanation, and citations."

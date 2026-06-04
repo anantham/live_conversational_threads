@@ -25,6 +25,14 @@ _mock_torch = MagicMock()
 _mock_torch.from_numpy = lambda x: x  # Pass numpy arrays through
 
 
+@pytest.fixture(autouse=True)
+def _allow_egress(monkeypatch):
+    """Several tests here exercise the CLOUD STT fallback paths (openai_audio /
+    openrouter_audio) on purpose; the local-only egress guard (default ON)
+    would block them. Egress policy itself is covered by test_egress_guard.py."""
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+
+
 # ---------------------------------------------------------------------------
 # Existing tests (pure functions)
 # ---------------------------------------------------------------------------
