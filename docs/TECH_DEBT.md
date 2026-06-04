@@ -1,11 +1,14 @@
 # TECH_DEBT
 
-Last updated: 2026-04-14
+Last updated: 2026-05-30
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
 | Path | LOC | Concern | Suggested split |
 | --- | --- | --- | --- |
+| lct_app/src/pages/NewConversation.jsx | 1346 | The route now also owns live prayer-card state/wiring in addition to graph, transcript, draft/session, participant, and agenda surfaces | Extract `usePrayerCards` plus a `PrayerCardSurface` composition component; then continue the broader route split already noted below |
+| lct_python_backend/services/indrasnet_client.py | 577 | One client module now owns match, pending-discussion reads, retrieval, contacts-adjacent timeouts, health, and LCT prayer detection contracts | Split per IndrasNet API family (`indrasnet_prayers_client.py`, `indrasnet_contacts_client.py`, `indrasnet_retrieval_client.py`) behind a shared error/config helper |
+| lct_python_backend/consumption_prayer_api.py | 366 | Contact agenda lookup, known-contacts cache/search, and generic LCT prayer detection now share one router | Move `/prayer-detect` into `lct_prayer_api.py` and the contact picker/cache endpoints into a focused contacts router before adding durable card persistence |
 | ~~lct_python_backend/backend.py~~ | ~~3545~~ → 140 | **RESOLVED** — Split into 13 router modules + 4 shared modules. See `refactor/split-backend-monolith` branch. |
 | lct_python_backend/services/llm_helpers.py | 501 | Extracted from backend.py; large LLM prompt inline | Consider moving prompt to separate file if it grows further |
 | lct_python_backend/services/prompt_manager.py | 454 | Prompt loading, rendering compatibility, history/versioning, validation, and file persistence now share one service | Split into `prompt_rendering.py`, `prompt_history_store.py`, and keep `prompt_manager.py` as orchestration facade if more prompt families migrate into the library |
@@ -54,7 +57,7 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_python_backend/services/stt_config.py | 356 | Env defaults, live-vs-diarized OpenAI model migration, cloud provider URL normalization, masked-secret shaping, and DB merge semantics now coexist in one module | Split into `stt_defaults.py`, `stt_cloud_provider_config.py`, and `stt_cloud_provider_secrets.py` so routing/persistence can reuse smaller focused helpers |
 | lct_python_backend/services/stt_http_transcriber.py | 1390 | Audio decode helpers, adaptive chunking policy, circuit-breaker TTL memory, diarization extraction, VAD buffering, session state, fallback-attempt observability, cloud smoke-test generation, background-refinement WAV handoff, and multi-provider request/response handling are combined | Split into `audio_decode.py`, `diarization_extract.py`, `vad_buffer.py`, `stt_http_client.py`, `stt_provider_smoke_tests.py`, `stt_circuit_breaker.py`, and a small `stt_refinement_client.py` while keeping session orchestration thin |
 | docs/FEATURE_ROADMAP.md | 509 | Product feature backlog, phased delivery plan, prioritization summary, risk notes, and open questions now share one document | Split into a lightweight `docs/FUTURE_FEATURES.md` or `docs/FEATURE_BACKLOG.md` for incoming product ideas, and keep `docs/FEATURE_ROADMAP.md` focused on prioritized roadmap slices |
-| ~~lct_python_backend/conversations_api.py~~ | ~~434~~ → 193 | **RESOLVED** — Extracted conversation read/serialization and turn synthesis into `conversation_reader.py` + `turn_synthesizer.py`, leaving a thin API adapter. |
+| lct_python_backend/conversations_api.py | 831 | Regrew well past the 2026 `434 → 193` split (`conversation_reader.py` + `turn_synthesizer.py` were extracted then) — route handlers, serialization, and newer endpoints have re-accreted into the once-thin adapter, so the earlier **RESOLVED** no longer holds. | Re-audit as a live monolith: re-extract the regrown handler groups using the same reader/synthesizer pattern. |
 | ~~lct_python_backend/factcheck_api.py~~ | ~~355~~ → 89 | **RESOLVED** — Extracted provider normalization/orchestration and cost aggregation into `factcheck_service.py` + `cost_stats_service.py`; router is now a thin adapter. |
 | ~~lct_python_backend/graph_api.py~~ | ~~469~~ → 244 | **RESOLVED** — Split generation + query/serialization concerns into `graph_generation_service.py` and `graph_query_service.py`. |
 | ~~lct_python_backend/instrumentation/decorators.py~~ | ~~423~~ → 265 | **RESOLVED** — Extracted response parsing + DB mapping into helper modules and reduced `decorators.py` to wrapper-focused behavior. |
@@ -68,6 +71,23 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | ../TemporalCoordination/grimoire/IndrasNet/services/transcription/whisperx_server.py | 818 | Batch transcription, diarization, embeddings, realtime websocket streaming, model lifecycle/reset logic, and server boot wiring all live in one file. The live-finalization patch required touching the streaming protocol inside the monolith. | Split streaming realtime behavior into `whisperx_stream_server.py` or at least `whisperx_streaming.py`; keep batch transcription/diarization endpoints and model lifecycle separate so live protocol fixes do not require editing the full service. |
 | ~~lct_python_backend/bookmarks_api.py~~ | ~~470~~ → 204 | **RESOLVED** — Extracted `bookmark_service.py` (155 LOC) with CRUD ops, serializer (eliminated 5× duplication), and UUID helper. Router is now a thin adapter. |
 | ~~lct_python_backend/cost_api.py~~ | ~~344~~ → 338 | **RESOLVED** — Already a thin router delegating to instrumentation layer. Fixed `get_db()` stub to use `get_async_session`. No structural decomposition needed. |
+
+## Dead & redundant code — rationality/stub audit (2026-05-30)
+
+From the 8-agent audit (`docs/AUDIT_RATIONALITY_2026-05-30.md`). Logged per CLAUDE.md #3/#11; **nothing removed** — each needs an ADR/schema check before deletion (#6). Consolidation candidates:
+
+- **Three graph-generation backends.** Keep `transcript_llm_callers.generate_lct_json` (live) + `graph_generation_service.py` (turn fallback). **Delete `services/graph_generation.py` + `tests/test_graph_generation.py`** — orphaned, stale Node schema (`title`/`source_node_id` vs live `node_name`/`from_node_id`), latent `self.prompt_loader` AttributeError, and 6 no-op prompts polluting `prompts.json`. Confusingly named next to the live path.
+- **Dead claim/argument analysis surface.** `claim_api.py` + `argument_api.py` define handlers but **no `APIRouter`** and are never mounted; detectors (`claim_detector.py`, `is_ought_detector.py`, `argument_mapper.py`) have no other caller and use broken root-relative imports (`from services...`). Wire or delete — do not leave half-wired.
+- **`conversation_pipeline/` orchestrator + 8 stages (ADR-030 §D3).** Fully built + tested, transport-agnostic — imported only by tests. The monoliths it was meant to retire still own the live flow: `services/stt_ws_session.py` (3308 LOC) and `services/import_bulk_pipeline.py` (1523 LOC). Decide: finish cutover or delete; track explicitly so it is not mistaken for live behavior.
+- **Detector LLM-routing copy-paste (×5).** `bias/frame/claim/is_ought/simulacra_detector` each re-implement `load_llm_config → local_chat_json | anthropic.Anthropic(...).messages.create(model='claude-3-5-sonnet-20241022')`, **bypassing `llm_gateway`** and re-hardcoding the model. Extract a `BaseNodeDetector` + one `llm_gateway.chat_json_object` helper.
+- **Three LLM access paths.** Gateway (canonical) vs direct Anthropic (detectors) vs direct httpx→OpenRouter (`thematic_analyzer.py:207`). Route all through `llm_gateway` for cost tracking + fallback.
+- **`ThematicAnalyzer` generation half** dead (superseded by clusterers); only `_serialize_existing_structure` is used. Extract the serializer, delete the rest.
+- **Orphaned frontend components** (imported nowhere live; only `MinimalGraph.jsx` renders): `archive/TranscriptApp.jsx`, `StructuralGraph.jsx`, `ContextualGraph.jsx`, `ExportCanvas.jsx`, `ThematicView.jsx` (+ thematic stack), `HorizontalTimeline.jsx`, `SttSettingsPanel.jsx`, `UploadTranscriptPreview.jsx`.
+- **Duplicate turn-synthesis** — `turn_synthesizer.build_turn_graph_from_utterances` vs `graph_generation_service.build_turn_based_nodes` (same grouping/label/truncate). Share one core.
+- **Dead claim-similarity retrieval** — `find_similar_claims` (brute force, 0 callers) duplicates the never-created pgvector ivfflat index. Pick one.
+- **Alert delivery stubs** — `instrumentation/alerts.py:333-353` email/slack/webhook are log-only TODOs, never registered, yet `DEFAULT_ALERT_RULES` reference `AlertChannel.EMAIL` (silent no-op). Only `LOG` works.
+- **Import-style split** — root-relative `from services/models` vs package `from lct_python_backend.*`; standardize (this is what makes `claim_api`/`argument_api` unimportable).
+- **FluidAudio runnable/planned coupling (honesty trap).** `services/backend_catalog.py` `_diar_runnable` short-circuits on `status=='planned'` before checking the URL; if FluidAudio's seed status ever flips to `available` before the sidecar ships, runnable becomes purely `bool(url)` and the default URL `127.0.0.1:5096` would falsely report runnable=true. Keep gated by a real liveness probe, not URL presence.
 
 ## Known failing / non-running unit tests (filed 2026-05-31)
 

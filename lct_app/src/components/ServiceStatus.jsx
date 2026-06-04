@@ -514,16 +514,165 @@ function buildSttSignal(sttSettings, sttProbe, probeError) {
     };
   }
 
+  // No probe results yet (results.length === 0). Don't claim "nothing configured"
+  // when a provider IS set in Settings — that's misleading (it's usually just the
+  // pre-probe / loading window). Reflect the configured provider instead.
+  const configuredProviderName = toTitleCase(String(sttSettings?.provider || "").trim());
   return {
     details: [
-      { label: "Primary", value: toTitleCase(sttSettings?.provider || "") || "Not set" },
-      { label: "Probe", value: probeError || "No configured live STT routes" },
+      { label: "Primary", value: configuredProviderName || "Not set" },
+      {
+        label: "Probe",
+        value:
+          probeError || (configuredProviderName ? "Probing configured route…" : "No configured live STT routes"),
+      },
       { label: "Meaning", value: "Home checks the current settings-driven live STT routes." },
     ],
     state: sttSettings ? "configured" : "unavailable",
-    summary: sttSettings
-      ? "No probeable live STT routes are configured."
-      : "STT settings are unavailable.",
+    summary: !sttSettings
+      ? "STT settings are unavailable."
+      : configuredProviderName
+        ? `${configuredProviderName} is configured; probing its live route…`
+        : "No probeable live STT routes are configured.",
+  };
+}
+
+// ── backend-catalog enrichment ───────────────────────────────────────────────
+// The chips used to show a generic provider name ("Whisper") and reported the
+// /health PING as "Latency". We now pull the active backend from the catalog so
+// the tooltip shows model, where-it-runs, empirical speed/accuracy, and cost —
+// and we relabel the ping so it's not confused with inference latency.
+
+function catalogActive(catalog, capability) {
+  if (!catalog) return null;
+  const activeId = catalog.active && catalog.active[capability];
+  return (catalog[capability] || []).find((entry) => entry.id === activeId) || null;
+}
+
+function shortName(entry) {
+  return entry ? String(entry.display_name || "").split(" (")[0] : "";
+}
+
+function locShort(runtime) {
+  if (!runtime) return "local";
+  if (runtime.startsWith("cloud-")) return "cloud";
+  if (runtime === "m5-ane") return "ANE";
+  if (runtime === "tailscale-rtx") return "RTX";
+  return "local";
+}
+
+function catalogDetailRows(entry, capability) {
+  if (!entry) return [];
+  const m = entry.measured || {};
+  const o = entry.observed || null;
+  const rows = [
+    { label: "Backend", value: entry.display_name },
+    { label: "Model", value: entry.model || "—" },
+    { label: "Runs on", value: entry.runtime_label || entry.runtime || "—" },
+  ];
+  if (capability === "llm") {
+    if (o && o.avg_tokens_per_sec) {
+      rows.push({ label: "Speed (live)", value: `${o.avg_tokens_per_sec} tok/s · ${o.samples} samples` });
+    } else {
+      rows.push({ label: "Speed", value: "measured live from your usage" });
+    }
+  } else {
+    if (m.speedup_vs_realtime) {
+      rows.push({ label: "Speed", value: `${Math.round(m.speedup_vs_realtime * 10) / 10}× realtime (benchmark)` });
+    }
+    if (o && o.avg_request_ms) {
+      rows.push({ label: "Speed (live)", value: `${Math.round(o.avg_request_ms)} ms/req · ${o.samples} samples` });
+    }
+  }
+  if (capability === "stt" && typeof m.wer_vs_ref === "number") {
+    rows.push({ label: "Accuracy", value: m.wer_vs_ref === 0 ? "reference" : `WER ${m.wer_vs_ref.toFixed(3)} vs ref` });
+  }
+  if (capability === "diarization") {
+    rows.push({ label: "Voice ID", value: entry.emits_embeddings ? "yes (speaker embeddings)" : "no (labels only)" });
+  }
+  const c = entry.cost || {};
+  rows.push({
+    label: "Cost",
+    value: c.free_local
+      ? "Free · local"
+      : typeof c.per_minute === "number"
+      ? `~$${c.per_minute}/min${c.approximate ? " (approx)" : ""}`
+      : typeof c.per_million_tokens === "number"
+      ? `~$${c.per_million_tokens}/1M tok${c.approximate ? " (approx)" : ""}`
+      : "Paid",
+  });
+  return rows;
+}
+
+function mergeCatalogDetails(signal, entry, capability) {
+  if (!entry) return signal;
+  const existing = (signal.details || []).map((detail) =>
+    detail.label === "Latency" ? { ...detail, label: "Health ping" } : detail,
+  );
+  return { ...signal, details: [...catalogDetailRows(entry, capability), ...existing] };
+}
+
+function buildDiarSignal(selected, effective, probe, sttEntry) {
+  // Speakers can come from the STT provider itself (some whisper/cloud routes
+  // diarize) — track that so we never falsely claim "nothing running".
+  const sttDiar = sttEntry && sttEntry.provides_diarization ? sttEntry : null;
+
+  if (!selected && !effective && !sttDiar) {
+    return {
+      details: [{ label: "Status", value: "No diarization backend configured" }],
+      state: "unavailable",
+      summary: "Diarization is not configured.",
+    };
+  }
+  // No dedicated diarizer running.
+  if (!effective) {
+    if (sttDiar) {
+      const details = [{ label: "Source", value: `STT provider (${shortName(sttDiar)})` }];
+      if (selected) {
+        details.push({
+          label: "Selected diarizer",
+          value: `${shortName(selected)}${selected.status === "planned" ? " (planned)" : ""} — not running`,
+        });
+      }
+      return {
+        details,
+        state: "configured",
+        summary: `Speaker labels come from your STT provider (${shortName(sttDiar)}); no separate diarizer is running.`,
+      };
+    }
+    const details = selected ? catalogDetailRows(selected, "diarization") : [];
+    details.push({
+      label: "Status",
+      value:
+        selected && selected.status === "planned"
+          ? "Selected backend not built (sidecar missing)"
+          : "Selected backend not running",
+    });
+    return {
+      details,
+      state: "unavailable",
+      summary: selected
+        ? `${selected.display_name} is selected, but nothing is running — diarization is off.`
+        : "No diarizer running.",
+    };
+  }
+  // pyannote is degraded on Apple Silicon, so even when it serves we stay amber.
+  let state = effective.degraded ? "configured" : "healthy";
+  if (probe && probe.ok === false) state = "unavailable";
+  const details = [];
+  if (selected && selected.id !== effective.id) {
+    details.push({
+      label: "Note",
+      value: `Serving ${shortName(effective)} — you selected ${shortName(selected)}${selected.status === "planned" ? " (planned)" : ""}`,
+    });
+  }
+  details.push(...catalogDetailRows(effective, "diarization"));
+  if (effective.degraded) details.push({ label: "Caveat", value: "degraded on Apple Silicon (MPS wrong; CPU slow)" });
+  if (probe && probe.error) details.push({ label: "Probe", value: probe.error });
+  return {
+    details,
+    state,
+    summary: `Diarization via ${effective.display_name} (${effective.runtime_label || effective.runtime}).`,
   };
 }
 
@@ -533,6 +682,8 @@ export default function ServiceStatus({ className = "" }) {
   const [sttSettings, setSttSettings] = useState(null);
   const [llmProbe, setLlmProbe] = useState(null);
   const [sttProbe, setSttProbe] = useState(null);
+  const [catalog, setCatalog] = useState(null);
+  const [diarProbe, setDiarProbe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [probeError, setProbeError] = useState(null);
 
@@ -542,10 +693,11 @@ export default function ServiceStatus({ className = "" }) {
     const fetchStatus = async () => {
       setLoading(true);
 
-      const [llmResult, llmProvidersResult, sttResult] = await Promise.allSettled([
+      const [llmResult, llmProvidersResult, sttResult, catalogResult] = await Promise.allSettled([
         fetchJson("/api/settings/llm"),
         fetchJson("/api/settings/llm/providers"),
         fetchJson("/api/settings/stt"),
+        fetchJson("/api/backend-catalog"),
       ]);
 
       if (cancelled) {
@@ -556,10 +708,25 @@ export default function ServiceStatus({ className = "" }) {
       const nextLlmProvidersConfig =
         llmProvidersResult.status === "fulfilled" ? llmProvidersResult.value : null;
       const nextSttSettings = sttResult.status === "fulfilled" ? sttResult.value : null;
+      const nextCatalog = catalogResult.status === "fulfilled" ? catalogResult.value : null;
 
       setLlmSettings(nextLlmSettings);
       setLlmProvidersConfig(nextLlmProvidersConfig);
       setSttSettings(nextSttSettings);
+      setCatalog(nextCatalog);
+
+      // Live-probe the EFFECTIVE diarization backend — what actually serves —
+      // not the selected-but-not-running preference (STT/LLM keep their richer probes).
+      const probeDiarId = nextCatalog?.active?.diarization_effective || nextCatalog?.active?.diarization;
+      if (probeDiarId) {
+        postJson("/api/backend-catalog/probe", { capability: "diarization", id: probeDiarId })
+          .then((result) => {
+            if (!cancelled) setDiarProbe(result);
+          })
+          .catch((err) => {
+            if (!cancelled) setDiarProbe({ ok: false, error: summarizeError(err) });
+          });
+      }
 
       if (
         llmResult.status === "rejected" ||
@@ -609,13 +776,31 @@ export default function ServiceStatus({ className = "" }) {
     );
   }
 
-  const llmSignal = buildLlmSignal(llmSettings, llmProbe, probeError);
-  const sttSignal = buildSttSignal(sttSettings, sttProbe, probeError);
+  const sttEntry = catalogActive(catalog, "stt");
+  const llmEntry = catalogActive(catalog, "llm");
+  const diarSelected = catalogActive(catalog, "diarization");
+  const diarEffectiveId = catalog?.active?.diarization_effective;
+  const diarEffective = diarEffectiveId ? (catalog.diarization || []).find((e) => e.id === diarEffectiveId) : null;
+
+  const llmSignal = mergeCatalogDetails(buildLlmSignal(llmSettings, llmProbe, probeError), llmEntry, "llm");
+  const sttSignal = mergeCatalogDetails(buildSttSignal(sttSettings, sttProbe, probeError), sttEntry, "stt");
+  const diarSignal = buildDiarSignal(diarSelected, diarEffective, diarProbe, sttEntry);
+
+  const sttLabel = sttEntry ? `STT: ${shortName(sttEntry)} (${locShort(sttEntry.runtime)})` : "STT";
+  const llmLabel = llmEntry ? `LLM: ${shortName(llmEntry)} (${locShort(llmEntry.runtime)})` : "LLM";
+  const diarLabel = diarEffective
+    ? `Speakers: ${shortName(diarEffective)} (${locShort(diarEffective.runtime)})`
+    : sttEntry && sttEntry.provides_diarization
+    ? "Speakers: via STT"
+    : diarSelected
+    ? "Speakers: none running"
+    : "Speakers";
 
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
-      <StatusPill label="STT" {...sttSignal} />
-      <StatusPill label="LLM" {...llmSignal} />
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+      <StatusPill label={sttLabel} {...sttSignal} />
+      <StatusPill label={diarLabel} {...diarSignal} />
+      <StatusPill label={llmLabel} {...llmSignal} />
     </div>
   );
 }

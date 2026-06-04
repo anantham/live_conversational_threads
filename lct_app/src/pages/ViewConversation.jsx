@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Download, FileJson, Share2 } from "lucide-react";
 import ShareManagerModal from "../components/share/ShareManagerModal";
+import AnalyzeMenu from "../components/AnalyzeMenu";
 
 import {
   buildConversationDebugExport,
@@ -385,6 +386,7 @@ export default function ViewConversation() {
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
+          {allNodes.length > 0 && <AnalyzeMenu conversationId={conversationId} />}
           {audioDownloadUrl && (
             <a
               href={audioDownloadUrl.startsWith("http") ? audioDownloadUrl : `${API_BASE_URL}${audioDownloadUrl}`}

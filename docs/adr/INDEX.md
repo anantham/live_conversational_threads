@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-05-31 (ADR-032 and ADR-033 indexed — files existed since 2026-05-19/05-24 but were never listed; ADR-034 added)
+Last updated: 2026-06-01 (ADR-034 collision resolved: the inference-catalog ADR renumbered 034 → 037, leaving public-deployment as the sole ADR-034; ADR-021 collision still open — see note below)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -25,6 +25,7 @@ Last updated: 2026-05-31 (ADR-032 and ADR-033 indexed — files existed since 20
 | [ADR-019](ADR-019-event-sourced-transcript-graph-and-artifact-materialization.md) | Event-Sourced Transcript, Graph, and Artifact Materialization | 2026-03-20 | Approved |
 | [ADR-020](ADR-020-session-scoped-openai-byok-for-stt-and-graph.md) | Session-Scoped OpenAI BYOK for Live/Import STT and Graph Generation | 2026-04-03 | Approved |
 | [ADR-021](ADR-021-browser-local-draft-recovery.md) | Browser-Local Draft Recovery for Interrupted Conversation Sessions | 2026-04-03 | Approved |
+| [ADR-021 ⚠](ADR-021-authored-four-level-conversation-hierarchy.md) | Authored Four-Level Conversation Hierarchy | 2026-04-13 | Approved |
 | [ADR-022](ADR-022-checkpoint-aware-upload-retry-and-resume.md) | Checkpoint-Aware Upload Retry and Resume for Bulk Imports | 2026-04-03 | Approved |
 | [ADR-023](ADR-023-orchestrated-live-whisper-websocket-and-async-diarization.md) | Orchestrated Live Whisper Websocket and Async Diarization | 2026-04-08 | Approved |
 | [ADR-024](ADR-024-indrasnet-gpu-priority-policy-and-live-stt-hard-preemption.md) | IndrasNet GPU Priority Policy and Live-STT Hard Preemption | 2026-04-09 | Approved |
@@ -38,6 +39,11 @@ Last updated: 2026-05-31 (ADR-032 and ADR-033 indexed — files existed since 20
 | [ADR-032](ADR-032-temporal-swim-lane-layout-and-semantic-edges.md) | Temporal Swim-Lane Layout + Semantic Edge Taxonomy + Enrichment Context | 2026-05-19 | Accepted |
 | [ADR-033](ADR-033-consumption-prayer-matching.md) | Consumption Prayer Matching in the Live Conversation Path | 2026-05-24 | Accepted |
 | [ADR-034](ADR-034-public-lct-deployment-tiered-isolation.md) | Public LCT Deployment — Tiered Access with an Isolated Public Instance | 2026-05-31 | Approved |
+| [ADR-035](ADR-035-crux-detection.md) | Crux Detection | 2026-05-30 | Decided |
+| [ADR-037](ADR-037-inference-backend-catalog-and-three-lane-settings.md) | Inference Backend Catalog & Three-Lane Settings | 2026-05-30 | Decided |
+
+> **⚠ ADR-021 number collision:** two ADRs shipped as 021 — *Browser-Local Draft Recovery* (2026-04-03) and *Authored Four-Level Conversation Hierarchy* (2026-04-13). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.
+> **ADR-034 number collision — RESOLVED (2026-06-01):** two ADRs had shipped as 034 — *Inference Backend Catalog & Three-Lane Settings* (2026-05-30, feat branch) and *Public LCT Deployment — Tiered Access* (2026-05-31, main). The catalog ADR was renumbered **034 → 037** (no ADR-036/037 file existed; 036 is reserved by ADR-032's future-work list); public-deployment keeps 034. Gap: there is no ADR-036 yet (reserved). Note ADR-037's "Decided (pending human review)" status still wants reconciliation with the index's standard vocabulary.
 
 ## Status Definitions
 

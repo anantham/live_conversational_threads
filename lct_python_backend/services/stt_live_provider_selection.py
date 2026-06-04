@@ -127,8 +127,14 @@ def resolve_live_stt_candidates(
             })
     
     if selected_provider == "whisper":
+        # Only advertise a streaming WebSocket for a REMOTE whisper backend. A
+        # local on-device STT server (e.g. lct_python_backend/local_stt) is
+        # HTTP-only (POST /v1/audio/transcriptions, no WS route), so handing the
+        # live runtime a ws_url makes it attempt a WebSocket that 404s and surfaces
+        # a scary — but already-recovered — warning to the client. For local URLs
+        # skip the ws_url so we go straight to the working HTTP-chunked runtime.
         primary_ws_url = _build_backend_ws_url(configured_http_url)
-        if primary_ws_url:
+        if primary_ws_url and not _is_local_http_url(configured_http_url):
             primary_candidate["ws_url"] = primary_ws_url
             primary_candidate["supports_realtime_streaming"] = True
 

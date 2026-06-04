@@ -3,6 +3,11 @@
 Mounts just the consumption_prayer_api router with FastAPI TestClient so
 we don't need the full backend up. The IndrasNet client is patched at
 the module boundary so tests run offline.
+
+Test Intent:
+- Preserve the existing contact-agenda endpoint contract.
+- Verify the generic LCT prayer detect route forwards transcript evidence.
+- Ensure IndrasNet failures stay loud and map to actionable HTTP errors.
 """
 
 from __future__ import annotations
@@ -212,6 +217,89 @@ def test_conversation_id_in_response(client, monkeypatch):
         json={"selected_text": "x", "contact_ref": "Sahil"},
     )
     assert response.json()["conversation_id"] == "some-uuid-here"
+
+
+# ---------------------------------------------------------------------------
+# Generic LCT prayer detect route
+# ---------------------------------------------------------------------------
+
+URL_PRAYER_DETECT = "/api/conversations/conv-abc/prayer-detect"
+
+
+def test_prayer_detect_returns_indrasnet_cards_with_provenance(client, monkeypatch):
+    fake_body = {
+        "ok": True,
+        "conversation_id": "conv-abc",
+        "detected_at": "2026-05-30T17:00:00+00:00",
+        "decision": {
+            "urgency": "now",
+            "surface_mode": "interrupt",
+            "auto_actuate": True,
+        },
+        "cards": [
+            {
+                "card_id": "fetch_1",
+                "card_type": "fetch",
+                "status": "executed",
+                "results": [],
+            },
+        ],
+    }
+    mock = AsyncMock(return_value=fake_body)
+    monkeypatch.setattr(consumption_prayer_api, "detect_lct_prayer", mock)
+
+    response = client.post(
+        URL_PRAYER_DETECT,
+        json={
+            "selected_text": "Deer Park",
+            "signal_text": "fetch: Deer Park",
+            "source": "lct_manual_fetch",
+            "max_results": 4,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"] == "lct_manual_fetch"
+    assert body["conversation_id"] == "conv-abc"
+    assert body["selected_text"] == "Deer Park"
+    assert body["cards"][0]["status"] == "executed"
+    assert "triggered_at" in body
+    mock.assert_awaited_once_with(
+        signal_text="fetch: Deer Park",
+        selected_text="Deer Park",
+        conversation_id="conv-abc",
+        session_id=None,
+        utterance_ids=[],
+        context_window="",
+        participants=[],
+        source="lct_manual_fetch",
+        max_results=4,
+    )
+
+
+def test_prayer_detect_requires_evidence(client):
+    response = client.post(URL_PRAYER_DETECT, json={})
+    assert response.status_code == 400
+    assert "required" in response.json()["detail"]
+
+
+def test_prayer_detect_unavailable_maps_to_502(client, monkeypatch):
+    mock = AsyncMock(side_effect=IndrasNetUnavailable("IndrasNet down"))
+    monkeypatch.setattr(consumption_prayer_api, "detect_lct_prayer", mock)
+
+    response = client.post(URL_PRAYER_DETECT, json={"signal_text": "fetch: x"})
+    assert response.status_code == 502
+    assert "IndrasNet down" in response.json()["detail"]
+
+
+def test_prayer_detect_protocol_error_maps_to_502(client, monkeypatch):
+    mock = AsyncMock(side_effect=IndrasNetProtocolError("missing decision/cards"))
+    monkeypatch.setattr(consumption_prayer_api, "detect_lct_prayer", mock)
+
+    response = client.post(URL_PRAYER_DETECT, json={"signal_text": "fetch: x"})
+    assert response.status_code == 502
+    assert "protocol" in response.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 
 import SttCloudFallbackFields from "../SttCloudFallbackFields";
 import SttFallbackOrderFields from "../SttFallbackOrderFields";
-import { STT_PROVIDER_OPTIONS } from "../audio/sttUtils";
+import { formatProviderLabel } from "../audio/sttUtils";
 import DisclosureSection from "./DisclosureSection";
 import { buildSttSummary } from "./settingsSummary";
 import SttDiagnosticsPanel from "./SttDiagnosticsPanel";
@@ -57,10 +57,10 @@ export default function SttSettingsCard() {
     <section className="space-y-4 rounded-lg bg-white p-6 shadow-lg">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-gray-800">Live STT</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Live transcription (STT)</h2>
           <p className="mt-1 text-sm text-gray-500">
-            Pick the primary live provider, keep the fallback chain legible, and open
-            advanced details only when you need them.
+            Fine-tune the speech-to-text engine you chose in <span className="font-medium">Active engines</span> above —
+            its fallback order, endpoints, and cloud keys. Open the advanced sections only when you need them.
           </p>
           <p className="mt-2 text-xs text-gray-600">{sttSummary}</p>
         </div>
@@ -102,11 +102,13 @@ export default function SttSettingsCard() {
       ) : null}
 
       <section className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-        <p className="text-sm font-medium text-slate-900">Primary route</p>
+        <p className="text-sm font-medium text-slate-900">
+          Primary engine: {formatProviderLabel(form?.provider || "whisper")}
+        </p>
         <p className="mt-1 text-xs text-slate-600">
-          <span className="font-medium">{form?.provider || "whisper"}</span> always runs first for
-          live transcription. Fallback routes only run after an in-session provider failure or
-          timeout path.
+          This engine always runs first for live transcription. To change it, use{" "}
+          <span className="font-medium">Active engines</span> at the top of this page. The fallback
+          routes below only run after it fails or times out mid-session.
         </p>
       </section>
 
@@ -122,20 +124,18 @@ export default function SttSettingsCard() {
 
       <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
         <div className="space-y-3">
-          <label className="block space-y-1 text-sm text-gray-700">
-            <span>Primary live provider</span>
-            <select
-              value={form?.provider || "whisper"}
-              onChange={handleChange("provider")}
-              className="w-full rounded border border-gray-300 px-3 py-2 focus:ring-2 focus:ring-blue-500"
-            >
-              {STT_PROVIDER_OPTIONS.map((providerId) => (
-                <option key={providerId} value={providerId}>
-                  {providerId}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="space-y-1 text-sm text-gray-700">
+            <span className="block">Primary engine</span>
+            <div className="flex items-center justify-between rounded border border-gray-200 bg-gray-50 px-3 py-2">
+              <span className="font-medium text-gray-800">
+                {formatProviderLabel(form?.provider || "whisper")}
+              </span>
+              <span className="text-xs text-gray-400">read-only</span>
+            </div>
+            <p className="text-xs text-gray-500">
+              Change the engine in <span className="font-medium">Active engines ↑</span>
+            </p>
+          </div>
 
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input
@@ -144,7 +144,7 @@ export default function SttSettingsCard() {
               onChange={handleChange("local_only")}
               className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
             />
-            <span>Local-only mode</span>
+            <span>Local-only (never send audio to the cloud)</span>
           </label>
 
           <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -154,7 +154,7 @@ export default function SttSettingsCard() {
               onChange={handleCloudFallbackFlagChange("live_cloud_fallback_enabled")}
               className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
             />
-            <span>Enable cloud fallback</span>
+            <span>Allow cloud fallback if local engines fail</span>
           </label>
 
           <div className="flex flex-wrap gap-2 text-xs">
@@ -162,7 +162,7 @@ export default function SttSettingsCard() {
               Local-only: {form?.local_only ? "on" : "off"}
             </span>
             <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-600">
-              Cloud: {form?.live_cloud_fallback_enabled ? "on" : "off"}
+              Cloud fallback: {form?.live_cloud_fallback_enabled ? "on" : "off"}
             </span>
           </div>
         </div>

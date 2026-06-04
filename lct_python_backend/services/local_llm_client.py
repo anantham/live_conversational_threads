@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
 
@@ -50,6 +51,37 @@ def _resolve_served_model(result_json: Any, requested_model: str, provider_id: s
                 served,
             )
     return served
+
+
+def _record_llm_telemetry(
+    result_json: Any,
+    *,
+    served_model: str,
+    base_url: str,
+    provider_type: str,
+    elapsed_ms: float,
+    require_json: bool,
+) -> None:
+    """Best-effort LLM speed telemetry hook (see services/llm_telemetry_service)."""
+    try:
+        from lct_python_backend.services.llm_telemetry_service import (
+            catalog_provider_key,
+            record_llm_call,
+        )
+
+        usage = (result_json or {}).get("usage") or {}
+        record_llm_call(
+            provider_key=catalog_provider_key(base_url, provider_type),
+            model=served_model,
+            base_url=base_url,
+            total_ms=elapsed_ms,
+            prompt_tokens=usage.get("prompt_tokens"),
+            completion_tokens=usage.get("completion_tokens"),
+            ok=True,
+            valid_json=True if require_json else None,
+        )
+    except Exception:  # noqa: BLE001 - telemetry must never break generation
+        logger.debug("[LLM TELEMETRY] hook failed", exc_info=True)
 
 
 def _preview_text(value: Any, limit: int = API_LOG_PREVIEW_CHARS) -> str:
@@ -418,9 +450,11 @@ async def chat_with_provider_fallback(
                     len(messages or []),
                 )
 
+            _t0 = time.perf_counter()
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(url, json=payload, headers=headers)
                 response.raise_for_status()
+                _elapsed_ms = (time.perf_counter() - _t0) * 1000.0
 
                 if TRACE_API_CALLS:
                     logger.info(
@@ -445,6 +479,14 @@ async def chat_with_provider_fallback(
                     total_providers,
                     provider_name,
                     provider_id,
+                )
+                _record_llm_telemetry(
+                    result_json,
+                    served_model=served_model,
+                    base_url=base_url,
+                    provider_type=provider_type,
+                    elapsed_ms=_elapsed_ms,
+                    require_json=require_json,
                 )
 
                 return ProviderResult(
@@ -579,6 +621,7 @@ def chat_with_provider_fallback_sync(
                     len(messages or []),
                 )
 
+            _t0 = time.perf_counter()
             with httpx.Client(timeout=timeout) as client:
                 response = client.post(url, json=payload, headers=headers)
 
@@ -593,6 +636,7 @@ def chat_with_provider_fallback_sync(
                     response = client.post(url, json=payload, headers=headers)
 
                 response.raise_for_status()
+                _elapsed_ms = (time.perf_counter() - _t0) * 1000.0
 
                 if TRACE_API_CALLS:
                     logger.info(
@@ -632,6 +676,14 @@ def chat_with_provider_fallback_sync(
                     cached_tokens,
                     cache_pct,
                     completion_tokens,
+                )
+                _record_llm_telemetry(
+                    result_json,
+                    served_model=served_model,
+                    base_url=base_url,
+                    provider_type=provider_type,
+                    elapsed_ms=_elapsed_ms,
+                    require_json=require_json,
                 )
 
                 return ProviderResult(

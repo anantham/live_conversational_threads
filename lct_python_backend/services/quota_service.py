@@ -74,14 +74,30 @@ class QuotaService:
             quota = result.scalar_one_or_none()
             used_minutes = quota.minutes_used if quota else 0.0
         except Exception as e:
-            # Table doesn't exist yet - treat as no usage (first time)
-            logger.warning("[QUOTA] Table not found or query failed: %s - allowing session", e)
-            used_minutes = 0.0
-            # Rollback to clear any failed transaction state
+            # Roll back so the session stays usable after a failed statement.
             try:
                 await self.session.rollback()
             except Exception:
                 pass
+            # ONLY the "table not migrated yet" case fails open (first run, benign).
+            # Any other DB/transport error must NOT silently grant free quota — that
+            # is a metering bypass — so fail CLOSED with a clear, retryable message.
+            err = str(e).lower()
+            if "does not exist" in err or "undefinedtable" in err or "no such table" in err:
+                logger.warning("[QUOTA] usage_quota table missing (first run) — allowing: %s", e)
+                used_minutes = 0.0
+            else:
+                logger.error("[QUOTA] quota query failed; failing CLOSED (not granting free quota): %s", e)
+                return QuotaResult(
+                    allowed=False,
+                    remaining_minutes=0.0,
+                    limit_minutes=limit_minutes,
+                    used_minutes=limit_minutes,
+                    percent_used=100.0,
+                    warning=True,
+                    reset_at=today.isoformat(),
+                    message="Quota check temporarily unavailable; please retry. Add your own API key in settings to bypass.",
+                )
         remaining = max(0, limit_minutes - used_minutes)
         percent_used = (used_minutes / limit_minutes * 100) if limit_minutes > 0 else 100
         

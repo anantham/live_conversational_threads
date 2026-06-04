@@ -2,6 +2,20 @@
 
 The newest handovers are **dated files** in `docs/` (newest first):
 
+- `HANDOVER_2026-05-30_inference-catalog-3lane-settings-crux-techdebt.md` —
+  built the inference backend catalog + 3-lane Settings UI + per-provider LLM
+  telemetry + crux detection (ADR-037/035); fixed 2 security holes (audio
+  path-traversal, share-revoke auth) + quota fail-closed + wired prod security
+  headers; ran `surface-tech-debt` → deleted dead code (claim/argument/is_ought
+  detectors+APIs, graph_generation, orphaned frontend incl. ThematicView, 8
+  prompts) + consolidated bias/frame/simulacra detectors onto LlmGateway; then an
+  independent `codex exec review` + its 5 fixes + a re-review (caught 1 regression).
+  **22 commits, NOT pushed.** Key landmine: the two-LLM-config seam (lane edits
+  `llm_config`; graph-gen uses the `llm_providers` list — surfaced via "Serving
+  now"). User's parallel **prayer-cards** feature is uncommitted + untouched
+  (Codex flagged a P1 auth gap on `/prayer-detect` there). Open: push/PR, two-config
+  reconciliation, thematic_api now frontend-orphaned (deletion candidate),
+  FluidAudio sidecar not built.
 - `HANDOVER_2026-05-25_auto-detect-and-staleness-audit.md` — audited the
   2026-05-18 inline entry (substantially stale: 3 done, 2 superseded, 2
   still pending); closed both real pending items by wiring auto-detect

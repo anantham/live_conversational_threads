@@ -5,6 +5,11 @@ without needing a running server. The error policy from AGENTS.md
 (§Error Logging — no silent failures) is the most load-bearing thing tested
 here: a hidden network failure that silently swallows real prayers would
 defeat the whole point of the feature.
+
+Test Intent:
+- Keep each IndrasNet HTTP contract encoded at the client boundary.
+- Verify live prayer detection sends evidence/provenance to the new route.
+- Ensure upstream transport/protocol failures never degrade silently.
 """
 
 import json
@@ -18,6 +23,7 @@ from lct_python_backend.services.indrasnet_client import (
     IndrasNetProtocolError,
     IndrasNetServerError,
     IndrasNetUnavailable,
+    detect_lct_prayer,
     get_indrasnet_base_url,
     get_match_timeout_seconds,
     get_pending_discussions,
@@ -400,6 +406,84 @@ async def test_pending_missing_items_key_raises_protocol_error(monkeypatch):
     with pytest.raises(IndrasNetProtocolError) as exc_info:
         await get_pending_discussions("c_x", base_url="http://x")
     assert "items" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# detect_lct_prayer
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_lct_prayer_detect_posts_evidence_and_returns_cards(monkeypatch):
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["payload"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "conversation_id": "conv-1",
+                "decision": {
+                    "urgency": "now",
+                    "surface_mode": "interrupt",
+                    "auto_actuate": True,
+                },
+                "cards": [
+                    {
+                        "card_id": "fetch_1",
+                        "card_type": "fetch",
+                        "status": "executed",
+                        "results": [],
+                    },
+                ],
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    body = await detect_lct_prayer(
+        signal_text="fetch: Deer Park thread",
+        selected_text="Deer Park thread",
+        conversation_id="conv-1",
+        source="lct_manual_fetch",
+        max_results=4,
+        base_url="http://test:7777",
+    )
+
+    assert captured["url"] == "http://test:7777/api/lct/prayers/detect"
+    assert captured["payload"]["signal_text"] == "fetch: Deer Park thread"
+    assert captured["payload"]["selected_text"] == "Deer Park thread"
+    assert captured["payload"]["conversation_id"] == "conv-1"
+    assert captured["payload"]["source"] == "lct_manual_fetch"
+    assert captured["payload"]["max_results"] == 4
+    assert body["cards"][0]["status"] == "executed"
+
+
+@pytest.mark.asyncio
+async def test_lct_prayer_detect_missing_contract_raises_protocol_error(monkeypatch):
+    def handler(request):
+        return httpx.Response(200, json={"ok": True, "cards": []})
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    with pytest.raises(IndrasNetProtocolError) as exc_info:
+        await detect_lct_prayer(signal_text="fetch: x", base_url="http://x")
+    assert "decision/cards" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_lct_prayer_detect_5xx_raises_server_error(monkeypatch):
+    def handler(request):
+        return httpx.Response(503, text="offline")
+
+    transport = httpx.MockTransport(handler)
+    monkeypatch.setattr(httpx, "AsyncClient", _async_client_with_transport(transport))
+
+    with pytest.raises(IndrasNetServerError):
+        await detect_lct_prayer(signal_text="fetch: x", base_url="http://x")
 
 
 # ---------------------------------------------------------------------------
