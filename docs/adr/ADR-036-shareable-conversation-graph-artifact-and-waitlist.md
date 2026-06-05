@@ -33,6 +33,8 @@ The share infrastructure already exists and is reused as-is: `share_api.py` mint
 
 **Critical constraint (Codex review):** `backend.py` mounts *every* router into one app (import, generation, analysis, graph, settings, IndrasNet-adjacent, share — `backend.py:252-279`). Tailscale Funnel in front of that process exposes the **entire** backend, not "graph + waitlist." Therefore the public surface MUST be path-restricted to exactly: `GET /api/share/{token}`, `GET /api/share/{token}/audio` (gated by D7), `POST /api/waitlist`, and the SPA. Implement via **either** a separate minimal public FastAPI app mounting only those routes, **or** an allowlist reverse-proxy — consistent with ADR-034's separate-instance isolation pattern. Read-only, token-scoped, rate-limited, no IndrasNet reachable, with an egress/path-isolation test as a precondition.
 
+*Verification nuance (2026-06-05):* today the middleware exempts only `GET /api/share/*` from `AUTH_TOKEN` while every other router requires it (`backend.py:252-279`, `middleware.py`). So the surface is safe **only while `AUTH_TOKEN` is always set** — fragile (a single misconfig exposes everything), which is why the separate-app/proxy is the robust answer. Also note `GET /api/share/{token}/audio` may NOT be exempt, so recipients could currently fail to load shared audio — moot under D7 (audio default-off) but to fix when audio sharing is enabled.
+
 **D3 — Privacy scope v1 is participant-only, full fidelity (tier T0).**
 The recipient was in the conversation, so they see everything — no redaction. The share token is single-conversation. Broader sharing (onward forwarding, redaction tiers per the IndrasNet T0–T4 model) is deferred.
 
@@ -85,7 +87,7 @@ Most of the wedge already exists — slice 1 is hardening + verification, not gr
 - **gmaps view exists:** ReactFlow, 5 semantic levels, 3 zoom thresholds, drilldown stack, locked-level mode (`MinimalGraph.jsx`); tangent/crux/bookmark markers render (`ConversationNode.jsx:14-17,42-72`).
 - **Share system exists:** mint/serve/revoke/list + OAuth + email allowlist + expiry + view tracking + signed audio (`share_api.py`, `ShareConversation.jsx`, `ShareManagerModal.jsx`, route `/share/:token`).
 - **Net-new:** the waitlist (features + WTP). `BetaGate.jsx` is only a backend-reachability gate.
-- **Open question:** zoom-out may render client-side clusters (`graphClustering.jsx`) instead of the backend authored tiers (ADR-021). If so, the H2-propagated flags + tier summaries on the authored topics/themes/arcs never surface. Slice 1 verification must confirm the zoomed-out view consumes the authored hierarchy.
+- **RESOLVED (verification 2026-06-05):** `MinimalGraph` runs in **semantic mode** when the authored hierarchy is present — it filters to the authored tier nodes and preserves the backend `is_tangent`/`is_crux` flags (`MinimalGraph.jsx:222-225`, `buildRfNodesForSource`). So the H2 fix **does** surface at zoom-out for consolidated conversations. Client-side `graphClustering.jsx` is only the FALLBACK when no authored hierarchy exists (loses flags). No extra work is needed to surface H2.
 
 ## Known issues to fix (Codex review)
 
@@ -94,7 +96,7 @@ Most of the wedge already exists — slice 1 is hardening + verification, not gr
 
 ## Implementation sketch (slices)
 
-1. **H2 — persistence fix landed; end-to-end verification is a GATE.** `propagate_flags_upward` runs at persist (`graph_persistence.py:373-379`); consolidation still omits flags when building parents (`hierarchy_consolidator.py:143-167`) but persist recomputes from children. **Not yet proven on a consolidated conversation** (only sample telemetry has 1 chunk, no tiers). Gate before "shareable": run a conversation long enough to consolidate, confirm L3-5 nodes carry `is_tangent`/`is_crux` + summaries in the DB AND render at zoom-out.
+1. **H2 — VERIFIED end-to-end (2026-06-05).** `propagate_flags_upward` runs at persist (`graph_persistence.py:373-379`); consolidation omits flags when building parents (`hierarchy_consolidator.py:143-167`) but persist recomputes them from children. Proven on File A through the real consolidation path (conv `45ef78b5`): base 67 chunks + 15 ideas → 7 topics + 3 themes + 3 arcs; **every L3-5 tier carries `is_tangent`/`is_crux` + a summary + `children_ids`** (e.g. 6/7 topics flagged — the one unflagged is "Community Appreciation / Session Logistics", correctly not a tangent/crux), and the frontend semantic mode renders them at zoom-out. Gate PASSED.
 2. **gmaps view** — reuse `MinimalGraph`; fix the `ShareConversation` tier-callback prop mismatch; resolve the authored-tiers-vs-client-clustering question; add an E2E screenshot test for `/share/:token`.
 3. **Path-isolated public surface** — separate minimal public app (or allowlist proxy) exposing ONLY `GET /api/share/{token}`, optional `GET /api/share/{token}/audio` (D7, default-off), `POST /api/waitlist`, SPA. Default-on expiry; test no IndrasNet reachable; egress/path-isolation test.
 4. **Waitlist** — `waitlist_submissions` table (email, feature choices, WTP amount/range + currency, source share token, free-text note, consent timestamp, IP/UA hash); public POST only; owner-authenticated list/export; rate-limit + honeypot/CAPTCHA before Funnel; frontend modal extending `BetaGate.jsx`.
