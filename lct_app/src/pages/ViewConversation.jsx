@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Download, FileJson, Share2 } from "lucide-react";
+import { Download, FileJson, Map, Share2 } from "lucide-react";
 import ShareManagerModal from "../components/share/ShareManagerModal";
 import AnalyzeMenu from "../components/AnalyzeMenu";
 
@@ -16,7 +16,7 @@ import NodeDetail from "../components/NodeDetail";
 import SearchDialog from "../components/SearchDialog";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
-import { apiFetchCached, API_BASE_URL } from "../services/apiClient";
+import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
 import { fetchConversationParticipants } from "../services/participantsApi";
 
 function sanitizeNodeArray(chunk) {
@@ -315,6 +315,37 @@ export default function ViewConversation() {
     graphData,
   ]);
 
+  // Export the conversation as a self-contained .threads artifact (ADR-036):
+  // the owner downloads the file and shares it directly; the recipient opens it
+  // at /view (static, server-free). apiFetch carries AUTH_TOKEN.
+  const [threadsBusy, setThreadsBusy] = useState(false);
+  const handleExportThreads = useCallback(async () => {
+    if (threadsBusy || !conversationId) return;
+    setThreadsBusy(true);
+    try {
+      const resp = await apiFetch(`/api/conversations/${conversationId}/threads-export`);
+      if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
+      const blob = await resp.blob();
+      const safe =
+        (conversationTitle || conversationName || conversationId || "conversation")
+          .replace(/[^a-z0-9-_ ]/gi, "_")
+          .slice(0, 60)
+          .trim() || "conversation";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safe}.threads`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("[ViewConversation] .threads export failed:", error);
+    } finally {
+      setThreadsBusy(false);
+    }
+  }, [threadsBusy, conversationId, conversationName, conversationTitle]);
+
   const selectedNodeData = useMemo(() => {
     if (!selectedNode) return null;
     return allNodes.find((node) => node?.id === selectedNode) || null;
@@ -406,6 +437,18 @@ export default function ViewConversation() {
               aria-label="Download conversation JSON"
             >
               <FileJson size={16} />
+            </button>
+          )}
+          {allNodes.length > 0 && (
+            <button
+              type="button"
+              onClick={handleExportThreads}
+              disabled={threadsBusy}
+              className="flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors p-1 disabled:cursor-wait disabled:opacity-50"
+              title="Export a shareable .threads map (open it at /view — no server needed)"
+              aria-label="Export .threads map"
+            >
+              <Map size={16} />
             </button>
           )}
           {allNodes.length > 0 && (
