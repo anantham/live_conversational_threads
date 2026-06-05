@@ -366,3 +366,22 @@ def test_propagate_flags_upward_chunk_to_arc():
     assert by_id["t1"].get("is_crux") is True
     # a leaf with no flagged children is untouched
     assert not by_id["c3"].get("is_tangent")
+
+
+def test_surprise_propagates_but_action_item_does_not():
+    from lct_python_backend.services.transcript_normalizer import propagate_flags_upward
+
+    # chunk carries both; surprise should roll up, action_item should NOT
+    # (a topic that *contains* a commitment is not itself an action item).
+    nodes = [
+        {"id": "c1", "semantic_level": 1, "is_action_item": True, "is_surprise": True, "children_ids": []},
+        {"id": "i1", "semantic_level": 2, "children_ids": ["c1"]},
+        {"id": "t1", "semantic_level": 3, "children_ids": ["i1"]},
+    ]
+    propagate_flags_upward(nodes)
+    by_id = {n["id"]: n for n in nodes}
+
+    assert by_id["i1"].get("is_surprise") is True
+    assert by_id["t1"].get("is_surprise") is True
+    assert not by_id["i1"].get("is_action_item")
+    assert not by_id["t1"].get("is_action_item")

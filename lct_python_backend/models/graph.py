@@ -41,6 +41,10 @@ class Node(Base):
     is_contextual_progress = Column(Boolean, default=False)
     is_tangent = Column(Boolean, default=False)
     is_crux = Column(Boolean, default=False)
+    # Conversation-dimension flags (action items + surprises are node properties;
+    # agreement/disagreement are edges per ADR-032, derived into viewer markers).
+    is_action_item = Column(Boolean, default=False)
+    is_surprise = Column(Boolean, default=False)
 
     # Temporal Flow
     predecessor_id = Column(UUID(as_uuid=True), ForeignKey('nodes.id'))

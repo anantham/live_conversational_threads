@@ -379,6 +379,10 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 # actually exercised (see accumulate-echo-truncation-and-flag-drop).
                 "is_tangent": bool(raw.get("is_tangent")),
                 "is_crux": bool(raw.get("is_crux")),
+                # Conversation-dimension flags. action_item + surprise are node
+                # properties; agreement/disagreement are edges (ADR-032), not flags.
+                "is_action_item": bool(raw.get("is_action_item")),
+                "is_surprise": bool(raw.get("is_surprise")),
                 "chunk_id": raw.get("chunk_id"),
                 "speaker_id": _as_clean_str(raw.get("speaker_id")) or None,
             }
@@ -386,7 +390,13 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
     return normalized_nodes
 
 
-_UPWARD_PROPAGATED_FLAGS = ("is_tangent", "is_crux", "is_bookmark", "is_contextual_progress")
+# is_surprise rolls up (a theme "contains a surprise" is useful at zoom-out).
+# is_action_item deliberately does NOT roll up — a topic that *contains* a
+# commitment is not itself an action item; rolling it up would overstate
+# commitments in parent-tier counts/filters (codex review).
+_UPWARD_PROPAGATED_FLAGS = (
+    "is_tangent", "is_crux", "is_bookmark", "is_contextual_progress", "is_surprise",
+)
 
 
 def propagate_flags_upward(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
