@@ -261,6 +261,33 @@ def build_graph_data_from_nodes(
                     derived_end = convo_max_end if convo_max_end is not None else convo_min_start
         effective_start = node.timestamp_start if node.timestamp_start is not None else derived_start
         effective_end = node.timestamp_end if node.timestamp_end is not None else derived_end
+
+        # Conversation-dimension markers. action_item/surprise/tangent/crux are
+        # node booleans; agreement/disagreement are DERIVED from edges (ADR-032:
+        # supports == agreement, rebuts == disagreement) — edges stay canonical.
+        # The viewer reads the single `markers` array (future-proof for new
+        # dimensions like claim-type/fallacy); the booleans remain for back-compat.
+        _node_edges = edge_relations_by_id.get(
+            node.id, display_preferences.get("edge_relations") or []
+        )
+        _edge_types = {
+            str(e.get("relation_type") or "").lower()
+            for e in _node_edges if isinstance(e, dict)
+        }
+        _has_agreement = bool(_edge_types & {"supports", "agrees", "agreement"})
+        _has_disagreement = bool(_edge_types & {"rebuts", "disagrees", "disagreement"})
+        _markers = [
+            name for name, on in (
+                ("crux", getattr(node, "is_crux", False)),
+                ("action_item", getattr(node, "is_action_item", False)),
+                ("disagreement", _has_disagreement),
+                ("agreement", _has_agreement),
+                ("surprise", getattr(node, "is_surprise", False)),
+                ("tangent", node.is_tangent),
+                ("bookmark", node.is_bookmark),
+                ("contextual_progress", node.is_contextual_progress),
+            ) if on
+        ]
         node_data = {
             "id": str(node.id),
             "node_name": node.node_name,
@@ -280,6 +307,11 @@ def build_graph_data_from_nodes(
             "is_contextual_progress": node.is_contextual_progress,
             "is_tangent": node.is_tangent,
             "is_crux": getattr(node, "is_crux", False),
+            "is_action_item": getattr(node, "is_action_item", False),
+            "is_surprise": getattr(node, "is_surprise", False),
+            "has_agreement": _has_agreement,
+            "has_disagreement": _has_disagreement,
+            "markers": _markers,
             "chunk_id": str(node.chunk_ids[0]) if node.chunk_ids else None,
             "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])],
             "parent_id": str(node.parent_id) if node.parent_id else None,
@@ -291,7 +323,7 @@ def build_graph_data_from_nodes(
             "source_excerpt": node.source_excerpt,
             "thread_id": cluster_info.get("thread_id"),
             "thread_state": cluster_info.get("thread_state"),
-            "edge_relations": edge_relations_by_id.get(node.id, display_preferences.get("edge_relations") or []),
+            "edge_relations": _node_edges,
             "speaker_id": (node.speaker_info or {}).get("primary_speaker") or None,
             **({"timestamp_start": effective_start} if effective_start is not None else {}),
             **({"timestamp_end": effective_end} if effective_end is not None else {}),
