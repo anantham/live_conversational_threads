@@ -15,6 +15,14 @@ export default function App() {
   // broken app full of fetch errors.
   const [backendState, setBackendState] = useState("checking");
 
+  // The .threads viewer (/view) is a fully static, server-free page: it renders a
+  // self-contained file client-side and must work with the backend down — and make
+  // ZERO /api/ calls. Exempt it from the backend-reachability gate below. Only
+  // /view is exempt; /share/:token genuinely needs the backend and stays gated.
+  const isStaticViewer =
+    typeof window !== "undefined" &&
+    window.location.pathname.startsWith("/view");
+
   const probeBackend = useCallback(async () => {
     setBackendState("checking");
     const controller = new AbortController();
@@ -32,10 +40,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (isStaticViewer) return;
     void probeBackend();
-  }, [probeBackend]);
+  }, [probeBackend, isStaticViewer]);
 
-  if (backendState === "checking") {
+  if (!isStaticViewer && backendState === "checking") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
@@ -43,7 +52,7 @@ export default function App() {
     );
   }
 
-  if (backendState === "offline") {
+  if (!isStaticViewer && backendState === "offline") {
     return <BetaGate onRetry={probeBackend} />;
   }
 
