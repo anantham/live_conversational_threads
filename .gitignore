@@ -2,6 +2,14 @@
 .backend-port
 .run/
 
+# .threads sample/test artifacts — may contain real conversation data; never
+# commit/deploy. The export feature produces these at runtime.
+lct_app/public/*.threads
+
+# Playwright MCP verification artifacts
+.playwright-mcp/
+threads-viewer-arcs.png
+
 # Logs
 logs
 *.log

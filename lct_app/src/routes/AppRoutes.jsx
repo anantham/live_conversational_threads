@@ -3,6 +3,7 @@ import Home from "../pages/Home";
 import NewConversation from "../pages/NewConversation";
 import ViewConversation from "../pages/ViewConversation";
 import ShareConversation from "../pages/ShareConversation";
+import ThreadsViewer from "../pages/ThreadsViewer";
 import Browse from "../pages/Browse";
 import Import from "../pages/Import";
 import Analytics from "../pages/Analytics";
@@ -29,6 +30,9 @@ export default function AppRoutes() {
           /share/<token> renders the conversation in read-only mode after
           per-share Google ID verification (when the share is restricted). */}
       <Route path="/share/:token" element={<ShareConversation />} />
+      {/* Static, server-free .threads viewer (ADR-036). Exempt from the App.jsx
+          backend gate; makes zero /api/ calls — renders a self-contained file. */}
+      <Route path="/view" element={<ThreadsViewer />} />
       <Route path="/analytics/:conversationId" element={<Analytics />} />
       <Route path="/edit-history/:conversationId" element={<EditHistory />} />
       <Route path="/simulacra/:conversationId" element={<SimulacraAnalysis />} />
