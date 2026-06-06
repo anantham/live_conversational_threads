@@ -25,10 +25,16 @@ const MAX_NODES = 50000; // main-thread / memory DoS guard before ReactFlow
 const SUPPORTED_VERSIONS = new Set([1]);
 
 function flattenGraph(graphData) {
-  return (graphData || []).flatMap((chunk) =>
-    Array.isArray(chunk)
-      ? chunk.filter((n) => n && typeof n === "object" && !Array.isArray(n))
-      : [],
+  // graph_data may be a FLAT list of node objects (build_graph_data_from_nodes /
+  // the .threads export) OR an array-of-arrays (chunked). Handle both — otherwise
+  // selectedNodeData + speakerColorMap come back empty and node-detail-on-click
+  // silently does nothing.
+  return (graphData || []).flatMap((entry) =>
+    Array.isArray(entry)
+      ? entry.filter((n) => n && typeof n === "object" && !Array.isArray(n))
+      : entry && typeof entry === "object"
+        ? [entry]
+        : [],
   );
 }
 

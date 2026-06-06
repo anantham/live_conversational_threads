@@ -8,8 +8,6 @@ import {
   EDGE_COLORS,
   EDGE_CATEGORY_STYLES,
   categorizeEdgeRelation,
-  buildSpeakerColorMap,
-  buildTemporalColorMap,
 } from "./graphConstants";
 import {
   ZOOM_LEVEL_1,
@@ -224,6 +222,23 @@ function MinimalGraphInner({
       const isBookmark = Boolean(item.is_bookmark);
       const isContextualProgress = Boolean(item.is_contextual_progress);
 
+      // Conversation-dimension markers (action_item / surprise / agreement /
+      // disagreement). Rendered as a compact chip strip in ConversationNode —
+      // NOT peer encodings (the card already uses rotation/border/corner/arrow).
+      // Prefer the backend-normalized `markers` array; else derive from flags+edges.
+      const dimensionMarkers = (
+        Array.isArray(item.markers) && item.markers.length
+          ? item.markers
+          : [
+              item.is_action_item && "action_item",
+              item.is_surprise && "surprise",
+              item.has_disagreement && "disagreement",
+              item.has_agreement && "agreement",
+            ].filter(Boolean)
+      ).filter((m) =>
+        ["action_item", "surprise", "agreement", "disagreement"].includes(m),
+      );
+
       return {
         id: item.id,
         type: "conversational",
@@ -240,6 +255,7 @@ function MinimalGraphInner({
           isCrux,
           isBookmark,
           isContextualProgress,
+          dimensionMarkers,
           // fullData kept for downstream consumers (NodeDetail panel etc.)
           fullData: item,
         },
