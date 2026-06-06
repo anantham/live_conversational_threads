@@ -1,5 +1,14 @@
 # WORKLOG
 
+## 2026-06-06T23:50:22+05:30 - Named Vatsal catchup 5-tier thread extraction
+
+- Context: followed `.tmp_gpt5_extract_spec_named.md` for the named-speaker extraction of `.tmp_meetings/2026-05-17_vatsal_catchup.txt`; read the full transcript before authoring so long-range `rebuts` edges could connect Aditya's net-positive/unsanitized-chaos position with Vatsal's delivery-quality critique.
+- Files modified:
+  - `lct_app/public/vatsal_gpt5.threads` (lines 1-2713, gitignored): overwritten with a 5-tier `lct.threads` JSON artifact using real `speaker_id` values (`Aditya` / `Vatsal`) and no derived `level`, `markers`, `has_agreement`, or `has_disagreement` fields.
+  - `docs/WORKLOG.md` (this entry): recorded extraction intent, affected files, and validation.
+- Output shape: 125 total nodes: L1 chunks=80, L2 ideas=28, L3 topics=10, L4 themes=4, L5 arcs=3. Top-level `generated_by` is `gpt-5.5 via codex exec (named)`.
+- Validation: generated JSON parsed successfully; read-back check verified allowed schema fields only, parent/child mutuality, valid edge target node names, and absence of `SPEAKER_` tokens.
+
 ## 2026-05-30 14:11 EDT — LCT live prayer-card bridge for IndrasNet Fetch prayers
 
 Goal (user-approved): complete the first loop where LCT captures selected live transcript evidence, sends it to IndrasNet for prayer detection/urgency routing, and renders returned Fetch prayer cards in the live conversation UI.
