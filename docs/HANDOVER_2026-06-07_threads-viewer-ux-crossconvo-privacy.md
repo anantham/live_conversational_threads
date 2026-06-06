@@ -58,5 +58,32 @@ has uncommitted MinimalGraph + docs changes — left untouched.
 2. Await/take the Vatsal call; align on viz + collaboration + publish.
 3. Then pick: #11 ADR (privacy boundary, codex-reviewed) — or #10 Phase 2 dialectic layout — or #12 vocab+re-transcription. All three are scoped in the task list.
 
+## Audit Addendum (gaps found when asked "is this exhaustive?")
+- **Parallel DESIGN-SYSTEM rework — biggest miss.** A parallel session introduced
+  **`DESIGN.md`** (+ `PRODUCT.md`), an impeccable-style design language: "Garden Amber
+  `#d97706` is the ONE warm accent, held in reserve — the glow of a found connection /
+  provenance." It enforces a **One-Amber Rule** (amber border = SELECTED only) and
+  reworked crux from an amber border to a quiet dot. BOTH `MinimalGraph.jsx` AND
+  `ConversationNode.jsx` are uncommitted-modified by that session (ConversationNode now
+  has the One-Amber `borderShorthand` + crux-dot; it kept my MarkerStrip/ExpandButton/
+  argStatusLabel). **CONFLICT to reconcile:** my shipped **Argument-status color mode
+  uses amber-glow `#fef3c7` for "disputed"** — overlaps the reserved Garden-Amber accent.
+  A next instance doing viewer/color work MUST read `DESIGN.md` first and reconcile.
+- **At-risk valuable outputs (.tmp, gitignored — vanish on `git clean`/tmp purge):**
+  `.tmp_vatsal_two_minds_report.md` (15-month relationship map), `.tmp_vatsal_interconnections_report.md`
+  (5-meeting), `.tmp_argview_design.md` (codex-reviewed argument-view design),
+  `.tmp_codex_design_review.log`. Plus the privacy scripts (`.tmp_privacy_redact.py`,
+  `.tmp_gpt5_extract_spec_redacted.md`) and reassembled transcripts (`.tmp_meetings*/`).
+  If keeping: move to a durable PRIVATE location (NOT committed — personal conversation data).
+- **40 Vercel deployments** under the project (preview history accumulating). Offered to
+  purge old previews; not done. Production alias auto-follows; old previews are 401-protected.
+- **"Adiga"** — third party with a comparable open-source repo (Aditya's is ~500+ commits
+  ahead); relevant to the Vatsal collaborate-and-publish thread. Vatsal: "we can check with Adiga."
+- **Vatsal's fuller asks:** an infographic that shows the conversation "moving in time," and
+  a NotebookLM comparison — informs #10 Phase-2 viz direction.
+- **Earlier-session vision (parked, not in task list):** argument/rhetoric tooling — claim
+  vs normative-claim DAG, fallacy/rhetorical-device flags, lazy local-AI fact-check plugins
+  ("compressed-internet" local models). Connects to #10.
+
 ---
-*Handover by Claude (Opus 4.8) — /handover at session wrap.*
+*Handover by Claude (Opus 4.8) — /handover at session wrap; addendum after exhaustiveness audit.*
