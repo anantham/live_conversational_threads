@@ -186,6 +186,26 @@ function MinimalGraphInner({
     [normalizedChunk]
   );
 
+  // Tap-friendly drill-down. Same fan-out as handleNodeDoubleClick, but callable
+  // from a node's ⊕ control by id — so it works on touch (double-tap is eaten by
+  // the browser) and is discoverable. Only non-leaf nodes above the chunk tier
+  // expose the control; leaves and moments have nothing to fan out.
+  const handleExpand = useCallback(
+    (nodeId) => {
+      const node = normalizedChunk.find((n) => n.id === nodeId);
+      if (!node) return;
+      const childIds = Array.isArray(node.children_ids) ? node.children_ids : [];
+      const ownLevel = Number(node.semantic_level || node.level || 1);
+      if (childIds.length === 0 || ownLevel <= 1) return;
+      autoFollowRef.current = false;
+      setDrilldownPath((prev) => [
+        ...prev,
+        { level: ownLevel, nodeId, nodeName: node.node_name || "(unnamed)" },
+      ]);
+    },
+    [normalizedChunk]
+  );
+
   const buildRfNodesForSource = useCallback((sourceNodes) => {
     return sourceNodes.map((item) => {
       const isDraftNode = item.__graphLayer === "draft";
@@ -256,12 +276,20 @@ function MinimalGraphInner({
           isBookmark,
           isContextualProgress,
           dimensionMarkers,
+          // Tap-to-fan-out: non-leaf nodes above the chunk tier get a ⊕ control
+          // that drills into just this node's children (see handleExpand).
+          canExpand:
+            Array.isArray(item.children_ids) &&
+            item.children_ids.length > 0 &&
+            Number(item.semantic_level || item.level || 1) > 1,
+          expandCount: Array.isArray(item.children_ids) ? item.children_ids.length : 0,
+          onExpand: () => handleExpand(item.id),
           // fullData kept for downstream consumers (NodeDetail panel etc.)
           fullData: item,
         },
       };
     });
-  }, [colorMode, speakerColorMap, temporalColorMap]);
+  }, [colorMode, speakerColorMap, temporalColorMap, handleExpand]);
 
   const buildRfEdgesForSource = useCallback((sourceNodes) => {
     if (hideEdges) return [];
