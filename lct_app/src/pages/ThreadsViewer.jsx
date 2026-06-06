@@ -152,14 +152,22 @@ export default function ThreadsViewer() {
   // ---- Empty state: drop zone ---------------------------------------------
   if (!bundle) {
     return (
-      <div className="flex h-[100dvh] w-screen items-center justify-center bg-[#fafafa] p-6 font-sans">
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={(e) => {
+          // dragleave bubbles as the cursor crosses child elements; only clear
+          // the highlight when it actually leaves the window (relatedTarget null).
+          if (e.relatedTarget === null) setDragging(false);
+        }}
+        onDrop={onDrop}
+        className={`flex h-[100dvh] w-screen items-center justify-center p-6 font-sans transition ${
+          dragging ? "bg-amber-100" : "bg-[#fafafa]"
+        }`}
+      >
         <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
           className={`flex w-full max-w-md flex-col items-center gap-4 rounded-2xl border-2 border-dashed px-8 py-12 text-center transition ${
             dragging ? "border-amber-400 bg-amber-50" : "border-slate-300 bg-white"
           }`}
@@ -171,8 +179,8 @@ export default function ThreadsViewer() {
             Open a <span className="font-mono">.threads</span> file
           </h1>
           <p className="text-sm text-slate-500">
-            Drag it here, or pick it below. Everything renders in your browser —
-            nothing is uploaded.
+            Drop it anywhere on this screen, or pick a file below. Everything
+            renders in your browser — nothing is uploaded.
           </p>
           <button
             type="button"
