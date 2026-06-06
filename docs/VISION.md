@@ -345,3 +345,19 @@ These are explicit *future* directions, not v1 promises:
 
 Each will land via its own ADR when the time comes. This addendum just preserves the spirit so future contributors (human or AI) know what we're aiming at.
 
+## Addendum — Substrate Philosophy (2026-05-31)
+
+Carried forward from earlier IndrasNet design notes; complements the Core Principles above.
+
+### Eternal Reprocessability
+
+Audio is sacred. Transcript artifacts are malleable. Views are regenerable. Better models should unlock new insight from old material — we never discard the raw substrate, and can always re-run interpretation with improved models.
+
+### Ownership and Privacy
+
+Privacy is applied at view time, not by erasing the substrate. Different audiences should receive differently transformed views of the same underlying material. The owner controls what gets shared and how.
+
+### Retrieval Near the Edge
+
+Interpretation should happen near the current need, not as a global commitment. The system asks "what does this newest span probably mean?" and "what view does the user need right now?" — not "what is the full hierarchy of the whole conversation forever?"
+
