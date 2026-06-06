@@ -795,6 +795,11 @@ function MinimalGraphInner({
   const layoutKeyRef = useRef("");
 
   const pendingFitViewRef = useRef(false);
+  // Becomes true once the first real fitView has framed the graph on load.
+  // Gates the auto-follow auto-pan (below) so it cannot yank the camera to
+  // the last node before the initial tier fit runs — the cause of the
+  // "empty canvas until you click Center" bug on a cold-open `?src=` load.
+  const hasInitiallyFitRef = useRef(false);
 
   useEffect(() => {
     // Generate a key from node IDs to detect when the node set changes
@@ -929,6 +934,10 @@ function MinimalGraphInner({
             maxZoom: 1.0,
           });
         }
+        // The graph is now framed. Release the auto-follow gate so live
+        // streaming can resume centering on new nodes, but only AFTER this
+        // initial fit has run (prevents the cold-open off-screen camera).
+        hasInitiallyFitRef.current = true;
         setTimeout(() => { programmaticMoveRef.current = false; }, 350);
       });
     });
@@ -948,7 +957,13 @@ function MinimalGraphInner({
       if (!nodeId) return undefined;
 
       const liveNode = reactFlow.getNode(nodeId);
-      const fallbackNode = layoutedNodes.find((node) => node.id === nodeId) || null;
+      // Fall back to the CURRENTLY DISPLAYED tier's layout, not the
+      // chunk-level `layoutedNodes`. A node shown at the arcs tier (y≈130)
+      // also exists in the chunk dagre at y≈17000+; centering on that stale
+      // coordinate parks the camera off-screen. `layoutedDisplayNodes` is the
+      // tier the user is actually looking at (and equals `layoutedNodes` in
+      // legacy mode), so this is strictly the correct-or-equal source.
+      const fallbackNode = layoutedDisplayNodes.find((node) => node.id === nodeId) || null;
       const targetNode = liveNode || fallbackNode;
       const targetPosition =
         targetNode?.positionAbsolute || targetNode?.position || fallbackNode?.position || null;
@@ -969,7 +984,7 @@ function MinimalGraphInner({
 
       return () => window.clearTimeout(timeout);
     },
-    [layoutedNodes, reactFlow]
+    [layoutedDisplayNodes, reactFlow]
   );
 
   // Sync ref with state so effects read the latest value
@@ -1002,6 +1017,12 @@ function MinimalGraphInner({
   const lastNodeId = layoutedDisplayNodes[layoutedDisplayNodes.length - 1]?.id ?? null;
   useEffect(() => {
     if (!autoFollow || selectedNode || layoutedDisplayNodes.length === 0) return;
+    // Cold-open guard: autoFollow defaults true, so without this the mount
+    // auto-pan fires before the initial fitView and parks the camera ~17000px
+    // off-screen (empty canvas until "Center"). Every tier/drill handler
+    // already clears auto-follow for this reason; this covers the one path
+    // they missed — the very first load.
+    if (!hasInitiallyFitRef.current) return;
     const last = layoutedDisplayNodes[layoutedDisplayNodes.length - 1];
     if (!last?.id) return;
 
