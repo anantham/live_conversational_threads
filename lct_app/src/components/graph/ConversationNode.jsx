@@ -82,6 +82,9 @@ function ConversationNodeImpl({ data, selected }) {
     isBookmark = false,
     isContextualProgress = false,
     dimensionMarkers = [],
+    canExpand = false,
+    expandCount = 0,
+    onExpand,
     showSummary = true,
     summaryMaxLength = 220,
   } = data || {};
@@ -147,10 +150,65 @@ function ConversationNodeImpl({ data, selected }) {
       <MarkerStrip markers={dimensionMarkers} />
       {speakerLabel && <div style={speakerStyle}>{speakerLabel}</div>}
 
+      {canExpand && <ExpandButton count={expandCount} onExpand={onExpand} />}
+
       {isContextualProgress && <ProgressArrow />}
     </div>
   );
 }
+
+// Tap-friendly drill-down control. Double-click/double-tap is undiscoverable and
+// unreliable on touch, so non-leaf nodes (above the chunk tier) get an explicit
+// ⊕ control that fans out just this node's children. `nodrag`/`nopan` + the
+// pointer/click stopPropagation keep the tap from selecting the card, dragging
+// the node, or panning the canvas.
+function ExpandButton({ count, onExpand }) {
+  return (
+    <button
+      type="button"
+      className="nodrag nopan"
+      title="Fan out this node's children"
+      aria-label={`Fan out ${count || ""} children`.trim()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onExpand) onExpand();
+      }}
+      style={expandButtonStyle}
+    >
+      <span aria-hidden="true" style={{ fontSize: "13px", lineHeight: 1 }}>⊕</span>
+      <span>fan out{count ? ` ${count}` : ""}</span>
+    </button>
+  );
+}
+
+ExpandButton.propTypes = {
+  count: PropTypes.number,
+  onExpand: PropTypes.func,
+};
+
+const expandButtonStyle = {
+  marginTop: "6px",
+  width: "100%",
+  minHeight: "40px", // touch target (card padding + this clears ~44px)
+  boxSizing: "border-box",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "5px",
+  fontFamily: "Inter, sans-serif",
+  fontSize: "10px",
+  fontWeight: 600,
+  letterSpacing: "0.02em",
+  color: "#334155",
+  background: "rgba(15,23,42,0.05)",
+  border: "none",
+  borderRadius: "6px",
+  padding: "0 8px",
+  cursor: "pointer",
+  WebkitTapHighlightColor: "transparent",
+};
 
 const handleStyle = {
   width: 4,
@@ -231,6 +289,9 @@ ConversationNodeImpl.propTypes = {
     isBookmark: PropTypes.bool,
     isContextualProgress: PropTypes.bool,
     dimensionMarkers: PropTypes.arrayOf(PropTypes.string),
+    canExpand: PropTypes.bool,
+    expandCount: PropTypes.number,
+    onExpand: PropTypes.func,
     showSummary: PropTypes.bool,
     summaryMaxLength: PropTypes.number,
   }),
