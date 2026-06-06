@@ -1106,7 +1106,7 @@ function MinimalGraphInner({
   }, []);
 
   const ZOOM_PRESETS = [
-    { label: "Center", action: () => {
+    { label: "Center", hint: "Bring all the nodes back into view", action: () => {
       // Keep the user's current zoom and anchor the camera so the TOP-LEFT
       // of the node bounding box lines up with the top-left of the viewport
       // (with a small padding). fitView's previous behavior recomputed zoom
@@ -1206,10 +1206,11 @@ function MinimalGraphInner({
 
       {/* Zoom preset + graph display controls */}
       <div className="absolute bottom-4 left-4 z-40 flex items-center gap-1">
-        {ZOOM_PRESETS.map(({ label, action }) => (
+        {ZOOM_PRESETS.map(({ label, action, hint }) => (
           <button
             key={label}
             onClick={action}
+            title={hint || label}
             className="px-2 py-1 text-[10px] font-medium bg-white/90 border border-gray-200 rounded shadow-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
           >
             {label}
@@ -1230,7 +1231,11 @@ function MinimalGraphInner({
               return next;
             });
           }}
-          title={autoFollow ? "Auto-follow is on — click to stop" : "Auto-follow is off — click to resume"}
+          title={
+            autoFollow
+              ? "Auto-center: the view re-centers on new content as you navigate. Click for free pan."
+              : "Free pan: the view stays where you put it. Click to auto-center on new content."
+          }
           className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
             autoFollow
               ? "bg-blue-50 border-blue-300 text-blue-700"
@@ -1242,7 +1247,11 @@ function MinimalGraphInner({
         <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
         <button
           onClick={() => setReduceMotion((v) => !v)}
-          title={reduceMotion ? "Re-enable edge animation" : "Stop edge animation"}
+          title={
+            reduceMotion
+              ? "Motion off: edges are static. Click to gently animate question/clarify edges."
+              : "Motion on: question & clarify edges pulse. Click to make everything static."
+          }
           className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
             reduceMotion
               ? "bg-amber-50 border-amber-300 text-amber-700"
@@ -1253,7 +1262,11 @@ function MinimalGraphInner({
         </button>
         <button
           onClick={() => setHideEdges((v) => !v)}
-          title={hideEdges ? "Show edges" : "Hide edges"}
+          title={
+            hideEdges
+              ? "Show the relationship edges (supports / rebuts / etc.) between nodes."
+              : "Hide all relationship edges for a cleaner, nodes-only view."
+          }
           className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
             hideEdges
               ? "bg-amber-50 border-amber-300 text-amber-700"
@@ -1268,7 +1281,11 @@ function MinimalGraphInner({
             successor chain explicitly. */}
         <button
           onClick={() => handleShowTemporalEdgesChange(!showTemporalEdges)}
-          title={showTemporalEdges ? "Hide temporal-next edges (default)" : "Show temporal-next edges"}
+          title={
+            showTemporalEdges
+              ? "Hide time-order arrows (left-to-right position already shows order)."
+              : "Show arrows linking each point to the next one in time."
+          }
           disabled={hideEdges}
           className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
             hideEdges
