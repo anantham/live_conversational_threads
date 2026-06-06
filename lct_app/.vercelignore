@@ -1,0 +1,9 @@
+# NEVER deploy real-conversation artifacts. The viewer is server-free; users load
+# their own .threads file at view time. Only the hand-authored demo fixture ships.
+# (The root .gitignore's lct_app/public/*.threads rule is NOT applied when Vercel
+#  deploys from this subdirectory, so it must be repeated here.)
+public/vatsal.threads
+public/vatsal2.threads
+public/vatsal_gpt5.threads
+public/vatsal_gpt5_high.threads
+public/sample.threads
