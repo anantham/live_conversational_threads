@@ -15,10 +15,59 @@ import { Handle, Position } from "reactflow";
  *   - is_crux: 3px solid amber border + amber halo (overrides resolved border).
  *   - is_bookmark: folded-corner triangle at top-right (golden).
  *   - is_contextual_progress: small arrow chip at bottom-right.
+ *   - dimensionMarkers: labeled chip strip for conversation dimensions
+ *     (action_item / surprise / agreement / disagreement) — see MarkerStrip.
  *
  * State markers compose with any color mode. Color carries the user's chosen
  * dimension (hierarchy / speaker / time); markers carry authored attributes.
  */
+// Conversation-dimension chips. Per the codex UX review, new dimensions render as
+// a compact labeled strip (icon + word + tooltip) rather than more peer encodings —
+// the card already overloads rotation/border/corner/arrow for tangent/crux/etc.
+const MARKER_META = {
+  action_item: { label: "action", title: "Action item / commitment", icon: "✓", bg: "#dbeafe", fg: "#1e40af" },
+  surprise: { label: "surprise", title: "Surprise / new info / realization", icon: "★", bg: "#ede9fe", fg: "#6d28d9" },
+  disagreement: { label: "disagree", title: "Point of disagreement", icon: "⚔", bg: "#fee2e2", fg: "#991b1b" },
+  agreement: { label: "agree", title: "Point of agreement", icon: "🤝", bg: "#dcfce7", fg: "#166534" },
+};
+
+function MarkerStrip({ markers }) {
+  if (!markers || markers.length === 0) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "3px", marginTop: "5px" }}>
+      {markers.map((m) => {
+        const meta = MARKER_META[m];
+        if (!meta) return null;
+        return (
+          <span
+            key={m}
+            title={meta.title}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "2px",
+              fontSize: "9px",
+              fontWeight: 600,
+              lineHeight: 1,
+              padding: "2px 6px",
+              borderRadius: "999px",
+              background: meta.bg,
+              color: meta.fg,
+            }}
+          >
+            <span aria-hidden="true">{meta.icon}</span>
+            {meta.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+MarkerStrip.propTypes = {
+  markers: PropTypes.arrayOf(PropTypes.string),
+};
+
 function ConversationNodeImpl({ data, selected }) {
   const {
     title,
@@ -32,6 +81,7 @@ function ConversationNodeImpl({ data, selected }) {
     isCrux = false,
     isBookmark = false,
     isContextualProgress = false,
+    dimensionMarkers = [],
     showSummary = true,
     summaryMaxLength = 220,
   } = data || {};
@@ -94,6 +144,7 @@ function ConversationNodeImpl({ data, selected }) {
       {showSummary && truncatedSummary && (
         <div style={summaryStyle}>{truncatedSummary}</div>
       )}
+      <MarkerStrip markers={dimensionMarkers} />
       {speakerLabel && <div style={speakerStyle}>{speakerLabel}</div>}
 
       {isContextualProgress && <ProgressArrow />}
@@ -179,6 +230,7 @@ ConversationNodeImpl.propTypes = {
     isCrux: PropTypes.bool,
     isBookmark: PropTypes.bool,
     isContextualProgress: PropTypes.bool,
+    dimensionMarkers: PropTypes.arrayOf(PropTypes.string),
     showSummary: PropTypes.bool,
     summaryMaxLength: PropTypes.number,
   }),
