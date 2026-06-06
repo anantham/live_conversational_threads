@@ -17,13 +17,14 @@
 
 import { SPEAKER_COLORS } from "../graphConstants";
 
-export const COLOR_MODES = Object.freeze(["tier", "speaker", "temporal"]);
+export const COLOR_MODES = Object.freeze(["tier", "speaker", "temporal", "argument"]);
 export const DEFAULT_COLOR_MODE = "tier";
 
 const COLOR_MODE_LABELS = {
   tier: "Color: Tier",
   speaker: "Color: Speaker",
   temporal: "Color: Time",
+  argument: "Color: Argument",
 };
 
 export function colorModeLabel(mode) {
@@ -123,6 +124,72 @@ export function buildTemporalColorMapForNodes(nodes) {
 }
 
 /**
+ * Argument-status palette (codex-reviewed Phase 1). This colors a node by what
+ * the conversation DOES TO it — incoming supports vs rebuts — NOT by an authored
+ * claim/evidence "role" (that needs Phase 3 extraction). Four honest statuses:
+ *   - disputed:    has both incoming supports AND rebuts (the battlegrounds)
+ *   - supported:   incoming supports only (agreed ground)
+ *   - rebutted:    incoming rebuts only (under challenge)
+ *   - unconnected: no incoming argument edges (narrative / not contested)
+ * The per-node "N supporting / M rebutting" tooltip is the non-color cue.
+ */
+export const ARGUMENT_STATUSES = Object.freeze([
+  { key: "disputed", label: "Disputed", fill: "#fef3c7", border: "#f59e0b" }, // amber
+  { key: "supported", label: "Supported", fill: "#dcfce7", border: "#4ade80" }, // green
+  { key: "rebutted", label: "Rebutted", fill: "#fee2e2", border: "#f87171" }, // red
+  { key: "unconnected", label: "Not contested", fill: NEUTRAL_FILL, border: NEUTRAL_BORDER },
+]);
+const ARG_BY_KEY = Object.fromEntries(ARGUMENT_STATUSES.map((s) => [s.key, s]));
+const _AGREE = new Set(["supports", "agrees", "agreement", "affirms"]);
+const _DISAGREE = new Set(["rebuts", "disagrees", "disagreement", "contradicts", "refutes"]);
+
+/**
+ * Build an argument-status map keyed by node id: { status, sup, reb }.
+ * Counts INCOMING supports/rebuts per node (edges whose related_node names it).
+ * Each direction of a bidirectional pair counts separately — no collapse — so a
+ * mutual support/rebut never silently drops an endpoint's incoming count
+ * (the dedup ambiguity codex flagged). related_node is matched by exact then
+ * case-insensitive node_name (the export writes related_node as the target name).
+ */
+export function buildArgumentStatusMapForNodes(nodes) {
+  const map = {};
+  const list = nodes || [];
+  const byName = new Map();
+  const byLowerName = new Map();
+  list.forEach((n) => {
+    if (n?.node_name) {
+      byName.set(n.node_name, n);
+      byLowerName.set(String(n.node_name).toLowerCase(), n);
+    }
+    map[n.id] = { status: "unconnected", sup: 0, reb: 0 };
+  });
+  const resolveTarget = (name) => {
+    if (!name) return null;
+    return byName.get(name) || byLowerName.get(String(name).toLowerCase()) || null;
+  };
+  list.forEach((n) => {
+    (n.edge_relations || []).forEach((e) => {
+      const rt = String(e?.relation_type || "").toLowerCase();
+      const kind = _AGREE.has(rt) ? "sup" : _DISAGREE.has(rt) ? "reb" : null;
+      if (!kind) return;
+      const tgt = resolveTarget(e?.related_node);
+      if (tgt && map[tgt.id]) map[tgt.id][kind] += 1;
+    });
+  });
+  Object.values(map).forEach((s) => {
+    s.status =
+      s.sup > 0 && s.reb > 0
+        ? "disputed"
+        : s.sup > 0
+          ? "supported"
+          : s.reb > 0
+            ? "rebutted"
+            : "unconnected";
+  });
+  return map;
+}
+
+/**
  * Resolve fill and border colors for a single node given the active mode
  * and pre-built per-mode maps.
  */
@@ -131,6 +198,7 @@ export function resolveNodeColors({
   node,
   speakerColorMap,
   temporalColorMap,
+  argumentStatusMap,
 }) {
   if (!node) return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
 
@@ -143,6 +211,12 @@ export function resolveNodeColors({
   if (mode === "temporal") {
     const fill = temporalColorMap?.[node.id] || NEUTRAL_FILL;
     return { fill, border: deriveBorder(fill) };
+  }
+
+  if (mode === "argument") {
+    const status = argumentStatusMap?.[node.id]?.status || "unconnected";
+    const spec = ARG_BY_KEY[status] || ARG_BY_KEY.unconnected;
+    return { fill: spec.fill, border: spec.border };
   }
 
   // Default: tier

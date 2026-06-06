@@ -20,7 +20,7 @@ export default function ColorModeToggle({ mode, onChange, disabled = false }) {
       onClick={handleClick}
       disabled={disabled}
       aria-label={`${colorModeLabel(safeMode)} (click to cycle)`}
-      title={`${colorModeLabel(safeMode)} — click to cycle through tier / speaker / time`}
+      title={`${colorModeLabel(safeMode)} — click to cycle through tier / speaker / time / argument (support vs rebut status)`}
       className={`px-2 py-1 rounded text-[10px] font-medium border transition ${
         disabled
           ? "border-gray-200 text-gray-300 cursor-not-allowed"
@@ -61,6 +61,16 @@ function swatchStyle(mode) {
       borderRadius: "50%",
       background:
         "linear-gradient(90deg, hsl(0,70%,82%) 0%, hsl(140,70%,82%) 50%, hsl(280,70%,82%) 100%)",
+      display: "inline-block",
+    };
+  }
+  if (mode === "argument") {
+    // disputed (amber) / supported (green) / rebutted (red)
+    return {
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      background: "conic-gradient(from 0deg, #fbbf24, #4ade80, #f87171, #fbbf24)",
       display: "inline-block",
     };
   }
