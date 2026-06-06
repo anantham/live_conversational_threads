@@ -7,7 +7,7 @@ import { Handle, Position } from "reactflow";
  *
  * Visual encoding:
  *   - Fill color: resolved by parent (MinimalGraph) per active color mode
- *     (tier | speaker | temporal). Passed in via data.fillColor.
+ *     (tier | speaker | temporal | argument). Passed in via data.fillColor.
  *   - Border color: same source (data.borderColor), darker than fill.
  *   - Draft (data.isDraft = true): dashed border, 0.7 opacity, slow pulse.
  *     Stable: solid border, full opacity, no animation.

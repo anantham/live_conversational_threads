@@ -65,12 +65,13 @@ function swatchStyle(mode) {
     };
   }
   if (mode === "argument") {
-    // disputed (amber) / supported (green) / rebutted (red)
+    // disputed (violet) / supported (green) / rebutted (red).
+    // Violet, not amber, per the One-Amber Rule (DESIGN.md) — see colorModes.js.
     return {
       width: 8,
       height: 8,
       borderRadius: "50%",
-      background: "conic-gradient(from 0deg, #fbbf24, #4ade80, #f87171, #fbbf24)",
+      background: "conic-gradient(from 0deg, #a78bfa, #4ade80, #f87171, #a78bfa)",
       display: "inline-block",
     };
   }

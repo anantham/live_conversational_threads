@@ -134,7 +134,13 @@ export function buildTemporalColorMapForNodes(nodes) {
  * The per-node "N supporting / M rebutting" tooltip is the non-color cue.
  */
 export const ARGUMENT_STATUSES = Object.freeze([
-  { key: "disputed", label: "Disputed", fill: "#fef3c7", border: "#f59e0b" }, // amber
+  // Violet, not amber: amber (#f59e0b / #fef3c7) is reserved for the selected
+  // node + the current transcript line (DESIGN.md One-Amber Rule). Disputed
+  // borrowing amber made every battleground node read as "selected" and
+  // flooded the canvas. Violet keeps the same -100 fill / -400 border structure
+  // as supported(green)/rebutted(red) and completes the language: green=agree,
+  // red=disagree, violet=contested.
+  { key: "disputed", label: "Disputed", fill: "#ede9fe", border: "#a78bfa" }, // violet
   { key: "supported", label: "Supported", fill: "#dcfce7", border: "#4ade80" }, // green
   { key: "rebutted", label: "Rebutted", fill: "#fee2e2", border: "#f87171" }, // red
   { key: "unconnected", label: "Not contested", fill: NEUTRAL_FILL, border: NEUTRAL_BORDER },
