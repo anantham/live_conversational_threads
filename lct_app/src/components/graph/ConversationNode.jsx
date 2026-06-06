@@ -12,7 +12,8 @@ import { Handle, Position } from "reactflow";
  *   - Draft (data.isDraft = true): dashed border, 0.7 opacity, slow pulse.
  *     Stable: solid border, full opacity, no animation.
  *   - is_tangent: 8° rotation of the whole card.
- *   - is_crux: 3px solid amber border + amber halo (overrides resolved border).
+ *   - is_crux: small amber dot before the title (quiet marker; keeps the card's
+ *     resolved tier color — amber rings are reserved for the selected node).
  *   - is_bookmark: folded-corner triangle at top-right (golden).
  *   - is_contextual_progress: small arrow chip at bottom-right.
  *   - dimensionMarkers: labeled chip strip for conversation dimensions
@@ -93,9 +94,12 @@ function ConversationNodeImpl({ data, selected }) {
   // Single border shorthand only — combining `border` (shorthand) with
   // `borderStyle` (longhand) triggers a React rerender warning. Bake the
   // dashed/solid choice into the shorthand directly.
-  const borderShorthand = isCrux
-    ? "3px solid #f59e0b"
-    : selected
+  //
+  // Amber border is reserved for the SELECTED node only (DESIGN.md One-Amber
+  // Rule). Crux no longer hijacks the border — it gets a quiet dot (see
+  // CruxDot) so a macro view full of cruxes doesn't flood amber; each card
+  // keeps its resolved tier color (e.g. arcs read slate).
+  const borderShorthand = selected
     ? "2px solid #f59e0b"
     : isDraft
     ? `1px dashed ${borderColor}`
@@ -119,9 +123,7 @@ function ConversationNodeImpl({ data, selected }) {
     minWidth: "180px",
     wordBreak: "break-word",
     transform: isTangent ? "rotate(8deg)" : undefined,
-    boxShadow: isCrux
-      ? "0 0 0 4px rgba(245,158,11,0.25), 0 0 12px 2px rgba(245,158,11,0.18)"
-      : selected
+    boxShadow: selected
       ? "0 0 0 3px rgba(245,158,11,0.3)"
       : "0 1px 3px rgba(0,0,0,0.06)",
     position: "relative",
@@ -143,6 +145,7 @@ function ConversationNodeImpl({ data, selected }) {
       {isBookmark && <BookmarkCorner />}
 
       <div style={titleStyle} title={fullTitle || title || undefined}>
+        {isCrux && <CruxDot />}
         {title || "Untitled"}
       </div>
       {showSummary && truncatedSummary && (
@@ -284,6 +287,30 @@ function ProgressArrow() {
     >
       →
     </span>
+  );
+}
+
+// Quiet crux marker (ADR-030 §D4): a small amber dot before the title instead
+// of a full-card amber ring + halo. Cruxes are common on the macro view, so a
+// loud per-card treatment floods the canvas and destroys amber's meaning;
+// a single small dot marks "this is load-bearing" without competing for the
+// eye, keeping amber reserved for the selected node + provenance (DESIGN.md
+// One-Amber Rule). Full crux context lives in the detail drawer.
+function CruxDot() {
+  return (
+    <span
+      title="Crux — what the discussion hinges on"
+      style={{
+        display: "inline-block",
+        width: "6px",
+        height: "6px",
+        borderRadius: "9999px",
+        background: "#d97706",
+        marginRight: "5px",
+        verticalAlign: "middle",
+        flexShrink: 0,
+      }}
+    />
   );
 }
 
