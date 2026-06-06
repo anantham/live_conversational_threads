@@ -75,6 +75,23 @@ export default function TimelineRibbon({
   const latestChunk = allNodes;
 
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(allNodes), [allNodes]);
+
+  // Conversation time span (if the artifact carries per-node timestamps). When
+  // present we can show "how many minutes in" + a real time fraction; otherwise
+  // we fall back to position-based progress (node index / total).
+  const convoSpan = useMemo(() => {
+    const ts = allNodes
+      .map((n) => Number(n?.timestamp_start ?? n?.start_time ?? n?.timestamp))
+      .filter((v) => Number.isFinite(v));
+    if (ts.length < 2) return null;
+    const min = Math.min(...ts);
+    const max = Math.max(...ts);
+    return max > min ? { min, max } : null;
+  }, [allNodes]);
+  const totalDurationLabel = convoSpan
+    ? formatSecondsToTimestamp(convoSpan.max - convoSpan.min)
+    : null;
+
   const [isFollowingLive, setIsFollowingLive] = useState(true);
 
   const setRibbonScrollLeft = (nextScrollLeft) => {
@@ -150,8 +167,24 @@ export default function TimelineRibbon({
           const titlePrefix = timestampLabel ? `[${timestampLabel}] ` : "";
 
           const isHovered = hoveredIdx === i;
-          const posLabel = `${i + 1}/${latestChunk.length}`;
+          const total = latestChunk.length;
+          const posLabel = `${i + 1}/${total}`;
           const tooltipText = node.node_name || `Node ${i + 1}`;
+
+          // Progress through the conversation. Real "minutes in" + time fraction
+          // when the artifact has timestamps; otherwise position-based fraction.
+          const tsNum = Number(node?.timestamp_start ?? node?.start_time ?? node?.timestamp);
+          const pct =
+            convoSpan && Number.isFinite(tsNum)
+              ? Math.round(((tsNum - convoSpan.min) / (convoSpan.max - convoSpan.min)) * 100)
+              : Math.round((i / Math.max(1, total - 1)) * 100);
+          const timeInLabel =
+            convoSpan && Number.isFinite(tsNum)
+              ? formatSecondsToTimestamp(tsNum - convoSpan.min)
+              : "";
+          const progressLabel = timeInLabel
+            ? `${timeInLabel}${totalDurationLabel ? ` / ${totalDurationLabel}` : ""} · ${pct}% in`
+            : `${posLabel} · ${pct}% through`;
 
           return (
             <button
@@ -178,7 +211,7 @@ export default function TimelineRibbon({
                 >
                   <div className="font-medium truncate max-w-[180px]">{tooltipText}</div>
                   <div className="text-gray-400 text-[9px]">
-                    {timestampLabel ? `${timestampLabel} · ` : ""}{posLabel}
+                    {progressLabel}
                     {(node.speaker_display || node.speaker_id) ? ` · ${node.speaker_display || node.speaker_id}` : ""}
                   </div>
                 </div>
@@ -199,13 +232,13 @@ export default function TimelineRibbon({
                   transform: `scale(${isSelected || isHovered ? 1.2 : 1})`,
                 }}
               />
-              {(timestampLabel || isSelected) && (
+              {(timeInLabel || isSelected) && (
                 <span
                   className={`mt-1 text-[9px] leading-none tracking-wide ${
                     isSelected ? "text-amber-700" : "text-gray-400"
                   }`}
                 >
-                  {timestampLabel || posLabel}
+                  {timeInLabel || `${pct}%`}
                 </span>
               )}
             </button>
