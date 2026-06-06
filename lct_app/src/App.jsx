@@ -17,11 +17,14 @@ export default function App() {
 
   // The .threads viewer (/view) is a fully static, server-free page: it renders a
   // self-contained file client-side and must work with the backend down — and make
-  // ZERO /api/ calls. Exempt it from the backend-reachability gate below. Only
-  // /view is exempt; /share/:token genuinely needs the backend and stays gated.
+  // ZERO /api/ calls. /browse is also exempt: on the public deploy it self-detects
+  // the unreachable backend and becomes the .threads opener (see Browse.jsx), so it
+  // must render instead of the BetaGate. /share/:token genuinely needs the backend
+  // and stays gated.
   const isStaticViewer =
     typeof window !== "undefined" &&
-    window.location.pathname.startsWith("/view");
+    (window.location.pathname.startsWith("/view") ||
+      window.location.pathname.startsWith("/browse"));
 
   const probeBackend = useCallback(async () => {
     setBackendState("checking");
