@@ -70,7 +70,9 @@ None code-wise — the salvage is complete and in PR #53.
 - The salvage work lives in a **separate clean worktree at `~/lct-salvage`** (off `origin/main`), intentionally outside the Syncthing-synced folder.
 - A new `backup/adr-034-pre-mitigations-20260605` ref exists on origin from another session — the remote is being worked on by other instances.
 - **The repo is PUBLIC** (`anantham/live_conversational_threads`) — relevant to the key leak above.
-- **PR #53 base moved** `a326b00` → `9aa7e3c` (development continues). PR is `MERGEABLE` but CI is **red**: `Playwright smoke (DB-independent specs)` and `codex-review` both fail. NOT yet diagnosed as mine-vs-pre-existing — `codex-review`'s 4-second fail looks like a workflow/secret-config issue, not code; the Playwright smoke (4-min run) needs checking against `main`.
+- **PR #53 base moved** `a326b00` → `9aa7e3c` (development continues). PR is `MERGEABLE` but CI is **red** — **diagnosed: both failures are pre-existing/infra, NOT caused by PR #53:**
+  - `codex-review` → `##[error]Unable to resolve action openai/codex-review-action, repository not found` (the workflow points at a non-existent action; fails repo-wide).
+  - `Playwright smoke (DB-independent specs)` → CI `backend failed to start within 60s` → `404` console errors → `expect(locator).toBeVisible()` 30s timeout. Fails identically on `main`'s base `a326b00` and every recent `main` commit; the salvage branch shows the same `backend failed to start within 60s`. A frontend-only diff (payload key + label string) cannot cause backend-startup failure. **→ PR #53 is safe to merge on its own merits; the red CI is a repo-wide condition the maintainer should fix separately (dead codex-review action + CI backend-startup timeout in the smoke workflow).**
 
 ## Operator Cleanup (manual — the human must do these)
 - **🚨 ROTATE THE OpenAI key NOW — it is PUBLIC.** A live `sk-proj-…` OpenAI key is committed to `docs/HANDOVER.md` on `origin/main`, and the repo is **public** → publicly readable on GitHub and in git history (that file has 12 commits). Treat it as compromised. Rotating on the OpenAI dashboard is the only fix that neutralizes the exposure; scrubbing a public repo's history is best-effort (it's been clonable/indexable). GitHub's secret-scanning alerts API returned 0 — do **not** rely on auto-revocation. A scan of all tracked files on `main` found `docs/HANDOVER.md` is the only leaked file.
@@ -89,7 +91,7 @@ None.
 ## Resume Instructions
 1. **FIRST: rotate the public OpenAI key** (Operator Cleanup #1) — it's exposed on a PUBLIC repo right now.
 2. Read `project_syncthing_stale_fork_2026_05_31.md` in auto-memory.
-3. PR #53: diagnose the red CI (`Playwright smoke` + `codex-review`) — mine vs pre-existing — before merging.
+3. PR #53: red CI is diagnosed as pre-existing/infra (dead `codex-review` action + CI backend-startup timeout in `e2e (smoke)`), NOT from this PR — safe to merge on its merits. Separately, the maintainer should fix those two repo-wide CI conditions.
 4. Do the remaining Operator Cleanup (rotate `.env` keys, add `.stignore`, re-align local) — the local folder is unsafe to work in until re-aligned.
 5. Do NOT bulk-merge or commit from the stale local checkout.
 
