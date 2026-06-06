@@ -29,6 +29,7 @@ import {
   DEFAULT_COLOR_MODE,
   buildSpeakerColorMapForNodes,
   buildTemporalColorMapForNodes,
+  buildArgumentStatusMapForNodes,
   resolveNodeColors,
 } from "./graph/colorModes";
 import ColorModeToggle from "./graph/ColorModeToggle";
@@ -187,6 +188,11 @@ function MinimalGraphInner({
     () => buildTemporalColorMapForNodes(normalizedChunk),
     [normalizedChunk]
   );
+  // Argument-status map (Phase 1): id -> {status, sup, reb} from incoming edges.
+  const argumentStatusMap = useMemo(
+    () => buildArgumentStatusMapForNodes(normalizedChunk),
+    [normalizedChunk]
+  );
 
   // Tap-friendly drill-down. Same fan-out as handleNodeDoubleClick, but callable
   // from a node's ⊕ control by id — so it works on touch (double-tap is eaten by
@@ -219,7 +225,16 @@ function MinimalGraphInner({
         node: item,
         speakerColorMap,
         temporalColorMap,
+        argumentStatusMap,
       });
+      // Non-color cue for the argument view: the actual support/rebut counts.
+      let argStatusLabel = null;
+      if (colorMode === "argument") {
+        const as = argumentStatusMap[item.id];
+        if (as && (as.sup > 0 || as.reb > 0)) {
+          argStatusLabel = `${as.status} · ${as.sup} supporting / ${as.reb} rebutting`;
+        }
+      }
 
       // Title: pass the full node_name through. titleStyle has no
       // white-space: nowrap, so multi-line names wrap naturally inside
@@ -286,12 +301,13 @@ function MinimalGraphInner({
             Number(item.semantic_level || item.level || 1) > 1,
           expandCount: Array.isArray(item.children_ids) ? item.children_ids.length : 0,
           onExpand: () => handleExpand(item.id),
+          argStatusLabel,
           // fullData kept for downstream consumers (NodeDetail panel etc.)
           fullData: item,
         },
       };
     });
-  }, [colorMode, speakerColorMap, temporalColorMap, handleExpand]);
+  }, [colorMode, speakerColorMap, temporalColorMap, argumentStatusMap, handleExpand]);
 
   const buildRfEdgesForSource = useCallback((sourceNodes) => {
     if (hideEdges) return [];

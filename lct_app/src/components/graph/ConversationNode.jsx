@@ -85,6 +85,7 @@ function ConversationNodeImpl({ data, selected }) {
     canExpand = false,
     expandCount = 0,
     onExpand,
+    argStatusLabel = null,
     showSummary = true,
     summaryMaxLength = 220,
   } = data || {};
@@ -148,6 +149,7 @@ function ConversationNodeImpl({ data, selected }) {
         <div style={summaryStyle}>{truncatedSummary}</div>
       )}
       <MarkerStrip markers={dimensionMarkers} />
+      {argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
       {speakerLabel && <div style={speakerStyle}>{speakerLabel}</div>}
 
       {canExpand && <ExpandButton count={expandCount} onExpand={onExpand} />}
@@ -238,6 +240,16 @@ const speakerStyle = {
   marginTop: "3px",
 };
 
+// Argument-status cue (shown only in the Argument color mode): the support/rebut
+// counts behind the node's color, so the encoding isn't color-only.
+const argStatusStyle = {
+  fontSize: "9px",
+  fontWeight: 600,
+  color: "#475569",
+  marginTop: "4px",
+  textTransform: "capitalize",
+};
+
 function BookmarkCorner() {
   return (
     <span
@@ -292,6 +304,7 @@ ConversationNodeImpl.propTypes = {
     canExpand: PropTypes.bool,
     expandCount: PropTypes.number,
     onExpand: PropTypes.func,
+    argStatusLabel: PropTypes.string,
     showSummary: PropTypes.bool,
     summaryMaxLength: PropTypes.number,
   }),
