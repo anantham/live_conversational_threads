@@ -69,11 +69,14 @@ None code-wise — the salvage is complete and in PR #53.
 - The 4 salvaged items were each verified against current `main` (not the stale merge-base) before porting.
 - The salvage work lives in a **separate clean worktree at `~/lct-salvage`** (off `origin/main`), intentionally outside the Syncthing-synced folder.
 - A new `backup/adr-034-pre-mitigations-20260605` ref exists on origin from another session — the remote is being worked on by other instances.
+- **The repo is PUBLIC** (`anantham/live_conversational_threads`) — relevant to the key leak above.
+- **PR #53 base moved** `a326b00` → `9aa7e3c` (development continues). PR is `MERGEABLE` but CI is **red**: `Playwright smoke (DB-independent specs)` and `codex-review` both fail. NOT yet diagnosed as mine-vs-pre-existing — `codex-review`'s 4-second fail looks like a workflow/secret-config issue, not code; the Playwright smoke (4-min run) needs checking against `main`.
 
 ## Operator Cleanup (manual — the human must do these)
-- **🔑 Rotate API keys.** Live Anthropic / OpenAI / OpenRouter keys are in `lct_python_backend/.sync-conflict-*.env`; an `sk-proj-` key is in `docs/HANDOVER.md`. Syncthing copied them across devices. (GitHub push-protection blocked them from the remote.)
+- **🚨 ROTATE THE OpenAI key NOW — it is PUBLIC.** A live `sk-proj-…` OpenAI key is committed to `docs/HANDOVER.md` on `origin/main`, and the repo is **public** → publicly readable on GitHub and in git history (that file has 12 commits). Treat it as compromised. Rotating on the OpenAI dashboard is the only fix that neutralizes the exposure; scrubbing a public repo's history is best-effort (it's been clonable/indexable). GitHub's secret-scanning alerts API returned 0 — do **not** rely on auto-revocation. A scan of all tracked files on `main` found `docs/HANDOVER.md` is the only leaked file.
+- **🔑 Rotate the local `.env` keys too.** `lct_python_backend/.sync-conflict-*.env` holds Anthropic/OpenAI/OpenRouter keys (Syncthing-copied across devices). These never reached the remote — push-protection blocked the snapshot push that included them — but rotate anyway since they were synced.
 - **🔧 Add a `.stignore`** to the Syncthing folder (ignore the git working tree) or move the repo out of the synced folder. No `.stignore` currently exists — this is the root cause of the corruption.
-- **♻️ Re-align this local checkout to `origin/main`** — PAUSE Syncthing first (else deletions propagate to other devices). Safest: fresh clone outside the synced folder after confirming backups.
+- **♻️ Re-align this local checkout to `origin/main`** — PAUSE Syncthing first (else deletions propagate to other devices). Safest: fresh clone outside the synced folder after confirming backups. ⚠️ The **478 `.sync-conflict-*` files + `.tmp_validation/` + screenshots are local-disk-only (in NO backup)** — glance at them before resetting; they vanish on re-clone.
 
 ## Learnings Captured
 - [x] Auto-memory: `project_syncthing_stale_fork_2026_05_31.md` (full diagnosis + backups + PR #53 + action items)
@@ -84,10 +87,11 @@ None code-wise — the salvage is complete and in PR #53.
 None.
 
 ## Resume Instructions
-1. Read `project_syncthing_stale_fork_2026_05_31.md` in auto-memory first.
-2. Check PR #53 status; merge if reviewed.
-3. Do the 3 Operator Cleanup items (keys, `.stignore`, re-align local) — the local folder remains unsafe to work in until re-aligned.
-4. Do NOT bulk-merge or commit from the stale local checkout.
+1. **FIRST: rotate the public OpenAI key** (Operator Cleanup #1) — it's exposed on a PUBLIC repo right now.
+2. Read `project_syncthing_stale_fork_2026_05_31.md` in auto-memory.
+3. PR #53: diagnose the red CI (`Playwright smoke` + `codex-review`) — mine vs pre-existing — before merging.
+4. Do the remaining Operator Cleanup (rotate `.env` keys, add `.stignore`, re-align local) — the local folder is unsafe to work in until re-aligned.
+5. Do NOT bulk-merge or commit from the stale local checkout.
 
 ## Calibration moments
 | Moment | Lesson |
@@ -97,6 +101,8 @@ None.
 | Snapshot push rejected by GitHub secret-scanning | Don't bypass — a real `.env` with live keys had been synced in; exclude secrets, rotate them |
 | Initial read said dev's frontend `http_language` edit would no-op (no `sttConfig` prop) | Traced the call chain (`AudioInput`→`normalizeSttSettings`→`startSession`→`connectBackendSocket`); the value IS present at runtime. Trace before concluding. |
 | Verdicts started as wishy-washy "consider" | User pushed for exact edits + rationale; precision forced verifying each against `main`'s real code |
+| Called the leaked key a "local sync-conflict" and wrote "blocked from the remote" | It was ALSO committed to **public** `origin/main` — check a secret's blast radius on the remote (visibility + tracked files + history), not just the working tree |
+| Declared the handover "done"/"exhaustive" before auditing all sources | "Is this exhaustive?" kept surfacing real gaps (codex-stt, stashes, public key, red CI). Run the exhaustiveness checklist BEFORE declaring done, not after being asked |
 
 ---
 *Handover by Claude instance (Opus 4.8) — local checkout is a stale Syncthing-mangled fork; this doc written from the clean `~/lct-salvage` worktree off origin/main.*
