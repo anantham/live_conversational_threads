@@ -53,6 +53,7 @@ _None of mine._ The merge mission is complete.
 3. **GCS lazy-import** (consciously parked by user): `gcs_helpers.py` does top-level `from google.cloud import storage` even in local mode → 5 *unrelated* tests can't collect (only `test_gcs_helpers_save_fallback` actually tests GCS). Fix = move import into the gcs-backend path. In TECH_DEBT.
 4. **7 pre-existing test failures** (in TECH_DEBT): missing `google-cloud-storage` (6 files / collection errors), speaker-naming router not mounted (404), asyncio cross-pollution flake, `semantic_level` default. None caused by this session.
 5. **Branch/ref cleanup**: `docs/adr-034-public-deployment` local branch fully merged into main (redundant, deletable). 6 `backup/*` refs on origin prunable when confident.
+6. **Startup provider-audit noise under local-only (cosmetic, verified 2026-06-06).** The egress chokepoint installs in `backend.py` lifespan BEFORE the provider audit (`check_provider_models` → cloud `/v1/models`). When `LCT_LOCAL_ONLY=on` AND a cloud provider is enabled, the audit's cloud probe now raises `CloudEgressBlocked`, caught by the audit's own `try/except` → logs `[PROVIDER AUDIT] startup audit failed (non-fatal)`. **VERIFIED HARMLESS: startup does not break and nothing leaks (both properties hold).** Polish-only fix (author's call): have `check_provider_models` skip cloud providers gracefully under local-only instead of probing+catching, for a cleaner boot log. Not a defect.
 
 ---
 
