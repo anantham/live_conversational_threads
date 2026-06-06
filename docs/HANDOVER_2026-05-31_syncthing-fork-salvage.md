@@ -14,6 +14,16 @@ PUSHED: yes — backups + salvage branch all on `origin`. PR #53 OPEN, awaits re
 
 AMBIENT DIRTY (not committed): main worktree is parked on `backup/snapshot-syncthing-wip-20260531` with Syncthing-mangled files on disk (`docs/HANDOVER.md`, `.env.example`, 478 sync-conflict files, `.tmp_validation/`, `*.png`). Deliberately left untouched — switching branches would delete the synced files and propagate deletions to other devices via Syncthing.
 
+## Salvage review scope (exhaustiveness)
+ALL local-only work sources were reviewed against current `main`, not just dev's commits:
+- **dev's 15 commits** → 4 salvaged (PR #53), 11 superseded/already-on-main/contradictory.
+- **`backup/pre-rebase-codex-stt` (4 unique-by-patch commits)** → all superseded: `2ef0301` adds ADR-017/019 (main has `ADR-019-event-sourced...`); `bc26060` is the ADR-018 proposal (main has an ADR-018 file + shipped edit-history); `0a91a06` live streaming/cloud-fallback FE (its territory reached main via merged `codex/*` PRs #3/#16; the 8 files it touches were since rewritten on main — not line-level diffed, ~0.8 confidence superseded); `e42e019` legacy-test cleanup (main's tests evolved).
+- **stash@{0}** (speaker rename/display FE + `conversation_reader` speaker-id fallback) → superseded: main shipped speaker rename (`speaker_naming_api`, SpeakerVoiceLibrary) and has `utterance_node_reconciler.py` + `speaker_naming_service._resolve_speaker_id_via_nodes` — the exact fallback IS on main (different module; the first grep checked the wrong file).
+- **stash@{1}** (frontend Input/prop wiring) → stale: based on an old PR-merge commit; overlaps main's current UI (not deep-verified, but pre-divergence base).
+- **Uncommitted working-tree delta (~8.6k lines vs dev)** → NOT novel: snapshot's `stt_ws_session.py` / `conversation_reader.py` / `speaker_naming_api.py` are byte-identical to `origin/main` — Syncthing had overwritten the stale checkout with main's own files.
+
+Net: PR #53's 4 items are the complete salvage set; nothing else survives review. Residual uncertainty is confined to two un-line-level-diffed items (`0a91a06` live FE, `stash@{1}`), both low expected yield and fully preserved in backups if revisited.
+
 ## Verbatim user quotes (chronological — times approximate, single session 2026-05-31; precise HH:MM not available in-context)
 - *"ok my goal is to do a /handover and before that review any tasks that might be worth doing while all this context is hot, the idea is to ensure this repo has everything in commits and pushed to remote, so pull from remote and do all the merge to main as much as possible or explain why not to me"* — set scope: preserve everything, then merge-to-main OR explain why not.
 - *"so synthing correptec it?"* / *"feels like we are in shit"* / *"i thought I had syncthing ignore git tracked folders!"* — anxiety + the key diagnostic lead (Syncthing ignore was expected but absent). Resolved: no `.stignore` exists; `.git` uncorrupted; remote safe.
