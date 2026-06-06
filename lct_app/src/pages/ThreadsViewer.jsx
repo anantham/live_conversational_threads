@@ -73,6 +73,10 @@ export default function ThreadsViewer() {
   const [selectedNode, setSelectedNode] = useState(null);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   const [argumentTraceFrom, setArgumentTraceFrom] = useState(null);
+  // The part of the conversation currently fanned into (null = whole call). Drives
+  // the dynamic header so the title/summary track where you've zoomed.
+  const [focusNode, setFocusNode] = useState(null);
+  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   const fileInputRef = useRef(null);
 
   const ingest = useCallback((data) => {
@@ -209,33 +213,58 @@ export default function ThreadsViewer() {
   // ---- Loaded state: the map ----------------------------------------------
   return (
     <div className="flex h-[100dvh] w-screen flex-col bg-[#fafafa] font-sans">
-      <header className="shrink-0 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-slate-400">
-              Conversation map · read-only
-            </p>
-            <h1 className="truncate text-base font-semibold text-slate-800">
-              {bundle.conversation_title || bundle.conversation_name || "Untitled"}
-            </h1>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setBundle(null);
-              setError("");
-            }}
-            className="shrink-0 rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
-          >
-            Open another
-          </button>
-        </div>
-        {bundle.executive_summary && (
-          <p className="mt-2 text-xs leading-relaxed text-slate-600">
-            {bundle.executive_summary}
-          </p>
-        )}
-      </header>
+      {(() => {
+        const TIER = { 1: "moment", 2: "idea", 3: "topic", 4: "theme", 5: "arc" };
+        const headerTitle =
+          focusNode?.title ||
+          bundle.conversation_title ||
+          bundle.conversation_name ||
+          "Untitled";
+        const headerSummary = focusNode?.summary || bundle.executive_summary || "";
+        const eyebrow = focusNode
+          ? `Zoomed into ${TIER[focusNode.level] || "a part"} · ${focusNode.depth} level${focusNode.depth > 1 ? "s" : ""} deep`
+          : "Conversation map · read-only";
+        return (
+          <header className="shrink-0 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-3">
+                  <p className="truncate text-[10px] font-medium uppercase tracking-[0.24em] text-slate-400">
+                    {eyebrow}
+                  </p>
+                  {headerSummary && (
+                    <button
+                      type="button"
+                      onClick={() => setSummaryCollapsed((c) => !c)}
+                      className="shrink-0 text-[10px] font-medium text-slate-400 hover:text-slate-700"
+                    >
+                      {summaryCollapsed ? "▸ summary" : "▾ summary"}
+                    </button>
+                  )}
+                </div>
+                <h1 className="truncate text-base font-semibold text-slate-800">
+                  {headerTitle}
+                </h1>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setBundle(null);
+                  setError("");
+                }}
+                className="shrink-0 rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
+              >
+                Open another
+              </button>
+            </div>
+            {!summaryCollapsed && headerSummary && (
+              <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                {headerSummary}
+              </p>
+            )}
+          </header>
+        );
+      })()}
 
       <div className="relative min-h-0 flex-1">
         <MinimalGraph
@@ -245,6 +274,7 @@ export default function ThreadsViewer() {
           onVisibleLevelChange={(view) => {
             setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
           }}
+          onFocusChange={setFocusNode}
           argumentTraceFrom={argumentTraceFrom}
           setArgumentTraceFrom={setArgumentTraceFrom}
         />
@@ -253,6 +283,8 @@ export default function ThreadsViewer() {
           <NodeDetail
             node={selectedNodeData}
             chunkDict={bundle.chunk_dict || {}}
+            contextNodes={flatNodes}
+            onSelectNode={setSelectedNode}
             onClose={() => setSelectedNode(null)}
             onTraceAncestors={setArgumentTraceFrom}
           />
