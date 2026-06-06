@@ -51,6 +51,7 @@ function MinimalGraphInner({
   viewportReservationKey,
   onVisibleLevelChange,
   onFocusChange,
+  chromeless = false,
   conversationId,
   initialColorMode,
   initialShowTemporalEdges,
@@ -1145,7 +1146,7 @@ function MinimalGraphInner({
   ];
 
   return (
-    <div className="relative w-full h-full">
+    <div className={`relative w-full h-full${chromeless ? " lct-graph-chromeless" : ""}`}>
       {/* ADR-032 Part B pattern 3: argument-scaffold trace banner.
           Appears at top-center when trace mode is active. */}
       {argumentTraceFrom && (
@@ -1634,6 +1635,7 @@ MinimalGraphInner.propTypes = {
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
   onFocusChange: PropTypes.func,
+  chromeless: PropTypes.bool,
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
   initialShowTemporalEdges: PropTypes.bool,
@@ -1656,6 +1658,7 @@ MinimalGraph.propTypes = {
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
   onFocusChange: PropTypes.func,
+  chromeless: PropTypes.bool,
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
   initialShowTemporalEdges: PropTypes.bool,

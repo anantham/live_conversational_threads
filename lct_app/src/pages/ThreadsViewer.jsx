@@ -77,7 +77,19 @@ export default function ThreadsViewer() {
   // the dynamic header so the title/summary track where you've zoomed.
   const [focusNode, setFocusNode] = useState(null);
   const [summaryCollapsed, setSummaryCollapsed] = useState(false);
+  // Canvas-only "focus mode": hide all chrome (header, legend, timeline, graph
+  // toolbar) so only the nodes remain. Esc exits.
+  const [focusMode, setFocusMode] = useState(false);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!focusMode) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") setFocusMode(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusMode]);
 
   const ingest = useCallback((data) => {
     try {
@@ -213,7 +225,7 @@ export default function ThreadsViewer() {
   // ---- Loaded state: the map ----------------------------------------------
   return (
     <div className="flex h-[100dvh] w-screen flex-col bg-[#fafafa] font-sans">
-      {(() => {
+      {!focusMode && (() => {
         const TIER = { 1: "moment", 2: "idea", 3: "topic", 4: "theme", 5: "arc" };
         const headerTitle =
           focusNode?.title ||
@@ -246,16 +258,26 @@ export default function ThreadsViewer() {
                   {headerTitle}
                 </h1>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setBundle(null);
-                  setError("");
-                }}
-                className="shrink-0 rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
-              >
-                Open another
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setFocusMode(true)}
+                  title="Focus mode — hide everything but the nodes (Esc to exit)"
+                  className="rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
+                >
+                  ⛶ Focus
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBundle(null);
+                    setError("");
+                  }}
+                  className="rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
+                >
+                  Open another
+                </button>
+              </div>
             </div>
             {!summaryCollapsed && headerSummary && (
               <p className="mt-2 text-xs leading-relaxed text-slate-600">
@@ -275,10 +297,21 @@ export default function ThreadsViewer() {
             setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
           }}
           onFocusChange={setFocusNode}
+          chromeless={focusMode}
           argumentTraceFrom={argumentTraceFrom}
           setArgumentTraceFrom={setArgumentTraceFrom}
         />
-        <MinimalLegend speakerColorMap={speakerColorMap} />
+        {focusMode && (
+          <button
+            type="button"
+            onClick={() => setFocusMode(false)}
+            title="Exit focus mode (Esc)"
+            className="absolute right-3 top-3 z-50 rounded-md bg-white/70 px-2.5 py-1 text-[11px] text-slate-500 shadow-sm backdrop-blur hover:bg-white hover:text-slate-800"
+          >
+            ✕ Exit focus
+          </button>
+        )}
+        {!focusMode && <MinimalLegend speakerColorMap={speakerColorMap} />}
         {selectedNodeData && (
           <NodeDetail
             node={selectedNodeData}
@@ -291,7 +324,7 @@ export default function ThreadsViewer() {
         )}
       </div>
 
-      {flatNodes.length > 0 && (
+      {!focusMode && flatNodes.length > 0 && (
         <TimelineRibbon
           graphData={bundle.graph_data}
           selectedNode={selectedNode}
