@@ -50,6 +50,7 @@ function MinimalGraphInner({
   setSelectedNode,
   viewportReservationKey,
   onVisibleLevelChange,
+  onFocusChange,
   conversationId,
   initialColorMode,
   initialShowTemporalEdges,
@@ -720,6 +721,25 @@ function MinimalGraphInner({
     effectiveSemanticLevel,
     onVisibleLevelChange,
   ]);
+
+  // Report the current drill focus so the host header can show the title/summary
+  // of the part being navigated (null = back at the whole-conversation level).
+  useEffect(() => {
+    if (!onFocusChange) return;
+    if (!drilldownPath.length) {
+      onFocusChange(null);
+      return;
+    }
+    const tail = drilldownPath[drilldownPath.length - 1];
+    const node = normalizedChunk.find((n) => n.id === tail.nodeId);
+    onFocusChange({
+      id: tail.nodeId,
+      title: node?.node_name || tail.nodeName || "",
+      summary: node?.summary || "",
+      level: tail.level,
+      depth: drilldownPath.length,
+    });
+  }, [drilldownPath, normalizedChunk, onFocusChange]);
 
   // Auto-fit the viewport when the displayed semantic tier changes (e.g.
   // initial mount lands on arcs but the camera was anchored on the
@@ -1613,6 +1633,7 @@ MinimalGraphInner.propTypes = {
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
+  onFocusChange: PropTypes.func,
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
   initialShowTemporalEdges: PropTypes.bool,
@@ -1634,6 +1655,7 @@ MinimalGraph.propTypes = {
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
+  onFocusChange: PropTypes.func,
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
   initialShowTemporalEdges: PropTypes.bool,
