@@ -150,6 +150,26 @@ const _AGREE = new Set(["supports", "agrees", "agreement", "affirms"]);
 const _DISAGREE = new Set(["rebuts", "disagrees", "disagreement", "contradicts", "refutes"]);
 
 /**
+ * Single source of truth for argument-edge stance: "sup" | "reb" | null.
+ *
+ * Both the argument-status COLOR map (buildArgumentStatusMapForNodes) and the
+ * dialectic LAYOUT (layoutDialectic in graphLayout.js) call this, so a node's
+ * fan side in the dialectic view always agrees with the fill it already shows.
+ * The match is exact + lowercased on purpose: substring matching would mislabel
+ * "disagreement" via "agree", and a broader vocabulary (e.g. "prevents",
+ * "opposes") would color and lay out the same edge differently. Anything not in
+ * these two sets is intentionally NOT an argument edge here (it may still be
+ * DRAWN by categorizeEdgeRelation — that taxonomy is for edge color, not for
+ * support/rebut status).
+ */
+export function argumentStanceOf(relationType) {
+  const rt = String(relationType || "").trim().toLowerCase();
+  if (_AGREE.has(rt)) return "sup";
+  if (_DISAGREE.has(rt)) return "reb";
+  return null;
+}
+
+/**
  * Build an argument-status map keyed by node id: { status, sup, reb }.
  * Counts INCOMING supports/rebuts per node (edges whose related_node names it).
  * Each direction of a bidirectional pair counts separately — no collapse — so a
@@ -175,8 +195,7 @@ export function buildArgumentStatusMapForNodes(nodes) {
   };
   list.forEach((n) => {
     (n.edge_relations || []).forEach((e) => {
-      const rt = String(e?.relation_type || "").toLowerCase();
-      const kind = _AGREE.has(rt) ? "sup" : _DISAGREE.has(rt) ? "reb" : null;
+      const kind = argumentStanceOf(e?.relation_type);
       if (!kind) return;
       const tgt = resolveTarget(e?.related_node);
       if (tgt && map[tgt.id]) map[tgt.id][kind] += 1;
