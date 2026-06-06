@@ -64,6 +64,40 @@ When the user says something **tangential, ambitious, or out-of-scope** while yo
 - Write a short "Test Intent" (2-5 bullets) before implementation; store it in the test file docstring or tests/intent/<feature>.md.
 - If test intent changes mid-implementation, update it and note why in WORKLOG.
 
+## TEST_DESIGN_PRINCIPLES
+
+**Core tenet:** test behavior through public APIs, not implementation details.
+
+### DO test
+- Public API surface (functions / methods exposed to callers)
+- Observable outcomes (DB records, file contents, emitted metrics)
+- Side effects (messages sent, logs written, HTTP calls made)
+- Error conditions and edge cases reached *through* public interfaces
+
+### DON'T test
+- Private helpers (renaming them breaks tests for no behavior change)
+- Internal state / helper call-order
+- `mock.called` without asserting the actual effect it should have produced
+- Internal data structures unless they are part of the public contract
+
+### Anti-patterns we've been bitten by
+1. **Implementation coupling** — asserting a private helper ran instead of asserting the public method's observable result + side effect. Prefer `result == X and store.count() == 0` over `obj._should_skip(x)`.
+2. **Mock-called without effect check** — `assert worker.fetch.called` proves nothing on its own; also assert the data it should have persisted (e.g. `len(store.get(id)) == 100`).
+3. **Fixture type-mismatch** — constructing a fixture with the wrong field name (`User(handle=...)` when the signature is `username`) raises at setup and masks the real test; match the actual signature.
+4. **Fragile assumptions** — stubbing a return as `None`/minimal when realistic code needs a complete object; build a realistic fixture so the test survives internal changes.
+
+### When implementation testing is acceptable
+Complex algorithms (test intermediate steps), performance-critical paths (test the optimization logic), security-sensitive code (test sanitization / auth) — but always supplement with behavioral integration tests.
+
+### Checklist before writing / reviewing a test
+1. Does it survive refactoring (rename a helper, reorder code)?
+2. Does it verify observable outcomes (DB, files, metrics, logs)?
+3. Can it run without mocking internal helpers?
+4. Does it use realistic fixtures (complete objects, not minimal stubs)?
+5. Will it catch a real bug (not just "code was called")?
+
+Reference: "Test behavior, not implementation."
+
 ---
 
 Below is the Bug Squashing protocol that might be invoked when we are dealing with difficult bugs that need careful precise repair. This protocol is designed to prevent you from goodharting and trying to quickly get the app working. The idea is to do it beautifully, completely like a work of art.
@@ -310,6 +344,8 @@ ANTI_PATTERNS (avoid)
     
 7. Scope Creeper — expanding beyond approved boundaries
     
+8. Schema Guesser — assuming the field names of an API response / config / DB row without inspecting a real instance first. Print the keys (or a sample) of the actual response before writing parsing code; a wrong key name silently returns empty instead of failing loudly, which can burn an entire debugging session. Read the API docs; don't infer field names from a different endpoint.
+    
 
 ---
 
@@ -397,7 +433,7 @@ footers other than BREAKING CHANGE: <description> may be provided and follow a c
 REMEMBER  
 "We are peers bridging computational and biological intelligence. Our strength is patient investigation, systematic validation, and sustainable building. When uncertain, pause and seek human wisdom."
 
-Version: 2.1.0 (shared core — synced across repos via ~/.claude/scripts/sync_agents.py)  
+Version: 2.2.0 (shared core — synced across repos via ~/.claude/scripts/sync_agents.py)  
 Last_Updated: 2026-06-07  
 Next_Review: on first loop‑limit or context‑overflow incident
 
@@ -415,3 +451,12 @@ Concrete paths for the shared-core protocols above (everything else lives in the
 - Per-project memory -> `~/.claude/projects/C--Users-adity-Documents-Ongoing-Local-live-conversational-threads/memory/` (auto-memory; read `MEMORY.md` index at session start)
 - App code lives under `lct_app/` (React frontend); Python backend at repo root.
 - Note: this repo's `CLAUDE.md` is a one-line pointer to `AGENTS.md` — AGENTS.md is the single source of truth.
+
+## Design Context (frontend)
+
+Strategic + visual design context for `lct_app/` lives in two root files (written via the `/impeccable` skill); read them before any UI work:
+
+- `PRODUCT.md` — register (**product**, product-primary with one brand-adjacent surface: the public `.threads` opener), users (the author + close collaborators; a personal/research instrument), purpose, and the anti-references (NOT cluttered/dense-to-a-fault, NOT loud/gamified).
+- `DESIGN.md` — the visual system (Stitch format). North Star **"The Scholar's Garden"**: warm paper ground (`#fdfdfb`→`#f4f2ee`), near-black ink (`#1e293b`), one **amber** accent (`#d97706`) held in reserve for provenance/CTAs, and a cool spectral hierarchy (teal→blue→indigo→purple→slate) reserved for graph meaning. Machine-readable token sidecar at `.impeccable/design.json`.
+
+Five design principles guide UI work: (1) the graph is **calm** and never competes for attention (ADR-011); (2) **offer, never direct**; (3) **drill, don't dump** (highest tier first, detail on demand); (4) the map is **alive** — it accumulates and breathes; (5) everything is **traceable to the utterance**.
