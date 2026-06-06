@@ -22,7 +22,11 @@ ALL local-only work sources were reviewed against current `main`, not just dev's
 - **stash@{1}** (frontend Input/prop wiring) → stale: based on an old PR-merge commit; overlaps main's current UI (not deep-verified, but pre-divergence base).
 - **Uncommitted working-tree delta (~8.6k lines vs dev)** → NOT novel: snapshot's `stt_ws_session.py` / `conversation_reader.py` / `speaker_naming_api.py` are byte-identical to `origin/main` — Syncthing had overwritten the stale checkout with main's own files.
 
-Net: PR #53's 4 items are the complete salvage set; nothing else survives review. Residual uncertainty is confined to two un-line-level-diffed items (`0a91a06` live FE, `stash@{1}`), both low expected yield and fully preserved in backups if revisited.
+Net: PR #53's 4 items are the complete salvage set; nothing else survives review.
+
+**Line-level verification of the two formerly-uncertain items (now confirmed superseded, zero residual uncertainty):**
+- `0a91a06` (live streaming FE) — every distinctive symbol it introduced is present on `main`: `getProviderStatus`, `STATUS_BADGE_STYLES`, `cloudProviderChecks`, `onProviderTest`, status codes (`quota_exceeded`…), `emitProcessingStatus`, `fallback_candidates`, and the latency fields `completedGraphLatencyMs`/`patchNodeCount`/`sttAwaitingMs`/`graphWorkingMs`.
+- `stash@{1}` — dependency-lock noise (`package-lock.json` esbuild bumps) + ancient README/FEATURES edits (base = PR #8) + prop-wiring into the retired `Input.jsx`. The live concepts (`chunkDict` 16 files, `graphDataFromSocket` 4, `conversationId` 45) all exist on `main`, relocated into `NewConversation`/`AudioInput`.
 
 ## Verbatim user quotes (chronological — times approximate, single session 2026-05-31; precise HH:MM not available in-context)
 - *"ok my goal is to do a /handover and before that review any tasks that might be worth doing while all this context is hot, the idea is to ensure this repo has everything in commits and pushed to remote, so pull from remote and do all the merge to main as much as possible or explain why not to me"* — set scope: preserve everything, then merge-to-main OR explain why not.
