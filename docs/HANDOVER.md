@@ -2,6 +2,21 @@
 
 The newest handovers are **dated files** in `docs/` (newest first):
 
+- `HANDOVER_2026-06-07_threads-viewer-ux-crossconvo-privacy.md` — `.threads`
+  viewer UX sprint, 8 features shipped + live on threads.adityaarpitha.com
+  (fan-out drill-down, canvas-only focus mode, dynamic+collapsible header,
+  in-context "who said what" drawer, timeline progress %, plain-language
+  tooltips, /browse public opener, **Argument-status color mode**). Cross-
+  conversation intelligence: 5-meeting interconnections + a 23-meeting /
+  15-month "Two Minds" relationship map (codex GPT-5.5 extraction beats local
+  qwen's edge ceiling). **Privacy frontier pipeline PROVEN** (redact via
+  IndrasNet REDACTION_MAP → codex on pseudonyms → restore → leak-verify;
+  `vatsal_gpt5_private.threads`) and shared with Vatsal, who's now a
+  collaborator. Pending: #11 productionize the privacy boundary + ADR, #10
+  Phase-2 dialectic layout, #12 vocab→WhisperX re-transcription. **Landmine:**
+  a parallel session has uncommitted MinimalGraph cold-open fix + WORKLOG/
+  DESIGN/PRODUCT/impeccable — don't clobber.
+
 - `HANDOVER_2026-05-30_inference-catalog-3lane-settings-crux-techdebt.md` —
   built the inference backend catalog + 3-lane Settings UI + per-provider LLM
   telemetry + crux detection (ADR-037/035); fixed 2 security holes (audio
