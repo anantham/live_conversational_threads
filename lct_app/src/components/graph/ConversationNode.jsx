@@ -172,8 +172,8 @@ function ExpandButton({ count, onExpand }) {
     <button
       type="button"
       className="nodrag nopan"
-      title="Fan out this node's children"
-      aria-label={`Fan out ${count || ""} children`.trim()}
+      title="Expand to see what's inside"
+      aria-label={`Expand ${count || ""} ${count === 1 ? "item" : "items"}`.trim()}
       onPointerDown={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
       onClick={(e) => {
@@ -183,7 +183,7 @@ function ExpandButton({ count, onExpand }) {
       style={expandButtonStyle}
     >
       <span aria-hidden="true" style={{ fontSize: "13px", lineHeight: 1 }}>⊕</span>
-      <span>fan out{count ? ` ${count}` : ""}</span>
+      <span>expand{count ? ` ${count}` : ""}</span>
     </button>
   );
 }

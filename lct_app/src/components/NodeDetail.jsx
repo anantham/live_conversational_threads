@@ -767,7 +767,7 @@ export default function NodeDetail({
             className="self-start rounded border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100 transition-colors"
             title="Dim everything except the nodes that support, imply, or clarify this one. Press Esc to exit."
           >
-            ↑ Trace ancestors
+            ↑ Show what led here
           </button>
         )}
 

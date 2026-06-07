@@ -1332,7 +1332,7 @@ function MinimalGraphInner({
                 : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
           }`}
         >
-          {showTemporalEdges ? "Temporal on" : "Temporal off"}
+          {showTemporalEdges ? "Time order on" : "Time order off"}
         </button>
         <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
         <ColorModeToggle mode={colorMode} onChange={handleColorModeChange} />
