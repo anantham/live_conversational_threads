@@ -196,7 +196,7 @@ export default function ThreadsViewer() {
           </h1>
           <p className="text-sm text-slate-500">
             Drop it anywhere on this screen, or pick a file below. Everything
-            renders in your browser — nothing is uploaded.
+            renders in your browser. Nothing is uploaded.
           </p>
           <button
             type="button"
