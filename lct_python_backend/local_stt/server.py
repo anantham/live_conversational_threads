@@ -77,7 +77,66 @@ def health() -> dict:
         "backend": "mlx-metal-ane",
         "requests": _state["requests"],
         "failures": _state["failures"],
+        "diarization": "available" if _diar.get("ok") else (_diar.get("error") or "not loaded"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Optional speaker diarization (pyannote speaker-diarization-3.1). Loaded lazily
+# and cached (the pipeline is expensive to construct). Gated model -> needs an HF
+# token (HF_TOKEN env, else the cached ~/.cache/huggingface/token). On Apple
+# Silicon, MPS support is partial; default device is configurable and falls back
+# to CPU on any device error. Kept optional so non-diarized calls stay fast.
+# ---------------------------------------------------------------------------
+_diar: dict = {"pipeline": None, "device": None, "error": None, "ok": False}
+
+
+def _get_diarizer():
+    """Lazy-load + cache the pyannote diarization pipeline. Returns the pipeline or None
+    (with _diar['error'] set). Device via LOCAL_STT_DIARIZE_DEVICE (auto|mps|cpu)."""
+    if _diar["pipeline"] is not None or _diar["error"] is not None:
+        return _diar["pipeline"]
+    try:
+        import torch
+        from pyannote.audio import Pipeline
+        token = os.getenv("HF_TOKEN") or os.getenv("HUGGINGFACE_TOKEN") or True  # True -> cached token
+        t0 = time.perf_counter()
+        try:
+            pipe = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=token)
+        except TypeError:                            # pyannote.audio < 4 used use_auth_token=
+            pipe = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=token)
+        want = os.getenv("LOCAL_STT_DIARIZE_DEVICE", "auto").strip().lower()
+        dev = ("mps" if torch.backends.mps.is_available() else "cpu") if want == "auto" else want
+        try:
+            pipe.to(torch.device(dev))
+        except Exception as e:  # MPS op gaps etc. -> CPU is always safe
+            log.warning("diarizer .to(%s) failed (%s); falling back to cpu", dev, e)
+            dev = "cpu"; pipe.to(torch.device("cpu"))
+        _diar.update(pipeline=pipe, device=dev, ok=True)
+        log.info("diarizer loaded: pyannote/speaker-diarization-3.1 on %s in %.1fs", dev, time.perf_counter() - t0)
+    except Exception as e:  # missing dep / gated-model auth / download failure — surface it
+        _diar["error"] = f"{type(e).__name__}: {e}"
+        log.exception("diarizer load FAILED")
+    return _diar["pipeline"]
+
+
+def _assign_speakers(segments, diarization):
+    """Tag each transcript segment with the speaker label of MAX temporal overlap from the
+    pyannote turns. -> (segments_with_speaker, sorted_speaker_list).
+
+    pyannote 3.x returns an Annotation (.itertracks); 4.x returns a DiarizeOutput whose
+    .speaker_diarization IS that Annotation. Normalize to the Annotation either way."""
+    ann = diarization if hasattr(diarization, "itertracks") else getattr(diarization, "speaker_diarization", diarization)
+    turns = [(turn.start, turn.end, spk) for turn, _, spk in ann.itertracks(yield_label=True)]
+    for seg in segments:
+        s, e = float(seg.get("start") or 0.0), float(seg.get("end") or 0.0)
+        best, best_ov = None, 0.0
+        for ts, te, spk in turns:
+            ov = min(e, te) - max(s, ts)
+            if ov > best_ov:
+                best_ov, best = ov, spk
+        seg["speaker"] = best
+    return segments, sorted({t[2] for t in turns})
 
 
 @app.post("/v1/audio/transcriptions")
@@ -86,13 +145,16 @@ async def transcribe(
     model: str | None = Form(None),
     language: str | None = Form(None),
     response_format: str = Form("json"),
+    diarize: str | None = Form(None),
 ) -> JSONResponse:
     """OpenAI-compatible transcription → {text, segments[], language}.
 
-    Diarization is intentionally NOT done here — it's a separate on-device backend
-    (Senko / FluidAudio). This returns words + timestamps; speakers are attached
-    separately when diarization is on.
+    Optional speaker diarization: pass `diarize=true` to also run pyannote
+    speaker-diarization-3.1 and tag each segment with a `speaker` (+ a top-level
+    `speakers` list and `diarization` timing). Non-diarized calls skip it entirely
+    and stay fast. Response stays OpenAI-compatible (top-level `text`).
     """
+    want_diarize = (diarize or "").strip().lower() in ("1", "true", "yes", "on")
     import mlx_whisper  # lazy import so module import / --help stays cheap
 
     _state["requests"] += 1
@@ -112,7 +174,13 @@ async def transcribe(
         tmp_path = tmp.name
 
     try:
-        kwargs: dict = {"path_or_hf_repo": model or DEFAULT_MODEL}
+        # OpenAI-compatible clients send a `model` form field (e.g. "whisper-1",
+        # "whisper-large-v3-turbo"). This server serves ONE preloaded model, so IGNORE
+        # the client value and always use DEFAULT_MODEL — otherwise mlx-whisper tries to
+        # resolve the client string as an HF repo and 500s ("Repository Not Found").
+        if model and model != DEFAULT_MODEL:
+            log.info("ignoring client model=%r; serving preloaded %s", model, DEFAULT_MODEL)
+        kwargs: dict = {"path_or_hf_repo": DEFAULT_MODEL}
         if language and language.strip().lower() not in ("", "auto", "none"):
             kwargs["language"] = language.strip()
 
@@ -128,10 +196,29 @@ async def transcribe(
         audio_dur = segments[-1]["end"] if segments and segments[-1]["end"] else None
         _state["ready"] = True
         text = (result.get("text") or "").strip()
+
+        diar_info = None
+        speakers = None
+        if want_diarize:
+            pipe = _get_diarizer()
+            if pipe is None:                          # missing dep / auth / download — report, don't crash
+                diar_info = {"error": _diar.get("error") or "diarizer unavailable"}
+                log.warning("diarize requested but unavailable: %s", diar_info["error"])
+            else:
+                d0 = time.perf_counter()
+                diarization = pipe(tmp_path)          # tmp file still exists (unlinked in finally)
+                segments, speakers = _assign_speakers(segments, diarization)
+                d_elapsed = time.perf_counter() - d0
+                diar_info = {"device": _diar.get("device"), "speakers": speakers, "n_speakers": len(speakers),
+                             "elapsed_seconds": round(d_elapsed, 3),
+                             "realtime_x": round(audio_dur / d_elapsed, 2) if (audio_dur and d_elapsed) else None}
+                log.info("diarize ok: %d speaker(s) on %s in %.2fs (%.1fx realtime)", len(speakers),
+                         _diar.get("device"), d_elapsed, (audio_dur / d_elapsed) if (audio_dur and d_elapsed) else 0.0)
+
         log.info(
-            "transcribe ok: file=%s audio=%.1fs in %.2fs (%.1fx realtime) segs=%d lang=%s chars=%d",
+            "transcribe ok: file=%s audio=%.1fs in %.2fs (%.1fx realtime) segs=%d lang=%s chars=%d diarize=%s",
             file.filename, audio_dur or 0.0, elapsed,
-            (audio_dur / elapsed) if audio_dur else 0.0, len(segments), result.get("language"), len(text),
+            (audio_dur / elapsed) if audio_dur else 0.0, len(segments), result.get("language"), len(text), want_diarize,
         )
         if DEBUG:
             log.debug("transcript preview: %s", text[:300])
@@ -139,8 +226,11 @@ async def transcribe(
             "text": text,
             "segments": segments,
             "language": result.get("language"),
+            "speakers": speakers,
+            "diarization": diar_info,
             "_engine": "mlx-whisper",
-            "_model": model or DEFAULT_MODEL,
+            "_model": DEFAULT_MODEL,
+            "_requested_model": model,
             "_elapsed_seconds": round(elapsed, 3),
         })
     except Exception as exc:  # fail loudly, never silently (AGENTS.md §9)
