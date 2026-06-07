@@ -110,7 +110,7 @@ function ConversationNodeImpl({ data, selected }) {
     border: borderShorthand,
     borderRadius: "8px",
     padding: "8px 12px",
-    fontSize: "11px",
+    fontSize: "12px",
     fontFamily: "Inter, sans-serif",
     color: "#1e293b",
     cursor: "pointer",
@@ -223,22 +223,27 @@ const handleStyle = {
   pointerEvents: "none",
 };
 
+// Type bumped toward the DESIGN.md body scale: the card summary is the primary
+// reading content on the macro view and sat at 10px (the detector's tiny-text
+// flag). Title 13 / summary 12 with open leading reads comfortably while still
+// fitting inside the layout's 280px node-height reservation. Weight (600 vs 400)
+// carries the title→summary hierarchy so the size step can stay gentle.
 const titleStyle = {
   fontWeight: 600,
-  fontSize: "11px",
-  lineHeight: 1.3,
+  fontSize: "13px",
+  lineHeight: 1.35,
   marginBottom: "3px",
 };
 
 const summaryStyle = {
   fontWeight: 400,
-  fontSize: "10px",
+  fontSize: "12px",
   color: "#475569",
-  lineHeight: 1.35,
+  lineHeight: 1.5,
 };
 
 const speakerStyle = {
-  fontSize: "9px",
+  fontSize: "10px",
   color: "#64748b",
   marginTop: "3px",
 };
