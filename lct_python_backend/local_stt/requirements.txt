@@ -4,3 +4,12 @@ mlx-whisper>=0.4.0      # Whisper on MLX (Metal/ANE); multilingual incl. Malayal
 fastapi>=0.115.0
 uvicorn>=0.34.0
 python-multipart>=0.0.20  # required for multipart file uploads
+
+# --- optional: speaker diarization (diarize=true) ---
+# Heavy (torch ~GBs). pyannote 4.x loads pyannote/speaker-diarization-3.1 (a GATED model:
+# needs an HF token — the server reads HF_TOKEN/HUGGINGFACE_TOKEN, else the cached
+# ~/.cache/huggingface/token). Runs on MPS (Metal) on Apple Silicon (~10-16x realtime),
+# CPU fallback. Only required if you POST diarize=true; transcription works without these.
+pyannote.audio>=4.0
+torch>=2.2
+torchaudio>=2.2
