@@ -70,3 +70,15 @@
 .lct-graph-chromeless > .absolute {
   display: none !important;
 }
+
+/* Touch devices need larger tap targets than the calm desktop chrome provides.
+   Scoped to coarse pointers (touch / stylus) so mouse precision on desktop keeps
+   its compact density. Targets WCAG 2.5.5 (44px) for the small graph-chrome,
+   header, and legend controls without bloating the pointer-fine layout. */
+@media (pointer: coarse) {
+  button,
+  summary,
+  [role="button"] {
+    min-height: 44px;
+  }
+}
