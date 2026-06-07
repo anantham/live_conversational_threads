@@ -1277,7 +1277,7 @@ function MinimalGraphInner({
             </svg>
             Display
           </summary>
-          <div className="absolute bottom-full left-0 mb-2 flex flex-wrap items-center gap-1 bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-1.5 max-w-[calc(100vw-2rem)] animate-slideIn">
+          <div className="absolute bottom-full left-0 mb-2 flex flex-wrap items-center gap-1 bg-white/95 rounded-lg shadow-md border border-gray-200 p-1.5 max-w-[calc(100vw-2rem)] animate-slideIn">
             <button
               onClick={() => {
                 setAutoFollow((v) => {
@@ -1365,7 +1365,7 @@ function MinimalGraphInner({
 
       {/* Zoom / cluster HUD — top-left */}
       <div className="absolute top-3 left-3 right-3 z-40 flex items-center gap-2 select-none overflow-x-auto flex-nowrap whitespace-nowrap">
-        <div className="flex-shrink-0 flex items-center gap-1.5 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm px-2.5 py-1.5">
+        <div className="flex-shrink-0 flex items-center gap-1.5 rounded-md bg-white/95 border border-gray-200 shadow-sm px-2.5 py-1.5">
           <span className="text-[10px] font-mono text-gray-500">{Math.round(zoomLevel * 100)}%</span>
           <span className="text-[9px] text-gray-300">|</span>
           {clusterLevelLabel ? (
@@ -1401,7 +1401,7 @@ function MinimalGraphInner({
         </div>
         {/* Drill-down breadcrumb — click any crumb to jump back to that level. */}
         {drilldownPath.length > 0 && (
-          <div className="flex-shrink-0 flex items-center gap-1 text-[11px] text-gray-600 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-md px-2 py-1">
+          <div className="flex-shrink-0 flex items-center gap-1 text-[11px] text-gray-600 bg-white/95 border border-gray-200 shadow-sm rounded-md px-2 py-1">
             <button
               type="button"
               className="text-blue-600 hover:underline font-medium cursor-pointer"
@@ -1437,7 +1437,7 @@ function MinimalGraphInner({
           </div>
         )}
         {/* Zoom scale — click to lock semantic or clustered level, click again to unlock */}
-        <div className="flex-shrink-0 flex items-center gap-0 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm overflow-hidden">
+        <div className="flex-shrink-0 flex items-center gap-0 rounded-md bg-white/95 border border-gray-200 shadow-sm overflow-hidden">
           {(displayMode === "semantic"
             ? AUTHORED_LEVELS
             : [
@@ -1496,7 +1496,7 @@ function MinimalGraphInner({
 
       {/* Edge hover tooltip — transient, top-right */}
       {hoveredEdge && !clickedEdge && (
-        <div className="absolute top-4 right-4 z-30 max-w-xs rounded-md bg-white/90 backdrop-blur px-3 py-2 text-xs text-gray-700 shadow-sm border border-gray-200 pointer-events-none">
+        <div className="absolute top-4 right-4 z-30 max-w-xs rounded-md bg-white/95 px-3 py-2 text-xs text-gray-700 shadow-sm border border-gray-200 pointer-events-none">
           <span className="font-medium capitalize">{hoveredEdge.relationType}</span>
           {hoveredEdge.relationText && (
             <p className="mt-0.5 text-gray-500 line-clamp-2">{hoveredEdge.relationText}</p>
@@ -1601,14 +1601,14 @@ function MinimalGraphInner({
       {normalizedChunk.length > 0 && (
         <div className="absolute bottom-14 left-4 z-40">
           <details className="group">
-            <summary className="cursor-pointer list-none flex items-center gap-1.5 px-2.5 py-1.5 bg-white/85 hover:bg-white/95 backdrop-blur rounded-full shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 transition opacity-80 hover:opacity-100 text-[10px] font-medium">
+            <summary className="cursor-pointer list-none flex items-center gap-1.5 px-2.5 py-1.5 bg-white/85 hover:bg-white/95 rounded-full shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 transition opacity-80 hover:opacity-100 text-[10px] font-medium">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 16v-4M12 8h.01" />
               </svg>
               Colors
             </summary>
-            <div className="absolute bottom-full left-0 mb-2 bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-2 min-w-[180px] animate-slideIn">
+            <div className="absolute bottom-full left-0 mb-2 bg-white/95 rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-2 min-w-[180px] animate-slideIn">
               {displayMode === "semantic" ? (
                 <>
                   <div>
