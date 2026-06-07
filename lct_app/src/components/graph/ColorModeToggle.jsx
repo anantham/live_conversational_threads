@@ -20,7 +20,7 @@ export default function ColorModeToggle({ mode, onChange, disabled = false }) {
       onClick={handleClick}
       disabled={disabled}
       aria-label={`${colorModeLabel(safeMode)} (click to cycle)`}
-      title={`${colorModeLabel(safeMode)} — click to cycle through tier / speaker / time / argument (support vs rebut status)`}
+      title={`${colorModeLabel(safeMode)} — click to cycle through tier / speaker / time / argument (support vs rebut) / date (one color per meeting)`}
       className={`px-2 py-1 rounded text-[10px] font-medium border transition ${
         disabled
           ? "border-gray-200 text-gray-300 cursor-not-allowed"
@@ -72,6 +72,18 @@ function swatchStyle(mode) {
       height: 8,
       borderRadius: "50%",
       background: "conic-gradient(from 0deg, #a78bfa, #4ade80, #f87171, #a78bfa)",
+      display: "inline-block",
+    };
+  }
+  if (mode === "date") {
+    // One color per meeting, ordered by date. Hard stops (stepped, not smooth)
+    // distinguish it from the temporal gradient: categorical buckets, not a flow.
+    return {
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      background:
+        "linear-gradient(90deg, hsl(0,62%,80%) 0 33%, hsl(140,62%,80%) 33% 66%, hsl(280,62%,80%) 66% 100%)",
       display: "inline-block",
     };
   }

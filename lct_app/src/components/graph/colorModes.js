@@ -17,7 +17,7 @@
 
 import { SPEAKER_COLORS } from "../graphConstants";
 
-export const COLOR_MODES = Object.freeze(["tier", "speaker", "temporal", "argument"]);
+export const COLOR_MODES = Object.freeze(["tier", "speaker", "temporal", "argument", "date"]);
 export const DEFAULT_COLOR_MODE = "tier";
 
 const COLOR_MODE_LABELS = {
@@ -25,6 +25,7 @@ const COLOR_MODE_LABELS = {
   speaker: "Color: Speaker",
   temporal: "Color: Time",
   argument: "Color: Argument",
+  date: "Color: Date",
 };
 
 export function colorModeLabel(mode) {
@@ -120,6 +121,54 @@ export function buildTemporalColorMapForNodes(nodes) {
     map[n.id] = `hsl(${hue}, 70%, 82%)`;
   });
 
+  return map;
+}
+
+/**
+ * Build a date/meeting color map keyed by node id. Unlike `temporal` (a smooth
+ * gradient by position WITHIN one conversation), this is CATEGORICAL: every node
+ * from the same meeting gets the same color, and different meetings get distinct
+ * colors. Meetings are sorted chronologically and assigned evenly-spaced hues,
+ * so the palette also reads as a timeline (oldest = red ... newest = violet).
+ *
+ * This is meant for a COMBINED multi-meeting artifact where each node carries a
+ * meeting key. On a single-meeting artifact there is one key, so every node is
+ * one calm color (expected). Meeting key resolution (first hit wins):
+ *   meeting_date | conversation_date | source_date | meeting_id |
+ *   conversation_id | conversation_title | YYYY-MM-DD derived from timestamp_start.
+ */
+export function buildDateColorMapForNodes(nodes) {
+  const map = {};
+  const list = nodes || [];
+  if (list.length === 0) return map;
+
+  const keyOf = (n) => {
+    const explicit =
+      n.meeting_date || n.conversation_date || n.source_date ||
+      n.meeting_id || n.conversation_id || n.conversation_title;
+    if (explicit) return String(explicit);
+    const ts = n.timestamp_start;
+    if (typeof ts === "number" && Number.isFinite(ts) && ts > 1e9) {
+      const ms = ts > 1e12 ? ts : ts * 1000;
+      return new Date(ms).toISOString().slice(0, 10); // YYYY-MM-DD
+    }
+    return null;
+  };
+
+  // Distinct keys, chronologically (ISO date / title strings sort sensibly).
+  const keys = [...new Set(list.map(keyOf).filter(Boolean))].sort();
+  const n = keys.length;
+  const colorByKey = {};
+  keys.forEach((k, i) => {
+    // One meeting -> a single calm blue; many -> spread across the spectrum.
+    const hue = n <= 1 ? 210 : (i / (n - 1)) * 280;
+    colorByKey[k] = `hsl(${hue}, 62%, 80%)`;
+  });
+
+  list.forEach((nd) => {
+    const k = keyOf(nd);
+    map[nd.id] = (k && colorByKey[k]) || NEUTRAL_FILL;
+  });
   return map;
 }
 
@@ -224,6 +273,7 @@ export function resolveNodeColors({
   speakerColorMap,
   temporalColorMap,
   argumentStatusMap,
+  dateColorMap,
 }) {
   if (!node) return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
 
@@ -235,6 +285,11 @@ export function resolveNodeColors({
 
   if (mode === "temporal") {
     const fill = temporalColorMap?.[node.id] || NEUTRAL_FILL;
+    return { fill, border: deriveBorder(fill) };
+  }
+
+  if (mode === "date") {
+    const fill = dateColorMap?.[node.id] || NEUTRAL_FILL;
     return { fill, border: deriveBorder(fill) };
   }
 
