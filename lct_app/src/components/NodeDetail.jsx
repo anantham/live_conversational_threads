@@ -439,12 +439,12 @@ export default function NodeDetail({
     <div className="fixed left-0 right-0 bottom-0 max-h-[75vh] rounded-t-2xl border-t border-gray-200 bg-white shadow-lg z-40 flex flex-col lct-detail-enter sm:left-auto sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:max-w-[85vw] sm:rounded-t-none sm:border-t-0 sm:border-l">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <h3
+        <h2
           className="text-sm font-semibold text-gray-800 pr-2 break-words leading-snug"
           title={safeNode.node_name}
         >
           {safeNode.node_name}
-        </h3>
+        </h2>
         <button
           onClick={onClose}
           className="p-3 text-gray-400 hover:text-gray-600 transition shrink-0"

@@ -70,6 +70,12 @@ export default function ThreadsViewer() {
   const [bundle, setBundle] = useState(null);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
+  // True while a ?src= hosted artifact is fetching, so a recipient who opened a
+  // shared link sees a loading state — not the "drop a file" prompt — until the
+  // map arrives. Seeded from the URL so the very first render is already loading.
+  const [srcLoading, setSrcLoading] = useState(
+    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("src"),
+  );
   const [selectedNode, setSelectedNode] = useState(null);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   const [argumentTraceFrom, setArgumentTraceFrom] = useState(null);
@@ -127,6 +133,7 @@ export default function ThreadsViewer() {
     const src = new URLSearchParams(window.location.search).get("src");
     if (!src) return;
     let cancelled = false;
+    setSrcLoading(true);
     (async () => {
       try {
         const resp = await fetch(src);
@@ -135,6 +142,8 @@ export default function ThreadsViewer() {
         if (!cancelled) ingest(data);
       } catch (e) {
         if (!cancelled) setError(`Could not load artifact: ${String(e?.message || e)}`);
+      } finally {
+        if (!cancelled) setSrcLoading(false);
       }
     })();
     return () => {
@@ -164,6 +173,21 @@ export default function ThreadsViewer() {
         : null,
     [flatNodes, selectedNode],
   );
+
+  // ---- Loading state: fetching a hosted ?src= artifact --------------------
+  if (!bundle && srcLoading && !error) {
+    return (
+      <div className="flex h-[100dvh] w-screen items-center justify-center bg-[#fafafa] font-sans">
+        <div className="flex flex-col items-center gap-3 text-slate-500">
+          <span
+            aria-hidden="true"
+            className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600"
+          />
+          <p className="text-sm">Loading the conversation map…</p>
+        </div>
+      </div>
+    );
+  }
 
   // ---- Empty state: drop zone ---------------------------------------------
   if (!bundle) {
