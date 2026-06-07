@@ -229,14 +229,15 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="p-3 bg-white/70 hover:bg-white/90 backdrop-blur rounded-full shadow-sm border border-gray-200 text-gray-400 hover:text-gray-600 transition opacity-50 hover:opacity-100"
-          title="Legend"
-          aria-label="Show legend"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/85 hover:bg-white/95 backdrop-blur rounded-full shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 transition opacity-80 hover:opacity-100 text-[10px] font-medium"
+          title="Speaker colors and edge key"
+          aria-label="Show legend: speakers and edge colors"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="10" />
             <path d="M12 16v-4M12 8h.01" />
           </svg>
+          Legend
         </button>
       )}
     </div>
