@@ -30,6 +30,7 @@ import {
   buildSpeakerColorMapForNodes,
   buildTemporalColorMapForNodes,
   buildArgumentStatusMapForNodes,
+  buildDateColorMapForNodes,
   resolveNodeColors,
 } from "./graph/colorModes";
 import ColorModeToggle from "./graph/ColorModeToggle";
@@ -193,6 +194,11 @@ function MinimalGraphInner({
     () => buildArgumentStatusMapForNodes(normalizedChunk),
     [normalizedChunk]
   );
+  // Date/meeting map: id -> categorical color per meeting (combined corpus).
+  const dateColorMap = useMemo(
+    () => buildDateColorMapForNodes(normalizedChunk),
+    [normalizedChunk]
+  );
 
   // Tap-friendly drill-down. Same fan-out as handleNodeDoubleClick, but callable
   // from a node's ⊕ control by id — so it works on touch (double-tap is eaten by
@@ -226,6 +232,7 @@ function MinimalGraphInner({
         speakerColorMap,
         temporalColorMap,
         argumentStatusMap,
+        dateColorMap,
       });
       // Non-color cue for the argument view: the actual support/rebut counts.
       let argStatusLabel = null;
@@ -307,7 +314,7 @@ function MinimalGraphInner({
         },
       };
     });
-  }, [colorMode, speakerColorMap, temporalColorMap, argumentStatusMap, handleExpand]);
+  }, [colorMode, speakerColorMap, temporalColorMap, argumentStatusMap, dateColorMap, handleExpand]);
 
   const buildRfEdgesForSource = useCallback((sourceNodes) => {
     if (hideEdges) return [];
