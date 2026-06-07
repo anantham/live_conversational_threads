@@ -138,14 +138,14 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
         <div className="bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-3 min-w-[220px] animate-slideIn">
           <button
             onClick={() => setOpen(false)}
-            className="absolute top-1 right-1 p-2 text-gray-400 hover:text-gray-600 text-xs"
+            className="absolute top-1 right-1 p-2 text-gray-500 hover:text-gray-600 text-xs"
           >
             close
           </button>
 
           {displaySpeakers.length > 0 && (
             <div>
-              <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">
+              <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">
                 Speakers
               </span>
               <div className="mt-2 space-y-2">
@@ -165,7 +165,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
                           <div className="text-gray-700 font-medium truncate">
                             {speaker.display_name || speakerId}
                           </div>
-                          <div className="text-[10px] text-gray-400">
+                          <div className="text-[10px] text-gray-500">
                             {speakerId}
                             {speaker.utterance_count > 0 ? ` • ${speaker.utterance_count} turns` : ""}
                             {confirmed ? " • confirmed" : ""}
@@ -213,7 +213,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
           ) : null}
 
           <div>
-            <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">
+            <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">
               Edges
             </span>
             <div className="mt-1 space-y-1">
