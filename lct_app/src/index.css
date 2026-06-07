@@ -16,6 +16,21 @@
   animation: slideIn 0.2s ease-out;
 }
 
+/* NodeDetail entrance. On phones the panel is a bottom sheet that slides up
+   (leaving the graph visible above it); at >=640px it's the right-side drawer
+   that slides in from the edge. One class; viewport sets the direction. */
+@keyframes lctSheetUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+.lct-detail-enter { animation: lctSheetUp 0.2s ease-out; }
+@media (min-width: 640px) {
+  .lct-detail-enter { animation: slideIn 0.2s ease-out; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lct-detail-enter { animation: none; }
+}
+
 /* ADR-030 §D4: subtle opacity pulse on draft graph nodes (freshness signal).
    Slow + low-amplitude so the graph stays calm during recording per ADR-011. */
 @keyframes lctDraftPulse {
