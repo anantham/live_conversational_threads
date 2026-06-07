@@ -13,3 +13,4 @@ python-multipart>=0.0.20  # required for multipart file uploads
 pyannote.audio>=4.0
 torch>=2.2
 torchaudio>=2.2
+speechbrain>=1.0  # ECAPA-TDNN spkrec-ecapa-voxceleb (192-dim) speaker embeddings for include_embeddings
