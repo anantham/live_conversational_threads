@@ -1241,7 +1241,11 @@ function MinimalGraphInner({
         proOptions={{ hideAttribution: true }}
       />
 
-      {/* Zoom preset + graph display controls */}
+      {/* Zoom preset + graph display controls. Center stays out front (the
+          recovery action); the secondary view toggles collapse behind a
+          "Display" disclosure so the resting canvas stays calm (ADR-011) — a
+          first-time recipient sees Center + Display, not a six-control cockpit.
+          Native <details> keeps it keyboard-accessible with no extra state. */}
       <div className="absolute bottom-4 left-4 z-40 flex items-center gap-1">
         {ZOOM_PRESETS.map(({ label, action, hint }) => (
           <button
@@ -1253,89 +1257,103 @@ function MinimalGraphInner({
             {label}
           </button>
         ))}
-        <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
-        <button
-          onClick={() => {
-            setAutoFollow((v) => {
-              const next = !v;
-              autoFollowRef.current = next;
-              if (next && layoutedNodes.length > 0) {
-                const last = layoutedNodes[layoutedNodes.length - 1];
-                if (last?.id) {
-                  centerViewportOnNode(last.id, { zoom: 1, duration: 300 });
-                }
+        <details className="relative">
+          <summary
+            className="cursor-pointer list-none flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-white/90 border border-gray-200 rounded shadow-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+            title="Show display options (follow, motion, edges, time order, color)"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="4" x2="20" y1="9" y2="9" />
+              <line x1="4" x2="20" y1="15" y2="15" />
+              <circle cx="9" cy="9" r="2" />
+              <circle cx="15" cy="15" r="2" />
+            </svg>
+            Display
+          </summary>
+          <div className="absolute bottom-full left-0 mb-2 flex items-center gap-1 bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-1.5 min-w-max animate-slideIn">
+            <button
+              onClick={() => {
+                setAutoFollow((v) => {
+                  const next = !v;
+                  autoFollowRef.current = next;
+                  if (next && layoutedNodes.length > 0) {
+                    const last = layoutedNodes[layoutedNodes.length - 1];
+                    if (last?.id) {
+                      centerViewportOnNode(last.id, { zoom: 1, duration: 300 });
+                    }
+                  }
+                  return next;
+                });
+              }}
+              title={
+                autoFollow
+                  ? "Auto-center: the view re-centers on new content as you navigate. Click for free pan."
+                  : "Free pan: the view stays where you put it. Click to auto-center on new content."
               }
-              return next;
-            });
-          }}
-          title={
-            autoFollow
-              ? "Auto-center: the view re-centers on new content as you navigate. Click for free pan."
-              : "Free pan: the view stays where you put it. Click to auto-center on new content."
-          }
-          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
-            autoFollow
-              ? "bg-blue-50 border-blue-300 text-blue-700"
-              : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
-          }`}
-        >
-          {autoFollow ? "Following" : "Follow"}
-        </button>
-        <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
-        <button
-          onClick={() => setReduceMotion((v) => !v)}
-          title={
-            reduceMotion
-              ? "Motion off: edges are static. Click to gently animate question/clarify edges."
-              : "Motion on: question & clarify edges pulse. Click to make everything static."
-          }
-          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
-            reduceMotion
-              ? "bg-amber-50 border-amber-300 text-amber-700"
-              : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
-          }`}
-        >
-          {reduceMotion ? "Motion off" : "Motion on"}
-        </button>
-        <button
-          onClick={() => setHideEdges((v) => !v)}
-          title={
-            hideEdges
-              ? "Show the relationship edges (supports / rebuts / etc.) between nodes."
-              : "Hide all relationship edges for a cleaner, nodes-only view."
-          }
-          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
-            hideEdges
-              ? "bg-amber-50 border-amber-300 text-amber-700"
-              : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
-          }`}
-        >
-          {hideEdges ? "Edges off" : "Edges on"}
-        </button>
-        {/* ADR-032 Part C: temporal edges hidden by default. The spatial
-            X position of nodes already encodes time — rendering temporal
-            arrows on top is redundant. Toggle on if you want to see the
-            successor chain explicitly. */}
-        <button
-          onClick={() => handleShowTemporalEdgesChange(!showTemporalEdges)}
-          title={
-            showTemporalEdges
-              ? "Hide time-order arrows (left-to-right position already shows order)."
-              : "Show arrows linking each point to the next one in time."
-          }
-          disabled={hideEdges}
-          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
-            hideEdges
-              ? "bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed"
-              : showTemporalEdges
-                ? "bg-blue-50 border-blue-300 text-blue-700"
-                : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
-          }`}
-        >
-          {showTemporalEdges ? "Time order on" : "Time order off"}
-        </button>
-        <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
-        <ColorModeToggle mode={colorMode} onChange={handleColorModeChange} />
+              className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+                autoFollow
+                  ? "bg-blue-50 border-blue-300 text-blue-700"
+                  : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {autoFollow ? "Following" : "Follow"}
+            </button>
+            <button
+              onClick={() => setReduceMotion((v) => !v)}
+              title={
+                reduceMotion
+                  ? "Motion off: edges are static. Click to gently animate question/clarify edges."
+                  : "Motion on: question & clarify edges pulse. Click to make everything static."
+              }
+              className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+                reduceMotion
+                  ? "bg-amber-50 border-amber-300 text-amber-700"
+                  : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {reduceMotion ? "Motion off" : "Motion on"}
+            </button>
+            <button
+              onClick={() => setHideEdges((v) => !v)}
+              title={
+                hideEdges
+                  ? "Show the relationship edges (supports / rebuts / etc.) between nodes."
+                  : "Hide all relationship edges for a cleaner, nodes-only view."
+              }
+              className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+                hideEdges
+                  ? "bg-amber-50 border-amber-300 text-amber-700"
+                  : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {hideEdges ? "Edges off" : "Edges on"}
+            </button>
+            {/* ADR-032 Part C: temporal edges hidden by default. The spatial
+                X position of nodes already encodes time — rendering temporal
+                arrows on top is redundant. Toggle on if you want to see the
+                successor chain explicitly. */}
+            <button
+              onClick={() => handleShowTemporalEdgesChange(!showTemporalEdges)}
+              title={
+                showTemporalEdges
+                  ? "Hide time-order arrows (left-to-right position already shows order)."
+                  : "Show arrows linking each point to the next one in time."
+              }
+              disabled={hideEdges}
+              className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+                hideEdges
+                  ? "bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed"
+                  : showTemporalEdges
+                    ? "bg-blue-50 border-blue-300 text-blue-700"
+                    : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {showTemporalEdges ? "Time order on" : "Time order off"}
+            </button>
+            <span className="mx-0.5 select-none text-[9px] text-gray-300">|</span>
+            <ColorModeToggle mode={colorMode} onChange={handleColorModeChange} />
+          </div>
+        </details>
       </div>
 
       {/* Zoom / cluster HUD — top-left */}
