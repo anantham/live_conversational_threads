@@ -135,7 +135,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
   return (
     <div className="absolute bottom-14 right-4 z-20">
       {open ? (
-        <div className="bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-3 min-w-[220px] animate-slideIn">
+        <div className="bg-white/95 rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-3 min-w-[220px] animate-slideIn">
           <button
             onClick={() => setOpen(false)}
             className="absolute top-1 right-1 p-2 text-gray-500 hover:text-gray-600 text-xs"
@@ -229,7 +229,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
       ) : (
         <button
           onClick={() => setOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/85 hover:bg-white/95 backdrop-blur rounded-full shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 transition opacity-80 hover:opacity-100 text-[10px] font-medium"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white/85 hover:bg-white/95 rounded-full shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 transition opacity-80 hover:opacity-100 text-[10px] font-medium"
           title="Speaker colors and edge key"
           aria-label="Show legend: speakers and edge colors"
         >
