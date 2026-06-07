@@ -248,7 +248,7 @@ export default function ThreadsViewer() {
                     <button
                       type="button"
                       onClick={() => setSummaryCollapsed((c) => !c)}
-                      className="shrink-0 text-[10px] font-medium text-slate-400 hover:text-slate-700"
+                      className="shrink-0 px-1.5 py-1 text-[10px] font-medium text-slate-400 hover:text-slate-700"
                     >
                       {summaryCollapsed ? "▸ summary" : "▾ summary"}
                     </button>
