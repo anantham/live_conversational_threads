@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-07T00:00:00Z",
+  "title": "Design System: Live Conversational Threads",
+  "extensions": {
+    "colorMeta": {
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#fdfdfb",
+        "tonalRamp": ["#292524", "#44403c", "#78716c", "#a8a29e", "#d6d3d1", "#e7e5e4", "#f5f5f4", "#fdfdfb"]
+      },
+      "ink": {
+        "role": "primary",
+        "displayName": "Ink",
+        "canonical": "#1e293b",
+        "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0"]
+      },
+      "amber": {
+        "role": "primary",
+        "displayName": "Garden Amber",
+        "canonical": "#d97706",
+        "tonalRamp": ["#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fde68a", "#fef3c7"]
+      },
+      "action-blue": {
+        "role": "secondary",
+        "displayName": "Action Blue",
+        "canonical": "#2563eb",
+        "tonalRamp": ["#1e3a8a", "#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#dbeafe"]
+      },
+      "tier-moments": {
+        "role": "tertiary",
+        "displayName": "Moments Teal",
+        "canonical": "#0f766e",
+        "tonalRamp": ["#134e4a", "#0f766e", "#0d9488", "#14b8a6", "#2dd4bf", "#5eead4", "#99f6e4", "#ccfbf1"]
+      },
+      "tier-ideas": {
+        "role": "tertiary",
+        "displayName": "Ideas Blue",
+        "canonical": "#1d4ed8",
+        "tonalRamp": ["#1e3a8a", "#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#dbeafe"]
+      },
+      "tier-topics": {
+        "role": "tertiary",
+        "displayName": "Topics Indigo",
+        "canonical": "#4338ca",
+        "tonalRamp": ["#312e81", "#3730a3", "#4338ca", "#4f46e5", "#6366f1", "#818cf8", "#a5b4fc", "#c7d2fe"]
+      },
+      "tier-themes": {
+        "role": "tertiary",
+        "displayName": "Themes Purple",
+        "canonical": "#7e22ce",
+        "tonalRamp": ["#581c87", "#6b21a8", "#7e22ce", "#9333ea", "#a855f7", "#c084fc", "#d8b4fe", "#e9d5ff"]
+      },
+      "tier-arcs": {
+        "role": "tertiary",
+        "displayName": "Arcs Slate",
+        "canonical": "#334155",
+        "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0"]
+      },
+      "edge-supports": { "role": "tertiary", "displayName": "Supports Green", "canonical": "#16a34a" },
+      "edge-rebuts": { "role": "tertiary", "displayName": "Rebuts Red", "canonical": "#dc2626" },
+      "edge-implies": { "role": "tertiary", "displayName": "Implies Indigo", "canonical": "#6366f1" },
+      "edge-asks": { "role": "tertiary", "displayName": "Asks Amber", "canonical": "#d97706" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The 'Threads' wordmark only — near-black, extreme negative tracking." },
+      "headline": { "displayName": "Headline", "purpose": "Panel and page titles." },
+      "title": { "displayName": "Title", "purpose": "Section and node headings inside panels." },
+      "body": { "displayName": "Body", "purpose": "Reading text and quoted transcript; 65–75ch for prose." },
+      "label": { "displayName": "Label", "purpose": "Uppercase tracked eyebrow / kicker — brand label only, not section scaffolding." }
+    },
+    "shadows": [
+      { "name": "float-soft", "value": "0 1px 2px rgba(0,0,0,0.05)", "purpose": "Small floating affordances: toasts, live HUD, hover lifts." },
+      { "name": "panel-lift", "value": "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)", "purpose": "Node-detail drawer and primary overlay panels that float over the canvas." },
+      { "name": "modal-lift", "value": "0 20px 25px -5px rgba(0,0,0,0.1), 0 8px 10px -6px rgba(0,0,0,0.1)", "purpose": "True modal dialogs (participant picker, search) taking the foreground." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(0, 0, 0.2, 1)", "purpose": "Default easing for state transitions and the drawer slide-in." },
+      { "name": "duration-state", "value": "150ms", "purpose": "Most color/hover state transitions; users are in flow." },
+      { "name": "duration-drawer", "value": "200ms", "purpose": "Node-detail drawer slide-in (translateX 100% -> 0)." },
+      { "name": "draft-pulse", "value": "opacity 0.7 -> 0.95 over a slow loop", "purpose": "Low-amplitude freshness signal on draft graph nodes during recording (ADR-030 §D4)." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Action Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single defining action (New / record). A near-black circular icon button over paper.",
+      "html": "<button class=\"ds-btn-primary\" aria-label=\"New\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z\"/><path d=\"M19 10v2a7 7 0 0 1-14 0v-2\"/><line x1=\"12\" x2=\"12\" y1=\"19\" y2=\"22\"/></svg></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; border-radius: 9999px; background: #1e293b; color: #ffffff; border: none; cursor: pointer; transition: background 150ms cubic-bezier(0,0,0.2,1); } .ds-btn-primary:hover { background: #374151; } .ds-btn-primary:focus-visible { outline: 2px solid #d97706; outline-offset: 2px; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Quiet inline panel action: transparent on white with a hairline border.",
+      "html": "<button class=\"ds-btn-ghost\">Trace ancestors</button>",
+      "css": ".ds-btn-ghost { font: 500 0.75rem/1.2 Inter, system-ui, sans-serif; color: #374151; background: #ffffff; border: 1px solid #d1d5db; border-radius: 4px; padding: 4px 10px; cursor: pointer; transition: background 150ms ease, border-color 150ms ease; } .ds-btn-ghost:hover { background: #f9fafb; border-color: #cbd5e1; } .ds-btn-ghost:focus-visible { outline: 2px solid #d97706; outline-offset: 1px; } .ds-btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }"
+    },
+    {
+      "name": "Amber Action Button",
+      "kind": "button",
+      "refersTo": "button-amber",
+      "description": "The one warm affordance — the highlighted call to action (Upload, fact-check).",
+      "html": "<button class=\"ds-btn-amber\">Check this claim</button>",
+      "css": ".ds-btn-amber { font: 500 0.6875rem/1.2 Inter, system-ui, sans-serif; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 4px; padding: 4px 10px; cursor: pointer; transition: background 150ms ease; } .ds-btn-amber:hover { background: #fef3c7; } .ds-btn-amber:focus-visible { outline: 2px solid #d97706; outline-offset: 1px; }"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip-selected",
+      "description": "Tier / filter selector pill. Selected fills amber; unselected is a quiet ghost that warms on hover.",
+      "html": "<div style=\"display:flex; gap:6px;\"><button class=\"ds-chip ds-chip--selected\">topics</button><button class=\"ds-chip\">themes</button></div>",
+      "css": ".ds-chip { font: 400 11px/1.2 Inter, system-ui, sans-serif; border-radius: 9999px; padding: 2px 8px; border: 1px solid #e5e7eb; background: transparent; color: #4b5563; cursor: pointer; transition: background 150ms ease, border-color 150ms ease, color 150ms ease; } .ds-chip:hover { background: #f9fafb; } .ds-chip--selected { border-color: #fbbf24; background: #fef3c7; color: #92400e; } .ds-chip:focus-visible { outline: 2px solid #d97706; outline-offset: 1px; }"
+    },
+    {
+      "name": "Quoted Transcript Line",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "Signature provenance element: a quoted source utterance inside a panel, with the current line glowing amber — the connective tissue between graph and transcript.",
+      "html": "<div class=\"ds-quote\"><p class=\"ds-quote-line\">So the formalization comes later.</p><p class=\"ds-quote-line ds-quote-line--current\">The insight comes here.</p><p class=\"ds-quote-line\">That gesture is the actual creative work.</p></div>",
+      "css": ".ds-quote { background: #f9fafb; border: 1px solid #f3f4f6; border-radius: 4px; padding: 6px 8px; max-height: 240px; overflow-y: auto; } .ds-quote-line { font: 400 0.75rem/1.625 Inter, system-ui, sans-serif; color: #4b5563; margin: 0; padding: 1px 2px; border-radius: 3px; } .ds-quote-line--current { background: #fef3c7; color: #1e293b; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Inline field for speaker correction and search. White fill, hairline border, quiet focus.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Rename speaker\" />",
+      "css": ".ds-input { font: 400 0.8125rem/1.4 Inter, system-ui, sans-serif; color: #374151; background: #ffffff; border: 1px solid #d1d5db; border-radius: 4px; padding: 4px 8px; width: 100%; box-sizing: border-box; transition: border-color 150ms ease; } .ds-input::placeholder { color: #9ca3af; } .ds-input:focus { outline: none; border-color: #94a3b8; box-shadow: 0 0 0 3px rgba(148,163,184,0.18); }"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "Transient amber-washed notice, bottom-corner, soft-shadowed and backdrop-blurred.",
+      "html": "<div class=\"ds-toast\">Bookmarks is pending in this build.</div>",
+      "css": ".ds-toast { font: 500 0.75rem/1.4 Inter, system-ui, sans-serif; color: #92400e; background: rgba(255,251,235,0.95); border: 1px solid #fde68a; border-radius: 8px; padding: 8px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); backdrop-filter: blur(4px); display: inline-block; }"
+    },
+    {
+      "name": "Node-Detail Drawer Header",
+      "kind": "nav",
+      "refersTo": "panel",
+      "description": "Top of the right-anchored detail drawer: title plus a quiet close affordance over a hairline divider.",
+      "html": "<div class=\"ds-drawer-head\"><span class=\"ds-drawer-title\">Topic · The selection layer</span><button class=\"ds-drawer-close\" aria-label=\"Close\"><svg viewBox=\"0 0 24 24\" width=\"16\" height=\"16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M18 6 6 18\"/><path d=\"m6 6 12 12\"/></svg></button></div>",
+      "css": ".ds-drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid #f3f4f6; background: #ffffff; } .ds-drawer-title { font: 600 1rem/1.4 Inter, system-ui, sans-serif; color: #1e293b; } .ds-drawer-close { display: inline-flex; color: #94a3b8; background: none; border: none; padding: 2px; cursor: pointer; border-radius: 4px; transition: color 150ms ease, background 150ms ease; } .ds-drawer-close:hover { color: #374151; background: #f9fafb; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Scholar's Garden",
+    "overview": "Two people talk in a garden; beneath them, the roots of what they're building glow. Threads is the instrument that makes those roots visible without trampling the garden. Warm paper light overhead, near-black ink for what's said, and a single amber glow that marks the moment a connection is found. Ideas are growing things here, not boxes in a dashboard: the graph starts as a few macro shapes and is fanned open on demand, accumulating across sessions rather than arriving all at once. The system is calm by doctrine, not by accident (ADR-011): during a live conversation the interface must recede; motion is slow and low-amplitude, color is held in reserve, and nothing competes with the people talking. Density is reached through navigation. The reference in feel is sublime.app: a quiet, beautiful tool for thought, warm and unhurried rather than clinical. It explicitly rejects the cluttered expert tool that shows everything at once, and the loud or gamified app with bright palettes and attention-grabbing motion.",
+    "keyCharacteristics": [
+      "Warm paper ground, near-black ink, one amber accent held in reserve.",
+      "A cool spectral hierarchy carries meaning in the graph (teal -> blue -> indigo -> purple -> slate).",
+      "Calm, low-amplitude motion; the tool never competes with the conversation.",
+      "Drill-don't-dump: highest tier first, detail on demand.",
+      "Provenance is visible — amber marks the exact utterance behind any claim."
+    ],
+    "rules": [
+      { "name": "The One Amber Rule", "body": "Amber is the only warm accent and appears on a small fraction of any screen — a highlight, one CTA, one active chip. If two amber things compete for the eye on the same surface, one is wrong.", "section": "colors" },
+      { "name": "The Meaning-Is-In-The-Graph Rule", "body": "Saturated hue is reserved for the graph's semantic tiers and edges. Chrome stays paper / ink / one accent. A colorful sidebar steals the signal the graph needs.", "section": "colors" },
+      { "name": "The Wordmark-Only Tracking Rule", "body": "The -0.09em crush is reserved for the 'Threads' wordmark. Everything else stays at or above -0.04em so letters never touch.", "section": "typography" },
+      { "name": "The One-Eyebrow Rule", "body": "The uppercase tracked label is a single brand gesture (the wordmark kicker), not a per-section habit.", "section": "typography" },
+      { "name": "The Flat-On-Paper Rule", "body": "A surface gets a shadow only because it floats over the canvas. If it's part of the page, it's flat. No resting drop-shadows on cards or the graph.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do keep chrome on paper / ink / one amber accent. Saturated hue belongs to the graph.",
+      "Do default to the highest tier of structure and let the user fan into detail — drill, don't dump. Breathing room is a feature.",
+      "Do pair every semantic graph color with a line-style or label, so meaning survives without hue (color-blind safe by construction).",
+      "Do keep motion slow and low-amplitude. Every animation needs a prefers-reduced-motion alternative.",
+      "Do use amber as the single signal of 'a connection / the current line / the one CTA'.",
+      "Do lift a surface with shadow only when it genuinely floats over the canvas."
+    ],
+    "donts": [
+      "Don't make it cluttered or dense-to-a-fault — no wall of chips, no everything-visible canvas, no expert-tool-that's-hostile-to-read.",
+      "Don't make it loud, gamified, or playful — no bright saturated palettes, badges, confetti, streaks, or attention-grabbing motion (ADR-011).",
+      "Don't drift into the generic SaaS-dashboard look (gradient hero-metrics, endless identical card grids) or the cold sterile enterprise-admin feel.",
+      "Don't use a colored side-stripe border (border-left > 1px as an accent). Panel edges are 1px hairlines.",
+      "Don't use gradient text or decorative glassmorphism. The paper gradient and the occasional backdrop-blur on Home are the deliberate exceptions; keep glass rare.",
+      "Don't stamp the uppercase tracked eyebrow above every section, or crush tracking past -0.04em anywhere but the 'Threads' wordmark.",
+      "Don't add a second warm accent or let two amber elements compete on one surface."
+    ]
+  }
+}
