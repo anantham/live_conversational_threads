@@ -1415,7 +1415,7 @@ function MinimalGraphInner({
             </button>
             {drilldownPath.map((crumb, idx) => (
               <span key={`${crumb.nodeId}-${idx}`} className="flex items-center gap-1">
-                <span className="text-gray-400">/</span>
+                <span className="text-gray-500">/</span>
                 <button
                   type="button"
                   className={
@@ -1475,7 +1475,7 @@ function MinimalGraphInner({
                     ? `${chip} ${color} border-b-2 ${border}`
                     : isLocked
                     ? `${chip} ${color} border-b-2 border-dashed ${border}`
-                    : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                    : "text-gray-500 hover:text-gray-600 hover:bg-gray-50"
                 }`}
               >
                 {label}{isLocked ? " \u{1F512}" : ""}
@@ -1486,7 +1486,7 @@ function MinimalGraphInner({
         {lockedLevel != null && (
           <button
             onClick={() => setLockedLevel(null)}
-            className="text-[9px] text-gray-400 hover:text-gray-600 ml-1"
+            className="text-[9px] text-gray-500 hover:text-gray-600 ml-1"
             title="Unlock zoom level"
           >
             unlock
@@ -1501,7 +1501,7 @@ function MinimalGraphInner({
           {hoveredEdge.relationText && (
             <p className="mt-0.5 text-gray-500 line-clamp-2">{hoveredEdge.relationText}</p>
           )}
-          <p className="mt-1 text-[10px] text-gray-400">click to pin</p>
+          <p className="mt-1 text-[10px] text-gray-500">click to pin</p>
         </div>
       )}
 
@@ -1514,14 +1514,14 @@ function MinimalGraphInner({
             </span>
             <button
               onClick={() => setClickedEdge(null)}
-              className="text-gray-400 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
+              className="text-gray-500 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
               aria-label="Dismiss"
             >
               ✕
             </button>
           </div>
           {(clickedEdge.sourceLabel || clickedEdge.targetLabel) && (
-            <p className="text-[10px] text-gray-400 mb-2 truncate">
+            <p className="text-[10px] text-gray-500 mb-2 truncate">
               {clickedEdge.sourceLabel}
               <span className="mx-1">→</span>
               {clickedEdge.targetLabel}
@@ -1530,7 +1530,7 @@ function MinimalGraphInner({
           {clickedEdge.relationText ? (
             <p className="leading-relaxed text-gray-600">{clickedEdge.relationText}</p>
           ) : (
-            <p className="text-gray-400 italic">No relation detail available.</p>
+            <p className="text-gray-500 italic">No relation detail available.</p>
           )}
         </div>
       )}
@@ -1543,13 +1543,13 @@ function MinimalGraphInner({
               <span className="font-semibold text-gray-900 text-sm leading-tight block">
                 {selectedCluster.label}
               </span>
-              <span className="text-[10px] text-gray-400 mt-0.5 block">
+              <span className="text-[10px] text-gray-500 mt-0.5 block">
                 {selectedClusterMembers.length} nodes in this cluster
               </span>
             </div>
             <button
               onClick={() => setSelectedCluster(null)}
-              className="text-gray-400 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
+              className="text-gray-500 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
               aria-label="Dismiss"
             >
               ✕
@@ -1572,17 +1572,17 @@ function MinimalGraphInner({
                   <span className="font-medium text-gray-800 truncate">{node.node_name}</span>
                 </div>
                 {node.source_excerpt && (
-                  <p className="text-[10px] text-gray-400 mt-0.5 ml-6 line-clamp-2">{node.source_excerpt}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5 ml-6 line-clamp-2">{node.source_excerpt}</p>
                 )}
                 {node.summary && !node.source_excerpt && (
-                  <p className="text-[10px] text-gray-400 mt-0.5 ml-6 line-clamp-2">{node.summary}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5 ml-6 line-clamp-2">{node.summary}</p>
                 )}
                 <div className="flex gap-2 mt-1 ml-6">
                   {(node.speaker_display || node.speaker_id) && (
-                    <span className="text-[9px] text-gray-400">speaker: {node.speaker_display || node.speaker_id}</span>
+                    <span className="text-[9px] text-gray-500">speaker: {node.speaker_display || node.speaker_id}</span>
                   )}
                   {node.edge_relations?.length > 0 && (
-                    <span className="text-[9px] text-gray-400">{node.edge_relations.length} edges</span>
+                    <span className="text-[9px] text-gray-500">{node.edge_relations.length} edges</span>
                   )}
                   {node.thread_state && node.thread_state !== "continue_thread" && (
                     <span className="text-[9px] text-blue-400">{node.thread_state.replace(/_/g, " ")}</span>
@@ -1612,7 +1612,7 @@ function MinimalGraphInner({
               {displayMode === "semantic" ? (
                 <>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Current semantic level</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Current semantic level</span>
                     <div className="mt-1 text-[11px] text-gray-600">
                       {AUTHORED_LEVELS.find((spec) => spec.level === effectiveSemanticLevel)?.label || "authored"}
                     </div>
@@ -1621,7 +1621,7 @@ function MinimalGraphInner({
                     </div>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Node color = Speaker / temporal palette</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Node color = Speaker / temporal palette</span>
                     <div className="mt-1 text-[10px] text-gray-500 leading-tight">
                       Speaker colors appear when multiple speakers are detected. Otherwise colors fade by temporal position.
                     </div>
@@ -1630,7 +1630,7 @@ function MinimalGraphInner({
               ) : effectiveClusterLevel === 0 ? (
                 <>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Node color = Speaker</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Node color = Speaker</span>
                     <div className="mt-1 space-y-1">
                       {Object.entries(speakerColorMap).slice(0, 5).map(([sid, color]) => (
                         <div key={sid} className="flex items-center gap-2">
@@ -1639,12 +1639,12 @@ function MinimalGraphInner({
                         </div>
                       ))}
                       {Object.keys(speakerColorMap).length === 0 && (
-                        <span className="text-gray-400 italic">No speakers detected</span>
+                        <span className="text-gray-500 italic">No speakers detected</span>
                       )}
                     </div>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Edge color = Relation</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Edge color = Relation</span>
                     <div className="mt-1 space-y-1">
                       {[
                         { label: "supports", color: EDGE_COLORS.supports },
@@ -1664,13 +1664,13 @@ function MinimalGraphInner({
               ) : (
                 <>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Node color = Wavelength Rainbow</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Node color = Wavelength Rainbow</span>
                     <div className="mt-2 flex flex-col gap-1">
                       <div 
                         className="h-2 w-full rounded-full" 
                         style={{ background: 'linear-gradient(to right, hsl(0, 75%, 88%), hsl(140, 75%, 88%), hsl(280, 75%, 88%))' }}
                       />
-                      <div className="flex justify-between text-[9px] text-gray-400 font-mono uppercase tracking-tight">
+                      <div className="flex justify-between text-[9px] text-gray-500 font-mono uppercase tracking-tight">
                         <span>Start</span>
                         <span>Now</span>
                       </div>
@@ -1680,7 +1680,7 @@ function MinimalGraphInner({
                     </div>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Edge color = Agreement</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Edge color = Agreement</span>
                     <div className="mt-1 space-y-1">
                       {[
                         { label: "supports / agrees", color: EDGE_COLORS.supports },
@@ -1695,7 +1695,7 @@ function MinimalGraphInner({
                       ))}
                     </div>
                   </div>
-                  <div className="text-[10px] text-gray-400">
+                  <div className="text-[10px] text-gray-500">
                     Edge thickness = number of connections between clusters
                   </div>
                 </>

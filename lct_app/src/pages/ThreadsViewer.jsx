@@ -188,7 +188,7 @@ export default function ThreadsViewer() {
             dragging ? "border-amber-400 bg-amber-50" : "border-slate-300 bg-white"
           }`}
         >
-          <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-slate-400">
+          <p className="text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
             Threads · conversation map
           </p>
           <h1 className="text-lg font-semibold text-slate-800">
@@ -241,14 +241,14 @@ export default function ThreadsViewer() {
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-3">
-                  <p className="truncate text-[10px] font-medium uppercase tracking-[0.24em] text-slate-400">
+                  <p className="truncate text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
                     {eyebrow}
                   </p>
                   {headerSummary && (
                     <button
                       type="button"
                       onClick={() => setSummaryCollapsed((c) => !c)}
-                      className="shrink-0 px-1.5 py-1 text-[10px] font-medium text-slate-400 hover:text-slate-700"
+                      className="shrink-0 px-1.5 py-1 text-[10px] font-medium text-slate-500 hover:text-slate-700"
                     >
                       {summaryCollapsed ? "▸ summary" : "▾ summary"}
                     </button>
