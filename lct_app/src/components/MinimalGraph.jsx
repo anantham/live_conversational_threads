@@ -1277,7 +1277,7 @@ function MinimalGraphInner({
             </svg>
             Display
           </summary>
-          <div className="absolute bottom-full left-0 mb-2 flex items-center gap-1 bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-1.5 min-w-max animate-slideIn">
+          <div className="absolute bottom-full left-0 mb-2 flex flex-wrap items-center gap-1 bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-1.5 max-w-[calc(100vw-2rem)] animate-slideIn">
             <button
               onClick={() => {
                 setAutoFollow((v) => {
