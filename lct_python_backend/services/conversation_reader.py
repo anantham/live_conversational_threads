@@ -66,6 +66,30 @@ def build_relationship_maps(nodes, relationships):
     return predecessor_by_id, successor_by_id, contextual_by_id, linked_by_id
 
 
+def _compute_source_ref(node, seq_by_id, srcid_by_id):
+    """Provenance anchor for a node (P0): prefer the persisted ``Node.source_ref``,
+    else derive a DETERMINISTIC read-model from the node's persisted
+    ``utterance_ids`` so legacy graphs are auditable too — it can't drift because
+    it's re-derived from the source-of-truth ids each time. Returns ``None`` when
+    the node references no utterances (viewer treats null as 'unauditable' rather
+    than faking coverage). Shape: {utterance_ids, source_identifiers, start_seq,
+    end_seq}."""
+    persisted = getattr(node, "source_ref", None)
+    if persisted:
+        return persisted
+    uids = list(getattr(node, "utterance_ids", None) or [])
+    if not uids:
+        return None
+    seqs = [seq_by_id[u] for u in uids if u in seq_by_id]
+    srcids = [srcid_by_id[u] for u in uids if u in srcid_by_id]
+    return {
+        "utterance_ids": [str(u) for u in uids],
+        "source_identifiers": srcids,
+        "start_seq": min(seqs) if seqs else None,
+        "end_seq": max(seqs) if seqs else None,
+    }
+
+
 def build_graph_data_from_nodes(
     nodes, relationships, utterances=None, include_edges_out=False
 ) -> List[Dict[str, Any]]:
@@ -93,6 +117,10 @@ def build_graph_data_from_nodes(
     utterance_end_by_id: Dict[Any, float] = {}
     chunk_start_by_id: Dict[Any, float] = {}
     chunk_end_by_id: Dict[Any, float] = {}
+    # P0 provenance: uid -> sequence_number / IndrasNet source_identifier, so each
+    # node's source_ref can name the exact raw turns + their span.
+    utterance_seq_by_id: Dict[Any, int] = {}
+    utterance_srcid_by_id: Dict[Any, str] = {}
     # Conversation-wide min/max — used as a fallback for live-recorded
     # conversations where the live-STT write path never linked
     # utterance.chunk_id to node.chunk_ids. The graph nodes exist, the
@@ -106,6 +134,13 @@ def build_graph_data_from_nodes(
             cid = getattr(utt, "chunk_id", None)
             ts = getattr(utt, "timestamp_start", None)
             te = getattr(utt, "timestamp_end", None)
+            if uid is not None:
+                seqn = getattr(utt, "sequence_number", None)
+                if seqn is not None:
+                    utterance_seq_by_id[uid] = int(seqn)
+                srcid = getattr(utt, "source_identifier", None)
+                if srcid:
+                    utterance_srcid_by_id[uid] = srcid
             if uid is not None and ts is not None:
                 utterance_start_by_id[uid] = float(ts)
                 if te is not None:
@@ -321,6 +356,10 @@ def build_graph_data_from_nodes(
             # scripts wipe it when they call build_graph_data_from_nodes
             # then re-feed into persist_graph.
             "source_excerpt": node.source_excerpt,
+            # P0 provenance: the auditable link to exact raw turns (display
+            # snippet above is NOT provenance). Feeds the Coverage Report +
+            # NodeDetail Provenance panel; survives the re-persist round-trip.
+            "source_ref": _compute_source_ref(node, utterance_seq_by_id, utterance_srcid_by_id),
             "thread_id": cluster_info.get("thread_id"),
             "thread_state": cluster_info.get("thread_state"),
             "edge_relations": _node_edges,
@@ -407,6 +446,32 @@ def build_chunk_dict_from_utterances(utterances, node_chunk_ids=None) -> Dict[st
 def wrap_graph_data_chunks(graph_data: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
     """Wrap graph data in nested chunk structure expected by frontend."""
     return [graph_data] if graph_data else []
+
+
+def build_full_transcript_for_export(utterances) -> str:
+    """Reconstruct the verbatim, speaker-tagged transcript from utterance rows,
+    ordered by sequence_number.
+
+    P0 (no-arbitrary-compression): this is the lossless raw the graph was built
+    from, bundled into the .threads so the map can always be AUDITED against
+    source — unlike chunk source_excerpts (representative snippets) or the lossy
+    chunk_dict full-text duplication. Built only from existing fields (text,
+    sequence_number, speaker), so no schema change is required.
+    """
+    if not utterances:
+        return ""
+    ordered = sorted(
+        utterances,
+        key=lambda u: (u.sequence_number if u.sequence_number is not None else 10 ** 18),
+    )
+    lines: List[str] = []
+    for u in ordered:
+        text = (u.text or "").strip()
+        if not text:
+            continue
+        speaker = getattr(u, "speaker_name", None) or u.speaker_id or "?"
+        lines.append(f"[{speaker}] {text}")
+    return "\n".join(lines)
 
 
 def serialize_utterances(utterances) -> List[Dict[str, Any]]:

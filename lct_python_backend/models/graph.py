@@ -29,6 +29,12 @@ class Node(Base):
     # (speaker rollup, edge enrichment, re-classification) don't need to
     # re-call the LLM. Nullable for legacy rows pre-migration.
     source_excerpt = Column(Text)
+    # Provenance anchor (P0): {utterance_ids, source_identifiers, start_seq,
+    # end_seq, coverage_pct} — the auditable link from this node back to the exact
+    # raw turns it covers. source_excerpt above is a DISPLAY snippet; this is the
+    # provenance mechanism the coverage audit + Provenance panel read. Nullable
+    # for legacy rows (viewer treats null as "unauditable", never faked coverage).
+    source_ref = Column(JSONB)
 
     # Type & Hierarchy
     node_type = Column(Text, default='conversational_thread')
