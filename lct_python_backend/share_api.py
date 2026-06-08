@@ -400,6 +400,9 @@ async def export_threads(
         build_chunk_dict_from_utterances,
         build_turn_graph_from_utterances,
     )
+    from lct_python_backend.services.conversation_reader import (
+        build_full_transcript_for_export,
+    )
 
     conversation_uuid = uuid.UUID(conversation_id)
     conversation, nodes, relationships, utterances = await fetch_conversation_bundle(
@@ -437,6 +440,12 @@ async def export_threads(
         "executive_summary": getattr(conversation, "executive_summary", None),
         "graph_data": graph_data,
         "chunk_dict": chunk_dict,
+        # P0 (audit-against-source): the verbatim raw the graph was built from,
+        # so the viewer's transcript download + coverage check work without
+        # arbitrary compression. Built from existing Utterance fields (no schema
+        # change). transcript_source distinguishes verbatim vs none.
+        "full_transcript": build_full_transcript_for_export(utterances),
+        "transcript_source": "verbatim" if utterances else "none",
     }
 
     raw_name = (
@@ -531,6 +540,9 @@ async def fetch_share(
         build_chunk_dict_from_utterances,
         build_turn_graph_from_utterances,
     )
+    from lct_python_backend.services.conversation_reader import (
+        build_full_transcript_for_export,
+    )
 
     conversation_uuid = uuid.UUID(row.conversation_id)
     conversation, nodes, relationships, utterances = await fetch_conversation_bundle(
@@ -590,6 +602,12 @@ async def fetch_share(
         "executive_summary": getattr(conversation, "executive_summary", None),
         "graph_data": graph_data,
         "chunk_dict": chunk_dict,
+        # P0 (audit-against-source): the verbatim raw the graph was built from,
+        # so the viewer's transcript download + coverage check work without
+        # arbitrary compression. Built from existing Utterance fields (no schema
+        # change). transcript_source distinguishes verbatim vs none.
+        "full_transcript": build_full_transcript_for_export(utterances),
+        "transcript_source": "verbatim" if utterances else "none",
         "audio_url": audio_url,
         "audio_url_expires": audio_url_expires,
         "share": {

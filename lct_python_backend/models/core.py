@@ -24,6 +24,10 @@ class Conversation(Base):
     # Source
     source_type = Column(Text, nullable=False)  # 'audio_stream', 'google_meet', 'slack', etc.
     source_metadata = Column(JSONB)
+    # IndrasNet stable conversation key (group_id) this LCT conversation mirrors,
+    # so re-extraction / coverage backfill can re-pull the raw turns (P0). NULL =
+    # not sourced from IndrasNet.
+    indrasnet_group_id = Column(Text)
 
     # Participants
     participant_count = Column(Integer, default=0)
@@ -109,6 +113,11 @@ class Utterance(Base):
     chunk_id = Column(UUID(as_uuid=True))
     node_id = Column(UUID(as_uuid=True))
     thread_id = Column(UUID(as_uuid=True))
+    # IndrasNet items.source_identifier — the immutable per-turn provenance
+    # anchor carried across the LCT/IndrasNet boundary (P0). Lets node.source_ref
+    # point back to exact raw turns + survives re-import. NULL for legacy/local-
+    # only rows.
+    source_identifier = Column(Text)
 
     # Metadata
     confidence_score = Column(Float)
