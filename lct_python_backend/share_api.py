@@ -374,6 +374,87 @@ async def revoke_share(token: str, db: AsyncSession = Depends(get_async_session)
 
 
 # ---------------------------------------------------------------------------
+# .threads export — self-contained, server-free artifact (ADR-036)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/conversations/{conversation_id}/threads-export")
+async def export_threads(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Export a conversation as a self-contained ``.threads`` bundle.
+
+    The bundle carries everything the (Vercel-hosted) viewer needs to render the
+    graph fully client-side: no backend at view time, no share token, no
+    permissioning — possession of the file IS the capability (the owner hands it
+    directly to the participant; ADR-036 D3 = participant/T0/full). Audio is
+    deliberately EXCLUDED (biometric voice + size, ADR-036 D7); fact-check is an
+    online-only extra absent from the static artifact. Owner-scoped: this path is
+    under /api/conversations/ so it requires AUTH_TOKEN (unlike the public
+    /api/share/* fetch).
+    """
+    from lct_python_backend.conversations_api import (
+        fetch_conversation_bundle,
+        build_graph_data_from_nodes,
+        build_chunk_dict_from_utterances,
+        build_turn_graph_from_utterances,
+    )
+
+    conversation_uuid = uuid.UUID(conversation_id)
+    conversation, nodes, relationships, utterances = await fetch_conversation_bundle(
+        db, conversation_uuid
+    )
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+
+    graph_data: list = []
+    chunk_dict: dict = {}
+    if nodes:
+        # include_edges_out=True -> faithful edge round-trip in the artifact
+        # (the default-off fold path drops relationship subtype/confidence/etc.).
+        graph_data = build_graph_data_from_nodes(
+            nodes, relationships, utterances=utterances, include_edges_out=True
+        )
+        node_chunk_ids: list = []
+        for n in nodes:
+            if n.chunk_ids:
+                node_chunk_ids.extend(n.chunk_ids)
+        chunk_dict = build_chunk_dict_from_utterances(
+            utterances, node_chunk_ids=node_chunk_ids
+        )
+    elif utterances:
+        graph_data = build_turn_graph_from_utterances(utterances)
+        chunk_dict = build_chunk_dict_from_utterances(utterances)
+
+    bundle = {
+        "format": "lct.threads",
+        "format_version": 1,
+        "exported_at": int(time.time()),
+        "conversation_id": str(conversation.id),
+        "conversation_name": conversation.conversation_name,
+        "conversation_title": getattr(conversation, "conversation_title", None),
+        "executive_summary": getattr(conversation, "executive_summary", None),
+        "graph_data": graph_data,
+        "chunk_dict": chunk_dict,
+    }
+
+    raw_name = (
+        getattr(conversation, "conversation_title", None)
+        or conversation.conversation_name
+        or "conversation"
+    )
+    safe_name = "".join(
+        c if (c.isalnum() or c in "-_ ") else "_" for c in str(raw_name)
+    ).strip()[:60] or "conversation"
+
+    return JSONResponse(
+        content=bundle,
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}.threads"'},
+    )
+
+
+# ---------------------------------------------------------------------------
 # Public share-fetch endpoint
 # ---------------------------------------------------------------------------
 

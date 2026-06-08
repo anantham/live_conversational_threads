@@ -7,8 +7,26 @@ from lct_python_backend.services import transcript_processing as mod
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
 
 
+# DEFAULT_LLM_MODE defaults to "local", so _process_batch uses the boundary-index
+# accumulate path (accumulate_text_json_local_indexed) rather than the echo
+# dispatcher. These cadence/plumbing tests mock that path deterministically.
+def _acc_idx_complete_all(numbered_input, **kwargs):
+    return (
+        {"decision": "stop_accumulating", "completed_through_index": 10**9, "detected_threads": []},
+        "local_test",
+    )
+
+
+def _acc_idx_continue(numbered_input, **kwargs):
+    return (
+        {"decision": "continue_accumulating", "completed_through_index": -1, "detected_threads": []},
+        "local_test",
+    )
+
+
 @pytest.mark.asyncio
 async def test_early_graph_batches_stay_aggressive_before_returning_to_base_batch(monkeypatch):
+    monkeypatch.setattr(mod, "accumulate_text_json_local_indexed", _acc_idx_complete_all)
     updates = []
     statuses = []
 
@@ -68,6 +86,7 @@ async def test_early_graph_batches_stay_aggressive_before_returning_to_base_batc
 
 @pytest.mark.asyncio
 async def test_graph_timer_forces_update_when_accumulator_keeps_accumulating(monkeypatch):
+    monkeypatch.setattr(mod, "accumulate_text_json_local_indexed", _acc_idx_continue)
     updates = []
     statuses = []
 
@@ -127,6 +146,7 @@ async def test_graph_timer_forces_update_when_accumulator_keeps_accumulating(mon
 
 @pytest.mark.asyncio
 async def test_graph_status_reports_queue_wait_and_total_update_metrics(monkeypatch):
+    monkeypatch.setattr(mod, "accumulate_text_json_local_indexed", _acc_idx_complete_all)
     updates = []
     statuses = []
 
@@ -171,3 +191,59 @@ async def test_graph_status_reports_queue_wait_and_total_update_metrics(monkeypa
     assert completed_status["context"]["generation_ms"] is not None
     assert completed_status["context"]["total_update_ms"] is not None
     assert completed_status["context"]["total_update_ms"] >= completed_status["context"]["generation_ms"]
+
+
+@pytest.mark.asyncio
+async def test_index_mode_splits_batch_at_completed_through_index(monkeypatch):
+    # Local mode (the default) drives _process_batch through the boundary-index
+    # accumulate path. With completed_through_index=1, fragments 0..1 complete
+    # and 2..3 carry forward — proving the index split, not the echo length math.
+    captured = {}
+
+    def fake_idx(numbered_input, **kwargs):
+        captured["numbered_input"] = numbered_input
+        return (
+            {"decision": "stop_accumulating", "completed_through_index": 1, "detected_threads": ["t"]},
+            "local_test",
+        )
+
+    monkeypatch.setattr(mod, "accumulate_text_json_local_indexed", fake_idx)
+    monkeypatch.setattr(
+        mod,
+        "generate_lct_json",
+        lambda mod_input, **kwargs: ([{"node_name": "n", "summary": mod_input[:10]}], "local_test"),
+    )
+
+    processor = TranscriptProcessor(send_update=None, send_status=None, batch_size=4)
+    text_batch = ["frag zero text", "frag one text", "frag two text", "frag three text"]
+    segment_batch = [[], [], [], []]
+    graph_emitted, cont, incomplete_seg, carryover = await processor._process_batch(
+        text_batch, segment_batch, stop_accumulating_flag=False, trigger="test"
+    )
+
+    # Input was numbered fragment-wise, not echoed.
+    assert captured["numbered_input"].startswith("[0] frag zero text")
+    assert "\n[1] frag one text" in captured["numbered_input"]
+    # Completed through index 1; the tail (2..3) carries forward.
+    assert graph_emitted is True
+    assert incomplete_seg == "frag two text frag three text"
+    assert cont is True  # leftover tail -> keep accumulating
+
+
+@pytest.mark.asyncio
+async def test_index_mode_continue_keeps_accumulating(monkeypatch):
+    # completed_through_index = -1 means nothing complete: no graph, carry all.
+    monkeypatch.setattr(mod, "accumulate_text_json_local_indexed", _acc_idx_continue)
+    monkeypatch.setattr(
+        mod,
+        "generate_lct_json",
+        lambda mod_input, **kwargs: ([{"node_name": "n", "summary": mod_input[:10]}], "local_test"),
+    )
+
+    processor = TranscriptProcessor(send_update=None, send_status=None, batch_size=4)
+    graph_emitted, cont, incomplete_seg, _carryover = await processor._process_batch(
+        ["a fragment", "another fragment"], [[], []], stop_accumulating_flag=False, trigger="test"
+    )
+    assert graph_emitted is False
+    assert cont is True
+    assert incomplete_seg == "a fragment another fragment"

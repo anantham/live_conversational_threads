@@ -95,8 +95,20 @@ def _elapsed_ms(started_at: float) -> int:
 # Module-level environment constants
 # ---------------------------------------------------------------------------
 
-# Chunked audio transcription defaults
+# Chunked audio transcription defaults.
+# The 30s cap exists for CLOUD providers (OpenAI/OpenRouter have ~25 MB upload
+# caps, so files must be sliced small). For the LOCAL backend_http provider
+# (IndrasNet WhisperX :7777) there is NO size cap and the model is resident
+# across calls — slicing a 41-min file into ~85×30s chunks there is pathological
+# (see docs/STT_ORCHESTRATION_OVERHEAD_RCA.md): it pays the WSL hop, diarization,
+# and mid-file model resets ~85× instead of once, turning a ~5-min job into
+# ~39 min. So the local path uses a much larger chunk (default 10 min): few
+# coordinator calls, model stays warm, diarization runs ~per-segment not
+# per-30s. Progressive SSE/checkpointing is preserved, just coarser-grained.
 DEFAULT_CHUNK_DURATION_S = _bounded_env_int("STT_CHUNK_DURATION_S", default=30, minimum=20, maximum=30)
+LOCAL_STT_CHUNK_DURATION_S = _bounded_env_int(
+    "LOCAL_STT_CHUNK_DURATION_S", default=600, minimum=60, maximum=1800
+)
 DEFAULT_CHUNK_OVERLAP_S = _bounded_env_int("STT_CHUNK_OVERLAP_S", default=1, minimum=0, maximum=3)
 # Default to 4 retries (= 5 total attempts per chunk) — observed transient
 # rates on Windows + Tailscale stacks routinely exhausted the prior 2 retries

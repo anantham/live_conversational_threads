@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ImportCanvas from "../components/ImportCanvas";
 import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
+import ThreadsViewer from "./ThreadsViewer";
 
 function formatDuration(seconds) {
   if (!seconds) return null;
@@ -41,6 +42,11 @@ export default function Browse() {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Public deploy (e.g. threads.adityaarpitha.com): the backend is on a private
+  // Tailscale network, so /conversations/ fails at the network layer. When that
+  // happens, /browse becomes the self-contained .threads opener instead of the
+  // owner's conversation list. A reachable-but-errored backend keeps the list+error.
+  const [offline, setOffline] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleting, setDeleting] = useState(null);
 
@@ -70,11 +76,21 @@ export default function Browse() {
 
   useEffect(() => {
     const fetchConversations = async () => {
+      let gotResponse = false;
+      // 6s timeout so an off-network visitor (backend on a private Tailscale
+      // host they can't reach) falls back to the .threads opener fast instead
+      // of hanging on a connection that will never complete.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 6000);
       try {
         // 60s TTL — short enough that returning here after a new import
         // (which busts the cache via invalidateApiCache) shows the new
         // entry immediately, long enough that tab-switches feel instant.
-        const response = await apiFetchCached("/conversations/", { ttlMs: 60 * 1000 });
+        const response = await apiFetchCached("/conversations/", {
+          ttlMs: 60 * 1000,
+          signal: controller.signal,
+        });
+        gotResponse = true;
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.detail || `HTTP ${response.status}`);
@@ -84,13 +100,24 @@ export default function Browse() {
         setConversations(data);
       } catch (err) {
         console.error("Error fetching conversations:", err.message);
-        setError("Failed to load conversations.");
+        // No response at all = backend unreachable (public deploy) -> become the
+        // .threads opener. A response that errored = owner-side problem -> show it.
+        if (!gotResponse) {
+          setOffline(true);
+        } else {
+          setError("Failed to load conversations.");
+        }
       } finally {
+        clearTimeout(timer);
         setLoading(false);
       }
     };
     fetchConversations();
   }, []);
+
+  // Backend unreachable: render the public, server-free .threads opener (button +
+  // drag-drop). Possession of the file is the capability; no list, no auth.
+  if (offline) return <ThreadsViewer />;
 
   return (
     <div className="flex flex-col h-[100dvh] w-screen bg-[#fafafa] font-sans">

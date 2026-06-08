@@ -37,6 +37,16 @@ from lct_python_backend.tests.integration.transcripts_test_support import (
 )
 
 
+# DEFAULT_LLM_MODE defaults to "local", so _process_batch uses the boundary-index
+# accumulate path. These plumbing tests mock that path to complete-all so the
+# graph emits deterministically regardless of how llm mode resolves.
+def _acc_idx_complete_all(numbered_input, **kwargs):
+    return (
+        {"decision": "stop_accumulating", "completed_through_index": 10**9, "detected_threads": []},
+        "local_test",
+    )
+
+
 def test_transcripts_ws_persists_partial_and_final(monkeypatch):
     persisted = []
     processor_calls = {"final": [], "flush": 0}
@@ -859,6 +869,7 @@ def test_transcripts_ws_background_refinement_persists_speaker_segments_with_win
 
 
 def test_transcripts_ws_graph_status_includes_queue_and_generation_metrics(monkeypatch):
+    monkeypatch.setattr(transcript_mod, "accumulate_text_json_local_indexed", _acc_idx_complete_all)
     monkeypatch.setattr(
         transcript_mod,
         "accumulate_text_json",
@@ -919,6 +930,7 @@ def test_transcripts_ws_graph_status_includes_queue_and_generation_metrics(monke
 
 
 def test_transcripts_ws_emits_draft_then_finalized_graph_patch(monkeypatch):
+    monkeypatch.setattr(transcript_mod, "accumulate_text_json_local_indexed", _acc_idx_complete_all)
     monkeypatch.setattr(
         transcript_mod,
         "accumulate_text_json",
@@ -978,6 +990,7 @@ def test_transcripts_ws_emits_draft_then_finalized_graph_patch(monkeypatch):
 
 
 def test_transcripts_ws_persists_canonical_graph_on_finalized_patch(monkeypatch):
+    monkeypatch.setattr(transcript_mod, "accumulate_text_json_local_indexed", _acc_idx_complete_all)
     persisted = []
 
     async def fake_graph_persist(**kwargs):

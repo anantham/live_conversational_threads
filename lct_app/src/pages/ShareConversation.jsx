@@ -316,8 +316,9 @@ export default function ShareConversation() {
           chunkDict={chunkDict}
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
-          visibleGraphLevel={visibleGraphLevel}
-          setVisibleGraphLevel={setVisibleGraphLevel}
+          onVisibleLevelChange={(view) => {
+            setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
+          }}
           argumentTraceFrom={argumentTraceFrom}
           setArgumentTraceFrom={setArgumentTraceFrom}
           speakerColorMap={speakerColorMap}
