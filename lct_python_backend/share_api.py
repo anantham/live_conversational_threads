@@ -402,6 +402,7 @@ async def export_threads(
     )
     from lct_python_backend.services.conversation_reader import (
         build_full_transcript_for_export,
+        build_coverage_summary,
     )
 
     conversation_uuid = uuid.UUID(conversation_id)
@@ -446,6 +447,9 @@ async def export_threads(
         # change). transcript_source distinguishes verbatim vs none.
         "full_transcript": build_full_transcript_for_export(utterances),
         "transcript_source": "verbatim" if utterances else "none",
+        # P0 quality check: how much of the raw the graph covers (honest null
+        # when unauditable). The viewer's Coverage Report reads this.
+        "coverage": build_coverage_summary(graph_data, utterances),
     }
 
     raw_name = (
@@ -542,6 +546,7 @@ async def fetch_share(
     )
     from lct_python_backend.services.conversation_reader import (
         build_full_transcript_for_export,
+        build_coverage_summary,
     )
 
     conversation_uuid = uuid.UUID(row.conversation_id)
@@ -608,6 +613,9 @@ async def fetch_share(
         # change). transcript_source distinguishes verbatim vs none.
         "full_transcript": build_full_transcript_for_export(utterances),
         "transcript_source": "verbatim" if utterances else "none",
+        # P0 quality check: how much of the raw the graph covers (honest null
+        # when unauditable). The viewer's Coverage Report reads this.
+        "coverage": build_coverage_summary(graph_data, utterances),
         "audio_url": audio_url,
         "audio_url_expires": audio_url_expires,
         "share": {

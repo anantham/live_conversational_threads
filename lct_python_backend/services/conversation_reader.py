@@ -474,6 +474,32 @@ def build_full_transcript_for_export(utterances) -> str:
     return "\n".join(lines)
 
 
+def build_coverage_summary(graph_data, utterances) -> Dict[str, Any]:
+    """How much of the raw the graph actually covers (P0 quality check).
+
+    covered = the union of every node's ``source_ref.utterance_ids``; total = the
+    utterance count. ``auditable`` is False (``pct`` = None) when NO node carries
+    provenance (legacy / live-STT unlinked conversations) — the viewer then shows
+    "unauditable" rather than faking a coverage number. This is the honest
+    graph-vs-source check the owner asked for.
+    """
+    total = len(utterances or [])
+    covered = set()
+    for node in graph_data or []:
+        source_ref = node.get("source_ref") or {}
+        for uid in (source_ref.get("utterance_ids") or []):
+            covered.add(str(uid))
+    n_covered = len(covered)
+    auditable = n_covered > 0
+    pct = round(100.0 * n_covered / total, 1) if (auditable and total) else None
+    return {
+        "total_turns": total,
+        "covered_turns": n_covered,
+        "pct": pct,
+        "auditable": auditable,
+    }
+
+
 def serialize_utterances(utterances) -> List[Dict[str, Any]]:
     """Serialize utterance rows for timeline API payload."""
     return [
