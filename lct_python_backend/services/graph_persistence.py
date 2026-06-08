@@ -365,9 +365,17 @@ async def persist_graph(
     """
     from lct_python_backend.models import Node, Relationship
     from sqlalchemy import select, delete
+    from lct_python_backend.services.transcript_normalizer import propagate_flags_upward
 
     if not existing_json and utterances is None:
         return 0
+
+    # Propagate is_tangent/is_crux/bookmark/contextual_progress up the tier
+    # hierarchy before persistence: flags are authored at the chunk tier, but the
+    # zoomed-out map renders topics/themes/arcs — without this they'd be flag-blind
+    # (ADR consistency audit H2). Single chokepoint for both bulk-import and live paths.
+    if existing_json:
+        propagate_flags_upward(existing_json)
 
     conv_uuid = uuid.UUID(conversation_id)
     conv_result = await db.execute(select(Conversation).where(Conversation.id == conv_uuid))
@@ -772,6 +780,9 @@ async def persist_graph(
             is_bookmark=bool(item.get("is_bookmark")),
             is_contextual_progress=bool(item.get("is_contextual_progress")),
             is_tangent=bool(item.get("is_tangent")) or thread_state in {"branch", "tangent"},
+            is_crux=bool(item.get("is_crux")),
+            is_action_item=bool(item.get("is_action_item")),
+            is_surprise=bool(item.get("is_surprise")),
             level=node_level,
             zoom_level_visible=[node_level],
             parent_id=parent_id_resolved,

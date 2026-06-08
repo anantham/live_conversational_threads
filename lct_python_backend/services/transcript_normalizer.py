@@ -373,11 +373,74 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 "claims": _as_string_list(raw.get("claims")),
                 "is_bookmark": bool(raw.get("is_bookmark")),
                 "is_contextual_progress": bool(raw.get("is_contextual_progress")),
+                # Carry the tangent/crux flags through to persistence. They were
+                # silently dropped here, so the Node columns were always 0 no
+                # matter what the model emitted — tangent/crux capture was never
+                # actually exercised (see accumulate-echo-truncation-and-flag-drop).
+                "is_tangent": bool(raw.get("is_tangent")),
+                "is_crux": bool(raw.get("is_crux")),
+                # Conversation-dimension flags. action_item + surprise are node
+                # properties; agreement/disagreement are edges (ADR-032), not flags.
+                "is_action_item": bool(raw.get("is_action_item")),
+                "is_surprise": bool(raw.get("is_surprise")),
                 "chunk_id": raw.get("chunk_id"),
                 "speaker_id": _as_clean_str(raw.get("speaker_id")) or None,
             }
         )
     return normalized_nodes
+
+
+# is_surprise rolls up (a theme "contains a surprise" is useful at zoom-out).
+# is_action_item deliberately does NOT roll up — a topic that *contains* a
+# commitment is not itself an action item; rolling it up would overstate
+# commitments in parent-tier counts/filters (codex review).
+_UPWARD_PROPAGATED_FLAGS = (
+    "is_tangent", "is_crux", "is_bookmark", "is_contextual_progress", "is_surprise",
+)
+
+
+def propagate_flags_upward(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Bottom-up flag propagation across the tier hierarchy (mutates in place).
+
+    is_tangent / is_crux (and bookmark / contextual_progress) are authored at the
+    chunk tier (semantic_level 1). Consolidation builds topics/themes/arcs that
+    reference children via children_ids but never copies these flags upward, so
+    the zoomed-out map (which renders topics/themes/arcs) was flag-blind — a
+    tangential cluster rolled up into a non-tangent topic, and crux navigation was
+    impossible above level 2 (see ADR consistency audit H2). Here a parent carries
+    a flag if it OR any descendant carries it.
+
+    Nodes are processed in ascending semantic_level so every child is final before
+    its parent reads it (children are always a strictly lower tier).
+    """
+    by_id: Dict[str, Dict[str, Any]] = {}
+    for node in nodes or []:
+        if not isinstance(node, dict):
+            continue
+        nid = str(node.get("id") or node.get("node_id") or "").strip()
+        if nid:
+            by_id[nid] = node
+
+    def _level(node: Dict[str, Any]) -> int:
+        raw = node.get("semantic_level") or node.get("level") or 0
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            return 0
+
+    ordered = sorted((n for n in (nodes or []) if isinstance(n, dict)), key=_level)
+    for node in ordered:
+        children = [
+            by_id[str(cid)]
+            for cid in (node.get("children_ids") or [])
+            if str(cid) in by_id
+        ]
+        if not children:
+            continue
+        for flag in _UPWARD_PROPAGATED_FLAGS:
+            if not node.get(flag) and any(bool(child.get(flag)) for child in children):
+                node[flag] = True
+    return nodes
 
 
 def format_speaker_prefixed_transcript(

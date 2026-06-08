@@ -81,6 +81,8 @@ export default function NodeDetail({
   onSpeakerRenamed,
   onTraceAncestors,
   participantNames = [],
+  contextNodes = null,
+  onSelectNode = null,
 }) {
   const safeNode = node ?? null;
 
@@ -167,6 +169,29 @@ export default function NodeDetail({
 
   const relations = Array.isArray(safeNode?.edge_relations) ? safeNode.edge_relations : [];
   const contextualRelations = normalizeContextualRelations(safeNode?.contextual_relation);
+
+  // "In context" — for a chunk-level moment, reconstruct a mini-transcript from
+  // the neighboring chunks (who said what just before/after). Used in the static
+  // .threads viewer, where there's no backend/utterance feed but every chunk
+  // (with speaker + source_excerpt) is present in the graph. ±4 in graph order.
+  const CONTEXT_WINDOW = 4;
+  const contextWindow = useMemo(() => {
+    if (!Array.isArray(contextNodes) || contextNodes.length === 0 || !safeNode) return null;
+    const lvl = Number(safeNode.semantic_level || safeNode.level || 0);
+    if (lvl !== 1) return null; // moments only
+    const chunks = contextNodes.filter(
+      (n) => Number(n.semantic_level || n.level || 0) === 1
+    );
+    const idx = chunks.findIndex((n) => String(n.id) === String(safeNode.id));
+    if (idx === -1) return null;
+    const from = Math.max(0, idx - CONTEXT_WINDOW);
+    const to = Math.min(chunks.length, idx + CONTEXT_WINDOW + 1);
+    return {
+      rows: chunks.slice(from, to),
+      currentId: String(safeNode.id),
+      truncated: from > 0 || to < chunks.length,
+    };
+  }, [contextNodes, safeNode]);
 
   // Raw transcript for this node's chunk. NOTE: for live-recorded
   // conversations the backend (conversation_reader.build_chunk_dict...)
@@ -411,15 +436,15 @@ export default function NodeDetail({
   if (!safeNode) return null;
 
   return (
-    <div className="fixed top-0 right-0 h-full w-full sm:w-80 sm:max-w-[85vw] bg-white shadow-lg border-l border-gray-200 z-40 flex flex-col animate-slideIn">
+    <div className="fixed left-0 right-0 bottom-0 max-h-[75vh] rounded-t-2xl border-t border-gray-200 bg-white shadow-lg z-40 flex flex-col lct-detail-enter sm:left-auto sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:max-w-[85vw] sm:rounded-t-none sm:border-t-0 sm:border-l">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-        <h3
+        <h2
           className="text-sm font-semibold text-gray-800 pr-2 break-words leading-snug"
           title={safeNode.node_name}
         >
           {safeNode.node_name}
-        </h3>
+        </h2>
         <button
           onClick={onClose}
           className="p-3 text-gray-400 hover:text-gray-600 transition shrink-0"
@@ -488,6 +513,37 @@ export default function NodeDetail({
             <p className="text-gray-600 mt-0.5 leading-relaxed text-xs bg-gray-50 rounded p-2">
               {safeNode.source_excerpt}
             </p>
+          </div>
+        )}
+
+        {/* In context — neighboring moments with speakers, so an isolated chunk
+            reads as part of an exchange. Static-viewer path (no utterance feed). */}
+        {contextWindow && (
+          <div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              In context · who said what around this
+            </span>
+            <div className="mt-1 max-h-60 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs leading-relaxed">
+              {contextWindow.rows.map((n) => {
+                const speaker = n.speaker_display || n.speaker_id || "?";
+                const text = n.source_excerpt || n.summary || n.node_name || "";
+                const isCur = String(n.id) === contextWindow.currentId;
+                const clickable = !isCur && typeof onSelectNode === "function";
+                return (
+                  <div
+                    key={n.id}
+                    onClick={clickable ? () => onSelectNode(n.id) : undefined}
+                    className={`py-0.5 ${isCur ? "bg-amber-100 rounded px-0.5" : ""} ${
+                      clickable ? "cursor-pointer hover:bg-gray-100 rounded px-0.5" : ""
+                    }`}
+                  >
+                    <span className="font-medium text-gray-500">{speaker}</span>
+                    <span className="text-gray-300">: </span>
+                    <span className={isCur ? "text-gray-800" : "text-gray-600"}>{text}</span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
@@ -711,7 +767,7 @@ export default function NodeDetail({
             className="self-start rounded border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-800 hover:bg-amber-100 transition-colors"
             title="Dim everything except the nodes that support, imply, or clarify this one. Press Esc to exit."
           >
-            ↑ Trace ancestors
+            ↑ Show what led here
           </button>
         )}
 
@@ -826,4 +882,6 @@ NodeDetail.propTypes = {
   onSpeakerRenamed: PropTypes.func,
   onTraceAncestors: PropTypes.func,
   participantNames: PropTypes.arrayOf(PropTypes.string),
+  contextNodes: PropTypes.arrayOf(PropTypes.object),
+  onSelectNode: PropTypes.func,
 };

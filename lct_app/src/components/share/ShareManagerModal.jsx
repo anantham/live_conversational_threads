@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { Copy, Trash2, Plus } from "lucide-react";
 
-import { API_BASE_URL } from "../../services/apiClient";
+import { apiFetch } from "../../services/apiClient";
 
 /**
  * Modal for managing public share links of a conversation.
@@ -28,8 +28,8 @@ export default function ShareManagerModal({ conversationId, onClose }) {
     setLoading(true);
     setError("");
     try {
-      const resp = await fetch(
-        `${API_BASE_URL}/api/conversations/${encodeURIComponent(conversationId)}/shares`,
+      const resp = await apiFetch(
+        `/api/conversations/${encodeURIComponent(conversationId)}/shares`,
         { credentials: "include" },
       );
       if (!resp.ok) {
@@ -57,8 +57,8 @@ export default function ShareManagerModal({ conversationId, onClose }) {
         .map((e) => e.trim())
         .filter(Boolean);
       const body = { allowed_emails: emails.length > 0 ? emails : null };
-      const resp = await fetch(
-        `${API_BASE_URL}/api/conversations/${encodeURIComponent(conversationId)}/share`,
+      const resp = await apiFetch(
+        `/api/conversations/${encodeURIComponent(conversationId)}/share`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -82,8 +82,8 @@ export default function ShareManagerModal({ conversationId, onClose }) {
     async (token) => {
       if (!window.confirm("Revoke this share? Anyone holding the URL will lose access.")) return;
       try {
-        const resp = await fetch(
-          `${API_BASE_URL}/api/share/${encodeURIComponent(token)}`,
+        const resp = await apiFetch(
+          `/api/share/${encodeURIComponent(token)}`,
           { method: "DELETE" },
         );
         if (!resp.ok) {

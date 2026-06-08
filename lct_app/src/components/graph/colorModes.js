@@ -17,13 +17,15 @@
 
 import { SPEAKER_COLORS } from "../graphConstants";
 
-export const COLOR_MODES = Object.freeze(["tier", "speaker", "temporal"]);
+export const COLOR_MODES = Object.freeze(["tier", "speaker", "temporal", "argument", "date"]);
 export const DEFAULT_COLOR_MODE = "tier";
 
 const COLOR_MODE_LABELS = {
   tier: "Color: Tier",
   speaker: "Color: Speaker",
   temporal: "Color: Time",
+  argument: "Color: Argument",
+  date: "Color: Date",
 };
 
 export function colorModeLabel(mode) {
@@ -123,6 +125,145 @@ export function buildTemporalColorMapForNodes(nodes) {
 }
 
 /**
+ * Build a date/meeting color map keyed by node id. Unlike `temporal` (a smooth
+ * gradient by position WITHIN one conversation), this is CATEGORICAL: every node
+ * from the same meeting gets the same color, and different meetings get distinct
+ * colors. Meetings are sorted chronologically and assigned evenly-spaced hues,
+ * so the palette also reads as a timeline (oldest = red ... newest = violet).
+ *
+ * This is meant for a COMBINED multi-meeting artifact where each node carries a
+ * meeting key. On a single-meeting artifact there is one key, so every node is
+ * one calm color (expected). Meeting key resolution (first hit wins):
+ *   meeting_date | conversation_date | source_date | meeting_id |
+ *   conversation_id | conversation_title | YYYY-MM-DD derived from timestamp_start.
+ */
+export function buildDateColorMapForNodes(nodes) {
+  const map = {};
+  const list = nodes || [];
+  if (list.length === 0) return map;
+
+  const keyOf = (n) => {
+    const explicit =
+      n.meeting_date || n.conversation_date || n.source_date ||
+      n.meeting_id || n.conversation_id || n.conversation_title;
+    if (explicit) return String(explicit);
+    const ts = n.timestamp_start;
+    if (typeof ts === "number" && Number.isFinite(ts) && ts > 1e9) {
+      const ms = ts > 1e12 ? ts : ts * 1000;
+      return new Date(ms).toISOString().slice(0, 10); // YYYY-MM-DD
+    }
+    return null;
+  };
+
+  // Distinct keys, chronologically (ISO date / title strings sort sensibly).
+  const keys = [...new Set(list.map(keyOf).filter(Boolean))].sort();
+  const n = keys.length;
+  const colorByKey = {};
+  keys.forEach((k, i) => {
+    // One meeting -> a single calm blue; many -> spread across the spectrum.
+    const hue = n <= 1 ? 210 : (i / (n - 1)) * 280;
+    colorByKey[k] = `hsl(${hue}, 62%, 80%)`;
+  });
+
+  list.forEach((nd) => {
+    const k = keyOf(nd);
+    map[nd.id] = (k && colorByKey[k]) || NEUTRAL_FILL;
+  });
+  return map;
+}
+
+/**
+ * Argument-status palette (codex-reviewed Phase 1). This colors a node by what
+ * the conversation DOES TO it — incoming supports vs rebuts — NOT by an authored
+ * claim/evidence "role" (that needs Phase 3 extraction). Four honest statuses:
+ *   - disputed:    has both incoming supports AND rebuts (the battlegrounds)
+ *   - supported:   incoming supports only (agreed ground)
+ *   - rebutted:    incoming rebuts only (under challenge)
+ *   - unconnected: no incoming argument edges (narrative / not contested)
+ * The per-node "N supporting / M rebutting" tooltip is the non-color cue.
+ */
+export const ARGUMENT_STATUSES = Object.freeze([
+  // Violet, not amber: amber (#f59e0b / #fef3c7) is reserved for the selected
+  // node + the current transcript line (DESIGN.md One-Amber Rule). Disputed
+  // borrowing amber made every battleground node read as "selected" and
+  // flooded the canvas. Violet keeps the same -100 fill / -400 border structure
+  // as supported(green)/rebutted(red) and completes the language: green=agree,
+  // red=disagree, violet=contested.
+  { key: "disputed", label: "Disputed", fill: "#ede9fe", border: "#a78bfa" }, // violet
+  { key: "supported", label: "Supported", fill: "#dcfce7", border: "#4ade80" }, // green
+  { key: "rebutted", label: "Rebutted", fill: "#fee2e2", border: "#f87171" }, // red
+  { key: "unconnected", label: "Not contested", fill: NEUTRAL_FILL, border: NEUTRAL_BORDER },
+]);
+const ARG_BY_KEY = Object.fromEntries(ARGUMENT_STATUSES.map((s) => [s.key, s]));
+const _AGREE = new Set(["supports", "agrees", "agreement", "affirms"]);
+const _DISAGREE = new Set(["rebuts", "disagrees", "disagreement", "contradicts", "refutes"]);
+
+/**
+ * Single source of truth for argument-edge stance: "sup" | "reb" | null.
+ *
+ * Both the argument-status COLOR map (buildArgumentStatusMapForNodes) and the
+ * dialectic LAYOUT (layoutDialectic in graphLayout.js) call this, so a node's
+ * fan side in the dialectic view always agrees with the fill it already shows.
+ * The match is exact + lowercased on purpose: substring matching would mislabel
+ * "disagreement" via "agree", and a broader vocabulary (e.g. "prevents",
+ * "opposes") would color and lay out the same edge differently. Anything not in
+ * these two sets is intentionally NOT an argument edge here (it may still be
+ * DRAWN by categorizeEdgeRelation — that taxonomy is for edge color, not for
+ * support/rebut status).
+ */
+export function argumentStanceOf(relationType) {
+  const rt = String(relationType || "").trim().toLowerCase();
+  if (_AGREE.has(rt)) return "sup";
+  if (_DISAGREE.has(rt)) return "reb";
+  return null;
+}
+
+/**
+ * Build an argument-status map keyed by node id: { status, sup, reb }.
+ * Counts INCOMING supports/rebuts per node (edges whose related_node names it).
+ * Each direction of a bidirectional pair counts separately — no collapse — so a
+ * mutual support/rebut never silently drops an endpoint's incoming count
+ * (the dedup ambiguity codex flagged). related_node is matched by exact then
+ * case-insensitive node_name (the export writes related_node as the target name).
+ */
+export function buildArgumentStatusMapForNodes(nodes) {
+  const map = {};
+  const list = nodes || [];
+  const byName = new Map();
+  const byLowerName = new Map();
+  list.forEach((n) => {
+    if (n?.node_name) {
+      byName.set(n.node_name, n);
+      byLowerName.set(String(n.node_name).toLowerCase(), n);
+    }
+    map[n.id] = { status: "unconnected", sup: 0, reb: 0 };
+  });
+  const resolveTarget = (name) => {
+    if (!name) return null;
+    return byName.get(name) || byLowerName.get(String(name).toLowerCase()) || null;
+  };
+  list.forEach((n) => {
+    (n.edge_relations || []).forEach((e) => {
+      const kind = argumentStanceOf(e?.relation_type);
+      if (!kind) return;
+      const tgt = resolveTarget(e?.related_node);
+      if (tgt && map[tgt.id]) map[tgt.id][kind] += 1;
+    });
+  });
+  Object.values(map).forEach((s) => {
+    s.status =
+      s.sup > 0 && s.reb > 0
+        ? "disputed"
+        : s.sup > 0
+          ? "supported"
+          : s.reb > 0
+            ? "rebutted"
+            : "unconnected";
+  });
+  return map;
+}
+
+/**
  * Resolve fill and border colors for a single node given the active mode
  * and pre-built per-mode maps.
  */
@@ -131,6 +272,8 @@ export function resolveNodeColors({
   node,
   speakerColorMap,
   temporalColorMap,
+  argumentStatusMap,
+  dateColorMap,
 }) {
   if (!node) return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
 
@@ -143,6 +286,17 @@ export function resolveNodeColors({
   if (mode === "temporal") {
     const fill = temporalColorMap?.[node.id] || NEUTRAL_FILL;
     return { fill, border: deriveBorder(fill) };
+  }
+
+  if (mode === "date") {
+    const fill = dateColorMap?.[node.id] || NEUTRAL_FILL;
+    return { fill, border: deriveBorder(fill) };
+  }
+
+  if (mode === "argument") {
+    const status = argumentStatusMap?.[node.id]?.status || "unconnected";
+    const spec = ARG_BY_KEY[status] || ARG_BY_KEY.unconnected;
+    return { fill: spec.fill, border: spec.border };
   }
 
   // Default: tier

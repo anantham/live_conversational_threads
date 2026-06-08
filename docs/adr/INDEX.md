@@ -41,6 +41,7 @@ Last updated: 2026-06-01 (ADR-034 collision resolved: the inference-catalog ADR 
 | [ADR-034](ADR-034-public-lct-deployment-tiered-isolation.md) | Public LCT Deployment — Tiered Access with an Isolated Public Instance | 2026-05-31 | Approved |
 | [ADR-035](ADR-035-crux-detection.md) | Crux Detection | 2026-05-30 | Decided |
 | [ADR-037](ADR-037-inference-backend-catalog-and-three-lane-settings.md) | Inference Backend Catalog & Three-Lane Settings | 2026-05-30 | Decided |
+| [ADR-038](ADR-038-engine-agnostic-privacy-boundary.md) | Engine-Agnostic Privacy Boundary — shared redact/restore/leak-verify primitive enforced at the transport chokepoint | 2026-06-07 | Proposed |
 
 > **⚠ ADR-021 number collision:** two ADRs shipped as 021 — *Browser-Local Draft Recovery* (2026-04-03) and *Authored Four-Level Conversation Hierarchy* (2026-04-13). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.
 > **ADR-034 number collision — RESOLVED (2026-06-01):** two ADRs had shipped as 034 — *Inference Backend Catalog & Three-Lane Settings* (2026-05-30, feat branch) and *Public LCT Deployment — Tiered Access* (2026-05-31, main). The catalog ADR was renumbered **034 → 037** (no ADR-036/037 file existed; 036 is reserved by ADR-032's future-work list); public-deployment keeps 034. Gap: there is no ADR-036 yet (reserved). Note ADR-037's "Decided (pending human review)" status still wants reconciliation with the index's standard vocabulary.

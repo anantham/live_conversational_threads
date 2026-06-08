@@ -8,8 +8,6 @@ import {
   EDGE_COLORS,
   EDGE_CATEGORY_STYLES,
   categorizeEdgeRelation,
-  buildSpeakerColorMap,
-  buildTemporalColorMap,
 } from "./graphConstants";
 import {
   ZOOM_LEVEL_1,
@@ -31,6 +29,8 @@ import {
   DEFAULT_COLOR_MODE,
   buildSpeakerColorMapForNodes,
   buildTemporalColorMapForNodes,
+  buildArgumentStatusMapForNodes,
+  buildDateColorMapForNodes,
   resolveNodeColors,
 } from "./graph/colorModes";
 import ColorModeToggle from "./graph/ColorModeToggle";
@@ -52,6 +52,8 @@ function MinimalGraphInner({
   setSelectedNode,
   viewportReservationKey,
   onVisibleLevelChange,
+  onFocusChange,
+  chromeless = false,
   conversationId,
   initialColorMode,
   initialShowTemporalEdges,
@@ -187,6 +189,36 @@ function MinimalGraphInner({
     () => buildTemporalColorMapForNodes(normalizedChunk),
     [normalizedChunk]
   );
+  // Argument-status map (Phase 1): id -> {status, sup, reb} from incoming edges.
+  const argumentStatusMap = useMemo(
+    () => buildArgumentStatusMapForNodes(normalizedChunk),
+    [normalizedChunk]
+  );
+  // Date/meeting map: id -> categorical color per meeting (combined corpus).
+  const dateColorMap = useMemo(
+    () => buildDateColorMapForNodes(normalizedChunk),
+    [normalizedChunk]
+  );
+
+  // Tap-friendly drill-down. Same fan-out as handleNodeDoubleClick, but callable
+  // from a node's ⊕ control by id — so it works on touch (double-tap is eaten by
+  // the browser) and is discoverable. Only non-leaf nodes above the chunk tier
+  // expose the control; leaves and moments have nothing to fan out.
+  const handleExpand = useCallback(
+    (nodeId) => {
+      const node = normalizedChunk.find((n) => n.id === nodeId);
+      if (!node) return;
+      const childIds = Array.isArray(node.children_ids) ? node.children_ids : [];
+      const ownLevel = Number(node.semantic_level || node.level || 1);
+      if (childIds.length === 0 || ownLevel <= 1) return;
+      autoFollowRef.current = false;
+      setDrilldownPath((prev) => [
+        ...prev,
+        { level: ownLevel, nodeId, nodeName: node.node_name || "(unnamed)" },
+      ]);
+    },
+    [normalizedChunk]
+  );
 
   const buildRfNodesForSource = useCallback((sourceNodes) => {
     return sourceNodes.map((item) => {
@@ -199,7 +231,17 @@ function MinimalGraphInner({
         node: item,
         speakerColorMap,
         temporalColorMap,
+        argumentStatusMap,
+        dateColorMap,
       });
+      // Non-color cue for the argument view: the actual support/rebut counts.
+      let argStatusLabel = null;
+      if (colorMode === "argument") {
+        const as = argumentStatusMap[item.id];
+        if (as && (as.sup > 0 || as.reb > 0)) {
+          argStatusLabel = `${as.status} · ${as.sup} supporting / ${as.reb} rebutting`;
+        }
+      }
 
       // Title: pass the full node_name through. titleStyle has no
       // white-space: nowrap, so multi-line names wrap naturally inside
@@ -224,6 +266,23 @@ function MinimalGraphInner({
       const isBookmark = Boolean(item.is_bookmark);
       const isContextualProgress = Boolean(item.is_contextual_progress);
 
+      // Conversation-dimension markers (action_item / surprise / agreement /
+      // disagreement). Rendered as a compact chip strip in ConversationNode —
+      // NOT peer encodings (the card already uses rotation/border/corner/arrow).
+      // Prefer the backend-normalized `markers` array; else derive from flags+edges.
+      const dimensionMarkers = (
+        Array.isArray(item.markers) && item.markers.length
+          ? item.markers
+          : [
+              item.is_action_item && "action_item",
+              item.is_surprise && "surprise",
+              item.has_disagreement && "disagreement",
+              item.has_agreement && "agreement",
+            ].filter(Boolean)
+      ).filter((m) =>
+        ["action_item", "surprise", "agreement", "disagreement"].includes(m),
+      );
+
       return {
         id: item.id,
         type: "conversational",
@@ -240,12 +299,22 @@ function MinimalGraphInner({
           isCrux,
           isBookmark,
           isContextualProgress,
+          dimensionMarkers,
+          // Tap-to-fan-out: non-leaf nodes above the chunk tier get a ⊕ control
+          // that drills into just this node's children (see handleExpand).
+          canExpand:
+            Array.isArray(item.children_ids) &&
+            item.children_ids.length > 0 &&
+            Number(item.semantic_level || item.level || 1) > 1,
+          expandCount: Array.isArray(item.children_ids) ? item.children_ids.length : 0,
+          onExpand: () => handleExpand(item.id),
+          argStatusLabel,
           // fullData kept for downstream consumers (NodeDetail panel etc.)
           fullData: item,
         },
       };
     });
-  }, [colorMode, speakerColorMap, temporalColorMap]);
+  }, [colorMode, speakerColorMap, temporalColorMap, argumentStatusMap, dateColorMap, handleExpand]);
 
   const buildRfEdgesForSource = useCallback((sourceNodes) => {
     if (hideEdges) return [];
@@ -677,6 +746,25 @@ function MinimalGraphInner({
     onVisibleLevelChange,
   ]);
 
+  // Report the current drill focus so the host header can show the title/summary
+  // of the part being navigated (null = back at the whole-conversation level).
+  useEffect(() => {
+    if (!onFocusChange) return;
+    if (!drilldownPath.length) {
+      onFocusChange(null);
+      return;
+    }
+    const tail = drilldownPath[drilldownPath.length - 1];
+    const node = normalizedChunk.find((n) => n.id === tail.nodeId);
+    onFocusChange({
+      id: tail.nodeId,
+      title: node?.node_name || tail.nodeName || "",
+      summary: node?.summary || "",
+      level: tail.level,
+      depth: drilldownPath.length,
+    });
+  }, [drilldownPath, normalizedChunk, onFocusChange]);
+
   // Auto-fit the viewport when the displayed semantic tier changes (e.g.
   // initial mount lands on arcs but the camera was anchored on the
   // chunk-level layout — leaving arc nodes off-screen until the user
@@ -714,6 +802,11 @@ function MinimalGraphInner({
   const layoutKeyRef = useRef("");
 
   const pendingFitViewRef = useRef(false);
+  // Becomes true once the first real fitView has framed the graph on load.
+  // Gates the auto-follow auto-pan (below) so it cannot yank the camera to
+  // the last node before the initial tier fit runs — the cause of the
+  // "empty canvas until you click Center" bug on a cold-open `?src=` load.
+  const hasInitiallyFitRef = useRef(false);
 
   useEffect(() => {
     // Generate a key from node IDs to detect when the node set changes
@@ -848,6 +941,10 @@ function MinimalGraphInner({
             maxZoom: 1.0,
           });
         }
+        // The graph is now framed. Release the auto-follow gate so live
+        // streaming can resume centering on new nodes, but only AFTER this
+        // initial fit has run (prevents the cold-open off-screen camera).
+        hasInitiallyFitRef.current = true;
         setTimeout(() => { programmaticMoveRef.current = false; }, 350);
       });
     });
@@ -867,7 +964,13 @@ function MinimalGraphInner({
       if (!nodeId) return undefined;
 
       const liveNode = reactFlow.getNode(nodeId);
-      const fallbackNode = layoutedNodes.find((node) => node.id === nodeId) || null;
+      // Fall back to the CURRENTLY DISPLAYED tier's layout, not the
+      // chunk-level `layoutedNodes`. A node shown at the arcs tier (y≈130)
+      // also exists in the chunk dagre at y≈17000+; centering on that stale
+      // coordinate parks the camera off-screen. `layoutedDisplayNodes` is the
+      // tier the user is actually looking at (and equals `layoutedNodes` in
+      // legacy mode), so this is strictly the correct-or-equal source.
+      const fallbackNode = layoutedDisplayNodes.find((node) => node.id === nodeId) || null;
       const targetNode = liveNode || fallbackNode;
       const targetPosition =
         targetNode?.positionAbsolute || targetNode?.position || fallbackNode?.position || null;
@@ -888,7 +991,7 @@ function MinimalGraphInner({
 
       return () => window.clearTimeout(timeout);
     },
-    [layoutedNodes, reactFlow]
+    [layoutedDisplayNodes, reactFlow]
   );
 
   // Sync ref with state so effects read the latest value
@@ -921,6 +1024,12 @@ function MinimalGraphInner({
   const lastNodeId = layoutedDisplayNodes[layoutedDisplayNodes.length - 1]?.id ?? null;
   useEffect(() => {
     if (!autoFollow || selectedNode || layoutedDisplayNodes.length === 0) return;
+    // Cold-open guard: autoFollow defaults true, so without this the mount
+    // auto-pan fires before the initial fitView and parks the camera ~17000px
+    // off-screen (empty canvas until "Center"). Every tier/drill handler
+    // already clears auto-follow for this reason; this covers the one path
+    // they missed — the very first load.
+    if (!hasInitiallyFitRef.current) return;
     const last = layoutedDisplayNodes[layoutedDisplayNodes.length - 1];
     if (!last?.id) return;
 
@@ -1041,7 +1150,7 @@ function MinimalGraphInner({
   }, []);
 
   const ZOOM_PRESETS = [
-    { label: "Center", action: () => {
+    { label: "Center", hint: "Bring all the nodes back into view", action: () => {
       // Keep the user's current zoom and anchor the camera so the TOP-LEFT
       // of the node bounding box lines up with the top-left of the viewport
       // (with a small padding). fitView's previous behavior recomputed zoom
@@ -1081,7 +1190,7 @@ function MinimalGraphInner({
   ];
 
   return (
-    <div className="relative w-full h-full">
+    <div className={`relative w-full h-full${chromeless ? " lct-graph-chromeless" : ""}`}>
       {/* ADR-032 Part B pattern 3: argument-scaffold trace banner.
           Appears at top-center when trace mode is active. */}
       {argumentTraceFrom && (
@@ -1139,89 +1248,124 @@ function MinimalGraphInner({
         proOptions={{ hideAttribution: true }}
       />
 
-      {/* Zoom preset + graph display controls */}
+      {/* Zoom preset + graph display controls. Center stays out front (the
+          recovery action); the secondary view toggles collapse behind a
+          "Display" disclosure so the resting canvas stays calm (ADR-011) — a
+          first-time recipient sees Center + Display, not a six-control cockpit.
+          Native <details> keeps it keyboard-accessible with no extra state. */}
       <div className="absolute bottom-4 left-4 z-40 flex items-center gap-1">
-        {ZOOM_PRESETS.map(({ label, action }) => (
+        {ZOOM_PRESETS.map(({ label, action, hint }) => (
           <button
             key={label}
             onClick={action}
+            title={hint || label}
             className="px-2 py-1 text-[10px] font-medium bg-white/90 border border-gray-200 rounded shadow-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
           >
             {label}
           </button>
         ))}
-        <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
-        <button
-          onClick={() => {
-            setAutoFollow((v) => {
-              const next = !v;
-              autoFollowRef.current = next;
-              if (next && layoutedNodes.length > 0) {
-                const last = layoutedNodes[layoutedNodes.length - 1];
-                if (last?.id) {
-                  centerViewportOnNode(last.id, { zoom: 1, duration: 300 });
-                }
+        <details className="relative">
+          <summary
+            className="cursor-pointer list-none flex items-center gap-1 px-2 py-1 text-[10px] font-medium bg-white/90 border border-gray-200 rounded shadow-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+            title="Show display options (follow, motion, edges, time order, color)"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <line x1="4" x2="20" y1="9" y2="9" />
+              <line x1="4" x2="20" y1="15" y2="15" />
+              <circle cx="9" cy="9" r="2" />
+              <circle cx="15" cy="15" r="2" />
+            </svg>
+            Display
+          </summary>
+          <div className="absolute bottom-full left-0 mb-2 flex flex-wrap items-center gap-1 bg-white/95 rounded-lg shadow-md border border-gray-200 p-1.5 max-w-[calc(100vw-2rem)] animate-slideIn">
+            <button
+              onClick={() => {
+                setAutoFollow((v) => {
+                  const next = !v;
+                  autoFollowRef.current = next;
+                  if (next && layoutedNodes.length > 0) {
+                    const last = layoutedNodes[layoutedNodes.length - 1];
+                    if (last?.id) {
+                      centerViewportOnNode(last.id, { zoom: 1, duration: 300 });
+                    }
+                  }
+                  return next;
+                });
+              }}
+              title={
+                autoFollow
+                  ? "Auto-center: the view re-centers on new content as you navigate. Click for free pan."
+                  : "Free pan: the view stays where you put it. Click to auto-center on new content."
               }
-              return next;
-            });
-          }}
-          title={autoFollow ? "Auto-follow is on — click to stop" : "Auto-follow is off — click to resume"}
-          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
-            autoFollow
-              ? "bg-blue-50 border-blue-300 text-blue-700"
-              : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
-          }`}
-        >
-          {autoFollow ? "Following" : "Follow"}
-        </button>
-        <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
-        <button
-          onClick={() => setReduceMotion((v) => !v)}
-          title={reduceMotion ? "Re-enable edge animation" : "Stop edge animation"}
-          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
-            reduceMotion
-              ? "bg-amber-50 border-amber-300 text-amber-700"
-              : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
-          }`}
-        >
-          {reduceMotion ? "Motion off" : "Motion on"}
-        </button>
-        <button
-          onClick={() => setHideEdges((v) => !v)}
-          title={hideEdges ? "Show edges" : "Hide edges"}
-          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
-            hideEdges
-              ? "bg-amber-50 border-amber-300 text-amber-700"
-              : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
-          }`}
-        >
-          {hideEdges ? "Edges off" : "Edges on"}
-        </button>
-        {/* ADR-032 Part C: temporal edges hidden by default. The spatial
-            X position of nodes already encodes time — rendering temporal
-            arrows on top is redundant. Toggle on if you want to see the
-            successor chain explicitly. */}
-        <button
-          onClick={() => handleShowTemporalEdgesChange(!showTemporalEdges)}
-          title={showTemporalEdges ? "Hide temporal-next edges (default)" : "Show temporal-next edges"}
-          disabled={hideEdges}
-          className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
-            hideEdges
-              ? "bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed"
-              : showTemporalEdges
-                ? "bg-blue-50 border-blue-300 text-blue-700"
-                : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
-          }`}
-        >
-          {showTemporalEdges ? "Temporal on" : "Temporal off"}
-        </button>
-        <span className="mx-1 select-none text-[9px] text-gray-300">|</span>
-        <ColorModeToggle mode={colorMode} onChange={handleColorModeChange} />
+              className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+                autoFollow
+                  ? "bg-blue-50 border-blue-300 text-blue-700"
+                  : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {autoFollow ? "Following" : "Follow"}
+            </button>
+            <button
+              onClick={() => setReduceMotion((v) => !v)}
+              title={
+                reduceMotion
+                  ? "Motion off: edges are static. Click to gently animate question/clarify edges."
+                  : "Motion on: question & clarify edges pulse. Click to make everything static."
+              }
+              className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+                reduceMotion
+                  ? "bg-amber-50 border-amber-300 text-amber-700"
+                  : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {reduceMotion ? "Motion off" : "Motion on"}
+            </button>
+            <button
+              onClick={() => setHideEdges((v) => !v)}
+              title={
+                hideEdges
+                  ? "Show the relationship edges (supports / rebuts / etc.) between nodes."
+                  : "Hide all relationship edges for a cleaner, nodes-only view."
+              }
+              className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+                hideEdges
+                  ? "bg-amber-50 border-amber-300 text-amber-700"
+                  : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {hideEdges ? "Edges off" : "Edges on"}
+            </button>
+            {/* ADR-032 Part C: temporal edges hidden by default. The spatial
+                X position of nodes already encodes time — rendering temporal
+                arrows on top is redundant. Toggle on if you want to see the
+                successor chain explicitly. */}
+            <button
+              onClick={() => handleShowTemporalEdgesChange(!showTemporalEdges)}
+              title={
+                showTemporalEdges
+                  ? "Hide time-order arrows (left-to-right position already shows order)."
+                  : "Show arrows linking each point to the next one in time."
+              }
+              disabled={hideEdges}
+              className={`px-2 py-1 text-[10px] font-medium border rounded shadow-sm transition-colors ${
+                hideEdges
+                  ? "bg-gray-100 border-gray-200 text-gray-300 cursor-not-allowed"
+                  : showTemporalEdges
+                    ? "bg-blue-50 border-blue-300 text-blue-700"
+                    : "bg-white/90 border-gray-200 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {showTemporalEdges ? "Time order on" : "Time order off"}
+            </button>
+            <span className="mx-0.5 select-none text-[9px] text-gray-300">|</span>
+            <ColorModeToggle mode={colorMode} onChange={handleColorModeChange} />
+          </div>
+        </details>
       </div>
 
       {/* Zoom / cluster HUD — top-left */}
       <div className="absolute top-3 left-3 right-3 z-40 flex items-center gap-2 select-none overflow-x-auto flex-nowrap whitespace-nowrap">
-        <div className="flex-shrink-0 flex items-center gap-1.5 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm px-2.5 py-1.5">
+        <div className="flex-shrink-0 flex items-center gap-1.5 rounded-md bg-white/95 border border-gray-200 shadow-sm px-2.5 py-1.5">
           <span className="text-[10px] font-mono text-gray-500">{Math.round(zoomLevel * 100)}%</span>
           <span className="text-[9px] text-gray-300">|</span>
           {clusterLevelLabel ? (
@@ -1257,7 +1401,7 @@ function MinimalGraphInner({
         </div>
         {/* Drill-down breadcrumb — click any crumb to jump back to that level. */}
         {drilldownPath.length > 0 && (
-          <div className="flex-shrink-0 flex items-center gap-1 text-[11px] text-gray-600 bg-white/90 backdrop-blur border border-gray-200 shadow-sm rounded-md px-2 py-1">
+          <div className="flex-shrink-0 flex items-center gap-1 text-[11px] text-gray-600 bg-white/95 border border-gray-200 shadow-sm rounded-md px-2 py-1">
             <button
               type="button"
               className="text-blue-600 hover:underline font-medium cursor-pointer"
@@ -1271,7 +1415,7 @@ function MinimalGraphInner({
             </button>
             {drilldownPath.map((crumb, idx) => (
               <span key={`${crumb.nodeId}-${idx}`} className="flex items-center gap-1">
-                <span className="text-gray-400">/</span>
+                <span className="text-gray-500">/</span>
                 <button
                   type="button"
                   className={
@@ -1293,7 +1437,7 @@ function MinimalGraphInner({
           </div>
         )}
         {/* Zoom scale — click to lock semantic or clustered level, click again to unlock */}
-        <div className="flex-shrink-0 flex items-center gap-0 rounded-md bg-white/90 backdrop-blur border border-gray-200 shadow-sm overflow-hidden">
+        <div className="flex-shrink-0 flex items-center gap-0 rounded-md bg-white/95 border border-gray-200 shadow-sm overflow-hidden">
           {(displayMode === "semantic"
             ? AUTHORED_LEVELS
             : [
@@ -1331,7 +1475,7 @@ function MinimalGraphInner({
                     ? `${chip} ${color} border-b-2 ${border}`
                     : isLocked
                     ? `${chip} ${color} border-b-2 border-dashed ${border}`
-                    : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"
+                    : "text-gray-500 hover:text-gray-600 hover:bg-gray-50"
                 }`}
               >
                 {label}{isLocked ? " \u{1F512}" : ""}
@@ -1342,7 +1486,7 @@ function MinimalGraphInner({
         {lockedLevel != null && (
           <button
             onClick={() => setLockedLevel(null)}
-            className="text-[9px] text-gray-400 hover:text-gray-600 ml-1"
+            className="text-[9px] text-gray-500 hover:text-gray-600 ml-1"
             title="Unlock zoom level"
           >
             unlock
@@ -1352,12 +1496,12 @@ function MinimalGraphInner({
 
       {/* Edge hover tooltip — transient, top-right */}
       {hoveredEdge && !clickedEdge && (
-        <div className="absolute top-4 right-4 z-30 max-w-xs rounded-md bg-white/90 backdrop-blur px-3 py-2 text-xs text-gray-700 shadow-sm border border-gray-200 pointer-events-none">
+        <div className="absolute top-4 right-4 z-30 max-w-xs rounded-md bg-white/95 px-3 py-2 text-xs text-gray-700 shadow-sm border border-gray-200 pointer-events-none">
           <span className="font-medium capitalize">{hoveredEdge.relationType}</span>
           {hoveredEdge.relationText && (
             <p className="mt-0.5 text-gray-500 line-clamp-2">{hoveredEdge.relationText}</p>
           )}
-          <p className="mt-1 text-[10px] text-gray-400">click to pin</p>
+          <p className="mt-1 text-[10px] text-gray-500">click to pin</p>
         </div>
       )}
 
@@ -1370,14 +1514,14 @@ function MinimalGraphInner({
             </span>
             <button
               onClick={() => setClickedEdge(null)}
-              className="text-gray-400 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
+              className="text-gray-500 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
               aria-label="Dismiss"
             >
               ✕
             </button>
           </div>
           {(clickedEdge.sourceLabel || clickedEdge.targetLabel) && (
-            <p className="text-[10px] text-gray-400 mb-2 truncate">
+            <p className="text-[10px] text-gray-500 mb-2 truncate">
               {clickedEdge.sourceLabel}
               <span className="mx-1">→</span>
               {clickedEdge.targetLabel}
@@ -1386,7 +1530,7 @@ function MinimalGraphInner({
           {clickedEdge.relationText ? (
             <p className="leading-relaxed text-gray-600">{clickedEdge.relationText}</p>
           ) : (
-            <p className="text-gray-400 italic">No relation detail available.</p>
+            <p className="text-gray-500 italic">No relation detail available.</p>
           )}
         </div>
       )}
@@ -1399,13 +1543,13 @@ function MinimalGraphInner({
               <span className="font-semibold text-gray-900 text-sm leading-tight block">
                 {selectedCluster.label}
               </span>
-              <span className="text-[10px] text-gray-400 mt-0.5 block">
+              <span className="text-[10px] text-gray-500 mt-0.5 block">
                 {selectedClusterMembers.length} nodes in this cluster
               </span>
             </div>
             <button
               onClick={() => setSelectedCluster(null)}
-              className="text-gray-400 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
+              className="text-gray-500 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
               aria-label="Dismiss"
             >
               ✕
@@ -1428,17 +1572,17 @@ function MinimalGraphInner({
                   <span className="font-medium text-gray-800 truncate">{node.node_name}</span>
                 </div>
                 {node.source_excerpt && (
-                  <p className="text-[10px] text-gray-400 mt-0.5 ml-6 line-clamp-2">{node.source_excerpt}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5 ml-6 line-clamp-2">{node.source_excerpt}</p>
                 )}
                 {node.summary && !node.source_excerpt && (
-                  <p className="text-[10px] text-gray-400 mt-0.5 ml-6 line-clamp-2">{node.summary}</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5 ml-6 line-clamp-2">{node.summary}</p>
                 )}
                 <div className="flex gap-2 mt-1 ml-6">
                   {(node.speaker_display || node.speaker_id) && (
-                    <span className="text-[9px] text-gray-400">speaker: {node.speaker_display || node.speaker_id}</span>
+                    <span className="text-[9px] text-gray-500">speaker: {node.speaker_display || node.speaker_id}</span>
                   )}
                   {node.edge_relations?.length > 0 && (
-                    <span className="text-[9px] text-gray-400">{node.edge_relations.length} edges</span>
+                    <span className="text-[9px] text-gray-500">{node.edge_relations.length} edges</span>
                   )}
                   {node.thread_state && node.thread_state !== "continue_thread" && (
                     <span className="text-[9px] text-blue-400">{node.thread_state.replace(/_/g, " ")}</span>
@@ -1457,17 +1601,18 @@ function MinimalGraphInner({
       {normalizedChunk.length > 0 && (
         <div className="absolute bottom-14 left-4 z-40">
           <details className="group">
-            <summary className="cursor-pointer list-none p-2 bg-white/80 hover:bg-white/95 backdrop-blur rounded-full shadow-sm border border-gray-200 text-gray-400 hover:text-gray-600 transition opacity-60 hover:opacity-100">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <summary className="cursor-pointer list-none flex items-center gap-1.5 px-2.5 py-1.5 bg-white/85 hover:bg-white/95 rounded-full shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 transition opacity-80 hover:opacity-100 text-[10px] font-medium">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <circle cx="12" cy="12" r="10" />
                 <path d="M12 16v-4M12 8h.01" />
               </svg>
+              Colors
             </summary>
-            <div className="absolute bottom-full left-0 mb-2 bg-white/95 backdrop-blur rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-2 min-w-[180px] animate-slideIn">
+            <div className="absolute bottom-full left-0 mb-2 bg-white/95 rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-2 min-w-[180px] animate-slideIn">
               {displayMode === "semantic" ? (
                 <>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Current semantic level</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Current semantic level</span>
                     <div className="mt-1 text-[11px] text-gray-600">
                       {AUTHORED_LEVELS.find((spec) => spec.level === effectiveSemanticLevel)?.label || "authored"}
                     </div>
@@ -1476,7 +1621,7 @@ function MinimalGraphInner({
                     </div>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Node color = Speaker / temporal palette</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Node color = Speaker / temporal palette</span>
                     <div className="mt-1 text-[10px] text-gray-500 leading-tight">
                       Speaker colors appear when multiple speakers are detected. Otherwise colors fade by temporal position.
                     </div>
@@ -1485,7 +1630,7 @@ function MinimalGraphInner({
               ) : effectiveClusterLevel === 0 ? (
                 <>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Node color = Speaker</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Node color = Speaker</span>
                     <div className="mt-1 space-y-1">
                       {Object.entries(speakerColorMap).slice(0, 5).map(([sid, color]) => (
                         <div key={sid} className="flex items-center gap-2">
@@ -1494,12 +1639,12 @@ function MinimalGraphInner({
                         </div>
                       ))}
                       {Object.keys(speakerColorMap).length === 0 && (
-                        <span className="text-gray-400 italic">No speakers detected</span>
+                        <span className="text-gray-500 italic">No speakers detected</span>
                       )}
                     </div>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Edge color = Relation</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Edge color = Relation</span>
                     <div className="mt-1 space-y-1">
                       {[
                         { label: "supports", color: EDGE_COLORS.supports },
@@ -1519,13 +1664,13 @@ function MinimalGraphInner({
               ) : (
                 <>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Node color = Wavelength Rainbow</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Node color = Wavelength Rainbow</span>
                     <div className="mt-2 flex flex-col gap-1">
                       <div 
                         className="h-2 w-full rounded-full" 
                         style={{ background: 'linear-gradient(to right, hsl(0, 75%, 88%), hsl(140, 75%, 88%), hsl(280, 75%, 88%))' }}
                       />
-                      <div className="flex justify-between text-[9px] text-gray-400 font-mono uppercase tracking-tight">
+                      <div className="flex justify-between text-[9px] text-gray-500 font-mono uppercase tracking-tight">
                         <span>Start</span>
                         <span>Now</span>
                       </div>
@@ -1535,7 +1680,7 @@ function MinimalGraphInner({
                     </div>
                   </div>
                   <div>
-                    <span className="font-medium text-gray-400 uppercase tracking-wider text-[10px]">Edge color = Agreement</span>
+                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Edge color = Agreement</span>
                     <div className="mt-1 space-y-1">
                       {[
                         { label: "supports / agrees", color: EDGE_COLORS.supports },
@@ -1550,7 +1695,7 @@ function MinimalGraphInner({
                       ))}
                     </div>
                   </div>
-                  <div className="text-[10px] text-gray-400">
+                  <div className="text-[10px] text-gray-500">
                     Edge thickness = number of connections between clusters
                   </div>
                 </>
@@ -1569,6 +1714,8 @@ MinimalGraphInner.propTypes = {
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
+  onFocusChange: PropTypes.func,
+  chromeless: PropTypes.bool,
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
   initialShowTemporalEdges: PropTypes.bool,
@@ -1590,6 +1737,8 @@ MinimalGraph.propTypes = {
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
+  onFocusChange: PropTypes.func,
+  chromeless: PropTypes.bool,
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
   initialShowTemporalEdges: PropTypes.bool,

@@ -17,6 +17,7 @@ from lct_python_backend.services.prompt_manager import get_prompt_manager
 logger = logging.getLogger("lct_backend")
 
 PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT = "accumulate_transcript_segment"
+PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT_LOCAL = "accumulate_transcript_segment_local"
 PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY = "generate_conversation_hierarchy"
 PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY_LOCAL = "generate_conversation_hierarchy_local"
 PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS = "refine_conversation_subthreads"
@@ -58,6 +59,11 @@ Bookmark / contextual-progress rules:
 - Only create is_bookmark=true when the transcript explicitly asks for bookmark creation.
 - Only set is_contextual_progress=true when the transcript explicitly asks to capture contextual progress.
 
+Tangent / crux rules (IMPORTANT - set these honestly; they power navigation):
+- Set is_tangent=true on a node that is a digression, aside, personal anecdote, concrete example, or side-story that branches off the main thread (not the central topic itself).
+- Set is_crux=true on a node that is a pivotal claim, turning point, thesis, or key realization that the surrounding discussion hinges on.
+- Most nodes are neither. Do not flag everything - flag the genuine branches and the genuine pivots.
+
 Claims rules:
 - claims must contain only explicit fact-checkable assertions
 - be conservative; omit anything subjective, speculative, vague, or hypothetical
@@ -84,7 +90,9 @@ Output shape:
       "speaker_id": "SPEAKER_00",
       "claims": [],
       "is_bookmark": false,
-      "is_contextual_progress": false
+      "is_contextual_progress": false,
+      "is_tangent": false,
+      "is_crux": false
     }
   ]
 }
@@ -132,6 +140,31 @@ Evaluation Notes:
 - Use semantic structure and topic closure to determine completeness - not superficial transitions.
 - It is valid to return more than one thread in completed_segment, but each must be complete and independently meaningful.
 - Do not rearrange the order of the text. Preserve original sequencing when splitting.
+"""
+
+ACCUMULATE_LOCAL_INDEX_PROMPT = """You are an expert conversation analyst. The transcript is given as NUMBERED utterances, one per line, formatted "[i] text". Determine whether the transcript contains at least one COMPLETE, self-contained conversational thread (a coherent sub-topic with an initiation, development, and closure, interpretable on its own without future context).
+
+Return ONLY this JSON object. DO NOT echo, quote, or reproduce the transcript text.
+{
+  "decision": "stop_accumulating" or "continue_accumulating",
+  "completed_through_index": <integer: the index i of the LAST utterance that belongs to a completed thread. Every utterance AFTER index i is still incomplete and will be carried forward. Use -1 if nothing is complete yet.>,
+  "detected_threads": [<short descriptive names of each COMPLETE thread>]
+}
+
+Rules:
+- decision is "stop_accumulating" if and only if at least one complete thread exists (then completed_through_index >= 0).
+- Be conservative: if in doubt, "continue_accumulating" and completed_through_index = -1.
+- The completed portion is always a prefix; the incomplete portion is the suffix after completed_through_index. Preserve order.
+- Output the JSON object only. No prose. No transcript text.
+
+Example:
+Input:
+[0] So what did you end up having for breakfast?
+[1] Just toast and coffee, the usual.
+[2] Nice. Hey, totally different thing, did you ever finish that book you were
+Output:
+{"decision": "stop_accumulating", "completed_through_index": 1, "detected_threads": ["small talk about breakfast"]}
+(Utterances [0]-[1] are a complete little thread. Utterance [2] starts a new, unfinished thread about a book, so it is carried forward and NOT included.)
 """
 
 LOCAL_GENERATE_LCT_PROMPT = f"""You structure transcript text into conversation graph nodes.
@@ -207,6 +240,14 @@ TRANSCRIPT_PROMPT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "max_tokens": 1200,
         "output_format": "json_object",
         "template": ACCUMULATE_SYSTEM_PROMPT,
+    },
+    PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT_LOCAL: {
+        "description": "Local-model accumulate: numbered utterances in, boundary index out (no transcript echo). Avoids the output-scales-with-input truncation that drops batches on local LLMs.",
+        "model": "qwen3.6",
+        "temperature": 0.65,
+        "max_tokens": 4000,
+        "output_format": "json_object",
+        "template": ACCUMULATE_LOCAL_INDEX_PROMPT,
     },
     PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY: {
         "description": "Generate the primary four-level chunk/idea/topic/theme conversation hierarchy for a transcript segment.",
