@@ -197,7 +197,16 @@ async def lifespan(app: FastAPI):
 # APP CREATION & MIDDLEWARE
 # ============================================================================
 
-lct_app = FastAPI(lifespan=lifespan)
+# Disable interactive API docs + schema in production (defense-in-depth; they are
+# already behind the auth middleware unless AUTH_TOKEN is unset).
+_ENVIRONMENT = str(os.getenv("ENVIRONMENT", "development")).strip().lower()
+_docs_enabled = _ENVIRONMENT != "production"
+lct_app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
 
 cors_origins, cors_origin_regex = _resolve_cors_origins()
 
