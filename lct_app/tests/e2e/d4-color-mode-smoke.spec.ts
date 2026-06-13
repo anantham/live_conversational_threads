@@ -58,8 +58,13 @@ test.describe('D4 — color mode toggle smoke', () => {
     // parallel-suite load the HUD can take well over 4s to mount.
     await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 30000 });
 
-    // Initial: button should read "Color: Tier"
-    const btn = page.getByRole('button', { name: /Color: (Tier|Speaker|Time)/i });
+    // The color-mode control now lives inside the collapsed "Display" disclosure
+    // (the bottom toolbar was distilled into it), so open the disclosure first.
+    await page.locator('summary', { hasText: 'Display' }).click();
+
+    // Initial label is "Color: Tier"; match any "Color: …" so the locator keeps
+    // resolving as the label cycles (speaker / time / argument / date / …).
+    const btn = page.getByRole('button', { name: /^Color:/i });
     await expect(btn).toBeVisible({ timeout: 10000 });
 
     const initialText = (await btn.textContent())?.trim() || '';
