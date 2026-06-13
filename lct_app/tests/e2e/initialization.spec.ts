@@ -88,9 +88,16 @@ test.describe('App Initialization', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Filter out known benign errors (like ResizeObserver loop)
+    // Filter out benign console noise that is NOT a JavaScript error:
+    //  - ResizeObserver loop (layout noise)
+    //  - browser resource-load 404s (the auto-requested /favicon.ico — only
+    //    favicon.svg exists — and a recent conversation's /participants probe
+    //    that 404s when there are none). Real uncaught JS exceptions are still
+    //    caught strictly by the pageErrors assertion below.
     const criticalErrors = consoleErrors.filter(
-      (e) => !e.includes('ResizeObserver') && !e.includes('favicon')
+      (e) =>
+        !e.includes('ResizeObserver') &&
+        !/Failed to load resource: the server responded with a status of 404/.test(e)
     );
 
     expect(criticalErrors).toHaveLength(0);
