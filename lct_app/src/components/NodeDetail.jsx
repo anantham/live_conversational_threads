@@ -496,6 +496,66 @@ export default function NodeDetail({
           </div>
         )}
 
+        {/* Provenance (P0) — the auditable link from this node back to the exact
+            raw turns it covers. source_ref ({utterance_ids, source_identifiers,
+            start_seq, end_seq}) is the mechanism; the Source/Transcript evidence
+            below is what those turns actually said. A null source_ref renders an
+            honest "not traceable" notice — never a faked turn range. */}
+        {(() => {
+          const sr = safeNode.source_ref;
+          const uids = Array.isArray(sr?.utterance_ids) ? sr.utterance_ids : [];
+          const auditable = Boolean(sr) && uids.length > 0;
+          const startSeq = sr?.start_seq;
+          const endSeq = sr?.end_seq;
+          // Number(null) === 0 and Number.isFinite(0) === true, so guard the
+          // null case explicitly — a node with utterance_ids but a null span is
+          // still auditable, it just has no turn number to point at (renders
+          // "Linked to source" with no range, never a phantom "turns 0–0").
+          const hasSpan =
+            startSeq != null &&
+            endSeq != null &&
+            Number.isFinite(Number(startSeq)) &&
+            Number.isFinite(Number(endSeq));
+          const turnLabel = hasSpan
+            ? Number(startSeq) === Number(endSeq)
+              ? `turn ${startSeq}`
+              : `turns ${startSeq}–${endSeq}`
+            : null;
+          const sources = Array.from(
+            new Set((sr?.source_identifiers || []).filter((s) => s && String(s).trim()))
+          );
+          return (
+            <div>
+              <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                Provenance
+              </span>
+              {auditable ? (
+                <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                    <span aria-hidden="true">✓</span>
+                    {turnLabel ? `Covers ${turnLabel}` : "Linked to source"}
+                  </span>
+                  <span className="text-gray-500">
+                    {uids.length} raw turn{uids.length === 1 ? "" : "s"}
+                  </span>
+                  {sources.length > 0 && (
+                    <span className="text-gray-400" title={sources.join("\n")}>
+                      · from {sources.length === 1 ? sources[0] : `${sources.length} sources`}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="mt-1 text-xs leading-relaxed text-gray-400">
+                  No source link — this node is not traceable to specific raw
+                  turns (legacy or live capture). Any summary or excerpt shown
+                  here is unverified reference, not audited against the
+                  transcript.
+                </p>
+              )}
+            </div>
+          );
+        })()}
+
         {/* Full text / transcript excerpt */}
         {safeNode.full_text && (
           <div>
