@@ -166,6 +166,15 @@ export default function ThreadsViewer() {
     [bundle],
   );
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(flatNodes), [flatNodes]);
+  // Diagnostic (cold-open blank-graph investigation): confirms MinimalGraph
+  // mounts only AFTER the .threads bundle is present, with a non-empty node
+  // count — distinguishes the data-ready path (blank => camera) from a
+  // data-arrival race. Toggle off with window.__MG_DEBUG__ = false.
+  useEffect(() => {
+    if (typeof window !== "undefined" && (window.__MG_DEBUG__ ?? true)) {
+      console.log("[ThreadsViewer] bundle ready -> MinimalGraph", { graphDataLen: (bundle?.graph_data || []).length, flatNodes: flatNodes.length });
+    }
+  }, [bundle, flatNodes.length]);
   const selectedNodeData = useMemo(
     () =>
       selectedNode
@@ -173,6 +182,77 @@ export default function ThreadsViewer() {
         : null,
     [flatNodes, selectedNode],
   );
+
+  // Download the raw transcript reconstructed from the artifact's chunk
+  // source-excerpts (the verbatim words the map was built from) — so a reader
+  // can compare the summarized nodes against what was actually said. Grouped by
+  // conversation (chronologically) when the artifact is a multi-meeting corpus,
+  // ordered within each by sequence/timestamp. Pure client-side; no new hosting.
+  const downloadTranscript = useCallback(() => {
+    if (!bundle) return;
+    const triggerDownload = (text) => {
+      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const safe = (bundle.conversation_title || "transcript").replace(/[^a-z0-9]+/gi, "-").slice(0, 60);
+      a.href = url;
+      a.download = `${safe}-transcript.txt`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    };
+    // Prefer the bundled FULL verbatim transcript (complete turns from source)
+    // when present. The chunk reconstruction below is only a lossy fallback — the
+    // chunk source-excerpts are representative snippets, not the whole call.
+    if (typeof bundle.full_transcript === "string" && bundle.full_transcript.trim()) {
+      triggerDownload(
+        `# ${bundle.conversation_title || "Conversation"} — full transcript\n`
+          + `# ${bundle.transcript_source || "verbatim source"}\n\n`
+          + bundle.full_transcript,
+      );
+      return;
+    }
+    const nodes = flatNodes || [];
+    const chunks = nodes.filter(
+      (n) => n.semantic_type === "chunk" || Number(n.semantic_level) === 1 || Number(n.level) === 1,
+    );
+    const source = chunks.length ? chunks : nodes.filter((n) => n.source_excerpt);
+    const seqOf = (n) => {
+      const s = Number(n.sequence_number);
+      if (Number.isFinite(s)) return s;
+      const t = Number(n.timestamp_start);
+      if (Number.isFinite(t)) return t;
+      return Number.MAX_SAFE_INTEGER;
+    };
+    const groups = new Map(); // label -> { date, idx, nodes }
+    source.forEach((n) => {
+      const label = n.meeting_label || "";
+      if (!groups.has(label)) groups.set(label, { date: n.meeting_date || "", idx: n.meeting_idx ?? 9999, nodes: [] });
+      groups.get(label).nodes.push(n);
+    });
+    const lines = [
+      `# ${bundle.conversation_title || bundle.conversation_name || "Conversation"} — raw transcript`,
+      `# Reconstructed from the artifact's source excerpts. Compare against the map at /view.`,
+      "",
+    ];
+    [...groups.entries()]
+      .sort((a, b) => (a[1].date || "").localeCompare(b[1].date || "") || a[1].idx - b[1].idx)
+      .forEach(([label, meta]) => {
+        if (label) {
+          lines.push("", `## ${label}${meta.date ? ` — ${meta.date}` : ""}`, "");
+        }
+        meta.nodes
+          .slice()
+          .sort((a, b) => seqOf(a) - seqOf(b))
+          .forEach((n) => {
+            const sp = n.speaker_display || n.speaker_id || "?";
+            const ex = (n.source_excerpt || n.summary || "").trim();
+            if (ex) lines.push(`[${sp}] ${ex}`);
+          });
+      });
+    triggerDownload(lines.join("\n"));
+  }, [bundle, flatNodes]);
 
   // ---- Loading state: fetching a hosted ?src= artifact --------------------
   if (!bundle && srcLoading && !error) {
@@ -264,8 +344,8 @@ export default function ThreadsViewer() {
           <header className="shrink-0 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-3">
-                  <p className="truncate text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <p className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
                     {eyebrow}
                   </p>
                   {headerSummary && (
@@ -277,12 +357,53 @@ export default function ThreadsViewer() {
                       {summaryCollapsed ? "▸ summary" : "▾ summary"}
                     </button>
                   )}
+                  {/* Coverage Report (P0) — the honest graph-vs-source check. Reads
+                      the server-computed bundle.coverage: how much of the raw the map
+                      actually links back to. "Unauditable" (amber) when NO node carries
+                      a source link (legacy / live capture) — never a faked %. Absent
+                      on pre-P0 artifacts, so the chip simply doesn't render for them. */}
+                  {(() => {
+                    const cov = bundle.coverage;
+                    if (!cov || typeof cov !== "object") return null;
+                    if (cov.auditable) {
+                      const pct = cov.pct != null ? `${cov.pct}%` : "linked";
+                      return (
+                        <span
+                          title={`Source coverage: ${cov.covered_turns}/${cov.total_turns} raw turns are reachable from a node's source link, so the map can be audited against the transcript.`}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
+                        >
+                          <span aria-hidden="true">✓</span>
+                          {pct} audited
+                          <span className="text-emerald-600/70">
+                            · {cov.covered_turns}/{cov.total_turns}
+                          </span>
+                        </span>
+                      );
+                    }
+                    return (
+                      <span
+                        title="No node links to specific raw turns (legacy or live capture). You cannot verify these summaries against the transcript — treat the map as unverified."
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+                      >
+                        <span aria-hidden="true">⚠</span>
+                        unauditable
+                      </span>
+                    );
+                  })()}
                 </div>
                 <h1 className="truncate text-base font-semibold text-slate-800">
                   {headerTitle}
                 </h1>
               </div>
               <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={downloadTranscript}
+                  title="Download the raw transcript (reconstructed from the source excerpts the map was built from) to compare against the artifact"
+                  className="rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
+                >
+                  ↓ Transcript
+                </button>
                 <button
                   type="button"
                   onClick={() => setFocusMode(true)}
@@ -318,6 +439,9 @@ export default function ThreadsViewer() {
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
           onVisibleLevelChange={(view) => {
+            if (typeof window !== "undefined" && (window.__MG_DEBUG__ ?? true)) {
+              console.log("[ThreadsViewer] onVisibleLevelChange", { mode: view?.mode, level: view?.level, label: view?.label, ribbonLevel: view?.mode === "semantic" ? view.level : null });
+            }
             setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
           }}
           onFocusChange={setFocusNode}
