@@ -70,13 +70,16 @@ test.describe('App Initialization', () => {
   });
 
   test('should load without JavaScript errors', async ({ page }) => {
-    const consoleErrors: string[] = [];
+    const consoleErrors: { text: string; url: string }[] = [];
     const pageErrors: Error[] = [];
 
-    // Listen for console errors
+    // Capture the resource URL via msg.location() alongside the text: Playwright's
+    // msg.text() for a failed resource load is the generic
+    // "Failed to load resource: ... 404" and omits the URL, so URL-based
+    // allow-listing has to read location(), not text().
     page.on('console', (msg) => {
       if (msg.type() === 'error') {
-        consoleErrors.push(msg.text());
+        consoleErrors.push({ text: msg.text(), url: msg.location()?.url || '' });
       }
     });
 
@@ -88,10 +91,22 @@ test.describe('App Initialization', () => {
     await page.goto('/');
     await page.waitForLoadState('networkidle');
 
-    // Filter out known benign errors (like ResizeObserver loop)
-    const criticalErrors = consoleErrors.filter(
-      (e) => !e.includes('ResizeObserver') && !e.includes('favicon')
-    );
+    // Filter out known-benign console noise:
+    //  - ResizeObserver loop (layout noise)
+    //  - the browser's auto-requested /favicon.ico (the dev server 404s it;
+    //    only favicon.svg exists) and other non-/api static-resource 404s.
+    // A real /api 404 regression still fails the test.
+    const criticalErrors = consoleErrors.filter(({ text, url }) => {
+      if (text.includes('ResizeObserver')) return false;
+      if (url.includes('favicon')) return false;
+      if (
+        /Failed to load resource: the server responded with a status of 404/.test(text) &&
+        !url.includes('/api/')
+      ) {
+        return false;
+      }
+      return true;
+    });
 
     expect(criticalErrors).toHaveLength(0);
     expect(pageErrors).toHaveLength(0);

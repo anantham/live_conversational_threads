@@ -10,7 +10,12 @@ permissions:
 
 jobs:
   codex-review:
-    if: ${{ !contains(github.event.pull_request.labels.*.name, 'skip-codex') }}
+    # Disabled: openai/codex-review-action does not exist (HTTP 404) and never
+    # has — it failed at setup on every PR, red-flagging the gate. Re-enable by
+    # wiring openai/codex-action (the generic `codex exec` runner: input is
+    # `openai-api-key`, requires a `prompt`, and needs a step to post the result
+    # as a PR comment). Flip `false &&` off once that's done.
+    if: ${{ false && !contains(github.event.pull_request.labels.*.name, 'skip-codex') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
