@@ -76,6 +76,7 @@ export default function Browse() {
   // export one as .threads. null = show all. exporting = file_id mid-export.
   const [contactFilter, setContactFilter] = useState(null);
   const [exporting, setExporting] = useState(null);
+  const [combining, setCombining] = useState(false);
 
   const navigate = useNavigate();
 
@@ -109,7 +110,16 @@ export default function Browse() {
     setExporting(conv.file_id);
     try {
       const resp = await apiFetch(`/api/conversations/${conv.file_id}/threads-export`);
-      if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
+      if (!resp.ok) {
+        let detail = `Export failed (${resp.status})`;
+        try {
+          const e = await resp.json();
+          if (e?.detail) detail = e.detail;
+        } catch {
+          /* non-JSON error body */
+        }
+        throw new Error(detail);
+      }
       const blob = await resp.blob();
       const safe =
         (conv.file_name || conv.file_id || "conversation")
@@ -129,6 +139,61 @@ export default function Browse() {
       alert(`Export failed: ${err.message}`);
     } finally {
       setExporting(null);
+    }
+  };
+
+  // Combine ALL of the filtered contact's conversations into one .threads corpus
+  // spanning time (server namespaces ids + stamps meeting_date/label so the Date
+  // colour mode lights up). The shared-interaction-over-time artifact.
+  const combineThreads = async () => {
+    if (combining || !contactFilter) return;
+    setCombining(true);
+    try {
+      const resp = await apiFetch(
+        `/api/conversations/combined-threads-export?contact=${encodeURIComponent(contactFilter)}`,
+      );
+      if (!resp.ok) {
+        let detail = `Combine failed (${resp.status})`;
+        try {
+          const e = await resp.json();
+          if (e?.detail) detail = e.detail;
+        } catch {
+          /* non-JSON error body */
+        }
+        throw new Error(detail);
+      }
+      // Read the bundle so we can surface the privacy notice BEFORE downloading:
+      // a contact-scoped corpus can span conversations with other people.
+      const bundle = await resp.json();
+      const others = bundle?.combined?.other_participants || [];
+      if (
+        others.length > 0 &&
+        !window.confirm(
+          `This corpus also bundles conversations with: ${others.join(", ")}.\n\n` +
+            `Their words are included too — share only with people party to all of it. Download anyway?`,
+        )
+      ) {
+        return;
+      }
+      const label =
+        (contactOptions.find((c) => c.key === contactFilter)?.label || "contact")
+          .replace(/[^a-z0-9-_ ]/gi, "_")
+          .slice(0, 50)
+          .trim() || "contact";
+      const blob = new Blob([JSON.stringify(bundle)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${label}-corpus.threads`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("[Browse] combined .threads export failed:", err);
+      alert(`Combine failed: ${err.message}`);
+    } finally {
+      setCombining(false);
     }
   };
 
@@ -257,6 +322,21 @@ export default function Browse() {
                     {c.label}
                   </button>
                 ))}
+              </div>
+            )}
+            {contactFilter && visibleConversations.length > 0 && (
+              <div className="max-w-2xl mx-auto mb-3 -mt-1">
+                <button
+                  type="button"
+                  onClick={combineThreads}
+                  disabled={combining}
+                  className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:opacity-50"
+                  title="Combine all of this contact's conversations into one .threads corpus spanning time, then open it at /view"
+                >
+                  {combining
+                    ? "Combining…"
+                    : `⬇ Combine ${visibleConversations.length} into one .threads`}
+                </button>
               </div>
             )}
             {visibleConversations.length === 0 ? (
