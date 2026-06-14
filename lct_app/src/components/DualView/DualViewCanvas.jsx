@@ -20,7 +20,10 @@ import {
   transformEdgesToReactFlow,
   saveNode,
 } from '../../services/graphApi';
+import { makeDebug } from '../../utils/debug';
 import 'reactflow/dist/style.css';
+
+const debug = makeDebug('dualview');
 
 export default function DualViewCanvas({ conversationId }) {
   // Enhanced zoom controller with transitions and history (Week 6)
@@ -29,7 +32,7 @@ export default function DualViewCanvas({ conversationId }) {
     enableHistory: true,
     maxHistorySize: 20,
     onZoomChange: (change) => {
-      console.log(`Zoom changed from ${change.from} to ${change.to} (${change.direction})`);
+      debug(`zoom ${change.from} -> ${change.to} (${change.direction})`);
     },
   });
 
