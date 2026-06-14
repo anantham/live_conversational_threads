@@ -25,7 +25,6 @@ export default function Bookmarks() {
       }
 
       const data = await response.json();
-      console.log("Loaded bookmarks:", data);
       setBookmarks(data.bookmarks || []);
       setError(null);
     } catch (err) {

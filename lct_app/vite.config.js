@@ -21,6 +21,15 @@ const backendPort = resolveBackendPort();
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // Defense-in-depth: strip console.* and debugger from production bundles.
+  // App diagnostics are already gated (utils/debug.js, default OFF), but this
+  // guarantees no stray console.log can leak conversation content from the
+  // shipped viewer regardless of gating. console.error survives via `pure`
+  // exclusion so genuine failures stay visible (AGENTS.md #9).
+  esbuild: {
+    drop: ["debugger"],
+    pure: ["console.log", "console.info", "console.debug"],
+  },
   test: {
     environment: "jsdom",
     globals: false,
