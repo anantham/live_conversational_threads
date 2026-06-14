@@ -248,3 +248,7 @@ lct_python_backend/data/llm_telemetry.jsonl
 /scripts/probe_openai_known_speakers.py
 /scripts/replay_772ac0cc.py
 /scripts/replay_observations.json
+
+# Local conversation exports + env backups (never commit these)
+*.threads.json
+*.bak
