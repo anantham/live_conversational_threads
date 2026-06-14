@@ -1,6 +1,72 @@
 # ISSUES
 
-Last updated: 2026-06-01
+Last updated: 2026-06-14
+
+## 2026-06-14 — Diagnostic logging leaked conversation content to console/logs (FIXED 2026-06-14)
+
+**Summary:** A multi-agent + `codex exec` audit of the diagnostic-logging surface
+found that several ungated logs echoed private conversation content — counter to
+the privacy-first posture and AGENTS.md #9 (diagnostic logging must be gated,
+default OFF, opt-in; genuine failures stay loud). Confirmed leaks, all fixed on
+`fix/logging-privacy`:
+
+- **Contact PII (frontend, HIGH).** `useTranscriptSockets.logToServer` did an
+  unconditional `console.log("[Client Log]", text)`. `audioMessages.js` routes
+  contact `display_name`, `matched_phrase`, and `speaker_ids` through it →
+  contact identity + matched conversation phrases hit the browser console on
+  every consumption match. Fix: gate behind `makeDebug("stt")` (the WS send to
+  the backend is unchanged).
+- **Raw WS frame (frontend).** `audioMessages.js` catch logged `event?.data` —
+  the raw backend frame carries transcript text / node content. Fix: log the
+  parse error only.
+- **Raw response body (frontend).** `SaveConversation.jsx` logged the raw
+  non-JSON response `text` (can echo saved conversation content). Fix: log a
+  static message; the parse failure is the signal.
+- **Full data dumps (frontend).** `Bookmarks.jsx` (`Loaded bookmarks:` + full
+  response), `ImportCanvas.jsx` (`Canvas imported successfully:` + result),
+  `useFileUploadStream.js` (STT `stt_http_url` topology + full `telemetry`
+  blob), `DualViewCanvas.jsx` (zoom traces). Fix: removed or gated behind
+  namespaced `makeDebug`.
+- **Transcript preview (backend).** `stt_http_transcriber.py:792,912` logged
+  `transcript_preview=%s` at INFO, ungated — while its 5 sibling STT-trace sites
+  in the same file gate on `TRACE_API_CALLS`. Fix: gate both.
+- **`TRACE_API_CALLS` defaulted ON.** The flag (duplicated across 5 services
+  modules: `stt_http_transcriber`, `transcript_llm_callers`,
+  `stt_provider_transports`, `local_llm_client`, `llm_gateway`) defaulted to
+  `True`, so transcript/LLM-content traces were on by default. Fix: default
+  `False` everywhere; set `TRACE_API_CALLS=1` to opt in.
+- **`LOG_LEVEL` no-op (backend).** `backend.py` pinned the `lct_python_backend.*`
+  package logger to `DEBUG` unconditionally, so `LOG_LEVEL` only affected the
+  thin `lct_backend` app logger and every `services/*` DEBUG line was forced into
+  the file log regardless. Fix: resolve `LOG_LEVEL` once and honor it for both
+  loggers (default INFO → DEBUG diagnostics opt-in).
+
+**New infra:** `lct_app/src/utils/debug.js` — one gated, namespaced frontend
+logger (`makeDebug(namespace)`), OFF by default, opt-in via `VITE_LCT_DEBUG`,
+`localStorage["lct:debug"]`, or `window.__lctDebug.enable("ns")`. Replaces the
+four ad-hoc gates. `vite.config.js` adds defense-in-depth: prod builds mark
+`console.log/info/debug` as `pure` (dropped by minification) while keeping
+`console.warn`/`console.error` so genuine failures survive. Dead `Input.jsx`
+deleted.
+
+**Impact:** Medium. Leaks were to the local browser console and the local
+rotating file log (not shipped off-device), so no external exfiltration — but
+contact names + conversation phrases in the console violate the local-first
+privacy contract and would surface in any screen-share / shared dev session.
+
+**Blocker status:** Not blocking. Shipped on `fix/logging-privacy`.
+
+**Deferred (follow-ups, not done here):**
+- **Error-from-body sanitization sweep (~8 sites).** Several `throw new
+  Error(<raw response text>)` constructions (e.g. `apiClient.js:290-291`) can
+  bubble raw response bodies into error UI / logs. Codex flagged this as a
+  systemic chain; needs a careful per-site pass to preserve diagnostic value
+  while truncating/sanitizing content.
+- **Migrate already-gated loggers to `makeDebug`.** `AudioInput.jsx`
+  (`__LCT_DEBUG_AUDIO`), `contextualGraphUtils.js` (`VITE_GRAPH_DEBUG`),
+  `apiClient.js` (`VITE_API_TRACE`), and `MinimalGraph` (`__MG_DEBUG__`) are
+  correctly gated but use bespoke flags; fold them into the unified namespaced
+  helper for consistency.
 
 ## 2026-06-01 — Diarization selection saves but doesn't steer the runtime
 
