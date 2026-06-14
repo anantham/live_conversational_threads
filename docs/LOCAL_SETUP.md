@@ -103,4 +103,8 @@ If an older config still points to `localhost:1234`, backend config merge rewrit
 - Outbound STT + LLM call trace logging is enabled by default:
   - `TRACE_API_CALLS=true`
   - `API_LOG_PREVIEW_CHARS=280`
-- Frontend API calls are logged in browser dev console in dev mode (`VITE_API_TRACE` can override).
+- Frontend diagnostic logging is OFF by default (privacy-first). Opt in per
+  namespace with `VITE_LCT_DEBUG=api` at build time, or at runtime via
+  `window.__lctDebug.enable("api")` (sticky) / `localStorage["lct:debug"]`.
+  Namespaces: `api`, `graph`, `audio`, `stt`, `upload`, `import`, `dualview`
+  (comma-separate several, or `*` for all). See `lct_app/src/utils/debug.js`.

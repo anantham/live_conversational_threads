@@ -11,6 +11,8 @@
  *   const ws = new WebSocket(wsUrl('/ws/transcripts'));
  */
 
+import { makeDebug } from "../utils/debug";
+
 // In dev mode (no VITE_BACKEND_API_URL set), use relative paths so Vite's
 // built-in proxy forwards requests to the backend — no CORS issues.
 // In production (Vercel etc.), set VITE_BACKEND_API_URL to the VPS URL.
@@ -18,12 +20,12 @@ export const API_BASE_URL =
   import.meta.env.VITE_BACKEND_API_URL || '';
 
 const AUTH_TOKEN = import.meta.env.VITE_AUTH_TOKEN || '';
-const TRACE_FLAG_RAW = import.meta.env.VITE_API_TRACE;
-const TRACE_FLAG = String(TRACE_FLAG_RAW ?? '').trim().toLowerCase();
-const TRACE_API =
-  TRACE_FLAG
-    ? ['1', 'true', 'yes', 'on'].includes(TRACE_FLAG)
-    : Boolean(import.meta.env.DEV);
+// API request/response tracing routes through the unified gate (utils/debug.js):
+// OFF by default in every environment — opt in with VITE_LCT_DEBUG=api or
+// window.__lctDebug.enable("api"). (Previously VITE_API_TRACE, which defaulted
+// ON in dev and previewed up to 500 chars of every response body to the console —
+// a content path; the preview below now only runs when the gate is enabled.)
+const apiDebug = makeDebug('api');
 const TRACE_PREVIEW_CHARS = 500;
 
 /**
@@ -49,12 +51,10 @@ export async function apiFetch(path, options = {}) {
   const url = `${API_BASE_URL}${path}`;
   const headers = apiHeaders(options.headers || {});
   const method = String(options.method || 'GET').toUpperCase();
-  if (TRACE_API) {
-    console.info(`[API ->] ${method} ${url}`);
-  }
+  apiDebug.info(`[API ->] ${method} ${url}`);
   try {
     const response = await fetch(url, { ...options, headers });
-    if (TRACE_API) {
+    if (apiDebug.enabled) {
       let preview = '';
       try {
         const contentType = response.headers.get('content-type') || '';
@@ -73,7 +73,7 @@ export async function apiFetch(path, options = {}) {
       } catch (previewError) {
         preview = `[preview unavailable: ${previewError}]`;
       }
-      console.info(
+      apiDebug.info(
         `[API <-] ${response.status} ${method} ${url}${preview ? ` | ${preview}` : ''}`
       );
     }
@@ -85,15 +85,15 @@ export async function apiFetch(path, options = {}) {
     const isNetworkDown =
       error instanceof TypeError && /failed to fetch/i.test(error.message);
     const isAborted = error?.name === 'AbortError';
-    if (TRACE_API) {
+    if (apiDebug.enabled) {
       if (isNetworkDown) {
-        console.warn(
+        apiDebug.warn(
           `[API !!] ${method} ${url} — backend unreachable (is the server running?${API_BASE_URL ? ` Target: ${API_BASE_URL}` : ' Check start.sh'})`
         );
       } else if (isAborted) {
-        console.info(`[API xx] ${method} ${url} aborted`);
+        apiDebug.info(`[API xx] ${method} ${url} aborted`);
       } else {
-        console.error(`[API !!] ${method} ${url}`, error);
+        apiDebug.error(`[API !!] ${method} ${url}`, error);
       }
     }
     if (isNetworkDown) {
@@ -230,9 +230,7 @@ export async function apiFetchCached(path, options = {}) {
   const now = Date.now();
   const cached = apiCache.get(key);
   if (!options.force && cached && cached.expiresAt > now) {
-    if (TRACE_API) {
-      console.info(`[API cache HIT] ${method} ${url} (age=${Math.round((cached.fetchedAt && (now - cached.fetchedAt))/1000)}s)`);
-    }
+    apiDebug.info(`[API cache HIT] ${method} ${url} (age=${Math.round((cached.fetchedAt && (now - cached.fetchedAt))/1000)}s)`);
     return makeResponseFromCache(cached);
   }
   // Strip our extension fields before delegating to apiFetch.

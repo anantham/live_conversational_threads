@@ -93,11 +93,13 @@ provider bodies logged ungated — same class as the STT traces above).
 this branch — only two genuine `console.warn` persist-failure logs, correctly
 left loud.
 
-**Still deferred (one real decision):** `apiClient.js`'s `TRACE_API`
-(`VITE_API_TRACE`) defaults to `import.meta.env.DEV` — API tracing, including
-500-char response-body previews, prints to the console by default in local dev.
-Folding it into the default-OFF `makeDebug` is a privacy win but flips dev
-ergonomics (no API logs unless you opt in), so it's left for an explicit call.
+**`apiClient` API-trace folded in too (per follow-up decision).** `apiClient.js`'s
+`TRACE_API` (`VITE_API_TRACE`) previously defaulted to `import.meta.env.DEV`, so
+API request lines **and** 500-char response-body previews printed to the console
+by default in local dev. It now routes through `makeDebug("api")` — OFF by
+default, opt in with `VITE_LCT_DEBUG=api` / `window.__lctDebug.enable("api")` —
+and the body preview only computes when the gate is enabled, closing the last
+default-on content-to-console path. `LOCAL_SETUP.md` updated accordingly.
 
 ## 2026-06-01 — Diarization selection saves but doesn't steer the runtime
 
