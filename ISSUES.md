@@ -56,17 +56,48 @@ privacy contract and would surface in any screen-share / shared dev session.
 
 **Blocker status:** Not blocking. Shipped on `fix/logging-privacy`.
 
-**Deferred (follow-ups, not done here):**
-- **Error-from-body sanitization sweep (~8 sites).** Several `throw new
-  Error(<raw response text>)` constructions (e.g. `apiClient.js:290-291`) can
-  bubble raw response bodies into error UI / logs. Codex flagged this as a
-  systemic chain; needs a careful per-site pass to preserve diagnostic value
-  while truncating/sanitizing content.
-- **Migrate already-gated loggers to `makeDebug`.** `AudioInput.jsx`
-  (`__LCT_DEBUG_AUDIO`), `contextualGraphUtils.js` (`VITE_GRAPH_DEBUG`),
-  `apiClient.js` (`VITE_API_TRACE`), and `MinimalGraph` (`__MG_DEBUG__`) are
-  correctly gated but use bespoke flags; fold them into the unified namespaced
-  helper for consistency.
+### Follow-up (2026-06-14) — Error-from-body sweep + logger migration (DONE)
+
+The two follow-ups below were completed in a second pass on the same branch. A
+multi-agent discovery + adversarial-review workflow drove both.
+
+**Error-from-body sanitization sweep.** Codex's "~8 sites" estimate was exact for
+the *known* set, but the discovery finders surfaced **7 more** raw-body→error/log
+sites (≈15 total): frontend `sttSettingsApi.js` (handleResponse, 5 callers),
+`speakerNamingApi.js` (also a latent `json()`-then-`text()` double-read bug),
+`useFileUploadStream.js:234` (raw body → upload error UI); and backend
+`perplexity_factcheck.py:173` + `local_llm_client.py:199/524/739` (raw upstream
+provider bodies logged ungated — same class as the STT traces above).
+- **Frontend:** new shared `readErrorMessage(response, fallback, {cap})` in
+  `apiClient.js`. Prefers the structured FastAPI `{detail}`/`{message}` but caps
+  **every** server-controlled return path (the adversarial review caught that an
+  early draft left the JSON-detail branch uncapped). Handles the 422 array shape
+  `[{loc,msg,type,input}]` by keeping `msg` and **dropping `input`** — `input`
+  echoes the submitted payload, which for `byokApi` is the user's **API key**.
+  Salvages an HTML `<title>` (proxy 502/504) before capping boilerplate. 10 unit
+  tests in `readErrorMessage.test.js` cover the cap, the key-drop, and the
+  non-destructive `.clone()` read. All 11 raw-body call sites refactored onto it
+  (diagnostics surfaces — ServiceStatus, backend-catalog — pass `cap: 1000`).
+- **Backend:** the 4 ungated upstream-body logs now keep the failure **loud**
+  (status + provider) but gate the raw body behind `TRACE_API_CALLS` (added the
+  flag to `perplexity_factcheck.py`); the LLM-fallback `error_msg` keeps the HTTP
+  status always and includes the 100-char body only under the flag.
+- **Left as-is (documented):** `SaveConversation.jsx` already reads the body
+  defensively without exposing it (earlier fix); the LLM-fallback bodies are
+  bounded to 100 chars and gated.
+
+**Logger migration.** `contextualGraphUtils.js` (`VITE_GRAPH_DEBUG`) and
+`AudioInput.jsx` (`__LCT_DEBUG_AUDIO`) folded into `makeDebug("graph")` /
+`makeDebug("audio")` — zero behaviour change (both were already default-OFF).
+`MinimalGraph`'s `__MG_DEBUG__` (named in the original note) does not exist on
+this branch — only two genuine `console.warn` persist-failure logs, correctly
+left loud.
+
+**Still deferred (one real decision):** `apiClient.js`'s `TRACE_API`
+(`VITE_API_TRACE`) defaults to `import.meta.env.DEV` — API tracing, including
+500-char response-body previews, prints to the console by default in local dev.
+Folding it into the default-OFF `makeDebug` is a privacy win but flips dev
+ergonomics (no API logs unless you opt in), so it's left for an explicit call.
 
 ## 2026-06-01 — Diarization selection saves but doesn't steer the runtime
 
