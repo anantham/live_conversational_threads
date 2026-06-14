@@ -1,4 +1,4 @@
-import { apiFetch } from './apiClient';
+import { apiFetch, readErrorMessage } from './apiClient';
 
 export async function getLlmSettings() {
   const response = await apiFetch('/api/settings/llm');
@@ -16,8 +16,7 @@ export async function getLlmModelOptions({ mode, baseUrl } = {}) {
   const path = query ? `/api/settings/llm/models?${query}` : "/api/settings/llm/models";
   const response = await apiFetch(path);
   if (!response.ok) {
-    const body = await response.text();
-    throw new Error(body || "Failed to load LLM model options");
+    throw new Error(await readErrorMessage(response, "Failed to load LLM model options"));
   }
   return response.json();
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 import { ChevronUp, ChevronDown, Trash2, Plus, RefreshCw } from "lucide-react";
 
-import { apiFetch } from "../services/apiClient";
+import { apiFetch, readErrorMessage } from "../services/apiClient";
 
 const PROVIDER_TYPE_OPTIONS = [
   {
@@ -428,8 +428,7 @@ export default function LlmProvidersPanel({ embedded = false, onSaved }) {
         body: JSON.stringify(newConfig),
       });
       if (!response.ok) {
-        const body = await response.text();
-        throw new Error(body || "Failed to save providers");
+        throw new Error(await readErrorMessage(response, "Failed to save providers"));
       }
       const data = await response.json();
       setConfig(data);
