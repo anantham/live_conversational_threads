@@ -1,6 +1,6 @@
 """Conversation read and serialization helpers."""
 
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select
 

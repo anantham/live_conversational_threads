@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ImportCanvas from "../components/ImportCanvas";
 import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
@@ -38,6 +38,22 @@ const TYPE_LABELS = {
   hybrid: "Hybrid",
 };
 
+// Stable key for a participant: real IndrasNet contacts dedupe on contact_id,
+// ad-hoc guests (no contact_id) on their typed display name.
+function participantKey(p) {
+  const name = (p?.display_name || p?.contact_id || "").trim();
+  if (!name) return null;
+  return p?.contact_id ? `id:${p.contact_id}` : `name:${name}`;
+}
+
+function chipClass(active) {
+  return `shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] transition ${
+    active
+      ? "border-gray-800 bg-gray-800 text-white"
+      : "border-gray-200 text-gray-500 hover:bg-gray-50"
+  }`;
+}
+
 export default function Browse() {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +65,10 @@ export default function Browse() {
   const [offline, setOffline] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleting, setDeleting] = useState(null);
+  // Contact scoping (MVP): pick a contact -> see only their conversations ->
+  // export one as .threads. null = show all. exporting = file_id mid-export.
+  const [contactFilter, setContactFilter] = useState(null);
+  const [exporting, setExporting] = useState(null);
 
   const navigate = useNavigate();
 
@@ -71,6 +91,37 @@ export default function Browse() {
       alert(`Failed to delete: ${err.message}`);
     } finally {
       setDeleting(null);
+    }
+  };
+
+  // Export one conversation as a self-contained .threads artifact (ADR-036) —
+  // same endpoint ViewConversation uses; download the file, then open it at
+  // /view (static, server-free) to iterate views on the raw underneath.
+  const exportThreads = async (conv) => {
+    if (exporting) return;
+    setExporting(conv.file_id);
+    try {
+      const resp = await apiFetch(`/api/conversations/${conv.file_id}/threads-export`);
+      if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
+      const blob = await resp.blob();
+      const safe =
+        (conv.file_name || conv.file_id || "conversation")
+          .replace(/[^a-z0-9-_ ]/gi, "_")
+          .slice(0, 60)
+          .trim() || "conversation";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${safe}.threads`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("[Browse] .threads export failed:", err);
+      alert(`Export failed: ${err.message}`);
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -115,6 +166,30 @@ export default function Browse() {
     fetchConversations();
   }, []);
 
+  // Distinct contacts across all conversations (MVP contact picker), sorted by
+  // name. Derived from the participants now carried on the list response.
+  const contactOptions = useMemo(() => {
+    const byKey = new Map();
+    for (const c of conversations) {
+      for (const p of c.participants || []) {
+        const key = participantKey(p);
+        if (!key) continue;
+        if (!byKey.has(key)) {
+          byKey.set(key, { key, label: (p.display_name || p.contact_id || "").trim() });
+        }
+      }
+    }
+    return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }, [conversations]);
+
+  // Conversations visible under the current contact filter (all when none).
+  const visibleConversations = useMemo(() => {
+    if (!contactFilter) return conversations;
+    return conversations.filter((c) =>
+      (c.participants || []).some((p) => participantKey(p) === contactFilter),
+    );
+  }, [conversations, contactFilter]);
+
   // Backend unreachable: render the public, server-free .threads opener (button +
   // drag-drop). Possession of the file is the capability; no list, no auth.
   if (offline) return <ThreadsViewer />;
@@ -152,8 +227,38 @@ export default function Browse() {
             </p>
           </div>
         ) : (
-          <div className="max-w-2xl mx-auto space-y-2">
-            {conversations.map((conv) => {
+          <>
+            {contactOptions.length > 0 && (
+              <div className="max-w-2xl mx-auto mb-3 flex flex-wrap items-center gap-1.5">
+                <span className="mr-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                  Contact
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setContactFilter(null)}
+                  className={chipClass(!contactFilter)}
+                >
+                  All
+                </button>
+                {contactOptions.map((c) => (
+                  <button
+                    key={c.key}
+                    type="button"
+                    onClick={() => setContactFilter(c.key)}
+                    className={chipClass(contactFilter === c.key)}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {visibleConversations.length === 0 ? (
+              <p className="max-w-2xl mx-auto mt-8 text-center text-sm text-gray-400">
+                No conversations with this contact.
+              </p>
+            ) : (
+              <div className="max-w-2xl mx-auto space-y-2">
+                {visibleConversations.map((conv) => {
               const duration = formatDuration(conv.duration_seconds);
               const typeLabel = TYPE_LABELS[conv.conversation_type] || conv.conversation_type;
 
@@ -202,6 +307,20 @@ export default function Browse() {
                     </div>
                   </div>
 
+                  {/* Export .threads — generate a shareable artifact for this
+                      conversation, then open it at /view to iterate on the raw. */}
+                  <button
+                    className="shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-xs text-emerald-600 hover:text-emerald-700 transition px-2 py-1"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      exportThreads(conv);
+                    }}
+                    disabled={exporting === conv.file_id}
+                    title="Export a self-contained .threads artifact (open it at /view)"
+                  >
+                    {exporting === conv.file_id ? "..." : "↓ .threads"}
+                  </button>
+
                   {/* Download Audio */}
                   <a
                     href={`${API_BASE_URL}/api/conversations/${conv.file_id}/audio`}
@@ -226,8 +345,10 @@ export default function Browse() {
                   </button>
                 </div>
               );
-            })}
-          </div>
+                })}
+              </div>
+            )}
+          </>
         )}
       </div>
 
