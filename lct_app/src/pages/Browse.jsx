@@ -38,12 +38,19 @@ const TYPE_LABELS = {
   hybrid: "Hybrid",
 };
 
-// Stable key for a participant: real IndrasNet contacts dedupe on contact_id,
-// ad-hoc guests (no contact_id) on their typed display name.
+// Two participant shapes share the conversations.participants column:
+//  - contact-picker entries: {contact_id, display_name}
+//  - auto speaker-rollup entries: {name, utterance_count}  (the common case;
+//    `name` is "SPEAKER_00" until speaker correction makes it a real name)
+// Key real contacts on contact_id; everyone else on their (corrected) name, so
+// the filter works on today's live-recorded conversations, not just picked ones.
+function participantLabel(p) {
+  return (p?.display_name || p?.name || p?.contact_id || "").trim();
+}
 function participantKey(p) {
-  const name = (p?.display_name || p?.contact_id || "").trim();
-  if (!name) return null;
-  return p?.contact_id ? `id:${p.contact_id}` : `name:${name}`;
+  const label = participantLabel(p);
+  if (!label) return null;
+  return p?.contact_id ? `id:${p.contact_id}` : `name:${label}`;
 }
 
 function chipClass(active) {
@@ -175,7 +182,7 @@ export default function Browse() {
         const key = participantKey(p);
         if (!key) continue;
         if (!byKey.has(key)) {
-          byKey.set(key, { key, label: (p.display_name || p.contact_id || "").trim() });
+          byKey.set(key, { key, label: participantLabel(p) });
         }
       }
     }
