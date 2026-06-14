@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { API_BASE_URL, apiHeaders, invalidateApiCache } from "../../services/apiClient";
+import { API_BASE_URL, apiHeaders, invalidateApiCache, readErrorMessage } from "../../services/apiClient";
 import { useByok } from "../../contexts/byokContext";
 import { randomUUID } from "../../utils/uuid";
 import { makeDebug } from "../../utils/debug";
@@ -231,8 +231,8 @@ export default function useFileUploadStream({
       signal: abortController.signal,
     });
     if (!response.ok) {
-      const detail = await response.text();
-      throw buildUploadError(detail || `Upload failed (${response.status})`, {
+      const detail = await readErrorMessage(response, `Upload failed (${response.status})`);
+      throw buildUploadError(detail, {
         retryable: [408, 429, 500, 502, 503, 504].includes(response.status),
         statusCode: response.status,
       });

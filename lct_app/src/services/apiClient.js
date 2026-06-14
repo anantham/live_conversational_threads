@@ -109,6 +109,69 @@ export async function apiFetch(path, options = {}) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Safe error-message extraction
+//
+// Privacy (AGENTS.md #9 / local-first): a server error response can echo the
+// request payload, conversation content, or a submitted secret — so it is never
+// surfaced raw. readErrorMessage() returns a SHORT, bounded message and every
+// server-controlled return path passes through cap() (no uncapped exit):
+//   - prefers the structured FastAPI `{ detail }` / `{ message }` field, but
+//     caps it too — HTTPException(detail=...) is server-controlled and can be
+//     arbitrarily long;
+//   - FastAPI 422 validation makes `detail` an array [{ loc, msg, type, input }];
+//     we keep only `msg` and DROP `input`/`loc` because `input` echoes the
+//     SUBMITTED value (e.g. a BYOK API key);
+//   - for a non-JSON body, salvages an HTML <title> (a proxy 502/504 page)
+//     before capping `<!DOCTYPE html>` boilerplate.
+// Must be called BEFORE any response.json()/.text() on the same Response (it
+// reads a non-destructive .clone()). Always resolves; never throws. Pass a
+// larger `cap` for developer-facing diagnostics surfaces.
+const ERROR_BODY_CAP = 200;
+
+function capErrorText(value, cap = ERROR_BODY_CAP) {
+  const text = String(value ?? '').trim();
+  if (text.length <= cap) return text;
+  return `${text.slice(0, cap)}… (+${text.length - cap} more chars)`;
+}
+
+export async function readErrorMessage(response, fallback = '', { cap = ERROR_BODY_CAP } = {}) {
+  const status = response?.status ?? '?';
+  const statusMsg = fallback || `Request failed (HTTP ${status})`;
+  let raw = '';
+  try {
+    raw = await response.clone().text();
+  } catch {
+    return statusMsg;
+  }
+  if (!raw.trim()) return statusMsg;
+
+  // Prefer a structured server message — but never return it uncapped.
+  try {
+    const payload = JSON.parse(raw);
+    const detail = payload?.detail ?? payload?.message ?? payload?.error;
+    if (typeof detail === 'string' && detail.trim()) {
+      return capErrorText(detail, cap);
+    }
+    if (Array.isArray(detail)) {
+      // FastAPI validation errors — keep `msg`, drop `input`/`loc` (input echoes
+      // the submitted payload, e.g. a BYOK key).
+      const msg = detail.map((e) => e?.msg).filter(Boolean).join('; ');
+      if (msg) return capErrorText(msg, cap);
+    }
+    if (detail && typeof detail === 'object') {
+      const nested = detail.message ?? detail.detail ?? detail.error;
+      if (typeof nested === 'string' && nested.trim()) return capErrorText(nested, cap);
+    }
+  } catch {
+    // non-JSON body — fall through to the HTML-title salvage / capped snippet
+  }
+
+  const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i);
+  if (title && title[1].trim()) return capErrorText(title[1], cap);
+  return capErrorText(raw, cap);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Client-side response cache
 //
 // Keeps GET responses in memory keyed by URL. Each entry stores the raw text
@@ -287,8 +350,10 @@ export async function saveConversationDraft(conversationId, payload) {
     }
   );
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`saveConversationDraft: HTTP ${response.status}: ${text}`);
+    // Keep the HTTP status (422 forbidden-key vs 404 vs 500 is diagnostic per
+    // ADR-030 §D6); readErrorMessage bounds the body so it can't dump draft state.
+    const detail = await readErrorMessage(response, '');
+    throw new Error(`saveConversationDraft: HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
   }
   return response.json();
 }
