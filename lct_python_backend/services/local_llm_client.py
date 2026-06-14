@@ -22,7 +22,9 @@ _JSON_OBJECT_UNSUPPORTED_BASE_URLS: set[str] = set()
 _LOGGED_MODEL_SUBSTITUTIONS: set[Tuple[str, str, str]] = set()
 from lct_python_backend.services.env_helpers import env_bool
 
-TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=True)
+# Default OFF: these traces echo transcript/LLM content (AGENTS.md #9 —
+# diagnostic logging is opt-in). Set TRACE_API_CALLS=1 to enable.
+TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=False)
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
 
 

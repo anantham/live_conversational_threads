@@ -30,9 +30,17 @@ from lct_python_backend.services.env_helpers import env_str, env_str_or_none
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
+# Resolve LOG_LEVEL once and apply it to BOTH the app logger and the
+# lct_python_backend.* package logger below. Previously the package logger was
+# pinned to DEBUG unconditionally, which made LOG_LEVEL a no-op for every
+# services/* module and forced verbose (potentially content-bearing) diagnostic
+# logs into the file log regardless of the configured level. Honoring LOG_LEVEL
+# keeps DEBUG diagnostics opt-in (AGENTS.md #9). Default INFO.
+LOG_LEVEL = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+
 # Create logger
 logger = logging.getLogger("lct_backend")
-logger.setLevel(getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO))
+logger.setLevel(LOG_LEVEL)
 
 # File handler - rotates at 10MB, keeps 5 backups
 file_handler = RotatingFileHandler(
@@ -59,9 +67,10 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 # Capture all lct_python_backend.* module logs (using __name__)
-# This ensures import_api, services, etc. all go to the log file
+# This ensures import_api, services, etc. all go to the log file, at the
+# configured LOG_LEVEL (set LOG_LEVEL=DEBUG to capture verbose diagnostics).
 lct_package_logger = logging.getLogger("lct_python_backend")
-lct_package_logger.setLevel(logging.DEBUG)
+lct_package_logger.setLevel(LOG_LEVEL)
 lct_package_logger.addHandler(file_handler)
 lct_package_logger.addHandler(console_handler)
 
