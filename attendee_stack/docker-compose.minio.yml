@@ -1,0 +1,62 @@
+# MinIO + host-gateway override for a self-hosted Attendee dev stack.
+#
+# Merge this on top of Attendee's dev.docker-compose.yaml (run from inside your
+# cloned attendee repo, with this file copied in):
+#
+#   docker compose -f dev.docker-compose.yaml -f docker-compose.minio.yml up
+#
+# It (1) runs MinIO as a local S3-compatible store so recordings never leave the
+# machine, (2) auto-creates the recording bucket, and (3) lets the worker reach
+# services on the Windows host (the LCT webhook receiver + the Custom-Async STT
+# shim) via host.docker.internal.
+#
+# Set the matching keys in Attendee's .env (see attendee.env.example):
+#   AWS_ENDPOINT_URL=http://minio:9000
+#   AWS_ACCESS_KEY_ID=attendee
+#   AWS_SECRET_ACCESS_KEY=attendeeminio123
+#   AWS_RECORDING_STORAGE_BUCKET_NAME=attendee-recordings
+
+services:
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    networks:
+      - attendee_network
+    ports:
+      - "9000:9000"   # S3 API  (host browser/CLI: http://localhost:9000)
+      - "9001:9001"   # console (http://localhost:9001)
+    environment:
+      MINIO_ROOT_USER: attendee
+      MINIO_ROOT_PASSWORD: attendeeminio123
+    volumes:
+      - minio:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # One-shot: create the recording bucket, then exit.
+  minio-createbucket:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      - minio
+    networks:
+      - attendee_network
+    entrypoint: >
+      /bin/sh -c "
+      until (mc alias set local http://minio:9000 attendee attendeeminio123) do echo 'waiting for minio'; sleep 2; done;
+      mc mb --ignore-existing local/attendee-recordings;
+      exit 0;
+      "
+
+  # The worker delivers webhooks AND makes the Custom-Async STT call, so it needs
+  # to resolve the Windows host. host.docker.internal works by default on Docker
+  # Desktop; this makes it explicit on the custom bridge network too.
+  attendee-worker-local:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  minio:

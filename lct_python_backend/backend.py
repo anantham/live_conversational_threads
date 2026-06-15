@@ -248,6 +248,10 @@ from lct_python_backend.user_identity_api import router as user_identity_router
 from lct_python_backend.share_api import router as share_router
 from lct_python_backend.backend_catalog_api import router as backend_catalog_router
 from lct_python_backend.diarization_api import router as diarization_router
+from lct_python_backend.attendee_api import (
+    router as attendee_router,
+    ws_router as attendee_ws_router,
+)
 
 lct_app.include_router(import_router)
 lct_app.include_router(bookmarks_router)
@@ -277,6 +281,10 @@ lct_app.include_router(user_identity_router)
 lct_app.include_router(share_router)
 lct_app.include_router(backend_catalog_router)
 lct_app.include_router(diarization_router)
+# Attendee meeting-bot integration: join a Meet link, stream transcripts into
+# the live-graph pipeline. attendee_ws_router carries /ws/meeting/{id} (viewer).
+lct_app.include_router(attendee_router)
+lct_app.include_router(attendee_ws_router)
 
 # Alias for uvicorn compatibility
 app = lct_app
