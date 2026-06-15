@@ -35,7 +35,9 @@ from lct_python_backend.services.stt_response_parsers import (
 
 logger = logging.getLogger("lct_backend")
 
-TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=True)
+# Default OFF: these traces echo transcript/LLM content (AGENTS.md #9 —
+# diagnostic logging is opt-in). Set TRACE_API_CALLS=1 to enable.
+TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=False)
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
 OPENROUTER_TRANSCRIPTION_PROMPT = (
     "Transcribe this audio accurately. Return plain text only. "

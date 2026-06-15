@@ -1,6 +1,105 @@
 # ISSUES
 
-Last updated: 2026-06-08
+Last updated: 2026-06-14
+
+## 2026-06-14 — Diagnostic logging leaked conversation content to console/logs (FIXED 2026-06-14)
+
+**Summary:** A multi-agent + `codex exec` audit of the diagnostic-logging surface
+found that several ungated logs echoed private conversation content — counter to
+the privacy-first posture and AGENTS.md #9 (diagnostic logging must be gated,
+default OFF, opt-in; genuine failures stay loud). Confirmed leaks, all fixed on
+`fix/logging-privacy`:
+
+- **Contact PII (frontend, HIGH).** `useTranscriptSockets.logToServer` did an
+  unconditional `console.log("[Client Log]", text)`. `audioMessages.js` routes
+  contact `display_name`, `matched_phrase`, and `speaker_ids` through it →
+  contact identity + matched conversation phrases hit the browser console on
+  every consumption match. Fix: gate behind `makeDebug("stt")` (the WS send to
+  the backend is unchanged).
+- **Raw WS frame (frontend).** `audioMessages.js` catch logged `event?.data` —
+  the raw backend frame carries transcript text / node content. Fix: log the
+  parse error only.
+- **Raw response body (frontend).** `SaveConversation.jsx` logged the raw
+  non-JSON response `text` (can echo saved conversation content). Fix: log a
+  static message; the parse failure is the signal.
+- **Full data dumps (frontend).** `Bookmarks.jsx` (`Loaded bookmarks:` + full
+  response), `ImportCanvas.jsx` (`Canvas imported successfully:` + result),
+  `useFileUploadStream.js` (STT `stt_http_url` topology + full `telemetry`
+  blob), `DualViewCanvas.jsx` (zoom traces). Fix: removed or gated behind
+  namespaced `makeDebug`.
+- **Transcript preview (backend).** `stt_http_transcriber.py:792,912` logged
+  `transcript_preview=%s` at INFO, ungated — while its 5 sibling STT-trace sites
+  in the same file gate on `TRACE_API_CALLS`. Fix: gate both.
+- **`TRACE_API_CALLS` defaulted ON.** The flag (duplicated across 5 services
+  modules: `stt_http_transcriber`, `transcript_llm_callers`,
+  `stt_provider_transports`, `local_llm_client`, `llm_gateway`) defaulted to
+  `True`, so transcript/LLM-content traces were on by default. Fix: default
+  `False` everywhere; set `TRACE_API_CALLS=1` to opt in.
+- **`LOG_LEVEL` no-op (backend).** `backend.py` pinned the `lct_python_backend.*`
+  package logger to `DEBUG` unconditionally, so `LOG_LEVEL` only affected the
+  thin `lct_backend` app logger and every `services/*` DEBUG line was forced into
+  the file log regardless. Fix: resolve `LOG_LEVEL` once and honor it for both
+  loggers (default INFO → DEBUG diagnostics opt-in).
+
+**New infra:** `lct_app/src/utils/debug.js` — one gated, namespaced frontend
+logger (`makeDebug(namespace)`), OFF by default, opt-in via `VITE_LCT_DEBUG`,
+`localStorage["lct:debug"]`, or `window.__lctDebug.enable("ns")`. Replaces the
+four ad-hoc gates. `vite.config.js` adds defense-in-depth: prod builds mark
+`console.log/info/debug` as `pure` (dropped by minification) while keeping
+`console.warn`/`console.error` so genuine failures survive. Dead `Input.jsx`
+deleted.
+
+**Impact:** Medium. Leaks were to the local browser console and the local
+rotating file log (not shipped off-device), so no external exfiltration — but
+contact names + conversation phrases in the console violate the local-first
+privacy contract and would surface in any screen-share / shared dev session.
+
+**Blocker status:** Not blocking. Shipped on `fix/logging-privacy`.
+
+### Follow-up (2026-06-14) — Error-from-body sweep + logger migration (DONE)
+
+The two follow-ups below were completed in a second pass on the same branch. A
+multi-agent discovery + adversarial-review workflow drove both.
+
+**Error-from-body sanitization sweep.** Codex's "~8 sites" estimate was exact for
+the *known* set, but the discovery finders surfaced **7 more** raw-body→error/log
+sites (≈15 total): frontend `sttSettingsApi.js` (handleResponse, 5 callers),
+`speakerNamingApi.js` (also a latent `json()`-then-`text()` double-read bug),
+`useFileUploadStream.js:234` (raw body → upload error UI); and backend
+`perplexity_factcheck.py:173` + `local_llm_client.py:199/524/739` (raw upstream
+provider bodies logged ungated — same class as the STT traces above).
+- **Frontend:** new shared `readErrorMessage(response, fallback, {cap})` in
+  `apiClient.js`. Prefers the structured FastAPI `{detail}`/`{message}` but caps
+  **every** server-controlled return path (the adversarial review caught that an
+  early draft left the JSON-detail branch uncapped). Handles the 422 array shape
+  `[{loc,msg,type,input}]` by keeping `msg` and **dropping `input`** — `input`
+  echoes the submitted payload, which for `byokApi` is the user's **API key**.
+  Salvages an HTML `<title>` (proxy 502/504) before capping boilerplate. 10 unit
+  tests in `readErrorMessage.test.js` cover the cap, the key-drop, and the
+  non-destructive `.clone()` read. All 11 raw-body call sites refactored onto it
+  (diagnostics surfaces — ServiceStatus, backend-catalog — pass `cap: 1000`).
+- **Backend:** the 4 ungated upstream-body logs now keep the failure **loud**
+  (status + provider) but gate the raw body behind `TRACE_API_CALLS` (added the
+  flag to `perplexity_factcheck.py`); the LLM-fallback `error_msg` keeps the HTTP
+  status always and includes the 100-char body only under the flag.
+- **Left as-is (documented):** `SaveConversation.jsx` already reads the body
+  defensively without exposing it (earlier fix); the LLM-fallback bodies are
+  bounded to 100 chars and gated.
+
+**Logger migration.** `contextualGraphUtils.js` (`VITE_GRAPH_DEBUG`) and
+`AudioInput.jsx` (`__LCT_DEBUG_AUDIO`) folded into `makeDebug("graph")` /
+`makeDebug("audio")` — zero behaviour change (both were already default-OFF).
+`MinimalGraph`'s `__MG_DEBUG__` (named in the original note) does not exist on
+this branch — only two genuine `console.warn` persist-failure logs, correctly
+left loud.
+
+**`apiClient` API-trace folded in too (per follow-up decision).** `apiClient.js`'s
+`TRACE_API` (`VITE_API_TRACE`) previously defaulted to `import.meta.env.DEV`, so
+API request lines **and** 500-char response-body previews printed to the console
+by default in local dev. It now routes through `makeDebug("api")` — OFF by
+default, opt in with `VITE_LCT_DEBUG=api` / `window.__lctDebug.enable("api")` —
+and the body preview only computes when the gate is enabled, closing the last
+default-on content-to-console path. `LOCAL_SETUP.md` updated accordingly.
 
 ## 2026-06-08 — CI: e2e smoke + codex-review red on every PR (test mis-seeding + missing action)
 
