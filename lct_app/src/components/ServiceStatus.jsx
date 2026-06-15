@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
-import { apiFetch } from "../services/apiClient";
+import { apiFetch, readErrorMessage } from "../services/apiClient";
 
 const POLL_INTERVAL_MS = 30000;
 // Quick settings GETs.
@@ -85,8 +85,8 @@ async function postJson(path, payload, timeoutMs = PROBE_TIMEOUT_MS) {
     timeoutMs,
   );
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(text || `HTTP ${response.status}`);
+    // Diagnostics panel — allow a larger body so proxy/5xx tracebacks survive.
+    throw new Error(await readErrorMessage(response, `HTTP ${response.status}`, { cap: 1000 }));
   }
   return response.json();
 }
