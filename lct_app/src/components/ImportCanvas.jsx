@@ -1,6 +1,9 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../services/apiClient";
+import { makeDebug } from "../utils/debug";
+
+const debug = makeDebug("import");
 
 export default function ImportCanvas() {
   const [isImporting, setIsImporting] = useState(false);
@@ -57,7 +60,7 @@ export default function ImportCanvas() {
       }
 
       const result = await response.json();
-      console.log("Canvas imported successfully:", result);
+      debug("canvas imported", result);
       alert(`Successfully imported: ${result.file_name}`);
 
       // Navigate to the newly imported conversation

@@ -1,15 +1,8 @@
-import { apiFetch } from "./apiClient";
+import { apiFetch, readErrorMessage } from "./apiClient";
 
 async function handleJson(response, fallback) {
   if (!response.ok) {
-    let detail = "";
-    try {
-      const payload = await response.json();
-      detail = payload?.detail || payload?.message || "";
-    } catch {
-      detail = await response.text();
-    }
-    throw new Error(detail || fallback);
+    throw new Error(await readErrorMessage(response, fallback));
   }
   return response.json();
 }

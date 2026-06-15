@@ -1,4 +1,4 @@
-import { apiFetch } from './apiClient';
+import { apiFetch, readErrorMessage } from './apiClient';
 
 const CATALOG_PATH = '/api/backend-catalog';
 const PROBE_PATH = `${CATALOG_PATH}/probe`;
@@ -8,8 +8,9 @@ const LLM_TELEMETRY_PATH = '/api/settings/llm/telemetry';
 
 async function handleResponse(response, label) {
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `${label} request failed`);
+    // Catalog/probe is a diagnostics path — allow a larger body so a 5xx
+    // traceback survives the cap.
+    throw new Error(await readErrorMessage(response, `${label} request failed`, { cap: 1000 }));
   }
   return response.json();
 }

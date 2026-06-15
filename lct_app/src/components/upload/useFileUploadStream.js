@@ -1,8 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
-import { API_BASE_URL, apiHeaders, invalidateApiCache } from "../../services/apiClient";
+import { API_BASE_URL, apiHeaders, invalidateApiCache, readErrorMessage } from "../../services/apiClient";
 import { useByok } from "../../contexts/byokContext";
 import { randomUUID } from "../../utils/uuid";
+import { makeDebug } from "../../utils/debug";
+
+// Upload progress logs expose internal STT topology (stt_http_url) and full
+// telemetry blobs. Gate them off by default (AGENTS.md #9).
+const debug = makeDebug("upload");
 
 // No cap — accumulate all transcript lines so users can scroll back
 // through the full conversation history during long uploads.
@@ -226,8 +231,8 @@ export default function useFileUploadStream({
       signal: abortController.signal,
     });
     if (!response.ok) {
-      const detail = await response.text();
-      throw buildUploadError(detail || `Upload failed (${response.status})`, {
+      const detail = await readErrorMessage(response, `Upload failed (${response.status})`);
+      throw buildUploadError(detail, {
         retryable: [408, 429, 500, 502, 503, 504].includes(response.status),
         statusCode: response.status,
       });
@@ -262,8 +267,8 @@ export default function useFileUploadStream({
             const nextStatusText = payload.message || "Processing...";
             if (payload.stt_backend) {
               setSttBackend(payload.stt_backend);
-              console.log(
-                `[Upload] STT backend: ${payload.stt_backend}` +
+              debug(
+                `STT backend: ${payload.stt_backend}` +
                   (payload.stt_http_url ? ` → ${payload.stt_http_url}` : "") +
                   (telemetry.stt_http_url ? ` → ${telemetry.stt_http_url}` : "")
               );
@@ -335,7 +340,7 @@ export default function useFileUploadStream({
               } else {
                 setEtaText("");
               }
-              console.log(
+              debug(
                 `[LLM Analysis] Chunk ${chunksDone}/${chunksTotal} | Elapsed: ${formatDuration(elapsedMs)} | ETA: ${formatDuration(etaMs)}`,
                 telemetry
               );
