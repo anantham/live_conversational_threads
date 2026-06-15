@@ -43,7 +43,9 @@ def _sleep_backoff(attempt: int, base: float) -> None:
 GEMINI_MODEL_NAME = os.getenv("ONLINE_LLM_CHAT_MODEL", "gemini-2.5-flash")
 from lct_python_backend.services.env_helpers import env_bool
 
-TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=True)
+# Default OFF: these traces echo transcript/LLM content (AGENTS.md #9 —
+# diagnostic logging is opt-in). Set TRACE_API_CALLS=1 to enable.
+TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=False)
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
 _JSON_OBJECT_UNSUPPORTED_BASE_URLS: set[str] = set()
 _GEMINI_KEY_ENV_ORDER = ("GOOGLEAI_API_KEY", "GEMINI_API_KEY", "GEMINI_KEY")

@@ -1,3 +1,5 @@
+import { makeDebug } from "../../utils/debug";
+
 export const EDGE_RELATION_STYLE = {
   supports: { color: "#16a34a", width: 2.8 },
   rebuts: { color: "#dc2626", width: 2.8 },
@@ -9,13 +11,13 @@ export const EDGE_RELATION_STYLE = {
   temporal_next: { color: "#9ca3af", width: 2.0 },
 };
 
-export const GRAPH_DEBUG = import.meta.env.VITE_GRAPH_DEBUG === "true";
+// Graph diagnostics route through the unified gate (utils/debug.js): OFF by
+// default, opt in with VITE_LCT_DEBUG=graph or window.__lctDebug.enable("graph").
+// (Previously a bespoke VITE_GRAPH_DEBUG flag.)
+const graphDebug = makeDebug("graph");
 
-export const graphDebugLog = (...args) => {
-  if (GRAPH_DEBUG) {
-    console.log(...args);
-  }
-};
+export const GRAPH_DEBUG = graphDebug.enabled;
+export const graphDebugLog = (...args) => graphDebug(...args);
 
 export function extractContextualRelationEntries(contextualRelation) {
   if (!contextualRelation || typeof contextualRelation !== "object" || Array.isArray(contextualRelation)) {

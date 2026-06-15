@@ -22,7 +22,9 @@ _JSON_OBJECT_UNSUPPORTED_BASE_URLS: set[str] = set()
 _LOGGED_MODEL_SUBSTITUTIONS: set[Tuple[str, str, str]] = set()
 from lct_python_backend.services.env_helpers import env_bool
 
-TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=True)
+# Default OFF: these traces echo transcript/LLM content (AGENTS.md #9 —
+# diagnostic logging is opt-in). Set TRACE_API_CALLS=1 to enable.
+TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=False)
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
 
 
@@ -193,9 +195,13 @@ class LocalLLMClient:
             except httpx.HTTPStatusError as exc:
                 if "response_format" in payload:
                     logger.warning(
-                        "Local LLM response_format rejected (%s); retrying without response_format.",
-                        _preview_text(exc.response.text),
+                        "Local LLM response_format rejected; retrying without response_format."
                     )
+                    if TRACE_API_CALLS:
+                        logger.debug(
+                            "Local LLM response_format rejection body: %s",
+                            _preview_text(exc.response.text),
+                        )
                     _JSON_OBJECT_UNSUPPORTED_BASE_URLS.add(self.base_url)
                     payload.pop("response_format", None)
                     payload.pop("reasoning_effort", None)
@@ -519,7 +525,10 @@ async def chat_with_provider_fallback(
                 )
 
         except httpx.HTTPStatusError as exc:
-            error_msg = f"HTTP {exc.response.status_code}: {_preview_text(exc.response.text, 100)}"
+            # Status always kept (diagnostic); upstream body — which can echo the
+            # prompt — only under TRACE_API_CALLS. error_msg also feeds `errors`.
+            error_body = _preview_text(exc.response.text, 100) if TRACE_API_CALLS else ""
+            error_msg = f"HTTP {exc.response.status_code}" + (f": {error_body}" if error_body else "")
             logger.warning(
                 "[LLM Fallback] Provider %s failed: %s",
                 provider_name,
@@ -734,7 +743,9 @@ def chat_with_provider_fallback_sync(
                 )
 
         except httpx.HTTPStatusError as exc:
-            error_msg = f"HTTP {exc.response.status_code}: {_preview_text(exc.response.text, 100)}"
+            # Status always kept (diagnostic); upstream body gated (can echo the prompt).
+            error_body = _preview_text(exc.response.text, 100) if TRACE_API_CALLS else ""
+            error_msg = f"HTTP {exc.response.status_code}" + (f": {error_body}" if error_body else "")
             logger.warning("[LLM Fallback Sync] Provider %d/%d %s failed: %s", attempt_number, total_providers, provider_name, error_msg)
             errors.append((provider_name, error_msg))
 

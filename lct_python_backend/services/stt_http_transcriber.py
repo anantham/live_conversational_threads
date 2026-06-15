@@ -43,7 +43,9 @@ from lct_python_backend.services.stt_provider_transports import (
     transcribe_openrouter_audio_candidate,
 )
 
-TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=True)
+# Default OFF: these traces echo transcript/LLM content (AGENTS.md #9 —
+# diagnostic logging is opt-in). Set TRACE_API_CALLS=1 to enable.
+TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=False)
 API_LOG_PREVIEW_CHARS = int(os.getenv("API_LOG_PREVIEW_CHARS", "280"))
 SMOKE_TEST_DURATION_SECONDS = float(os.getenv("STT_SMOKE_TEST_DURATION_SECONDS", "1.2"))
 SMOKE_TEST_TIMEOUT_SECONDS = float(os.getenv("STT_SMOKE_TEST_TIMEOUT_SECONDS", "20"))
@@ -789,20 +791,23 @@ class RealtimeHttpSttSession:
                     "diarize_enabled": diarize_enabled,
                 }
                 self._clear_candidate_failure(candidate)
-                logger.info(
-                    "[STT FLOW] session=%s conversation=%s success provider=%s transport=%s endpoint=%s attempt=%s/%s latency_ms=%s flow_ms=%s fallback_used=%s transcript_preview=%s",
-                    self.session_id or "-",
-                    self.conversation_id or "-",
-                    candidate_provider,
-                    transport,
-                    candidate_endpoint or "-",
-                    index + 1,
-                    len(candidates),
-                    attempt_latency_ms,
-                    flow_ms,
-                    fallback_used,
-                    _preview_text(text),
-                )
+                # transcript_preview echoes conversation content — gate behind
+                # TRACE_API_CALLS like the sibling STT trace sites (AGENTS.md #9).
+                if TRACE_API_CALLS:
+                    logger.info(
+                        "[STT FLOW] session=%s conversation=%s success provider=%s transport=%s endpoint=%s attempt=%s/%s latency_ms=%s flow_ms=%s fallback_used=%s transcript_preview=%s",
+                        self.session_id or "-",
+                        self.conversation_id or "-",
+                        candidate_provider,
+                        transport,
+                        candidate_endpoint or "-",
+                        index + 1,
+                        len(candidates),
+                        attempt_latency_ms,
+                        flow_ms,
+                        fallback_used,
+                        _preview_text(text),
+                    )
                 return text, segments
 
             self._last_runtime_metadata = {
@@ -909,16 +914,19 @@ async def smoke_test_stt_candidate(
             "error": None,
             "status_code": None,
         }
-        logger.info(
-            "[STT TEST] provider=%s transport=%s endpoint=%s status=%s latency_ms=%s transcript_preview=%s warning=%s",
-            candidate_provider,
-            transport,
-            endpoint or "-",
-            result["status"],
-            latency_ms,
-            result["transcript_preview"] or "-",
-            warning or "-",
-        )
+        # transcript_preview echoes conversation content — gate behind
+        # TRACE_API_CALLS like the sibling STT trace sites (AGENTS.md #9).
+        if TRACE_API_CALLS:
+            logger.info(
+                "[STT TEST] provider=%s transport=%s endpoint=%s status=%s latency_ms=%s transcript_preview=%s warning=%s",
+                candidate_provider,
+                transport,
+                endpoint or "-",
+                result["status"],
+                latency_ms,
+                result["transcript_preview"] or "-",
+                warning or "-",
+            )
         return result
     except Exception as exc:
         latency_ms = _elapsed_ms(started_at)

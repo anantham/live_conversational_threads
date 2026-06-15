@@ -173,7 +173,9 @@ const createBackendMessageHandler =
         );
       }
     } catch (error) {
-      console.error("Invalid backend WebSocket message:", error, event?.data);
+      // Do NOT log event?.data — the raw backend frame can carry transcript
+      // text / node content. The parse error alone is enough to diagnose.
+      console.error("Invalid backend WebSocket message:", error);
       onProcessingStatus?.({
         level: "error",
         message: "Received invalid backend WebSocket payload.",
