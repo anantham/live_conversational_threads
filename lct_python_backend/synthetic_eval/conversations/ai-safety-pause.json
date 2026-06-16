@@ -1,0 +1,52 @@
+{
+  "slug": "ai-safety-pause",
+  "title": "Should we publicly back a six-month pause on frontier AI training?",
+  "personas": ["Mara", "Dev"],
+  "provenance": {
+    "author": "hand",
+    "model": null,
+    "license": "synthetic-fixture: fully fictional, no real persons or private data",
+    "notes": "Authored as a Tier-1 ground-truth fixture for the synthetic_eval harness. Two speakers, one clear tangent, one genuine reversal/surprise, a debate with rebuts/supports/clarify/ask edges, and two action items."
+  },
+  "turns": [
+    {"id": "t0", "speaker": "Mara", "text": "Thanks for making time. I want to figure out whether we should publicly back the six-month pause on frontier training."},
+    {"id": "t1", "speaker": "Dev", "text": "Sure. Just so we're grounded in facts: the last big jump, GPT-4, shipped in March 2023, and capability benchmarks have roughly doubled every year since."},
+    {"id": "t2", "speaker": "Mara", "text": "Right, and that pace is exactly the problem. I think we have a moral obligation to slow down until interpretability research catches up with capabilities."},
+    {"id": "t3", "speaker": "Dev", "text": "I disagree that pausing is the responsible move. A pause just hands the lead to the labs that won't pause, so you end up with less safety, not more."},
+    {"id": "t4", "speaker": "Mara", "text": "That's the race-to-the-bottom argument, and I understand it. But it assumes everyone defects. A coordinated pause with real enforcement changes that calculus entirely."},
+    {"id": "t5", "speaker": "Dev", "text": "Speaking of coordination, totally unrelated: did you ever finish that backpacking trip on the Lost Coast you were planning? I heard the tides were brutal this year."},
+    {"id": "t6", "speaker": "Mara", "text": "Ha, we bailed on day two, the fog was unreal and we couldn't time the tide tables. Anyway, sorry, back to it."},
+    {"id": "t7", "speaker": "Dev", "text": "Here's what actually worries me, though: enforcement. There's no mechanism today to verify a lab isn't training in secret, and compute monitoring that could catch it is still years away."},
+    {"id": "t8", "speaker": "Mara", "text": "Okay, that's a fair point about verification. I'll grant that the enforcement story is weak right now."},
+    {"id": "t9", "speaker": "Dev", "text": "And honestly, I'll admit something. I used to sign every pause letter. I changed my mind after our own internal evals showed the safety techniques only worked because we kept scaling and could study the failures up close."},
+    {"id": "t10", "speaker": "Mara", "text": "Wait, your internal evals showed that scaling actually helped the safety research? That genuinely surprises me. Can you say more about what you saw?"},
+    {"id": "t11", "speaker": "Dev", "text": "To be precise: on the specific failure modes we tested, yes. I'm not claiming scale is safe. I'm claiming a blanket pause freezes the exact research that finds the problems in the first place."},
+    {"id": "t12", "speaker": "Mara", "text": "Alright. I don't fully buy it, but you've moved me off 'pause everything.' Maybe the real lever is mandatory evaluation disclosure, not a training halt."},
+    {"id": "t13", "speaker": "Dev", "text": "Now that I can get behind. Disclosure with teeth: independent audits, published results."},
+    {"id": "t14", "speaker": "Mara", "text": "Let's do this. I'll draft a one-pager on mandatory eval disclosure by Friday, and you pressure-test the enforcement section."},
+    {"id": "t15", "speaker": "Dev", "text": "Deal. I'll also pull together the verification literature so we're not hand-waving on compute monitoring."}
+  ],
+  "ground_truth": {
+    "cruxes": ["t2", "t3", "t9", "t12"],
+    "tangents": ["t5", "t6"],
+    "surprises": ["t9"],
+    "action_items": ["t14", "t15"],
+    "claims": [
+      {"turn": "t1", "text": "GPT-4 shipped in March 2023", "type": "factual"},
+      {"turn": "t2", "text": "We have a moral obligation to slow down frontier AI development", "type": "normative"},
+      {"turn": "t3", "text": "A coordinated pause is impossible because competitors will always defect", "type": "worldview"},
+      {"turn": "t7", "text": "Compute monitoring that could verify secret training is still years away", "type": "factual"},
+      {"turn": "t9", "text": "Internal evaluations showed safety techniques depended on continued scaling to study failures", "type": "factual"}
+    ],
+    "edges": [
+      {"type": "rebuts", "from": "t3", "to": "t2", "note": "Dev rebuts the pause thesis with race-to-the-bottom"},
+      {"type": "rebuts", "from": "t4", "to": "t3", "note": "Mara rebuts race-to-the-bottom via coordinated enforcement"},
+      {"type": "rebuts", "from": "t11", "to": "t2", "note": "Dev: a blanket pause freezes the research that finds problems"},
+      {"type": "supports", "from": "t8", "to": "t7", "note": "Mara concedes the verification point"},
+      {"type": "supports", "from": "t13", "to": "t12", "note": "Dev agrees with the disclosure synthesis"},
+      {"type": "supports", "from": "t15", "to": "t14", "note": "Dev's commitment supports the plan"},
+      {"type": "asks", "from": "t10", "to": "t9", "note": "Mara asks Dev to elaborate the surprising claim"},
+      {"type": "clarifies", "from": "t11", "to": "t9", "note": "Dev narrows the scaling-helped-safety claim"}
+    ]
+  }
+}

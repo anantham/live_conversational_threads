@@ -1,0 +1,5 @@
+# Run outputs (regenerable from the seeds + a provider)
+results/
+# Local debug dumps
+.tmp_*
+*.raw.txt
