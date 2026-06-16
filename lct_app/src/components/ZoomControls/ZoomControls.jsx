@@ -8,7 +8,7 @@
  * - Keyboard shortcuts display
  */
 
-import { useEffect } from 'prop-types';
+import { useEffect } from 'react';
 import PropTypes from 'prop-types';
 import ZoomLevelIndicator from './ZoomLevelIndicator';
 
