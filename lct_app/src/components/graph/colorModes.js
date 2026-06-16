@@ -17,7 +17,7 @@
 
 import { SPEAKER_COLORS } from "../graphConstants";
 
-export const COLOR_MODES = Object.freeze(["tier", "speaker", "temporal", "argument", "date"]);
+export const COLOR_MODES = Object.freeze(["tier", "speaker", "temporal", "argument", "date", "rhetoric"]);
 export const DEFAULT_COLOR_MODE = "tier";
 
 const COLOR_MODE_LABELS = {
@@ -26,6 +26,7 @@ const COLOR_MODE_LABELS = {
   temporal: "Color: Time",
   argument: "Color: Argument",
   date: "Color: Date",
+  rhetoric: "Color: Rhetoric",
 };
 
 export function colorModeLabel(mode) {
@@ -264,6 +265,23 @@ export function buildArgumentStatusMapForNodes(nodes) {
 }
 
 /**
+ * Rhetoric lens (argument-view Phase 2). Colors a node by its argumentative
+ * ROLE (claim_type), with any node carrying an adversarially-verified rhetoric
+ * flag shown in RED as the headline ("a candidate issue lives here"). The card
+ * chips carry the specifics (claim-type label + ⚠ flag with the quote/note).
+ * Distinct from the `argument` lens, which colors by incoming supports/rebuts.
+ */
+export const CLAIM_TYPE_COLORS = Object.freeze({
+  claim: { fill: "#dbeafe", border: "#60a5fa" }, // blue
+  assumption: { fill: "#ede9fe", border: "#a78bfa" }, // violet
+  evidence: { fill: "#dcfce7", border: "#4ade80" }, // green
+  question: { fill: "#e2e8f0", border: "#94a3b8" }, // slate
+  definition: { fill: "#ccfbf1", border: "#2dd4bf" }, // teal
+  value: { fill: "#fce7f3", border: "#f472b6" }, // pink
+});
+export const RHETORIC_FLAG_COLOR = Object.freeze({ fill: "#fee2e2", border: "#ef4444" }); // red
+
+/**
  * Resolve fill and border colors for a single node given the active mode
  * and pre-built per-mode maps.
  */
@@ -297,6 +315,15 @@ export function resolveNodeColors({
     const status = argumentStatusMap?.[node.id]?.status || "unconnected";
     const spec = ARG_BY_KEY[status] || ARG_BY_KEY.unconnected;
     return { fill: spec.fill, border: spec.border };
+  }
+
+  if (mode === "rhetoric") {
+    if (Array.isArray(node.rhetoric_flags) && node.rhetoric_flags.length > 0) {
+      return { fill: RHETORIC_FLAG_COLOR.fill, border: RHETORIC_FLAG_COLOR.border };
+    }
+    const spec = CLAIM_TYPE_COLORS[node.claim_type];
+    if (spec) return { fill: spec.fill, border: spec.border };
+    return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
   }
 
   // Default: tier

@@ -8,12 +8,16 @@ import {
   updateConversationSpeakerName,
 } from "../services/speakerNamingApi";
 
+// Edge-type key: the COLOR vocabulary for how nodes relate. Ordered by how
+// common they are in real graphs; each carries a plain-language meaning so the
+// relationship is legible, not just a colored line.
 const EDGE_LEGEND = [
-  { label: "supports", color: EDGE_COLORS.supports },
-  { label: "rebuts", color: EDGE_COLORS.rebuts },
-  { label: "clarifies", color: EDGE_COLORS.clarifies },
-  { label: "tangent", color: EDGE_COLORS.tangent },
-  { label: "returns", color: EDGE_COLORS.return_to_thread },
+  { label: "rebuts", color: EDGE_COLORS.rebuts, note: "pushes back / disagrees" },
+  { label: "supports", color: EDGE_COLORS.supports, note: "affirms / strengthens" },
+  { label: "exemplifies", color: EDGE_COLORS.clarifies, note: "gives an example" },
+  { label: "contextual", color: EDGE_COLORS.contextual, note: "relates / background" },
+  { label: "asks", color: EDGE_COLORS.asks, note: "raises a question" },
+  { label: "tangent", color: EDGE_COLORS.tangent, note: "digression" },
 ];
 
 function buildFallbackSpeakers(speakerColorMap) {
@@ -214,13 +218,14 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
 
           <div>
             <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">
-              Edges
+              How nodes relate (edge colors)
             </span>
-            <div className="mt-1 space-y-1">
-              {EDGE_LEGEND.map(({ label, color }) => (
+            <div className="mt-1.5 space-y-1.5">
+              {EDGE_LEGEND.map(({ label, color, note }) => (
                 <div key={label} className="flex items-center gap-2">
-                  <div className="w-4 h-0.5" style={{ backgroundColor: color }} />
-                  <span className="text-gray-600">{label}</span>
+                  <div className="w-5 h-[3px] rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                  <span className="text-gray-700 font-medium">{label}</span>
+                  <span className="text-gray-400 text-[10px] truncate">— {note}</span>
                 </div>
               ))}
             </div>

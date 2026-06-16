@@ -20,7 +20,7 @@ export default function ColorModeToggle({ mode, onChange, disabled = false }) {
       onClick={handleClick}
       disabled={disabled}
       aria-label={`${colorModeLabel(safeMode)} (click to cycle)`}
-      title={`${colorModeLabel(safeMode)} — click to cycle through tier / speaker / time / argument (support vs rebut) / date (one color per meeting)`}
+      title={`${colorModeLabel(safeMode)} — click to cycle through tier / speaker / time / argument (support vs rebut) / date (one color per meeting) / rhetoric (role + flagged moves)`}
       className={`px-2 py-1 rounded text-[10px] font-medium border transition ${
         disabled
           ? "border-gray-200 text-gray-300 cursor-not-allowed"
@@ -84,6 +84,17 @@ function swatchStyle(mode) {
       borderRadius: "50%",
       background:
         "linear-gradient(90deg, hsl(0,62%,80%) 0 33%, hsl(140,62%,80%) 33% 66%, hsl(280,62%,80%) 66% 100%)",
+      display: "inline-block",
+    };
+  }
+  if (mode === "rhetoric") {
+    // red = a verified rhetoric flag (a candidate issue lives here); the rest =
+    // argumentative roles (claim / evidence / assumption ...).
+    return {
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      background: "conic-gradient(from 0deg, #ef4444, #60a5fa, #4ade80, #a78bfa, #ef4444)",
       display: "inline-block",
     };
   }

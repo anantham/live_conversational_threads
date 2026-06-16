@@ -66,6 +66,9 @@ async def list_saved_conversations(db: AsyncSession = Depends(get_async_session)
                 "duration_seconds": conversation.duration_seconds,
                 "started_at": conversation.started_at.isoformat() if conversation.started_at else None,
                 "total_utterances": conversation.total_utterances or 0,
+                # Contact scoping (MVP): participants JSONB so the Browse list can
+                # filter "conversations with <contact>". [] for legacy rows.
+                "participants": conversation.participants or [],
             }
             for conversation in conversations_db
         ]

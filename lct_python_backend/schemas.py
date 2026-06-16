@@ -37,6 +37,10 @@ class SaveJsonResponseExtended(BaseModel):
     duration_seconds: Optional[int] = None
     started_at: Optional[str] = None
     total_utterances: Optional[int] = None
+    # Participant list (JSONB) so the Browse contact filter can scope
+    # "conversations with <contact>". Each entry: {contact_id|null, display_name, ...}.
+    # Defaults to [] for legacy rows that never had a participant picker run.
+    participants: Optional[List[Any]] = None
 
 class ConversationResponse(BaseModel):
     graph_data: List[Any]

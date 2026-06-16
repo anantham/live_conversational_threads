@@ -1,6 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Home from "../pages/Home";
 import NewConversation from "../pages/NewConversation";
+import JoinMeeting from "../pages/JoinMeeting";
+import MeetingView from "../pages/MeetingView";
 import ViewConversation from "../pages/ViewConversation";
 import ShareConversation from "../pages/ShareConversation";
 import ThreadsViewer from "../pages/ThreadsViewer";
@@ -23,6 +25,9 @@ export default function AppRoutes() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/new" element={<NewConversation />} />
+      {/* Attendee meeting bot: paste a Meet link, then watch the live graph. */}
+      <Route path="/meeting" element={<JoinMeeting />} />
+      <Route path="/meeting/:conversationId" element={<MeetingView />} />
       <Route path="/browse" element={<Browse />} />
       <Route path="/import" element={<Import />} />
       <Route path="/conversation/:conversationId" element={<ViewConversation />} />

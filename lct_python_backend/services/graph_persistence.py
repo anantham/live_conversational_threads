@@ -796,6 +796,11 @@ async def persist_graph(
                 "edge_relations": edge_relations,
             },
             utterance_ids=_coerce_uuid_array(item.get("utterance_ids")),
+            # P0 provenance: persist the source_ref the graph carries (the
+            # re-persist round-trip emits it from build_graph_data_from_nodes).
+            # New extraction graphs leave it null here; the export read-model
+            # derives it deterministically from utterance_ids.
+            source_ref=item.get("source_ref"),
             speaker_info=speaker_info_by_id.get(node_id),
             timestamp_start=node_ts_start,
             timestamp_end=node_ts_end,
