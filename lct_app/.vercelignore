@@ -1,9 +1,24 @@
-# NEVER deploy real-conversation artifacts. The viewer is server-free; users load
-# their own .threads file at view time. Only the hand-authored demo fixture ships.
-# (The root .gitignore's lct_app/public/*.threads rule is NOT applied when Vercel
-#  deploys from this subdirectory, so it must be repeated here.)
-public/vatsal.threads
-public/vatsal2.threads
-public/vatsal_gpt5.threads
-public/vatsal_gpt5_high.threads
-public/sample.threads
+# Privacy posture: DEFAULT-DENY. The viewer is server-free; users load their own
+# .threads at view time. Public hosting of any real-conversation artifact is
+# possession-is-capability, so an artifact is public the moment it ships under a
+# known path. We therefore ignore ALL .threads and explicitly re-allow ONLY the
+# files we intend to be reachable on threads.adityaarpitha.com.
+#
+# (The root .gitignore's `lct_app/public/*.threads` rule is NOT applied when
+#  Vercel deploys from this subdirectory, so the policy must live here.)
+#
+# To share a new map: drop it in public/ under an UNGUESSABLE filename
+# (corpus-<random>.threads — the random suffix is the "key", Notion-style) and
+# add a matching `!public/<name>` line below. Never re-allow a guessable name.
+
+public/*.threads
+
+# Vercel rebuilds the bundle itself, so never upload the local build output —
+# Vite copies EVERY public/*.threads into dist/, which would otherwise sneak the
+# gitignored real-conversation artifacts past the public/ rule above.
+dist/
+
+# --- deliberately public (obscure filenames act as the share key) ---
+!public/m17-db6a940c.threads
+!public/corpus-81b50f062006c764.threads
+!public/call-2026-05-23-30fbdd9d854e7058.threads

@@ -69,6 +69,68 @@ MarkerStrip.propTypes = {
   markers: PropTypes.arrayOf(PropTypes.string),
 };
 
+// Rhetoric chips (argument-view Phase 2): a quiet claim-type tag (the node's
+// argumentative role) + one ⚠ chip per adversarially-verified rhetoric flag.
+// The flag's full label, confidence, candidate-note and verbatim quote live in
+// the hover tooltip — the chip itself stays small. Always visible (like the crux
+// dot), independent of the active color mode.
+function RhetoricStrip({ claimType, flags }) {
+  const hasFlags = Array.isArray(flags) && flags.length > 0;
+  if (!claimType && !hasFlags) return null;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "5px" }}>
+      {claimType && (
+        <span title={`Argumentative role: ${claimType}`} style={claimTypeChipStyle}>
+          {claimType}
+        </span>
+      )}
+      {hasFlags && flags.map((f, i) => (
+        <span
+          key={`${f.label || "flag"}-${i}`}
+          title={`${f.label || "rhetoric"}${f.confidence ? ` · ${f.confidence} confidence` : ""}\n${f.note || ""}${f.quote ? `\n\n“${f.quote}”` : ""}`}
+          style={flagChipStyle}
+        >
+          <span aria-hidden="true">⚠</span>
+          {f.label || "rhetoric"}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+RhetoricStrip.propTypes = {
+  claimType: PropTypes.string,
+  flags: PropTypes.array,
+};
+
+const claimTypeChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  fontSize: "9px",
+  fontWeight: 600,
+  lineHeight: 1,
+  padding: "2px 6px",
+  borderRadius: "999px",
+  background: "transparent",
+  color: "#475569",
+  border: "1px solid #cbd5e1",
+  textTransform: "capitalize",
+};
+
+const flagChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "3px",
+  fontSize: "9px",
+  fontWeight: 700,
+  lineHeight: 1,
+  padding: "2px 6px",
+  borderRadius: "999px",
+  background: "#fee2e2",
+  color: "#b91c1c",
+  cursor: "help",
+};
+
 function ConversationNodeImpl({ data, selected }) {
   const {
     title,
@@ -86,9 +148,12 @@ function ConversationNodeImpl({ data, selected }) {
     canExpand = false,
     expandCount = 0,
     onExpand,
+    onOpenDetails,
+    claimType = null,
+    rhetoricFlags = [],
     argStatusLabel = null,
     showSummary = true,
-    summaryMaxLength = 220,
+    summaryMaxLength = 500,
   } = data || {};
 
   // Single border shorthand only — combining `border` (shorthand) with
@@ -109,18 +174,19 @@ function ConversationNodeImpl({ data, selected }) {
     background: fillColor,
     border: borderShorthand,
     borderRadius: "8px",
-    padding: "8px 12px",
-    fontSize: "12px",
+    padding: "11px 14px",
+    fontSize: "14px",
     fontFamily: "Inter, sans-serif",
     color: "#1e293b",
     cursor: "pointer",
     transition: "transform 0.2s ease, opacity 0.2s ease, box-shadow 0.2s ease",
     opacity: isDraft ? 0.7 : 1,
     whiteSpace: "normal",
-    // Grow with viewport on phones (90vw) but cap at 360px on tablets+.
-    // Old 240px cap chopped 60-char theme titles mid-word.
-    maxWidth: "min(90vw, 360px)",
-    minWidth: "180px",
+    // Grow with viewport on phones (92vw) but cap at 460px on tablets+ so the
+    // full LLM summary (arc/theme/topic run ~320-426 chars) is readable without
+    // the "…" clip. Old 360px + 220-char cap forced the truncation the user hit.
+    maxWidth: "min(92vw, 460px)",
+    minWidth: "220px",
     wordBreak: "break-word",
     transform: isTangent ? "rotate(8deg)" : undefined,
     boxShadow: selected
@@ -152,10 +218,16 @@ function ConversationNodeImpl({ data, selected }) {
         <div style={summaryStyle}>{truncatedSummary}</div>
       )}
       <MarkerStrip markers={dimensionMarkers} />
+      <RhetoricStrip claimType={claimType} flags={rhetoricFlags} />
       {argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
       {speakerLabel && <div style={speakerStyle}>{speakerLabel}</div>}
 
-      {canExpand && <ExpandButton count={expandCount} onExpand={onExpand} />}
+      {canExpand && (
+        <div style={cardFooterStyle}>
+          <ExpandButton count={expandCount} onExpand={onExpand} />
+          {onOpenDetails && <DetailsButton onOpenDetails={onOpenDetails} />}
+        </div>
+      )}
 
       {isContextualProgress && <ProgressArrow />}
     </div>
@@ -193,24 +265,77 @@ ExpandButton.propTypes = {
   onExpand: PropTypes.func,
 };
 
+// Compact pill (not a full-width bar): the card's own tap is the main expand
+// affordance; this is a small cue + secondary target showing how many children
+// are inside, reclaiming the vertical space the old 40px bar ate.
 const expandButtonStyle = {
-  marginTop: "6px",
-  width: "100%",
-  minHeight: "40px", // touch target (card padding + this clears ~44px)
-  boxSizing: "border-box",
-  display: "flex",
+  display: "inline-flex",
   alignItems: "center",
-  justifyContent: "center",
-  gap: "5px",
+  gap: "4px",
   fontFamily: "Inter, sans-serif",
-  fontSize: "10px",
+  fontSize: "11px",
   fontWeight: 600,
   letterSpacing: "0.02em",
-  color: "#334155",
-  background: "rgba(15,23,42,0.05)",
+  color: "#475569",
+  background: "rgba(15,23,42,0.06)",
   border: "none",
-  borderRadius: "6px",
-  padding: "0 8px",
+  borderRadius: "999px",
+  padding: "4px 10px",
+  cursor: "pointer",
+  WebkitTapHighlightColor: "transparent",
+};
+
+// Footer row holding the expand pill + the details chip (Option A: tap the card
+// to expand; tap "details" to open the drawer).
+const cardFooterStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "6px",
+  flexWrap: "wrap",
+  marginTop: "8px",
+};
+
+// Small "details" affordance for nodes WITH children: their card-tap expands,
+// so this is how you reach the drawer (edges, source, ancestors). Leaf nodes
+// don't show it — tapping a leaf opens its drawer directly.
+function DetailsButton({ onOpenDetails }) {
+  return (
+    <button
+      type="button"
+      className="nodrag nopan"
+      title="Open details — edges, source, ancestors"
+      aria-label="Open details"
+      onPointerDown={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (onOpenDetails) onOpenDetails();
+      }}
+      style={detailsButtonStyle}
+    >
+      <span aria-hidden="true" style={{ fontSize: "12px", lineHeight: 1 }}>&#9432;</span>
+      <span>details</span>
+    </button>
+  );
+}
+
+DetailsButton.propTypes = {
+  onOpenDetails: PropTypes.func,
+};
+
+const detailsButtonStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "4px",
+  fontFamily: "Inter, sans-serif",
+  fontSize: "11px",
+  fontWeight: 600,
+  letterSpacing: "0.02em",
+  color: "#475569",
+  background: "transparent",
+  border: "1px solid rgba(15,23,42,0.12)",
+  borderRadius: "999px",
+  padding: "3px 9px",
   cursor: "pointer",
   WebkitTapHighlightColor: "transparent",
 };
@@ -223,29 +348,29 @@ const handleStyle = {
   pointerEvents: "none",
 };
 
-// Type bumped toward the DESIGN.md body scale: the card summary is the primary
-// reading content on the macro view and sat at 10px (the detector's tiny-text
-// flag). Title 13 / summary 12 with open leading reads comfortably while still
-// fitting inside the layout's 280px node-height reservation. Weight (600 vs 400)
-// carries the title→summary hierarchy so the size step can stay gentle.
+// Type sized for full-text readability (user request): title 16 / summary 14
+// with open leading. The full LLM summary now renders (summaryMaxLength 500),
+// so the layout's node-size reservation was bumped to match (see MinimalGraph
+// authoredViews: 480w × 360h) to keep cards from overlapping. Weight (600 vs
+// 400) carries the title→summary hierarchy.
 const titleStyle = {
   fontWeight: 600,
-  fontSize: "13px",
-  lineHeight: 1.35,
-  marginBottom: "3px",
+  fontSize: "16px",
+  lineHeight: 1.3,
+  marginBottom: "5px",
 };
 
 const summaryStyle = {
   fontWeight: 400,
-  fontSize: "12px",
+  fontSize: "14px",
   color: "#475569",
-  lineHeight: 1.5,
+  lineHeight: 1.55,
 };
 
 const speakerStyle = {
-  fontSize: "10px",
+  fontSize: "11px",
   color: "#64748b",
-  marginTop: "3px",
+  marginTop: "4px",
 };
 
 // Argument-status cue (shown only in the Argument color mode): the support/rebut
@@ -336,6 +461,9 @@ ConversationNodeImpl.propTypes = {
     canExpand: PropTypes.bool,
     expandCount: PropTypes.number,
     onExpand: PropTypes.func,
+    onOpenDetails: PropTypes.func,
+    claimType: PropTypes.string,
+    rhetoricFlags: PropTypes.array,
     argStatusLabel: PropTypes.string,
     showSummary: PropTypes.bool,
     summaryMaxLength: PropTypes.number,

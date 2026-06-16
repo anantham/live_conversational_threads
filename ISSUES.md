@@ -101,6 +101,35 @@ default, opt in with `VITE_LCT_DEBUG=api` / `window.__lctDebug.enable("api")` �
 and the body preview only computes when the gate is enabled, closing the last
 default-on content-to-console path. `LOCAL_SETUP.md` updated accordingly.
 
+## 2026-06-08 — CI: e2e smoke + codex-review red on every PR (test mis-seeding + missing action)
+
+**Summary:** Two PR-gate checks fail on every PR regardless of the change
+(surfaced while merging #54; the failing test files + `.github/workflows/e2e.yml`
+are byte-identical to `main` — not a regression). (1) `e2e.yml` runs the
+"DB-independent" smoke specs against a fresh Postgres (migrations only, no
+seeding), but `lct_app/tests/e2e/d4-color-mode-smoke.spec.ts:10` hard-codes
+`EXISTING_CONV = '0d6d5d7b-…'` and navigates to `/conversation/<id>` — never
+seeded → backend 404 → `.react-flow__node` never renders → 30s timeout.
+`lct_app/tests/e2e/initialization.spec.ts:72 › should load without JavaScript
+errors` fails on the same backend 404s. (2) `.github/workflows/codex-review.yml`
+dies at setup in ~3s: `Unable to resolve action openai/codex-review-action,
+repository not found`.
+
+**Impact:** Low but corrosive. Both are **non-required** checks (don't block
+merges), but a permanently-red PR gate trains everyone to ignore CI and hides
+real regressions. PR #54's e2e run: 2 failed / 5 passed. (GitHub Issues are
+disabled on this repo, so logged here per the ISSUES.md convention.)
+
+**Blocker status:** Not blocking (non-required checks; #54 was merged over them
+after confirming the failures are pre-existing and unrelated to the branch).
+
+**Recommended next step:** (a) make `d4-color-mode-smoke` self-provision its
+conversation via the import/create API in `beforeAll` (the pattern the workflow
+header comment says data-dependent specs must follow), or drop it from the
+DB-independent smoke list in `e2e.yml`; (b) make `initialization › no JS errors`
+tolerant of expected backend 404s on a fresh DB; (c) fix or disable
+`codex-review.yml` (pin a real, accessible action).
+
 ## 2026-06-01 — Diarization selection saves but doesn't steer the runtime
 
 **Summary:** The "Active engines" Diarization lane (`InferenceLanes.jsx` →

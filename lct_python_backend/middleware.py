@@ -46,6 +46,12 @@ PUBLIC_PATH_PREFIXES: Tuple[str, ...] = (
     "/api/share/",
 )
 
+# Attendee delivers webhooks authenticated by an HMAC X-Webhook-Signature (NOT
+# the bearer AUTH_TOKEN), verified inside attendee_api._verify_signature. It also
+# fires once per finalized utterance, so it must bypass both bearer auth and the
+# per-IP mutate rate limit.
+ATTENDEE_WEBHOOK_PATH: str = "/api/attendee/webhook"
+
 ADMIN_PATH_PREFIXES: Tuple[str, ...] = (
     "/api/settings",
     "/api/analytics",
@@ -118,6 +124,14 @@ def _is_public_share(path: str, method: str = "GET") -> bool:
         return False
     norm = _normalize_path(path)
     return any(norm.startswith(prefix.rstrip("/")) for prefix in PUBLIC_PATH_PREFIXES)
+
+
+def _is_attendee_webhook(path: str, method: str = "POST") -> bool:
+    """Attendee webhook POST — HMAC-authenticated in-handler; bypasses bearer
+    auth and rate limiting. ONLY POST to the exact webhook path."""
+    if (method or "").upper() != "POST":
+        return False
+    return _normalize_path(path) == ATTENDEE_WEBHOOK_PATH
 
 
 def _is_audio_download(path: str) -> bool:
@@ -203,6 +217,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if _is_audio_download(path):
+            return await call_next(request)
+
+        if _is_attendee_webhook(path, request.method):
+            # HMAC-signed webhook; auth enforced in attendee_api._verify_signature.
             return await call_next(request)
 
         if _is_public_share(path, request.method):
@@ -473,6 +491,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         method = request.method
 
         if _is_health(path) or _is_cors_preflight(request):
+            return await call_next(request)
+
+        if _is_attendee_webhook(path, method):
+            # Per-utterance webhook from the local Attendee instance — exempt.
             return await call_next(request)
 
         ip = request.client.host if request.client else "unknown"

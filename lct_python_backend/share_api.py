@@ -400,6 +400,10 @@ async def export_threads(
         build_chunk_dict_from_utterances,
         build_turn_graph_from_utterances,
     )
+    from lct_python_backend.services.conversation_reader import (
+        build_full_transcript_for_export,
+        build_coverage_summary,
+    )
 
     conversation_uuid = uuid.UUID(conversation_id)
     conversation, nodes, relationships, utterances = await fetch_conversation_bundle(
@@ -437,6 +441,15 @@ async def export_threads(
         "executive_summary": getattr(conversation, "executive_summary", None),
         "graph_data": graph_data,
         "chunk_dict": chunk_dict,
+        # P0 (audit-against-source): the verbatim raw the graph was built from,
+        # so the viewer's transcript download + coverage check work without
+        # arbitrary compression. Built from existing Utterance fields (no schema
+        # change). transcript_source distinguishes verbatim vs none.
+        "full_transcript": build_full_transcript_for_export(utterances),
+        "transcript_source": "verbatim" if utterances else "none",
+        # P0 quality check: how much of the raw the graph covers (honest null
+        # when unauditable). The viewer's Coverage Report reads this.
+        "coverage": build_coverage_summary(graph_data, utterances),
     }
 
     raw_name = (
@@ -451,6 +464,255 @@ async def export_threads(
     return JSONResponse(
         content=bundle,
         headers={"Content-Disposition": f'attachment; filename="{safe_name}.threads"'},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Combined contact corpus — one .threads spanning a contact's conversations
+# ---------------------------------------------------------------------------
+
+
+def _participant_match_key(p: dict) -> Optional[str]:
+    """Mirror the frontend Browse participantKey: real contacts dedupe on
+    contact_id, everyone else on their (corrected) speaker/display name. Returns
+    None for an unusable participant row."""
+    if not isinstance(p, dict):
+        return None
+    label = (p.get("display_name") or p.get("name") or p.get("contact_id") or "").strip()
+    if not label:
+        return None
+    cid = (p.get("contact_id") or "").strip()
+    return f"id:{cid}" if cid else f"name:{label}"
+
+
+# Runaway guard: a combined corpus loads each conversation's full bundle into
+# memory and buffers one JSON response. The owner's largest contact spans ~70
+# conversations; cap well above that but refuse pathological requests.
+MAX_COMBINE_CONVERSATIONS = 100
+
+
+@router.get("/api/conversations/combined-threads-export")
+async def export_combined_threads(
+    contact: str = Query(..., description="Browse filter key: 'id:<contact_id>' or 'name:<label>'"),
+    since: Optional[str] = Query(None, description="Inclusive lower bound, YYYY-MM-DD"),
+    until: Optional[str] = Query(None, description="Inclusive upper bound, YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Combine every conversation involving ``contact`` (optionally within a date
+    range) into ONE ``.threads`` corpus — pick a contact, get a single artifact
+    spanning your shared interaction over time. Productizes ``.tmp_combine_corpus.py``.
+
+    Per conversation: EVERY structural node-id reference is namespaced (``c{idx}-``)
+    so ids can't collide and the temporal predecessor/successor chain stays valid;
+    each node is stamped ``meeting_date`` / ``meeting_label`` / ``meeting_idx`` so
+    the viewer's Date colour mode + per-meeting transcript grouping light up.
+    ``edge_relations.related_node`` / ``linked_nodes`` are node NAMES and are left
+    unprefixed (no synthetic cross-conversation edges in this MVP). Coverage is
+    summed across conversations and the verbatim transcript is sectioned per
+    meeting, so the no-arbitrary-compression / audit-against-source guarantee holds.
+
+    Owner-scoped (under /api/conversations/, requires AUTH_TOKEN). Privacy: this
+    returns a download; the .vercelignore default-deny chokepoint still gates any
+    deploy. A combined corpus may span multiple counterparties — the bundle lists
+    them in ``combined.other_participants`` and the Browse button confirms before
+    download, so you only share with people party to all of it.
+    """
+    from datetime import date as _date
+    from sqlalchemy import select
+
+    from lct_python_backend.conversations_api import (
+        fetch_conversation_bundle,
+        build_graph_data_from_nodes,
+    )
+    from lct_python_backend.services.conversation_reader import (
+        build_full_transcript_for_export,
+        build_coverage_summary,
+    )
+    from lct_python_backend.services.owner_context import get_current_owner_id
+    from lct_python_backend.models import Conversation
+
+    # Validate inputs up front — a clear 400 beats a confusing empty-result 404.
+    contact = (contact or "").strip()
+    contact_value = contact.split(":", 1)[-1].strip() if ":" in contact else contact
+    if not contact or not contact_value:
+        raise HTTPException(
+            status_code=400,
+            detail="contact must be 'id:<contact_id>' or 'name:<label>' with a non-empty value.",
+        )
+
+    def _parse_day(s, field):
+        if not s:
+            return None
+        try:
+            return _date.fromisoformat(s)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"{field} must be an ISO date (YYYY-MM-DD).")
+
+    since_d = _parse_day(since, "since")
+    until_d = _parse_day(until, "until")
+    if since_d and until_d and since_d > until_d:
+        raise HTTPException(status_code=400, detail="since must be on or before until.")
+    dated_filter = bool(since_d or until_d)
+
+    owner_id = get_current_owner_id()
+    result = await db.execute(
+        select(Conversation)
+        .where(Conversation.deleted_at.is_(None))
+        .where(Conversation.owner_id == owner_id)
+    )
+    all_convos = result.scalars().all()
+
+    def _conv_day(conv):
+        d = getattr(conv, "started_at", None) or getattr(conv, "created_at", None)
+        return d.date() if d else None
+
+    def _in_range(conv) -> bool:
+        d = _conv_day(conv)
+        if d is None:
+            # Undated rows are excluded once a date filter is set, so a date
+            # query means what it says (no silent blob of undated conversations).
+            return not dated_filter
+        if since_d and d < since_d:
+            return False
+        if until_d and d > until_d:
+            return False
+        return True
+
+    def _matches(conv) -> bool:
+        return any(_participant_match_key(p) == contact for p in (conv.participants or []))
+
+    selected = [c for c in all_convos if _matches(c) and _in_range(c)]
+    # Chronological so meeting_idx tracks time. ISO-date string key is None-safe
+    # and avoids mixing tz-aware datetimes with a naive sentinel (TypeError).
+    selected.sort(key=lambda c: (_conv_day(c).isoformat() if _conv_day(c) else ""))
+    if not selected:
+        raise HTTPException(status_code=404, detail="No conversations match that contact and date range.")
+    if len(selected) > MAX_COMBINE_CONVERSATIONS:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                f"That contact spans {len(selected)} conversations; the combined export "
+                f"caps at {MAX_COMBINE_CONVERSATIONS}. Narrow the date range with since/until."
+            ),
+        )
+
+    contact_label = contact_value
+    combined: list = []
+    transcript_sections: list = []
+    per_conversation: list = []
+    other_participants: set = set()
+    total_turns = 0
+    covered_turns = 0
+    any_auditable = False
+    idx = 0  # sequential index over INCLUDED conversations only (no gaps)
+
+    for conv in selected:
+        _, nodes, relationships, utterances = await fetch_conversation_bundle(db, conv.id)
+        if not nodes:
+            continue
+        idx += 1
+        g = build_graph_data_from_nodes(nodes, relationships, utterances=utterances)
+        label = (
+            getattr(conv, "conversation_title", None)
+            or conv.conversation_name
+            or f"conversation {idx}"
+        )[:80]
+        d = _conv_day(conv)
+        date_s = d.isoformat() if d else None
+        pfx = f"c{idx}-"
+        for n in g:
+            # Namespace EVERY structural node-id reference so it stays valid in the
+            # merged graph: id, parent_id, children_ids, AND the temporal
+            # predecessor/successor — these are node IDs (see conversation_reader),
+            # NOT names; leaving them bare dangles the viewer's thread-layout chain.
+            # edge_relations.related_node + linked_nodes ARE names (id_to_name) and
+            # are intentionally left unprefixed.
+            n["id"] = pfx + str(n["id"])
+            if n.get("parent_id"):
+                n["parent_id"] = pfx + str(n["parent_id"])
+            n["children_ids"] = [pfx + str(c) for c in (n.get("children_ids") or [])]
+            if n.get("predecessor"):
+                n["predecessor"] = pfx + str(n["predecessor"])
+            if n.get("successor"):
+                n["successor"] = pfx + str(n["successor"])
+            n["meeting_label"] = label
+            n["meeting_idx"] = idx
+            if date_s:
+                n["meeting_date"] = date_s
+        combined.extend(g)
+
+        # Surface the other counterparties in this corpus for the privacy notice.
+        for p in (conv.participants or []):
+            k = _participant_match_key(p)
+            if k and k != contact:
+                lbl = (p.get("display_name") or p.get("name") or p.get("contact_id") or "").strip()
+                if lbl and lbl != contact_label:
+                    other_participants.add(lbl)
+
+        ft = build_full_transcript_for_export(utterances)
+        if ft.strip():
+            header = f"## {label}" + (f" — {date_s}" if date_s else "")
+            transcript_sections.append(f"{header}\n\n{ft}")
+
+        cov = build_coverage_summary(g, utterances)
+        total_turns += cov.get("total_turns") or 0
+        covered_turns += cov.get("covered_turns") or 0
+        any_auditable = any_auditable or bool(cov.get("auditable"))
+        per_conversation.append({
+            "meeting_idx": idx,
+            "label": label,
+            "date": date_s,
+            "nodes": len(g),
+            "auditable": bool(cov.get("auditable")),
+            "pct": cov.get("pct"),
+        })
+
+    if not combined:
+        raise HTTPException(
+            status_code=404,
+            detail="Matching conversations have no graph nodes to export.",
+        )
+
+    pct = round(100.0 * covered_turns / total_turns, 1) if (any_auditable and total_turns) else None
+    span = ""
+    if since or until:
+        span = f" ({since or '…'} → {until or '…'})"
+    bundle = {
+        "format": "lct.threads",
+        "format_version": 1,
+        "exported_at": int(time.time()),
+        "conversation_title": f"{contact_label} — {idx} conversation{'s' if idx != 1 else ''}{span}",
+        "executive_summary": (
+            f"Combined corpus of {idx} conversation(s) involving {contact_label}"
+            f"{span}. Each node carries meeting_date + meeting_label; use the Date "
+            f"colour mode to see conversations as clusters and drill by tier."
+        ),
+        "graph_data": combined,
+        "chunk_dict": {},
+        "full_transcript": "\n\n".join(transcript_sections),
+        "transcript_source": "verbatim" if transcript_sections else "none",
+        "coverage": {
+            "total_turns": total_turns,
+            "covered_turns": covered_turns,
+            "pct": pct,
+            "auditable": any_auditable,
+        },
+        # Audit + privacy surface: which meetings carry provenance, and who else
+        # is in the corpus (the Browse button confirms on these before download).
+        "combined": {
+            "contact": contact_label,
+            "conversations": idx,
+            "since": since,
+            "until": until,
+            "other_participants": sorted(other_participants),
+            "per_conversation": per_conversation,
+        },
+        "generated_by": "lct combined-threads-export",
+    }
+    safe = "".join(c if (c.isalnum() or c in "-_ ") else "_" for c in contact_label).strip()[:50] or "contact"
+    return JSONResponse(
+        content=bundle,
+        headers={"Content-Disposition": f'attachment; filename="{safe}-corpus.threads"'},
     )
 
 
@@ -531,6 +793,10 @@ async def fetch_share(
         build_chunk_dict_from_utterances,
         build_turn_graph_from_utterances,
     )
+    from lct_python_backend.services.conversation_reader import (
+        build_full_transcript_for_export,
+        build_coverage_summary,
+    )
 
     conversation_uuid = uuid.UUID(row.conversation_id)
     conversation, nodes, relationships, utterances = await fetch_conversation_bundle(
@@ -590,6 +856,15 @@ async def fetch_share(
         "executive_summary": getattr(conversation, "executive_summary", None),
         "graph_data": graph_data,
         "chunk_dict": chunk_dict,
+        # P0 (audit-against-source): the verbatim raw the graph was built from,
+        # so the viewer's transcript download + coverage check work without
+        # arbitrary compression. Built from existing Utterance fields (no schema
+        # change). transcript_source distinguishes verbatim vs none.
+        "full_transcript": build_full_transcript_for_export(utterances),
+        "transcript_source": "verbatim" if utterances else "none",
+        # P0 quality check: how much of the raw the graph covers (honest null
+        # when unauditable). The viewer's Coverage Report reads this.
+        "coverage": build_coverage_summary(graph_data, utterances),
         "audio_url": audio_url,
         "audio_url_expires": audio_url_expires,
         "share": {
