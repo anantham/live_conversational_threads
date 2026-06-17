@@ -29,6 +29,11 @@ from lct_python_backend.services.consumption_match_runner import (
     run_match_for_segment as run_consumption_match_for_segment,
     should_run as should_run_consumption_match,
 )
+from lct_python_backend.services.live_prayer import (
+    LivePrayerDeduper,
+    run_for_segment as run_live_prayer_for_segment,
+    should_run as should_run_live_prayer,
+)
 from lct_python_backend.services.contacts_cache import read_contacts_cache
 from lct_python_backend.services.user_identity_service import get_self_contact_id
 from lct_python_backend.services.byok_session_store import (
@@ -182,6 +187,12 @@ class WsSessionContext:
         self._consumption_contact_ref: Optional[str] = None
         self._consumption_contact_ref_resolved: bool = False
         self._consumption_match_deduper = ConsumptionMatchDeduper()
+
+        # Live-prayer cards (fetch / fact-check): explicit, M5-fuzzy detection on each
+        # final segment → passive prayer_card WS event. Off behind LIVE_PRAYER_CARDS_ENABLED.
+        # In-flight guard prevents M5-task pile-up when segments arrive faster than M5 replies.
+        self._live_prayer_deduper = LivePrayerDeduper()
+        self._live_prayer_in_flight: bool = False
 
         # Task tracking
         self.background_tasks: set = set()
@@ -398,6 +409,32 @@ class WsSessionContext:
             )
         except Exception as exc:  # noqa: BLE001 — fire-and-forget
             logger.warning("[consumption-match] runner failed: %s", exc)
+
+    async def _send_prayer_card_event(self, payload: Dict[str, Any]) -> None:
+        """Adapter passed to the live-prayer runner so it doesn't import _safe_send_json."""
+        await _safe_send_json(self.websocket, payload)
+
+    async def _run_live_prayer_cards(self, text: str) -> None:
+        """Fire-and-forget live-prayer (fetch / fact-check) detection for one final
+        segment. An in-flight guard drops a new segment while M5 is still working on
+        the previous one — better to miss a beat than queue stale detections. Errors
+        are swallowed — this must never affect the live STT path."""
+        if self._live_prayer_in_flight:
+            return
+        self._live_prayer_in_flight = True
+        try:
+            await run_live_prayer_for_segment(
+                segment_text=text,
+                conversation_id=self.state.conversation_id,
+                session_id=self.state.session_id,
+                participants=None,
+                deduper=self._live_prayer_deduper,
+                send_ws_event=self._send_prayer_card_event,
+            )
+        except Exception as exc:  # noqa: BLE001 — fire-and-forget
+            logger.warning("[live-prayer] runner failed: %s", exc)
+        finally:
+            self._live_prayer_in_flight = False
 
     def _merge_pending_partial_timestamps(self, timestamps: Optional[Dict[str, Any]]) -> None:
         if not isinstance(timestamps, dict):
@@ -1483,6 +1520,14 @@ class WsSessionContext:
             if should_run_consumption_match():
                 self._track_background_task(
                     asyncio.create_task(self._run_consumption_match(normalized_text))
+                )
+
+            # Live-prayer cards (fetch / fact-check) — explicit M5-fuzzy detection.
+            # Off behind LIVE_PRAYER_CARDS_ENABLED; fire-and-forget so an error here
+            # never affects the live STT path.
+            if should_run_live_prayer():
+                self._track_background_task(
+                    asyncio.create_task(self._run_live_prayer_cards(normalized_text))
                 )
 
         if emit_to_client:
