@@ -187,3 +187,47 @@ def test_node_with_unmatched_chunk_has_empty_links():
     assert len(node_links["Node A"]) == 2, node_links
     assert node_links["Orphan"] == [], node_links
     assert summary == {"total_turns": 2, "covered_turns": 2, "pct": 100.0, "auditable": True}
+
+
+def test_empty_text_utterance_not_linked_or_counted():
+    """An utterance with id + chunk_id but EMPTY text is dropped by
+    _normalize_utterances (never persisted). The derived map must skip it too, so
+    the node never inherits a phantom id and coverage can't over-report
+    (covered > total / pct > 100). codex PR #63 finding 1 (derived-map side)."""
+    conv_id = str(uuid.uuid4())
+    chunk_a = str(uuid.uuid4())
+    utt1 = _utt(1, chunk_a)
+    utt_empty = {
+        "id": str(uuid.uuid4()), "text": "", "speaker_id": "S0",
+        "sequence_number": 2, "chunk_id": chunk_a,
+    }
+
+    node_links, summary = asyncio.run(
+        _persist_and_read(conv_id, [_node("Node A", chunk_a)], [utt1, utt_empty])
+    )
+
+    # only utt1 persists; the empty-text row is neither persisted nor linked.
+    assert node_links["Node A"] == [utt1["id"]], node_links
+    assert summary == {"total_turns": 1, "covered_turns": 1, "pct": 100.0, "auditable": True}
+
+
+def test_node_referencing_unpersisted_utterance_id_is_not_counted():
+    """A node can carry an utterance id that was never persisted (here authored
+    directly, as a hallucinated id would be). build_coverage_summary must
+    INTERSECT with persisted ids — covered counts only the real one, so pct stays
+    <= 100 instead of reporting 2/1 = 200. codex PR #63 finding 1 (coverage side)."""
+    conv_id = str(uuid.uuid4())
+    chunk_a = str(uuid.uuid4())
+    utt1 = _utt(1, chunk_a)
+    bogus_id = str(uuid.uuid4())
+    # Author utterance_ids directly so the chunk fallback is skipped; reference
+    # one real utterance + one id that is never persisted.
+    node = _node("Node A", chunk_a)
+    node["utterance_ids"] = [utt1["id"], bogus_id]
+
+    node_links, summary = asyncio.run(_persist_and_read(conv_id, [node], [utt1]))
+
+    # the node still stores both ids it authored...
+    assert sorted(node_links["Node A"]) == sorted([utt1["id"], bogus_id]), node_links
+    # ...but coverage counts ONLY the persisted one — no pct=200 over-report.
+    assert summary == {"total_turns": 1, "covered_turns": 1, "pct": 100.0, "auditable": True}
