@@ -165,31 +165,69 @@ def fetch_policy(
         return default_policy(contact_id)
 
 
+def _canonical_policy_body(policy: ContactPrivacyPolicy) -> str:
+    """Rebuild the EXACT canonical body IndrasNet signed. MUST stay byte-identical to
+    IndrasNet's ``canonical_policy_body`` (docs/contracts/contact-privacy-policy.md)."""
+    body = {
+        "contact_id": policy.contact_id,
+        "enabled": policy.enabled,
+        "local_llm_ok": policy.local_llm_ok,
+        "external_llm_ok": policy.external_llm_ok,
+        "privacy_norms": policy.privacy_norms,
+        "redaction_map_id": policy.redaction_map_id,
+        "contract_version": policy.contract_version,
+    }
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def _check_signature(policy: ContactPrivacyPolicy) -> str:
+    """Recover the EIP-191 signer and compare to the declared pubkey.
+    Returns 'valid' | 'invalid' | 'unavailable' (eth_account not installed)."""
+    if not policy.signature or not policy.signer_pubkey:
+        return "invalid"
+    try:
+        from eth_account import Account
+        from eth_account.messages import encode_defunct
+    except ImportError:
+        return "unavailable"
+    try:
+        recovered = Account.recover_message(
+            encode_defunct(text=_canonical_policy_body(policy)),
+            signature=policy.signature,
+        )
+        return "valid" if recovered.lower() == policy.signer_pubkey.lower() else "invalid"
+    except Exception:  # noqa: BLE001 — any recovery error == cannot trust
+        return "invalid"
+
+
 def verify_signature(policy: ContactPrivacyPolicy, *, require: bool = False) -> bool:
     """Verify a policy's signature. ADVISORY by default; MANDATORY for federation.
 
-    Real signature verification (ENS/keystore over the canonical-serialized policy
-    body) lands in PR#2. Until then:
-      * advisory (require=False): always returns True, but LOGS when a signature
-        is missing or present-but-unverifiable, so we never silently treat
-        unsigned data as trusted.
-      * mandatory (require=True): returns True only when a signature is present
-        AND verified — which is never yet, so it fails CLOSED. This is correct
-        for federation: don't accept a remote policy we can't authenticate.
+    - unsigned:               advisory allows (loopback trust); mandatory REJECTS.
+    - present + VALID:         allowed in both modes.
+    - present + INVALID:       REJECTED in both modes (tamper — worse than unsigned).
+    - present, eth_account missing (cannot verify): advisory allows with a loud
+      warning (loopback); mandatory REJECTS (fail-closed).
     """
-    has_sig = bool(policy.signature)
-    if require:
-        if not has_sig:
-            logger.warning("[synthesis] policy %s has no signature; mandatory mode REJECTS", policy.contact_id)
+    if not policy.signature:
+        if require:
+            logger.warning("[synthesis] policy %s unsigned; mandatory mode REJECTS", policy.contact_id)
             return False
-        # TODO(PR#2): real ENS/keystore verification of the canonical policy body.
-        logger.warning("[synthesis] policy %s signature verification not implemented; mandatory mode REJECTS (fail-closed)", policy.contact_id)
-        return False
-    if not has_sig:
-        logger.info("[synthesis] policy %s unsigned (advisory mode — allowed)", policy.contact_id)
-    else:
-        logger.info("[synthesis] policy %s signature present but unverified (advisory mode — allowed)", policy.contact_id)
-    return True
+        logger.info("[synthesis] policy %s unsigned (advisory — allowed)", policy.contact_id)
+        return True
+    status = _check_signature(policy)
+    if status == "valid":
+        logger.info("[synthesis] policy %s signature VALID", policy.contact_id)
+        return True
+    if status == "unavailable":
+        logger.warning(
+            "[synthesis] policy %s is signed but eth_account is not installed — cannot "
+            "verify (%s). Install eth-account to enable signature verification.",
+            policy.contact_id, "REJECTING" if require else "advisory allow",
+        )
+        return not require
+    logger.warning("[synthesis] policy %s signature INVALID (possible tamper) — REJECTING", policy.contact_id)
+    return False
 
 
 def resolve_engine(
