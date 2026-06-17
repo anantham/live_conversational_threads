@@ -477,18 +477,35 @@ def build_full_transcript_for_export(utterances) -> str:
 def build_coverage_summary(graph_data, utterances) -> Dict[str, Any]:
     """How much of the raw the graph actually covers (P0 quality check).
 
-    covered = the union of every node's ``source_ref.utterance_ids``; total = the
-    utterance count. ``auditable`` is False (``pct`` = None) when NO node carries
-    provenance (legacy / live-STT unlinked conversations) — the viewer then shows
+    covered = the union of every node's ``source_ref.utterance_ids``, INTERSECTED
+    with the ids that were actually persisted; total = the utterance count.
+    ``auditable`` is False (``pct`` = None) when NO node carries provenance
+    (legacy / live-STT unlinked conversations) — the viewer then shows
     "unauditable" rather than faking a coverage number. This is the honest
     graph-vs-source check the owner asked for.
     """
+    def _utt_id(u: Any) -> Optional[str]:
+        # Tolerate ORM rows (u.id), serialized dicts (u["id"]), and test mocks.
+        # Utterances with no id stay in `total` (they are real turns) but can
+        # never be matched, so they are simply unmatchable, not counted covered.
+        raw = getattr(u, "id", None)
+        if raw is None and isinstance(u, dict):
+            raw = u.get("id")
+        return str(raw) if raw is not None else None
+
+    persisted_ids = {sid for sid in (_utt_id(u) for u in (utterances or [])) if sid is not None}
     total = len(utterances or [])
     covered = set()
     for node in graph_data or []:
         source_ref = node.get("source_ref") or {}
         for uid in (source_ref.get("utterance_ids") or []):
-            covered.add(str(uid))
+            sid = str(uid)
+            # Only count utterances that actually exist. A node can carry an id
+            # for an utterance that was never persisted (a dropped empty-text row,
+            # or an authored/hallucinated id); counting it would over-report —
+            # pct could exceed 100 or `auditable` could be faked. codex PR#63.
+            if sid in persisted_ids:
+                covered.add(sid)
     n_covered = len(covered)
     auditable = n_covered > 0
     pct = round(100.0 * n_covered / total, 1) if (auditable and total) else None
