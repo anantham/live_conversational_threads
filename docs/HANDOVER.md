@@ -2,6 +2,17 @@
 
 The newest handovers are **dated files** in `docs/` (newest first):
 
+- `HANDOVER_2026-06-17_p1a-rawturn-pipeline.md` — 4 PRs merged: **#59 P1a
+  structured-turns ingest** (`POST /api/import/turns`, `raw_turn_contract.py`,
+  `persist_turns`, dedup migration — designed + codex-reviewed ×5 + Postgres-verified
+  on the dev DB, where the preflight caught a real legacy seq-dup → scoped index);
+  **#56** diagnostic-logging privacy remediation (`makeDebug`/`readErrorMessage`);
+  **#58** ZoomControls latent-bug fix; **#57** the parallel stack. Pending: **P1.5**
+  node↔utterance linking for real coverage, **P1b** IndrasNet PULL + 🔴 unredacted-
+  source bug (cross-repo), **P2** `lct_pipeline/` package. Side finding: utterances
+  allow duplicate `sequence_number` (live-STT/segment-resume). Contract +
+  full review log: `docs/plans/2026-06-17-p1-rawturn-data-contract.md`.
+
 - `HANDOVER_2026-06-07_threads-viewer-ux-crossconvo-privacy.md` — `.threads`
   viewer UX sprint, 8 features shipped + live on threads.adityaarpitha.com
   (fan-out drill-down, canvas-only focus mode, dynamic+collapsible header,
