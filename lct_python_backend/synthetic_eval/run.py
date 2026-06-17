@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 from typing import List, Optional
 
-from lct_python_backend.synthetic_eval.extract import ExtractionResult, extract_graph
+from lct_python_backend.synthetic_eval.extract import DIMENSION_ELICITATION, ExtractionResult, extract_graph
 from lct_python_backend.synthetic_eval.providers import (
     PRESET_NAMES,
     ProviderSpec,
@@ -113,8 +113,11 @@ def run_one(
     *,
     out_dir: Optional[Path],
     verbose: bool,
+    elicit: bool = False,
 ) -> Optional[ScoreReport]:
-    result: ExtractionResult = extract_graph(convo, spec)
+    result: ExtractionResult = extract_graph(
+        convo, spec, extra_system=DIMENSION_ELICITATION if elicit else None,
+    )
     if not result.ok:
         print(f"!! {convo.slug} [{spec.name}] extraction FAILED: {result.error}")
         for msg in result.status_messages:
@@ -184,6 +187,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--providers", help="comma-separated provider presets (overrides --provider)")
     parser.add_argument("--list", action="store_true", help="list conversations + provider presets and exit")
     parser.add_argument("--verbose", "-v", action="store_true", help="print per-item missed / false-positive detail")
+    parser.add_argument("--elicit-dimensions", action="store_true", help="append explicit is_crux/is_tangent/edge-typing instructions to the prompt (prompt-ceiling experiment)")
     parser.add_argument("--no-save", action="store_true", help="don't write JSON result files")
     parser.add_argument("--out", help=f"results directory (default: {DEFAULT_OUT_DIR})")
     args = parser.parse_args(argv)
@@ -247,7 +251,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     reports: List[ScoreReport] = []
     for convo in convos:
         for spec in runnable_specs:
-            report = run_one(convo, spec, out_dir=out_dir, verbose=args.verbose)
+            report = run_one(convo, spec, out_dir=out_dir, verbose=args.verbose, elicit=args.elicit_dimensions)
             if report is not None:
                 reports.append(report)
 
