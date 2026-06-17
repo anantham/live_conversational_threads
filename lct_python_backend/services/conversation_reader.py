@@ -484,7 +484,16 @@ def build_coverage_summary(graph_data, utterances) -> Dict[str, Any]:
     "unauditable" rather than faking a coverage number. This is the honest
     graph-vs-source check the owner asked for.
     """
-    persisted_ids = {str(u.id) for u in (utterances or [])}
+    def _utt_id(u: Any) -> Optional[str]:
+        # Tolerate ORM rows (u.id), serialized dicts (u["id"]), and test mocks.
+        # Utterances with no id stay in `total` (they are real turns) but can
+        # never be matched, so they are simply unmatchable, not counted covered.
+        raw = getattr(u, "id", None)
+        if raw is None and isinstance(u, dict):
+            raw = u.get("id")
+        return str(raw) if raw is not None else None
+
+    persisted_ids = {sid for sid in (_utt_id(u) for u in (utterances or [])) if sid is not None}
     total = len(utterances or [])
     covered = set()
     for node in graph_data or []:
