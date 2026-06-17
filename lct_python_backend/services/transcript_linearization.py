@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import uuid
 from typing import Any, Dict, List, Optional, Sequence
 
 from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
@@ -35,6 +36,11 @@ def _utterance_row(
     if timestamp_start is not None and timestamp_end is not None and timestamp_end >= timestamp_start:
         duration_seconds = round(timestamp_end - timestamp_start, 4)
     return {
+        # Stable id from creation so graph nodes can reference these exact
+        # utterances (P1.5): persist_graph honors it (_normalize_utterances) and
+        # the chunk→utterance map keys off it. Without it, import nodes link to
+        # nothing and coverage is null.
+        "id": str(uuid.uuid4()),
         "text": coerce_str(text),
         "speaker_id": coerce_str(speaker_id) or "SPEAKER_00",
         "sequence_number": int(sequence_number),

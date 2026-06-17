@@ -654,6 +654,40 @@ async def persist_graph(
             if normalized_utts:
                 parsed_utterance_chunk_map[chunk_uuid] = normalized_utts
 
+    # P1.5: the IMPORT path passes no utterance_chunk_map (only the live
+    # processor does), so derive one from the utterances' own chunk_id. The
+    # import flow stitches chunk_id onto each utterance (import_bulk_pipeline)
+    # and every utterance now carries a stable id (transcript_linearization), so
+    # this maps each leaf node's chunk to its exact utterances — making import +
+    # RawTurn graphs auditable (and build_coverage_summary non-null). A
+    # caller-supplied map wins per chunk; this only fills chunks it didn't map.
+    if utterances:
+        derived_chunk_map: Dict[uuid.UUID, List[uuid.UUID]] = {}
+        derived_seen: Dict[uuid.UUID, set] = {}
+        for raw_utt in utterances:
+            if not isinstance(raw_utt, dict):
+                continue
+            # Only map utterances that WILL persist. _normalize_utterances drops
+            # empty-text rows (`if not text: continue`); mirror that here so a
+            # node never inherits the id of an utterance that was never written —
+            # which would let build_coverage_summary over-report (counting an id
+            # absent from the persisted set, pct possibly > 100). codex PR#63.
+            if not coerce_str(raw_utt.get("text")):
+                continue
+            derived_chunk_uuid = _coerce_uuid(raw_utt.get("chunk_id"))
+            derived_utt_uuid = _coerce_uuid(raw_utt.get("id"))
+            if derived_chunk_uuid is None or derived_utt_uuid is None:
+                continue
+            seen = derived_seen.setdefault(derived_chunk_uuid, set())
+            if derived_utt_uuid in seen:  # O(1) dedupe; mirrors the explicit map's seen_local
+                continue
+            seen.add(derived_utt_uuid)
+            derived_chunk_map.setdefault(derived_chunk_uuid, []).append(derived_utt_uuid)
+        # A caller-supplied NON-EMPTY mapping for a chunk wins (setdefault); the
+        # derived map only fills chunks the caller did not usefully map.
+        for derived_chunk_uuid, derived_utt_ids in derived_chunk_map.items():
+            parsed_utterance_chunk_map.setdefault(derived_chunk_uuid, derived_utt_ids)
+
     # ADR-032 Part G: persist timestamp_start/timestamp_end on Node rows
     # at write time. Read-time derivation (conversation_reader.py) becomes a
     # drift-check that asserts these match. Computing at write time means
