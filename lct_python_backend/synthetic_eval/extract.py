@@ -39,6 +39,23 @@ class ExtractionResult:
     status_messages: List[str] = field(default_factory=list)
 
 
+# Optional prompt augmentation for the "is the ceiling prompt-bound?" experiment.
+# The base generate prompt under-asks for dimension flags + typed edges; this spells
+# them out. Appended to the system prompt (claude_cli / anthropic) or prepended to the
+# user input (fallback/gemini) when --elicit-dimensions is passed.
+DIMENSION_ELICITATION = """ADDITIONAL DIMENSION REQUIREMENTS — set these honestly on every node; they are graded:
+- is_crux=true on a pivotal claim, thesis, turning point, or key realization the discussion hinges on.
+- is_tangent=true on a digression, aside, personal anecdote, or side-story that branches off the main thread.
+- is_surprise=true on a genuinely surprising admission, reversal, or counter-intuitive fact.
+- is_action_item=true on a concrete commitment with an owner (and ideally a deadline).
+Most nodes are NONE of these — flag only the genuine ones; do not leave them all false by default.
+
+EDGE TYPING — when two nodes are in a genuine rhetorical relationship, set the edge_relations
+relation_type to one of: rebuts (disagreement / counter-argument), supports (agreement /
+evidence), clarifies (restatement / narrowing), asks (a question). Use "contextual" ONLY when
+none of those fit. Draw the edges between the actual claims that rebut or support each other."""
+
+
 def build_generator_input(convo: SyntheticConversation, transcript_override: Optional[str] = None) -> str:
     """Mirror TranscriptProcessor's ``mod_input`` with an empty existing-graph.
 
@@ -56,15 +73,18 @@ def extract_graph(
     convo: SyntheticConversation,
     spec: ProviderSpec,
     transcript_override: Optional[str] = None,
+    extra_system: Optional[str] = None,
 ) -> ExtractionResult:
     if spec.kind == "mock":
         return _mock_extract(convo)
     if spec.kind == "anthropic":
-        return _anthropic_extract(convo, spec, transcript_override)
+        return _anthropic_extract(convo, spec, transcript_override, extra_system)
     if spec.kind == "claude_cli":
-        return _claude_cli_extract(convo, spec, transcript_override)
+        return _claude_cli_extract(convo, spec, transcript_override, extra_system)
 
     mod_input = build_generator_input(convo, transcript_override)
+    if extra_system:  # fallback/gemini build their own system prompt internally
+        mod_input = extra_system + "\n\n" + mod_input
     # Lazy import: pulls in google-genai + the LLM stack only when actually
     # calling a real provider, so `--list` and mock runs work in a bare env.
     from lct_python_backend.services.transcript_llm_callers import generate_lct_json
@@ -113,7 +133,7 @@ def _resolve_claude_bin() -> Optional[str]:
     return fallback if os.path.exists(fallback) else None
 
 
-def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec, transcript_override: Optional[str] = None) -> ExtractionResult:
+def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec, transcript_override: Optional[str] = None, extra_system: Optional[str] = None) -> ExtractionResult:
     """Extract via the logged-in `claude` CLI in headless mode — no API key.
 
     Drives ``claude -p`` with LCT's GENERATE prompt as the (replaced) system prompt
@@ -142,6 +162,8 @@ def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec, transc
     from lct_python_backend.services.local_llm_client import extract_json_from_text
 
     system_prompt = get_transcript_prompt_text(PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY)
+    if extra_system:
+        system_prompt = system_prompt + "\n\n" + extra_system
     model = str(spec.llm_config.get("model", "claude-opus-4-8"))
     timeout_s = int(os.getenv("SYNTH_EVAL_CLAUDE_TIMEOUT", "300"))
     backend = f"claude_cli_{model}"
@@ -232,7 +254,7 @@ def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec, transc
 
 # ── Native Anthropic extractor (official SDK, not the OpenAI-compat shim) ─────
 
-def _anthropic_extract(convo: SyntheticConversation, spec: ProviderSpec, transcript_override: Optional[str] = None) -> ExtractionResult:
+def _anthropic_extract(convo: SyntheticConversation, spec: ProviderSpec, transcript_override: Optional[str] = None, extra_system: Optional[str] = None) -> ExtractionResult:
     """Extract via the first-party Anthropic Messages API.
 
     LCT's ``generate_lct_json`` has no Anthropic dispatch path, so we call the SDK
@@ -262,6 +284,8 @@ def _anthropic_extract(convo: SyntheticConversation, spec: ProviderSpec, transcr
     from lct_python_backend.services.local_llm_client import extract_json_from_text
 
     system_prompt = get_transcript_prompt_text(PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY)
+    if extra_system:
+        system_prompt = system_prompt + "\n\n" + extra_system
     model = str(spec.llm_config.get("model", "claude-opus-4-8"))
     effort = str(spec.llm_config.get("effort", "high"))
     max_tokens = int(spec.llm_config.get("max_tokens", 12000))
