@@ -127,6 +127,7 @@ async def _reconcile(conversation_id: Any, db) -> Dict[str, Any]:
         "utterances": len(utterances),
         "l1_nodes": 0,
         "linked_utterances": 0,
+        "fk_linked": 0,
         "unmatched_utterances": 0,
         "nodes_with_speaker_info": 0,
         "higher_tier_nodes": 0,
@@ -138,6 +139,33 @@ async def _reconcile(conversation_id: Any, db) -> Dict[str, Any]:
     summary["l1_nodes"] = len(l1_nodes)
     if not l1_nodes:
         return summary
+
+    node_to_utts: Dict[uuid.UUID, List[uuid.UUID]] = {n.id: [] for n in l1_nodes}
+    node_to_speakers: Dict[uuid.UUID, List[str]] = {n.id: [] for n in l1_nodes}
+
+    # Chunk-FK pre-pass. Imports (and pre-fix live convos) carry node.chunk_ids
+    # + utterance.chunk_id authored at persist time but never linked into
+    # node.utterance_ids. A direct FK join links them losslessly — no
+    # source_excerpt needed (the text-match pass below only reaches the ~7% of
+    # import nodes that have an excerpt; this pre-pass reaches every node whose
+    # chunk_id has utterances). Utterances claimed here are skipped downstream.
+    claimed_utt_ids: set = set()
+    utts_by_chunk: Dict[Any, List[Any]] = {}
+    for utt in utterances:
+        if utt.chunk_id is not None:
+            utts_by_chunk.setdefault(utt.chunk_id, []).append(utt)
+    if utts_by_chunk:
+        for node in l1_nodes:
+            for cid in (node.chunk_ids or []):
+                for utt in utts_by_chunk.get(cid, []):
+                    if utt.id in claimed_utt_ids:
+                        continue
+                    utt.node_id = node.id
+                    node_to_utts[node.id].append(utt.id)
+                    node_to_speakers[node.id].append(utt.speaker_id)
+                    claimed_utt_ids.add(utt.id)
+                    summary["linked_utterances"] += 1
+                    summary["fk_linked"] += 1
 
     # Reconstruct the transcript from ordered utterances, recording each
     # utterance's [start, end) char span in the normalized concatenation.
@@ -170,10 +198,9 @@ async def _reconcile(conversation_id: Any, db) -> Dict[str, Any]:
         chunk_spans.append((node, pos, pos + len(exc)))
     chunk_spans.sort(key=lambda t: t[1])
 
-    node_to_utts: Dict[uuid.UUID, List[uuid.UUID]] = {n.id: [] for n in l1_nodes}
-    node_to_speakers: Dict[uuid.UUID, List[str]] = {n.id: [] for n in l1_nodes}
-
     for utt, start, end in utt_spans:
+        if utt.id in claimed_utt_ids:
+            continue  # already linked by the chunk-FK pre-pass
         if start is None:
             summary["unmatched_utterances"] += 1
             continue
@@ -215,13 +242,29 @@ async def _reconcile(conversation_id: Any, db) -> Dict[str, Any]:
             node.speaker_info = info
         summary["higher_tier_nodes"] += 1
 
+    # Defensive: every utterance should end up either linked (FK pre-pass or
+    # text-match) or counted unmatched. A mismatch means a linkage path leaked;
+    # warn loudly but do NOT raise — the live caller must not abort on this.
+    accounted = summary["linked_utterances"] + summary["unmatched_utterances"]
+    if accounted != summary["utterances"]:
+        logger.warning(
+            "[reconciler] conversation=%s utterance accounting mismatch: "
+            "linked(%d)+unmatched(%d)=%d != total(%d)",
+            summary["conversation_id"],
+            summary["linked_utterances"],
+            summary["unmatched_utterances"],
+            accounted,
+            summary["utterances"],
+        )
+
     await db.commit()
     logger.info(
-        "[reconciler] conversation=%s linked=%d/%d l1_nodes=%d speaker_info=%d "
-        "higher=%d unmatched=%d",
+        "[reconciler] conversation=%s linked=%d/%d (fk=%d) l1_nodes=%d "
+        "speaker_info=%d higher=%d unmatched=%d",
         summary["conversation_id"],
         summary["linked_utterances"],
         summary["utterances"],
+        summary["fk_linked"],
         summary["l1_nodes"],
         summary["nodes_with_speaker_info"],
         summary["higher_tier_nodes"],

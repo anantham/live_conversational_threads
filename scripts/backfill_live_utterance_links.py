@@ -5,14 +5,22 @@ them (see ``services/utterance_node_reconciler`` for the why). New live
 sessions now reconcile at post-flush; this script repairs conversations
 recorded before that fix.
 
-Candidates = live conversations (``conversation_type='live_audio'``) that
-still have unlinked utterances (``node_id IS NULL``). Import conversations are
-deliberately excluded: their utterance<->node links are authored at persist
-time, and the reconciler's text-matching could overwrite correct import links.
+Candidates = conversations that still have unlinked utterances
+(``node_id IS NULL``). By default this targets live conversations
+(``conversation_type='live_audio'``). Pass ``--imports`` to instead target
+import conversations (``transcript``/``text``/``google_meet``): contrary to an
+earlier assumption, imports are NOT linked at persist time (the extraction path
+authors no ``utterance_ids``), so they need reconciliation too. The reconciler's
+chunk-FK pre-pass links them losslessly via ``node.chunk_ids`` ↔
+``utterance.chunk_id`` (no source-excerpt text-match required), and is
+UPDATE-only/idempotent — it never deletes or re-mints nodes, so manual edits are
+preserved.
 
 Usage (from the repo root):
-    python scripts/backfill_live_utterance_links.py            # dry run — list candidates
-    python scripts/backfill_live_utterance_links.py --apply    # run the reconciler
+    python scripts/backfill_live_utterance_links.py                  # dry run — live candidates
+    python scripts/backfill_live_utterance_links.py --apply          # reconcile live
+    python scripts/backfill_live_utterance_links.py --imports        # dry run — import candidates
+    python scripts/backfill_live_utterance_links.py --imports --apply  # reconcile imports
 """
 
 from __future__ import annotations
@@ -33,7 +41,7 @@ except Exception:  # noqa: BLE001 — dotenv optional; env may already be set
     pass
 
 
-async def main(apply: bool) -> int:
+async def main(apply: bool, imports: bool = False) -> int:
     from sqlalchemy import select
 
     from lct_python_backend.db_session import get_async_session_context
@@ -42,17 +50,20 @@ async def main(apply: bool) -> int:
         reconcile_conversation_links,
     )
 
+    types = ["transcript", "text", "google_meet"] if imports else ["live_audio"]
+    label = "import" if imports else "live"
+
     async with get_async_session_context() as db:
         rows = await db.execute(
             select(Utterance.conversation_id)
             .join(Conversation, Conversation.id == Utterance.conversation_id)
-            .where(Conversation.conversation_type == "live_audio")
+            .where(Conversation.conversation_type.in_(types))
             .where(Utterance.node_id.is_(None))
             .distinct()
         )
         conv_ids = [r[0] for r in rows]
 
-    print(f"candidate live conversations (node_id IS NULL): {len(conv_ids)}")
+    print(f"candidate {label} conversations (node_id IS NULL): {len(conv_ids)}")
     for cid in conv_ids:
         print(f"  {cid}")
 
@@ -67,7 +78,8 @@ async def main(apply: bool) -> int:
             summary = await reconcile_conversation_links(str(cid))
             print(
                 f"  {cid}: linked={summary.get('linked_utterances')}"
-                f"/{summary.get('utterances')} l1_nodes={summary.get('l1_nodes')} "
+                f"/{summary.get('utterances')} (fk={summary.get('fk_linked')}) "
+                f"l1_nodes={summary.get('l1_nodes')} "
                 f"speaker_info={summary.get('nodes_with_speaker_info')} "
                 f"higher={summary.get('higher_tier_nodes')} "
                 f"unmatched={summary.get('unmatched_utterances')}"
@@ -80,4 +92,4 @@ async def main(apply: bool) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main("--apply" in sys.argv)))
+    sys.exit(asyncio.run(main("--apply" in sys.argv, imports="--imports" in sys.argv)))
