@@ -93,19 +93,60 @@ class TestVerifySignature:
     def test_advisory_allows_unsigned(self):
         assert verify_signature(_consenting("a"), require=False) is True
 
-    def test_advisory_allows_present_but_unverified(self):
-        p = _consenting("a")
-        p.signature = "deadbeef"
-        assert verify_signature(p, require=False) is True
-
     def test_mandatory_rejects_unsigned(self):
         assert verify_signature(_consenting("a"), require=True) is False
 
-    def test_mandatory_rejects_unverifiable(self):
-        # Real verification lands in PR#2; until then mandatory mode fails closed.
+    def test_mandatory_rejects_signed_but_unverifiable(self):
+        # Whether eth_account is absent (unavailable) or the sig is bogus (invalid),
+        # mandatory mode fails closed. Holds in every environment.
         p = _consenting("a")
-        p.signature = "deadbeef"
+        p.signature = "0xdeadbeef"
+        p.signer_pubkey = "0x0000000000000000000000000000000000000000"
         assert verify_signature(p, require=True) is False
+
+    def test_invalid_signature_rejected_even_advisory_when_verifiable(self):
+        # Only meaningful with the crypto lib present: a bogus sig recovers to the
+        # wrong address → "invalid" → rejected even in advisory (tamper).
+        pytest.importorskip("eth_account")
+        p = _consenting("a")
+        p.signature = "0xdeadbeef"
+        p.signer_pubkey = "0x0000000000000000000000000000000000000000"
+        assert verify_signature(p, require=False) is False
+
+
+class TestCanonicalBodyGolden:
+    def test_matches_cross_repo_golden(self):
+        # MUST equal IndrasNet's canonical_policy_body for the same policy (the
+        # cross-repo signing contract). Pinned identically in both test suites.
+        from lct_python_backend.services.synthesis.contact_policy import _canonical_policy_body
+        p = ContactPrivacyPolicy("c1", enabled=True, local_llm_ok=True, external_llm_ok=False,
+                                 privacy_norms={}, redaction_map_id="tc-canonical-v1",
+                                 contract_version="1.0.0")
+        golden = ('{"contact_id":"c1","contract_version":"1.0.0","enabled":true,'
+                  '"external_llm_ok":false,"local_llm_ok":true,"privacy_norms":{},'
+                  '"redaction_map_id":"tc-canonical-v1"}')
+        assert _canonical_policy_body(p) == golden
+
+
+class TestSignatureRoundTrip:
+    def test_valid_accepted_and_tamper_rejected(self):
+        pytest.importorskip("eth_account")
+        from eth_account import Account
+        from eth_account.messages import encode_defunct
+        from lct_python_backend.services.synthesis.contact_policy import _canonical_policy_body
+
+        key = "0x" + "11" * 32
+        acct = Account.from_key(key)
+        p = ContactPrivacyPolicy("c1", enabled=True, local_llm_ok=True, external_llm_ok=True,
+                                 privacy_norms={"x": 1}, redaction_map_id="tc-canonical-v1",
+                                 contract_version="1.0.0")
+        signed = Account.sign_message(encode_defunct(text=_canonical_policy_body(p)), private_key=key)
+        p.signature = signed.signature.hex()
+        p.signer_pubkey = acct.address
+        assert verify_signature(p, require=True) is True  # valid passes mandatory
+
+        p.external_llm_ok = False  # tamper a field → signature no longer matches
+        assert verify_signature(p, require=False) is False  # rejected even advisory
 
 
 class TestStrictBoolParsing:

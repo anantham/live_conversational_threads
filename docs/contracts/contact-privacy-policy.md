@@ -44,13 +44,27 @@ GET {INDRASNET_BASE_URL}/api/contacts/{contact_id}/privacy-policy
 }
 ```
 
-## Signature semantics (decide now, per codex)
+## Signature semantics (IMPLEMENTED 2026-06-17)
 
-- **Canonical body:** the signature covers a deterministic serialization of every
-  field *except* `signature` (e.g. JCS / sorted-key compact JSON). Define it once on
-  the IndrasNet side and document it here when implemented.
+- **Algorithm:** EIP-191 (Ethereum personal-message signing, secp256k1) via
+  `eth_account`. The signer is IndrasNet's ENS keystore key
+  (`keystore.get_ens_private_key`); `signer_pubkey` is its Ethereum address. LCT
+  verifies with the **public key only** (`Account.recover_message`) — no key material
+  crosses the seam.
+- **Canonical body:** `json.dumps(body, sort_keys=True, separators=(",",":"),
+  ensure_ascii=False)` over exactly `{contact_id, enabled, local_llm_ok,
+  external_llm_ok, privacy_norms, redaction_map_id, contract_version}` (the `signature`
+  field excluded). `sort_keys` recurses, so nested `privacy_norms` ordering is stable.
+  Both sides pin the identical golden string in tests, e.g. for a minimal policy:
+  `{"contact_id":"c1","contract_version":"1.0.0","enabled":true,"external_llm_ok":false,"local_llm_ok":true,"privacy_norms":{},"redaction_map_id":"tc-canonical-v1"}`.
+  IndrasNet: `agents/routes/contacts/_privacy_policy.py::canonical_policy_body`;
+  LCT: `services/synthesis/contact_policy.py::_canonical_policy_body`.
+- **No key / no `eth_account`:** IndrasNet serves the policy **unsigned** (still 200);
+  LCT advisory-allows on loopback, mandatory-rejects. This is today's default (neither
+  env has `eth_account` or a configured key) — the seam is live but dormant.
 - **v1 (single box, loopback):** signature is **advisory** — LCT verifies-and-logs
-  but does not block. The loopback boundary is the v1 trust boundary.
+  but does not block on unsigned/unverifiable. A present-but-INVALID signature is
+  rejected even in advisory mode (tamper). The loopback boundary is the v1 trust boundary.
 - **federation (remote IndrasNet):** signature is **mandatory**. LCT's
   `verify_signature(require=True)` already fails closed (rejects unsigned and
   not-yet-verifiable policies), so flipping the flag is the only change.
