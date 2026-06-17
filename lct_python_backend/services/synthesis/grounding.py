@@ -46,9 +46,13 @@ class ClaimUnit:
     date: str = ""
     title: str = ""
     conversation_id: str = ""
+    # Stable id assigned to grounded units so synthesis can cite the EXACT unit
+    # (not just its date) and the citation verifier can check against it.
+    unit_id: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "unit_id": self.unit_id,
             "claim": self.claim,
             "quote": self.quote,
             "speaker": self.speaker,

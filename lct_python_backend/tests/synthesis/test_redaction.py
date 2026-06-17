@@ -30,6 +30,14 @@ class TestRedactCaseInsensitive:
         assert "[email]" in out
         assert "[handle]" in out
 
+    def test_name_bearing_handle_scrubbed_whole(self):
+        # codex finding #6: scrub handles BEFORE names so no "_mehra" fragment leaks.
+        out = redact("ping @vatsal_mehra later")
+        assert "vatsal" not in out.lower()
+        assert "mehra" not in out.lower()
+        assert "[handle]" in out
+        assert leaks(out) == {}
+
 
 class TestLeakScan:
     def test_leak_scan_is_case_insensitive(self):

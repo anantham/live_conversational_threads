@@ -154,6 +154,15 @@ def run_stage(
 
     # ── Gate 3: redact + leak-verify the outbound payload ──
     rmap = redaction_map or redaction.default_redaction_map()
+    if rmap.map_id is None:
+        # codex finding #5: the built-in map is a denylist of only known names — a
+        # real name NOT in it would pass both redact() and the leak scan. PR#2 must
+        # supply the canonical IndrasNet map (redaction_map_id) for production sends.
+        logger.warning(
+            "[synthesis] external %r is using the BUILT-IN default redaction map "
+            "(denylist only) — unknown real names would NOT be caught. Supply the "
+            "canonical IndrasNet map before any production external call.", engine,
+        )
     redacted = redaction.redact(prompt, rmap)
     redaction.assert_clean(redacted, rmap)  # hard stop on any surviving real name
 

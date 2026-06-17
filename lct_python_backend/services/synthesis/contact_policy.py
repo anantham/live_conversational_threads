@@ -32,17 +32,32 @@ import json
 import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 import httpx
 
 from lct_python_backend.services import indrasnet_client
-from lct_python_backend.services.egress_guard import local_only_enabled
+from lct_python_backend.services.egress_guard import is_local_host, local_only_enabled
 from lct_python_backend.services.env_helpers import env_float
 
 logger = logging.getLogger(__name__)
 
 POLICY_CONTRACT_VERSION = "1.0.0"
 _POLICY_TIMEOUT_S = env_float("SYNTHESIS_POLICY_TIMEOUT_SECONDS", 5.0)
+
+_TRUE_TOKENS = {"1", "true", "yes", "on", "y", "t"}
+
+
+def _as_bool(v: Any) -> bool:
+    """Strict, FAIL-CLOSED boolean parse. A malformed/odd value (incl. the string
+    "false" or "0") becomes False — never accidental consent (codex finding #7)."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return v == 1
+    if isinstance(v, str):
+        return v.strip().lower() in _TRUE_TOKENS
+    return False
 
 
 @dataclass
@@ -63,6 +78,9 @@ class ContactPrivacyPolicy:
     # True when this object is the synthesized fail-closed default (no real
     # policy was fetched) — surfaced so callers/observability can tell.
     is_default: bool = False
+    # True when the policy was fetched from a loopback/local source. A remote
+    # (non-loopback) source auto-requires a valid signature (codex finding #4).
+    source_is_local: bool = True
 
 
 @dataclass
@@ -85,7 +103,7 @@ def default_policy(contact_id: str = "") -> ContactPrivacyPolicy:
     )
 
 
-def _parse_policy(contact_id: str, body: Dict[str, Any]) -> ContactPrivacyPolicy:
+def _parse_policy(contact_id: str, body: Dict[str, Any], *, source_is_local: bool = True) -> ContactPrivacyPolicy:
     norms = body.get("privacy_norms")
     if isinstance(norms, str):
         try:
@@ -97,15 +115,16 @@ def _parse_policy(contact_id: str, body: Dict[str, Any]) -> ContactPrivacyPolicy
     pubkey = sig.get("signer_pubkey") if isinstance(sig, dict) else body.get("signer_pubkey")
     return ContactPrivacyPolicy(
         contact_id=contact_id,
-        enabled=bool(body.get("enabled", False)),
-        local_llm_ok=bool(body.get("local_llm_ok", False)),
-        external_llm_ok=bool(body.get("external_llm_ok", False)),
+        enabled=_as_bool(body.get("enabled", False)),
+        local_llm_ok=_as_bool(body.get("local_llm_ok", False)),
+        external_llm_ok=_as_bool(body.get("external_llm_ok", False)),
         privacy_norms=norms if isinstance(norms, dict) else {},
         redaction_map_id=body.get("redaction_map_id"),
         contract_version=str(body.get("contract_version", POLICY_CONTRACT_VERSION)),
         signature=sig_val,
         signer_pubkey=pubkey,
         is_default=False,
+        source_is_local=source_is_local,
     )
 
 
@@ -129,6 +148,7 @@ def fetch_policy(
     except indrasnet_client.IndrasNetError:
         logger.info("[synthesis] IndrasNet disabled — using fail-closed local policy")
         return default_policy(contact_id)
+    src_local = is_local_host(urlsplit(base).hostname or "")
     url = f"{base}/api/contacts/{contact_id}/privacy-policy"
     try:
         with httpx.Client(timeout=timeout or _POLICY_TIMEOUT_S) as client:
@@ -139,7 +159,7 @@ def fetch_policy(
                 contact_id, resp.status_code,
             )
             return default_policy(contact_id)
-        return _parse_policy(contact_id, resp.json())
+        return _parse_policy(contact_id, resp.json(), source_is_local=src_local)
     except Exception as exc:  # network/parse/egress-block — fail closed
         logger.info("[synthesis] policy fetch failed (%s); fail-closed local", type(exc).__name__)
         return default_policy(contact_id)
@@ -187,6 +207,16 @@ def resolve_engine(
     frontier subprocess anyway).
     """
     requested = (requested or "local").lower()
+
+    # Enforce enabled + local_llm_ok across ALL participants for ANY engine
+    # (codex finding #1): a disabled or local-denied contact must not be processed
+    # even locally. "none" => caller must refuse entirely.
+    for p in policies:
+        if not p.enabled:
+            return EngineDecision("none", downgraded=True, reason=f"contact {p.contact_id} not enabled — refusing all processing")
+        if not p.local_llm_ok:
+            return EngineDecision("none", downgraded=True, reason=f"contact {p.contact_id} local_llm_ok=0 — refusing local processing")
+
     if requested == "local":
         return EngineDecision("local", downgraded=False, reason="local engine requested")
 
@@ -197,11 +227,13 @@ def resolve_engine(
         return EngineDecision("local", downgraded=True, reason="no policies — fail-closed to local")
 
     for p in policies:
-        if not p.enabled:
-            return EngineDecision("local", downgraded=True, reason=f"contact {p.contact_id} not enabled")
         if not p.external_llm_ok:
             return EngineDecision("local", downgraded=True, reason=f"contact {p.contact_id} external_llm_ok=0")
-        if require_signature and not verify_signature(p, require=True):
-            return EngineDecision("local", downgraded=True, reason=f"contact {p.contact_id} signature unverified")
+        # A non-loopback (remote/federated) policy source MUST carry a valid
+        # signature (codex finding #4) — advisory mode is only safe on loopback.
+        eff_require = require_signature or not p.source_is_local
+        if eff_require and not verify_signature(p, require=True):
+            src = "remote source" if not p.source_is_local else "signature required"
+            return EngineDecision("local", downgraded=True, reason=f"contact {p.contact_id} signature unverified ({src})")
 
     return EngineDecision(requested, downgraded=False, reason="all participants consent to external")

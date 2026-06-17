@@ -41,11 +41,11 @@ Synthesize across them (clean markdown):
 5. OPEN LOOPS
 
 HARD RULES:
-- Every point MUST be built only from the units below, and MUST cite the [date] of each unit it uses.
+- Every point MUST be built only from the units below, and MUST cite the unit id(s) it uses in square brackets, e.g. [u12] or [u12] [u13]. (Each unit is labelled with its id and date.)
 - Do NOT introduce any fact, quote, or date not present in the units.
 - If something isn't in the units, you don't know it — leave it out.
 
-GROUNDED UNITS (chronological):
+GROUNDED UNITS (labelled [id · date]):
 {units}
 """
 

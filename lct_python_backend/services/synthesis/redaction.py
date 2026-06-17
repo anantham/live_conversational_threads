@@ -43,8 +43,9 @@ _DEFAULT_FORWARD: Dict[str, str] = {
 }
 
 # Generic PII patterns scrubbed regardless of the name map (defense in depth).
+# Handle charset includes . and - so "@vatsal.mehra"/"@vatsal-mehra" scrub whole.
 _EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
-_HANDLE_RE = re.compile(r"(?<![A-Za-z0-9_])@[A-Za-z0-9_]{2,}\b")
+_HANDLE_RE = re.compile(r"(?<![A-Za-z0-9_])@[A-Za-z0-9_][A-Za-z0-9_.-]*")
 
 
 @dataclass
@@ -99,11 +100,14 @@ def redact(text: str, rmap: Optional[RedactionMap] = None) -> str:
     """
     rmap = rmap or default_redaction_map()
     out = text or ""
-    for name in sorted(rmap.forward, key=len, reverse=True):
-        out = re.sub(re.escape(name), rmap.forward[name], out, flags=re.IGNORECASE)
+    # Scrub structured PII (emails/handles) BEFORE name replacement so a
+    # name-bearing handle/email is removed whole (codex finding #6: "@vatsal_mehra"
+    # must become "[handle]", not "@[Friend A]_mehra" leaving a "_mehra" fragment).
     if rmap.scrub_pii:
         out = _EMAIL_RE.sub("[email]", out)
         out = _HANDLE_RE.sub("[handle]", out)
+    for name in sorted(rmap.forward, key=len, reverse=True):
+        out = re.sub(re.escape(name), rmap.forward[name], out, flags=re.IGNORECASE)
     return out
 
 
