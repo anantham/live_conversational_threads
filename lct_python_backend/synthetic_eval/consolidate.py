@@ -12,8 +12,9 @@ coverage (orphans), the 1-5 arc UX target, and the generated title vs the conver
 
 There is no hand-authored ground-truth *clustering* in the fixtures, so this is a
 structural + qualitative assessment (coverage / compression / coherence-by-inspection),
-not a precision/recall score. Authoring ground-truth topic groupings would add P/R — a
-follow-up. ``--judge`` adds an LLM-rated coherence score per topic.
+not a precision/recall score. Two follow-ups would add quantitative quality signals:
+hand-authored ground-truth topic groupings (for P/R), and an LLM-rated per-topic
+coherence judge.
 """
 
 from __future__ import annotations
