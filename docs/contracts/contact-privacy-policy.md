@@ -65,9 +65,18 @@ GET {INDRASNET_BASE_URL}/api/contacts/{contact_id}/privacy-policy
 - **v1 (single box, loopback):** signature is **advisory** — LCT verifies-and-logs
   but does not block on unsigned/unverifiable. A present-but-INVALID signature is
   rejected even in advisory mode (tamper). The loopback boundary is the v1 trust boundary.
-- **federation (remote IndrasNet):** signature is **mandatory**. LCT's
-  `verify_signature(require=True)` already fails closed (rejects unsigned and
-  not-yet-verifiable policies), so flipping the flag is the only change.
+- **Trusted-signer pin (REQUIRED for `valid`):** a signature only proves whoever signed
+  knows the private key for the `signer_pubkey` *in the same response* — which the sender
+  controls. So LCT pins the expected IndrasNet signer address(es) via
+  `SYNTHESIS_TRUSTED_POLICY_SIGNERS` (comma-separated). The recovered address must be in
+  that set to count as `valid`. With no pin configured a consistent signature is only
+  `unpinned` — advisory-allowed on loopback, **never** accepted in mandatory mode.
+- **federation (remote IndrasNet):** signature is **mandatory** AND requires a pinned
+  trusted signer. LCT's `verify_signature(require=True)` fails closed on unsigned,
+  unpinned, unverifiable, or untrusted-signer policies — set the env + flip the flag.
+- **Strict loopback for advisory:** the advisory trust boundary is *true loopback*
+  (127.0.0.0/8, ::1, localhost) — NOT the egress guard's broader Tailscale/LAN allowance.
+  A non-loopback source auto-requires a valid pinned signature.
 - **Do not** label advisory checks as "verified policy." The two modes are distinct
   and must read distinctly in logs/UI.
 

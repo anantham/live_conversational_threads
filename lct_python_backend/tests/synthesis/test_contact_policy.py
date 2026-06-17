@@ -128,25 +128,96 @@ class TestCanonicalBodyGolden:
         assert _canonical_policy_body(p) == golden
 
 
+class TestStrictLoopback:
+    def test_predicate(self):
+        from lct_python_backend.services.synthesis.contact_policy import _is_strict_loopback
+        assert _is_strict_loopback("127.0.0.1") is True
+        assert _is_strict_loopback("localhost") is True
+        assert _is_strict_loopback("::1") is True
+        # NOT loopback — Tailscale / LAN are a different trust boundary (finding #2).
+        assert _is_strict_loopback("100.83.228.35") is False
+        assert _is_strict_loopback("192.168.1.10") is False
+        assert _is_strict_loopback("") is False
+
+
+class TestMalformedNormsFailClosed:
+    def test_malformed_norms_denies_external(self):
+        from lct_python_backend.services.synthesis.contact_policy import _parse_policy
+        p = _parse_policy("c1", {
+            "contact_id": "c1", "enabled": True, "local_llm_ok": True,
+            "external_llm_ok": True, "privacy_norms": "{not valid json",
+        })
+        assert p.external_llm_ok is False  # fail-closed
+        assert p.privacy_norms == {}
+
+
+class TestContactIdValidation:
+    def test_mismatched_contact_id_fails_closed(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_INDRASNET", "1")
+        monkeypatch.setenv("INDRASNET_BASE_URL", "http://127.0.0.1:7777")
+
+        class _Resp:
+            status_code = 200
+
+            def json(self):
+                return {"contact_id": "SOMEONE_ELSE", "external_llm_ok": True, "local_llm_ok": True}
+
+        class _Client:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def get(self, *a, **k):
+                return _Resp()
+
+        monkeypatch.setattr(contact_policy.httpx, "Client", lambda *a, **k: _Client())
+        assert fetch_policy("c1").is_default is True
+
+
 class TestSignatureRoundTrip:
-    def test_valid_accepted_and_tamper_rejected(self):
-        pytest.importorskip("eth_account")
+    def _signed(self, key, **over):
         from eth_account import Account
         from eth_account.messages import encode_defunct
         from lct_python_backend.services.synthesis.contact_policy import _canonical_policy_body
-
-        key = "0x" + "11" * 32
         acct = Account.from_key(key)
         p = ContactPrivacyPolicy("c1", enabled=True, local_llm_ok=True, external_llm_ok=True,
                                  privacy_norms={"x": 1}, redaction_map_id="tc-canonical-v1",
-                                 contract_version="1.0.0")
+                                 contract_version="1.0.0", **over)
         signed = Account.sign_message(encode_defunct(text=_canonical_policy_body(p)), private_key=key)
         p.signature = signed.signature.hex()
         p.signer_pubkey = acct.address
-        assert verify_signature(p, require=True) is True  # valid passes mandatory
+        return p, acct.address
 
-        p.external_llm_ok = False  # tamper a field → signature no longer matches
-        assert verify_signature(p, require=False) is False  # rejected even advisory
+    def test_valid_with_trusted_pin_passes_mandatory(self, monkeypatch):
+        pytest.importorskip("eth_account")
+        p, addr = self._signed("0x" + "11" * 32)
+        monkeypatch.setenv("SYNTHESIS_TRUSTED_POLICY_SIGNERS", addr)
+        assert verify_signature(p, require=True) is True
+
+    def test_unpinned_advisory_allows_but_mandatory_rejects(self, monkeypatch):
+        pytest.importorskip("eth_account")
+        monkeypatch.delenv("SYNTHESIS_TRUSTED_POLICY_SIGNERS", raising=False)
+        p, addr = self._signed("0x" + "11" * 32)
+        assert verify_signature(p, require=False) is True   # loopback advisory
+        assert verify_signature(p, require=True) is False    # federation needs a pin
+
+    def test_untrusted_signer_rejected_even_self_consistent(self, monkeypatch):
+        # codex finding #1: attacker self-signs + sets signer_pubkey to their own addr.
+        # With a pin configured, their address isn't trusted → rejected.
+        pytest.importorskip("eth_account")
+        p, addr = self._signed("0x" + "11" * 32)
+        monkeypatch.setenv("SYNTHESIS_TRUSTED_POLICY_SIGNERS", "0x" + "22" * 20)
+        assert verify_signature(p, require=True) is False
+        assert verify_signature(p, require=False) is False
+
+    def test_tamper_rejected(self, monkeypatch):
+        pytest.importorskip("eth_account")
+        p, addr = self._signed("0x" + "11" * 32)
+        monkeypatch.setenv("SYNTHESIS_TRUSTED_POLICY_SIGNERS", addr)
+        p.external_llm_ok = False  # body changed after signing → recovered != signer
+        assert verify_signature(p, require=False) is False
 
 
 class TestStrictBoolParsing:
