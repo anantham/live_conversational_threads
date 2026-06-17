@@ -149,14 +149,27 @@ async def _reconcile(conversation_id: Any, db) -> Dict[str, Any]:
     # source_excerpt needed (the text-match pass below only reaches the ~7% of
     # import nodes that have an excerpt; this pre-pass reaches every node whose
     # chunk_id has utterances). Utterances claimed here are skipped downstream.
+    #
+    # ONLY FK-link a chunk owned by EXACTLY ONE L1 node. Generation can stamp a
+    # single chunk_id onto several L1 nodes of one batch (transcript_processing),
+    # and the node query is unordered — FK-assigning a shared chunk would dump all
+    # its utterances onto whichever node came back first and leave the siblings
+    # empty (mis-attribution + wrong bubble-up/counts). Ambiguous chunks fall
+    # through to the source_excerpt text-match, which resolves per node by offset.
     claimed_utt_ids: set = set()
     utts_by_chunk: Dict[Any, List[Any]] = {}
     for utt in utterances:
         if utt.chunk_id is not None:
             utts_by_chunk.setdefault(utt.chunk_id, []).append(utt)
     if utts_by_chunk:
+        chunk_owners: Dict[Any, int] = {}
+        for node in l1_nodes:
+            for cid in set(node.chunk_ids or []):
+                chunk_owners[cid] = chunk_owners.get(cid, 0) + 1
         for node in l1_nodes:
             for cid in (node.chunk_ids or []):
+                if chunk_owners.get(cid, 0) != 1:
+                    continue  # shared/ambiguous chunk → defer to text-match
                 for utt in utts_by_chunk.get(cid, []):
                     if utt.id in claimed_utt_ids:
                         continue
