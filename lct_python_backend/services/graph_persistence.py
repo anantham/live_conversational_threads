@@ -22,6 +22,7 @@ Backward-compatible aliases:
 
 import copy
 import logging
+import os
 import time
 import uuid
 from datetime import datetime
@@ -328,6 +329,123 @@ async def ensure_conversation_row(
     db.add(conv)
     await db.commit()
     return True
+
+
+async def persist_turns(*, db, payload) -> Dict[str, Any]:
+    """Ingest a structured ``RawTurnsPayloadV1`` (P1, see
+    docs/plans/2026-06-17-p1-rawturn-data-contract.md): upsert the conversation by
+    ``(owner_id, indrasnet_group_id)`` and (re)materialize its ``Utterance`` rows
+    **with ``source_identifier``** — the per-turn provenance anchor the markdown
+    ``/from-text`` path drops.
+
+    Replace semantics: a re-PUSH of the same group_id keeps the same
+    ``conversation_id`` and rewrites the raw turns AND clears the derived graph
+    (relationships cascade off the node delete) so the conversation is a clean
+    slate for re-extraction. Deliberately does NOT reuse ``persist_graph``'s
+    utterance insert, which omits ``source_identifier``.
+
+    Privacy (doc §4): the LCT mirror is redacted-by-default; storing raw text
+    (``redaction_applied=false``) additionally requires ``LCT_MIRROR_RAW=1`` on the
+    server (owner-local only). ``redaction_applied`` is an UNVERIFIED upstream
+    claim — LCT trusts it; the real guarantee is ADR-038.
+
+    Returns ``{conversation_id, utterance_count, participant_count}``.
+    """
+    from sqlalchemy import delete, select
+
+    owner_id = resolve_owner_id(payload.owner_id)
+    privacy = payload.privacy
+
+    if not privacy.redaction_applied:
+        allow_raw = os.getenv("LCT_MIRROR_RAW", "").strip().lower() in {"1", "true", "yes", "on"}
+        if not allow_raw:
+            raise ValueError(
+                "redaction_applied=false rejected: set LCT_MIRROR_RAW=1 to let the LCT "
+                "mirror store un-redacted text (owner-local only)."
+            )
+
+    # Resolve the target conversation (replace-on-reingest): explicit id first,
+    # else the active (owner, group) row.
+    conv = None
+    if payload.conversation_id:
+        conv = (
+            await db.execute(
+                select(Conversation).where(Conversation.id == uuid.UUID(payload.conversation_id))
+            )
+        ).scalar_one_or_none()
+    if conv is None:
+        conv = (
+            await db.execute(
+                select(Conversation).where(
+                    Conversation.owner_id == owner_id,
+                    Conversation.indrasnet_group_id == payload.group_id,
+                    Conversation.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+
+    privacy_meta = {
+        "external_llm_ok": privacy.external_llm_ok,
+        "local_llm_ok": privacy.local_llm_ok,
+        "redaction_applied": privacy.redaction_applied,
+        "redaction_map_id": privacy.redaction_map_id,
+    }
+    speakers = {t.speaker_id for t in payload.turns}
+    conv_name = (payload.conversation_name or "").strip()
+
+    if conv is None:
+        conv = Conversation(
+            id=uuid.uuid4(),
+            conversation_name=conv_name or f"import-{payload.group_id}",
+            conversation_type="transcript",
+            source_type=payload.source_type,
+            owner_id=owner_id,
+            indrasnet_group_id=payload.group_id,
+            source_metadata={"privacy": privacy_meta, "contract_version": payload.contract_version},
+            participant_count=len(speakers),
+            total_utterances=len(payload.turns),
+            started_at=datetime.now(),
+            created_at=datetime.now(),
+        )
+        db.add(conv)
+        await db.flush()  # assign conv.id for the utterance FK
+    else:
+        from lct_python_backend.models import Node
+
+        conv.conversation_name = conv_name or conv.conversation_name
+        conv.source_type = payload.source_type
+        conv.indrasnet_group_id = payload.group_id
+        meta = dict(conv.source_metadata or {})
+        meta["privacy"] = privacy_meta
+        meta["contract_version"] = payload.contract_version
+        conv.source_metadata = meta
+        conv.participant_count = len(speakers)
+        conv.total_utterances = len(payload.turns)
+        conv.total_nodes = 0
+        await db.execute(delete(DBUtterance).where(DBUtterance.conversation_id == conv.id))
+        await db.execute(delete(Node).where(Node.conversation_id == conv.id))  # rels cascade
+
+    for turn in payload.turns:
+        db.add(
+            DBUtterance(
+                id=uuid.uuid4(),
+                conversation_id=conv.id,
+                text=turn.text,
+                speaker_id=turn.speaker_id,
+                sequence_number=turn.seq,
+                source_identifier=turn.source_identifier,
+                timestamp_start=turn.ts_start,
+                timestamp_end=turn.ts_end,
+                platform_metadata={"contact_id": turn.contact_id} if turn.contact_id else {},
+            )
+        )
+
+    await db.commit()
+    return {
+        "conversation_id": str(conv.id),
+        "utterance_count": len(payload.turns),
+        "participant_count": len(speakers),
+    }
 
 
 async def persist_graph(
