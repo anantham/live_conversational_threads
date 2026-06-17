@@ -13,6 +13,7 @@ import ConsumptionPrayerChip from "../components/conversation/ConsumptionPrayerC
 import ConsumptionPrayerDrawer from "../components/conversation/ConsumptionPrayerDrawer";
 import PrayerCardChip from "../components/conversation/PrayerCardChip";
 import PrayerCardDrawer from "../components/conversation/PrayerCardDrawer";
+import LivePrayerStack from "../components/conversation/LivePrayerStack";
 import ParticipantPickerModal from "../components/conversation/ParticipantPickerModal";
 import TranscriptSelectionToolbar from "../components/conversation/TranscriptSelectionToolbar";
 import useTextSelection from "../components/conversation/useTextSelection";
@@ -129,6 +130,8 @@ export default function NewConversation() {
   const [prayerCardEvents, setPrayerCardEvents] = useState([]);
   const [prayerCardError, setPrayerCardError] = useState("");
   const [prayerCardDrawerOpen, setPrayerCardDrawerOpen] = useState(false);
+  // Ambient live-prayer cards (the AUTO `prayer_card` WS path) — newest first.
+  const [livePrayerCards, setLivePrayerCards] = useState([]);
 
   // ----- Participant picker state -----
   // Auto-opens when arriving with ?autostart=true (i.e. New Conversation
@@ -197,6 +200,20 @@ export default function NewConversation() {
     };
     setPrayerCardEvents((previous) => [event, ...previous].slice(0, 25));
     return cards;
+  }, []);
+
+  // AUTO live-prayer card from the WS detector — prepend (newest first), dedupe by
+  // card_id, cap the stack. Purely positional; older cards recede as newer arrive.
+  const handlePrayerCard = useCallback((message) => {
+    if (!message?.card_id) return;
+    setLivePrayerCards((prev) => {
+      if (prev.some((c) => c.card_id === message.card_id)) return prev;
+      return [message, ...prev].slice(0, 30);
+    });
+  }, []);
+
+  const handleDismissLivePrayer = useCallback((cardId) => {
+    setLivePrayerCards((prev) => prev.filter((c) => c.card_id !== cardId));
   }, []);
 
   const handleFetchPrayerSelection = useCallback(
@@ -1092,6 +1109,8 @@ export default function NewConversation() {
           onOpen={() => setPrayerCardDrawerOpen(true)}
         />
 
+        <LivePrayerStack cards={livePrayerCards} onDismiss={handleDismissLivePrayer} />
+
         <PrayerCardDrawer
           open={prayerCardDrawerOpen}
           events={prayerCardEvents}
@@ -1331,6 +1350,7 @@ export default function NewConversation() {
             onSessionStarted={handleSessionStarted}
             onSecondSpeakerDetected={handleSecondSpeakerDetected}
             onConsumptionMatch={handleConsumptionMatch}
+            onPrayerCard={handlePrayerCard}
             onFinalize={handleFinalizeFromAudio}
           />
         </div>

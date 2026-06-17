@@ -8,6 +8,7 @@ const createBackendMessageHandler =
     onSessionStarted,
     onSecondSpeakerDetected,
     onConsumptionMatch,
+    onPrayerCard,
     onPong,
     onSttProviderStateChange,
     onProcessingStatus,
@@ -67,6 +68,13 @@ const createBackendMessageHandler =
           } contact=${message.contact?.display_name || "?"} items=${
             message.item_count ?? 0
           }`
+        );
+      }
+      if (message.type === "prayer_card") {
+        onPrayerCard?.(message);
+        logToServer?.(
+          `Prayer card (${message.card_type || "?"}): status=${message.status || "?"} ` +
+            `q=${(message.query || message.claim || "").slice(0, 60)}`
         );
       }
       if (message.type === "session_ack") {
