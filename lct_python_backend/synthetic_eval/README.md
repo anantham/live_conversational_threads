@@ -1,9 +1,9 @@
-# synthetic_eval — synthetic-conversation extraction harness (Tier 1)
+# synthetic_eval — synthetic-conversation test harness (Tier 1 + Tier 2)
 
-Generate **fake** conversations and grade LCT's transcript → graph extraction against
-an **authored answer key**, so you can stress-test extraction quality against
-external / frontier LLM providers **without ever shipping real conversation data to
-the cloud**.
+Generate **fake** conversations and grade LCT's pipeline against an **authored answer
+key** — both the transcript → graph extraction (Tier 1) and the audio → STT →
+diarization front-end (Tier 2) — **without ever shipping real conversation data to the
+cloud**.
 
 ## Why this exists
 
@@ -11,8 +11,8 @@ Two goals, two tiers:
 
 | Tier | What it tests | Needs TTS? | Status |
 |------|---------------|-----------|--------|
-| **Tier 1** (this package) | Graph-gen / dimension extraction (cruxes, tangents, surprises, claims, edges) against frontier LLMs, scored vs ground truth | No | **Built** |
-| **Tier 2** (roadmap) | STT + diarization front-end, by rendering these conversations to multi-speaker audio (Dia-default, pluggable) | Yes | Not built |
+| **Tier 1** | Graph-gen / dimension extraction (cruxes, tangents, surprises, claims, edges) against frontier LLMs, scored vs ground truth | No | **Built** |
+| **Tier 2** | STT + diarization front-end: render conversations to multi-speaker audio (Kokoro), transcribe+diarize (WhisperX), score WER + speaker accuracy, + end-to-end graph degradation | Yes (local Kokoro) | **Built** |
 
 The payoff over real data: because every planted crux / tangent / rebuttal / claim is
 **authored**, we have ground truth and can measure extraction precision / recall / F1
@@ -125,18 +125,59 @@ turns (mitigated by a minimum-overlap floor); a node that merges a tangent with 
 on-topic turn inflates recall. **Inspect the `--verbose` per-item detail, not just the
 headline F1.**
 
+## Tier 2 — audio (TTS → STT → diarization)
+
+Renders each conversation to multi-speaker audio with **Kokoro** (54 named voices, one
+per speaker), transcribes + diarizes with **WhisperX + pyannote**, and scores against the
+authored ground truth. Service-free: it shells out to the `whisperlocal` conda env (py3.10
+— has kokoro + whisperx + CUDA), so no STT HTTP service or Postgres is needed. Both legs
+are pluggable behind `tts.py` / `stt.py`.
+
+```bash
+# Clean baseline (render -> WhisperX -> WER + diarization), both seeds:
+python -m lct_python_backend.synthetic_eval.run_audio --all
+
+# Stress the diarizer: overlap speakers + room noise + hide the speaker count:
+python -m lct_python_backend.synthetic_eval.run_audio -c ai-safety-pause \
+    --overlap-ms 400 --noise-db -30 --no-speaker-hint
+
+# End-to-end: feed the NOISY transcript to a provider; compare dimension F1 to the
+# clean-text Tier-1 baseline (measures how much STT error degrades extraction):
+python -m lct_python_backend.synthetic_eval.run_audio -c ai-safety-pause -p claude
+```
+
+**Metrics:**
+- **WER** — word error rate of the WhisperX transcript vs the authored text.
+- **Diarization turn-accuracy** — using the TTS timing manifest (turn → [start,end] +
+  speaker) as ground truth, each pyannote label is mapped to the speaker it most overlaps,
+  then per-turn attribution is graded. `pred_labels` vs `gt_speakers` exposes over/under-
+  segmentation (the brittle content-vote remap's failure mode).
+- **End-to-end graph degradation** (`-p <provider>`) — runs the Tier-1 extractor on the
+  noisy diarized transcript; compare its F1 to the clean-text Tier-1 result.
+
+**Stress knobs:** `--overlap-ms`, `--noise-db`, `--pause-ms`, `--speed`,
+`--no-speaker-hint` (don't tell WhisperX the speaker count), `--no-diarize`. Whisper
+model/precision via `--model` / `--compute-type` (default `large-v3` / `int8`) or
+`SYNTH_EVAL_WHISPER_*`.
+
+**Prereqs:** the `whisperlocal` env (py3.10) with `kokoro` + `whisperx` + `pyannote`
+(`HF_TOKEN` set for diarization), found at `~/anaconda3/envs/whisperlocal/python.exe`
+(override via `SYNTH_EVAL_WHISPERLOCAL_PY`). On a clean 2-speaker render the baseline is
+WER ~1% / diarization ~100% — what the stress knobs degrade from.
+
 ## Current status / what's NOT done
 
-- **Tier 1 harness, scorer, generator, and 2 hand-authored seeds: built and validated**
-  (the `mock` provider reproduces exactly the injected errors; the real
-  `generate_lct_json` integration is exercised — connections + auth confirmed).
-- **A live frontier baseline is gated on credentials**: at build time the local model
-  exceeded its 180s timeout, the OpenAI key's account was over quota (HTTP 429), and no
-  OpenRouter/Gemini key was set. Supply any working key (or a faster/longer-timeout local
-  model) and the numbers populate.
-- **generate-mode only**: the streaming accumulate→chunk→generate pipeline (live STT path)
-  is a noisier superset and is a deliberate Tier-1.5 follow-up.
-- **Tier 2 (TTS → STT → diarization) not built.** Plan: render these same conversations to
-  multi-speaker audio with a pluggable, Dia-default backend, push through
-  `/api/import/upload` or `/ws/transcripts`, and stress the diarizer (overlap, rapid turns,
-  over-segmentation crumbs).
+- **Both tiers built and validated.** Tier 1: `mock` reproduces injected errors exactly;
+  real extraction run against local gemma-3-12b and **Claude Opus 4.8** (subscription).
+  Tier 2: clean 2-speaker baseline measured at **WER ~1.3% / diarization 100%**.
+- **Tier-1 finding:** even Opus 4.8 emits 0 crux/tangent flags + 0 typed rhetorical edges
+  under the current `generate_conversation_hierarchy` prompt — the ceiling is **prompt-bound,
+  not model-bound** (it builds a rich 4-level hierarchy but doesn't flag dimensions).
+- **generate-mode only** (Tier 1): the streaming accumulate→chunk→generate pipeline (live
+  STT path) is a noisier superset and is a deliberate Tier-1.5 follow-up.
+- **Tier 2 is TTS-fixed-voice (Kokoro):** no voice cloning, so speakers are distinct named
+  voices, not specific people. A pluggable Dia / cloud backend (realistic dialogue +
+  nonverbals) is the natural next upgrade behind the same `tts.py` interface.
+- **Not wired into the live STT path:** Tier 2 runs WhisperX directly (service-free), not
+  through `/api/import/upload` or the `:7777` orchestrator — that integration test is a
+  follow-up.

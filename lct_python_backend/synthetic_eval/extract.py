@@ -39,24 +39,32 @@ class ExtractionResult:
     status_messages: List[str] = field(default_factory=list)
 
 
-def build_generator_input(convo: SyntheticConversation) -> str:
-    """Mirror TranscriptProcessor's ``mod_input`` with an empty existing-graph."""
-    transcript = convo.render_transcript(bracketed_speakers=True)
+def build_generator_input(convo: SyntheticConversation, transcript_override: Optional[str] = None) -> str:
+    """Mirror TranscriptProcessor's ``mod_input`` with an empty existing-graph.
+
+    ``transcript_override`` (Tier 2) feeds a noisy STT transcript instead of the
+    clean authored turns, to measure end-to-end extraction degradation.
+    """
+    transcript = transcript_override if transcript_override is not None else convo.render_transcript(bracketed_speakers=True)
     return (
         "Existing JSON (0 prior nodes):\n[]\n\n"
         f"Transcript Input:\n{transcript}"
     )
 
 
-def extract_graph(convo: SyntheticConversation, spec: ProviderSpec) -> ExtractionResult:
+def extract_graph(
+    convo: SyntheticConversation,
+    spec: ProviderSpec,
+    transcript_override: Optional[str] = None,
+) -> ExtractionResult:
     if spec.kind == "mock":
         return _mock_extract(convo)
     if spec.kind == "anthropic":
-        return _anthropic_extract(convo, spec)
+        return _anthropic_extract(convo, spec, transcript_override)
     if spec.kind == "claude_cli":
-        return _claude_cli_extract(convo, spec)
+        return _claude_cli_extract(convo, spec, transcript_override)
 
-    mod_input = build_generator_input(convo)
+    mod_input = build_generator_input(convo, transcript_override)
     # Lazy import: pulls in google-genai + the LLM stack only when actually
     # calling a real provider, so `--list` and mock runs work in a bare env.
     from lct_python_backend.services.transcript_llm_callers import generate_lct_json
@@ -105,7 +113,7 @@ def _resolve_claude_bin() -> Optional[str]:
     return fallback if os.path.exists(fallback) else None
 
 
-def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec) -> ExtractionResult:
+def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec, transcript_override: Optional[str] = None) -> ExtractionResult:
     """Extract via the logged-in `claude` CLI in headless mode — no API key.
 
     Drives ``claude -p`` with LCT's GENERATE prompt as the (replaced) system prompt
@@ -115,7 +123,7 @@ def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec) -> Ext
     so the only variable under test is the model. Runs in a throwaway temp cwd so
     this repo's CLAUDE.md / settings / MCP don't leak into the prompt.
     """
-    mod_input = build_generator_input(convo)
+    mod_input = build_generator_input(convo, transcript_override)
     t0 = time.perf_counter()
     claude_bin = _resolve_claude_bin()
     if not claude_bin:
@@ -224,7 +232,7 @@ def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec) -> Ext
 
 # ── Native Anthropic extractor (official SDK, not the OpenAI-compat shim) ─────
 
-def _anthropic_extract(convo: SyntheticConversation, spec: ProviderSpec) -> ExtractionResult:
+def _anthropic_extract(convo: SyntheticConversation, spec: ProviderSpec, transcript_override: Optional[str] = None) -> ExtractionResult:
     """Extract via the first-party Anthropic Messages API.
 
     LCT's ``generate_lct_json`` has no Anthropic dispatch path, so we call the SDK
@@ -233,7 +241,7 @@ def _anthropic_extract(convo: SyntheticConversation, spec: ProviderSpec) -> Extr
     normalizer, so the only variable under test is the model. Uses adaptive thinking
     + the effort parameter, per the Anthropic API guidance for non-trivial tasks.
     """
-    mod_input = build_generator_input(convo)
+    mod_input = build_generator_input(convo, transcript_override)
     t0 = time.perf_counter()
     status: List[str] = []
     try:
