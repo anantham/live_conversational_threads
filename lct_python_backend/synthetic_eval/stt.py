@@ -39,6 +39,7 @@ def transcribe(
     max_speakers: Optional[int] = None,
     model: Optional[str] = None,
     compute_type: Optional[str] = None,
+    language: Optional[str] = None,
 ) -> SttResult:
     wpy = whisperlocal_py()
     if not wpy:
@@ -54,6 +55,10 @@ def transcribe(
         "batch_size": int(os.getenv("SYNTH_EVAL_WHISPER_BATCH", "8")),
         "min_speakers": min_speakers,
         "max_speakers": max_speakers,
+        # Pin the language: the synthetic audio is English, but WhisperX auto-detect
+        # mis-fired to Norwegian on clean Kokoro speech and hallucinated 5 garbage
+        # segments. "" / None restores auto-detect.
+        "language": (language if language is not None else os.getenv("SYNTH_EVAL_WHISPER_LANG", "en")) or None,
     }
     worker = os.path.join(os.path.dirname(__file__), "_whisperx_worker.py")
 
