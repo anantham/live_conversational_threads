@@ -134,8 +134,16 @@ async def lifespan(app: FastAPI):
             install_egress_chokepoint,
         )
         install_egress_chokepoint()
-    except Exception:  # never block startup on the guard installer
-        logger.exception("[egress-chokepoint] install failed (non-fatal)")
+    except Exception:
+        # The chokepoint is the only NETWORK-layer privacy guarantee. When
+        # LCT_LOCAL_ONLY is on, a failed install is FATAL — refusing startup is
+        # safer than running unguarded while believing we're local-only (codex
+        # review 2026-06-17). When local-only is off (cloud/public profile), keep
+        # the original non-fatal behavior.
+        from lct_python_backend.services.egress_guard import local_only_enabled
+        logger.exception("[egress-chokepoint] install failed")
+        if local_only_enabled():
+            raise
 
     logger.info("Connecting to database...")
     try:
