@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import json
 import logging
+import ipaddress
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlsplit
@@ -37,8 +38,8 @@ from urllib.parse import urlsplit
 import httpx
 
 from lct_python_backend.services import indrasnet_client
-from lct_python_backend.services.egress_guard import is_local_host, local_only_enabled
-from lct_python_backend.services.env_helpers import env_float
+from lct_python_backend.services.egress_guard import local_only_enabled
+from lct_python_backend.services.env_helpers import env_float, env_str
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,29 @@ POLICY_CONTRACT_VERSION = "1.0.0"
 _POLICY_TIMEOUT_S = env_float("SYNTHESIS_POLICY_TIMEOUT_SECONDS", 5.0)
 
 _TRUE_TOKENS = {"1", "true", "yes", "on", "y", "t"}
+
+
+def _trusted_signers() -> set:
+    """Lowercased set of Ethereum addresses LCT will accept as IndrasNet policy
+    signers (env SYNTHESIS_TRUSTED_POLICY_SIGNERS, comma-separated). Empty = no pin
+    configured → signatures can only be 'unpinned' (advisory-only, never mandatory)."""
+    raw = env_str("SYNTHESIS_TRUSTED_POLICY_SIGNERS", "")
+    return {a.strip().lower() for a in raw.split(",") if a.strip()}
+
+
+def _is_strict_loopback(host: str) -> bool:
+    """STRICT loopback only (127.0.0.0/8, ::1, localhost) — NOT the egress guard's
+    broader is_local_host (which allows Tailscale/LAN). The advisory trust boundary
+    is the local machine, not the LAN (codex finding #2)."""
+    if not host:
+        return False
+    h = host.strip().lower()
+    if h == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(h).is_loopback
+    except ValueError:
+        return False
 
 
 def _as_bool(v: Any) -> bool:
@@ -104,12 +128,22 @@ def default_policy(contact_id: str = "") -> ContactPrivacyPolicy:
 
 
 def _parse_policy(contact_id: str, body: Dict[str, Any], *, source_is_local: bool = True) -> ContactPrivacyPolicy:
+    # Malformed privacy_norms must FAIL CLOSED (codex finding #4): a parse failure
+    # could otherwise erase contextual restrictions while leaving external_llm_ok on.
     norms = body.get("privacy_norms")
+    norms_ok = True
     if isinstance(norms, str):
         try:
             norms = json.loads(norms)
         except (ValueError, TypeError):
-            norms = {}
+            norms, norms_ok = {}, False
+    if not isinstance(norms, dict):
+        if norms is not None:
+            norms_ok = False
+        norms = {}
+    external = _as_bool(body.get("external_llm_ok", False)) and norms_ok
+    if not norms_ok:
+        logger.warning("[synthesis] policy %s has malformed privacy_norms — denying external", contact_id)
     sig = body.get("signature")
     sig_val = sig.get("value") if isinstance(sig, dict) else sig
     pubkey = sig.get("signer_pubkey") if isinstance(sig, dict) else body.get("signer_pubkey")
@@ -117,8 +151,8 @@ def _parse_policy(contact_id: str, body: Dict[str, Any], *, source_is_local: boo
         contact_id=contact_id,
         enabled=_as_bool(body.get("enabled", False)),
         local_llm_ok=_as_bool(body.get("local_llm_ok", False)),
-        external_llm_ok=_as_bool(body.get("external_llm_ok", False)),
-        privacy_norms=norms if isinstance(norms, dict) else {},
+        external_llm_ok=external,
+        privacy_norms=norms,
         redaction_map_id=body.get("redaction_map_id"),
         contract_version=str(body.get("contract_version", POLICY_CONTRACT_VERSION)),
         signature=sig_val,
@@ -148,7 +182,7 @@ def fetch_policy(
     except indrasnet_client.IndrasNetError:
         logger.info("[synthesis] IndrasNet disabled — using fail-closed local policy")
         return default_policy(contact_id)
-    src_local = is_local_host(urlsplit(base).hostname or "")
+    src_local = _is_strict_loopback(urlsplit(base).hostname or "")
     url = f"{base}/api/contacts/{contact_id}/privacy-policy"
     try:
         with httpx.Client(timeout=timeout or _POLICY_TIMEOUT_S) as client:
@@ -159,7 +193,16 @@ def fetch_policy(
                 contact_id, resp.status_code,
             )
             return default_policy(contact_id)
-        return _parse_policy(contact_id, resp.json(), source_is_local=src_local)
+        body = resp.json()
+        # The policy must be FOR the contact we asked about (codex finding #5) —
+        # a mismatched/cached body could otherwise be applied to the wrong contact.
+        if body.get("contact_id") != contact_id:
+            logger.warning(
+                "[synthesis] policy contact_id mismatch (%r != requested %r); fail-closed",
+                body.get("contact_id"), contact_id,
+            )
+            return default_policy(contact_id)
+        return _parse_policy(contact_id, body, source_is_local=src_local)
     except Exception as exc:  # network/parse/egress-block — fail closed
         logger.info("[synthesis] policy fetch failed (%s); fail-closed local", type(exc).__name__)
         return default_policy(contact_id)
@@ -181,8 +224,17 @@ def _canonical_policy_body(policy: ContactPrivacyPolicy) -> str:
 
 
 def _check_signature(policy: ContactPrivacyPolicy) -> str:
-    """Recover the EIP-191 signer and compare to the declared pubkey.
-    Returns 'valid' | 'invalid' | 'unavailable' (eth_account not installed)."""
+    """Recover the EIP-191 signer over the canonical body and decide trust.
+
+    Returns:
+      'valid'       — recovered signer matches signer_pubkey AND is a configured
+                      TRUSTED signer (SYNTHESIS_TRUSTED_POLICY_SIGNERS).
+      'unpinned'    — signature is internally consistent, but no trusted signer is
+                      configured, so we CANNOT establish it's actually IndrasNet
+                      (codex finding #1: signer_pubkey is attacker-controllable).
+      'invalid'     — recovery failed or recovered != signer_pubkey (tamper / forged).
+      'unavailable' — eth_account not installed.
+    """
     if not policy.signature or not policy.signer_pubkey:
         return "invalid"
     try:
@@ -194,20 +246,31 @@ def _check_signature(policy: ContactPrivacyPolicy) -> str:
         recovered = Account.recover_message(
             encode_defunct(text=_canonical_policy_body(policy)),
             signature=policy.signature,
-        )
-        return "valid" if recovered.lower() == policy.signer_pubkey.lower() else "invalid"
+        ).lower()
     except Exception:  # noqa: BLE001 — any recovery error == cannot trust
         return "invalid"
+    # The signature must at least be self-consistent: it was produced by the key for
+    # the address it claims. (Without this an attacker could attach a valid signature
+    # over a DIFFERENT body.)
+    if recovered != policy.signer_pubkey.lower():
+        return "invalid"
+    # ...but self-consistency proves nothing about WHO signed. Require the recovered
+    # address to be a pinned, trusted IndrasNet signer. No pin → 'unpinned'.
+    trusted = _trusted_signers()
+    if not trusted:
+        return "unpinned"
+    return "valid" if recovered in trusted else "invalid"
 
 
 def verify_signature(policy: ContactPrivacyPolicy, *, require: bool = False) -> bool:
     """Verify a policy's signature. ADVISORY by default; MANDATORY for federation.
 
-    - unsigned:               advisory allows (loopback trust); mandatory REJECTS.
-    - present + VALID:         allowed in both modes.
-    - present + INVALID:       REJECTED in both modes (tamper — worse than unsigned).
-    - present, eth_account missing (cannot verify): advisory allows with a loud
-      warning (loopback); mandatory REJECTS (fail-closed).
+    - unsigned:       advisory allows (loopback trust); mandatory REJECTS.
+    - VALID (pinned trusted signer): allowed in both modes.
+    - UNPINNED (consistent but no trusted signer configured): advisory allows with a
+      warning (loopback trust); mandatory REJECTS — federation REQUIRES a pinned signer.
+    - INVALID (tamper/forged): REJECTED in both modes.
+    - eth_account missing: advisory allows with warning; mandatory REJECTS (fail-closed).
     """
     if not policy.signature:
         if require:
@@ -217,16 +280,15 @@ def verify_signature(policy: ContactPrivacyPolicy, *, require: bool = False) -> 
         return True
     status = _check_signature(policy)
     if status == "valid":
-        logger.info("[synthesis] policy %s signature VALID", policy.contact_id)
+        logger.info("[synthesis] policy %s signature VALID (trusted signer)", policy.contact_id)
         return True
-    if status == "unavailable":
-        logger.warning(
-            "[synthesis] policy %s is signed but eth_account is not installed — cannot "
-            "verify (%s). Install eth-account to enable signature verification.",
-            policy.contact_id, "REJECTING" if require else "advisory allow",
-        )
+    if status in ("unpinned", "unavailable"):
+        reason = ("no SYNTHESIS_TRUSTED_POLICY_SIGNERS pinned — cannot confirm IndrasNet"
+                  if status == "unpinned" else "eth_account not installed — cannot verify")
+        logger.warning("[synthesis] policy %s %s (%s)", policy.contact_id, reason,
+                       "REJECTING" if require else "advisory allow")
         return not require
-    logger.warning("[synthesis] policy %s signature INVALID (possible tamper) — REJECTING", policy.contact_id)
+    logger.warning("[synthesis] policy %s signature INVALID (possible tamper/forgery) — REJECTING", policy.contact_id)
     return False
 
 
