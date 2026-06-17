@@ -29,6 +29,7 @@ def _payload(**overrides):
         "conversation_name": "Test",
         "source_type": "google_meet",
         "owner_id": "owner-1",
+        "privacy": {"redaction_applied": True},
         "turns": [_turn(0), _turn(1)],
     }
     base.update(overrides)
@@ -109,3 +110,52 @@ def test_optional_turn_fields_round_trip():
 def test_conversation_id_optional_for_reingest():
     p = RawTurnsPayloadV1(**_payload(conversation_id="11111111-1111-1111-1111-111111111111"))
     assert p.conversation_id == "11111111-1111-1111-1111-111111111111"
+
+
+def test_conversation_id_must_be_uuid_shaped():
+    with pytest.raises(ValidationError):
+        RawTurnsPayloadV1(**_payload(conversation_id="not-a-uuid"))
+
+
+# --- fail-closed privacy (codex #2) ----------------------------------------
+
+
+def test_privacy_block_is_required():
+    body = _payload()
+    del body["privacy"]
+    with pytest.raises(ValidationError):
+        RawTurnsPayloadV1(**body)
+
+
+def test_redaction_applied_is_required_within_privacy():
+    with pytest.raises(ValidationError):
+        RawTurnsPayloadV1(**_payload(privacy={}))  # no redaction_applied → reject
+
+
+def test_misspelled_privacy_key_rejected_not_ignored():
+    # `redactionApplied` (camelCase) must NOT silently fall back to the safe default.
+    with pytest.raises(ValidationError):
+        RawTurnsPayloadV1(**_payload(privacy={"redactionApplied": False}))
+
+
+def test_unknown_top_level_key_rejected():
+    with pytest.raises(ValidationError):
+        RawTurnsPayloadV1(**_payload(unexpected_field="x"))
+
+
+def test_unknown_turn_key_rejected():
+    with pytest.raises(ValidationError):
+        RawTurnsPayloadV1(**_payload(turns=[_turn(0, typo_field=1)]))
+
+
+# --- timestamp ordering (codex #4) -----------------------------------------
+
+
+def test_ts_end_before_ts_start_rejected():
+    with pytest.raises(ValidationError):
+        RawTurnsPayloadV1(**_payload(turns=[_turn(0, ts_start=10.0, ts_end=5.0)]))
+
+
+def test_ts_equal_is_allowed():
+    p = RawTurnsPayloadV1(**_payload(turns=[_turn(0, ts_start=3.0, ts_end=3.0)]))
+    assert p.turns[0].ts_start == 3.0

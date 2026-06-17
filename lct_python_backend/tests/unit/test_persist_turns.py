@@ -36,6 +36,7 @@ def _payload(**overrides):
         "conversation_name": "Test",
         "source_type": "google_meet",
         "owner_id": "owner-1",
+        "privacy": {"redaction_applied": True},
         "turns": [_turn(0), _turn(1), _turn(2)],
     }
     base.update(overrides)
@@ -130,11 +131,32 @@ def test_reingest_replaces_turns_and_graph_keeping_conversation_id():
 
     # No NEW conversation created; the existing row is reused.
     assert _convs(db) == []
-    # Two deletes issued: prior utterances + prior nodes (relationships cascade).
-    assert db.deletes == 2
+    # Five deletes: simulacra/bias/frame analyses + prior utterances + prior nodes
+    # (relationships + cascade-FK analyses drop with the nodes).
+    assert db.deletes == 5
     assert len(_utts(db)) == 3
     assert all(u.source_identifier for u in _utts(db))
     assert result["conversation_id"] == str(existing.id)
+
+
+def test_explicit_conversation_id_must_match_owner_and_group():
+    # A payload that names conversation A's id but a DIFFERENT group must be
+    # refused, not allowed to destructively overwrite A (codex #1).
+    other = Conversation(
+        id=uuid.uuid4(),
+        conversation_name="unrelated",
+        conversation_type="transcript",
+        source_type="google_meet",
+        owner_id="owner-1",
+        indrasnet_group_id="DIFFERENT-GROUP",
+        source_metadata={},
+        deleted_at=None,
+    )
+    db = FakeDB(existing=other)
+    payload = _payload(conversation_id=str(other.id))  # group "G" != "DIFFERENT-GROUP"
+    with pytest.raises(ValueError, match="does not belong"):
+        asyncio.run(persist_turns(db=db, payload=payload))
+    assert db.deletes == 0  # nothing destroyed
 
 
 def test_raw_text_rejected_without_lct_mirror_raw(monkeypatch):

@@ -364,15 +364,29 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
                 "mirror store un-redacted text (owner-local only)."
             )
 
-    # Resolve the target conversation (replace-on-reingest): explicit id first,
-    # else the active (owner, group) row.
+    # Resolve the target conversation (replace-on-reingest). An explicit
+    # conversation_id MUST belong to this (owner, group) and not be soft-deleted,
+    # else a stale/bad payload could destructively overwrite an unrelated
+    # conversation (codex #1). A non-existent id falls through to the (owner, group)
+    # lookup.
     conv = None
     if payload.conversation_id:
-        conv = (
+        by_id = (
             await db.execute(
                 select(Conversation).where(Conversation.id == uuid.UUID(payload.conversation_id))
             )
         ).scalar_one_or_none()
+        if by_id is not None:
+            if (
+                by_id.owner_id != owner_id
+                or by_id.indrasnet_group_id != payload.group_id
+                or by_id.deleted_at is not None
+            ):
+                raise ValueError(
+                    "conversation_id does not belong to this owner + group_id (or is "
+                    "deleted); refusing to overwrite it."
+                )
+            conv = by_id
     if conv is None:
         conv = (
             await db.execute(
@@ -411,6 +425,11 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
         await db.flush()  # assign conv.id for the utterance FK
     else:
         from lct_python_backend.models import Node
+        from lct_python_backend.models.analysis import (
+            BiasAnalysis,
+            FrameAnalysis,
+            SimulacraAnalysis,
+        )
 
         conv.conversation_name = conv_name or conv.conversation_name
         conv.source_type = payload.source_type
@@ -422,8 +441,15 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
         conv.participant_count = len(speakers)
         conv.total_utterances = len(payload.turns)
         conv.total_nodes = 0
+        # Whole-conversation replace: drop prior turns + derived graph for a clean
+        # re-extraction slate. simulacra/bias/frame FK nodes.id WITHOUT ON DELETE
+        # CASCADE (codex #3), so clear them (scoped by conversation_id) BEFORE the
+        # node delete; relationships + the cascade-FK analyses drop with the nodes.
+        await db.execute(delete(SimulacraAnalysis).where(SimulacraAnalysis.conversation_id == conv.id))
+        await db.execute(delete(BiasAnalysis).where(BiasAnalysis.conversation_id == conv.id))
+        await db.execute(delete(FrameAnalysis).where(FrameAnalysis.conversation_id == conv.id))
         await db.execute(delete(DBUtterance).where(DBUtterance.conversation_id == conv.id))
-        await db.execute(delete(Node).where(Node.conversation_id == conv.id))  # rels cascade
+        await db.execute(delete(Node).where(Node.conversation_id == conv.id))
 
     for turn in payload.turns:
         db.add(
