@@ -31,6 +31,7 @@ class MockUtt:
     sequence_number: Optional[int] = None
     speaker_id: str = "?"
     speaker_name: Optional[str] = None
+    id: Any = None  # coverage now intersects node refs with persisted ids
 
 
 # ---------------------------------------------------------------------------
@@ -131,16 +132,30 @@ def test_coverage_summary_unions_overlapping_ids():
         {"source_ref": {"utterance_ids": ["u1", "u2"]}},
         {"source_ref": {"utterance_ids": ["u2", "u3"]}},  # u2 overlaps → union, not sum
     ]
-    summary = build_coverage_summary(graph, [MockUtt()] * 4)
+    # 4 persisted turns; nodes cover u1,u2,u3 (u4 persisted but uncovered).
+    utts = [MockUtt(id="u1"), MockUtt(id="u2"), MockUtt(id="u3"), MockUtt(id="u4")]
+    summary = build_coverage_summary(graph, utts)
     assert summary["total_turns"] == 4
     assert summary["covered_turns"] == 3  # {u1, u2, u3}
     assert summary["pct"] == 75.0
     assert summary["auditable"] is True
 
 
+def test_coverage_summary_ignores_unpersisted_referenced_ids():
+    # A node references an id that was never persisted (dropped empty-text row or
+    # a hallucinated id). The intersection guard must NOT count it — otherwise
+    # covered could exceed total (pct > 100). codex/gemini PR #63 finding.
+    graph = [{"source_ref": {"utterance_ids": ["u1", "ghost"]}}]
+    summary = build_coverage_summary(graph, [MockUtt(id="u1"), MockUtt(id="u2")])
+    assert summary["total_turns"] == 2
+    assert summary["covered_turns"] == 1  # only u1; "ghost" not persisted
+    assert summary["pct"] == 50.0
+    assert summary["auditable"] is True
+
+
 def test_coverage_summary_unauditable_when_no_node_has_provenance():
     graph = [{"source_ref": None}, {"id": "x"}]  # no node carries source_ref
-    summary = build_coverage_summary(graph, [MockUtt()] * 3)
+    summary = build_coverage_summary(graph, [MockUtt(id="u1"), MockUtt(id="u2"), MockUtt(id="u3")])
     assert summary["auditable"] is False
     assert summary["pct"] is None
     assert summary["covered_turns"] == 0
@@ -158,5 +173,6 @@ def test_coverage_summary_empty_inputs():
 
 def test_coverage_summary_pct_is_rounded_one_dp():
     graph = [{"source_ref": {"utterance_ids": ["u1"]}}]
-    summary = build_coverage_summary(graph, [MockUtt()] * 3)  # 1/3 = 33.33%
+    utts = [MockUtt(id="u1"), MockUtt(id="u2"), MockUtt(id="u3")]  # 1/3 = 33.33%
+    summary = build_coverage_summary(graph, utts)
     assert summary["pct"] == 33.3
