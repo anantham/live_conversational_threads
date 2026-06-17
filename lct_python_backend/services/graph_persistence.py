@@ -341,6 +341,7 @@ async def persist_graph(
     owner_id: Optional[str] = None,
     source_metadata: Optional[Dict[str, Any]] = None,
     utterance_chunk_map: Optional[Dict[str, List[str]]] = None,
+    indrasnet_group_id: Optional[str] = None,
     protect_node_ids: Optional[Iterable[uuid.UUID]] = None,
 ) -> int:
     """
@@ -389,12 +390,17 @@ async def persist_graph(
             source_type=(source_type or "import").strip() or "import",
             source_metadata=source_metadata or {},
             owner_id=(owner_id or "").strip() or resolve_owner_id(),
+            indrasnet_group_id=indrasnet_group_id,
             started_at=datetime.now(),
             created_at=datetime.now(),
         )
         db.add(conv)
         # Ensure parent row exists before inserting child node/relationship rows.
         await db.flush()
+    elif indrasnet_group_id and not conv.indrasnet_group_id:
+        # Existing conversation gaining its IndrasNet link (first structured
+        # re-import). Don't clobber an already-set id.
+        conv.indrasnet_group_id = indrasnet_group_id
 
     # Delete any stale rows before the re-INSERT below.
     protected_ids = list(protect_node_ids or [])
@@ -468,6 +474,9 @@ async def persist_graph(
                     "node_id": _coerce_uuid(row.get("node_id")),
                     "thread_id": _coerce_uuid(row.get("thread_id")),
                     "platform_metadata": row.get("platform_metadata") if isinstance(row.get("platform_metadata"), dict) else {},
+                    # P1 provenance anchor: the immutable per-turn IndrasNet id.
+                    # NULL for legacy/live/markdown rows that carry no source.
+                    "source_identifier": coerce_str(row.get("source_identifier")) or None,
                 }
             )
         normalized_rows.sort(key=lambda item: (item["sequence_number"], str(item["id"])))
@@ -964,6 +973,7 @@ async def persist_graph(
                     node_id=row["node_id"],
                     thread_id=row["thread_id"],
                     platform_metadata=row["platform_metadata"],
+                    source_identifier=row["source_identifier"],
                 )
             )
 
