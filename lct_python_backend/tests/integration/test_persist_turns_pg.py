@@ -49,10 +49,11 @@ def _payload(group_id: str, turns):
 
 
 async def _engine_session():
-    engine = create_async_engine(_async_url(DATABASE_URL))
-    # Match the backend's session config (db_session.py): without
-    # expire_on_commit=False, attribute access after persist_turns' commit
-    # triggers a lazy refresh outside the async greenlet → MissingGreenlet.
+    # Match db_session.py: ssl=False (asyncpg's TLS negotiation breaks on the
+    # Windows proactor loop) and expire_on_commit=False (without it, attribute
+    # access after persist_turns' commit triggers a lazy refresh outside the async
+    # greenlet → MissingGreenlet).
+    engine = create_async_engine(_async_url(DATABASE_URL), connect_args={"ssl": False})
     return engine, AsyncSession(engine, expire_on_commit=False)
 
 
@@ -120,6 +121,70 @@ def test_persist_turns_roundtrip_and_replace():
         finally:
             if conv_id is not None:
                 await session.execute(delete(Conversation).where(Conversation.id == conv_id))  # cascades
+                await session.commit()
+            await session.close()
+            await engine.dispose()
+
+    asyncio.run(scenario())
+
+
+def test_reingest_clears_node_dependent_analyses_no_fk_violation():
+    """codex #3 verified against REAL rows: re-ingesting a conversation that has a
+    bias_analysis (FK nodes.id WITHOUT cascade) must not raise an FK violation —
+    persist_turns deletes those analyses before the node delete."""
+    from sqlalchemy import func
+
+    from lct_python_backend.models import Conversation, Node
+    from lct_python_backend.models.analysis import BiasAnalysis
+    from lct_python_backend.services.graph_persistence import persist_turns
+
+    group_id = f"ITEST-AN-{uuid.uuid4().hex[:10]}"
+
+    async def scenario():
+        engine, session = await _engine_session()
+        conv_id = None
+        try:
+            res = await persist_turns(db=session, payload=_payload(group_id, [_turn(0), _turn(1)]))
+            conv_id = uuid.UUID(res["conversation_id"])
+
+            # Add a node + a bias_analysis row pointing at it (the un-cascaded FK).
+            node = Node(
+                id=uuid.uuid4(), conversation_id=conv_id, node_name="n", summary="s", chunk_ids=[]
+            )
+            session.add(node)
+            await session.flush()
+            session.add(
+                BiasAnalysis(
+                    id=uuid.uuid4(),
+                    conversation_id=conv_id,
+                    node_id=node.id,
+                    bias_type="confirmation_bias",
+                    category="confirmation",
+                    severity=0.5,
+                    confidence=0.5,
+                )
+            )
+            await session.commit()
+
+            # Re-ingest (replace) — must succeed despite the bias_analysis row.
+            res2 = await persist_turns(db=session, payload=_payload(group_id, [_turn(0)]))
+            assert res2["conversation_id"] == str(conv_id)
+
+            n_bias = (
+                await session.execute(
+                    select(func.count()).select_from(BiasAnalysis).where(BiasAnalysis.conversation_id == conv_id)
+                )
+            ).scalar()
+            n_nodes = (
+                await session.execute(
+                    select(func.count()).select_from(Node).where(Node.conversation_id == conv_id)
+                )
+            ).scalar()
+            assert n_bias == 0  # cleared before the node delete (no FK violation)
+            assert n_nodes == 0
+        finally:
+            if conv_id is not None:
+                await session.execute(delete(Conversation).where(Conversation.id == conv_id))
                 await session.commit()
             await session.close()
             await engine.dispose()
