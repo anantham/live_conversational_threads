@@ -3,7 +3,7 @@
 Per docs/plans/2026-06-17-p1-rawturn-data-contract.md (codex-reviewed, verdict
 GO). Adds the DB-level uniqueness the POST /api/import/turns ingest relies on
 (Pydantic validation is defense-in-depth, NOT the integrity guarantee):
-  1. UNIQUE(conversation_id, sequence_number)
+  1. UNIQUE(conversation_id, sequence_number) WHERE source_identifier IS NOT NULL
   2. UNIQUE(conversation_id, source_identifier) WHERE source_identifier IS NOT NULL
   3. UNIQUE(owner_id, indrasnet_group_id) WHERE indrasnet_group_id IS NOT NULL
                                             AND deleted_at IS NULL
@@ -33,10 +33,14 @@ depends_on: Union[str, Sequence[str], None] = None
 # (label, query) — each returns the duplicate GROUPS that would violate a new index.
 _PREFLIGHT = (
     (
-        "(conversation_id, sequence_number) in utterances",
+        "(conversation_id, sequence_number) in RawTurn utterances",
+        # Scoped to RawTurn rows (source_identifier IS NOT NULL): legacy/live-STT
+        # utterances legitimately reuse sequence_number within a conversation
+        # (e.g. segment-resume restarts at 1), so a global index would be wrong.
         """
         SELECT conversation_id, sequence_number, COUNT(*) AS n
         FROM utterances
+        WHERE source_identifier IS NOT NULL
         GROUP BY conversation_id, sequence_number
         HAVING COUNT(*) > 1
         """,
@@ -84,11 +88,17 @@ def _preflight_or_fail() -> None:
 
 def upgrade() -> None:
     _preflight_or_fail()
+    # Scoped to RawTurn rows only — legacy/live-STT utterances legitimately reuse
+    # sequence_number within a conversation (verified on the dev DB: 7 existing
+    # conversations had duplicate seq=1). RawTurn ingest guarantees dense unique
+    # seqs (Pydantic + persist_turns), and a conversation's utterances are either
+    # all-RawTurn or all-legacy (re-ingest replaces them), so this is safe.
     op.create_index(
         "uq_utterances_conv_seq",
         "utterances",
         ["conversation_id", "sequence_number"],
         unique=True,
+        postgresql_where=sa.text("source_identifier IS NOT NULL"),
     )
     op.create_index(
         "uq_utterances_conv_srcid",
