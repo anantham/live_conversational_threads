@@ -9,7 +9,7 @@ import logging
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -140,3 +140,173 @@ async def parse_validate_and_persist(
         validation=validation,
         transcript=transcript,
     )
+
+
+async def parse_validate_and_extract(
+    db,
+    payload,
+    *,
+    owner_id: str = "anonymous",
+) -> Dict[str, Any]:
+    """Structured RawTurn import (P1 Track A): the AUDITABLE import path.
+
+    Unlike ``parse_validate_and_persist`` (markdown → utterances only, no graph),
+    this mints utterance UUIDs BEFORE extraction and threads each through
+    ``TranscriptProcessor.handle_final_text(..., utterance_id=...)``, so the
+    emitted nodes carry ``utterance_ids`` at build time (100% node↔utterance
+    linkage — no post-hoc text-matching). It then persists with per-turn
+    ``source_identifier`` + the conversation's ``indrasnet_group_id``, so
+    ``node.source_ref`` and coverage are real from the first read.
+
+    Runs synchronously (suitable for one conversation's worth of turns); a big
+    backlog should be chunked by the caller. Returns a stats dict.
+
+    ``payload`` is a ``models.import_contract.RawTurnPayload``.
+    """
+    import uuid as _uuid
+
+    from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers
+    from lct_python_backend.services.transcript_processing import TranscriptProcessor
+    from lct_python_backend.services.graph_persistence import persist_graph
+    from lct_python_backend.services.hierarchy_consolidator import (
+        consolidate_ideas_to_topics,
+        consolidate_topics_to_themes,
+        consolidate_themes_to_arcs,
+    )
+    from lct_python_backend.services.tuning_constants import (
+        MIN_IDEAS_FOR_TOPIC_CONSOLIDATION,
+        MIN_TOPICS_FOR_THEME_CONSOLIDATION,
+        MIN_THEMES_FOR_ARC_CONSOLIDATION,
+    )
+
+    conversation_id = payload.conversation_id or str(_uuid.uuid4())
+
+    # Create-only guard. persist_graph is destructive (it DELETEs the
+    # conversation's nodes before re-inserting), so a re-used conversation_id
+    # would silently wipe the prior graph, and a repeated group_id would
+    # duplicate the IndrasNet conversation. Refuse both up front — before any LLM
+    # cost. Structured re-import/replace is a future feature (needs an explicit flag).
+    from sqlalchemy import select as _select
+
+    from lct_python_backend.models import Conversation as _Conversation
+
+    if payload.conversation_id:
+        if (await db.execute(
+            _select(_Conversation.id).where(_Conversation.id == _uuid.UUID(payload.conversation_id))
+        )).first():
+            raise ValueError(
+                f"conversation_id {payload.conversation_id} already exists; "
+                "structured re-import is not yet supported"
+            )
+    if payload.group_id:
+        dup = (await db.execute(
+            _select(_Conversation.id).where(_Conversation.indrasnet_group_id == payload.group_id)
+        )).first()
+        if dup:
+            raise ValueError(
+                f"a conversation for group_id {payload.group_id} already exists ({dup[0]}); "
+                "structured re-import is not yet supported"
+            )
+
+    # 1. Mint utterance UUIDs up front — the source of truth for IDs that the
+    #    extractor will carry onto node.utterance_ids.
+    utterances: List[Dict[str, Any]] = []
+    for turn in payload.turns:
+        utterances.append({
+            "id": str(_uuid.uuid4()),
+            "text": turn.text,
+            "speaker_id": turn.speaker_id or "SPEAKER_00",
+            "sequence_number": turn.seq,
+            "timestamp_start": turn.ts_start,
+            "timestamp_end": turn.ts_end,
+            "source_identifier": turn.source_identifier,
+            "platform_metadata": ({"contact_id": turn.contact_id} if turn.contact_id else {}),
+        })
+    logger.info(
+        "[from-turns] minted %d utterances for %d turns (conversation %s)",
+        len(utterances), len(payload.turns), conversation_id,
+    )
+
+    # 2. Configured LLM backend (server-side import → no BYOK session override).
+    llm_config = await load_llm_config(db)
+    providers_cfg = await load_llm_providers(db, include_secrets=True)
+    providers = providers_cfg.get("providers") if isinstance(providers_cfg, dict) else []
+
+    async def _noop(*_a, **_k):
+        return None
+
+    processor = TranscriptProcessor(
+        send_update=_noop, send_status=None,
+        llm_config=llm_config, providers=providers or [],
+    )
+
+    # 3. Extract — feed each turn with its minted utterance_id so the emitted
+    #    nodes get utterance_ids + chunk_utterance_map (transcript_processing.py).
+    for turn, utt in zip(payload.turns, utterances):
+        await processor.handle_final_text(
+            turn.text,
+            speaker_segments=[{"speaker": utt["speaker_id"], "text": turn.text}],
+            utterance_id=utt["id"],
+        )
+    await processor.flush()
+    existing = list(processor.existing_json)
+
+    # 4. Build the tier hierarchy (ideas→topics→themes→arcs), mirroring the live
+    #    + bulk post-flush consolidation so the map is drillable. A consolidation
+    #    LLM hiccup must NOT lose the import — the L1 nodes are the auditable core
+    #    and higher tiers are enhancement, so failures here are caught + logged.
+    summary = ""
+    tiers_built: List[str] = []
+
+    def _of_level(nodes, lvl):
+        return [n for n in nodes if isinstance(n, dict) and int(n.get("semantic_level") or n.get("level") or 0) == lvl]
+
+    try:
+        ideas = _of_level(existing, 2)
+        if len(ideas) >= MIN_IDEAS_FOR_TOPIC_CONSOLIDATION:
+            topics = await consolidate_ideas_to_topics(ideas, providers=providers or [])
+            if topics:
+                existing.extend(topics)
+                tiers_built.append("topics")
+                if len(topics) >= MIN_TOPICS_FOR_THEME_CONSOLIDATION:
+                    themes = await consolidate_topics_to_themes(topics, providers=providers or [])
+                    if themes:
+                        existing.extend(themes)
+                        tiers_built.append("themes")
+                        if len(themes) >= MIN_THEMES_FOR_ARC_CONSOLIDATION:
+                            arcs, _title, s = await consolidate_themes_to_arcs(themes, providers=providers or [])
+                            if arcs:
+                                existing.extend(arcs)
+                                tiers_built.append("arcs")
+                                summary = s or summary
+    except Exception as exc:  # noqa: BLE001 — consolidation is best-effort
+        logger.warning(
+            "[from-turns] consolidation failed after tiers=%s; persisting L1 graph anyway: %r",
+            tiers_built, exc,
+        )
+
+    # 5. Persist with provenance: source_identifier per utterance,
+    #    indrasnet_group_id on the conversation, utterance_chunk_map so
+    #    node.utterance_ids resolve. persist_graph creates the Conversation.
+    node_count = await persist_graph(
+        db=db,
+        conversation_id=conversation_id,
+        existing_json=existing,
+        utterances=utterances,
+        conversation_name=payload.conversation_name or f"{payload.source_type} import",
+        source_type=payload.source_type,
+        owner_id=owner_id,
+        utterance_chunk_map=processor.chunk_utterance_map,
+        indrasnet_group_id=payload.group_id,
+        source_metadata=({"executive_summary": summary} if summary else {}),
+    )
+
+    auditable_nodes = sum(1 for n in existing if n.get("utterance_ids"))
+    return {
+        "conversation_id": conversation_id,
+        "utterance_count": len(utterances),
+        "node_count": node_count,
+        "auditable_node_count": auditable_nodes,
+        "indrasnet_group_id": payload.group_id,
+        "executive_summary": summary or None,
+    }

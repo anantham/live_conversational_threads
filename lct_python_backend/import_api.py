@@ -30,9 +30,11 @@ from lct_python_backend.services.import_diarization_queue import (
 )
 from lct_python_backend.services.import_orchestrator import (
     parse_transcript,
+    parse_validate_and_extract,
     parse_validate_and_persist,
     validate_or_raise,
 )
+from lct_python_backend.models.import_contract import RawTurnPayload
 from lct_python_backend.services.import_validation import (
     get_supported_import_formats,
     is_url_import_enabled,
@@ -354,6 +356,57 @@ async def import_from_text(
         message=f"Successfully imported transcript with {result.utterance_count} utterances",
         utterance_count=result.utterance_count,
         participant_count=result.participant_count,
+    )
+
+
+class ImportTurnsResponse(BaseModel):
+    """Response for the structured RawTurn import — surfaces auditability up front."""
+
+    success: bool
+    conversation_id: str
+    utterance_count: int
+    node_count: int
+    auditable_node_count: int
+    indrasnet_group_id: Optional[str] = None
+    message: str
+
+
+@router.post("/from-turns", response_model=ImportTurnsResponse)
+async def import_from_turns(
+    payload: RawTurnPayload,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Import a conversation from a structured, versioned RawTurn[] payload (P1).
+
+    The AUDITABLE import path: each turn carries an immutable ``source_identifier``;
+    utterance UUIDs are minted before extraction and threaded through the graph
+    builder, so every node links to its raw turns (``node.source_ref``) and the
+    conversation links to IndrasNet via ``indrasnet_group_id``. Unlike
+    ``/from-text`` (lossy markdown), this preserves turn identity + provenance.
+    Owner-scoped (AUTH_TOKEN). Runs synchronously — chunk very large backlogs.
+    """
+    try:
+        stats = await parse_validate_and_extract(
+            db, payload, owner_id=resolve_owner_id(payload.owner_id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("Structured turn import failed: %s", exc)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to import turns: {exc}")
+
+    return ImportTurnsResponse(
+        success=True,
+        conversation_id=stats["conversation_id"],
+        utterance_count=stats["utterance_count"],
+        node_count=stats["node_count"],
+        auditable_node_count=stats["auditable_node_count"],
+        indrasnet_group_id=stats.get("indrasnet_group_id"),
+        message=(
+            f"Imported {stats['utterance_count']} turns → {stats['node_count']} nodes "
+            f"({stats['auditable_node_count']} auditable)"
+        ),
     )
 
 
