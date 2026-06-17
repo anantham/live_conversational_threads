@@ -23,8 +23,8 @@ def _fake_run_stage(engine, prompt, **kwargs):
     """Dispatch by the unique marker of each stage's prompt."""
     if "fact-checking ONE synthesized point" in prompt:  # Stage 3b VERIFY
         return json.dumps({"verdict": "SUPPORTED", "speaker_ok": True, "reason": "matches units"})
-    if "RECURRING CRUXES" in prompt:  # Stage 3 SYNTHESIZE
-        return "## Cruxes\n- They debated shipping vs schema readiness [2025-01-01] [2025-02-01]"
+    if "RECURRING CRUXES" in prompt:  # Stage 3 SYNTHESIZE — cite unit ids
+        return "## Cruxes\n- They debated shipping vs schema readiness [u1] [u2]"
     if "extract the substantive claim-units" in prompt:  # Stage 1 EXTRACT
         if "portal" in prompt:
             return json.dumps({"units": [

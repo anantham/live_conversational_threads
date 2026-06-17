@@ -5,6 +5,8 @@ import pytest
 from lct_python_backend.services.synthesis import contact_policy
 from lct_python_backend.services.synthesis.contact_policy import (
     ContactPrivacyPolicy,
+    _as_bool,
+    _parse_policy,
     default_policy,
     fetch_policy,
     resolve_engine,
@@ -61,11 +63,25 @@ class TestResolveEngine:
         assert d.engine == "local"
         assert d.downgraded is True
 
-    def test_disabled_contact_downgrades(self, monkeypatch):
+    def test_disabled_contact_refuses_entirely(self, monkeypatch):
         monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
         p = ContactPrivacyPolicy("a", enabled=False, local_llm_ok=True, external_llm_ok=True)
         d = resolve_engine([p], "codex")
-        assert d.engine == "local"
+        assert d.engine == "none"  # not even local — data must not be processed
+
+    def test_local_denied_refuses_even_local(self, monkeypatch):
+        monkeypatch.setenv("LCT_LOCAL_ONLY", "1")
+        p = ContactPrivacyPolicy("a", enabled=True, local_llm_ok=False, external_llm_ok=False)
+        d = resolve_engine([p], "local")
+        assert d.engine == "none"  # local_llm_ok=0 → refuse even local processing
+
+    def test_remote_source_auto_requires_signature(self, monkeypatch):
+        monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+        p = _consenting("a")
+        p.source_is_local = False  # policy came from a remote/federated IndrasNet
+        d = resolve_engine([p], "codex")
+        assert d.engine == "local"  # no valid signature → fail closed
+        assert d.downgraded is True
 
     def test_mandatory_signature_downgrades_unsigned(self, monkeypatch):
         monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
@@ -90,6 +106,26 @@ class TestVerifySignature:
         p = _consenting("a")
         p.signature = "deadbeef"
         assert verify_signature(p, require=True) is False
+
+
+class TestStrictBoolParsing:
+    def test_as_bool_truth_table(self):
+        assert _as_bool(True) is True
+        assert _as_bool(1) is True
+        assert _as_bool("yes") is True
+        assert _as_bool("TRUE") is True
+        # Fail-closed: anything odd → False, never accidental consent.
+        assert _as_bool("false") is False
+        assert _as_bool("0") is False
+        assert _as_bool(None) is False
+        assert _as_bool({"x": 1}) is False
+
+    def test_string_false_does_not_grant_consent(self):
+        # The codex finding: bool("false") was True → would wrongly grant external.
+        p = _parse_policy("a", {"enabled": "true", "external_llm_ok": "false", "local_llm_ok": "0"})
+        assert p.enabled is True
+        assert p.external_llm_ok is False
+        assert p.local_llm_ok is False
 
 
 class TestFetchPolicy:

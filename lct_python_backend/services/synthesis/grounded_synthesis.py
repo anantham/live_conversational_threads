@@ -36,6 +36,11 @@ from lct_python_backend.services.synthesis.grounding import ClaimUnit
 logger = logging.getLogger(__name__)
 
 _DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
+_UNIT_REF_RE = re.compile(r"\b(u\d+)\b")
+
+
+class SynthesisRefused(PermissionError):
+    """Raised when a participant's policy forbids processing the data at all."""
 
 
 @dataclass
@@ -51,10 +56,14 @@ class Conversation:
 @dataclass
 class CitationVerdict:
     point: str
-    cited_dates: List[str]
+    cited_refs: List[str]  # unit ids (preferred) or dates the point cited
     verdict: str  # SUPPORTED | OVERSTATED | UNSUPPORTED | UNCHECKED
     speaker_ok: bool
     reason: str
+
+    @property
+    def is_clean(self) -> bool:
+        return self.verdict == "SUPPORTED" and self.speaker_ok
 
 
 @dataclass
@@ -92,7 +101,7 @@ class SynthesisResult:
             "citation_verdicts": [
                 {
                     "point": v.point,
-                    "cited_dates": v.cited_dates,
+                    "cited_refs": v.cited_refs,
                     "verdict": v.verdict,
                     "speaker_ok": v.speaker_ok,
                     "reason": v.reason,
@@ -148,7 +157,7 @@ def extract_units(
 
 def _units_blob(units: List[ClaimUnit]) -> str:
     return "\n".join(
-        f'- [{u.date}] {u.speaker}: "{u.quote}"  =>  {u.claim}' for u in units
+        f'- [{u.unit_id} · {u.date}] {u.speaker}: "{u.quote}"  =>  {u.claim}' for u in units
     )
 
 
@@ -166,8 +175,12 @@ def verify_citations(
 
     This is the second-line check the existence-gate cannot perform (entailment +
     speaker attribution). Best-effort: a model judges {point, cited-units}, which
-    is cheap. Points without a [date] citation are skipped.
+    is cheap. A point is checked against the EXACT units it cites by id ([u12]);
+    only when it cites no resolvable id do we fall back to coarse date-grouping
+    (which can over-match when several units share a date). Points citing neither
+    an id nor a date are skipped.
     """
+    by_id: Dict[str, ClaimUnit] = {u.unit_id: u for u in grounded_units if u.unit_id}
     by_date: Dict[str, List[ClaimUnit]] = {}
     for u in grounded_units:
         by_date.setdefault(u.date, []).append(u)
@@ -176,15 +189,23 @@ def verify_citations(
     seen = set()
     for line in markdown.splitlines():
         point = line.strip().lstrip("-*# ").strip()
+        ids = list(dict.fromkeys(_UNIT_REF_RE.findall(point)))
         dates = sorted(set(_DATE_RE.findall(point)))
-        if not dates or len(point) < 25 or point in seen:
+        if (not ids and not dates) or len(point) < 25 or point in seen:
             continue
         seen.add(point)
         if len(verdicts) >= max_points:
             break
-        cited = [u for d in dates for u in by_date.get(d, [])]
+        # Prefer EXACT cited units (by id); fall back to date-grouping only when no
+        # id resolves (finding #3: date-only keying can falsely support a claim).
+        cited = [by_id[i] for i in ids if i in by_id]
+        if cited:
+            refs = [u.unit_id for u in cited]
+        else:
+            cited = [u for d in dates for u in by_date.get(d, [])]
+            refs = dates
         if not cited:
-            verdicts.append(CitationVerdict(point, dates, "UNSUPPORTED", False, "no grounded units for cited date(s)"))
+            verdicts.append(CitationVerdict(point, ids or dates, "UNSUPPORTED", False, "no grounded unit for cited ref(s)"))
             continue
         prompt = prompts.VERIFY_CITATION.format(units=_units_blob(cited), point=point)
         try:
@@ -197,13 +218,13 @@ def verify_citations(
             if verdict not in {"SUPPORTED", "OVERSTATED", "UNSUPPORTED"}:
                 verdict = "UNCHECKED"
             verdicts.append(CitationVerdict(
-                point, dates, verdict,
+                point, refs, verdict,
                 bool(j.get("speaker_ok", False)),
                 str(j.get("reason", ""))[:200],
             ))
         except Exception as exc:  # noqa: BLE001
             logger.warning("[synthesis] citation verify failed: %s", type(exc).__name__)
-            verdicts.append(CitationVerdict(point, dates, "UNCHECKED", False, f"verify error: {type(exc).__name__}"))
+            verdicts.append(CitationVerdict(point, refs, "UNCHECKED", False, f"verify error: {type(exc).__name__}"))
     return verdicts
 
 
@@ -230,6 +251,8 @@ def synthesize(
     if contact_ids:
         policies = [contact_policy.fetch_policy(cid) for cid in contact_ids]
         decision = contact_policy.resolve_engine(policies, engine)
+        if decision.engine == "none":
+            raise SynthesisRefused(f"refusing to synthesize: {decision.reason}")
         if decision.engine != engine:
             logger.info("[synthesis] engine %r -> %r (%s)", engine, decision.engine, decision.reason)
         engine = decision.engine
@@ -257,6 +280,8 @@ def synthesize(
     for c, units in extracted:
         gate.merge(grounding.ground_units(units, c.text))
     gate.grounded.sort(key=lambda u: u.date)
+    for i, u in enumerate(gate.grounded):
+        u.unit_id = f"u{i + 1}"  # stable id so synthesis cites the EXACT unit
     logger.info(
         "[synthesis] gate: %d grounded, %d dropped (%.0f%% quote-mismatch)",
         len(gate.grounded), len(gate.dropped), gate.drop_rate,
@@ -288,26 +313,46 @@ def synthesize(
 
 
 def render_report(result: SynthesisResult, *, participants: str = "the two participants") -> str:
-    """Render the full markdown artifact (synthesis + provenance + verification)."""
+    """Render the full markdown artifact (synthesis + provenance + verification).
+
+    Honest scoping (codex finding #2): the deterministic gate applies to the UNITS
+    (grounded or dropped). The synthesis PROSE is constrained to grounded units and
+    then verified — it is NOT auto-pruned, so any point that fails verification is
+    surfaced PROMINENTLY at the top rather than silently presented as established.
+    """
     tally = result.citation_tally
+    flagged = [v for v in result.citation_verdicts if not v.is_clean]
     lines = [
         f"# Grounded synthesis ({participants})",
         "",
         f"_Provenance-first: {len(result.grounded_units)} machine-verified grounded units; "
         f"{len(result.dropped_units)} ungrounded dropped ({result.quote_mismatch_rate:.0f}% "
-        f"quote-mismatch rate). Engine: {result.engine}. Prompt v{result.prompt_version}._",
+        f"quote-mismatch rate — quotes that were not verbatim, NOT a measure of claim truth). "
+        f"Engine: {result.engine}. Prompt v{result.prompt_version}._",
         "",
     ]
     if result.citation_verdicts:
         lines += [
-            f"_Citation check: SUPPORTED {tally['SUPPORTED']} · OVERSTATED {tally['OVERSTATED']} "
-            f"· UNSUPPORTED {tally['UNSUPPORTED']} · UNCHECKED {tally['UNCHECKED']}._",
+            f"_Citation check (advisory, second-line): SUPPORTED {tally['SUPPORTED']} · "
+            f"OVERSTATED {tally['OVERSTATED']} · UNSUPPORTED {tally['UNSUPPORTED']} · "
+            f"UNCHECKED {tally['UNCHECKED']}. The synthesis is constrained to grounded units "
+            f"and then verified; it is not auto-pruned._",
             "",
         ]
-    lines += [result.markdown, "", "---", "", "# Grounded unit index (claim → verbatim source)", "", _units_blob(result.grounded_units)]
+    if flagged:
+        lines += [
+            f"> ⚠ **{len(flagged)} synthesized point(s) did NOT pass citation verification** "
+            f"(overstated / unsupported / wrong speaker / unchecked) — treat as unverified:",
+            "",
+        ]
+        for v in flagged:
+            lines.append(f"> - **{v.verdict}** (speaker_ok={v.speaker_ok}) — {v.point}  \n>   {v.reason}")
+        lines.append("")
+    lines += [result.markdown, "", "---", "", "# Grounded unit index ([id · date] → verbatim source)", "", _units_blob(result.grounded_units)]
     if result.citation_verdicts:
         lines += ["", "---", "", "# Citation verification (per synthesized point)", ""]
         for v in result.citation_verdicts:
-            flag = "" if (v.verdict == "SUPPORTED" and v.speaker_ok) else " ⚠"
-            lines.append(f"- **{v.verdict}**{flag} (speaker_ok={v.speaker_ok}) — {v.point}\n  - {v.reason}")
+            flag = "" if v.is_clean else " ⚠"
+            refs = " ".join(v.cited_refs)
+            lines.append(f"- **{v.verdict}**{flag} (speaker_ok={v.speaker_ok}) [{refs}] — {v.point}\n  - {v.reason}")
     return "\n".join(lines)

@@ -276,3 +276,28 @@ endpoint+payload don't exist; (3) false confidence from "verified signatures" th
 request-auth infra; (4) grounding gate accepts quotes without validating claim entailment/speaker
 /Stage-3 output; (5) contact-policy fallback incomplete (`/api/contacts` lacks `privacy_norms`/
 `enabled`).
+
+## 10. Post-build code review (codex GPT-5.5, read-only, 2026-06-17)
+
+After the PR#1 code landed (fd9469a), an independent codex review of the package returned
+**BLOCK with 8 findings**. I adjudicated each against the code — **all 8 were real** (no false
+positives) — and fixed them (follow-up commit):
+- **#1 (High)** `resolve_engine` skipped `enabled`/`local_llm_ok` for local → now enforced for
+  every engine; a disabled/local-denied contact resolves to `"none"` and `synthesize` refuses.
+- **#2 (High)** Stage-3 verification was advisory but the report presented unverified prose as
+  fact → `render_report` now surfaces every non-SUPPORTED point in a prominent ⚠ block, and the
+  claim is honestly scoped (the deterministic gate covers UNITS; the prose is *verified+flagged*,
+  not auto-pruned).
+- **#3 (High)** citation verify keyed by date → could falsely support when units share a date →
+  grounded units now carry stable ids (`u1…`), synthesis cites `[u12]`, verify checks the EXACT
+  unit (date-grouping only as a flagged fallback).
+- **#4 (Med)** non-loopback policy source now auto-requires a valid signature (fail-closed).
+- **#5 (Med)** loud warning when an external call uses the built-in (denylist) redaction map;
+  full fix (canonical map) is PR#2.
+- **#6 (Med)** redaction now scrubs emails/handles BEFORE names (`@vatsal_mehra` → `[handle]`),
+  handle charset widened.
+- **#7 (Med)** strict fail-closed bool parse for policy fields (`"false"` no longer → `True`).
+- **#8 (Low)** removed the unimplemented `--engine auto` from CLI docs.
+
+Tests grew 45 → 50 (all green). The codex review pattern (cross-frontier, read-only) again
+earned its keep — these were substantive, not nits.

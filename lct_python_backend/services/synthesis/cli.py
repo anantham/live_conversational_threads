@@ -5,8 +5,9 @@
 Reads a directory of transcript ``.txt`` files (optionally with a ``manifest.json``
 of ``[{"file","date","title"}]``) and produces a grounded synthesis markdown +
 a machine-readable ``.synthesis.json`` (the grounded units, drop set, and citation
-verdicts). Default engine is local; ``--engine auto`` resolves via per-contact
-policy (and stays local while LCT_LOCAL_ONLY is on).
+verdicts). Default engine is local; passing ``--contact`` fetches each contact's
+policy and resolves the engine most-restrictively (and stays local while
+LCT_LOCAL_ONLY is on).
 
 This is an ENTRY POINT, so it loads ``.env`` itself (service modules don't).
 """
