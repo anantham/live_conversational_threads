@@ -29,12 +29,11 @@ from lct_python_backend.services.import_diarization_queue import (
     is_async_import_diarization_enabled,
 )
 from lct_python_backend.services.import_orchestrator import (
+    extract_graph_for_conversation,
     parse_transcript,
-    parse_validate_and_extract,
     parse_validate_and_persist,
     validate_or_raise,
 )
-from lct_python_backend.models.import_contract import RawTurnPayload
 from lct_python_backend.services.graph_persistence import persist_turns
 from lct_python_backend.raw_turn_contract import RawTurnsPayloadV1
 from lct_python_backend.services.import_validation import (
@@ -373,30 +372,48 @@ class ImportTurnsResponse(BaseModel):
     message: str
 
 
-@router.post("/from-turns", response_model=ImportTurnsResponse)
-async def import_from_turns(
-    payload: RawTurnPayload,
+class ExtractTurnsRequest(BaseModel):
+    """Phase-2 trigger: build the graph for turns already persisted by ``/turns``.
+
+    Identify the conversation by its LCT ``conversation_id`` (returned by
+    ``/turns``) or by IndrasNet ``group_id`` (+ ``owner_id``). At least one is
+    required; the orchestrator enforces it.
+    """
+
+    conversation_id: Optional[str] = None
+    group_id: Optional[str] = None
+    owner_id: Optional[str] = None
+
+
+@router.post("/turns/extract", response_model=ImportTurnsResponse)
+async def extract_turns(
+    request: ExtractTurnsRequest,
     db: AsyncSession = Depends(get_async_session),
 ):
-    """Import a conversation from a structured, versioned RawTurn[] payload (P1).
+    """Phase 2 of the structured RawTurn pipeline: build the auditable graph from
+    turns already persisted by ``POST /api/import/turns``.
 
-    The AUDITABLE import path: each turn carries an immutable ``source_identifier``;
-    utterance UUIDs are minted before extraction and threaded through the graph
-    builder, so every node links to its raw turns (``node.source_ref``) and the
-    conversation links to IndrasNet via ``indrasnet_group_id``. Unlike
-    ``/from-text`` (lossy markdown), this preserves turn identity + provenance.
-    Owner-scoped (AUTH_TOKEN). Runs synchronously — chunk very large backlogs.
+    Separating persist (idempotent mirror) from extract (the LLM pass) makes
+    extraction re-runnable WITHOUT IndrasNet re-sending the turns — re-extract a
+    conversation (e.g. with a better model) by POSTing its ``conversation_id`` or
+    ``group_id`` again. Utterance UUIDs are authored at persist time and threaded
+    onto ``node.utterance_ids`` here, so every node is auditable to its raw turns.
+    Owner-scoped (AUTH_TOKEN). Runs synchronously — the graph is destructively
+    re-materialized; the persisted turns are left untouched.
     """
     try:
-        stats = await parse_validate_and_extract(
-            db, payload, owner_id=resolve_owner_id(payload.owner_id),
+        stats = await extract_graph_for_conversation(
+            db,
+            conversation_id=request.conversation_id,
+            group_id=request.group_id,
+            owner_id=resolve_owner_id(request.owner_id),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
-        logger.error("Structured turn import failed: %s", exc)
+        logger.error("Structured turn extraction failed: %s", exc)
         await db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to import turns: {exc}")
+        raise HTTPException(status_code=500, detail=f"Failed to extract turns: {exc}")
 
     return ImportTurnsResponse(
         success=True,
@@ -406,7 +423,7 @@ async def import_from_turns(
         auditable_node_count=stats["auditable_node_count"],
         indrasnet_group_id=stats.get("indrasnet_group_id"),
         message=(
-            f"Imported {stats['utterance_count']} turns → {stats['node_count']} nodes "
+            f"Extracted {stats['node_count']} nodes from {stats['utterance_count']} turns "
             f"({stats['auditable_node_count']} auditable)"
         ),
     )
