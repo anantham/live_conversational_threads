@@ -77,6 +77,16 @@ export default function InferenceLanes() {
 
   const setSttPrimary = useCallback(
     (entry) => {
+      // Planned engines (vendor-listed but not wired/built here) can't actually
+      // serve — saving one would silently fall back. Block with the install hint.
+      if (entry.status === 'planned') {
+        setNotice({
+          kind: 'warn',
+          text: `${entry.display_name} isn't wired yet (planned)${entry.install_hint ? ` — ${entry.install_hint}` : ''}. It can't be the active engine until built.`,
+        });
+        setTimeout(() => setNotice(null), 8000);
+        return undefined;
+      }
       // Whisper-family engines share provider_key 'whisper'. Without their own HTTP
       // endpoint, saving provider='whisper' silently resolves back to the default
       // local server — so don't fake the switch; point the user at Advanced.
@@ -88,15 +98,29 @@ export default function InferenceLanes() {
         setTimeout(() => setNotice(null), 7000);
         return undefined;
       }
-      return guarded(async () => {
-        const cur = sttSettings || (await getSttSettings());
-        const next = { ...cur, provider: entry.provider_key };
-        if (entry.provider_key === 'whisper' && entry.endpoint) {
-          next.provider_http_urls = { ...(cur.provider_http_urls || {}), whisper: entry.endpoint };
-          next.http_url = entry.endpoint;
-        }
-        await updateSttSettings(next);
-      }, `STT set to ${entry.display_name}`);
+      // Language-coverage honesty: an engine with no Indic languages can't do
+      // Hindi/Malayalam. Don't block (English-only is a valid choice) — just say so.
+      const indic = (entry.languages && entry.languages.indic) || [];
+      const langOverride =
+        indic.length === 0
+          ? {
+              kind: 'warn',
+              text: `${entry.display_name}: ${(entry.languages && entry.languages.note) || 'no Hindi/Indic coverage'}. Fine for English sessions; for Hindi/Malayalam pick a Whisper or Qwen3 engine.`,
+            }
+          : undefined;
+      return guarded(
+        async () => {
+          const cur = sttSettings || (await getSttSettings());
+          const next = { ...cur, provider: entry.provider_key };
+          if (entry.provider_key === 'whisper' && entry.endpoint) {
+            next.provider_http_urls = { ...(cur.provider_http_urls || {}), whisper: entry.endpoint };
+            next.http_url = entry.endpoint;
+          }
+          await updateSttSettings(next);
+        },
+        `STT set to ${entry.display_name}`,
+        langOverride,
+      );
     },
     [guarded, sttSettings],
   );

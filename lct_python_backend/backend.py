@@ -197,7 +197,16 @@ async def lifespan(app: FastAPI):
 # APP CREATION & MIDDLEWARE
 # ============================================================================
 
-lct_app = FastAPI(lifespan=lifespan)
+# Disable interactive API docs + schema in production (defense-in-depth; they are
+# already behind the auth middleware unless AUTH_TOKEN is unset).
+_ENVIRONMENT = str(os.getenv("ENVIRONMENT", "development")).strip().lower()
+_docs_enabled = _ENVIRONMENT != "production"
+lct_app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
 
 cors_origins, cors_origin_regex = _resolve_cors_origins()
 
@@ -246,7 +255,6 @@ from lct_python_backend.analysis_api import router as analysis_router
 from lct_python_backend.analytics_api import router as analytics_router
 from lct_python_backend.graph_api import router as graph_router
 from lct_python_backend.canvas_api import router as canvas_router
-from lct_python_backend.thematic_api import router as thematic_router
 from lct_python_backend.artifact_api import router as artifact_router
 from lct_python_backend.speaker_naming_api import (
     router as voice_library_router,
@@ -275,7 +283,6 @@ lct_app.include_router(analysis_router)
 lct_app.include_router(analytics_router)
 lct_app.include_router(graph_router)
 lct_app.include_router(canvas_router)
-lct_app.include_router(thematic_router)
 lct_app.include_router(artifact_router)
 # voice_library_router has prefix /api (speaker-voice-library endpoints).
 # conversation_speakers_router has prefix /api/conversations and exposes

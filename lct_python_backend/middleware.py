@@ -10,6 +10,7 @@ Auth supports two deployment modes:
   admin/sensitive HTTP routes while keeping public trial flows anonymous
 """
 
+import hmac
 import logging
 import os
 import time
@@ -29,6 +30,7 @@ logger = logging.getLogger("lct_backend")
 
 AUTH_TOKEN: Optional[str] = os.getenv("AUTH_TOKEN")
 ADMIN_AUTH_TOKEN: Optional[str] = os.getenv("ADMIN_AUTH_TOKEN")
+IS_PRODUCTION: bool = os.getenv("ENVIRONMENT", "development").strip().lower() == "production"
 
 # Paths that never require auth (exact match after stripping trailing slash)
 HEALTH_PATHS: Set[str] = {
@@ -163,7 +165,7 @@ def _check_bearer_token(auth_header: Optional[str]) -> bool:
     parts = auth_header.split(" ", 1)
     if len(parts) != 2 or parts[0].lower() != "bearer":
         return False
-    return parts[1] == AUTH_TOKEN
+    return hmac.compare_digest(parts[1].encode(), AUTH_TOKEN.encode())
 
 
 def _check_admin_bearer_token(auth_header: Optional[str]) -> bool:
@@ -175,7 +177,7 @@ def _check_admin_bearer_token(auth_header: Optional[str]) -> bool:
     parts = auth_header.split(" ", 1)
     if len(parts) != 2 or parts[0].lower() != "bearer":
         return False
-    return parts[1] == ADMIN_AUTH_TOKEN
+    return hmac.compare_digest(parts[1].encode(), ADMIN_AUTH_TOKEN.encode())
 
 
 def _requires_admin_auth(path: str, method: str) -> bool:
@@ -268,7 +270,7 @@ def check_ws_auth(websocket: WebSocket) -> bool:
     if not AUTH_TOKEN:
         return True
     token = websocket.query_params.get("token")
-    return token == AUTH_TOKEN
+    return isinstance(token, str) and hmac.compare_digest(token.encode(), AUTH_TOKEN.encode())
 
 
 WS_AUTH_TIMEOUT_SECONDS = 10
@@ -294,11 +296,6 @@ async def check_ws_auth_message(websocket: WebSocket) -> bool:
     if not AUTH_TOKEN:
         return True
 
-    # Also accept legacy query-param token (transition period)
-    query_token = websocket.query_params.get("token")
-    if query_token == AUTH_TOKEN:
-        return True
-
     try:
         first_msg = await asyncio.wait_for(
             websocket.receive_json(),
@@ -313,7 +310,7 @@ async def check_ws_auth_message(websocket: WebSocket) -> bool:
         return False
 
     token = first_msg.get("token")
-    if token == AUTH_TOKEN:
+    if isinstance(token, str) and hmac.compare_digest(token.encode(), AUTH_TOKEN.encode()):
         return True
 
     await websocket.send_json({"type": "error", "detail": "Unauthorized: invalid token"})
@@ -559,10 +556,23 @@ def configure_p0_security(app):
     elif ADMIN_AUTH_TOKEN:
         token_status = "ENFORCED (admin routes only)"
     else:
+        allow_no_auth = os.getenv("ALLOW_NO_AUTH", "").strip().lower() in {"1", "true", "yes"}
+        if IS_PRODUCTION and not allow_no_auth:
+            raise RuntimeError(
+                "AUTH_TOKEN (or ADMIN_AUTH_TOKEN) must be set when ENVIRONMENT=production. "
+                "Set a token, or set ALLOW_NO_AUTH=true to explicitly run without auth."
+            )
         token_status = "DISABLED (AUTH_TOKEN / ADMIN_AUTH_TOKEN not set)"
     url_import = "ENABLED" if ENABLE_URL_IMPORT else "DISABLED"
     logger.info("[SECURITY] P0 middleware configured:")
     logger.info("[SECURITY]   Auth: %s", token_status)
+    if AUTH_TOKEN and not os.getenv("AUDIO_DOWNLOAD_TOKEN"):
+        logger.warning(
+            "[SECURITY] AUTH_TOKEN is set but AUDIO_DOWNLOAD_TOKEN is unset — "
+            "GET /api/conversations/{id}/audio is UNAUTHENTICATED (the one open "
+            "data route; <audio> tags cannot send the bearer header). Set "
+            "AUDIO_DOWNLOAD_TOKEN, or migrate private audio to signed URLs (ADR-034 D15)."
+        )
     logger.info("[SECURITY]   URL import: %s", url_import)
     logger.info("[SECURITY]   Rate limits: expensive=%d, mutate=%d, read=%d per %ds",
                 RATE_LIMIT_EXPENSIVE, RATE_LIMIT_MUTATE, RATE_LIMIT_READ, RATE_LIMIT_WINDOW)
