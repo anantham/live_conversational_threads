@@ -1,4 +1,4 @@
-import { apiFetch } from './apiClient';
+import { apiFetch, readErrorMessage } from './apiClient';
 
 const SETTINGS_PATH = '/api/settings/stt';
 const TELEMETRY_PATH = `${SETTINGS_PATH}/telemetry`;
@@ -7,8 +7,7 @@ const CLOUD_PROVIDER_TEST_PATH = `${SETTINGS_PATH}/cloud-provider-test`;
 
 async function handleResponse(response) {
   if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "STT settings request failed");
+    throw new Error(await readErrorMessage(response, "STT settings request failed"));
   }
   return response.json();
 }

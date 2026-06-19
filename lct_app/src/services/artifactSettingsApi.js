@@ -1,4 +1,4 @@
-import { apiFetch } from "./apiClient";
+import { apiFetch, readErrorMessage } from "./apiClient";
 
 const SETTINGS_PATH = "/api/settings/artifact-export";
 const TEST_WRITE_PATH = `${SETTINGS_PATH}/test-write`;
@@ -7,14 +7,7 @@ const buildReroutePath = (conversationId) =>
 
 async function handleResponse(response) {
   if (!response.ok) {
-    let detail = "";
-    try {
-      const payload = await response.json();
-      detail = payload?.detail || "";
-    } catch {
-      detail = await response.text();
-    }
-    throw new Error(detail || "Artifact export settings request failed");
+    throw new Error(await readErrorMessage(response, "Artifact export settings request failed"));
   }
   return response.json();
 }

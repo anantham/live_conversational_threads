@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
-import { apiFetch } from "../services/apiClient";
+import { apiFetch, readErrorMessage } from "../services/apiClient";
 
 const POLL_INTERVAL_MS = 30000;
 // Quick settings GETs.
@@ -85,8 +85,8 @@ async function postJson(path, payload, timeoutMs = PROBE_TIMEOUT_MS) {
     timeoutMs,
   );
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(text || `HTTP ${response.status}`);
+    // Diagnostics panel — allow a larger body so proxy/5xx tracebacks survive.
+    throw new Error(await readErrorMessage(response, `HTTP ${response.status}`, { cap: 1000 }));
   }
   return response.json();
 }
@@ -109,8 +109,12 @@ function StatusPill({ details, label, state, summary }) {
       <div className="pointer-events-none fixed inset-x-3 bottom-16 z-20 translate-y-2 rounded-2xl border border-slate-200 bg-white/95 p-3 text-left opacity-0 shadow-xl backdrop-blur transition duration-150 group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100 sm:absolute sm:inset-x-auto sm:bottom-full sm:left-0 sm:mb-3 sm:w-[min(22rem,calc(100vw-3rem))]">
         <p className="text-[11px] font-semibold text-slate-800">{summary}</p>
         <div className="mt-2 space-y-1.5">
-          {details.map((detail) => (
-            <div key={`${label}-${detail.label}`} className="flex items-start justify-between gap-3 text-[11px]">
+          {details.map((detail, i) => (
+            // Include the index: a pill can carry two details with the same
+            // label (e.g. the LLM lane listing the same engine twice), which
+            // collided on `${label}-${detail.label}` and logged a React
+            // duplicate-key warning on every home load.
+            <div key={`${label}-${detail.label}-${i}`} className="flex items-start justify-between gap-3 text-[11px]">
               <span className="text-slate-500">{detail.label}</span>
               <span className="max-w-[12rem] text-right font-medium text-slate-700">
                 {detail.value}

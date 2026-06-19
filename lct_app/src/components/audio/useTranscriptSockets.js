@@ -4,6 +4,12 @@ import { sendWsAuth } from "../../services/apiClient";
 import { useByok } from "../../contexts/byokContext";
 import { BACKEND_WS_URL } from "./sttUtils";
 import { createBackendMessageHandler } from "./audioMessages";
+import { makeDebug } from "../../utils/debug";
+
+// STT client logs carry contact display_name / matched_phrase / speaker ids and
+// raw lifecycle strings. Keep them off the console by default (AGENTS.md #9);
+// they still ship to the backend WS so server-side session logs are unaffected.
+const sttDebug = makeDebug("stt");
 
 const arrayBufferToBase64 = (buffer) => {
   const bytes = new Uint8Array(buffer);
@@ -48,7 +54,7 @@ export default function useTranscriptSockets({
   const sessionMetaSentRef = useRef(false);
 
   const logToServer = useCallback((text) => {
-    console.log("[Client Log]", text);
+    sttDebug("[client]", text);
     if (backendWsRef.current?.readyState === WebSocket.OPEN) {
       backendWsRef.current.send(
         JSON.stringify({ type: "client_log", message: text })
@@ -142,6 +148,7 @@ export default function useTranscriptSockets({
               conversation_id: convoId,
               session_id: sessionId,
               provider: sttConfig?.provider || "parakeet",
+              http_language: sttConfig?.http_language || undefined,
               byok_session_token: byokSessionToken || undefined,
               store_audio: Boolean(sttConfig?.store_audio),
               speaker_id: sttConfig?.speaker_id || "speaker_1",

@@ -1,4 +1,4 @@
-import { apiFetch } from "./apiClient";
+import { apiFetch, readErrorMessage } from "./apiClient";
 
 export async function createByokSession({ apiKey }) {
   const response = await apiFetch("/api/byok/session", {
@@ -14,15 +14,9 @@ export async function createByokSession({ apiKey }) {
   });
 
   if (!response.ok) {
-    let detail = "Failed to create BYOK session.";
-    try {
-      const payload = await response.json();
-      detail = payload?.detail || detail;
-    } catch {
-      const text = await response.text();
-      if (text) detail = text;
-    }
-    throw new Error(detail);
+    // readErrorMessage drops FastAPI 422 `input` — critical here, where the
+    // submitted payload is the user's API key.
+    throw new Error(await readErrorMessage(response, "Failed to create BYOK session."));
   }
 
   return response.json();

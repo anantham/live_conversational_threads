@@ -8,8 +8,13 @@ from urllib.parse import urlparse
 import httpx
 
 from lct_python_backend.config import PERPLEXITY_API_KEY, PERPLEXITY_API_URL
+from lct_python_backend.services.env_helpers import env_bool
 
 logger = logging.getLogger(__name__)
+
+# Default OFF: upstream fact-check provider error bodies can echo the claims /
+# prompt (conversation content). Set TRACE_API_CALLS=1 to log them (AGENTS.md #9).
+TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=False)
 
 FACT_CHECK_MODEL = "sonar-pro"
 FACT_CHECK_TIMEOUT_SECONDS = 45
@@ -166,12 +171,15 @@ async def generate_fact_check_json_perplexity(claims: List[str]) -> Dict[str, An
             response = await client.post(PERPLEXITY_API_URL, json=payload, headers=headers)
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
+        # Failure stays loud (status + count); the raw upstream body is gated
+        # because it can echo the claims/prompt.
         logger.error(
-            "[FACTCHECK] Perplexity returned HTTP %s for %d claims: %s",
+            "[FACTCHECK] Perplexity returned HTTP %s for %d claims",
             exc.response.status_code,
             len(claims),
-            exc.response.text[:300],
         )
+        if TRACE_API_CALLS:
+            logger.debug("[FACTCHECK] upstream error body: %s", exc.response.text[:300])
         return build_unverified_results(claims, "Fact-check provider returned an upstream error.")
     except httpx.HTTPError as exc:
         logger.error("[FACTCHECK] Perplexity request failed: %s", str(exc))

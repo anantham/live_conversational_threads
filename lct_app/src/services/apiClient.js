@@ -11,6 +11,8 @@
  *   const ws = new WebSocket(wsUrl('/ws/transcripts'));
  */
 
+import { makeDebug } from "../utils/debug";
+
 // In dev mode (no VITE_BACKEND_API_URL set), use relative paths so Vite's
 // built-in proxy forwards requests to the backend — no CORS issues.
 // In production (Vercel etc.), set VITE_BACKEND_API_URL to the VPS URL.
@@ -18,12 +20,12 @@ export const API_BASE_URL =
   import.meta.env.VITE_BACKEND_API_URL || '';
 
 const AUTH_TOKEN = import.meta.env.VITE_AUTH_TOKEN || '';
-const TRACE_FLAG_RAW = import.meta.env.VITE_API_TRACE;
-const TRACE_FLAG = String(TRACE_FLAG_RAW ?? '').trim().toLowerCase();
-const TRACE_API =
-  TRACE_FLAG
-    ? ['1', 'true', 'yes', 'on'].includes(TRACE_FLAG)
-    : Boolean(import.meta.env.DEV);
+// API request/response tracing routes through the unified gate (utils/debug.js):
+// OFF by default in every environment — opt in with VITE_LCT_DEBUG=api or
+// window.__lctDebug.enable("api"). (Previously VITE_API_TRACE, which defaulted
+// ON in dev and previewed up to 500 chars of every response body to the console —
+// a content path; the preview below now only runs when the gate is enabled.)
+const apiDebug = makeDebug('api');
 const TRACE_PREVIEW_CHARS = 500;
 
 /**
@@ -49,12 +51,10 @@ export async function apiFetch(path, options = {}) {
   const url = `${API_BASE_URL}${path}`;
   const headers = apiHeaders(options.headers || {});
   const method = String(options.method || 'GET').toUpperCase();
-  if (TRACE_API) {
-    console.info(`[API ->] ${method} ${url}`);
-  }
+  apiDebug.info(`[API ->] ${method} ${url}`);
   try {
     const response = await fetch(url, { ...options, headers });
-    if (TRACE_API) {
+    if (apiDebug.enabled) {
       let preview = '';
       try {
         const contentType = response.headers.get('content-type') || '';
@@ -73,7 +73,7 @@ export async function apiFetch(path, options = {}) {
       } catch (previewError) {
         preview = `[preview unavailable: ${previewError}]`;
       }
-      console.info(
+      apiDebug.info(
         `[API <-] ${response.status} ${method} ${url}${preview ? ` | ${preview}` : ''}`
       );
     }
@@ -85,15 +85,15 @@ export async function apiFetch(path, options = {}) {
     const isNetworkDown =
       error instanceof TypeError && /failed to fetch/i.test(error.message);
     const isAborted = error?.name === 'AbortError';
-    if (TRACE_API) {
+    if (apiDebug.enabled) {
       if (isNetworkDown) {
-        console.warn(
+        apiDebug.warn(
           `[API !!] ${method} ${url} — backend unreachable (is the server running?${API_BASE_URL ? ` Target: ${API_BASE_URL}` : ' Check start.sh'})`
         );
       } else if (isAborted) {
-        console.info(`[API xx] ${method} ${url} aborted`);
+        apiDebug.info(`[API xx] ${method} ${url} aborted`);
       } else {
-        console.error(`[API !!] ${method} ${url}`, error);
+        apiDebug.error(`[API !!] ${method} ${url}`, error);
       }
     }
     if (isNetworkDown) {
@@ -106,6 +106,69 @@ export async function apiFetch(path, options = {}) {
     }
     throw error;
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Safe error-message extraction
+//
+// Privacy (AGENTS.md #9 / local-first): a server error response can echo the
+// request payload, conversation content, or a submitted secret — so it is never
+// surfaced raw. readErrorMessage() returns a SHORT, bounded message and every
+// server-controlled return path passes through cap() (no uncapped exit):
+//   - prefers the structured FastAPI `{ detail }` / `{ message }` field, but
+//     caps it too — HTTPException(detail=...) is server-controlled and can be
+//     arbitrarily long;
+//   - FastAPI 422 validation makes `detail` an array [{ loc, msg, type, input }];
+//     we keep only `msg` and DROP `input`/`loc` because `input` echoes the
+//     SUBMITTED value (e.g. a BYOK API key);
+//   - for a non-JSON body, salvages an HTML <title> (a proxy 502/504 page)
+//     before capping `<!DOCTYPE html>` boilerplate.
+// Must be called BEFORE any response.json()/.text() on the same Response (it
+// reads a non-destructive .clone()). Always resolves; never throws. Pass a
+// larger `cap` for developer-facing diagnostics surfaces.
+const ERROR_BODY_CAP = 200;
+
+function capErrorText(value, cap = ERROR_BODY_CAP) {
+  const text = String(value ?? '').trim();
+  if (text.length <= cap) return text;
+  return `${text.slice(0, cap)}… (+${text.length - cap} more chars)`;
+}
+
+export async function readErrorMessage(response, fallback = '', { cap = ERROR_BODY_CAP } = {}) {
+  const status = response?.status ?? '?';
+  const statusMsg = fallback || `Request failed (HTTP ${status})`;
+  let raw = '';
+  try {
+    raw = await response.clone().text();
+  } catch {
+    return statusMsg;
+  }
+  if (!raw.trim()) return statusMsg;
+
+  // Prefer a structured server message — but never return it uncapped.
+  try {
+    const payload = JSON.parse(raw);
+    const detail = payload?.detail ?? payload?.message ?? payload?.error;
+    if (typeof detail === 'string' && detail.trim()) {
+      return capErrorText(detail, cap);
+    }
+    if (Array.isArray(detail)) {
+      // FastAPI validation errors — keep `msg`, drop `input`/`loc` (input echoes
+      // the submitted payload, e.g. a BYOK key).
+      const msg = detail.map((e) => e?.msg).filter(Boolean).join('; ');
+      if (msg) return capErrorText(msg, cap);
+    }
+    if (detail && typeof detail === 'object') {
+      const nested = detail.message ?? detail.detail ?? detail.error;
+      if (typeof nested === 'string' && nested.trim()) return capErrorText(nested, cap);
+    }
+  } catch {
+    // non-JSON body — fall through to the HTML-title salvage / capped snippet
+  }
+
+  const title = raw.match(/<title[^>]*>([^<]+)<\/title>/i);
+  if (title && title[1].trim()) return capErrorText(title[1], cap);
+  return capErrorText(raw, cap);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -167,9 +230,7 @@ export async function apiFetchCached(path, options = {}) {
   const now = Date.now();
   const cached = apiCache.get(key);
   if (!options.force && cached && cached.expiresAt > now) {
-    if (TRACE_API) {
-      console.info(`[API cache HIT] ${method} ${url} (age=${Math.round((cached.fetchedAt && (now - cached.fetchedAt))/1000)}s)`);
-    }
+    apiDebug.info(`[API cache HIT] ${method} ${url} (age=${Math.round((cached.fetchedAt && (now - cached.fetchedAt))/1000)}s)`);
     return makeResponseFromCache(cached);
   }
   // Strip our extension fields before delegating to apiFetch.
@@ -287,8 +348,10 @@ export async function saveConversationDraft(conversationId, payload) {
     }
   );
   if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`saveConversationDraft: HTTP ${response.status}: ${text}`);
+    // Keep the HTTP status (422 forbidden-key vs 404 vs 500 is diagnostic per
+    // ADR-030 §D6); readErrorMessage bounds the body so it can't dump draft state.
+    const detail = await readErrorMessage(response, '');
+    throw new Error(`saveConversationDraft: HTTP ${response.status}${detail ? `: ${detail}` : ''}`);
   }
   return response.json();
 }

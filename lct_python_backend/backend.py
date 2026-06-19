@@ -30,9 +30,17 @@ from lct_python_backend.services.env_helpers import env_str, env_str_or_none
 LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
+# Resolve LOG_LEVEL once and apply it to BOTH the app logger and the
+# lct_python_backend.* package logger below. Previously the package logger was
+# pinned to DEBUG unconditionally, which made LOG_LEVEL a no-op for every
+# services/* module and forced verbose (potentially content-bearing) diagnostic
+# logs into the file log regardless of the configured level. Honoring LOG_LEVEL
+# keeps DEBUG diagnostics opt-in (AGENTS.md #9). Default INFO.
+LOG_LEVEL = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+
 # Create logger
 logger = logging.getLogger("lct_backend")
-logger.setLevel(getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO))
+logger.setLevel(LOG_LEVEL)
 
 # File handler - rotates at 10MB, keeps 5 backups
 file_handler = RotatingFileHandler(
@@ -59,9 +67,10 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 # Capture all lct_python_backend.* module logs (using __name__)
-# This ensures import_api, services, etc. all go to the log file
+# This ensures import_api, services, etc. all go to the log file, at the
+# configured LOG_LEVEL (set LOG_LEVEL=DEBUG to capture verbose diagnostics).
 lct_package_logger = logging.getLogger("lct_python_backend")
-lct_package_logger.setLevel(logging.DEBUG)
+lct_package_logger.setLevel(LOG_LEVEL)
 lct_package_logger.addHandler(file_handler)
 lct_package_logger.addHandler(console_handler)
 
@@ -196,7 +205,16 @@ async def lifespan(app: FastAPI):
 # APP CREATION & MIDDLEWARE
 # ============================================================================
 
-lct_app = FastAPI(lifespan=lifespan)
+# Disable interactive API docs + schema in production (defense-in-depth; they are
+# already behind the auth middleware unless AUTH_TOKEN is unset).
+_ENVIRONMENT = str(os.getenv("ENVIRONMENT", "development")).strip().lower()
+_docs_enabled = _ENVIRONMENT != "production"
+lct_app = FastAPI(
+    lifespan=lifespan,
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
+)
 
 cors_origins, cors_origin_regex = _resolve_cors_origins()
 
@@ -245,7 +263,6 @@ from lct_python_backend.analysis_api import router as analysis_router
 from lct_python_backend.analytics_api import router as analytics_router
 from lct_python_backend.graph_api import router as graph_router
 from lct_python_backend.canvas_api import router as canvas_router
-from lct_python_backend.thematic_api import router as thematic_router
 from lct_python_backend.artifact_api import router as artifact_router
 from lct_python_backend.speaker_naming_api import (
     router as voice_library_router,
@@ -274,7 +291,6 @@ lct_app.include_router(analysis_router)
 lct_app.include_router(analytics_router)
 lct_app.include_router(graph_router)
 lct_app.include_router(canvas_router)
-lct_app.include_router(thematic_router)
 lct_app.include_router(artifact_router)
 # voice_library_router has prefix /api (speaker-voice-library endpoints).
 # conversation_speakers_router has prefix /api/conversations and exposes
