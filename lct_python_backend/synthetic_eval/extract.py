@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -54,6 +55,68 @@ EDGE TYPING — when two nodes are in a genuine rhetorical relationship, set the
 relation_type to one of: rebuts (disagreement / counter-argument), supports (agreement /
 evidence), clarifies (restatement / narrowing), asks (a question). Use "contextual" ONLY when
 none of those fit. Draw the edges between the actual claims that rebut or support each other."""
+
+
+def _run_in_bigstack(fn):
+    """Run ``fn()`` in a fresh thread with a 64MB native stack + bounded recursion
+    limit (20000, set/restored inside the thread only).
+
+    Frontier models emit large / deeply-nested JSON; the C json scanner + normalizer
+    (and Python 3.9's recursive ``re``) recurse, and from a small worker-thread stack
+    (e.g. the streaming engine's ``asyncio.to_thread``) a deep recurse overflowed the
+    native stack → 0xC0000005 access violation instead of a catchable RecursionError.
+    Giving the parse a big stack + bounded limit makes it robust WITHOUT permanently
+    mutating the process-global recursion limit. Returns ``(result_or_None, error_or_None)``.
+    """
+    box: Dict[str, Any] = {}
+
+    def _work() -> None:
+        prev_limit = sys.getrecursionlimit()
+        try:
+            sys.setrecursionlimit(20000)
+            box["result"] = fn()
+        except BaseException as exc:  # noqa: BLE001 — incl. RecursionError
+            box["error"] = exc
+        finally:
+            sys.setrecursionlimit(prev_limit)
+
+    prev_stack = threading.stack_size()
+    spawned = False
+    for size in (64 * 1024 * 1024, 32 * 1024 * 1024, 16 * 1024 * 1024):
+        try:
+            threading.stack_size(size)
+        except (ValueError, RuntimeError):
+            continue
+        t = threading.Thread(target=_work, name="lct-parse", daemon=True)
+        t.start()
+        t.join()
+        spawned = True
+        break
+    try:
+        threading.stack_size(prev_stack)
+    except (ValueError, RuntimeError):
+        pass
+    if not spawned:  # stack_size unsupported here — inline fallback (rare)
+        _work()
+    return box.get("result"), box.get("error")
+
+
+def _parse_nodes_bigstack(text: str):
+    """``extract_json_from_text`` + ``_normalize_generated_output`` in a large-stack
+    thread (graph-node output). Returns ``(nodes_or_None, error_or_None)``."""
+    from lct_python_backend.services.local_llm_client import extract_json_from_text
+    from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
+
+    return _run_in_bigstack(lambda: _normalize_generated_output(extract_json_from_text(text)))
+
+
+def _parse_json_bigstack(text: str):
+    """``extract_json_from_text`` in a large-stack thread, returning the RAW parsed
+    object (no node normalization — for consolidation payloads, which are dicts).
+    Returns ``(parsed_or_None, error_or_None)``."""
+    from lct_python_backend.services.local_llm_client import extract_json_from_text
+
+    return _run_in_bigstack(lambda: extract_json_from_text(text))
 
 
 def build_generator_input(convo: SyntheticConversation, transcript_override: Optional[str] = None) -> str:
@@ -158,8 +221,6 @@ def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec, transc
         PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY,
         get_transcript_prompt_text,
     )
-    from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
-    from lct_python_backend.services.local_llm_client import extract_json_from_text
 
     system_prompt = get_transcript_prompt_text(PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY)
     if extra_system:
@@ -225,13 +286,11 @@ def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec, transc
         )
 
     text = str(result_obj.get("result", ""))
-    # Frontier models at high effort can emit very large / deeply-nested JSON;
-    # raise the recursion limit so json.loads + normalization don't trip it.
-    sys.setrecursionlimit(max(sys.getrecursionlimit(), 50000))
-    try:
-        parsed = extract_json_from_text(text)
-        nodes = _normalize_generated_output(parsed)
-    except Exception as exc:  # noqa: BLE001
+    # Frontier models at high effort emit large / deeply-nested JSON; parse in a
+    # large-stack thread (see _parse_nodes_bigstack) so a deep recurse can't overflow
+    # the native stack — and without permanently raising the process recursion limit.
+    nodes, parse_err = _parse_nodes_bigstack(text)
+    if parse_err is not None or nodes is None:
         # Persist the raw model text so the failure is inspectable without re-paying.
         dump = os.path.join(tempfile.gettempdir(), f"synth_eval_claude_{convo.slug}.raw.txt")
         try:
@@ -241,7 +300,7 @@ def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec, transc
             dump = "(dump failed)"
         return ExtractionResult(
             ok=False, backend_label=backend,
-            error=f"{type(exc).__name__} parsing Claude output: {exc}",
+            error=f"{type(parse_err).__name__} parsing Claude output: {parse_err}",
             elapsed_ms=elapsed, status_messages=[f"raw saved to {dump}", text[:160]],
         )
 
