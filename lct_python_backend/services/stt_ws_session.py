@@ -2784,7 +2784,7 @@ class WsSessionContext:
         )
         timeout_seconds = _safe_float(runtime_stt_settings.get("http_timeout_seconds"), 30.0)
         http_model = str(runtime_stt_settings.get("http_model") or "")
-        http_language = str(runtime_stt_settings.get("http_language") or "")
+        http_language = str(payload.get("http_language") or runtime_stt_settings.get("http_language") or "")
 
         self.stt_runtime = build_live_stt_runtime(
             provider=active_provider,

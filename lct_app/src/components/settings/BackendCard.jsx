@@ -249,6 +249,21 @@ export default function BackendCard({ entry, capability, probe, isPrimary, posit
             </Metric>
           </div>
 
+          {capability === 'stt' && entry.languages && (
+            <div className="text-[11px] leading-snug" title={entry.languages.note}>
+              <span className="text-gray-400">Languages: </span>
+              {entry.languages.indic && entry.languages.indic.length ? (
+                <span className="text-gray-700">
+                  {entry.languages.total} langs · Indic: {entry.languages.indic.join(', ')}
+                </span>
+              ) : (
+                <span className="text-amber-700">
+                  {entry.languages.total === 1 ? 'English only' : `${entry.languages.total} langs`} · no Indic
+                </span>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-1 pt-0.5">
             <button
               type="button"
