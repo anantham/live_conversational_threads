@@ -142,28 +142,31 @@ async def parse_validate_and_persist(
     )
 
 
-async def parse_validate_and_extract(
+async def extract_graph_for_conversation(
     db,
-    payload,
     *,
+    conversation_id: Optional[str] = None,
+    group_id: Optional[str] = None,
     owner_id: str = "anonymous",
 ) -> Dict[str, Any]:
-    """Structured RawTurn import (P1 Track A): the AUDITABLE import path.
+    """Structured RawTurn import — Phase 2: the AUDITABLE extraction pass.
 
-    Unlike ``parse_validate_and_persist`` (markdown → utterances only, no graph),
-    this mints utterance UUIDs BEFORE extraction and threads each through
-    ``TranscriptProcessor.handle_final_text(..., utterance_id=...)``, so the
+    Builds the drillable graph from turns ALREADY persisted by ``persist_turns``
+    (``POST /api/import/turns``). Each persisted ``Utterance`` is fed to
+    ``TranscriptProcessor.handle_final_text(..., utterance_id=<existing id>)`` so
     emitted nodes carry ``utterance_ids`` at build time (100% node↔utterance
-    linkage — no post-hoc text-matching). It then persists with per-turn
-    ``source_identifier`` + the conversation's ``indrasnet_group_id``, so
-    ``node.source_ref`` and coverage are real from the first read.
+    linkage — no post-hoc text-matching) and ``node.source_ref`` is real.
 
-    Runs synchronously (suitable for one conversation's worth of turns); a big
-    backlog should be chunked by the caller. Returns a stats dict.
+    Re-runnable by design (Eternal Reprocessability): ``persist_graph`` clears the
+    conversation's prior nodes/relationships and re-materializes them while LEAVING
+    the persisted ``Utterance`` rows untouched (``utterances=None``) — so you can
+    re-extract (e.g. with a better model) without IndrasNet re-sending the turns.
 
-    ``payload`` is a ``models.import_contract.RawTurnPayload``.
+    Resolve order: explicit ``conversation_id`` wins; else look the conversation up
+    by ``(owner_id, indrasnet_group_id=group_id)``. Runs synchronously (one
+    conversation's worth of turns). Returns a stats dict.
     """
-    import uuid as _uuid
+    from sqlalchemy import select as _select
 
     from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers
     from lct_python_backend.services.transcript_processing import TranscriptProcessor
@@ -178,53 +181,70 @@ async def parse_validate_and_extract(
         MIN_TOPICS_FOR_THEME_CONSOLIDATION,
         MIN_THEMES_FOR_ARC_CONSOLIDATION,
     )
+    from lct_python_backend.services.owner_context import resolve_owner_id
+    from lct_python_backend.models import Conversation as _Conversation, Utterance as _Utterance
 
-    conversation_id = payload.conversation_id or str(_uuid.uuid4())
-
-    # Create-only guard. persist_graph is destructive (it DELETEs the
-    # conversation's nodes before re-inserting), so a re-used conversation_id
-    # would silently wipe the prior graph, and a repeated group_id would
-    # duplicate the IndrasNet conversation. Refuse both up front — before any LLM
-    # cost. Structured re-import/replace is a future feature (needs an explicit flag).
-    from sqlalchemy import select as _select
-
-    from lct_python_backend.models import Conversation as _Conversation
-
-    if payload.conversation_id:
-        if (await db.execute(
-            _select(_Conversation.id).where(_Conversation.id == _uuid.UUID(payload.conversation_id))
-        )).first():
-            raise ValueError(
-                f"conversation_id {payload.conversation_id} already exists; "
-                "structured re-import is not yet supported"
+    # 1. Resolve the conversation Phase 1 (persist_turns) already created. Explicit
+    #    conversation_id wins; else look up by (owner, indrasnet_group_id).
+    if not conversation_id and not group_id:
+        raise ValueError("extract requires either conversation_id or group_id")
+    owner = resolve_owner_id(owner_id)
+    conv = None
+    if conversation_id:
+        try:
+            conv_uuid = uuid.UUID(str(conversation_id))
+        except (ValueError, AttributeError, TypeError):
+            raise ValueError("conversation_id must be a UUID")
+        conv = (await db.execute(
+            _select(_Conversation).where(_Conversation.id == conv_uuid)
+        )).scalar_one_or_none()
+    if conv is None and group_id:
+        conv = (await db.execute(
+            _select(_Conversation).where(
+                _Conversation.owner_id == owner,
+                _Conversation.indrasnet_group_id == group_id,
+                _Conversation.deleted_at.is_(None),
             )
-    if payload.group_id:
-        dup = (await db.execute(
-            _select(_Conversation.id).where(_Conversation.indrasnet_group_id == payload.group_id)
-        )).first()
-        if dup:
-            raise ValueError(
-                f"a conversation for group_id {payload.group_id} already exists ({dup[0]}); "
-                "structured re-import is not yet supported"
-            )
+        )).scalar_one_or_none()
+    if conv is None:
+        raise ValueError(
+            "no persisted conversation to extract — POST the turns to "
+            f"/api/import/turns first (conversation_id={conversation_id!r}, "
+            f"group_id={group_id!r})"
+        )
+    if conv.owner_id != owner:
+        raise ValueError("conversation does not belong to this owner")
+    if conv.deleted_at is not None:
+        raise ValueError("conversation is deleted")
+    conversation_id = str(conv.id)
 
-    # 1. Mint utterance UUIDs up front — the source of truth for IDs that the
-    #    extractor will carry onto node.utterance_ids.
-    utterances: List[Dict[str, Any]] = []
-    for turn in payload.turns:
-        utterances.append({
-            "id": str(_uuid.uuid4()),
-            "text": turn.text,
-            "speaker_id": turn.speaker_id or "SPEAKER_00",
-            "sequence_number": turn.seq,
-            "timestamp_start": turn.ts_start,
-            "timestamp_end": turn.ts_end,
-            "source_identifier": turn.source_identifier,
-            "platform_metadata": ({"contact_id": turn.contact_id} if turn.contact_id else {}),
-        })
+    # 2. Load the persisted turns. Their EXISTING ids are the linkage anchors the
+    #    extractor threads onto node.utterance_ids — NOT freshly minted.
+    rows = (await db.execute(
+        _select(_Utterance)
+        .where(_Utterance.conversation_id == conv.id)
+        .order_by(_Utterance.sequence_number)
+    )).scalars().all()
+    if not rows:
+        raise ValueError(
+            f"conversation {conversation_id} has no persisted turns to extract"
+        )
+    utterances: List[Dict[str, Any]] = [
+        {
+            "id": str(u.id),
+            "text": u.text,
+            "speaker_id": u.speaker_id or "SPEAKER_00",
+            "sequence_number": u.sequence_number,
+            "timestamp_start": u.timestamp_start,
+            "timestamp_end": u.timestamp_end,
+            "source_identifier": u.source_identifier,
+            "platform_metadata": u.platform_metadata or {},
+        }
+        for u in rows
+    ]
     logger.info(
-        "[from-turns] minted %d utterances for %d turns (conversation %s)",
-        len(utterances), len(payload.turns), conversation_id,
+        "[turns/extract] loaded %d persisted turns for conversation %s",
+        len(utterances), conversation_id,
     )
 
     # 2. Configured LLM backend (server-side import → no BYOK session override).
@@ -240,12 +260,12 @@ async def parse_validate_and_extract(
         llm_config=llm_config, providers=providers or [],
     )
 
-    # 3. Extract — feed each turn with its minted utterance_id so the emitted
-    #    nodes get utterance_ids + chunk_utterance_map (transcript_processing.py).
-    for turn, utt in zip(payload.turns, utterances):
+    # 3. Extract — feed each persisted turn with its EXISTING utterance_id so the
+    #    emitted nodes get utterance_ids + chunk_utterance_map (transcript_processing.py).
+    for utt in utterances:
         await processor.handle_final_text(
-            turn.text,
-            speaker_segments=[{"speaker": utt["speaker_id"], "text": turn.text}],
+            utt["text"],
+            speaker_segments=[{"speaker": utt["speaker_id"], "text": utt["text"]}],
             utterance_id=utt["id"],
         )
     await processor.flush()
@@ -281,23 +301,23 @@ async def parse_validate_and_extract(
                                 summary = s or summary
     except Exception as exc:  # noqa: BLE001 — consolidation is best-effort
         logger.warning(
-            "[from-turns] consolidation failed after tiers=%s; persisting L1 graph anyway: %r",
+            "[turns/extract] consolidation failed after tiers=%s; persisting L1 graph anyway: %r",
             tiers_built, exc,
         )
 
-    # 5. Persist with provenance: source_identifier per utterance,
-    #    indrasnet_group_id on the conversation, utterance_chunk_map so
-    #    node.utterance_ids resolve. persist_graph creates the Conversation.
+    # 5. Persist the GRAPH only. utterances=None → persist_graph rewrites
+    #    nodes/relationships and links to the already-persisted Utterance rows
+    #    (it queries them for node timestamps) WITHOUT deleting/re-inserting them.
     node_count = await persist_graph(
         db=db,
         conversation_id=conversation_id,
         existing_json=existing,
-        utterances=utterances,
-        conversation_name=payload.conversation_name or f"{payload.source_type} import",
-        source_type=payload.source_type,
-        owner_id=owner_id,
+        utterances=None,
+        conversation_name=conv.conversation_name,
+        source_type=conv.source_type,
+        owner_id=owner,
         utterance_chunk_map=processor.chunk_utterance_map,
-        indrasnet_group_id=payload.group_id,
+        indrasnet_group_id=conv.indrasnet_group_id,
         source_metadata=({"executive_summary": summary} if summary else {}),
     )
 
@@ -307,6 +327,6 @@ async def parse_validate_and_extract(
         "utterance_count": len(utterances),
         "node_count": node_count,
         "auditable_node_count": auditable_nodes,
-        "indrasnet_group_id": payload.group_id,
+        "indrasnet_group_id": conv.indrasnet_group_id,
         "executive_summary": summary or None,
     }
