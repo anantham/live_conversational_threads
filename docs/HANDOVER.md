@@ -313,8 +313,11 @@ but this session was directly on `main`, so push needs care.
 - `services/fact_check_service.py` → `services/openai_factcheck.py`
 
 ### Security Hardening Applied
-- `AUTH_TOKEN=nid1L4Zo4quG7HOK3cUPkIX6F8NB90A3JC65mMfR0k8` (32-byte random)
-  set in `lct_python_backend/.env`
+- `AUTH_TOKEN` (32-byte random) set in `lct_python_backend/.env` (gitignored).
+  The literal value is intentionally NOT recorded here. A token was pasted
+  verbatim into this doc in a prior session and leaked via the public repo; it
+  has since been **rotated out and the leaked value is rejected by the backend**.
+  Never paste secrets into tracked files — they live only in gitignored `.env`.
 - Matching `VITE_AUTH_TOKEN` written to `lct_app/.env` (gitignored, verified)
 - `DEBUG=false` in `.env`
 - Content-type whitelist on `/api/import/process-file` (audio + text suffixes

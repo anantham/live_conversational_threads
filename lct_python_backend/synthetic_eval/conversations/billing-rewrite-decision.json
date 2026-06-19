@@ -1,0 +1,50 @@
+{
+  "slug": "billing-rewrite-decision",
+  "title": "Rewrite or patch the billing reconciliation service?",
+  "personas": ["Priya", "Sam", "Lena"],
+  "provenance": {
+    "author": "hand",
+    "model": null,
+    "license": "synthetic-fixture: fully fictional, no real persons or private data",
+    "notes": "Three-speaker engineering decision. Authored as a Tier-1 ground-truth fixture. Contains a root-cause crux, a tangent (espresso machine), a genuine reversal/surprise, three action items, and a rebuts/supports/clarify edge mix."
+  },
+  "turns": [
+    {"id": "t0", "speaker": "Priya", "text": "Okay, billing sync. Do we rewrite the reconciliation service or keep patching it? I want a decision today."},
+    {"id": "t1", "speaker": "Sam", "text": "Patching is bleeding us. We've shipped fourteen hotfixes to that one service in the last quarter alone."},
+    {"id": "t2", "speaker": "Lena", "text": "Fourteen? I knew it was bad, but I didn't realize it was that bad."},
+    {"id": "t3", "speaker": "Priya", "text": "The core issue is the schema. It assumes one currency per account, and we now have multi-currency customers. That assumption is the root of basically every reconciliation bug."},
+    {"id": "t4", "speaker": "Sam", "text": "Exactly, and a clean rewrite lets us model currency as a first-class dimension instead of bolting it on. I think we should just rewrite it."},
+    {"id": "t5", "speaker": "Lena", "text": "I hear you, but a full rewrite means no new billing features for a quarter. From the customer side, that freeze is a very real cost."},
+    {"id": "t6", "speaker": "Priya", "text": "Fair. Although, unrelated, did the new espresso machine ever get fixed? Half the team's been on instant coffee for two weeks and morale is visibly down."},
+    {"id": "t7", "speaker": "Sam", "text": "Facilities said Thursday. Anyway, sorry, back to billing."},
+    {"id": "t8", "speaker": "Lena", "text": "So what if we strangler-fig it instead? Wrap the old service, route only multi-currency accounts to a new module, and leave single-currency accounts on the old path for now."},
+    {"id": "t9", "speaker": "Priya", "text": "Huh. That actually surprises me as the right call. I walked in here assuming a full rewrite was the only clean fix, but this avoids the freeze."},
+    {"id": "t10", "speaker": "Sam", "text": "The risk is two code paths to maintain during the migration window. That overhead isn't free, and bugs love seams like that."},
+    {"id": "t11", "speaker": "Lena", "text": "Sure, but it's bounded. We delete the old path the moment everyone's migrated, and customers never see a feature freeze. The seam is temporary by design."},
+    {"id": "t12", "speaker": "Priya", "text": "Okay, I'm convinced. Strangler-fig it, multi-currency module first. That's the decision."},
+    {"id": "t13", "speaker": "Sam", "text": "Works for me."},
+    {"id": "t14", "speaker": "Priya", "text": "Action items: Sam, you scaffold the new module and the routing layer by next Wednesday."},
+    {"id": "t15", "speaker": "Sam", "text": "On it. I'll also write the migration runbook so the cutover isn't tribal knowledge."},
+    {"id": "t16", "speaker": "Lena", "text": "And I'll socialize the no-feature-freeze message with our three biggest accounts so nobody's caught off guard."}
+  ],
+  "ground_truth": {
+    "cruxes": ["t3", "t8", "t12"],
+    "tangents": ["t6", "t7"],
+    "surprises": ["t9"],
+    "action_items": ["t14", "t15", "t16"],
+    "claims": [
+      {"turn": "t1", "text": "Fourteen hotfixes shipped to the reconciliation service last quarter", "type": "factual"},
+      {"turn": "t3", "text": "The billing schema assumes one currency per account", "type": "factual"},
+      {"turn": "t4", "text": "We should rewrite the reconciliation service", "type": "normative"}
+    ],
+    "edges": [
+      {"type": "supports", "from": "t4", "to": "t3", "note": "Sam's rewrite position builds on the root-cause diagnosis"},
+      {"type": "rebuts", "from": "t5", "to": "t4", "note": "Lena rebuts rewrite via the feature-freeze cost"},
+      {"type": "rebuts", "from": "t10", "to": "t8", "note": "Sam rebuts strangler-fig via dual-maintenance risk"},
+      {"type": "clarifies", "from": "t11", "to": "t10", "note": "Lena bounds the dual-path risk as temporary"},
+      {"type": "supports", "from": "t11", "to": "t8", "note": "Lena defends the strangler-fig approach"},
+      {"type": "supports", "from": "t13", "to": "t12", "note": "Sam endorses the decision"},
+      {"type": "supports", "from": "t15", "to": "t14", "note": "Sam's runbook commitment supports the plan"}
+    ]
+  }
+}
