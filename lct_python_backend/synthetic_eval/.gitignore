@@ -1,0 +1,7 @@
+# Run outputs (regenerable from the seeds + a provider)
+results/
+# Rendered audio + manifests (regenerable; can be large)
+audio/
+# Local debug dumps
+.tmp_*
+*.raw.txt

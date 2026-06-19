@@ -29,6 +29,7 @@ from lct_python_backend.services.import_diarization_queue import (
     is_async_import_diarization_enabled,
 )
 from lct_python_backend.services.import_orchestrator import (
+    extract_graph_for_conversation,
     parse_transcript,
     parse_validate_and_persist,
     validate_or_raise,
@@ -356,6 +357,75 @@ async def import_from_text(
         message=f"Successfully imported transcript with {result.utterance_count} utterances",
         utterance_count=result.utterance_count,
         participant_count=result.participant_count,
+    )
+
+
+class ImportTurnsResponse(BaseModel):
+    """Response for the structured RawTurn import — surfaces auditability up front."""
+
+    success: bool
+    conversation_id: str
+    utterance_count: int
+    node_count: int
+    auditable_node_count: int
+    indrasnet_group_id: Optional[str] = None
+    message: str
+
+
+class ExtractTurnsRequest(BaseModel):
+    """Phase-2 trigger: build the graph for turns already persisted by ``/turns``.
+
+    Identify the conversation by its LCT ``conversation_id`` (returned by
+    ``/turns``) or by IndrasNet ``group_id`` (+ ``owner_id``). At least one is
+    required; the orchestrator enforces it.
+    """
+
+    conversation_id: Optional[str] = None
+    group_id: Optional[str] = None
+    owner_id: Optional[str] = None
+
+
+@router.post("/turns/extract", response_model=ImportTurnsResponse)
+async def extract_turns(
+    request: ExtractTurnsRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Phase 2 of the structured RawTurn pipeline: build the auditable graph from
+    turns already persisted by ``POST /api/import/turns``.
+
+    Separating persist (idempotent mirror) from extract (the LLM pass) makes
+    extraction re-runnable WITHOUT IndrasNet re-sending the turns — re-extract a
+    conversation (e.g. with a better model) by POSTing its ``conversation_id`` or
+    ``group_id`` again. Utterance UUIDs are authored at persist time and threaded
+    onto ``node.utterance_ids`` here, so every node is auditable to its raw turns.
+    Owner-scoped (AUTH_TOKEN). Runs synchronously — the graph is destructively
+    re-materialized; the persisted turns are left untouched.
+    """
+    try:
+        stats = await extract_graph_for_conversation(
+            db,
+            conversation_id=request.conversation_id,
+            group_id=request.group_id,
+            owner_id=resolve_owner_id(request.owner_id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("Structured turn extraction failed: %s", exc)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to extract turns: {exc}")
+
+    return ImportTurnsResponse(
+        success=True,
+        conversation_id=stats["conversation_id"],
+        utterance_count=stats["utterance_count"],
+        node_count=stats["node_count"],
+        auditable_node_count=stats["auditable_node_count"],
+        indrasnet_group_id=stats.get("indrasnet_group_id"),
+        message=(
+            f"Extracted {stats['node_count']} nodes from {stats['utterance_count']} turns "
+            f"({stats['auditable_node_count']} auditable)"
+        ),
     )
 
 

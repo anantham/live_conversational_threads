@@ -22,6 +22,29 @@ _JSON_OBJECT_UNSUPPORTED_BASE_URLS: set[str] = set()
 _LOGGED_MODEL_SUBSTITUTIONS: set[Tuple[str, str, str]] = set()
 from lct_python_backend.services.env_helpers import env_bool
 
+
+def _backoff_retry_delay(errors, attempt):
+    """Exponential-backoff delay (seconds) before retrying the whole provider loop
+    after a TRANSIENT all-providers-failed — or None to give up and raise.
+
+    Env-gated and OFF by default (``LLM_RETRY_BACKOFF_INITIAL_S=0``): completely
+    inert for live STT / interactive callers. A batch caller (e.g. an offline
+    .threads rebuild against a laptop LLM that naps) opts in by setting the env,
+    so a multi-hour build patiently waits out naps instead of degrading. Never
+    retries on 4xx rejections — only on connection/timeout/reset errors."""
+    init = float(os.getenv("LLM_RETRY_BACKOFF_INITIAL_S", "0") or 0)
+    if init <= 0:
+        return None
+    if attempt >= int(os.getenv("LLM_RETRY_BACKOFF_MAX_ATTEMPTS", "40") or 40):
+        return None
+    cap = float(os.getenv("LLM_RETRY_BACKOFF_CAP_S", "120") or 120)
+    _TRANSIENT = ("timeout", "connection", "readerror", "connecterror",
+                  "forcibly closed", "did not properly respond", "10054", "10060", "10053")
+    if not any(any(t in (err or "").lower() for t in _TRANSIENT) for _, err in errors):
+        return None
+    return min(init * (2 ** attempt), cap)
+
+
 # Default OFF: these traces echo transcript/LLM content (AGENTS.md #9 —
 # diagnostic logging is opt-in). Set TRACE_API_CALLS=1 to enable.
 TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=False)
@@ -574,6 +597,7 @@ def chat_with_provider_fallback_sync(
     require_json: bool = True,
     prompt_name: Optional[str] = None,
     prompt_version: Optional[str] = None,
+    _backoff_attempt: int = 0,
 ) -> ProviderResult:
     """
     Synchronous version of chat_with_provider_fallback.
@@ -771,4 +795,15 @@ def chat_with_provider_fallback_sync(
 
     # All providers failed
     error_summary = "; ".join(f"{name}: {err}" for name, err in errors)
+    _delay = _backoff_retry_delay(errors, _backoff_attempt)
+    if _delay is not None:
+        logger.warning(
+            "[LLM Fallback Sync] transient all-fail; backing off %.0fs (retry %d) then re-trying providers — %s",
+            _delay, _backoff_attempt + 1, error_summary,
+        )
+        time.sleep(_delay)
+        return chat_with_provider_fallback_sync(
+            messages, providers, temperature, max_tokens, response_format,
+            require_json, prompt_name, prompt_version, _backoff_attempt=_backoff_attempt + 1,
+        )
     raise RuntimeError(f"All LLM providers failed. Errors: {error_summary}")
