@@ -21,7 +21,9 @@ export async function saveConversationToServer({ fileName, chunkDict, graphData,
     try {
       result = text ? JSON.parse(text) : {};
     } catch {
-      console.warn("Invalid JSON response:", text);
+      // Don't log `text` — the raw response body can echo saved conversation
+      // content. The parse failure itself is the diagnostic signal.
+      console.warn("Save endpoint returned a non-JSON response.");
     }
 
     return {

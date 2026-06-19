@@ -22,6 +22,7 @@ Backward-compatible aliases:
 
 import copy
 import logging
+import os
 import time
 import uuid
 from datetime import datetime
@@ -330,6 +331,149 @@ async def ensure_conversation_row(
     return True
 
 
+async def persist_turns(*, db, payload) -> Dict[str, Any]:
+    """Ingest a structured ``RawTurnsPayloadV1`` (P1, see
+    docs/plans/2026-06-17-p1-rawturn-data-contract.md): upsert the conversation by
+    ``(owner_id, indrasnet_group_id)`` and (re)materialize its ``Utterance`` rows
+    **with ``source_identifier``** — the per-turn provenance anchor the markdown
+    ``/from-text`` path drops.
+
+    Replace semantics: a re-PUSH of the same group_id keeps the same
+    ``conversation_id`` and rewrites the raw turns AND clears the derived graph
+    (relationships cascade off the node delete) so the conversation is a clean
+    slate for re-extraction. Deliberately does NOT reuse ``persist_graph``'s
+    utterance insert, which omits ``source_identifier``.
+
+    Privacy (doc §4): the LCT mirror is redacted-by-default; storing raw text
+    (``redaction_applied=false``) additionally requires ``LCT_MIRROR_RAW=1`` on the
+    server (owner-local only). ``redaction_applied`` is an UNVERIFIED upstream
+    claim — LCT trusts it; the real guarantee is ADR-038.
+
+    Returns ``{conversation_id, utterance_count, participant_count}``.
+    """
+    from sqlalchemy import delete, select
+
+    owner_id = resolve_owner_id(payload.owner_id)
+    privacy = payload.privacy
+
+    if not privacy.redaction_applied:
+        allow_raw = os.getenv("LCT_MIRROR_RAW", "").strip().lower() in {"1", "true", "yes", "on"}
+        if not allow_raw:
+            raise ValueError(
+                "redaction_applied=false rejected: set LCT_MIRROR_RAW=1 to let the LCT "
+                "mirror store un-redacted text (owner-local only)."
+            )
+
+    # Resolve the target conversation (replace-on-reingest). An explicit
+    # conversation_id MUST belong to this (owner, group) and not be soft-deleted,
+    # else a stale/bad payload could destructively overwrite an unrelated
+    # conversation (codex #1). A non-existent id falls through to the (owner, group)
+    # lookup.
+    conv = None
+    if payload.conversation_id:
+        by_id = (
+            await db.execute(
+                select(Conversation).where(Conversation.id == uuid.UUID(payload.conversation_id))
+            )
+        ).scalar_one_or_none()
+        if by_id is not None:
+            if (
+                by_id.owner_id != owner_id
+                or by_id.indrasnet_group_id != payload.group_id
+                or by_id.deleted_at is not None
+            ):
+                raise ValueError(
+                    "conversation_id does not belong to this owner + group_id (or is "
+                    "deleted); refusing to overwrite it."
+                )
+            conv = by_id
+    if conv is None:
+        conv = (
+            await db.execute(
+                select(Conversation).where(
+                    Conversation.owner_id == owner_id,
+                    Conversation.indrasnet_group_id == payload.group_id,
+                    Conversation.deleted_at.is_(None),
+                )
+            )
+        ).scalar_one_or_none()
+
+    privacy_meta = {
+        "external_llm_ok": privacy.external_llm_ok,
+        "local_llm_ok": privacy.local_llm_ok,
+        "redaction_applied": privacy.redaction_applied,
+        "redaction_map_id": privacy.redaction_map_id,
+    }
+    speakers = {t.speaker_id for t in payload.turns}
+    conv_name = (payload.conversation_name or "").strip()
+
+    if conv is None:
+        conv = Conversation(
+            id=uuid.uuid4(),
+            conversation_name=conv_name or f"import-{payload.group_id}",
+            conversation_type="transcript",
+            source_type=payload.source_type,
+            owner_id=owner_id,
+            indrasnet_group_id=payload.group_id,
+            source_metadata={"privacy": privacy_meta, "contract_version": payload.contract_version},
+            participant_count=len(speakers),
+            total_utterances=len(payload.turns),
+            started_at=datetime.now(),
+            created_at=datetime.now(),
+        )
+        db.add(conv)
+        await db.flush()  # assign conv.id for the utterance FK
+    else:
+        from lct_python_backend.models import Node
+        from lct_python_backend.models.analysis import (
+            BiasAnalysis,
+            FrameAnalysis,
+            SimulacraAnalysis,
+        )
+
+        conv.conversation_name = conv_name or conv.conversation_name
+        conv.source_type = payload.source_type
+        conv.indrasnet_group_id = payload.group_id
+        meta = dict(conv.source_metadata or {})
+        meta["privacy"] = privacy_meta
+        meta["contract_version"] = payload.contract_version
+        conv.source_metadata = meta
+        conv.participant_count = len(speakers)
+        conv.total_utterances = len(payload.turns)
+        conv.total_nodes = 0
+        # Whole-conversation replace: drop prior turns + derived graph for a clean
+        # re-extraction slate. simulacra/bias/frame FK nodes.id WITHOUT ON DELETE
+        # CASCADE (codex #3), so clear them (scoped by conversation_id) BEFORE the
+        # node delete; relationships + the cascade-FK analyses drop with the nodes.
+        await db.execute(delete(SimulacraAnalysis).where(SimulacraAnalysis.conversation_id == conv.id))
+        await db.execute(delete(BiasAnalysis).where(BiasAnalysis.conversation_id == conv.id))
+        await db.execute(delete(FrameAnalysis).where(FrameAnalysis.conversation_id == conv.id))
+        await db.execute(delete(DBUtterance).where(DBUtterance.conversation_id == conv.id))
+        await db.execute(delete(Node).where(Node.conversation_id == conv.id))
+
+    for turn in payload.turns:
+        db.add(
+            DBUtterance(
+                id=uuid.uuid4(),
+                conversation_id=conv.id,
+                text=turn.text,
+                speaker_id=turn.speaker_id,
+                sequence_number=turn.seq,
+                source_identifier=turn.source_identifier,
+                timestamp_start=turn.ts_start,
+                timestamp_end=turn.ts_end,
+                platform_metadata={"contact_id": turn.contact_id} if turn.contact_id else {},
+            )
+        )
+
+    await db.commit()
+    return {
+        "conversation_id": str(conv.id),
+        "utterance_count": len(payload.turns),
+        "participant_count": len(speakers),
+    }
+
+
 async def persist_graph(
     *,
     db,
@@ -518,6 +662,40 @@ async def persist_graph(
                 normalized_utts.append(parsed_utt)
             if normalized_utts:
                 parsed_utterance_chunk_map[chunk_uuid] = normalized_utts
+
+    # P1.5: the IMPORT path passes no utterance_chunk_map (only the live
+    # processor does), so derive one from the utterances' own chunk_id. The
+    # import flow stitches chunk_id onto each utterance (import_bulk_pipeline)
+    # and every utterance now carries a stable id (transcript_linearization), so
+    # this maps each leaf node's chunk to its exact utterances — making import +
+    # RawTurn graphs auditable (and build_coverage_summary non-null). A
+    # caller-supplied map wins per chunk; this only fills chunks it didn't map.
+    if utterances:
+        derived_chunk_map: Dict[uuid.UUID, List[uuid.UUID]] = {}
+        derived_seen: Dict[uuid.UUID, set] = {}
+        for raw_utt in utterances:
+            if not isinstance(raw_utt, dict):
+                continue
+            # Only map utterances that WILL persist. _normalize_utterances drops
+            # empty-text rows (`if not text: continue`); mirror that here so a
+            # node never inherits the id of an utterance that was never written —
+            # which would let build_coverage_summary over-report (counting an id
+            # absent from the persisted set, pct possibly > 100). codex PR#63.
+            if not coerce_str(raw_utt.get("text")):
+                continue
+            derived_chunk_uuid = _coerce_uuid(raw_utt.get("chunk_id"))
+            derived_utt_uuid = _coerce_uuid(raw_utt.get("id"))
+            if derived_chunk_uuid is None or derived_utt_uuid is None:
+                continue
+            seen = derived_seen.setdefault(derived_chunk_uuid, set())
+            if derived_utt_uuid in seen:  # O(1) dedupe; mirrors the explicit map's seen_local
+                continue
+            seen.add(derived_utt_uuid)
+            derived_chunk_map.setdefault(derived_chunk_uuid, []).append(derived_utt_uuid)
+        # A caller-supplied NON-EMPTY mapping for a chunk wins (setdefault); the
+        # derived map only fills chunks the caller did not usefully map.
+        for derived_chunk_uuid, derived_utt_ids in derived_chunk_map.items():
+            parsed_utterance_chunk_map.setdefault(derived_chunk_uuid, derived_utt_ids)
 
     # ADR-032 Part G: persist timestamp_start/timestamp_end on Node rows
     # at write time. Read-time derivation (conversation_reader.py) becomes a

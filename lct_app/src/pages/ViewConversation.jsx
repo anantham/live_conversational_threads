@@ -16,7 +16,7 @@ import NodeDetail from "../components/NodeDetail";
 import SearchDialog from "../components/SearchDialog";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
-import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
+import { apiFetch, apiFetchCached, API_BASE_URL, readErrorMessage } from "../services/apiClient";
 import { fetchConversationParticipants } from "../services/participantsApi";
 
 function sanitizeNodeArray(chunk) {
@@ -88,23 +88,6 @@ function normalizeGraphDataPayload(payload) {
   }
 
   return [];
-}
-
-async function readErrorMessage(response) {
-  let message = `Request failed with status ${response.status}`;
-
-  try {
-    const payload = await response.json();
-    if (payload?.detail && typeof payload.detail === "string") {
-      message = payload.detail;
-    } else if (payload?.message && typeof payload.message === "string") {
-      message = payload.message;
-    }
-  } catch {
-    // keep fallback message when response is not json
-  }
-
-  return message;
 }
 
 export default function ViewConversation() {

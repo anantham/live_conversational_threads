@@ -6,8 +6,12 @@ import { fileURLToPath } from 'url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:43173';
 const SHOTS_DIR = path.resolve(HERE, '../../../.tmp/d4_screenshots');
-// Existing imported-conversation id from the e2e import test (7 nodes, level=1).
-const EXISTING_CONV = '0d6d5d7b-4397-4dbc-89ff-13067ce9fadb';
+// Self-provisioned at runtime (see beforeAll) so the spec is DB-independent —
+// CI boots a fresh Postgres with no seed data. POST /api/import/from-text
+// persists utterances; GET /conversations/{id} synthesizes turn nodes from them
+// on read (conversations_api -> turn_synthesizer.build_turn_graph_from_utterances),
+// so MinimalGraph renders .react-flow__node without any LLM / graph-gen step.
+let EXISTING_CONV = '';
 
 function shotPath(label: string) {
   if (!fs.existsSync(SHOTS_DIR)) fs.mkdirSync(SHOTS_DIR, { recursive: true });
@@ -16,6 +20,31 @@ function shotPath(label: string) {
 
 test.describe('D4 — color mode toggle smoke', () => {
   test.setTimeout(60_000);
+
+  // Create the conversation this spec drives, via the same /api the browser uses
+  // (request inherits baseURL -> Vite proxies /api/* to the backend). AUTH_TOKEN
+  // is empty in CI so no auth header is needed. A 2-speaker, 7-turn transcript
+  // yields 7 synthesized turn nodes once the viewer reads it back.
+  test.beforeAll(async ({ request }) => {
+    const transcript = [
+      'Alice: Welcome everyone, let us start with the quarterly review.',
+      'Bob: Thanks Alice. Revenue is up twelve percent over last quarter.',
+      'Alice: That is great. What is driving the growth?',
+      'Bob: Mostly the new onboarding flow and a couple of enterprise deals.',
+      'Alice: Any risks we should flag for next quarter?',
+      'Bob: Churn ticked up slightly in the small-business segment.',
+      'Alice: Understood. Let us dig into retention before we wrap.',
+    ].join('\n');
+
+    const res = await request.post('/api/import/from-text', {
+      data: { text: transcript, conversation_name: 'D4 color-mode smoke fixture' },
+    });
+    expect(res.ok(), `import failed: ${res.status()} ${await res.text()}`).toBeTruthy();
+
+    const body = await res.json();
+    EXISTING_CONV = body.conversation_id;
+    expect(EXISTING_CONV, 'import returned a conversation id').toBeTruthy();
+  });
 
   test('color mode button cycles tier → speaker → temporal → tier on existing conversation', async ({ page }) => {
     const errors: string[] = [];
@@ -29,8 +58,13 @@ test.describe('D4 — color mode toggle smoke', () => {
     // parallel-suite load the HUD can take well over 4s to mount.
     await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 30000 });
 
-    // Initial: button should read "Color: Tier"
-    const btn = page.getByRole('button', { name: /Color: (Tier|Speaker|Time)/i });
+    // The color-mode control now lives inside the collapsed "Display" disclosure
+    // (the bottom toolbar was distilled into it), so open the disclosure first.
+    await page.locator('summary', { hasText: 'Display' }).click();
+
+    // Initial label is "Color: Tier"; match any "Color: …" so the locator keeps
+    // resolving as the label cycles (speaker / time / argument / date / …).
+    const btn = page.getByRole('button', { name: /^Color:/i });
     await expect(btn).toBeVisible({ timeout: 10000 });
 
     const initialText = (await btn.textContent())?.trim() || '';

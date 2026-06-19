@@ -18,20 +18,18 @@ import useAudioCapture from "./audio/useAudioCapture";
 import useMicDevices from "./audio/useMicDevices";
 import { randomUUID } from "../utils/uuid";
 import { isTouchPrimaryDevice } from "../utils/device";
+import { makeDebug } from "../utils/debug";
 
 const LIVE_TRANSCRIPT_MAX_LINES = 240;
 const SESSION_EVENT_LIMIT = 600;
 
-function isAudioDebugEnabled() {
-  if (!import.meta.env.DEV || typeof window === "undefined") {
-    return false;
-  }
-  return window.__LCT_DEBUG_AUDIO === true;
-}
+// Audio lifecycle diagnostics route through the unified gate (utils/debug.js):
+// OFF by default, opt in with VITE_LCT_DEBUG=audio or
+// window.__lctDebug.enable("audio"). (Previously a bespoke __LCT_DEBUG_AUDIO flag.)
+const audioDebug = makeDebug("audio");
 
 function logAudioDebug(event, payload = {}) {
-  if (!isAudioDebugEnabled()) return;
-  console.log(`[AudioInput] ${event}`, payload);
+  audioDebug(event, payload);
 }
 
 function calculateConfidence(logprobs) {

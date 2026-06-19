@@ -35,6 +35,8 @@ from lct_python_backend.services.import_orchestrator import (
     validate_or_raise,
 )
 from lct_python_backend.models.import_contract import RawTurnPayload
+from lct_python_backend.services.graph_persistence import persist_turns
+from lct_python_backend.raw_turn_contract import RawTurnsPayloadV1
 from lct_python_backend.services.import_validation import (
     get_supported_import_formats,
     is_url_import_enabled,
@@ -407,6 +409,37 @@ async def import_from_turns(
             f"Imported {stats['utterance_count']} turns → {stats['node_count']} nodes "
             f"({stats['auditable_node_count']} auditable)"
         ),
+    )
+
+
+@router.post("/turns", response_model=ImportStatusResponse)
+async def import_turns(
+    request: RawTurnsPayloadV1,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Import a conversation as a structured ``RawTurn[]`` payload (P1).
+
+    The provenance-bearing ingest that replaces the lossy markdown ``/from-text``
+    for IndrasNet pushes: each turn becomes an ``Utterance`` carrying a stable
+    ``source_identifier``; re-pushing the same ``group_id`` replaces the
+    conversation in place (stable ``conversation_id``). Contract + rationale:
+    docs/plans/2026-06-17-p1-rawturn-data-contract.md.
+    """
+    try:
+        result = await persist_turns(db=db, payload=request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("RawTurn import failed: %s", exc)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save turns: {exc}")
+
+    return ImportStatusResponse(
+        success=True,
+        conversation_id=result["conversation_id"],
+        message=f"Imported {result['utterance_count']} turns ({result['participant_count']} speakers)",
+        utterance_count=result["utterance_count"],
+        participant_count=result["participant_count"],
     )
 
 
