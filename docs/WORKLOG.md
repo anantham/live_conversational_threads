@@ -1,5 +1,30 @@
 # WORKLOG
 
+## 2026-06-19 — Token-mismatch incident: diagnosed, verified RESOLVED
+
+Full writeup: `docs/HANDOVER_2026-06-19_public-deploy-token-incident.md`.
+
+- **Incident:** live app (threads.adityaarpitha.com) was down 06-17→06-19 — a 06-17
+  token "reconcile" trusted the stale `lct_app/.env` (OLD `nid1L4…`) and set the
+  **backend** to OLD while the live Vercel bundle ships NEW `F7G6br…` → every authed
+  endpoint 401'd → "backend unreachable". The good token was preserved in
+  `lct_python_backend/.env.bak.tokenfix`.
+- **Resolved (verified read-only 06-19):** backend returns 200 for NEW, 401 for OLD;
+  box `.env`=NEW; `.env.bak`+`.env.bak.tokenfix` deleted; `lct_app/.env`=NEW; live
+  app loads with green STT/LLM chips, 0 console errors, Browse reads the full corpus.
+- **Security (independently verified):** NEW token never committed to git (pickaxe
+  clean). OLD token is a DEAD credential — backend rejects it, and `origin/main`
+  (`787ba27`) no longer contains it; it survives only in historical commit
+  `44408fc`. No real API-key secrets in history (`sk-ant-…` hits are doc
+  placeholders). `.env*` never tracked.
+- **Secondary issues (diagnosed, unfixed → ISSUES.md):** CORS middleware returns 401
+  outside `CORSMiddleware` so reject responses lack ACAO (browser shows misleading
+  "CORS/backend unreachable" instead of 401 — this masked the root cause);
+  cold-start "Private Beta" gate false-negative (tailnet cold-handshake timeout);
+  ~185-fetch retry storm with no backoff. NOT exercised: live WS-STT recording.
+- Two-agent coordination: box write owned by the implementing agent; this session
+  was read-only verifier (caught the transient `origin/main` exposure).
+
 ## 2026-06-06T23:50:22+05:30 - Named Vatsal catchup 5-tier thread extraction
 
 - Context: followed `.tmp_gpt5_extract_spec_named.md` for the named-speaker extraction of `.tmp_meetings/2026-05-17_vatsal_catchup.txt`; read the full transcript before authoring so long-range `rebuts` edges could connect Aditya's net-positive/unsanitized-chaos position with Vatsal's delivery-quality critique.
