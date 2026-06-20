@@ -10,6 +10,12 @@ lct_app/public/*.threads
 .playwright-mcp/
 threads-viewer-arcs.png
 
+# Local-only ops/debug scripts with hardcoded creds/endpoints — never commit
+# (audit A7). Rewrite under scripts/ops/ with env vars if a clean version is needed.
+lct_python_backend/list_minio.py
+lct_python_backend/update_db.py
+lct_python_backend/update_pg_settings.py
+
 # Logs
 logs
 *.log
