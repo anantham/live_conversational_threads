@@ -164,19 +164,43 @@ class MeetingSession:
         speaker_is_host: Optional[bool] = None,
         timestamp_ms: Optional[int] = None,
         duration_ms: Optional[int] = None,
+        recv_wall: Optional[float] = None,
     ) -> None:
-        """Forward one finalized meeting utterance as a transcript_final frame."""
+        """Forward one finalized meeting utterance as a transcript_final frame and
+        log speech->shown latency for empirical real-time measurement (the viewer
+        can also read metadata.latency)."""
         if self._closed or self._finalizing or not self._ws:
             return
         text = (text or "").strip()
         if not text:
             return
+        recv = recv_wall or time.time()
         timestamps: Dict[str, Any] = {}
         if isinstance(timestamp_ms, (int, float)):
             start_s = float(timestamp_ms) / 1000.0
             timestamps["start"] = start_s
             if isinstance(duration_ms, (int, float)):
                 timestamps["end"] = start_s + max(0.0, float(duration_ms) / 1000.0)
+        # Latency. Attendee's timestamp_ms is an ABSOLUTE Unix-epoch millisecond
+        # (NOT relative to recording start, despite the docs) — detected by magnitude.
+        #   attendee_lag_ms = speech_end -> webhook arrival (Google captions + Attendee)
+        #   pipeline_ms     = webhook arrival -> shown (our cost; one host clock, exact)
+        #   e2e_ms          = speech_end -> shown (what the viewer perceives)
+        # CAVEAT: speech_end uses the Attendee CONTAINER clock; recv/shown use the
+        # host clock. A drifting Docker/WSL2 clock offsets e2e/attendee_lag by that
+        # skew (keep the host WSL clock synced); pipeline_ms is unaffected.
+        shown = time.time()
+        e2e_ms = attendee_lag_ms = None
+        if isinstance(timestamp_ms, (int, float)) and float(timestamp_ms) > 1e11:
+            speech_end = (float(timestamp_ms) + float(duration_ms or 0)) / 1000.0
+            attendee_lag_ms = round((recv - speech_end) * 1000.0, 1)
+            e2e_ms = round((shown - speech_end) * 1000.0, 1)
+        pipeline_ms = round((shown - recv) * 1000.0, 1)
+        logger.info(
+            "[LATENCY] conv=%s e2e_ms=%s attendee_lag_ms=%s pipeline_ms=%s ts_ms=%s dur_ms=%s | %s: %s",
+            self.conversation_id, e2e_ms, attendee_lag_ms, pipeline_ms,
+            timestamp_ms, duration_ms, speaker_name, text[:80],
+        )
         frame = {
             "type": "transcript_final",
             "text": text,
@@ -187,6 +211,7 @@ class MeetingSession:
                 # speaker rollup even though the session speaker_id is constant.
                 "speaker_uuid": speaker_uuid,
                 "speaker_is_host": speaker_is_host,
+                "latency": {"e2e_ms": e2e_ms, "attendee_lag_ms": attendee_lag_ms, "pipeline_ms": pipeline_ms},
             },
             "timestamps": timestamps,
         }
@@ -327,6 +352,11 @@ class MeetingSession:
         if _is_terminal_state(new_state):
             await self.finalize(reason=f"bot_state:{label}")
 
+    @property
+    def is_active(self) -> bool:
+        """Live and not winding down — eligible for dedup reuse."""
+        return not self._closed and not self._finalizing
+
     def public_status(self) -> Dict[str, Any]:
         return {
             "conversation_id": self.conversation_id,
@@ -344,12 +374,20 @@ class MeetingSession:
 
 _by_conversation: Dict[str, MeetingSession] = {}
 _by_bot: Dict[str, MeetingSession] = {}
+_by_meeting_url: Dict[str, MeetingSession] = {}
 _registry_lock = asyncio.Lock()
+
+
+def _normalize_meeting_url(meeting_url: str) -> str:
+    """Strip query/session params so the same meeting (e.g. ad-hoc links with
+    ?ijlm=...&adhoc=1) maps to one dedup key."""
+    return (meeting_url or "").split("?", 1)[0].rstrip("/").lower()
 
 
 async def register(session: MeetingSession) -> None:
     async with _registry_lock:
         _by_conversation[session.conversation_id] = session
+        _by_meeting_url[_normalize_meeting_url(session.meeting_url)] = session
         if session.bot_id:
             _by_bot[session.bot_id] = session
 
@@ -362,6 +400,9 @@ async def bind_bot(session: MeetingSession, bot_id: str) -> None:
 
 def _unregister(session: MeetingSession) -> None:
     _by_conversation.pop(session.conversation_id, None)
+    url_key = _normalize_meeting_url(session.meeting_url)
+    if _by_meeting_url.get(url_key) is session:  # don't evict a newer session
+        _by_meeting_url.pop(url_key, None)
     if session.bot_id:
         _by_bot.pop(session.bot_id, None)
 
@@ -372,6 +413,12 @@ def get_by_bot(bot_id: str) -> Optional[MeetingSession]:
 
 def get_by_conversation(conversation_id: str) -> Optional[MeetingSession]:
     return _by_conversation.get(conversation_id)
+
+
+def get_by_meeting_url(meeting_url: str) -> Optional[MeetingSession]:
+    """A LIVE (not closed/finalizing) session for this meeting, for dedup."""
+    s = _by_meeting_url.get(_normalize_meeting_url(meeting_url))
+    return s if (s is not None and s.is_active) else None
 
 
 def all_sessions() -> List[MeetingSession]:

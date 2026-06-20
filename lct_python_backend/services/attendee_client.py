@@ -102,6 +102,8 @@ async def create_bot(
     transcription_settings: Optional[Dict[str, Any]] = None,
     webhooks: Optional[List[Dict[str, Any]]] = None,
     recording_settings: Optional[Dict[str, Any]] = None,
+    automatic_leave_settings: Optional[Dict[str, Any]] = None,
+    deduplication_key: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create a bot that joins ``meeting_url``.
@@ -121,6 +123,10 @@ async def create_bot(
         body["webhooks"] = webhooks
     if recording_settings is not None:
         body["recording_settings"] = recording_settings
+    if automatic_leave_settings is not None:
+        body["automatic_leave_settings"] = automatic_leave_settings
+    if deduplication_key is not None:
+        body["deduplication_key"] = deduplication_key
     if metadata is not None:
         body["metadata"] = metadata
 
