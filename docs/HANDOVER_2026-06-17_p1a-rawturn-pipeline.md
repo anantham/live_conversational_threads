@@ -38,12 +38,23 @@ my work is merged + my worktrees cleaned up. The parallel session is active on
    idempotent package + CI lint rejecting new `.tmp_`.
 
 ### Blocked / Cross-repo
-1. **P1b — IndrasNet PULL side (TemporalCoordination repo).** `GET
-   /api/lct/conversations/{group_id}/turns` PULL endpoint + cut `lct_client` over
-   from markdown `import_from_text` to `POST /api/import/turns` + the 🔴 unredacted-
-   source privacy bug (IndrasNet `also_share_to_lct` ships raw text;
-   `produce_share_artifacts` builds redacted `artifact_md` but doesn't return it).
-   The privacy bug is a PRECONDITION for relying on the PUSH path.
+1. **P1b — IndrasNet PULL/PUSH side (TemporalCoordination repo).** Now **open PR
+   `TemporalCoordination#17`** (`feat/lct-rawturn-pull-push`): `GET
+   /api/lct/conversations/{group_id}/turns` PULL endpoint + `LCTClient.import_turns()`
+   posting the structured `RawTurnsPayloadV1` to LCT `POST /api/import/turns`
+   (replacing markdown `import_from_text`).
+   **CORRECTION (audited 2026-06-20): the 🔴 "unredacted-source" privacy bug is
+   CLOSED — it was never a live leak in current code.** It was a real P0
+   (`text=content`) fixed 2026-06-14 (`c8e467f`, ancestor of HEAD): the share path
+   ships only a doc-LINK, and `produce_share_artifacts` DOES return the redacted
+   `artifact_md` (`share_pipeline.py:1068`) while the LCT-feeding caller refuses
+   unless `verification_clean` then sends the redacted body (`privacy.py:948-954`);
+   pinned by `test_sharing_pipeline.py:284-291`. Re-confirmed via a 3-lens adversarial
+   workflow (CLOSED, 0.95). This line was already stale when first written (the fix
+   pre-dated it by 3 days). **Remaining for P1b:** wire `_execute_share_via_lct` →
+   `import_turns`. The GENUINE residual privacy concern is *separate* — the LCT
+   import→extract path does no redaction / no `external_llm_ok` check; only the
+   `LCT_LOCAL_ONLY` chokepoint guards it (see ADR-038, "Deferred / Flagged" #2).
 2. **#10 Dialectic layout wiring** — `layoutDialectic()` landed (commit e0739e3,
    24 tests); UI wiring HELD on the **Vatsal viz-direction call**.
 3. **#12 Vocab→WhisperX re-transcription** — needs the user's compute decision +
