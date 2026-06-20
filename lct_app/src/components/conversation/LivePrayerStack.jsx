@@ -79,10 +79,18 @@ export default function LivePrayerStack({ cards = [], onDismiss }) {
     <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
       {open && (
         <div
-          className="flex w-[340px] max-w-[calc(100vw-3rem)] flex-col-reverse gap-2"
+          className="flex w-[340px] max-w-[calc(100vw-3rem)] flex-col gap-2"
           role="list"
           aria-label="Live prayer cards"
         >
+          {visible.map((card, i) => (
+            <PrayerCardItem
+              key={card.card_id}
+              card={card}
+              depth={i}
+              onDismiss={() => onDismiss?.(card.card_id)}
+            />
+          ))}
           {hidden > 0 && (
             <button
               type="button"
@@ -92,14 +100,6 @@ export default function LivePrayerStack({ cards = [], onDismiss }) {
               + {hidden} earlier
             </button>
           )}
-          {visible.map((card, i) => (
-            <PrayerCardItem
-              key={card.card_id}
-              card={card}
-              depth={i}
-              onDismiss={() => onDismiss?.(card.card_id)}
-            />
-          ))}
         </div>
       )}
 
