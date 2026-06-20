@@ -1,6 +1,29 @@
 # ISSUES
 
-Last updated: 2026-06-14
+Last updated: 2026-06-20
+
+## 2026-06-20 — Auth-reject CORS masking + cold-start gate false-negative + retry storm (DIAGNOSED, not yet fixed)
+
+**Summary:** Surfaced during the 2026-06-17→19 public-deploy token-mismatch incident
+(see `docs/HANDOVER_2026-06-19_public-deploy-token-incident.md`). Three pre-existing
+defects that together made a simple auth failure look like a total outage and made it
+hard to diagnose. All diagnosed read-only; none fixed yet.
+
+- **Auth-reject responses lack CORS headers → browser shows a misleading "CORS /
+  backend unreachable" instead of "401 Unauthorized" (HIGH for diagnosability).**
+  The bearer-auth middleware returns 401 *outside* `CORSMiddleware`, so the reject
+  response carries no `Access-Control-Allow-Origin`. The browser then reports
+  "blocked by CORS policy", hiding the real 401 — this is exactly why the token
+  mismatch presented as "backend unreachable" with ~185 console CORS errors. Fix:
+  make `CORSMiddleware` outermost, or attach `Access-Control-Allow-Origin` to the
+  401 reject responses. See `backend.py` middleware order + `middleware.py`.
+- **Cold-start gate false-negative.** First load shows "Private Beta — backend
+  unreachable" because the health probe times out on the cold tailnet (DERP)
+  handshake; it succeeds on retry once the path is warm (~50ms). Fix: retry/backoff
+  on the gate probe, or a longer first-probe timeout.
+- **Retry storm (no backoff).** Once auth fails, the frontend fired ~185 failed
+  fetches with no backoff. Fix: exponential backoff + a circuit breaker on the
+  fetch layer so a persistent failure doesn't hammer the backend.
 
 ## 2026-06-14 — Diagnostic logging leaked conversation content to console/logs (FIXED 2026-06-14)
 
