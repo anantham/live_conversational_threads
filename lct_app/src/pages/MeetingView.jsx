@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import MinimalGraph from "../components/MinimalGraph";
+import SessionTranscriptOverlay from "../components/transcript/SessionTranscriptOverlay";
 import { wsUrl, sendWsAuth } from "../services/apiClient";
 import { createBackendMessageHandler } from "../components/audio/audioMessages";
+import { upsertLiveTranscriptLine } from "../components/transcript/liveTranscriptLines";
 import { normalizeGraphDataPayload, applyGraphPatch } from "./newConversationGraphState";
 
 /**
@@ -41,9 +43,12 @@ export default function MeetingView() {
   const [status, setStatus] = useState("starting");
   const [botState, setBotState] = useState(null);
   const [error, setError] = useState("");
+  const [transcriptLines, setTranscriptLines] = useState([]);
+  const [transcriptMinimized, setTranscriptMinimized] = useState(true);
 
   const graphFromSocketRef = useRef(false);
   const flushResolveRef = useRef(null);
+  const transcriptLineIdRef = useRef(1);
 
   useEffect(() => {
     if (!conversationId) return undefined;
@@ -54,6 +59,11 @@ export default function MeetingView() {
       flushResolveRef,
       onDataReceived: (data) => setGraphData(normalizeGraphDataPayload(data) || []),
       onGraphPatchReceived: (patch) => setGraphData((prev) => applyGraphPatch(prev, patch)),
+      onTranscriptEvent: (event) => {
+        setTranscriptLines((previous) =>
+          upsertLiveTranscriptLine(previous, event, transcriptLineIdRef)
+        );
+      },
       onBackendMessage: (message) => {
         if (!message || typeof message !== "object") return;
         if (message.type === "bot_status") {
@@ -88,6 +98,8 @@ export default function MeetingView() {
   const hasData = Array.isArray(graphData) && graphData.some((c) => Array.isArray(c) && c.length);
   const statusLabel = STATUS_LABELS[status] || status;
   const statusStyle = STATUS_STYLES[status] || STATUS_STYLES.starting;
+  const transcriptOverlayVisible = transcriptLines.length > 0;
+  const viewportBottom = transcriptOverlayVisible ? (transcriptMinimized ? "4.5rem" : "40%") : "0";
 
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)]">
@@ -126,27 +138,45 @@ export default function MeetingView() {
         </div>
       )}
 
-      <main className="relative flex-1">
-        {hasData ? (
-          <MinimalGraph
-            graphData={graphData}
-            selectedNode={selectedNode}
-            setSelectedNode={setSelectedNode}
-            conversationId={conversationId}
-          />
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-slate-500">
-            {status !== "ended" && status !== "error" && (
-              <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-            )}
-            <p className="text-sm">
-              {status === "ended"
-                ? "Meeting ended — no graph was produced yet."
-                : status === "error"
-                ? "Couldn't attach to this meeting."
-                : "Waiting for the bot to join and start transcribing…"}
-            </p>
-            <p className="text-xs text-slate-400">The graph builds itself as people speak.</p>
+      <main className="relative flex-1 overflow-hidden">
+        <div
+          className="absolute inset-x-0 top-0 transition-[bottom] duration-300"
+          style={{ bottom: viewportBottom }}
+        >
+          {hasData ? (
+            <MinimalGraph
+              graphData={graphData}
+              selectedNode={selectedNode}
+              setSelectedNode={setSelectedNode}
+              conversationId={conversationId}
+            />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-slate-500">
+              {status !== "ended" && status !== "error" && (
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+              )}
+              <p className="text-sm">
+                {status === "ended"
+                  ? "Meeting ended — no graph was produced yet."
+                  : status === "error"
+                  ? "Couldn't attach to this meeting."
+                  : "Waiting for the bot to join and start transcribing…"}
+              </p>
+              <p className="text-xs text-slate-400">The graph builds itself as people speak.</p>
+            </div>
+          )}
+        </div>
+        {transcriptOverlayVisible && (
+          <div>
+            <SessionTranscriptOverlay
+              hasData={hasData}
+              minimized={transcriptMinimized}
+              onExpand={() => setTranscriptMinimized(false)}
+              onMinimize={() => setTranscriptMinimized(true)}
+              lines={transcriptLines}
+              mode="live"
+              statusText="Meeting transcript"
+            />
           </div>
         )}
       </main>

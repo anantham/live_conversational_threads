@@ -30,6 +30,15 @@ class _FakeWS:
         pass
 
 
+class _FakeRequest:
+    def __init__(self, payload, headers=None):
+        self._payload = json.dumps(payload).encode("utf-8")
+        self.headers = headers or {}
+
+    async def body(self):
+        return self._payload
+
+
 # --- transcript mapping -----------------------------------------------------
 
 def test_inject_utterance_maps_to_transcript_final():
@@ -85,6 +94,85 @@ def test_inject_utterance_without_timestamps():
     sent = asyncio.run(_run())
     assert sent[0]["timestamps"] == {}
     assert sent[0]["metadata"]["speaker_name"] is None
+
+
+def test_attendee_webhook_transcript_update_routes_to_session(monkeypatch):
+    async def _run():
+        monkeypatch.setattr(attendee_api, "ATTENDEE_WEBHOOK_SECRET", None)
+        sess = attendee_bridge.MeetingSession(
+            conversation_id="c-webhook",
+            meeting_url="https://meet.google.com/abc-defg-hij",
+            bot_name="LCT",
+        )
+        sess._ws = _FakeWS()
+        await attendee_bridge.register(sess)
+        await attendee_bridge.bind_bot(sess, "bot_webhook")
+        try:
+            response = await attendee_api.attendee_webhook(
+                _FakeRequest({
+                    "trigger": "transcript.update",
+                    "bot_id": "bot_webhook",
+                    "idempotency_key": "evt-1",
+                    "data": {
+                        "speaker_name": "Aditya",
+                        "speaker_uuid": "speaker-a",
+                        "speaker_is_host": True,
+                        "timestamp_ms": 4200,
+                        "duration_ms": 1000,
+                        "transcription": {
+                            "transcript": "the live caption should be visible first",
+                        },
+                    },
+                })
+            )
+            return response, sess._ws.sent
+        finally:
+            attendee_bridge._unregister(sess)
+
+    response, sent = asyncio.run(_run())
+    assert response == {"ok": True}
+    assert len(sent) == 1
+    frame = sent[0]
+    assert frame["type"] == "transcript_final"
+    assert frame["text"] == "the live caption should be visible first"
+    assert frame["metadata"]["speaker_name"] == "Aditya"
+    assert frame["metadata"]["speaker_uuid"] == "speaker-a"
+    assert frame["timestamps"]["start"] == pytest.approx(4.2)
+    assert frame["timestamps"]["end"] == pytest.approx(5.2)
+
+
+def test_attendee_webhook_dedupes_transcript_update_by_idempotency_key(monkeypatch):
+    async def _run():
+        monkeypatch.setattr(attendee_api, "ATTENDEE_WEBHOOK_SECRET", None)
+        sess = attendee_bridge.MeetingSession(
+            conversation_id="c-dedupe",
+            meeting_url="https://meet.google.com/abc-defg-hij",
+            bot_name="LCT",
+        )
+        sess._ws = _FakeWS()
+        await attendee_bridge.register(sess)
+        await attendee_bridge.bind_bot(sess, "bot_dedupe")
+        payload = {
+            "trigger": "transcript.update",
+            "bot_id": "bot_dedupe",
+            "idempotency_key": "evt-same",
+            "data": {
+                "speaker_name": "Aditya",
+                "transcription": {"transcript": "only once"},
+            },
+        }
+        try:
+            first = await attendee_api.attendee_webhook(_FakeRequest(payload))
+            second = await attendee_api.attendee_webhook(_FakeRequest(payload))
+            return first, second, sess._ws.sent
+        finally:
+            attendee_bridge._unregister(sess)
+
+    first, second, sent = asyncio.run(_run())
+    assert first == {"ok": True}
+    assert second == {"ok": True, "deduped": True}
+    assert len(sent) == 1
+    assert sent[0]["text"] == "only once"
 
 
 # --- idempotency dedupe -----------------------------------------------------
