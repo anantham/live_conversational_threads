@@ -37,8 +37,12 @@ def _make_app(env_overrides: dict = None):
         # Re-import to pick up env changes (tokens live in auth_policy).
         import importlib
         import lct_python_backend.auth_policy as auth_policy
+        import lct_python_backend.body_limits as body_limits
+        import lct_python_backend.rate_limit as rate_limit
         import lct_python_backend.middleware as mw
         importlib.reload(auth_policy)
+        importlib.reload(body_limits)
+        importlib.reload(rate_limit)
         importlib.reload(mw)
 
         app = FastAPI()
