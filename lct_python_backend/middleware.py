@@ -31,6 +31,7 @@ from lct_python_backend.rate_limit import (
     RATE_LIMIT_WINDOW,
     RateLimitMiddleware,
 )
+from lct_python_backend.url_import_gate import ENABLE_URL_IMPORT, UrlImportGateMiddleware
 
 logger = logging.getLogger("lct_backend")
 
@@ -39,12 +40,6 @@ ADMIN_AUTH_TOKEN = auth.ADMIN_AUTH_TOKEN
 IS_PRODUCTION = auth.IS_PRODUCTION
 check_ws_auth = auth.check_ws_auth
 check_ws_auth_message = auth.check_ws_auth_message
-
-ENABLE_URL_IMPORT: bool = os.getenv("ENABLE_URL_IMPORT", "false").lower() in {
-    "1",
-    "true",
-    "yes",
-}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -119,27 +114,6 @@ class ServerTimingMiddleware(BaseHTTPMiddleware):
             )
 
         return response
-
-
-class UrlImportGateMiddleware(BaseHTTPMiddleware):
-    """Blocks /api/import/from-url unless ENABLE_URL_IMPORT=true."""
-
-    async def dispatch(self, request: Request, call_next: Callable):
-        path = auth.normalize_path(request.url.path)
-
-        if path == "/api/import/from-url" and not ENABLE_URL_IMPORT:
-            logger.warning("[SECURITY] Blocked /api/import/from-url (ENABLE_URL_IMPORT is false)")
-            return JSONResponse(
-                status_code=status.HTTP_403_FORBIDDEN,
-                content={
-                    "detail": (
-                        "URL import is disabled. "
-                        "Set ENABLE_URL_IMPORT=true to enable (SSRF risk — only for trusted networks)."
-                    )
-                },
-            )
-
-        return await call_next(request)
 
 
 def configure_p0_security(app):
