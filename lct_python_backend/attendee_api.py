@@ -80,16 +80,14 @@ def _build_bot_settings() -> Dict[str, Any]:
     webhooks); the project-level webhook handles delivery.
     """
     if ATTENDEE_TRANSCRIPTION_MODE == "closed_captions":
-        # Record an MP3 only when the slow-pass (high-fidelity re-transcription)
-        # is enabled — it is the sole consumer. Otherwise record nothing, so we
-        # don't persist a full meeting audio file no feature uses (privacy +
-        # storage; audit A4).
-        cc_format = "mp3" if env_bool("ATTENDEE_SLOWPASS_ENABLED", False) else "none"
+        # Do NOT record a meeting MP3: its only consumer was the slow-pass, which
+        # is not shipped (audit A4). Recording a full audio file nobody uses is a
+        # needless privacy/storage cost; closed-captions mode needs no local audio.
         return {
             "transcription_settings": {
                 "meeting_closed_captions": {"google_meet_language": f"{ATTENDEE_STT_LANGUAGE}-US"}
             },
-            "recording_settings": {"format": cc_format},
+            "recording_settings": {"format": "none"},
         }
     # default: self-hosted STT via the Custom Async v2 contract (-> shim).
     return {
@@ -255,19 +253,12 @@ async def attendee_webhook(request: Request):
             new_state = data.get("new_state")
             await session.on_bot_state(new_state, sub_type=data.get("event_sub_type"))
             
-            # Slow-pass (high-fidelity MP3 re-transcription) is DISABLED by default
-            # (env ATTENDEE_SLOWPASS_ENABLED). The current prototype DESTRUCTIVELY
-            # overwrites live utterance text and has unshipped bugs (dead DB import,
-            # hardcoded creds); decision B replaces it with a review-gated
-            # transcript-revision flow before it may run again (audit A4). When
-            # enabled it fires once, on ENDED (9) only — also triggering on
-            # POST_PROCESSING (6) double-ran the expensive download+STT job (A4b).
-            if env_bool("ATTENDEE_SLOWPASS_ENABLED", False) and (
-                new_state == 9 or str(new_state) in ("9", "ENDED")
-            ):
-                from lct_python_backend.services.attendee_audio_downloader import fetch_and_transcribe
-                import asyncio
-                asyncio.create_task(fetch_and_transcribe(bot_id, session.conversation_id))
+            # Slow-pass (high-fidelity MP3 re-transcription) is intentionally NOT
+            # wired up. The prototype DESTRUCTIVELY overwrote live utterance text
+            # (audit A4) and decision B requires a review-gated transcript-revision
+            # flow first. No auto-trigger ships until that exists — when it does,
+            # enqueue the NON-destructive revision build here (not the old in-place
+            # patch), and gate any meeting-audio recording behind the same path.
 
         else:
             logger.debug("[attendee] ignoring webhook trigger=%s", trigger)
