@@ -185,3 +185,73 @@ def test_build_bot_settings_closed_captions(monkeypatch):
     s = attendee_api._build_bot_settings()
     assert "meeting_closed_captions" in s["transcription_settings"]
     assert s["recording_settings"]["format"] == "none"
+
+
+# --- meeting_url dedup ------------------------------------------------------
+
+def test_normalize_meeting_url_strips_params():
+    n = attendee_bridge._normalize_meeting_url
+    assert n("https://meet.google.com/abc-defg-hij?ijlm=1&adhoc=1") == "https://meet.google.com/abc-defg-hij"
+    assert n("https://meet.google.com/abc-defg-hij/") == "https://meet.google.com/abc-defg-hij"
+
+
+def test_get_by_meeting_url_dedup():
+    async def _run():
+        url = "https://meet.google.com/dedup-test?x=1"
+        s = attendee_bridge.MeetingSession(conversation_id="c-dedup", meeting_url=url, bot_name="b")
+        await attendee_bridge.register(s)
+        # same meeting, different session params -> same live session
+        assert attendee_bridge.get_by_meeting_url("https://meet.google.com/dedup-test?y=2") is s
+        # finalizing -> not eligible for dedup reuse
+        s._finalizing = True
+        assert attendee_bridge.get_by_meeting_url(url) is None
+        attendee_bridge._unregister(s)
+        assert attendee_bridge.get_by_meeting_url(url) is None
+
+    asyncio.run(_run())
+
+
+# --- auto-leave settings ----------------------------------------------------
+
+def test_auto_leave_settings_shape(monkeypatch):
+    monkeypatch.setattr(attendee_api, "ATTENDEE_ONLY_PARTICIPANT_TIMEOUT_S", 30)
+    monkeypatch.setattr(attendee_api, "ATTENDEE_WAIT_FOR_HOST_TIMEOUT_S", 120)
+    monkeypatch.setattr(attendee_api, "ATTENDEE_SILENCE_TIMEOUT_S", 600)
+    s = attendee_api._auto_leave_settings()
+    assert s["only_participant_in_meeting_timeout_seconds"] == 30
+    assert s["wait_for_host_to_start_meeting_timeout_seconds"] == 120
+    assert s["silence_timeout_seconds"] == 600
+
+
+# --- latency: epoch-aware ---------------------------------------------------
+
+def test_inject_utterance_latency_epoch():
+    import time as _t
+
+    async def _run():
+        sess = attendee_bridge.MeetingSession(conversation_id="c-lat", meeting_url="u", bot_name="b")
+        sess._ws = _FakeWS()
+        now_ms = int(_t.time() * 1000)  # absolute Unix-epoch ms (speech ~0.5s ago)
+        await sess.inject_utterance(text="hi", speaker_name="X",
+                                    timestamp_ms=now_ms - 1000, duration_ms=500, recv_wall=_t.time())
+        return sess._ws.sent
+
+    sent = asyncio.run(_run())
+    lat = sent[0]["metadata"]["latency"]
+    assert lat["pipeline_ms"] is not None
+    assert lat["e2e_ms"] is not None  # epoch-magnitude ts -> e2e computed
+    assert -2000 < lat["e2e_ms"] < 10000  # sane sub-10s window
+
+
+def test_inject_utterance_latency_none_without_epoch_ts():
+    async def _run():
+        sess = attendee_bridge.MeetingSession(conversation_id="c-lat2", meeting_url="u", bot_name="b")
+        sess._ws = _FakeWS()
+        # small (relative-looking) ts -> e2e not computed, only pipeline
+        await sess.inject_utterance(text="hi", speaker_name="X", timestamp_ms=1000, duration_ms=500)
+        return sess._ws.sent
+
+    sent = asyncio.run(_run())
+    lat = sent[0]["metadata"]["latency"]
+    assert lat["e2e_ms"] is None and lat["attendee_lag_ms"] is None
+    assert lat["pipeline_ms"] is not None
