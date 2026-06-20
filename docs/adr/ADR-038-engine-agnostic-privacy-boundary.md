@@ -1,7 +1,7 @@
 # ADR-038: Engine-Agnostic Privacy Boundary — a shared redact/restore/leak-verify primitive enforced at the transport chokepoint
 
 **Date:** 2026-06-07
-**Status:** Proposed — **design complete (2026-06-20): the five pre-review holes are resolved** (see [Resolutions of the five pre-review findings](#resolutions-of-the-five-pre-review-findings-2026-06-20)); ready for the GO-gate codex/gpt-5.5 review (Migration Step 5) before implementation. The core D3 claim (class-level `send` patch beats by-value imports) was *confirmed* by the 2026-06-07 pre-review; the enforcement surface is now widened to **subprocess/CLI engines (R1)** and **non-server batch processes (R2)**, the content hash made **stream-safe (R3)**, the gate predicate corrected to **leaks-only (R4)**, and the canonical forbidden list **pinned and consent-derived, with Chin/Aishwarya enrolled (R5)**.
+**Status:** Proposed — **NEEDS REVISION (the GO-gate review returned No-Go, 2026-06-20).** The R1–R5 resolutions were designed against the `.tmp_` prototype and several do **not** survive the real production egress code: `services/synthesis/synthesis_engine.py` spawns CLIs via `subprocess.run(input=…)` (not `Popen.__init__`, so the R1 gate can't hash the stdin) and those CLIs run in the repo cwd (`claude -p` unsandboxed); real sends are JSON envelopes (so R3/R5's hash-of-bare-text never matches `request.content`); the google-genai SDK and realtime-**audio** websockets are un-stampable external paths the scope claim ignores; and the existing synthesis redaction path's missing-canonical-map case only *warns* then sends. See [Round-2 codex review (2026-06-20) — No-Go](#round-2-codex-review-2026-06-20--no-go) for the nine findings (all adjudicated REAL) and the required redesign. The **architecture** (shared primitive + tier-aware chokepoint + leak-verify) stands; the R1/R3/R5 *mechanisms* must be reworked before any implementation. The core D3 class-level-`send` claim was confirmed by the 2026-06-07 pre-review.
 **Group:** architecture / privacy (cross-cutting, cross-repo)
 
 **Relates to / builds on:**
@@ -133,8 +133,11 @@ def leak_verify(
     whole_word: bool = True,
 ) -> LeakReport:
     """Deterministic post-redaction check. Thin adapter over
-    redaction_verify.verify_artifact_body (redaction_verify.py:100-156);
-    LeakReport.clean mirrors VerificationResult.is_clean (redaction_verify.py:64-67)."""
+    redaction_verify.verify_artifact_body (redaction_verify.py:100-156). Per R4 the
+    egress gate keys on `clean` (LEAKS-ONLY); this does NOT mirror
+    VerificationResult.is_clean (which ALSO fails on missing expected pseudonyms,
+    redaction_verify.py:64-67). The missing-pseudonym signal lives in the separate,
+    non-blocking `expected_pseudonyms_missing` and never blocks egress."""
 ```
 
 ### The stamp (the contract between the primitive and the chokepoint)
@@ -475,6 +478,35 @@ must grow to cover subprocess engines and non-server processes before the
 "impossible by default" promise is honest.
 
 ---
+
+## Round-2 codex review (2026-06-20) — No-Go
+
+The GO-gate adversarial review (gpt-5.5, read-only) returned **No-Go**. Where the
+2026-06-07 pre-review checked the ADR against the `.tmp_` prototype, this one checked
+the R1–R5 resolutions against the **real production egress code** — and found the
+resolutions were modeled on the prototype, not on what actually ships. Adjudicated
+finding-by-finding against the source; **all nine are real** (1/2/9 verified directly
+against `synthesis_engine.py`, 5 and 4-audio are self-evident, 6 was an incomplete
+edit). The architecture survives; R1/R3/R5's *mechanisms* must be rebuilt.
+
+| # | Finding (file:line) | Verdict | Required change |
+|---|---|---|---|
+| 1 | The R1 `subprocess.Popen.__init__` gate can't see the stdin it must hash: real CLI calls use `subprocess.run(input=prompt)` (`synthesis_engine.py:87-106`), which writes stdin via `communicate()` *after* `Popen` is built. | **REAL** (verified) | The gate must own encode→hash→spawn (wrap the sanctioned CLI helper / `subprocess.run`/`communicate`), not `Popen.__init__`. |
+| 2 | Redacting stdin doesn't bound what the CLI can *read*: `codex exec -s read-only` runs in the repo cwd and `claude -p` has no sandbox flag (`synthesis_engine.py:84-106`) — the child can read private files. | **REAL** (verified) | Run frontier CLIs in an isolated empty cwd with no repo/file access; stdin redaction alone is insufficient. |
+| 3 | Install-in-lifespan is too late: lifespan runs *after* all route modules import (`backend.py`), so an import-time by-value bind precedes the wrap. | **REAL** | `bootstrap_egress()` must run at process entry *before* app imports; enumerate every frontier-capable entrypoint. |
+| 4 | R3 covers only httpx bodies; Gemini goes via the `google.genai` SDK and OpenAI realtime STT streams **audio** over websockets (`transcript_llm_callers.py`, `stt_openai_realtime.py`) — un-stampable external paths. | **REAL** (scope) | Scope the ADR to text-LLM-over-httpx and enumerate audio/SDK as known residual gaps, OR add separate gates; drop the unqualified "impossible by default". |
+| 5 | The stamp hashes bare redacted *text*, but the wire carries a JSON envelope (`messages`,`model`,…), so `sha256(text) != sha256(request.content)` — the stamp never matches. | **REAL** | Have the chokepoint leak-verify the *actual outbound bytes* (`request.content`) directly, not match a hash of bare text. |
+| 6 | R4 left contradictory: the `leak_verify` docstring still said "mirrors `is_clean`" — the exact bug R4 fixes. | **REAL** (own edit) | **Fixed in this revision** (docstring now leaks-only). |
+| 7 | R5 isn't backed by code/data yet: no `privacy_boundary_map.json`; map hardcoded + regex-`\b`; Chin/Aishwarya absent (`synthesis/redaction.py:36-87,132-143`). | **REAL, design-stage** | Design stands; "resolved" overstated — build the pinned map + tests in Steps 0–1 before R5 is truly closed. |
+| 8 | Existing tests bless raw cloud egress under `LCT_LOCAL_ONLY=0` (`test_egress_guard.py:93-96`, `test_egress_chokepoint.py:129-136`). | **REAL** | Migration must invert these for E3/E4-unless-stamped + add negative tests (raw httpx, Google SDK, CLI). |
+| 9 | The existing synthesis redaction path (`synthesis_engine.py:135-173`) is a *separate* system with no stamp, and its missing-canonical-map case only **warns** (`:156-167`) then sends. | **REAL** (verified) | Integrate with + harden it: missing canonical map = **fail-closed** for any external send, not a warning. |
+
+This table is the agenda for the revision before implementation. The biggest reframe:
+the chokepoint should **leak-verify the real outbound bytes** rather than trust a
+hash-of-redacted-text stamp, and the CLI path needs a sanctioned helper + a sandboxed
+cwd rather than a `Popen.__init__` hook. The existing `synthesis_engine.run_stage`
+flow (consent→redact→assert_clean→spawn→restore) is the integration point, not the
+`.tmp_` prototype.
 
 ## Related
 
