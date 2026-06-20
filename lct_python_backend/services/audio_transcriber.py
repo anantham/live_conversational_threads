@@ -83,6 +83,7 @@ async def transcribe_audio_file_detailed(
     language: str = "",
     timeout_seconds: float = 120.0,
     response_format: str = "",
+    initial_prompt: str = "",
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> AudioTranscriptionDetail:
     """Transcribe an audio file via HTTP STT provider and return full detail."""
@@ -102,6 +103,8 @@ async def transcribe_audio_file_detailed(
         form_data["language"] = coerce_str(language)
     if coerce_str(response_format):
         form_data["response_format"] = coerce_str(response_format)
+    if coerce_str(initial_prompt):
+        form_data["initial_prompt"] = coerce_str(initial_prompt)
     form_data.setdefault("include_timestamps", "true")
 
     files = {"file": (file_path.name, payload_bytes, guessed_content_type)}
@@ -412,6 +415,7 @@ async def transcribe_audio_chunked(
             language=language,
             timeout_seconds=timeout_seconds,
             response_format=response_format,
+            initial_prompt=initial_prompt,
             transport=transport,
         )
 
@@ -491,6 +495,7 @@ async def transcribe_audio_segmented(
     on_segment_started: Optional[SegmentStartedCallback] = None,
     on_chunk_progress: Optional[ProgressCallback] = None,
     response_format: str = "",
+    initial_prompt: str = "",
     transport: Optional[httpx.AsyncBaseTransport] = None,
     resume_from_segment: int = 0,
     resumed_segment_texts: Optional[list[str]] = None,

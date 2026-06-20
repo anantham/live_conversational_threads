@@ -123,6 +123,11 @@ class MeetingSession:
         self.status: str = "starting"  # starting|joining|recording|finalizing|ended|error
         self._closed = False
         self._finalizing = False
+        # Latency instrumentation: wall-clock anchor for recording start (set on
+        # JOINED_RECORDING) so each utterance's timestamp_ms (relative to recording
+        # start) maps to an absolute speech time. Lets us measure speech -> shown.
+        self._rec_anchor_wall: Optional[float] = None
+        self._e2e_latencies_ms: List[float] = []
 
     # -- lifecycle ----------------------------------------------------------
 
@@ -164,19 +169,41 @@ class MeetingSession:
         speaker_is_host: Optional[bool] = None,
         timestamp_ms: Optional[int] = None,
         duration_ms: Optional[int] = None,
+        recv_wall: Optional[float] = None,
     ) -> None:
-        """Forward one finalized meeting utterance as a transcript_final frame."""
+        """Forward one finalized meeting utterance as a transcript_final frame and
+        relay it to viewers (live captions). Stamps speech->shown latency for
+        empirical real-time measurement (the viewer reads metadata.latency)."""
         if self._closed or self._finalizing or not self._ws:
             return
         text = (text or "").strip()
         if not text:
             return
+        recv = recv_wall or time.time()
         timestamps: Dict[str, Any] = {}
         if isinstance(timestamp_ms, (int, float)):
             start_s = float(timestamp_ms) / 1000.0
             timestamps["start"] = start_s
             if isinstance(duration_ms, (int, float)):
                 timestamps["end"] = start_s + max(0.0, float(duration_ms) / 1000.0)
+        # Latency: timestamp_ms is relative to recording start; anchor it to the
+        # wall clock captured at JOINED_RECORDING to get absolute speech time.
+        #   attendee_lag_ms = speech_end -> webhook arrival (Google captions + Attendee)
+        #   pipeline_ms     = webhook arrival -> shown (our cost)
+        #   e2e_ms          = speech_end -> shown (what the viewer perceives)
+        shown = time.time()
+        e2e_ms = attendee_lag_ms = None
+        if isinstance(timestamp_ms, (int, float)) and self._rec_anchor_wall is not None:
+            speech_end_wall = self._rec_anchor_wall + (float(timestamp_ms) + float(duration_ms or 0)) / 1000.0
+            attendee_lag_ms = round((recv - speech_end_wall) * 1000.0, 1)
+            e2e_ms = round((shown - speech_end_wall) * 1000.0, 1)
+            self._e2e_latencies_ms.append(e2e_ms)
+        pipeline_ms = round((shown - recv) * 1000.0, 1)
+        logger.info(
+            "[LATENCY] conv=%s e2e_ms=%s attendee_lag_ms=%s pipeline_ms=%s ts_ms=%s dur_ms=%s | %s: %s",
+            self.conversation_id, e2e_ms, attendee_lag_ms, pipeline_ms,
+            timestamp_ms, duration_ms, speaker_name, text[:80],
+        )
         frame = {
             "type": "transcript_final",
             "text": text,
@@ -187,11 +214,13 @@ class MeetingSession:
                 # speaker rollup even though the session speaker_id is constant.
                 "speaker_uuid": speaker_uuid,
                 "speaker_is_host": speaker_is_host,
+                "latency": {"e2e_ms": e2e_ms, "attendee_lag_ms": attendee_lag_ms, "pipeline_ms": pipeline_ms},
             },
             "timestamps": timestamps,
         }
         async with self._send_lock:
             await self._ws.send(json.dumps(frame))
+        self._relay(frame)
         self._utterance_count += 1
         if self.status in {"joining", "starting"}:
             self.status = "recording"
@@ -319,6 +348,10 @@ class MeetingSession:
             low = new_state.strip().lower()
             if "recording" in low:
                 self.status = "recording"
+                if self._rec_anchor_wall is None:
+                    # Anchor the latency clock at recording start (best-effort:
+                    # this webhook lands shortly after recording actually begins).
+                    self._rec_anchor_wall = time.time()
             elif "waiting_room" in low:
                 self.status = "waiting_room"
             elif "joining" in low or low == "joined":

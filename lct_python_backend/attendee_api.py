@@ -27,6 +27,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 import uuid
 from typing import Any, Dict, Optional
 
@@ -83,7 +84,7 @@ def _build_bot_settings() -> Dict[str, Any]:
             "transcription_settings": {
                 "meeting_closed_captions": {"google_meet_language": f"{ATTENDEE_STT_LANGUAGE}-US"}
             },
-            "recording_settings": {"format": "none"},
+            "recording_settings": {"format": "mp3"},
         }
     # default: self-hosted STT via the Custom Async v2 contract (-> shim).
     return {
@@ -170,6 +171,11 @@ async def create_meeting(req: CreateMeetingRequest):
         }
 
     settings = _build_bot_settings()
+    # NO inline webhooks here: Attendee forces https:// on inline create-bot
+    # webhooks (serializers ^https://.*), and our receiver is plain http on the
+    # LAN. Delivery is handled by the PROJECT-level webhook registered in the
+    # Attendee dashboard (http allowed via REQUIRE_HTTPS_WEBHOOKS=false); every
+    # event carries bot_id so the bridge routes it. See docs/attendee-meeting-bot-setup.md.
     try:
         bot = await attendee_client.create_bot(
             meeting_url=meeting_url,
@@ -206,6 +212,7 @@ async def meeting_status(conversation_id: str):
 @router.post("/webhook")
 async def attendee_webhook(request: Request):
     """Receive an Attendee webhook event and drive the matching meeting bridge."""
+    recv_wall = time.time()  # webhook arrival time, for speech->shown latency
     raw = await request.body()
     if not _verify_signature(raw, request.headers.get(WEBHOOK_SIGNATURE_HEADER)):
         logger.warning("[attendee] webhook signature verification failed")
@@ -237,9 +244,18 @@ async def attendee_webhook(request: Request):
                 speaker_is_host=data.get("speaker_is_host"),
                 timestamp_ms=data.get("timestamp_ms"),
                 duration_ms=data.get("duration_ms"),
+                recv_wall=recv_wall,
             )
         elif trigger == "bot.state_change":
-            await session.on_bot_state(data.get("new_state"), sub_type=data.get("event_sub_type"))
+            new_state = data.get("new_state")
+            await session.on_bot_state(new_state, sub_type=data.get("event_sub_type"))
+            
+            # If the bot is finished (6 = POST_PROCESSING, 9 = ENDED), fetch the recording
+            if new_state in (6, 9) or str(new_state) in ("6", "9", "POST_PROCESSING", "ENDED"):
+                from lct_python_backend.services.attendee_audio_downloader import fetch_and_transcribe
+                import asyncio
+                asyncio.create_task(fetch_and_transcribe(bot_id, session.conversation_id))
+
         else:
             logger.debug("[attendee] ignoring webhook trigger=%s", trigger)
     except Exception as exc:  # noqa: BLE001
