@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import HTTPException
-from google.cloud import storage
 
 from lct_python_backend.config import GCS_BUCKET_NAME, GCS_FOLDER
 
@@ -50,6 +49,9 @@ def save_json_to_gcs(
 
     object_prefix = str(GCS_FOLDER or "").strip().strip("/")
     object_path = f"{object_prefix}/{file_id}.json" if object_prefix else f"{file_id}.json"
+
+    # Lazy import: only the GCS backend codepath needs google-cloud-storage.
+    from google.cloud import storage
 
     client = storage.Client()
     bucket = client.bucket(GCS_BUCKET_NAME)
@@ -182,6 +184,9 @@ def load_conversation_from_gcs(gcs_path: str) -> dict:
         if not bucket_name:
             raise ValueError("GCS_BUCKET_NAME is not configured.")
         object_path = gcs_path
+
+        # Lazy import: only the GCS backend codepath needs google-cloud-storage.
+        from google.cloud import storage
 
         client = storage.Client()
         bucket = client.bucket(bucket_name)

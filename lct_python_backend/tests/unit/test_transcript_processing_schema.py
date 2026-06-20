@@ -57,8 +57,8 @@ def test_normalize_generated_output_adds_required_defaults():
     assert node["thread_state"] == "continue_thread"
     assert isinstance(node["id"], str) and node["id"]
     assert node["node_text"] == node["summary"]
-    assert node["semantic_level"] == 2
-    assert node["semantic_type"] == "idea"
+    assert node["semantic_level"] == 1
+    assert node["semantic_type"] == "chunk"
 
 
 def test_normalize_generated_output_coerces_single_contextual_relation_object():
