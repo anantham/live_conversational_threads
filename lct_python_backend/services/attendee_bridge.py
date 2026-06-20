@@ -123,13 +123,9 @@ class MeetingSession:
         self.status: str = "starting"  # starting|joining|recording|finalizing|ended|error
         self._closed = False
         self._finalizing = False
-        # Latency instrumentation: wall-clock anchor for recording start (set on
-        # JOINED_RECORDING) so each utterance's timestamp_ms (relative to recording
-        # start) maps to an absolute speech time. Lets us measure speech -> shown.
-        self._rec_anchor_wall: Optional[float] = None
         self._e2e_latencies_ms: List[float] = []
-        # Epoch-ms anchor for recording-relative timestamps. Attendee sends
-        # ABSOLUTE epoch-ms per utterance (not relative), so we subtract this.
+        # Epoch-ms anchor for recording-relative timestamps: the first caption's
+        # absolute epoch-ms (Attendee sends ABSOLUTE epoch-ms, not relative).
         self._rec_anchor_epoch_ms: Optional[float] = None
 
     # -- lifecycle ----------------------------------------------------------
@@ -187,17 +183,17 @@ class MeetingSession:
         if isinstance(timestamp_ms, (int, float)):
             # Attendee sends ABSOLUTE epoch-ms (confirmed from a real payload,
             # 2026-06-20: ts=1781937993768), but the schema treats timestamp_start
-            # as seconds RELATIVE to recording start. Anchor on the recording-join
-            # wall clock when we have it (preserves leading silence and aligns
-            # with the audio file's t0); otherwise fall back to the first
-            # utterance's epoch. Anchor is captured once, so relative ordering and
-            # spacing stay correct even under small cross-clock skew.
+            # as seconds RELATIVE to recording start. Anchor on the FIRST caption's
+            # epoch: it shares Google's caption clock with every other timestamp_ms,
+            # so it is skew-free (unlike our wall clock) and deterministic, captured
+            # once. Two accepted limitations — both safe because the raw epoch is
+            # preserved in source_timestamp_ms (below), so true global order stays
+            # recoverable: (a) leading silence before the first caption is lost
+            # (authoritative fix = fetch recording-start from Attendee metadata,
+            # TODO); (b) a caption arriving out of order BEFORE the anchor floors to
+            # 0 via the clamp, which the schema's valid_timestamps CHECK requires.
             if self._rec_anchor_epoch_ms is None:
-                self._rec_anchor_epoch_ms = (
-                    self._rec_anchor_wall * 1000.0
-                    if self._rec_anchor_wall is not None
-                    else float(timestamp_ms)
-                )
+                self._rec_anchor_epoch_ms = float(timestamp_ms)
             start_s = max(0.0, (float(timestamp_ms) - self._rec_anchor_epoch_ms) / 1000.0)
             timestamps["start"] = start_s
             if isinstance(duration_ms, (int, float)):
@@ -215,7 +211,14 @@ class MeetingSession:
             speech_end_wall = (float(timestamp_ms) + float(duration_ms or 0)) / 1000.0
             attendee_lag_ms = round((recv - speech_end_wall) * 1000.0, 1)
             e2e_ms = round((shown - speech_end_wall) * 1000.0, 1)
-            self._e2e_latencies_ms.append(e2e_ms)
+            # These cross Google's caption clock and our clock, so they only hold
+            # under NTP sync. If e2e is implausible (backend clock skew) drop both
+            # rather than record garbage as a real metric — pipeline_ms below is
+            # local-clock-only and always trustworthy.
+            if 0.0 <= e2e_ms <= 3_600_000.0:
+                self._e2e_latencies_ms.append(e2e_ms)
+            else:
+                e2e_ms = attendee_lag_ms = None
         pipeline_ms = round((shown - recv) * 1000.0, 1)
         # Privacy: log only ids/sizes/timing — never the speaker name or transcript
         # text (this is a normal info log, not a gated trace). speaker_uuid is an
@@ -373,10 +376,6 @@ class MeetingSession:
             low = new_state.strip().lower()
             if "recording" in low:
                 self.status = "recording"
-                if self._rec_anchor_wall is None:
-                    # Anchor the latency clock at recording start (best-effort:
-                    # this webhook lands shortly after recording actually begins).
-                    self._rec_anchor_wall = time.time()
             elif "waiting_room" in low:
                 self.status = "waiting_room"
             elif "joining" in low or low == "joined":

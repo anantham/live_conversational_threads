@@ -40,9 +40,9 @@ def test_inject_utterance_maps_to_transcript_final():
             bot_name="LCT",
         )
         sess._ws = _FakeWS()
-        # Recording started at epoch 0; Attendee sends ABSOLUTE epoch-ms, so an
-        # utterance at ts=12000ms persists as 12.0s relative to recording start.
-        sess._rec_anchor_wall = 0.0
+        # Anchor the recording at epoch 0; Attendee sends ABSOLUTE epoch-ms, so an
+        # utterance at ts=12000ms persists as 12.0s relative to the anchor.
+        sess._rec_anchor_epoch_ms = 0.0
         await sess.inject_utterance(
             text="  Hello world  ",
             speaker_name="Jane Doe",
