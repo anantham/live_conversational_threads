@@ -32,6 +32,7 @@ from lct_python_backend.services.import_bulk_helpers import (
     resolve_candidate_backend_label as _candidate_backend_label,
     resolve_llm_backend_label as _resolve_llm_backend_label,
 )
+from lct_python_backend.services.import_bulk_stage_events import ImportBulkStageEvents
 from lct_python_backend.services.import_bulk_telemetry import (
     attach_bottleneck_stage,
     calculate_segmented_progress,
@@ -119,51 +120,14 @@ async def run_bulk_processing_worker(
         "file_name": filename,
         "file_size_bytes": content_size,
     }
-
-    async def send_update(existing_json, chunk_dict, patch=None):
-        if isinstance(patch, dict):
-            await emit("graph", {"type": "graph_patch", "data": patch})
-        await emit("graph", {"type": "existing_json", "data": existing_json})
-        await emit("graph", {"type": "chunk_dict", "data": chunk_dict})
-
-    async def send_status(level: str, message: str, context: dict[str, Any]):
-        context = context or {}
-        stage = str(context.get("stage") or "").strip()
-        progress_map = {
-            "accumulate": 0.65,
-            "generate_lct_json": 0.85,
-        }
-        await emit(
-            "status",
-            {
-                "level": level,
-                "stage": stage or "analyzing",
-                "message": message,
-                "progress": progress_map.get(stage, 0.55),
-                "context": context,
-                "stt_backend": telemetry.get("stt_backend", ""),
-                "llm_backend": telemetry.get("llm_backend", ""),
-                "telemetry": {
-                    "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                    "stt_backend": telemetry.get("stt_backend", ""),
-                    "llm_backend": telemetry.get("llm_backend", ""),
-                },
-            },
-        )
+    stage_events = ImportBulkStageEvents(
+        emit=emit,
+        pipeline_started_at=pipeline_started_at,
+        telemetry=telemetry,
+    )
 
     try:
-        await emit(
-            "status",
-            {
-                "stage": "uploading",
-                "progress": 0.05,
-                "message": f"File received ({content_size} bytes)",
-                "file_name": filename,
-                "telemetry": {
-                    "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                },
-            },
-        )
+        await stage_events.emit_upload_received(filename=filename, content_size=content_size)
 
         stt_settings = await load_stt_settings(db)
         byok_session = None
@@ -264,21 +228,14 @@ async def run_bulk_processing_worker(
                                     "[PROCESS FILE] cache-hit audio backfill failed for %s: %s",
                                     prior_conv, audio_exc,
                                 )
-                            await emit("status", {
-                                "stage": "done",
-                                "progress": 1.0,
-                                "message": f"Cache hit — reusing existing conversation ({prior_node_count} nodes).",
-                                "conversation_id": prior_conv,
-                                "cache_hit": True,
-                                "telemetry": {
-                                    "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                                    "file_hash": file_hash,
-                                    "cached_node_count": prior_node_count,
-                                    "cached_completed_chunks": completed,
-                                    "cached_total_chunks": total,
-                                    "source_audio_backfilled": str(persisted_audio_path) if persisted_audio_path else None,
-                                },
-                            })
+                            await stage_events.emit_cache_hit_done(
+                                prior_conv=prior_conv,
+                                prior_node_count=prior_node_count,
+                                completed=completed,
+                                total=total,
+                                file_hash=file_hash,
+                                persisted_audio_path=persisted_audio_path,
+                            )
                             return
 
                 # Reuse the prior run's conversation_id when resuming from a
@@ -304,20 +261,11 @@ async def run_bulk_processing_worker(
                         existing_checkpoint.get("total_chunks", "?"),
                         resume_from_chunk + 1,
                     )
-                    await emit(
-                        "status",
-                        {
-                            "stage": "resuming",
-                            "progress": 0.08,
-                            "message": f"Resuming from chunk {resume_from_chunk} (found checkpoint)...",
-                            "stt_backend": stt_backend if is_likely_audio else "",
-                            "telemetry": {
-                                "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                                "checkpoint_chunks": resume_from_chunk,
-                                "checkpoint_total_chunks": checkpoint_total,
-                                "resume_available": True,
-                            },
-                        },
+                    await stage_events.emit_resume_checkpoint(
+                        resume_from_chunk=resume_from_chunk,
+                        checkpoint_total=checkpoint_total,
+                        stt_backend=stt_backend,
+                        is_likely_audio=is_likely_audio,
                     )
                     # Replay cached transcript lines to frontend
                     for ct in existing_checkpoint.get("completed_chunk_texts", []):
@@ -380,23 +328,13 @@ async def run_bulk_processing_worker(
         else:
             transcribe_msg = "Extracting transcript text..."
 
-        await emit(
-            "status",
-            {
-                "stage": "transcribing" if is_likely_audio else "parsing",
-                "progress": 0.10,
-                "message": transcribe_msg,
-                "stt_backend": stt_backend if is_likely_audio else "",
-                "stt_http_url": stt_http_url if is_likely_audio else "",
-                "audio_duration_ms": audio_duration_ms,
-                "telemetry": {
-                    "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                    "stt_backend": stt_backend if is_likely_audio else "",
-                    "stt_http_url": stt_http_url if is_likely_audio else "",
-                    "audio_duration_ms": audio_duration_ms,
-                    "initial_eta_ms": initial_eta_ms,
-                },
-            },
+        await stage_events.emit_transcription_start(
+            is_likely_audio=is_likely_audio,
+            transcribe_msg=transcribe_msg,
+            stt_backend=stt_backend,
+            stt_http_url=stt_http_url,
+            audio_duration_ms=audio_duration_ms,
+            initial_eta_ms=initial_eta_ms,
         )
         transcription_started_at = time.perf_counter()
 
@@ -435,49 +373,22 @@ async def run_bulk_processing_worker(
                 chunk_idx=chunk_idx,
                 total_chunks=total,
             )
-            await emit(
-                "status",
-                {
-                    "stage": "transcribing",
-                    "progress": round(progress, 3),
-                    "message": f"Transcribing audio chunk {chunk_idx}/{total}...",
-                    "stt_backend": telemetry.get("stt_backend", ""),
-                    "telemetry": {
-                        "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                        "transcription_elapsed_ms": transcription_elapsed_ms,
-                        "transcription_eta_ms": transcription_eta_ms,
-                        "transcription_estimated_total_ms": transcription_estimated_total_ms,
-                        "stt_chunks_completed": chunk_idx,
-                        "stt_chunks_total": total,
-                        "stt_backend": telemetry.get("stt_backend", ""),
-                    },
-                },
-            )
             normalized_chunk_text = str(chunk_text or "").strip()
+            await stage_events.emit_chunk_progress(
+                chunk_idx=chunk_idx,
+                total=total,
+                progress=progress,
+                normalized_chunk_text=normalized_chunk_text,
+                transcription_elapsed_ms=transcription_elapsed_ms,
+                transcription_eta_ms=transcription_eta_ms,
+                transcription_estimated_total_ms=transcription_estimated_total_ms,
+            )
             if normalized_chunk_text:
                 # Accumulate transcript for checkpoint
                 checkpoint_transcript_parts.append(normalized_chunk_text)
                 telemetry["checkpoint_chunks"] = len(checkpoint_transcript_parts)
                 telemetry["checkpoint_total_chunks"] = total
                 telemetry["resume_available"] = True
-
-                await emit(
-                    "transcript",
-                    {
-                        "phase": "transcribing",
-                        "chunk_id": f"stt-chunk-{chunk_idx}",
-                        "index": chunk_idx,
-                        "total": total,
-                        "text": normalized_chunk_text,
-                        "telemetry": {
-                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                            "transcription_elapsed_ms": transcription_elapsed_ms,
-                            "transcription_eta_ms": transcription_eta_ms,
-                            "stt_chunks_completed": chunk_idx,
-                            "stt_chunks_total": total,
-                        },
-                    },
-                )
 
                 # Checkpoint: persist this chunk so we can resume if connection drops
                 if file_hash:
@@ -520,26 +431,13 @@ async def run_bulk_processing_worker(
             fallback_events = telemetry.setdefault("stt_provider_fallbacks", [])
             if isinstance(fallback_events, list):
                 fallback_events.append(fallback_record)
-            await emit(
-                "status",
-                {
-                    "stage": "transcribing",
-                    "progress": 0.2,
-                    "notice_type": "stt_provider_fallback",
-                    "message": (
-                        f"Local STT provider {fallback_record['from_provider']} failed. "
-                        f"Falling back to {fallback_record['to_provider']}."
-                    ),
-                    "fallback": fallback_record,
-                    "telemetry": {
-                        "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                        "transcription_elapsed_ms": (
-                            elapsed_ms(transcription_started_at)
-                            if transcription_started_at is not None
-                            else None
-                        ),
-                    },
-                },
+            await stage_events.emit_provider_fallback(
+                fallback_record,
+                transcription_elapsed_ms=(
+                    elapsed_ms(transcription_started_at)
+                    if transcription_started_at is not None
+                    else None
+                ),
             )
 
         # Determine if we should use interleaved segmented processing
@@ -600,8 +498,8 @@ async def run_bulk_processing_worker(
         telemetry["llm_backend"] = llm_backend
 
         processor = transcript_processor_cls(
-            send_update=send_update,
-            send_status=send_status,
+            send_update=stage_events.send_graph_update,
+            send_status=stage_events.send_analysis_status,
             llm_config=runtime_llm_config,
             providers=runtime_llm_providers,
         )
@@ -1089,7 +987,7 @@ async def run_bulk_processing_worker(
             )
             if graph_refinement_result.get("applied") and isinstance(graph_refinement_result.get("nodes"), list):
                 processor.existing_json = list(graph_refinement_result["nodes"])
-                await send_update(processor.existing_json, processor.chunk_dict)
+                await stage_events.send_graph_update(processor.existing_json, processor.chunk_dict)
                 await emit(
                     "status",
                     {
@@ -1163,12 +1061,10 @@ async def run_bulk_processing_worker(
             ideas_in = _of_level(2)
             consolidation_telemetry["ideas_in"] = len(ideas_in)
             if len(ideas_in) >= MIN_IDEAS_FOR_TOPIC_CONSOLIDATION:
-                await emit("status", {
-                    "stage": "consolidating",
-                    "progress": 0.97,
-                    "message": f"Clustering {len(ideas_in)} ideas into topics...",
-                    "telemetry": {"total_elapsed_ms": elapsed_ms(pipeline_started_at)},
-                })
+                await stage_events.emit_consolidation_status(
+                    progress=0.97,
+                    message=f"Clustering {len(ideas_in)} ideas into topics...",
+                )
                 topics = await consolidate_ideas_to_topics(ideas_in, providers=runtime_llm_providers)
                 if topics:
                     existing.extend(topics)
@@ -1176,12 +1072,10 @@ async def run_bulk_processing_worker(
                     logger.info("[CONSOLIDATE] ideas=%d -> topics=%d", len(ideas_in), len(topics))
 
                     if len(topics) >= MIN_TOPICS_FOR_THEME_CONSOLIDATION:
-                        await emit("status", {
-                            "stage": "consolidating",
-                            "progress": 0.975,
-                            "message": f"Clustering {len(topics)} topics into themes...",
-                            "telemetry": {"total_elapsed_ms": elapsed_ms(pipeline_started_at)},
-                        })
+                        await stage_events.emit_consolidation_status(
+                            progress=0.975,
+                            message=f"Clustering {len(topics)} topics into themes...",
+                        )
                         themes = await consolidate_topics_to_themes(topics, providers=runtime_llm_providers)
                         if themes:
                             existing.extend(themes)
@@ -1189,12 +1083,10 @@ async def run_bulk_processing_worker(
                             logger.info("[CONSOLIDATE] topics=%d -> themes=%d", len(topics), len(themes))
 
                             if len(themes) >= MIN_THEMES_FOR_ARC_CONSOLIDATION:
-                                await emit("status", {
-                                    "stage": "consolidating",
-                                    "progress": 0.98,
-                                    "message": f"Synthesizing {len(themes)} themes into arcs + executive summary...",
-                                    "telemetry": {"total_elapsed_ms": elapsed_ms(pipeline_started_at)},
-                                })
+                                await stage_events.emit_consolidation_status(
+                                    progress=0.98,
+                                    message=f"Synthesizing {len(themes)} themes into arcs + executive summary...",
+                                )
                                 arcs, title, summary = await consolidate_themes_to_arcs(
                                     themes, providers=runtime_llm_providers,
                                 )
@@ -1476,8 +1368,7 @@ async def run_bulk_processing_worker(
                     enqueue_error,
                 )
 
-        await emit(
-            "done",
+        await stage_events.emit_done(
             {
                 "conversation_id": resolved_conversation_id,
                 "speaker_id": resolved_speaker_id,
@@ -1507,17 +1398,14 @@ async def run_bulk_processing_worker(
             "checkpoint_total_chunks": checkpoint_total_chunks,
             "total_elapsed_ms": elapsed_ms(pipeline_started_at),
         }
-        await emit(
-            "error",
-            {
-                "message": err_msg,
-                "file_name": filename,
-                "conversation_id": resolved_conversation_id,
-                "failure_stage": active_stage,
-                "retryable": retryable,
-                "resume_available": resume_available,
-                "checkpoint_chunks": checkpoint_chunks,
-                "checkpoint_total_chunks": checkpoint_total_chunks,
-                "telemetry": error_telemetry,
-            },
+        await stage_events.emit_pipeline_error(
+            err_msg=err_msg,
+            filename=filename,
+            conversation_id=resolved_conversation_id,
+            active_stage=active_stage,
+            retryable=retryable,
+            resume_available=resume_available,
+            checkpoint_chunks=checkpoint_chunks,
+            checkpoint_total_chunks=checkpoint_total_chunks,
+            error_telemetry=error_telemetry,
         )
