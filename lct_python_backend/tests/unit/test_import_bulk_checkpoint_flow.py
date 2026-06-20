@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -53,30 +54,30 @@ async def test_bootstrap_cache_hit_short_circuits():
         "completed_chunk_texts": [],
     }
 
+    mock_audio_storage = MagicMock()
+    mock_audio_storage.get_status.return_value = {"has_source": True}
+    mock_stt_api = MagicMock()
+    mock_stt_api.audio_storage = mock_audio_storage
+
     with patch(
         "lct_python_backend.services.import_bulk_checkpoint_flow.compute_file_hash",
         return_value="hash-1",
     ), patch(
         "lct_python_backend.services.import_bulk_checkpoint_flow.find_checkpoint",
         new=AsyncMock(return_value=checkpoint),
-    ), patch(
-        "lct_python_backend.services.import_bulk_checkpoint_flow.audio_storage",
-        create=True,
-    ):
-        with patch("lct_python_backend.stt_api.audio_storage") as audio_storage:
-            audio_storage.get_status.return_value = {"has_source": True}
-            state = await bootstrap_audio_checkpoint_flow(
-                db=db,
-                temp_path="/tmp/x.wav",
-                filename="x.wav",
-                content_size=10,
-                conversation_id="conv-1",
-                is_likely_audio=True,
-                stt_backend="local",
-                stage_events=events,
-                telemetry=telemetry,
-                log=MagicMock(),
-            )
+    ), patch.dict(sys.modules, {"lct_python_backend.stt_api": mock_stt_api}):
+        state = await bootstrap_audio_checkpoint_flow(
+            db=db,
+            temp_path="/tmp/x.wav",
+            filename="x.wav",
+            content_size=10,
+            conversation_id="conv-1",
+            is_likely_audio=True,
+            stt_backend="local",
+            stage_events=events,
+            telemetry=telemetry,
+            log=MagicMock(),
+        )
 
     assert state.cache_hit is True
     assert any(call.args[0] == "status" for call in emit.await_args_list)
