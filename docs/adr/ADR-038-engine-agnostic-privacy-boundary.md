@@ -1,7 +1,7 @@
 # ADR-038: Engine-Agnostic Privacy Boundary — a shared redact/restore/leak-verify primitive enforced at the transport chokepoint
 
 **Date:** 2026-06-07
-**Status:** Proposed (drafted by Claude; **pre-reviewed by an independent agent 2026-06-07 — verdict NEEDS-WORK, see [Pre-review verification findings](#pre-review-verification-findings-blocking--resolve-before-implementation)**; not yet implemented). The core D3 claim (class-level `send` patch beats by-value imports) was *confirmed* by the review; five holes — chiefly the subprocess/CLI engine bypass — must be resolved before implementation.
+**Status:** Proposed — **design complete (2026-06-20): the five pre-review holes are resolved** (see [Resolutions of the five pre-review findings](#resolutions-of-the-five-pre-review-findings-2026-06-20)); ready for the GO-gate codex/gpt-5.5 review (Migration Step 5) before implementation. The core D3 claim (class-level `send` patch beats by-value imports) was *confirmed* by the 2026-06-07 pre-review; the enforcement surface is now widened to **subprocess/CLI engines (R1)** and **non-server batch processes (R2)**, the content hash made **stream-safe (R3)**, the gate predicate corrected to **leaks-only (R4)**, and the canonical forbidden list **pinned and consent-derived, with Chin/Aishwarya enrolled (R5)**.
 **Group:** architecture / privacy (cross-cutting, cross-repo)
 
 **Relates to / builds on:**
@@ -101,8 +101,10 @@ class RedactionResult:
 
 @dataclass(frozen=True)
 class LeakReport:
-    clean: bool               # True iff no forbidden real name survived
+    clean: bool               # LEAKS-ONLY: True iff no forbidden real name survived.
+                              # The egress gate keys on THIS (see R4), NOT on is_clean.
     leaks: list[tuple[str, int]]  # (forbidden_string, char_offset), document order
+    expected_pseudonyms_missing: list[str]  # advisory quality signal — NON-blocking (R4)
     body_chars: int           # for "4 leaks in 47KB" severity logging
 
 def redact(
@@ -221,6 +223,105 @@ Rules:
 
 ---
 
+## Resolutions of the five pre-review findings (2026-06-20)
+
+The five BLOCKING findings (F1–F5, documented in full below) are resolved by the
+following concrete design decisions. The **architecture is unchanged**; the
+enforcement *surface* widens (R1, R2), the content hash becomes stream-safe (R3),
+the gate predicate is corrected (R4), and the canonical list is pinned (R5). These
+supersede the terse "Resolution:" stubs inside each finding.
+
+### R1 (F1) — cover subprocess/CLI engines with a `subprocess.Popen` gate, not a scope-out
+We do **not** de-scope CLI engines (the finding's option *b*) — they are the *one
+demonstrated workflow* (`codex exec`/gpt-5.5 generated the artifact), so scoping
+them out would leave the actual hole open. Instead `bootstrap_egress()` (R2) also
+installs a **class-level wrapper on `subprocess.Popen.__init__`** — the same
+unbypassable-by-value property as the httpx class-method patch (D3): `Popen` is
+*instantiated*, so `__init__` resolves from the patched class at call time; there is
+no module-level function a caller can `from subprocess import …`-copy to escape it.
+The wrapper:
+1. **Classifies the spawn:** is `basename(argv[0])` a known external-LLM CLI
+   (`codex`, `gemini`, and `claude` *when invoked as an E4 engine*)? The allowlist
+   is tier-tagged data in `privacy_boundary_map.json`. Every non-LLM subprocess
+   passes untouched (this gate must not perturb ordinary tooling).
+2. **Requires a stamp for a classified E3/E4 spawn:** a valid `RedactionStamp` in a
+   `contextvars.ContextVar` set by the sanctioned CLI helper, whose `payload_sha256`
+   matches the spawn's **actual** payload — hashed over `argv[1:]` **plus** the
+   `stdin` bytes the helper will write (the helper passes the payload via `input=` /
+   a materialized buffer, never an unbounded stream, so the bytes exist to hash).
+3. **Blocks before fork:** no stamp / hash-mismatch / wrong-tier ⇒ `UnverifiedEgressBlocked`
+   raised *before* the child is forked, so raw bytes never reach the vendor.
+
+The stamp rides a contextvar (never argv/stdin/the wire), and the sanctioned helper
+sets it **synchronously in the same task** that calls `Popen`, so the contextvar's
+cross-executor fragility (OQ3) does not bite here. **Honest residual:** this gates
+subprocesses spawned *from a process that bootstrapped egress*. A human running
+`codex exec` by hand in a terminal is outside any such process and stays
+human-gated — which is correct; that is a human action, not an app egress. The
+"impossible by default" promise is now precisely: *impossible from any LCT process
+(server or batch) that called `bootstrap_egress()`, across **both** the httpx and
+subprocess transports.*
+
+### R2 (F2) — `bootstrap_egress()` at every E3/E4-capable entrypoint + a CI lint
+Replace the single `backend.py:136` install site with one idempotent
+`bootstrap_egress()` (in the vendored module) that installs the httpx **and**
+subprocess wrappers and runs the boot self-check. It is called from the FastAPI
+lifespan **and** from every script / batch / Alembic / harness entrypoint that can
+reach an E3/E4 engine (frontier extraction is an *offline batch* job — exactly the
+process ADR-034 item 6 noted has no chokepoint today). A CI lint (extending the
+codex-egress gate, Step 5) flags any module that imports a frontier SDK *or* spawns
+a known LLM CLI but never calls `bootstrap_egress()` at entry. The "immune by
+construction" claim is downgraded everywhere to **"immune in any process that
+called `bootstrap_egress()`"**, and the self-check **fails the process** (not only
+the server boot) whenever a redaction-requiring profile is active and the wrappers
+are absent.
+
+### R3 (F3) — buffer-or-block streamed request bodies on E3/E4 (never fail open)
+On a classified E3/E4 httpx send the wrapper MUST obtain the exact outbound bytes,
+with only two outcomes — verified, or blocked:
+1. Non-stream body (`request.content` available) → hash it.
+2. Streamed body (`httpx.RequestNotRead`) → materialize first via `request.read()`
+   (sync) / `await request.aread()` (async), *then* hash. Redacted payloads are
+   fully-formed text, so materializing is safe and cheap.
+3. Body that genuinely cannot be replayed (a one-shot generator) → **block** with
+   `UnverifiedEgressBlocked("E3/E4 streamed body cannot be leak-verified")`.
+
+There is **no `try/except` that proceeds on failure** — the fail-open path the
+finding identified is removed by construction. (Streamed *responses* are unaffected;
+only the request body carries the leak risk.)
+
+### R4 (F4) — the egress gate keys on LEAKS ONLY; expected-pseudonym presence is advisory
+`LeakReport.clean` is now strictly **"no forbidden real name survived"**
+(leaks-only); the "did `[Friend A]` actually appear" signal moves to the separate,
+**non-blocking** `expected_pseudonyms_missing` field (interface updated above).
+`RedactionStamp.leak_clean` and `verify_stamp` read **only** `clean`: a leak-free
+payload that merely lacks an expected pseudonym is **stamped and allowed** (with a
+logged warning), never blocked. IndrasNet's `share_pipeline` keeps its stricter
+`is_clean` (leaks **and** expected) for its *artifact-publishing* gate — but the
+*egress* gate deliberately uses the looser leaks-only predicate so it cannot brick a
+legitimate redacted send.
+
+### R5 (F5) — one consent-derived, pinned forbidden list with unicode/possessive-aware matching; Chin + Aishwarya enrolled
+- **Single source, consent-derived:** `FORBIDDEN` is materialized **at sync time
+  from IndrasNet's contacts consent** (`external_llm_ok=False` ⇒ that contact's
+  names are forbidden), not a hand-edited literal — resolving the three-way drift
+  and OQ6. It is written into `privacy_boundary_map.json` so the runtime read stays
+  pure-local. The current enrolled set **must include Chin and Aishwarya** (absent
+  from every existing map today) alongside Vatsal / Sahil / Bhishma(raj); whether
+  the owner "Aditya" is forbidden is an explicit recorded flag in the map, not left
+  implicit.
+- **Matching hardened past ASCII `\b`:** leak-verify normalizes to Unicode **NFC**,
+  matches case-insensitively, strips trailing possessives (`'s` / `’s`), and treats
+  each forbidden name as a whole token under a **Unicode-aware** boundary — so
+  `Vatsal's`, `Vatsal Mehra`, and Devanagari spellings are caught while
+  `Mehra`-inside-a-word is not. Multi-token names match as a unit *and* by each
+  consented token per the map.
+- **The golden test is now well-defined:** Step 0's "byte-identical round-trip" is
+  specified against this pinned list, and F5's diacritic/possessive cases become
+  required `test_privacy_boundary.py` assertions.
+
+---
+
 ## Migration plan (gated; no implementation before this ADR is reviewed)
 
 **Step 0 — extract the canonical primitive (no behavior change).**
@@ -234,6 +335,19 @@ Add `classify_engine_tier(url)` + the D5 policy table to the shared module, reus
 
 **Step 3 — generalize the LCT chokepoint (the enforcement).**
 Extend `egress_chokepoint.py`'s httpx wrapper (`:103-115`) to call `assert_egress_allowed(url, request.content, engine_tier=...)`; add `UnverifiedEgressBlocked`. Add the **startup self-check** in `backend.py` lifespan (`:126-138`): assert `send._lct_egress_wrapped` (`:111-112`) and **fail boot** if a redaction-requiring profile is active and the wrap is absent (closes ADR-034 §"Known boundaries" item 7). Keep `assert_local_egress` for E1/local (defense-in-depth). Mirror the change into IndrasNet's `core/llm/_api.py:202-208` gate so both repos enforce identically.
+
+**Step 3b — extend enforcement to subprocess CLI engines + batch entrypoints (R1/R2).**
+In `bootstrap_egress()` also wrap `subprocess.Popen.__init__` at the class level:
+classify `basename(argv[0])` against the tier-tagged CLI allowlist in
+`privacy_boundary_map.json`, and for an E3/E4 CLI require a content-matching
+`RedactionStamp` from the sanctioned caller's contextvar — else `UnverifiedEgressBlocked`
+*before fork*. Replace the single `backend.py:136` install with `bootstrap_egress()`
+called from the FastAPI lifespan AND every frontier-capable script / batch / Alembic /
+harness entrypoint; the self-check **fails the process**, not just the server boot. Add
+a CI lint that flags a frontier-SDK import *or* a known-LLM-CLI spawn in any module that
+never calls `bootstrap_egress()`. Tests: a stubbed `Popen(["codex","exec",...], input=b"...Vatsal...")`
+with no stamp ⇒ `UnverifiedEgressBlocked`; the same spawn with a valid content-matching
+stamp ⇒ proceeds.
 
 **Step 4 — wire the redaction-aware caller path.**
 The single sanctioned "call a frontier model" helper (one per repo) does `redact → stamp_payload → attach stamp (header/contextvar) → httpx send → restore`. All other code keeps calling httpx normally and simply *cannot* reach E3/E4 (no stamp ⇒ blocked) — which is the point.
@@ -275,6 +389,11 @@ Remove `.tmp_privacy_redact.py` and `.tmp_gpt5_extract_spec_redacted.md` from th
 ---
 
 ## Pre-review verification findings (BLOCKING — resolve before implementation)
+
+> **STATUS 2026-06-20 — ALL FIVE RESOLVED.** F1–F5 below are closed by the design
+> decisions in [Resolutions of the five pre-review findings](#resolutions-of-the-five-pre-review-findings-2026-06-20)
+> (R1–R5). They are retained here as the rationale and as the agenda the GO-gate
+> codex/gpt-5.5 review (Migration Step 5) must re-confirm before any code is written.
 
 An independent adversarial pre-review (2026-06-07) spot-checked ~25 of this ADR's
 `file:line` citations (accuracy high) and **confirmed D3's load-bearing claim**:
