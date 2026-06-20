@@ -10,11 +10,22 @@ import os
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from lct_python_backend.import_schemas import (
+    ExtractTurnsRequest,
+    ImportFromTextRequest,
+    ImportFromUrlRequest,
+    ImportStatusResponse,
+    ImportTurnsResponse,
+    ParsedTranscriptResponse,
+    ServicesStatusResponse,
+    UtteranceResponse,
+    ValidationResponse,
+)
 
 from lct_python_backend.db_session import get_async_session
 from lct_python_backend.services.owner_context import resolve_owner_id
@@ -69,82 +80,6 @@ from lct_python_backend.services.stt_health_service import (
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
 
 logger = logging.getLogger(__name__)
-
-
-# ── Pydantic models ─────────────────────────────────────────────────────────
-
-class UtteranceResponse(BaseModel):
-    """Response model for utterance."""
-    speaker: str
-    text: str
-    start_time: Optional[float]
-    end_time: Optional[float]
-    sequence_number: int
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class ValidationResponse(BaseModel):
-    """Response model for validation result."""
-    is_valid: bool
-    errors: List[str]
-    warnings: List[str]
-    stats: dict
-
-
-class ParsedTranscriptResponse(BaseModel):
-    """Response model for parsed transcript."""
-    conversation_id: str
-    utterance_count: int
-    participant_count: int
-    participants: List[str]
-    duration: Optional[float]
-    validation: ValidationResponse
-    sample_utterances: List[UtteranceResponse]
-
-
-class ImportStatusResponse(BaseModel):
-    """Response model for import status."""
-    success: bool
-    conversation_id: Optional[str]
-    message: str
-    utterance_count: int
-    participant_count: int
-
-
-class ImportFromUrlRequest(BaseModel):
-    """Request model for importing from URL."""
-    url: str
-    conversation_name: Optional[str] = None
-    owner_id: Optional[str] = None
-
-
-class ImportFromTextRequest(BaseModel):
-    """Request model for importing from text."""
-    text: str
-    conversation_name: Optional[str] = None
-    owner_id: Optional[str] = None
-
-
-class ServiceHealthInfo(BaseModel):
-    """Health info for a single service."""
-    healthy: bool
-    backend: str  # 'local' or 'modal'
-    latency_ms: Optional[int] = None
-    url: Optional[str] = None
-    model: Optional[str] = None
-    error: Optional[str] = None
-
-
-class ServicesStatusResponse(BaseModel):
-    """Response model for service status endpoint."""
-    services: Dict[str, ServiceHealthInfo]
-    active_stt_backend: str  # 'local_whisperx' or 'modal_whisperx'
-    active_llm_backend: str  # 'local_lmstudio' or 'modal_qwen3'
-    timestamp: str
-
-
-# ── Backward-compat wrappers (test monkeypatch targets) ─────────────────────
 
 router = APIRouter(prefix="/api/import", tags=["import"])
 
@@ -358,31 +293,6 @@ async def import_from_text(
         utterance_count=result.utterance_count,
         participant_count=result.participant_count,
     )
-
-
-class ImportTurnsResponse(BaseModel):
-    """Response for the structured RawTurn import — surfaces auditability up front."""
-
-    success: bool
-    conversation_id: str
-    utterance_count: int
-    node_count: int
-    auditable_node_count: int
-    indrasnet_group_id: Optional[str] = None
-    message: str
-
-
-class ExtractTurnsRequest(BaseModel):
-    """Phase-2 trigger: build the graph for turns already persisted by ``/turns``.
-
-    Identify the conversation by its LCT ``conversation_id`` (returned by
-    ``/turns``) or by IndrasNet ``group_id`` (+ ``owner_id``). At least one is
-    required; the orchestrator enforces it.
-    """
-
-    conversation_id: Optional[str] = None
-    group_id: Optional[str] = None
-    owner_id: Optional[str] = None
 
 
 @router.post("/turns/extract", response_model=ImportTurnsResponse)
