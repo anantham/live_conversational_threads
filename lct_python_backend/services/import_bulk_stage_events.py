@@ -108,6 +108,23 @@ class ImportBulkStageEvents:
             },
         )
 
+    async def emit_checkpoint_transcript_replays(self, existing_checkpoint: dict[str, Any]) -> None:
+        for ct in existing_checkpoint.get("completed_chunk_texts", []):
+            if not ct.get("text"):
+                continue
+            await self.emit(
+                "transcript",
+                {
+                    "phase": "transcribing",
+                    "chunk_id": f"stt-chunk-{ct['index']}",
+                    "index": ct["index"],
+                    "total": existing_checkpoint.get("total_chunks", 0),
+                    "text": ct["text"],
+                    "resumed": True,
+                    "telemetry": {"checkpoint_replayed": True},
+                },
+            )
+
     async def emit_resume_checkpoint(
         self,
         *,
@@ -226,6 +243,132 @@ class ImportBulkStageEvents:
                     "total_elapsed_ms": self._total_elapsed_ms(),
                     "transcription_elapsed_ms": transcription_elapsed_ms,
                 },
+            },
+        )
+
+    async def emit_segment_started(
+        self,
+        *,
+        segment_index: int,
+        segment_total: int,
+        start_ms: int,
+        end_ms: int,
+    ) -> None:
+        await self.emit(
+            "segment_started",
+            {
+                "index": segment_index,
+                "total": segment_total,
+                "start_ms": start_ms,
+                "end_ms": end_ms,
+                "duration_ms": end_ms - start_ms,
+                "telemetry": {"total_elapsed_ms": self._total_elapsed_ms()},
+            },
+        )
+
+    async def emit_segment_transcribed(
+        self,
+        *,
+        segment_index: int,
+        segment_total: int,
+        stt_progress: float,
+        segment_elapsed_ms: Optional[int],
+        segment_eta_ms: Optional[int],
+        llm_backend: str,
+        segment_stt_backend: str,
+    ) -> None:
+        await self.emit(
+            "status",
+            {
+                "stage": "transcribing",
+                "progress": round(stt_progress, 3),
+                "message": f"Transcribed segment {segment_index}/{segment_total}",
+                "segment_index": segment_index,
+                "segment_total": segment_total,
+                "stt_backend": segment_stt_backend,
+                "llm_backend": llm_backend,
+                "telemetry": {
+                    "total_elapsed_ms": self._total_elapsed_ms(),
+                    "segment_elapsed_ms": segment_elapsed_ms,
+                    "segment_index": segment_index,
+                    "segment_total": segment_total,
+                    "stt_chunks_completed": segment_index,
+                    "stt_chunks_total": segment_total,
+                    "transcription_elapsed_ms": self._total_elapsed_ms(),
+                    "transcription_eta_ms": segment_eta_ms,
+                },
+            },
+        )
+
+    async def emit_segment_transcript(
+        self,
+        *,
+        segment_index: int,
+        segment_total: int,
+        transcript_text: str,
+        resumed: bool,
+    ) -> None:
+        await self.emit(
+            "transcript",
+            {
+                "phase": "transcribing",
+                "segment_index": segment_index,
+                "segment_total": segment_total,
+                "text": transcript_text,
+                "resumed": resumed,
+                "telemetry": {"total_elapsed_ms": self._total_elapsed_ms()},
+            },
+        )
+
+    async def emit_segment_analyzing(
+        self,
+        *,
+        segment_index: int,
+        segment_total: int,
+        chunk_idx: int,
+        chunk_total: int,
+        overall_progress: float,
+        llm_backend: str,
+    ) -> None:
+        await self.emit(
+            "status",
+            {
+                "stage": "analyzing",
+                "progress": round(overall_progress, 3),
+                "message": (
+                    f"Analyzing segment {segment_index}/{segment_total} "
+                    f"chunk {chunk_idx}/{chunk_total}..."
+                ),
+                "segment_index": segment_index,
+                "segment_total": segment_total,
+                "stt_backend": self.telemetry.get("stt_backend", ""),
+                "llm_backend": llm_backend,
+                "telemetry": {
+                    "total_elapsed_ms": self._total_elapsed_ms(),
+                    "segment_index": segment_index,
+                    "segment_total": segment_total,
+                },
+            },
+        )
+
+    async def emit_segment_complete(
+        self,
+        *,
+        segment_index: int,
+        segment_total: int,
+        nodes_generated: int,
+        total_nodes: int,
+        segment_elapsed_ms: Optional[int],
+    ) -> None:
+        await self.emit(
+            "segment_complete",
+            {
+                "index": segment_index,
+                "total": segment_total,
+                "nodes_generated": nodes_generated,
+                "total_nodes": total_nodes,
+                "elapsed_ms": segment_elapsed_ms,
+                "telemetry": {"total_elapsed_ms": self._total_elapsed_ms()},
             },
         )
 

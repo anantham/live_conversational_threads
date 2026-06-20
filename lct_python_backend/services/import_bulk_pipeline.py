@@ -32,6 +32,11 @@ from lct_python_backend.services.import_bulk_helpers import (
     resolve_candidate_backend_label as _candidate_backend_label,
     resolve_llm_backend_label as _resolve_llm_backend_label,
 )
+from lct_python_backend.services.import_bulk_checkpoint_flow import (
+    bootstrap_audio_checkpoint_flow,
+    clear_import_checkpoint_safe,
+    persist_chunk_checkpoint_safe,
+)
 from lct_python_backend.services.import_bulk_stage_events import ImportBulkStageEvents
 from lct_python_backend.services.import_bulk_telemetry import (
     attach_bottleneck_stage,
@@ -43,20 +48,11 @@ from lct_python_backend.services.import_bulk_telemetry import (
     estimate_transcription_eta_ms,
     record_transcription_timing,
 )
-from lct_python_backend.services.import_checkpoint import (
-    clear_checkpoint,
-    compute_file_hash,
-    find_checkpoint,
-    save_chunk_checkpoint,
-)
-from lct_python_backend.services.byok_session_store import (
-    BYOK_SCOPE_LLM_IMPORT,
-    BYOK_SCOPE_STT_IMPORT,
-    ByokSessionLookupError,
-    build_runtime_llm_config_for_byok,
-    build_runtime_llm_providers_for_byok,
-    build_runtime_stt_settings_for_byok,
-    resolve_byok_session,
+
+from lct_python_backend.services.import_bulk_byok import (
+    apply_llm_byok_overlay,
+    apply_stt_byok_overlay,
+    resolve_stt_byok_session,
 )
 from lct_python_backend.services.provider_selection import resolve_import_audio_candidates
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
@@ -130,20 +126,12 @@ async def run_bulk_processing_worker(
         await stage_events.emit_upload_received(filename=filename, content_size=content_size)
 
         stt_settings = await load_stt_settings(db)
-        byok_session = None
-        if str(byok_session_token or "").strip():
-            try:
-                byok_session = resolve_byok_session(
-                    byok_session_token,
-                    required_scope=BYOK_SCOPE_STT_IMPORT,
-                )
-            except ByokSessionLookupError as exc:
-                raise ValueError(str(exc)) from exc
-        runtime_stt_settings = build_runtime_stt_settings_for_byok(
+        byok_session = resolve_stt_byok_session(byok_session_token)
+        runtime_stt_settings, provider_override = apply_stt_byok_overlay(
             stt_settings,
             byok_session,
+            provider,
         )
-        provider_override = str((byok_session or {}).get("provider") or provider or "").strip() or None
 
         stt_http_url = str(runtime_stt_settings.get("http_url", "")).strip()
         import_candidates = resolve_import_audio_candidates(
@@ -174,117 +162,25 @@ async def run_bulk_processing_worker(
             audio_duration_ms = _get_audio_duration_ms(Path(temp_path))
             telemetry["audio_duration_ms"] = audio_duration_ms
 
-        # Compute file hash for checkpoint/resume support
-        file_hash: Optional[str] = None
-        existing_checkpoint: Optional[dict[str, Any]] = None
-        checkpoint_transcript_parts: list[str] = []
-        resume_from_chunk = 0
-        telemetry["checkpoint_chunks"] = 0
-        telemetry["resume_available"] = False
-        if is_likely_audio:
-            try:
-                file_hash = compute_file_hash(Path(temp_path))
-                telemetry["file_hash"] = file_hash
-                existing_checkpoint = await find_checkpoint(db, file_hash)
-
-                # STT skip-on-complete: if this file_hash already maps to a
-                # conversation whose graph is fully persisted, redirect to it
-                # instead of re-running STT + LLM. Saves ~$1 + ~80min per
-                # Q.m4a re-import. Detected by: completed_chunks == total_chunks
-                # AND target conversation already has persisted nodes.
-                if existing_checkpoint and existing_checkpoint.get("conversation_id"):
-                    completed = int(existing_checkpoint.get("completed_chunks") or 0)
-                    total = int(existing_checkpoint.get("total_chunks") or 0)
-                    prior_conv = existing_checkpoint["conversation_id"]
-                    if total > 0 and completed >= total:
-                        from lct_python_backend.models import Node
-                        from sqlalchemy import select, func
-                        node_count_row = await db.execute(
-                            select(func.count(Node.id)).where(Node.conversation_id == prior_conv)
-                        )
-                        prior_node_count = int(node_count_row.scalar() or 0)
-                        if prior_node_count > 0:
-                            logger.info(
-                                "[PROCESS FILE] STT cache HIT for %s: redirecting to existing "
-                                "conversation %s (%d nodes, %d/%d chunks). Skipping STT+LLM.",
-                                filename, prior_conv, prior_node_count, completed, total,
-                            )
-                            # Backfill path: cache hits land here whenever the
-                            # user re-imports a file. If the prior import
-                            # predates the source-audio-persistence fix, the
-                            # audio file is missing from recordings/. Copy it
-                            # now so the download/seek paths start working
-                            # without re-running STT.
-                            persisted_audio_path = None
-                            try:
-                                from lct_python_backend.stt_api import audio_storage
-                                existing = audio_storage.get_status(prior_conv)
-                                if not existing.get("has_source"):
-                                    persisted_audio_path = audio_storage.persist_source_audio(
-                                        prior_conv, temp_path, Path(temp_path).suffix.lower()
-                                    )
-                            except Exception as audio_exc:  # noqa: BLE001
-                                logger.warning(
-                                    "[PROCESS FILE] cache-hit audio backfill failed for %s: %s",
-                                    prior_conv, audio_exc,
-                                )
-                            await stage_events.emit_cache_hit_done(
-                                prior_conv=prior_conv,
-                                prior_node_count=prior_node_count,
-                                completed=completed,
-                                total=total,
-                                file_hash=file_hash,
-                                persisted_audio_path=persisted_audio_path,
-                            )
-                            return
-
-                # Reuse the prior run's conversation_id when resuming from a
-                # checkpoint, so re-runs accumulate into the same DB row instead
-                # of producing orphan partial conversations.
-                if existing_checkpoint and existing_checkpoint.get("conversation_id"):
-                    resolved_conversation_id = existing_checkpoint["conversation_id"]
-                if existing_checkpoint and existing_checkpoint.get("completed_chunks", 0) > 0:
-                    resume_from_chunk = existing_checkpoint["completed_chunks"]
-                    telemetry["checkpoint_chunks"] = resume_from_chunk
-                    telemetry["resume_available"] = True
-                    checkpoint_total = _coerce_checkpoint_total(existing_checkpoint, telemetry)
-                    if checkpoint_total is not None:
-                        telemetry["checkpoint_total_chunks"] = checkpoint_total
-                    checkpoint_transcript_parts = [
-                        ct["text"] for ct in existing_checkpoint.get("completed_chunk_texts", [])
-                        if ct.get("text")
-                    ]
-                    logger.info(
-                        "[PROCESS FILE] Found checkpoint for %s: %d/%s chunks completed, resuming from chunk %d",
-                        filename,
-                        resume_from_chunk,
-                        existing_checkpoint.get("total_chunks", "?"),
-                        resume_from_chunk + 1,
-                    )
-                    await stage_events.emit_resume_checkpoint(
-                        resume_from_chunk=resume_from_chunk,
-                        checkpoint_total=checkpoint_total,
-                        stt_backend=stt_backend,
-                        is_likely_audio=is_likely_audio,
-                    )
-                    # Replay cached transcript lines to frontend
-                    for ct in existing_checkpoint.get("completed_chunk_texts", []):
-                        if ct.get("text"):
-                            await emit(
-                                "transcript",
-                                {
-                                    "phase": "transcribing",
-                                    "chunk_id": f"stt-chunk-{ct['index']}",
-                                    "index": ct["index"],
-                                    "total": existing_checkpoint.get("total_chunks", 0),
-                                    "text": ct["text"],
-                                    "resumed": True,
-                                    "telemetry": {"checkpoint_replayed": True},
-                                },
-                            )
-            except Exception as hash_exc:  # noqa: BLE001
-                logger.warning("[PROCESS FILE] Checkpoint lookup failed (non-fatal): %s", hash_exc)
-                file_hash = None
+        checkpoint_state = await bootstrap_audio_checkpoint_flow(
+            db=db,
+            temp_path=temp_path,
+            filename=filename,
+            content_size=content_size,
+            conversation_id=resolved_conversation_id,
+            is_likely_audio=is_likely_audio,
+            stt_backend=stt_backend,
+            stage_events=stage_events,
+            telemetry=telemetry,
+            log=logger,
+        )
+        if checkpoint_state.cache_hit:
+            return
+        file_hash = checkpoint_state.file_hash
+        existing_checkpoint = checkpoint_state.existing_checkpoint
+        checkpoint_transcript_parts = checkpoint_state.checkpoint_transcript_parts
+        resume_from_chunk = checkpoint_state.resume_from_chunk
+        resolved_conversation_id = checkpoint_state.resolved_conversation_id
 
         # Materialize the parent conversation row up front so that
         # pipeline_artifacts (checkpoint manifest, ADR-030 §D9 telemetry, etc.)
@@ -390,26 +286,20 @@ async def run_bulk_processing_worker(
                 telemetry["checkpoint_total_chunks"] = total
                 telemetry["resume_available"] = True
 
-                # Checkpoint: persist this chunk so we can resume if connection drops
-                if file_hash:
-                    try:
-                        await save_chunk_checkpoint(
-                            db,
-                            conversation_id=resolved_conversation_id,
-                            file_hash=file_hash,
-                            chunk_index=chunk_idx,
-                            total_chunks=total,
-                            chunk_text=normalized_chunk_text,
-                            accumulated_transcript="\n".join(checkpoint_transcript_parts),
-                            stt_backend=telemetry.get("stt_backend", ""),
-                            elapsed_ms=transcription_elapsed_ms or 0,
-                            file_name=filename,
-                            file_size_bytes=content_size,
-                        )
-                    except Exception as ckpt_exc:  # noqa: BLE001
-                        logger.warning(
-                            "[PROCESS FILE] Checkpoint save failed (non-fatal): %s", ckpt_exc
-                        )
+                await persist_chunk_checkpoint_safe(
+                    db,
+                    file_hash=file_hash,
+                    conversation_id=resolved_conversation_id,
+                    chunk_index=chunk_idx,
+                    total_chunks=total,
+                    chunk_text=normalized_chunk_text,
+                    accumulated_transcript="\n".join(checkpoint_transcript_parts),
+                    stt_backend=telemetry.get("stt_backend", ""),
+                    elapsed_ms=transcription_elapsed_ms or 0,
+                    file_name=filename,
+                    file_size_bytes=content_size,
+                    log=logger,
+                )
 
                 # Progressive graph generation: feed to LLM as text accumulates
                 if progressive_processor_ref:
@@ -482,15 +372,10 @@ async def run_bulk_processing_worker(
             if isinstance(providers, list):
                 llm_providers = providers
 
-        runtime_llm_config = build_runtime_llm_config_for_byok(
+        runtime_llm_config, runtime_llm_providers = apply_llm_byok_overlay(
             llm_config,
-            byok_session,
-            required_scope=BYOK_SCOPE_LLM_IMPORT,
-        )
-        runtime_llm_providers = build_runtime_llm_providers_for_byok(
             llm_providers,
             byok_session,
-            required_scope=BYOK_SCOPE_LLM_IMPORT,
         )
 
         # Determine LLM backend for UI indicators (will be updated by processor)
@@ -556,103 +441,64 @@ async def run_bulk_processing_worker(
                     )
                     return
 
-                # Emit segment_started event
-                await emit(
-                    "segment_started",
-                    {
-                        "index": segment.segment_index,
-                        "total": segment.segment_total,
-                        "start_ms": segment.start_ms,
-                        "end_ms": segment.end_ms,
-                        "duration_ms": segment.end_ms - segment.start_ms,
-                        "telemetry": {
-                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                        },
-                    },
+                await stage_events.emit_segment_started(
+                    segment_index=segment.segment_index,
+                    segment_total=segment.segment_total,
+                    start_ms=segment.start_ms,
+                    end_ms=segment.end_ms,
                 )
 
-                # Calculate overall progress for this segment's transcription phase
                 stt_progress = calculate_segmented_progress(
                     segment.segment_index,
                     segment.segment_total,
                     "transcribing",
-                    1.0,  # Segment transcription complete
+                    1.0,
                 )
-
-                # Calculate segment ETA
-                segment_eta_ms, segment_estimated_total_ms = estimate_segment_eta_ms(
+                segment_eta_ms, _segment_estimated_total_ms = estimate_segment_eta_ms(
                     total_elapsed_ms=elapsed_ms(pipeline_started_at),
                     segments_completed=segment.segment_index,
                     segments_total=segment.segment_total,
                 )
-
-                await emit(
-                    "status",
-                    {
-                        "stage": "transcribing",
-                        "progress": round(stt_progress, 3),
-                        "message": f"Transcribed segment {segment.segment_index}/{segment.segment_total}",
-                        "segment_index": segment.segment_index,
-                        "segment_total": segment.segment_total,
-                        "stt_backend": segment.metadata.get("stt_backend", ""),
-                        "llm_backend": llm_backend,
-                        "telemetry": {
-                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                            "segment_elapsed_ms": segment.elapsed_ms,
-                            "segment_index": segment.segment_index,
-                            "segment_total": segment.segment_total,
-                            # Compatibility keys for frontend ETA calculation
-                            "stt_chunks_completed": segment.segment_index,
-                            "stt_chunks_total": segment.segment_total,
-                            "transcription_elapsed_ms": elapsed_ms(pipeline_started_at),
-                            "transcription_eta_ms": segment_eta_ms,
-                        },
-                    },
+                await stage_events.emit_segment_transcribed(
+                    segment_index=segment.segment_index,
+                    segment_total=segment.segment_total,
+                    stt_progress=stt_progress,
+                    segment_elapsed_ms=segment.elapsed_ms,
+                    segment_eta_ms=segment_eta_ms,
+                    llm_backend=llm_backend,
+                    segment_stt_backend=str(segment.metadata.get("stt_backend") or ""),
                 )
 
-                # Store STT backend
                 if segment.metadata.get("stt_backend"):
                     telemetry["stt_backend"] = segment.metadata.get("stt_backend")
 
-                # Emit transcript text for this segment
                 is_resumed_segment = bool(segment.metadata.get("resumed"))
                 normalized_segment_text = str(segment.transcript_text or "").strip()
                 if normalized_segment_text and not is_resumed_segment:
                     segmented_transcript_parts.append(normalized_segment_text)
-                await emit(
-                    "transcript",
-                    {
-                        "phase": "transcribing",
-                        "segment_index": segment.segment_index,
-                        "segment_total": segment.segment_total,
-                        "text": segment.transcript_text,
-                        "resumed": is_resumed_segment,
-                        "telemetry": {
-                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                        },
-                    },
+                await stage_events.emit_segment_transcript(
+                    segment_index=segment.segment_index,
+                    segment_total=segment.segment_total,
+                    transcript_text=segment.transcript_text,
+                    resumed=is_resumed_segment,
                 )
 
-                # Checkpoint: persist this segment so we can resume if connection drops
-                if file_hash and normalized_segment_text and not is_resumed_segment:
-                    try:
-                        await save_chunk_checkpoint(
-                            db,
-                            conversation_id=resolved_conversation_id,
-                            file_hash=file_hash,
-                            chunk_index=segment.segment_index,
-                            total_chunks=segment.segment_total,
-                            chunk_text=normalized_segment_text,
-                            accumulated_transcript="\n".join(segmented_transcript_parts),
-                            stt_backend=telemetry.get("stt_backend", ""),
-                            elapsed_ms=elapsed_ms(pipeline_started_at) or 0,
-                            file_name=filename,
-                            file_size_bytes=content_size,
-                        )
-                    except Exception as ckpt_exc:  # noqa: BLE001
-                        logger.warning(
-                            "[PROCESS FILE] Segment checkpoint save failed (non-fatal): %s", ckpt_exc
-                        )
+                if not is_resumed_segment:
+                    await persist_chunk_checkpoint_safe(
+                        db,
+                        file_hash=file_hash,
+                        conversation_id=resolved_conversation_id,
+                        chunk_index=segment.segment_index,
+                        total_chunks=segment.segment_total,
+                        chunk_text=normalized_segment_text,
+                        accumulated_transcript="\n".join(segmented_transcript_parts),
+                        stt_backend=telemetry.get("stt_backend", ""),
+                        elapsed_ms=elapsed_ms(pipeline_started_at) or 0,
+                        file_name=filename,
+                        file_size_bytes=content_size,
+                        log=logger,
+                        failure_label="Segment checkpoint save",
+                    )
 
                 # Now analyze this segment's transcript
                 active_stage = "analyzing"
@@ -681,22 +527,13 @@ async def run_bulk_processing_worker(
                         analysis_stage_progress,
                     )
 
-                    await emit(
-                        "status",
-                        {
-                            "stage": "analyzing",
-                            "progress": round(overall_progress, 3),
-                            "message": f"Analyzing segment {segment.segment_index}/{segment.segment_total} chunk {chunk_idx}/{len(segment_chunks)}...",
-                            "segment_index": segment.segment_index,
-                            "segment_total": segment.segment_total,
-                            "stt_backend": telemetry.get("stt_backend", ""),
-                            "llm_backend": llm_backend,
-                            "telemetry": {
-                                "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                                "segment_index": segment.segment_index,
-                                "segment_total": segment.segment_total,
-                            },
-                        },
+                    await stage_events.emit_segment_analyzing(
+                        segment_index=segment.segment_index,
+                        segment_total=segment.segment_total,
+                        chunk_idx=chunk_idx,
+                        chunk_total=len(segment_chunks),
+                        overall_progress=overall_progress,
+                        llm_backend=llm_backend,
                     )
 
                     await processor.handle_final_text(chunk)
@@ -706,19 +543,12 @@ async def run_bulk_processing_worker(
                 nodes_this_segment = nodes_after_segment - total_nodes_generated
                 total_nodes_generated = nodes_after_segment
 
-                # Emit segment_complete event
-                await emit(
-                    "segment_complete",
-                    {
-                        "index": segment.segment_index,
-                        "total": segment.segment_total,
-                        "nodes_generated": nodes_this_segment,
-                        "total_nodes": total_nodes_generated,
-                        "elapsed_ms": segment.elapsed_ms,
-                        "telemetry": {
-                            "total_elapsed_ms": elapsed_ms(pipeline_started_at),
-                        },
-                    },
+                await stage_events.emit_segment_complete(
+                    segment_index=segment.segment_index,
+                    segment_total=segment.segment_total,
+                    nodes_generated=nodes_this_segment,
+                    total_nodes=total_nodes_generated,
+                    segment_elapsed_ms=segment.elapsed_ms,
                 )
 
                 logger.info(
@@ -1213,13 +1043,7 @@ async def run_bulk_processing_worker(
                     )
                     telemetry["source_audio_persist_error"] = str(audio_exc)
 
-            # Clear checkpoint after successful persistence — the work is saved
-            if file_hash:
-                try:
-                    await clear_checkpoint(db, file_hash)
-                    telemetry["checkpoint_cleared"] = True
-                except Exception as ckpt_clear_exc:  # noqa: BLE001
-                    logger.warning("[PROCESS FILE] Checkpoint clear failed (non-fatal): %s", ckpt_clear_exc)
+            await clear_import_checkpoint_safe(db, file_hash, telemetry, logger)
         except Exception as persist_exc:  # noqa: BLE001
             logger.warning("[PROCESS FILE] Graph persistence failed (non-fatal): %s", persist_exc)
             telemetry["graph_persist_error"] = str(persist_exc) or type(persist_exc).__name__
