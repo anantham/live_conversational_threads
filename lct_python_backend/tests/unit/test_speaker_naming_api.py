@@ -23,6 +23,7 @@ def _load_module(monkeypatch):
 def _build_client(module):
     app = FastAPI()
     app.include_router(module.router)
+    app.include_router(module.router_conversations)
     return TestClient(app)
 
 
