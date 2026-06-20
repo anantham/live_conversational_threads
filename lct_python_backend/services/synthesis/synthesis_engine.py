@@ -153,15 +153,20 @@ def run_stage(
         )
 
     # ── Gate 3: redact + leak-verify the outbound payload ──
+    # FAIL-CLOSED first (ADR-038 round-2 finding 9): the built-in default map
+    # (map_id is None) is a denylist of only KNOWN names — an un-enrolled real name
+    # would pass both redact() and the leak scan, so an external send on it could
+    # leak. Refuse rather than warn-and-proceed (the prior behavior). A caller that
+    # genuinely wants an external send MUST supply the canonical IndrasNet map (one
+    # carrying a map_id). That fetch is PR#2 (no endpoint yet), so external sends
+    # stay closed until it lands — consistent with the frontier-gated-dark posture.
     rmap = redaction_map or redaction.default_redaction_map()
     if rmap.map_id is None:
-        # codex finding #5: the built-in map is a denylist of only known names — a
-        # real name NOT in it would pass both redact() and the leak scan. PR#2 must
-        # supply the canonical IndrasNet map (redaction_map_id) for production sends.
-        logger.warning(
-            "[synthesis] external %r is using the BUILT-IN default redaction map "
-            "(denylist only) — unknown real names would NOT be caught. Supply the "
-            "canonical IndrasNet map before any production external call.", engine,
+        raise FrontierRefused(
+            f"Refusing external engine {engine!r}: no canonical redaction map "
+            "supplied (the built-in default is a denylist only and cannot catch "
+            "un-enrolled names). Provide the canonical IndrasNet map (with a map_id) "
+            "before any external send."
         )
     redacted = redaction.redact(prompt, rmap)
     redaction.assert_clean(redacted, rmap)  # hard stop on any surviving real name
