@@ -107,17 +107,12 @@ export default function MeetingView() {
           setStatus((s) => (s === "error" ? s : "ended"));
         } else if (message.type === "error") {
           setError(String(message.detail || "Backend error"));
-        } else if (message.type === "transcript_patched") {
-          // Re-fetch the graph data to display the high-fidelity STT transcript
-          import("../services/apiClient").then(({ get }) => {
-            get(`/api/conversations/${conversationId}/graph_data`)
-              .then((data) => {
-                 setGraphData(normalizeGraphDataPayload(data) || []);
-                 setStatus("STT Patched & Ready!");
-              })
-              .catch((err) => console.error("Failed to refetch patched graph", err));
-          });
         }
+        // NOTE: the "transcript_patched" handler was removed (audit A4e/A4) — it
+        // fetched /api/conversations/{id}/graph_data, which does not exist, and
+        // was part of the destructive slow-pass prototype (now disabled). The
+        // review-gated transcript-revision flow (decision B) will add its own
+        // refresh against a real endpoint when built.
       },
     });
 

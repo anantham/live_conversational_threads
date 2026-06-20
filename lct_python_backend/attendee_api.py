@@ -80,11 +80,16 @@ def _build_bot_settings() -> Dict[str, Any]:
     webhooks); the project-level webhook handles delivery.
     """
     if ATTENDEE_TRANSCRIPTION_MODE == "closed_captions":
+        # Record an MP3 only when the slow-pass (high-fidelity re-transcription)
+        # is enabled — it is the sole consumer. Otherwise record nothing, so we
+        # don't persist a full meeting audio file no feature uses (privacy +
+        # storage; audit A4).
+        cc_format = "mp3" if env_bool("ATTENDEE_SLOWPASS_ENABLED", False) else "none"
         return {
             "transcription_settings": {
                 "meeting_closed_captions": {"google_meet_language": f"{ATTENDEE_STT_LANGUAGE}-US"}
             },
-            "recording_settings": {"format": "mp3"},
+            "recording_settings": {"format": cc_format},
         }
     # default: self-hosted STT via the Custom Async v2 contract (-> shim).
     return {
@@ -250,8 +255,16 @@ async def attendee_webhook(request: Request):
             new_state = data.get("new_state")
             await session.on_bot_state(new_state, sub_type=data.get("event_sub_type"))
             
-            # If the bot is finished (6 = POST_PROCESSING, 9 = ENDED), fetch the recording
-            if new_state in (6, 9) or str(new_state) in ("6", "9", "POST_PROCESSING", "ENDED"):
+            # Slow-pass (high-fidelity MP3 re-transcription) is DISABLED by default
+            # (env ATTENDEE_SLOWPASS_ENABLED). The current prototype DESTRUCTIVELY
+            # overwrites live utterance text and has unshipped bugs (dead DB import,
+            # hardcoded creds); decision B replaces it with a review-gated
+            # transcript-revision flow before it may run again (audit A4). When
+            # enabled it fires once, on ENDED (9) only — also triggering on
+            # POST_PROCESSING (6) double-ran the expensive download+STT job (A4b).
+            if env_bool("ATTENDEE_SLOWPASS_ENABLED", False) and (
+                new_state == 9 or str(new_state) in ("9", "ENDED")
+            ):
                 from lct_python_backend.services.attendee_audio_downloader import fetch_and_transcribe
                 import asyncio
                 asyncio.create_task(fetch_and_transcribe(bot_id, session.conversation_id))
