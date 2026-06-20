@@ -193,6 +193,10 @@ def _requires_admin_auth(path: str, method: str) -> bool:
         return True
     if normalized_method == "DELETE" and normalized_path.startswith("/conversations/"):
         return True
+    # Prayer detection returns IndrasNet private-memory results; gate it like the
+    # other admin surfaces regardless of the conversation-scoped path prefix.
+    if normalized_path.endswith("/prayer-detect"):
+        return True
     return False
 
 
