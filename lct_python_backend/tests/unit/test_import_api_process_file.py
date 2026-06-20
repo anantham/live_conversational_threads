@@ -242,6 +242,7 @@ def test_process_file_uses_sequential_path_for_cloud_import_candidate(monkeypatc
     stt_settings = {
         "provider": "whisper",
         "local_only": False,
+        "upload_local_first": False,
         "live_cloud_fallback_enabled": True,
         "provider_http_urls": {
             "parakeet": "http://localhost:5092/v1/audio/transcriptions",
