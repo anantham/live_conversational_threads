@@ -234,10 +234,10 @@ def test_process_file_passes_provider_override_to_transcriber(monkeypatch):
 
 def test_process_file_uses_sequential_path_for_cloud_import_candidate(monkeypatch):
     import_api = _load_import_api_with_stubs(monkeypatch)
-    import lct_python_backend.services.import_bulk_pipeline as bulk_pipeline
+    import lct_python_backend.services.import_bulk_graph_pass as graph_pass
 
     client = _build_test_client(import_api)
-    monkeypatch.setattr(bulk_pipeline, "SEGMENT_PROCESSING_FORCE_ENABLED", True)
+    monkeypatch.setattr(graph_pass, "SEGMENT_PROCESSING_FORCE_ENABLED", True)
 
     stt_settings = {
         "provider": "whisper",
