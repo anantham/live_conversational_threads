@@ -93,6 +93,11 @@ def _codex(prompt: str, timeout: float) -> str:
     # --skip-git-repo-check: the sandboxed spawn runs in a fresh EMPTY temp cwd
     # (no repo access, by design), but `codex exec` refuses a non-git cwd by
     # default — so it must be told to skip that check (codex review of the migration).
+    # RESIDUAL (grok review): unlike `claude -p`, codex has no "no-tools" flag, so
+    # `codex exec -s read-only` retains file-read capability; the empty cwd blocks
+    # RELATIVE reads but ABSOLUTE reads remain possible on Windows (no OS sandbox).
+    # For the most sensitive synthesis prefer claude (tools disabled). Gated-dark
+    # until PR#2, so this does not fire in current operation.
     p = spawn_external_cli(
         ["codex", "exec", "--skip-git-repo-check",
          "-c", "model_reasoning_effort=xhigh", "-s", "read-only", "-"],
@@ -106,11 +111,18 @@ def _codex(prompt: str, timeout: float) -> str:
 
 def _claude_opus(prompt: str, timeout: float) -> str:
     """Opus (1M ctx) via headless ``claude -p`` through the sanctioned
-    ``spawn_external_cli`` door (ADR-038 — leak-verify stdin+argv + sandbox)."""
+    ``spawn_external_cli`` door (ADR-038 — leak-verify stdin+argv + sandbox).
+
+    Tools + MCP are DISABLED (grok review): the stdin name-scan protects the
+    PROMPT, but a frontier agent WITH tool access could be told to read a local
+    file of real names the scan never sees. ``--allowed-tools`` (variadic, no
+    values) grants zero tools and an empty ``--mcp-config`` starts no MCP — so the
+    agent is pure text-in/text-out and cannot read files (mirrors synthetic_eval)."""
     from lct_python_backend.services.privacy_boundary import spawn_external_cli
 
     p = spawn_external_cli(
-        ["claude", "-p", "--model", "opus"],
+        ["claude", "-p", "--model", "opus",
+         "--allowed-tools", "--strict-mcp-config", "--mcp-config", '{"mcpServers": {}}'],
         redacted_input=prompt, engine_tier="E4", timeout=timeout,
     )
     if p.returncode != 0:

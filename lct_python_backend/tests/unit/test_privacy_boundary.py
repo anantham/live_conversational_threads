@@ -114,6 +114,13 @@ def test_leak_caught_through_composed_encoding():
     assert leak_verify("%2556atsal").leaks_clean is False
 
 
+def test_leak_caught_through_html_entities():
+    # grok review: HTML/XML numeric entities (&#x56; = 'V') must be decoded.
+    body = "name=&#x56;atsal"
+    assert "Vatsal" not in body
+    assert leak_verify(body).leaks_clean is False
+
+
 def test_docker_internal_treated_nonlocal_consistently():
     # codex round-3: host.docker.internal must be NON-local CONSISTENTLY with
     # egress_guard (the locality authority) — no split-brain where the audio gate
@@ -198,6 +205,14 @@ def test_spawn_refuses_path_bearing_argv(tmp_path):
             redacted_input="clean",
             engine_tier="E4",
         )
+
+
+@pytest.mark.parametrize("tok", [r"..\..\Users\adity\contacts.vcf", "../../private/names.txt"])
+def test_spawn_refuses_relative_traversal_argv(tok):
+    # grok review: relative ".." traversal in argv must also be refused, not just
+    # absolute existing paths.
+    with pytest.raises(UnverifiedEgressBlocked):
+        spawn_external_cli([sys.executable, tok], redacted_input="clean", engine_tier="E4")
 
 
 def test_spawn_frontier_cannot_self_downgrade_tier():
