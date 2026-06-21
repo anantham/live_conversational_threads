@@ -19,7 +19,9 @@ PRIVACY GATE for any external engine (non-negotiable, in order):
      across participants) — or the ``consented`` flag for callers without policies.
   3. Redact the outbound text (pseudonyms) and ``assert_clean`` — hard stop if any
      real friend name would leave the box.
-  4. Run the frontier CLI.
+  4. Run the frontier CLI through ``privacy_boundary.spawn_external_cli`` — the
+     sanctioned door that independently leak-verifies the exact stdin+argv and
+     sandboxes the child (empty cwd, scrubbed env, no inherited fds), ADR-038.
   5. Restore real names ONLY in the local result.
 """
 
@@ -27,7 +29,6 @@ from __future__ import annotations
 
 import json
 import logging
-import subprocess
 from typing import Any, Dict, List, Optional
 
 from lct_python_backend.services.egress_guard import local_only_enabled
@@ -82,28 +83,36 @@ def _local(prompt: str, *, providers: Optional[List[Dict[str, Any]]], want_json:
 
 
 def _codex(prompt: str, timeout: float) -> str:
-    """GPT-5.5 (xhigh), read-only sandbox. Prompt via stdin so large transcripts
-    don't hit the Windows command-line arg limit."""
-    p = subprocess.run(
+    """GPT-5.5 (xhigh), read-only, via the sanctioned ``spawn_external_cli`` door
+    (ADR-038): it leak-verifies the EXACT stdin+argv and sandboxes the child
+    (empty cwd, scrubbed env, no inherited fds) — an INDEPENDENT backstop on top of
+    Gate 3's redact/assert_clean. Prompt via stdin so large transcripts don't hit
+    the Windows command-line arg limit."""
+    from lct_python_backend.services.privacy_boundary import spawn_external_cli
+
+    p = spawn_external_cli(
         ["codex", "exec", "-c", "model_reasoning_effort=xhigh", "-s", "read-only", "-"],
-        input=prompt, capture_output=True, text=True, timeout=timeout,
-        encoding="utf-8", errors="replace",
+        redacted_input=prompt, engine_tier="E4", timeout=timeout,
     )
     if p.returncode != 0:
-        raise RuntimeError(f"codex exec failed (rc={p.returncode}): {(p.stderr or '')[:400]}")
-    return (p.stdout or "").strip()
+        err = (p.stderr or b"").decode("utf-8", "replace")[:400]
+        raise RuntimeError(f"codex exec failed (rc={p.returncode}): {err}")
+    return (p.stdout or b"").decode("utf-8", "replace").strip()
 
 
 def _claude_opus(prompt: str, timeout: float) -> str:
-    """Opus (1M ctx) via headless ``claude -p``; prompt over stdin."""
-    p = subprocess.run(
+    """Opus (1M ctx) via headless ``claude -p`` through the sanctioned
+    ``spawn_external_cli`` door (ADR-038 — leak-verify stdin+argv + sandbox)."""
+    from lct_python_backend.services.privacy_boundary import spawn_external_cli
+
+    p = spawn_external_cli(
         ["claude", "-p", "--model", "opus"],
-        input=prompt, capture_output=True, text=True, timeout=timeout,
-        encoding="utf-8", errors="replace",
+        redacted_input=prompt, engine_tier="E4", timeout=timeout,
     )
     if p.returncode != 0:
-        raise RuntimeError(f"claude -p failed (rc={p.returncode}): {(p.stderr or '')[:400]}")
-    return (p.stdout or "").strip()
+        err = (p.stderr or b"").decode("utf-8", "replace")[:400]
+        raise RuntimeError(f"claude -p failed (rc={p.returncode}): {err}")
+    return (p.stdout or b"").decode("utf-8", "replace").strip()
 
 
 def run_stage(
