@@ -90,8 +90,12 @@ def _codex(prompt: str, timeout: float) -> str:
     the Windows command-line arg limit."""
     from lct_python_backend.services.privacy_boundary import spawn_external_cli
 
+    # --skip-git-repo-check: the sandboxed spawn runs in a fresh EMPTY temp cwd
+    # (no repo access, by design), but `codex exec` refuses a non-git cwd by
+    # default — so it must be told to skip that check (codex review of the migration).
     p = spawn_external_cli(
-        ["codex", "exec", "-c", "model_reasoning_effort=xhigh", "-s", "read-only", "-"],
+        ["codex", "exec", "--skip-git-repo-check",
+         "-c", "model_reasoning_effort=xhigh", "-s", "read-only", "-"],
         redacted_input=prompt, engine_tier="E4", timeout=timeout,
     )
     if p.returncode != 0:

@@ -449,6 +449,9 @@ _CLI_ENV_ALLOW = (
     # CLI-specific config/login homes (so auth still resolves):
     "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
     "ANTHROPIC_API_KEY", "OPENAI_API_KEY",  # the CLI's OWN auth, if key-based
+    # codex non-interactive auth + custom TLS (codex review of the migration):
+    "CODEX_API_KEY", "CODEX_ACCESS_TOKEN", "CODEX_CA_CERTIFICATE",
+    "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE",
 )
 
 _FRONTIER_BINARIES = frozenset({"claude", "codex", "gemini", "grok"})
