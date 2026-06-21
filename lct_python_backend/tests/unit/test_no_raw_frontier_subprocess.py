@@ -23,7 +23,8 @@ _SUBPROCESS_FNS = {"run", "Popen", "call", "check_output", "check_call"}
 # privacy_boundary.spawn_external_cli. Do NOT add to this list to make the test
 # pass — route the spawn through the helper instead.
 _PENDING_MIGRATION = {
-    "services/synthesis/synthesis_engine.py",  # contended (active synthesis session)
+    # synthesis_engine.py is MIGRATED onto spawn_external_cli (2026-06-21) — removed
+    # from the allowlist so the ratchet now ENFORCES it stays migrated.
     "synthetic_eval/extract.py",               # fake-data harness; isolation preserved
     "synthetic_eval/realtime.py",
     "synthetic_eval/consolidate.py",
