@@ -166,8 +166,20 @@ def test_verify_signature_rejects_tampered(monkeypatch):
     assert attendee_api._verify_signature(raw, "garbage") is False
 
 
-def test_verify_signature_skipped_when_no_secret(monkeypatch):
+def test_verify_signature_fails_closed_when_no_secret(monkeypatch):
+    """No secret + no explicit dev opt-in => REJECT (the route bypasses
+    bearer-auth/rate-limiting, so accepting here = unauthenticated injection)."""
     monkeypatch.setattr(attendee_api, "ATTENDEE_WEBHOOK_SECRET", None)
+    monkeypatch.setattr(attendee_api, "ATTENDEE_ALLOW_UNSIGNED_WEBHOOK", False)
+    raw = json.dumps({"any": "thing"}).encode("utf-8")
+    assert attendee_api._verify_signature(raw, None) is False
+    assert attendee_api._verify_signature(raw, "anything") is False
+
+
+def test_verify_signature_unsigned_allowed_with_explicit_dev_optin(monkeypatch):
+    """ATTENDEE_ALLOW_UNSIGNED_WEBHOOK=1 restores the unsigned dev path."""
+    monkeypatch.setattr(attendee_api, "ATTENDEE_WEBHOOK_SECRET", None)
+    monkeypatch.setattr(attendee_api, "ATTENDEE_ALLOW_UNSIGNED_WEBHOOK", True)
     raw = json.dumps({"any": "thing"}).encode("utf-8")
     assert attendee_api._verify_signature(raw, None) is True
 

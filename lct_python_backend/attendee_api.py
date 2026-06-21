@@ -49,6 +49,11 @@ WEBHOOK_SIGNATURE_HEADER = "X-Webhook-Signature"
 
 # Per-webhook signing secret (base64) from Attendee's Settings -> Webhooks.
 ATTENDEE_WEBHOOK_SECRET: Optional[str] = env_str_or_none("ATTENDEE_WEBHOOK_SECRET")
+# The webhook is exempt from bearer-auth + rate limiting (it authenticates via
+# HMAC in-handler). So when no secret is configured we FAIL CLOSED by default —
+# otherwise the endpoint is an unauthenticated transcript-injection surface.
+# Only this explicit opt-in restores the unsigned/dev behavior (local testing).
+ATTENDEE_ALLOW_UNSIGNED_WEBHOOK: bool = env_bool("ATTENDEE_ALLOW_UNSIGNED_WEBHOOK", False)
 # "custom_async" (self-hosted STT via the shim) or "closed_captions" (Meet's own
 # captions — zero extra infra, proven fallback). Default: self-hosted.
 ATTENDEE_TRANSCRIPTION_MODE: str = env_str("ATTENDEE_TRANSCRIPTION_MODE", "custom_async").strip().lower()
@@ -104,10 +109,22 @@ def _verify_signature(raw_body: bytes, signature_header: Optional[str]) -> bool:
     Canonicalization MUST match Attendee exactly: json.dumps(payload,
     sort_keys=True, ensure_ascii=False, separators=(",", ":")), and the stored
     secret is base64 and must be DECODED before HMAC. When no secret is
-    configured, verification is skipped (dev mode).
+    configured we FAIL CLOSED (reject) unless ATTENDEE_ALLOW_UNSIGNED_WEBHOOK=1
+    is set for local dev — the route bypasses bearer-auth/rate-limiting, so an
+    unset secret would otherwise leave it open to unauthenticated injection.
     """
     if not ATTENDEE_WEBHOOK_SECRET:
-        return True
+        if ATTENDEE_ALLOW_UNSIGNED_WEBHOOK:
+            logger.warning(
+                "[attendee] accepting UNSIGNED webhook — ATTENDEE_WEBHOOK_SECRET unset "
+                "and ATTENDEE_ALLOW_UNSIGNED_WEBHOOK=1 (dev only; never in production)"
+            )
+            return True
+        logger.error(
+            "[attendee] refusing webhook: ATTENDEE_WEBHOOK_SECRET not configured "
+            "(set the signing secret, or ATTENDEE_ALLOW_UNSIGNED_WEBHOOK=1 for local dev)"
+        )
+        return False
     if not signature_header:
         return False
     try:
@@ -130,6 +147,7 @@ async def health() -> Dict[str, Any]:
         "attendee_configured": attendee_client.is_configured(),
         "transcription_mode": ATTENDEE_TRANSCRIPTION_MODE,
         "webhook_secret_set": bool(ATTENDEE_WEBHOOK_SECRET),
+        "unsigned_webhook_allowed": bool(ATTENDEE_ALLOW_UNSIGNED_WEBHOOK and not ATTENDEE_WEBHOOK_SECRET),
     }
 
 
