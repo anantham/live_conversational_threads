@@ -27,6 +27,13 @@ from __future__ import annotations
 import logging
 
 from lct_python_backend.services.egress_guard import assert_local_egress
+from lct_python_backend.services.privacy_boundary import (
+    UnverifiedEgressBlocked,
+    assert_audio_egress_allowed,
+    assert_body_clean,
+    egress_requires_leak_verify,
+    url_is_local_infra,
+)
 
 logger = logging.getLogger("lct_backend")
 
@@ -72,9 +79,19 @@ def uninstall_egress_chokepoint() -> None:
         import httpx
         httpx.Client.send = _originals["httpx_sync"]
         httpx.AsyncClient.send = _originals["httpx_async"]
-    if "websockets_connect" in _originals:
-        import websockets
-        websockets.connect = _originals["websockets_connect"]
+    # Restore every websockets connect we patched (top-level + submodules).
+    for key, orig in list(_originals.items()):
+        if key == "websockets_connect":
+            import websockets
+            websockets.connect = orig
+        elif key.endswith(".connect"):
+            try:
+                import importlib
+
+                modname = key[: -len(".connect")]
+                setattr(importlib.import_module(modname), "connect", orig)
+            except Exception:
+                pass
     if "urlopen" in _originals:
         _ur.urlopen = _originals["urlopen"]
 
@@ -101,11 +118,48 @@ def _wrap_httpx() -> None:
     _originals["httpx_async"] = _orig_async_send
 
     def _guarded_sync_send(self, request, *args, **kwargs):
-        assert_local_egress(str(request.url), purpose="httpx")
+        url = str(request.url)
+        # need_name (E3/E4) always implies a non-local frontier host, so the
+        # outer guard is just "is this destination non-local?".
+        nonlocal_dest = not url_is_local_infra(url)
+        need_name = egress_requires_leak_verify(url)
+        if nonlocal_dest or need_name:
+            ct = request.headers.get("content-type", "")
+            # ADR-038 audio backstop (codex round-2/4/5): audio/* + multipart are
+            # audio by declaration; every OTHER non-local body is materialized once
+            # and identified by file SIGNATURE so a mislabeled audio body can't slip.
+            declared_audio = nonlocal_dest and _positive_audio_ct(ct)
+            if declared_audio:
+                assert_audio_egress_allowed(url, purpose="httpx audio upload")
+            # The audio gate and the E3/E4 name scan are AND, not XOR (codex
+            # round-6): a multipart/audio body to a frontier host can ALSO carry
+            # real names in form fields (e.g. known_speaker_names) and must be
+            # leak-verified even after a cloud-audio opt-in.
+            if need_name or (nonlocal_dest and not declared_audio):
+                body = _materialize_body_sync(request, url)
+                if nonlocal_dest and not declared_audio and _has_audio_magic(bytes(body[:512])):
+                    assert_audio_egress_allowed(url, purpose="httpx audio upload")
+                if need_name:
+                    assert_body_clean(body, url)
+        assert_local_egress(url, purpose="httpx")
         return _orig_sync_send(self, request, *args, **kwargs)
 
     async def _guarded_async_send(self, request, *args, **kwargs):
-        assert_local_egress(str(request.url), purpose="httpx-async")
+        url = str(request.url)
+        nonlocal_dest = not url_is_local_infra(url)
+        need_name = egress_requires_leak_verify(url)
+        if nonlocal_dest or need_name:
+            ct = request.headers.get("content-type", "")
+            declared_audio = nonlocal_dest and _positive_audio_ct(ct)
+            if declared_audio:
+                assert_audio_egress_allowed(url, purpose="httpx audio upload")
+            if need_name or (nonlocal_dest and not declared_audio):
+                body = await _materialize_body_async(request, url)
+                if nonlocal_dest and not declared_audio and _has_audio_magic(bytes(body[:512])):
+                    assert_audio_egress_allowed(url, purpose="httpx audio upload")
+                if need_name:
+                    assert_body_clean(body, url)
+        assert_local_egress(url, purpose="httpx-async")
         return await _orig_async_send(self, request, *args, **kwargs)
 
     _guarded_sync_send._lct_egress_wrapped = True  # type: ignore[attr-defined]
@@ -113,6 +167,92 @@ def _wrap_httpx() -> None:
 
     httpx.Client.send = _guarded_sync_send  # type: ignore[assignment]
     httpx.AsyncClient.send = _guarded_async_send  # type: ignore[assignment]
+
+
+def _has_audio_magic(buf: bytes) -> bool:
+    """Identify audio by file SIGNATURE, regardless of declared content-type or
+    filename (the import pipeline can save an audio upload as ``.bin`` +
+    ``application/octet-stream`` — codex round-4)."""
+    if not buf:
+        return False
+    if b"RIFF" in buf and b"WAVE" in buf:   # WAV (require WAVE; bare RIFF is AVI/WebP)
+        return True
+    if b"OggS" in buf or b"fLaC" in buf:    # OGG, FLAC
+        return True
+    if b"ftyp" in buf[:64]:                 # MP4 / M4A container
+        return True
+    if buf[:3] == b"ID3":                   # MP3 with an ID3 tag
+        return True
+    return False
+
+
+def _positive_audio_ct(ct: str) -> bool:
+    """Content-types that ARE audio by declaration alone — an ``audio/*`` body, or
+    ANY multipart upload (LCT's only non-local multipart is STT; a part can be
+    octet-stream / extensionless, so we do not trust the part's declared type)."""
+    ct = (ct or "").lower()
+    return ct.startswith("audio/") or ct.startswith("multipart/")
+
+
+def _make_replayable(request, body: bytes) -> None:
+    """After consuming a streaming body to scan it, replace the request's stream
+    with a replayable ByteStream so the REAL send transmits the same bytes (not an
+    exhausted one-shot generator). httpx's ByteStream is iterable both sync and
+    async, so it serves Client and AsyncClient. If we cannot guarantee a
+    replayable body (httpx internal moved), FAIL CLOSED — block rather than risk
+    sending an inconsistent request (codex review, Finding 2)."""
+    try:
+        from httpx._content import ByteStream
+
+        request.stream = ByteStream(body)
+        request._content = body
+    except Exception as exc:
+        raise UnverifiedEgressBlocked(
+            "refusing E3/E4 send: cannot install a replayable body for leak-verify "
+            f"({type(exc).__name__}: {exc})"
+        ) from exc
+
+
+def _materialize_body_sync(request, url: str) -> bytes:
+    """Return the exact outbound body bytes for leak-verify, or FAIL CLOSED.
+
+    ``request.content`` raises ``httpx.RequestNotRead`` for streamed/generator
+    bodies; we ``read()`` to materialize, then make the request replayable so the
+    real send is unaffected. A body that genuinely cannot be replayed is REFUSED
+    for E3/E4 rather than passed unscanned (codex blocker 1)."""
+    import httpx
+
+    try:
+        return request.content
+    except httpx.RequestNotRead:
+        pass
+    try:
+        body = request.read()
+    except Exception as exc:  # one-shot/async stream on a sync path, etc.
+        raise UnverifiedEgressBlocked(
+            f"refusing E3/E4 send to {request.url.host!r}: request body could not "
+            f"be materialized for leak-verify ({type(exc).__name__})"
+        ) from exc
+    _make_replayable(request, body)
+    return body
+
+
+async def _materialize_body_async(request, url: str) -> bytes:
+    import httpx
+
+    try:
+        return request.content
+    except httpx.RequestNotRead:
+        pass
+    try:
+        body = await request.aread()
+    except Exception as exc:
+        raise UnverifiedEgressBlocked(
+            f"refusing E3/E4 send to {request.url.host!r}: request body could not "
+            f"be materialized for leak-verify ({type(exc).__name__})"
+        ) from exc
+    _make_replayable(request, body)
+    return body
 
 
 # --- websockets (OpenAI / backend realtime STT) ------------------------------
@@ -123,18 +263,51 @@ def _wrap_websockets() -> None:
     except Exception:
         return
 
-    connect = getattr(websockets, "connect", None)
-    if connect is None or getattr(connect, "_lct_egress_wrapped", False):
-        return
+    # Patch the top-level ``websockets.connect`` AND the submodule connects
+    # (``websockets.asyncio.client``, ``websockets.legacy.client``,
+    # ``websockets.client``). google-genai LIVE binds the submodule form by value
+    # (``from websockets.asyncio.client import connect as ws_connect``), so a
+    # top-level-only patch is bypassable (codex blocker 5). Patching the submodule
+    # attribute closes that for any consumer that imports it AFTER install — which
+    # is why ``bootstrap_egress()`` must run before those imports. A consumer that
+    # bound the name BEFORE install still escapes (documented residual). Audio over
+    # google-genai live is ALSO covered by the audio hard-gate.
+    targets: list[tuple[str, object, str]] = []
+    top = getattr(websockets, "connect", None)
+    if top is not None:
+        targets.append(("websockets_connect", websockets, "connect"))
+    for modname in ("websockets.asyncio.client", "websockets.legacy.client", "websockets.client"):
+        try:
+            import importlib
 
-    _originals["websockets_connect"] = connect
+            mod = importlib.import_module(modname)
+        except Exception:
+            continue
+        if getattr(mod, "connect", None) is not None:
+            targets.append((modname + ".connect", mod, "connect"))
 
-    def _guarded_connect(uri, *args, **kwargs):
-        assert_local_egress(str(uri), purpose="websocket")
-        return connect(uri, *args, **kwargs)
+    for key, mod, attr in targets:
+        orig = getattr(mod, attr)
+        if getattr(orig, "_lct_egress_wrapped", False):
+            continue
+        _originals.setdefault(key, orig)
 
-    _guarded_connect._lct_egress_wrapped = True  # type: ignore[attr-defined]
-    websockets.connect = _guarded_connect  # type: ignore[assignment]
+        def _make_guard(_orig):
+            def _guarded_connect(uri, *args, **kwargs):
+                assert_local_egress(str(uri), purpose="websocket")
+                # ADR-038 audio backstop (codex round-2): LCT's only cloud
+                # websockets carry audio (realtime STT, backend realtime,
+                # google-genai live). Require the audio opt-in for any non-local
+                # ws so LCT_LOCAL_ONLY=0 doesn't leak raw voice — centrally,
+                # covering every ws site at once.
+                if not url_is_local_infra(str(uri)):
+                    assert_audio_egress_allowed(str(uri), purpose="websocket audio")
+                return _orig(uri, *args, **kwargs)
+
+            _guarded_connect._lct_egress_wrapped = True  # type: ignore[attr-defined]
+            return _guarded_connect
+
+        setattr(mod, attr, _make_guard(orig))
 
 
 # --- urllib (STT health probe) -----------------------------------------------

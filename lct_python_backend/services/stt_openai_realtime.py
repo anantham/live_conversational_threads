@@ -126,6 +126,11 @@ class OpenAIRealtimeTranscriptionRuntime:
         # on, before opening the socket. A local realtime endpoint still passes.
         from lct_python_backend.services.egress_guard import assert_local_egress
         assert_local_egress(self.base_url, purpose="OpenAI realtime STT websocket")
+        # ADR-038 audio hard-gate: a voice cannot be redacted, so raw audio stays
+        # local-only EVEN WHEN LCT_LOCAL_ONLY=0 (codex blocker 2). Cloud realtime
+        # STT requires an explicit LCT_ALLOW_CLOUD_AUDIO=1 opt-in.
+        from lct_python_backend.services.privacy_boundary import assert_audio_egress_allowed
+        assert_audio_egress_allowed(self.base_url, purpose="OpenAI realtime STT websocket")
 
         headers = {"Authorization": f"Bearer {self.api_key}"}
         try:
