@@ -153,6 +153,10 @@ async def transcribe_backend_http_candidate(
             diarize_enabled,
         )
 
+    # ADR-038 audio hard-gate (codex review, Bug 1): the generic backend HTTP STT
+    # path also ships raw WAV — keep it local-only at LCT_LOCAL_ONLY=0 too.
+    from lct_python_backend.services.privacy_boundary import assert_audio_egress_allowed
+    assert_audio_egress_allowed(http_url, purpose="backend HTTP audio STT")
     response = await client.post(
         http_url,
         data=form_data,
@@ -243,6 +247,10 @@ async def transcribe_openai_audio_candidate(
 
     if should_stream:
         full_text = ""
+        # ADR-038 audio hard-gate (codex review, Bug 1): cover the streaming
+        # branch too, so a future re-enable cannot bypass the gate.
+        from lct_python_backend.services.privacy_boundary import assert_audio_egress_allowed
+        assert_audio_egress_allowed(http_url, purpose="OpenAI streaming audio STT")
         async with client.stream(
             "POST",
             http_url,
@@ -266,6 +274,10 @@ async def transcribe_openai_audio_candidate(
                     continue
         return full_text, None, False
 
+    # ADR-038 audio hard-gate: raw audio cannot be redacted, so it stays
+    # local-only even at LCT_LOCAL_ONLY=0 unless LCT_ALLOW_CLOUD_AUDIO=1 (codex blocker 2).
+    from lct_python_backend.services.privacy_boundary import assert_audio_egress_allowed
+    assert_audio_egress_allowed(http_url, purpose="OpenAI HTTP audio STT")
     response = await client.post(
         http_url,
         headers=headers,
@@ -345,6 +357,9 @@ async def transcribe_openrouter_audio_candidate(
             language or "-",
         )
 
+    # ADR-038 audio hard-gate (codex blocker 2) — see OpenAI HTTP audio path above.
+    from lct_python_backend.services.privacy_boundary import assert_audio_egress_allowed
+    assert_audio_egress_allowed(http_url, purpose="OpenRouter HTTP audio STT")
     response = await client.post(http_url, headers=headers, json=payload)
     try:
         response.raise_for_status()
