@@ -1,0 +1,17 @@
+{
+  "map_id": "lct-privacy-boundary-v1",
+  "version": "1.0.0",
+  "_doc": "ADR-038 pinned consent map. The forbidden set is the real names that MUST NOT reach an E3/E4 (frontier) engine un-pseudonymized. Derived from IndrasNet core/config.REDACTION_MAP (tc-canonical-v1) + CONSENTED_FOR_BEDROCK_REDACT, EXTENDED with Chin/Aishwarya (ADR-038 finding 1.7: both were absent from every prior map). NOT yet auto-derived from the IndrasNet contacts external_llm_ok table — that sync is the documented follow-up; until then this file is the hand-pinned source of truth so the boundary is exercisable. 'data before claims'.",
+  "_owner_decision": "owner_is_forbidden=true is the FAIL-CLOSED default: the owner's own name is pseudonymized before any frontier send, just like contacts. This is a flippable policy flag, surfaced for the owner's explicit decision (ADR-038 open question 6 / redesign finding 1.7 'owner handling explicit, not implicit'). Set to false if the owner consents to their own name leaving un-redacted.",
+  "_false_positive_note": "Short first names ('Chin', 'Sahil') are common-word-shaped and may over-block legitimate redacted sends (whole-word, case-insensitive). For a privacy boundary, over-blocking (a refused send) is deliberately preferred over under-blocking (a real leak). Tune aliases per person as real identities are confirmed.",
+  "owner_name": "Aditya",
+  "owner_is_forbidden": true,
+  "people": [
+    {"canonical": "Aditya", "aliases": ["Aditya Prasad"], "pseudonym": "[Owner]", "external_llm_ok": false, "is_owner": true},
+    {"canonical": "Vatsal", "aliases": ["Vatsal Mehra"], "pseudonym": "[Friend A]", "external_llm_ok": false, "is_owner": false},
+    {"canonical": "Sahil", "aliases": [], "pseudonym": "[Friend B]", "external_llm_ok": false, "is_owner": false},
+    {"canonical": "Bhishma", "aliases": ["Bhishmaraj", "Bhishmaraj S"], "pseudonym": "[Friend C]", "external_llm_ok": false, "is_owner": false},
+    {"canonical": "Chin", "aliases": [], "pseudonym": "[Friend D]", "external_llm_ok": false, "is_owner": false},
+    {"canonical": "Aishwarya", "aliases": [], "pseudonym": "[Friend E]", "external_llm_ok": false, "is_owner": false}
+  ]
+}
