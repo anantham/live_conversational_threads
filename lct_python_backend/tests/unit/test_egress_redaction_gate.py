@@ -167,6 +167,30 @@ def test_central_audio_gate_opt_in_allows_cloud(monkeypatch):
     assert not isinstance(exc_info.value, AudioEgressBlocked)
 
 
+def test_central_audio_gate_blocks_extensionless_octet_multipart(monkeypatch):
+    # codex round-4: the import pipeline can post audio as an EXTENSIONLESS
+    # octet-stream multipart part; any non-local multipart is treated as audio.
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+    monkeypatch.delenv("LCT_ALLOW_CLOUD_AUDIO", raising=False)
+    with pytest.raises(AudioEgressBlocked):
+        httpx.Client(timeout=0.3).post(
+            "https://stt.example/transcribe",
+            files={"file": ("clip", b"RIFF\x00\x00\x00\x00WAVEfake", "application/octet-stream")},
+        )
+
+
+def test_central_audio_gate_blocks_raw_audio_octet_body(monkeypatch):
+    # A raw octet-stream body with an audio file signature is caught by magic bytes.
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+    monkeypatch.delenv("LCT_ALLOW_CLOUD_AUDIO", raising=False)
+    with pytest.raises(AudioEgressBlocked):
+        httpx.Client(timeout=0.3).post(
+            "https://stt.example/transcribe",
+            content=b"RIFF\x24\x00\x00\x00WAVEfmt fake-wav-bytes",
+            headers={"content-type": "application/octet-stream"},
+        )
+
+
 @pytest.mark.asyncio
 async def test_central_audio_gate_blocks_cloud_websocket(monkeypatch):
     monkeypatch.setenv("LCT_LOCAL_ONLY", "0")

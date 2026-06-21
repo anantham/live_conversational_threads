@@ -202,3 +202,14 @@ Round-3 confirmed B3/B6/audio CLOSED and narrowed to 2 blocking findings (6 → 
 
 - **B2 shell-string launcher** (`["cmd","/c","claude -p"]`) — `is_frontier_cli` matched only an exact basename, so a frontier CLI inside a shell-string token escaped detection. Fixed: it now splits each token on whitespace/quotes and checks every word's basename (`sh -lc claude …` is caught too).
 - **`host.docker.internal` split-brain** — I'd made it "local" for the audio gate but not for `egress_guard`, so the two disagreed. Resolved by **reverting** to consistency with `egress_guard` (docker is non-local under the owner's strict locality decision — changing that is one owner decision in `egress_guard`, not a divergence here). 100 tests pass.
+
+### Codex GO-gate round 5 (2026-06-21) — extensionless-audio leak, fixed
+
+Round-4 confirmed both findings closed and found ONE remaining in-scope audio leak: the import pipeline can
+save an audio upload **extensionless as `.bin` + `application/octet-stream`**, so `_request_looks_like_audio`
+(which keyed on `audio/` content-type or an audio filename) missed it → raw audio could reach a non-local
+`backend_http` STT fallback at `LCT_LOCAL_ONLY=0`. Fixed by closing the whole class, not the instance: the
+chokepoint now (a) treats **any** non-local multipart as audio, and (b) for an octet-stream/empty-content-type
+body, **materializes once and identifies audio by file SIGNATURE** (RIFF/WAVE, OggS, fLaC, ftyp, ID3) — the
+same materialized bytes feed the name scan, so a streaming *text* body is still name-scanned (not mis-flagged
+as audio). 102 tests pass.
