@@ -168,6 +168,7 @@ async def transcribe_audio_file(
     language: str = "",
     timeout_seconds: float = 120.0,
     response_format: str = "",
+    initial_prompt: str = "",
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> str:
     """Transcribe an audio file via HTTP STT provider; return transcript text only."""
@@ -178,6 +179,7 @@ async def transcribe_audio_file(
         language=language,
         timeout_seconds=timeout_seconds,
         response_format=response_format,
+        initial_prompt=initial_prompt,
         transport=transport,
     )
     return detail.transcript_text
@@ -395,6 +397,7 @@ async def transcribe_audio_chunked(
     chunk_retry_backoff_s: float = DEFAULT_CHUNK_RETRY_BACKOFF_S,
     on_chunk_progress: Optional[ProgressCallback] = None,
     response_format: str = "",
+    initial_prompt: str = "",
     transport: Optional[httpx.AsyncBaseTransport] = None,
 ) -> str:
     """Transcribe an audio file by splitting into chunks and sending each to STT.
@@ -446,6 +449,7 @@ async def transcribe_audio_chunked(
                         language=language,
                         timeout_seconds=timeout_seconds,
                         response_format=response_format,
+                        initial_prompt=initial_prompt,
                         transport=transport,
                     ),
                     max_attempts=attempts_allowed,
@@ -573,6 +577,7 @@ async def transcribe_audio_segmented(
                 chunk_retry_backoff_s=chunk_retry_backoff_s,
                 on_chunk_progress=on_chunk_progress,
                 response_format=response_format,
+                initial_prompt=initial_prompt,
                 transport=transport,
             )
 

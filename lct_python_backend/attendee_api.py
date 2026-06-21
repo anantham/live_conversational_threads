@@ -80,11 +80,14 @@ def _build_bot_settings() -> Dict[str, Any]:
     webhooks); the project-level webhook handles delivery.
     """
     if ATTENDEE_TRANSCRIPTION_MODE == "closed_captions":
+        # Do NOT record a meeting MP3: its only consumer was the slow-pass, which
+        # is not shipped (audit A4). Recording a full audio file nobody uses is a
+        # needless privacy/storage cost; closed-captions mode needs no local audio.
         return {
             "transcription_settings": {
                 "meeting_closed_captions": {"google_meet_language": f"{ATTENDEE_STT_LANGUAGE}-US"}
             },
-            "recording_settings": {"format": "mp3"},
+            "recording_settings": {"format": "none"},
         }
     # default: self-hosted STT via the Custom Async v2 contract (-> shim).
     return {
@@ -250,11 +253,12 @@ async def attendee_webhook(request: Request):
             new_state = data.get("new_state")
             await session.on_bot_state(new_state, sub_type=data.get("event_sub_type"))
             
-            # If the bot is finished (6 = POST_PROCESSING, 9 = ENDED), fetch the recording
-            if new_state in (6, 9) or str(new_state) in ("6", "9", "POST_PROCESSING", "ENDED"):
-                from lct_python_backend.services.attendee_audio_downloader import fetch_and_transcribe
-                import asyncio
-                asyncio.create_task(fetch_and_transcribe(bot_id, session.conversation_id))
+            # Slow-pass (high-fidelity MP3 re-transcription) is intentionally NOT
+            # wired up. The prototype DESTRUCTIVELY overwrote live utterance text
+            # (audit A4) and decision B requires a review-gated transcript-revision
+            # flow first. No auto-trigger ships until that exists — when it does,
+            # enqueue the NON-destructive revision build here (not the old in-place
+            # patch), and gate any meeting-audio recording behind the same path.
 
         else:
             logger.debug("[attendee] ignoring webhook trigger=%s", trigger)
