@@ -119,3 +119,42 @@ Define a real `bootstrap_egress()` that installs the chokepoint at **process ent
 ---
 
 *Authored as a design hand-off; implement in coordination with the active ADR-038/synthesis session to avoid file collisions.*
+
+---
+
+## Implementation status (2026-06-21) — the enforceable core landed
+
+The GO-gate codex review of THIS redesign also returned **No-Go**
+(`docs/adr/.codex-reviews/ADR-038-enforcement-redesign.design.md`), with 5 blockers — all
+adjudicated REAL (no false-positives). The blockers were absorbed and the **self-contained,
+additive core** built on branch `feat/adr-038-privacy-boundary` (no edits to the contended
+`services/synthesis/*` or the ADR file). New: `services/privacy_boundary.py` +
+`services/privacy_boundary_map.json`; edits to the uncontended `egress_chokepoint.py` +
+the two cloud-audio STT sites; tests `tests/unit/test_privacy_boundary.py` +
+`test_egress_redaction_gate.py` (28 new tests, all green; existing egress tests unchanged).
+
+| codex blocker | Status | How |
+|---|---|---|
+| 1. `request.content` not materialized (RequestNotRead) | **DONE** | chokepoint materializes via `read()`/`aread()` then makes the body **replayable** (ByteStream) so the real send is unaffected; un-materializable E3/E4 body is **refused** (fail-closed) |
+| 2. Audio not local-only at `LCT_LOCAL_ONLY=0` | **DONE** | new `assert_audio_egress_allowed()` hard-gate wired into realtime + HTTP cloud-STT sites; cloud audio now needs explicit `LCT_ALLOW_CLOUD_AUDIO=1` |
+| 3. CLI sandbox ≠ exfiltration boundary | **PARTIAL + honest residual** | `spawn_external_cli()` leak-verifies exact stdin pre-spawn, empty temp cwd, scrubbed env, `close_fds=True` (Windows-correct), refuses path-bearing argv — but a networked child is **not** fully containable; documented, and the **synthesis migration onto the helper is the deferred contended edit** |
+| 4. Boundary code didn't exist | **DONE** | tier classifier + pinned map + leaks-only `leak_verify` + `UnverifiedEgressBlocked` all built + tested |
+| 5. google-genai live by-value ws bypass | **PARTIAL** | websockets patch now also wraps the submodule `connect` (asyncio/legacy/client) so a post-install by-value import is covered; pre-install binds still escape (needs bootstrap-before-import); live **audio** also covered by the audio gate |
+
+**Findings closed:** 1.5 (stamp dropped — leak-verify real bytes), 1.6 (leaks-only `leaks_clean`;
+expected-pseudonym presence is non-blocking `quality_ok`), 1.7 (Unicode-NFC + whole-word + possessive
+matcher; Chin/Aishwarya/owner enrolled in the pinned map), 1.8 (new blocking tests at
+`LCT_LOCAL_ONLY=0`; the boundary is **additive** so existing host-locality tests stay green),
+1.9 (fail-closed if the canonical map is unavailable).
+
+**Deferred (coordinated / higher-risk), NOT in this slice:**
+1. **Migrate `synthesis_engine._codex/_claude_opus` onto `spawn_external_cli`** — the contended file (active synthesis session). Until then the helper exists but the production frontier door still spawns raw.
+2. **`bootstrap_egress()` at every entrypoint before imports** — the hook exists; backend still installs in lifespan. Marginal for httpx (MRO-immune regardless of timing); load-bearing only for the urllib/websockets by-value paths. Moving backend's install risks the test suite — deferred.
+3. **Auto-derive `privacy_boundary_map.json` from IndrasNet contacts `external_llm_ok`** + vendor the canonical matcher from a hardened IndrasNet `redaction_verify` (drift-pin). The map is hand-pinned for now.
+4. **ADR-038 doc rewrite** (drop the stamp, restate as text-egress, add residuals) — contended doc.
+5. **Owner-redaction policy decision** — `owner_is_forbidden=true` is the fail-closed default (owner's name pseudonymized); flip in the map if the owner consents to their own name leaving.
+
+**Honest residuals (state in the ADR's "Known boundaries"):** a networked CLI child is trusted not to
+read absolute paths we didn't hand it; the text boundary scans request bodies (not URLs/headers/argv/env,
+and binary/audio is the audio gate's job); leak-verify catches only **enrolled** names — an un-enrolled
+real name leaks, so map completeness is the foundation.
