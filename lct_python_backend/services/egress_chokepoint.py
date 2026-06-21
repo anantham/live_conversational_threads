@@ -119,27 +119,27 @@ def _wrap_httpx() -> None:
 
     def _guarded_sync_send(self, request, *args, **kwargs):
         url = str(request.url)
+        # need_name (E3/E4) always implies a non-local frontier host, so the
+        # outer guard is just "is this destination non-local?".
         nonlocal_dest = not url_is_local_infra(url)
         need_name = egress_requires_leak_verify(url)
-        body = None
         if nonlocal_dest or need_name:
             ct = request.headers.get("content-type", "")
-            # ADR-038 audio backstop (codex round-2/4): gate raw audio at the
-            # TRANSPORT, not per-site. audio/*+multipart are audio by declaration;
-            # an octet-stream/empty body is materialized and identified by file
-            # signature (an audio upload can be saved extensionless as .bin).
+            # ADR-038 audio backstop (codex round-2/4/5): gate raw audio at the
+            # TRANSPORT, not per-site. audio/* + multipart are audio by declaration
+            # (no body needed); EVERY other non-local body is materialized once and
+            # identified by file SIGNATURE — so a mislabeled text/plain or
+            # application/json audio body cannot slip past the declared type.
             if nonlocal_dest and _positive_audio_ct(ct):
                 assert_audio_egress_allowed(url, purpose="httpx audio upload")
-            elif nonlocal_dest and _maybe_binary_ct(ct):
+            else:
                 body = _materialize_body_sync(request, url)
-                if _has_audio_magic(bytes(body[:512])):
+                if nonlocal_dest and _has_audio_magic(bytes(body[:512])):
                     assert_audio_egress_allowed(url, purpose="httpx audio upload")
-            # ADR-038 move 1: leak-verify the ACTUAL E3/E4 bytes BEFORE the host
-            # gate so it fires even at LCT_LOCAL_ONLY=0. Local/E1/E2 pay nothing.
-            if need_name:
-                if body is None:
-                    body = _materialize_body_sync(request, url)
-                assert_body_clean(body, url)
+                # ADR-038 move 1: leak-verify the ACTUAL E3/E4 bytes BEFORE the
+                # host gate so it fires even at LCT_LOCAL_ONLY=0.
+                if need_name:
+                    assert_body_clean(body, url)
         assert_local_egress(url, purpose="httpx")
         return _orig_sync_send(self, request, *args, **kwargs)
 
@@ -147,19 +147,16 @@ def _wrap_httpx() -> None:
         url = str(request.url)
         nonlocal_dest = not url_is_local_infra(url)
         need_name = egress_requires_leak_verify(url)
-        body = None
         if nonlocal_dest or need_name:
             ct = request.headers.get("content-type", "")
             if nonlocal_dest and _positive_audio_ct(ct):
                 assert_audio_egress_allowed(url, purpose="httpx audio upload")
-            elif nonlocal_dest and _maybe_binary_ct(ct):
+            else:
                 body = await _materialize_body_async(request, url)
-                if _has_audio_magic(bytes(body[:512])):
+                if nonlocal_dest and _has_audio_magic(bytes(body[:512])):
                     assert_audio_egress_allowed(url, purpose="httpx audio upload")
-            if need_name:
-                if body is None:
-                    body = await _materialize_body_async(request, url)
-                assert_body_clean(body, url)
+                if need_name:
+                    assert_body_clean(body, url)
         assert_local_egress(url, purpose="httpx-async")
         return await _orig_async_send(self, request, *args, **kwargs)
 
@@ -185,13 +182,6 @@ def _has_audio_magic(buf: bytes) -> bool:
     if buf[:3] == b"ID3":                   # MP3 with an ID3 tag
         return True
     return False
-
-
-def _maybe_binary_ct(ct: str) -> bool:
-    """A content-type that could be a raw binary (audio) body and therefore needs
-    a magic-byte check: octet-stream, ``application/x-*``, or unset."""
-    ct = (ct or "").lower()
-    return ct.startswith("application/octet-stream") or ct.startswith("application/x-") or ct == ""
 
 
 def _positive_audio_ct(ct: str) -> bool:

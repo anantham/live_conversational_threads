@@ -213,3 +213,14 @@ chokepoint now (a) treats **any** non-local multipart as audio, and (b) for an o
 body, **materializes once and identifies audio by file SIGNATURE** (RIFF/WAVE, OggS, fLaC, ftyp, ID3) — the
 same materialized bytes feed the name scan, so a streaming *text* body is still name-scanned (not mis-flagged
 as audio). 102 tests pass.
+
+### Codex GO-gate round 6 (2026-06-21) — mislabeled-content-type audio, made airtight
+
+Round-5 confirmed the extensionless leak closed but found raw audio with a *mislabeled* content-type
+(`text/plain` / `application/json` carrying audio magic bytes) could still slip, since magic-byte detection
+only ran for octet/empty types. Fixed by making it airtight: the chokepoint now magic-checks **every** non-local
+httpx body regardless of declared content-type (the E3/E4 path already materializes for the name scan, so it's
+near-free there; non-local non-frontier bodies are materialized too, which only matters in the `LCT_LOCAL_ONLY=0`
+cloud profile). audio/* and multipart stay declaration-only (no body needed). 103 tests pass. The audio boundary
+is now airtight at the httpx transport for any body carrying a recognizable audio signature; the genuine
+residual is headerless/signature-less audio and per-message websocket payloads (the ws *connect* is gated).
