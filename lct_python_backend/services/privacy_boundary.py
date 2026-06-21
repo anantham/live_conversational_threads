@@ -54,10 +54,17 @@ KNOWN RESIDUALS (codex GO-gate, 2026-06-21 — stated, not silently dropped):
   * Cloud WEBSOCKET text payloads are not per-message scanned; LCT's only cloud
     websocket is realtime AUDIO STT, which IS audio-gated. A cloud-text-websocket
     would need its own gate (none exists in LCT today).
-  * ``spawn_external_cli`` reduces but cannot eliminate a networked child's
-    exfiltration (it keeps its own network + can read absolute paths we didn't
-    hand it). The real guarantee is "the stdin + argv we send carry no forbidden
-    NAME". Migrating the production synthesis/eval spawns onto it is deferred.
+  * ``spawn_external_cli`` leak-verifies the stdin + argv we SEND, but a frontier
+    agent with file-read TOOLS could be INSTRUCTED (by the prompt) to read a local
+    file of real names the scan never sees (grok review). The real control for the
+    spawn path is therefore DISABLING THE AGENT'S TOOLS at the call site:
+    ``synthesis_engine`` runs ``claude -p`` with ``--allowed-tools`` (zero) + empty
+    MCP, so it cannot read files. ``codex exec`` has no equivalent no-tools flag, so
+    it retains read capability (the empty cwd blocks RELATIVE reads, but ABSOLUTE
+    reads remain possible on Windows) — a documented residual; prefer tools-disabled
+    claude for sensitive synthesis. The argv path-token refusal here is only
+    defense-in-depth, NOT the primary control. A networked child also keeps its own
+    network stack — full containment of a frontier agent is out of reach here.
 """
 
 from __future__ import annotations
@@ -317,6 +324,19 @@ def _percent_decode(text: str) -> Optional[str]:
         return None
 
 
+def _html_unescape(text: str) -> Optional[str]:
+    # HTML/XML entities — numeric (&#x56; / &#86;) and named (grok review).
+    if "&" not in text:
+        return None
+    try:
+        import html as _html
+
+        out = _html.unescape(text)
+        return out if out != text else None
+    except Exception:
+        return None
+
+
 def _decoded_views(text: str) -> list[str]:
     """The raw text plus the realistic re-encodings a name could hide behind on
     the wire — JSON ``\\uXXXX`` escapes (the OpenAI SDK does ``json.dumps(
@@ -332,7 +352,7 @@ def _decoded_views(text: str) -> list[str]:
     for _ in range(4):  # bounded to avoid a decode-bomb DoS
         nxt: list[str] = []
         for t in frontier:
-            for decoder in (_json_unescape, _percent_decode):
+            for decoder in (_json_unescape, _percent_decode, _html_unescape):
                 d = decoder(t)
                 if d is not None and d not in seen:
                     seen.add(d)
@@ -514,14 +534,16 @@ def spawn_external_cli(
             assert_body_clean("\x00".join(str(a) for a in argv),
                               url="cli-argv:" + str(argv[0]))
 
-    # Defense-in-depth: an absolute path to an existing file in argv could direct
-    # the child to read it. leak_verify catches NAMES, not paths — so refuse
-    # path-bearing argv for a sandboxed frontier spawn.
+    # Defense-in-depth: a path in argv could direct the child to read a private
+    # file. leak_verify catches NAMES, not paths — so refuse both an absolute
+    # existing path AND a relative ``..`` traversal (grok review) for a sandboxed
+    # frontier spawn. (This is NOT the primary control — see the module docstring:
+    # the real protection for the spawn path is disabling the agent's tools.)
     for tok in argv[1:]:
         t = str(tok)
-        if os.path.isabs(t) and os.path.exists(t):
+        if (os.path.isabs(t) and os.path.exists(t)) or re.search(r"\.\.[\\/]", t):
             raise UnverifiedEgressBlocked(
-                f"refusing frontier spawn: argv carries an absolute existing path {t!r} "
+                f"refusing frontier spawn: argv carries a path-like token {t!r} "
                 "(could exfiltrate a private file the stdin scan cannot see)"
             )
 
