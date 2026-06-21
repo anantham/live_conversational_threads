@@ -55,11 +55,15 @@ def test_allowlist_does_not_downgrade_frontier(monkeypatch):
 
 # --- the pinned map ----------------------------------------------------------
 
-def test_map_enrolls_all_people_incl_chin_aishwarya_owner():
+def test_map_enrolls_contacts_owner_opted_out():
+    # Contacts (incl. Chin/Aishwarya, formerly absent) are enrolled; the owner
+    # opted OUT of self-redaction (owner_is_forbidden=false, 2026-06-21), so the
+    # owner's own name is NOT forbidden.
     fb = {n.lower() for n in boundary_forbidden_names()}
     for required in ["vatsal", "vatsal mehra", "sahil", "bhishma",
-                     "bhishmaraj", "chin", "aishwarya", "aditya"]:
+                     "bhishmaraj", "chin", "aishwarya"]:
         assert required in fb, f"{required!r} not enrolled in the pinned map"
+    assert "aditya" not in fb, "owner opted out of self-redaction; should not be forbidden"
 
 
 # --- the hardened matcher / leaks-only predicate (finding 1.6, 1.7) ----------
