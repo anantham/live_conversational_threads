@@ -191,6 +191,21 @@ def test_central_audio_gate_blocks_raw_audio_octet_body(monkeypatch):
         )
 
 
+def test_multipart_audio_with_name_in_formfield_still_scanned(monkeypatch):
+    # codex round-6: a multipart STT request to a frontier host can carry real
+    # participant names in form fields (e.g. known_speaker_names[]). Even after
+    # the cloud-audio opt-in, the name scan must still run — audio gate AND name
+    # scan, not XOR.
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+    monkeypatch.setenv("LCT_ALLOW_CLOUD_AUDIO", "1")  # audio gate opted in
+    with pytest.raises(UnverifiedEgressBlocked):
+        httpx.Client(timeout=0.3).post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            data={"known_speaker_names[]": "Vatsal"},
+            files={"file": ("chunk.wav", b"RIFFfakewavdata", "audio/wav")},
+        )
+
+
 def test_central_audio_gate_blocks_mislabeled_content_type(monkeypatch):
     # codex round-5: raw audio mislabeled as text/plain (or application/json) must
     # STILL be caught by the magic-byte check on the materialized body.
