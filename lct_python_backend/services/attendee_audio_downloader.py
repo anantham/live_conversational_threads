@@ -80,7 +80,8 @@ async def fetch_and_transcribe(bot_id: str, conversation_id: str):
         from lct_python_backend.services.audio_transcriber import transcribe_audio_file_detailed
         from pathlib import Path
         
-        logger.info(f"[audio-downloader] Running slow-pass STT on {local_path} with prompt: {prompt}")
+        # Privacy: the prompt embeds attendee speaker names — log its size, not text.
+        logger.info("[audio-downloader] Running slow-pass STT on %s (prompt %d chars)", local_path, len(prompt))
         detail = await transcribe_audio_file_detailed(
             file_path=Path(local_path),
             http_url="http://127.0.0.1:7777/api/transcribe",

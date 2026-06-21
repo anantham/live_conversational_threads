@@ -40,6 +40,9 @@ def test_inject_utterance_maps_to_transcript_final():
             bot_name="LCT",
         )
         sess._ws = _FakeWS()
+        # Anchor the recording at epoch 0; Attendee sends ABSOLUTE epoch-ms, so an
+        # utterance at ts=12000ms persists as 12.0s relative to the anchor.
+        sess._rec_anchor_epoch_ms = 0.0
         await sess.inject_utterance(
             text="  Hello world  ",
             speaker_name="Jane Doe",
@@ -58,7 +61,9 @@ def test_inject_utterance_maps_to_transcript_final():
     assert frame["metadata"]["speaker_name"] == "Jane Doe"
     assert frame["metadata"]["speaker_uuid"] == "user1"
     assert frame["metadata"]["speaker_source"] == "attendee"
-    # ms -> s conversion, end = start + duration
+    # Raw absolute epoch-ms preserved verbatim (A3).
+    assert frame["metadata"]["source_timestamp_ms"] == 12000
+    # epoch-ms anchored on recording start (epoch 0) -> 12.0s; end = start + dur
     assert frame["timestamps"]["start"] == pytest.approx(12.0)
     assert frame["timestamps"]["end"] == pytest.approx(12.8)
 
