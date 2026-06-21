@@ -191,6 +191,19 @@ def test_central_audio_gate_blocks_raw_audio_octet_body(monkeypatch):
         )
 
 
+def test_central_audio_gate_blocks_mislabeled_content_type(monkeypatch):
+    # codex round-5: raw audio mislabeled as text/plain (or application/json) must
+    # STILL be caught by the magic-byte check on the materialized body.
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+    monkeypatch.delenv("LCT_ALLOW_CLOUD_AUDIO", raising=False)
+    with pytest.raises(AudioEgressBlocked):
+        httpx.Client(timeout=0.3).post(
+            "https://api.openai.com/x",
+            content=b"RIFF\x24\x00\x00\x00WAVEfmt mislabeled-as-text",
+            headers={"content-type": "text/plain"},
+        )
+
+
 @pytest.mark.asyncio
 async def test_central_audio_gate_blocks_cloud_websocket(monkeypatch):
     monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
