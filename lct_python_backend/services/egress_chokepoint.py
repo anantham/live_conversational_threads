@@ -125,19 +125,20 @@ def _wrap_httpx() -> None:
         need_name = egress_requires_leak_verify(url)
         if nonlocal_dest or need_name:
             ct = request.headers.get("content-type", "")
-            # ADR-038 audio backstop (codex round-2/4/5): gate raw audio at the
-            # TRANSPORT, not per-site. audio/* + multipart are audio by declaration
-            # (no body needed); EVERY other non-local body is materialized once and
-            # identified by file SIGNATURE — so a mislabeled text/plain or
-            # application/json audio body cannot slip past the declared type.
-            if nonlocal_dest and _positive_audio_ct(ct):
+            # ADR-038 audio backstop (codex round-2/4/5): audio/* + multipart are
+            # audio by declaration; every OTHER non-local body is materialized once
+            # and identified by file SIGNATURE so a mislabeled audio body can't slip.
+            declared_audio = nonlocal_dest and _positive_audio_ct(ct)
+            if declared_audio:
                 assert_audio_egress_allowed(url, purpose="httpx audio upload")
-            else:
+            # The audio gate and the E3/E4 name scan are AND, not XOR (codex
+            # round-6): a multipart/audio body to a frontier host can ALSO carry
+            # real names in form fields (e.g. known_speaker_names) and must be
+            # leak-verified even after a cloud-audio opt-in.
+            if need_name or (nonlocal_dest and not declared_audio):
                 body = _materialize_body_sync(request, url)
-                if nonlocal_dest and _has_audio_magic(bytes(body[:512])):
+                if nonlocal_dest and not declared_audio and _has_audio_magic(bytes(body[:512])):
                     assert_audio_egress_allowed(url, purpose="httpx audio upload")
-                # ADR-038 move 1: leak-verify the ACTUAL E3/E4 bytes BEFORE the
-                # host gate so it fires even at LCT_LOCAL_ONLY=0.
                 if need_name:
                     assert_body_clean(body, url)
         assert_local_egress(url, purpose="httpx")
@@ -149,11 +150,12 @@ def _wrap_httpx() -> None:
         need_name = egress_requires_leak_verify(url)
         if nonlocal_dest or need_name:
             ct = request.headers.get("content-type", "")
-            if nonlocal_dest and _positive_audio_ct(ct):
+            declared_audio = nonlocal_dest and _positive_audio_ct(ct)
+            if declared_audio:
                 assert_audio_egress_allowed(url, purpose="httpx audio upload")
-            else:
+            if need_name or (nonlocal_dest and not declared_audio):
                 body = await _materialize_body_async(request, url)
-                if nonlocal_dest and _has_audio_magic(bytes(body[:512])):
+                if nonlocal_dest and not declared_audio and _has_audio_magic(bytes(body[:512])):
                     assert_audio_egress_allowed(url, purpose="httpx audio upload")
                 if need_name:
                     assert_body_clean(body, url)

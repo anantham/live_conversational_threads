@@ -224,3 +224,13 @@ near-free there; non-local non-frontier bodies are materialized too, which only 
 cloud profile). audio/* and multipart stay declaration-only (no body needed). 103 tests pass. The audio boundary
 is now airtight at the httpx transport for any body carrying a recognizable audio signature; the genuine
 residual is headerless/signature-less audio and per-message websocket payloads (the ws *connect* is gated).
+
+### Codex GO-gate round 7 (2026-06-21) — audio/name AND-not-XOR regression, fixed
+
+Round-6 confirmed the mislabeled-audio case closed but caught a sharp **regression my round-6 refactor
+introduced**: I'd made the audio gate and the E3/E4 name scan an XOR — a multipart/audio body hit the audio
+branch and **skipped the name scan**. codex traced a *current, reachable* path: the OpenAI diarization STT puts
+real participant names (`known_speaker_names[]`) into the multipart form, so at `LOCAL_ONLY=0` +
+`ALLOW_CLOUD_AUDIO=1` a real name reached the E4 wire unscanned. Fixed: the two checks are now **AND** — a
+multipart/audio body to a frontier host is audio-gated AND name-scanned. 104 tests pass. (This is the value of
+adversarial review: a self-review-invisible regression in a security boundary, caught and closed.)
