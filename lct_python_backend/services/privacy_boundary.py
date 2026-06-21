@@ -42,6 +42,22 @@ locally (contention-safe — it does not touch the actively-edited synthesis
 package) and is the thing IndrasNet's canonical should converge to. The forbidden
 set is pinned in ``privacy_boundary_map.json`` (not auto-derived from contacts
 consent yet — documented follow-up).
+
+KNOWN RESIDUALS (codex GO-gate, 2026-06-21 — stated, not silently dropped):
+  * The text scanner decodes raw + JSON-``\\u`` + percent views; it does NOT
+    defeat base64 blobs, homoglyph / zero-width-joiner obfuscation, or a name
+    carried in a header / URL / multipart field. ADR-038 already states leak-verify
+    is a floor, not a semantic panacea — those need semantic adjudication.
+  * Tier is by hostname, not DNS/CNAME proof — the same locality-trust model as
+    ``egress_guard`` (a frontier host behind a local-looking suffix is policy
+    trust). Conservative default: unknown remote → E4 → scanned.
+  * Cloud WEBSOCKET text payloads are not per-message scanned; LCT's only cloud
+    websocket is realtime AUDIO STT, which IS audio-gated. A cloud-text-websocket
+    would need its own gate (none exists in LCT today).
+  * ``spawn_external_cli`` reduces but cannot eliminate a networked child's
+    exfiltration (it keeps its own network + can read absolute paths we didn't
+    hand it). The real guarantee is "the stdin + argv we send carry no forbidden
+    NAME". Migrating the production synthesis/eval spawns onto it is deferred.
 """
 
 from __future__ import annotations
@@ -231,6 +247,15 @@ def boundary_forbidden_names() -> tuple[str, ...]:
     return load_boundary_map().forbidden
 
 
+def reload_boundary_map() -> None:
+    """Drop the cached map so the next call re-reads ``privacy_boundary_map.json``.
+    The map is ``lru_cached`` (a pinned config read once); call this after editing
+    the map at runtime (codex review, Finding 7 — otherwise a change is hidden
+    until process restart). Corruption AFTER a good load keeps the last-good cached
+    copy until reload, which is the safer failure mode."""
+    load_boundary_map.cache_clear()
+
+
 # --- the leak-verify primitive (hardened matcher) ----------------------------
 
 @dataclass(frozen=True)
@@ -259,6 +284,34 @@ def _leak_pattern(needle_nfc: str) -> "re.Pattern[str]":
     return re.compile(rf"\b{re.escape(needle_nfc)}\b", re.IGNORECASE)
 
 
+def _decoded_views(text: str) -> list[str]:
+    """The raw text plus the realistic re-encodings a name could hide behind on
+    the wire — JSON ``\\uXXXX`` escapes (the OpenAI SDK does ``json.dumps(
+    ensure_ascii=True)``, so a NON-ASCII forbidden name ships ``\\u``-escaped) and
+    percent/form-encoding. Each is scanned independently. KNOWN RESIDUALS the
+    text scanner does NOT decode (documented, semantic-not-string per ADR-038):
+    base64 blobs, homoglyph / zero-width-joiner obfuscation, and a name carried
+    in a header / URL / multipart field rather than the JSON body."""
+    views = [text]
+    if "\\u" in text:
+        try:
+            views.append(re.sub(
+                r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), text
+            ))
+        except Exception:
+            pass
+    if "%" in text:
+        try:
+            from urllib.parse import unquote
+
+            uq = unquote(text)
+            if uq != text:
+                views.append(uq)
+        except Exception:
+            pass
+    return views
+
+
 def leak_verify(
     data: "bytes | str",
     *,
@@ -267,9 +320,10 @@ def leak_verify(
 ) -> LeakReport:
     """Deterministic leaks-only scan over the EXACT bytes/text about to leave.
 
-    Bytes are decoded utf-8 with ``errors='replace'`` then NFC-normalized before
-    matching (so a decomposed diacritic or an alternate Unicode form still
-    matches the pinned name). ``forbidden`` defaults to the pinned canonical set.
+    Bytes are decoded utf-8 (``errors='replace'``) then NFC-normalized; the body
+    is also scanned through its JSON-``\\u`` and percent-decoded views so an
+    ``ensure_ascii``-escaped or form-encoded name cannot slip the check (codex
+    review, Bug 6). ``forbidden`` defaults to the pinned canonical set.
     """
     if forbidden is None:
         forbidden = boundary_forbidden_names()
@@ -279,19 +333,21 @@ def leak_verify(
         text = bytes(data).decode("utf-8", errors="replace")
     else:
         text = data or ""
-    norm = _nfc(text)
+    primary = _nfc(text)
 
     leaks: list[tuple[str, int]] = []
-    for needle in forbidden:
-        if not needle:
-            continue
-        for m in _leak_pattern(_nfc(needle)).finditer(norm):
-            leaks.append((needle, m.start()))
+    for view in _decoded_views(text):
+        norm = _nfc(view)
+        for needle in forbidden:
+            if not needle:
+                continue
+            for m in _leak_pattern(_nfc(needle)).finditer(norm):
+                leaks.append((needle, m.start()))
     leaks.sort(key=lambda t: t[1])
 
     missing: list[str] = []
     for pseud in list(expected_pseudonyms or []):
-        if pseud and pseud not in norm:
+        if pseud and pseud not in primary:
             missing.append(pseud)
 
     return LeakReport(
@@ -299,7 +355,7 @@ def leak_verify(
         leaks=leaks,
         expected_pseudonyms_missing=missing,
         quality_ok=not missing,
-        body_chars=len(norm),
+        body_chars=len(primary),
     )
 
 
@@ -376,11 +432,12 @@ def is_frontier_cli(argv0: str) -> bool:
     return base in _FRONTIER_BINARIES
 
 
-def _scrubbed_env(extra: Optional[dict] = None) -> dict:
-    env = {k: v for k, v in os.environ.items() if k.upper() in {e.upper() for e in _CLI_ENV_ALLOW}}
-    if extra:
-        env.update(extra)
-    return env
+def _scrubbed_env() -> dict:
+    """Minimal env: only what a frontier CLI needs to find its login/config. No
+    caller-supplied ``extra_env`` (codex review, Bug 4: it would defeat the scrub
+    by re-introducing secrets/paths into the child)."""
+    allow = {e.upper() for e in _CLI_ENV_ALLOW}
+    return {k: v for k, v in os.environ.items() if k.upper() in allow}
 
 
 def spawn_external_cli(
@@ -389,23 +446,32 @@ def spawn_external_cli(
     redacted_input: str,
     engine_tier: str = "E4",
     timeout: float = 600.0,
-    extra_env: Optional[dict] = None,
 ) -> "subprocess.CompletedProcess[bytes]":
     """The ONE sanctioned way to spawn a frontier CLI. Leak-verifies the EXACT
-    stdin bytes BEFORE the spawn (owning encode→scan→spawn so there is no gap
-    between what is scanned and what is written — finding 1.1), and sandboxes the
-    child (empty temp cwd, scrubbed env, ``close_fds=True``). See module docstring
-    for the honest residual (a networked child is not fully containable).
+    stdin bytes AND argv BEFORE the spawn (owning encode→scan→spawn so there is no
+    gap between what is scanned and what is written — finding 1.1), and sandboxes
+    the child (empty temp cwd, scrubbed env, ``close_fds=True``). See module
+    docstring for the honest residual (a networked child is not fully containable).
     """
-    if engine_tier in REDACTION_REQUIRED_TIERS:
-        body = redacted_input.encode("utf-8")
+    body = redacted_input.encode("utf-8")
+
+    # codex review, Bug 2: a frontier binary ALWAYS requires scanning — a caller
+    # must NOT be able to opt out by passing engine_tier="E1". Derive the tier.
+    effective_tier = engine_tier
+    if argv and is_frontier_cli(argv[0]) and effective_tier not in REDACTION_REQUIRED_TIERS:
+        effective_tier = "E4"
+
+    if effective_tier in REDACTION_REQUIRED_TIERS:
         assert_body_clean(body, url="cli:" + (argv[0] if argv else "?"))
-    else:
-        body = redacted_input.encode("utf-8")
+        # codex review, Bug 3: a forbidden name can also ride argv
+        # (e.g. ``claude -p "...Vatsal..."``), not just stdin.
+        if len(argv) > 1:
+            assert_body_clean("\x00".join(str(a) for a in argv[1:]),
+                              url="cli-argv:" + str(argv[0]))
 
     # Defense-in-depth: an absolute path to an existing file in argv could direct
-    # the child to read it (codex blocker 3). leak_verify catches NAMES, not
-    # paths — so refuse path-bearing argv for a sandboxed frontier spawn.
+    # the child to read it. leak_verify catches NAMES, not paths — so refuse
+    # path-bearing argv for a sandboxed frontier spawn.
     for tok in argv[1:]:
         t = str(tok)
         if os.path.isabs(t) and os.path.exists(t):
@@ -420,7 +486,7 @@ def spawn_external_cli(
             argv,
             input=body,
             cwd=workdir,
-            env=_scrubbed_env(extra_env),
+            env=_scrubbed_env(),
             close_fds=True,            # Windows-correct isolation (pass_fds=() is POSIX-only)
             capture_output=True,
             timeout=timeout,

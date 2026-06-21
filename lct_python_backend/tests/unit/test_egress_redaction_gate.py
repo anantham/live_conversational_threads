@@ -117,3 +117,12 @@ async def test_async_dirty_body_blocked(monkeypatch):
     async with httpx.AsyncClient(timeout=0.3) as client:
         with pytest.raises(UnverifiedEgressBlocked):
             await client.post(E4_URL, content=DIRTY)
+
+
+def test_json_unicode_escaped_name_blocked(monkeypatch):
+    # codex Bug 6: a name escaped as \uXXXX in the JSON body must still be blocked.
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+    body = ('{"messages":[{"content":"meet V' + chr(92) + 'u0061tsal"}]}').encode("utf-8")
+    assert b"\\u0061" in body  # the wire bytes carry the literal escape
+    with pytest.raises(UnverifiedEgressBlocked):
+        httpx.Client(timeout=0.3).post(E4_URL, content=body)

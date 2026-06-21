@@ -144,14 +144,19 @@ def _make_replayable(request, body: bytes) -> None:
     """After consuming a streaming body to scan it, replace the request's stream
     with a replayable ByteStream so the REAL send transmits the same bytes (not an
     exhausted one-shot generator). httpx's ByteStream is iterable both sync and
-    async, so it serves Client and AsyncClient. Re-confirm on httpx upgrade."""
+    async, so it serves Client and AsyncClient. If we cannot guarantee a
+    replayable body (httpx internal moved), FAIL CLOSED — block rather than risk
+    sending an inconsistent request (codex review, Finding 2)."""
     try:
         from httpx._content import ByteStream
 
         request.stream = ByteStream(body)
-    except Exception:  # internal API moved; _content fallback still helps
-        pass
-    request._content = body
+        request._content = body
+    except Exception as exc:
+        raise UnverifiedEgressBlocked(
+            "refusing E3/E4 send: cannot install a replayable body for leak-verify "
+            f"({type(exc).__name__}: {exc})"
+        ) from exc
 
 
 def _materialize_body_sync(request, url: str) -> bytes:

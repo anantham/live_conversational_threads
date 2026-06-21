@@ -153,6 +153,10 @@ async def transcribe_backend_http_candidate(
             diarize_enabled,
         )
 
+    # ADR-038 audio hard-gate (codex review, Bug 1): the generic backend HTTP STT
+    # path also ships raw WAV — keep it local-only at LCT_LOCAL_ONLY=0 too.
+    from lct_python_backend.services.privacy_boundary import assert_audio_egress_allowed
+    assert_audio_egress_allowed(http_url, purpose="backend HTTP audio STT")
     response = await client.post(
         http_url,
         data=form_data,
@@ -243,6 +247,10 @@ async def transcribe_openai_audio_candidate(
 
     if should_stream:
         full_text = ""
+        # ADR-038 audio hard-gate (codex review, Bug 1): cover the streaming
+        # branch too, so a future re-enable cannot bypass the gate.
+        from lct_python_backend.services.privacy_boundary import assert_audio_egress_allowed
+        assert_audio_egress_allowed(http_url, purpose="OpenAI streaming audio STT")
         async with client.stream(
             "POST",
             http_url,
