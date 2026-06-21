@@ -195,3 +195,10 @@ chokepoint**, centrally:
 
 Per-site audio gates kept as defense-in-depth + for the one shape the central sniff can't see (OpenRouter
 base64-audio-in-JSON). 98 tests pass.
+
+### Codex GO-gate round 4 (2026-06-21) — 2 narrow findings, fixed
+
+Round-3 confirmed B3/B6/audio CLOSED and narrowed to 2 blocking findings (6 → 2 across rounds):
+
+- **B2 shell-string launcher** (`["cmd","/c","claude -p"]`) — `is_frontier_cli` matched only an exact basename, so a frontier CLI inside a shell-string token escaped detection. Fixed: it now splits each token on whitespace/quotes and checks every word's basename (`sh -lc claude …` is caught too).
+- **`host.docker.internal` split-brain** — I'd made it "local" for the audio gate but not for `egress_guard`, so the two disagreed. Resolved by **reverting** to consistency with `egress_guard` (docker is non-local under the owner's strict locality decision — changing that is one owner decision in `egress_guard`, not a divergence here). 100 tests pass.
