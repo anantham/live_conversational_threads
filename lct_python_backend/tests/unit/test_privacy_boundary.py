@@ -87,6 +87,22 @@ def test_bytes_and_unicode_nfc():
     assert not r.leaks_clean
 
 
+def test_leak_caught_through_json_unicode_escape():
+    # JSON ensure_ascii ships names as \uXXXX literals in the body bytes; an ASCII
+    # letter can be adversarially \u-escaped too. The scanner must decode the
+    # escape, not see only the literal backslash sequence (codex Bug 6).
+    body = '{"content":"meeting with V' + chr(92) + 'u0061tsal"}'  # a = 'a'
+    assert "\\u0061" in body  # the literal escape is present (not pre-decoded)
+    assert leak_verify(body).leaks_clean is False
+
+
+def test_leak_caught_through_percent_encoding():
+    # %56 = 'V'; the raw view has no "Vatsal", only the percent-decoded view does.
+    body = "note=%56atsal+Mehra"
+    assert "Vatsal" not in body
+    assert leak_verify(body).leaks_clean is False
+
+
 def test_leaks_only_predicate_missing_pseudonym_does_not_block():
     # finding 1.6: a leak-free payload missing an expected pseudonym is CLEAN
     # (advisory quality_ok=False), never blocked.
@@ -158,6 +174,24 @@ def test_spawn_refuses_path_bearing_argv(tmp_path):
         spawn_external_cli(
             [sys.executable, str(planted)],
             redacted_input="clean",
+            engine_tier="E4",
+        )
+
+
+def test_spawn_frontier_cannot_self_downgrade_tier():
+    # codex Bug 2: a frontier binary labeled engine_tier="E1" must STILL scan
+    # stdin (the tier is derived from argv[0], not trusted from the caller). The
+    # dirty stdin must raise BEFORE 'claude' is ever spawned.
+    with pytest.raises(UnverifiedEgressBlocked):
+        spawn_external_cli(["claude", "-p"], redacted_input="about Vatsal", engine_tier="E1")
+
+
+def test_spawn_blocks_forbidden_name_in_argv():
+    # codex Bug 3: a forbidden name riding argv (clean stdin) is still blocked.
+    with pytest.raises(UnverifiedEgressBlocked):
+        spawn_external_cli(
+            [sys.executable, "-c", "pass", "--note", "remember to ask Vatsal"],
+            redacted_input="clean stdin",
             engine_tier="E4",
         )
 

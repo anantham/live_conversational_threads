@@ -158,3 +158,22 @@ matcher; Chin/Aishwarya/owner enrolled in the pinned map), 1.8 (new blocking tes
 read absolute paths we didn't hand it; the text boundary scans request bodies (not URLs/headers/argv/env,
 and binary/audio is the audio gate's job); leak-verify catches only **enrolled** names — an un-enrolled
 real name leaks, so map completeness is the foundation.
+
+### Codex GO-gate round 2 (2026-06-21) — No-Go on the first slice, fixed
+
+A fresh hostile codex review of the committed core (`3104303`) returned No-Go with 6 real bugs (no
+false-positives). All fixed in the follow-up commit; the adjudication:
+
+| codex finding | verdict | fix |
+|---|---|---|
+| B1 a **3rd + streaming** cloud-audio STT path was ungated | REAL | gated `transcribe_backend_http_candidate` + the OpenAI streaming branch — every raw-WAV send now audio-gated |
+| B2 `engine_tier="E1"` self-downgrade skipped the stdin scan for a frontier CLI | REAL | `spawn_external_cli` **derives** the tier from `argv[0]` — a frontier binary always scans |
+| B3 a forbidden name in **CLI argv** wasn't scanned | REAL | argv is leak-verified alongside stdin |
+| B4 `extra_env` could re-introduce secrets past the scrub | REAL | `extra_env` removed (unused; closes the bypass) |
+| B6 matcher missed **JSON `\uXXXX`** / percent-encoded names | REAL | `leak_verify` now scans raw + JSON-unescaped + percent-decoded views |
+| F2 `_make_replayable` swallowed a ByteStream failure | REAL (minor) | now **fails closed** if it can't install a replayable body |
+
+Scoped/documented as residuals (not blocking): cloud-**websocket text** payloads (LCT's only cloud ws is
+audio-gated STT); `lru_cache` map staleness (added `reload_boundary_map()`; corruption keeps the last-good
+copy — safer); no DNS/CNAME proof (inherited `egress_guard` locality-trust); base64/homoglyph/ZWJ and
+header/URL obfuscation (semantic, not string — ADR-038 already states leak-verify is a floor, not a panacea).
