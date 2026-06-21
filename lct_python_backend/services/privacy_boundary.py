@@ -154,10 +154,13 @@ def _is_local_infra_host(host: str) -> bool:
         h = h[1 : h.index("]")]
     elif h.count(":") == 1:
         h = h.split(":", 1)[0]
-    # host.docker.internal = the local host from inside a container; provider
-    # selection treats it as local, so the audio gate must too (codex round-2
-    # regression — otherwise a legit local Docker STT endpoint is blocked).
-    if h in {"localhost", "ip6-localhost", "host.docker.internal"}:
+    # MUST stay consistent with egress_guard.is_local_host (the locality
+    # authority): loopback + Tailscale + LAN only. host.docker.internal is
+    # deliberately NOT local under the owner's strict 2026-06-04 decision — both
+    # this tier/audio predicate AND egress_guard treat it as non-local, so there's
+    # no split-brain (codex round-3). Making docker truly local is one owner
+    # decision in egress_guard, not a divergence here.
+    if h in {"localhost", "ip6-localhost"}:
         return True
     if h.endswith(".ts.net") or h.endswith(".local") or h == "local":
         return True
@@ -451,14 +454,23 @@ _CLI_ENV_ALLOW = (
 _FRONTIER_BINARIES = frozenset({"claude", "codex", "gemini", "grok"})
 
 
-def is_frontier_cli(argv0: str) -> bool:
-    """True if ``argv0`` resolves to a known frontier-LLM CLI (basename, no ext)."""
-    base = os.path.basename(str(argv0)).lower()
-    for ext in (".exe", ".cmd", ".bat", ".ps1", ""):
-        if ext and base.endswith(ext):
-            base = base[: -len(ext)]
-            break
-    return base in _FRONTIER_BINARIES
+def is_frontier_cli(token: str) -> bool:
+    """True if ``token`` invokes a known frontier-LLM CLI. Splits on whitespace and
+    quotes so a SHELL-STRING launcher (``cmd /c "claude -p"``, ``sh -lc "claude …"``)
+    is detected, not just a bare ``claude`` basename (codex round-3 B2). Residual:
+    arbitrary in-shell obfuscation (``cla''ude``) is not defeated — the helper is for
+    direct/simple-launcher invocation, not adversarial shell injection by the caller."""
+    for word in re.split(r"[\s'\"]+", str(token)):
+        if not word:
+            continue
+        base = os.path.basename(word).lower()
+        for ext in (".exe", ".cmd", ".bat", ".ps1"):
+            if base.endswith(ext):
+                base = base[: -len(ext)]
+                break
+        if base in _FRONTIER_BINARIES:
+            return True
+    return False
 
 
 def _scrubbed_env() -> dict:

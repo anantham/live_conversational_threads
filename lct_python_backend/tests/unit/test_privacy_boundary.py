@@ -110,10 +110,15 @@ def test_leak_caught_through_composed_encoding():
     assert leak_verify("%2556atsal").leaks_clean is False
 
 
-def test_docker_internal_audio_allowed():
-    # codex round-2 regression: host.docker.internal is local infra; the audio
-    # gate must not block a local Docker STT endpoint.
-    assert_audio_egress_allowed("http://host.docker.internal:7777/api/transcribe")
+def test_docker_internal_treated_nonlocal_consistently():
+    # codex round-3: host.docker.internal must be NON-local CONSISTENTLY with
+    # egress_guard (the locality authority) — no split-brain where the audio gate
+    # says local but assert_local_egress blocks it. Both treat it as non-local.
+    from lct_python_backend.services.egress_guard import is_local_host
+
+    assert is_local_host("host.docker.internal") is False
+    with pytest.raises(AudioEgressBlocked):
+        assert_audio_egress_allowed("http://host.docker.internal:7777/api/transcribe")
 
 
 def test_leaks_only_predicate_missing_pseudonym_does_not_block():
@@ -228,6 +233,17 @@ def test_spawn_scans_argv0_binary_path():
             redacted_input="clean stdin",
             engine_tier="E4",
         )
+
+
+@pytest.mark.parametrize("argv", [
+    ["cmd.exe", "/c", "claude -p"],   # Windows shell-string launcher
+    ["sh", "-lc", "claude -p"],       # POSIX shell-string launcher
+])
+def test_spawn_shell_launcher_form_cannot_self_downgrade(argv):
+    # codex round-3 B2: a frontier CLI inside a shell-string token must still be
+    # detected (and thus scanned), even when argv[0] is the shell.
+    with pytest.raises(UnverifiedEgressBlocked):
+        spawn_external_cli(argv, redacted_input="about Vatsal", engine_tier="E1")
 
 
 # --- audio hard-gate (codex blocker 2) ---------------------------------------
