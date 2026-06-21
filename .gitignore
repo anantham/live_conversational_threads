@@ -90,11 +90,12 @@ web_modules/
 .env.test.local
 .env.production.local
 .env.local
-# Any .env backup/rotation copy holds a live secret — never commit. The bare
-# `*.bak` further down does NOT match `.env.bak.tokenfix`, and an AUTH_TOKEN
-# leaked exactly this way during the 2026-06-17 rotation incident — so cover the
-# backup/rotation patterns explicitly here.
-.env.bak*
+# A `.env` backup/rotation copy holds a live secret — never commit. The bare
+# `*.bak` further down does NOT match `.env.bak.tokenfix` (an AUTH_TOKEN leaked
+# exactly that way during the 2026-06-17 rotation incident), so cover any
+# `.env…bak…` backup + every `*.tokenfix` artifact explicitly here. (`.env.example`,
+# which has no `.bak`, stays tracked.)
+.env*.bak*
 *.tokenfix
 
 # parcel-bundler cache (https://parceljs.org/)
