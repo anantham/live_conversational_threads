@@ -1,6 +1,6 @@
 ---
 Date: 2026-06-21
-Status: Proposed — v2 (revised after a codex + grok design review returned NO-GO with 2 BLOCKING + 6 MAJOR; all adjudicated REAL and addressed below. Both families confirmed the core idea sound. See *Design review history*.)
+Status: Proposed — v3 (v2 review: grok GO; codex NO-GO with 1 BLOCKING + 3 MAJOR more, all REAL, all addressed in v3 — immutable decisions, exact-set validation, no producer free-text to the subject, allowlisted relay response. codex confirmed the v1 architectural fixes sound. See *Design review history*.)
 Group: Sharing / Privacy boundary / IndrasNet↔LCT contract
 Related: IndrasNet ADR-055 (subject-side privacy review — the IndrasNet/P1 half this consumes); ADR-036 (shareable conversation-graph artifact — the email-gated share + Google-auth machinery this reuses); ADR-034 (egress chokepoint — the network gate the decisions-relay passes through); ADR-038 (engine-agnostic privacy boundary); IndrasNet ADR-009 (consent model)
 > Number note: This is LCT ADR-039. It is the **P2** (LCT-side review UI) of IndrasNet's **ADR-055** (subject-side privacy review). Different repos, one cross-repo contract — this ADR specifies the LCT half + the wire contract; ADR-055 owns the IndrasNet half (bundle production + the merge/re-leak-verify callback).
@@ -39,18 +39,18 @@ Replaces the markdown blob. IndrasNet's `_deliver_subject_review_bundle` POSTs t
   "run_id": "uuid",                   // run this bundle belongs to (audit / staleness)
   "callback_token": "…",              // single-use, run-bound (server-side only; never to browser)
   "subject_email": "vatsal@example.com",   // the ONLY allowed reviewer (required, non-empty)
-  "subject_name": "Vatsal",
-  "conversation_label": "Privacy review — Vatsal",  // static, subject-owned (no recipient/timestamp)
+  "subject_name": "Vatsal",                // capped display name only (≤120 chars)
   "items": [
     {
       "position_in_doc": 7,           // stable id of the hunk (matches IndrasNet's row)
       "original_text": "…the subject's OWN verbatim words…",
-      "proposed_redaction": "…the AI's redaction…",
-      "reason": "…why it was redacted…"
+      "proposed_redaction": "…the AI's redaction of the subject's own line (from the leak-verified owner_baseline)…"
     }
   ]
 }
 ```
+
+**No producer free-text shown to the subject** (v2-review finding #3): the `reason` field is DROPPED — it was model-generated and could name an owner/third-party line (the exact leak class ADR-055 closed by removing model reasoning). `conversation_label` is DROPPED — LCT renders a STATIC label ("Privacy review of your words") plus the capped `subject_name`. Each item carries only `original_text` and `proposed_redaction`, both of which are the subject's OWN words / the leak-verified redaction of their own line (per ADR-055 attribution). `subject_name` is length-capped, display-only.
 
 **No `callback_url` in the contract** (review finding #3 — SSRF): LCT NEVER takes a relay URL from the producer. It stores `prayer_id` and derives the callback server-side: `f"{INDRASNET_BASE_URL}/api/prayers/{prayer_id}/subject-review"`. A compromised/buggy producer cannot redirect the relay.
 
@@ -87,7 +87,7 @@ expires_at       TIMESTAMP          -- optional auto-expiry (honored on every re
 revoked_at       TIMESTAMP          -- honored on every read/write (410)
 ```
 
-`items_json` is built by EXPLICITLY copying only `{position_in_doc, original_text, proposed_redaction, reason}` from each validated item — never `model_dump()` of the whole payload. `callback_token` is stored in its own column, NULLed after the first successful relay, and never serialized to any browser response. The import handler NEVER logs its request body or item text.
+`items_json` is built by EXPLICITLY copying only `{position_in_doc, original_text, proposed_redaction}` from each validated item — never `model_dump()` of the whole payload, and NO producer free-text fields (`reason` is dropped). `callback_token` is stored in its own column, NULLed after the first successful relay, never serialized to any browser response. `relay_result` holds only an allowlisted-scalar summary (never a raw upstream body). The import handler NEVER logs its request body or item text.
 
 ### 3. Auth model — the middleware exemption (review finding #1, BLOCKING)
 
@@ -99,14 +99,19 @@ The AUTH_TOKEN middleware exempts ONLY `GET` on `/api/share/`; a subject's brows
 ### 4. Endpoints
 
 - **`POST /api/subject-review/import`** (AUTH_TOKEN-gated; IndrasNet → LCT). Validates `SubjectReviewBundleV1` (strict model above) **before any DB write**; rejects (422) missing/empty `subject_email`, non-unique positions, wrong `contract_version`. Stores the row: `token = secrets.token_urlsafe(32)`, `subject_email` lowercased, `items_json` = the explicit safe subset, `callback_token` in its own column. Returns `{ review_url }` = `{public_origin}/subject-review/{token}`. Audit-logs `prayer_id` + `subject_email` only.
-- **`GET /api/subject-review/{token}`** (exempted GET; Google-gated per §3). Returns ONLY `{ subject_name, conversation_label, items, status, viewer_email }` from `items_json` — a dedicated response model that structurally cannot carry `callback_token`/`prayer_id`/`run_id`. 401 `auth_required="google"` (no token), 403 (email mismatch), 410 (revoked/expired). If `status != pending` (already submitted), return the items read-only with the status.
+- **`GET /api/subject-review/{token}`** (exempted GET; Google-gated per §3). Returns ONLY `{ subject_name, items, status, viewer_email }` from `items_json` — a dedicated response model that structurally cannot carry `callback_token`/`prayer_id`/`run_id`/`reason`. The frontend renders a STATIC label ("Privacy review of your words") + the capped `subject_name`; there is no producer-supplied label. 401 `auth_required="google"` (no token), 403 (email mismatch), 410 (revoked/expired). If `status != pending` (already submitted), return the items read-only with the status.
 - **`POST /api/subject-review/{token}/decisions`** (exempted POST; Google-gated + Origin-checked per §3). Body (strict model): `{ decisions: [{ position_in_doc, action: "confirm"|"redact_more"|"reject", redact_span? }] }`. LCT, in order:
   1. re-verify Google email == `subject_email`; check revoked/expired.
-  2. **Idempotency:** if `status == relayed` → return the stored `relay_result` (no re-relay). If `status == submitted` with the same `decision_hash` → a relay is in-flight/was lost; re-attempt the relay (see 6) rather than re-collect.
-  3. **Validate fail-closed (finding #4):** every `position_in_doc` MUST exist in the stored bundle and be unique; otherwise **reject the WHOLE payload (422)** — never silently drop. Reject unknown `action`. For `redact_more`, `redact_span` MUST be a non-empty substring of that item's `proposed_redaction` (finding #6 — so the relayed span can only ever be the subject's own already-shown text, capped in length); reject otherwise. `redact_span` only allowed on `redact_more`.
-  4. persist `decisions_json` + `decision_hash`, set `status=submitted`, `submitted_at` — **before** the relay (finding #5: never lose the decisions).
-  5. **Relay** to the server-derived `f"{INDRASNET_BASE_URL}/api/prayers/{prayer_id}/subject-review"` with `{ token: callback_token, decisions }` (httpx, through the egress chokepoint; also send LCT's IndrasNet AUTH_TOKEN header). `relay_attempts += 1`.
-  6. **Outcome:** 2xx → `status=relayed`, store `relay_result`, NULL `callback_token` + scrub `items_json`, return the summary. IndrasNet **409 (token already consumed)** → treat as idempotent success (`relayed`). Network/5xx → `status=failed`, store `last_error`, return a retryable 502 (the subject can retry; decisions are persisted).
+  2. **Validate fail-closed (findings #4, v2 #2):** the submitted `position_in_doc` set MUST equal the stored item-position set **exactly** — every stored item decided once, no missing, no extra, no duplicate, non-empty list; otherwise **reject the WHOLE payload (422)**, never partial-accept or silently drop. Reject unknown `action`. `redact_span` only on `redact_more`, and MUST be a non-empty substring (length-capped) of that item's `proposed_redaction` (so a relayed span can only ever be the subject's own already-shown text); reject otherwise.
+  3. **Commit to ONE decision set (immutable — v2 #1, BLOCKING).** Under a row lock / CAS on this token: compute `decision_hash = sha256(canonical(decisions))`.
+     - `status == relayed` → return the stored `relay_result` (terminal; no re-relay), regardless of hash.
+     - `status in (submitted, failed)` and a `decision_hash` is already stored: accept ONLY if the new hash **equals** the stored one (a genuine retry) → re-attempt the relay (step 4); a **different** hash → **409** ("you already submitted different decisions"). The token is single-use at IndrasNet, so LCT must bind irrevocably to the FIRST decisions persisted.
+     - first submission (`pending`): persist `decisions_json` + `decision_hash`, set `status=submitted`, `submitted_at` — **before** the relay (never lose the decisions).
+  4. **Relay** to the server-derived `f"{INDRASNET_BASE_URL}/api/prayers/{prayer_id}/subject-review"` with `{ token: callback_token, decisions }` (httpx, egress chokepoint; + LCT's IndrasNet AUTH_TOKEN header). `relay_attempts += 1`.
+  5. **Outcome (allowlisted handling — v2 #4):** parse the IndrasNet response into a DEDICATED model with only allowlisted scalar fields (e.g. `prayer_substate`, `additions_applied`); store ONLY that as `relay_result`. **Never** store/log the raw upstream body, and redact `callback_token` from any exception/log.
+     - 2xx → `status=relayed`, `relayed_at`, NULL `callback_token` + scrub `items_json`, return the allowlisted summary.
+     - IndrasNet **409 (token already consumed)** → treat as idempotent success **for the stored immutable hash only** (`relayed`); the single-use token guarantees the applied decisions are the ones LCT first relayed.
+     - network / 5xx → `status=failed`, store a sanitized `last_error` (no body, no token), return a retryable 502 (decisions persisted; the subject can retry the SAME decisions).
 
 > `redact_span`/`reject` semantics MUST match ADR-055 P1 exactly — P1 accepts only `confirm` / `redact_more` (addition, auto-apply) / everything-else→`reject` (restore own original). LCT passes actions through verbatim; IndrasNet is the authority and re-leak-verifies. LCT performs NO redaction logic.
 
@@ -123,7 +128,9 @@ A new route + component, forking `ShareConversation.jsx`'s auth state machine (G
 5. **Unredacted-content minimization.** `original_text` (the subject's own words) is stored in `items_json` only; never logged at import; scrubbed (NULLed) after a successful relay; readable for external delivery ONLY via the email-gated GET.
 6. **Decisions never lost; idempotent.** Decisions persist before the relay; a lost-2xx / IndrasNet-409 is treated as idempotent success; `relayed` is terminal.
 7. **LCT does no redaction; IndrasNet stays the authority** and re-leak-verifies the merge (ADR-055 invariants 2–3) — a subject can never un-redact a third party.
-8. **No external LLM.** P2 is data-movement + UI only.
+8. **No producer free-text reaches the subject.** Items carry only the subject's own `original_text` + the leak-verified `proposed_redaction`; `reason`/`conversation_label` are dropped; `subject_name` is a capped display label. The relay-response stored/returned is an allowlisted-scalar summary, never a raw upstream body.
+9. **Decisions are immutable + idempotent.** LCT binds to the FIRST decision set (immutable `decision_hash` under CAS); a different-hash resubmit is 409; an IndrasNet 409 is success only for that stored hash — so the single-use token can never apply a different set than LCT believes shipped.
+10. **No external LLM.** P2 is data-movement + UI only.
 
 ## Why a dedicated surface (not the conversation/share viewer)
 
@@ -146,3 +153,4 @@ The bundle is a **redaction-decision list**, not a navigable transcript graph. R
 ## Design review history
 
 - **v1 → v2 (2026-06-21):** codex (`gpt-5.5`, repo-grounded) + grok-build (second family) both returned **NO-GO**. Consolidated 2 BLOCKING + 6 MAJOR, all adjudicated REAL: (1) the AUTH_TOKEN middleware would 401 the subject's GET+POST — added a narrow explicit exemption + in-handler Google gate (§3); (2) reusing the share allowlist fails open (NULL→public) — replaced with a dedicated no-public gate (inv. 1); (3) producer-controlled `callback_url` SSRF — dropped it, derive server-side (inv. 3); (4) "ignore unknown positions" wasn't fail-closed — reject the whole payload (§4.3); (5) idempotency/retry under-specified — full state machine + persist-before-relay (§4); (6) free-text `redact_span` — validated as a substring of the subject's own text (§4.3); (7) `redacted_context` unprovable — omitted (§1); (8/9) unredacted-storage logging/lifetime + contract validation gaps — data-minimization + strict models + scrub (§2, inv. 5). Both families confirmed SOUND: the dedicated gated surface, the token-not-to-browser direction, the minimal relay, reusing Google-auth, and IndrasNet-as-authority.
+- **v2 → v3 (2026-06-21):** grok returned **GO** (all 8 v1 fixes verified closed, no new holes). codex returned **NO-GO** with 1 BLOCKING + 3 MAJOR more — all REAL, all addressed: (v2-1, BLOCKING) idempotency could drift if a retry carried a *different* decision set after a consumed-but-failed relay → `decision_hash` is now immutable under CAS, same-hash retries only, a different hash 409s, and an IndrasNet 409 is success only for the stored hash; (v2-2) a *partial* decisions payload could skip an item → require exact set equality (every stored item decided once); (v2-3) `reason`/`conversation_label` were producer free-text shown to the subject (the leak class ADR-055 closed) → dropped, label derived statically + capped `subject_name`; (v2-4) the relay response/error was unconstrained (the IndrasNet client logs body snippets) → an allowlisted-scalar relay-response model, never log/store raw upstream bodies, redact the token from errors. codex confirmed the v1 architectural fixes (middleware exemption, dedicated Google gate, server-derived URL anti-SSRF, redact_span substring) are sound.
