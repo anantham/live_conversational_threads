@@ -177,3 +177,21 @@ Scoped/documented as residuals (not blocking): cloud-**websocket text** payloads
 audio-gated STT); `lru_cache` map staleness (added `reload_boundary_map()`; corruption keeps the last-good
 copy — safer); no DNS/CNAME proof (inherited `egress_guard` locality-trust); base64/homoglyph/ZWJ and
 header/URL obfuscation (semantic, not string — ADR-038 already states leak-verify is a floor, not a panacea).
+
+### Codex GO-gate round 3 (2026-06-21) — No-Go on the round-2 fixes, fixed
+
+Round-2 review confirmed B1/B4/B6/F2 closed but found B2/B3 still partial + new gaps. The decisive lesson:
+**per-site audio gating is leaky** (codex found 2 more sites: `audio_transcriber.py` upload, `stt_backend_realtime.py`
+ws) — the same failure mode the ADR-034 chokepoint was built to end. So audio is now gated at the **transport
+chokepoint**, centrally:
+
+| finding | fix |
+|---|---|
+| B2 launcher form (`cmd /c claude`) self-downgrades | tier derived from **any** argv token being a frontier binary, not just `argv[0]` |
+| B3 `argv[0]` binary path unscanned | leak-verify the **full** argv (every token) |
+| B6 composed encoding (`%2556atsal`, `%56atsal`) | `_decoded_views` runs the JSON + percent decoders to a **bounded fixpoint** |
+| new: `audio_transcriber` + `stt_backend_realtime` ungated | **central audio backstop in the chokepoint** — non-local audio httpx uploads (content-type/multipart sniff) and **all** non-local websockets require `LCT_ALLOW_CLOUD_AUDIO`; covers both new sites (they ride httpx/websockets) without editing them |
+| regression: `host.docker.internal` blocked by audio gate | added to `_is_local_infra_host` (matches provider-selection's locality) |
+
+Per-site audio gates kept as defense-in-depth + for the one shape the central sniff can't see (OpenRouter
+base64-audio-in-JSON). 98 tests pass.

@@ -154,7 +154,10 @@ def _is_local_infra_host(host: str) -> bool:
         h = h[1 : h.index("]")]
     elif h.count(":") == 1:
         h = h.split(":", 1)[0]
-    if h in {"localhost", "ip6-localhost"}:
+    # host.docker.internal = the local host from inside a container; provider
+    # selection treats it as local, so the audio gate must too (codex round-2
+    # regression — otherwise a legit local Docker STT endpoint is blocked).
+    if h in {"localhost", "ip6-localhost", "host.docker.internal"}:
         return True
     if h.endswith(".ts.net") or h.endswith(".local") or h == "local":
         return True
@@ -167,6 +170,11 @@ def _is_local_infra_host(host: str) -> bool:
     if ip.version == 4 and ip in ipaddress.ip_network("100.64.0.0/10"):
         return True
     return False
+
+
+def url_is_local_infra(url: str) -> bool:
+    """Public: is the URL's host genuinely-local infra (for the audio backstop)?"""
+    return _is_local_infra_host(_host_of(url))
 
 
 def egress_requires_leak_verify(url: str) -> bool:
@@ -284,31 +292,52 @@ def _leak_pattern(needle_nfc: str) -> "re.Pattern[str]":
     return re.compile(rf"\b{re.escape(needle_nfc)}\b", re.IGNORECASE)
 
 
+def _json_unescape(text: str) -> Optional[str]:
+    if "\\u" not in text:
+        return None
+    try:
+        out = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), text)
+        return out if out != text else None
+    except Exception:
+        return None
+
+
+def _percent_decode(text: str) -> Optional[str]:
+    if "%" not in text:
+        return None
+    try:
+        from urllib.parse import unquote
+
+        out = unquote(text)
+        return out if out != text else None
+    except Exception:
+        return None
+
+
 def _decoded_views(text: str) -> list[str]:
     """The raw text plus the realistic re-encodings a name could hide behind on
     the wire — JSON ``\\uXXXX`` escapes (the OpenAI SDK does ``json.dumps(
     ensure_ascii=True)``, so a NON-ASCII forbidden name ships ``\\u``-escaped) and
-    percent/form-encoding. Each is scanned independently. KNOWN RESIDUALS the
-    text scanner does NOT decode (documented, semantic-not-string per ADR-038):
-    base64 blobs, homoglyph / zero-width-joiner obfuscation, and a name carried
-    in a header / URL / multipart field rather than the JSON body."""
+    percent/form-encoding. Decoders are applied to a BOUNDED FIXPOINT so a COMPOSED
+    encoding (``%2556atsal`` → ``%56atsal`` → ``Vatsal``) is also caught (codex
+    round-2). KNOWN RESIDUALS not decoded (semantic-not-string per ADR-038): base64
+    blobs, homoglyph / zero-width-joiner obfuscation, and a name in a header / URL /
+    multipart field rather than the JSON body."""
     views = [text]
-    if "\\u" in text:
-        try:
-            views.append(re.sub(
-                r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), text
-            ))
-        except Exception:
-            pass
-    if "%" in text:
-        try:
-            from urllib.parse import unquote
-
-            uq = unquote(text)
-            if uq != text:
-                views.append(uq)
-        except Exception:
-            pass
+    seen = {text}
+    frontier = [text]
+    for _ in range(4):  # bounded to avoid a decode-bomb DoS
+        nxt: list[str] = []
+        for t in frontier:
+            for decoder in (_json_unescape, _percent_decode):
+                d = decoder(t)
+                if d is not None and d not in seen:
+                    seen.add(d)
+                    views.append(d)
+                    nxt.append(d)
+        if not nxt:
+            break
+        frontier = nxt
     return views
 
 
@@ -456,17 +485,18 @@ def spawn_external_cli(
     body = redacted_input.encode("utf-8")
 
     # codex review, Bug 2: a frontier binary ALWAYS requires scanning — a caller
-    # must NOT be able to opt out by passing engine_tier="E1". Derive the tier.
+    # must NOT opt out via engine_tier="E1". Classify ANY argv token, not just
+    # argv[0], so a launcher form (``cmd /c claude -p``) cannot self-downgrade.
     effective_tier = engine_tier
-    if argv and is_frontier_cli(argv[0]) and effective_tier not in REDACTION_REQUIRED_TIERS:
+    if argv and any(is_frontier_cli(a) for a in argv) and effective_tier not in REDACTION_REQUIRED_TIERS:
         effective_tier = "E4"
 
     if effective_tier in REDACTION_REQUIRED_TIERS:
         assert_body_clean(body, url="cli:" + (argv[0] if argv else "?"))
-        # codex review, Bug 3: a forbidden name can also ride argv
-        # (e.g. ``claude -p "...Vatsal..."``), not just stdin.
-        if len(argv) > 1:
-            assert_body_clean("\x00".join(str(a) for a in argv[1:]),
+        # codex review, Bug 3: a forbidden name can ride ANY argv token — the
+        # prompt/flags AND the binary path (``C:\\Users\\Vatsal\\...``). Scan all.
+        if argv:
+            assert_body_clean("\x00".join(str(a) for a in argv),
                               url="cli-argv:" + str(argv[0]))
 
     # Defense-in-depth: an absolute path to an existing file in argv could direct

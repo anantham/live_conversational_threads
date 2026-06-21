@@ -103,6 +103,19 @@ def test_leak_caught_through_percent_encoding():
     assert leak_verify(body).leaks_clean is False
 
 
+def test_leak_caught_through_composed_encoding():
+    # codex round-2: %2556atsal -> %56atsal -> Vatsal (double percent). The
+    # bounded-fixpoint decoder must catch the composed form.
+    assert "Vatsal" not in "%2556atsal"
+    assert leak_verify("%2556atsal").leaks_clean is False
+
+
+def test_docker_internal_audio_allowed():
+    # codex round-2 regression: host.docker.internal is local infra; the audio
+    # gate must not block a local Docker STT endpoint.
+    assert_audio_egress_allowed("http://host.docker.internal:7777/api/transcribe")
+
+
 def test_leaks_only_predicate_missing_pseudonym_does_not_block():
     # finding 1.6: a leak-free payload missing an expected pseudonym is CLEAN
     # (advisory quality_ok=False), never blocked.
@@ -191,6 +204,27 @@ def test_spawn_blocks_forbidden_name_in_argv():
     with pytest.raises(UnverifiedEgressBlocked):
         spawn_external_cli(
             [sys.executable, "-c", "pass", "--note", "remember to ask Vatsal"],
+            redacted_input="clean stdin",
+            engine_tier="E4",
+        )
+
+
+def test_spawn_launcher_form_cannot_self_downgrade():
+    # codex round-2 B2: a launcher form (cmd /c claude) where argv[0] is not the
+    # frontier binary must STILL scan — classify ANY argv token.
+    with pytest.raises(UnverifiedEgressBlocked):
+        spawn_external_cli(
+            ["cmd.exe", "/c", "claude", "-p"],
+            redacted_input="about Vatsal",
+            engine_tier="E1",
+        )
+
+
+def test_spawn_scans_argv0_binary_path():
+    # codex round-2 B3: a forbidden name in the binary PATH (argv[0]) is scanned.
+    with pytest.raises(UnverifiedEgressBlocked):
+        spawn_external_cli(
+            [r"C:\Users\Vatsal\bin\claude.exe", "-p"],
             redacted_input="clean stdin",
             engine_tier="E4",
         )

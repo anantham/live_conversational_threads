@@ -17,7 +17,10 @@ from lct_python_backend.services.egress_chokepoint import (
     install_egress_chokepoint,
     uninstall_egress_chokepoint,
 )
-from lct_python_backend.services.privacy_boundary import UnverifiedEgressBlocked
+from lct_python_backend.services.privacy_boundary import (
+    AudioEgressBlocked,
+    UnverifiedEgressBlocked,
+)
 
 E4_URL = "https://api.openai.com/v1/chat/completions"
 DIRTY = b'{"messages":[{"role":"user","content":"notes about Vatsal Mehra"}]}'
@@ -126,3 +129,49 @@ def test_json_unicode_escaped_name_blocked(monkeypatch):
     assert b"\\u0061" in body  # the wire bytes carry the literal escape
     with pytest.raises(UnverifiedEgressBlocked):
         httpx.Client(timeout=0.3).post(E4_URL, content=body)
+
+
+# --- central audio backstop at the transport (codex round-2) -----------------
+
+def test_central_audio_gate_blocks_cloud_multipart_upload(monkeypatch):
+    # A non-local multipart WAV upload (e.g. audio_transcriber) is gated at the
+    # chokepoint, not per-site — covers paths no per-site gate touches.
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+    monkeypatch.delenv("LCT_ALLOW_CLOUD_AUDIO", raising=False)
+    with pytest.raises(AudioEgressBlocked):
+        httpx.Client(timeout=0.3).post(
+            "https://stt.example/api/transcribe",
+            data={"model": "whisper"},
+            files={"file": ("chunk.wav", b"RIFFfakewavdata", "audio/wav")},
+        )
+
+
+def test_central_audio_gate_allows_local_multipart_upload(monkeypatch):
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+    with pytest.raises(Exception) as exc_info:
+        httpx.Client(timeout=0.2).post(
+            "http://127.0.0.1:59999/api/transcribe",
+            files={"file": ("chunk.wav", b"RIFFfakewavdata", "audio/wav")},
+        )
+    assert not isinstance(exc_info.value, AudioEgressBlocked)
+
+
+def test_central_audio_gate_opt_in_allows_cloud(monkeypatch):
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+    monkeypatch.setenv("LCT_ALLOW_CLOUD_AUDIO", "1")
+    with pytest.raises(Exception) as exc_info:
+        httpx.Client(timeout=0.1).post(
+            "https://stt.example/api/transcribe",
+            files={"file": ("chunk.wav", b"RIFFfakewavdata", "audio/wav")},
+        )
+    assert not isinstance(exc_info.value, AudioEgressBlocked)
+
+
+@pytest.mark.asyncio
+async def test_central_audio_gate_blocks_cloud_websocket(monkeypatch):
+    monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+    monkeypatch.delenv("LCT_ALLOW_CLOUD_AUDIO", raising=False)
+    import websockets
+
+    with pytest.raises(AudioEgressBlocked):
+        await websockets.connect("wss://stt.example/realtime")
