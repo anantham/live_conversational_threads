@@ -29,9 +29,13 @@ import logging
 from lct_python_backend.services.egress_guard import assert_local_egress
 from lct_python_backend.services.privacy_boundary import (
     UnverifiedEgressBlocked,
+    assert_audio_egress_allowed,
     assert_body_clean,
     egress_requires_leak_verify,
+    url_is_local_infra,
 )
+
+_AUDIO_FILE_EXTS = (b".wav", b".mp3", b".m4a", b".ogg", b".flac", b".webm")
 
 logger = logging.getLogger("lct_backend")
 
@@ -117,6 +121,11 @@ def _wrap_httpx() -> None:
 
     def _guarded_sync_send(self, request, *args, **kwargs):
         url = str(request.url)
+        # ADR-038 audio backstop (codex round-2): gate raw audio uploads at the
+        # TRANSPORT, not per-site (per-site gates were provably incomplete). A
+        # non-local request that looks like audio needs LCT_ALLOW_CLOUD_AUDIO.
+        if not url_is_local_infra(url) and _request_looks_like_audio(request):
+            assert_audio_egress_allowed(url, purpose="httpx audio upload")
         # ADR-038 move 1: for a redaction-required (E3/E4) destination, leak-verify
         # the ACTUAL outbound bytes BEFORE the host gate so the check fires even
         # when LCT_LOCAL_ONLY is off (the host gate no-ops then). Local/E1/E2
@@ -128,6 +137,8 @@ def _wrap_httpx() -> None:
 
     async def _guarded_async_send(self, request, *args, **kwargs):
         url = str(request.url)
+        if not url_is_local_infra(url) and _request_looks_like_audio(request):
+            assert_audio_egress_allowed(url, purpose="httpx audio upload")
         if egress_requires_leak_verify(url):
             assert_body_clean(await _materialize_body_async(request, url), url)
         assert_local_egress(url, purpose="httpx-async")
@@ -138,6 +149,26 @@ def _wrap_httpx() -> None:
 
     httpx.Client.send = _guarded_sync_send  # type: ignore[assignment]
     httpx.AsyncClient.send = _guarded_async_send  # type: ignore[assignment]
+
+
+def _request_looks_like_audio(request) -> bool:
+    """Best-effort: does this httpx request carry raw audio? Catches a direct
+    ``audio/*`` content-type and a multipart upload whose body declares an audio
+    part or an audio filename. A non-local multipart whose body can't be inspected
+    is treated as audio (fail-safe). The base64-audio-in-JSON shape (OpenRouter)
+    is NOT detectable here and keeps its per-site gate."""
+    ct = request.headers.get("content-type", "").lower()
+    if ct.startswith("audio/"):
+        return True
+    if not ct.startswith("multipart/"):
+        return False
+    try:
+        head = request.content[:8192].lower()
+    except Exception:
+        return True  # streamed multipart to a non-local host — assume audio, fail safe
+    if b"content-type: audio/" in head:
+        return True
+    return b'filename="' in head and any(ext in head for ext in _AUDIO_FILE_EXTS)
 
 
 def _make_replayable(request, body: bytes) -> None:
@@ -241,6 +272,13 @@ def _wrap_websockets() -> None:
         def _make_guard(_orig):
             def _guarded_connect(uri, *args, **kwargs):
                 assert_local_egress(str(uri), purpose="websocket")
+                # ADR-038 audio backstop (codex round-2): LCT's only cloud
+                # websockets carry audio (realtime STT, backend realtime,
+                # google-genai live). Require the audio opt-in for any non-local
+                # ws so LCT_LOCAL_ONLY=0 doesn't leak raw voice — centrally,
+                # covering every ws site at once.
+                if not url_is_local_infra(str(uri)):
+                    assert_audio_egress_allowed(str(uri), purpose="websocket audio")
                 return _orig(uri, *args, **kwargs)
 
             _guarded_connect._lct_egress_wrapped = True  # type: ignore[attr-defined]
