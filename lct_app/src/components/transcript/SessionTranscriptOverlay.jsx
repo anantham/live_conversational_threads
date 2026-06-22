@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef } from "react";
 import PropTypes from "prop-types";
+import TranscriptBranchRail from "./TranscriptBranchRail";
+import { buildTranscriptBranches } from "./transcriptBranching";
+import { condenseTranscriptSegments } from "./transcriptCondensing";
 
 function normalizeLines(lines) {
   if (!Array.isArray(lines)) return [];
@@ -20,6 +23,8 @@ function normalizeLines(lines) {
         key: entry.id || `line-${index}-${String(entry.text || "").slice(0, 24)}`,
         text: String(entry.text || ""),
         isFinal: entry.isFinal !== false,
+        speaker: entry.speaker || null,
+        speakerId: entry.speakerId || null,
         confidence: entry.confidence,
         meta: entry.elapsedMs || entry.chunkIndex || entry.total ? entry : null,
       };
@@ -43,6 +48,11 @@ function buildSpeakerSegments(lines) {
   const labelRegex = /(?:^|(?<=\s))([A-Z]):\s/g;
 
   lines.forEach((entry) => {
+    if (entry.speaker) {
+      segments.push({ ...entry, speaker: entry.speaker });
+      return;
+    }
+
     const matches = [...entry.text.matchAll(labelRegex)];
     if (matches.length === 0) {
       segments.push({ ...entry, speaker: null });
@@ -86,11 +96,19 @@ export default function SessionTranscriptOverlay({
   const scrollRef = useRef(null);
   const normalizedLines = useMemo(() => normalizeLines(lines), [lines]);
   const segments = useMemo(() => buildSpeakerSegments(normalizedLines), [normalizedLines]);
+  const branches = useMemo(
+    () => (mode === "live" ? buildTranscriptBranches(segments) : []),
+    [mode, segments]
+  );
+  const displaySegments = useMemo(
+    () => condenseTranscriptSegments(segments, { recentCount: 6, maxSummaryChars: 180 }),
+    [segments]
+  );
 
   useEffect(() => {
     if (!scrollRef.current || minimized) return;
     scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [minimized, segments.length]);
+  }, [minimized, displaySegments.length]);
 
   // Render even with no lines yet when there is upload status to show — the
   // early "Uploading…" phase needs an indicator. Bail only when there is
@@ -109,6 +127,24 @@ export default function SessionTranscriptOverlay({
     C: "text-amber-700",
     D: "text-purple-700",
     E: "text-rose-700",
+  };
+  const speakerColorList = [
+    "text-blue-700",
+    "text-emerald-700",
+    "text-amber-700",
+    "text-purple-700",
+    "text-rose-700",
+    "text-sky-700",
+    "text-fuchsia-700",
+  ];
+  const colorForSpeaker = (speaker) => {
+    if (!speaker) return "text-gray-500";
+    if (speakerColors[speaker]) return speakerColors[speaker];
+    let hash = 0;
+    for (let i = 0; i < speaker.length; i += 1) {
+      hash = (hash * 31 + speaker.charCodeAt(i)) % speakerColorList.length;
+    }
+    return speakerColorList[hash];
   };
   const compactLabel = statusText || (mode === "upload" ? "Processing..." : "Listening...");
 
@@ -154,6 +190,7 @@ export default function SessionTranscriptOverlay({
                 const opacityClass = isNewest ? "text-gray-700" : index === arr.length - 2 ? "text-gray-400" : "text-gray-300";
                 return (
                   <p key={entry.key} className={`truncate text-[11px] leading-tight ${opacityClass}`}>
+                    {entry.speaker && <span className="font-medium">{entry.speaker}: </span>}
                     {entry.text}
                     {!entry.isFinal ? " ..." : ""}
                   </p>
@@ -201,12 +238,13 @@ export default function SessionTranscriptOverlay({
                 </div>
               </div>
             </div>
+            <TranscriptBranchRail branches={branches} />
             <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-2">
               <div className="mx-auto max-w-2xl">
-                {segments.map((segment, index) => {
-                  const previousSpeaker = index > 0 ? segments[index - 1].speaker : null;
+                {displaySegments.map((segment, index) => {
+                  const previousSpeaker = index > 0 ? displaySegments[index - 1].speaker : null;
                   const isSpeakerChange = index > 0 && segment.speaker !== previousSpeaker;
-                  const color = segment.speaker ? (speakerColors[segment.speaker] || "text-gray-700") : "text-gray-500";
+                  const color = colorForSpeaker(segment.speaker);
                   const spacingClass = isSpeakerChange ? "mt-4" : index > 0 ? "mt-2" : "";
                   const elapsed = segment.meta ? formatElapsed(segment.meta.elapsedMs) : null;
                   const chunkLabel = segment.meta?.chunkIndex && segment.meta?.total
@@ -220,7 +258,12 @@ export default function SessionTranscriptOverlay({
                           {[chunkLabel, elapsed].filter(Boolean).join(" · ")}
                         </div>
                       )}
-                      <p className={`text-xs leading-relaxed ${color} ${segment.isFinal ? "" : "opacity-75"}`}>
+                      {segment.isCondensed && (
+                        <div className="mb-0.5 select-none text-[9px] uppercase tracking-[0.12em] text-gray-400">
+                          {segment.lineCount} earlier lines
+                        </div>
+                      )}
+                      <p className={`text-xs leading-relaxed ${color} ${segment.isFinal ? "" : "opacity-75"} ${segment.isCondensed ? "text-[11px] opacity-70" : ""}`}>
                         {segment.speaker && <span className="font-semibold">{segment.speaker}: </span>}
                         {segment.text}
                         {!segment.isFinal ? " ..." : ""}
@@ -249,6 +292,8 @@ SessionTranscriptOverlay.propTypes = {
         id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
         text: PropTypes.string,
         isFinal: PropTypes.bool,
+        speaker: PropTypes.string,
+        speakerId: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
         confidence: PropTypes.number,
         elapsedMs: PropTypes.number,
         chunkIndex: PropTypes.number,

@@ -24,6 +24,31 @@ Full writeup: `docs/HANDOVER_2026-06-19_public-deploy-token-incident.md`.
   ~185-fetch retry storm with no backoff. NOT exercised: live WS-STT recording.
 - Two-agent coordination: box write owned by the implementing agent; this session
   was read-only verifier (caught the transient `origin/main` exposure).
+## 2026-06-19T19:34:00+05:30 - Meeting viewer floating transcript overlay
+
+- Context: first slice for the Google Meet / Attendee "caption alternative" branch, built in sibling worktree `../lct-meeting-live-subtitle-tree` on `feat/meeting-live-subtitle-tree` from `origin/main`. Hypothesis: `/ws/meeting/{conversation_id}` already relays transcript frames through the shared backend message handler; the missing piece is that `MeetingView` does not consume `onTranscriptEvent`.
+- Files modified:
+  - `lct_app/src/pages/MeetingView.jsx` (lines 5-186): imports the shared transcript overlay and new line helper, stores meeting transcript lines, consumes `onTranscriptEvent`, renders the overlay in minimized caption mode by default, and reserves bottom viewport space so expanded captions do not cover the graph.
+  - `lct_app/src/components/transcript/liveTranscriptLines.js` (lines 1-53): adds transcript-line upsert/trim logic for meeting transcript frames, including speaker metadata and partial-to-final stabilization.
+  - `lct_app/src/components/transcript/SessionTranscriptOverlay.jsx` (lines 23-250): accepts explicit `speaker` / `speakerId` fields, renders stable color choices for named speakers instead of only parsing `A:`-style prefixes, and includes speaker labels in minimized caption mode.
+  - `lct_app/src/components/transcript/liveTranscriptLines.test.js` (lines 5-107): adds Test Intent plus regression tests for final append, partial in-place update, partial finalization, and max-window trimming.
+  - `lct_app/src/pages/MeetingView.test.jsx` (lines 6-127): adds Test Intent plus mocked WebSocket smoke tests proving a `transcript_final` frame appears in the meeting caption overlay with the Attendee speaker label and repeated `transcript_partial` frames update in place.
+  - `lct_app/src/components/transcript/transcriptCondensing.js` (lines 1-62): adds local speaker-aware condensation for older finalized transcript lines while leaving the most recent lines raw.
+  - `lct_app/src/components/transcript/transcriptCondensing.test.js` (lines 5-71): adds Test Intent plus coverage for same-speaker merges, speaker-boundary preservation, and draft-line preservation.
+  - `lct_app/src/components/transcript/transcriptBranching.js` (lines 1-174): adds a local, provisional branch model that shards obvious keyword-overlap topic shifts, reuses earlier branches on returns, and keeps partial/draft lines on the active branch.
+  - `lct_app/src/components/transcript/transcriptBranching.test.js` (lines 5-51): adds Test Intent plus coverage for tangent sharding, topic returns, and partial-line stability.
+  - `lct_app/src/components/transcript/TranscriptBranchRail.jsx` (lines 1-63): renders the expanded live overlay's first branch/thread rail using the cool spectral palette without persisting or claiming authoritative semantic clustering.
+  - `lct_app/tests/e2e/meeting-live-caption.spec.ts` (lines 1-103): adds a Playwright browser smoke that fakes only the meeting WebSocket, pushes synthetic `transcript_final` frames, and asserts the floating overlay renders speaker attribution, caption text, and the expanded branch rail on `/meeting/:conversationId`.
+  - `lct_python_backend/tests/unit/test_attendee_bridge.py` (lines 69-149): adds webhook-level regressions proving `transcript.update` routes into the loopback `transcript_final` frame shape and duplicate idempotency keys do not duplicate captions downstream.
+  - `docs/TECH_DEBT.md` (line 34): logs `SessionTranscriptOverlay.jsx` as a decomposition candidate because it now combines shared caption strip, expanded panel, condensation, and branch composition responsibilities.
+- Validation:
+  - `npm run test -- src/components/transcript/transcriptBranching.test.js src/components/transcript/liveTranscriptLines.test.js src/components/transcript/transcriptCondensing.test.js src/pages/MeetingView.test.jsx` -> `12 passed`.
+  - `npx playwright test tests/e2e/meeting-live-caption.spec.ts --project=chromium --reporter=list` -> `1 passed`.
+  - `C:\Users\adity\anaconda3\python.exe -m pytest -p no:hypothesispytest -q lct_python_backend\tests\unit\test_attendee_bridge.py` -> `22 passed`.
+  - `npm run build` -> passed; existing large chunk warning remains.
+  - `npx eslint src/pages/MeetingView.jsx src/pages/MeetingView.test.jsx src/components/transcript/SessionTranscriptOverlay.jsx src/components/transcript/TranscriptBranchRail.jsx src/components/transcript/liveTranscriptLines.js src/components/transcript/liveTranscriptLines.test.js src/components/transcript/transcriptCondensing.js src/components/transcript/transcriptCondensing.test.js src/components/transcript/transcriptBranching.js src/components/transcript/transcriptBranching.test.js` -> passed.
+  - `npx eslint tests/e2e/meeting-live-caption.spec.ts src/pages/MeetingView.jsx src/pages/MeetingView.test.jsx src/components/transcript/SessionTranscriptOverlay.jsx src/components/transcript/liveTranscriptLines.js src/components/transcript/liveTranscriptLines.test.js src/components/transcript/transcriptCondensing.js src/components/transcript/transcriptCondensing.test.js` -> source files passed; ESLint warned that the TypeScript e2e file is outside the current ESLint file globs.
+- Notes: local sandbox Vite/Vitest runs still fail on the sandbox mirror `vite.config.js` access-denied issue, so frontend validation was rerun outside the sandbox. Live external Attendee/Google Meet was not exercised in this slice; the browser regression validates the route-level WebSocket transcript path with synthetic `transcript_final` frames. The branch rail is intentionally local/provisional and should be replaced or enriched by backend graph/tangent semantics once those frames are available in this surface.
 
 ## 2026-06-06T23:50:22+05:30 - Named Vatsal catchup 5-tier thread extraction
 
