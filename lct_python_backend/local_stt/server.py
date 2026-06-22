@@ -349,6 +349,22 @@ async def transcribe(
             os.unlink(tmp_path)
         except OSError:
             pass
+        # Release GPU memory caches after every request. mlx-whisper (Metal) and
+        # pyannote-on-MPS each keep a buffer cache at the high-water mark of the
+        # largest allocation and never free it on their own -> the server creeps
+        # (observed ~11 GB after 7 days). clear_cache() returns those buffers; the
+        # model weights stay resident (they live in the lru-cached model objects).
+        try:
+            import mlx.core as mx
+            mx.clear_cache()
+        except Exception:
+            pass
+        try:
+            import torch
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
