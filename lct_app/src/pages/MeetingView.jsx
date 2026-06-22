@@ -5,6 +5,36 @@ import MinimalGraph from "../components/MinimalGraph";
 import { wsUrl, sendWsAuth } from "../services/apiClient";
 import { createBackendMessageHandler } from "../components/audio/audioMessages";
 import { normalizeGraphDataPayload, applyGraphPatch } from "./newConversationGraphState";
+import NodeDetail from "../components/NodeDetail";
+import SessionTranscriptOverlay from "../components/transcript/SessionTranscriptOverlay";
+
+const LIVE_TRANSCRIPT_MAX_LINES = 100;
+function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef) {
+  if (!cleanText) return previousLines;
+  const lastLine = previousLines[previousLines.length - 1] || null;
+  const trimLines = (lines) => lines.slice(-LIVE_TRANSCRIPT_MAX_LINES);
+
+  if (!isFinal) {
+    if (lastLine && !lastLine.isFinal) {
+      if (lastLine.text === cleanText) return previousLines;
+      const next = [...previousLines];
+      next[next.length - 1] = { ...lastLine, text: cleanText };
+      return next;
+    }
+    lineIdRef.current += 1;
+    return trimLines([...previousLines, { id: lineIdRef.current, text: cleanText, isFinal: false }]);
+  }
+
+  if (lastLine && !lastLine.isFinal) {
+    const next = [...previousLines];
+    next[next.length - 1] = { ...lastLine, text: cleanText, isFinal: true };
+    return next;
+  }
+  if (lastLine && lastLine.isFinal && lastLine.text === cleanText) return previousLines;
+
+  lineIdRef.current += 1;
+  return trimLines([...previousLines, { id: lineIdRef.current, text: cleanText, isFinal: true }]);
+}
 
 /**
  * Read-only live viewer for a meeting bot. Subscribes to /ws/meeting/:id, which
@@ -41,6 +71,11 @@ export default function MeetingView() {
   const [status, setStatus] = useState("starting");
   const [botState, setBotState] = useState(null);
   const [error, setError] = useState("");
+  const [chunkDict, setChunkDict] = useState({});
+  const [liveTranscriptLines, setLiveTranscriptLines] = useState([]);
+  const [transcriptMinimized, setTranscriptMinimized] = useState(false);
+  const transcriptLineIdRef = useRef(0);
+
 
   const graphFromSocketRef = useRef(false);
   const flushResolveRef = useRef(null);
@@ -54,6 +89,15 @@ export default function MeetingView() {
       flushResolveRef,
       onDataReceived: (data) => setGraphData(normalizeGraphDataPayload(data) || []),
       onGraphPatchReceived: (patch) => setGraphData((prev) => applyGraphPatch(prev, patch)),
+      onChunksReceived: (chunks) => setChunkDict((prev) => ({ ...prev, ...chunks })),
+      onTranscriptEvent: ({ text, eventType, metadata }) => {
+        const isFinal = eventType === "transcript_final";
+        const speakerName = metadata?.speaker_name ? `${metadata.speaker_name}: ` : "";
+        const cleanText = speakerName + text;
+        setLiveTranscriptLines((prev) =>
+          upsertLiveTranscriptLine(prev, cleanText, isFinal, transcriptLineIdRef)
+        );
+      },
       onBackendMessage: (message) => {
         if (!message || typeof message !== "object") return;
         if (message.type === "bot_status") {
@@ -64,6 +108,11 @@ export default function MeetingView() {
         } else if (message.type === "error") {
           setError(String(message.detail || "Backend error"));
         }
+        // NOTE: the "transcript_patched" handler was removed (audit A4e/A4) — it
+        // fetched /api/conversations/{id}/graph_data, which does not exist, and
+        // was part of the destructive slow-pass prototype (now disabled). The
+        // review-gated transcript-revision flow (decision B) will add its own
+        // refresh against a real endpoint when built.
       },
     });
 
@@ -127,6 +176,7 @@ export default function MeetingView() {
       )}
 
       <main className="relative flex-1">
+        {/* Graph */}
         {hasData ? (
           <MinimalGraph
             graphData={graphData}
@@ -148,6 +198,26 @@ export default function MeetingView() {
             </p>
             <p className="text-xs text-slate-400">The graph builds itself as people speak.</p>
           </div>
+        )}
+
+        {/* Live Transcript Overlay */}
+        <SessionTranscriptOverlay
+          hasData={true}
+          minimized={transcriptMinimized}
+          onExpand={() => setTranscriptMinimized(false)}
+          onMinimize={() => setTranscriptMinimized(true)}
+          lines={liveTranscriptLines}
+          mode="live"
+        />
+
+        {/* Node Detail */}
+        {selectedNode && (
+          <NodeDetail
+            node={selectedNode}
+            chunkDict={chunkDict}
+            conversationId={conversationId}
+            onClose={() => setSelectedNode(null)}
+          />
         )}
       </main>
     </div>
