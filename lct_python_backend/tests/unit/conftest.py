@@ -1,18 +1,50 @@
-"""Unit-test event-loop isolation.
+"""Unit-test shared setup and event-loop isolation.
 
-Some unit tests run coroutines via ``asyncio.get_event_loop().run_until_complete()``
-(reusing a persistent loop); others use ``asyncio.run()`` (which creates + closes its
-own loop and clears the current one). Mixed in a single pytest process, an
-``asyncio.run()`` test leaves ``get_event_loop()`` without a usable loop, so the older
-tests fail depending on collection order.
-
-Give every unit test a fresh current loop so the two styles can't pollute each other,
-making the suite order-independent without rewriting every test helper.
+Optional-dependency stubs install at import time so collection succeeds on
+machines without every production dependency. Per-test event-loop isolation
+keeps ``asyncio.run()`` and ``run_until_complete()`` styles order-independent.
 """
 
 import asyncio
+import sys
+import types
 
 import pytest
+
+try:
+    from google.cloud import storage as _gcs_storage  # noqa: F401
+except ImportError:
+    google_module = sys.modules.get("google")
+    if google_module is None:
+        google_module = types.ModuleType("google")
+        sys.modules["google"] = google_module
+
+    cloud_module = types.ModuleType("google.cloud")
+    storage_module = types.ModuleType("google.cloud.storage")
+
+    class _UnavailableStorageClient:
+        def __init__(self, *args, **kwargs):
+            raise RuntimeError("google-cloud-storage test stub should not be used at runtime")
+
+        def bucket(self, *_args, **_kwargs):
+            raise RuntimeError("google-cloud-storage test stub should not be used at runtime")
+
+    class _UnavailableBlob:
+        def exists(self):
+            return False
+
+        def delete(self):
+            raise RuntimeError("google-cloud-storage test stub should not be used at runtime")
+
+        def upload_from_string(self, *_args, **_kwargs):
+            raise RuntimeError("google-cloud-storage test stub should not be used at runtime")
+
+    storage_module.Client = _UnavailableStorageClient
+    storage_module.Blob = _UnavailableBlob
+    cloud_module.storage = storage_module
+    setattr(google_module, "cloud", cloud_module)
+    sys.modules["google.cloud"] = cloud_module
+    sys.modules["google.cloud.storage"] = storage_module
 
 
 @pytest.fixture(autouse=True)
