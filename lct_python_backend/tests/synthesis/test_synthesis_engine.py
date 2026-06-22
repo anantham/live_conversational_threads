@@ -81,3 +81,61 @@ class TestFrontierGate:
         broken_map.forbidden = ["Vatsal", "Bhishma"]  # claims to forbid Bhishma but won't redact it
         with pytest.raises(PermissionError):
             run_stage("codex", "Bhishma said hi", consented=True, redaction_map=broken_map)
+
+
+class TestCliInvocation:
+    def test_codex_argv_skips_git_repo_check(self, monkeypatch):
+        # codex review of the migration: the sandboxed spawn runs codex in a fresh
+        # EMPTY temp cwd (no git repo), so the argv MUST carry --skip-git-repo-check
+        # or `codex exec` refuses the non-git cwd before doing any work.
+        import subprocess as _sp
+
+        import lct_python_backend.services.privacy_boundary as pb
+
+        captured = {}
+
+        def fake_spawn(argv, **kwargs):
+            captured["argv"] = argv
+            return _sp.CompletedProcess(argv, 0, stdout=b"out", stderr=b"")
+
+        monkeypatch.setattr(pb, "spawn_external_cli", fake_spawn)
+        synthesis_engine._codex("hello", 10.0)
+        assert "--skip-git-repo-check" in captured["argv"]
+
+    def test_claude_argv_has_no_git_flag(self, monkeypatch):
+        # claude -p runs fine from an empty cwd (no git requirement) — the flag is
+        # codex-specific and must NOT be added to the claude invocation.
+        import subprocess as _sp
+
+        import lct_python_backend.services.privacy_boundary as pb
+
+        captured = {}
+
+        def fake_spawn(argv, **kwargs):
+            captured["argv"] = argv
+            return _sp.CompletedProcess(argv, 0, stdout=b"out", stderr=b"")
+
+        monkeypatch.setattr(pb, "spawn_external_cli", fake_spawn)
+        synthesis_engine._claude_opus("hello", 10.0)
+        assert "--skip-git-repo-check" not in captured["argv"]
+        assert captured["argv"][:2] == ["claude", "-p"]
+
+    def test_claude_tools_disabled(self, monkeypatch):
+        # grok review: the agent must NOT have file-read tools, or a prompt could
+        # tell it to read a local file of real names the stdin scan can't see.
+        import subprocess as _sp
+
+        import lct_python_backend.services.privacy_boundary as pb
+
+        captured = {}
+
+        def fake_spawn(argv, **kwargs):
+            captured["argv"] = argv
+            return _sp.CompletedProcess(argv, 0, stdout=b"out", stderr=b"")
+
+        monkeypatch.setattr(pb, "spawn_external_cli", fake_spawn)
+        synthesis_engine._claude_opus("hello", 10.0)
+        argv = captured["argv"]
+        assert "--allowed-tools" in argv          # variadic, no values -> zero tools
+        assert "--strict-mcp-config" in argv
+        assert '{"mcpServers": {}}' in argv        # no MCP servers started

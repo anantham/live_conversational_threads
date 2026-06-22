@@ -384,6 +384,11 @@ class MeetingSession:
         if _is_terminal_state(new_state):
             await self.finalize(reason=f"bot_state:{label}")
 
+    @property
+    def is_active(self) -> bool:
+        """Live and not winding down — eligible for dedup reuse."""
+        return not self._closed and not self._finalizing
+
     def public_status(self) -> Dict[str, Any]:
         return {
             "conversation_id": self.conversation_id,
@@ -401,12 +406,20 @@ class MeetingSession:
 
 _by_conversation: Dict[str, MeetingSession] = {}
 _by_bot: Dict[str, MeetingSession] = {}
+_by_meeting_url: Dict[str, MeetingSession] = {}
 _registry_lock = asyncio.Lock()
+
+
+def _normalize_meeting_url(meeting_url: str) -> str:
+    """Strip query/session params so the same meeting (e.g. ad-hoc links with
+    ?ijlm=...&adhoc=1) maps to one dedup key."""
+    return (meeting_url or "").split("?", 1)[0].rstrip("/").lower()
 
 
 async def register(session: MeetingSession) -> None:
     async with _registry_lock:
         _by_conversation[session.conversation_id] = session
+        _by_meeting_url[_normalize_meeting_url(session.meeting_url)] = session
         if session.bot_id:
             _by_bot[session.bot_id] = session
 
@@ -419,6 +432,9 @@ async def bind_bot(session: MeetingSession, bot_id: str) -> None:
 
 def _unregister(session: MeetingSession) -> None:
     _by_conversation.pop(session.conversation_id, None)
+    url_key = _normalize_meeting_url(session.meeting_url)
+    if _by_meeting_url.get(url_key) is session:  # don't evict a newer session
+        _by_meeting_url.pop(url_key, None)
     if session.bot_id:
         _by_bot.pop(session.bot_id, None)
 
@@ -429,6 +445,12 @@ def get_by_bot(bot_id: str) -> Optional[MeetingSession]:
 
 def get_by_conversation(conversation_id: str) -> Optional[MeetingSession]:
     return _by_conversation.get(conversation_id)
+
+
+def get_by_meeting_url(meeting_url: str) -> Optional[MeetingSession]:
+    """A LIVE (not closed/finalizing) session for this meeting, for dedup."""
+    s = _by_meeting_url.get(_normalize_meeting_url(meeting_url))
+    return s if (s is not None and s.is_active) else None
 
 
 def all_sessions() -> List[MeetingSession]:
