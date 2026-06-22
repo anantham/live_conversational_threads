@@ -579,6 +579,55 @@ async def test_transcribe_wav_stt_candidate_supports_background_openai_diarizati
     assert request_form["chunking_strategy"] == "auto"
 
 
+@pytest.mark.asyncio
+async def test_openai_audio_local_server_sends_diarize_form_field():
+    """A LOCAL OpenAI-compatible STT server (the M5) keys diarization off a plain
+    `diarize` form field, not OpenAI's response_format/model gate. The openai_audio
+    transport must send diarize=true, and must parse a whisperx-style diarized
+    response (segments+speaker) via the generic-extractor fallback. (Local URL so
+    the LCT_LOCAL_ONLY egress guard permits it.)"""
+    candidate = {
+        "provider": "openai_audio",
+        "transport": "openai_audio",
+        "route_id": "m5_local_diarize",
+        "http_url": "http://127.0.0.1:1234/v1/audio/transcriptions",
+        "base_url": "http://127.0.0.1:1234",
+        "api_key": "local",
+        "model": "whisper-1",
+        "supports_diarization": True,
+        "degraded": False,
+        "request_diarization": True,
+    }
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "application/json"}
+    # whisperx-style shape (segments with speaker), NOT OpenAI's — exercises the fallback.
+    mock_response.json.return_value = {
+        "text": "hi there",
+        "segments": [{"speaker": "speaker_0", "start": 0.0, "end": 0.4, "text": "hi there"}],
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    mock_client = AsyncMock()
+    mock_client.post = AsyncMock(return_value=mock_response)
+    mock_client.aclose = AsyncMock()
+
+    with patch.object(mod, "STT_HTTP_POOL_ENABLED", False), \
+         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+        result = await transcribe_wav_stt_candidate(
+            candidate,
+            wav_payload=pcm16le_to_wav(_pcm_bytes(0.5)),
+            sample_rate_hz=16000,
+            timeout_seconds=12.0,
+        )
+
+    assert result["ok"] is True
+    request_form = mock_client.post.call_args.kwargs["data"]
+    assert request_form["diarize"] == "true"  # the fix: M5 keys off this field
+    assert result["segments_count"] == 1       # whisperx-style segments parsed via fallback
+
+
 # ---------------------------------------------------------------------------
 # Connection pooling
 # ---------------------------------------------------------------------------
