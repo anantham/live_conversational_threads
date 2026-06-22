@@ -100,8 +100,14 @@ from lct_python_backend.services.thread_observability_service import (
     start_thread_session,
 )
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
+from lct_python_backend.services.env_helpers import env_bool
 
 logger = logging.getLogger("lct_backend")
+
+# Diagnostic logging is opt-in (privacy): the observability event records raw
+# transcript text only when TRACE_API_CALLS is on. Off by default so meeting
+# content does not land in exportable telemetry (text_length is always kept).
+TRACE_API_CALLS = env_bool("TRACE_API_CALLS", default=False)
 
 
 class WsSessionContext:
@@ -1480,7 +1486,10 @@ class WsSessionContext:
             level="info",
             message=f"Persisted transcript {event_type} event.",
             context={
-                "text": normalized_text,
+                # Raw transcript text only under TRACE_API_CALLS (privacy): this
+                # observability event can be exported/inspected elsewhere.
+                # text_length is always safe and preserved.
+                **({"text": normalized_text} if TRACE_API_CALLS else {}),
                 "text_length": len(normalized_text),
                 "speaker_segment_count": len(speaker_segments or []),
                 "timestamps": timestamps or {},
