@@ -170,7 +170,7 @@ def _pct(v: Optional[float]) -> str:
     return "n/a" if v is None else f"{v * 100:.1f}%"
 
 
-def run_one(convo: SyntheticConversation, *, source: str, speed: float, drain_grace: float, save: bool) -> Optional[dict]:
+def run_one(convo: SyntheticConversation, *, source: str, speed: float, drain_grace: float, save: bool, quiet_period: float = 25.0) -> Optional[dict]:
     print("=" * 78)
     print(f"  {convo.slug}  ({len(convo.turns)} turns) | LIVE /ws/transcripts | backend graph LLM | source={source} speed={speed}x")
     print("-" * 78)
@@ -181,7 +181,7 @@ def run_one(convo: SyntheticConversation, *, source: str, speed: float, drain_gr
     print(f"  segments: {len(segments)} ({note})")
 
     t0 = time.perf_counter()
-    nodes, emissions, statuses, cid = asyncio.run(stream_live(convo, segments, speed=speed, drain_grace=drain_grace))
+    nodes, emissions, statuses, cid = asyncio.run(stream_live(convo, segments, speed=speed, drain_grace=drain_grace, quiet_period=quiet_period))
     wall = time.perf_counter() - t0
 
     print(f"  streamed in {wall:.0f}s wall-clock | conversation_id={cid}")
@@ -194,7 +194,7 @@ def run_one(convo: SyntheticConversation, *, source: str, speed: float, drain_gr
         print("  !! no graph nodes captured over the WS")
         return None
 
-    rep = score_extraction(convo, nodes, provider="live_ws", backend_label="ws qwen3.5-9b")
+    rep = score_extraction(convo, nodes, provider="live_ws", backend_label="ws backend-llm")
     cf, tf, sf, af = (rep.flag_metrics.get(k) for k in ("is_crux", "is_tangent", "is_surprise", "is_action_item"))
     print(f"  captured graph: {rep.node_count} nodes | "
           f"crux_F1={_pct(cf.f1 if cf else None)} tangent_F1={_pct(tf.f1 if tf else None)} "
@@ -233,6 +233,10 @@ def main(argv: Optional[List[str]] = None) -> int:
                     help="manifest=authored text + real render timing (clean transport test); stt=WhisperX output (degraded pipeline)")
     ap.add_argument("--speed", type=float, default=8.0, help="wall-clock pacing factor (1=real-time)")
     ap.add_argument("--drain-grace", type=float, default=240.0, help="seconds to wait for flush_complete after the last segment")
+    ap.add_argument("--quiet-period", type=float, default=25.0,
+                    help="post-flush: exit drain after this many seconds with no new node emission. "
+                         "Must exceed the backend LLM's per-batch latency (e.g. M5 qwen2.5-coder:32b ~25s/call) "
+                         "or the driver disconnects mid-graph; use 70+ for slow remote models.")
     ap.add_argument("--no-save", action="store_true")
     args = ap.parse_args(argv)
 
@@ -246,7 +250,7 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     ran = 0
     for convo in convos:
-        if run_one(convo, source=args.source, speed=args.speed, drain_grace=args.drain_grace, save=not args.no_save) is not None:
+        if run_one(convo, source=args.source, speed=args.speed, drain_grace=args.drain_grace, save=not args.no_save, quiet_period=args.quiet_period) is not None:
             ran += 1
     return 0 if ran else 1
 

@@ -40,6 +40,9 @@ def test_inject_utterance_maps_to_transcript_final():
             bot_name="LCT",
         )
         sess._ws = _FakeWS()
+        # Anchor the recording at epoch 0; Attendee sends ABSOLUTE epoch-ms, so an
+        # utterance at ts=12000ms persists as 12.0s relative to the anchor.
+        sess._rec_anchor_epoch_ms = 0.0
         await sess.inject_utterance(
             text="  Hello world  ",
             speaker_name="Jane Doe",
@@ -58,7 +61,9 @@ def test_inject_utterance_maps_to_transcript_final():
     assert frame["metadata"]["speaker_name"] == "Jane Doe"
     assert frame["metadata"]["speaker_uuid"] == "user1"
     assert frame["metadata"]["speaker_source"] == "attendee"
-    # ms -> s conversion, end = start + duration
+    # Raw absolute epoch-ms preserved verbatim (A3).
+    assert frame["metadata"]["source_timestamp_ms"] == 12000
+    # epoch-ms anchored on recording start (epoch 0) -> 12.0s; end = start + dur
     assert frame["timestamps"]["start"] == pytest.approx(12.0)
     assert frame["timestamps"]["end"] == pytest.approx(12.8)
 
@@ -161,8 +166,20 @@ def test_verify_signature_rejects_tampered(monkeypatch):
     assert attendee_api._verify_signature(raw, "garbage") is False
 
 
-def test_verify_signature_skipped_when_no_secret(monkeypatch):
+def test_verify_signature_fails_closed_when_no_secret(monkeypatch):
+    """No secret + no explicit dev opt-in => REJECT (the route bypasses
+    bearer-auth/rate-limiting, so accepting here = unauthenticated injection)."""
     monkeypatch.setattr(attendee_api, "ATTENDEE_WEBHOOK_SECRET", None)
+    monkeypatch.setattr(attendee_api, "ATTENDEE_ALLOW_UNSIGNED_WEBHOOK", False)
+    raw = json.dumps({"any": "thing"}).encode("utf-8")
+    assert attendee_api._verify_signature(raw, None) is False
+    assert attendee_api._verify_signature(raw, "anything") is False
+
+
+def test_verify_signature_unsigned_allowed_with_explicit_dev_optin(monkeypatch):
+    """ATTENDEE_ALLOW_UNSIGNED_WEBHOOK=1 restores the unsigned dev path."""
+    monkeypatch.setattr(attendee_api, "ATTENDEE_WEBHOOK_SECRET", None)
+    monkeypatch.setattr(attendee_api, "ATTENDEE_ALLOW_UNSIGNED_WEBHOOK", True)
     raw = json.dumps({"any": "thing"}).encode("utf-8")
     assert attendee_api._verify_signature(raw, None) is True
 
