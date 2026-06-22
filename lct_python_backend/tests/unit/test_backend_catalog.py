@@ -40,6 +40,30 @@ def test_one_active_per_lane():
     assert cat["active"]["diarization"] == "fluidaudio"
 
 
+def test_openai_audio_stt_marks_provides_diarization():
+    """An OpenAI-compatible STT provider (e.g. the M5) sends diarize=true inline, so
+    its active entry must report provides_diarization — the signal the home card uses
+    to show 'Speakers: via STT' instead of 'no diarizer running'."""
+    cat = build_catalog(
+        stt_settings={"provider": "openai_audio",
+                      "http_url": "http://127.0.0.1:1234/v1/audio/transcriptions"},
+    )
+    active = next(e for e in cat["stt"] if e["is_active"])
+    assert active["provider_key"] == "openai_audio"
+    assert active["provides_diarization"] is True
+
+
+def test_whisper_stt_no_inline_diarization_without_flag(monkeypatch):
+    """A backend_http/whisper STT only diarizes inline under STT_DIARIZE_ENABLED."""
+    monkeypatch.delenv("STT_DIARIZE_ENABLED", raising=False)
+    cat = build_catalog(
+        stt_settings={"provider": "whisper",
+                      "http_url": "http://127.0.0.1:5095/v1/audio/transcriptions"},
+    )
+    active = next(e for e in cat["stt"] if e["is_active"])
+    assert active["provides_diarization"] is False
+
+
 def test_remote_whisper_url_is_not_labeled_local_mlx():
     # A configured whisper URL that matches no seed endpoint (e.g. the Tailscale
     # IndrasNet orchestrator) must NOT be reported as the bundled on-device MLX
