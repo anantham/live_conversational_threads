@@ -13,6 +13,7 @@ Auth supports two deployment modes:
 import hmac
 import logging
 import os
+import re
 import time
 from collections import defaultdict
 from typing import Callable, Optional, Set, Tuple
@@ -128,6 +129,32 @@ def _is_public_share(path: str, method: str = "GET") -> bool:
     return any(norm.startswith(prefix.rstrip("/")) for prefix in PUBLIC_PATH_PREFIXES)
 
 
+# Subject-side privacy review (ADR-039 P2): a conversation subject reviews the
+# AI's redactions of their OWN words via an email-gated page. Their browser holds
+# only a Google ID token (no AUTH_TOKEN), so the GET (fetch the bundle) and the
+# decisions POST must bypass bearer auth — each enforces its own in-handler Google
+# gate (verified email == the bundle's subject_email; see subject_review_api).
+# The token segment is a secrets.token_urlsafe value (no '/'), so a single
+# non-'import' path segment matches the GET, and '.../decisions' matches the POST.
+# CRITICAL: /api/subject-review/import is NOT exempt (it is IndrasNet -> LCT and
+# stays AUTH_TOKEN-gated) — the GET pattern explicitly excludes the 'import' token.
+_SUBJECT_REVIEW_GET_RE = re.compile(r"^/api/subject-review/(?!import$)[^/]+$")
+_SUBJECT_REVIEW_DECISIONS_RE = re.compile(r"^/api/subject-review/[^/]+/decisions$")
+
+
+def _is_subject_review_public(path: str, method: str = "GET") -> bool:
+    """Exempt ONLY the subject's GET (fetch bundle) and decisions POST from
+    AUTH_TOKEN; the import POST stays gated. Each exempted handler enforces its
+    own Google-email gate."""
+    norm = _normalize_path(path)
+    m = (method or "").upper()
+    if m == "GET":
+        return bool(_SUBJECT_REVIEW_GET_RE.match(norm))
+    if m == "POST":
+        return bool(_SUBJECT_REVIEW_DECISIONS_RE.match(norm))
+    return False
+
+
 def _is_attendee_webhook(path: str, method: str = "POST") -> bool:
     """Attendee webhook POST — HMAC-authenticated in-handler; bypasses bearer
     auth and rate limiting. ONLY POST to the exact webhook path."""
@@ -197,6 +224,12 @@ def _requires_admin_auth(path: str, method: str) -> bool:
     # other admin surfaces regardless of the conversation-scoped path prefix.
     if normalized_path.endswith("/prayer-detect"):
         return True
+    # Subject-review import is a server-to-server (IndrasNet -> LCT) endpoint that
+    # mints review bundles + a server-side relay; it must fail CLOSED in the
+    # ADMIN_AUTH_TOKEN-only mode too (it is NOT in PUBLIC_PATH_PREFIXES, so under
+    # AUTH_TOKEN it is already gated; this covers the admin-only deployment).
+    if normalized_path == "/api/subject-review/import":
+        return True
     return False
 
 
@@ -233,6 +266,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
             # Share-fetch (GET only) enforces its own Google ID token check per
             # share's email allowlist. AUTH_TOKEN does not apply to recipients.
             # DELETE/other methods under /api/share/ fall through to auth below.
+            return await call_next(request)
+
+        if _is_subject_review_public(path, request.method):
+            # Subject-review GET + decisions POST enforce their own Google-email
+            # gate in-handler (subject_review_api). The import POST is NOT matched
+            # here and stays AUTH_TOKEN-gated.
             return await call_next(request)
 
         auth_header = request.headers.get("authorization")
