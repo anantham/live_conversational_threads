@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-05-30
+Last updated: 2026-06-20
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -27,6 +27,7 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_app/src/components/MinimalGraph.jsx | 1550 | Dagre layout, authored semantic hierarchy mode, legacy clustering fallback, interactive drag state, viewport follow/recenter logic, zoom HUD, cluster detail panel, legend, edge-inspection UI, provisional-draft node styling, and a temporary `react-hooks/rules-of-hooks` suppression all live in one component | Split into `useMinimalGraphViewport.js`, `useMinimalGraphSemanticLevels.js`, `useMinimalGraphClusters.js`, `MinimalGraphHud.jsx`, `MinimalGraphNodeStyles.js`, and `MinimalGraphPanels.jsx` so authored-level rendering can drop the temporary lint suppression and evolve independently from legacy clustering |
 | ~~lct_app/src/components/AudioInput.jsx~~ | ~~329~~ → 137 | **RESOLVED** — Extracted `useTranscriptSockets` (233 LOC) and `useAudioCapture` (69 LOC) hooks; AudioInput is now a thin orchestrator. |
 | lct_app/src/components/AudioInput.jsx | 382 | Mic button, device picker, live captions, websocket orchestration, and HUD composition are mixed again after phase-1 live health work | Split into `MicControl`, `LiveCaptionStrip`, and a smaller `useAudioSessionController` so the footer UI can evolve without re-entangling transport logic |
+| lct_app/src/components/transcript/SessionTranscriptOverlay.jsx | 301 | Shared upload/live overlay now owns line normalization, speaker segmentation, caption strip rendering, expanded transcript rendering, condensation wiring, and meeting branch rail composition | Split into `TranscriptCaptionStrip`, `TranscriptExpandedPanel`, and keep normalization/branching in pure helpers so live-meeting experiments do not keep growing the shared overlay root |
 | lct_app/src/components/ServiceStatus.jsx | 282 | Home status now fetches multiple endpoints, interprets legacy-vs-runtime readiness, and renders progressive-disclosure tooltips in one component | Split into `useHomeServiceStatus` plus presentational pill/tooltip components before adding richer setup diagnostics |
 | lct_app/src/components/audio/useLiveSessionStatus.js | 766 | Mic-level tracking, websocket freshness, STT in-flight wait heuristics, graph queue/generation timing derivation, graph-patch first-node heuristics, summary copy, detail-card shaping, and now background-refinement observability all live in one hook | Split pure derivation/formatting into `liveSessionStatusModel.js` and keep the hook focused on event ingestion + state transitions |
 | ~~lct_python_backend/stt_api.py~~ | ~~426~~ → 264 | **RESOLVED** — Extracted `stt_settings_service.py` (38 LOC), `stt_telemetry_service.py` (107 LOC), and `stt_health_service.py` (72 LOC); router keeps audio upload + websocket + backward-compat wrappers. |
