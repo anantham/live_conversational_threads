@@ -5,6 +5,7 @@ import JoinMeeting from "../pages/JoinMeeting";
 import MeetingView from "../pages/MeetingView";
 import ViewConversation from "../pages/ViewConversation";
 import ShareConversation from "../pages/ShareConversation";
+import SubjectReview from "../pages/SubjectReview";
 import ThreadsViewer from "../pages/ThreadsViewer";
 import Browse from "../pages/Browse";
 import Import from "../pages/Import";
@@ -35,6 +36,10 @@ export default function AppRoutes() {
           /share/<token> renders the conversation in read-only mode after
           per-share Google ID verification (when the share is restricted). */}
       <Route path="/share/:token" element={<ShareConversation />} />
+      {/* Subject-side privacy review (ADR-039 P2). Public like /share: the
+          subject (an external person) has only a Google ID token, no AUTH_TOKEN.
+          Email-gated server-side to exactly subject_email. */}
+      <Route path="/subject-review/:token" element={<SubjectReview />} />
       {/* Static, server-free .threads viewer (ADR-036). Exempt from the App.jsx
           backend gate; makes zero /api/ calls — renders a self-contained file. */}
       <Route path="/view" element={<ThreadsViewer />} />
