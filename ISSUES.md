@@ -25,6 +25,27 @@ hard to diagnose. All diagnosed read-only; none fixed yet.
   fetches with no backoff. Fix: exponential backoff + a circuit breaker on the
   fetch layer so a persistent failure doesn't hammer the backend.
 
+## 2026-06-20 — Feature request: meeting bot session metadata capture
+
+**Summary:** For every meeting the Attendee bot joins, persist structured session
+metadata alongside transcript events: attendee roster, available participant
+identity/email, join/leave timestamps, bot lifecycle events, recording permission
+events, and low-rate screenshot/video samples or derived video-state metadata when
+the consent/privacy policy allows it.
+
+**Impact:** Medium/high product value for the live conversation tree. This gives
+future summaries, branches, and evidence views provenance beyond text alone, but
+it also touches sensitive identity and visual data, so retention, redaction,
+local-only storage defaults, and explicit UI affordances need an ADR before
+implementation.
+
+**Blocker status:** Not blocking the current live subtitle overlay debug path.
+
+**Recommended next step:** Add an ADR for meeting capture metadata scope and
+retention, then implement a narrow first slice that records bot lifecycle,
+attendee roster snapshots, identity fields provided by Attendee/Google Meet, and
+timestamps before adding any video-frame sampling.
+
 ## 2026-06-14 — Diagnostic logging leaked conversation content to console/logs (FIXED 2026-06-14)
 
 **Summary:** A multi-agent + `codex exec` audit of the diagnostic-logging surface
