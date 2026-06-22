@@ -9,6 +9,7 @@ from __future__ import annotations
 import hmac
 import logging
 import os
+import re
 from typing import Optional, Set, Tuple
 
 from fastapi import WebSocket
@@ -65,6 +66,33 @@ def is_public_share(path: str, method: str = "GET") -> bool:
     return any(norm.startswith(prefix.rstrip("/")) for prefix in PUBLIC_PATH_PREFIXES)
 
 
+# Subject-side privacy review (ADR-039 P2): a conversation subject reviews the
+# AI's redactions of their OWN words via an email-gated page. Their browser holds
+# only a Google ID token (no AUTH_TOKEN), so the GET (fetch the bundle) and the
+# decisions POST must bypass bearer auth — each enforces its own in-handler Google
+# gate (verified email == the bundle's subject_email; see subject_review_api). The
+# token segment is a secrets.token_urlsafe value (no '/'), so a single non-'import'
+# path segment matches the GET and '.../decisions' matches the POST. CRITICAL:
+# /api/subject-review/import is NOT exempt (it is IndrasNet -> LCT and stays
+# gated, see requires_admin_auth) — the GET pattern excludes 'import' via the
+# negative lookahead.
+_SUBJECT_REVIEW_GET_RE = re.compile(r"^/api/subject-review/(?!import$)[^/]+$")
+_SUBJECT_REVIEW_DECISIONS_RE = re.compile(r"^/api/subject-review/[^/]+/decisions$")
+
+
+def is_subject_review_public(path: str, method: str = "GET") -> bool:
+    """Exempt ONLY the subject's GET (fetch bundle) and decisions POST from
+    AUTH_TOKEN; the import POST stays gated. Each exempted handler enforces its
+    own Google-email gate in-handler."""
+    norm = normalize_path(path)
+    m = (method or "").upper()
+    if m == "GET":
+        return bool(_SUBJECT_REVIEW_GET_RE.match(norm))
+    if m == "POST":
+        return bool(_SUBJECT_REVIEW_DECISIONS_RE.match(norm))
+    return False
+
+
 def is_attendee_webhook(path: str, method: str = "POST") -> bool:
     if (method or "").upper() != "POST":
         return False
@@ -115,6 +143,12 @@ def requires_admin_auth(path: str, method: str) -> bool:
     if normalized_method == "DELETE" and normalized_path.startswith("/conversations/"):
         return True
     if normalized_path.endswith("/prayer-detect"):
+        return True
+    # Subject-review import is a server-to-server (IndrasNet -> LCT) endpoint that
+    # mints review bundles + a server-side relay; it must fail CLOSED in the
+    # ADMIN_AUTH_TOKEN-only mode too (under AUTH_TOKEN it is already gated since it
+    # is neither a public share nor subject-review-public).
+    if normalized_path == "/api/subject-review/import":
         return True
     return False
 

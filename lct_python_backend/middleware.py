@@ -63,6 +63,12 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if auth.is_public_share(path, request.method):
             return await call_next(request)
 
+        # Subject-review GET (fetch bundle) + decisions POST bypass AUTH_TOKEN;
+        # each enforces its own Google-email gate in-handler (ADR-039 P2). The
+        # import POST stays gated (see auth.requires_admin_auth).
+        if auth.is_subject_review_public(path, request.method):
+            return await call_next(request)
+
         auth_header = request.headers.get("authorization")
         if auth.AUTH_TOKEN:
             if not auth.check_bearer_token(auth_header):
