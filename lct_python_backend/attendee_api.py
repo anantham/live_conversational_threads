@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field
 
 from lct_python_backend.middleware import check_ws_auth_message
 from lct_python_backend.services import attendee_bridge, attendee_client
-from lct_python_backend.services.env_helpers import env_bool, env_str, env_str_or_none
+from lct_python_backend.services.env_helpers import env_bool, env_int, env_str, env_str_or_none
 
 logger = logging.getLogger("lct_backend")
 
@@ -61,6 +61,22 @@ ATTENDEE_STT_LANGUAGE: str = env_str("ATTENDEE_STT_LANGUAGE", "en")
 # Recording format for the custom-async path. Recording is enabled so per-utterance
 # audio blobs exist for Attendee to POST to the shim ("mp3" = audio only, light).
 ATTENDEE_RECORDING_FORMAT: str = env_str("ATTENDEE_RECORDING_FORMAT", "mp3")
+# Auto-leave timeouts (seconds) so the bot exits empty/ghost meetings promptly
+# (and the LCT loop closes) instead of recording an empty room. Tighter than
+# Attendee's defaults (only_participant 60s, wait_for_host 600s).
+ATTENDEE_ONLY_PARTICIPANT_TIMEOUT_S: int = env_int("ATTENDEE_ONLY_PARTICIPANT_TIMEOUT_S", 30)
+ATTENDEE_WAIT_FOR_HOST_TIMEOUT_S: int = env_int("ATTENDEE_WAIT_FOR_HOST_TIMEOUT_S", 120)
+ATTENDEE_SILENCE_TIMEOUT_S: int = env_int("ATTENDEE_SILENCE_TIMEOUT_S", 600)
+
+
+def _auto_leave_settings() -> Dict[str, Any]:
+    """Conditions under which the bot auto-leaves (so the meeting/loop ends on its
+    own when everyone leaves or no one ever joins)."""
+    return {
+        "only_participant_in_meeting_timeout_seconds": ATTENDEE_ONLY_PARTICIPANT_TIMEOUT_S,
+        "wait_for_host_to_start_meeting_timeout_seconds": ATTENDEE_WAIT_FOR_HOST_TIMEOUT_S,
+        "silence_timeout_seconds": ATTENDEE_SILENCE_TIMEOUT_S,
+    }
 
 
 # --- models -----------------------------------------------------------------
@@ -164,6 +180,22 @@ async def create_meeting(req: CreateMeetingRequest):
     if not (meeting_url.startswith("http://") or meeting_url.startswith("https://")):
         return JSONResponse(status_code=422, content={"detail": "meeting_url must be an http(s) URL"})
 
+    # Dedup: if a bot is already live for this meeting, return its existing viewer
+    # instead of dispatching a second bot into the same room.
+    if not dry_run:
+        existing = attendee_bridge.get_by_meeting_url(meeting_url)
+        if existing is not None:
+            logger.info("[attendee] dedup: reusing live session conv=%s for %s",
+                        existing.conversation_id, meeting_url)
+            return {
+                "conversation_id": existing.conversation_id,
+                "bot_id": existing.bot_id,
+                "bot_state": str(existing.bot_state) if existing.bot_state is not None else None,
+                "status": existing.status,
+                "viewer_ws": f"/ws/meeting/{existing.conversation_id}",
+                "deduplicated": True,
+            }
+
     conversation_id = str(uuid.uuid4())
     bot_name = req.bot_name or attendee_client.ATTENDEE_BOT_NAME
 
@@ -203,6 +235,7 @@ async def create_meeting(req: CreateMeetingRequest):
             bot_name=bot_name,
             transcription_settings=settings.get("transcription_settings"),
             recording_settings=settings.get("recording_settings"),
+            automatic_leave_settings=_auto_leave_settings(),
             metadata={"lct_conversation_id": conversation_id},
         )
     except attendee_client.AttendeeError as exc:
