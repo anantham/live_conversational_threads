@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/rules-of-hooks */
+﻿/* eslint-disable react-hooks/rules-of-hooks */
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import PropTypes from "prop-types";
 import ReactFlow, { useReactFlow, ReactFlowProvider, applyNodeChanges } from "reactflow";
@@ -34,262 +34,15 @@ import {
   resolveNodeColors,
 } from "./graph/colorModes";
 import ColorModeToggle from "./graph/ColorModeToggle";
+import MinimalGraphHud from "./graph/MinimalGraphHud";
+import MinimalGraphPanels from "./graph/MinimalGraphPanels";
+import { mglog } from "./graph/minimalGraphDebug";
+import { MIN_READABLE_ZOOM, repackSubset } from "./graphSimilarityLayout";
 
-// ADR-030 §D4: custom node renderer with three color modes + state markers.
+// ADR-030 Â§D4: custom node renderer with three color modes + state markers.
 // Cluster nodes are still default ReactFlow rendering (separate concern).
 const NODE_TYPES = { conversational: ConversationNode };
 const EDGE_TYPES = {};
-
-// --- Similarity layout (clusters a drilled subset by relatedness) ----------
-// Stopwords + filler so the bag-of-words captures topical content, not glue.
-const LAYOUT_STOPWORDS = new Set(
-  ("the a an and or but of to in on for with as is are was were be been being it its this that these those you your "
-    + "i we he she they them his her their our not no so if then than at by from about into over under can will would "
-    + "just like really actually kind sort thing things stuff what which who when where how why do does did have has "
-    + "had get got make made one two also more most much very some any all out up down here there now")
-    .split(" ")
-);
-
-// Normalized term-frequency vector over a node's name + summary.
-function layoutTextVec(node) {
-  const fd = node.data?.fullData || {};
-  const text = `${fd.node_name || node.data?.title || ""} ${fd.summary || node.data?.summary || ""}`.toLowerCase();
-  const v = new Map();
-  for (const tok of text.split(/[^a-z0-9]+/)) {
-    if (tok.length < 3 || LAYOUT_STOPWORDS.has(tok)) continue;
-    v.set(tok, (v.get(tok) || 0) + 1);
-  }
-  let norm = 0;
-  for (const c of v.values()) norm += c * c;
-  norm = Math.sqrt(norm) || 1;
-  for (const key of v.keys()) v.set(key, v.get(key) / norm);
-  return v;
-}
-
-function layoutCosine(a, b) {
-  const [small, big] = a.size <= b.size ? [a, b] : [b, a];
-  let s = 0;
-  for (const [key, va] of small) {
-    const vb = big.get(key);
-    if (vb) s += va * vb;
-  }
-  return s;
-}
-
-// Similarity-seriated grid: keep the COMPACT grid (which fixed the zoom-out) but
-// make its ORDER meaningful so related cards sit adjacent. A force layout was
-// tried and rejected — it spread the subset WIDER than the grid and barely
-// clustered (lexical similarity over short summaries is a weak signal, and
-// repulsion just pushes everything apart). Instead: greedy nearest-neighbour
-// seriation over (text cosine + edge bonus), snake-filled into the grid so
-// consecutive (most-similar) nodes are spatially adjacent. Compact, clustered to
-// the extent the lexical signal allows, deterministic, no spread regression.
-// (Stronger semantic clustering would need real embeddings — an offline pass.)
-function similarityLayout(nodes, edges, { nodeWidth = 480, nodeHeight = 360 } = {}) {
-  const n = nodes.length;
-  const gapX = nodeWidth + 90;
-  const gapY = nodeHeight + 70;
-  if (n <= 2) return nodes.map((nd, i) => ({ ...nd, position: { x: i * gapX, y: 0 } }));
-  // Prefer the baked MiniLM embedding (real semantic signal) — bag-of-words over
-  // short summaries was too weak/noisy to cluster. Embeds are L2-normalized, so
-  // a dot product == cosine. Falls back to lexical cosine if embeds are absent.
-  const embs = nodes.map((nd) => nd.data?.fullData?.embed);
-  const useEmbed = embs.every((e) => Array.isArray(e) && e.length >= 4);
-  const vecs = useEmbed ? null : nodes.map(layoutTextVec);
-  const affPair = useEmbed
-    ? (i, j) => {
-        const a = embs[i];
-        const b = embs[j];
-        let s = 0;
-        for (let t = 0; t < a.length; t++) s += a[t] * b[t];
-        return s;
-      }
-    : (i, j) => layoutCosine(vecs[i], vecs[j]);
-  const aff = Array.from({ length: n }, () => new Float64Array(n));
-  for (let i = 0; i < n; i++) {
-    for (let j = i + 1; j < n; j++) {
-      const s = affPair(i, j);
-      aff[i][j] = s;
-      aff[j][i] = s;
-    }
-  }
-  const idx = new Map(nodes.map((nd, i) => [nd.id, i]));
-  (edges || []).forEach((e) => {
-    const a = idx.get(e.source);
-    const b = idx.get(e.target);
-    if (a != null && b != null && a !== b) { aff[a][b] += 0.5; aff[b][a] += 0.5; }
-  });
-  // Start the chain at the most-central node (highest total affinity), then keep
-  // appending the most-similar not-yet-placed node.
-  let start = 0;
-  let bestSum = -1;
-  for (let i = 0; i < n; i++) {
-    let s = 0;
-    for (let j = 0; j < n; j++) s += aff[i][j];
-    if (s > bestSum) { bestSum = s; start = i; }
-  }
-  const used = new Array(n).fill(false);
-  const order = [start];
-  used[start] = true;
-  for (let step = 1; step < n; step++) {
-    const last = order[order.length - 1];
-    let nxt = -1;
-    let bs = -2;
-    for (let j = 0; j < n; j++) {
-      if (used[j]) continue;
-      if (aff[last][j] > bs) { bs = aff[last][j]; nxt = j; }
-    }
-    if (nxt === -1) nxt = used.indexOf(false);
-    order.push(nxt);
-    used[nxt] = true;
-  }
-  const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
-  return order.map((nodeIdx, p) => {
-    const row = Math.floor(p / cols);
-    let col = p % cols;
-    if (row % 2 === 1) col = cols - 1 - col; // snake so row-to-row stays adjacent
-    return { ...nodes[nodeIdx], position: { x: col * gapX, y: row * gapY } };
-  });
-}
-
-// Rectangle de-overlap: separate any cards whose centers are closer than a
-// card-plus-margin in both axes. Used after the PCA projection (which only sets
-// relative positions) so nothing ever visually collides.
-function deOverlap(P, nodeWidth, nodeHeight, passes = 140) {
-  const minDX = nodeWidth + 60;
-  const minDY = nodeHeight + 50;
-  for (let pass = 0; pass < passes; pass++) {
-    let moved = false;
-    for (let i = 0; i < P.length; i++) {
-      for (let j = i + 1; j < P.length; j++) {
-        const dx = P[j].x - P[i].x;
-        const dy = P[j].y - P[i].y;
-        const ox = minDX - Math.abs(dx);
-        const oy = minDY - Math.abs(dy);
-        if (ox > 0 && oy > 0) {
-          moved = true;
-          if (ox <= oy) { const s = ((dx < 0 ? -1 : 1) * ox) / 2 || 0.5; P[i].x -= s; P[j].x += s; }
-          else { const s = ((dy < 0 ? -1 : 1) * oy) / 2 || 0.5; P[i].y -= s; P[j].y += s; }
-        }
-      }
-    }
-    if (!moved) break;
-  }
-}
-
-// Dominant eigenvector of a small symmetric matrix via power iteration
-// (deterministic seed). Used for the top-2 principal components.
-function topEigenvector(C, d) {
-  let v = new Float64Array(d);
-  for (let i = 0; i < d; i++) v[i] = Math.cos(i + 1); // non-uniform, deterministic
-  for (let it = 0; it < 80; it++) {
-    const nv = new Float64Array(d);
-    for (let i = 0; i < d; i++) {
-      let s = 0;
-      for (let j = 0; j < d; j++) s += C[i][j] * v[j];
-      nv[i] = s;
-    }
-    let norm = 0;
-    for (let i = 0; i < d; i++) norm += nv[i] * nv[i];
-    norm = Math.sqrt(norm) || 1;
-    for (let i = 0; i < d; i++) v[i] = nv[i] / norm;
-  }
-  return v;
-}
-
-// Semantic 2-D map of a drilled subset: project each node's baked MiniLM
-// embedding onto the subset's top-2 principal components, so genuinely-related
-// children land near each other (true 2-D clustering, not a 1-D seriation), then
-// de-overlap for spacing. Returns null if embeddings are absent (fallback).
-function embedLayout(nodes, { nodeWidth = 480, nodeHeight = 360 } = {}) {
-  const n = nodes.length;
-  const embs = nodes.map((nd) => nd.data?.fullData?.embed);
-  if (n <= 2 || embs.some((e) => !Array.isArray(e) || e.length < 4)) return null;
-  const d = embs[0].length;
-  const mean = new Float64Array(d);
-  for (const e of embs) for (let i = 0; i < d; i++) mean[i] += e[i];
-  for (let i = 0; i < d; i++) mean[i] /= n;
-  const X = embs.map((e) => { const r = new Float64Array(d); for (let i = 0; i < d; i++) r[i] = e[i] - mean[i]; return r; });
-  const C = Array.from({ length: d }, () => new Float64Array(d));
-  for (const r of X) for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) C[i][j] += r[i] * r[j];
-  for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) C[i][j] /= n;
-  const v1 = topEigenvector(C, d);
-  let lam1 = 0;
-  for (let i = 0; i < d; i++) { let s = 0; for (let j = 0; j < d; j++) s += C[i][j] * v1[j]; lam1 += v1[i] * s; }
-  for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) C[i][j] -= lam1 * v1[i] * v1[j]; // deflate
-  const v2 = topEigenvector(C, d);
-  const coords = X.map((r) => {
-    let a = 0;
-    let b = 0;
-    for (let i = 0; i < d; i++) { a += r[i] * v1[i]; b += r[i] * v2[i]; }
-    return { x: a, y: b };
-  });
-  // Scale the projection so ~±2 std fills the grid footprint, then de-overlap.
-  let mx2 = 0;
-  let my2 = 0;
-  coords.forEach((c) => { mx2 += c.x * c.x; my2 += c.y * c.y; });
-  const rmsX = Math.sqrt(mx2 / n) || 1;
-  const rmsY = Math.sqrt(my2 / n) || 1;
-  const cols = Math.max(1, Math.ceil(Math.sqrt(n)));
-  const rows = Math.ceil(n / cols);
-  const fx = (cols * (nodeWidth + 90)) / (4 * rmsX);
-  const fy = (rows * (nodeHeight + 70)) / (4 * rmsY);
-  const P = coords.map((c) => ({ x: c.x * fx, y: c.y * fy }));
-  deOverlap(P, nodeWidth, nodeHeight);
-  let minX = Infinity;
-  let minY = Infinity;
-  P.forEach((p) => { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; });
-  return nodes.map((nd, i) => ({ ...nd, position: { x: Math.round(P[i].x - minX), y: Math.round(P[i].y - minY) } }));
-}
-
-// Re-pack a drilled subset. Drilling FILTERS the global (timestamp-driven) tier
-// layout, so a parent's children keep their global X/Y and stay scattered across
-// the whole-corpus canvas — children can come from different times AND different
-// conversations, so they land thousands of px apart, forcing a zoom-out. Pull
-// them into a fresh LOCAL layout near the origin:
-//   - edge-dense subset    -> Dagre flow (arranged by its argument edges)
-//   - else, with embeds    -> PCA-2D semantic map (clusters related children)
-//   - else (no embeds)     -> similarity-seriated grid (lexical fallback)
-//   - very large           -> compact grid (projection would be cluttered)
-function repackSubset(nodes, edges) {
-  if (!nodes || nodes.length <= 1) return nodes;
-  const NW = 480;
-  const NH = 360;
-  if (edges && edges.length >= Math.ceil(nodes.length * 0.6)) {
-    return layoutWithDagre(nodes.map((n) => ({ ...n })), edges, { nodeWidth: NW, nodeHeight: NH });
-  }
-  if (nodes.length <= 80) {
-    return embedLayout(nodes, { nodeWidth: NW, nodeHeight: NH })
-      || similarityLayout(nodes, edges, { nodeWidth: NW, nodeHeight: NH });
-  }
-  const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
-  const gapX = NW + 90;
-  const gapY = NH + 70;
-  return nodes.map((n, i) => ({
-    ...n,
-    position: { x: (i % cols) * gapX, y: Math.floor(i / cols) * gapY },
-  }));
-}
-
-// Floor on auto-fit zoom — below this card text gets unreadable. The user
-// can still mouse-wheel zoom out past it for a macro overview; this only
-// caps the auto-fit behaviour on tier change / drilldown / center reset.
-const MIN_READABLE_ZOOM = 0.65;
-
-// Diagnostic logging for the cold-open "blank until interaction" investigation
-// (camera-framing race: nodes render fine, but the initial fitView is
-// skipped/mistimed so the viewport sits off-screen at the tall chunk dagre's
-// y; any interaction issues a fresh camera command that brings it back).
-// Root cause was found + fixed (synchronous landing tier + late fit-consume),
-// so these are OFF by default now. Re-enable any time in the console with
-// window.__MG_DEBUG__ = true (then reload) to watch the view/camera state flow.
-let MG_DEBUG = false;
-const mglog = (...a) => {
-  if (MG_DEBUG || (typeof window !== "undefined" && window.__MG_DEBUG__)) {
-    console.log("[MG]", ...a);
-  }
-};
-
 
 function MinimalGraphInner({
   graphData,
@@ -322,7 +75,7 @@ function MinimalGraphInner({
   // instance starts false, so it re-forces the landing tier instead of the
   // finest one. See requestedSemanticLevel + initialLandingLevel.
   const userOverrodeTierRef = useRef(false);
-  // Timestamp of the last drill — debounces an accidental double-click so a
+  // Timestamp of the last drill â€” debounces an accidental double-click so a
   // single tap (= expand, instant) can't fire twice. There is no double-tap
   // gesture (Option A): single tap expands; a leaf single-tap opens its drawer;
   // the per-card "details" chip opens the drawer for a node that has children.
@@ -340,7 +93,7 @@ function MinimalGraphInner({
   );
   // ADR-032 Part B pattern 3: argument-scaffold trace mode. State is
   // lifted to the page (argumentTraceFrom + setArgumentTraceFrom props)
-  // so NodeDetail can trigger trace via "↑ Trace ancestors" button.
+  // so NodeDetail can trigger trace via "â†‘ Trace ancestors" button.
   // Broaden toggle stays local.
   const [traceBroaden, setTraceBroaden] = useState(false);
   useEffect(() => {
@@ -365,7 +118,7 @@ function MinimalGraphInner({
     },
     [conversationId]
   );
-  // ADR-030 §D4: color mode (tier | speaker | temporal). Default: tier.
+  // ADR-030 Â§D4: color mode (tier | speaker | temporal). Default: tier.
   // Persisted per conversation via saveConversationDraft when conversationId is provided.
   const [colorMode, setColorMode] = useState(
     COLOR_MODES.includes(initialColorMode) ? initialColorMode : DEFAULT_COLOR_MODE
@@ -403,16 +156,16 @@ function MinimalGraphInner({
   // via the tier-lock UI or by clicking into nodes. Earlier heuristic
   // demanded >=2.5x compression vs the next tier, but on conversations
   // where the LLM produces equal counts at L4 and L5 (no genuine
-  // compression — 772ac0cc: 4 themes -> 4 arcs) it landed at L2, which
+  // compression â€” 772ac0cc: 4 themes -> 4 arcs) it landed at L2, which
   // defeats the point. Pick the highest tier with content; if that tier
   // only has 1 node and a finer tier exists, drop down to the finer one.
   //
   // COLD-OPEN CAMERA FIX: this is computed SYNCHRONOUSLY (useMemo) and used as
-  // the initial requestedSemanticLevel fallback below — so render 0 already
+  // the initial requestedSemanticLevel fallback below â€” so render 0 already
   // lays out the macro tier (e.g. 3 arcs) instead of the finest tier (e.g.
   // 2190 chunks, ~719000px tall). Previously the finest layout rendered on
   // render 0, a fitView parked the camera at its center (~y 359000), and the
-  // post-paint tier flip's fit got cancelled before committing — leaving the
+  // post-paint tier flip's fit got cancelled before committing â€” leaving the
   // canvas blank until the user clicked something. One source of truth now.
   const initialLandingLevel = useMemo(() => {
     if (!normalizedChunk || normalizedChunk.length === 0) return null;
@@ -424,7 +177,7 @@ function MinimalGraphInner({
     });
     if (byLevel.size === 0) return null;
     // Walk top-down. Land at the topmost tier with at least 1 node, UNLESS
-    // that tier has only 1 node and a finer tier exists with more — in
+    // that tier has only 1 node and a finer tier exists with more â€” in
     // that case prefer the finer tier so the user sees parallelism.
     for (let lvl = 5; lvl >= 1; lvl--) {
       const cur = byLevel.get(lvl) || 0;
@@ -438,7 +191,7 @@ function MinimalGraphInner({
 
   // Reflect the landing tier into the tier-lock UI (one render later). The
   // visible tier on render 0 already matches via requestedSemanticLevel, so
-  // this no longer causes a node-set flip — it just lights up the lock chip.
+  // this no longer causes a node-set flip â€” it just lights up the lock chip.
   useEffect(() => {
     if (initialLockedAppliedRef.current) return;
     if (initialLandingLevel == null) return;
@@ -447,8 +200,8 @@ function MinimalGraphInner({
     initialLockedAppliedRef.current = true;
   }, [initialLandingLevel]);
 
-  // ADR-030 §D4: build all three color maps; the active mode picks among them.
-  // No more auto-switching based on speaker count — user controls via toggle.
+  // ADR-030 Â§D4: build all three color maps; the active mode picks among them.
+  // No more auto-switching based on speaker count â€” user controls via toggle.
   const speakerColorMap = useMemo(
     () => buildSpeakerColorMapForNodes(normalizedChunk),
     [normalizedChunk]
@@ -469,7 +222,7 @@ function MinimalGraphInner({
   );
 
   // Tap-friendly drill-down. Same fan-out as handleNodeDoubleClick, but callable
-  // from a node's ⊕ control by id — so it works on touch (double-tap is eaten by
+  // from a node's âŠ• control by id â€” so it works on touch (double-tap is eaten by
   // the browser) and is discoverable. Only non-leaf nodes above the chunk tier
   // expose the control; leaves and moments have nothing to fan out.
   const handleExpand = useCallback(
@@ -500,7 +253,7 @@ function MinimalGraphInner({
     [setSelectedNode]
   );
 
-  // Escape pops one drill level (mirrors the ← Back button). Gated on no active
+  // Escape pops one drill level (mirrors the â† Back button). Gated on no active
   // argument-trace so it doesn't fight that mode's own Escape handler.
   useEffect(() => {
     if (drilldownPath.length === 0 || argumentTraceFrom) return undefined;
@@ -533,7 +286,7 @@ function MinimalGraphInner({
       if (colorMode === "argument") {
         const as = argumentStatusMap[item.id];
         if (as && (as.sup > 0 || as.reb > 0)) {
-          argStatusLabel = `${as.status} · ${as.sup} supporting / ${as.reb} rebutting`;
+          argStatusLabel = `${as.status} Â· ${as.sup} supporting / ${as.reb} rebutting`;
         }
       }
 
@@ -550,10 +303,10 @@ function MinimalGraphInner({
       // Speaker badge (prefer renamed display name over raw id)
       const speaker = item.speaker_display || item.speaker_id || "";
       const speakerLabel = isDraftNode
-        ? (speaker ? `${speaker} · provisional` : "provisional")
+        ? (speaker ? `${speaker} Â· provisional` : "provisional")
         : speaker;
 
-      // Authored state markers per ADR-030 §D4. Frontend renders only what
+      // Authored state markers per ADR-030 Â§D4. Frontend renders only what
       // the backend authored; never invents these flags.
       const isTangent = Boolean(item.is_tangent);
       const isCrux = Boolean(item.is_crux);
@@ -561,7 +314,7 @@ function MinimalGraphInner({
       const isContextualProgress = Boolean(item.is_contextual_progress);
 
       // Conversation-dimension markers (action_item / surprise / agreement /
-      // disagreement). Rendered as a compact chip strip in ConversationNode —
+      // disagreement). Rendered as a compact chip strip in ConversationNode â€”
       // NOT peer encodings (the card already uses rotation/border/corner/arrow).
       // Prefer the backend-normalized `markers` array; else derive from flags+edges.
       const dimensionMarkers = (
@@ -594,7 +347,7 @@ function MinimalGraphInner({
           isBookmark,
           isContextualProgress,
           dimensionMarkers,
-          // Tap-to-fan-out: non-leaf nodes above the chunk tier get a ⊕ control
+          // Tap-to-fan-out: non-leaf nodes above the chunk tier get a âŠ• control
           // that drills into just this node's children (see handleExpand).
           canExpand:
             Array.isArray(item.children_ids) &&
@@ -664,7 +417,7 @@ function MinimalGraphInner({
       relations.forEach((rel) => {
         const targetName = (rel?.related_node || "").trim();
         if (!targetName) return;
-        // Fuzzy match: exact → case-insensitive → substring containment
+        // Fuzzy match: exact â†’ case-insensitive â†’ substring containment
         const targetLower = targetName.toLowerCase();
         const related = sourceNodes.find((n) => n.node_name === targetName)
           || sourceNodes.find((n) => (n.node_name || "").toLowerCase() === targetLower)
@@ -697,7 +450,7 @@ function MinimalGraphInner({
           source: related.id,
           target: item.id,
           // Only "soft" relation types animate (asks/clarifies). Solid
-          // logical edges (supports/rebuts/implies) stay static — they're
+          // logical edges (supports/rebuts/implies) stay static â€” they're
           // structural claims, not transient signals.
           animated: !reduceMotion && (category === "conversational-q" || category === "conversational-flow"),
           label: edgeLabel || undefined,
@@ -768,7 +521,7 @@ function MinimalGraphInner({
     return edges;
   }, [selectedNode, reduceMotion, hideEdges, showTemporalEdges]);
 
-  // Build ReactFlow nodes — card-style with title + summary
+  // Build ReactFlow nodes â€” card-style with title + summary
   const rfNodes = useMemo(
     () => buildRfNodesForSource(normalizedChunk),
     [buildRfNodesForSource, normalizedChunk]
@@ -883,7 +636,7 @@ function MinimalGraphInner({
         if (!targetNode) return;
         const category = categorizeEdgeRelation(rel.relation_type || "contextual");
         // Edge stored on item points AT targetNode. For ancestor walk we
-        // want incoming edges TO each node — so the source-of-edge is
+        // want incoming edges TO each node â€” so the source-of-edge is
         // ``item`` (which "supports" targetNode), and targetNode receives.
         const arr = incomingByTarget.get(targetNode.id) || [];
         arr.push({
@@ -905,7 +658,7 @@ function MinimalGraphInner({
       const incoming = incomingByTarget.get(id) || [];
       for (const edge of incoming) {
         if (!allowedCategories.has(edge.category)) continue;
-        // Edge id mirrors what buildRfEdgesForSource produced — the
+        // Edge id mirrors what buildRfEdgesForSource produced â€” the
         // pair-key + relType pattern.
         const pairKey = [edge.fromId, id].sort().join("--");
         tracedEdges.add(`c-${pairKey}-${edge.relType}`);
@@ -951,7 +704,7 @@ function MinimalGraphInner({
 
   // Scoped tier view: when the user has drilled into a node and then taps a
   // DEEPER tier (e.g. "moments"/"ideas" while inside a theme), show only that
-  // node's descendants at the chosen level — not the whole global tier. This is
+  // node's descendants at the chosen level â€” not the whole global tier. This is
   // what makes a large combined corpus navigable: drill a theme, then "moments"
   // shows that theme's moments, not all of them.
   const scopedTierView = useMemo(() => {
@@ -1112,7 +865,7 @@ function MinimalGraphInner({
 
   // Auto-fit the viewport when the displayed semantic tier changes (e.g.
   // initial mount lands on arcs but the camera was anchored on the
-  // chunk-level layout — leaving arc nodes off-screen until the user
+  // chunk-level layout â€” leaving arc nodes off-screen until the user
   // clicks Center). Fires once per tier change; defers one paint so React
   // Flow has the new node positions in its store before measuring.
   // Live-streaming nuance: if consolidation produces a new tier mid-
@@ -1143,14 +896,14 @@ function MinimalGraphInner({
     return () => clearTimeout(id);
   }, [displayMode, effectiveSemanticLevel, drilldownPath, reactFlow, reduceMotion]);
 
-  // Controlled node state — layout provides initial positions, drags persist
+  // Controlled node state â€” layout provides initial positions, drags persist
   const [interactiveNodes, setInteractiveNodes] = useState([]);
   const layoutKeyRef = useRef("");
 
   const pendingFitViewRef = useRef(false);
   // Becomes true once the first real fitView has framed the graph on load.
   // Gates the auto-follow auto-pan (below) so it cannot yank the camera to
-  // the last node before the initial tier fit runs — the cause of the
+  // the last node before the initial tier fit runs â€” the cause of the
   // "empty canvas until you click Center" bug on a cold-open `?src=` load.
   const hasInitiallyFitRef = useRef(false);
 
@@ -1164,10 +917,10 @@ function MinimalGraphInner({
       pendingFitViewRef.current = true;
       return;
     }
-    // Same node set — merge fresh `data` and `type` into existing nodes so
+    // Same node set â€” merge fresh `data` and `type` into existing nodes so
     // updates that don't change node identity (e.g. color-mode toggle, draft
-    // → stable transitions, authored-flag updates) take effect without
-    // discarding the user's drag-positioned coordinates. ADR-030 §D4.
+    // â†’ stable transitions, authored-flag updates) take effect without
+    // discarding the user's drag-positioned coordinates. ADR-030 Â§D4.
     const layoutNodeMap = new Map(layoutedDisplayNodes.map((n) => [n.id, n]));
     setInteractiveNodes((prev) =>
       prev.map((node) => {
@@ -1207,7 +960,7 @@ function MinimalGraphInner({
   }, [baseDisplayNodes, traceResult.nodes]);
 
   // momentCount = raw L1 total, shown as a size signal in the count readout.
-  // Suppressed when L1 is the active tier (else it reads "134 moments · 134 moments").
+  // Suppressed when L1 is the active tier (else it reads "134 moments Â· 134 moments").
   const momentCount = useMemo(
     () => normalizedChunk.filter((n) => getAuthoredSemanticLevel(n) === 1).length,
     [normalizedChunk],
@@ -1218,7 +971,7 @@ function MinimalGraphInner({
     : (semanticTierSpec?.label || "nodes");
   const semanticCountLabel = `${displayNodes.length} ${semanticTierWord}`
     + (effectiveView?.level !== 1 && momentCount > 0
-      ? ` · ${momentCount} moment${momentCount === 1 ? "" : "s"}`
+      ? ` Â· ${momentCount} moment${momentCount === 1 ? "" : "s"}`
       : "");
 
   const displayEdgesWithTrace = useMemo(() => {
@@ -1237,14 +990,14 @@ function MinimalGraphInner({
   }, [displayEdges, traceResult.edges]);
 
   // Run fitView after React has committed the new nodes to DOM and ReactFlow
-  // has measured their positions. A single rAF isn't enough — ReactFlow's
+  // has measured their positions. A single rAF isn't enough â€” ReactFlow's
   // nodeInternals lags one render cycle on tab switches, so fitView with
   // no caps produces nonsense viewport (e.g. scale=1 + huge negative y).
   // Two rAFs + explicit minZoom/maxZoom caps fix tab-switch auto-fit.
   //
   // Mobile (<640px viewport): the swim-lane layout produces 6 themes
   // across ~1680px. fitView with minZoom=0.04 squishes them all into
-  // 360px at ~0.21 zoom — unreadable. Clamp minZoom higher on narrow
+  // 360px at ~0.21 zoom â€” unreadable. Clamp minZoom higher on narrow
   // viewports so cards stay legible; the user pans to see more rather
   // than zooming out to nothing.
   useEffect(() => {
@@ -1252,7 +1005,7 @@ function MinimalGraphInner({
     if (!pendingFitViewRef.current || displayNodes.length === 0) return;
     // NB: do NOT consume pendingFitViewRef here. If the node set changes again
     // before the rAFs fire (e.g. a tier flip on cold open), this effect's
-    // cleanup cancels them — consuming early would lose the fit entirely and
+    // cleanup cancels them â€” consuming early would lose the fit entirely and
     // strand the camera. We consume only after the fit actually commits.
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
@@ -1265,7 +1018,7 @@ function MinimalGraphInner({
           // clamped, center the bbox so the first rows end up above
           // the viewport top. Instead, anchor top-left of the node
           // bbox at the top-left of the viewport at a readable zoom
-          // — same logic as the "Center" preset button. User pans to
+          // â€” same logic as the "Center" preset button. User pans to
           // see the rest.
           let minX = Infinity, minY = Infinity;
           displayNodes.forEach((n) => {
@@ -1318,8 +1071,8 @@ function MinimalGraphInner({
 
       const liveNode = reactFlow.getNode(nodeId);
       // Fall back to the CURRENTLY DISPLAYED tier's layout, not the
-      // chunk-level `layoutedNodes`. A node shown at the arcs tier (y≈130)
-      // also exists in the chunk dagre at y≈17000+; centering on that stale
+      // chunk-level `layoutedNodes`. A node shown at the arcs tier (yâ‰ˆ130)
+      // also exists in the chunk dagre at yâ‰ˆ17000+; centering on that stale
       // coordinate parks the camera off-screen. `layoutedDisplayNodes` is the
       // tier the user is actually looking at (and equals `layoutedNodes` in
       // legacy mode), so this is strictly the correct-or-equal source.
@@ -1356,14 +1109,14 @@ function MinimalGraphInner({
   const handleMoveEnd = useCallback((_event, viewport) => {
     if (viewport?.zoom != null) setZoomLevel(viewport.zoom);
     if (programmaticMoveRef.current) return;
-    userOverrodeTierRef.current = true; // genuine user pan/zoom — they're driving now
+    userOverrodeTierRef.current = true; // genuine user pan/zoom â€” they're driving now
     if (autoFollowRef.current) {
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
   }, []);
 
-  // Also sync on mount — fitView doesn't fire onMoveEnd
+  // Also sync on mount â€” fitView doesn't fire onMoveEnd
   useEffect(() => {
     const timer = setTimeout(() => {
       const vp = reactFlow.getViewport();
@@ -1383,7 +1136,7 @@ function MinimalGraphInner({
     // auto-pan fires before the initial fitView and parks the camera ~17000px
     // off-screen (empty canvas until "Center"). Every tier/drill handler
     // already clears auto-follow for this reason; this covers the one path
-    // they missed — the very first load.
+    // they missed â€” the very first load.
     if (!hasInitiallyFitRef.current) return;
     const last = layoutedDisplayNodes[layoutedDisplayNodes.length - 1];
     if (!last?.id) return;
@@ -1494,7 +1247,7 @@ function MinimalGraphInner({
       // Keep the user's current zoom and anchor the camera so the TOP-LEFT
       // of the node bounding box lines up with the top-left of the viewport
       // (with a small padding). fitView's previous behavior recomputed zoom
-      // AND centered on the bbox centroid — on tall wrapped layouts (147
+      // AND centered on the bbox centroid â€” on tall wrapped layouts (147
       // ideas in a swim-lane) the centroid was visually empty between
       // column groups, putting the camera in negative space.
       const nodes = displayNodes;
@@ -1539,7 +1292,7 @@ function MinimalGraphInner({
           <span className="max-w-[260px] truncate text-amber-700">
             {normalizedChunk.find((n) => n.id === argumentTraceFrom)?.node_name || "node"}
           </span>
-          <span className="text-amber-400">·</span>
+          <span className="text-amber-400">Â·</span>
           <span className="text-amber-600">
             {traceResult.nodes ? `${traceResult.nodes.size - 1} ancestors` : "0 ancestors"}
           </span>
@@ -1590,7 +1343,7 @@ function MinimalGraphInner({
 
       {/* Zoom preset + graph display controls. Center stays out front (the
           recovery action); the secondary view toggles collapse behind a
-          "Display" disclosure so the resting canvas stays calm (ADR-011) — a
+          "Display" disclosure so the resting canvas stays calm (ADR-011) â€” a
           first-time recipient sees Center + Display, not a six-control cockpit.
           Native <details> keeps it keyboard-accessible with no extra state. */}
       <div className="absolute bottom-4 left-4 z-40 flex items-center gap-1">
@@ -1676,7 +1429,7 @@ function MinimalGraphInner({
               {hideEdges ? "Edges off" : "Edges on"}
             </button>
             {/* ADR-032 Part C: temporal edges hidden by default. The spatial
-                X position of nodes already encodes time — rendering temporal
+                X position of nodes already encodes time â€” rendering temporal
                 arrows on top is redundant. Toggle on if you want to see the
                 successor chain explicitly. */}
             <button
@@ -1703,367 +1456,42 @@ function MinimalGraphInner({
         </details>
       </div>
 
-      {/* Zoom / cluster HUD — top-left */}
-      <div className="absolute top-3 left-3 right-3 z-40 flex items-center gap-2 select-none overflow-x-auto flex-nowrap whitespace-nowrap">
-        <div className="flex-shrink-0 flex items-center gap-1.5 rounded-md bg-white/95 border border-gray-200 shadow-sm px-2.5 py-1.5">
-          <span className="text-[10px] font-mono text-gray-500">{Math.round(zoomLevel * 100)}%</span>
-          <span className="text-[9px] text-gray-300">|</span>
-          {clusterLevelLabel ? (
-            <>
-              <span className={`text-[10px] font-semibold ${
-                displayMode === "semantic"
-                  ? (AUTHORED_LEVELS.find((spec) => spec.level === effectiveSemanticLevel)?.color || "text-blue-600")
-                  : effectiveClusterLevel === 3
-                  ? "text-purple-600"
-                  : effectiveClusterLevel === 2
-                  ? "text-blue-600"
-                  : "text-teal-600"
-              }`}>
-                {clusterLevelLabel}
-              </span>
-              <span className="text-[10px] text-gray-500">
-                {displayMode === "semantic"
-                  ? semanticCountLabel
-                  : `${displayNodes.length} clusters · ${normalizedChunk.length} nodes`}
-              </span>
-              {lockedLevel != null && (
-                <span className="text-[9px] text-amber-500 ml-1">locked</span>
-              )}
-            </>
-          ) : (
-            <span className="text-[10px] text-gray-500">
-              {normalizedChunk.length} nodes · {displayEdges.length} edges
-              {lockedLevel != null && (
-                <span className="text-[9px] text-amber-500 ml-1">locked</span>
-              )}
-            </span>
-          )}
-        </div>
-        {/* Drill-down breadcrumb — click any crumb to jump back to that level. */}
-        {drilldownPath.length > 0 && (
-          <div className="flex-shrink-0 flex items-center gap-1.5 text-[11px] text-gray-600 bg-white/95 border border-gray-200 shadow-sm rounded-md px-2 py-1">
-            <button
-              type="button"
-              className="flex items-center gap-1 rounded bg-gray-100 border border-gray-300 px-2 py-0.5 font-semibold text-gray-700 hover:bg-gray-200 hover:text-gray-900 cursor-pointer"
-              onClick={() => {
-                autoFollowRef.current = false;
-                setDrilldownPath((prev) => prev.slice(0, -1));
-              }}
-              title="Back up one level (Esc)"
-            >
-              <span aria-hidden="true">←</span> Back
-            </button>
-            <button
-              type="button"
-              className="text-blue-600 hover:underline font-medium cursor-pointer"
-              onClick={() => {
-                autoFollowRef.current = false;
-                setDrilldownPath([]);
-              }}
-              title="Jump back to the top tier"
-            >
-              {AUTHORED_LEVELS.find((spec) => spec.level === (lockedLevel ?? drilldownPath[0]?.level))?.label || "top"}
-            </button>
-            {drilldownPath.map((crumb, idx) => (
-              <span key={`${crumb.nodeId}-${idx}`} className="flex items-center gap-1">
-                <span className="text-gray-500">/</span>
-                <button
-                  type="button"
-                  className={
-                    idx === drilldownPath.length - 1
-                      ? "text-gray-900 font-medium cursor-default"
-                      : "text-blue-600 hover:underline cursor-pointer"
-                  }
-                  onClick={() => {
-                    if (idx === drilldownPath.length - 1) return;
-                    autoFollowRef.current = false;
-                    setDrilldownPath((prev) => prev.slice(0, idx + 1));
-                  }}
-                  title={crumb.nodeName}
-                >
-                  {crumb.nodeName.length > 28 ? `${crumb.nodeName.slice(0, 28)}…` : crumb.nodeName}
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        {/* Zoom scale — click to lock semantic or clustered level, click again to unlock */}
-        <div className="flex-shrink-0 flex items-center gap-0 rounded-md bg-white/95 border border-gray-200 shadow-sm overflow-hidden">
-          {(displayMode === "semantic"
-            ? AUTHORED_LEVELS
-            : [
-                { label: "nodes", level: 0, chip: "bg-gray-100", border: "border-gray-400", color: "text-gray-700" },
-                { label: "sentences", level: 1, chip: "bg-teal-50", border: "border-teal-400", color: "text-teal-700" },
-                { label: "topics", level: 2, chip: "bg-blue-50", border: "border-blue-400", color: "text-blue-700" },
-                { label: "themes", level: 3, chip: "bg-purple-50", border: "border-purple-400", color: "text-purple-700" },
-              ]
-          ).map(({ label, level, chip, border, color }) => {
-            const isActive = displayMode === "semantic"
-              ? effectiveSemanticLevel === level
-              : legacyClusterLevel === level;
-            const isLocked = lockedLevel === level;
-            return (
-              <button
-                key={label}
-                onClick={() => {
-                  // Explicit tier selection is a camera intent — disable
-                  // auto-follow so the fitView triggered by the layout change
-                  // isn't overridden by the autoFollow setCenter(zoom=1).
-                  autoFollowRef.current = false;
-                  setAutoFollow(false);
-                  userOverrodeTierRef.current = true; // user picked a tier — stop forcing the landing tier
-                  mglog("tier button click", { clickedLevel: level, label, prevLockedLevel: lockedLevel, displayMode, willUnlock: lockedLevel === level, drillDepth: drilldownPath.length });
-                  // Going DEEPER while drilled into a node = scope the tier to
-                  // that node's subtree (keep the drill so scopedTierView filters
-                  // to its descendants). Otherwise (no drill, or same/higher
-                  // tier) switch to the full global tier.
-                  const tailLevel = drilldownPath.length
-                    ? drilldownPath[drilldownPath.length - 1].level
-                    : null;
-                  if (!(tailLevel != null && level < tailLevel)) {
-                    setDrilldownPath([]);
-                  }
-                  if (lockedLevel === level) {
-                    setLockedLevel(null); // unlock
-                  } else {
-                    setLockedLevel(level); // lock to this level
-                  }
-                }}
-                title={isLocked ? `Locked to ${label} — click to unlock` : `Click to lock at ${label} level`}
-                className={`px-2 py-1 text-[9px] font-medium transition-colors cursor-pointer ${
-                  isActive
-                    ? `${chip} ${color} border-b-2 ${border}`
-                    : isLocked
-                    ? `${chip} ${color} border-b-2 border-dashed ${border}`
-                    : "text-gray-500 hover:text-gray-600 hover:bg-gray-50"
-                }`}
-              >
-                {label}{isLocked ? " \u{1F512}" : ""}
-              </button>
-            );
-          })}
-        </div>
-        {lockedLevel != null && (
-          <button
-            onClick={() => setLockedLevel(null)}
-            className="text-[9px] text-gray-500 hover:text-gray-600 ml-1"
-            title="Unlock zoom level"
-          >
-            unlock
-          </button>
-        )}
-      </div>
+      <MinimalGraphHud
+        zoomLevel={zoomLevel}
+        clusterLevelLabel={clusterLevelLabel}
+        displayMode={displayMode}
+        effectiveSemanticLevel={effectiveSemanticLevel}
+        effectiveClusterLevel={effectiveClusterLevel}
+        displayNodes={displayNodes}
+        displayEdges={displayEdges}
+        normalizedChunk={normalizedChunk}
+        lockedLevel={lockedLevel}
+        semanticCountLabel={semanticCountLabel}
+        drilldownPath={drilldownPath}
+        setDrilldownPath={setDrilldownPath}
+        legacyClusterLevel={legacyClusterLevel}
+        autoFollowRef={autoFollowRef}
+        setAutoFollow={setAutoFollow}
+        userOverrodeTierRef={userOverrodeTierRef}
+        setLockedLevel={setLockedLevel}
+      />
 
-      {/* Edge hover tooltip — transient, top-right */}
-      {hoveredEdge && !clickedEdge && (
-        <div className="absolute top-4 right-4 z-30 max-w-xs rounded-md bg-white/95 px-3 py-2 text-xs text-gray-700 shadow-sm border border-gray-200 pointer-events-none">
-          <span className="font-medium capitalize">{hoveredEdge.relationType}</span>
-          {hoveredEdge.relationText && (
-            <p className="mt-0.5 text-gray-500 line-clamp-2">{hoveredEdge.relationText}</p>
-          )}
-          <p className="mt-1 text-[10px] text-gray-500">click to pin</p>
-        </div>
-      )}
+      <MinimalGraphPanels
+        hoveredEdge={hoveredEdge}
+        clickedEdge={clickedEdge}
+        setClickedEdge={setClickedEdge}
+        selectedCluster={selectedCluster}
+        selectedClusterMembers={selectedClusterMembers}
+        setSelectedCluster={setSelectedCluster}
+        setLockedLevel={setLockedLevel}
+        setSelectedNode={setSelectedNode}
+        normalizedChunk={normalizedChunk}
+        displayMode={displayMode}
+        effectiveSemanticLevel={effectiveSemanticLevel}
+        effectiveClusterLevel={effectiveClusterLevel}
+        speakerColorMap={speakerColorMap}
+      />
 
-      {/* Edge click detail panel — pinned, bottom-right */}
-      {clickedEdge && (
-        <div className="absolute bottom-14 right-4 z-30 w-72 rounded-lg bg-white border border-gray-200 shadow-lg px-4 py-3 text-xs text-gray-700">
-          <div className="flex items-start justify-between gap-2 mb-2">
-            <span className="font-semibold text-gray-900 capitalize leading-tight">
-              {clickedEdge.relationType?.replace(/_/g, " ")}
-            </span>
-            <button
-              onClick={() => setClickedEdge(null)}
-              className="text-gray-500 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
-              aria-label="Dismiss"
-            >
-              ✕
-            </button>
-          </div>
-          {(clickedEdge.sourceLabel || clickedEdge.targetLabel) && (
-            <p className="text-[10px] text-gray-500 mb-2 truncate">
-              {clickedEdge.sourceLabel}
-              <span className="mx-1">→</span>
-              {clickedEdge.targetLabel}
-            </p>
-          )}
-          {clickedEdge.relationText ? (
-            <p className="leading-relaxed text-gray-600">{clickedEdge.relationText}</p>
-          ) : (
-            <p className="text-gray-500 italic">No relation detail available.</p>
-          )}
-        </div>
-      )}
-
-      {/* Cluster detail panel — shows member nodes when a cluster is clicked */}
-      {selectedCluster && selectedClusterMembers.length > 0 && (
-        <div className="absolute top-14 right-4 z-30 w-80 max-h-[60vh] rounded-lg bg-white border border-gray-200 shadow-lg text-xs text-gray-700 overflow-hidden flex flex-col">
-          <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-gray-100 shrink-0">
-            <div>
-              <span className="font-semibold text-gray-900 text-sm leading-tight block">
-                {selectedCluster.label}
-              </span>
-              <span className="text-[10px] text-gray-500 mt-0.5 block">
-                {selectedClusterMembers.length} nodes in this cluster
-              </span>
-            </div>
-            <button
-              onClick={() => setSelectedCluster(null)}
-              className="text-gray-500 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
-              aria-label="Dismiss"
-            >
-              ✕
-            </button>
-          </div>
-          <div className="overflow-y-auto px-4 py-2 flex-1">
-            {selectedClusterMembers.map((node, i) => (
-              <div
-                key={node.id}
-                className="py-2 border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 -mx-1 px-1 rounded"
-                onClick={() => {
-                  // Drill down: lock to nodes level and select this node
-                  setLockedLevel(0);
-                  setSelectedNode(node.id);
-                  setSelectedCluster(null);
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-[9px] text-gray-300 font-mono w-4 shrink-0">{i + 1}</span>
-                  <span className="font-medium text-gray-800 truncate">{node.node_name}</span>
-                </div>
-                {node.source_excerpt && (
-                  <p className="text-[10px] text-gray-500 mt-0.5 ml-6 line-clamp-2">{node.source_excerpt}</p>
-                )}
-                {node.summary && !node.source_excerpt && (
-                  <p className="text-[10px] text-gray-500 mt-0.5 ml-6 line-clamp-2">{node.summary}</p>
-                )}
-                <div className="flex gap-2 mt-1 ml-6">
-                  {(node.speaker_display || node.speaker_id) && (
-                    <span className="text-[9px] text-gray-500">speaker: {node.speaker_display || node.speaker_id}</span>
-                  )}
-                  {node.edge_relations?.length > 0 && (
-                    <span className="text-[9px] text-gray-500">{node.edge_relations.length} edges</span>
-                  )}
-                  {node.thread_state && node.thread_state !== "continue_thread" && (
-                    <span className="text-[9px] text-blue-400">{node.thread_state.replace(/_/g, " ")}</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Context-sensitive color legend — adapts to current zoom level.
-          Pinned bottom-LEFT (away from the SPEAKERS panel / edge-detail / cluster
-          panels that all live bottom-right). The tooltip opens upward from the
-          icon's LEFT edge, extending rightward into empty canvas space. */}
-      {normalizedChunk.length > 0 && (
-        <div className="absolute bottom-4 left-40 z-40">
-          <details className="group">
-            <summary className="cursor-pointer list-none flex items-center gap-1.5 px-2.5 py-1.5 bg-white/85 hover:bg-white/95 rounded-full shadow-sm border border-gray-200 text-gray-500 hover:text-gray-700 transition opacity-80 hover:opacity-100 text-[10px] font-medium">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 16v-4M12 8h.01" />
-              </svg>
-              Colors
-            </summary>
-            <div className="absolute bottom-full left-0 mb-2 bg-white/95 rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-2 min-w-[180px] animate-slideIn">
-              {displayMode === "semantic" ? (
-                <>
-                  <div>
-                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Current semantic level</span>
-                    <div className="mt-1 text-[11px] text-gray-600">
-                      {AUTHORED_LEVELS.find((spec) => spec.level === effectiveSemanticLevel)?.label || "authored"}
-                    </div>
-                    <div className="mt-1 text-[10px] text-gray-500 leading-tight">
-                      This view is using backend-authored hierarchy, not frontend clustering.
-                    </div>
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Node color = Speaker / temporal palette</span>
-                    <div className="mt-1 text-[10px] text-gray-500 leading-tight">
-                      Speaker colors appear when multiple speakers are detected. Otherwise colors fade by temporal position.
-                    </div>
-                  </div>
-                </>
-              ) : effectiveClusterLevel === 0 ? (
-                <>
-                  <div>
-                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Node color = Speaker</span>
-                    <div className="mt-1 space-y-1">
-                      {Object.entries(speakerColorMap).slice(0, 5).map(([sid, color]) => (
-                        <div key={sid} className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full border border-gray-300" style={{ backgroundColor: color }} />
-                          <span className="text-gray-600">{sid}</span>
-                        </div>
-                      ))}
-                      {Object.keys(speakerColorMap).length === 0 && (
-                        <span className="text-gray-500 italic">No speakers detected</span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Edge color = Relation</span>
-                    <div className="mt-1 space-y-1">
-                      {[
-                        { label: "supports", color: EDGE_COLORS.supports },
-                        { label: "rebuts", color: EDGE_COLORS.rebuts },
-                        { label: "clarifies", color: EDGE_COLORS.clarifies },
-                        { label: "tangent", color: EDGE_COLORS.tangent },
-                        { label: "temporal", color: EDGE_COLORS.temporal_next },
-                      ].map(({ label, color }) => (
-                        <div key={label} className="flex items-center gap-2">
-                          <div className="w-4 h-0.5" style={{ backgroundColor: color }} />
-                          <span className="text-gray-600">{label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Node color = Wavelength Rainbow</span>
-                    <div className="mt-2 flex flex-col gap-1">
-                      <div 
-                        className="h-2 w-full rounded-full" 
-                        style={{ background: 'linear-gradient(to right, hsl(0, 75%, 88%), hsl(140, 75%, 88%), hsl(280, 75%, 88%))' }}
-                      />
-                      <div className="flex justify-between text-[9px] text-gray-500 font-mono uppercase tracking-tight">
-                        <span>Start</span>
-                        <span>Now</span>
-                      </div>
-                    </div>
-                    <div className="mt-2 text-[10px] text-gray-500 leading-tight">
-                      Nodes stretch across the spectrum as the conversation grows. Labels update to speaker colors after ~2 mins.
-                    </div>
-                  </div>
-                  <div>
-                    <span className="font-medium text-gray-500 uppercase tracking-wider text-[10px]">Edge color = Agreement</span>
-                    <div className="mt-1 space-y-1">
-                      {[
-                        { label: "supports / agrees", color: EDGE_COLORS.supports },
-                        { label: "rebuts / disagrees", color: EDGE_COLORS.rebuts },
-                        { label: "clarifies", color: EDGE_COLORS.clarifies },
-                        { label: "temporal flow", color: EDGE_COLORS.temporal_next },
-                      ].map(({ label, color }) => (
-                        <div key={label} className="flex items-center gap-2">
-                          <div className="w-4 h-0.5" style={{ backgroundColor: color }} />
-                          <span className="text-gray-600">{label}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="text-[10px] text-gray-500">
-                    Edge thickness = number of connections between clusters
-                  </div>
-                </>
-              )}
-            </div>
-          </details>
-        </div>
-      )}
     </div>
   );
 }

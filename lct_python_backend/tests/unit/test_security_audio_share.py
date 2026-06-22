@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
+from lct_python_backend import auth_policy as auth
 from lct_python_backend.services.audio_storage import AudioStorageManager
-from lct_python_backend import middleware
 
 
 def _mgr():
@@ -77,11 +77,11 @@ def test_validate_conversation_id_rejects_traversal():
 # ── 2. share DELETE auth bypass ──────────────────────────────────────────────
 
 def test_public_share_is_get_only():
-    assert middleware._is_public_share("/api/share/tok", "GET") is True
-    assert middleware._is_public_share("/api/share/tok/audio", "GET") is True
+    assert auth.is_public_share("/api/share/tok", "GET") is True
+    assert auth.is_public_share("/api/share/tok/audio", "GET") is True
     # the bug: DELETE / POST / PUT under /api/share/ must NOT be public
-    assert middleware._is_public_share("/api/share/tok", "DELETE") is False
-    assert middleware._is_public_share("/api/share/tok", "POST") is False
-    assert middleware._is_public_share("/api/share/tok", "PUT") is False
+    assert auth.is_public_share("/api/share/tok", "DELETE") is False
+    assert auth.is_public_share("/api/share/tok", "POST") is False
+    assert auth.is_public_share("/api/share/tok", "PUT") is False
     # non-share paths are never public-share
-    assert middleware._is_public_share("/api/conversations/x", "GET") is False
+    assert auth.is_public_share("/api/conversations/x", "GET") is False
