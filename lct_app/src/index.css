@@ -38,31 +38,6 @@
   50%      { opacity: 0.95; }
 }
 
-/* Call-to-action flash for the Home Import button. Loops a soft amber
-   ring + 8% scale every 1.8s so the operator notices upload is a real
-   option (the button used to be styled as disabled). Eye-catching
-   without being aggressive — the rest of Home stays calm. */
-@keyframes lctCtaFlash {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
-  }
-  50% {
-    transform: scale(1.08);
-    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.22);
-  }
-}
-
-.animate-lct-cta-flash {
-  animation: lctCtaFlash 1.8s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-lct-cta-flash {
-    animation: none;
-  }
-}
-
 /* Focus / canvas-only mode: hide every absolute-positioned graph chrome control
    (toolbar, zoom selector, breadcrumb, panels) but keep the ReactFlow canvas and
    its nodes. `>` so only direct chrome children are hidden, not ReactFlow's own
