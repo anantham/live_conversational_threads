@@ -49,6 +49,11 @@ WEBHOOK_SIGNATURE_HEADER = "X-Webhook-Signature"
 
 # Per-webhook signing secret (base64) from Attendee's Settings -> Webhooks.
 ATTENDEE_WEBHOOK_SECRET: Optional[str] = env_str_or_none("ATTENDEE_WEBHOOK_SECRET")
+# The webhook is exempt from bearer-auth + rate limiting (it authenticates via
+# HMAC in-handler). So when no secret is configured we FAIL CLOSED by default —
+# otherwise the endpoint is an unauthenticated transcript-injection surface.
+# Only this explicit opt-in restores the unsigned/dev behavior (local testing).
+ATTENDEE_ALLOW_UNSIGNED_WEBHOOK: bool = env_bool("ATTENDEE_ALLOW_UNSIGNED_WEBHOOK", False)
 # "custom_async" (self-hosted STT via the shim) or "closed_captions" (Meet's own
 # captions — zero extra infra, proven fallback). Default: self-hosted.
 ATTENDEE_TRANSCRIPTION_MODE: str = env_str("ATTENDEE_TRANSCRIPTION_MODE", "custom_async").strip().lower()
@@ -96,6 +101,9 @@ def _build_bot_settings() -> Dict[str, Any]:
     webhooks); the project-level webhook handles delivery.
     """
     if ATTENDEE_TRANSCRIPTION_MODE == "closed_captions":
+        # Do NOT record a meeting MP3: its only consumer was the slow-pass, which
+        # is not shipped (audit A4). Recording a full audio file nobody uses is a
+        # needless privacy/storage cost; closed-captions mode needs no local audio.
         return {
             "transcription_settings": {
                 "meeting_closed_captions": {"google_meet_language": f"{ATTENDEE_STT_LANGUAGE}-US"}
@@ -117,10 +125,22 @@ def _verify_signature(raw_body: bytes, signature_header: Optional[str]) -> bool:
     Canonicalization MUST match Attendee exactly: json.dumps(payload,
     sort_keys=True, ensure_ascii=False, separators=(",", ":")), and the stored
     secret is base64 and must be DECODED before HMAC. When no secret is
-    configured, verification is skipped (dev mode).
+    configured we FAIL CLOSED (reject) unless ATTENDEE_ALLOW_UNSIGNED_WEBHOOK=1
+    is set for local dev — the route bypasses bearer-auth/rate-limiting, so an
+    unset secret would otherwise leave it open to unauthenticated injection.
     """
     if not ATTENDEE_WEBHOOK_SECRET:
-        return True
+        if ATTENDEE_ALLOW_UNSIGNED_WEBHOOK:
+            logger.warning(
+                "[attendee] accepting UNSIGNED webhook — ATTENDEE_WEBHOOK_SECRET unset "
+                "and ATTENDEE_ALLOW_UNSIGNED_WEBHOOK=1 (dev only; never in production)"
+            )
+            return True
+        logger.error(
+            "[attendee] refusing webhook: ATTENDEE_WEBHOOK_SECRET not configured "
+            "(set the signing secret, or ATTENDEE_ALLOW_UNSIGNED_WEBHOOK=1 for local dev)"
+        )
+        return False
     if not signature_header:
         return False
     try:
@@ -143,6 +163,7 @@ async def health() -> Dict[str, Any]:
         "attendee_configured": attendee_client.is_configured(),
         "transcription_mode": ATTENDEE_TRANSCRIPTION_MODE,
         "webhook_secret_set": bool(ATTENDEE_WEBHOOK_SECRET),
+        "unsigned_webhook_allowed": bool(ATTENDEE_ALLOW_UNSIGNED_WEBHOOK and not ATTENDEE_WEBHOOK_SECRET),
     }
 
 
@@ -203,6 +224,11 @@ async def create_meeting(req: CreateMeetingRequest):
         }
 
     settings = _build_bot_settings()
+    # NO inline webhooks here: Attendee forces https:// on inline create-bot
+    # webhooks (serializers ^https://.*), and our receiver is plain http on the
+    # LAN. Delivery is handled by the PROJECT-level webhook registered in the
+    # Attendee dashboard (http allowed via REQUIRE_HTTPS_WEBHOOKS=false); every
+    # event carries bot_id so the bridge routes it. See docs/attendee-meeting-bot-setup.md.
     try:
         bot = await attendee_client.create_bot(
             meeting_url=meeting_url,
@@ -275,7 +301,16 @@ async def attendee_webhook(request: Request):
                 recv_wall=recv_wall,
             )
         elif trigger == "bot.state_change":
-            await session.on_bot_state(data.get("new_state"), sub_type=data.get("event_sub_type"))
+            new_state = data.get("new_state")
+            await session.on_bot_state(new_state, sub_type=data.get("event_sub_type"))
+            
+            # Slow-pass (high-fidelity MP3 re-transcription) is intentionally NOT
+            # wired up. The prototype DESTRUCTIVELY overwrote live utterance text
+            # (audit A4) and decision B requires a review-gated transcript-revision
+            # flow first. No auto-trigger ships until that exists — when it does,
+            # enqueue the NON-destructive revision build here (not the old in-place
+            # patch), and gate any meeting-audio recording behind the same path.
+
         else:
             logger.debug("[attendee] ignoring webhook trigger=%s", trigger)
     except Exception as exc:  # noqa: BLE001
