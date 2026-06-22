@@ -210,6 +210,12 @@ async def transcribe_openai_audio_candidate(
     form_data: Dict[str, Any] = {
         "model": model,
         "response_format": response_format,
+        # Local OpenAI-compatible STT servers (the M5) key diarization off a plain
+        # `diarize` form field, not OpenAI's response_format/model gate. Send it so
+        # they diarize; the real OpenAI API ignores the extra multipart field and
+        # uses response_format instead. (Cloud OpenAI is refused under
+        # LCT_LOCAL_ONLY anyway, so in practice this path only hits local servers.)
+        "diarize": "true" if request_diarization else "false",
     }
     if request_diarization:
         form_data["chunking_strategy"] = "auto"
@@ -296,7 +302,11 @@ async def transcribe_openai_audio_candidate(
             )
         raise
     payload = _parse_response_payload(response)
-    segments = extract_openai_diarized_segments(payload) if request_diarization else None
+    # A local OpenAI-compatible server (the M5) may return whisperx-style diarized
+    # segments rather than OpenAI's shape, so fall back to the generic extractor.
+    segments = None
+    if request_diarization:
+        segments = extract_openai_diarized_segments(payload) or extract_diarized_segments(payload)
     text = extract_transcript_text(payload) or text_from_segments(segments)
     if TRACE_API_CALLS:
         logger.info(
