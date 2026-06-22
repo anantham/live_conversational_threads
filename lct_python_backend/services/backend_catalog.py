@@ -299,6 +299,17 @@ def _stt_observed(bucket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     }
 
 
+def _stt_provider_diarizes(stt_settings: Dict[str, Any]) -> bool:
+    """Whether the active STT provider returns speaker labels INLINE, so the
+    diarization card reads "via STT" instead of "no diarizer running". The
+    OpenAI-compatible transports (e.g. the M5) send diarize=true on every request;
+    the backend_http/whisper transport only does so under STT_DIARIZE_ENABLED."""
+    provider = _norm((stt_settings or {}).get("provider"))
+    if provider in ("openai_audio", "openrouter_audio"):
+        return True
+    return os.getenv("STT_DIARIZE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def _llm_observed(bucket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Shape a live LLM telemetry bucket into the catalog 'observed' block."""
     if not isinstance(bucket, dict):
@@ -368,10 +379,14 @@ def build_catalog(
         entry.pop("_README", None)
         return entry
 
+    stt_provides_diarization = _stt_provider_diarizes(stt_settings)
     for entry in stt_entries:
         bucket = stt_buckets.get(_norm(entry.get("provider_key"))) if entry.get("id") == active_stt else None
         decorate(entry, active_stt, _stt_observed(bucket) if bucket else None)
         entry["runnable"] = _simple_runnable(entry)
+        # Card shows "Speakers: via STT" when the ACTIVE STT diarizes inline (e.g.
+        # the M5 sends diarize=true) and no separate diarizer lane is running.
+        entry["provides_diarization"] = bool(entry.get("is_active") and stt_provides_diarization)
     for entry in llm_entries:
         bucket = llm_buckets.get(_norm(entry.get("provider_key"))) if entry.get("id") == active_llm else None
         decorate(entry, active_llm, _llm_observed(bucket) if bucket else None)
