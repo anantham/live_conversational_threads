@@ -64,6 +64,10 @@ def _make_app(env_overrides: dict = None):
         async def update_llm():
             return {"status": "updated"}
 
+        @app.post("/api/conversations/{conversation_id}/prayer-detect")
+        async def prayer_detect(conversation_id: str):
+            return {"conversation_id": conversation_id, "cards": []}
+
         @app.post("/api/import/from-url")
         async def import_from_url():
             return {"status": "imported"}
@@ -154,6 +158,25 @@ class TestAuthMiddleware:
             "/api/settings/llm",
             headers={"Authorization": "Bearer admin-secret"},
             json={"mode": "local"},
+        )
+        assert resp.status_code == 200
+
+    def test_admin_auth_protects_prayer_detect(self):
+        app = _make_app({"AUTH_TOKEN": "", "ADMIN_AUTH_TOKEN": "admin-secret"})
+        client = TestClient(app)
+        resp = client.post(
+            "/api/conversations/conv-abc/prayer-detect",
+            json={"source": "selection", "signal_text": "talk about budget"},
+        )
+        assert resp.status_code == 401
+
+    def test_admin_auth_accepts_prayer_detect_with_admin_token(self):
+        app = _make_app({"AUTH_TOKEN": "", "ADMIN_AUTH_TOKEN": "admin-secret"})
+        client = TestClient(app)
+        resp = client.post(
+            "/api/conversations/conv-abc/prayer-detect",
+            headers={"Authorization": "Bearer admin-secret"},
+            json={"source": "selection", "signal_text": "talk about budget"},
         )
         assert resp.status_code == 200
 

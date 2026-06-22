@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from google.cloud import storage
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -222,6 +221,8 @@ async def delete_conversation(
         if hard_delete:
             if conversation.gcs_path:
                 try:
+                    from google.cloud import storage
+
                     client = storage.Client()
                     bucket = client.bucket(GCS_BUCKET_NAME)
                     blob = bucket.blob(conversation.gcs_path)

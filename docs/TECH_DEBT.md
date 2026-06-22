@@ -89,14 +89,14 @@ From the 8-agent audit (`docs/AUDIT_RATIONALITY_2026-05-30.md`). Logged per CLAU
 - **Import-style split** — root-relative `from services/models` vs package `from lct_python_backend.*`; standardize (this is what makes `claim_api`/`argument_api` unimportable).
 - **FluidAudio runnable/planned coupling (honesty trap).** `services/backend_catalog.py` `_diar_runnable` short-circuits on `status=='planned'` before checking the URL; if FluidAudio's seed status ever flips to `available` before the sidecar ships, runnable becomes purely `bool(url)` and the default URL `127.0.0.1:5096` would falsely report runnable=true. Keep gated by a real liveness probe, not URL presence.
 
-## Known failing / non-running unit tests (filed 2026-05-31)
+## Known failing / non-running unit tests (filed 2026-05-31; amended 2026-06-20)
 
-All verified PRE-EXISTING (identical at merge-base `4e313f3` and `main` tip `2f99913`; not caused by the 2026-05-31 merge work). Full suite at tip: **1000 passed / 6 failed**. Detail + repro command in `docs/HANDOVER_2026-05-31_merge-to-main-and-feat-rebase-plan.md`.
+Historical baseline: merge-base `4e313f3` / tip `2f99913` — **1000 passed / 6 failed**. Detail in `docs/HANDOVER_2026-05-31_merge-to-main-and-feat-rebase-plan.md`.
 
-| Test | Failures | Root cause | Fix |
-|---|---|---|---|
-| 6 files: `test_canvas_api_converter`, `test_consumption_prayer_api`, `test_conversation_export_api`, `test_conversation_participants_api`, `test_gcs_helpers_save_fallback`, `test_thread_observability_api` | collection errors (don't run) | `google-cloud-storage` not installed (`ImportError: google.cloud.storage`) | `pip install google-cloud-storage` or stub it in a conftest; ~50–100 tests currently silently skipped |
-| `test_conversations_api_relationship_maps` | 2 | same missing `google.cloud.storage`, fails at run not collection | same as above |
-| `test_speaker_naming_api` | 2 | `GET /api/conversations/{id}/speakers` → 404: test app mounts `router` but not `router_conversations` | include the conversations router in the test fixture |
-| `test_transcript_processing_runtime::test_graph_timer_forces_update` | 1 | known "~69-test asyncio cross-pollution" (passes alone, fails in full-suite) | likely fixed by `feat` branch `a214644` (per-test event-loop isolation conftest); verify post-merge |
-| `test_transcript_processing_schema::test_normalize_generated_output_adds_required_defaults` | 1 | asserts `semantic_level==2` but code defaults `1` since `d5ca1ee` (2026-04-14) | align test or default to the intended value |
+| Test | Status (2026-06-20) | Notes |
+|---|---|---|
+| `test_conversation_export_api`, `test_conversation_participants_api`, `test_conversations_api_relationship_maps` | **fixed** | Top-level `from google.cloud import storage` removed from `conversations_api.py` (lazy import on hard-delete GCS path only); `gcs_helpers.py` was already lazy. |
+| `test_canvas_api_converter`, `test_consumption_prayer_api`, `test_gcs_helpers_save_fallback`, `test_thread_observability_api` | verify | May still need `google-cloud-storage` installed or conftest stub if they import GCS at collection time — re-run collection after `conversations_api` fix. |
+| `test_speaker_naming_api` | **fixed** | Fixture mounts `router_conversations`. |
+| `test_transcript_processing_schema::test_normalize_generated_output_adds_required_defaults` | **fixed** | Asserts `semantic_level==1` (matches `transcript_normalizer` default). |
+| `test_transcript_processing_runtime::test_graph_timer_forces_update` | open | Known asyncio event-loop cross-pollution in full suite (passes alone). |
