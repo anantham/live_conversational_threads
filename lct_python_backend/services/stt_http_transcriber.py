@@ -57,6 +57,13 @@ OPENROUTER_TRANSCRIPTION_PROMPT = (
 # --- Diarization feature flag ---
 STT_DIARIZE_ENABLED = env_bool("STT_DIARIZE_ENABLED", default=False)
 
+# --- Speaker embeddings feature flag ---
+# When on, the backend_http transport asks the local STT server for per-segment
+# ECAPA embeddings (include_embeddings=true). Implies diarization. Lets downstream
+# speaker-identity matching (ADR-022) use the 192-dim vectors instead of the
+# anonymous SPEAKER_NN labels. Default OFF — adds an embedding pass server-side.
+STT_EMBEDDINGS_ENABLED = env_bool("STT_EMBEDDINGS_ENABLED", default=False)
+
 # --- VAD + Pooling feature flags ---
 STT_VAD_ENABLED = env_bool("STT_VAD_ENABLED", default=False)
 STT_VAD_MIN_SECONDS = float(os.getenv("STT_VAD_MIN_SECONDS", "0.5"))
@@ -529,6 +536,7 @@ class RealtimeHttpSttSession:
             wav_payload,
             defaults=defaults,
             diarize_default=STT_DIARIZE_ENABLED,
+            embeddings_default=STT_EMBEDDINGS_ENABLED,
         )
 
     async def _transcribe_pcm(self, pcm_bytes: bytes) -> Tuple[str, Optional[List[Dict[str, Any]]]]:

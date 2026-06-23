@@ -130,12 +130,20 @@ async def transcribe_backend_http_candidate(
     *,
     defaults: SttSessionDefaults,
     diarize_default: bool = False,
+    embeddings_default: bool = False,
 ) -> Tuple[str, Optional[List[Dict[str, Any]]], bool]:
     http_url = str(candidate.get("http_url") or defaults.http_url or "").strip()
     model = str(candidate.get("model") or defaults.model or "").strip()
     language = str(candidate.get("language") or defaults.language or "").strip()
-    diarize_enabled = bool(candidate.get("request_diarization", diarize_default))
+    embeddings_enabled = bool(candidate.get("request_embeddings", embeddings_default))
+    # Speaker embeddings (ECAPA, ADR-022) need speaker turns, so the local STT
+    # server treats include_embeddings as implying diarization. Mirror that here so
+    # diarized segments — which carry the per-segment `embedding` — get parsed even
+    # if diarization wasn't explicitly requested.
+    diarize_enabled = bool(candidate.get("request_diarization", diarize_default)) or embeddings_enabled
     form_data: Dict[str, str] = {"diarize": "true" if diarize_enabled else "false"}
+    if embeddings_enabled:
+        form_data["include_embeddings"] = "true"
     if model:
         form_data["model"] = model
     if language:
@@ -143,7 +151,7 @@ async def transcribe_backend_http_candidate(
 
     if TRACE_API_CALLS:
         logger.info(
-            "[STT HTTP] POST %s provider=%s chunk_bytes=%s wav_bytes=%s model=%s language=%s diarize=%s",
+            "[STT HTTP] POST %s provider=%s chunk_bytes=%s wav_bytes=%s model=%s language=%s diarize=%s include_embeddings=%s",
             http_url,
             candidate.get("provider") or defaults.provider,
             len(pcm_bytes),
@@ -151,6 +159,7 @@ async def transcribe_backend_http_candidate(
             model or "-",
             language or "-",
             diarize_enabled,
+            embeddings_enabled,
         )
 
     # ADR-038 audio hard-gate (codex review, Bug 1): the generic backend HTTP STT
