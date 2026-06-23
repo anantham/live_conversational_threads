@@ -16,6 +16,12 @@ const DEFAULT_URL =
   import.meta.env.VITE_STT_EDGE_URL ||
   "https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions";
 
+// Only accept a runtime url override that is HTTPS on the tailnet (*.ts.net).
+// A free-form ?edge_url= would otherwise let a crafted link send mic audio to an
+// attacker endpoint (the M5 server sends permissive CORS), so reject anything else.
+const TS_HTTPS_RE = /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net(:\d+)?\//i;
+const isAllowedUrl = (u) => typeof u === "string" && TS_HTTPS_RE.test(u);
+
 function resolveStorage(storage) {
   if (storage) return storage;
   try {
@@ -47,11 +53,34 @@ export function readEdgeConfig(search = "", storage = undefined) {
     }
   };
 
+  // url: a validated query override (persisted), else a validated stored value,
+  // else the trusted default. Anything not HTTPS-on-tailnet is ignored.
   let url = DEFAULT_URL;
   try {
-    url = params.get("edge_url") || ls?.getItem(`${LS}_url`) || DEFAULT_URL;
+    const q = params.get("edge_url");
+    if (q && isAllowedUrl(q)) {
+      url = q;
+      try {
+        ls?.setItem(`${LS}_url`, q);
+      } catch {
+        /* session-only if storage is unavailable */
+      }
+    } else {
+      const stored = ls?.getItem(`${LS}_url`);
+      if (stored && isAllowedUrl(stored)) url = stored;
+    }
   } catch {
     /* keep default */
+  }
+
+  // Optional bearer for when the M5 endpoint is locked down (today it's
+  // unauthenticated on the trusted tailnet). Session-scoped via ?edge_token.
+  let token = "";
+  try {
+    token = params.get("edge_token") || ls?.getItem(`${LS}_token`) || "";
+    if (params.get("edge_token")) ls?.setItem(`${LS}_token`, token);
+  } catch {
+    /* token stays empty */
   }
 
   return {
@@ -59,5 +88,6 @@ export function readEdgeConfig(search = "", storage = undefined) {
     diarize: flag("edge_diarize", `${LS}_diarize`),
     includeEmbeddings: flag("edge_embeddings", `${LS}_embeddings`),
     url,
+    token,
   };
 }

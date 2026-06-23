@@ -40,8 +40,25 @@ describe("readEdgeConfig", () => {
     expect(cfg.includeEmbeddings).toBe(false);
   });
 
-  it("?edge_url overrides the endpoint", () => {
-    expect(readEdgeConfig("?edge_url=https://m5.example/v1", memStorage()).url).toBe("https://m5.example/v1");
+  it("accepts an https *.ts.net edge_url override and persists it", () => {
+    const store = memStorage();
+    const u = "https://other-host.tailABCD.ts.net:5443/v1/audio/transcriptions";
+    expect(readEdgeConfig(`?edge_url=${u}`, store).url).toBe(u);
+    expect(store.getItem("lct_stt_edge_url")).toBe(u);
+    expect(readEdgeConfig("", store).url).toBe(u); // sticks
+  });
+
+  it("REJECTS a non-tailnet/non-https edge_url (exfil guard) and keeps the default", () => {
+    const def = readEdgeConfig("", memStorage()).url;
+    expect(readEdgeConfig("?edge_url=https://evil.example/v1", memStorage()).url).toBe(def);
+    expect(readEdgeConfig("?edge_url=http://x.ts.net/v1", memStorage()).url).toBe(def); // not https
+    // a previously-stored bad value is also ignored
+    expect(readEdgeConfig("", memStorage({ lct_stt_edge_url: "https://evil.example/v1" })).url).toBe(def);
+  });
+
+  it("reads an optional ?edge_token (default empty)", () => {
+    expect(readEdgeConfig("", memStorage()).token).toBe("");
+    expect(readEdgeConfig("?edge_token=abc123", memStorage()).token).toBe("abc123");
   });
 
   it("survives unavailable storage", () => {
