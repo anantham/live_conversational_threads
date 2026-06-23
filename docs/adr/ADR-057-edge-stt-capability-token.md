@@ -1,65 +1,61 @@
 ---
 Date: 2026-06-23
-Status: **Proposed — design for review.** Prerequisite for ADR-056 Phase 1 (resolves its BLOCKING items #1 egress-gate preservation and #2 ingestion trust model). Nothing built. (ADR number provisional — renumber on merge.)
+Status: **Proposed — design for review. REVISED after a codex + grok dual-family SECURITY review (both REVISE; convergent).** Honest correction: this design **reduces blast radius but does NOT fully close** ADR-056 #2 (trust) — a fully-compromised M5 (a laptop) can still fabricate results for an authorized session. It does close #1 (egress) and shrink #2 to a documented residual. **An architectural fork (below) needs a human decision before build.** (ADR number provisional.)
 Group: Infra / Security / Live STT
-Related: ADR-056 (M5 edge STT — the topology this secures); ADR-034 (audio egress chokepoint — the policy this must keep Asus-owned); ADR-050 (fleet heartbeat/lease — the Asus↔M5 trust channel reused for key/credential provisioning); share-link auth (`attendee_api._verify_signature` — the existing HMAC pattern reused here); `middleware` AUTH_TOKEN (the bearer the client already holds).
+Related: ADR-056 (M5 edge STT topology); ADR-034 (audio egress chokepoint — kept Asus-owned); ADR-050 (fleet trust channel for key/credential provisioning); ADR-022 (ECAPA biometric embedding space — PII sign-off needed); share-link `_verify_signature` (existing HMAC, but see B below); `middleware` AUTH_TOKEN.
 ---
 
 # ADR-057: Edge-STT Capability Token & Trusted Result Delivery
 
-> ADR-056 moves live audio from **client → Asus → M5 → Asus** to **client → M5 direct**. That bypasses the ADR-034 server-side egress gate and would make the Asus ingest client-supplied transcripts + ECAPA **biometric** embeddings with no audio grounding. This ADR keeps the egress decision Asus-owned and prevents client injection, **reusing existing primitives** (AUTH_TOKEN bearer, the share-link HMAC signer, the fleet trust channel) rather than a new auth stack.
+> ADR-056 moves live audio to **client → M5 direct**, bypassing the ADR-034 egress gate and making the Asus ingest client-produced transcripts + ECAPA **biometric** embeddings. This ADR keeps the egress decision Asus-owned and shrinks the injection surface — but a dual-family security review established a hard truth: **the edge node is a laptop and therefore a weaker trust tier; no token scheme makes a compromised M5's fabricated biometrics impossible.** The design below reduces the blast radius; the residual risk is documented and gates a topology decision.
 
 ## Issue
-With client→M5-direct STT, two server-side guarantees disappear:
-1. **Egress (ADR-034):** today the Asus decides, per its policy, whether audio may leave for STT. A direct browser→M5 stream never passes that gate.
-2. **Trust:** today transcripts/embeddings are produced inside the trusted backend. If the client posts them, an authenticated-but-untrusted browser can inject arbitrary transcripts and **biometric speaker vectors** into the system of record (ADR-022 ECAPA space).
+Client→M5-direct STT removes two server-side guarantees: (1) the Asus's per-policy **egress** decision (ADR-034), and (2) production of transcripts/biometrics **inside the trusted backend**. Naively letting the client post results lets an untrusted browser inject. But pushing production to the M5 **moves**, not eliminates, the trust problem — the M5 is now the injector of concern.
 
-## Context — primitives already present
-- **AUTH_TOKEN** bearer enforced by `middleware` on all non-health endpoints; WS handshake auth via `check_ws_auth_message`. The client already holds it.
-- **HMAC signing pattern** already in use for share-links (`attendee_api._verify_signature` over a raw body). No new crypto stack needed.
-- **Server-side egress gate** `privacy_boundary.assert_audio_egress_allowed` (the ADR-034 chokepoint).
-- **M5 is a trusted fleet node** — it already authenticates to the Asus for `fleet-heartbeat` (capability reporting) and `fleet-lease`; that channel can carry the signing key + the M5's delivery credential.
+## Context — primitives present
+AUTH_TOKEN bearer (`middleware` + `check_ws_auth_message`); an HMAC signer (`_verify_signature`, share-links); the server-side egress gate (`privacy_boundary.assert_audio_egress_allowed`); the M5 as a fleet node (heartbeat/lease) — a channel for key/credential provisioning, but **a laptop**: lose/steal/compromise are in-scope threats.
 
 ## Decision
-A short-lived **capability token** minted by the Asus authorizes a single edge-STT session; the **M5 validates it before accepting audio**; the **M5 delivers results to the Asus server-to-server** (not via the client). Chosen variants (from ADR-056's open decisions): **(A) server-to-server result delivery, (B) shared-secret HMAC, (C) key/credential provisioned over the fleet channel** — each the lightest option reusing an existing primitive.
+A short-lived, **single-M5-bound, asymmetrically-signed** capability token authorizes one edge session; the M5 validates it before accepting audio; the M5 delivers results to the Asus **server-to-server** under a **per-session-scoped** credential; the Asus **re-verifies the full token and bounds/validates the payload** on ingest. Revised variants vs the first draft: **(A) server-to-server delivery — kept**; **(B) asymmetric signatures — CHANGED from shared-HMAC** (the review showed a shared secret on a laptop is indefensible: one exfil lets an attacker mint universally-accepted tokens — so the Asus signs with a private key and M5s hold only a **public verify key**); **(C) provision the public key + a per-session delivery credential over the fleet channel — kept**, with key-IDs and rotation.
 
-### Flow
-1. **Authorize — the egress gate becomes token issuance.** The `AUTH_TOKEN`-authenticated client requests an edge session (e.g. `POST /api/stt/edge-session {conversation_id}`). The Asus evaluates its **ADR-034 egress policy there**; if on-device M5 STT is permitted, it mints a token:
-   `{ v, conversation_id, session_id, stt_node:"m5", scope:"audio-stt", iat, exp (≈2–5 min), nonce }`,
-   **HMAC-signed** with `STT_EDGE_SIGNING_KEY` (same signer as share-links). The token **is** the egress authorization — the policy decision stays Asus-side. No token ⇒ no edge STT.
-2. **Gated audio → M5.** The client streams audio to the M5 (`:5443` Serve HTTPS) presenting the token (first WS message / header). The **M5 validates before accepting any audio byte**: signature (shared key), `exp`, `scope=="audio-stt"`, `stt_node=="m5"`, and a one-use **nonce** check (replay). Invalid/expired/absent ⇒ refuse. This re-instates the ADR-034 chokepoint at the M5 under Asus control.
-3. **Trusted result delivery.** The M5 transcribes, then **(a)** returns the transcript to the client for **immediate display** (the ADR-056 latency win), and **(b)** posts the authoritative transcript + segments + ECAPA embeddings to the Asus **server-to-server** (M5 → `asus-strix-scar.tail4741ad.ts.net`), authenticated as the **M5 fleet node** and echoing the session token. The Asus **accepts live results for a `session_id` only from the authorized M5**, keyed to the token's `conversation_id` — **never from the client**.
-4. **Persist/graph** Asus-side from the M5-delivered result (authority unchanged).
+### Flow (hardened)
+1. **Authorize (= the ADR-034 egress decision).** The AUTH_TOKEN-authenticated client requests an edge session. The Asus applies its egress policy and, **under per-user + per-conversation rate limits (one active session per conversation)**, mints a token signed with its **private key**:
+   `{ v, kid, iss, aud, sub(user), conversation_id, session_id, assigned_m5_node_id, scope:"audio-stt", iat, exp(≈2–5m), nonce }`.
+   The Asus **records the issued (session_id, assigned_m5_node_id, nonce)** for ingest-time matching and DoS bounding.
+2. **Gated audio → M5.** Client streams to the assigned M5 (`:5443` Serve HTTPS) presenting the token (header/first-message only, never URL/log). The M5 verifies with the **public key**: signature, `kid`, `iss/aud`, `exp`, **bounded clock skew** (reject future `iat`, cap `exp−iat`, monotonic deadline after accept), `scope`, and **`assigned_m5_node_id == self`** (reject tokens addressed to another node), plus WS **Origin** check. No/invalid ⇒ refuse. This is the relocated, Asus-owned egress chokepoint.
+3. **Trusted-ish result delivery.** The M5 transcribes, returns the transcript to the client for **display** (the latency win), and posts the authoritative transcript + segments + ECAPA embeddings to the Asus **server-to-server**, authenticated with a **per-session delivery credential** (not the general fleet cred). The Asus ingest **re-verifies the full signed token**, enforces `delivering_node == assigned_m5_node_id`, `session_id` issued & **not finalized**, redeems the **nonce atomically (Asus-side)**, and **strictly bounds the payload** (transcript size, segment count, embedding dim/value ranges, Unicode, no decompression bombs).
+4. **Persist/graph** Asus-side from the validated result.
 
-### What it prevents
-- **Egress bypass** — M5 won't accept un-tokened audio; only the Asus mints tokens, per ADR-034 policy.
-- **Client transcript/biometric injection** — the authoritative store ingests only M5-delivered, session-keyed results over an authenticated server-to-server channel; the client gets a display copy.
-- **Replay** — `nonce` (one-use) + short `exp`.
-- **Token theft blast radius** — short TTL + tight scope (`audio-stt`, single `conversation_id`/`session_id`, single node).
-- **M5 impersonation on delivery** — the M5 authenticates to the Asus with its fleet credential, not just the (client-visible) session token.
+## Threat model & residual risk (the crux — be honest)
+- **Honest M5 + honest client:** egress stays Asus-owned; client cannot inject (results are M5→Asus, session-keyed). ✅
+- **Stolen token / hostile client:** bound to one node + one session, short TTL, Asus-redeemed nonce, rate-limited, Origin-checked, header-only ⇒ small, brief blast radius. ✅ (Residual: a token holder can still feed *real audio* and get a *grounded* transcript — acceptable; the guarantee is "no result independent of supplied audio," not "no result at all.")
+- **Stolen M5 *credential* (not the node):** asymmetric signing means a leaked verify-key forges nothing; a leaked *delivery* credential is per-session-scoped + node-bound ⇒ limited. ✅
+- **Fully-compromised M5 (lost/rooted laptop):** ❌ **NOT closed.** Such an M5 holds a valid delivery path and can fabricate arbitrary transcripts + **biometric embeddings** for any session it's assigned, ignoring the audio. Mitigations *reduce* this (asymmetric keys, per-node binding, per-session scope, short TTL, payload bounds, instant node revocation via key-version + Asus deny-list, device security, in-memory-only biometrics) but do not eliminate it. **This is the trust downgrade inherent in producing biometrics on a laptop.**
 
-### Kill switch & no laptop coupling (also satisfies ADR-056 #7, helps #4)
-The Asus chooses **per session** whether to mint an edge token: a policy/flag flip stops issuance and **transparently reverts all clients to the backend-orchestrated path** (no redeploy). **Rotating `STT_EDGE_SIGNING_KEY`** instantly invalidates outstanding tokens. Short TTL bounds a sleeping-laptop mid-session to a quick fallback.
+## Architectural fork — needs a human decision (gates ADR-056)
+Given the residual above, choose the trust posture:
+- **(I) Accept the edge as a lower trust tier** — ship the hardened token design; document that a compromised M5 can forge results for authorized sessions; rely on device security + revocation + short scope. Simplest; accepts a real (if bounded) biometric-integrity risk.
+- **(II) Don't produce *authoritative biometrics* at the edge** — use the M5 only for the **fast display transcript** (best-effort, untrusted), and keep authoritative transcript+embeddings on the trusted Asus path (today's relay, or a later trusted-node design). Preserves trust; **gives up most of the latency win for the authoritative/diarized path** (the relay returns for it).
+- **(III) Defer edge STT** until a trusted-execution / signed-attestation story exists for the node. Safest; no win now.
+
+This fork may change ADR-056's Decision. Recommend **(II) for any conversation requiring diarization/biometrics, (I) only for plain low-stakes transcription** — i.e. let the egress policy pick per-conversation.
 
 ## Consequences
-- Egress policy stays Asus-owned; the client stays untrusted; biometric vectors enter only via the trusted M5.
-- New surface: one token-issuance endpoint (Asus), token validation + nonce store (M5), and an authenticated M5→Asus result-ingest endpoint that rejects non-M5/unauthorized-session posts.
-- The M5 must hold `STT_EDGE_SIGNING_KEY` (validation) + a fleet delivery credential — provisioned over the fleet channel (C); both rotatable.
-- Latency: the client still gets its display transcript directly from the M5 (fast); the M5→Asus authoritative post is off the user's critical path.
+- Egress stays Asus-owned; client injection closed; **edge-node injection bounded, not eliminated**.
+- New surface: token issuance + rate limits + issued-session store (Asus); asymmetric key distribution + per-session delivery creds + rotation/revocation; M5 validation + Origin/skew checks; a payload-bounding, nonce-redeeming, full-token-re-verifying ingest endpoint; audit chain (authorize → redeem → stream → ingest) without logging tokens/audio/transcripts.
+- ECAPA embeddings become a **PII flow produced on a user laptop** — requires in-memory-only handling on the M5 and explicit **ADR-022 consent/retention sign-off**.
 
 ## Alternatives considered
-- **Client relays an M5-signed result envelope** (instead of server-to-server). Rejected (A): puts the authoritative result in the untrusted client's hands and needs a signing key on the M5 anyway; server-to-server is simpler trust since the M5↔Asus path already exists.
-- **Asymmetric signing** (Asus private-key signs, M5 verifies public). Rejected (B) for now: more key management for no benefit over a shared secret on a 2-party trusted-fleet link; revisit if more nodes mint/verify.
-- **No token — rely on Tailnet ACLs.** Rejected: a tailnet ACL is per-device, not per-conversation/per-policy; it can't express "this user may use edge STT for this conversation right now," which is the ADR-034 decision.
-- **Keep audio server-relayed (ADR-056 status quo).** The safe default if this token design isn't worth the surface — see ADR-056 measurement gate (#5).
+- **Shared-HMAC signing.** Rejected (review): a secret on a laptop is a universal-forgery key on compromise. Asymmetric instead.
+- **Client-relayed signed envelope.** Rejected (A): authoritative result in untrusted hands.
+- **Tailnet ACL only.** Rejected: per-device, not per-conversation/per-policy — can't express the ADR-034 decision.
+- **Reuse the share-link key/signer literally.** Rejected: use a **dedicated** key + a mature signed-token format (fixed alg, strict parse, domain-separated keys, kid, constant-time verify, bounded size) — not the share-link key.
 
 ## Open questions
-- **Clock skew** vs short `exp` — tolerance / use the token's `iat` + a window.
-- **Nonce store** on the M5 — in-memory (fine; tokens are short-lived) vs shared; behavior across M5 restart.
-- **Exact M5→Asus delivery auth** — reuse the fleet credential, or a dedicated mTLS/bearer for the ingest endpoint; and the ingest endpoint's authorization rule (`node==m5` AND `session_id` was Asus-issued AND not already finalized).
-- **Biometric retention/consent (PII):** ECAPA embeddings are biometric — does moving their production to the edge change any ADR-022/consent posture? (Likely no — they still land only in the Asus store via the M5 — but confirm.)
-- **Key provisioning mechanics** over the fleet channel (rotation cadence, where stored on the M5 — not under `~/Documents`, per the fleet TCC note).
-- **Multi-session / concurrency** — one token per (conversation, session); the Asus tracks issued sessions for the ingest authorization check.
+Exact skew leeway; Asus nonce-redemption service shape; per-session delivery-credential mechanism + rotation/lost-device procedure; key-version (kid) rollout with overlap + stale-version deny; payload bound limits; audit-event schema; the fork decision (I/II/III) and whether it's per-conversation via egress policy; ADR-022 sign-off for edge-produced biometrics.
 
 ## Status for ADR-056
-This design, once accepted, closes ADR-056's BLOCKING #1 (egress) and #2 (trust), and provides the runtime kill-switch for #7. ADR-056 Phase 1 remains gated additionally on #3 (continuity state machine), #4 (path-aware fallback), #5 (application-level measurement), and #6 (diarization parity).
+Closes #1 (egress). **Partially** closes #2 (trust) — reduces to a documented compromised-M5 residual; full closure depends on the fork decision. Provides the #7 kill switch (stop issuance / rotate key + Asus node deny-list). #3/#4/#5/#6 remain.
+
+## Validation
+Reviewed by codex (`codex-cli`) + grok (`grok-build`), 2026-06-23 — both REVISE, convergent: shared-HMAC-on-laptop, token-not-node-bound, compromised-M5 fabrication, in-memory nonce replay, no rate limits, clock-skew-is-security, biometric-PII-flow-change. All folded above.
