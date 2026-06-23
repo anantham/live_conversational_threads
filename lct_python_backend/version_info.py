@@ -7,10 +7,11 @@ contention is visible (see memory `lct-backend-port-ownership-storm` + the
 Tier 1+2 ADR).
 
 Design notes:
-- The git SHA is captured EAGERLY at import (≈ process start), NOT lazily. The
-  point is to report the code THIS process loaded. If the checkout's HEAD moves
-  after start (e.g. a `git pull` without a restart), a lazy lookup would report
-  the new SHA for the old running code — the exact lie we're trying to kill.
+- The git SHA is captured EAGERLY at import (≈ process start), NOT lazily. It
+  reports the checkout HEAD when this process started, paired with a `git_dirty`
+  flag for uncommitted changes (so a dirty tree is FLAGGED, not byte-exact). The
+  point is that a later `git pull` WITHOUT a restart can't make it lie: a lazy
+  lookup would report the new HEAD for the old running code.
 - Pure-local: the git lookup is a local subprocess (no network, so the ADR-034
   egress chokepoint is irrelevant). Failures degrade to "unknown" and never raise
   — version reporting must not be able to break startup.
@@ -51,7 +52,9 @@ def _run_git(args: list) -> Optional[str]:
             cwd=str(_REPO_ROOT),
             capture_output=True,
             text=True,
-            timeout=5,
+            # Bounded so a slow/hung git (large repo, AV, network-share .git)
+            # can't add more than ~2s×2 calls to every uvicorn startup.
+            timeout=2,
         )
         if out.returncode == 0:
             return out.stdout.strip()

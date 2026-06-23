@@ -134,13 +134,6 @@ def _resolve_cors_origins() -> tuple:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Tier 0 startup guard: surface (and, under LCT_REQUIRE_CANONICAL_PYTHON,
-    # refuse) a wrong-env interpreter before any heavy startup. WARN by default so
-    # it never destabilises the live multi-manager :43181 setup; enforcement is the
-    # operator's flip (see version_info + the ownership ADR).
-    from lct_python_backend.version_info import check_canonical_python
-    check_canonical_python()
-
     # Install the network-layer egress chokepoint FIRST — before the provider
     # audit below (which itself probes cloud /v1/models). When LCT_LOCAL_ONLY
     # is on, every httpx/websocket/urllib call to a non-local host now
@@ -216,6 +209,16 @@ async def lifespan(app: FastAPI):
 # already behind the auth middleware unless AUTH_TOKEN is unset).
 _ENVIRONMENT = str(os.getenv("ENVIRONMENT", "development")).strip().lower()
 _docs_enabled = _ENVIRONMENT != "production"
+
+# Canonical-python guard at IMPORT time — runs when uvicorn imports this module,
+# BEFORE the app is constructed and before uvicorn binds the socket. The lifespan
+# runs AFTER bind, so an enforced guard there would let a wrong-env process briefly
+# become a "healthy" listener and then die (the exact bind-then-die symptom we're
+# killing). Here, under LCT_REQUIRE_CANONICAL_PYTHON a wrong-env process fails fast
+# before listening. WARN-by-default otherwise. (codex/grok ADR-040 review.)
+from lct_python_backend.version_info import check_canonical_python  # noqa: E402
+check_canonical_python()
+
 lct_app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs" if _docs_enabled else None,
