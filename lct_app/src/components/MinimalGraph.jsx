@@ -1510,11 +1510,6 @@ function MinimalGraphInner({
         setSelectedCluster={setSelectedCluster}
         setLockedLevel={setLockedLevel}
         setSelectedNode={setSelectedNode}
-        normalizedChunk={normalizedChunk}
-        displayMode={displayMode}
-        effectiveSemanticLevel={effectiveSemanticLevel}
-        effectiveClusterLevel={effectiveClusterLevel}
-        speakerColorMap={speakerColorMap}
       />
 
     </div>

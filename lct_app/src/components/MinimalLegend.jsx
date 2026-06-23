@@ -137,7 +137,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
   }, [conversationId, draftNames]);
 
   return (
-    <div className="absolute bottom-14 right-4 z-20">
+    <div className="absolute bottom-14 right-4 z-40">
       {open ? (
         <div className="bg-white/95 rounded-lg shadow-md border border-gray-200 p-3 text-xs space-y-3 min-w-[220px] animate-slideIn">
           <button
@@ -146,6 +146,11 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
           >
             close
           </button>
+
+          {/* Folded in from the former standalone "Colors" panel (#3). */}
+          <div className="pr-10 text-[10px] leading-tight text-gray-500">
+            Node color = speaker. With a single speaker, nodes fade by time (start &rarr; now).
+          </div>
 
           {displaySpeakers.length > 0 && (
             <div>
