@@ -599,7 +599,11 @@ const AudioInput = forwardRef(function AudioInput({
     // skip after fallback (the relay path owns the audio then — don't await a stale chain)
     if (edgeConfig.enabled && !edgeFellBackRef.current) {
       try {
-        await edgeStop();
+        // bound the flush — a hung M5 must not block stop on serial timeouts
+        await Promise.race([
+          edgeStop(),
+          new Promise((resolve) => setTimeout(resolve, 2000)),
+        ]);
       } catch {
         /* best-effort flush */
       }
