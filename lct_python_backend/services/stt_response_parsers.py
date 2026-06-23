@@ -50,40 +50,79 @@ def extract_transcript_text(payload: Any) -> str:
     return ""
 
 
-def extract_diarized_segments(payload: Any) -> Optional[List[Dict[str, Any]]]:
-    """Return WhisperX-style {speaker, start, end, text} segments, or None.
+def _diarized_from_entries(entries: List[Any]) -> List[Dict[str, Any]]:
+    """Build {speaker, text, start, end[, embedding]} from a list of segment dicts.
 
-    Used by the local WhisperX backend which emits a top-level ``speakers``
-    list. Returns None when diarization data is absent or invalid; callers
-    fall back to the undiarized transcript.
+    Skips entries lacking a speaker or text. Carries the ECAPA ``embedding``
+    (192-dim vector) through when present so downstream speaker-identity matching
+    (ADR-022) can use it instead of the anonymous SPEAKER_NN label.
     """
-    if not isinstance(payload, dict):
-        return None
-
-    speakers = payload.get("speakers")
-    if not isinstance(speakers, list) or not speakers:
-        return None
-
-    if len(speakers) == 1 and isinstance(speakers[0], dict) and "error" in speakers[0]:
-        logger.debug("[DIARIZE] Server returned diarization error: %s", speakers[0]["error"])
-        return None
-
     segments: List[Dict[str, Any]] = []
-    for entry in speakers:
+    for entry in entries:
         if not isinstance(entry, dict):
             continue
         speaker = entry.get("speaker")
         text = entry.get("text")
         if not speaker or not text:
             continue
-        segments.append({
+        segment: Dict[str, Any] = {
             "speaker": str(speaker),
             "text": str(text).strip(),
             "start": entry.get("start"),
             "end": entry.get("end"),
-        })
+        }
+        embedding = entry.get("embedding")
+        if isinstance(embedding, list) and embedding:
+            segment["embedding"] = embedding
+        segments.append(segment)
+    return segments
 
-    return segments if segments else None
+
+def extract_diarized_segments(payload: Any) -> Optional[List[Dict[str, Any]]]:
+    """Return {speaker, start, end, text[, embedding]} segments, or None.
+
+    Handles two local-server shapes:
+
+    * **legacy WhisperX backend** — a top-level ``speakers`` list whose entries
+      are themselves the diarized utterances ({speaker, text, start, end});
+    * **mlx-whisper local STT server** — ``speakers`` is just a list of speaker
+      *labels* and the tagged utterances live under ``segments`` (each with a
+      ``speaker`` and, when ``include_embeddings`` was requested, a 192-dim ECAPA
+      ``embedding``).
+
+    Returns None when no usable diarized segments are present; callers fall back
+    to the undiarized transcript.
+    """
+    if not isinstance(payload, dict):
+        return None
+
+    speakers = payload.get("speakers")
+
+    # Explicit diarization error from the server -> no segments.
+    if (
+        isinstance(speakers, list)
+        and len(speakers) == 1
+        and isinstance(speakers[0], dict)
+        and "error" in speakers[0]
+    ):
+        logger.debug("[DIARIZE] Server returned diarization error: %s", speakers[0]["error"])
+        return None
+
+    # Legacy shape: `speakers` entries ARE the diarized utterances.
+    if isinstance(speakers, list) and any(isinstance(entry, dict) for entry in speakers):
+        segments = _diarized_from_entries(speakers)
+        if segments:
+            return segments
+
+    # mlx-whisper shape: utterances are under `segments`, tagged with `speaker`
+    # (+ optional per-segment `embedding`); `speakers` here is only labels.
+    raw_segments = payload.get("segments")
+    if isinstance(raw_segments, list):
+        segments = _diarized_from_entries(raw_segments)
+        if segments:
+            return segments
+
+    return None
 
 
 def extract_openai_diarized_segments(payload: Any) -> Optional[List[Dict[str, Any]]]:
