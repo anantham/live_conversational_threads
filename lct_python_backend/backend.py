@@ -209,6 +209,16 @@ async def lifespan(app: FastAPI):
 # already behind the auth middleware unless AUTH_TOKEN is unset).
 _ENVIRONMENT = str(os.getenv("ENVIRONMENT", "development")).strip().lower()
 _docs_enabled = _ENVIRONMENT != "production"
+
+# Canonical-python guard at IMPORT time — runs when uvicorn imports this module,
+# BEFORE the app is constructed and before uvicorn binds the socket. The lifespan
+# runs AFTER bind, so an enforced guard there would let a wrong-env process briefly
+# become a "healthy" listener and then die (the exact bind-then-die symptom we're
+# killing). Here, under LCT_REQUIRE_CANONICAL_PYTHON a wrong-env process fails fast
+# before listening. WARN-by-default otherwise. (codex/grok ADR-040 review.)
+from lct_python_backend.version_info import check_canonical_python  # noqa: E402
+check_canonical_python()
+
 lct_app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs" if _docs_enabled else None,
@@ -251,6 +261,7 @@ configure_trusted_hosts(lct_app, environment=os.getenv("ENVIRONMENT", "developme
 # ============================================================================
 
 from lct_python_backend.import_api import router as import_router
+from lct_python_backend.version_api import router as version_router
 from lct_python_backend.bookmarks_api import router as bookmarks_router
 from lct_python_backend.stt_api import router as stt_router
 from lct_python_backend.llm_api import router as llm_router
@@ -280,6 +291,7 @@ from lct_python_backend.attendee_api import (
 )
 
 lct_app.include_router(import_router)
+lct_app.include_router(version_router)
 lct_app.include_router(bookmarks_router)
 lct_app.include_router(stt_router)
 lct_app.include_router(llm_router)
