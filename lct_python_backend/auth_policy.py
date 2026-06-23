@@ -24,6 +24,9 @@ HEALTH_PATHS: Set[str] = {
     "/health",
     "/api/import/health",
     "/api/bookmarks/health",
+    # Runtime-identity probe (git sha / interpreter / pid). Unauthenticated so any
+    # client can confirm "is the merged code live?" without a token (Tier 0).
+    "/api/version",
 }
 
 PUBLIC_PATH_PREFIXES: Tuple[str, ...] = (

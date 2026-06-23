@@ -134,6 +134,13 @@ def _resolve_cors_origins() -> tuple:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Tier 0 startup guard: surface (and, under LCT_REQUIRE_CANONICAL_PYTHON,
+    # refuse) a wrong-env interpreter before any heavy startup. WARN by default so
+    # it never destabilises the live multi-manager :43181 setup; enforcement is the
+    # operator's flip (see version_info + the ownership ADR).
+    from lct_python_backend.version_info import check_canonical_python
+    check_canonical_python()
+
     # Install the network-layer egress chokepoint FIRST — before the provider
     # audit below (which itself probes cloud /v1/models). When LCT_LOCAL_ONLY
     # is on, every httpx/websocket/urllib call to a non-local host now
@@ -251,6 +258,7 @@ configure_trusted_hosts(lct_app, environment=os.getenv("ENVIRONMENT", "developme
 # ============================================================================
 
 from lct_python_backend.import_api import router as import_router
+from lct_python_backend.version_api import router as version_router
 from lct_python_backend.bookmarks_api import router as bookmarks_router
 from lct_python_backend.stt_api import router as stt_router
 from lct_python_backend.llm_api import router as llm_router
@@ -280,6 +288,7 @@ from lct_python_backend.attendee_api import (
 )
 
 lct_app.include_router(import_router)
+lct_app.include_router(version_router)
 lct_app.include_router(bookmarks_router)
 lct_app.include_router(stt_router)
 lct_app.include_router(llm_router)
