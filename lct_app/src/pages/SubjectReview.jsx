@@ -65,8 +65,10 @@ function tokenize(s) {
  *   removed = the subject's words being hidden (struck through)
  *   added   = the redaction placeholder that replaces them
  *   same    = unchanged (and the only selectable text for "Hide more")
+ *
+ * Exported for unit testing — see SubjectReview.wordDiff.test.js.
  */
-function wordDiff(original, proposed) {
+export function wordDiff(original, proposed) {
   const a = tokenize(original);
   const b = tokenize(proposed);
   const n = a.length;
