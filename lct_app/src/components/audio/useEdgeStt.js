@@ -52,8 +52,10 @@ export default function useEdgeStt({
   const controllersRef = useRef(new Set());
   const stoppedRef = useRef(false);
   const noUrlReportedRef = useRef(false);
+  const pendingRef = useRef(0); // in-flight/queued chunk count (backlog cap)
 
   const chunkBytesTarget = pcmBytesForSeconds(chunkSeconds, sampleRateHz);
+  const MAX_PENDING = 4; // edge can't keep up beyond this -> fall back to relay
 
   const reset = useCallback(() => {
     genRef.current += 1; // invalidate any chunk enqueued/in-flight under the old gen
@@ -71,6 +73,7 @@ export default function useEdgeStt({
     utteranceRef.current = 0;
     stoppedRef.current = false;
     noUrlReportedRef.current = false;
+    pendingRef.current = 0;
   }, []);
 
   const postChunk = useCallback(
@@ -84,19 +87,20 @@ export default function useEdgeStt({
         return;
       }
       if (pcmBytes.byteLength === 0) return;
-      utteranceRef.current += 1;
-      const utteranceId = utteranceRef.current;
-
-      const form = new FormData();
-      form.append("file", encodeWav(pcmBytes, sampleRateHz), `edge-${utteranceId}.wav`);
-      if (diarize) form.append("diarize", "true");
-      if (includeEmbeddings) form.append("include_embeddings", "true");
-      if (language) form.append("language", language);
 
       const controller = new AbortController();
       controllersRef.current.add(controller);
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       try {
+        // Build inside the try so a throw here can't reject the chain link.
+        utteranceRef.current += 1;
+        const utteranceId = utteranceRef.current;
+        const form = new FormData();
+        form.append("file", encodeWav(pcmBytes, sampleRateHz), `edge-${utteranceId}.wav`);
+        if (diarize) form.append("diarize", "true");
+        if (includeEmbeddings) form.append("include_embeddings", "true");
+        if (language) form.append("language", language);
+
         const resp = await fetch(url, {
           method: "POST",
           body: form,
@@ -121,8 +125,8 @@ export default function useEdgeStt({
           engine: data._engine || "edge",
         });
       } catch (error) {
-        if (gen !== genRef.current) return; // aborted by reset — not a real failure
-        if (error?.name === "AbortError" && stoppedRef.current) return; // benign stop abort
+        if (gen !== genRef.current) return; // aborted by reset — benign
+        // a real failure (incl. a timeout AbortError) -> revert to the relay path
         onError?.(error);
         onFallback?.(error?.name === "AbortError" ? "edge_timeout" : "edge_error");
       } finally {
@@ -141,11 +145,23 @@ export default function useEdgeStt({
     const frames = framesRef.current;
     framesRef.current = [];
     bufferedBytesRef.current = 0;
+    // Backlog cap: if POSTs can't keep up, don't queue audio unboundedly (which
+    // would also stall stop()) — drop this slice and fall back to the relay.
+    if (pendingRef.current >= MAX_PENDING) {
+      onFallback?.("edge_backlog");
+      return chainRef.current;
+    }
     const gen = genRef.current;
     const pcm = concatPcmFrames(frames);
-    chainRef.current = chainRef.current.then(() => postChunk(pcm, gen));
+    pendingRef.current += 1;
+    chainRef.current = chainRef.current
+      .then(() => postChunk(pcm, gen))
+      .catch(() => {}) // a poisoned link must never break the chain
+      .finally(() => {
+        pendingRef.current -= 1;
+      });
     return chainRef.current;
-  }, [postChunk]);
+  }, [postChunk, onFallback]);
 
   /** Called by the capture hook on each PCM frame. */
   const onPCMFrame = useCallback(

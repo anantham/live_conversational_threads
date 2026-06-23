@@ -52,6 +52,10 @@ describe("readEdgeConfig", () => {
     const def = readEdgeConfig("", memStorage()).url;
     expect(readEdgeConfig("?edge_url=https://evil.example/v1", memStorage()).url).toBe(def);
     expect(readEdgeConfig("?edge_url=http://x.ts.net/v1", memStorage()).url).toBe(def); // not https
+    // userinfo host-confusion: real host is evil.com, not x.ts.net
+    expect(readEdgeConfig("?edge_url=https://x.ts.net@evil.com/v1", memStorage()).url).toBe(def);
+    // lookalike: .ts.net is not the host suffix
+    expect(readEdgeConfig("?edge_url=https://evil.ts.net.attacker.com/v1", memStorage()).url).toBe(def);
     // a previously-stored bad value is also ignored
     expect(readEdgeConfig("", memStorage({ lct_stt_edge_url: "https://evil.example/v1" })).url).toBe(def);
   });
