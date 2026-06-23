@@ -31,8 +31,11 @@ export default function MinimalGraphHud({
 }) {
   const tierSpecs = displayMode === "semantic" ? AUTHORED_LEVELS : LEGACY_TIER_SPECS;
 
+  // left-16 (not left-3) reserves room for the page-level Back button (a ~54px
+  // padded icon at top-3 left-3, z-50) so it no longer covers the zoom % chip /
+  // tier controls (#6).
   return (
-    <div className="absolute top-3 left-3 right-3 z-40 flex items-center gap-2 select-none overflow-x-auto flex-nowrap whitespace-nowrap">
+    <div className="absolute top-3 left-16 right-3 z-40 flex items-center gap-2 select-none overflow-x-auto flex-nowrap whitespace-nowrap">
       <div className="flex-shrink-0 flex items-center gap-1.5 rounded-md bg-white/95 border border-gray-200 shadow-sm px-2.5 py-1.5">
         <span className="text-[10px] font-mono text-gray-500">{Math.round(zoomLevel * 100)}%</span>
         <span className="text-[9px] text-gray-300">|</span>
