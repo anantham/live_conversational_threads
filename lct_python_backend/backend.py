@@ -196,7 +196,24 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001
         logger.exception("[STARTUP] contacts-cache warm-up failed to schedule (non-fatal)")
 
+    # ADR-040 Tier 2: assert the ownership lease now — lifespan startup runs AFTER
+    # uvicorn's socket bind, so the held lock + sidecar mark THIS process as the owner
+    # of :43181. Gated OFF by default (LCT_BACKEND_LEASE_ENABLED) until the supervisor
+    # + launchers consume it; non-fatal either way (the TCP bind is the real exclusion).
+    try:
+        from lct_python_backend import backend_lease
+        if backend_lease.is_enabled():
+            backend_lease.acquire_lease()
+    except Exception:  # noqa: BLE001
+        logger.exception("[lease] acquire failed (non-fatal)")
+
     yield
+
+    try:
+        from lct_python_backend import backend_lease
+        backend_lease.release_lease()
+    except Exception:  # noqa: BLE001
+        logger.exception("[lease] release failed (non-fatal)")
     logger.info("Disconnecting from database...")
     await db.disconnect()
 
