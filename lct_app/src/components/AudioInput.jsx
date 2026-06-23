@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { Mic, ChevronDown, Pause, Play, Square } from "lucide-react";
 
@@ -15,6 +15,9 @@ import {
 import { useSttSettings } from "./audio/useSttSettings";
 import useTranscriptSockets from "./audio/useTranscriptSockets";
 import useAudioCapture from "./audio/useAudioCapture";
+import useEdgeStt from "./audio/useEdgeStt";
+import { edgeResultToWsMessage } from "./audio/edgeTranscript";
+import { readEdgeConfig } from "./audio/edgeConfig";
 import useMicDevices from "./audio/useMicDevices";
 import { randomUUID } from "../utils/uuid";
 import { isTouchPrimaryDevice } from "../utils/device";
@@ -317,9 +320,70 @@ const AudioInput = forwardRef(function AudioInput({
     onAutoPause: () => pauseRecordingRef.current?.(),
   });
 
+  // --- Edge STT (ADR-056 Phase 1c — runtime-toggled, default OFF) ---
+  // When enabled, PCM goes straight to the M5 over Serve HTTPS and the resulting
+  // transcript is delivered over the SAME backend WS (the existing
+  // handle_transcript_event ingestion); on any edge error/timeout we fall back to
+  // the backend-orchestrated relay path. When disabled, this is a pass-through to
+  // today's behavior — zero change to the live path.
+  const edgeConfig = useMemo(
+    () => readEdgeConfig(typeof window !== "undefined" ? window.location.search : ""),
+    []
+  );
+  const edgeFellBackRef = useRef(false);
+
+  const triggerEdgeFallback = useCallback(
+    (reason) => {
+      if (edgeFellBackRef.current) return;
+      edgeFellBackRef.current = true;
+      logToServer?.(`edge stt unavailable -> backend relay fallback (${reason})`);
+    },
+    [logToServer]
+  );
+  const handleEdgeTranscript = useCallback(
+    (result) => {
+      if (edgeFellBackRef.current) return; // drop in-flight edge results after fallback
+      const ws = backendWsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(edgeResultToWsMessage(result)));
+      } else {
+        // WS not open (shouldn't happen mid-session) -> degrade to the relay path.
+        triggerEdgeFallback("ws_not_open");
+      }
+    },
+    [backendWsRef, triggerEdgeFallback]
+  );
+  const handleEdgeError = useCallback(
+    (error) => logToServer?.(`edge stt error: ${error?.message || error}`),
+    [logToServer]
+  );
+
+  const edgeStt = useEdgeStt({
+    url: edgeConfig.url,
+    authToken: edgeConfig.token || undefined,
+    diarize: edgeConfig.diarize,
+    includeEmbeddings: edgeConfig.includeEmbeddings,
+    onTranscript: handleEdgeTranscript,
+    onError: handleEdgeError,
+    onFallback: triggerEdgeFallback,
+  });
+  const { onPCMFrame: edgeOnPCMFrame, stop: edgeStop, reset: edgeReset } = edgeStt;
+
+  // Route PCM to edge STT until it falls back. When edge is OFF (default),
+  // capture gets the bare `onPCMFrame` directly (a true pass-through, zero change
+  // to the live path); the dispatcher/edge hook stay inert.
+  const dispatchPCMFrame = useCallback(
+    (buffer) => {
+      if (!edgeFellBackRef.current) edgeOnPCMFrame(buffer);
+      else onPCMFrame(buffer);
+    },
+    [edgeOnPCMFrame, onPCMFrame]
+  );
+  const captureOnPCMFrame = edgeConfig.enabled ? dispatchPCMFrame : onPCMFrame;
+
   // --- Capture hook ---
   const { startCapture, stopCapture } = useAudioCapture({
-    onPCMFrame,
+    onPCMFrame: captureOnPCMFrame,
     onAudioLevel: handleAudioLevel,
     onError: () => {
       setMessage?.("Microphone access denied or unavailable.");
@@ -499,8 +563,14 @@ const AudioInput = forwardRef(function AudioInput({
       setConversationId?.(sessionConversationId);
     }
     setPaused(false);
+    if (edgeConfig.enabled) {
+      edgeFellBackRef.current = false;
+      edgeReset();
+    }
     startSession({ activeSettings, newConversationId: sessionConversationId, sessionId });
   }, [
+    edgeConfig.enabled,
+    edgeReset,
     micDeviceId,
     recording,
     conversationId,
@@ -525,13 +595,26 @@ const AudioInput = forwardRef(function AudioInput({
       conversation_id: conversationId || null,
     });
     await stopCapture();
+    // flush the edge tail (and its WS send) BEFORE closing the transcript socket;
+    // skip after fallback (the relay path owns the audio then — don't await a stale chain)
+    if (edgeConfig.enabled && !edgeFellBackRef.current) {
+      try {
+        // bound the flush — a hung M5 must not block stop on serial timeouts
+        await Promise.race([
+          edgeStop(),
+          new Promise((resolve) => setTimeout(resolve, 2000)),
+        ]);
+      } catch {
+        /* best-effort flush */
+      }
+    }
     await stopSession();
     resetSession();
     setRecording(false);
     setProviderSocketState("closed");
     setBackendSocketState("closed");
     sessionEndedAtRef.current = new Date().toISOString();
-  }, [appendSessionEvent, conversationId, resetSession, stopCapture, stopSession]);
+  }, [appendSessionEvent, conversationId, edgeConfig.enabled, edgeStop, resetSession, stopCapture, stopSession]);
 
   // Pause = a clean, resumable stop. Same backend teardown as stopRecording
   // (WS closes, STT billing stops, the segment is finalized) — `paused` just
