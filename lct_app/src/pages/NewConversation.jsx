@@ -71,6 +71,10 @@ export default function NewConversation() {
   const [graphData, setGraphData] = useState([]);
   const [draftGraphData, setDraftGraphData] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
+  // Timeline-ribbon focus is SEPARATE from selectedNode: clicking the ribbon
+  // centers the camera on a node (via MinimalGraph's focusNode) WITHOUT opening
+  // the NodeDetail drawer (which only selectedNode does).
+  const [focusNode, setFocusNode] = useState(null);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   // ADR-032 Part B pattern 3: argument-scaffold trace state lifted here
   // so NodeDetail can request a trace and MinimalGraph can dim.
@@ -98,6 +102,7 @@ export default function NewConversation() {
   const [conversationId, setConversationId] = useState(() => randomUUID());
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
+  const [transcriptFullscreen, setTranscriptFullscreen] = useState(false);
   const [liveTranscriptState, setLiveTranscriptState] = useState({
     recording: false,
     paused: false,
@@ -552,10 +557,13 @@ export default function NewConversation() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!selectedNode) return;
-    if (allNodes.some((node) => node.id === selectedNode)) return;
-    setSelectedNode(null);
-  }, [allNodes, selectedNode]);
+    if (selectedNode && !allNodes.some((node) => node.id === selectedNode)) {
+      setSelectedNode(null);
+    }
+    if (focusNode && !allNodes.some((node) => node.id === focusNode)) {
+      setFocusNode(null);
+    }
+  }, [allNodes, selectedNode, focusNode]);
 
   // A transient toast (`message`) must NOT count as recoverable content, else the
   // post-discard "Discarded…" toast keeps the session-end panel open forever.
@@ -622,7 +630,9 @@ export default function NewConversation() {
     setChunkDict(normalizeObject(draft.chunkDict));
     setDraftChunkDict(normalizeObject(draft.draftChunkDict));
     setSelectedNode(null);
+    setFocusNode(null);
     setTranscriptMinimized(false);
+    setTranscriptFullscreen(false);
     if (audioRecovery?.recoverable) {
       setMessage("Restored local draft. Existing audio buffer will continue stitching into this conversation.");
     }
@@ -641,7 +651,9 @@ export default function NewConversation() {
     setChunkDict({});
     setDraftChunkDict({});
     setSelectedNode(null);
+    setFocusNode(null);
     setTranscriptMinimized(false);
+    setTranscriptFullscreen(false);
     setLiveTranscriptState({
       recording: false,
       paused: false,
@@ -1049,6 +1061,7 @@ export default function NewConversation() {
                 graphData={displayGraphData}
                 selectedNode={selectedNode}
                 setSelectedNode={setSelectedNode}
+                focusNode={focusNode}
                 viewportReservationKey={graphViewportKey}
                 onVisibleLevelChange={(view) => {
                   setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
@@ -1071,7 +1084,12 @@ export default function NewConversation() {
               hasData={hasData}
               minimized={transcriptMinimized}
               onExpand={() => setTranscriptMinimized(false)}
-              onMinimize={() => setTranscriptMinimized(true)}
+              onMinimize={() => {
+                setTranscriptMinimized(true);
+                setTranscriptFullscreen(false);
+              }}
+              fullscreen={transcriptFullscreen}
+              onToggleFullscreen={() => setTranscriptFullscreen((v) => !v)}
               lines={transcriptOverlay.lines}
               mode={transcriptOverlay.mode}
               progress={transcriptOverlay.progress}
@@ -1168,8 +1186,8 @@ export default function NewConversation() {
       {hasData && (
         <TimelineRibbon
           graphData={displayGraphData}
-          selectedNode={selectedNode}
-          setSelectedNode={setSelectedNode}
+          selectedNode={focusNode}
+          setSelectedNode={setFocusNode}
           semanticLevel={visibleGraphLevel}
         />
       )}
