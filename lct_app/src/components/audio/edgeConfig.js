@@ -16,11 +16,24 @@ const DEFAULT_URL =
   import.meta.env.VITE_STT_EDGE_URL ||
   "https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions";
 
-// Only accept a runtime url override that is HTTPS on the tailnet (*.ts.net).
-// A free-form ?edge_url= would otherwise let a crafted link send mic audio to an
-// attacker endpoint (the M5 server sends permissive CORS), so reject anything else.
-const TS_HTTPS_RE = /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net(:\d+)?\//i;
-const isAllowedUrl = (u) => typeof u === "string" && TS_HTTPS_RE.test(u);
+// Only accept a runtime url override that is HTTPS, credential-free, and on the
+// tailnet (*.ts.net). A free-form ?edge_url= would otherwise let a crafted link
+// send mic audio to an attacker endpoint (the M5 sends permissive CORS). Parse
+// with URL() rather than a regex — robust against host-confusion (userinfo @,
+// trailing-dot, evil.ts.net.attacker.com, etc.).
+function isAllowedUrl(u) {
+  try {
+    const parsed = new URL(u);
+    return (
+      parsed.protocol === "https:" &&
+      !parsed.username &&
+      !parsed.password &&
+      parsed.hostname.toLowerCase().endsWith(".ts.net")
+    );
+  } catch {
+    return false;
+  }
+}
 
 function resolveStorage(storage) {
   if (storage) return storage;
@@ -74,14 +87,9 @@ export function readEdgeConfig(search = "", storage = undefined) {
   }
 
   // Optional bearer for when the M5 endpoint is locked down (today it's
-  // unauthenticated on the trusted tailnet). Session-scoped via ?edge_token.
-  let token = "";
-  try {
-    token = params.get("edge_token") || ls?.getItem(`${LS}_token`) || "";
-    if (params.get("edge_token")) ls?.setItem(`${LS}_token`, token);
-  } catch {
-    /* token stays empty */
-  }
+  // unauthenticated on the trusted tailnet). Session-scoped via ?edge_token —
+  // intentionally NOT persisted to storage (avoid leaving a bearer in localStorage).
+  const token = params.get("edge_token") || "";
 
   return {
     enabled: flag("edge", LS),

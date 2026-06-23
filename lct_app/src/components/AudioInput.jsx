@@ -595,8 +595,9 @@ const AudioInput = forwardRef(function AudioInput({
       conversation_id: conversationId || null,
     });
     await stopCapture();
-    // flush the edge tail (and its WS send) BEFORE closing the transcript socket
-    if (edgeConfig.enabled) {
+    // flush the edge tail (and its WS send) BEFORE closing the transcript socket;
+    // skip after fallback (the relay path owns the audio then — don't await a stale chain)
+    if (edgeConfig.enabled && !edgeFellBackRef.current) {
       try {
         await edgeStop();
       } catch {
