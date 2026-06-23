@@ -73,7 +73,11 @@ export default function useEdgeStt({
     utteranceRef.current = 0;
     stoppedRef.current = false;
     noUrlReportedRef.current = false;
-    pendingRef.current = 0;
+    // NOTE: do NOT zero pendingRef here — the previous chain's `.finally` handlers
+    // still run as those (now-aborted) requests settle and decrement it. Each
+    // enqueue has exactly one decrement, so the count stays >= 0 and accurate
+    // across reset; zeroing it would let those late decrements drive it negative
+    // and defeat the backlog cap.
   }, []);
 
   const postChunk = useCallback(
