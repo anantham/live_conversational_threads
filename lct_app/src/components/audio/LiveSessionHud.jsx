@@ -240,7 +240,13 @@ export default function LiveSessionHud({
                               one-line summary; tap to expand the popover.
                               Hidden once the popover is open so they don't
                               visually compete. */}
-      {(overallState === "connecting" || overallState === "processing") && (
+      {/* Mobile health pulse: present for the WHOLE active session (#2 — it used to
+          vanish when healthy and only reappear while connecting/processing), tinted
+          by overall health (emerald healthy → amber degraded → rose error). The old
+          full-width degraded/error BANNER is gone (#8 — "STT is slow" no longer
+          shoves a banner over the screen): slowness just colors this pulse, and the
+          one-line summary + full detail live in the popover (tap to open). */}
+      {overallState !== "idle" && (
         <button
           type="button"
           onClick={onToggleDetails}
@@ -252,30 +258,6 @@ export default function LiveSessionHud({
           title={effectiveStatusLine}
         >
           <Activity size={18} aria-hidden="true" />
-        </button>
-      )}
-
-      {(overallState === "degraded" || overallState === "error") && !detailOpen && (
-        <button
-          type="button"
-          onClick={onToggleDetails}
-          className={`sm:hidden fixed left-2 right-2 bottom-20 z-30 flex items-center gap-2 rounded-xl border px-3 py-2 text-xs shadow-lg backdrop-blur ${
-            overallState === "error"
-              ? "border-rose-200 bg-rose-50/95 text-rose-700"
-              : "border-amber-200 bg-amber-50/95 text-amber-700"
-          }`}
-          aria-expanded={detailOpen}
-          aria-label={`Live session health — ${effectiveStatusLine}`}
-        >
-          <Activity size={14} className="shrink-0" aria-hidden="true" />
-          <span className="flex-1 text-left truncate font-medium">
-            {effectiveStatusLine || (
-              overallState === "error"
-                ? "Live session error — tap for detail"
-                : "Live session degraded — tap for detail"
-            )}
-          </span>
-          <span className="text-[10px] uppercase tracking-wide opacity-60">tap</span>
         </button>
       )}
 

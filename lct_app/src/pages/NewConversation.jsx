@@ -71,6 +71,10 @@ export default function NewConversation() {
   const [graphData, setGraphData] = useState([]);
   const [draftGraphData, setDraftGraphData] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
+  // Timeline-ribbon focus is SEPARATE from selectedNode: clicking the ribbon
+  // centers the camera on a node (via MinimalGraph's focusNode) WITHOUT opening
+  // the NodeDetail drawer (which only selectedNode does).
+  const [focusNode, setFocusNode] = useState(null);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   // ADR-032 Part B pattern 3: argument-scaffold trace state lifted here
   // so NodeDetail can request a trace and MinimalGraph can dim.
@@ -98,6 +102,7 @@ export default function NewConversation() {
   const [conversationId, setConversationId] = useState(() => randomUUID());
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [transcriptMinimized, setTranscriptMinimized] = useState(false);
+  const [transcriptFullscreen, setTranscriptFullscreen] = useState(false);
   const [liveTranscriptState, setLiveTranscriptState] = useState({
     recording: false,
     paused: false,
@@ -418,9 +423,9 @@ export default function NewConversation() {
       return {
         mode: "live",
         lines: liveTranscriptState.liveTranscriptLines,
-        statusText: liveTranscriptState.recording
-          ? (liveTranscriptState.statusLine || "Live transcript")
-          : "Session draft",
+        // Stable label only — the diagnostic summary (latency, "last heard", etc.)
+        // lives behind the health pulse/popover, not on the transcript card.
+        statusText: liveTranscriptState.recording ? "Live transcript" : "Session draft",
         etaText: "",
         progress: null,
       };
@@ -431,7 +436,6 @@ export default function NewConversation() {
     liveTranscriptActive,
     liveTranscriptState.liveTranscriptLines,
     liveTranscriptState.recording,
-    liveTranscriptState.statusLine,
     upload.etaText,
     upload.liveTranscriptLines,
     upload.progress,
@@ -495,17 +499,19 @@ export default function NewConversation() {
   }, []);
 
   // (upload hook moved earlier — needed before transcriptOverlayVisible)
+  // NOTE: `message` is transient toast text — it is deliberately NOT part of the
+  // persisted snapshot. Including it made the "Discarded…" toast resurrect the
+  // draft (it counted as meaningful content), so discard could never close.
   const localDraftSnapshot = useMemo(
     () => ({
       conversationId,
       fileName,
-      message,
       graphData,
       draftGraphData,
       chunkDict,
       draftChunkDict,
     }),
-    [chunkDict, conversationId, draftChunkDict, draftGraphData, fileName, graphData, message]
+    [chunkDict, conversationId, draftChunkDict, draftGraphData, fileName, graphData]
   );
   const {
     availableDraft,
@@ -551,18 +557,22 @@ export default function NewConversation() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (!selectedNode) return;
-    if (allNodes.some((node) => node.id === selectedNode)) return;
-    setSelectedNode(null);
-  }, [allNodes, selectedNode]);
+    if (selectedNode && !allNodes.some((node) => node.id === selectedNode)) {
+      setSelectedNode(null);
+    }
+    if (focusNode && !allNodes.some((node) => node.id === focusNode)) {
+      setFocusNode(null);
+    }
+  }, [allNodes, selectedNode, focusNode]);
 
+  // A transient toast (`message`) must NOT count as recoverable content, else the
+  // post-discard "Discarded…" toast keeps the session-end panel open forever.
   const hasRecoverableLocalState = useMemo(
     () =>
       hasData ||
       Object.keys(normalizeObject(displayChunkDict)).length > 0 ||
-      Boolean(String(fileName || "").trim()) ||
-      Boolean(String(message || "").trim()),
-    [displayChunkDict, fileName, hasData, message]
+      Boolean(String(fileName || "").trim()),
+    [displayChunkDict, fileName, hasData]
   );
   // Show the Session Draft / name-and-save panel only when the session is truly
   // STOPPED — not when merely PAUSED. Pause sets recording=false but paused=true
@@ -620,7 +630,9 @@ export default function NewConversation() {
     setChunkDict(normalizeObject(draft.chunkDict));
     setDraftChunkDict(normalizeObject(draft.draftChunkDict));
     setSelectedNode(null);
+    setFocusNode(null);
     setTranscriptMinimized(false);
+    setTranscriptFullscreen(false);
     if (audioRecovery?.recoverable) {
       setMessage("Restored local draft. Existing audio buffer will continue stitching into this conversation.");
     }
@@ -639,7 +651,9 @@ export default function NewConversation() {
     setChunkDict({});
     setDraftChunkDict({});
     setSelectedNode(null);
+    setFocusNode(null);
     setTranscriptMinimized(false);
+    setTranscriptFullscreen(false);
     setLiveTranscriptState({
       recording: false,
       paused: false,
@@ -1047,6 +1061,7 @@ export default function NewConversation() {
                 graphData={displayGraphData}
                 selectedNode={selectedNode}
                 setSelectedNode={setSelectedNode}
+                focusNode={focusNode}
                 viewportReservationKey={graphViewportKey}
                 onVisibleLevelChange={(view) => {
                   setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
@@ -1069,7 +1084,12 @@ export default function NewConversation() {
               hasData={hasData}
               minimized={transcriptMinimized}
               onExpand={() => setTranscriptMinimized(false)}
-              onMinimize={() => setTranscriptMinimized(true)}
+              onMinimize={() => {
+                setTranscriptMinimized(true);
+                setTranscriptFullscreen(false);
+              }}
+              fullscreen={transcriptFullscreen}
+              onToggleFullscreen={() => setTranscriptFullscreen((v) => !v)}
               lines={transcriptOverlay.lines}
               mode={transcriptOverlay.mode}
               progress={transcriptOverlay.progress}
@@ -1166,8 +1186,8 @@ export default function NewConversation() {
       {hasData && (
         <TimelineRibbon
           graphData={displayGraphData}
-          selectedNode={selectedNode}
-          setSelectedNode={setSelectedNode}
+          selectedNode={focusNode}
+          setSelectedNode={setFocusNode}
           semanticLevel={visibleGraphLevel}
         />
       )}

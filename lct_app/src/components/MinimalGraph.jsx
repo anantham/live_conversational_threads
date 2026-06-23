@@ -48,6 +48,7 @@ function MinimalGraphInner({
   graphData,
   selectedNode,
   setSelectedNode,
+  focusNode,
   viewportReservationKey,
   onVisibleLevelChange,
   onFocusChange,
@@ -1100,6 +1101,30 @@ function MinimalGraphInner({
     [layoutedDisplayNodes, reactFlow]
   );
 
+  // Center on a node chosen from the TIMELINE RIBBON without opening the detail
+  // drawer (which is bound to `selectedNode`). The ribbon "teleports" the camera
+  // only; re-centering is keyed on focusNode CHANGING, so a later user pan isn't
+  // yanked back when the layout updates.
+  const lastFocusedRef = useRef(null);
+  useEffect(() => {
+    if (focusNode === lastFocusedRef.current) return undefined;
+    lastFocusedRef.current = focusNode;
+    if (!focusNode) return undefined;
+    // user is driving now — stop auto-follow so it doesn't fight the jump
+    if (autoFollowRef.current) {
+      autoFollowRef.current = false;
+      setAutoFollow(false);
+    }
+    let cleanup;
+    const raf = requestAnimationFrame(() => {
+      cleanup = centerViewportOnNode(focusNode, { zoom: 1.15, duration: 280 });
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      cleanup?.();
+    };
+  }, [focusNode, centerViewportOnNode]);
+
   // Sync ref with state so effects read the latest value
   useEffect(() => {
     autoFollowRef.current = autoFollow && !selectedNode;
@@ -1485,11 +1510,6 @@ function MinimalGraphInner({
         setSelectedCluster={setSelectedCluster}
         setLockedLevel={setLockedLevel}
         setSelectedNode={setSelectedNode}
-        normalizedChunk={normalizedChunk}
-        displayMode={displayMode}
-        effectiveSemanticLevel={effectiveSemanticLevel}
-        effectiveClusterLevel={effectiveClusterLevel}
-        speakerColorMap={speakerColorMap}
       />
 
     </div>
@@ -1499,6 +1519,7 @@ function MinimalGraphInner({
 MinimalGraphInner.propTypes = {
   graphData: PropTypes.array,
   selectedNode: PropTypes.string,
+  focusNode: PropTypes.string,
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
@@ -1522,6 +1543,7 @@ export default function MinimalGraph(props) {
 MinimalGraph.propTypes = {
   graphData: PropTypes.array,
   selectedNode: PropTypes.string,
+  focusNode: PropTypes.string,
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,

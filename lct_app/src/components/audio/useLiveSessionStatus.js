@@ -581,11 +581,16 @@ export default function useLiveSessionStatus({
         "Caption stream is delayed"
       );
     }
-    if (sessionAck?.degraded || (firstCaptionMs !== null && firstCaptionMs > STT_WARN_MS)) {
+    // Only the CURRENT route being degraded marks STT degraded. We deliberately do
+    // NOT key off firstCaptionMs here: a single slow first caption was making STT
+    // look degraded for the WHOLE session (the "STT is slow" indicator that never
+    // cleared). The live delay checks above (lastTranscriptAgeMs) already cover
+    // current slowness and recover on their own; firstCaptionMs stays telemetry-only.
+    if (sessionAck?.degraded) {
       return buildChip(
         "degraded",
         latencyLabel ? `STT ${providerName} ${latencyLabel}` : `STT ${providerName}`,
-        sessionAck?.degraded ? "Degraded fallback route" : "Caption latency is above target"
+        "Degraded fallback route"
       );
     }
     if (lastTranscriptAtMs) {

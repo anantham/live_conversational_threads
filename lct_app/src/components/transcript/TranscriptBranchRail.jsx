@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
-import { GitBranch } from "lucide-react";
+import { useState } from "react";
+import { ChevronDown, ChevronUp, GitBranch } from "lucide-react";
 
 const BRANCH_STYLES = [
   { dot: "bg-teal-500", border: "border-teal-200", text: "text-teal-800", bg: "bg-teal-50/70" },
@@ -12,15 +13,32 @@ const BRANCH_STYLES = [
 ];
 
 export default function TranscriptBranchRail({ branches }) {
+  // Default COLLAPSED (#1) — the threads/tangents rail is opt-in, not always shown.
+  const [collapsed, setCollapsed] = useState(true);
   if (!Array.isArray(branches) || branches.length < 2) return null;
 
   return (
     <div className="shrink-0 border-b border-gray-200 bg-white/70 px-4 py-2">
-      <div className="mb-2 flex items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-gray-400">
+      <button
+        type="button"
+        onClick={() => setCollapsed((v) => !v)}
+        className="flex w-full items-center gap-2 text-[10px] font-medium uppercase tracking-[0.12em] text-gray-400 transition hover:text-gray-600"
+        aria-expanded={!collapsed}
+        title={collapsed ? "Show threads" : "Hide threads"}
+      >
         <GitBranch size={12} />
         <span>Threads</span>
-      </div>
-      <div className="flex gap-2 overflow-x-auto pb-1">
+        <span className="rounded-full bg-gray-100 px-1.5 text-[9px] font-normal text-gray-500">
+          {branches.length}
+        </span>
+        {collapsed ? (
+          <ChevronDown size={12} className="ml-auto" />
+        ) : (
+          <ChevronUp size={12} className="ml-auto" />
+        )}
+      </button>
+      {!collapsed && (
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
         {branches.map((branch) => {
           const style = BRANCH_STYLES[branch.colorIndex % BRANCH_STYLES.length];
           return (
@@ -44,7 +62,8 @@ export default function TranscriptBranchRail({ branches }) {
             </div>
           );
         })}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
