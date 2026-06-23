@@ -418,9 +418,9 @@ export default function NewConversation() {
       return {
         mode: "live",
         lines: liveTranscriptState.liveTranscriptLines,
-        statusText: liveTranscriptState.recording
-          ? (liveTranscriptState.statusLine || "Live transcript")
-          : "Session draft",
+        // Stable label only — the diagnostic summary (latency, "last heard", etc.)
+        // lives behind the health pulse/popover, not on the transcript card.
+        statusText: liveTranscriptState.recording ? "Live transcript" : "Session draft",
         etaText: "",
         progress: null,
       };
@@ -431,7 +431,6 @@ export default function NewConversation() {
     liveTranscriptActive,
     liveTranscriptState.liveTranscriptLines,
     liveTranscriptState.recording,
-    liveTranscriptState.statusLine,
     upload.etaText,
     upload.liveTranscriptLines,
     upload.progress,
@@ -495,17 +494,19 @@ export default function NewConversation() {
   }, []);
 
   // (upload hook moved earlier — needed before transcriptOverlayVisible)
+  // NOTE: `message` is transient toast text — it is deliberately NOT part of the
+  // persisted snapshot. Including it made the "Discarded…" toast resurrect the
+  // draft (it counted as meaningful content), so discard could never close.
   const localDraftSnapshot = useMemo(
     () => ({
       conversationId,
       fileName,
-      message,
       graphData,
       draftGraphData,
       chunkDict,
       draftChunkDict,
     }),
-    [chunkDict, conversationId, draftChunkDict, draftGraphData, fileName, graphData, message]
+    [chunkDict, conversationId, draftChunkDict, draftGraphData, fileName, graphData]
   );
   const {
     availableDraft,
@@ -556,13 +557,14 @@ export default function NewConversation() {
     setSelectedNode(null);
   }, [allNodes, selectedNode]);
 
+  // A transient toast (`message`) must NOT count as recoverable content, else the
+  // post-discard "Discarded…" toast keeps the session-end panel open forever.
   const hasRecoverableLocalState = useMemo(
     () =>
       hasData ||
       Object.keys(normalizeObject(displayChunkDict)).length > 0 ||
-      Boolean(String(fileName || "").trim()) ||
-      Boolean(String(message || "").trim()),
-    [displayChunkDict, fileName, hasData, message]
+      Boolean(String(fileName || "").trim()),
+    [displayChunkDict, fileName, hasData]
   );
   // Show the Session Draft / name-and-save panel only when the session is truly
   // STOPPED — not when merely PAUSED. Pause sets recording=false but paused=true

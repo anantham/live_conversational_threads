@@ -84,7 +84,6 @@ export function isMeaningfulLocalDraft(value) {
   if (Object.keys(normalizeObject(value.chunkDict)).length > 0) return true;
   if (Object.keys(normalizeObject(value.draftChunkDict)).length > 0) return true;
   if (String(value.fileName || "").trim()) return true;
-  if (String(value.message || "").trim()) return true;
   return false;
 }
 
@@ -95,7 +94,6 @@ function sanitizeDraft(value) {
     version: LOCAL_DRAFT_VERSION,
     conversationId: String(value.conversationId || "").trim() || null,
     fileName: String(value.fileName || "").trim(),
-    message: String(value.message || "").trim(),
     graphData: normalizeArray(value.graphData),
     draftGraphData: normalizeArray(value.draftGraphData),
     chunkDict: normalizeObject(value.chunkDict),
