@@ -35,11 +35,18 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 DEFAULT_MODEL = os.getenv("LOCAL_STT_MODEL", "mlx-community/whisper-large-v3-turbo")
 PORT = int(os.getenv("LOCAL_STT_PORT", "5095"))
 DEBUG = os.getenv("LOCAL_STT_DEBUG", "false").strip().lower() in ("1", "true", "yes", "on")
+# Browser edge STT (ADR-056 Phase 1c) POSTs here directly from the web app's
+# origin (e.g. https://threads.adityaarpitha.com over Tailscale Serve HTTPS) — a
+# CROSS-ORIGIN request the browser blocks without CORS. Default "*" suits the
+# personal/trusted-tailnet posture (this endpoint is tailnet-only anyway); set
+# LOCAL_STT_CORS_ORIGINS to a comma-separated allowlist to tighten.
+CORS_ORIGINS = os.getenv("LOCAL_STT_CORS_ORIGINS", "*").strip()
 
 logging.basicConfig(
     level=logging.DEBUG if DEBUG else logging.INFO,
@@ -48,6 +55,12 @@ logging.basicConfig(
 log = logging.getLogger("lct_local_stt")
 
 app = FastAPI(title="LCT Local STT (mlx-whisper)")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] if CORS_ORIGINS == "*" else [o.strip() for o in CORS_ORIGINS.split(",") if o.strip()],
+    allow_methods=["POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 _state = {"ready": False, "requests": 0, "failures": 0}
 
 
