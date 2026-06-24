@@ -73,6 +73,12 @@ class Node(Base):
     timestamp_end = Column(Float)
     duration_seconds = Column(Float)
 
+    # Threading (ADR-058 / #12): the LLM-authored thread this node belongs to and
+    # its flow state. Also mirrored into cluster_info JSONB for back-compat; promoted
+    # to columns so the API + graph swim-lane layout can read them top-level.
+    thread_id = Column(Text)      # slug like "thread::vision" (NOT a UUID)
+    thread_state = Column(Text)   # new_thread | continue_thread | return_to_thread
+
     # Clustering & Display
     cluster_info = Column(JSONB)  # Auto-clustering metadata
     display_preferences = Column(JSONB)  # Visualization settings

@@ -46,6 +46,19 @@ export function normalizeGraphNode(item, index) {
       !Array.isArray(item.contextual_relation)
         ? item.contextual_relation
         : {},
+    // #12: lift the thread/tangent structure to top level so graphLayout swim-lanes,
+    // NodeDetail, and MinimalGraph markers (which read these top-level) light up.
+    // Falls back to the metadata-nested shape the /api/graph endpoint still uses.
+    thread_id:
+      (typeof item.thread_id === "string" && item.thread_id) ||
+      item.metadata?.cluster_info?.thread_id ||
+      "",
+    thread_state:
+      (typeof item.thread_state === "string" && item.thread_state) ||
+      item.metadata?.cluster_info?.thread_state ||
+      "",
+    is_tangent: Boolean(item.is_tangent ?? item.metadata?.is_tangent),
+    is_crux: Boolean(item.is_crux ?? item.metadata?.is_crux),
   };
 }
 
