@@ -86,6 +86,13 @@ def node_to_response_payload(node: Node, sequence_number: int) -> Dict[str, Any]
         "speaker_info": node.speaker_info or {},
         "keywords": node.key_points or [],
         "metadata": metadata,
+        # #12: promote the thread/tangent structure to top level so the graph
+        # swim-lane layout + NodeDetail (which read these top-level) light up.
+        # cluster_info fallback covers rows not yet backfilled by the migration.
+        "is_tangent": bool(node.is_tangent),
+        "is_crux": bool(node.is_crux),
+        "thread_id": node.thread_id or (node.cluster_info or {}).get("thread_id"),
+        "thread_state": node.thread_state or (node.cluster_info or {}).get("thread_state"),
         "canvas_x": node.canvas_x,
         "canvas_y": node.canvas_y,
     }
