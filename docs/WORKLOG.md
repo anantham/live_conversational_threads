@@ -1,5 +1,33 @@
 # WORKLOG
 
+## 2026-06-24 — Mobile UX critique batch + edge-STT shelved
+
+Full writeup + backlog: `docs/HANDOVER_2026-06-24_mobile-ux-backlog-and-edge-shelf.md`.
+
+Live mobile testing of `threads.adityaarpitha.com` surfaced 12 items (UX + STT quality).
+Key decisions/findings:
+- **Edge STT SHELVED** — built + deployed behind `?edge=1` (ADR-056, PRs #89/#90) but
+  never confirmed routing phone→M5 (M5 log showed 100% Asus relay, 0 edge); relay latency
+  judged acceptable in practice. Endpoint is healthy; likely blocker is `?edge=1` not
+  surviving SPA nav to the recording screen. Resume notes in the handover.
+- **STT hallucination (#1):** `lct_python_backend/local_stt/server.py` transcribe call
+  passes no anti-hallucination params → Whisper defaults (`condition_on_previous_text=True`
+  repeat-loop + no silence filter); model `whisper-large-v3-turbo`. Fix = set the params.
+- **Threads too aggressive (#12):** new thread every few seconds; needs temporal hysteresis
+  (~minutes, soft). Need to find the detection prompt/heuristic.
+- **Diarization (#3):** M5 `/health` reports `diarization: available` → server CAN diarize;
+  client just isn't requesting `diarize=true`.
+- **Shipped this session (live on main):** discard-draft unstuck + status-noise cleanup
+  (#91); timeline-click-centers-node + full-screen transcript + collapsible threads +
+  Colors→Legend + Back/zoom-HUD fix (#91/#92); GitHub auto-deploy + `rootDirectory=lct_app`
+  + deploy docs in AGENTS.md (#93); ADR-056 recalibration (#88).
+- **Open backlog (see handover):** #1 STT hallucination, #12 thread over-splitting,
+  #2 speaker labels + per-speaker text color, #3 diarization request, #5 fullscreen
+  transcript exit/chrome, #6 audio-download toast, #7 upload-button color, #8 mobile
+  node-select audio seek, #4 IndrasNet contacts (cf `docs/INDRASNET_INTEGRATION.md`),
+  #10 cost dashboard + counterfactual savings (cf `docs/ROADMAP_INSTRUMENTATION_METRICS.md`),
+  #11 UI state map (statechart + affordance matrix).
+
 ## 2026-06-19 — Token-mismatch incident: diagnosed, verified RESOLVED
 
 Full writeup: `docs/HANDOVER_2026-06-19_public-deploy-token-incident.md`.
