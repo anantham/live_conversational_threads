@@ -1721,6 +1721,32 @@ class WsSessionContext:
                     source_text,
                     refinement_segments,
                 )
+                # #2: push the per-segment diarized speakers to the LIVE transcript
+                # so the overlay colors/labels lines by speaker (late-bound, ADR-012).
+                # The reconciliation above is node-level; this is the raw segment
+                # spans (speaker + timestamps) the frontend overlaps onto lines. Text
+                # is omitted (privacy + lighter; matching is by timestamp overlap).
+                _speaker_spans = [
+                    {
+                        "speaker": str((_s or {}).get("speaker") or ""),
+                        "start": (_s or {}).get("start"),
+                        "end": (_s or {}).get("end"),
+                    }
+                    for _s in refinement_segments
+                    if isinstance(_s, dict)
+                    and (_s or {}).get("speaker")
+                    and (_s or {}).get("start") is not None
+                    and (_s or {}).get("end") is not None
+                ]
+                if _speaker_spans:
+                    await _safe_send_json(
+                        self.websocket,
+                        {
+                            "type": "speaker_patch",
+                            "segments": _speaker_spans,
+                            "window": window_timestamps or {},
+                        },
+                    )
                 # One-shot nudge: the first time diarization shows a 2nd
                 # distinct speaker, tell the frontend so it can badge the
                 # participants button. The picker no longer nags every
