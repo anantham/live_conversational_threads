@@ -99,72 +99,91 @@ export default function NodeDetail({
   const [factCheckLoading, setFactCheckLoading] = useState(false);
 
   const audioRef = useRef(null);
-  const pendingSeekRef = useRef(null);
+  // The DESIRED seek time, kept until it actually sticks. Mobile browsers ignore
+  // preload="metadata" and may not be "seekable" until the user taps play, so a
+  // one-shot currentTime assignment gets dropped -> playback from 0. We re-apply
+  // on every media-ready event + on play, clearing only once it lands on target.
+  const targetSeekRef = useRef(null);
   const [audioState, setAudioState] = useState("idle");
 
   // Backend timestamps are seconds (Float on DBUtterance.timestamp_start,
   // derived from utterance.start_time which is seconds throughout the
   // pipeline). Don't try to auto-detect ms — the old heuristic
   // `ts > 10000 ? ts/1000 : ts` silently mis-seeked anything past ~2.8h.
-  const seekTo = useCallback((timeInSeconds) => {
+  const applyPendingSeek = useCallback((autoplay) => {
     const audio = audioRef.current;
-    if (!audio) return;
-    if (audio.readyState >= 1) {
-      audio.currentTime = timeInSeconds;
-      audio.play().catch((e) => console.warn("Auto-play prevented:", e));
-    } else {
-      // Audio hasn't loaded metadata yet — assigning currentTime now
-      // would be silently dropped. Defer until loadedmetadata fires.
-      pendingSeekRef.current = timeInSeconds;
+    const t = targetSeekRef.current;
+    if (!audio || t == null || audio.readyState < 1) return;
+    try {
+      audio.currentTime = t;
+    } catch {
+      return;  // not seekable yet (mobile) — a later event will retry
+    }
+    if (Math.abs((audio.currentTime || 0) - t) < 1.0) {
+      targetSeekRef.current = null;  // landed — stop retrying
+      if (autoplay) audio.play().catch((e) => console.warn("Auto-play prevented:", e));
     }
   }, []);
+
+  const seekTo = useCallback((timeInSeconds) => {
+    targetSeekRef.current = timeInSeconds;
+    applyPendingSeek(true);  // desktop: sticks now; mobile: re-applied on ready/play
+  }, [applyPendingSeek]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return undefined;
 
-    const onLoadedMetadata = () => {
-      setAudioState((s) => (s === "playing" ? s : "ready"));
-      if (pendingSeekRef.current != null) {
-        const t = pendingSeekRef.current;
-        pendingSeekRef.current = null;
-        audio.currentTime = t;
-        audio.play().catch((e) => console.warn("Auto-play prevented:", e));
-      }
-    };
+    // Re-apply the pending seek whenever the media becomes more ready (mobile
+    // loads lazily, so the first attempt in seekTo is usually too early).
+    const onLoadedMetadata = () => { setAudioState((s) => (s === "playing" ? s : "ready")); applyPendingSeek(true); };
+    const onLoadedData = () => applyPendingSeek(true);
+    const onCanPlay = () => { setAudioState((s) => (s === "playing" ? s : "ready")); applyPendingSeek(true); };
+    // User tapped the native play control: jump to the target first, keep playing.
+    const onPlay = () => applyPendingSeek(false);
     const onWaiting = () => setAudioState("loading");
     const onSeeking = () => setAudioState("seeking");
-    const onCanPlay = () => setAudioState((s) => (s === "playing" ? s : "ready"));
     const onPlaying = () => setAudioState("playing");
     const onPause = () => setAudioState("paused");
     const onError = () => setAudioState("error");
     const onStalled = () => setAudioState("loading");
 
     audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("loadeddata", onLoadedData);
+    audio.addEventListener("canplay", onCanPlay);
+    audio.addEventListener("play", onPlay);
     audio.addEventListener("waiting", onWaiting);
     audio.addEventListener("seeking", onSeeking);
-    audio.addEventListener("canplay", onCanPlay);
     audio.addEventListener("playing", onPlaying);
     audio.addEventListener("pause", onPause);
     audio.addEventListener("error", onError);
     audio.addEventListener("stalled", onStalled);
     return () => {
       audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("loadeddata", onLoadedData);
+      audio.removeEventListener("canplay", onCanPlay);
+      audio.removeEventListener("play", onPlay);
       audio.removeEventListener("waiting", onWaiting);
       audio.removeEventListener("seeking", onSeeking);
-      audio.removeEventListener("canplay", onCanPlay);
       audio.removeEventListener("playing", onPlaying);
       audio.removeEventListener("pause", onPause);
       audio.removeEventListener("error", onError);
       audio.removeEventListener("stalled", onStalled);
     };
-  }, [audioUrl]);
+  }, [audioUrl, applyPendingSeek]);
 
   useEffect(() => {
     if (!audioRef.current || !safeNode) return;
-    const ts = safeNode.timestamp_start ?? safeNode.start_time;
-    if (ts == null || ts < 0) return;
-    seekTo(ts);
+    // Match TimelineRibbon's field coverage — a node's start time may live under
+    // any of these (top-level or in metadata); reading only timestamp_start meant
+    // the seek silently never fired for some nodes (-> playback from 0).
+    const meta = safeNode.metadata && typeof safeNode.metadata === "object" ? safeNode.metadata : null;
+    const ts = safeNode.timestamp_start ?? safeNode.start_time ?? safeNode.timestamp
+      ?? safeNode.time ?? safeNode.start
+      ?? meta?.timestamp_start ?? meta?.start_time ?? meta?.timestamp;
+    const n = Number(ts);
+    if (!Number.isFinite(n) || n < 0) return;
+    seekTo(n);
   }, [safeNode, seekTo]);
 
   const relations = Array.isArray(safeNode?.edge_relations) ? safeNode.edge_relations : [];

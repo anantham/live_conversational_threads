@@ -108,10 +108,10 @@ export default function Home() {
           className="flex flex-col items-center gap-1.5 group"
           title="Upload an audio file instead of recording live"
         >
-          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-amber-50 backdrop-blur-sm border border-amber-300 text-amber-600 group-hover:bg-amber-100 group-hover:border-amber-400 transition">
+          <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
             <FileUp size={16} />
           </span>
-          <span className="text-[10px] font-medium text-amber-700 group-hover:text-amber-800 transition">Upload</span>
+          <span className="text-[10px] font-medium text-gray-500 group-hover:text-gray-700 transition">Upload</span>
         </button>
 
         <button
