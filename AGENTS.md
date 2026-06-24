@@ -452,6 +452,16 @@ Concrete paths for the shared-core protocols above (everything else lives in the
 - App code lives under `lct_app/` (React frontend); Python backend at repo root.
 - Note: this repo's `CLAUDE.md` is a one-line pointer to `AGENTS.md` — AGENTS.md is the single source of truth.
 
+## Deployment (Vercel)
+
+The `lct_app/` frontend deploys to Vercel (project `lct_app`, id `prj_XpoD0R7ciZiNU7Vjwz12LIMpAZix`, team `team_0bt8qOWPo2k6Qf0nDXJOE9dE`). Mechanics worth not re-deriving:
+
+- **Auto-deploy is connected (GitHub).** Push/merge to **`main` → production deploy**; every PR → a **preview** deploy. Merging to `main` ships to prod (and `threads.adityaarpitha.com`) with no manual step.
+- **`rootDirectory` MUST be `lct_app`.** The React app is a subdir (Python backend sits at the repo root). Git builds run from the repo root, so without this set they fail (a fast ~5s "no package.json" error). Set via `PATCH /v9/projects/{id}` `{"rootDirectory":"lct_app"}`.
+- **Manual CLI fallback runs from the REPO ROOT,** not `lct_app/` — because `rootDirectory=lct_app` is applied *within* the upload root, so deploying from `lct_app/` makes Vercel look for `lct_app/lct_app`. The `.vercel/` link normally lives in `lct_app/`; copy it to the repo root for a root deploy: `cp -r lct_app/.vercel ./.vercel && vercel deploy --prod --yes`. Remote builds use the project's prod `VITE_*` env (that's why CLI deploys still get prod config).
+- **The custom domain is independent of Git.** `threads.adityaarpitha.com` is a project-level **production alias** (`gitBranch: null`, verified; DNS → Vercel edge `64.29.17.65` / `216.198.79.65`). It always serves the latest *production* deployment — every prod deploy (git OR CLI) re-aliases it automatically. The domain works fine with zero Git connection.
+- **CLI auth token** for raw REST API calls: `~/Library/Application Support/com.vercel.cli/auth.json` (`.token`).
+
 ## Design Context (frontend)
 
 Strategic + visual design context for `lct_app/` lives in two root files (written via the `/impeccable` skill); read them before any UI work:
