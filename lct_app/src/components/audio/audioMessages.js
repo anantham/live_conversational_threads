@@ -7,6 +7,7 @@ const createBackendMessageHandler =
     onSessionAck,
     onSessionStarted,
     onSecondSpeakerDetected,
+    onSpeakerPatch,
     onConsumptionMatch,
     onPrayerCard,
     onPong,
@@ -59,6 +60,10 @@ const createBackendMessageHandler =
         logToServer?.(
           `Second speaker detected: ${(message.speaker_ids || []).join(", ") || "?"}`
         );
+      }
+      if (message.type === "speaker_patch") {
+        // Late-bound per-segment diarization (#2): revises live line speakers.
+        onSpeakerPatch?.(message);
       }
       if (message.type === "consumption_match") {
         onConsumptionMatch?.(message);
@@ -125,6 +130,7 @@ const createBackendMessageHandler =
           text: message.text,
           eventType: message.type,
           metadata: message.metadata || {},
+          timestamps: message.timestamps || {},
         });
       }
       if (message.type === "stt_provider_error") {

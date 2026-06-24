@@ -19,6 +19,7 @@ import useEdgeStt from "./audio/useEdgeStt";
 import { edgeResultToWsMessage } from "./audio/edgeTranscript";
 import { readEdgeConfig } from "./audio/edgeConfig";
 import useMicDevices from "./audio/useMicDevices";
+import { applySpeakerPatch } from "./transcript/applySpeakerPatch";
 import { randomUUID } from "../utils/uuid";
 import { isTouchPrimaryDevice } from "../utils/device";
 import { makeDebug } from "../utils/debug";
@@ -48,12 +49,16 @@ function formatElapsed(ms) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef, logprobs) {
+function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef, logprobs, timestamps) {
   if (!cleanText) {
     return previousLines;
   }
 
   const confidence = calculateConfidence(logprobs);
+  // #2: carry per-line start/end (seconds) so the late-bound speaker_patch can
+  // overlap-match diarized segments onto lines. speaker is filled in later.
+  const start = timestamps && Number.isFinite(timestamps.start) ? timestamps.start : null;
+  const end = timestamps && Number.isFinite(timestamps.end) ? timestamps.end : null;
   const lastLine = previousLines[previousLines.length - 1] || null;
   const trimLines = (lines) => lines.slice(-LIVE_TRANSCRIPT_MAX_LINES);
 
@@ -75,6 +80,9 @@ function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef, 
         text: cleanText,
         isFinal: false,
         confidence,
+        start,
+        end,
+        speaker: null,
       },
     ]);
   }
@@ -86,6 +94,9 @@ function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef, 
       text: cleanText,
       isFinal: true,
       confidence,
+      // final carries the authoritative timestamps; keep prior if absent
+      start: start ?? lastLine.start ?? null,
+      end: end ?? lastLine.end ?? null,
     };
     return next;
   }
@@ -102,6 +113,9 @@ function upsertLiveTranscriptLine(previousLines, cleanText, isFinal, lineIdRef, 
       text: cleanText,
       isFinal: true,
       confidence,
+      start,
+      end,
+      speaker: null,
     },
   ]);
 }
@@ -209,7 +223,7 @@ const AudioInput = forwardRef(function AudioInput({
     backendSocketState,
   });
 
-  const handleProviderTranscript = useCallback(({ text, eventType, metadata }) => {
+  const handleProviderTranscript = useCallback(({ text, eventType, metadata, timestamps }) => {
     const cleanText = String(text || "").trim();
     if (!cleanText) return;
     const isFinal = eventType === "transcript_final";
@@ -220,9 +234,18 @@ const AudioInput = forwardRef(function AudioInput({
       metadata: metadata || {},
     });
     setLiveTranscriptLines((previous) =>
-      upsertLiveTranscriptLine(previous, cleanText, isFinal, transcriptLineIdRef, logprobs)
+      upsertLiveTranscriptLine(previous, cleanText, isFinal, transcriptLineIdRef, logprobs, timestamps)
     );
   }, [appendSessionEvent, handleLiveTranscriptEvent]);
+
+  // #2: late-bound diarization. The backend emits a speaker_patch with per-segment
+  // {speaker,start,end} once the refinement loop diarizes accumulated audio; revise
+  // each already-displayed line's speaker by max timestamp overlap so the existing
+  // SessionTranscriptOverlay render colors + labels it in place.
+  const handleSpeakerPatch = useCallback(({ segments }) => {
+    if (!Array.isArray(segments) || segments.length === 0) return;
+    setLiveTranscriptLines((lines) => applySpeakerPatch(lines, segments));
+  }, []);
 
   // Map known noisy/technical provider errors to short, friendly text.
   // The raw OpenAI buffer error is the most common one users hit when they
@@ -314,6 +337,7 @@ const AudioInput = forwardRef(function AudioInput({
     onBackendSocketStateChange: setBackendSocketState,
     onPong: handlePong,
     onProviderTranscript: handleProviderTranscript,
+    onSpeakerPatch: handleSpeakerPatch,
     onProcessingStatus: handleProcessingStatus,
     onBackendMessage: handleBackendMessageEvent,
     onAudioReady: handleAudioReady,
