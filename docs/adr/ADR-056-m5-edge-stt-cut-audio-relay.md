@@ -1,6 +1,6 @@
 ---
 Date: 2026-06-23
-Status: **Proposed — design for review. REVISED after a codex + grok dual-family review (both returned REVISE; convergent findings folded in below).** Nothing built. The "Required before Phase 1" gate must be resolved before any frontend/capture change. (ADR number provisional — 040/050/055 are taken on branches; renumber on merge.)
+Status: **Proposed — design for review. REVISED after a codex + grok dual-family review (both returned REVISE; convergent findings folded in below). RECALIBRATED 2026-06-23** to the personal/owned-device threat model — security gates collapsed to `AUTH_TOKEN` + Serve HTTPS (ADR-057 shelved, PR #87 closed); **#5 measured → direct ~0.43 s vs relay ~1.7–2.4 s (~4–6× win) → build justified.** Remaining gates are engineering (#3 continuity, #4 fallback, #6 diarization). Nothing built. (ADR number provisional.)
 Group: Infra / Fleet topology / Live STT latency
 Related: ADR-050 (fleet capability heartbeat + lease — the M5 as an AI-services node); ADR-040 (backend port ownership & restart authority — why we DON'T make the M5 a second :43181 manager); ADR-034 (egress chokepoint — the audio egress gate this design must NOT bypass); PR #83 (diarization shape fix on the backend→M5 relay path — interacts with this).
 ---
@@ -33,6 +33,8 @@ This is deliberately **not** "run LCT on the M5": no M5 app backend, no shared D
 ## Required before Phase 1 (BLOCKING — raised by the dual-family review)
 These must be designed/answered before any change to the live capture path:
 
+> **Recalibrated 2026-06-23 to the real threat model** (personal, single-user, owned devices, trusted tailnet, owner-secured laptop). The security items are RIGHT-SIZED: **#1/#2/#7 collapse to "the M5 STT endpoint requires the existing `AUTH_TOKEN` over Tailscale-Serve HTTPS — no capability-token machinery"** (the M5 is a local owned node, not external egress; the client is the same single user; ADR-057's asymmetric-key/per-session-credential design is shelved as over-scoped — PR #87 closed, branch kept). The real remaining gates are **engineering, not security**: #3 continuity, #4 fallback, #6 diarization parity. **#5 is now MEASURED (see Consequences) — the win is SUBSTANTIAL (~4–6×), so the topology is worth building.**
+
 1. **Egress-gate preservation (ADR-034).** Today audio passes the Asus server-side egress chokepoint. Client→M5-direct *bypasses* it. Decide the enforcement: an **Asus-issued short-lived token the M5 validates before accepting audio** (preferred), a relocated gate on the M5, or a justified exemption. Do not build until chosen.
 2. **Ingestion trust model.** Moving STT client-side means the Asus would accept client-supplied transcripts, speaker tags, and **ECAPA biometric embeddings** with no audio grounding → an authenticated client could inject arbitrary content. Require **authenticated M5→Asus delivery and/or signed result envelopes** with strict server-side validation; document the new trust boundary explicitly.
 3. **Capture session state machine & continuity.** Specify utterance IDs, client-side buffering, ack/idempotent ingestion at `/ws/transcripts`, failover **fencing**, dedup, and behavior on M5 recovery after sleep/network-move — so a laptop state change can't drop or duplicate audio or split-brain.
@@ -48,7 +50,7 @@ These must be designed/answered before any change to the live capture path:
 - **Phase 3 — reliability**: persist the Serve route (already durable via `--bg`), fast sub-second + path-aware fallback.
 
 ## Consequences
-- **Potential win:** removes the internal relay + Asus orchestration from each utterance, *if* application-level measurement (#5) confirms a net gain. The phone↔server leg remains the floor; the win is at best **modest** and conditional on a good (direct) phone↔M5 link.
+- **Win (MEASURED 2026-06-23, same 2 s chunk):** direct browser→M5 over Serve HTTPS **~0.43 s** vs the Asus relay **~1.7–2.4 s** — the relay adds **~1.3–2 s of orchestration/double-hop overhead per chunk** (the relay's own response shows actual M5 compute was only ~0.25 s + ~0.3 s diarize). So the direct path is **~4–6× faster server-side — SUBSTANTIAL, not modest** (the earlier ping-derived "~110 ms" was an order of magnitude low; #5 vindicated). The direct measurement used the M5's existing HTTP `/v1/audio/transcriptions` (**Phase-1 option (a) — validated as fast; the WS shim (b) is likely unnecessary**). Caveats: the direct test omitted diarization (+~0.3–0.5 s when added → still ~½ the relay); the phone↔entry leg (~139 ms direct / ~433 ms DERP) adds to BOTH paths, so this server-side saving carries through for the phone.
 - **Cost:** the M5 is a **laptop** (sleeps/moves/battery) — only viable as an accelerator with truly-independent, path-aware fallback (#3, #4).
 - **Security surface changes** (egress bypass + client-supplied biometric data) — net-new and BLOCKING (#1, #2); not present in the relay design.
 - **No new authority:** Asus stays sole backend/DB/worker owner → no ADR-040 ownership/restart surface, no double-processing.
