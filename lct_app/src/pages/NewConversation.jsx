@@ -1059,6 +1059,7 @@ export default function NewConversation() {
                 selectedNode={selectedNode}
                 setSelectedNode={setSelectedNode}
                 focusNode={focusNode}
+                chromeless={transcriptFullscreen}
                 viewportReservationKey={graphViewportKey}
                 onVisibleLevelChange={(view) => {
                   setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
@@ -1066,11 +1067,16 @@ export default function NewConversation() {
                 argumentTraceFrom={argumentTraceFrom}
                 setArgumentTraceFrom={setArgumentTraceFrom}
               />
-              <MinimalLegend
-                speakerColorMap={speakerColorMap}
-                conversationId={conversationId}
-                refreshKey={speakerRefreshKey}
-              />
+              {/* The Legend is a graph affordance — hide it in the full-screen
+                  transcript (subtitle view), where it just floats over the text.
+                  Center/Display/zoom HUD are hidden by MinimalGraph's chromeless. */}
+              {!transcriptFullscreen && (
+                <MinimalLegend
+                  speakerColorMap={speakerColorMap}
+                  conversationId={conversationId}
+                  refreshKey={speakerRefreshKey}
+                />
+              )}
             </div>
           </>
         )}
