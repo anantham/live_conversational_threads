@@ -974,6 +974,10 @@ async def persist_graph(
             zoom_level_visible=[node_level],
             parent_id=parent_id_resolved,
             children_ids=children_resolved or None,
+            # #12: promote thread fields to real columns (same slug value as the
+            # cluster_info mirror below) so the API/layout can read them top-level.
+            thread_id=str(thread_id) if thread_id else coerce_str(item.get("thread_id")) or None,
+            thread_state=thread_state or None,
             cluster_info={
                 "thread_id": str(thread_id) if thread_id else coerce_str(item.get("thread_id")) or None,
                 "thread_state": thread_state,

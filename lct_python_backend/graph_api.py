@@ -56,6 +56,11 @@ class NodeResponse(BaseModel):
     speaker_info: Dict[str, Any]
     keywords: List[str]
     metadata: Dict[str, Any]
+    # #12: thread/tangent structure promoted to top level (frontend reads these here)
+    is_tangent: bool = False
+    is_crux: bool = False
+    thread_id: Optional[str] = None
+    thread_state: Optional[str] = None
     canvas_x: Optional[int] = None
     canvas_y: Optional[int] = None
 
