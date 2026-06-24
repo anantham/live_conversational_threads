@@ -239,6 +239,45 @@ def _normalize_indrasnet_contact(c: Any) -> Optional[dict]:
     }
 
 
+def _looks_like_phone_name(name: Optional[str]) -> bool:
+    """A display_name that's essentially a phone number — almost always a
+    low-signal auto-import ("+918035273596", "+91… Amazon Delivery IISc")."""
+    s = (name or "").strip()
+    digits = sum(c.isdigit() for c in s)
+    return digits >= 6 and all(c.isdigit() or c in "+ ()-." for c in s)
+
+
+def _curate_picker_contacts(contacts: Any) -> list:
+    """De-noise the picker: dedup auto-formed duplicate identities by normalized
+    name (aditya/Aditya, Vishnu GT x2), then rank by SIGNAL (item_count, recency
+    tiebreak) so real conversational contacts surface and the long tail of
+    auto-ingested noise (bare phone numbers, 1-item imports) sinks below the window.
+
+    Proxy ranking only — the real human-reviewed-vs-auto distinction lives in
+    IndrasNet (attribution confidence / confirmed clusters) and isn't yet surfaced
+    in the /api/contacts summary LCT consumes (task #14).
+    """
+    if not isinstance(contacts, list):
+        return []
+    best: dict = {}
+    for c in contacts:
+        if not isinstance(c, dict):
+            continue
+        name = (c.get("display_name") or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        prev = best.get(key)
+        if prev is None or (c.get("item_count") or 0) > (prev.get("item_count") or 0):
+            best[key] = c
+
+    def _rank(c: dict):
+        named = 0 if _looks_like_phone_name(c.get("display_name")) else 1
+        return (named, c.get("item_count") or 0, c.get("last_activity") or "")
+
+    return sorted(best.values(), key=_rank, reverse=True)
+
+
 async def _fetch_indrasnet_contacts(
     *,
     limit: int,
@@ -339,7 +378,7 @@ async def known_contacts_for_picker(
         stale = is_cache_stale(cache)
         if stale:
             warm_contacts_cache()  # revalidate, but serve what we have now
-        contacts = cache["contacts"][:effective_limit]
+        contacts = _curate_picker_contacts(cache["contacts"])[:effective_limit]
         logger.info(
             "[known-contacts] served %d/%d cached contacts (stale=%s)",
             len(contacts), len(cache["contacts"]), stale,
