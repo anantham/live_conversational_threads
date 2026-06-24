@@ -14,3 +14,9 @@ pyannote.audio>=4.0
 torch>=2.2
 torchaudio>=2.2
 speechbrain>=1.0  # ECAPA-TDNN spkrec-ecapa-voxceleb (192-dim) speaker embeddings for include_embeddings
+
+# --- no-speech VAD gate (LOCAL_STT_VAD_GATE, default on) ---
+# Skips transcription when there is no voice activity, so the model can't hallucinate
+# filler ("thank you" / "¡Suscríbete!") on silence/ambient (#1). Needs torch (above).
+# The gate FAILS OPEN if this is absent — transcription still works, just ungated.
+silero-vad>=5.1
