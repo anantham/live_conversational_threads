@@ -680,11 +680,8 @@ export default function NewConversation() {
     try {
       const payload = await recoverConversationAudio(draftConversationId);
       setAudioRecovery(payload);
-      if (payload.download_url) {
-        setMessage("Recovered audio is ready to download.");
-      } else {
-        setMessage("Recovered available audio for this draft.");
-      }
+      // No toast on success — the recovered-audio download UI (driven by
+      // audioRecovery) is the feedback; the "ready to download" toast was noise.
     } catch (error) {
       console.warn("[AudioRecovery] Failed to recover audio:", error);
       setMessage(`Audio recovery failed: ${error?.message || "Unknown error"}`);
