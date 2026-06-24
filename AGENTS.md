@@ -462,6 +462,27 @@ The `lct_app/` frontend deploys to Vercel (project `lct_app`, id `prj_XpoD0R7ciZ
 - **The custom domain is independent of Git.** `threads.adityaarpitha.com` is a project-level **production alias** (`gitBranch: null`, verified; DNS → Vercel edge `64.29.17.65` / `216.198.79.65`). It always serves the latest *production* deployment — every prod deploy (git OR CLI) re-aliases it automatically. The domain works fine with zero Git connection.
 - **CLI auth token** for raw REST API calls: `~/Library/Application Support/com.vercel.cli/auth.json` (`.token`).
 
+## Backend (Asus) — restart + deploy
+
+The Python backend does **not** deploy via Vercel (that's frontend-only). It runs on the **Asus** (`asus-strix-scar`, over Tailscale) as a hidden `uvicorn` on **:43181**, served to the tailnet at `https://asus-strix-scar.tail4741ad.ts.net`. It is launched by **`logs/start_lct_backend.ps1`** (NOT a Scheduled Task) which runs `.venv\Scripts\python -m uvicorn lct_python_backend.backend:lct_app --host 0.0.0.0 --port 43181` (hidden window; logs → `logs/lct_backend.manual.*.log`). **No `--reload`**, so backend code changes need a manual restart.
+
+**Restart the backend** (THE recurring step — do it over SSH from the Mac, or locally):
+```powershell
+# 1. stop the current backend (frees :43181)
+Get-NetTCPConnection -LocalPort 43181 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+# 2. start fresh (the script refuses to start a duplicate while :43181 is held, so STOP first)
+powershell -ExecutionPolicy Bypass -File "C:\Users\adity\Documents\Ongoing Local\live_conversational_threads\logs\start_lct_backend.ps1"
+# 3. wait ~15-30s, then verify with an authed GET to the tailnet URL
+```
+SSH form from the Mac: `ssh adity@asus-strix-scar "powershell -NoProfile -EncodedCommand <b64>"` — a bare `powershell -Command` with pipes / `$_` mangles, so base64-encode the script as UTF-16LE.
+
+**Full backend deploy** after merging a backend change to `main`:
+1. On the Asus: `git -C "<repo>" pull --ff-only origin main` (the Asus checkout tracks `main`).
+2. If the change includes an Alembic migration: from `lct_python_backend/`, `..\.venv\Scripts\python -m alembic upgrade head` (DB URL comes from `.env`).
+3. Restart (above). Any frontend half auto-deploys via Vercel separately.
+
+**Gotchas:** `start_services.ps1` is a *different* (dev) orchestrator — it starts a backend on **:43180** (`backend:app`, `--reload`) + IndrasNet; the **production/tailnet backend is the :43181 one from `start_lct_backend.ps1`**. `AUTH_TOKEN` for authed calls is in `lct_python_backend/.env`.
+
 ## Design Context (frontend)
 
 Strategic + visual design context for `lct_app/` lives in two root files (written via the `/impeccable` skill); read them before any UI work:
