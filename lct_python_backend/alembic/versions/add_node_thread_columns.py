@@ -15,12 +15,14 @@ Text columns.
     (is_tangent/is_crux are a separate, already-columnar story; old pre-2026-06-05
     rows are 0 there and need re-extraction, which this migration does NOT do.)
 
-This is also a MERGE migration: the history had two open heads
-(speaker_audio_references + add_usage_quotas); this unifies them so
-`alembic upgrade head` is unambiguous again.
+Descends from the current single head on main (subject_review_bundles). NOTE: an
+earlier draft of this migration wrongly merged two already-merged tips
+(speaker_audio_references + add_usage_quotas — long since unified by
+fc20c9ad7b2e), which would have created a SECOND head and made `alembic upgrade
+head` ambiguous. A codex review caught it; corrected to descend linearly.
 
 Revision ID: add_node_thread_columns
-Revises: speaker_audio_references, add_usage_quotas
+Revises: subject_review_bundles
 Create Date: 2026-06-24
 """
 from typing import Sequence, Union
@@ -30,7 +32,7 @@ from alembic import op
 
 
 revision: str = "add_node_thread_columns"
-down_revision: Union[str, Sequence[str], None] = ("speaker_audio_references", "add_usage_quotas")
+down_revision: Union[str, Sequence[str], None] = "subject_review_bundles"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
