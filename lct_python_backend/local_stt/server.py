@@ -41,6 +41,21 @@ from fastapi.responses import JSONResponse
 DEFAULT_MODEL = os.getenv("LOCAL_STT_MODEL", "mlx-community/whisper-large-v3-turbo")
 PORT = int(os.getenv("LOCAL_STT_PORT", "5095"))
 DEBUG = os.getenv("LOCAL_STT_DEBUG", "false").strip().lower() in ("1", "true", "yes", "on")
+# No-speech VAD gate (#1): skip transcription when silero-vad finds no voice activity,
+# so the model can't hallucinate filler ("thank you" / "¡Suscríbete!") on silence/
+# ambient. On by default; tune the min speech-seconds or disable via env.
+VAD_GATE = os.getenv("LOCAL_STT_VAD_GATE", "true").strip().lower() in ("1", "true", "yes", "on")
+VAD_MIN_SPEECH_S = float(os.getenv("LOCAL_STT_VAD_MIN_SPEECH_S", "0.25"))
+# Anti-hallucination decode options (#1). condition_on_previous_text=False breaks the
+# repeat-loop attractor (endless "thank you"/"excuse me"); the thresholds route
+# low-confidence/gibberish segments through the temperature fallback instead of
+# emitting them verbatim. Applied to every mlx_whisper.transcribe call.
+ANTI_HALLUCINATION_OPTS = {
+    "condition_on_previous_text": False,
+    "compression_ratio_threshold": 2.4,
+    "logprob_threshold": -1.0,
+    "no_speech_threshold": 0.6,
+}
 # Browser edge STT (ADR-056 Phase 1c) POSTs here directly from the web app's
 # origin (e.g. https://threads.adityaarpitha.com over Tailscale Serve HTTPS) — a
 # CROSS-ORIGIN request the browser blocks without CORS. Default "*" suits the
@@ -184,6 +199,45 @@ def _get_ecapa():
     return _ecapa["model"]
 
 
+# ---------------------------------------------------------------------------
+# No-speech gate — silero-vad. Lazy + cached. The single biggest source of Whisper
+# hallucination on the live/relay path is silence/ambient chunks, where the model
+# invents filler ("thank you", "¡Suscríbete al canal!"). If VAD finds no voice
+# activity we skip transcription entirely.
+# ---------------------------------------------------------------------------
+_vad: dict = {"model": None, "error": None}
+
+
+def _get_vad():
+    if _vad["model"] is not None or _vad["error"] is not None:
+        return _vad["model"]
+    try:
+        from silero_vad import load_silero_vad
+        _vad["model"] = load_silero_vad()
+        log.info("silero-vad loaded (no-speech gate)")
+    except Exception as e:
+        _vad["error"] = f"{type(e).__name__}: {e}"
+        log.warning("silero-vad unavailable; no-speech gate DISABLED: %s", _vad["error"])
+    return _vad["model"]
+
+
+def _has_speech(path: str):
+    """True/False once VAD has run; None if VAD is unavailable/errored — callers FAIL
+    OPEN (transcribe anyway) so a broken gate never silently drops real audio."""
+    m = _get_vad()
+    if m is None:
+        return None
+    try:
+        from silero_vad import read_audio, get_speech_timestamps
+        wav = read_audio(path, sampling_rate=16000)
+        ts = get_speech_timestamps(wav, m, sampling_rate=16000)
+        speech_s = sum((t["end"] - t["start"]) for t in ts) / 16000.0
+        return speech_s >= VAD_MIN_SPEECH_S
+    except Exception as e:
+        log.warning("VAD check failed (%s) — not gating", e)
+        return None
+
+
 def _embed_segments(audio_path, segments):
     """ECAPA 192-dim embedding per segment (`segments[].embedding`) + per-speaker mean
     (`speaker_embeddings`). -> (segments, speaker_embeddings|None, dim|None). Same vector
@@ -268,17 +322,31 @@ async def transcribe(
         tmp_path = tmp.name
 
     try:
+        # No-speech gate (#1): if silero-vad finds no voice activity, skip the model
+        # entirely and return empty — otherwise it hallucinates filler on silence/
+        # ambient. Fails OPEN (None -> transcribe) so a broken gate never drops audio.
+        if VAD_GATE and _has_speech(tmp_path) is False:
+            _state["ready"] = True
+            log.info("VAD gate: no speech in file=%s -> empty result (transcription skipped)", file.filename)
+            return JSONResponse({
+                "text": "", "segments": [], "language": None,
+                "speakers": None, "speaker_embeddings": None,
+                "diarization": None, "embeddings": None,
+                "_engine": "mlx-whisper", "_model": DEFAULT_MODEL,
+                "_requested_model": model, "_elapsed_seconds": 0.0, "_vad_gated": True,
+            })
         # OpenAI-compatible clients send a `model` form field (e.g. "whisper-1",
         # "whisper-large-v3-turbo"). This server serves ONE preloaded model, so IGNORE
         # the client value and always use DEFAULT_MODEL — otherwise mlx-whisper tries to
         # resolve the client string as an HF repo and 500s ("Repository Not Found").
         if model and model != DEFAULT_MODEL:
             log.info("ignoring client model=%r; serving preloaded %s", model, DEFAULT_MODEL)
-        kwargs: dict = {"path_or_hf_repo": DEFAULT_MODEL}
+        kwargs: dict = {"path_or_hf_repo": DEFAULT_MODEL, **ANTI_HALLUCINATION_OPTS}
         if language and language.strip().lower() not in ("", "auto", "none"):
             kwargs["language"] = language.strip()
         if want_words:
             kwargs["word_timestamps"] = True            # mlx-whisper emits per-word start/end
+            kwargs["hallucination_silence_threshold"] = 2.0  # skip silent spans it tries to fill (needs word ts)
 
         t0 = time.perf_counter()
         result = mlx_whisper.transcribe(tmp_path, **kwargs)
