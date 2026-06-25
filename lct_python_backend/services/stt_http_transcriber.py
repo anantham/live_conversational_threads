@@ -750,7 +750,13 @@ class RealtimeHttpSttSession:
                         "diarize_enabled": diarize_enabled,
                         "empty_transcript": True,
                     }
-                    if transport in {"openai_audio", "openrouter_audio"}:
+                    # #15: an empty transcript = NO SPEECH this chunk (parakeet/whisper
+                    # correctly return nothing on silence). Treat it as a no-speech
+                    # event for LOCAL backend_http too — not a candidate failure — so
+                    # silent gaps stop surfacing the scary "All live STT candidates
+                    # failed" bubble. A genuine outage is a connection/HTTP error, not
+                    # an empty 200, and still falls through to the whisper fallback.
+                    if transport in {"openai_audio", "openrouter_audio", "backend_http"}:
                         logger.info(
                             "[STT FLOW] session=%s conversation=%s provider=%s transport=%s empty transcript treated as no-speech event; skipping fallback chain",
                             self.session_id or "-",
