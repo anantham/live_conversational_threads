@@ -17,6 +17,15 @@ Newest-first list of the **dated handover files** in `docs/`. Status legend (fro
 
 ---
 
+- 🟢 `HANDOVER_2026-06-25_stt-fluidaudio.md` — **STT → FluidAudio + mobile-UX.** Replaced the
+  hallucinating chunked-whisper live STT with a **FluidAudio/parakeet drop-in service** (clean,
+  ~115× realtime, no "Fuhal" loops); **LIVE** via Tailscale-serve `:5443`→`:5096`. Quota disabled,
+  empty-transcript→no-speech (#105). Shipped #91–#105 + ADR-058 (identity). **LIVE OPERATIONAL
+  STATE + restart cmds are in the file — read before touching STT** (none of it is in git).
+  Open: commit the still-untracked FluidAudio service, the provider-label/real-fallback "clean fix",
+  FluidAudio supervision (launchd-ANE wall → nohup), diarization (#2), #12 topic-stack rail,
+  #13/#14 identity (ADR-058), #10 cost dashboard.
+
 - ✅ `HANDOVER_2026-06-19_public-deploy-token-incident.md` —
   Token rotated (new `F7G6br…` → 200, old `nid1L4…` → 401-dead), leaked token scrubbed from all
   current branch trees (survives only in deep history `44408fc`), env backups deleted, app verified
