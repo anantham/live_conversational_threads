@@ -1,6 +1,7 @@
 import Foundation
 import FluidAudio
 import Swifter
+import AVFoundation
 
 // MARK: - Configuration
 
@@ -43,7 +44,6 @@ let sentenceEnders: Set<Character> = [".", "!", "?", "…"]
 /// punctuation (falling back to a single trailing segment for the remainder).
 func buildSegments(from timings: [TokenTiming]?, fullText: String) -> [Segment] {
     guard let timings = timings, !timings.isEmpty else {
-        // No timing info: one segment with the whole text, null times.
         let t = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.isEmpty { return [] }
         return [Segment(id: 0, start: nil, end: nil, text: t)]
@@ -72,14 +72,12 @@ func buildSegments(from timings: [TokenTiming]?, fullText: String) -> [Segment] 
         if curStart == nil { curStart = timing.startTime }
         curEnd = timing.endTime
         curTokens.append(timing.token)
-        // Close the segment after sentence-ending punctuation.
         if let last = timing.token.last, sentenceEnders.contains(last) {
             flush()
         }
     }
-    flush()  // trailing remainder
+    flush()
 
-    // Defensive fallback: if grouping produced nothing usable, return whole text.
     if segments.isEmpty {
         let t = fullText.trimmingCharacters(in: .whitespacesAndNewlines)
         if t.isEmpty { return [] }
@@ -88,10 +86,85 @@ func buildSegments(from timings: [TokenTiming]?, fullText: String) -> [Segment] 
     return segments
 }
 
-// MARK: - Warm, persistent ASR manager (loaded once at startup)
+// MARK: - Speaker assignment (diarization × ASR alignment)
 
-/// Holds the single warm AsrManager. The manager is a FluidAudio actor, so all
-/// access is awaited. `transcribe` requires a fresh decoder state per call.
+/// Assign a speaker to each ASR segment by finding the diarization speaker
+/// segment with the maximum overlap in time.
+func assignSpeaker(to segment: Segment, from diarSegments: [TimedSpeakerSegment]) -> String? {
+    guard let segStart = segment.start, let segEnd = segment.end, segStart < segEnd else { return nil }
+    var bestSpeaker: String? = nil
+    var bestOverlap: Double = 0
+    for d in diarSegments {
+        let dStart = Double(d.startTimeSeconds)
+        let dEnd = Double(d.endTimeSeconds)
+        let overlapStart = max(segStart, dStart)
+        let overlapEnd = min(segEnd, dEnd)
+        let overlap = max(0, overlapEnd - overlapStart)
+        if overlap > bestOverlap {
+            bestOverlap = overlap
+            bestSpeaker = d.speakerId
+        }
+    }
+    return bestSpeaker
+}
+
+/// Build the segments array for the response. When diarization results are
+/// present, each segment gets a `speaker` field (e.g. "S1", "S2").
+func buildSegmentDicts(_ segments: [Segment], diarResult: DiarizationResult?) -> [[String: Any]] {
+    let diarSegs = diarResult?.segments ?? []
+    return segments.map { s in
+        var dict: [String: Any] = [
+            "id": s.id,
+            "start": s.start.map { $0 as Any } ?? NSNull(),
+            "end":   s.end.map   { $0 as Any } ?? NSNull(),
+            "text":  s.text,
+        ]
+        if let speaker = assignSpeaker(to: s, from: diarSegs) {
+            dict["speaker"] = speaker
+        }
+        return dict
+    }
+}
+
+// MARK: - Audio sample extraction (for diarization)
+
+/// Decode an audio file to 16 kHz mono Float32 samples using AVFoundation.
+/// Returns nil if the file cannot be decoded or converted.
+func extractAudioSamples(from url: URL) -> [Float]? {
+    guard let srcFile = try? AVAudioFile(forReading: url) else { return nil }
+    let srcFmt = srcFile.processingFormat
+    let targetFmt = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                   sampleRate: 16000, channels: 1, interleaved: false)!
+    guard let converter = AVAudioConverter(from: srcFmt, to: targetFmt) else { return nil }
+
+    // Estimate output frame count, add 5% buffer for rounding.
+    let outFrames = AVAudioFrameCount(Double(srcFile.length) * 16000.0 / srcFmt.sampleRate * 1.05 + 1)
+    guard let outBuf = AVAudioPCMBuffer(pcmFormat: targetFmt, frameCapacity: outFrames) else { return nil }
+
+    var reachedEnd = false
+    let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+        let frameCount = AVAudioFrameCount(srcFmt.sampleRate)
+        guard let inBuf = AVAudioPCMBuffer(pcmFormat: srcFmt, frameCapacity: frameCount) else {
+            outStatus.pointee = .endOfStream; return nil
+        }
+        do {
+            try srcFile.read(into: inBuf)
+            if inBuf.frameLength == 0 { outStatus.pointee = .endOfStream; return nil }
+            outStatus.pointee = .haveData
+            return inBuf
+        } catch {
+            outStatus.pointee = .endOfStream; reachedEnd = true; return nil
+        }
+    }
+
+    var convErr: NSError?
+    converter.convert(to: outBuf, error: &convErr, withInputFrom: inputBlock)
+    guard convErr == nil, let ch = outBuf.floatChannelData?[0] else { return nil }
+    return Array(UnsafeBufferPointer(start: ch, count: Int(outBuf.frameLength)))
+}
+
+// MARK: - ASR service (warm, persistent)
+
 actor TranscriptionService {
     private let manager: AsrManager
 
@@ -105,8 +178,23 @@ actor TranscriptionService {
     }
 }
 
-/// Published once the models finish loading; read by request handlers.
-/// Handlers run on Swifter's GCD worker threads, so a lock guards the slot.
+// MARK: - Diarizer service (warm, persistent)
+
+actor DiarizerService {
+    private let manager: DiarizerManager
+
+    init(manager: DiarizerManager) {
+        self.manager = manager
+    }
+
+    /// Run diarization on pre-decoded 16 kHz mono Float samples.
+    func diarize(samples: [Float]) throws -> DiarizationResult {
+        try manager.performCompleteDiarization(samples, sampleRate: 16000)
+    }
+}
+
+// MARK: - Service holders
+
 final class ServiceHolder: @unchecked Sendable {
     private let lock = NSLock()
     private var _service: TranscriptionService?
@@ -115,22 +203,30 @@ final class ServiceHolder: @unchecked Sendable {
         set { lock.lock(); _service = newValue; lock.unlock() }
     }
 }
-let holder = ServiceHolder()
 
-/// Thread-safe one-shot result holder for the sync/async bridge.
-final class ResultBox: @unchecked Sendable {
+final class DiarizerHolder: @unchecked Sendable {
     private let lock = NSLock()
-    private var value: Result<ASRResult, Error>?
-    func set(_ v: Result<ASRResult, Error>) { lock.lock(); value = v; lock.unlock() }
-    func get() -> Result<ASRResult, Error>? { lock.lock(); defer { lock.unlock() }; return value }
+    private var _service: DiarizerService?
+    var service: DiarizerService? {
+        get { lock.lock(); defer { lock.unlock() }; return _service }
+        set { lock.lock(); _service = newValue; lock.unlock() }
+    }
+}
+
+let holder = ServiceHolder()
+let diarizerHolder = DiarizerHolder()
+
+// MARK: - Sync/async bridge helper
+
+final class ResultBox<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: Result<T, Error>?
+    func set(_ v: Result<T, Error>) { lock.lock(); value = v; lock.unlock() }
+    func get() -> Result<T, Error>? { lock.lock(); defer { lock.unlock() }; return value }
 }
 
 // MARK: - HTTP responses
-//
-// Swifter's `.raw` case reports body length -1, so it emits NO Content-Length
-// and keeps the connection open with no end-of-body signal — clients then hang
-// or read an empty body. We build a `.raw` but set Content-Length + Connection:
-// close explicitly so the response is well-formed and the socket closes cleanly.
+
 func jsonResponse(_ code: Int, _ reason: String, _ obj: Any) -> HttpResponse {
     let data = (try? JSONSerialization.data(withJSONObject: obj)) ?? Data("{}".utf8)
     return jsonResponse(code, reason, data: data)
@@ -151,10 +247,12 @@ let server = HttpServer()
 
 server["/health"] = { _ in
     let ready = holder.service != nil
-    let body: [String: String] = [
+    let hasDiarizer = diarizerHolder.service != nil
+    let body: [String: Any] = [
         "status": ready ? "healthy" : "loading",
         "engine": engineName,
         "model": modelName,
+        "diarization": hasDiarizer ? "ready" : "unavailable",
     ]
     return jsonResponse(ready ? 200 : 503, ready ? "OK" : "Service Unavailable", body)
 }
@@ -172,8 +270,12 @@ server.POST["/v1/audio/transcriptions"] = { request in
         return jsonResponse(400, "Bad Request", ["error": "missing 'file' multipart field"])
     }
 
-    // Persist the uploaded bytes to a temp WAV; AsrManager.transcribe(url:)
-    // handles WAV decode + 16k/mono conversion + long-file streaming itself.
+    // Check if diarization was requested.
+    let diarizeRequested = parts.first(where: { $0.name == "diarize" })?.body
+        .flatMap { String(bytes: $0, encoding: .utf8) }
+        .map { $0.lowercased() == "true" } ?? false
+
+    // Persist the uploaded bytes to a temp WAV.
     let tmpURL = FileManager.default.temporaryDirectory
         .appendingPathComponent("fa-stt-\(UUID().uuidString).wav")
     defer { try? FileManager.default.removeItem(at: tmpURL) }
@@ -185,54 +287,85 @@ server.POST["/v1/audio/transcriptions"] = { request in
         return jsonResponse(500, "Internal Server Error", ["error": "failed to buffer upload"])
     }
 
-    log("transcribe: \(filePart.fileName ?? "?") bytes=\(filePart.body.count)")
+    log("transcribe: \(filePart.fileName ?? "?") bytes=\(filePart.body.count) diarize=\(diarizeRequested)")
 
-    // Bridge Swifter's synchronous handler (on a GCD worker thread) to the
-    // async actor. Blocking this worker thread is fine; the Swift concurrency
-    // pool stays free to run the transcription Task.
-    let box = ResultBox()
+    // Run ASR and (optionally) diarization concurrently.
+    let asrBox = ResultBox<ASRResult>()
+    let diarBox = ResultBox<DiarizationResult?>()
     let sem = DispatchSemaphore(value: 0)
+    let sem2 = DispatchSemaphore(value: 0)
+
     Task {
         do {
             let result = try await service.transcribe(url: tmpURL)
-            box.set(.success(result))
+            asrBox.set(.success(result))
         } catch {
-            box.set(.failure(error))
+            asrBox.set(.failure(error))
         }
         sem.signal()
     }
-    sem.wait()
 
-    switch box.get() {
+    if diarizeRequested, let diarService = diarizerHolder.service {
+        Task {
+            if let samples = extractAudioSamples(from: tmpURL) {
+                do {
+                    let result = try await diarService.diarize(samples: samples)
+                    diarBox.set(.success(result))
+                } catch {
+                    log("transcribe: diarization failed: \(error) — continuing without speakers")
+                    diarBox.set(.success(nil))
+                }
+            } else {
+                log("transcribe: could not decode audio for diarization — continuing without speakers")
+                diarBox.set(.success(nil))
+            }
+            sem2.signal()
+        }
+    } else {
+        if diarizeRequested {
+            log("transcribe: diarization requested but diarizer not loaded")
+        }
+        diarBox.set(.success(nil))
+        sem2.signal()
+    }
+
+    sem.wait()
+    sem2.wait()
+
+    switch asrBox.get() {
     case .success(let asr):
         let elapsed = Date().timeIntervalSince(reqStart)
         let cleanText = asr.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let segments = buildSegments(from: asr.tokenTimings, fullText: cleanText)
-        // Build the response dict explicitly so the null-valued keys
-        // (language/speakers/diarization/etc.) are PRESENT in the JSON — a
-        // Swift JSONEncoder would silently drop nil Optionals, breaking the
-        // drop-in shape the whisper server callers expect.
-        let segmentDicts: [[String: Any]] = segments.map { s in
-            [
-                "id": s.id,
-                "start": s.start.map { $0 as Any } ?? NSNull(),
-                "end": s.end.map { $0 as Any } ?? NSNull(),
-                "text": s.text,
-            ]
+
+        var diarResult: DiarizationResult? = nil
+        if case .success(let d) = diarBox.get() { diarResult = d }
+
+        let segmentDicts = buildSegmentDicts(segments, diarResult: diarResult)
+
+        // Build the speaker list (unique speaker IDs from diarization).
+        let speakersValue: Any
+        if let diar = diarResult, !diar.segments.isEmpty {
+            let uniqueIds = Array(Set(diar.segments.map { $0.speakerId })).sorted()
+            speakersValue = uniqueIds as Any
+        } else {
+            speakersValue = NSNull()
         }
+
         let body: [String: Any] = [
             "text": cleanText,
             "segments": segmentDicts,
             "language": NSNull(),
-            "speakers": NSNull(),
+            "speakers": speakersValue,
             "speaker_embeddings": NSNull(),
             "diarization": NSNull(),
             "embeddings": NSNull(),
             "_engine": engineName,
             "_model": modelName,
             "_elapsed_seconds": elapsed,
+            "_diarized": diarResult != nil,
         ]
-        log("transcribe: ok chars=\(cleanText.count) segs=\(segments.count) elapsed=\(String(format: "%.2f", elapsed))s")
+        log("transcribe: ok chars=\(cleanText.count) segs=\(segments.count) elapsed=\(String(format: "%.2f", elapsed))s speakers=\(diarResult?.segments.count ?? 0)")
         return jsonResponse(200, "OK", body)
     case .failure(let error):
         log("transcribe: ASR failed: \(error)")
@@ -244,7 +377,23 @@ server.POST["/v1/audio/transcriptions"] = { request in
 
 // MARK: - Startup
 
-// Never reach out to HuggingFace; fail loudly if a model file is missing.
+// Step 1: Load diarizer models (downloads from HuggingFace on first run,
+// uses local cache thereafter). This runs BEFORE enforceOffline so the
+// download can succeed.
+Task {
+    let t0 = Date()
+    do {
+        let models = try await DiarizerModels.download()
+        let manager = DiarizerManager()
+        manager.initialize(models: models)
+        diarizerHolder.service = DiarizerService(manager: manager)
+        log("Diarizer ready in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s (pyannote + wespeaker)")
+    } catch {
+        log("Diarizer not available: \(error) — transcription will work without speaker labels")
+    }
+}
+
+// Step 2: Prevent ASR from auto-downloading missing model files.
 DownloadUtils.enforceOffline = true
 
 // Start the HTTP server immediately so /health is reachable while models load.
@@ -256,10 +405,7 @@ do {
     exit(1)
 }
 
-// Load models on the concurrency pool, then publish the warm service.
-// The top-level stays synchronous (no `await`), so `dispatchMain()` below can
-// park the real main thread to service GCD/Swifter without starving the
-// concurrency executor that runs this Task.
+// Step 3: Load ASR models on the concurrency pool, then publish the warm service.
 log("Loading Parakeet v3 models from \(modelDir.path) ...")
 Task {
     let t0 = Date()
@@ -271,9 +417,9 @@ Task {
             exit(1)
         }
         holder.service = TranscriptionService(manager: manager)
-        log("Models loaded and warm in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s — ready")
+        log("ASR models loaded and warm in \(String(format: "%.2f", Date().timeIntervalSince(t0)))s — ready")
     } catch {
-        log("FATAL: model load failed: \(error)")
+        log("FATAL: ASR model load failed: \(error)")
         exit(1)
     }
 }
