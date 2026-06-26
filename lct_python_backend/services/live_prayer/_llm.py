@@ -1,10 +1,15 @@
-"""Local M5 LLM access for the live-prayer path.
+"""LLM access for the live-prayer path.
 
-Deliberately pins the M5 Tailscale box (env-overridable), NOT the generic
-``get_default_providers()`` — this box's local LM Studio is embedding-pinned, so
-big-prompt LLM work routes to the shared M5 (see memory: local-gpu-embedding-pinned).
-Local-only: M5 is on the owner's own infra (Tailscale CGNAT is allow-listed by the
-egress guard), so the live-prayer path sends transcript text verbatim, no redaction.
+Uses the same provider list as the Settings-controlled LLM config so that the
+Settings UI is the single control plane for provider order and fallback. In normal
+operation the WS session passes its ``_runtime_llm_providers`` (DB-loaded) directly
+through the runner; ``local_providers()`` is only the last-resort fallback for tests
+or when the feature flag is off.
+
+Local-only privacy contract: the live-prayer path sends transcript text verbatim, which
+is safe because all providers in the configured list are on owner-controlled infra
+(Tailscale CGNAT is allow-listed by the egress guard). Do not add cloud providers to
+the llm_providers Settings list without also adding a redaction step here.
 """
 
 from __future__ import annotations
@@ -14,27 +19,14 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from lct_python_backend.services.env_helpers import env_float, env_str
-
 logger = logging.getLogger("lct_backend")
-
-_BASE_URL = env_str("LIVE_PRAYER_LLM_BASE_URL", "http://100.83.228.35:11434")
-_MODEL = env_str("LIVE_PRAYER_LLM_MODEL", "gemma4:latest")
-_TIMEOUT_S = env_float("LIVE_PRAYER_LLM_TIMEOUT_SECONDS", 30.0)
 
 
 def local_providers() -> List[Dict[str, Any]]:
-    """One provider dict pointing at the M5 (or env-configured) local LLM."""
-    return [{
-        "id": "live-prayer-m5",
-        "name": f"live-prayer ({_MODEL})",
-        "type": "openai_compatible",
-        "base_url": _BASE_URL,
-        "model": _MODEL,
-        "api_key": None,
-        "enabled": True,
-        "timeout_seconds": _TIMEOUT_S,
-    }]
+    """Fallback provider list (used only when the WS session passes no providers).
+    Returns ``get_default_providers()`` so Settings drives the LLM fallback order."""
+    from lct_python_backend.services.llm_config import get_default_providers
+    return get_default_providers()
 
 
 def _coerce_json(data: Any) -> Dict[str, Any]:
