@@ -98,54 +98,61 @@ async def reprocess_conversation(
 
     # Copy the stored audio to a temp file so the pipeline can own its lifecycle
     # (seek, read multiple times, clean up on completion) without touching the
-    # original recording.
-    tmp_handle = tempfile.NamedTemporaryFile(
-        suffix=suffix, prefix="reprocess_", delete=False
-    )
-    tmp_handle.close()
-    tmp_path = tmp_handle.name
-    shutil.copy2(audio_path, tmp_path)
+    # original recording.  Guard against leaks: if anything raises before the
+    # pipeline takes ownership, clean up the temp file ourselves.
+    tmp_path: Optional[str] = None
+    try:
+        tmp_handle = tempfile.NamedTemporaryFile(
+            suffix=suffix, prefix="reprocess_", delete=False
+        )
+        tmp_handle.close()
+        tmp_path = tmp_handle.name
+        shutil.copy2(audio_path, tmp_path)
 
-    logger.info(
-        "[REPROCESS] conversation=%s audio=%s tmp=%s",
-        conversation_id, audio_path.name, tmp_path,
-    )
+        logger.info(
+            "[REPROCESS] conversation=%s audio=%s tmp=%s",
+            conversation_id, audio_path.name, tmp_path,
+        )
 
-    # Inject a custom save_upload_to_temp_file that short-circuits the normal
-    # "read UploadFile bytes → write to temp" step and just returns our copy.
-    async def _use_stored_audio(_file_obj: Any, _suffix: str) -> tuple[str, int]:
-        return tmp_path, Path(tmp_path).stat().st_size
+        # Inject a custom save_upload_to_temp_file that short-circuits the normal
+        # "read UploadFile bytes → write to temp" step and just returns our copy.
+        async def _use_stored_audio(_file_obj: Any, _suffix: str) -> tuple[str, int]:
+            return tmp_path, Path(tmp_path).stat().st_size  # type: ignore[arg-type]
 
-    async def _load_llm_providers(session: Optional[AsyncSession] = None) -> Any:
-        return await _load_llm_providers_from_db(session)
+        async def _load_llm_providers(session: Optional[AsyncSession] = None) -> Any:
+            return await _load_llm_providers_from_db(session)
 
-    def _cleanup(path: Optional[str]) -> None:
-        _cleanup_temp_file(path, logger=logger)
+        def _cleanup(path: Optional[str]) -> None:
+            _cleanup_temp_file(path, logger=logger)
 
-    return await build_process_file_stream(
-        request=request,
-        file=_StoredAudioFile(filename=f"{conversation_id}{suffix}"),
-        source_type="audio",
-        conversation_id=conversation_id,   # existing id → pipeline UPDATES this conversation
-        speaker_id=None,
-        provider=None,
-        byok_session_token=None,
-        db=db,
-        save_upload_to_temp_file=_use_stored_audio,
-        load_stt_settings=load_stt_settings,
-        load_artifact_export_settings=load_artifact_export_settings,
-        load_llm_config=load_llm_config,
-        load_llm_providers=_load_llm_providers,
-        transcribe_uploaded_file=transcribe_uploaded_file,
-        transcribe_audio_segmented=transcribe_audio_segmented,
-        chunk_transcript_lines=chunk_transcript_lines,
-        transcript_processor_cls=TranscriptProcessor,
-        refine_import_graph_nodes=refine_import_graph_nodes,
-        auto_export_conversation_artifacts=auto_export_conversation_artifacts,
-        is_async_import_diarization_enabled=is_async_import_diarization_enabled,
-        enqueue_import_diarization_job=enqueue_import_diarization_job,
-        copy_temp_upload_for_async_job=_copy_temp_upload_for_async_job,
-        cleanup_temp_file=_cleanup,
-        build_diarization_job_urls=_build_diarization_job_urls,
-        logger=logger,
-    )
+        return await build_process_file_stream(
+            request=request,
+            file=_StoredAudioFile(filename=f"{conversation_id}{suffix}"),
+            source_type="audio",
+            conversation_id=conversation_id,   # existing id → pipeline UPDATES this conversation
+            speaker_id=None,
+            provider=None,
+            byok_session_token=None,
+            db=db,
+            save_upload_to_temp_file=_use_stored_audio,
+            load_stt_settings=load_stt_settings,
+            load_artifact_export_settings=load_artifact_export_settings,
+            load_llm_config=load_llm_config,
+            load_llm_providers=_load_llm_providers,
+            transcribe_uploaded_file=transcribe_uploaded_file,
+            transcribe_audio_segmented=transcribe_audio_segmented,
+            chunk_transcript_lines=chunk_transcript_lines,
+            transcript_processor_cls=TranscriptProcessor,
+            refine_import_graph_nodes=refine_import_graph_nodes,
+            auto_export_conversation_artifacts=auto_export_conversation_artifacts,
+            is_async_import_diarization_enabled=is_async_import_diarization_enabled,
+            enqueue_import_diarization_job=enqueue_import_diarization_job,
+            copy_temp_upload_for_async_job=_copy_temp_upload_for_async_job,
+            cleanup_temp_file=_cleanup,
+            build_diarization_job_urls=_build_diarization_job_urls,
+            logger=logger,
+        )
+    except Exception:
+        # Pipeline never took ownership — clean up temp file ourselves.
+        _cleanup_temp_file(tmp_path, logger=logger)
+        raise
