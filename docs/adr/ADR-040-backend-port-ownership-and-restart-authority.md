@@ -1,19 +1,37 @@
 ---
 Date: 2026-06-23
-Status: **Proposed — design for review (round-2 review incorporated).** Tier 0 (observability) is BUILT + review-hardened (this branch: `/api/version` + an IMPORT-TIME canonical-python guard). Tier 1 (supervisor correctness) and Tier 2 (single authority + lease) are NOT implemented; this ADR specifies them for review before any change to the shared `start_all.py` supervisor. Motivated by a real restart-storm (2026-06-22); the design AND the shipped Tier-0 code were dual-reviewed by codex + grok over two rounds (see *Design review history*).
+Status: **WITHDRAWN** — the incident diagnosis was wrong. The "anaconda backend" was a venv-redirector display artifact, not a rival manager. Tier 0 (`GET /api/version`) was correctly built and is kept (PR #82, merged). Tier 1 and Tier 2 are withdrawn. See *Post-mortem: the real root cause* below.
 Group: Infra / Process supervision / Multi-session ops
-Related: ADR-034 (egress chokepoint — the network gate; orthogonal but co-resident in the same backend lifespan); IndrasNet supervisor `grimoire/IndrasNet/scripts/start_all.py` (the fleet launcher this constrains); memory `lct-backend-port-ownership-storm` (the incident + the codex/grok review); `lct-backend-supervisor-adopt-unowned-trap`, `tc-supervisor-orphan-port-bug` (prior observations of the same surface).
+Related: ADR-034 (egress chokepoint — the network gate; orthogonal but co-resident in the same backend lifespan); IndrasNet supervisor `grimoire/IndrasNet/scripts/start_all.py`; memory `lct-backend-port-ownership-storm` (corrected incident record); `lct-backend-supervisor-adopt-unowned-trap`, `tc-supervisor-orphan-port-bug`.
 ---
 
 # ADR-040: Backend Port Ownership & Restart Authority (:43181)
 
-> The LCT backend on TCP **:43181** is a singleton service, but on this box **two independent managers** (the IndrasNet supervisor and ad-hoc agent/session launchers) may both try to own it, with **different desired runtimes** (`.venv` vs anaconda). "Restart" is implemented as *tree-kill the port holder and hope my relaunch wins the bind* — which, under contention, is a race. This ADR makes ownership **explicit, verified, and single-authority**.
+## Post-mortem: the real root cause (2026-06-23, confirmed)
 
-## Issue
+**There was no multi-manager war.** The entire Tier 1/2 design was built on a misread of the process table.
 
-On 2026-06-22, after merging 5 PRs and `git pull`-ing the live checkout, an agent wrote the supervisor's restart sentinel (`echo lct_backend > <IndrasNet>/logs/RESTART_REQUESTED`) to load the new code. At that moment an **anaconda** uvicorn was serving :43181 and the supervisor had **adopted it UNOWNED**. The sentinel forced the supervisor's takeover (reclaim) path; what followed was a multi-minute **restart-storm**: backends came up, held ~40–60s, then died; `.venv` launches repeatedly lost the bind race to a recurring anaconda backend; the supervisor hit `MAX_RESTART_ATTEMPTS=5` and gave up. The service eventually stabilised — on anaconda — by luck, not design. It also took ~10 manual steps to even answer "is the merged code now live?".
+The LCT `.venv` (Python 3.9, built from Conda without `--copies`) uses a **Windows redirector** `python.exe`. Every `.venv` launch forks the base `anaconda3\python.exe` as a child (with `__PYVENV_LAUNCHER__`). That child IS the real interpreter — running the `.venv` environment (`sys.executable` and `sys.prefix` both equal `.venv`; it has asyncpg, all site-packages). In `ps`/`tasklist`/`Get-CimInstance CommandLine` the listener appears as `anaconda3\python.exe`, but that is just the OS image; the actual environment is `.venv`.
 
-## Context — what exists today (grounded in `start_all.py`)
+**Proof:** launching `.venv\Scripts\python.exe -c "import sys,os; print(os.getpid(), sys.executable, sys.prefix, sys._base_executable)"` shows that the running pid ≠ the launched pid; `sys.executable`/`sys.prefix` = `.venv`; `sys._base_executable` = anaconda.
+
+**The lesson:** identify a process's environment via `sys.executable` / `sys.prefix`, never via the process image or `Win32_Process.CommandLine`. On a redirector venv the OS always shows the base interpreter. The `GET /api/version` endpoint (Tier 0) reports `sys.executable` — it would have shown `.venv` all along and prevented this detour.
+
+**The self-inflicted restart-storm** was caused by writing the supervisor's `RESTART_REQUESTED` sentinel against a stable, adopted-unowned backend. The sentinel forced the supervisor's reclaim path; the "rival" that kept winning the bind was the same backend's own venv-redirector child. Don't poke the restart sentinel against a stable service.
+
+**What is KEPT:** `GET /api/version` (Tier 0, PR #82, merged) and the import-time canonical-python guard. These correctly expose `sys.executable` and are worth keeping independent of this incident.
+
+**What is WITHDRAWN:** Tier 1 (supervisor correctness changes to `start_all.py`) and Tier 2 (held file-lock lease, request-only launchers, cooperative yield). There is no supervisor bug to fix. The supervisor's configured `.venv` python_executable has been correct since 2026-05-20.
+
+---
+
+## Original Issue (SUPERSEDED — premise was false; preserved for context)
+
+On 2026-06-22, after merging 5 PRs and `git pull`-ing the live checkout, an agent wrote the supervisor's restart sentinel (`echo lct_backend > <IndrasNet>/logs/RESTART_REQUESTED`) to load the new code. At that moment an **anaconda** uvicorn was serving :43181 and the supervisor had **adopted it UNOWNED**. The sentinel forced the supervisor's takeover (reclaim) path; what followed was a multi-minute **restart-storm**: backends came up, held ~40–60s, then died; `.venv` launches repeatedly lost the bind race to a recurring anaconda backend; the supervisor hit `MAX_RESTART_ATTEMPTS=5` and gave up.
+
+**What was actually happening:** the "anaconda backend" was the `.venv` backend all along (the redirector's child). The restart-storm was self-inflicted by poking the sentinel. The premise of a `.venv` vs anaconda ownership race was false.
+
+## Context — what exists today (SUPERSEDED — preserved for reference)
 
 - **Configured runtime.** `AGENTS["lct_backend"]` (`start_all.py:179`) launches uvicorn with the LCT repo's `.venv` interpreter, `cwd` = the LCT checkout, `port` = 43181, `health_url` = `/api/import/health`.
 - **Adopt-unowned.** In `start_agent` (`start_all.py:532-673`): if the port is in use and the health probe is OK and `crash_counts == 0`, the supervisor logs "adopted, unowned" and `return True` **without storing a process handle** (`:591-599`). It is *accepted*, not supervised — after this it is invisible to the `wait()` poll loop and never health-checked again.
@@ -24,20 +42,18 @@ On 2026-06-22, after merging 5 PRs and `git pull`-ing the live checkout, an agen
 - **Competing launcher.** `live_conversational_threads/logs/start_lct_backend.ps1` directly `Start-Process`-es a `.venv` uvicorn on 43181 (refusing only if the port is already held). It is a *second* manager that binds the port directly.
 - **Already shipped (Tier 0, this branch).** `GET /api/version` (unauthenticated) reports `{git_sha (captured at process start), git_dirty, python_executable, pid, cwd, started_at, canonical_python}`; a lifespan guard WARNs on a non-`.venv` interpreter (enforce under `LCT_REQUIRE_CANONICAL_PYTHON`).
 
-## Root cause
+## Root cause (SUPERSEDED — was a misdiagnosis)
 
-A singleton network service with a *specific desired runtime* is treated as a shared resource that **any** process may start, while the supervisor's ownership model is **implicit and best-effort** (port-in-use + a point-in-time health probe) with a **violent, unverified** "kill + hope I win" transition. Adopt-unowned keeps the peace only until someone forces a reclaim; then two managers with different desired runtimes fight over a first-come-first-served port.
+The original diagnosis: a singleton service treated as a shared resource, with two runtimes in contention. **Actual cause:** the "anaconda backend" was the venv redirector's child — there was never a second runtime. See *Post-mortem* above.
 
-## Decision
-
-Make ownership **explicit, recorded, verifiable, and single-authority**. Ownership is asserted by the **live process** (the only thing that truly knows it bound and is serving); every launcher — including the supervisor — is a *client* of ownership that must (a) request rather than blindly start, (b) verify it actually won after starting, and (c) refuse to murder a holder whose identity it can't account for.
+## Decision (WITHDRAWN)
 
 ### Tier 0 — Observability (BUILT + review-hardened, this branch)
 Prerequisite for everything else: you cannot arbitrate ownership you cannot observe.
 - `GET /api/version` answers "which code / interpreter / process is serving :43181?" in one tokenless call (git_sha captured at process start; python_executable; pid; cwd; started_at). It is **unauthenticated by intention** and is real reconnaissance to anything that can reach the port, so it assumes a loopback/trusted-LAN deployment (gate to loopback if ever exposed).
 - Canonical-python guard runs at **import time** — before uvicorn binds the socket — NOT in the lifespan (which runs *after* bind; an enforced guard there would let a wrong-env process briefly become a "healthy" listener and then die, the very symptom we are killing). Warn by default; `LCT_REQUIRE_CANONICAL_PYTHON=1` makes a wrong-env process fail fast before it ever listens. Enforcement is opt-in — flipped on as part of Tier 2 so it cannot strand the live service. (Both the placement and the exposure note came from the round-2 review.)
 
-### Tier 1 — Supervisor correctness (small diffs to `start_all.py`)
+### Tier 1 — Supervisor correctness (WITHDRAWN — no supervisor bug exists)
 > **Topology assumption:** a single-process uvicorn launch (no `--workers > 1`, no `--reload`), so the listener pid equals the launched process. State this explicitly; if workers/reload are ever required, verification must use process-**tree** membership, not pid equality.
 1. **Post-launch ownership verification — via `/api/version`, not the OS.** After `_wait_for_agent_ready`, query the (tokenless) Tier-0 `/api/version` and compare the **self-reported** `pid` (+ `python_executable`, `cwd`) to the launched `process.pid` and the expected config. The process that *answered the request* authoritatively claims its identity — this sidesteps the netstat/psutil/socket-inheritance/Windows port-table quirks that a raw `_pid_listening_on_port(port) == process.pid` check trips on. On mismatch: kill ours, drop the handle, `return False`. Turns a silent later-crash into an immediate, logged "lost the bind race" — the single highest-value supervisor fix. (Reusing the endpoint it helped motivate as the source of truth was both reviewers' lead recommendation.)
 2. **Identity-checked reclaim — FAIL CLOSED.** A matching `.venv`/cwd proves "compatible runtime", **not** "an orphan this supervisor owns" — the request-only helper uses the same `.venv` + cwd. So reclaim must auto-kill ONLY when a valid stale lease (Tier 2) or a supervisor-issued launch token proves the holder is abandoned/ours; otherwise record `CONFLICT_EXTERNAL_OWNER`, log loudly, and do **not** fall through to launch. (Both reviewers: exe/cwd matching alone can murder a legitimate manual owner.)
@@ -45,7 +61,7 @@ Prerequisite for everything else: you cannot arbitrate ownership you cannot obse
 4. **Track adopted-unowned.** Put adopted instances in an `externally_managed` set that is still health-polled (today it goes dark after adoption); on detected death the policy (reclaim vs surface-only) must be explicit — adopt-unowned was chosen precisely because there was no ownership proof.
 5. **Disambiguate the sentinel:** per-target request files or a structured request, so web_server reload and lct takeover/yield don't share one last-writer-wins file.
 
-### Tier 2 — Single authority + real lease (needs build + its own review)
+### Tier 2 — Single authority + real lease (WITHDRAWN — no ownership race exists)
 1. **Request-only launchers (hygiene, not the enclosure).** `start_lct_backend.ps1` (and any documented manual path) become **request-only**: write the restart request; never `Start-Process` uvicorn on 43181. NOTE: this alone does NOT create single authority — manual `python -m uvicorn`, cron/Task Scheduler, other repos, fresh agents, and other users still bypass it. **Single authority comes from the lease + canonical-python enforcement**, not the ps1 edit; any remaining debug launch path must itself check the lease first.
 2. **A real lease — a held lock, not JSON metadata.** Recommended Windows primitive: a **held file-lock** (`filelock`/`portalocker`/`msvcrt.locking` with a module-global handle so it isn't GC'd) carrying a metadata sidecar (pid, python_executable, cwd, git_sha, **process-creation-time**), acquired in the backend lifespan **after the server reports ready** and held for the whole process lifetime (Windows releases it on death, even `TerminateProcess`). Lives in `logs/` under a distinct name (e.g. `lct-backend-43181.lease`). A plain JSON file is **observability, not mutual exclusion**.
    - **Acquire-vs-bind ordering.** Asserting the lock *after bind* means the exclusive TCP-bind provides launch mutual-exclusion; the lock provides ownership identity + stale detection. A racing launcher's loser **fails its own bind and must touch NO lease state** (it never owned it). Two live holders are therefore impossible; the only real risk is a **stale** lease from a crash.
@@ -54,17 +70,15 @@ Prerequisite for everything else: you cannot arbitrate ownership you cannot obse
 4. **Enforce canonical python** (`LCT_REQUIRE_CANONICAL_PYTHON=1`) once every launch path is request-only; compare against the *resolved* repo `.venv` interpreter path, not just a `.venv` substring. **Rollout ordering:** a wrong-env live instance survives the flip until its next restart; the correct `.venv` launcher must be ready (and `/api/version` confirmed canonical) before the flip is effective.
 5. **`diagnose_stack.py`** reports :43181's listener pid / exe / cwd / cmdline + the lease, and includes `lct_backend` in singleton checks (would have made the anaconda manager obvious immediately).
 
-## Consequences / rollout
-- Tier 0 is live-safe and shipped now; it changes no supervisor behaviour and adds one tokenless read-only endpoint.
-- Tier 1 is a few targeted diffs that make the supervisor's side observably correct; it reduces (does not eliminate) contention.
-- Tier 2 is the actual root-cause fix (single authority); it changes multi-session behaviour and must not be improvised — hence this ADR. The enforcement flip (canonical python) lands only once every launcher is request-only, or it could strand the service.
-- Net: ownership shifts from "supervisor sometimes owns via adoption or violent reclaim" to "the live process asserts ownership; launchers respect it, verify after start, and contest only with proof."
+## Consequences
+- **Tier 0 is live (PR #82, merged).** `GET /api/version` is tokenless and reports the true `sys.executable` — this alone would have prevented the entire detour. The import-time canonical-python guard is correctly placed (pre-bind, not in lifespan). No supervisor behaviour changed.
+- **Tier 1 and Tier 2 are withdrawn.** There is no multi-manager race to fix; `start_all.py` is correct as-is. PR #86 (the held file-lock lease) was closed without merging.
+- **Net:** the only durable output of this incident is `GET /api/version` + the lesson to read `sys.executable`, not `Win32_Process.CommandLine`, to identify a Python environment.
 
-## Alternatives considered
-- **Keep kill-and-hope.** Rejected: it is the bug — unverified, racy under any second manager.
-- **JSON lease file (the first proposal).** Rejected as the *mechanism*: metadata without a held lock is a TOCTOU race. Kept as the *payload* carried by a real lock.
-- **Adopt-unowned everywhere.** Rejected for a declared backend with its own interpreter: it collapses "compatible owner", "wrong-env-but-healthy", and "unknown rival" into one state and then stops supervising. Acceptable only for non-critical, port-less agents.
-- **Make every launcher honour a soft lease (no lock).** Rejected: a launcher that doesn't know about the lease still wins binds; only request-only + a real lock + app-level canonical guard close the race.
+## Alternatives considered (preserved for reference — decision moot given withdrawal)
+- **Held file-lock lease.** Built (PR #86), then withdrawn when the premise collapsed.
+- **JSON lease.** Rejected as the mechanism even in the original design; metadata without a lock is TOCTOU.
+- **Adopt-unowned everywhere.** Acceptable only for non-critical, port-less agents.
 
 ## Design review history
 - **2026-06-22, codex + grok dual review** (headless; prompts/outputs in the session). Both independently confirmed the root cause and — crucially — both surfaced the **missing post-launch pid-ownership check** that this author had missed; it was then verified directly in `start_agent`. Both corrected the original "lease = JSON file" proposal to "lease must be a real lock", and expanded `/api/version` to include the interpreter path (the actual `.venv`/anaconda discriminator). grok added the **app-level canonical-python guard** (fail-fast wrong-env), now shipped as Tier 0. No false positives found on adjudication. Tooling caveat: codex's `-s read-only` did not prevent it running a `taskkill` on this Windows box (it killed an unrelated stray, not the backend) — do not assume codex read-only is inert against live infra.
