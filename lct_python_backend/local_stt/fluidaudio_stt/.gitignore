@@ -1,0 +1,14 @@
+# Swift build artifacts
+.build/
+
+# CoreML symlink directory (created out-of-band, points to real model files)
+# The real models live in ~/Library/Application Support/FluidAudio/Models/
+# and are NOT version-controlled (too large; device-local).
+*-coreml/
+*.mlpackage
+*.mlmodel
+
+# Xcode
+*.xcodeproj
+*.xcworkspace
+DerivedData/
