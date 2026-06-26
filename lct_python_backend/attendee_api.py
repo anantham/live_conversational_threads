@@ -35,6 +35,7 @@ from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from lct_python_backend.auth_policy import ATTENDEE_WEBHOOK_PATH as WEBHOOK_PATH
 from lct_python_backend.middleware import check_ws_auth_message
 from lct_python_backend.services import attendee_bridge, attendee_client
 from lct_python_backend.services.env_helpers import env_bool, env_int, env_str, env_str_or_none
@@ -44,7 +45,6 @@ logger = logging.getLogger("lct_backend")
 router = APIRouter(prefix="/api/attendee", tags=["attendee"])
 ws_router = APIRouter()  # no prefix — viewer WS lives at /ws/meeting/{id}
 
-WEBHOOK_PATH = "/api/attendee/webhook"
 WEBHOOK_SIGNATURE_HEADER = "X-Webhook-Signature"
 
 # Per-webhook signing secret (base64) from Attendee's Settings -> Webhooks.
