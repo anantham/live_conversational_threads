@@ -35,8 +35,10 @@ export default function App() {
         signal: controller.signal,
       });
       setBackendState(resp.ok ? "online" : "offline");
-    } catch {
-      setBackendState("offline");
+    } catch (err) {
+      // AbortError = our 6s timeout fired → host unreachable (off Tailscale).
+      // Any other error = fast TCP failure → backend process is down.
+      setBackendState(err.name === "AbortError" ? "unreachable" : "offline");
     } finally {
       clearTimeout(timer);
     }
@@ -55,8 +57,8 @@ export default function App() {
     );
   }
 
-  if (!isStaticViewer && backendState === "offline") {
-    return <BetaGate onRetry={probeBackend} />;
+  if (!isStaticViewer && (backendState === "offline" || backendState === "unreachable")) {
+    return <BetaGate reason={backendState} onRetry={probeBackend} />;
   }
 
   return (
