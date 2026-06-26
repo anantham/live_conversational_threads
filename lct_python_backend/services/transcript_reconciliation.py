@@ -1,7 +1,8 @@
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from lct_python_backend.models.core import Utterance
+from lct_python_backend.services.transcript_revision_service import propose_revision
 
 logger = logging.getLogger("lct_backend")
 
@@ -10,25 +11,50 @@ async def reconcile_and_patch_utterances(
     conversation_id: str,
     utterances: List[Utterance],
     asr_segments: List[Dict[str, Any]],
+    db=None,
 ) -> None:
-    """DISABLED (audit A4 / decision B) — intentionally a no-op.
+    """Decision-B: propose a transcript revision instead of patching directly.
 
-    The slow-pass must NOT destructively overwrite the live transcript. The prior
-    prototype rewrote ``Utterance.text``/``text_cleaned`` in place (irreversible,
-    no review) and emitted an unhandled ``transcript_patched`` event. Decision B
-    replaces that with a review-gated *transcript-revision* flow that is not yet
-    built. This stub stays non-destructive so that, even if the slow-pass is
-    re-wired, it cannot corrupt live data.
+    The slow-pass (Attendee MP3 re-transcription) must NOT overwrite the live
+    transcript in place (audit A4).  This function saves the ASR output as a
+    pending TranscriptRevision for operator review.  The operator approves or
+    rejects it via the /api/conversations/{id}/revisions/{rid}/{approve,reject}
+    endpoints.
 
-    To implement decision B, write the slow-pass output to REVISION records
-    (proposed text + ``status="pending"``) and surface them for operator approval;
-    only on approval apply the text and trigger a graph rebuild against a real
-    endpoint. Do NOT mutate live utterances here.
+    If `db` is None (legacy callers) or segments are empty, this is a no-op with
+    a warning — same safe baseline as before, but now explicit about why.
     """
-    logger.warning(
-        "[reconciliation] slow-pass reconcile is DISABLED pending the decision-B "
-        "revision flow; ignoring %d ASR segment(s) for conversation %s",
-        len(asr_segments or []),
-        conversation_id,
-    )
-    return
+    if not asr_segments:
+        logger.warning(
+            "[reconciliation] no ASR segments to propose for conversation %s — skipping",
+            conversation_id,
+        )
+        return
+
+    if db is None:
+        logger.warning(
+            "[reconciliation] db session not provided for conversation %s — "
+            "cannot persist revision; pass db= to callers of reconcile_and_patch_utterances",
+            conversation_id,
+        )
+        return
+
+    try:
+        revision_id = await propose_revision(
+            db,
+            conversation_id=conversation_id,
+            proposed_segments=asr_segments,
+            source="slow_pass",
+            current_utterance_count=len(utterances),
+        )
+        await db.commit()
+        logger.info(
+            "[reconciliation] proposed revision %s for conversation %s "
+            "(%d ASR segment(s); review at /api/conversations/%s/revisions)",
+            revision_id, conversation_id, len(asr_segments), conversation_id,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "[reconciliation] failed to propose revision for conversation %s — %s",
+            conversation_id, exc,
+        )
