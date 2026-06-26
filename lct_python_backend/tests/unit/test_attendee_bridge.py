@@ -372,3 +372,71 @@ def test_inject_utterance_latency_none_without_epoch_ts():
     lat = sent[0]["metadata"]["latency"]
     assert lat["e2e_ms"] is None and lat["attendee_lag_ms"] is None
     assert lat["pipeline_ms"] is not None
+
+
+# --- real captured payload regression --------------------------------------
+
+def test_real_attendee_payload_epoch_timestamps_end_to_end(monkeypatch):
+    """Regression for the epoch-timestamp bug fixed in PR #70.
+
+    Replays the Attendee transcript.update event captured live on 2026-06-20
+    (ts=1781937993768, absolute Unix epoch-ms ≈ 06:46 UTC). Before the fix
+    this raw value was written directly into the relative-seconds timestamp_start
+    field, producing ~5.6e7-second start times. After the fix the bridge
+    subtracts the recording-start anchor from the absolute epoch value,
+    metadata.source_timestamp_ms preserves the raw epoch verbatim, and
+    timestamps.start is a sane relative-seconds offset from recording start.
+    """
+    REAL_TS_MS = 1781937993768  # from a live Attendee event captured 2026-06-20
+
+    async def _run():
+        monkeypatch.setattr(attendee_api, "ATTENDEE_WEBHOOK_SECRET", None)
+        monkeypatch.setattr(attendee_api, "ATTENDEE_ALLOW_UNSIGNED_WEBHOOK", True)
+
+        sess = attendee_bridge.MeetingSession(
+            conversation_id="c-real-ts",
+            meeting_url="https://meet.google.com/real-ts-abc",
+            bot_name="LCT",
+        )
+        sess._ws = _FakeWS()
+        # Anchor the recording 10 seconds before the utterance → start = 10.0 s.
+        sess._rec_anchor_epoch_ms = float(REAL_TS_MS - 10_000)
+        await attendee_bridge.register(sess)
+        await attendee_bridge.bind_bot(sess, "bot-real-ts")
+        try:
+            resp = await attendee_api.attendee_webhook(
+                _FakeRequest({
+                    "trigger": "transcript.update",
+                    "bot_id": "bot-real-ts",
+                    "idempotency_key": "real-ts-evt-1",
+                    "data": {
+                        "speaker_name": "Vatsal",
+                        "speaker_uuid": "uuid-vatsal",
+                        "speaker_is_host": False,
+                        "timestamp_ms": REAL_TS_MS,
+                        "duration_ms": 2000,
+                        "transcription": {"transcript": "this is a real captured utterance"},
+                    },
+                })
+            )
+            return resp, sess._ws.sent
+        finally:
+            attendee_bridge._unregister(sess)
+
+    resp, sent = asyncio.run(_run())
+    assert resp == {"ok": True}
+    assert len(sent) == 1
+    frame = sent[0]
+
+    # Routing
+    assert frame["type"] == "transcript_final"
+    assert frame["text"] == "this is a real captured utterance"
+    assert frame["metadata"]["speaker_name"] == "Vatsal"
+    assert frame["metadata"]["speaker_source"] == "attendee"
+
+    # Epoch-relative: anchor = REAL_TS_MS - 10_000 → start = 10.0 s, end = 12.0 s
+    assert frame["timestamps"]["start"] == pytest.approx(10.0)
+    assert frame["timestamps"]["end"] == pytest.approx(12.0)
+
+    # Primary regression guard: raw epoch-ms must be preserved verbatim
+    assert frame["metadata"]["source_timestamp_ms"] == REAL_TS_MS
