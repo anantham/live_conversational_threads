@@ -90,13 +90,17 @@ async def run_for_segment(
     participants: Optional[List[Dict[str, Any]]],
     deduper: LivePrayerDeduper,
     send_ws_event: Callable[[Dict[str, Any]], Any],
+    providers: Optional[List[Dict[str, Any]]] = None,
     detect_fn: Callable[..., Awaitable[Any]] = _detector.detect,
     fetch_fn: Callable[..., Awaitable[Dict[str, Any]]] = _run_fetch,
     factcheck_fn: Callable[..., Awaitable[Dict[str, Any]]] = _factcheck.factcheck,
 ) -> Optional[Dict[str, Any]]:
     """Detect a trigger in one segment and, on hit, execute + emit a prayer_card.
-    Returns the payload sent (for tests), or None. Never raises."""
-    trigger = await detect_fn(segment_text)
+    Returns the payload sent (for tests), or None. Never raises.
+
+    ``providers`` is the session's runtime LLM provider list (DB-loaded, passed from
+    the WS session) so that the Settings UI controls the live-prayer LLM route."""
+    trigger = await detect_fn(segment_text, providers=providers)
     if trigger is None:
         return None
 
@@ -123,7 +127,7 @@ async def run_for_segment(
                        "results": res.get("results", []),
                        "indrasnet_decision": res.get("indrasnet_decision", {})}
         else:  # factcheck
-            verdict = await factcheck_fn(trigger.query)
+            verdict = await factcheck_fn(trigger.query, providers=providers)
             payload = {**base, "claim": trigger.query,
                        "title": f"Fact-check: {verdict.get('verdict', 'UNVERIFIABLE')}",
                        "verdict": verdict}

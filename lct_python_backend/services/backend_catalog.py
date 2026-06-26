@@ -359,7 +359,7 @@ def build_catalog(
     if _synth_stt is not None:
         stt_entries.append(_synth_stt)
         active_stt = _synth_stt["id"]
-    active_llm = _active_llm_id(llm_entries, llm_settings)
+    active_llm = _effective_llm_id(llm_entries, llm_settings, llm_providers)
     active_diar = _active_diar_id(diar_entries, diar_settings)
 
     stt_buckets = (stt_telemetry or {}).get("providers") if isinstance(stt_telemetry, dict) else {}

@@ -605,8 +605,16 @@ export function buildHomeStatusPresentation({
   diarProbe,
   probeError,
 }) {
-  const sttEntry = catalogActive(catalog, "stt");
-  const llmEntry = catalogActive(catalog, "llm");
+  // Pills show what ACTUALLY runs (effective), not the stored preference.
+  // Fallback to the preference entry so the pill is never blank on first load.
+  const sttEffId = catalog?.active?.stt_effective;
+  const llmEffId = catalog?.active?.llm_effective;
+  const sttEntry =
+    (sttEffId && (catalog?.stt || []).find((e) => e.id === sttEffId)) ||
+    catalogActive(catalog, "stt");
+  const llmEntry =
+    (llmEffId && (catalog?.llm || []).find((e) => e.id === llmEffId)) ||
+    catalogActive(catalog, "llm");
   const diarSelected = catalogActive(catalog, "diarization");
   const diarEffectiveId = catalog?.active?.diarization_effective;
   const diarEffective = diarEffectiveId ? (catalog.diarization || []).find((e) => e.id === diarEffectiveId) : null;

@@ -436,6 +436,7 @@ class WsSessionContext:
                 participants=None,
                 deduper=self._live_prayer_deduper,
                 send_ws_event=self._send_prayer_card_event,
+                providers=self._runtime_llm_providers,
             )
         except Exception as exc:  # noqa: BLE001 — fire-and-forget
             logger.warning("[live-prayer] runner failed: %s", exc)
