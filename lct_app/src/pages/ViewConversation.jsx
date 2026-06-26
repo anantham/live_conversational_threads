@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { CheckCircle, Download, FileJson, Map, Share2, XCircle } from "lucide-react";
+import { CheckCircle, Download, FileJson, Map, RefreshCw, Share2, XCircle } from "lucide-react";
 import ShareManagerModal from "../components/share/ShareManagerModal";
 import AnalyzeMenu from "../components/AnalyzeMenu";
 
@@ -16,7 +16,7 @@ import NodeDetail from "../components/NodeDetail";
 import SearchDialog from "../components/SearchDialog";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
-import { apiFetch, apiFetchCached, apiHeaders, API_BASE_URL, readErrorMessage } from "../services/apiClient";
+import { apiFetch, apiFetchCached, apiHeaders, API_BASE_URL, invalidateApiCache, readErrorMessage } from "../services/apiClient";
 import { fetchConversationParticipants } from "../services/participantsApi";
 
 function sanitizeNodeArray(chunk) {
@@ -106,6 +106,8 @@ export default function ViewConversation() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [audioDownloadUrl, setAudioDownloadUrl] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [reprocessState, setReprocessState] = useState({ status: "idle", message: "", progress: 0 });
   const [participants, setParticipants] = useState([]);
   // ADR-032 Part B pattern 3: argument-scaffold trace lifted to page so
   // NodeDetail's "Trace ancestors" button can trigger it and MinimalGraph
@@ -231,7 +233,7 @@ export default function ViewConversation() {
     return () => {
       isCancelled = true;
     };
-  }, [conversationId]);
+  }, [conversationId, refreshKey]);
 
   // Participants are a separate concern from the graph payload, so we fetch
   // independently — a 404 / empty list shouldn't fail the whole view. Legacy
@@ -405,6 +407,60 @@ export default function ViewConversation() {
     }
   }, [allNodes, selectedNode]);
 
+  const handleReprocess = useCallback(async () => {
+    if (reprocessState.status === "running") return;
+    setReprocessState({ status: "running", message: "Starting…", progress: 0 });
+    try {
+      const resp = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}/reprocess`, {
+        method: "POST",
+        headers: apiHeaders(),
+      });
+      if (resp.status === 404) {
+        setReprocessState({ status: "error", message: "No stored audio for this conversation.", progress: 0 });
+        return;
+      }
+      if (!resp.ok) {
+        const msg = await readErrorMessage(resp);
+        setReprocessState({ status: "error", message: msg || "Reprocess failed.", progress: 0 });
+        return;
+      }
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const blocks = buf.split("\n\n");
+        buf = blocks.pop();
+        for (const block of blocks) {
+          const dataLine = block.split("\n").find((l) => l.startsWith("data:"));
+          if (!dataLine) continue;
+          try {
+            const payload = JSON.parse(dataLine.slice(5).trimStart());
+            if (typeof payload.progress === "number") {
+              setReprocessState((s) => ({ ...s, progress: payload.progress, message: payload.status_text || s.message }));
+            }
+            if (payload.conversation_id) {
+              // import_complete event
+              invalidateApiCache(`/conversations/${conversationId}`);
+              invalidateApiCache("/conversations/");
+              setReprocessState({ status: "done", message: "Re-transcribed.", progress: 1 });
+              setTimeout(() => {
+                setReprocessState({ status: "idle", message: "", progress: 0 });
+                setRefreshKey((k) => k + 1);
+              }, 1500);
+            }
+          } catch {
+            // ignore malformed SSE events
+          }
+        }
+      }
+    } catch (err) {
+      setReprocessState({ status: "error", message: err?.message || "Reprocess failed.", progress: 0 });
+    }
+  }, [conversationId, reprocessState.status]);
+
   return (
     <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[#f2f1ed] text-slate-800">
       <header className="flex shrink-0 items-center border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
@@ -470,6 +526,21 @@ export default function ViewConversation() {
             >
               <Download size={16} />
             </a>
+          )}
+          {audioDownloadUrl && (
+            <button
+              type="button"
+              onClick={handleReprocess}
+              disabled={reprocessState.status === "running"}
+              className="flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors p-1 disabled:cursor-wait disabled:opacity-50"
+              title={reprocessState.status === "error" ? reprocessState.message : "Re-transcribe from stored audio (replaces utterances and graph)"}
+              aria-label="Re-transcribe conversation"
+            >
+              <RefreshCw
+                size={16}
+                className={reprocessState.status === "running" ? "animate-spin" : reprocessState.status === "done" ? "text-green-500" : reprocessState.status === "error" ? "text-red-400" : ""}
+              />
+            </button>
           )}
           {allNodes.length > 0 && (
             <button
@@ -547,6 +618,21 @@ export default function ViewConversation() {
           </div>
         </div>
       ))}
+
+      {reprocessState.status === "running" && (
+        <div className="shrink-0 border-b border-slate-200 bg-white/80 px-4 py-1.5 backdrop-blur">
+          <div className="flex items-center gap-2 text-[11px] text-slate-500">
+            <span className="flex-1 truncate">{reprocessState.message || "Re-transcribing…"}</span>
+            <span className="tabular-nums">{Math.round(reprocessState.progress * 100)}%</span>
+          </div>
+          <div className="mt-1 h-0.5 w-full overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-blue-500 transition-all duration-300"
+              style={{ width: `${Math.round(reprocessState.progress * 100)}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {executiveSummary && summaryExpanded && (
         <div className="relative shrink-0 border-b border-slate-200 bg-white/70 px-6 py-3 pr-10 text-xs leading-relaxed text-slate-600 backdrop-blur">
