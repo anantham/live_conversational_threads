@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.aditya.fluidaudio-watchdog</string>
+
+    <!-- Only load in a GUI (Aqua) session — ensures CoreML/ANE is accessible. -->
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/aditya/Documents/Ongoing Local/live_conversational_threads/lct_python_backend/local_stt/fluidaudio_stt_watchdog.sh</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Keep the watchdog loop alive; launchd restarts it if the script ever exits. -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/tmp/fa-watch-agent.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/fa-watch-agent-err.log</string>
+</dict>
+</plist>
