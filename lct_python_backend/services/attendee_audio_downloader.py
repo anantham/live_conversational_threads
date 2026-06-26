@@ -11,9 +11,9 @@ logger = logging.getLogger("lct_backend")
 def get_minio_client():
     return boto3.client(
         's3',
-        endpoint_url='http://127.0.0.1:9000',
-        aws_access_key_id='attendee',
-        aws_secret_access_key='attendeeminio123',
+        endpoint_url=os.environ.get('MINIO_ENDPOINT_URL', 'http://127.0.0.1:9000'),
+        aws_access_key_id=os.environ['MINIO_ACCESS_KEY'],
+        aws_secret_access_key=os.environ['MINIO_SECRET_KEY'],
         config=Config(signature_version='s3v4')
     )
 
