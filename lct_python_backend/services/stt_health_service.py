@@ -2,6 +2,7 @@
 
 import json
 import logging
+import ssl
 import time
 from typing import Any, Dict, Optional
 from urllib.error import HTTPError, URLError
@@ -9,6 +10,32 @@ from urllib.parse import urlparse, urlunparse
 from urllib.request import Request as UrlRequest, urlopen
 
 logger = logging.getLogger(__name__)
+
+
+def _build_https_context() -> Optional[ssl.SSLContext]:
+    """Verify TLS against certifi's modern CA bundle, not the OS trust store.
+
+    On Windows a bare ``urlopen`` verifies against the system certificate
+    store, which still carries an EXPIRED Let's Encrypt cross-signed root (the
+    old DST Root CA X3 path). OpenSSL 3.0 builds the chain through that expired
+    cert and rejects an otherwise-valid Let's Encrypt leaf with "certificate
+    has expired" — even though curl, the browser, and the live STT transport
+    (all certifi / modern ISRG Root X1) accept the same host fine. That made a
+    healthy Tailscale STT route (e.g. the M5 parakeet shim) show as a dead
+    route on the home status pill. Pinning to certifi makes this probe agree
+    with every other client. Falls back to default verification (``None`` =
+    urlopen's default context) if certifi is unavailable — never disables
+    verification.
+    """
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:  # noqa: BLE001 — certifi missing/unreadable: keep default trust store
+        logger.warning("[stt-health] certifi unavailable; falling back to default TLS trust store")
+        return None
+
+
+_HTTPS_CONTEXT = _build_https_context()
 
 
 def derive_health_url(ws_url: str) -> str:
@@ -59,7 +86,9 @@ def probe_health_url(health_url: str, timeout_seconds: float) -> Dict[str, Any]:
         assert_local_egress(health_url, purpose="STT health probe")
 
         req = UrlRequest(health_url, headers={"Accept": "application/json,text/plain,*/*"})
-        with urlopen(req, timeout=timeout_seconds) as response:
+        # context pins TLS verification to certifi (see _build_https_context);
+        # urlopen ignores it for http:// URLs, and context=None means "default".
+        with urlopen(req, timeout=timeout_seconds, context=_HTTPS_CONTEXT) as response:
             status_code = int(getattr(response, "status", response.getcode()))
             raw_body = response.read(4096)
             text = raw_body.decode("utf-8", errors="replace").strip()
