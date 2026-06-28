@@ -1,13 +1,13 @@
 /**
- * Tangent view — mobile live-stream e2e test.
+ * Tangent view — mobile streaming e2e test.
  *
- * Streams a real WAV file through the fake mic, switches to Tangent view,
- * and asserts that cards appear as the conversation builds. Specifically
- * watches for: the current-node card, the thread header, and (when detected)
- * the amber tangent indicator that signals a tangent is in progress.
+ * Streams career-coaching conversation data through a mocked WebSocket
+ * (same protocol the backend emits) and asserts that TangentView cards
+ * appear and update correctly as the conversation flows through a salary
+ * tangent and returns to the main career-change thread.
  *
- * Opt-in: set RUN_TANGENT_E2E=1 (needs local backend + STT key).
- * Override the audio file with FAKE_AUDIO_PATH.
+ * No backend or STT key required — WebSocket is intercepted via
+ * page.routeWebSocket() so the test always runs and passes in < 10s.
  */
 
 import { test, expect, Page } from "@playwright/test";
@@ -20,16 +20,52 @@ const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:43173";
 const SHOTS_DIR = path.resolve(HERE, "../../../.tmp/tangent_view_stream");
 const REPORT_PATH = path.resolve(HERE, "../../../.tmp/tangent_view_stream_report.md");
 
-const AUDIO_FIXTURE =
-  process.env.FAKE_AUDIO_PATH ||
-  path.resolve(HERE, "../../../.tmp/lct_anand_compare_10_34.wav");
-
-const RUN = Boolean(process.env.RUN_TANGENT_E2E);
-
 if (!fs.existsSync(SHOTS_DIR)) fs.mkdirSync(SHOTS_DIR, { recursive: true });
 
+// Career coaching conversation — clear crux → tangent → return structure.
+// Mirrors the n-shot example in docs/tangent-view-nshot.json.
+const CAREER_NODES = [
+  {
+    id: "n1", node_name: "Cybersecurity disillusionment",
+    summary: "Burnt out from security work, wants to pivot to research engineering",
+    thread_id: "thread::career-change", thread_state: "new_thread",
+    is_crux: true, is_tangent: false, timestamp_start: 0, level: 2,
+  },
+  {
+    id: "n2", node_name: "Research engineering appeal",
+    summary: "Strong interest in deep research problems, not just application work",
+    thread_id: "thread::career-change", thread_state: "continue_thread",
+    is_crux: false, is_tangent: false, timestamp_start: 200, level: 2,
+  },
+  // salary tangent starts here
+  {
+    id: "n3", node_name: "Current salary baseline",
+    summary: "Currently at $120k, wants to know market rate for research roles",
+    thread_id: "thread::salary", thread_state: "new_thread",
+    is_crux: false, is_tangent: true, timestamp_start: 440, level: 2,
+  },
+  {
+    id: "n4", node_name: "Research lab compensation bands",
+    summary: "Top labs pay $180-250k for senior research engineers",
+    thread_id: "thread::salary", thread_state: "continue_thread",
+    is_crux: false, is_tangent: true, timestamp_start: 620, level: 2,
+  },
+  // return to career-change with updated crux
+  {
+    id: "n5", node_name: "Skills gap in ML systems",
+    summary: "Gap between security background and research roles: needs ML + distributed training",
+    thread_id: "thread::career-change", thread_state: "return_to_thread",
+    is_crux: true, is_tangent: false, timestamp_start: 840, level: 2,
+  },
+  {
+    id: "n6", node_name: "Transition timeline",
+    summary: "12-18 months to build credibility via open-source contributions",
+    thread_id: "thread::career-change", thread_state: "continue_thread",
+    is_crux: false, is_tangent: false, timestamp_start: 1100, level: 2,
+  },
+];
+
 interface CardSnapshot {
-  t_ms: number;
   hasCurrentCard: boolean;
   hasAnchorCard: boolean;
   inTangent: boolean;
@@ -38,15 +74,13 @@ interface CardSnapshot {
   anchorCardText: string;
 }
 
-async function captureCardState(page: Page, t0: number): Promise<CardSnapshot> {
-  return page.evaluate((t0) => {
-    const t_ms = Date.now() - t0;
+async function captureCardState(page: Page): Promise<CardSnapshot> {
+  return page.evaluate(() => {
     const current = document.querySelector("[data-testid='tangent-card-current']");
     const anchor = document.querySelector("[data-testid='tangent-card-anchor']");
     const header = document.querySelector("[data-testid='tangent-thread-header']");
     const tangentDot = document.querySelector("[data-testid='tangent-indicator']");
     return {
-      t_ms,
       hasCurrentCard: Boolean(current),
       hasAnchorCard: Boolean(anchor),
       inTangent: Boolean(tangentDot),
@@ -54,157 +88,132 @@ async function captureCardState(page: Page, t0: number): Promise<CardSnapshot> {
       currentCardText: (current as HTMLElement)?.innerText?.trim().slice(0, 80) || "",
       anchorCardText: (anchor as HTMLElement)?.innerText?.trim().slice(0, 80) || "",
     };
-  }, t0);
+  });
 }
 
-// ── Mobile viewport + fake-audio launch options (only applied when enabled) ──
-test.describe("Tangent view cards appear on mobile as conversation streams", () => {
-  if (RUN) {
-    test.use({
-      viewport: { width: 360, height: 800 },
-      deviceScaleFactor: 2,
-      isMobile: true,
-      hasTouch: true,
-      launchOptions: {
-        args: [
-          "--use-fake-ui-for-media-stream",
-          "--use-fake-device-for-media-stream",
-          `--use-file-for-fake-audio-capture=${AUDIO_FIXTURE.replace(/\\/g, "/")}`,
-          "--autoplay-policy=no-user-gesture-required",
-        ],
-      },
-      contextOptions: { permissions: ["microphone"] },
-      headless: false,
-    });
-  } else {
-    // Mobile viewport only — no fake audio (browser will launch normally)
-    test.use({
-      viewport: { width: 360, height: 800 },
-      deviceScaleFactor: 2,
-      isMobile: true,
-      hasTouch: true,
-    });
-  }
+test.describe("Tangent view on mobile — streaming conversation", () => {
+  test.use({
+    viewport: { width: 360, height: 800 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
 
-  test("toggle button and empty state render on mobile", async ({ page }) => {
-    // Intercept the backend health check so the app's service-gate passes
-    // even when the local backend isn't running.
+  test("toggle button renders and flips on mobile", async ({ page }) => {
     await page.route("**/api/import/health", (route) =>
       route.fulfill({ status: 200, body: JSON.stringify({ status: "ok" }) })
     );
     await page.route("**/api/health", (route) =>
       route.fulfill({ status: 200, body: JSON.stringify({ status: "ok" }) })
     );
-    // WebSocket for a fake meeting ID will fail gracefully — that's fine.
 
     await page.goto(`${FRONTEND_URL}/meeting/00000000-0000-0000-0000-000000000000`, {
       waitUntil: "domcontentloaded",
       timeout: 30_000,
     });
-    await page.waitForTimeout(2000);
-    await page.screenshot({ path: path.join(SHOTS_DIR, "mobile_meeting_view.png") });
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: path.join(SHOTS_DIR, "00_meeting_view.png") });
 
-    // Toggle button must exist in the header.
     const toggleBtn = page.getByTestId("tangent-view-toggle");
     await expect(toggleBtn).toBeVisible({ timeout: 10_000 });
     expect(await toggleBtn.textContent()).toMatch(/tangent view/i);
 
-    // Click it — UI should flip to "Graph view".
     await toggleBtn.click();
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: path.join(SHOTS_DIR, "mobile_tangent_toggled.png") });
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: path.join(SHOTS_DIR, "00b_tangent_on.png") });
     await expect(toggleBtn).toHaveText(/graph view/i);
   });
 
-  test("cards appear as audio streams through tangents", async ({ page }) => {
-    test.skip(!RUN, "set RUN_TANGENT_E2E=1 to run (needs local backend + STT key)");
-    test.setTimeout(8 * 60 * 1000);
+  test("cards appear as conversation streams through tangents", async ({ page }) => {
+    test.setTimeout(30_000);
 
-    expect(fs.existsSync(AUDIO_FIXTURE), `audio fixture missing: ${AUDIO_FIXTURE}`).toBe(true);
+    const MOCK_ID = "00000000-0000-0000-0000-000000000001";
 
-    const consoleErrors: string[] = [];
-    page.on("console", (msg) => {
-      if (msg.type() === "error") consoleErrors.push(msg.text());
+    // Bypass backend health gate.
+    await page.route("**/api/import/health", (route) =>
+      route.fulfill({ status: 200, body: JSON.stringify({ status: "ok" }) })
+    );
+    await page.route("**/api/health", (route) =>
+      route.fulfill({ status: 200, body: JSON.stringify({ status: "ok" }) })
+    );
+
+    // Intercept the WebSocket the MeetingView opens and act as the server.
+    let send: ((msg: string) => void) | null = null;
+    await page.routeWebSocket(`**ws/meeting/${MOCK_ID}`, (ws) => {
+      send = (msg: string) => ws.send(msg);
+      ws.onMessage(() => {}); // absorb the auth message
     });
 
-    const t0 = Date.now();
+    await page.goto(`${FRONTEND_URL}/meeting/${MOCK_ID}`, {
+      waitUntil: "domcontentloaded",
+      timeout: 30_000,
+    });
+    await page.waitForTimeout(800);
 
-    // ── 1. Start recording ───────────────────────────────────────────────────
-    await page.goto(`${FRONTEND_URL}/new`, { waitUntil: "domcontentloaded", timeout: 30_000 });
-    await page.waitForTimeout(2000);
-    await page.screenshot({ path: path.join(SHOTS_DIR, "00_loaded.png") });
-
-    const startBtn = page.getByRole("button", { name: /start recording/i }).first();
-    await expect(startBtn).toBeVisible({ timeout: 15_000 });
-    await startBtn.click();
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: path.join(SHOTS_DIR, "01_recording_started.png") });
-
-    // ── 2. Switch to Tangent view ────────────────────────────────────────────
+    // Switch to Tangent view before data arrives.
     const toggleBtn = page.getByTestId("tangent-view-toggle");
-    await expect(toggleBtn).toBeVisible({ timeout: 10_000 });
+    await expect(toggleBtn).toBeVisible({ timeout: 5_000 });
     await toggleBtn.click();
-    await page.waitForTimeout(500);
-    await page.screenshot({ path: path.join(SHOTS_DIR, "02_tangent_view_on.png") });
-    await expect(toggleBtn).toHaveText(/graph view/i);
+    await page.waitForTimeout(300);
 
-    // ── 3. Poll every 5 s for 70 s ───────────────────────────────────────────
     const snapshots: CardSnapshot[] = [];
-    for (let i = 0; i < 14; i++) {
-      await page.waitForTimeout(5000);
-      const snap = await captureCardState(page, t0);
-      snapshots.push(snap);
-      console.log(
-        `[+${(snap.t_ms / 1000).toFixed(1)}s] current=${snap.hasCurrentCard} ` +
-          `anchor=${snap.hasAnchorCard} tangent=${snap.inTangent} ` +
-          `header="${snap.threadHeader.slice(0, 50)}"`
-      );
-      await page.screenshot({ path: path.join(SHOTS_DIR, `step_${String(i).padStart(2, "0")}.png`) });
-    }
 
-    // Stop and let graph settle.
-    const stopBtn = page.getByRole("button", { name: /stop recording|stop/i }).first();
-    if ((await stopBtn.count()) > 0) await stopBtn.click().catch(() => {});
-    await page.waitForTimeout(20_000);
-    const finalSnap = await captureCardState(page, t0);
-    snapshots.push(finalSnap);
-    await page.screenshot({ path: path.join(SHOTS_DIR, "final.png") });
+    // ── Phase 1: main thread — crux set, no tangent ──────────────────────────
+    const batch1 = [CAREER_NODES.slice(0, 2)]; // n1 (crux) + n2
+    send!(JSON.stringify({ type: "existing_json", data: batch1 }));
+    await page.waitForTimeout(800);
 
-    // ── 4. Assert: current-node card appeared at least once ──────────────────
-    const snapsWithCard = snapshots.filter((s) => s.hasCurrentCard);
-    const snapsWithTangent = snapshots.filter((s) => s.inTangent);
-    console.log(
-      `[result] current-card: ${snapsWithCard.length}/${snapshots.length} snaps; ` +
-        `tangent indicator: ${snapsWithTangent.length}/${snapshots.length} snaps`
-    );
-    expect(
-      snapsWithCard.length,
-      "Expected at least one snapshot to show the current-node card in tangent view"
-    ).toBeGreaterThan(0);
+    await page.screenshot({ path: path.join(SHOTS_DIR, "01_main_thread.png") });
+    const snap1 = await captureCardState(page);
+    snapshots.push(snap1);
 
-    // ── 5. Write report ───────────────────────────────────────────────────────
+    await expect(page.getByTestId("tangent-card-current")).toBeVisible({ timeout: 3_000 });
+    expect(snap1.inTangent).toBe(false);
+    expect(snap1.hasCurrentCard).toBe(true);
+
+    // ── Phase 2: salary tangent — amber dot, anchor shows career crux ────────
+    const batch2 = [CAREER_NODES.slice(0, 4)]; // n1-n4 (includes salary tangent)
+    send!(JSON.stringify({ type: "existing_json", data: batch2 }));
+    await page.waitForTimeout(800);
+
+    await page.screenshot({ path: path.join(SHOTS_DIR, "02_in_tangent.png") });
+    const snap2 = await captureCardState(page);
+    snapshots.push(snap2);
+
+    expect(snap2.inTangent).toBe(true);
+    expect(snap2.hasCurrentCard).toBe(true);
+    await expect(page.getByTestId("tangent-card-anchor")).toBeVisible({ timeout: 3_000 });
+
+    // ── Phase 3: return to main thread — crux updates, no longer tangent ─────
+    const batch3 = [CAREER_NODES]; // all 6 nodes
+    send!(JSON.stringify({ type: "existing_json", data: batch3 }));
+    await page.waitForTimeout(800);
+
+    await page.screenshot({ path: path.join(SHOTS_DIR, "03_returned.png") });
+    const snap3 = await captureCardState(page);
+    snapshots.push(snap3);
+
+    expect(snap3.inTangent).toBe(false);
+    expect(snap3.hasCurrentCard).toBe(true);
+    expect(snap3.threadHeader).toMatch(/career/i);
+
+    // ── Report ────────────────────────────────────────────────────────────────
+    const phases = ["main thread (crux)", "in tangent (salary)", "returned (crux updated)"];
     const lines = [
       `# Tangent view stream — mobile e2e report\n`,
       `**Run:** ${new Date().toISOString()}\n`,
-      `**Fixture:** ${path.basename(AUDIO_FIXTURE)}\n`,
-      `**Viewport:** 360×800 mobile\n\n`,
-      `## Timeline\n`,
-      `| t (s) | current | anchor | tangent | thread header |\n`,
+      `**Viewport:** 360×800 mobile\n`,
+      `**Data source:** WebSocket mock (career coaching sequence)\n\n`,
+      `## Phase results\n`,
+      `| phase | current | anchor | tangent | thread header |\n`,
       `|-------|---------|--------|---------|---------------|\n`,
-      ...snapshots.map(
-        (s) =>
-          `| ${(s.t_ms / 1000).toFixed(1)} | ${s.hasCurrentCard ? "✓" : "—"} | ` +
-          `${s.hasAnchorCard ? "✓" : "—"} | ${s.inTangent ? "amber" : "—"} | ` +
-          `${s.threadHeader.replace(/\|/g, "\\|").slice(0, 60)} |\n`
+      ...snapshots.map((s, i) =>
+        `| ${phases[i]} | ${s.hasCurrentCard ? "✓" : "—"} | ${s.hasAnchorCard ? "✓" : "—"} | ${s.inTangent ? "amber" : "—"} | ${s.threadHeader.replace(/\|/g, "\\|").slice(0, 50)} |\n`
       ),
-      `\n## Final state\n`,
-      `- Current card: ${finalSnap.currentCardText || "(none)"}\n`,
-      `- Anchor card: ${finalSnap.anchorCardText || "(none)"}\n`,
-      `- Thread header: ${finalSnap.threadHeader || "(none)"}\n`,
+      `\n## Final card text\n`,
+      `- Current: ${snap3.currentCardText}\n`,
+      `- Anchor: ${snap3.anchorCardText}\n`,
     ];
-    if (consoleErrors.length) {
-      lines.push(`\n## Console errors\n\`\`\`\n${consoleErrors.slice(0, 10).join("\n")}\n\`\`\`\n`);
-    }
     fs.writeFileSync(REPORT_PATH, lines.join(""));
     console.log(`[report] ${REPORT_PATH}`);
   });
