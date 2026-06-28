@@ -1,7 +1,7 @@
 """add_transcript_revisions — decision-B: proposed transcript changes await operator review
 
 Revision ID: add_transcript_revisions
-Revises: subject_review_bundles
+Revises: add_node_thread_columns
 Create Date: 2026-06-26
 
 The slow-pass (Attendee MP3 re-transcription) must NOT overwrite the live transcript
