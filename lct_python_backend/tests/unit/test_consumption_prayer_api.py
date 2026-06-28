@@ -347,7 +347,7 @@ async def test_fetch_preserves_order_and_ranking_fields(monkeypatch):
         {"contact_id": "c_zoe", "display_name": "Zoe",
          "last_activity": "2026-05-18 20:48:38+00:00",
          "item_count": 1248, "external_llm_ok": 0, "privacy_tier": "T3",
-         "obsidian_note_path": "/x"},
+         "confirmed": 1, "obsidian_note_path": "/x"},
         {"contact_id": "c_alice", "display_name": "Alice",
          "last_activity": "2026-05-18 19:00:00+00:00",
          "item_count": 88, "external_llm_ok": 1, "privacy_tier": "T2",
@@ -363,10 +363,12 @@ async def test_fetch_preserves_order_and_ranking_fields(monkeypatch):
     assert zoe["item_count"] == 1248
     assert zoe["external_llm_ok"] is False  # 0 normalized to bool
     assert zoe["privacy_tier"] == "T3"
+    assert zoe["confirmed"] == 1  # ADR-058 §(a): human-reviewed gate passes through
     assert contacts[1]["external_llm_ok"] is True  # 1 → True
     bob = contacts[2]
     assert bob["external_llm_ok"] is False  # missing → safe default
     assert bob["privacy_tier"] is None
+    assert bob["confirmed"] == 0  # missing confirmed → safe default (unconfirmed)
     assert "obsidian_note_path" not in zoe
     assert "extra_field" not in contacts[1]
 
@@ -450,6 +452,79 @@ async def test_fetch_empty_exception_string_falls_back_to_class_name(monkeypatch
     contacts, err = await consumption_prayer_api._fetch_indrasnet_contacts(limit=50)
     assert contacts == []
     assert err  # non-empty — falls back to the exception class name
+
+
+# ---------------------------------------------------------------------------
+# _curate_picker_contacts — confirmed-aware dedup + ranking (ADR-058 §a).
+# A human-confirmed contact outranks any unconfirmed one; the item_count /
+# recency proxy only orders within each confirmed-status group.
+# ---------------------------------------------------------------------------
+
+
+def _curate(contacts):
+    return consumption_prayer_api._curate_picker_contacts(contacts)
+
+
+def test_curate_ranks_confirmed_above_unconfirmed():
+    """A confirmed contact with FEW items still outranks a noisy unconfirmed
+    one with many — the human review is the dominant signal."""
+    out = _curate([
+        {"contact_id": "c1", "display_name": "Busy Bot",
+         "item_count": 5000, "confirmed": 0, "last_activity": "2026-06-01"},
+        {"contact_id": "c2", "display_name": "Real Person",
+         "item_count": 3, "confirmed": 1, "last_activity": "2024-01-01"},
+    ])
+    assert [c["display_name"] for c in out] == ["Real Person", "Busy Bot"]
+
+
+def test_curate_within_confirmed_group_uses_item_count_proxy():
+    """Among same confirmed-status contacts, the existing item_count/recency
+    proxy still decides order (no regression)."""
+    out = _curate([
+        {"contact_id": "c1", "display_name": "Alice", "item_count": 10, "confirmed": 1},
+        {"contact_id": "c2", "display_name": "Bob", "item_count": 99, "confirmed": 1},
+    ])
+    assert [c["display_name"] for c in out] == ["Bob", "Alice"]
+
+
+def test_curate_dedup_prefers_confirmed_over_higher_item_count():
+    """Two rows share a normalized name: keep the confirmed one even though the
+    unconfirmed duplicate has more items."""
+    out = _curate([
+        {"contact_id": "c_auto", "display_name": "aditya",
+         "item_count": 800, "confirmed": 0},
+        {"contact_id": "c_real", "display_name": "Aditya",
+         "item_count": 12, "confirmed": 1},
+    ])
+    assert len(out) == 1
+    assert out[0]["contact_id"] == "c_real"
+    assert out[0]["confirmed"] == 1
+
+
+def test_curate_missing_confirmed_treated_as_unconfirmed():
+    """Stale cache entries shaped before ADR-058 §a lack `confirmed` — they must
+    default to unconfirmed and never crash the ranking."""
+    out = _curate([
+        {"contact_id": "c1", "display_name": "No Flag", "item_count": 50},
+        {"contact_id": "c2", "display_name": "Confirmed", "item_count": 1, "confirmed": 1},
+    ])
+    assert [c["display_name"] for c in out] == ["Confirmed", "No Flag"]
+
+
+def test_curate_confirmed_does_not_rescue_bare_phone_above_named_confirmed():
+    """confirmed is the top key, so a confirmed phone-number-name still ranks
+    below a confirmed real-name (named tiebreak), but above ALL unconfirmed."""
+    out = _curate([
+        {"contact_id": "c_num", "display_name": "+918035273596",
+         "item_count": 900, "confirmed": 1},
+        {"contact_id": "c_name", "display_name": "Vishnu",
+         "item_count": 4, "confirmed": 1},
+        {"contact_id": "c_un", "display_name": "Unconfirmed Whale",
+         "item_count": 9999, "confirmed": 0},
+    ])
+    names = [c["display_name"] for c in out]
+    # both confirmed (real-name first, then bare-number) precede the unconfirmed
+    assert names == ["Vishnu", "+918035273596", "Unconfirmed Whale"]
 
 
 # ---------------------------------------------------------------------------
