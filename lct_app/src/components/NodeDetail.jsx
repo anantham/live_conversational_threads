@@ -212,6 +212,42 @@ export default function NodeDetail({
     };
   }, [contextNodes, safeNode]);
 
+  // For aggregation nodes (topics / themes / arcs) in the static .threads
+  // viewer — no utterance feed, but the node's children_ids point to moments
+  // that each carry a source_excerpt. Collect those excerpts so the user can
+  // see the actual transcript passages that shaped the higher-level node.
+  // Only active when contextNodes is provided (static viewer path) and there
+  // is no utterance feed that would already cover this.
+  const childExcerpts = useMemo(() => {
+    if (!Array.isArray(contextNodes) || contextNodes.length === 0 || !safeNode) return null;
+    const lvl = Number(safeNode.semantic_level || safeNode.level || 0);
+    if (lvl <= 1) return null; // moments show contextWindow instead
+    const childIds = new Set((safeNode.children_ids || []).map(String));
+    if (childIds.size === 0) return null;
+    const nodeById = new Map(contextNodes.map((n) => [String(n.id), n]));
+    const excerpts = [];
+    childIds.forEach((cid) => {
+      const child = nodeById.get(cid);
+      if (!child) return;
+      const text = child.source_excerpt || child.full_text || child.summary;
+      if (!text) return;
+      excerpts.push({
+        id: cid,
+        speaker: child.speaker_display || child.speaker_id || null,
+        text,
+        level: Number(child.semantic_level || child.level || 1),
+      });
+    });
+    if (excerpts.length === 0) return null;
+    // Sort by timestamp if available; else keep insertion order.
+    excerpts.sort((a, b) => {
+      const ta = contextNodes.find((n) => String(n.id) === a.id)?.timestamp_start ?? 0;
+      const tb = contextNodes.find((n) => String(n.id) === b.id)?.timestamp_start ?? 0;
+      return ta - tb;
+    });
+    return excerpts;
+  }, [contextNodes, safeNode]);
+
   // Raw transcript for this node's chunk. NOTE: for live-recorded
   // conversations the backend (conversation_reader.build_chunk_dict...)
   // stores the WHOLE transcript under every chunk_id because
@@ -257,10 +293,17 @@ export default function NodeDetail({
   // above. Falls back to the full list when the node has no utterance
   // linkage (live-STT conversations) or when expanded.
   const UTTERANCE_CONTEXT_ROWS = 4;
-  const nodeUtteranceIds = useMemo(
-    () => new Set((safeNode?.utterance_ids || []).map(String)),
-    [safeNode?.utterance_ids]
-  );
+  // Fall back to source_ref.utterance_ids for aggregation nodes that were
+  // created before the reconciler bubbled IDs upward, or for older
+  // conversations where utterance_ids is empty but provenance already links
+  // the raw turns. Without this, the window defaults to the entire
+  // conversation with no highlighting — the exact turns the node covers are
+  // visible in Provenance but inaccessible in the transcript.
+  const nodeUtteranceIds = useMemo(() => {
+    const direct = safeNode?.utterance_ids || [];
+    const fromRef = safeNode?.source_ref?.utterance_ids || [];
+    return new Set([...direct, ...fromRef].map(String));
+  }, [safeNode?.utterance_ids, safeNode?.source_ref?.utterance_ids]);
   const visibleUtterances = useMemo(() => {
     if (!Array.isArray(utterances) || utterances.length === 0) return null;
     const rows = utterances.map((u) => ({ ...u, _hl: nodeUtteranceIds.has(String(u.id)) }));
@@ -622,6 +665,27 @@ export default function NodeDetail({
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Contributing moments — aggregation nodes in the static .threads viewer.
+            Shows the source_excerpt from each child moment so the user can see
+            the actual transcript passages that formed this topic/theme/arc. */}
+        {childExcerpts && !visibleUtterances && !rawTranscript && (
+          <div>
+            <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+              Transcript · {childExcerpts.length} contributing moment{childExcerpts.length === 1 ? "" : "s"}
+            </span>
+            <div className="mt-1 max-h-60 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs leading-relaxed space-y-1.5">
+              {childExcerpts.map((ex) => (
+                <div key={ex.id}>
+                  {ex.speaker && (
+                    <span className="font-medium text-gray-500">{ex.speaker}: </span>
+                  )}
+                  <span className="text-gray-600">{ex.text}</span>
+                </div>
+              ))}
             </div>
           </div>
         )}
