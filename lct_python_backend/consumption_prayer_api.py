@@ -236,6 +236,11 @@ def _normalize_indrasnet_contact(c: Any) -> Optional[dict]:
         "item_count": c.get("item_count"),
         "external_llm_ok": bool(c.get("external_llm_ok", 0)),
         "privacy_tier": c.get("privacy_tier"),
+        # ADR-058 §(a): the human-reviewed gate from IndrasNet. 1 = owner
+        # confirmed this is a real person; 0 = inert auto-formed candidate.
+        # Surfacing it lets the picker prioritize reviewed contacts over the
+        # item_count/recency proxy (and the frontend mark confirmed ones).
+        "confirmed": int(c.get("confirmed") or 0),
     }
 
 
@@ -249,16 +254,32 @@ def _looks_like_phone_name(name: Optional[str]) -> bool:
 
 def _curate_picker_contacts(contacts: Any) -> list:
     """De-noise the picker: dedup auto-formed duplicate identities by normalized
-    name (aditya/Aditya, Vishnu GT x2), then rank by SIGNAL (item_count, recency
-    tiebreak) so real conversational contacts surface and the long tail of
-    auto-ingested noise (bare phone numbers, 1-item imports) sinks below the window.
+    name (aditya/Aditya, Vishnu GT x2), then rank by the human-reviewed gate
+    first and the activity proxy as a tiebreak, so real conversational contacts
+    surface and the long tail of auto-ingested noise (bare phone numbers, 1-item
+    imports) sinks below the window.
 
-    Proxy ranking only — the real human-reviewed-vs-auto distinction lives in
-    IndrasNet (attribution confidence / confirmed clusters) and isn't yet surfaced
-    in the /api/contacts summary LCT consumes (task #14).
+    ADR-058 §(a): the real human-reviewed-vs-auto distinction (IndrasNet's
+    `confirmed` flag) is now surfaced on the /api/contacts summary and carried
+    through `_normalize_indrasnet_contact`. A confirmed contact ranks above any
+    unconfirmed one; the item_count/recency proxy only orders within each group.
     """
     if not isinstance(contacts, list):
         return []
+
+    def _dedup_signal(c: dict):
+        # Collapsing two rows that share a name: keep the human-confirmed one
+        # (a reviewed real person beats an unconfirmed candidate even with fewer
+        # items); fall back to item_count among same-confirmed rows.
+        return (int(c.get("confirmed") or 0), c.get("item_count") or 0)
+
+    def _rank(c: dict):
+        # confirmed first (ADR-058), then real-name-over-bare-number, then the
+        # activity proxy (item_count, recency).
+        confirmed = int(c.get("confirmed") or 0)
+        named = 0 if _looks_like_phone_name(c.get("display_name")) else 1
+        return (confirmed, named, c.get("item_count") or 0, c.get("last_activity") or "")
+
     best: dict = {}
     for c in contacts:
         if not isinstance(c, dict):
@@ -268,12 +289,8 @@ def _curate_picker_contacts(contacts: Any) -> list:
             continue
         key = name.casefold()
         prev = best.get(key)
-        if prev is None or (c.get("item_count") or 0) > (prev.get("item_count") or 0):
+        if prev is None or _dedup_signal(c) > _dedup_signal(prev):
             best[key] = c
-
-    def _rank(c: dict):
-        named = 0 if _looks_like_phone_name(c.get("display_name")) else 1
-        return (named, c.get("item_count") or 0, c.get("last_activity") or "")
 
     return sorted(best.values(), key=_rank, reverse=True)
 
