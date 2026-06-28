@@ -38,6 +38,7 @@ import MinimalGraphHud from "./graph/MinimalGraphHud";
 import MinimalGraphPanels from "./graph/MinimalGraphPanels";
 import { mglog } from "./graph/minimalGraphDebug";
 import { MIN_READABLE_ZOOM, repackSubset } from "./graphSimilarityLayout";
+import SwimLaneRail from "./graph/SwimLaneRail";
 
 // ADR-030 Â§D4: custom node renderer with three color modes + state markers.
 // Cluster nodes are still default ReactFlow rendering (separate concern).
@@ -960,6 +961,27 @@ function MinimalGraphInner({
     });
   }, [baseDisplayNodes, traceResult.nodes]);
 
+  // Thread-filter state: clicking a swim-lane label dims all other threads.
+  const [highlightedThread, setHighlightedThread] = useState(null);
+  const threadFilteredNodes = useMemo(() => {
+    if (!highlightedThread) return displayNodes;
+    return displayNodes.map((n) => {
+      const tid =
+        String(
+          n.data?.fullData?.thread_id || n.data?.thread_id || "default"
+        ).trim() || "default";
+      const inThread = tid === highlightedThread;
+      return {
+        ...n,
+        style: {
+          ...(n.style || {}),
+          opacity: inThread ? (n.style?.opacity ?? 1) : 0.12,
+          transition: "opacity 200ms ease",
+        },
+      };
+    });
+  }, [displayNodes, highlightedThread]);
+
   // momentCount = raw L1 total, shown as a size signal in the count readout.
   // Suppressed when L1 is the active tier (else it reads "134 moments Â· 134 moments").
   const momentCount = useMemo(
@@ -1343,8 +1365,13 @@ function MinimalGraphInner({
           </button>
         </div>
       )}
+      <SwimLaneRail
+        displayNodes={displayNodes}
+        highlightedThread={highlightedThread}
+        onThreadClick={setHighlightedThread}
+      />
       <ReactFlow
-        nodes={displayNodes}
+        nodes={threadFilteredNodes}
         edges={displayEdgesWithTrace}
         onNodesChange={onNodesChange}
         nodeTypes={NODE_TYPES}
