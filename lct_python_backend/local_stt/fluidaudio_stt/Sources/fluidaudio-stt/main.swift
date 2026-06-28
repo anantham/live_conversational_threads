@@ -271,8 +271,8 @@ server.POST["/v1/audio/transcriptions"] = { request in
     }
 
     // Check if diarization was requested.
-    let diarizeRequested = parts.first(where: { $0.name == "diarize" })?.body
-        .flatMap { String(bytes: $0, encoding: .utf8) }
+    let diarizeRequested = parts.first(where: { $0.name == "diarize" })
+        .flatMap { String(bytes: $0.body, encoding: .utf8) }
         .map { $0.lowercased() == "true" } ?? false
 
     // Persist the uploaded bytes to a temp WAV.
