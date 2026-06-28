@@ -332,6 +332,14 @@ export default function ParticipantPickerModal({
                             you
                           </span>
                         ) : null}
+                        {c.confirmed ? (
+                          <span
+                            className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700"
+                            title="Confirmed — a human-reviewed real person, not an auto-formed guess (ADR-058)"
+                          >
+                            confirmed
+                          </span>
+                        ) : null}
                         {c.external_llm_ok === false ? (
                           <span
                             className="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-700"
