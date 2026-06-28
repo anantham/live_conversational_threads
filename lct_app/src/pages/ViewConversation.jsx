@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Download, FileJson, Map, Share2 } from "lucide-react";
+import { CheckCircle, Download, FileJson, Map, Share2, XCircle } from "lucide-react";
 import ShareManagerModal from "../components/share/ShareManagerModal";
 import AnalyzeMenu from "../components/AnalyzeMenu";
 
@@ -16,7 +16,7 @@ import NodeDetail from "../components/NodeDetail";
 import SearchDialog from "../components/SearchDialog";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
-import { apiFetch, apiFetchCached, API_BASE_URL, readErrorMessage } from "../services/apiClient";
+import { apiFetch, apiFetchCached, apiHeaders, API_BASE_URL, readErrorMessage } from "../services/apiClient";
 import { fetchConversationParticipants } from "../services/participantsApi";
 
 function sanitizeNodeArray(chunk) {
@@ -247,6 +247,67 @@ export default function ViewConversation() {
     };
   }, [conversationId]);
 
+  // Decision-B: pending transcript revisions (slow-pass proposed, awaiting operator review).
+  const [pendingRevisions, setPendingRevisions] = useState([]);
+  const [revisionActionState, setRevisionActionState] = useState({ busy: false, error: "" });
+  useEffect(() => {
+    if (!conversationId) return undefined;
+    let cancelled = false;
+    apiFetch(`/conversations/${conversationId}/revisions`)
+      .then((r) => r.ok ? r.json() : { revisions: [] })
+      .then((data) => {
+        if (!cancelled) setPendingRevisions(data.revisions || []);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [conversationId]);
+
+  const handleRevisionApprove = useCallback(async (revisionId) => {
+    if (revisionActionState.busy) return;
+    setRevisionActionState({ busy: true, error: "" });
+    try {
+      const resp = await fetch(
+        `${API_BASE_URL}/api/conversations/${conversationId}/revisions/${revisionId}/approve`,
+        { method: "POST", headers: apiHeaders() },
+      );
+      if (!resp.ok) {
+        const msg = await readErrorMessage(resp);
+        setRevisionActionState({ busy: false, error: msg || "Approval failed." });
+        return;
+      }
+      const data = await resp.json();
+      // Mark the revision gone locally; caller should also POST to data.next to re-run.
+      setPendingRevisions((prev) => prev.filter((r) => r.id !== revisionId));
+      setRevisionActionState({ busy: false, error: "" });
+      // Fire-and-forget the reprocess to apply the approved transcript.
+      if (data.next) {
+        fetch(`${API_BASE_URL}${data.next}`, { method: "POST", headers: apiHeaders() }).catch(() => {});
+      }
+    } catch (err) {
+      setRevisionActionState({ busy: false, error: err?.message || "Approval failed." });
+    }
+  }, [conversationId, revisionActionState.busy]);
+
+  const handleRevisionReject = useCallback(async (revisionId) => {
+    if (revisionActionState.busy) return;
+    setRevisionActionState({ busy: true, error: "" });
+    try {
+      const resp = await fetch(
+        `${API_BASE_URL}/api/conversations/${conversationId}/revisions/${revisionId}/reject`,
+        { method: "POST", headers: apiHeaders() },
+      );
+      if (!resp.ok) {
+        const msg = await readErrorMessage(resp);
+        setRevisionActionState({ busy: false, error: msg || "Rejection failed." });
+        return;
+      }
+      setPendingRevisions((prev) => prev.filter((r) => r.id !== revisionId));
+      setRevisionActionState({ busy: false, error: "" });
+    } catch (err) {
+      setRevisionActionState({ busy: false, error: err?.message || "Rejection failed." });
+    }
+  }, [conversationId, revisionActionState.busy]);
+
   const allNodes = useMemo(
     () => graphData.flatMap((chunk) => (Array.isArray(chunk) ? chunk : [])),
     [graphData]
@@ -452,6 +513,40 @@ export default function ViewConversation() {
           )}
         </div>
       </header>
+
+      {pendingRevisions.length > 0 && pendingRevisions.map((rev) => (
+        <div key={rev.id} className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2">
+          <div className="flex items-center gap-3">
+            <span className="flex-1 text-[11px] text-amber-800">
+              Revised transcript pending review — {rev.segment_count} segment{rev.segment_count !== 1 ? "s" : ""} from {rev.source}
+              {rev.created_at ? ` (proposed ${new Date(rev.created_at).toLocaleString()})` : ""}
+            </span>
+            {revisionActionState.error && (
+              <span className="text-[11px] text-red-600">{revisionActionState.error}</span>
+            )}
+            <button
+              type="button"
+              disabled={revisionActionState.busy}
+              onClick={() => handleRevisionApprove(rev.id)}
+              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-green-700 hover:bg-green-100 disabled:opacity-50 disabled:cursor-wait"
+              title="Apply this revised transcript and rebuild the graph"
+            >
+              <CheckCircle size={12} />
+              Approve
+            </button>
+            <button
+              type="button"
+              disabled={revisionActionState.busy}
+              onClick={() => handleRevisionReject(rev.id)}
+              className="flex items-center gap-1 rounded px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-200 disabled:opacity-50 disabled:cursor-wait"
+              title="Dismiss this proposed revision without applying it"
+            >
+              <XCircle size={12} />
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ))}
 
       {executiveSummary && summaryExpanded && (
         <div className="relative shrink-0 border-b border-slate-200 bg-white/70 px-6 py-3 pr-10 text-xs leading-relaxed text-slate-600 backdrop-blur">

@@ -290,6 +290,7 @@ from lct_python_backend.attendee_api import (
     ws_router as attendee_ws_router,
 )
 from lct_python_backend.reprocess_api import router as reprocess_router
+from lct_python_backend.revisions_api import router as revisions_router
 
 lct_app.include_router(import_router)
 lct_app.include_router(version_router)
@@ -325,6 +326,7 @@ lct_app.include_router(diarization_router)
 lct_app.include_router(attendee_router)
 lct_app.include_router(attendee_ws_router)
 lct_app.include_router(reprocess_router)
+lct_app.include_router(revisions_router)
 
 # Alias for uvicorn compatibility
 app = lct_app
