@@ -377,9 +377,20 @@ server.POST["/v1/audio/transcriptions"] = { request in
 
 // MARK: - Startup
 
+// Start the HTTP server immediately so /health is reachable while models load.
+do {
+    try server.start(port, forceIPv4: true)
+    log("fluidaudio-stt listening on http://localhost:\(port)  (engine=\(engineName) model=\(modelName))")
+} catch {
+    log("FATAL: failed to bind port \(port): \(error)")
+    exit(1)
+}
+
 // Step 1: Load diarizer models (downloads from HuggingFace on first run,
-// uses local cache thereafter). This runs BEFORE enforceOffline so the
-// download can succeed.
+// uses local cache thereafter). Block main thread here so enforceOffline is
+// set only AFTER the download attempt — a Task{} without this semaphore races
+// with the enforceOffline assignment and always sees enforceOffline=true.
+let diarSem = DispatchSemaphore(value: 0)
 Task {
     let t0 = Date()
     do {
@@ -391,19 +402,13 @@ Task {
     } catch {
         log("Diarizer not available: \(error) — transcription will work without speaker labels")
     }
+    diarSem.signal()
 }
+diarSem.wait()
 
 // Step 2: Prevent ASR from auto-downloading missing model files.
+// Set AFTER diarizer so pyannote/wespeaker models can reach HuggingFace.
 DownloadUtils.enforceOffline = true
-
-// Start the HTTP server immediately so /health is reachable while models load.
-do {
-    try server.start(port, forceIPv4: true)
-    log("fluidaudio-stt listening on http://localhost:\(port)  (engine=\(engineName) model=\(modelName))")
-} catch {
-    log("FATAL: failed to bind port \(port): \(error)")
-    exit(1)
-}
 
 // Step 3: Load ASR models on the concurrency pool, then publish the warm service.
 log("Loading Parakeet v3 models from \(modelDir.path) ...")

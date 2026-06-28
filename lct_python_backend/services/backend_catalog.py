@@ -303,9 +303,11 @@ def _stt_provider_diarizes(stt_settings: Dict[str, Any]) -> bool:
     """Whether the active STT provider returns speaker labels INLINE, so the
     diarization card reads "via STT" instead of "no diarizer running". The
     OpenAI-compatible transports (e.g. the M5) send diarize=true on every request;
-    the backend_http/whisper transport only does so under STT_DIARIZE_ENABLED."""
+    the backend_http/whisper transport only does so under STT_DIARIZE_ENABLED.
+    parakeet/senko use the backend_http transport with diarize=true; their inline
+    diarization comes from the FluidAudio pyannote CoreML pipeline in the Swift server."""
     provider = _norm((stt_settings or {}).get("provider"))
-    if provider in ("openai_audio", "openrouter_audio"):
+    if provider in ("openai_audio", "openrouter_audio", "parakeet", "senko"):
         return True
     return os.getenv("STT_DIARIZE_ENABLED", "").strip().lower() in ("1", "true", "yes", "on")
 
