@@ -34,7 +34,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "add_transcript_revisions"
-down_revision: Union[str, Sequence[str], None] = "subject_review_bundles"
+down_revision: Union[str, Sequence[str], None] = "add_node_thread_columns"
 branch_labels = None
 depends_on = None
 
