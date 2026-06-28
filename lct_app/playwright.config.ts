@@ -58,7 +58,11 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: {
+        ...devices['Desktop Chrome'],
+        // Use installed Google Chrome when the Playwright-bundled Chromium is unavailable.
+        channel: process.env.PLAYWRIGHT_CHROME_CHANNEL || 'chrome',
+      },
     },
 
     // Uncomment to test on Firefox and WebKit

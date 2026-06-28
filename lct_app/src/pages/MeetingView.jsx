@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import MinimalGraph from "../components/MinimalGraph";
+import TangentView from "../components/graph/TangentView";
 import SessionTranscriptOverlay from "../components/transcript/SessionTranscriptOverlay";
 import { wsUrl, sendWsAuth } from "../services/apiClient";
 import { createBackendMessageHandler } from "../components/audio/audioMessages";
@@ -47,6 +48,7 @@ export default function MeetingView() {
   const [chunkDict, setChunkDict] = useState({});
   const [transcriptLines, setTranscriptLines] = useState([]);
   const [transcriptMinimized, setTranscriptMinimized] = useState(true);
+  const [viewMode, setViewMode] = useState("graph"); // "graph" | "tangent"
 
   const graphFromSocketRef = useRef(false);
   const flushResolveRef = useRef(null);
@@ -131,6 +133,19 @@ export default function MeetingView() {
             {botState ? ` · ${botState}` : ""}
           </div>
           <button
+            onClick={() => setViewMode((m) => (m === "tangent" ? "graph" : "tangent"))}
+            className={[
+              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              viewMode === "tangent"
+                ? "border-indigo-300 bg-indigo-50 text-indigo-700"
+                : "border-slate-300 text-slate-600 hover:bg-slate-100",
+            ].join(" ")}
+            title="Toggle tangent view (sanity mode)"
+            data-testid="tangent-view-toggle"
+          >
+            {viewMode === "tangent" ? "Graph view" : "Tangent view"}
+          </button>
+          <button
             onClick={() => navigate(`/conversation/${conversationId}`)}
             className="rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
             title="Open the saved conversation"
@@ -151,7 +166,9 @@ export default function MeetingView() {
           className="absolute inset-x-0 top-0 transition-[bottom] duration-300"
           style={{ bottom: viewportBottom }}
         >
-          {hasData ? (
+          {hasData && viewMode === "tangent" ? (
+            <TangentView graphData={graphData} />
+          ) : hasData ? (
             <MinimalGraph
               graphData={graphData}
               selectedNode={selectedNode}

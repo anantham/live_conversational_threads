@@ -1,0 +1,150 @@
+{
+  "_comment": "N-shot examples for graph processing prompts — teaches the LLM when to mark is_crux, is_tangent, thread_state. Grounded in real conversation 6dea3cd3 (Buddhist theory / road rage / identification).",
+  "examples": [
+    {
+      "id": "ex1-main-thread-crux-active",
+      "description": "Main thread running, crux already established, discussion continuing on-topic",
+      "input_sequence": [
+        {
+          "speaker": "SPEAKER_01",
+          "text": "a good doubt a real doubt a burning doubt will be like do i have a self like i really need to investigate this",
+          "is_crux": true,
+          "is_tangent": false,
+          "thread_id": "thread-buddhist-theory",
+          "thread_state": "continue_thread",
+          "node_name": "Definition of burning doubt"
+        },
+        {
+          "speaker": "SPEAKER_01",
+          "text": "if you stop delighting in this... this is the end of the underlying tendency to lust, to aversion",
+          "is_crux": false,
+          "is_tangent": false,
+          "thread_id": "thread-buddhist-theory",
+          "thread_state": "continue_thread",
+          "node_name": "End of lust and aversion"
+        },
+        {
+          "speaker": "SPEAKER_02",
+          "text": "so the doubt I'm usually used to feeling is that a kind of a paralytic doubt, not the kind that makes me go look",
+          "is_crux": false,
+          "is_tangent": false,
+          "thread_id": "thread-buddhist-theory",
+          "thread_state": "continue_thread",
+          "node_name": "Instrumental vs. Paralytic Doubt"
+        }
+      ],
+      "tangent_view_state": {
+        "thread_header": "buddhist theory · anchored at 'Definition of burning doubt'",
+        "crux_anchor": {
+          "node_name": "Definition of burning doubt",
+          "summary": "A real doubt compels investigation — do I actually have a self? I really need to go check."
+        },
+        "current": {
+          "node_name": "Instrumental vs. Paralytic Doubt",
+          "summary": "Is this doubt keeping you stuck in stasis, or is it the kind that makes you move and investigate?"
+        },
+        "in_tangent": false
+      }
+    },
+    {
+      "id": "ex2-mid-tangent-anchor-visible",
+      "description": "Conversation entered a tangent (bodily needs in ritual). Main thread crux is the anchor shown on the left — reminder of what we will return to.",
+      "input_sequence": [
+        {
+          "speaker": "SPEAKER_01",
+          "text": "a good doubt a real doubt a burning doubt will be like do i have a self like i really need to investigate this",
+          "is_crux": true,
+          "is_tangent": false,
+          "thread_id": "thread-buddhist-theory",
+          "thread_state": "continue_thread",
+          "node_name": "Definition of burning doubt"
+        },
+        {
+          "speaker": "SPEAKER_03",
+          "text": "I think it's okay if you have to use the bathroom... your body needs take priority during a sitting session",
+          "is_crux": false,
+          "is_tangent": true,
+          "thread_id": "thread-rituals-vs-body",
+          "thread_state": "new_thread",
+          "node_name": "Bodily needs in ritual"
+        },
+        {
+          "speaker": "SPEAKER_01",
+          "text": "Usually I would be either an extreme of like, look I'm an animal or strict obedience to the structure",
+          "is_crux": false,
+          "is_tangent": true,
+          "thread_id": "thread-rituals-vs-body",
+          "thread_state": "continue_thread",
+          "node_name": "Extremes of conditioning: autonomy vs. obedience"
+        }
+      ],
+      "tangent_view_state": {
+        "thread_header": "rituals vs body · return to 'Definition of burning doubt'",
+        "crux_anchor": {
+          "node_name": "Definition of burning doubt",
+          "summary": "A real doubt compels investigation — do I actually have a self? I really need to go check.",
+          "thread": "thread-buddhist-theory"
+        },
+        "current": {
+          "node_name": "Extremes of conditioning: autonomy vs. obedience",
+          "summary": "I swing between pure bodily autonomy and strict rule-following — where's the middle ground?"
+        },
+        "in_tangent": true
+      }
+    },
+    {
+      "id": "ex3-return-to-thread-crux-updates",
+      "description": "Conversation returned from salary tangent to main career thread. A new crux forms on return — the anchor updates from the original crux to the new one.",
+      "input_sequence": [
+        {
+          "speaker": "SPEAKER_01",
+          "text": "I feel burnt out from cybersecurity work and I want to pivot toward research-focused engineering",
+          "is_crux": true,
+          "is_tangent": false,
+          "thread_id": "thread::career-change",
+          "thread_state": "new_thread",
+          "node_name": "Cybersecurity disillusionment"
+        },
+        {
+          "speaker": "SPEAKER_02",
+          "text": "what is your current salary? market rate for senior research engineers is $180-250k at top labs",
+          "is_crux": false,
+          "is_tangent": true,
+          "thread_id": "thread::salary",
+          "thread_state": "new_thread",
+          "node_name": "Research lab compensation bands"
+        },
+        {
+          "speaker": "SPEAKER_01",
+          "text": "The real gap is ML systems and distributed training — security work doesn't build those muscles at all",
+          "is_crux": true,
+          "is_tangent": false,
+          "thread_id": "thread::career-change",
+          "thread_state": "return_to_thread",
+          "node_name": "Skills gap: ML systems and distributed training"
+        },
+        {
+          "speaker": "SPEAKER_02",
+          "text": "12 to 18 months is a realistic timeline if you contribute to open-source ML infrastructure projects",
+          "is_crux": false,
+          "is_tangent": false,
+          "thread_id": "thread::career-change",
+          "thread_state": "continue_thread",
+          "node_name": "Transition timeline via open-source"
+        }
+      ],
+      "tangent_view_state": {
+        "thread_header": "career change · anchored at 'Skills gap: ML systems and distributed training'",
+        "crux_anchor": {
+          "node_name": "Skills gap: ML systems and distributed training",
+          "summary": "The gap between your security background and research roles is ML systems + distributed training."
+        },
+        "current": {
+          "node_name": "Transition timeline via open-source",
+          "summary": "12-18 months to build credibility through open-source ML infrastructure contributions."
+        },
+        "in_tangent": false
+      }
+    }
+  ]
+}
