@@ -127,7 +127,10 @@ async def reprocess_conversation(
 
         return await build_process_file_stream(
             request=request,
-            file=_StoredAudioFile(filename=f"{conversation_id}{suffix}"),
+            file=_StoredAudioFile(
+                filename=f"{conversation_id}{suffix}",
+                content_type=content_type,
+            ),
             source_type="audio",
             conversation_id=conversation_id,   # existing id → pipeline UPDATES this conversation
             speaker_id=None,
