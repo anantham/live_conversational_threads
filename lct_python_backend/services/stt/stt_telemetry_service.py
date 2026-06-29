@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from lct_python_backend.models import TranscriptEvent
 from lct_python_backend.services.coercion_helpers import coerce_float
-from lct_python_backend.services.stt_config import STT_PROVIDER_IDS
+from .stt_config import STT_PROVIDER_IDS
 
 logger = logging.getLogger(__name__)
 

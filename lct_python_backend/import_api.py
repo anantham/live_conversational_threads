@@ -71,10 +71,10 @@ from lct_python_backend.services.llm_config import (
     load_llm_providers as _db_load_llm_providers,
     get_env_llm_defaults,
 )
-from lct_python_backend.services.stt_settings_service import load_stt_settings
+from lct_python_backend.services.stt.stt_settings_service import load_stt_settings
 from lct_python_backend.services.artifact_settings_service import load_artifact_export_settings
 from lct_python_backend.services.artifact_export_service import auto_export_conversation_artifacts
-from lct_python_backend.services.stt_health_service import (
+from lct_python_backend.services.stt.stt_health_service import (
     derive_health_url_from_http_url,
     probe_health_url,
 )

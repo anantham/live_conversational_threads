@@ -3,12 +3,12 @@ import json
 
 import pytest
 
-from lct_python_backend.services.stt_backend_realtime import BackendRealtimeTranscriptionRuntime
-from lct_python_backend.services.stt_live_runtime import (
+from lct_python_backend.services.stt.stt_backend_realtime import BackendRealtimeTranscriptionRuntime
+from lct_python_backend.services.stt.stt_live_runtime import (
     HttpLiveSttRuntime,
     build_live_stt_runtime,
 )
-from lct_python_backend.services.stt_openai_realtime import (
+from lct_python_backend.services.stt.stt_openai_realtime import (
     DEFAULT_OPENAI_REALTIME_SAMPLE_RATE_HZ,
     OPENAI_REALTIME_MIN_COMMIT_BYTES,
     OpenAIRealtimeTranscriptionRuntime,
@@ -161,7 +161,7 @@ async def test_openai_realtime_runtime_start_sends_transcription_session_type(mo
             }
         )
 
-    monkeypatch.setattr("lct_python_backend.services.stt_openai_realtime.websockets.connect", fake_connect)
+    monkeypatch.setattr("lct_python_backend.services.stt.stt_openai_realtime.websockets.connect", fake_connect)
     monkeypatch.setattr(runtime, "_receiver_loop", fake_receiver_loop)
 
     await runtime.start()
@@ -204,7 +204,7 @@ async def test_openai_realtime_runtime_start_fails_fast_on_startup_error(monkeyp
             }
         )
 
-    monkeypatch.setattr("lct_python_backend.services.stt_openai_realtime.websockets.connect", fake_connect)
+    monkeypatch.setattr("lct_python_backend.services.stt.stt_openai_realtime.websockets.connect", fake_connect)
     monkeypatch.setattr(runtime, "_receiver_loop", fake_receiver_loop)
 
     with pytest.raises(RuntimeError, match="Missing required parameter: 'session.type'\\."):
@@ -262,7 +262,7 @@ async def test_openai_realtime_flush_skips_commit_for_sub_100ms_buffer(monkeypat
     auto-committed the real speech; the sub-syllable tail is dropped."""
     # No events arrive — keep the post-commit wait short.
     monkeypatch.setattr(
-        "lct_python_backend.services.stt_openai_realtime.DEFAULT_OPENAI_REALTIME_FLUSH_WAIT_SECONDS",
+        "lct_python_backend.services.stt.stt_openai_realtime.DEFAULT_OPENAI_REALTIME_FLUSH_WAIT_SECONDS",
         0.0,
     )
 
@@ -326,7 +326,7 @@ async def test_backend_realtime_runtime_start_and_event_mapping(monkeypatch):
             }
         )
 
-    monkeypatch.setattr("lct_python_backend.services.stt_backend_realtime.websockets.connect", fake_connect)
+    monkeypatch.setattr("lct_python_backend.services.stt.stt_backend_realtime.websockets.connect", fake_connect)
     monkeypatch.setattr(runtime, "_receiver_loop", fake_receiver_loop)
 
     await runtime.start()
@@ -372,7 +372,7 @@ async def test_backend_realtime_flush_promotes_last_partial_when_done_arrives_wi
             }
         )
 
-    monkeypatch.setattr("lct_python_backend.services.stt_backend_realtime.websockets.connect", fake_connect)
+    monkeypatch.setattr("lct_python_backend.services.stt.stt_backend_realtime.websockets.connect", fake_connect)
     monkeypatch.setattr(runtime, "_receiver_loop", fake_receiver_loop)
 
     await runtime.start()
@@ -417,7 +417,7 @@ async def test_backend_realtime_flush_waits_for_final_after_partial(monkeypatch)
             }
         )
 
-    monkeypatch.setattr("lct_python_backend.services.stt_backend_realtime.websockets.connect", fake_connect)
+    monkeypatch.setattr("lct_python_backend.services.stt.stt_backend_realtime.websockets.connect", fake_connect)
     monkeypatch.setattr(runtime, "_receiver_loop", fake_receiver_loop)
 
     await runtime.start()

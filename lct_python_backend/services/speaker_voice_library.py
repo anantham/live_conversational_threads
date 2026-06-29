@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from lct_python_backend.models import SpeakerAudioReference, Utterance
 from lct_python_backend.services.audio_storage import AudioStorageManager
 from lct_python_backend.services.speaker_naming_service import is_confirmed_speaker_name
-from lct_python_backend.services.stt_http_transcriber import pcm16le_to_wav
+from lct_python_backend.services.stt.stt_http_transcriber import pcm16le_to_wav
 
 
 async def save_speaker_audio_reference(

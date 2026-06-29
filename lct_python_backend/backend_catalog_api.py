@@ -19,13 +19,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from lct_python_backend.db_session import get_async_session
 from lct_python_backend.services.backend_catalog import build_catalog, load_seed
 from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers
-from lct_python_backend.services.stt_config import STT_CLOUD_PROVIDER_IDS
-from lct_python_backend.services.stt_health_service import (
+from lct_python_backend.services.stt.stt_config import STT_CLOUD_PROVIDER_IDS
+from lct_python_backend.services.stt.stt_health_service import (
     derive_health_url_from_http_url,
     probe_health_url,
 )
-from lct_python_backend.services.stt_settings_service import load_stt_settings
-from lct_python_backend.services.stt_telemetry_service import aggregate_telemetry
+from lct_python_backend.services.stt.stt_settings_service import load_stt_settings
+from lct_python_backend.services.stt.stt_telemetry_service import aggregate_telemetry
 
 logger = logging.getLogger("lct_backend")
 
