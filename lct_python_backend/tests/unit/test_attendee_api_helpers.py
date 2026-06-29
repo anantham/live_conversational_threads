@@ -128,14 +128,22 @@ class TestVerifySignatureHmac:
         assert module._verify_signature(tampered, sig) is False
 
     def test_signature_canonicalization_is_sort_keys(self, monkeypatch):
-        """Key order in the HTTP body must not matter — sorted canonical."""
+        """Key order in the HTTP body must not matter — sorted canonical.
+
+        IMPORTANT: the body bytes must have keys in REVERSE alphabetical order
+        so a broken non-sorting implementation produces a different canonical and
+        fails (z before a → non-sorting impl signs '{"z":1,"a":2}' ≠ '{"a":2,"z":1}').
+        Using json.dumps({"a":2,"z":1}) would already be in sorted order and a
+        broken impl would coincidentally produce the right canonical — false positive.
+        """
         module = _load_attendee(monkeypatch, webhook_secret=_TEST_SECRET)
         payload = {"z": 1, "a": 2}
-        # Compute sig over sorted payload
+        # Compute signature over SORTED canonical {"a":2,"z":1}
         sig = _make_valid_signature(_TEST_SECRET, payload)
-        # Body sent with different key order
-        body = json.dumps({"a": 2, "z": 1}).encode()
-        # Should still pass because canonical is sort_keys=True
+        # Body has z BEFORE a — guarantees insertion-order differs from sorted order.
+        # A broken impl (no sort_keys) would sign '{"z":1,"a":2}' ≠ canonical → False.
+        # A correct impl sorts before signing → '{"a":2,"z":1}' → True.
+        body = b'{"z":1,"a":2}'
         assert module._verify_signature(body, sig) is True
 
     def test_invalid_base64_secret_returns_false(self, monkeypatch):
@@ -149,14 +157,34 @@ class TestVerifySignatureHmac:
         body = b"not json {"
         assert module._verify_signature(body, "sig") is False
 
-    def test_constant_time_comparison_no_timing_leak(self, monkeypatch):
-        """The function uses hmac.compare_digest, not ==. Just verify it returns bool."""
+    def test_constant_time_comparison_uses_compare_digest(self, monkeypatch):
+        """The function must use hmac.compare_digest (constant-time), not ==.
+
+        Spies on hmac.compare_digest and asserts it is called exactly once during
+        a valid-signature check. If the implementation used == instead, the spy
+        would never fire and the assertion would fail.
+        """
+        import hmac as _hmac
         module = _load_attendee(monkeypatch, webhook_secret=_TEST_SECRET)
+
+        called_with = []
+        _original = _hmac.compare_digest
+
+        def _spy(a, b):
+            called_with.append((a, b))
+            return _original(a, b)
+
+        monkeypatch.setattr(_hmac, "compare_digest", _spy)
+
         payload = {"event": "test"}
         body = json.dumps(payload).encode()
         sig = _make_valid_signature(_TEST_SECRET, payload)
         result = module._verify_signature(body, sig)
-        assert isinstance(result, bool)
+
+        assert result is True
+        assert len(called_with) == 1, (
+            "hmac.compare_digest must be called exactly once (constant-time compare required)"
+        )
 
 
 # ---------------------------------------------------------------------------
