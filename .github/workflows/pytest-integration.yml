@@ -73,10 +73,10 @@ jobs:
       - name: Run DB integration tests
         working-directory: lct_python_backend
         run: |
+          # Glob picks up every *_pg.py (so new ones in follow-on PRs are
+          # auto-included) plus the import-turns endpoint test, which is DB-backed
+          # but not _pg-suffixed.
           python -m pytest \
-            tests/integration/test_persist_graph_destructive_pg.py \
-            tests/integration/test_persist_turns_pg.py \
-            tests/integration/test_coverage_linking_pg.py \
-            tests/integration/test_subject_review_pg.py \
+            tests/integration/*_pg.py \
             tests/integration/test_import_turns_endpoint.py \
             -v --tb=short
