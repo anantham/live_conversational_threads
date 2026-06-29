@@ -12,7 +12,7 @@ reads cheap config + already-aggregated telemetry.
 import asyncio
 import logging
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -40,7 +40,8 @@ def _health_url_from_base(base: str) -> str:
 
 
 async def _resolve_probe_url(
-    *, capability: str, entry: Dict[str, Any], stt_settings: Dict[str, Any], diar_settings: Dict[str, Any]
+    *, capability: str, entry: Dict[str, Any], stt_settings: Dict[str, Any],
+    diar_settings: Dict[str, Any], llm_providers: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[str]:
     """Resolve a server-controlled health URL for a catalog entry (SSRF-safe)."""
     seed_probe = ((entry.get("health") or {}).get("probe_url")) if isinstance(entry.get("health"), dict) else None
@@ -53,14 +54,21 @@ async def _resolve_probe_url(
         # (/api/settings/stt/cloud-provider-test) for these instead.
         if str(entry.get("provider_key") or "").lower() in STT_CLOUD_PROVIDER_IDS:
             return None
-        # For the active local whisper server use the configured endpoint's /health,
-        # so a user who repointed the URL still probes the right place.
+        # Prefer the configured endpoint URL over the seed's hardcoded localhost
+        # probe for ANY local STT provider, active or not. The seed uses
+        # 127.0.0.1 (correct when the engine is co-located) but is wrong when the
+        # engine runs on a remote host reached over Tailscale/LAN — without this
+        # a non-active remote engine (e.g. M5 Whisper) falsely shows OFFLINE
+        # because the probe hits the backend host's own localhost.
+        provider_key = str(entry.get("provider_key") or "").lower()
+        http_urls = stt_settings.get("provider_http_urls") if isinstance(stt_settings.get("provider_http_urls"), dict) else {}
         if entry.get("is_active"):
-            provider = str(stt_settings.get("provider") or "").lower()
-            http_urls = stt_settings.get("provider_http_urls") if isinstance(stt_settings.get("provider_http_urls"), dict) else {}
-            configured = str(http_urls.get(provider) or stt_settings.get("http_url") or "").strip()
-            if configured:
-                return derive_health_url_from_http_url(configured)
+            active_provider = str(stt_settings.get("provider") or "").lower()
+            configured = str(http_urls.get(active_provider) or stt_settings.get("http_url") or "").strip()
+        else:
+            configured = str(http_urls.get(provider_key) or "").strip()
+        if configured:
+            return derive_health_url_from_http_url(configured)
         return seed_probe
 
     if capability == "diarization":
@@ -69,7 +77,26 @@ async def _resolve_probe_url(
         url = str((backends.get(provider) or {}).get("url") or "").strip()
         return _health_url_from_base(url) if url else None
 
-    return seed_probe  # llm + fallthrough use the seed probe url
+    if capability == "llm":
+        # The seed probe_url for a local LLM (e.g. local-ollama:
+        # http://127.0.0.1:11434/...) is correct only when the model server is
+        # co-located. When a configured llm_provider points the same provider at
+        # a remote base_url (e.g. Ollama on an M5 over Tailscale), probe that
+        # instead so the backend host doesn't probe its own empty localhost.
+        if seed_probe and ("127.0.0.1" in seed_probe or "localhost" in seed_probe):
+            entry_pk = str(entry.get("provider_key") or "").lower()
+            from lct_python_backend.services.llm_telemetry_service import catalog_provider_key
+            for prov in llm_providers or []:
+                if not isinstance(prov, dict):
+                    continue
+                prov_pk = catalog_provider_key(prov.get("base_url"), prov.get("type"))
+                if prov_pk and prov_pk == entry_pk:
+                    base = str(prov.get("base_url") or "").strip()
+                    if base and "127.0.0.1" not in base and "localhost" not in base:
+                        return _health_url_from_base(base)
+        return seed_probe
+
+    return seed_probe  # fallthrough
 
 
 @router.post("/api/backend-catalog/probe")
@@ -88,10 +115,14 @@ async def probe_backend_entry(payload: Dict[str, Any], session=Depends(get_async
 
     stt_settings = await load_stt_settings(session)
     diar_settings = await _safe_diar_settings(session)
+    llm_providers_cfg = await load_llm_providers(session, include_secrets=False)
+    probe_llm_providers = llm_providers_cfg.get("providers") if isinstance(llm_providers_cfg, dict) else []
+    probe_llm_providers = probe_llm_providers if isinstance(probe_llm_providers, list) else []
     catalog = build_catalog(
         stt_settings=stt_settings,
         llm_settings=await load_llm_config(session),
         diar_settings=diar_settings,
+        llm_providers=probe_llm_providers,
     )
     entry = next((e for e in catalog.get(capability, []) if e.get("id") == entry_id), None)
     if entry is None:
@@ -110,7 +141,8 @@ async def probe_backend_entry(payload: Dict[str, Any], session=Depends(get_async
         }
 
     health_url = await _resolve_probe_url(
-        capability=capability, entry=entry, stt_settings=stt_settings, diar_settings=diar_settings
+        capability=capability, entry=entry, stt_settings=stt_settings, diar_settings=diar_settings,
+        llm_providers=probe_llm_providers,
     )
     if not health_url:
         return {
