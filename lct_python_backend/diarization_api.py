@@ -19,7 +19,7 @@ from lct_python_backend.services.diarization_settings_service import (
     load_diarization_settings_for_client,
     save_diarization_settings,
 )
-from lct_python_backend.services.stt_health_service import probe_health_url
+from lct_python_backend.services.stt.stt_health_service import probe_health_url
 
 logger = logging.getLogger("lct_backend")
 

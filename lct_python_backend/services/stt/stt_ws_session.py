@@ -59,22 +59,22 @@ from lct_python_backend.services.speaker_voice_library import (
     gather_known_speakers_from_participants,
     get_speaker_audio_references,
 )
-from lct_python_backend.services.stt_http_transcriber import decode_audio_base64, pcm16le_to_wav, transcribe_wav_stt_candidate
+from .stt_http_transcriber import decode_audio_base64, pcm16le_to_wav, transcribe_wav_stt_candidate
 from lct_python_backend.services.no_audio_guard import NoAudioGuard
-from lct_python_backend.services.stt_live_graph import (
+from .stt_live_graph import (
     build_draft_graph_patch,
     build_speaker_reconciliation_patch,
     clean_transcript_text,
     source_texts_overlap,
     should_emit_draft_update,
 )
-from lct_python_backend.services.stt_live_runtime import LiveSttRuntime, build_live_stt_runtime
-from lct_python_backend.services.stt_live_provider_selection import (
+from .stt_live_runtime import LiveSttRuntime, build_live_stt_runtime
+from .stt_live_provider_selection import (
     build_live_stt_background_refinement_candidate,
     resolve_live_stt_candidates,
 )
-from lct_python_backend.services.stt_session import SessionState, ensure_conversation, persist_transcript_event
-from lct_python_backend.services.stt_ws_helpers import (
+from .stt_session import SessionState, ensure_conversation, persist_transcript_event
+from .stt_ws_helpers import (
     build_ws_error_payload as _build_ws_error_payload,
     build_telemetry_metadata as _build_telemetry_metadata,
     coerce_latency_ms as _coerce_latency_ms,

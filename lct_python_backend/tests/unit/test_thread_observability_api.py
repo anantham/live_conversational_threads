@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from lct_python_backend import stt_api
-from lct_python_backend.services.stt_ws_session import WsSessionContext
+from lct_python_backend.services.stt.stt_ws_session import WsSessionContext
 
 
 async def _fake_session_dependency():

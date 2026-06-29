@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse, urlunparse
 
 from lct_python_backend.services.coercion_helpers import coerce_str, to_bool
-from lct_python_backend.services.stt_config import (
+from .stt_config import (
     STT_CLOUD_PROVIDER_IDS,
     STT_PROVIDER_IDS,
     _normalize_provider,

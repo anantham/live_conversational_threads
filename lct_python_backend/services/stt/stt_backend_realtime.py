@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 import websockets
 from websockets.exceptions import ConnectionClosed
 
-from lct_python_backend.services.stt_openai_realtime import resample_pcm16_mono
+from .stt_openai_realtime import resample_pcm16_mono
 
 logger = logging.getLogger("lct_backend")
 
