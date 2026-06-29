@@ -1,17 +1,24 @@
 # Project Structure
 
-Last updated: 2026-05-30
+Last updated: 2026-06-29
 
 ## Top Level
 
 ```text
 live_conversational_threads/
-├── lct_python_backend/      FastAPI backend
+├── lct_python_backend/      FastAPI backend (Python)
 ├── lct_app/                 React frontend (Vite, JSX)
-├── docs/                    ADRs, plans, architecture docs, worklog
+├── docs/                    ADRs, plans, architecture docs
+│   ├── adr/                 Architecture Decision Records (ADR-001 through ADR-058)
+│   ├── handovers/           Session handover notes (historical)
+│   └── plans/               Implementation plans
+├── local_stt/               Standalone mlx-whisper STT server (optional)
+├── logs/                    Backend log files and supervisor scripts
 ├── setup-once.command       One-time local bootstrap
 ├── start.command            Daily local startup (backend + frontend)
-├── AGENTS.md                Operating instructions
+├── Dockerfile, docker-compose.yml
+├── AGENTS.md                Operating instructions for contributors and AI agents
+├── CLAUDE.md                Project-level Claude Code instructions
 └── README.md
 ```
 
@@ -19,97 +26,190 @@ live_conversational_threads/
 
 ### Application Shell
 
-- `backend.py`: FastAPI app creation, middleware/CORS wiring, router mounting.
-- `middleware.py`: auth/rate-limit/body-size/URL-import gates, WebSocket auth.
-- `.env.example`: current env contract.
+- `backend.py`: FastAPI app factory, middleware/CORS wiring, router mounting, lifespan handlers.
+- `middleware.py`: Auth gate, rate-limit, body-size guard, URL-import gate, WebSocket auth.
+- `auth_policy.py`: Subject-review token authentication and exemption logic (ADR-055).
+- `security_config.py`: CORS origins, trusted host configuration.
+- `body_limits.py`: Per-route upload size limits.
+- `rate_limit.py`: Sliding-window rate limiter.
+- `config.py`: Central env-var loading and feature flags.
 
 ### Mounted Router Modules
 
-- `import_api.py` (`/api/import/*`)
-- `bookmarks_api.py` (`/api/bookmarks/*`)
-- `stt_api.py` (`/api/settings/stt*`, `/ws/transcripts`, audio chunk endpoints)
-- `llm_api.py` (`/api/settings/llm*`)
-- `conversations_api.py` (`/conversations/*`, `/api/conversations/*`)
-- `generation_api.py` (`/get_chunks/`, `/generate-context-stream/`, `/save_json/`)
-- `prompts_api.py` (`/api/prompts*`)
-- `edit_history_api.py` (`/api/nodes/*`, `/api/conversations/*/edits*`)
-- `factcheck_api.py` (`/fact_check_claims/`, `/api/cost-tracking/stats`)
-- `analysis_api.py` (`/api/conversations/*/{simulacra|biases|frames}*`)
-- `analytics_api.py` (`/api/analytics/*`)
-- `backend_catalog_api.py` (`/api/backend-catalog`, `/api/backend-catalog/probe`): inference backend catalog + live probes (ADR-037)
-- `user_identity_api.py` (`/api/user-identity`): "which contact is me" self-identity
-- `consumption_prayer_api.py` (`/api/consumption-prayer/*`): intent/prayer matching + known-contacts picker cache (ADR-033)
-- `graph_api.py` (`/api/graph/*`)
-- `canvas_api.py` (`/export/obsidian-canvas/*`, `/import/obsidian-canvas/`)
-- `thematic_api.py` (`/api/conversations/*/themes*`)
-- `cost_api.py` (`/api/cost-tracking/*`)
+| File | Prefix | Purpose |
+|---|---|---|
+| `conversations_api.py` | `/conversations/*`, `/api/conversations/*` | CRUD, transcript, graph, analysis per conversation |
+| `import_api.py` | `/api/import/*` | Bulk and streaming import (PDF, Google Meet, raw turns) |
+| `stt_api.py` | `/api/settings/stt*`, `/ws/transcripts` | STT settings, live WebSocket transcription |
+| `llm_api.py` | `/api/settings/llm*` | LLM provider config and BYOK |
+| `generation_api.py` | `/get_chunks/`, `/generate-context-stream/`, `/save_json/` | Graph generation and streaming |
+| `prompts_api.py` | `/api/prompts*` | Prompt library management |
+| `edit_history_api.py` | `/api/nodes/*`, `/api/conversations/*/edits*` | Per-node edit history |
+| `factcheck_api.py` | `/fact_check_claims/` | Claim fact-checking |
+| `analysis_api.py` | `/api/conversations/*/{simulacra\|biases\|frames\|cruxes}*` | Analysis detectors |
+| `analytics_api.py` | `/api/analytics/*` | Usage analytics and cost stats |
+| `backend_catalog_api.py` | `/api/backend-catalog*` | Inference backend catalog + live probes (ADR-037) |
+| `revisions_api.py` | `/api/conversations/*/revisions*` | Transcript revision proposals and approval gate (Decision-B) |
+| `reprocess_api.py` | `/api/conversations/*/reprocess` | Re-transcription trigger |
+| `attendee_api.py` | `/api/attendee/*` | Attendee meeting-bot webhook receiver |
+| `diarization_api.py` | `/api/settings/diarization*` | Diarization config |
+| `artifact_api.py` | `/api/artifacts/*` | Shared artifact storage (ADR-036) |
+| `share_api.py` | `/api/share/*` | Shareable conversation links |
+| `speaker_naming_api.py` | `/api/speakers/*` | Speaker identity management |
+| `subject_review_api.py` | `/api/subject-review/*` | Subject-side privacy review (ADR-039/055) |
+| `consumption_prayer_api.py` | `/api/consumption-prayer/*` | Intent/prayer matching + contacts picker (ADR-033) |
+| `graph_api.py` | `/api/graph/*` | Graph queries and persistence |
+| `canvas_api.py` | `/export/obsidian-canvas/*`, `/import/obsidian-canvas/` | Obsidian canvas interop |
+| `cost_api.py` | `/api/cost-tracking/*` | LLM cost aggregation |
+| `user_identity_api.py` | `/api/user-identity` | Self-identity ("which contact is me") |
+| `bookmarks_api.py` | `/api/bookmarks/*` | Node bookmarks |
+| `version_api.py` | `/api/version` | Backend version endpoint |
 
-### Data and Services
+### Data Layer
 
-- `models/`: SQLAlchemy models split by domain (`core.py`, `graph.py`, `analysis.py`, `interaction.py`, `system.py`, `base.py`).
-- `db.py`, `db_session.py`, `db_helpers.py`: database access helpers.
-- `alembic/`: migration history.
-- `services/`: processing, provider clients, normalization, and orchestration.
-  - `stt_*`: STT pipeline (config, WS session, HTTP transcriber, health, telemetry, live runtime, provider selection, OpenAI realtime client).
-  - `transcript_*`: transcript processing (orchestrator, normalizer, LLM callers, prompts).
-  - `*_detector.py`: analysis detectors (frame, bias, simulacra, crux — ADR-035). Routed through `llm_gateway`.
-  - `graph_generation*.py`, `graph_query_service.py`: graph synthesis and querying.
-  - `import_*`: bulk import pipeline (orchestrator, pipeline, diarization queue, validation, persistence, SSE, telemetry).
-  - `llm_config.py`, `llm_helpers.py`, `local_llm_client.py`: LLM provider configuration and wrappers.
-  - `hierarchical_themes/`: multi-level topic clustering (Level 1–5 clusterers).
-  - `coercion_helpers.py`: shared type coercion utilities (`to_bool`, `coerce_str`, `safe_float`, etc.).
-  - `backend_catalog.py`: merges benchmark seed + live telemetry + active config into the 3-lane catalog (ADR-037); seed in `data/backend_catalog_seed.json`.
-  - `llm_telemetry_service.py`: per-provider LLM speed telemetry that feeds the catalog.
-  - `indrasnet_client.py`, `edge_enrichment.py`: IndrasNet HTTP client (prayers/contacts/retrieval) + semantic edge enrichment.
-  - `conversation_pipeline/`: staged transcript→graph orchestrator — **built + tested but NOT yet on the live path** (live flow still uses `stt_ws_session` + bulk import); see ISSUES.md.
+- `models/`: SQLAlchemy ORM models split by domain:
+  - `core.py` — conversations, utterances, nodes, relationships, speakers
+  - `graph.py` — graph snapshots, edges, themes
+  - `analysis.py` — claims, fact checks, analysis results
+  - `interaction.py` — prayers, consumption signals, share reviews
+  - `identity.py` — user identity, contact associations
+  - `observability.py` — telemetry, cost records, session observability
+  - `system.py` — app settings, backend catalog entries
+  - `base.py` — declarative base
+- `db.py`, `db_session.py`, `db_helpers.py`: sync and async session factories (`SessionLocal`, `get_async_session_context()`).
+- `alembic/versions/`: migration history; run `alembic upgrade head` after pulling new migrations.
+- `schemas.py`, `schemas_edit_history.py`, `import_schemas.py`, `raw_turn_contract.py`: Pydantic request/response models.
 
-  The on-device STT server lives outside `services/` in `local_stt/` — a standalone mlx-whisper FastAPI server `start.command` can boot as a drop-in HTTP provider.
-- `instrumentation/`: cost/telemetry aggregation and alerting.
-- `parsers/`: transcript format parsers (Google Meet PDF/text).
-- `tests/`: unit and integration tests.
+### Services (`lct_python_backend/services/`)
+
+**STT pipeline**
+- `stt_config.py`, `stt_settings_service.py` — provider config and AppSetting accessors
+- `stt_health_service.py` — periodic STT health checks; drives `ServiceStatus` UI
+- `stt_live_runtime.py`, `stt_ws_session.py`, `stt_ws_helpers.py` — live WebSocket transcription path
+- `stt_http_transcriber.py`, `audio_transcriber.py` — HTTP-based STT (slow-pass and import)
+- `stt_backend_realtime.py`, `stt_openai_realtime.py` — OpenAI real-time API adapter
+- `stt_live_provider_selection.py`, `stt_provider_transports.py` — provider routing
+- `stt_response_parsers.py`, `stt_circuit_breaker.py`, `stt_telemetry_service.py` — parsing, fault isolation, telemetry
+
+**Transcript processing**
+- `transcript_processing.py`, `transcript_normalizer.py`, `transcript_linearization.py` — normalise and flatten incoming transcripts
+- `transcript_prompts.py`, `transcript_llm_callers.py` — LLM-based dimension extraction
+- `transcript_reconciliation.py` — Decision-B: slow-pass → `propose_revision()`, no direct overwrite (ADR-024)
+- `transcript_revision_service.py` — create / approve / reject `TranscriptRevision` rows
+
+**Attendee meeting-bot integration**
+- `attendee_client.py` — REST client for the Attendee API
+- `attendee_bridge.py` — webhook event dispatcher (bot state machine)
+- `attendee_audio_downloader.py` — downloads MP3 from MinIO, runs slow-pass STT, proposes a revision
+
+**Analysis detectors** (routed through `llm_gateway.py`)
+- `bias_detector.py`, `frame_detector.py`, `simulacra_detector.py`, `crux_detector.py`
+
+**Graph**
+- `graph_generation_service.py`, `graph_query_service.py`, `graph_persistence.py`
+- `utterance_node_reconciler.py`, `hierarchy_consolidator.py`
+- `edge_enrichment.py` — semantic edge enrichment via IndrasNet retrieval
+
+**Import pipeline** (bulk)
+- `import_orchestrator.py`, `import_bulk_pipeline.py`, `import_bulk_processor.py`
+- `import_bulk_persistence.py`, `import_persistence.py`, `import_validation.py`
+- `import_bulk_diarization_enqueue.py`, `import_diarization_queue.py`
+- `import_bulk_sse.py`, `import_bulk_telemetry.py`, `import_bulk_stage_events.py`
+- `import_bulk_graph_pass.py`, `import_bulk_graph_refinement.py`, `import_bulk_byok.py`
+- `import_checkpoint.py`, `import_bulk_checkpoint_flow.py`
+- `import_fetchers.py`, `import_bulk_helpers.py`, `import_bulk_artifact_export.py`
+
+**Speaker**
+- `speaker_alignment.py`, `speaker_analytics.py`, `speaker_materialization.py`
+- `speaker_naming_service.py`, `speaker_voice_library.py`
+- `participant_speaker_inference.py`, `diarization_config.py`, `diarization_settings_service.py`
+
+**LLM / provider**
+- `llm_config.py`, `llm_helpers.py`, `llm_gateway.py` — provider abstraction
+- `local_llm_client.py` — Ollama / local endpoint client
+- `llm_telemetry_service.py` — per-provider speed telemetry → feeds backend catalog
+- `provider_selection.py`, `retry_policy.py`
+
+**Privacy / egress**
+- `privacy_boundary.py` — httpx-level egress gate (ADR-038)
+- `egress_chokepoint.py`, `egress_guard.py` — enforcement wrappers
+- `no_audio_guard.py` — blocks audio from reaching remote LLMs
+- `indrasnet_client.py` — IndrasNet HTTP client (prayers/contacts/retrieval)
+
+**Other services**
+- `backend_catalog.py` — 3-lane catalog (ADR-037); seed in `data/backend_catalog_seed.json`
+- `conversation_pipeline/` — staged transcript→graph orchestrator (ADR-030); **not yet on the live path**; see ISSUES.md
+- `synthesis/` — turn synthesis service
+- `live_prayer/` — live prayer dispatch service
+- `subject_review_core.py` — subject bundle generation for ADR-055 privacy review
+- `user_identity_service.py`, `owner_context.py`
+- `byok_session_store.py` — BYOK API key session storage
+- `quota_service.py`, `cost_stats_service.py`, `session_observability.py`, `thread_observability_service.py`
+- `audio_storage.py` — conversation audio file management (local + MinIO)
+- `artifact_export_service.py`, `artifact_settings_service.py`, `conversation_artifacts.py`
+- `bookmark_service.py`, `edit_logger.py`, `training_data_export.py`
+- `contacts_cache.py`, `consumption_match_runner.py`, `intent_signal_persistence.py`
+- `embedding_service.py`, `coercion_helpers.py`, `env_helpers.py`, `text_parsers.py`
+- `tuning_constants.py` — shared numeric thresholds
+
+### Tests (`lct_python_backend/tests/`)
+
+- `unit/` — fast, no-DB unit tests (detectors, parsers, services)
+- `integration/` — PostgreSQL integration tests (require live `lct_dev` DB + `alembic upgrade head`)
+- `live_prayer/` — prayer-matching test suite
+- `synthesis/` — synthesis service tests
+- `fixtures/` — shared test data
+- Run: `/c/Users/adity/anaconda3/python.exe -m pytest lct_python_backend/tests/ -p no:hypothesispytest`
 
 ## Frontend (`lct_app/`)
 
-### Entry and Pages
+### Pages (`src/pages/`)
 
-- `src/main.jsx`, `src/App.jsx`, `src/AppRoutes.jsx`
-- `src/pages/`: `Home.jsx`, `NewConversation.jsx`, `ViewConversation.jsx`, `Import.jsx`, `Browse.jsx`, `Bookmarks.jsx`, `EditHistory.jsx`, analysis pages (`FrameAnalysis`, `BiasAnalysis`, `SimulacraAnalysis`), `Analytics.jsx`, `CostDashboard.jsx`.
-- `src/pages/settings/`: `RuntimeSettingsPage.jsx`, `PromptLibraryPage.jsx`, `SettingsLayout.jsx`.
+- `Home.jsx`, `NewConversation.jsx`, `ViewConversation.jsx` — core conversation flow
+- `Import.jsx` — bulk import (PDF, Google Meet, raw turns)
+- `Browse.jsx`, `Bookmarks.jsx`, `EditHistory.jsx` — discovery and history
+- `MeetingView.jsx` — live meeting view (Attendee bot + real-time graph)
+- `JoinMeeting.jsx` — bot invite flow
+- `ThreadsViewer.jsx` — threads and arcs view (ADR-032)
+- `SubjectReview.jsx` — subject-side privacy review page (ADR-055)
+- `ShareConversation.jsx` — shareable link flow (ADR-036)
+- `CruxAnalysis.jsx`, `FrameAnalysis.jsx`, `BiasAnalysis.jsx`, `SimulacraAnalysis.jsx` — per-conversation analysis
+- `Analytics.jsx`, `CostDashboard.jsx` — usage dashboards
+- `settings/` — `RuntimeSettingsPage.jsx`, `PromptLibraryPage.jsx`, `SettingsLayout.jsx`
 
-### Core UI Areas
+### Components (`src/components/`)
 
-- `src/components/AudioInput.jsx` and `src/components/audio/*`: microphone capture, WebSocket transport, live session status HUD, STT utilities.
-- `src/components/MinimalGraph.jsx`, `src/components/ContextualGraph.jsx`: graph rendering.
-- `src/components/thematic/*`: thematic hierarchy components and hooks (graph, levels, settings panel, level selector).
-- `src/components/settings/*`: runtime settings cards (STT, LLM, diagnostics panel, prompt editor) and form hooks.
-- `src/components/DualView/*`: dual-pane layout (contextual network + timeline views).
-- `src/components/ZoomControls/*`: zoom navigation controls and level indicator.
-- `src/components/NodeDetailPanel/*`: node inspection panel.
-- `src/components/contextual/*`: contextual analysis components (claims panel, context card, transcript card, graph layout).
-- `src/components/upload/*`: file upload stream handling and progress panel.
-- `src/components/LlmProvidersPanel.jsx`, `src/components/LlmSettingsPanel.jsx`: LLM provider settings UI.
-- `src/components/ServiceStatus.jsx`: backend/STT/graph health status display.
-- `src/components/SttCloudFallbackFields.jsx`: cloud STT fallback configuration.
+- `AudioInput.jsx`, `audio/` — microphone capture, WebSocket transport, live session HUD
+- `MinimalGraph.jsx`, `graph/`, `graphLayout.js`, `graphNormalization.js` — graph rendering and layout
+- `TimelineRibbon.jsx`, `timelineRibbonLayout.js` — multi-row time-axis ribbon (ADR-032)
+- `DualView/` — dual-pane layout (contextual network + timeline)
+- `NodeDetailPanel/`, `NodeDetail.jsx` — node inspection
+- `contextual/`, `conversation/` — contextual analysis UI
+- `transcript/` — transcript display, branching, condensing, live lines
+- `settings/` — STT/LLM settings cards, diagnostics, prompt editor
+- `share/` — sharing UI components
+- `upload/` — file upload stream and progress
+- `home/` — home-page components
+- `ZoomControls/`, `LlmProvidersPanel.jsx`, `LlmSettingsPanel.jsx`, `ServiceStatus.jsx` — utility UI
+- `BetaGate.jsx` — beta-access gate
 
-### Frontend Services
+### Frontend Services (`src/services/`)
 
-- `src/services/apiClient.js`: base HTTP client and auth header handling.
-- `src/services/*Api.js`: feature-specific API wrappers (graph, prompts, frame, bias, simulacra, analytics, editHistory, sttSettings, llmSettings).
+Feature-specific API wrappers for every backend surface. Base: `apiClient.js`.
 
-### Hooks
+### Hooks (`src/hooks/`)
 
-- `src/hooks/useZoomController.js`: zoom level state and navigation.
-- `src/hooks/useAutoSave.js`: auto-save to IndexedDB.
-- `src/hooks/useSyncController.js`: data sync state.
+- `useZoomController.js`, `useAutoSave.js`, `useSyncController.js`, `useLocalConversationDraft.js`
 
 ## Documentation (`docs/`)
 
-- `docs/adr/`: architecture decisions (ADR-001 through ADR-018; see `docs/adr/INDEX.md`).
-- `docs/plans/`: implementation plans and checklists.
-- `docs/CONVENTIONS.md`: project naming, patterns, and style ground truth.
-- `docs/WORKLOG.md`: timestamped engineering log.
-- `docs/TECH_DEBT.md`: large-file and architecture cleanup backlog.
-- `docs/FEATURE_ROADMAP.md`: feature prioritization (partially superseded by ADR-driven planning).
-- `docs/LOCAL_SETUP.md`: operational setup/runbook.
-- `docs/VISION.md`: product vision and mission.
-- `docs/TIER_1_DECISIONS.md`, `docs/TIER_2_FEATURES.md`: foundational and secondary feature decisions.
+- `adr/` — Architecture Decision Records, ADR-001 through ADR-058 (45 decisions); see `adr/INDEX.md`.
+- `handovers/` — Session handover notes (historical context, not active references).
+- `plans/` — Implementation plans linked from ADRs.
+- `CONVENTIONS.md` — Naming, patterns, and style ground truth. **Read this first.**
+- `LOCAL_SETUP.md` — Setup and runbook for the Asus dev environment.
+- `DATA_MODEL_V2.md`, `DATA_MODEL_V2_CORRECTIONS.md` — DB schema overview.
+- `INDRASNET_INTEGRATION.md` — IndrasNet↔LCT integration design.
+- `SUPERVISION.md` — Backend supervisor and process management docs.
+- `PRODUCT_VISION.md` — Product mission and long-term goals.
+- `FEATURE_ROADMAP.md`, `ROADMAP.md` — Feature priority queues.
