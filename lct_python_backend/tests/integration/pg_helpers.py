@@ -62,9 +62,16 @@ async def pg_session():
 
 
 async def cleanup_conversations(session: AsyncSession, conv_ids) -> None:
-    """Cascade-delete the given conversation ids (children drop via FK CASCADE)."""
+    """Cascade-delete the given conversation ids (children drop via FK CASCADE).
+
+    Rolls back first: a function-under-test that raised may have left the session
+    in a failed-transaction state, which would make the cleanup deletes error.
+    The tests' real writes are already committed by persist_graph/persist_turns,
+    so a rollback here only discards a failed/pending state, never real data.
+    """
     from lct_python_backend.models import Conversation
 
+    await session.rollback()
     for cid in conv_ids:
         cuid = cid if isinstance(cid, uuid.UUID) else uuid.UUID(str(cid))
         await session.execute(delete(Conversation).where(Conversation.id == cuid))

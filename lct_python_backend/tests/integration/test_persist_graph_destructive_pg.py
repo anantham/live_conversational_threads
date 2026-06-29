@@ -105,8 +105,8 @@ def test_second_persist_replaces_nodes_and_relationships():
 
 
 def test_empty_graph_with_utterances_wipes_existing_nodes():
-    """FOOTGUN PIN: the L515 guard (`if not existing_json and utterances is None:
-    return 0`) only protects when utterances is None. Passing an empty
+    """FOOTGUN PIN: the early-return guard (`if not existing_json and utterances
+    is None: return 0`) only protects when utterances is None. Passing an empty
     existing_json WITH a (here empty) utterances list slips past the guard,
     proceeds to the delete, and WIPES the existing graph — returning 0 nodes.
 
@@ -139,8 +139,8 @@ def test_empty_graph_with_utterances_wipes_existing_nodes():
 
 
 def test_empty_graph_with_none_utterances_is_noop():
-    """COUNTERPART: the guard DOES protect when utterances is None — an empty
-    existing_json returns 0 early WITHOUT deleting the existing graph."""
+    """COUNTERPART: the early-return guard DOES protect when utterances is None —
+    an empty existing_json returns 0 early WITHOUT deleting the existing graph."""
     conv_id = str(uuid.uuid4())
     owner = unique_owner()
 
@@ -163,62 +163,86 @@ def test_empty_graph_with_none_utterances_is_noop():
     assert n_after_rels == 1
 
 
-def test_total_nodes_reflects_persisted_count():
-    """The Conversation.total_nodes column tracks the materialized node count."""
+def test_total_nodes_reflects_count_after_destructive_replace():
+    """Conversation.total_nodes tracks the materialized node count — and tracks
+    it DOWN after a destructive replace (3 nodes → 1), not just on first
+    materialization. A broken impl that only ever grew total_nodes (or set it
+    once) would fail the second assertion."""
     conv_id = str(uuid.uuid4())
     owner = unique_owner()
 
     async def scenario():
+        from lct_python_backend.models import Conversation, Node
+        from sqlalchemy import func, select
+
         async with pg_session() as session:
             try:
-                seg = [node("A"), node("B"), node("C")]
-                await _persist(session, conv_id, owner, seg)
-                from lct_python_backend.models import Conversation
-                from sqlalchemy import select
-                res = await session.execute(select(Conversation).where(Conversation.id == uuid.UUID(conv_id)))
-                conv = res.scalar_one()
-                return conv.total_nodes
+                cuid = uuid.UUID(conv_id)
+                # First materialization: 3 nodes.
+                await _persist(session, conv_id, owner, [node("A"), node("B"), node("C")])
+                res = await session.execute(select(Conversation).where(Conversation.id == cuid))
+                total_after_3 = res.scalar_one().total_nodes
+
+                # Destructive replace with a single-node graph.
+                await _persist(session, conv_id, owner, [node("Solo")])
+                res = await session.execute(select(Conversation).where(Conversation.id == cuid))
+                total_after_1 = res.scalar_one().total_nodes
+                cnt = await session.execute(
+                    select(func.count()).select_from(Node).where(Node.conversation_id == cuid)
+                )
+                actual_nodes = cnt.scalar_one()
+                return total_after_3, total_after_1, actual_nodes
             finally:
                 await cleanup_conversations(session, [conv_id])
 
-    assert asyncio.run(scenario()) == 3
+    total_after_3, total_after_1, actual_nodes = asyncio.run(scenario())
+    assert total_after_3 == 3
+    assert actual_nodes == 1
+    assert total_after_1 == 1  # tracked DOWN, not just up
 
 
 # ---------------------------------------------------------------------------
 # T2 — resume path (protect_node_ids)
 # ---------------------------------------------------------------------------
 
-def test_resume_protects_nodes_and_adds_new_segment():
-    """Resume path: passing the prior segment's node ids as protect_node_ids
-    freezes them — the new segment's nodes are ADDED rather than replacing.
-    Result = protected nodes + new segment's nodes."""
+def test_resume_protects_subset_culls_rest_and_appends_new_segment():
+    """Resume path, proving all three behaviors in one test: only the nodes
+    passed as protect_node_ids are frozen (A, B survive); a prior node NOT in the
+    protected set is culled (STALE deleted); the new segment's nodes are appended
+    (D). Strengthened from a protect-everything case — that variant would pass
+    even if the resume-path delete were a no-op, since there'd be nothing to
+    cull."""
     conv_id = str(uuid.uuid4())
     owner = unique_owner()
 
     async def scenario():
         async with pg_session() as session:
             try:
-                # Segment 1: A, B  (the frozen prior segment)
-                a_id, b_id = str(uuid.uuid4()), str(uuid.uuid4())
-                await _persist(session, conv_id, owner, [node("A", node_id=a_id), node("B", node_id=b_id)])
-                seg1_nodes, _, _ = await read_graph(session, conv_id)
-                protect = [n.id for n in seg1_nodes]  # real persisted UUIDs
+                # Segment 1: A, B (to be protected) + STALE (to be culled).
+                a_id, b_id, stale_id = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+                await _persist(session, conv_id, owner, [
+                    node("A", node_id=a_id),
+                    node("B", node_id=b_id),
+                    node("STALE", node_id=stale_id),
+                ])
+                nodes1, _, _ = await read_graph(session, conv_id)
+                by_name = {n.node_name: n.id for n in nodes1}
+                protect = [by_name["A"], by_name["B"]]  # STALE deliberately omitted
 
-                # Segment 2: C, D — disjoint ids, persisted with protect_node_ids.
-                c_id, d_id = str(uuid.uuid4()), str(uuid.uuid4())
+                # Segment 2: D, persisted with protect_node_ids.
+                d_id = str(uuid.uuid4())
                 await _persist(
-                    session, conv_id, owner,
-                    [node("C", node_id=c_id), node("D", node_id=d_id)],
+                    session, conv_id, owner, [node("D", node_id=d_id)],
                     protect_node_ids=protect,
                 )
                 after, _, _ = await read_graph(session, conv_id)
-                return {str(n.id) for n in after}, (a_id, b_id, c_id, d_id)
+                return {n.node_name for n in after}
             finally:
                 await cleanup_conversations(session, [conv_id])
 
-    ids, (a, b, c, d) = asyncio.run(scenario())
-    # All four survive: the prior segment frozen, the new one appended.
-    assert ids == {a, b, c, d}
+    names = asyncio.run(scenario())
+    # A, B frozen (protected); STALE culled (unprotected); D appended.
+    assert names == {"A", "B", "D"}
 
 
 def test_resume_deletes_unprotected_and_cascades_their_relationships():
