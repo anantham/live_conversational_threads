@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lct_python_backend.services.import_bulk_checkpoint_flow import (
+from lct_python_backend.services.import_pipeline.import_bulk_checkpoint_flow import (
     CheckpointFlowState,
     bootstrap_audio_checkpoint_flow,
     clear_import_checkpoint_safe,
     persist_chunk_checkpoint_safe,
 )
-from lct_python_backend.services.import_bulk_stage_events import ImportBulkStageEvents
+from lct_python_backend.services.import_pipeline.import_bulk_stage_events import ImportBulkStageEvents
 
 
 @pytest.mark.asyncio
@@ -60,10 +60,10 @@ async def test_bootstrap_cache_hit_short_circuits():
     mock_stt_api.audio_storage = mock_audio_storage
 
     with patch(
-        "lct_python_backend.services.import_bulk_checkpoint_flow.compute_file_hash",
+        "lct_python_backend.services.import_pipeline.import_bulk_checkpoint_flow.compute_file_hash",
         return_value="hash-1",
     ), patch(
-        "lct_python_backend.services.import_bulk_checkpoint_flow.find_checkpoint",
+        "lct_python_backend.services.import_pipeline.import_bulk_checkpoint_flow.find_checkpoint",
         new=AsyncMock(return_value=checkpoint),
     ), patch.dict(sys.modules, {"lct_python_backend.stt_api": mock_stt_api}):
         state = await bootstrap_audio_checkpoint_flow(
@@ -108,7 +108,7 @@ async def test_clear_import_checkpoint_safe_sets_telemetry():
     db = AsyncMock()
     telemetry: dict = {}
     with patch(
-        "lct_python_backend.services.import_bulk_checkpoint_flow.clear_checkpoint",
+        "lct_python_backend.services.import_pipeline.import_bulk_checkpoint_flow.clear_checkpoint",
         new=AsyncMock(),
     ):
         await clear_import_checkpoint_safe(db, "hash-1", telemetry, MagicMock())

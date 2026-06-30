@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from lct_python_backend.services.import_bulk_byok import (
+from lct_python_backend.services.import_pipeline.import_bulk_byok import (
     apply_llm_byok_overlay,
     apply_stt_byok_overlay,
     resolve_stt_byok_session,
@@ -40,7 +40,7 @@ def test_resolve_stt_byok_session_raises_on_lookup_error(monkeypatch):
         raise ByokSessionLookupError("bad token")
 
     monkeypatch.setattr(
-        "lct_python_backend.services.import_bulk_byok.resolve_byok_session",
+        "lct_python_backend.services.import_pipeline.import_bulk_byok.resolve_byok_session",
         _boom,
     )
     with pytest.raises(ValueError, match="bad token"):
