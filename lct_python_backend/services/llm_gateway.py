@@ -44,6 +44,7 @@ from lct_python_backend.services.local_llm_client import (
     chat_with_provider_fallback,
     chat_with_provider_fallback_sync,
 )
+from lct_python_backend.instrumentation.decorators import track_api_call
 
 logger = logging.getLogger("lct_backend")
 
@@ -94,6 +95,7 @@ class LlmGateway:
     Stateless — instances are interchangeable. Tests use the same class.
     """
 
+    @track_api_call("llm/gateway")
     async def chat(
         self,
         messages: list,

@@ -7,6 +7,10 @@ from fastapi import HTTPException
 from sqlalchemy import desc, select
 
 from lct_python_backend.models import APICallsLog
+from lct_python_backend.instrumentation.cost_calculator import (
+    COUNTERFACTUAL_MODEL,
+    calculate_counterfactual_cost,
+)
 
 
 def parse_time_range_to_start(time_range: str) -> Optional[datetime]:
@@ -32,21 +36,38 @@ def aggregate_cost_logs(logs: List[APICallsLog]) -> Dict[str, Any]:
 
     conversations_analyzed = len({str(log.conversation_id) for log in logs if log.conversation_id})
 
+    # Counterfactual: what would these same tokens have cost on the reference cloud model?
+    cloud_equivalent_cost = sum(
+        calculate_counterfactual_cost(
+            int(log.prompt_tokens or 0),
+            int(log.completion_tokens or 0),
+        )
+        for log in logs
+    )
+    # Savings = cloud price minus what you actually paid (zero for local models)
+    local_savings = cloud_equivalent_cost - total_cost
+
     by_feature: Dict[str, Dict[str, Any]] = {}
     by_model: Dict[str, Dict[str, Any]] = {}
 
     for log in logs:
         feature_key = str(log.feature or log.endpoint or "unknown")
-        feature_stats = by_feature.setdefault(feature_key, {"cost": 0.0, "calls": 0, "tokens": 0})
+        feature_stats = by_feature.setdefault(feature_key, {"cost": 0.0, "calls": 0, "tokens": 0, "cloud_equivalent": 0.0})
         feature_stats["cost"] += float(log.total_cost or 0.0)
         feature_stats["calls"] += 1
         feature_stats["tokens"] += int(log.total_tokens or 0)
+        feature_stats["cloud_equivalent"] += calculate_counterfactual_cost(
+            int(log.prompt_tokens or 0), int(log.completion_tokens or 0)
+        )
 
         model_key = str(log.model or "unknown")
-        model_stats = by_model.setdefault(model_key, {"cost": 0.0, "calls": 0, "tokens": 0})
+        model_stats = by_model.setdefault(model_key, {"cost": 0.0, "calls": 0, "tokens": 0, "cloud_equivalent": 0.0})
         model_stats["cost"] += float(log.total_cost or 0.0)
         model_stats["calls"] += 1
         model_stats["tokens"] += int(log.total_tokens or 0)
+        model_stats["cloud_equivalent"] += calculate_counterfactual_cost(
+            int(log.prompt_tokens or 0), int(log.completion_tokens or 0)
+        )
 
     recent_calls = [
         {
@@ -55,6 +76,9 @@ def aggregate_cost_logs(logs: List[APICallsLog]) -> Dict[str, Any]:
             "model": log.model,
             "total_tokens": int(log.total_tokens or 0),
             "cost_usd": float(log.total_cost or 0.0),
+            "cloud_equivalent_usd": calculate_counterfactual_cost(
+                int(log.prompt_tokens or 0), int(log.completion_tokens or 0)
+            ),
             "latency_ms": log.latency_ms,
         }
         for log in logs[:20]
@@ -67,6 +91,9 @@ def aggregate_cost_logs(logs: List[APICallsLog]) -> Dict[str, Any]:
         "avg_cost_per_call": round(avg_cost_per_call, 6),
         "avg_tokens_per_call": round(avg_tokens_per_call, 2),
         "conversations_analyzed": conversations_analyzed,
+        "cloud_equivalent_cost": round(cloud_equivalent_cost, 6),
+        "local_savings": round(local_savings, 6),
+        "counterfactual_model": COUNTERFACTUAL_MODEL,
         "by_feature": by_feature,
         "by_model": by_model,
         "recent_calls": recent_calls,

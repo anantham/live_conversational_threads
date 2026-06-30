@@ -56,32 +56,33 @@ class APICallTracker:
             metadata=metadata,
         )
 
-        if self.db and hasattr(self.db, "add") and hasattr(self.db, "commit"):
-            try:
-                from lct_python_backend.models import APICallsLog
+        try:
+            from lct_python_backend.db_session import AsyncSessionLocal
+            from lct_python_backend.models import APICallsLog
 
-                api_log = build_api_calls_log_record(
-                    api_calls_log_cls=APICallsLog,
-                    call_id=call_id,
-                    endpoint=endpoint,
-                    conversation_id=conversation_id,
-                    model=model,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    total_tokens=total_tokens,
-                    cost_usd=cost_usd,
-                    latency_ms=latency_ms,
-                    timestamp=timestamp,
-                    success=success,
-                    error_message=error_message,
-                    metadata=metadata,
-                )
-                self.db.add(api_log)
-                await self.db.commit()
-                return
-            except Exception as exc:
-                logger.exception("Failed to log API call to database: %s", str(exc))
-                log_entry["db_error"] = str(exc)
+            api_log = build_api_calls_log_record(
+                api_calls_log_cls=APICallsLog,
+                call_id=call_id,
+                endpoint=endpoint,
+                conversation_id=conversation_id,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                cost_usd=cost_usd,
+                latency_ms=latency_ms,
+                timestamp=timestamp,
+                success=success,
+                error_message=error_message,
+                metadata=metadata,
+            )
+            async with AsyncSessionLocal() as session:
+                session.add(api_log)
+                await session.commit()
+            return
+        except Exception as exc:
+            logger.debug("Failed to log API call to database: %s", str(exc))
+            log_entry["db_error"] = str(exc)
 
         self.call_logs.append(log_entry)
 

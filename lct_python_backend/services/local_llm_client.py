@@ -347,6 +347,8 @@ class ProviderResult:
         total_providers_tried: int = 1,
         prompt_name: Optional[str] = None,
         prompt_version: Optional[str] = None,
+        prompt_tokens: int = 0,
+        completion_tokens: int = 0,
     ):
         self.data = data
         self.provider_id = provider_id
@@ -358,6 +360,20 @@ class ProviderResult:
         self.total_providers_tried = total_providers_tried
         self.prompt_name = prompt_name
         self.prompt_version = prompt_version
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+
+    @property
+    def input_tokens(self) -> int:
+        return self.prompt_tokens
+
+    @property
+    def output_tokens(self) -> int:
+        return self.completion_tokens
+
+    @property
+    def usage(self) -> dict:
+        return {"prompt_tokens": self.prompt_tokens, "completion_tokens": self.completion_tokens}
 
     def backend_label(self) -> str:
         """Return a backend label that reflects the actual provider class."""
@@ -534,6 +550,7 @@ async def chat_with_provider_fallback(
                     require_json=require_json,
                 )
 
+                _usage = (result_json or {}).get("usage") or {}
                 return ProviderResult(
                     data=data,
                     provider_id=provider_id,
@@ -545,6 +562,8 @@ async def chat_with_provider_fallback(
                     total_providers_tried=total_providers,
                     prompt_name=prompt_name,
                     prompt_version=prompt_version,
+                    prompt_tokens=int(_usage.get("prompt_tokens") or 0),
+                    completion_tokens=int(_usage.get("completion_tokens") or 0),
                 )
 
         except httpx.HTTPStatusError as exc:
@@ -764,6 +783,8 @@ def chat_with_provider_fallback_sync(
                     total_providers_tried=total_providers,
                     prompt_name=prompt_name,
                     prompt_version=prompt_version,
+                    prompt_tokens=int(prompt_tokens or 0),
+                    completion_tokens=int(completion_tokens or 0),
                 )
 
         except httpx.HTTPStatusError as exc:

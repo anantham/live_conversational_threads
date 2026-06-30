@@ -113,7 +113,31 @@ MODEL_PRICING: Dict[str, ModelPricing] = {
         provider="local",
         model_name="text-embedding-nomic-embed-text-v1.5"
     ),
+    # GPT-4o — used as the counterfactual reference for local-model savings
+    "gpt-4o": ModelPricing(
+        input_cost_per_1k=Decimal("0.005"),
+        output_cost_per_1k=Decimal("0.015"),
+        provider="openai",
+        model_name="gpt-4o"
+    ),
+    "gpt-4o-mini": ModelPricing(
+        input_cost_per_1k=Decimal("0.00015"),
+        output_cost_per_1k=Decimal("0.0006"),
+        provider="openai",
+        model_name="gpt-4o-mini"
+    ),
 }
+
+# Reference model for counterfactual "what would this have cost on cloud?" display.
+COUNTERFACTUAL_MODEL = "gpt-4o"
+
+
+def calculate_counterfactual_cost(prompt_tokens: int, completion_tokens: int) -> float:
+    """What would these tokens have cost on GPT-4o (the cloud reference)?"""
+    pricing = MODEL_PRICING[COUNTERFACTUAL_MODEL]
+    input_cost = (Decimal(prompt_tokens) / Decimal(1000)) * pricing.input_cost_per_1k
+    output_cost = (Decimal(completion_tokens) / Decimal(1000)) * pricing.output_cost_per_1k
+    return float(input_cost + output_cost)
 
 
 def get_model_pricing(model: str) -> Optional[ModelPricing]:

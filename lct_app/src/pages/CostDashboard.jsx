@@ -133,23 +133,24 @@ export default function CostDashboard() {
       {/* Summary Cards */}
       <div className="max-w-7xl mx-auto mb-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-sm text-gray-600 mb-1">Total Cost</p>
-            <p className="text-3xl font-bold text-blue-600">
-              {formatCurrency(stats.total_cost || 0)}
+          {/* Savings hero card */}
+          <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-lg shadow p-6">
+            <p className="text-sm text-green-700 font-medium mb-1">Saved vs Cloud</p>
+            <p className="text-3xl font-bold text-green-600">
+              {formatCurrency(stats.local_savings || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {formatNumber(stats.total_calls || 0)} API calls
+            <p className="text-xs text-green-600 mt-1 font-medium">
+              vs {stats.counterfactual_model || 'GPT-4o'} · {formatNumber(stats.total_calls || 0)} API calls
             </p>
           </div>
 
           <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-sm text-gray-600 mb-1">Avg Cost per Call</p>
-            <p className="text-3xl font-bold text-green-600">
-              {formatCurrency(stats.avg_cost_per_call || 0)}
+            <p className="text-sm text-gray-600 mb-1">Cloud Equivalent</p>
+            <p className="text-3xl font-bold text-gray-400">
+              {formatCurrency(stats.cloud_equivalent_cost || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">
-              {formatNumber(stats.avg_tokens_per_call || 0)} tokens avg
+            <p className="text-xs text-gray-400 mt-1">
+              what {stats.counterfactual_model || 'GPT-4o'} would charge
             </p>
           </div>
 
@@ -159,17 +160,17 @@ export default function CostDashboard() {
               {formatNumber(stats.total_tokens || 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              Input + Output tokens
+              {formatNumber(Math.round(stats.avg_tokens_per_call || 0))} avg per call
             </p>
           </div>
 
           <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-sm text-gray-600 mb-1">Conversations Analyzed</p>
-            <p className="text-3xl font-bold text-orange-600">
-              {formatNumber(stats.conversations_analyzed || 0)}
+            <p className="text-sm text-gray-600 mb-1">Actual Cost</p>
+            <p className="text-3xl font-bold text-blue-600">
+              {formatCurrency(stats.total_cost || 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">
-              {formatCurrency((stats.total_cost || 0) / Math.max(stats.conversations_analyzed || 1, 1))} per conversation
+              running locally
             </p>
           </div>
         </div>
@@ -197,11 +198,11 @@ export default function CostDashboard() {
                           </p>
                         </div>
                         <div className="text-right">
-                          <p className="text-lg font-bold text-gray-800">
-                            {formatCurrency(data.cost)}
+                          <p className="text-lg font-bold text-green-600">
+                            {formatCurrency(data.cloud_equivalent || 0)} saved
                           </p>
-                          <p className="text-xs text-gray-500">
-                            {percentage}% of total
+                          <p className="text-xs text-gray-400">
+                            vs {stats.counterfactual_model || 'GPT-4o'}
                           </p>
                         </div>
                       </div>
@@ -231,13 +232,15 @@ export default function CostDashboard() {
               .map(([model, data]) => (
                 <div key={model} className="bg-white rounded-lg shadow p-6">
                   <p className="text-sm font-medium text-gray-600 mb-2">{model}</p>
-                  <p className="text-2xl font-bold text-gray-800 mb-2">
-                    {formatCurrency(data.cost)}
+                  <p className="text-2xl font-bold text-green-600 mb-1">
+                    {formatCurrency(data.cloud_equivalent || 0)} saved
+                  </p>
+                  <p className="text-xs text-gray-400 mb-2">
+                    vs {stats.counterfactual_model || 'GPT-4o'} · actual: {formatCurrency(data.cost)}
                   </p>
                   <div className="text-xs text-gray-500 space-y-1">
                     <p>{formatNumber(data.calls)} calls</p>
                     <p>{formatNumber(data.tokens)} tokens</p>
-                    <p>Avg: {formatCurrency(data.cost / data.calls)} per call</p>
                   </div>
                 </div>
               ))
@@ -270,7 +273,7 @@ export default function CostDashboard() {
                     Tokens
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Cost
+                    Actual / Cloud
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Latency
@@ -292,8 +295,11 @@ export default function CostDashboard() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatNumber(call.total_tokens || 0)}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {formatCurrency(call.cost_usd || 0)}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      <span className="font-medium text-gray-900">{formatCurrency(call.cost_usd || 0)}</span>
+                      {call.cloud_equivalent_usd > 0 && (
+                        <span className="text-xs text-gray-400 ml-1">/ {formatCurrency(call.cloud_equivalent_usd)}</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {call.latency_ms ? `${call.latency_ms}ms` : 'N/A'}
@@ -312,11 +318,10 @@ export default function CostDashboard() {
 
       {/* Footer Note */}
       <div className="max-w-7xl mx-auto mt-8">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <p className="text-sm text-blue-800">
-            <strong>Note:</strong> Cost tracking requires the backend API call logging to be enabled.
-            If no data appears, check that the <code className="bg-blue-100 px-2 py-1 rounded">api_calls_log</code> table
-            exists and cost tracking is configured in your backend.
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <p className="text-sm text-green-800">
+            <strong>Running locally.</strong> Savings are calculated against {stats.counterfactual_model || 'GPT-4o'} list pricing
+            ($5.00 / M input · $15.00 / M output). Your actual cost is $0 — everything runs on-device.
           </p>
         </div>
       </div>

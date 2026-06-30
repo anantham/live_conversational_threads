@@ -301,6 +301,28 @@ async def _call_enrich_llm(
             telemetry["output_tokens"] = getattr(provider_result, "output_tokens", None)
         except Exception:  # noqa: BLE001
             pass
+        try:
+            from lct_python_backend.instrumentation.decorators import get_tracker
+            import time as _time
+            import uuid as _uuid
+            from datetime import datetime, timezone
+            _elapsed_ms = int(telemetry.get("ms", 0))
+            asyncio.ensure_future(get_tracker().log_api_call(
+                call_id=str(_uuid.uuid4()),
+                endpoint="edge_enrichment",
+                conversation_id=None,
+                model=getattr(provider_result, "model", "unknown"),
+                input_tokens=int(getattr(provider_result, "prompt_tokens", 0) or 0),
+                output_tokens=int(getattr(provider_result, "completion_tokens", 0) or 0),
+                total_tokens=int((getattr(provider_result, "prompt_tokens", 0) or 0) + (getattr(provider_result, "completion_tokens", 0) or 0)),
+                cost_usd=0.0,
+                latency_ms=_elapsed_ms,
+                timestamp=datetime.now(timezone.utc),
+                success=True,
+                metadata={"feature": "edge_enrichment", "provider": getattr(provider_result, "provider_id", "")},
+            ))
+        except Exception:  # noqa: BLE001
+            pass
 
     telemetry["model"] = backend or config.get("chat_model")
     telemetry["ms"] = round((time.perf_counter() - started_at) * 1000.0, 1)
