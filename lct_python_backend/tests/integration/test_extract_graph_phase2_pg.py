@@ -71,6 +71,30 @@ def _install_fakes(monkeypatch):
     monkeypatch.setattr(llm, "load_llm_providers", _providers)
 
 
+def _spy_persist_graph(monkeypatch):
+    """Wrap the real persist_graph to record the `utterances` kwarg of every call,
+    then delegate to the real function. Returns the list of recorded values.
+
+    This pins the actual re-runnability CONTRACT (extract must call
+    persist_graph with utterances=None). Comparing utterance-id SETS alone is
+    insufficient: a regression to persist_graph(utterances=<the loaded list>)
+    would delete the rows then re-insert them with the SAME ids (the dicts carry
+    the existing ids via _normalize_utterances), so the id set would be unchanged
+    and the test would falsely pass despite the rows being destroyed/recreated.
+    """
+    import lct_python_backend.services.graph_persistence as gp
+
+    original = gp.persist_graph
+    calls = []
+
+    async def _spy(**kwargs):
+        calls.append(kwargs.get("utterances", "MISSING"))
+        return await original(**kwargs)
+
+    monkeypatch.setattr(gp, "persist_graph", _spy)
+    return calls
+
+
 def _payload(group_id, owner, n_turns):
     from lct_python_backend.raw_turn_contract import RawTurnsPayloadV1
 
@@ -114,6 +138,7 @@ def test_extract_builds_graph_and_preserves_utterances(monkeypatch):
     """Phase 2 writes Nodes from the persisted turns AND leaves the Utterance
     rows untouched (same ids before and after) — the re-runnable contract."""
     _install_fakes(monkeypatch)
+    persist_calls = _spy_persist_graph(monkeypatch)
     conv_id_holder = {}
     owner = unique_owner()
     group_id = f"ITEST-EX-{uuid.uuid4().hex[:10]}"
@@ -149,6 +174,10 @@ def test_extract_builds_graph_and_preserves_utterances(monkeypatch):
     assert n_nodes == 3                 # one node per turn
     assert after == before              # utterances UNTOUCHED by extract
     assert linked == before             # every node linked to a real persisted turn
+    # CONTRACT: extract must materialize the graph WITHOUT deleting utterances —
+    # i.e. persist_graph(utterances=None). (id-set equality alone can't catch a
+    # delete+reinsert-with-same-id regression; this can.)
+    assert persist_calls == [None]
 
 
 def test_extract_is_rerunnable_without_touching_utterances(monkeypatch):
@@ -156,6 +185,7 @@ def test_extract_is_rerunnable_without_touching_utterances(monkeypatch):
     Utterance rows are still the same — re-extract never re-sends/duplicates
     turns."""
     _install_fakes(monkeypatch)
+    persist_calls = _spy_persist_graph(monkeypatch)
     conv_id_holder = {}
     owner = unique_owner()
     group_id = f"ITEST-EX-{uuid.uuid4().hex[:10]}"
@@ -189,6 +219,8 @@ def test_extract_is_rerunnable_without_touching_utterances(monkeypatch):
     assert utt_before == utt_mid == utt_after   # utterances stable across re-extracts
     assert len(nodes1) == 2 and len(nodes2) == 2
     assert nodes1.isdisjoint(nodes2)            # graph fully re-materialized (fresh node ids)
+    # Both extract passes must leave utterances alone (utterances=None each time).
+    assert persist_calls == [None, None]
 
 
 def test_extract_rejects_unknown_conversation(monkeypatch):
