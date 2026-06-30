@@ -180,53 +180,6 @@ async def import_google_meet_transcript(
     )
 
 
-@router.post("/google-meet/preview", response_model=ParsedTranscriptResponse)
-async def preview_google_meet_transcript(
-    file: UploadFile = File(..., description="Google Meet transcript (PDF or TXT)"),
-):
-    """Preview/validate a Google Meet transcript without saving to database."""
-    import uuid as _uuid
-
-    file_ext = validate_transcript_filename(file.filename)
-
-    temp_path = None
-    try:
-        temp_path, _ = await save_upload_to_temp_file(file, file_ext)
-        parser, transcript = parse_transcript(temp_path, is_file=True)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Unexpected error during parsing: {exc}")
-    finally:
-        _cleanup_temp_file(temp_path)
-
-    validation = parser.validate_transcript(transcript)
-
-    sample_utterances = [
-        UtteranceResponse(
-            speaker=u.speaker, text=u.text,
-            start_time=u.start_time, end_time=u.end_time,
-            sequence_number=u.sequence_number,
-        )
-        for u in transcript.utterances[:10]
-    ]
-
-    return ParsedTranscriptResponse(
-        conversation_id=str(_uuid.uuid4()),
-        utterance_count=len(transcript.utterances),
-        participant_count=len(transcript.participants),
-        participants=transcript.participants,
-        duration=transcript.duration,
-        validation=ValidationResponse(
-            is_valid=validation.is_valid,
-            errors=validation.errors,
-            warnings=validation.warnings,
-            stats=validation.stats,
-        ),
-        sample_utterances=sample_utterances,
-    )
-
-
 @router.post("/from-url", response_model=ImportStatusResponse)
 async def import_from_url(
     request: ImportFromUrlRequest,

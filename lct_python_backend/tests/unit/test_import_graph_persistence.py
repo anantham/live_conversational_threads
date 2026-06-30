@@ -9,7 +9,7 @@ import pytest
 os.environ.setdefault("DATABASE_URL", "postgresql://lct_user:lct_password@localhost:5432/lct_dev")
 
 from lct_python_backend.models import Utterance as DBUtterance
-from lct_python_backend.services.import_pipeline.import_persistence import persist_import_graph
+from lct_python_backend.services.graph_persistence import persist_import_graph
 
 
 CONVERSATION_ID = str(uuid.uuid4())
