@@ -7,6 +7,8 @@
 **Supersedes/absorbs:** the orphaned `pages/Import.jsx` import UI; the legacy `generation_api` streaming-generation path (deleted in PR-0).
 
 > **Revision note (v2).** v1 described the *target* architecture but treated several missing contracts as if they existed and under-specified the hard parts (privacy enforcement, SSE/WS compatibility, gdoc egress, destructive re-extract, scale). v2 rewrites each of those as a concrete spec grounded in the current code, verified by three targeted code audits on 2026-06-30. Every claim below is cited to `file:line`. **PR-0 (the deletions) already shipped and is unaffected** — see §8.
+>
+> **Citation base.** Line numbers for `services/transcript/*` (e.g. `transcript_llm_callers.py`, `transcript_processing.py`) assume the in-flight transcript-subpackage refactor (branch `refactor/services-transcript-subpackage`, commit `f90e5d6`) is merged; on `origin/main` those callers still live in the monolithic `services/transcript_processing.py`. **That refactor is a sequencing prerequisite — it should land before/with PR-1**, since the §4 consent seam is inside the transcript subpackage. (A cross-family grok review flagged this by reading `origin/main`, where the path doesn't yet exist.)
 
 ## Context
 
@@ -79,6 +81,7 @@ v1 implied `finalize()` and `source.kind ∈ {turns,text,gdoc,audio,meeting_url}
 
 **Spec:** at the single chokepoint every path funnels through — `TranscriptProcessor` construction (`import_orchestrator.py:258`, `import_bulk_pipeline.py:274`) and `_process_batch` (`transcript_processing.py:613`) — thread a resolved `consent` set and **force `mode="local"` (refuse cloud) when ANY participant is `external_llm_ok=False` OR unknown/unconfirmed**, mirroring `resolve_engine`. Defense-in-depth: extend the transport chokepoint (`egress_chokepoint.py:138-143`) to refuse an E3/E4 send lacking a proof-of-consent context.
 - **A pasted gdoc / `/from-text` has no participants** (`/from-text` never populates them) → **fail-closed: local-only extraction by default**, never silently cloud. Cloud requires the owner to explicitly mark the conversation external-OK.
+- **Classic ingest paths must RECORD a consent signal.** Today `persist_transcript` (the `/from-text`/`/google-meet`/`/from-url` path, `import_orchestrator.py:110+`) stores **no** `external_llm_ok` at all — so even after the gate lands, those conversations have nothing to read. Stamp a default `external_llm_ok=false` into `source_metadata["privacy"]` on these paths (matching what `persist_turns` already does at `graph_persistence.py:401-418`), so the §4 gate always has a value and defaults deny.
 
 ### 5. Secure gdoc import via public export URL — closes #4
 
