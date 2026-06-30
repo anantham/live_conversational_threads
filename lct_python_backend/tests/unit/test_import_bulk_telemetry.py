@@ -2,7 +2,7 @@
 
 import pytest
 
-from lct_python_backend.services.import_bulk_telemetry import (
+from lct_python_backend.services.import_pipeline.import_bulk_telemetry import (
     estimate_transcription_eta_ms,
     estimate_analysis_eta_ms,
     calculate_segmented_progress,

@@ -96,7 +96,7 @@ def _load_default_refine_fn() -> Optional[RefineFn]:
     the stage can degrade gracefully in lean test environments.
     """
     try:
-        from lct_python_backend.services.import_graph_refinement import (
+        from lct_python_backend.services.import_pipeline.import_graph_refinement import (
             refine_import_graph_nodes,
         )
         return refine_import_graph_nodes

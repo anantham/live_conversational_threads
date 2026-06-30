@@ -1,6 +1,6 @@
 import pytest
 
-from lct_python_backend.services import import_graph_refinement as refinement_module
+from lct_python_backend.services.import_pipeline import import_graph_refinement as refinement_module
 
 
 def _make_utterances(count: int) -> list[dict]:

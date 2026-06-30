@@ -10,7 +10,7 @@ import pytest
 os.environ.setdefault("DATABASE_URL", "postgresql://lct_user:lct_password@localhost:5432/lct_dev")
 
 from lct_python_backend.models import PipelineArtifact
-from lct_python_backend.services.import_checkpoint import (
+from lct_python_backend.services.import_pipeline.import_checkpoint import (
     STAGE_CHUNK,
     STAGE_MANIFEST,
     clear_checkpoint,

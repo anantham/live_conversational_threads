@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.db_session import get_async_session
 from lct_python_backend.services.audio_storage import AudioStorageManager
-from lct_python_backend.services.import_bulk_processor import (
+from lct_python_backend.services.import_pipeline.import_bulk_processor import (
     build_process_file_stream,
     cleanup_temp_file as _cleanup_temp_file,
     copy_temp_upload_for_async_job as _copy_temp_upload_for_async_job,
@@ -37,7 +37,7 @@ from lct_python_backend.services.file_transcriber import (
     transcribe_audio_segmented,
     transcribe_uploaded_file,
 )
-from lct_python_backend.services.import_graph_refinement import refine_import_graph_nodes
+from lct_python_backend.services.import_pipeline.import_graph_refinement import refine_import_graph_nodes
 from lct_python_backend.services.llm_config import (
     load_llm_config,
     load_llm_providers as _load_llm_providers_from_db,
@@ -46,7 +46,7 @@ from lct_python_backend.services.stt.stt_settings_service import load_stt_settin
 from lct_python_backend.services.artifact_settings_service import load_artifact_export_settings
 from lct_python_backend.services.artifact_export_service import auto_export_conversation_artifacts
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
-from lct_python_backend.services.import_diarization_queue import (
+from lct_python_backend.services.import_pipeline.import_diarization_queue import (
     enqueue_import_diarization_job,
     is_async_import_diarization_enabled,
 )

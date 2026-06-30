@@ -24,15 +24,15 @@ def _stub_modules(monkeypatch):
 
     for mod_name in [
         "lct_python_backend.services.audio_storage",
-        "lct_python_backend.services.import_bulk_processor",
+        "lct_python_backend.services.import_pipeline.import_bulk_processor",
         "lct_python_backend.services.file_transcriber",
-        "lct_python_backend.services.import_graph_refinement",
+        "lct_python_backend.services.import_pipeline.import_graph_refinement",
         "lct_python_backend.services.llm_config",
         "lct_python_backend.services.stt.stt_settings_service",
         "lct_python_backend.services.artifact_settings_service",
         "lct_python_backend.services.artifact_export_service",
         "lct_python_backend.services.transcript_processing",
-        "lct_python_backend.services.import_diarization_queue",
+        "lct_python_backend.services.import_pipeline.import_diarization_queue",
     ]:
         if mod_name not in sys.modules:
             monkeypatch.setitem(sys.modules, mod_name, types.ModuleType(mod_name))
@@ -41,7 +41,7 @@ def _stub_modules(monkeypatch):
     audio_storage_mod = sys.modules["lct_python_backend.services.audio_storage"]
     audio_storage_mod.AudioStorageManager = MagicMock()
 
-    import_bulk = sys.modules["lct_python_backend.services.import_bulk_processor"]
+    import_bulk = sys.modules["lct_python_backend.services.import_pipeline.import_bulk_processor"]
     import_bulk.build_process_file_stream = AsyncMock()
     import_bulk.cleanup_temp_file = MagicMock()
     import_bulk.copy_temp_upload_for_async_job = AsyncMock()
@@ -52,7 +52,7 @@ def _stub_modules(monkeypatch):
     file_transcriber.transcribe_audio_segmented = AsyncMock()
     file_transcriber.transcribe_uploaded_file = AsyncMock()
 
-    refine = sys.modules["lct_python_backend.services.import_graph_refinement"]
+    refine = sys.modules["lct_python_backend.services.import_pipeline.import_graph_refinement"]
     refine.refine_import_graph_nodes = AsyncMock()
 
     llm = sys.modules["lct_python_backend.services.llm_config"]
@@ -71,7 +71,7 @@ def _stub_modules(monkeypatch):
     tc = sys.modules["lct_python_backend.services.transcript_processing"]
     tc.TranscriptProcessor = MagicMock()
 
-    dq = sys.modules["lct_python_backend.services.import_diarization_queue"]
+    dq = sys.modules["lct_python_backend.services.import_pipeline.import_diarization_queue"]
     dq.enqueue_import_diarization_job = AsyncMock()
     dq.is_async_import_diarization_enabled = MagicMock(return_value=False)
 

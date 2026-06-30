@@ -6,12 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lct_python_backend.services.import_bulk_graph_pass import (
+from lct_python_backend.services.import_pipeline.import_bulk_graph_pass import (
     ProgressiveChunkHandlers,
     should_use_segmented_processing,
 )
-from lct_python_backend.services.import_bulk_helpers import SEGMENT_PROCESSING_THRESHOLD_BYTES
-from lct_python_backend.services.import_bulk_stage_events import ImportBulkStageEvents
+from lct_python_backend.services.import_pipeline.import_bulk_helpers import SEGMENT_PROCESSING_THRESHOLD_BYTES
+from lct_python_backend.services.import_pipeline.import_bulk_stage_events import ImportBulkStageEvents
 
 
 def test_should_use_segmented_processing_skips_cloud_transport():
@@ -63,7 +63,7 @@ async def test_progressive_chunk_handlers_persist_checkpoint():
     )
 
     with patch(
-        "lct_python_backend.services.import_bulk_graph_pass.persist_chunk_checkpoint_safe",
+        "lct_python_backend.services.import_pipeline.import_bulk_graph_pass.persist_chunk_checkpoint_safe",
         new=AsyncMock(),
     ) as persist_mock:
         await handlers.on_chunk_progress(1, 2, "hello world")
