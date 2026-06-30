@@ -172,6 +172,99 @@ async def run_hierarchy_consolidation(
     return conversation_title_from_arcs, executive_summary
 
 
+async def _persist_graph_via_pipeline(
+    *,
+    db: AsyncSession,
+    conversation_id: str,
+    existing_json: list[dict[str, Any]],
+    utterances: list[dict[str, Any]],
+    conversation_name: str,
+    source_type: str,
+    source_metadata: dict[str, Any],
+) -> int:
+    """Route the canonical graph write through the ``ConversationPipeline`` spine
+    (ADR-059 PR-1) — the FIRST production call site of the pipeline.
+
+    Behavior-preserving beachhead: the injected ``persist_fn`` adapter forwards to
+    the SAME ``persist_graph`` on the SAME request-scoped ``db`` (NOT PersistStage's
+    default ``persist_live_graph_snapshot``, which opens a second session and would
+    split the request transaction). The import-only kwargs (``db``, ``utterances``,
+    ``conversation_name``) ride the closure, and ``source_type`` is pinned to the
+    import's raw value ("audio"/"text") rather than PersistStage's remap. A persist
+    failure is surfaced by re-raising, so the caller's existing non-fatal handler
+    (telemetry["graph_persist_error"]) still applies.
+    """
+    from lct_python_backend.services.conversation_pipeline import (
+        ConversationPipeline,
+        PersistStage,
+        PipelineState,
+    )
+    from lct_python_backend.services.conversation_pipeline.events import (
+        GraphPersisted,
+        StageFailed,
+    )
+
+    nodes = list(existing_json or [])
+
+    # PersistStage early-returns (no fn call) when graph.nodes is empty, but
+    # persist_graph still writes utterances on an empty graph — so a 0-node import
+    # that carries utterances would be silently dropped if routed through the stage.
+    # Preserve that edge case with a direct call.
+    if not nodes:
+        return await persist_import_graph(
+            db=db,
+            conversation_id=conversation_id,
+            existing_json=existing_json,
+            utterances=utterances,
+            conversation_name=conversation_name,
+            source_type=source_type,
+            source_metadata=source_metadata,
+        )
+
+    pinned_source_type = source_type  # import raw ("audio"/"text"); ignore stage remap
+
+    async def _adapter(*, conversation_id, existing_json, metadata, source_type):  # noqa: ARG001
+        return await persist_import_graph(
+            db=db,
+            conversation_id=conversation_id,
+            existing_json=existing_json,
+            utterances=utterances,
+            conversation_name=conversation_name,
+            source_type=pinned_source_type,
+            source_metadata=source_metadata,
+        )
+
+    state = PipelineState(
+        conversation_id=conversation_id,
+        source_metadata=dict(source_metadata or {}),
+    )
+    state.graph.nodes = nodes
+    state.graph_persist_requested = True
+
+    captured: dict[str, Any] = {}
+
+    async def _emit(event: Any) -> None:
+        if isinstance(event, GraphPersisted):
+            captured["count"] = event.persisted_node_count
+        elif isinstance(event, StageFailed) and getattr(event, "stage", None) == "persist":
+            captured["error"] = event.detail
+
+    # Suppress the orchestrator's stage_failure artifact write so this beachhead is
+    # byte-for-byte behavior-identical to the prior direct call (no new DB rows).
+    async def _noop_artifact_writer(**_kwargs: Any) -> None:
+        return None
+
+    pipeline = ConversationPipeline(
+        [PersistStage(persist_fn=_adapter)],
+        artifact_writer=_noop_artifact_writer,
+    )
+    await pipeline.run(state, _emit)
+
+    if "error" in captured:
+        raise RuntimeError(captured["error"])
+    return int(captured.get("count", 0))
+
+
 async def persist_import_pipeline_results(
     *,
     db: AsyncSession,
@@ -197,7 +290,7 @@ async def persist_import_pipeline_results(
     if conversation_title_from_arcs:
         final_metadata["conversation_title"] = conversation_title_from_arcs
     try:
-        persisted_count = await persist_import_graph(
+        persisted_count = await _persist_graph_via_pipeline(
             db=db,
             conversation_id=conversation_id,
             existing_json=processor.existing_json,
