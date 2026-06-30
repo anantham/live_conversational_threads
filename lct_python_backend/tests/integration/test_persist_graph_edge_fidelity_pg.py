@@ -89,6 +89,7 @@ def test_edges_out_round_trips_all_fields():
                     "to": str(r.to_node_id),
                     "type": r.relationship_type,
                     "subtype": r.relationship_subtype,
+                    "explanation": r.explanation,
                     "strength": r.strength,
                     "confidence": r.confidence,
                     "bidir": bool(r.is_bidirectional),
@@ -110,6 +111,7 @@ def test_edges_out_round_trips_all_fields():
     assert row["to"] == b_id
     assert row["type"] == "contextual"
     assert row["subtype"] == "supports"
+    assert row["explanation"] == "A supports B"
     assert row["strength"] == 0.73
     assert row["confidence"] == 0.91
     assert row["bidir"] is True
@@ -122,6 +124,7 @@ def test_edges_out_round_trips_all_fields():
     assert e["to"] == b_id
     assert e["relationship_type"] == "contextual"
     assert e["relationship_subtype"] == "supports"
+    assert e["explanation"] == "A supports B"
     assert e["strength"] == 0.73
     assert e["confidence"] == 0.91
     assert e["is_bidirectional"] is True
