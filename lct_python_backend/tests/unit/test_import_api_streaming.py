@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-import lct_python_backend.services.import_bulk_graph_pass as graph_pass
+import lct_python_backend.services.import_pipeline.import_bulk_graph_pass as graph_pass
 from lct_python_backend.tests.unit.import_api_test_support import (
     build_test_client,
     load_import_api_with_stubs,
@@ -120,7 +120,7 @@ def test_process_file_passes_provider_override_to_transcriber(monkeypatch):
     assert kwargs["stt_settings"] == stt_settings
 def test_process_file_uses_sequential_path_for_cloud_import_candidate(monkeypatch):
     import_api = load_import_api_with_stubs(monkeypatch)
-    import lct_python_backend.services.import_bulk_graph_pass as graph_pass
+    import lct_python_backend.services.import_pipeline.import_bulk_graph_pass as graph_pass
 
     client = build_test_client(import_api)
     monkeypatch.setattr(graph_pass, "SEGMENT_PROCESSING_FORCE_ENABLED", True)

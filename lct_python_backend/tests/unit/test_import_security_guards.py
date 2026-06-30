@@ -9,7 +9,7 @@ import types
 import pytest
 from fastapi import HTTPException
 
-from lct_python_backend.services.import_validation import (
+from lct_python_backend.services.import_pipeline.import_validation import (
     assert_url_resolves_to_public_host,
 )
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from lct_python_backend.services.import_bulk_stage_events import ImportBulkStageEvents
+from lct_python_backend.services.import_pipeline.import_bulk_stage_events import ImportBulkStageEvents
 
 
 @pytest.fixture

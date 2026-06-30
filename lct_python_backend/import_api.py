@@ -30,17 +30,17 @@ from lct_python_backend.import_schemas import (
 
 from lct_python_backend.db_session import get_async_session
 from lct_python_backend.services.owner_context import resolve_owner_id
-from lct_python_backend.services.import_fetchers import (
+from lct_python_backend.services.import_pipeline.import_fetchers import (
     download_url_text,
     save_upload_to_temp_file,
 )
-from lct_python_backend.services.import_diarization_queue import (
+from lct_python_backend.services.import_pipeline.import_diarization_queue import (
     enqueue_import_diarization_job,
     get_import_diarization_job,
     get_import_diarization_job_events,
     is_async_import_diarization_enabled,
 )
-from lct_python_backend.services.import_orchestrator import (
+from lct_python_backend.services.import_pipeline.import_orchestrator import (
     extract_graph_for_conversation,
     parse_transcript,
     parse_validate_and_persist,
@@ -48,13 +48,13 @@ from lct_python_backend.services.import_orchestrator import (
 )
 from lct_python_backend.services.graph_persistence import persist_turns
 from lct_python_backend.raw_turn_contract import RawTurnsPayloadV1
-from lct_python_backend.services.import_validation import (
+from lct_python_backend.services.import_pipeline.import_validation import (
     get_supported_import_formats,
     is_url_import_enabled,
     validate_import_url,
     validate_transcript_filename,
 )
-from lct_python_backend.services.import_bulk_processor import (
+from lct_python_backend.services.import_pipeline.import_bulk_processor import (
     build_process_file_stream,
     cleanup_temp_file as cleanup_bulk_temp_file,
     copy_temp_upload_for_async_job as copy_bulk_temp_upload_for_async_job,
@@ -65,7 +65,7 @@ from lct_python_backend.services.file_transcriber import (
     transcribe_audio_segmented,
     transcribe_uploaded_file,
 )
-from lct_python_backend.services.import_graph_refinement import refine_import_graph_nodes
+from lct_python_backend.services.import_pipeline.import_graph_refinement import refine_import_graph_nodes
 from lct_python_backend.services.llm_config import (
     load_llm_config,
     load_llm_providers as _db_load_llm_providers,

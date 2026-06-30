@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lct_python_backend.services.import_bulk_persistence import (
+from lct_python_backend.services.import_pipeline.import_bulk_persistence import (
     derive_conversation_name,
     stitch_utterance_chunk_ids,
 )
