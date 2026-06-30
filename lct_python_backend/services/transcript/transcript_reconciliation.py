@@ -2,7 +2,7 @@ import logging
 from typing import List, Dict, Any, Optional
 
 from lct_python_backend.models.core import Utterance
-from lct_python_backend.services.transcript_revision_service import propose_revision
+from .transcript_revision_service import propose_revision
 
 logger = logging.getLogger("lct_backend")
 
