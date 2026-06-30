@@ -42,7 +42,7 @@ from lct_python_backend.services.speaker_alignment import (
     _load_pyannote_pipeline,
     _run_pyannote_diarization,
 )
-from lct_python_backend.services.transcript_linearization import (
+from lct_python_backend.services.transcript.transcript_linearization import (
     build_line_utterances,
     build_segment_utterances,
     offset_segments,
@@ -66,7 +66,7 @@ from lct_python_backend.services.coercion_helpers import (
     coerce_str,
     to_bool,
 )
-from lct_python_backend.services.transcription_utils import (
+from lct_python_backend.services.transcript.transcription_utils import (
     AUDIO_EXTENSIONS,
     DEFAULT_CHUNK_DURATION_S,
     LOCAL_STT_CHUNK_DURATION_S,

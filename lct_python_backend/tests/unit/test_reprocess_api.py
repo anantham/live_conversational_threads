@@ -31,7 +31,7 @@ def _stub_modules(monkeypatch):
         "lct_python_backend.services.stt.stt_settings_service",
         "lct_python_backend.services.artifact_settings_service",
         "lct_python_backend.services.artifact_export_service",
-        "lct_python_backend.services.transcript_processing",
+        "lct_python_backend.services.transcript.transcript_processing",
         "lct_python_backend.services.import_pipeline.import_diarization_queue",
     ]:
         if mod_name not in sys.modules:
@@ -68,7 +68,7 @@ def _stub_modules(monkeypatch):
     artifact_exp = sys.modules["lct_python_backend.services.artifact_export_service"]
     artifact_exp.auto_export_conversation_artifacts = AsyncMock()
 
-    tc = sys.modules["lct_python_backend.services.transcript_processing"]
+    tc = sys.modules["lct_python_backend.services.transcript.transcript_processing"]
     tc.TranscriptProcessor = MagicMock()
 
     dq = sys.modules["lct_python_backend.services.import_pipeline.import_diarization_queue"]

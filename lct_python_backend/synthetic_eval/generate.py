@@ -128,7 +128,7 @@ def _chat_json(
         from google.genai import types
 
         from lct_python_backend.services.local_llm_client import extract_json_from_text
-        from lct_python_backend.services.transcript_llm_callers import _resolve_gemini_api_key
+        from lct_python_backend.services.transcript.transcript_llm_callers import _resolve_gemini_api_key
 
         api_key, _ = _resolve_gemini_api_key()
         model = str(spec.llm_config.get("chat_model", "gemini-2.5-flash"))

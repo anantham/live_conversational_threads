@@ -22,7 +22,7 @@ from lct_python_backend.services.stt.stt_http_transcriber import (
 )
 from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
 from lct_python_backend.services.retry_policy import retry_async_with_backoff
-from lct_python_backend.services.transcription_utils import (
+from lct_python_backend.services.transcript.transcription_utils import (
     DEFAULT_CHUNK_DURATION_S,
     DEFAULT_CHUNK_MAX_RETRIES,
     DEFAULT_CHUNK_OVERLAP_S,

@@ -1,6 +1,6 @@
-from lct_python_backend.services import transcript_processing as transcript_processing_module
-from lct_python_backend.services import transcript_llm_callers as llm_callers_module
-from lct_python_backend.services.transcript_processing import (
+from lct_python_backend.services.transcript import transcript_processing as transcript_processing_module
+from lct_python_backend.services.transcript import transcript_llm_callers as llm_callers_module
+from lct_python_backend.services.transcript.transcript_processing import (
     _normalize_generated_output,
     format_speaker_prefixed_transcript,
 )
@@ -343,7 +343,7 @@ def test_split_segments_for_completed_chunk_uses_all_segments_on_forced_flush():
 
 
 def test_propagate_flags_upward_chunk_to_arc():
-    from lct_python_backend.services.transcript_normalizer import propagate_flags_upward
+    from lct_python_backend.services.transcript.transcript_normalizer import propagate_flags_upward
 
     # chunk(tangent) -> idea -> topic ; chunk(crux) -> idea -> topic
     nodes = [
@@ -369,7 +369,7 @@ def test_propagate_flags_upward_chunk_to_arc():
 
 
 def test_surprise_propagates_but_action_item_does_not():
-    from lct_python_backend.services.transcript_normalizer import propagate_flags_upward
+    from lct_python_backend.services.transcript.transcript_normalizer import propagate_flags_upward
 
     # chunk carries both; surprise should roll up, action_item should NOT
     # (a topic that *contains* a commitment is not itself an action item).

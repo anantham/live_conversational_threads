@@ -19,7 +19,7 @@ from lct_python_backend.services.file_transcriber import (
     transcribe_uploaded_file,
 )
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
-from lct_python_backend.services.transcript_processing import TranscriptProcessor
+from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
 
 logger = logging.getLogger(__name__)
 

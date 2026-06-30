@@ -20,7 +20,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 # ---------------------------------------------------------------------------
 # Re-exports: prompts
 # ---------------------------------------------------------------------------
-from lct_python_backend.services.transcript_prompts import (  # noqa: F401
+from .transcript_prompts import (  # noqa: F401
     ACCUMULATE_SYSTEM_PROMPT,
     GENERATE_LCT_PROMPT,
     LOCAL_GENERATE_LCT_PROMPT,
@@ -29,7 +29,7 @@ from lct_python_backend.services.transcript_prompts import (  # noqa: F401
 # ---------------------------------------------------------------------------
 # Re-exports: normalizer
 # ---------------------------------------------------------------------------
-from lct_python_backend.services.transcript_normalizer import (  # noqa: F401
+from .transcript_normalizer import (  # noqa: F401
     _normalize_generated_output,
     format_speaker_prefixed_transcript,
 )
@@ -37,7 +37,7 @@ from lct_python_backend.services.transcript_normalizer import (  # noqa: F401
 # ---------------------------------------------------------------------------
 # Re-exports: LLM callers (+ config helpers used by tests)
 # ---------------------------------------------------------------------------
-from lct_python_backend.services.transcript_llm_callers import (  # noqa: F401
+from .transcript_llm_callers import (  # noqa: F401
     _resolve_gemini_api_key,
     _resolve_llm_config,
     _resolve_online_gemini_model,

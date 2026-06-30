@@ -63,7 +63,7 @@ async def test_openai_realtime_start_blocked_under_local_only():
 
 def test_gemini_graph_generation_blocked_under_local_only():
     """Gemini graph generation (generativelanguage.googleapis.com) refused."""
-    from lct_python_backend.services import transcript_llm_callers as tlc
+    from lct_python_backend.services.transcript import transcript_llm_callers as tlc
 
     with pytest.raises(CloudEgressBlocked):
         tlc.generate_lct_json_gemini(
@@ -75,7 +75,7 @@ def test_gemini_graph_generation_blocked_under_local_only():
 
 def test_gemini_accumulation_blocked_under_local_only():
     """Gemini transcript accumulation refused in local-only mode."""
-    from lct_python_backend.services import transcript_llm_callers as tlc
+    from lct_python_backend.services.transcript import transcript_llm_callers as tlc
 
     with pytest.raises(CloudEgressBlocked):
         tlc.genai_accumulate_text_json(

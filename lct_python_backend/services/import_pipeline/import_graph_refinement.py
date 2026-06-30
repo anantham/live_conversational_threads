@@ -13,15 +13,15 @@ from google import genai
 from google.genai import types
 
 from lct_python_backend.services.local_llm_client import _preview_text
-from lct_python_backend.services.transcript_llm_callers import (
+from lct_python_backend.services.transcript.transcript_llm_callers import (
     _call_local_chat_json_with_fallback,
     _missing_gemini_key_message,
     _resolve_gemini_api_key,
     _resolve_llm_config,
     _resolve_online_gemini_model,
 )
-from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
-from lct_python_backend.services.transcript_prompts import (
+from lct_python_backend.services.transcript.transcript_normalizer import _normalize_generated_output
+from lct_python_backend.services.transcript.transcript_prompts import (
     PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS,
     get_transcript_prompt_metadata,
     get_transcript_prompt_text,

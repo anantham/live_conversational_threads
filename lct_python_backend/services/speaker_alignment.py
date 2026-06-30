@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
-from lct_python_backend.services.transcription_utils import (
+from lct_python_backend.services.transcript.transcription_utils import (
     STT_PYANNOTE_DEVICE,
     STT_PYANNOTE_MAX_SPEAKERS,
     STT_PYANNOTE_MIN_SPEAKERS,
