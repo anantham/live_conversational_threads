@@ -2,7 +2,7 @@ import json
 
 from lct_python_backend.services.prompt_manager import PromptManager
 from lct_python_backend.services import transcript_llm_callers as llm_callers_module
-from lct_python_backend.services import import_graph_refinement as refinement_module
+from lct_python_backend.services.import_pipeline import import_graph_refinement as refinement_module
 from lct_python_backend.services import transcript_prompts as prompt_module
 
 

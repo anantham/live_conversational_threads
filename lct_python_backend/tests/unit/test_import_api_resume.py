@@ -2,7 +2,7 @@
 
 from unittest.mock import AsyncMock
 
-import lct_python_backend.services.import_bulk_checkpoint_flow as checkpoint_flow
+import lct_python_backend.services.import_pipeline.import_bulk_checkpoint_flow as checkpoint_flow
 from lct_python_backend.tests.unit.import_api_test_support import (
     build_test_client,
     load_import_api_with_stubs,

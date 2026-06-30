@@ -3,7 +3,7 @@
 import pytest
 from fastapi import HTTPException
 
-from lct_python_backend.services.import_validation import (
+from lct_python_backend.services.import_pipeline.import_validation import (
     _is_disallowed_import_host,
     get_supported_import_formats,
     validate_import_url,
