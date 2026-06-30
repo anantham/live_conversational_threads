@@ -13,6 +13,7 @@ upgrade any conversation that has stored audio without requiring a manual re-upl
 from __future__ import annotations
 
 import logging
+import mimetypes
 import os
 import shutil
 import tempfile
@@ -95,6 +96,7 @@ async def reprocess_conversation(
         )
 
     suffix = audio_path.suffix or ".wav"
+    content_type = mimetypes.guess_type(audio_path.name)[0] or "audio/wav"
 
     # Copy the stored audio to a temp file so the pipeline can own its lifecycle
     # (seek, read multiple times, clean up on completion) without touching the
