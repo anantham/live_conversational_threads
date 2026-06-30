@@ -33,7 +33,7 @@ from lct_python_backend.services.indrasnet_client import (
     IndrasNetUnavailable,
     retrieval_search,
 )
-from lct_python_backend.services.transcript_llm_callers import _resolve_llm_config
+from lct_python_backend.services.transcript.transcript_llm_callers import _resolve_llm_config
 
 logger = logging.getLogger("lct_backend")
 
@@ -260,7 +260,7 @@ async def _call_enrich_llm(
     max_tokens = int(spec.get("max_tokens", config.get("max_tokens", 6000)))
 
     try:
-        from lct_python_backend.services.transcript_llm_callers import (
+        from lct_python_backend.services.transcript.transcript_llm_callers import (
             _call_local_chat_json_with_fallback,
             get_default_providers,
         )

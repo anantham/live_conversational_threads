@@ -97,7 +97,7 @@ async def fetch_and_transcribe(bot_id: str, conversation_id: str):
             
         logger.info(f"[audio-downloader] STT finished. Patching {len(utterances)} existing utterances using {len(detail.asr_segments)} STT segments.")
         
-        from lct_python_backend.services.transcript_reconciliation import reconcile_and_patch_utterances
+        from lct_python_backend.services.transcript.transcript_reconciliation import reconcile_and_patch_utterances
         from lct_python_backend.db_session import get_async_session_context
         async with get_async_session_context() as async_db:
             await reconcile_and_patch_utterances(conversation_id, utterances, detail.asr_segments, db=async_db)

@@ -28,8 +28,8 @@ except ImportError:
     sys.modules["google.genai.types"] = types_module
 
 from lct_python_backend.services.stt.stt_http_transcriber import pcm16le_to_wav
-from lct_python_backend.services import transcript_processing as transcript_mod
-from lct_python_backend.services.transcript_processing import TranscriptProcessor
+from lct_python_backend.services.transcript import transcript_processing as transcript_mod
+from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
 from lct_python_backend.tests.integration.transcripts_test_support import (
     build_processor_class,
     build_test_client,

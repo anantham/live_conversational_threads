@@ -169,7 +169,7 @@ async def extract_graph_for_conversation(
     from sqlalchemy import select as _select
 
     from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers
-    from lct_python_backend.services.transcript_processing import TranscriptProcessor
+    from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
     from lct_python_backend.services.graph_persistence import persist_graph
     from lct_python_backend.services.hierarchy_consolidator import (
         consolidate_ideas_to_topics,

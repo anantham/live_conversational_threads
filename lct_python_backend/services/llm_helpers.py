@@ -12,7 +12,7 @@ import logging
 import time
 from typing import Dict, Generator, List
 
-from lct_python_backend.services.transcript_processing import generate_lct_json
+from lct_python_backend.services.transcript.transcript_processing import generate_lct_json
 
 logger = logging.getLogger(__name__)
 

@@ -78,7 +78,7 @@ def claude_generate_lct_json(transcript, llm_config=None, providers=None, status
     GENERATE prompt + ``_normalize_generated_output`` so output shape is identical.
     The JSON parse is delegated to ``_parse_claude_stdout`` (large-stack thread).
     """
-    from lct_python_backend.services.transcript_prompts import (
+    from lct_python_backend.services.transcript.transcript_prompts import (
         PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY,
         get_transcript_prompt_text,
     )
@@ -204,8 +204,8 @@ def manifest_segments(convo: SyntheticConversation) -> Tuple[List[Dict[str, Any]
 async def stream_into_processor(
     segments: List[Dict[str, Any]], *, batch_size: int, speed: float,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[str]]:
-    import lct_python_backend.services.transcript_processing as tp
-    from lct_python_backend.services.transcript_processing import TranscriptProcessor
+    import lct_python_backend.services.transcript.transcript_processing as tp
+    from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
 
     # Inject Claude as the generate step; stub the accumulate (boundary) step.
     tp.generate_lct_json = claude_generate_lct_json
