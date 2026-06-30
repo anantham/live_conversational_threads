@@ -16,7 +16,7 @@ import numpy as np
 import websockets
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
-from lct_python_backend.services.stt_http_transcriber import pcm16le_to_wav
+from .stt_http_transcriber import pcm16le_to_wav
 
 logger = logging.getLogger("lct_backend")
 

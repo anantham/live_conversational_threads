@@ -4,7 +4,7 @@ construction that supports name-only entries (no voice clip)."""
 import os
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/test_db")
 
-from lct_python_backend.services.stt_provider_transports import (
+from lct_python_backend.services.stt.stt_provider_transports import (
     build_known_speakers_form_fields,
 )
 

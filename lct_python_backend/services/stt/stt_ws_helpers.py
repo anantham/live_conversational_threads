@@ -15,7 +15,7 @@ from fastapi import WebSocket
 from starlette.websockets import WebSocketDisconnect
 
 from lct_python_backend.services.coercion_helpers import safe_float, safe_int
-from lct_python_backend.services.stt_config import STT_PROVIDER_IDS
+from .stt_config import STT_PROVIDER_IDS
 
 
 def now_ms() -> int:

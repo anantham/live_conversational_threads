@@ -1,4 +1,4 @@
-from lct_python_backend.services.stt_live_graph import (
+from lct_python_backend.services.stt.stt_live_graph import (
     build_draft_graph_patch,
     build_speaker_reconciliation_patch,
 )

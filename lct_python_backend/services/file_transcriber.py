@@ -47,7 +47,7 @@ from lct_python_backend.services.transcript_linearization import (
     build_segment_utterances,
     offset_segments,
 )
-from lct_python_backend.services.stt_http_transcriber import transcribe_wav_stt_candidate
+from lct_python_backend.services.stt.stt_http_transcriber import transcribe_wav_stt_candidate
 from lct_python_backend.services.text_parsers import (
     _decode_text_bytes,
     _strip_markup,

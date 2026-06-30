@@ -23,7 +23,7 @@ DEFAULT_INITIAL_HTTP_CHUNK_SECONDS = float(os.getenv("STT_INITIAL_HTTP_CHUNK_SEC
 DEFAULT_HTTP_MODEL = os.getenv("STT_HTTP_MODEL", "")
 DEFAULT_HTTP_LANGUAGE = os.getenv("STT_HTTP_LANGUAGE", "en")
 from lct_python_backend.services.env_helpers import env_bool
-from lct_python_backend.services.stt_circuit_breaker import (  # noqa: F401 — re-exported for back-compat
+from .stt_circuit_breaker import (  # noqa: F401 — re-exported for back-compat
     STT_CIRCUIT_AUTH_TTL_SECONDS,
     STT_CIRCUIT_BREAKER_ENABLED,
     STT_CIRCUIT_NETWORK_TTL_SECONDS,
@@ -36,7 +36,7 @@ from lct_python_backend.services.stt_circuit_breaker import (  # noqa: F401 — 
     classify_http_status as _classify_http_status,
     summarize_exception as _summarize_exception,
 )
-from lct_python_backend.services.stt_provider_transports import (
+from .stt_provider_transports import (
     SttSessionDefaults,
     transcribe_backend_http_candidate,
     transcribe_openai_audio_candidate,
@@ -182,7 +182,7 @@ def pcm16le_to_wav(
         return wav_io.getvalue()
 
 
-from lct_python_backend.services.stt_response_parsers import (  # noqa: F401  re-exported
+from .stt_response_parsers import (  # noqa: F401  re-exported
     extract_diarized_segments,
     extract_openai_diarized_segments,
     extract_openrouter_transcript_text,

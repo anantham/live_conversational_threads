@@ -81,10 +81,10 @@ def build_test_client(
         dummy_transcript_processing,
     )
     sys.modules.pop("lct_python_backend.stt_api", None)
-    sys.modules.pop("lct_python_backend.services.stt_ws_session", None)
+    sys.modules.pop("lct_python_backend.services.stt.stt_ws_session", None)
 
     stt_api = importlib.import_module("lct_python_backend.stt_api")
-    ws_mod = importlib.import_module("lct_python_backend.services.stt_ws_session")
+    ws_mod = importlib.import_module("lct_python_backend.services.stt.stt_ws_session")
 
     effective_stt_settings = stt_settings or {
         "provider": "whisper",

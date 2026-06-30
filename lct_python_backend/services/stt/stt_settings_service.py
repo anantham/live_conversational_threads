@@ -7,7 +7,7 @@ from typing import Any, Dict, Mapping
 from sqlalchemy import select
 
 from lct_python_backend.models import AppSetting
-from lct_python_backend.services.stt_config import (
+from .stt_config import (
     STT_CONFIG_KEY,
     STT_CLOUD_PROVIDER_IDS,
     get_env_stt_defaults,

@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, List, Optional, Protocol
 
-from lct_python_backend.services.stt_backend_realtime import BackendRealtimeTranscriptionRuntime
-from lct_python_backend.services.stt_http_transcriber import RealtimeHttpSttSession
-from lct_python_backend.services.stt_openai_realtime import OpenAIRealtimeTranscriptionRuntime
+from .stt_backend_realtime import BackendRealtimeTranscriptionRuntime
+from .stt_http_transcriber import RealtimeHttpSttSession
+from .stt_openai_realtime import OpenAIRealtimeTranscriptionRuntime
 
 STT_OPENAI_REALTIME_ENABLED = os.getenv("STT_OPENAI_REALTIME_ENABLED", "true").strip().lower() in {
     "1",

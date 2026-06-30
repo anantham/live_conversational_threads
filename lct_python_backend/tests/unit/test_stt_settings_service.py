@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from lct_python_backend.services.stt_settings_service import (
+from lct_python_backend.services.stt.stt_settings_service import (
     load_stt_settings,
     load_stt_settings_for_client,
     save_stt_settings,
