@@ -11,7 +11,7 @@ from lct_python_backend.services.stt.stt_config import (
     build_cloud_provider_api_url,
     normalize_live_fallback_priority,
 )
-from lct_python_backend.services.transcription_utils import (
+from lct_python_backend.services.transcript.transcription_utils import (
     STT_PROVIDER_ORDER,
     STT_UPLOAD_LOCAL_FIRST,
     STT_UPLOAD_REMOTE_FALLBACK,

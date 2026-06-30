@@ -33,14 +33,14 @@ def _load_stt_api_with_stubs(monkeypatch):
     dummy_db_session.get_async_session_context = dummy_session_context
 
     dummy_transcript_processing = types.ModuleType(
-        "lct_python_backend.services.transcript_processing"
+        "lct_python_backend.services.transcript.transcript_processing"
     )
     dummy_transcript_processing.TranscriptProcessor = PlaceholderProcessor
 
     monkeypatch.setitem(sys.modules, "lct_python_backend.db_session", dummy_db_session)
     monkeypatch.setitem(
         sys.modules,
-        "lct_python_backend.services.transcript_processing",
+        "lct_python_backend.services.transcript.transcript_processing",
         dummy_transcript_processing,
     )
 

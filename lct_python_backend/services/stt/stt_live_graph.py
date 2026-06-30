@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
-from lct_python_backend.services.transcript_normalizer import format_speaker_prefixed_transcript
+from lct_python_backend.services.transcript.transcript_normalizer import format_speaker_prefixed_transcript
 
 
 _WHITESPACE_RE = re.compile(r"\s+")

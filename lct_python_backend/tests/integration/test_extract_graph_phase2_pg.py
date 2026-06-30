@@ -56,7 +56,7 @@ class _FakeProcessor:
 
 
 def _install_fakes(monkeypatch):
-    import lct_python_backend.services.transcript_processing as tp
+    import lct_python_backend.services.transcript.transcript_processing as tp
     import lct_python_backend.services.llm_config as llm
 
     monkeypatch.setattr(tp, "TranscriptProcessor", _FakeProcessor)

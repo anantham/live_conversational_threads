@@ -3,8 +3,8 @@ import time
 
 import pytest
 
-from lct_python_backend.services import transcript_processing as mod
-from lct_python_backend.services.transcript_processing import TranscriptProcessor
+from lct_python_backend.services.transcript import transcript_processing as mod
+from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
 
 
 # DEFAULT_LLM_MODE defaults to "local", so _process_batch uses the boundary-index

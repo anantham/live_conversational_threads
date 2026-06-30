@@ -33,7 +33,7 @@ def _make_execute_result(rows=None):
 
 @pytest.mark.asyncio
 async def test_propose_revision_returns_uuid_string():
-    from lct_python_backend.services.transcript_revision_service import propose_revision
+    from lct_python_backend.services.transcript.transcript_revision_service import propose_revision
     db = _make_db_session()
     db.execute.return_value = _make_execute_result()
 
@@ -53,7 +53,7 @@ async def test_propose_revision_returns_uuid_string():
 
 @pytest.mark.asyncio
 async def test_reject_revision_returns_true_when_found():
-    from lct_python_backend.services.transcript_revision_service import reject_revision
+    from lct_python_backend.services.transcript.transcript_revision_service import reject_revision
     db = _make_db_session()
     db.execute.return_value = _make_execute_result(rows=[MagicMock()])
 
@@ -65,7 +65,7 @@ async def test_reject_revision_returns_true_when_found():
 
 @pytest.mark.asyncio
 async def test_reject_revision_returns_false_when_not_found():
-    from lct_python_backend.services.transcript_revision_service import reject_revision
+    from lct_python_backend.services.transcript.transcript_revision_service import reject_revision
     db = _make_db_session()
     db.execute.return_value = _make_execute_result(rows=[])
 
@@ -76,7 +76,7 @@ async def test_reject_revision_returns_false_when_not_found():
 
 @pytest.mark.asyncio
 async def test_mark_revision_approved_returns_segments():
-    from lct_python_backend.services.transcript_revision_service import mark_revision_approved
+    from lct_python_backend.services.transcript.transcript_revision_service import mark_revision_approved
     db = _make_db_session()
 
     fake_segments = [{"speaker": "B", "start": 0.0, "end": 2.0, "text": "World"}]
@@ -100,7 +100,7 @@ async def test_mark_revision_approved_returns_segments():
 
 @pytest.mark.asyncio
 async def test_mark_revision_approved_returns_none_when_not_found():
-    from lct_python_backend.services.transcript_revision_service import mark_revision_approved
+    from lct_python_backend.services.transcript.transcript_revision_service import mark_revision_approved
     db = _make_db_session()
     db.execute.return_value = _make_execute_result(rows=[])
 
@@ -115,13 +115,13 @@ async def test_mark_revision_approved_returns_none_when_not_found():
 
 @pytest.mark.asyncio
 async def test_reconciliation_proposes_revision_when_db_provided():
-    from lct_python_backend.services.transcript_reconciliation import reconcile_and_patch_utterances
+    from lct_python_backend.services.transcript.transcript_reconciliation import reconcile_and_patch_utterances
 
     segments = [{"speaker": "A", "start": 0.0, "end": 1.5, "text": "Testing."}]
     db = _make_db_session()
 
     with patch(
-        "lct_python_backend.services.transcript_reconciliation.propose_revision",
+        "lct_python_backend.services.transcript.transcript_reconciliation.propose_revision",
         new=AsyncMock(return_value="new-rev-uuid"),
     ) as mock_propose:
         await reconcile_and_patch_utterances(
@@ -139,7 +139,7 @@ async def test_reconciliation_proposes_revision_when_db_provided():
 @pytest.mark.asyncio
 async def test_reconciliation_is_noop_when_no_db():
     """Legacy callers that don't pass db= get a warning, not a crash."""
-    from lct_python_backend.services.transcript_reconciliation import reconcile_and_patch_utterances
+    from lct_python_backend.services.transcript.transcript_reconciliation import reconcile_and_patch_utterances
 
     segments = [{"speaker": "A", "start": 0.0, "end": 1.0, "text": "Hi."}]
     # Should not raise
@@ -148,7 +148,7 @@ async def test_reconciliation_is_noop_when_no_db():
 
 @pytest.mark.asyncio
 async def test_reconciliation_is_noop_when_no_segments():
-    from lct_python_backend.services.transcript_reconciliation import reconcile_and_patch_utterances
+    from lct_python_backend.services.transcript.transcript_reconciliation import reconcile_and_patch_utterances
 
     db = _make_db_session()
     await reconcile_and_patch_utterances("conv-1", utterances=[], asr_segments=[], db=db)
@@ -159,13 +159,13 @@ async def test_reconciliation_is_noop_when_no_segments():
 
 @pytest.mark.asyncio
 async def test_reconciliation_does_not_raise_on_propose_failure():
-    from lct_python_backend.services.transcript_reconciliation import reconcile_and_patch_utterances
+    from lct_python_backend.services.transcript.transcript_reconciliation import reconcile_and_patch_utterances
 
     segments = [{"speaker": "A", "start": 0.0, "end": 1.0, "text": "Hi."}]
     db = _make_db_session()
 
     with patch(
-        "lct_python_backend.services.transcript_reconciliation.propose_revision",
+        "lct_python_backend.services.transcript.transcript_reconciliation.propose_revision",
         new=AsyncMock(side_effect=RuntimeError("DB down")),
     ):
         # Should warn but not raise — never blocks the caller

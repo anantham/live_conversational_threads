@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.db_session import get_async_session
-from lct_python_backend.services.transcript_revision_service import (
+from lct_python_backend.services.transcript.transcript_revision_service import (
     get_pending_revisions,
     get_revision_segments,
     mark_revision_approved,
