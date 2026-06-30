@@ -13,50 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from lct_python_backend.db_session import get_async_session
 from lct_python_backend.models import Conversation
 from lct_python_backend.schemas import (
-    TranscriptRequest, ChunkedTranscript, ChunkedRequest,
     SaveJsonRequest, SaveJsonResponse,
 )
 from lct_python_backend.services.gcs_helpers import save_json_with_backend
-from lct_python_backend.services.llm_helpers import (
-    sliding_window_chunking, stream_generate_context_json,
-)
 from lct_python_backend.services.owner_context import resolve_owner_id
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["generation"])
-
-
-@router.post("/get_chunks/", response_model=ChunkedTranscript)
-async def get_chunks(request: TranscriptRequest):
-    try:
-        transcript = request.transcript
-
-        if not transcript:
-            raise HTTPException(status_code=400, detail="Transcript must be a non-empty string.")
-
-        chunks = sliding_window_chunking(transcript)
-
-        if not chunks:
-            raise HTTPException(status_code=500, detail="Chunking failed. No chunks were generated.")
-
-        return ChunkedTranscript(chunks=chunks)
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
-
-
-@router.post("/generate-context-stream/")
-async def generate_context_stream(request: ChunkedRequest):
-    try:
-        chunks = request.chunks
-
-        if not chunks or not isinstance(chunks, dict):
-            raise HTTPException(status_code=400, detail="Chunks must be a non-empty dictionary.")
-
-        return StreamingResponse(stream_generate_context_json(chunks), media_type="application/json")
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
 
 
 @router.post("/save_json/", response_model=SaveJsonResponse)

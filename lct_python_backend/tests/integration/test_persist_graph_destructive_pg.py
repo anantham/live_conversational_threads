@@ -291,3 +291,128 @@ def test_resume_deletes_unprotected_and_cascades_their_relationships():
     assert names_after == {"A", "B", "D"}
     # A->C cascaded away with C; A->B (both protected) survives.
     assert rel_pairs_after == {(a, b)}
+
+
+# ---------------------------------------------------------------------------
+# T3 — analysis FK-safety on re-extract (ADR-059 PR-0.5)
+#
+# bias/frame/simulacra_analysis FK nodes.id WITHOUT ondelete, so deleting a
+# conversation's nodes raises a Postgres FK violation unless the analyses are
+# cleared first. persist_graph must do this (like persist_turns already does);
+# a real DB is required to exercise the constraint.
+# ---------------------------------------------------------------------------
+
+def _add_analyses(session, conv_uuid, node_id):
+    """Attach one simulacra/bias/frame analysis row to a node (all FK nodes.id)."""
+    from lct_python_backend.models.analysis import (
+        BiasAnalysis,
+        FrameAnalysis,
+        SimulacraAnalysis,
+    )
+
+    session.add(SimulacraAnalysis(
+        node_id=node_id, conversation_id=conv_uuid, level=2, confidence=0.9))
+    session.add(BiasAnalysis(
+        node_id=node_id, conversation_id=conv_uuid,
+        bias_type="anchoring", category="decision", severity=0.5, confidence=0.8))
+    session.add(FrameAnalysis(
+        node_id=node_id, conversation_id=conv_uuid,
+        frame_type="utilitarian", category="moral", strength=0.6, confidence=0.7))
+
+
+async def _clear_analyses(session, conv_id):
+    """Teardown: analysis tables FK both nodes.id and conversations.id with NO
+    ondelete, so they must be cleared before cleanup_conversations' cascade."""
+    from sqlalchemy import delete
+    from lct_python_backend.models.analysis import (
+        BiasAnalysis,
+        FrameAnalysis,
+        SimulacraAnalysis,
+    )
+
+    cuid = uuid.UUID(conv_id)
+    await session.rollback()
+    for m in (SimulacraAnalysis, BiasAnalysis, FrameAnalysis):
+        await session.execute(delete(m).where(m.conversation_id == cuid))
+    await session.commit()
+
+
+def test_reextract_is_fk_safe_when_analyses_exist():
+    """A re-extract (second persist_graph, fresh path) on a conversation that has
+    analysis rows must NOT raise a FK violation, and the analyses tied to the now-
+    deleted nodes are cleared. Before the PR-0.5 fix this raised ForeignKeyViolation
+    at the delete(Node)."""
+    conv_id = str(uuid.uuid4())
+    owner = unique_owner()
+
+    async def scenario():
+        from sqlalchemy import func, select
+        from lct_python_backend.models.analysis import BiasAnalysis
+
+        async with pg_session() as session:
+            try:
+                await _persist(session, conv_id, owner, [node("A"), node("B")])
+                nodes1, _, _ = await read_graph(session, conv_id)
+                cuid = uuid.UUID(conv_id)
+                _add_analyses(session, cuid, nodes1[0].id)
+                await session.commit()
+
+                # Re-extract with a completely different graph.
+                await _persist(session, conv_id, owner, [node("C"), node("D")])
+
+                bias_left = (await session.execute(
+                    select(func.count()).select_from(BiasAnalysis)
+                    .where(BiasAnalysis.conversation_id == cuid)
+                )).scalar_one()
+                names = {n.node_name for n in (await read_graph(session, conv_id))[0]}
+                return bias_left, names
+            finally:
+                await _clear_analyses(session, conv_id)
+                await cleanup_conversations(session, [conv_id])
+
+    bias_left, names = asyncio.run(scenario())
+    assert bias_left == 0        # analyses on the deleted nodes were cleared
+    assert names == {"C", "D"}   # graph replaced — no FK crash
+
+
+def test_resume_keeps_protected_analyses_clears_unprotected():
+    """Resume path (protect_node_ids) with analyses present: an analysis on a
+    PROTECTED node survives; an analysis on an UNPROTECTED node is cleared so its
+    node can be deleted without a FK violation."""
+    conv_id = str(uuid.uuid4())
+    owner = unique_owner()
+
+    async def scenario():
+        from sqlalchemy import select
+        from lct_python_backend.models.analysis import BiasAnalysis
+
+        async with pg_session() as session:
+            try:
+                a_id, c_id = str(uuid.uuid4()), str(uuid.uuid4())
+                await _persist(session, conv_id, owner, [
+                    node("A", node_id=a_id), node("C", node_id=c_id)])
+                nodes1, _, _ = await read_graph(session, conv_id)
+                by_name = {n.node_name: n.id for n in nodes1}
+                cuid = uuid.UUID(conv_id)
+                _add_analyses(session, cuid, by_name["A"])  # protected
+                _add_analyses(session, cuid, by_name["C"])  # unprotected
+                await session.commit()
+
+                # Resume: protect A, persist a new node D. C + its analyses go;
+                # A + its analyses survive.
+                await _persist(
+                    session, conv_id, owner, [node("D", node_id=str(uuid.uuid4()))],
+                    protect_node_ids=[by_name["A"]],
+                )
+                bias_nodes = (await session.execute(
+                    select(BiasAnalysis.node_id).where(BiasAnalysis.conversation_id == cuid)
+                )).scalars().all()
+                names = {n.node_name for n in (await read_graph(session, conv_id))[0]}
+                return {str(r) for r in bias_nodes}, names, str(by_name["A"])
+            finally:
+                await _clear_analyses(session, conv_id)
+                await cleanup_conversations(session, [conv_id])
+
+    bias_node_ids, names, a_id = asyncio.run(scenario())
+    assert names == {"A", "D"}        # C culled, A frozen, D appended
+    assert bias_node_ids == {a_id}    # only the protected node's analysis survives

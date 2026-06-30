@@ -25,7 +25,6 @@ RATE_LIMIT_READ: int = int(os.getenv("RATE_LIMIT_READ", "200"))
 EXPENSIVE_PATTERNS: Tuple[str, ...] = (
     "/analyze",
     "/generate",
-    "/generate-context-stream",
     "/fact_check_claims",
     "/themes/generate",
 )
