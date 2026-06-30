@@ -547,6 +547,22 @@ async def persist_graph(
         conv.indrasnet_group_id = indrasnet_group_id
 
     # Delete any stale rows before the re-INSERT below.
+    #
+    # bias/frame/simulacra_analysis FK ``nodes.id`` WITHOUT ondelete=CASCADE
+    # (models/analysis.py), so a Node delete on a conversation that has been
+    # analyzed raises a Postgres FK violation unless those analyses are cleared
+    # FIRST — exactly the pre-delete persist_turns already does (~:448-450). The
+    # other node-FK tables drop on their own: claims/argument_trees/is_ought
+    # CASCADE, intent_signals SET NULL. (The fuller re-extract invalidation —
+    # clusters, edits_log, pipeline_artifacts, gcs_path, denorm counts — is
+    # ADR-059 §6 / PR-2; this fix only prevents the FK-violation crash.)
+    from lct_python_backend.models.analysis import (
+        BiasAnalysis,
+        FrameAnalysis,
+        SimulacraAnalysis,
+    )
+    _analysis_models = (SimulacraAnalysis, BiasAnalysis, FrameAnalysis)
+
     protected_ids = list(protect_node_ids or [])
     if protected_ids:
         # Resume path (segment-and-stitch): a prior segment's graph already
@@ -558,6 +574,16 @@ async def persist_graph(
         # protected. The prior segment is never reconstructed, so the
         # relationship-lossy build_graph_data_from_nodes round-trip can't
         # reach it.
+        #
+        # Clear analyses tied to the nodes being deleted (the unprotected ones)
+        # first; analyses on protected nodes are frozen with them.
+        for _model in _analysis_models:
+            await db.execute(
+                delete(_model).where(
+                    _model.conversation_id == conv_uuid,
+                    _model.node_id.not_in(protected_ids),
+                )
+            )
         await db.execute(
             delete(Node).where(
                 Node.conversation_id == conv_uuid,
@@ -566,6 +592,8 @@ async def persist_graph(
         )
     else:
         # Fresh / import path: idempotent full re-materialization.
+        for _model in _analysis_models:
+            await db.execute(delete(_model).where(_model.conversation_id == conv_uuid))
         await db.execute(delete(Relationship).where(Relationship.conversation_id == conv_uuid))
         await db.execute(delete(Node).where(Node.conversation_id == conv_uuid))
     if utterances is not None:
