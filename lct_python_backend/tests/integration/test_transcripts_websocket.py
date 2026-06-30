@@ -27,7 +27,7 @@ except ImportError:
     sys.modules["google.genai"] = genai_module
     sys.modules["google.genai.types"] = types_module
 
-from lct_python_backend.services.stt_http_transcriber import pcm16le_to_wav
+from lct_python_backend.services.stt.stt_http_transcriber import pcm16le_to_wav
 from lct_python_backend.services import transcript_processing as transcript_mod
 from lct_python_backend.services.transcript_processing import TranscriptProcessor
 from lct_python_backend.tests.integration.transcripts_test_support import (
@@ -425,7 +425,7 @@ def test_transcripts_ws_backend_realtime_forces_audio_storage_and_schedules_file
         persist_side_effect=fake_persist,
     )
 
-    import lct_python_backend.services.stt_ws_session as ws_mod
+    import lct_python_backend.services.stt.stt_ws_session as ws_mod
     import lct_python_backend.stt_api as stt_api
 
     dummy_audio_storage = DummyAudioStorage()
@@ -824,7 +824,7 @@ def test_transcripts_ws_background_refinement_persists_speaker_segments_with_win
         runtime_factory=lambda **kwargs: DummyRealtimeRuntime(**kwargs),
         persist_side_effect=fake_persist,
     )
-    import lct_python_backend.services.stt_ws_session as ws_mod
+    import lct_python_backend.services.stt.stt_ws_session as ws_mod
 
     monkeypatch.setattr(ws_mod, "transcribe_wav_stt_candidate", fake_refine)
     monkeypatch.setattr(ws_mod, "persist_speaker_refinement", fake_materialize)
@@ -1018,7 +1018,7 @@ def test_transcripts_ws_persists_canonical_graph_on_finalized_patch(monkeypatch)
         ),
     )
     client = build_test_client(monkeypatch, processor_cls=TranscriptProcessor)
-    import lct_python_backend.services.stt_ws_session as ws_mod
+    import lct_python_backend.services.stt.stt_ws_session as ws_mod
     monkeypatch.setattr(ws_mod, "persist_live_graph_snapshot", fake_graph_persist)
 
     with client.websocket_connect("/ws/transcripts") as ws:

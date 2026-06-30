@@ -8,7 +8,7 @@ from unittest.mock import patch
 import httpx
 import pytest
 
-from lct_python_backend.services.stt_circuit_breaker import (
+from lct_python_backend.services.stt.stt_circuit_breaker import (
     CircuitBreaker,
     candidate_cache_key,
     circuit_ttl_seconds,
@@ -148,7 +148,7 @@ def test_two_candidates_isolated() -> None:
 
 def test_disabled_breaker_no_ops(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "lct_python_backend.services.stt_circuit_breaker.STT_CIRCUIT_BREAKER_ENABLED",
+        "lct_python_backend.services.stt.stt_circuit_breaker.STT_CIRCUIT_BREAKER_ENABLED",
         False,
     )
     cb = CircuitBreaker()

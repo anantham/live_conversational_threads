@@ -10,8 +10,8 @@ though curl / the browser / the live STT transport (all certifi) accept it.
 """
 import ssl
 
-from lct_python_backend.services import stt_health_service
-from lct_python_backend.services.stt_health_service import probe_health_url
+from lct_python_backend.services.stt import stt_health_service
+from lct_python_backend.services.stt.stt_health_service import probe_health_url
 
 
 def test_https_context_is_certifi_backed():

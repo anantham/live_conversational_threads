@@ -25,35 +25,35 @@ from lct_python_backend.services.llm_config import (
     load_llm_config,
     load_llm_providers as _db_load_llm_providers,
 )
-from lct_python_backend.services.stt_config import (
+from lct_python_backend.services.stt.stt_config import (
     STT_CLOUD_PROVIDER_IDS,
     STT_PROVIDER_IDS,
     build_cloud_provider_api_url,
 )
-from lct_python_backend.services.stt_http_transcriber import smoke_test_stt_candidate
-from lct_python_backend.services.stt_ws_helpers import (
+from lct_python_backend.services.stt.stt_http_transcriber import smoke_test_stt_candidate
+from lct_python_backend.services.stt.stt_ws_helpers import (
     normalize_provider as _normalize_provider,
     safe_send_json as _safe_send_json,
     send_processor_update as _send_processor_update_helper,
 )
-from lct_python_backend.services.stt_health_service import (
+from lct_python_backend.services.stt.stt_health_service import (
     derive_health_url,
     derive_health_url_from_http_url,
     probe_health_url,
 )
-from lct_python_backend.services.stt_settings_service import (
+from lct_python_backend.services.stt.stt_settings_service import (
     load_stt_settings,
     load_stt_settings_for_client,
     save_stt_settings,
 )
 from lct_python_backend.services.session_observability import get_conversation_observability
-from lct_python_backend.services.stt_telemetry_service import aggregate_telemetry
+from lct_python_backend.services.stt.stt_telemetry_service import aggregate_telemetry
 from lct_python_backend.services.thread_observability_service import (
     get_thread_session_detail,
     get_threads_error_breakdown,
     get_threads_observability_summary,
 )
-from lct_python_backend.services.stt_ws_session import WsSessionContext
+from lct_python_backend.services.stt.stt_ws_session import WsSessionContext
 
 logger = logging.getLogger("lct_backend")
 

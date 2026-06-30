@@ -16,7 +16,7 @@ import httpx
 from pydub import AudioSegment
 from pydub.silence import detect_silence
 
-from lct_python_backend.services.stt_http_transcriber import (
+from lct_python_backend.services.stt.stt_http_transcriber import (
     extract_diarized_segments,
     extract_transcript_text,
 )
