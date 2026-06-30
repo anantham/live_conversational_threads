@@ -78,7 +78,7 @@ from lct_python_backend.services.stt.stt_health_service import (
     derive_health_url_from_http_url,
     probe_health_url,
 )
-from lct_python_backend.services.transcript_processing import TranscriptProcessor
+from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
 
 logger = logging.getLogger(__name__)
 

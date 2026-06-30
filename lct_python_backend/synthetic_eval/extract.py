@@ -105,7 +105,7 @@ def _parse_nodes_bigstack(text: str):
     """``extract_json_from_text`` + ``_normalize_generated_output`` in a large-stack
     thread (graph-node output). Returns ``(nodes_or_None, error_or_None)``."""
     from lct_python_backend.services.local_llm_client import extract_json_from_text
-    from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
+    from lct_python_backend.services.transcript.transcript_normalizer import _normalize_generated_output
 
     return _run_in_bigstack(lambda: _normalize_generated_output(extract_json_from_text(text)))
 
@@ -150,7 +150,7 @@ def extract_graph(
         mod_input = extra_system + "\n\n" + mod_input
     # Lazy import: pulls in google-genai + the LLM stack only when actually
     # calling a real provider, so `--list` and mock runs work in a bare env.
-    from lct_python_backend.services.transcript_llm_callers import generate_lct_json
+    from lct_python_backend.services.transcript.transcript_llm_callers import generate_lct_json
 
     status_messages: List[str] = []
     t0 = time.perf_counter()
@@ -217,7 +217,7 @@ def _claude_cli_extract(convo: SyntheticConversation, spec: ProviderSpec, transc
             status_messages=["needs the Claude Code CLI (claude.exe) on PATH"],
         )
 
-    from lct_python_backend.services.transcript_prompts import (
+    from lct_python_backend.services.transcript.transcript_prompts import (
         PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY,
         get_transcript_prompt_text,
     )
@@ -335,11 +335,11 @@ def _anthropic_extract(convo: SyntheticConversation, spec: ProviderSpec, transcr
             status_messages=["install the official SDK; the OpenAI-compat shim is deliberately not used"],
         )
 
-    from lct_python_backend.services.transcript_prompts import (
+    from lct_python_backend.services.transcript.transcript_prompts import (
         PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY,
         get_transcript_prompt_text,
     )
-    from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
+    from lct_python_backend.services.transcript.transcript_normalizer import _normalize_generated_output
     from lct_python_backend.services.local_llm_client import extract_json_from_text
 
     system_prompt = get_transcript_prompt_text(PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY)

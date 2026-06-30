@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from lct_python_backend.services.transcription_utils import SegmentResult
+from lct_python_backend.services.transcript.transcription_utils import SegmentResult
 
 
 @pytest.mark.asyncio

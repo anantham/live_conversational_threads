@@ -510,7 +510,7 @@ async def persist_graph(
     """
     from lct_python_backend.models import Node, Relationship
     from sqlalchemy import select, delete
-    from lct_python_backend.services.transcript_normalizer import propagate_flags_upward
+    from lct_python_backend.services.transcript.transcript_normalizer import propagate_flags_upward
 
     if not existing_json and utterances is None:
         return 0

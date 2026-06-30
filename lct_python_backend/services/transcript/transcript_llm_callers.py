@@ -20,8 +20,8 @@ from lct_python_backend.services.local_llm_client import (
     chat_with_provider_fallback_sync,
     ProviderResult,
 )
-from lct_python_backend.services.transcript_normalizer import _normalize_generated_output
-from lct_python_backend.services.transcript_prompts import (
+from .transcript_normalizer import _normalize_generated_output
+from .transcript_prompts import (
     PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT,
     PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT_LOCAL,
     PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY,

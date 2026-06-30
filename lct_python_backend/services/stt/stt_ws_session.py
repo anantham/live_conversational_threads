@@ -99,7 +99,7 @@ from lct_python_backend.services.thread_observability_service import (
     record_thread_event,
     start_thread_session,
 )
-from lct_python_backend.services.transcript_processing import TranscriptProcessor
+from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
 from lct_python_backend.services.env_helpers import env_bool
 
 logger = logging.getLogger("lct_backend")

@@ -28,7 +28,7 @@ from .import_bulk_telemetry import (
     estimate_transcription_eta_ms,
     record_transcription_timing,
 )
-from lct_python_backend.services.transcript_linearization import build_line_utterances
+from lct_python_backend.services.transcript.transcript_linearization import build_line_utterances
 
 PROGRESSIVE_BATCH_CHARS = 400
 

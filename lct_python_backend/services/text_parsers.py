@@ -11,7 +11,7 @@ from typing import List, Optional
 
 from lct_python_backend.parsers import GoogleMeetParser
 from lct_python_backend.services.coercion_helpers import coerce_str
-from lct_python_backend.services.transcription_utils import (
+from lct_python_backend.services.transcript.transcription_utils import (
     AUDIO_EXTENSIONS,
     GOOGLE_MEET_EXTENSIONS,
     SRT_EXTENSIONS,

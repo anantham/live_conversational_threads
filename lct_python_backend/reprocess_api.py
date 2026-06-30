@@ -45,7 +45,7 @@ from lct_python_backend.services.llm_config import (
 from lct_python_backend.services.stt.stt_settings_service import load_stt_settings
 from lct_python_backend.services.artifact_settings_service import load_artifact_export_settings
 from lct_python_backend.services.artifact_export_service import auto_export_conversation_artifacts
-from lct_python_backend.services.transcript_processing import TranscriptProcessor
+from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
 from lct_python_backend.services.import_pipeline.import_diarization_queue import (
     enqueue_import_diarization_job,
     is_async_import_diarization_enabled,
