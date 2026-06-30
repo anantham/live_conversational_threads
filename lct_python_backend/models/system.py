@@ -125,7 +125,7 @@ class UsageQuota(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_id = Column(String(255), nullable=False)  # User identifier (from session metadata or BYOK)
     quota_type = Column(String(50), nullable=False)  # 'stt_live', 'stt_import', 'llm'
-    date = Column(DateTime(timezone=True).with_variant(Date, 'postgresql'), nullable=False)
+    date = Column(Date(), nullable=False)
     minutes_used = Column(Float, nullable=False, default=0.0)
     requests_count = Column(Integer, nullable=False, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

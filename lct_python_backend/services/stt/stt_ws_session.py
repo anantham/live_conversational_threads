@@ -2971,8 +2971,14 @@ class WsSessionContext:
                 "quota_message": quota_result.message,
             }
             if not quota_result.allowed:
-                logger.warning("[WS][QUOTA] session=%s owner=%s quota exceeded - blocking session", 
+                logger.warning("[WS][QUOTA] session=%s owner=%s quota exceeded - blocking session",
                     self.state.session_id, owner_id)
+                await self.websocket.send_json({
+                    "type": "quota_exceeded",
+                    "message": quota_result.message or "Daily STT quota exceeded",
+                })
+                await self.websocket.close(1008)
+                return
         except Exception as quota_exc:
             logger.warning("[WS][QUOTA] session=%s quota check failed: %s", self.state.session_id, quota_exc)
 

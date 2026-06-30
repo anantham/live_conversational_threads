@@ -6,6 +6,7 @@ import { ChevronDown, FlaskConical } from 'lucide-react';
 // Surfaces the per-conversation analysis pages that previously had no entry point
 // (reachable only by typing the URL — see docs/AUDIT_RATIONALITY_2026-05-30.md).
 const ITEMS = [
+  { path: 'analytics', label: 'Arcs & tangents', sub: 'Topics, threads & conversation structure' },
   { path: 'cruxes', label: 'Cruxes', sub: 'Load-bearing beliefs / disagreement pivots' },
   { path: 'biases', label: 'Cognitive biases', sub: '25+ biases & logical fallacies' },
   { path: 'frames', label: 'Implicit frames', sub: 'Worldviews & assumptions' },

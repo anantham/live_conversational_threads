@@ -3,6 +3,7 @@
 All route handlers live in dedicated router modules.
 This file handles: logging, app creation, CORS, middleware, and router mounting.
 """
+import asyncio
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -129,6 +130,28 @@ def _resolve_cors_origins() -> tuple:
 
 
 # ============================================================================
+# DAILY AGGREGATION LOOP
+# ============================================================================
+
+async def _run_daily_aggregation_loop() -> None:
+    from datetime import datetime, time, timedelta
+    from lct_python_backend.db_session import AsyncSessionLocal
+    from lct_python_backend.instrumentation.cost_reporting import run_daily_aggregation_job
+    from lct_python_backend.instrumentation.alerts import create_default_alert_manager
+
+    alert_manager = create_default_alert_manager()
+    while True:
+        now = datetime.now()
+        next_run = datetime.combine(now.date(), time(0, 5)) + timedelta(days=1)
+        await asyncio.sleep((next_run - now).total_seconds())
+        try:
+            async with AsyncSessionLocal() as session:
+                await run_daily_aggregation_job(session, alert_manager)
+        except Exception:  # noqa: BLE001
+            logger.exception("[COST] daily aggregation job failed (non-fatal)")
+
+
+# ============================================================================
 # APPLICATION LIFECYCLE
 # ============================================================================
 
@@ -196,7 +219,13 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001
         logger.exception("[STARTUP] contacts-cache warm-up failed to schedule (non-fatal)")
 
+    aggregation_task = asyncio.create_task(_run_daily_aggregation_loop())
     yield
+    aggregation_task.cancel()
+    try:
+        await aggregation_task
+    except asyncio.CancelledError:
+        pass
     logger.info("Disconnecting from database...")
     await db.disconnect()
 
@@ -231,6 +260,9 @@ cors_origins, cors_origin_regex = _resolve_cors_origins()
 # P0 Security middleware (auth, rate limits, body size limits, SSRF gate)
 configure_p0_security(lct_app)
 
+from lct_python_backend.instrumentation.middleware import InstrumentationMiddleware  # noqa: E402
+lct_app.add_middleware(InstrumentationMiddleware)
+
 # CORS is added LAST so it is the OUTERMOST middleware. add_middleware prepends, so
 # the final add wraps everything else — load-bearing: it ensures responses that
 # short-circuit INSIDE the security stack (a 401 from AuthMiddleware, a 429 from the
@@ -257,10 +289,11 @@ logger.info(
 # headers (X-Frame-Options/X-Content-Type-Options/X-XSS-Protection) apply always;
 # CSP + HSTS only when ENVIRONMENT=production; TrustedHost is a no-op unless a prod
 # host allowlist is configured.
-from lct_python_backend.security_config import add_security_headers, configure_trusted_hosts
+from lct_python_backend.security_config import add_security_headers, configure_trusted_hosts, validate_api_key  # noqa: E402
 
 lct_app.middleware("http")(add_security_headers)
 configure_trusted_hosts(lct_app, environment=os.getenv("ENVIRONMENT", "development"))
+lct_app.middleware("http")(validate_api_key)
 
 
 # ============================================================================

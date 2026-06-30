@@ -4,9 +4,8 @@ Based on DATA_MODEL_V2.md
 
 Domain split:
   core        — Conversation, Utterance, TranscriptEvent
-  graph       — Node, Relationship, Cluster
-  analysis    — Claim, ArgumentTree, IsOughtConflation,
-                SimulacraAnalysis, BiasAnalysis, FrameAnalysis
+  graph       — Node, Relationship
+  analysis    — Claim, SimulacraAnalysis, BiasAnalysis, FrameAnalysis
   interaction — Bookmark, EditsLog
   system      — APICallsLog, AppSetting, PipelineArtifact, ServiceStatus
   observability — ThreadSession, ThreadSessionEvent
@@ -20,11 +19,9 @@ from .base import Base  # noqa: F401 — must be imported before submodules
 # Import submodules so Base.metadata is fully populated (required by Alembic)
 from .identity import User  # noqa: F401
 from .core import Conversation, Utterance, TranscriptEvent, SpeakerSegment, SpeakerAudioReference, SpeakerCorrectionEvent  # noqa: F401
-from .graph import Node, Relationship, Cluster  # noqa: F401
+from .graph import Node, Relationship  # noqa: F401
 from .analysis import (  # noqa: F401
     Claim,
-    ArgumentTree,
-    IsOughtConflation,
     SimulacraAnalysis,
     BiasAnalysis,
     FrameAnalysis,
@@ -48,11 +45,8 @@ __all__ = [
     # graph
     "Node",
     "Relationship",
-    "Cluster",
     # analysis
     "Claim",
-    "ArgumentTree",
-    "IsOughtConflation",
     "SimulacraAnalysis",
     "BiasAnalysis",
     "FrameAnalysis",
