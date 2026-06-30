@@ -10,7 +10,7 @@ from typing import List, Optional
 
 import pytest
 
-from lct_python_backend.services.import_pipeline.import_persistence import (
+from lct_python_backend.services.graph_persistence import (
     _iter_contextual_relations,
     _looks_like_single_contextual_relation_object,
     calculate_speaker_turns,
