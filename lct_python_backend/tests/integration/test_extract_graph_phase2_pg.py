@@ -145,7 +145,7 @@ def test_extract_builds_graph_and_preserves_utterances(monkeypatch):
 
     async def scenario():
         from lct_python_backend.services.graph_persistence import persist_turns
-        from lct_python_backend.services.import_orchestrator import extract_graph_for_conversation
+        from lct_python_backend.services.import_pipeline.import_orchestrator import extract_graph_for_conversation
 
         async with pg_session() as session:
             try:
@@ -192,7 +192,7 @@ def test_extract_is_rerunnable_without_touching_utterances(monkeypatch):
 
     async def scenario():
         from lct_python_backend.services.graph_persistence import persist_turns
-        from lct_python_backend.services.import_orchestrator import extract_graph_for_conversation
+        from lct_python_backend.services.import_pipeline.import_orchestrator import extract_graph_for_conversation
 
         async with pg_session() as session:
             try:
@@ -231,7 +231,7 @@ def test_extract_rejects_unknown_conversation(monkeypatch):
     missing_id = str(uuid.uuid4())
 
     async def scenario():
-        from lct_python_backend.services.import_orchestrator import extract_graph_for_conversation
+        from lct_python_backend.services.import_pipeline.import_orchestrator import extract_graph_for_conversation
 
         async with pg_session() as session:
             with pytest.raises(ValueError):
