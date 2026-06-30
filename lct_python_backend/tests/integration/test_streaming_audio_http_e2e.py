@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from typing import Optional
 
-from lct_python_backend.services import stt_http_transcriber as transcriber_mod
+from lct_python_backend.services.stt import stt_http_transcriber as transcriber_mod
 from lct_python_backend.tests.integration.transcripts_test_support import (
     build_processor_class,
     build_test_client,

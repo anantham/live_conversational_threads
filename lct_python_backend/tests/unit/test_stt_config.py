@@ -1,4 +1,4 @@
-from lct_python_backend.services.stt_config import (
+from lct_python_backend.services.stt.stt_config import (
     DEFAULT_STT_LIVE_FALLBACK_PRIORITY,
     build_cloud_provider_api_url,
     get_env_stt_defaults,

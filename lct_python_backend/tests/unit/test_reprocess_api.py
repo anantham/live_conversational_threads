@@ -28,7 +28,7 @@ def _stub_modules(monkeypatch):
         "lct_python_backend.services.file_transcriber",
         "lct_python_backend.services.import_graph_refinement",
         "lct_python_backend.services.llm_config",
-        "lct_python_backend.services.stt_settings_service",
+        "lct_python_backend.services.stt.stt_settings_service",
         "lct_python_backend.services.artifact_settings_service",
         "lct_python_backend.services.artifact_export_service",
         "lct_python_backend.services.transcript_processing",
@@ -59,7 +59,7 @@ def _stub_modules(monkeypatch):
     llm.load_llm_config = MagicMock()
     llm.load_llm_providers = AsyncMock()
 
-    stt = sys.modules["lct_python_backend.services.stt_settings_service"]
+    stt = sys.modules["lct_python_backend.services.stt.stt_settings_service"]
     stt.load_stt_settings = AsyncMock()
 
     artifact_svc = sys.modules["lct_python_backend.services.artifact_settings_service"]

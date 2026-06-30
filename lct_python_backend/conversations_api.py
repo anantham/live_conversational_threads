@@ -680,7 +680,7 @@ async def put_conversation_participants(
     the picker's selection is rejected with 404, we auto-create the row here
     if it doesn't exist yet (same defaults as ensure_conversation).
     """
-    from lct_python_backend.services.stt_session import ensure_conversation
+    from lct_python_backend.services.stt.stt_session import ensure_conversation
 
     try:
         uuid.UUID(conversation_id)

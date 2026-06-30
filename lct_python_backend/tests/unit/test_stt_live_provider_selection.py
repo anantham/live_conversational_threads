@@ -1,4 +1,4 @@
-from lct_python_backend.services.stt_live_provider_selection import (
+from lct_python_backend.services.stt.stt_live_provider_selection import (
     build_live_stt_background_refinement_candidate,
     resolve_live_stt_candidates,
 )

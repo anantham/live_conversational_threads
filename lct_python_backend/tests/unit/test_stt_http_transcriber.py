@@ -6,8 +6,8 @@ import httpx
 import numpy as np
 import pytest
 
-from lct_python_backend.services import stt_http_transcriber as mod
-from lct_python_backend.services.stt_http_transcriber import (
+from lct_python_backend.services.stt import stt_http_transcriber as mod
+from lct_python_backend.services.stt.stt_http_transcriber import (
     RealtimeHttpSttSession,
     decode_audio_base64,
     extract_diarized_segments,
@@ -245,7 +245,7 @@ async def test_diarize_form_field_sent_when_enabled():
     mock_client.aclose = AsyncMock()
 
     with patch.object(mod, "STT_DIARIZE_ENABLED", True), \
-         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+         patch("lct_python_backend.services.stt.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
         text, segments = await session._transcribe_pcm(_pcm_bytes(0.1))
 
     assert text == "hello"
@@ -271,7 +271,7 @@ async def test_diarize_false_sent_when_disabled():
     mock_client.aclose = AsyncMock()
 
     with patch.object(mod, "STT_DIARIZE_ENABLED", False), \
-         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+         patch("lct_python_backend.services.stt.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
         text, segments = await session._transcribe_pcm(_pcm_bytes(0.1))
 
     assert text == "hello"
@@ -336,7 +336,7 @@ async def test_primary_backend_candidate_can_fall_back_to_openai_audio():
     mock_client.aclose = AsyncMock()
 
     with patch.object(mod, "STT_DIARIZE_ENABLED", False), \
-         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+         patch("lct_python_backend.services.stt.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
         result = await session.push_audio_chunk(_pcm_bytes(0.5))
 
     assert result is not None
@@ -401,7 +401,7 @@ async def test_empty_openai_transcript_does_not_fall_through_to_whisper():
     mock_client.aclose = AsyncMock()
 
     with patch.object(mod, "STT_DIARIZE_ENABLED", False), \
-         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+         patch("lct_python_backend.services.stt.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
         result = await session.push_audio_chunk(_pcm_bytes(0.5))
 
     assert result is None
@@ -432,7 +432,7 @@ async def test_timeout_opens_circuit_and_skips_repeat_attempts():
     mock_client.aclose = AsyncMock()
 
     with patch.object(mod, "STT_CIRCUIT_TIMEOUT_TTL_SECONDS", 30.0), \
-         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+         patch("lct_python_backend.services.stt.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
         with pytest.raises(RuntimeError, match="All live STT candidates failed"):
             await session.push_audio_chunk(_pcm_bytes(0.5))
 
@@ -474,7 +474,7 @@ async def test_openrouter_candidate_posts_chat_completion_payload():
     mock_client.post = AsyncMock(return_value=mock_response)
     mock_client.aclose = AsyncMock()
 
-    with patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+    with patch("lct_python_backend.services.stt.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
         result = await session.push_audio_chunk(_pcm_bytes(0.5))
 
     assert result is not None
@@ -522,7 +522,7 @@ async def test_smoke_test_stt_candidate_returns_ready_result():
     mock_client.aclose = AsyncMock()
 
     with patch.object(mod, "STT_HTTP_POOL_ENABLED", False), \
-         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+         patch("lct_python_backend.services.stt.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
         result = await smoke_test_stt_candidate(candidate, sample_rate_hz=16000, timeout_seconds=12.0)
 
     assert result["ok"] is True
@@ -563,7 +563,7 @@ async def test_transcribe_wav_stt_candidate_supports_background_openai_diarizati
     mock_client.aclose = AsyncMock()
 
     with patch.object(mod, "STT_HTTP_POOL_ENABLED", False), \
-         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+         patch("lct_python_backend.services.stt.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
         result = await transcribe_wav_stt_candidate(
             candidate,
             wav_payload=pcm16le_to_wav(_pcm_bytes(0.5)),
@@ -614,7 +614,7 @@ async def test_openai_audio_local_server_sends_diarize_form_field():
     mock_client.aclose = AsyncMock()
 
     with patch.object(mod, "STT_HTTP_POOL_ENABLED", False), \
-         patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+         patch("lct_python_backend.services.stt.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
         result = await transcribe_wav_stt_candidate(
             candidate,
             wav_payload=pcm16le_to_wav(_pcm_bytes(0.5)),
@@ -703,7 +703,7 @@ async def test_unpooled_creates_per_request_client():
     mock_client.post = AsyncMock(return_value=mock_response)
     mock_client.aclose = AsyncMock()
 
-    with patch("lct_python_backend.services.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
+    with patch("lct_python_backend.services.stt.stt_http_transcriber.httpx.AsyncClient", return_value=mock_client):
         text, segments = await session._transcribe_pcm(_pcm_bytes(0.1))
         assert text == "hello"
         assert segments is None

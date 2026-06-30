@@ -25,7 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import httpx
 
 from lct_python_backend.services.env_helpers import env_bool
-from lct_python_backend.services.stt_response_parsers import (
+from .stt_response_parsers import (
     extract_diarized_segments,
     extract_openai_diarized_segments,
     extract_openrouter_transcript_text,

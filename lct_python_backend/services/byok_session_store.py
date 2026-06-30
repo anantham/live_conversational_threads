@@ -13,7 +13,7 @@ from typing import Any, Dict, Iterable, Optional, Set
 import httpx
 
 from lct_python_backend.services.llm_config import DEFAULT_OPENAI_BASE_URL
-from lct_python_backend.services.stt_config import (
+from lct_python_backend.services.stt.stt_config import (
     DEFAULT_OPENAI_AUDIO_BASE_URL,
     DEFAULT_OPENAI_AUDIO_DIARIZE_MODEL,
     DEFAULT_OPENAI_AUDIO_MODEL,
