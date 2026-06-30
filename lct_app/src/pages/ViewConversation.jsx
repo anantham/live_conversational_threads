@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { CheckCircle, Download, FileJson, Map, RefreshCw, Share2, XCircle } from "lucide-react";
 import ShareManagerModal from "../components/share/ShareManagerModal";
@@ -108,6 +108,8 @@ export default function ViewConversation() {
   const [audioDownloadUrl, setAudioDownloadUrl] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [reprocessState, setReprocessState] = useState({ status: "idle", message: "", progress: 0 });
+  const reprocessAbortRef = useRef(null);
+  useEffect(() => () => reprocessAbortRef.current?.abort(), []);
   const [participants, setParticipants] = useState([]);
   // ADR-032 Part B pattern 3: argument-scaffold trace lifted to page so
   // NodeDetail's "Trace ancestors" button can trigger it and MinimalGraph
@@ -409,11 +411,14 @@ export default function ViewConversation() {
 
   const handleReprocess = useCallback(async () => {
     if (reprocessState.status === "running") return;
+    const abort = new AbortController();
+    reprocessAbortRef.current = abort;
     setReprocessState({ status: "running", message: "Starting…", progress: 0 });
     try {
       const resp = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}/reprocess`, {
         method: "POST",
         headers: apiHeaders(),
+        signal: abort.signal,
       });
       if (resp.status === 404) {
         setReprocessState({ status: "error", message: "No stored audio for this conversation.", progress: 0 });
@@ -457,6 +462,7 @@ export default function ViewConversation() {
         }
       }
     } catch (err) {
+      if (err?.name === "AbortError") return;
       setReprocessState({ status: "error", message: err?.message || "Reprocess failed.", progress: 0 });
     }
   }, [conversationId, reprocessState.status]);
