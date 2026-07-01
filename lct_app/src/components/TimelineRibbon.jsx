@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { buildSpeakerColorMap } from "./graphConstants";
 import {
   buildRibbonLayout,
+  buildTimeAxisTicks,
   formatSecondsToTimestamp,
   UNGROUPED_KEY,
 } from "./timelineRibbonLayout";
@@ -16,6 +17,7 @@ import {
 const ROW_HEIGHT = 30; // px per thread lane
 const LABEL_GUTTER_W = 96; // px for the sticky thread-label column
 const MAX_VISIBLE_ROWS = 6; // beyond this the lane stack scrolls vertically
+const RULER_H = 18; // px band under the lanes for the time-axis ruler (time mode)
 
 export default function TimelineRibbon({
   graphData,
@@ -38,9 +40,15 @@ export default function TimelineRibbon({
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(allNodes), [allNodes]);
 
   const layout = useMemo(() => buildRibbonLayout(allNodes), [allNodes]);
-  const { rows, totalWidth, timeBased, span } = layout;
+  const { rows, totalWidth, timeBased, span, pixelsPerSecond } = layout;
   const totalDurationLabel =
     timeBased && span ? formatSecondsToTimestamp(span.max - span.min) : null;
+
+  // Visible time-axis ruler ticks (time mode only).
+  const ticks = useMemo(
+    () => buildTimeAxisTicks(span, pixelsPerSecond),
+    [span, pixelsPerSecond],
+  );
 
   // Flat id -> {x, ts} lookup for scroll-to-selected.
   const placedById = useMemo(() => {
@@ -97,10 +105,33 @@ export default function TimelineRibbon({
     setHighlightedThread((prev) => (prev === threadId ? null : threadId));
   }, []);
 
+  // Step selection through a thread's nodes in time order, wrapping around. The
+  // scroll-to-selected effect then centres the new pick. With nothing selected,
+  // › lands on the first node and ‹ on the last.
+  const cycleWithinThread = useCallback(
+    (threadId, dir) => {
+      const row = rows.find((r) => r.threadId === threadId);
+      if (!row || row.nodes.length === 0) return;
+      const ids = row.nodes.map((n) => n.id);
+      const cur = ids.indexOf(selectedNode);
+      const nextIdx =
+        cur === -1
+          ? dir > 0
+            ? 0
+            : ids.length - 1
+          : (cur + dir + ids.length) % ids.length;
+      setSelectedNode(() => ids[nextIdx]);
+    },
+    [rows, selectedNode, setSelectedNode],
+  );
+
   if (rows.length === 0) return null;
 
   const stackHeight = rows.length * ROW_HEIGHT;
-  const maxHeight = Math.min(rows.length, MAX_VISIBLE_ROWS) * ROW_HEIGHT + 4;
+  const rulerH = timeBased && ticks.length > 0 ? RULER_H : 0;
+  const contentHeight = stackHeight + rulerH;
+  const maxHeight =
+    Math.min(rows.length, MAX_VISIBLE_ROWS) * ROW_HEIGHT + rulerH + 4;
 
   return (
     <div
@@ -108,33 +139,60 @@ export default function TimelineRibbon({
       style={{ maxHeight: `${maxHeight}px` }}
     >
       {/* Thread-label gutter (not horizontally scrolled). Click a label to
-          highlight that thread; click again or press Escape to clear. */}
+          highlight that thread; click again or press Escape to clear. When a
+          thread is highlighted, ‹ › step selection through its nodes in time. */}
       <div
         className="shrink-0 border-r border-gray-100"
-        style={{ width: `${LABEL_GUTTER_W}px`, height: `${stackHeight}px` }}
+        style={{ width: `${LABEL_GUTTER_W}px`, height: `${contentHeight}px` }}
       >
         {rows.map((row) => {
           const active = highlightedThread === row.threadId;
           const isUngrouped = row.threadId === UNGROUPED_KEY;
           return (
-            <button
+            <div
               key={row.threadId}
-              type="button"
-              onClick={() => toggleThread(row.threadId)}
-              title={`${row.label} — ${row.count} node${row.count === 1 ? "" : "s"}${
-                isUngrouped ? " (no thread)" : ""
-              }`}
-              className={`flex h-[30px] w-full items-center gap-1 px-2 text-left text-[10px] leading-none transition ${
-                active
-                  ? "bg-blue-50 text-blue-700 font-semibold"
-                  : isUngrouped
-                  ? "text-gray-400 hover:bg-gray-50"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
+              className={`flex h-[30px] w-full items-center ${active ? "bg-blue-50" : ""}`}
             >
-              <span className="truncate">{row.label}</span>
-              <span className="ml-auto shrink-0 text-[9px] text-gray-400">{row.count}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => toggleThread(row.threadId)}
+                title={`${row.label} — ${row.count} node${row.count === 1 ? "" : "s"}${
+                  isUngrouped ? " (no thread)" : ""
+                }`}
+                className={`flex h-full min-w-0 flex-1 items-center gap-1 px-2 text-left text-[10px] leading-none transition ${
+                  active
+                    ? "text-blue-700 font-semibold"
+                    : isUngrouped
+                    ? "text-gray-400 hover:bg-gray-50"
+                    : "text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                <span className="truncate">{row.label}</span>
+                <span className="ml-auto shrink-0 text-[9px] text-gray-400">{row.count}</span>
+              </button>
+              {active && row.nodes.length > 1 ? (
+                <span className="flex shrink-0 items-center">
+                  <button
+                    type="button"
+                    onClick={() => cycleWithinThread(row.threadId, -1)}
+                    title="Previous node in this thread"
+                    aria-label={`Previous node in ${row.label}`}
+                    className="px-0.5 text-[12px] leading-none text-blue-600 hover:text-blue-800"
+                  >
+                    ‹
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => cycleWithinThread(row.threadId, 1)}
+                    title="Next node in this thread"
+                    aria-label={`Next node in ${row.label}`}
+                    className="pl-0.5 pr-1 text-[12px] leading-none text-blue-600 hover:text-blue-800"
+                  >
+                    ›
+                  </button>
+                </span>
+              ) : null}
+            </div>
           );
         })}
       </div>
@@ -146,7 +204,7 @@ export default function TimelineRibbon({
         className="flex-1 overflow-x-auto overflow-y-hidden"
         style={{ scrollBehavior: "smooth" }}
       >
-        <div className="relative" style={{ width: `${totalWidth}px`, minWidth: "100%", height: `${stackHeight}px` }}>
+        <div className="relative" style={{ width: `${totalWidth}px`, minWidth: "100%", height: `${contentHeight}px` }}>
           {rows.map((row, rowIdx) => {
             const dimmed = highlightedThread && highlightedThread !== row.threadId;
             const rowTop = rowIdx * ROW_HEIGHT;
@@ -163,6 +221,23 @@ export default function TimelineRibbon({
                   className="absolute h-px bg-gray-200"
                   style={{ left: `${firstX}px`, top: `${ROW_HEIGHT / 2}px`, width: `${Math.max(0, lastX - firstX)}px` }}
                 />
+                {/* Return arcs: a dotted connector bridging each dormant gap,
+                    lifted above the solid lane line so the resumption reads. */}
+                {row.nodes.map((node) =>
+                  node.isReturn && Number.isFinite(node.returnFromX) ? (
+                    <div
+                      key={`arc-${node.id}`}
+                      className="absolute border-t border-dashed border-slate-400"
+                      style={{
+                        left: `${node.returnFromX}px`,
+                        top: `${ROW_HEIGHT / 2 - 4}px`,
+                        width: `${Math.max(0, node.x - node.returnFromX)}px`,
+                        height: 0,
+                      }}
+                      aria-hidden="true"
+                    />
+                  ) : null,
+                )}
                 {row.nodes.map((node) => {
                   const isSelected = selectedNode === node.id;
                   const isHovered = hoveredId === node.id;
@@ -225,6 +300,31 @@ export default function TimelineRibbon({
               </div>
             );
           })}
+
+          {/* Time-axis ruler (time mode) — ticks share the dot x-axis and scroll
+              with them; labels are elapsed time from the start of the span. */}
+          {rulerH > 0 ? (
+            <div
+              className="absolute left-0 border-t border-gray-200"
+              style={{ top: `${stackHeight}px`, height: `${RULER_H}px`, width: `${totalWidth}px` }}
+              aria-hidden="true"
+            >
+              {ticks.map((tick) => (
+                <div key={tick.seconds}>
+                  <div
+                    className="absolute w-px bg-gray-300"
+                    style={{ left: `${tick.x}px`, top: 0, height: "6px" }}
+                  />
+                  <span
+                    className="absolute whitespace-nowrap text-[8px] leading-none text-gray-400"
+                    style={{ left: `${tick.x}px`, top: "8px", transform: "translateX(-50%)" }}
+                  >
+                    {tick.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
 

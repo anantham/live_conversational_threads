@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildRibbonLayout,
+  buildTimeAxisTicks,
   getNodeTimestamp,
   threadKey,
   threadLabel,
@@ -139,6 +140,58 @@ describe("buildRibbonLayout — return-to-thread", () => {
     ];
     const out = buildRibbonLayout(nodes);
     expect(out.rows[0].nodes.every((n) => n.isReturn === false)).toBe(true);
+  });
+
+  it("records returnFromX (the paused node's x) on the resumed node only", () => {
+    const nodes = [
+      { id: "a", thread_id: "t1", timestamp_start: 0 },
+      { id: "c", thread_id: "t1", timestamp_start: 200 }, // 200s gap -> return
+      { id: "x", thread_id: "t2", timestamp_start: 100 }, // keeps it time-based + 2 threads
+    ];
+    const out = buildRibbonLayout(nodes, { returnGapSeconds: 60, minDotSpacing: 1 });
+    const row = out.rows.find((r) => r.threadId === "t1");
+    const [a, c] = row.nodes;
+    expect(c.isReturn).toBe(true);
+    expect(c.returnFromX).toBeCloseTo(a.x, 6);
+    // non-return nodes carry no arc anchor
+    expect(a.returnFromX).toBeUndefined();
+  });
+});
+
+describe("buildTimeAxisTicks", () => {
+  it("returns [] outside time mode", () => {
+    expect(buildTimeAxisTicks(null, 1)).toEqual([]);
+    expect(buildTimeAxisTicks({ min: 0, max: 0 }, 1)).toEqual([]); // zero duration
+    expect(buildTimeAxisTicks({ min: 0, max: 100 }, 0)).toEqual([]); // non-positive pps
+    expect(buildTimeAxisTicks({ min: 0, max: 100 }, null)).toEqual([]);
+  });
+
+  it("first tick is elapsed 0 anchored at railStart", () => {
+    const ticks = buildTimeAxisTicks({ min: 30, max: 330 }, 2, {
+      railStart: 24,
+      targetSpacingPx: 80,
+    });
+    expect(ticks[0]).toMatchObject({ seconds: 0, x: 24, label: "00:00" });
+  });
+
+  it("snaps to a nice step >= targetSpacing/pps and covers the span", () => {
+    // pps=2, target=80 -> rawStep=40 -> nice step 60. duration=300 -> 6 ticks.
+    const ticks = buildTimeAxisTicks({ min: 0, max: 300 }, 2, {
+      railStart: 0,
+      targetSpacingPx: 80,
+    });
+    expect(ticks.map((t) => t.seconds)).toEqual([0, 60, 120, 180, 240, 300]);
+    expect(ticks[1].x - ticks[0].x).toBeCloseTo(120, 6); // step(60s) * pps(2)
+    expect(ticks[ticks.length - 1].label).toBe("05:00");
+  });
+
+  it("honours maxTicks so a huge span can't explode the ruler", () => {
+    const ticks = buildTimeAxisTicks({ min: 0, max: 1e9 }, 1000, {
+      railStart: 0,
+      targetSpacingPx: 80,
+      maxTicks: 5,
+    });
+    expect(ticks.length).toBe(5);
   });
 });
 
