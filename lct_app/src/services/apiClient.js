@@ -92,7 +92,16 @@ export async function apiFetch(path, options = {}) {
   apiDebug.info(`[API ->] ${method} ${url}`);
   try {
     const response = await fetch(url, { ...options, headers });
-    recordBackendReachable();
+    // A readable HTTP response means the backend is reachable — EXCEPT a 401, which is
+    // a persistent auth reject. Now that the backend attaches CORS headers to 401s (so
+    // the browser reads them instead of seeing "failed to fetch"), a bad/expired token
+    // would otherwise stop tripping the breaker and the request storm would return;
+    // count consecutive 401s toward it.
+    if (response.status === 401) {
+      recordBackendUnreachable();
+    } else {
+      recordBackendReachable();
+    }
     if (apiDebug.enabled) {
       let preview = '';
       try {
