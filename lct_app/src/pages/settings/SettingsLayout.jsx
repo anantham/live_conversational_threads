@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 const navLinkClassName = ({ isActive }) =>
   `rounded-full px-4 py-2 text-sm font-medium transition ${
     isActive
-      ? "bg-blue-600 text-white shadow-sm"
+      ? "bg-gray-900 text-white shadow-sm"
       : "bg-white text-gray-600 hover:bg-gray-100 hover:text-gray-800"
   }`;
 
@@ -16,7 +16,7 @@ export default function SettingsLayout() {
         <div className="space-y-4">
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center text-blue-600 hover:text-blue-800"
+            className="flex items-center text-gray-500 transition hover:text-gray-900"
             type="button"
           >
             ← Back

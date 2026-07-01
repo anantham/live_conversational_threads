@@ -1,13 +1,53 @@
 import { useMemo, useState } from "react";
 
 import SttCloudFallbackFields from "../SttCloudFallbackFields";
-import SttFallbackOrderFields from "../SttFallbackOrderFields";
-import { formatProviderLabel } from "../audio/sttUtils";
+import { formatProviderLabel, LIVE_FALLBACK_ROUTE_OPTIONS } from "../audio/sttUtils";
 import DisclosureSection from "./DisclosureSection";
+import RankedEngineList from "./RankedEngineList";
 import { buildSttSummary } from "./settingsSummary";
 import SttDiagnosticsPanel from "./SttDiagnosticsPanel";
 import SttEndpointFields from "./SttEndpointFields";
 import useSttSettingsForm from "./useSttSettingsForm";
+
+// Friendly labels for the live fallback ROUTES (a different vocabulary from the
+// primary engine — see ADR-061). Option A keeps the route model in the backend
+// and WS contract; this only changes how STT is presented in Settings.
+const ROUTE_LABELS = {
+  remote_whisper: { name: "Remote Whisper", meta: "backend HTTP · diarizes" },
+  external_http: { name: "External HTTP", meta: "generic endpoint · text-only" },
+  openai_audio: { name: "OpenAI Audio", meta: "cloud · diarizes" },
+  openrouter_audio: { name: "OpenRouter Audio", meta: "cloud · text-only" },
+};
+
+// A fallback route only actually runs when its config exists (mirrors the
+// backend's candidate-build checks in stt_live_provider_selection.py). Grey a
+// route with the reason when it can't serve, so the list doesn't imply a route
+// will run when it won't.
+function routeEligibility(rid, form) {
+  const provider = String(form?.provider || "").toLowerCase();
+  const httpUrls = form?.provider_http_urls || {};
+  const cloud = form?.cloud_fallback_providers || {};
+  const cloudOn = Boolean(form?.live_cloud_fallback_enabled);
+  if (rid === "remote_whisper") {
+    if (provider === "whisper") return { disabled: true, reason: "skipped while Whisper is primary" };
+    return httpUrls.whisper
+      ? { disabled: false }
+      : { disabled: true, reason: "needs a Whisper HTTP URL (Manage endpoints)" };
+  }
+  if (rid === "external_http") {
+    return form?.external_fallback_http_url
+      ? { disabled: false }
+      : { disabled: true, reason: "needs an External HTTP URL" };
+  }
+  if (rid === "openai_audio" || rid === "openrouter_audio") {
+    if (!cloudOn) return { disabled: true, reason: "enable cloud fallback below" };
+    const p = cloud[rid] || {};
+    return p.enabled && p.base_url && p.model
+      ? { disabled: false }
+      : { disabled: true, reason: `configure & enable ${ROUTE_LABELS[rid].name}` };
+  }
+  return { disabled: false };
+}
 
 const buildCloudProvidersSummary = (form = {}) => {
   const providers = form?.cloud_fallback_providers || {};
@@ -32,7 +72,6 @@ export default function SttSettingsCard() {
     handleCloudProviderClearToggle,
     handleCloudProviderFieldChange,
     handleCloudProviderTest,
-    handleFallbackPriorityMove,
     handleProviderHttpUrlChange,
     handleProviderUrlChange,
     handleSave,
@@ -44,6 +83,41 @@ export default function SttSettingsCard() {
   const [openSection, setOpenSection] = useState(null);
 
   const sttSummary = useMemo(() => buildSttSummary(form || settings || {}), [form, settings]);
+
+  // Primary engine options: whatever the form already knows about, so this stays
+  // data-driven without a catalog round-trip.
+  const engineOptions = useMemo(() => {
+    const ids = new Set();
+    if (form?.provider) ids.add(String(form.provider));
+    Object.keys(form?.provider_http_urls || {}).forEach((k) => ids.add(k));
+    Object.keys(form?.provider_urls || {}).forEach((k) => ids.add(k));
+    return [...ids].filter(Boolean);
+  }, [form]);
+
+  // Fallback ROUTES as a unified ranked list (pure reorder — no primary among
+  // them; the primary is the engine dropdown above). Cloud routes grey out when
+  // cloud fallback is off. Writes back the existing live_fallback_priority field.
+  const routeItems = useMemo(() => {
+    const order =
+      Array.isArray(form?.live_fallback_priority) && form.live_fallback_priority.length
+        ? form.live_fallback_priority
+        : LIVE_FALLBACK_ROUTE_OPTIONS;
+    return order.map((rid) => {
+      const info = ROUTE_LABELS[rid] || { name: rid, meta: "" };
+      const { disabled, reason } = routeEligibility(rid, form);
+      return {
+        id: rid,
+        name: info.name,
+        meta: info.meta,
+        status: disabled ? "idle" : "ok",
+        disabled,
+        disabledReason: disabled ? reason : undefined,
+      };
+    });
+  }, [form]);
+
+  const handleRouteReorder = (order) =>
+    handleChange("live_fallback_priority")({ target: { value: order } });
 
   if (loading) {
     return (
@@ -101,73 +175,77 @@ export default function SttSettingsCard() {
         </p>
       ) : null}
 
-      <section className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-        <p className="text-sm font-medium text-slate-900">
-          Primary engine: {formatProviderLabel(form?.provider || "whisper")}
-        </p>
-        <p className="mt-1 text-xs text-slate-600">
-          This engine always runs first for live transcription. To change it, use{" "}
-          <span className="font-medium">Active engines</span> at the top of this page. The fallback
-          routes below only run after it fails or times out mid-session.
-        </p>
-      </section>
-
-      <label className="flex items-center gap-2 text-sm text-gray-700">
-        <input
-          type="checkbox"
-          checked={Boolean(form?.store_audio)}
-          onChange={handleChange("store_audio")}
-          className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
-        />
-        <span>Record audio (save for later use)</span>
-      </label>
-
-      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <div className="space-y-3">
-          <div className="space-y-1 text-sm text-gray-700">
-            <span className="block">Primary engine</span>
-            <div className="flex items-center justify-between rounded border border-gray-200 bg-gray-50 px-3 py-2">
-              <span className="font-medium text-gray-800">
-                {formatProviderLabel(form?.provider || "whisper")}
-              </span>
-              <span className="text-xs text-gray-400">read-only</span>
-            </div>
-            <p className="text-xs text-gray-500">
-              Change the engine in <span className="font-medium">Active engines ↑</span>
-            </p>
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={Boolean(form?.local_only)}
-              onChange={handleChange("local_only")}
-              className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
-            />
-            <span>Local-only (never send audio to the cloud)</span>
-          </label>
-
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input
-              type="checkbox"
-              checked={Boolean(form?.live_cloud_fallback_enabled)}
-              onChange={handleCloudFallbackFlagChange("live_cloud_fallback_enabled")}
-              className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
-            />
-            <span>Allow cloud fallback if local engines fail</span>
-          </label>
-
-          <div className="flex flex-wrap gap-2 text-xs">
-            <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-600">
-              Local-only: {form?.local_only ? "on" : "off"}
-            </span>
-            <span className="rounded-full bg-gray-100 px-2 py-1 text-gray-600">
-              Cloud fallback: {form?.live_cloud_fallback_enabled ? "on" : "off"}
-            </span>
-          </div>
+      {/* Live order (Option A, ADR-061): the primary engine and its fallback routes
+          presented as one top-to-bottom flow. Writes the existing provider +
+          live_fallback_priority fields; backend / WS contract are untouched. */}
+      <section className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-4">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">Live order</h3>
+          <p className="text-xs text-slate-600">
+            Runs top to bottom: the primary engine first, then these fallback routes if it fails or
+            times out mid-session. Endpoints resolve on the backend host (your M5), not this browser.
+          </p>
         </div>
 
-        <SttFallbackOrderFields value={form} onMove={handleFallbackPriorityMove} />
+        <label className="block text-sm text-slate-800">
+          <span className="mb-1 block text-xs font-medium text-slate-600">
+            Primary engine — runs first
+          </span>
+          <select
+            value={form?.provider || "whisper"}
+            onChange={handleChange("provider")}
+            className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+          >
+            {engineOptions.map((id) => (
+              <option key={id} value={id}>
+                {formatProviderLabel(id)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {form?.local_only ? (
+          <p className="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500">
+            Local-only is on, so no cloud fallback routes run. Turn it off below to enable fallback.
+          </p>
+        ) : (
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-slate-600">
+              If the primary fails, fall back to — drag to reorder
+            </span>
+            <RankedEngineList items={routeItems} onReorder={handleRouteReorder} showPrimary={false} />
+          </div>
+        )}
+      </section>
+
+      <div className="space-y-2">
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={Boolean(form?.store_audio)}
+            onChange={handleChange("store_audio")}
+            className="h-4 w-4 rounded accent-gray-900"
+          />
+          <span>Record audio (save for later use)</span>
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={Boolean(form?.local_only)}
+            onChange={handleChange("local_only")}
+            className="h-4 w-4 rounded accent-gray-900"
+          />
+          <span>Local-only (never send audio to the cloud)</span>
+        </label>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={Boolean(form?.live_cloud_fallback_enabled)}
+            onChange={handleCloudFallbackFlagChange("live_cloud_fallback_enabled")}
+            className="h-4 w-4 rounded accent-gray-900"
+          />
+          <span>Allow cloud fallback if local engines fail</span>
+        </label>
       </div>
 
       <div className="space-y-3">

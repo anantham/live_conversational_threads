@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import PropTypes from 'prop-types';
 import { Loader2, Mic, RefreshCw, Sparkles, Users } from 'lucide-react';
 
 import CapabilityLane from './CapabilityLane';
@@ -19,8 +20,11 @@ function scrollToAdvanced() {
  * see model · where-it-runs · empirical speed/accuracy · cost, and live-probe each.
  * Deep fallback/endpoint/key editing stays in the Advanced cards below.
  */
-export default function InferenceLanes() {
+export default function InferenceLanes({ onAdvanced }) {
   const { catalog, loading, error, probes, refresh, probe } = useBackendCatalog();
+  // When embedded in the rail-based Settings page, the parent routes to the
+  // matching section; standalone we fall back to the legacy in-page scroll.
+  const goAdvanced = (capability) => (onAdvanced ? onAdvanced(capability) : scrollToAdvanced());
   const [sttSettings, setSttSettings] = useState(null);
   const [llmSettings, setLlmSettings] = useState(null);
   const [diarSettings, setDiarSettings] = useState(null);
@@ -312,7 +316,7 @@ export default function InferenceLanes() {
           advancedLabel="Endpoints & fallback"
           onProbe={probe}
           onSetPrimary={setSttPrimary}
-          onAdvanced={scrollToAdvanced}
+          onAdvanced={() => goAdvanced('stt')}
         />
         <CapabilityLane
           title="Diarization"
@@ -329,7 +333,7 @@ export default function InferenceLanes() {
           onProbe={probe}
           onSetPrimary={setDiarPrimary}
           onMove={moveDiarFallback}
-          onAdvanced={scrollToAdvanced}
+          onAdvanced={() => goAdvanced('diarization')}
         />
         <CapabilityLane
           title="LLM intelligence"
@@ -343,9 +347,13 @@ export default function InferenceLanes() {
           advancedLabel="Providers & models"
           onProbe={probe}
           onSetPrimary={setLlmPrimary}
-          onAdvanced={scrollToAdvanced}
+          onAdvanced={() => goAdvanced('llm')}
         />
       </div>
     </section>
   );
 }
+
+InferenceLanes.propTypes = {
+  onAdvanced: PropTypes.func,
+};

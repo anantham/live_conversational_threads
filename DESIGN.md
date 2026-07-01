@@ -299,6 +299,38 @@ source utterances with the **current line highlighted in amber**, speaker correc
 fact-check. This is where the "traceable to the utterance" principle becomes visible — the
 amber highlight is the connective tissue between the graph and the transcript.
 
+### Settings (Runtime) — the left-rail instrument
+The Runtime settings page is a **left-rail sub-navigation** (`SettingsRail`): a grouped
+vertical section list on the left, one section in the content pane on the right, collapsing
+to a scrollable pill row under `640px`. Sections run in pipeline order (Overview →
+Speech-to-text → Diarization → Intelligence → Cloud & sharing → You & device), and the
+public/serverless view collapses the rail to Overview + Cloud only.
+
+Its parts, in the calm product register:
+- **Overview is a three-tier glance.** Tier 1 (default): per-capability posture rows (active
+  model + a privacy chip — `audio: stored`, `LLM: local · private` in the supports-green, or
+  an amber-wash chip when a path leaves the device) plus a **connection meter**
+  (`ConnectionMeter`): current ping, jitter, and drop count over a rolling ~10-minute window,
+  with a dependency-free `Sparkline` and a stable / jittery / unstable verdict using the
+  semantic status colors. Tier 2 (one disclosure): failover order + live detail. Tier 3: edit
+  keys/endpoints, inside each capability section.
+- **One ranked engine list per capability** (`RankedEngineList`): the top row is the primary
+  (runs first, marked with a supports-green `PRIMARY` pill), the rest are the fallback order.
+  Drag to reorder, with up/down chevrons as the keyboard-accessible equivalent. Disabled
+  engines (not built, or cloud without a key) stay in the list, greyed, with a reason —
+  never hidden in a separate place. This replaces the older pick-here / order-there split.
+- **Cloud & sharing frames two distinct mechanisms** (backend-routed BYOK vs the serverless
+  bypass) each with a one-line data-flow trail, rather than one ambiguous key field.
+
+### Named Rule
+**The Chrome-Is-Ink Rule (settings).** Settings chrome — rail active state, primary buttons,
+tabs, links — is **ink** (`#1e293b` / `gray-900`), never a saturated blue. Saturated hue is
+reserved for the graph's semantics and the one amber accent. Status dots (green running /
+amber not-running / red offline) are the sanctioned exception: they encode state, not
+decoration. A working-by-design fallback (e.g. speaker labels coming from the STT engine when
+no separate diarizer runs) is a **calm info** line, not a ⚠ warning; reserve the warning
+treatment for a path the user selected that is actually failing.
+
 ## 6. Do's and Don'ts
 
 ### Do:
