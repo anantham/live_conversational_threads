@@ -14,7 +14,7 @@ STT_LIVE_FALLBACK_ROUTE_IDS = (
     "openrouter_audio",
 )
 DEFAULT_STT_LIVE_FALLBACK_PRIORITY = list(STT_LIVE_FALLBACK_ROUTE_IDS)
-DEFAULT_STT_PROVIDER = "whisper"
+DEFAULT_STT_PROVIDER = "parakeet"
 DEFAULT_STT_HTTP_URL = "http://localhost:5092/v1/audio/transcriptions"
 # IndrasNet orchestrator endpoint (routes local WhisperX first, then Modal fallback).
 DEFAULT_STT_WHISPER_HTTP_URL = "http://100.81.65.74:7777/api/transcribe"
