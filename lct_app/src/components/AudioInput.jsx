@@ -9,7 +9,6 @@ import { useUpload } from "../contexts/UploadContext";
 import {
   useAutoSaveConversation,
   useFilenameFromGraph,
-  useGraphDataSync,
   useMessageDismissOnClick,
 } from "./audio/useAudioInputEffects";
 import { useSttSettings } from "./audio/useSttSettings";
@@ -421,7 +420,6 @@ const AudioInput = forwardRef(function AudioInput({
 
   // --- Existing extracted effects (unchanged interfaces) ---
   useFilenameFromGraph({ graphData, fileNameWasReset, lastAutoSaveRef, setFileName });
-  useGraphDataSync({ graphData, graphDataFromSocket, backendWsRef, logToServer });
   useAutoSaveConversation({
     graphData,
     chunkDict,
