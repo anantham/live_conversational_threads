@@ -87,8 +87,13 @@ _scoped_allow_hosts: contextvars.ContextVar[tuple[str, ...]] = contextvars.Conte
 def import_egress_allow(host_globs):
     """Temporarily permit egress to ``host_globs`` (fnmatch globs) for this context only.
 
-    Scoped to the current context, NOT the global env — the allowlist is reset
-    when the block exits and cannot affect any other outbound call.
+    Scoped to the current context, NOT the global env — the allowlist is reset when
+    the block exits and cannot affect any other (sequential) outbound call.
+
+    CAVEAT: do NOT spawn asyncio tasks (``create_task`` / ``TaskGroup``) inside the
+    block. A child task copies the ContextVar at creation time and would RETAIN the
+    allowlist after the block exits. The gdoc fetcher awaits httpx directly in the
+    same task, so it is safe; keep any future caller task-free inside the block.
     """
     normalized = tuple(g.strip().lower() for g in (host_globs or ()) if g and g.strip())
     token = _scoped_allow_hosts.set(normalized)

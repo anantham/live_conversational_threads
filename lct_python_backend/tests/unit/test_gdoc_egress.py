@@ -110,11 +110,25 @@ def test_hop_gate_blocks_off_allowlist(monkeypatch):
 
 
 def test_hop_gate_blocks_internal_ip_for_real():
-    # 169.254.169.254 (cloud metadata IMDS) is a literal link-local IP → blocked by
-    # the REAL public-host check, no DNS needed → hermetic. Proves the SSRF gate even
-    # if the allowlist glob were somehow bypassed.
+    # 169.254.169.254 (cloud metadata IMDS) is a literal link-local IP → blocked by the
+    # REAL public-host check, no DNS needed → hermetic. https so it reaches that check
+    # (the scheme gate would otherwise short-circuit an http URL first).
     with pytest.raises(HTTPException):
-        fetch._assert_gdoc_hop_allowed("http://169.254.169.254/latest/meta-data/")
+        fetch._assert_gdoc_hop_allowed("https://169.254.169.254/latest/meta-data/")
+
+
+def test_hop_gate_rejects_non_https():
+    with pytest.raises(HTTPException):
+        fetch._assert_gdoc_hop_allowed("http://docs.google.com/document/d/A/export")
+
+
+def test_host_allowlist_rejects_lookalikes():
+    assert fetch._host_is_allowed_gdoc("docs.google.com") is True
+    assert fetch._host_is_allowed_gdoc("x.googleusercontent.com") is True
+    assert fetch._host_is_allowed_gdoc("docs.google.com.attacker.com") is False
+    assert fetch._host_is_allowed_gdoc("notgoogleusercontent.com") is False
+    assert fetch._host_is_allowed_gdoc("googleusercontent.com") is False  # needs a subdomain
+    assert fetch._host_is_allowed_gdoc("evil.com") is False
 
 
 # --- download_gdoc_text: redirect-follow, hermetic via MockTransport --------
@@ -147,8 +161,31 @@ def test_download_blocks_redirect_off_allowlist(monkeypatch):
 
     def handler(request):
         if request.url.host == "docs.google.com":
-            return httpx.Response(302, headers={"location": "http://169.254.169.254/latest/"})
+            return httpx.Response(302, headers={"location": "https://169.254.169.254/latest/"})
         return httpx.Response(200, headers={"content-type": "text/plain"}, text="secret")
+
+    with pytest.raises(HTTPException):
+        _run_download(handler, monkeypatch)
+
+
+def test_download_blocks_http_downgrade_redirect(monkeypatch):
+    """A redirect that downgrades to http (even on an allowlisted host) is refused."""
+
+    def handler(request):
+        return httpx.Response(302, headers={"location": "http://x.googleusercontent.com/doc"})
+
+    with pytest.raises(HTTPException):
+        _run_download(handler, monkeypatch)
+
+
+def test_download_rejects_missing_content_type(monkeypatch):
+    """A 200 with NO Content-Type header is rejected (not assumed to be the doc body)."""
+
+    def handler(request):
+        if request.url.host == "docs.google.com":
+            return httpx.Response(302, headers={"location": "https://x.googleusercontent.com/doc"})
+        # content= (bytes) does not auto-set a Content-Type, unlike text=
+        return httpx.Response(200, content=b"body with no content-type header")
 
     with pytest.raises(HTTPException):
         _run_download(handler, monkeypatch)
