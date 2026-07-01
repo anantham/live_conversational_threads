@@ -1,6 +1,35 @@
 # ISSUES
 
-Last updated: 2026-06-23
+Last updated: 2026-07-01
+
+## 2026-07-01 — SSRF: resolve-then-connect DNS-rebind TOCTOU in URL/gdoc fetchers (KNOWN RESIDUAL, deferred)
+
+**Summary:** Surfaced by an adversarial SSRF review of the gdoc-egress fetcher (PR #140,
+ADR-059 PR-2 core). Both URL-import fetchers validate the target host by resolving DNS and
+rejecting internal IPs, then let `httpx` open the connection — which **re-resolves DNS at
+connect time**. A poisoned/rebinding resolver (or short-TTL flip) can return a public IP at
+check time and an internal IP (loopback / RFC1918 / `169.254.169.254` IMDS) at connect time
+— the classic resolve-then-connect SSRF bypass.
+
+- `services/import_pipeline/import_fetchers.py::download_url_text` (pre-existing).
+- `services/import_pipeline/import_fetchers.py::download_gdoc_text` (added in #140).
+
+Both call `assert_url_resolves_to_public_host(url)` (`import_validation.py`), a resolve-once check.
+
+**Why deferred (not a blocker):** Not a regression — `download_url_text` shipped with this
+pattern and is gated behind `ENABLE_URL_IMPORT` (default off). `download_gdoc_text`
+additionally restricts to a `docs.google.com` / `*.googleusercontent.com` allowlist +
+https-only + per-hop re-validation, so an attacker would need to control DNS for Google's
+own domains.
+
+**Fix (shared, both fetchers):** Pin the validated IP into the connection so check-time and
+connect-time addresses can't diverge — a custom `httpx` transport/resolver that resolves
+once, validates every returned address is public, and connects to the pinned IP with the
+correct `Host` header + TLS SNI. Apply on every redirect hop. Acceptance: a rebinding test
+(public IP at check, `127.0.0.1` / `169.254.169.254` at connect) → fetch refused; no behavior
+change for legitimate public hosts or the gdoc export redirect chain.
+
+cf ADR-059 (gdoc double-block), ADR-034 (egress chokepoint), `import_validation.assert_url_resolves_to_public_host`.
 
 ## 2026-06-20 — Auth-reject CORS masking + cold-start gate false-negative + retry storm (FIXED 2026-06-23)
 
