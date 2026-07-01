@@ -228,6 +228,16 @@ lct_app = FastAPI(
 
 cors_origins, cors_origin_regex = _resolve_cors_origins()
 
+# P0 Security middleware (auth, rate limits, body size limits, SSRF gate)
+configure_p0_security(lct_app)
+
+# CORS is added LAST so it is the OUTERMOST middleware. add_middleware prepends, so
+# the final add wraps everything else — load-bearing: it ensures responses that
+# short-circuit INSIDE the security stack (a 401 from AuthMiddleware, a 429 from the
+# rate limiter, a 413 from the body-size guard) still carry Access-Control-Allow-Origin.
+# Otherwise the browser blocks the header-less reject and reports a misleading
+# "CORS / backend unreachable" instead of the real status (ISSUES.md: auth-reject CORS
+# masking). See tests/unit/test_cors_on_error.py.
 lct_app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -237,13 +247,10 @@ lct_app.add_middleware(
     allow_headers=["*"],
 )
 logger.info(
-    "[SECURITY] CORS configured with origins=%s regex=%s",
+    "[SECURITY] CORS configured (outermost) with origins=%s regex=%s",
     cors_origins,
     cors_origin_regex or "-",
 )
-
-# P0 Security middleware (auth, rate limits, body size limits, SSRF gate)
-configure_p0_security(lct_app)
 
 # Production hardening (previously defined in security_config but never wired —
 # surface-tech-debt review 2026-05-30). Safe in development: the benign response
