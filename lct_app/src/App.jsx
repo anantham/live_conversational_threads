@@ -28,20 +28,41 @@ export default function App() {
 
   const probeBackend = useCallback(async () => {
     setBackendState("checking");
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 6000);
-    try {
-      const resp = await apiFetch("/api/import/health", {
-        signal: controller.signal,
-      });
-      setBackendState(resp.ok ? "online" : "offline");
-    } catch (err) {
-      // AbortError = our 6s timeout fired → host unreachable (off Tailscale).
-      // Any other error = fast TCP failure → backend process is down.
-      setBackendState(err.name === "AbortError" ? "unreachable" : "offline");
-    } finally {
-      clearTimeout(timer);
+    // A cold Tailscale (DERP) handshake can take several seconds on the first hit,
+    // so a single short probe false-negatives into the BetaGate; a retry succeeds
+    // once the path is warm. Probe up to 3× — a generous first timeout for the cold
+    // handshake, then quick backoff retries — before showing the gate.
+    const attempts = [
+      { timeout: 12000, delayBefore: 0 },
+      { timeout: 6000, delayBefore: 700 },
+      { timeout: 6000, delayBefore: 1500 },
+    ];
+    let lastReason = "unreachable";
+    for (const { timeout, delayBefore } of attempts) {
+      if (delayBefore) {
+        await new Promise((resolve) => setTimeout(resolve, delayBefore));
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeout);
+      try {
+        const resp = await apiFetch("/api/import/health", {
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        if (resp.ok) {
+          setBackendState("online");
+          return;
+        }
+        // Reachable but health not OK (e.g. mid-restart 5xx) — retry, then gate.
+        lastReason = "offline";
+      } catch (err) {
+        clearTimeout(timer);
+        // AbortError = our timeout fired → host still cold/unreachable (off
+        // Tailscale). Any other error = fast TCP failure → backend process down.
+        lastReason = err.name === "AbortError" ? "unreachable" : "offline";
+      }
     }
+    setBackendState(lastReason);
   }, []);
 
   useEffect(() => {
