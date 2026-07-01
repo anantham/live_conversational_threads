@@ -28,6 +28,35 @@ const AUTH_TOKEN = import.meta.env.VITE_AUTH_TOKEN || '';
 const apiDebug = makeDebug('api');
 const TRACE_PREVIEW_CHARS = 500;
 
+// ── Circuit breaker for the fetch layer ──────────────────────────────────────
+// When the backend is unreachable — genuinely down, off-Tailscale, or returning
+// auth rejects without CORS headers (which the browser surfaces as "failed to
+// fetch") — a page full of components each fires a request, producing a storm with
+// no backoff (the ~185-request incident). After a few consecutive network failures
+// the circuit opens: further calls fail fast for a cooldown window instead of
+// hitting the network. The first call after cooldown probes (half-open); any real
+// HTTP response closes it again.
+const CB_FAILURE_THRESHOLD = 4;
+const CB_COOLDOWN_MS = 10000;
+let cbConsecutiveFailures = 0;
+let cbOpenUntil = 0;
+
+function circuitShouldFailFast() {
+  return Date.now() < cbOpenUntil;
+}
+
+function recordBackendReachable() {
+  cbConsecutiveFailures = 0;
+  cbOpenUntil = 0;
+}
+
+function recordBackendUnreachable() {
+  cbConsecutiveFailures += 1;
+  if (cbConsecutiveFailures >= CB_FAILURE_THRESHOLD) {
+    cbOpenUntil = Date.now() + CB_COOLDOWN_MS;
+  }
+}
+
 /**
  * Returns headers object with auth token if configured.
  * Merges with any extra headers provided.
@@ -51,9 +80,19 @@ export async function apiFetch(path, options = {}) {
   const url = `${API_BASE_URL}${path}`;
   const headers = apiHeaders(options.headers || {});
   const method = String(options.method || 'GET').toUpperCase();
+  if (circuitShouldFailFast()) {
+    // Backend has failed repeatedly — don't add to the storm. Fail fast; the
+    // cooldown lets the next call probe for recovery.
+    const offline = new Error(
+      `Backend unreachable${API_BASE_URL ? ` at ${API_BASE_URL}` : ''} (backing off after repeated failures).`
+    );
+    offline.name = 'BackendOfflineError';
+    throw offline;
+  }
   apiDebug.info(`[API ->] ${method} ${url}`);
   try {
     const response = await fetch(url, { ...options, headers });
+    recordBackendReachable();
     if (apiDebug.enabled) {
       let preview = '';
       try {
@@ -85,6 +124,11 @@ export async function apiFetch(path, options = {}) {
     const isNetworkDown =
       error instanceof TypeError && /failed to fetch/i.test(error.message);
     const isAborted = error?.name === 'AbortError';
+    if (isNetworkDown) {
+      // Counts toward tripping the breaker. Aborts (caller timeouts) don't — they
+      // aren't a definitive backend-down signal.
+      recordBackendUnreachable();
+    }
     if (apiDebug.enabled) {
       if (isNetworkDown) {
         apiDebug.warn(
