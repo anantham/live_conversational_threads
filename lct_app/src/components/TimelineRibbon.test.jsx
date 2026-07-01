@@ -83,4 +83,38 @@ describe("TimelineRibbon render", () => {
     expect(container.querySelectorAll('button[aria-label]').length).toBe(2);
     expect(container.textContent).toContain("ungrouped");
   });
+
+  it("renders a time-axis ruler with an elapsed-zero tick in time mode", () => {
+    render({ graphData: threadedGraph, selectedNode: null });
+    // The span is 0..300s, so the ruler emits a "00:00" tick label as visible
+    // text (dot tooltips keep their timestamps in the title attribute only).
+    expect(container.textContent).toContain("00:00");
+  });
+
+  it("reveals ‹ › controls when a thread is highlighted and steps selection", () => {
+    const setSelectedNode = vi.fn();
+    render({ graphData: threadedGraph, selectedNode: null, setSelectedNode });
+    // No cycling controls until a thread is highlighted.
+    expect(container.querySelector('button[aria-label^="Next node"]')).toBeNull();
+
+    // Click the vision lane label (a gutter button has no aria-label; dots do).
+    const visionLabel = [...container.querySelectorAll("button")].find(
+      (b) => !b.getAttribute("aria-label") && b.textContent.includes("vision"),
+    );
+    expect(visionLabel).not.toBeNull();
+    act(() => {
+      visionLabel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const next = container.querySelector('button[aria-label^="Next node"]');
+    expect(next).not.toBeNull();
+    act(() => {
+      next.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    // With nothing selected, › lands on the first vision node (a1). The handler
+    // passes an updater, so resolve it to check the target.
+    expect(setSelectedNode).toHaveBeenCalledTimes(1);
+    const updater = setSelectedNode.mock.calls[0][0];
+    expect(updater(null)).toBe("a1");
+  });
 });

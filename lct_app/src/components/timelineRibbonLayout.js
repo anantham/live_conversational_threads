@@ -143,9 +143,14 @@ export function buildRibbonLayout(nodes, opts = {}) {
         Number.isFinite(prev.ts) &&
         e.ts - prev.ts > returnGapSeconds;
 
+      const node = { ...e.node, x, isReturn, ts: e.ts };
+      // The resumed node remembers where its thread paused, so the view can draw
+      // a dotted "return arc" bridging the dormant gap.
+      if (isReturn && Number.isFinite(prevX)) node.returnFromX = prevX;
+
       prev = e;
       prevX = x;
-      return { ...e.node, x, isReturn, ts: e.ts };
+      return node;
     });
 
     rows.push({ threadId: key, label: threadLabel(key), count: placed.length, nodes: placed });
@@ -184,4 +189,43 @@ export function formatSecondsToTimestamp(rawSeconds) {
     return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   }
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+// "Nice" tick intervals (seconds) — the ruler snaps to the smallest of these
+// that keeps ticks at least ~targetSpacingPx apart, so labels never crowd.
+const NICE_STEP_SECONDS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800];
+
+/**
+ * Build evenly-spaced ticks for the visible time-axis ruler. Tick x-positions
+ * match the dot positions (same railStart + pixelsPerSecond), and labels are
+ * elapsed time from `span.min` — consistent with the dot tooltips. Returns an
+ * empty array outside time mode (no span, non-positive pps, or zero duration).
+ *
+ * @param {{min:number,max:number}|null} span
+ * @param {number|null} pixelsPerSecond
+ * @param {object} [opts]
+ * @param {number} [opts.railStart]        px before the first dot (matches layout)
+ * @param {number} [opts.targetSpacingPx]  desired px between ticks (density target)
+ * @param {number} [opts.maxTicks]         hard cap so a huge span can't explode
+ * @returns {Array<{x:number, seconds:number, label:string}>}
+ */
+export function buildTimeAxisTicks(span, pixelsPerSecond, opts = {}) {
+  const { railStart = DEFAULT_RAIL_START, targetSpacingPx = 80, maxTicks = 48 } = opts;
+  if (!span || !Number.isFinite(pixelsPerSecond) || pixelsPerSecond <= 0) return [];
+  const duration = span.max - span.min;
+  if (!(duration > 0)) return [];
+
+  const rawStep = targetSpacingPx / pixelsPerSecond; // seconds that fill targetSpacingPx
+  let step = NICE_STEP_SECONDS.find((s) => s >= rawStep);
+  if (step == null) step = Math.ceil(rawStep / 3600) * 3600; // beyond the table: whole hours
+
+  const ticks = [];
+  for (let t = 0; t <= duration + 1e-6 && ticks.length < maxTicks; t += step) {
+    ticks.push({
+      x: railStart + t * pixelsPerSecond,
+      seconds: t,
+      label: formatSecondsToTimestamp(t),
+    });
+  }
+  return ticks;
 }
