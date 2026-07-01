@@ -11,6 +11,7 @@ import asyncio
 
 import pytest
 
+from lct_python_backend.services.import_pipeline import import_bulk_graph_pass as gpass
 from lct_python_backend.services.import_pipeline import import_bulk_persistence as ibp
 
 
@@ -102,3 +103,39 @@ def test_persist_failure_raises_so_caller_handles_non_fatally(monkeypatch):
                 source_metadata={},
             )
         )
+
+
+# ---------------------------------------------------------------------------
+# The import graph pass's final flush now routes through GenerateGraphStage.
+# ---------------------------------------------------------------------------
+
+
+class _FakeProc:
+    def __init__(self, fail: bool = False):
+        self.existing_json = [{"id": "n1", "node_name": "A"}]
+        self.chunk_dict = {}
+        self.flush_calls = 0
+        self._fail = fail
+
+    async def flush(self):
+        self.flush_calls += 1
+        if self._fail:
+            raise RuntimeError("flush boom")
+
+
+def test_flush_via_pipeline_calls_processor_flush():
+    """The final graph flush still calls processor.flush() — routed through
+    GenerateGraphStage rather than called directly."""
+    proc = _FakeProc()
+    asyncio.run(gpass._flush_via_pipeline(proc))
+    assert proc.flush_calls == 1
+
+
+def test_flush_via_pipeline_reraises_on_flush_failure():
+    """A flush failure inside the stage is re-raised (not swallowed), so the import
+    worker's existing error handling / SSE error path still fires — matching the
+    prior bare `await processor.flush()`."""
+    proc = _FakeProc(fail=True)
+    with pytest.raises(Exception):
+        asyncio.run(gpass._flush_via_pipeline(proc))
+    assert proc.flush_calls == 1
