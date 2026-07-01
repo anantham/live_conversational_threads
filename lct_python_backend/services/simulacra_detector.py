@@ -21,8 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from lct_python_backend.models import Node, SimulacraAnalysis
 from lct_python_backend.services.prompt_manager import get_prompt_manager
-from lct_python_backend.services.llm_config import load_llm_config
-from lct_python_backend.services.local_llm_client import local_chat_json
+from lct_python_backend.services.llm_config import load_llm_providers
+from lct_python_backend.services.local_llm_client import chat_with_provider_fallback
 
 logger = logging.getLogger(__name__)
 
@@ -158,15 +158,23 @@ class SimulacraDetector:
             }
         )
 
-        # Route through the LLM gateway (local_chat_json) for whatever provider is
-        # configured — single path, no hardcoded model, captured by LLM telemetry.
-        config = await load_llm_config(self.db)
+        # Route through the shared provider chain (M5 gemma4 first, Asus LM Studio
+        # fallback) — same local-only chain the main graph build uses; no hardcoded
+        # model, captured by LLM telemetry.
+        providers_cfg = await load_llm_providers(self.db, include_secrets=True)
         messages = [
             {"role": "system", "content": "Detect simulacra levels and return valid JSON only."},
             {"role": "user", "content": prompt_text},
         ]
         try:
-            result = await local_chat_json(config, messages, temperature=0.2, max_tokens=1024)
+            provider_result = await chat_with_provider_fallback(
+                messages=messages,
+                providers=providers_cfg.get("providers"),
+                temperature=0.2,
+                max_tokens=1024,
+                require_json=True,
+            )
+            result = provider_result.data
             if isinstance(result, dict):
                 return {
                     "level": result.get("level", 2),

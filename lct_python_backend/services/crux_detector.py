@@ -8,19 +8,13 @@ agreement/disagreement edges — and it sets the existing ``Node.is_crux`` flag
 (which the frontend already renders amber), storing the rationale in
 ``Node.display_preferences["crux"]`` (no migration). See ADR-035.
 
-Routed through the LlmGateway (via ``local_chat_json``), which captures LLM
-telemetry (ADR-037) and never hardcodes a model — deliberately avoiding the
-gateway-bypass pattern in the other detectors (see
-docs/AUDIT_RATIONALITY_2026-05-30.md).
-
-LIMITATION: the gateway is openai-compatible only — online (Gemini) generation
-lives in ``transcript_llm_callers`` and is NOT reachable from here. When the LLM
-lane is in online mode, ``_detect`` raises ``CruxConfigurationError`` rather than
-silently posting to a likely-down local endpoint; ``analyze_conversation`` catches
-it (like any detection failure) and surfaces the message in the response's
-``error`` field, which the crux page displays. Crux runs on a local/
-openai-compatible provider; wiring it to Gemini would need a general Gemini
-chat-JSON caller, deferred as out-of-proportion for this path (see ISSUES.md).
+Routed through the shared provider chain (``chat_with_provider_fallback`` over the
+``llm_providers`` list) — the same local-only chain the main graph build uses: the
+M5 gemma4 endpoint first, the Asus LM Studio as fallback. Captures LLM telemetry
+(ADR-037), never hardcodes a model, and no longer consults the global
+``llm_config.mode`` (so it can't false-refuse when that lane is set to online).
+Chain exhaustion raises, and ``analyze_conversation`` catches it like any detection
+failure, surfacing the message in the response's ``error`` field.
 """
 
 import logging
@@ -33,19 +27,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.models import Node, Relationship
 from lct_python_backend.services.prompt_manager import get_prompt_manager
-from lct_python_backend.services.llm_config import load_llm_config
-from lct_python_backend.services.local_llm_client import local_chat_json
+from lct_python_backend.services.llm_config import load_llm_providers
+from lct_python_backend.services.local_llm_client import chat_with_provider_fallback
 
 logger = logging.getLogger("lct_backend")
 
-
-class CruxConfigurationError(ValueError):
-    """Crux can't run under the current LLM configuration (e.g. online/Gemini mode).
-
-    Raised by ``_detect``; ``analyze_conversation`` catches it with other detection
-    failures and returns the message in the response's ``error`` field (HTTP 200),
-    which the crux page surfaces to the user.
-    """
 
 CRUX_TYPES = {
     "disagreement_pivot",
@@ -168,22 +154,22 @@ class CruxDetector:
             "crux_detection",
             {"node_count": node_count, "nodes_block": nodes_block, "edges_block": edges_block},
         )
-        config = await load_llm_config(self.db)
-        # The gateway is openai-compatible only; online (Gemini) mode is not
-        # reachable from local_chat_json. Fail honestly with a clear message
-        # rather than silently posting to a (likely-down) local endpoint.
-        if str(config.get("mode") or "").lower() == "online":
-            raise CruxConfigurationError(
-                "Crux detection runs on a local/openai-compatible LLM and can't use "
-                "online (Gemini) mode. Switch the LLM lane to a local engine in "
-                "Settings → Active engines, then re-run crux analysis."
-            )
+        providers_cfg = await load_llm_providers(self.db, include_secrets=True)
         messages = [
             {"role": "system", "content": "You identify cruxes in conversations and return valid JSON only."},
             {"role": "user", "content": prompt_text},
         ]
-        data = await local_chat_json(config, messages, temperature=0.2, max_tokens=2048)
-        return parse_crux_response(data)
+        # Routed through the shared provider chain (M5 gemma4 first, Asus LM Studio
+        # fallback) — the same local-only chain the main graph build uses, so no
+        # online-mode guard is needed here.
+        provider_result = await chat_with_provider_fallback(
+            messages=messages,
+            providers=providers_cfg.get("providers"),
+            temperature=0.2,
+            max_tokens=2048,
+            require_json=True,
+        )
+        return parse_crux_response(provider_result.data)
 
     async def analyze_conversation(self, conversation_id: str, force_reanalysis: bool = False) -> Dict[str, Any]:
         """Run crux detection over the conversation and persist ``is_crux`` flags.
