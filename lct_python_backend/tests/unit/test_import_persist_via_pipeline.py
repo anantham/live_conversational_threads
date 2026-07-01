@@ -81,17 +81,21 @@ def test_empty_graph_still_writes_utterances_directly(monkeypatch):
     assert calls[0]["utterances"] == [{"u": 1}]  # utterance write preserved
 
 
-def test_persist_failure_raises_so_caller_handles_non_fatally(monkeypatch):
-    """A persist failure inside the stage is surfaced by re-raising, so the import
-    worker's existing non-fatal handler (telemetry['graph_persist_error']) applies —
-    it must NOT be swallowed into a silent success."""
+def test_persist_failure_preserves_original_exception(monkeypatch):
+    """A persist failure re-raises the ORIGINAL persist_graph exception (type + message),
+    NOT a generic RuntimeError re-messaged as "persist_live_graph_snapshot failed" — so the
+    worker's telemetry['graph_persist_error'] stays identical to the prior direct call, and
+    the failure is never swallowed into a silent success. (grok #138 finding #1.)"""
+
+    class DBError(RuntimeError):
+        pass
 
     async def boom(**_kwargs):
-        raise RuntimeError("db down")
+        raise DBError("db down")
 
     monkeypatch.setattr(ibp, "persist_import_graph", boom)
 
-    with pytest.raises(Exception):
+    with pytest.raises(DBError, match="db down"):
         asyncio.run(
             ibp._persist_graph_via_pipeline(
                 db="DB",
