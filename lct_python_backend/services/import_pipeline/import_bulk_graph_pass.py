@@ -377,7 +377,7 @@ async def run_segmented_graph_pass(
             nodes_this_segment,
         )
 
-    await processor.flush()
+    await _flush_via_pipeline(processor)
     telemetry["segment_count"] = segment_idx
     telemetry["transcript_chars"] = total_transcript_chars
     if transcription_started_at is not None and audio_duration_ms and stt_backend:
@@ -393,6 +393,44 @@ async def run_segmented_graph_pass(
         final_transcript_text="\n".join(segmented_transcript_parts).strip(),
         active_stage=active_stage,
     )
+
+
+async def _flush_via_pipeline(processor: Any) -> None:
+    """Route the processor's final graph flush through GenerateGraphStage (ADR-059
+    PR-1). ``processor.flush()`` runs inside the stage exactly as before; its graph
+    snapshot still streams to the client via the processor's ``send_update`` callback,
+    so the SSE contract is unchanged (the stage's NodeAdded events are swallowed).
+    A flush failure is re-raised so the worker's existing error handling still fires,
+    matching the prior bare ``await processor.flush()``. (The failure surfaces as a
+    RuntimeError wrapping GenerateGraphStage's "processor.flush failed: <exc>" message —
+    accurate, just wrapped; the underlying cause text is preserved.)
+    """
+    from lct_python_backend.services.conversation_pipeline import (
+        ConversationPipeline,
+        GenerateGraphStage,
+        PipelineState,
+    )
+    from lct_python_backend.services.conversation_pipeline.events import StageFailed
+
+    state = PipelineState()  # GenerateGraphStage writes graph state after flush; nothing to seed.
+
+    captured: dict[str, Any] = {}
+
+    async def _emit(event: Any) -> None:
+        if isinstance(event, StageFailed):  # single-stage pipeline; any failure is ours
+            captured["error"] = event.detail
+
+    async def _noop_artifact_writer(**_kwargs: Any) -> None:
+        return None
+
+    pipeline = ConversationPipeline(
+        [GenerateGraphStage(processor)],
+        artifact_writer=_noop_artifact_writer,
+    )
+    await pipeline.run(state, _emit)
+
+    if "error" in captured:
+        raise RuntimeError(captured["error"])
 
 
 async def run_sequential_graph_pass(
@@ -520,7 +558,7 @@ async def run_sequential_graph_pass(
                 },
             },
         )
-        await processor.flush()
+        await _flush_via_pipeline(processor)
     else:
         active_stage = "analyzing"
         await emit(
@@ -618,7 +656,7 @@ async def run_sequential_graph_pass(
         )
         await processor.handle_final_text(chunk)
 
-    await processor.flush()
+    await _flush_via_pipeline(processor)
 
     return GraphPassResult(
         final_source_type=transcript_result.source_type,
