@@ -24,21 +24,6 @@ const useFilenameFromGraph = ({
   }, [graphData, setFileName, fileNameWasReset, lastAutoSaveRef]);
 };
 
-const useGraphDataSync = ({ graphData, graphDataFromSocket, backendWsRef, logToServer }) => {
-  useEffect(() => {
-    if (!graphData || graphDataFromSocket.current) {
-      graphDataFromSocket.current = false;
-      return;
-    }
-    if (backendWsRef.current?.readyState === WebSocket.OPEN) {
-      backendWsRef.current.send(
-        JSON.stringify({ type: "graph_data_update", data: graphData })
-      );
-      logToServer("Sent graphData update to backend.");
-    }
-  }, [graphData, graphDataFromSocket, backendWsRef, logToServer]);
-};
-
 /**
  * Auto-save the user-edited conversation name (browser-authoritative draft state)
  * per ADR-030 §D6. Canonical graph/chunk persistence is backend-owned and is
@@ -91,6 +76,5 @@ const useMessageDismissOnClick = ({ message, setMessage }) => {
 export {
   useAutoSaveConversation,
   useFilenameFromGraph,
-  useGraphDataSync,
   useMessageDismissOnClick,
 };
