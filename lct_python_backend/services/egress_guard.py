@@ -32,6 +32,8 @@ escape hatch but is empty by default.
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import fnmatch
 import ipaddress
 import logging
@@ -66,6 +68,46 @@ def local_only_enabled() -> bool:
 def _extra_allow_globs() -> list[str]:
     raw = os.getenv("LCT_LOCAL_ONLY_ALLOW_HOSTS", "")
     return [g.strip().lower() for g in raw.split(",") if g.strip()]
+
+
+# --- Import-scoped egress allowlist ----------------------------------------
+# A context-local set of host globs that ``assert_local_egress`` additionally
+# permits, ONLY inside an ``import_egress_allow(...)`` block. This lets one
+# specific outbound fetch (e.g. a Google Docs export) reach a narrow set of
+# hosts WITHOUT widening the process-wide ``LCT_LOCAL_ONLY_ALLOW_HOSTS`` for
+# every other call. Being a ContextVar it propagates across ``await`` in the
+# same task (so a chokepoint-wrapped httpx.send inside the block sees it) and
+# is reset on block exit — it can never leak to an unrelated request.
+_scoped_allow_hosts: contextvars.ContextVar[tuple[str, ...]] = contextvars.ContextVar(
+    "lct_scoped_egress_allow", default=()
+)
+
+
+@contextlib.contextmanager
+def import_egress_allow(host_globs):
+    """Temporarily permit egress to ``host_globs`` (fnmatch globs) for this context only.
+
+    Scoped to the current context, NOT the global env — the allowlist is reset when
+    the block exits and cannot affect any other (sequential) outbound call.
+
+    CAVEAT: do NOT spawn asyncio tasks (``create_task`` / ``TaskGroup``) inside the
+    block. A child task copies the ContextVar at creation time and would RETAIN the
+    allowlist after the block exits. The gdoc fetcher awaits httpx directly in the
+    same task, so it is safe; keep any future caller task-free inside the block.
+    """
+    normalized = tuple(g.strip().lower() for g in (host_globs or ()) if g and g.strip())
+    token = _scoped_allow_hosts.set(normalized)
+    try:
+        yield
+    finally:
+        _scoped_allow_hosts.reset(token)
+
+
+def _host_in_scoped_allow(host: str) -> bool:
+    if not host:
+        return False
+    h = host.strip().lower()
+    return any(fnmatch.fnmatch(h, glob) for glob in _scoped_allow_hosts.get())
 
 
 def is_local_host(host: str) -> bool:
@@ -120,6 +162,8 @@ def assert_local_egress(url: str, *, purpose: str = "") -> None:
     if is_local_url(url):
         return
     host = urlparse(url if "://" in str(url) else f"http://{url}").hostname or url
+    if _host_in_scoped_allow(host):
+        return
     msg = (
         f"local-only mode blocked a non-local call to {host!r}"
         + (f" ({purpose})" if purpose else "")
