@@ -222,17 +222,25 @@ async def _persist_graph_via_pipeline(
         )
 
     pinned_source_type = source_type  # import raw ("audio"/"text"); ignore stage remap
+    adapter_error: dict[str, Any] = {}
 
     async def _adapter(*, conversation_id, existing_json, metadata, source_type):  # noqa: ARG001
-        return await persist_import_graph(
-            db=db,
-            conversation_id=conversation_id,
-            existing_json=existing_json,
-            utterances=utterances,
-            conversation_name=conversation_name,
-            source_type=pinned_source_type,
-            source_metadata=source_metadata,
-        )
+        # Ignore the stage's remapped source_type; pin the import's raw value. Capture the
+        # ORIGINAL persist_graph exception so telemetry preserves the real error (PersistStage
+        # would otherwise re-message it as "persist_live_graph_snapshot failed: ...").
+        try:
+            return await persist_import_graph(
+                db=db,
+                conversation_id=conversation_id,
+                existing_json=existing_json,
+                utterances=utterances,
+                conversation_name=conversation_name,
+                source_type=pinned_source_type,
+                source_metadata=source_metadata,
+            )
+        except Exception as exc:  # noqa: BLE001
+            adapter_error["exc"] = exc
+            raise
 
     state = PipelineState(
         conversation_id=conversation_id,
@@ -246,7 +254,7 @@ async def _persist_graph_via_pipeline(
     async def _emit(event: Any) -> None:
         if isinstance(event, GraphPersisted):
             captured["count"] = event.persisted_node_count
-        elif isinstance(event, StageFailed) and getattr(event, "stage", None) == "persist":
+        elif isinstance(event, StageFailed):  # single-stage pipeline; any failure is ours
             captured["error"] = event.detail
 
     # Suppress the orchestrator's stage_failure artifact write so this beachhead is
@@ -260,7 +268,12 @@ async def _persist_graph_via_pipeline(
     )
     await pipeline.run(state, _emit)
 
+    if adapter_error:
+        # Re-raise the ORIGINAL persist_graph exception (type + message preserved), so the
+        # caller's non-fatal handler records the same telemetry as the prior direct call.
+        raise adapter_error["exc"]
     if "error" in captured:
+        # A stage-level failure NOT from our adapter (e.g. missing_conversation_id) — defensive.
         raise RuntimeError(captured["error"])
     return int(captured.get("count", 0))
 

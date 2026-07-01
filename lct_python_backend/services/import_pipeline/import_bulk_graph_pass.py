@@ -401,7 +401,9 @@ async def _flush_via_pipeline(processor: Any) -> None:
     snapshot still streams to the client via the processor's ``send_update`` callback,
     so the SSE contract is unchanged (the stage's NodeAdded events are swallowed).
     A flush failure is re-raised so the worker's existing error handling still fires,
-    matching the prior ``await _flush_via_pipeline(processor)`` semantics.
+    matching the prior bare ``await processor.flush()``. (The failure surfaces as a
+    RuntimeError wrapping GenerateGraphStage's "processor.flush failed: <exc>" message —
+    accurate, just wrapped; the underlying cause text is preserved.)
     """
     from lct_python_backend.services.conversation_pipeline import (
         ConversationPipeline,
@@ -410,13 +412,12 @@ async def _flush_via_pipeline(processor: Any) -> None:
     )
     from lct_python_backend.services.conversation_pipeline.events import StageFailed
 
-    state = PipelineState()
-    state.graph.nodes = list(getattr(processor, "existing_json", []) or [])
+    state = PipelineState()  # GenerateGraphStage writes graph state after flush; nothing to seed.
 
     captured: dict[str, Any] = {}
 
     async def _emit(event: Any) -> None:
-        if isinstance(event, StageFailed) and getattr(event, "stage", None) == "generate_graph":
+        if isinstance(event, StageFailed):  # single-stage pipeline; any failure is ours
             captured["error"] = event.detail
 
     async def _noop_artifact_writer(**_kwargs: Any) -> None:
