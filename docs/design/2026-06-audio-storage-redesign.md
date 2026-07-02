@@ -1,6 +1,7 @@
 # Audio Storage Redesign — Options Doc
 
-Status: DRAFT (research only — no code changed)
+Status: DRAFT (research only — no code changed), except §5 open question 2
+below, which was resolved and acted on 2026-07-02 (see note there).
 Date: 2026-06-29
 Author: research/audit pass
 
@@ -388,6 +389,24 @@ approval-window, prune orphaned `speaker_audio_references`).
    enough, delete the downloader (Option A). If bot-recording fidelity matters
    for diarization/accuracy, we keep the MinIO read path alive (Option C). Which
    is it?
+
+   **Resolved 2026-07-02: yes, keep it (Option C shape).** Bot-recording
+   fidelity matters for the Attendee integration specifically — the live WS
+   bridge only carries Attendee's own real-time transcript text
+   (`attendee_bridge.py`'s `transcript.update` handling), never raw audio, so
+   the MinIO path was the only way to ever get real audio bytes for a bot
+   meeting at all. `attendee_audio_downloader.py` was rebuilt: fixed the
+   broken import (`audio_storage.save_utterance_audio`/`get_conversation_dir`
+   never existed; `database.SessionLocal` didn't either), added bounded
+   retry/backoff for MinIO's async upload lag, made boto3 + MinIO credentials
+   both optional (soft-skip, not a hard crash) so an install without them is
+   unaffected, and gated the whole feature behind `ATTENDEE_SLOWPASS_ENABLED`
+   (default off). Wired into `attendee_api.py`'s `bot.state_change` webhook
+   handler on a terminal state, exactly as the prior "no auto-trigger ships
+   until [a review-gated revision flow] exists" comment anticipated — that
+   flow (PR #118) now exists, so this proposes a `TranscriptRevision` via
+   `reconcile_and_patch_utterances`, never patches the live transcript
+   in-place. See `services/attendee_audio_downloader.py`'s module docstring.
 
 3. **WAV-vs-FLAC retention, and does anything actually need WAV?** We currently
    keep both. FLAC is lossless and smaller. Is there any reader that needs WAV

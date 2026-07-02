@@ -22,6 +22,7 @@ routes it to the right meeting.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -38,6 +39,11 @@ from pydantic import BaseModel, Field
 from lct_python_backend.auth_policy import ATTENDEE_WEBHOOK_PATH as WEBHOOK_PATH
 from lct_python_backend.middleware import check_ws_auth_message
 from lct_python_backend.services import attendee_bridge, attendee_client
+# attendee_audio_downloader is imported lazily where used (bot.state_change
+# branch below) — it transitively pulls in db_session, which requires a live
+# DATABASE_URL at import time. Importing it here would force that requirement
+# onto every caller of this module, including tests that never exercise the
+# slow-pass path.
 from lct_python_backend.services.env_helpers import env_bool, env_int, env_str, env_str_or_none
 
 logger = logging.getLogger("lct_backend")
@@ -61,6 +67,11 @@ ATTENDEE_STT_LANGUAGE: str = env_str("ATTENDEE_STT_LANGUAGE", "en")
 # Recording format for the custom-async path. Recording is enabled so per-utterance
 # audio blobs exist for Attendee to POST to the shim ("mp3" = audio only, light).
 ATTENDEE_RECORDING_FORMAT: str = env_str("ATTENDEE_RECORDING_FORMAT", "mp3")
+# Post-call slow-pass: re-transcribe the bot's own MinIO recording and propose it
+# as a reviewable revision (see attendee_audio_downloader.py). Off by default —
+# requires MinIO configured (MINIO_ACCESS_KEY/MINIO_SECRET_KEY, boto3 installed)
+# and is a new automatic background trigger, so it's an explicit opt-in.
+ATTENDEE_SLOWPASS_ENABLED: bool = env_bool("ATTENDEE_SLOWPASS_ENABLED", False)
 # Auto-leave timeouts (seconds) so the bot exits empty/ghost meetings promptly
 # (and the LCT loop closes) instead of recording an empty room. Tighter than
 # Attendee's defaults (only_participant 60s, wait_for_host 600s).
@@ -303,13 +314,18 @@ async def attendee_webhook(request: Request):
         elif trigger == "bot.state_change":
             new_state = data.get("new_state")
             await session.on_bot_state(new_state, sub_type=data.get("event_sub_type"))
-            
-            # Slow-pass (high-fidelity MP3 re-transcription) is intentionally NOT
-            # wired up. The prototype DESTRUCTIVELY overwrote live utterance text
-            # (audit A4) and decision B requires a review-gated transcript-revision
-            # flow first. No auto-trigger ships until that exists — when it does,
-            # enqueue the NON-destructive revision build here (not the old in-place
-            # patch), and gate any meeting-audio recording behind the same path.
+
+            # Slow-pass (high-fidelity MP3 re-transcription): decision-B compliant
+            # (transcript_reconciliation.py proposes a reviewable revision, never
+            # patches the live transcript in place — see attendee_audio_downloader.py's
+            # module docstring for the full history). Fire-and-forget: the webhook
+            # must ack fast, and attendee_audio_downloader.fetch_and_transcribe
+            # already catches+logs every failure internally rather than raising.
+            if ATTENDEE_SLOWPASS_ENABLED and attendee_bridge.is_terminal_bot_state(new_state) and bot_id:
+                from lct_python_backend.services import attendee_audio_downloader
+                asyncio.create_task(
+                    attendee_audio_downloader.fetch_and_transcribe(str(bot_id), session.conversation_id)
+                )
 
         else:
             logger.debug("[attendee] ignoring webhook trigger=%s", trigger)
