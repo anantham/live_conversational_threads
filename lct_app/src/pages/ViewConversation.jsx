@@ -17,6 +17,7 @@ import SearchDialog from "../components/SearchDialog";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { apiFetch, apiFetchCached, apiHeaders, API_BASE_URL, invalidateApiCache, readErrorMessage } from "../services/apiClient";
+import { useDataProvider } from "../services/dataProvider";
 import { fetchConversationParticipants } from "../services/participantsApi";
 
 function sanitizeNodeArray(chunk) {
@@ -92,6 +93,7 @@ function normalizeGraphDataPayload(payload) {
 
 export default function ViewConversation() {
   const { conversationId } = useParams();
+  const dataProvider = useDataProvider();
   const navigate = useNavigate();
 
   const [graphData, setGraphData] = useState([]);
@@ -257,7 +259,7 @@ export default function ViewConversation() {
   useEffect(() => {
     if (!conversationId) return undefined;
     let cancelled = false;
-    apiFetch(`/conversations/${conversationId}/revisions`)
+    dataProvider.conversations.fetchRevisions(conversationId, { headers: apiHeaders() })
       .then((r) => r.ok ? r.json() : { revisions: [] })
       .then((data) => {
         if (!cancelled) setPendingRevisions(data.revisions || []);
@@ -270,10 +272,9 @@ export default function ViewConversation() {
     if (revisionActionState.busy) return;
     setRevisionActionState({ busy: true, error: "" });
     try {
-      const resp = await fetch(
-        `${API_BASE_URL}/api/conversations/${conversationId}/revisions/${revisionId}/approve`,
-        { method: "POST", headers: apiHeaders() },
-      );
+      const resp = await dataProvider.conversations.approveRevision(conversationId, revisionId, {
+        headers: apiHeaders(),
+      });
       if (!resp.ok) {
         const msg = await readErrorMessage(resp);
         setRevisionActionState({ busy: false, error: msg || "Approval failed." });
@@ -285,7 +286,7 @@ export default function ViewConversation() {
       setRevisionActionState({ busy: false, error: "" });
       // Fire-and-forget the reprocess to apply the approved transcript.
       if (data.next) {
-        fetch(`${API_BASE_URL}${data.next}`, { method: "POST", headers: apiHeaders() }).catch(() => {});
+        dataProvider.conversations.fetchNext(data.next, { headers: apiHeaders() }).catch(() => {});
       }
     } catch (err) {
       setRevisionActionState({ busy: false, error: err?.message || "Approval failed." });
@@ -296,10 +297,9 @@ export default function ViewConversation() {
     if (revisionActionState.busy) return;
     setRevisionActionState({ busy: true, error: "" });
     try {
-      const resp = await fetch(
-        `${API_BASE_URL}/api/conversations/${conversationId}/revisions/${revisionId}/reject`,
-        { method: "POST", headers: apiHeaders() },
-      );
+      const resp = await dataProvider.conversations.rejectRevision(conversationId, revisionId, {
+        headers: apiHeaders(),
+      });
       if (!resp.ok) {
         const msg = await readErrorMessage(resp);
         setRevisionActionState({ busy: false, error: msg || "Rejection failed." });
@@ -371,7 +371,9 @@ export default function ViewConversation() {
     if (threadsBusy || !conversationId) return;
     setThreadsBusy(true);
     try {
-      const resp = await apiFetch(`/api/conversations/${conversationId}/threads-export`);
+      const resp = await dataProvider.conversations.fetchThreadsExport(conversationId, {
+        headers: apiHeaders(),
+      });
       if (!resp.ok) throw new Error(`Export failed (${resp.status})`);
       const blob = await resp.blob();
       const safe =
@@ -415,8 +417,7 @@ export default function ViewConversation() {
     reprocessAbortRef.current = abort;
     setReprocessState({ status: "running", message: "Starting…", progress: 0 });
     try {
-      const resp = await fetch(`${API_BASE_URL}/api/conversations/${conversationId}/reprocess`, {
-        method: "POST",
+      const resp = await dataProvider.conversations.reprocess(conversationId, {
         headers: apiHeaders(),
         signal: abort.signal,
       });

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ImportCanvas from "../components/ImportCanvas";
 import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
+import { useDataProvider } from "../services/dataProvider";
 import ThreadsViewer from "./ThreadsViewer";
 
 function formatDuration(seconds) {
@@ -74,7 +75,8 @@ export default function Browse() {
   const [deleting, setDeleting] = useState(null);
   // Contact scoping (MVP): pick a contact -> see only their conversations ->
   // export one as .threads. null = show all. exporting = file_id mid-export.
-  const [contactFilter, setContactFilter] = useState(null);
+  const [contactFilter, setContactFilter] = useState("");
+  const dataProvider = useDataProvider();
   const [exporting, setExporting] = useState(null);
   const [combining, setCombining] = useState(false);
 
@@ -206,19 +208,12 @@ export default function Browse() {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 6000);
       try {
-        // 60s TTL — short enough that returning here after a new import
-        // (which busts the cache via invalidateApiCache) shows the new
-        // entry immediately, long enough that tab-switches feel instant.
-        const response = await apiFetchCached("/conversations/", {
-          ttlMs: 60 * 1000,
+        const response = await dataProvider.conversations.fetchNext("/api/conversations/", {
           signal: controller.signal,
         });
         gotResponse = true;
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || `HTTP ${response.status}`);
-        }
-        const data = await response.json();
+        const res = await response.json();
+        const data = res.items || res; // Support both mock and real responses
         data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         setConversations(data);
       } catch (err) {

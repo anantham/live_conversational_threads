@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Check, Plus, RotateCcw, X } from "lucide-react";
 
-import { API_BASE_URL } from "../services/apiClient";
+import { useDataProvider } from "../services/dataProvider";
 
 const GSI_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 
@@ -252,6 +252,7 @@ function ReviewItem({ item, decision, readOnly, onChoose, hideMoreActive, onStar
 
 export default function SubjectReview() {
   const { token } = useParams();
+  const dataProvider = useDataProvider();
 
   const [status, setStatus] = useState("loading"); // loading | needs_auth | ready | error | revoked
   const [errorDetail, setErrorDetail] = useState("");
@@ -270,10 +271,7 @@ export default function SubjectReview() {
       try {
         const headers = {};
         if (idToken) headers.Authorization = `Bearer ${idToken}`;
-        const resp = await fetch(
-          `${API_BASE_URL}/api/subject-review/${encodeURIComponent(token)}`,
-          { headers },
-        );
+        const resp = await dataProvider.subjectReview.fetchReview(token, { headers });
 
         if (resp.status === 401) {
           const body = await resp.json().catch(() => ({}));
@@ -406,17 +404,12 @@ export default function SubjectReview() {
       }),
     };
     try {
-      const resp = await fetch(
-        `${API_BASE_URL}/api/subject-review/${encodeURIComponent(token)}/decisions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${idTokenRef.current || ""}`,
-          },
-          body: JSON.stringify(payload),
+      const resp = await dataProvider.subjectReview.submitReview(token, payload, {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idTokenRef.current || ""}`,
         },
-      );
+      });
       if (resp.ok) {
         setSubmitState("relayed");
         return;

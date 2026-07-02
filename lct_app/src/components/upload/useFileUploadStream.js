@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { API_BASE_URL, apiHeaders, invalidateApiCache, readErrorMessage } from "../../services/apiClient";
+import { useDataProvider } from "../../services/dataProvider";
 import { useByok } from "../../contexts/byokContext";
 import { randomUUID } from "../../utils/uuid";
 import { makeDebug } from "../../utils/debug";
@@ -109,6 +110,7 @@ export default function useFileUploadStream({
   resetBuffered,
   onStreamSettled,
 }) {
+  const dataProvider = useDataProvider();
   const { ensureSessionToken } = useByok();
   const abortRef = useRef(null);
   const fallbackNoticeKeyRef = useRef("");
@@ -224,10 +226,8 @@ export default function useFileUploadStream({
     const abortController = new AbortController();
     abortRef.current = abortController;
 
-    const response = await fetch(`${API_BASE_URL}/api/import/process-file`, {
-      method: "POST",
+    const response = await dataProvider.import.processFile(formData, {
       headers: apiHeaders(),
-      body: formData,
       signal: abortController.signal,
     });
     if (!response.ok) {

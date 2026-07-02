@@ -20,6 +20,7 @@ const queueAudioChunkUpload = ({
   conversationId,
   conversationRef,
   chunkQueueRef,
+  dataProvider,
 }) => {
   if (!sttSettings?.store_audio) return;
   const resolvedSessionId = resolveSessionId(sessionId, sessionIdRef);
@@ -30,11 +31,7 @@ const queueAudioChunkUpload = ({
   const url = appendSessionQuery(buildApiUrl(path), resolvedSessionId);
   chunkQueueRef.current = chunkQueueRef.current
     .then(() =>
-      fetch(url, {
-        method: "POST",
-        headers: apiHeaders({ "Content-Type": "application/octet-stream" }),
-        body: buffer,
-      }).then((res) => {
+      dataProvider.audio.uploadChunk(url, buffer, { headers: apiHeaders({ "Content-Type": "application/octet-stream" }) }).then((res) => {
         if (!res.ok) {
           throw new Error(`Chunk upload failed: ${res.statusText}`);
         }
@@ -53,6 +50,7 @@ const finalizeAudioUpload = async ({
   conversationRef,
   chunkQueueRef,
   setMessage,
+  dataProvider,
 }) => {
   if (!sttSettings?.store_audio) return;
   const resolvedSessionId = resolveSessionId(sessionId, sessionIdRef);
@@ -63,7 +61,7 @@ const finalizeAudioUpload = async ({
   const path = replaceConversationPlaceholder(chunkTemplate, resolvedConversationId);
   const url = appendSessionQuery(buildApiUrl(path), resolvedSessionId);
   try {
-    const response = await fetch(url, { method: "POST", headers: apiHeaders() });
+    const response = await dataProvider.audio.completeUpload(url, { headers: apiHeaders() });
     if (!response.ok) {
       throw new Error(`Audio finalize failed: ${response.statusText}`);
     }

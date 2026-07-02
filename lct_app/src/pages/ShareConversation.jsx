@@ -7,6 +7,7 @@ import NodeDetail from "../components/NodeDetail";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { API_BASE_URL } from "../services/apiClient";
+import { useDataProvider } from "../services/dataProvider";
 
 const GSI_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 
@@ -65,6 +66,8 @@ function flattenGraph(graphData) {
 
 export default function ShareConversation() {
   const { token } = useParams();
+  const dataProvider = useDataProvider();
+  const navigate = useNavigate();
 
   // Three top-level states: fetching, needs Google sign-in, or ready/error.
   const [status, setStatus] = useState("loading"); // loading | needs_auth | ready | error | revoked
@@ -87,7 +90,7 @@ export default function ShareConversation() {
         if (idToken) {
           headers.Authorization = `Bearer ${idToken}`;
         }
-        const resp = await fetch(`${API_BASE_URL}/api/share/${encodeURIComponent(token)}`, {
+        const resp = await dataProvider.share.fetchShared(token, {
           headers,
         });
 

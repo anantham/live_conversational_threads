@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { useDataProvider } from "../services/dataProvider";
 import MinimalGraph from "../components/MinimalGraph";
 import MinimalLegend from "../components/MinimalLegend";
 import NodeDetail from "../components/NodeDetail";
@@ -67,6 +68,7 @@ function validateThreads(data) {
 }
 
 export default function ThreadsViewer() {
+  const dataProvider = useDataProvider();
   const [bundle, setBundle] = useState(null);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -136,7 +138,7 @@ export default function ThreadsViewer() {
     setSrcLoading(true);
     (async () => {
       try {
-        const resp = await fetch(src);
+        const resp = await dataProvider.conversations.fetchThreadsFile(src);
         if (!resp.ok) throw new Error(`fetch failed (${resp.status})`);
         const data = await resp.json();
         if (!cancelled) ingest(data);

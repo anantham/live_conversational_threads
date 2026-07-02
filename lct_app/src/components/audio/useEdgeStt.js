@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 
 import { concatPcmFrames, encodeWav, pcmBytesForSeconds } from "./wavEncoder";
+import { useDataProvider } from "../../services/dataProvider";
 
 /**
  * Edge STT — ADR-056 Phase 1 (flag-gated, ADDITIVE).
@@ -44,6 +45,10 @@ export default function useEdgeStt({
   onError,
   onFallback,
 }) {
+  const dataProvider = useDataProvider();
+
+  // STT settings (sttSettings.json + dynamic env):
+  const sttConfig = useSttSettingsStore((state) => state.sttConfig);
   const framesRef = useRef([]);
   const bufferedBytesRef = useRef(0);
   const utteranceRef = useRef(0);
@@ -105,9 +110,7 @@ export default function useEdgeStt({
         if (includeEmbeddings) form.append("include_embeddings", "true");
         if (language) form.append("language", language);
 
-        const resp = await fetch(url, {
-          method: "POST",
-          body: form,
+        const resp = await dataProvider.audio.uploadEdgeStt(url, form, {
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
           signal: controller.signal,
         });
