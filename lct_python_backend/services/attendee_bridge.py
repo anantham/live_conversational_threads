@@ -86,7 +86,9 @@ def _meeting_name(meeting_url: str) -> str:
     return f"Google Meet ({code})"
 
 
-def _is_terminal_state(state: Any) -> bool:
+def is_terminal_bot_state(state: Any) -> bool:
+    """Public: also used by attendee_api.py to gate the slow-pass MP3 fetch
+    onto the same terminal transition that ends the live bridge."""
     if isinstance(state, bool):
         return False
     if isinstance(state, int):
@@ -381,7 +383,7 @@ class MeetingSession:
             elif "joining" in low or low == "joined":
                 self.status = "joining"
         self._relay({"type": "bot_status", "data": {"status": self.status, "bot_state": label, "event_sub_type": sub_type}})
-        if _is_terminal_state(new_state):
+        if is_terminal_bot_state(new_state):
             await self.finalize(reason=f"bot_state:{label}")
 
     @property

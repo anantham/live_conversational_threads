@@ -10,10 +10,19 @@ import base64
 import hashlib
 import hmac
 import json
+import os
 
 import pytest
 
+# attendee_audio_downloader (imported lazily by attendee_api.py's bot.state_change
+# branch, only when the slow-pass tests below actually exercise that path)
+# transitively pulls in db_session, which builds its async engine at import
+# time and needs a well-formed DATABASE_URL — even though these tests never
+# touch a real DB (fetch_and_transcribe itself is monkeypatched out below).
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/lct_test")
+
 from lct_python_backend import attendee_api
+from lct_python_backend.services import attendee_audio_downloader as downloader_module
 from lct_python_backend.services import attendee_bridge
 
 
@@ -218,7 +227,7 @@ def test_idempotency_dedupe():
     (None, False),
 ])
 def test_is_terminal_state(state, expected):
-    assert attendee_bridge._is_terminal_state(state) is expected
+    assert attendee_bridge.is_terminal_bot_state(state) is expected
 
 
 # --- registry ---------------------------------------------------------------
@@ -440,3 +449,77 @@ def test_real_attendee_payload_epoch_timestamps_end_to_end(monkeypatch):
 
     # Primary regression guard: raw epoch-ms must be preserved verbatim
     assert frame["metadata"]["source_timestamp_ms"] == REAL_TS_MS
+
+
+# --- bot.state_change -> post-call slow-pass wiring -------------------------
+# decision-B (see attendee_audio_downloader.py): fetch_and_transcribe never
+# patches the live transcript directly, so these tests only need to confirm
+# WHEN it gets scheduled — the downloader module's own tests cover its body.
+
+async def _run_state_change_webhook(monkeypatch, *, enabled, new_state, calls):
+    """Shared setup: register a session, fire a bot.state_change webhook event,
+    and give any fire-and-forget task a moment to run before returning."""
+    monkeypatch.setattr(attendee_api, "ATTENDEE_WEBHOOK_SECRET", None)
+    monkeypatch.setattr(attendee_api, "ATTENDEE_ALLOW_UNSIGNED_WEBHOOK", True)
+    monkeypatch.setattr(attendee_api, "ATTENDEE_SLOWPASS_ENABLED", enabled)
+
+    async def _fake_fetch(bot_id, conversation_id):
+        calls.append((bot_id, conversation_id))
+    # attendee_api.py imports attendee_audio_downloader lazily (inside the
+    # bot.state_change branch), so patch the real module — it's the same
+    # cached sys.modules object that lazy import will resolve to.
+    monkeypatch.setattr(downloader_module, "fetch_and_transcribe", _fake_fetch)
+
+    sess = attendee_bridge.MeetingSession(
+        conversation_id="c-slowpass",
+        meeting_url="https://meet.google.com/abc-defg-hij",
+        bot_name="LCT",
+    )
+    sess._ws = _FakeWS()
+    await attendee_bridge.register(sess)
+    await attendee_bridge.bind_bot(sess, "bot-slowpass")
+    try:
+        response = await attendee_api.attendee_webhook(
+            _FakeRequest({
+                "trigger": "bot.state_change",
+                "bot_id": "bot-slowpass",
+                "data": {"new_state": new_state},
+            })
+        )
+        # Let the fire-and-forget asyncio.create_task actually run.
+        for _ in range(10):
+            if calls:
+                break
+            await asyncio.sleep(0)
+        return response
+    finally:
+        attendee_bridge._unregister(sess)
+
+
+def test_attendee_webhook_terminal_state_schedules_slowpass_when_enabled(monkeypatch):
+    calls = []
+    response = asyncio.run(_run_state_change_webhook(
+        monkeypatch, enabled=True, new_state="ended", calls=calls,
+    ))
+    assert response == {"ok": True}
+    assert calls == [("bot-slowpass", "c-slowpass")]
+
+
+def test_attendee_webhook_terminal_state_does_not_schedule_when_disabled(monkeypatch):
+    """ATTENDEE_SLOWPASS_ENABLED defaults False — an install that never opted
+    in must not start hitting MinIO/STT for every bot meeting."""
+    calls = []
+    asyncio.run(_run_state_change_webhook(
+        monkeypatch, enabled=False, new_state="ended", calls=calls,
+    ))
+    assert calls == []
+
+
+def test_attendee_webhook_non_terminal_state_does_not_schedule_even_when_enabled(monkeypatch):
+    """A mid-meeting state (bot still recording) must never trigger the
+    post-call fetch, even with the feature enabled."""
+    calls = []
+    asyncio.run(_run_state_change_webhook(
+        monkeypatch, enabled=True, new_state="joined_recording", calls=calls,
+    ))
+    assert calls == []
