@@ -450,6 +450,7 @@ Concrete paths for the shared-core protocols above (everything else lives in the
 - Project docs (structure / guardrails) -> `docs/PROJECT_STRUCTURE.md`, `docs/adr/`, recent `docs/WORKLOG.md`
 - Per-project memory -> `~/.claude/projects/C--Users-adity-Documents-Ongoing-Local-live-conversational-threads/memory/` (auto-memory; read `MEMORY.md` index at session start)
 - App code lives under `lct_app/` (React frontend); Python backend at repo root.
+- Scratch/experiment/probe files -> `tmp/` (gitignored), NEVER the repo root. The old root `.tmp_*` convention is retired (root swept 2026-07-02; preserved artifacts live in `tmp/kept/`).
 - Note: this repo's `CLAUDE.md` is a one-line pointer to `AGENTS.md` — AGENTS.md is the single source of truth.
 
 ## Deployment (Vercel)
