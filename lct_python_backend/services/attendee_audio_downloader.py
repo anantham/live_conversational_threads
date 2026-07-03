@@ -17,6 +17,12 @@ pending TranscriptRevision instead; an operator approves or rejects it.
 Gated behind ATTENDEE_SLOWPASS_ENABLED (default off) and MinIO credentials
 being configured — both boto3 and MINIO_ACCESS_KEY/MINIO_SECRET_KEY are
 optional, so an install without them just skips this cleanly.
+
+Known limitation (accepted by design): the task is in-process and
+fire-and-forget — a backend restart mid-run abandons the fetch with no durable
+queue or retry. This is an opt-in convenience feature on a single-operator
+instrument; if a run is lost, re-transcription is available manually via the
+reprocess API.
 """
 
 from __future__ import annotations
@@ -76,22 +82,62 @@ def _get_minio_client() -> Optional[Any]:
 
 
 async def _find_recording_key(s3: Any, bot_id: str) -> Optional[str]:
-    """Poll the bucket for a key containing bot_id, with bounded backoff —
-    Attendee's own upload can lag behind the bot leaving the call."""
+    """Poll the bucket for the bot's MP3, with bounded backoff — Attendee's own
+    upload can lag behind the bot leaving the call.
+
+    Walks every page of the bucket listing (the shared bucket accumulates
+    recordings over time). Matches bot_id anywhere in the key — Attendee's key
+    layout isn't pinned down, so a tighter match risks false negatives; with
+    UUID bot ids a cross-bot substring hit is not a realistic collision. When
+    several objects match (re-uploads, partials) the most recently modified
+    wins. A transient listing failure counts as "not there yet" and keeps
+    polling until the deadline rather than aborting the whole slow-pass."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + MINIO_POLL_TIMEOUT_S
 
-    def list_objects():
-        return s3.list_objects_v2(Bucket=MINIO_BUCKET)
+    def list_matches():
+        matches = []
+        kwargs = {"Bucket": MINIO_BUCKET}
+        while True:
+            page = s3.list_objects_v2(**kwargs)
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if key.endswith(".mp3") and bot_id in key:
+                    matches.append(obj)
+            if not page.get("IsTruncated"):
+                return matches
+            kwargs["ContinuationToken"] = page["NextContinuationToken"]
 
     while True:
-        objects = await loop.run_in_executor(None, list_objects)
-        for obj in objects.get("Contents", []):
-            if bot_id in obj["Key"] and obj["Key"].endswith(".mp3"):
-                return obj["Key"]
+        try:
+            matches = await loop.run_in_executor(None, list_matches)
+        except Exception as e:  # noqa: BLE001 — transient MinIO failure = not ready yet
+            logger.info(
+                "[audio-downloader] bucket listing failed (%s) — retrying until deadline",
+                type(e).__name__,
+            )
+            matches = []
+        if matches:
+            if len(matches) > 1:
+                logger.warning(
+                    "[audio-downloader] %d objects match bot=%s — using most recently modified",
+                    len(matches), bot_id,
+                )
+            try:
+                best = max(matches, key=lambda o: o["LastModified"])
+            except (KeyError, TypeError):
+                best = matches[-1]
+            return best["Key"]
         if loop.time() >= deadline:
             return None
         await asyncio.sleep(MINIO_POLL_INTERVAL_S)
+
+
+# In-process dedupe: Attendee can deliver terminal states more than once
+# (webhook retries; post_processing → ended). A second concurrent run would
+# race the same MinIO object and propose a duplicate revision. Guard clears
+# when the run finishes, so a genuinely later re-trigger still works.
+_inflight_bots: set[str] = set()
 
 
 async def fetch_and_transcribe(bot_id: str, conversation_id: str) -> None:
@@ -103,6 +149,13 @@ async def fetch_and_transcribe(bot_id: str, conversation_id: str) -> None:
     docstring). Every failure mode here is caught and logged, never raised —
     this runs detached from the webhook response (see attendee_api.py).
     """
+    if bot_id in _inflight_bots:
+        logger.info(
+            "[audio-downloader] slow-pass already in flight for bot=%s — skipping duplicate trigger",
+            bot_id,
+        )
+        return
+    _inflight_bots.add(bot_id)
     logger.info("[audio-downloader] starting background fetch for bot=%s conv=%s", bot_id, conversation_id)
     try:
         s3 = _get_minio_client()
@@ -164,3 +217,5 @@ async def fetch_and_transcribe(bot_id: str, conversation_id: str) -> None:
             await reconcile_and_patch_utterances(conversation_id, utterances, detail.asr_segments, db=db)
     except Exception:  # noqa: BLE001 — background task, never raise past this point
         logger.exception("[audio-downloader] failed to fetch/transcribe recording for bot=%s", bot_id)
+    finally:
+        _inflight_bots.discard(bot_id)
