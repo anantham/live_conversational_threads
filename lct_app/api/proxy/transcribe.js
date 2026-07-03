@@ -1,8 +1,7 @@
 import { del } from '@vercel/blob';
 
-export const config = {
-  runtime: 'edge',
-};
+// Node runtime (default). @vercel/blob pulls in undici + Node built-ins, which
+// the Edge runtime does not support — declaring runtime:'edge' here fails the build.
 
 export default async function handler(req) {
   const origin = req.headers.get('origin') || '*';

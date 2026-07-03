@@ -1,8 +1,7 @@
 import { handleUpload } from '@vercel/blob/client';
 
-export const config = {
-  runtime: 'edge',
-};
+// Node runtime (default). @vercel/blob/client pulls in undici + Node built-ins,
+// which the Edge runtime does not support — runtime:'edge' here fails the build.
 
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
