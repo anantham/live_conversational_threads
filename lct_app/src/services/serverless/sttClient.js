@@ -1,4 +1,5 @@
 import { upload } from '@vercel/blob/client';
+import { serverlessAuthHeaders, NeedsKeyError } from './serverlessAuth';
 
 /**
  * Uploads an audio blob/file to Vercel Blob and triggers OpenAI transcription.
@@ -7,14 +8,17 @@ import { upload } from '@vercel/blob/client';
  * @returns {Promise<Object>} Diarized transcript object
  */
 export async function transcribeAudio(apiKey, fileOrBlob) {
+  const authHeaders = serverlessAuthHeaders(apiKey);
+  if (!authHeaders) throw new NeedsKeyError();
+
   // 1. Upload to Vercel Blob using the client-side proxy to mint tokens
   const uploadResult = await upload(fileOrBlob.name || 'audio.webm', fileOrBlob, {
     access: 'public',
     handleUploadUrl: '/api/proxy/upload',
-    clientPayload: JSON.stringify({}), 
+    clientPayload: JSON.stringify({}),
     requestInit: {
       headers: {
-        'x-lct-byok-key': apiKey
+        ...authHeaders
       }
     }
   });
@@ -24,7 +28,7 @@ export async function transcribeAudio(apiKey, fileOrBlob) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-lct-byok-key': apiKey
+      ...authHeaders
     },
     body: JSON.stringify({
       blobUrl: uploadResult.url,
@@ -38,6 +42,9 @@ export async function transcribeAudio(apiKey, fileOrBlob) {
     })
   });
   
+  if (res.status === 402) {
+    throw new NeedsKeyError("Free trial used up. Add your OpenAI key to keep going.");
+  }
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
     throw new Error(`Transcription failed (${res.status}): ${errorText}`);

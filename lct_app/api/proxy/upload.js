@@ -17,7 +17,7 @@ export default async function handler(req) {
       headers: {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, x-lct-byok-key',
+        'Access-Control-Allow-Headers': 'Content-Type, x-lct-byok-key, x-lct-trial',
         'Access-Control-Max-Age': '86400',
       },
     });
@@ -27,11 +27,14 @@ export default async function handler(req) {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
-  // The client must pass the BYOK key to authorize this upload
+  // The client must present a key (its own) OR be in a configured trial to
+  // authorize this upload. The blob upload itself is authorized by Vercel's
+  // BLOB token, so we only gate on presence here (no OpenAI call in this route).
   // ADR-060: Explicit no-log rule for request headers.
   // NO_LOG_BYOK_KEY_ASSERTION
-  const apiKey = req.headers.get('x-lct-byok-key');
-  if (!apiKey) {
+  const byokKey = req.headers.get('x-lct-byok-key');
+  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!process.env.OPENAI_TRIAL_KEY;
+  if (!byokKey && !usingTrial) {
     return new Response('Missing API key', { status: 401 });
   }
 

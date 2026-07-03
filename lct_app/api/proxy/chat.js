@@ -17,7 +17,7 @@ export default async function handler(req) {
       headers: {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, x-lct-byok-key',
+        'Access-Control-Allow-Headers': 'Content-Type, x-lct-byok-key, x-lct-trial',
         'Access-Control-Max-Age': '86400',
       },
     });
@@ -43,10 +43,15 @@ export default async function handler(req) {
   recentRequests.push(now);
   rateLimitMap.set(ip, recentRequests);
 
-  // 4. Extract BYOK key (ADR-060: do NOT use 'Authorization' to avoid CDN log leakage)
-  const apiKey = req.headers.get('x-lct-byok-key');
+  // 4. Resolve the OpenAI key (ADR-060: custom header, never 'Authorization', to
+  //    avoid CDN log leakage). The visitor's own key wins; otherwise, on a trial
+  //    request, fall back to the server-side trial key when one is configured.
+  //    The trial key stays server-side and is never returned to the browser.
+  const byokKey = req.headers.get('x-lct-byok-key');
+  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!process.env.OPENAI_TRIAL_KEY;
+  const apiKey = byokKey || (usingTrial ? process.env.OPENAI_TRIAL_KEY : null);
   if (!apiKey) {
-    return new Response('Missing x-lct-byok-key header', { 
+    return new Response('Missing x-lct-byok-key header', {
       status: 401,
       headers: { 'Access-Control-Allow-Origin': origin }
     });
@@ -74,6 +79,15 @@ export default async function handler(req) {
       },
       body
     });
+
+    // Trial budget exhausted (the capped trial key hit its OpenAI limit): tell the
+    // client to switch to its own key rather than surfacing a raw 429.
+    if (usingTrial && (openAiResponse.status === 429 || openAiResponse.status === 402)) {
+      return new Response(JSON.stringify({ error: 'trial_exhausted' }), {
+        status: 402,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': origin }
+      });
+    }
 
     // 6. Stream back
     const responseHeaders = new Headers(openAiResponse.headers);

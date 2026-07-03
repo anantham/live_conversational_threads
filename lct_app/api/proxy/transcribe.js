@@ -13,7 +13,7 @@ export default async function handler(req) {
       headers: {
         'Access-Control-Allow-Origin': origin,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, x-lct-byok-key',
+        'Access-Control-Allow-Headers': 'Content-Type, x-lct-byok-key, x-lct-trial',
         'Access-Control-Max-Age': '86400',
       },
     });
@@ -23,12 +23,16 @@ export default async function handler(req) {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
-  // 2. Extract BYOK key
+  // 2. Resolve the OpenAI key.
   // ADR-060: Explicit no-log rule for request headers.
   // NO_LOG_BYOK_KEY_ASSERTION
-  const apiKey = req.headers.get('x-lct-byok-key');
+  // Visitor's own key wins; else fall back to the server-side trial key on a
+  // trial request (never returned to the browser).
+  const byokKey = req.headers.get('x-lct-byok-key');
+  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!process.env.OPENAI_TRIAL_KEY;
+  const apiKey = byokKey || (usingTrial ? process.env.OPENAI_TRIAL_KEY : null);
   if (!apiKey) {
-    return new Response('Missing x-lct-byok-key header', { 
+    return new Response('Missing x-lct-byok-key header', {
       status: 401,
       headers: { 'Access-Control-Allow-Origin': origin }
     });
@@ -71,6 +75,14 @@ export default async function handler(req) {
     // 6. Delete the blob to save space (since it's transient)
     // Fire and forget delete
     del(blobUrl).catch(() => {});
+
+    // Trial budget exhausted -> ask the client to switch to its own key.
+    if (usingTrial && (openAiResponse.status === 429 || openAiResponse.status === 402)) {
+      return new Response(JSON.stringify({ error: 'trial_exhausted' }), {
+        status: 402,
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': origin }
+      });
+    }
 
     // 7. Return OpenAI response
     const responseHeaders = new Headers(openAiResponse.headers);
