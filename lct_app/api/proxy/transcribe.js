@@ -35,7 +35,7 @@ export default async function handler(req) {
   }
 
   try {
-    const { blobUrl, language, timestamp_granularities, response_format, model } = await req.json();
+    const { blobUrl, language, chunking_strategy, response_format, model } = await req.json();
 
     if (!blobUrl) {
       return new Response('Missing blobUrl', { status: 400 });
@@ -54,9 +54,9 @@ export default async function handler(req) {
     formData.append('model', model || 'whisper-1');
     if (language) formData.append('language', language);
     if (response_format) formData.append('response_format', response_format);
-    if (timestamp_granularities && timestamp_granularities.length > 0) {
-      timestamp_granularities.forEach(tg => formData.append('timestamp_granularities[]', tg));
-    }
+    // gpt-4o-transcribe-diarize requires chunking_strategy for audio > 30s ("auto"
+    // recommended); it does not support timestamp_granularities.
+    if (chunking_strategy) formData.append('chunking_strategy', chunking_strategy);
 
     // 5. Proxy to OpenAI
     const openAiResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {

@@ -29,9 +29,12 @@ export async function transcribeAudio(apiKey, fileOrBlob) {
     body: JSON.stringify({
       blobUrl: uploadResult.url,
       language: 'en',
-      model: 'gpt-4o-transcribe-diarize', // The advanced diarization model as spec'd in ADR-060
-      response_format: 'verbose_json',
-      timestamp_granularities: ['segment', 'word']
+      model: 'gpt-4o-transcribe-diarize', // diarization model (OpenAI Transcription API)
+      // gpt-4o-transcribe-diarize contract: speaker segments require
+      // response_format=diarized_json, audio >30s requires chunking_strategy
+      // ("auto" recommended), and it does NOT support timestamp_granularities.
+      response_format: 'diarized_json',
+      chunking_strategy: 'auto'
     })
   });
   
@@ -42,10 +45,15 @@ export async function transcribeAudio(apiKey, fileOrBlob) {
   
   const rawResponse = await res.json();
 
-  // 3. Normalize the OpenAI response to our internal diarized shape
-  // OpenAI verbose_json usually has { segments: [{ start, end, text, words: [...] }] }
-  // Our model 'gpt-4o-transcribe-diarize' natively injects 'speaker' into segments.
-  const segments = (rawResponse.segments || []).map(seg => ({
+  // 3. Normalize the diarized_json response to our internal shape.
+  // gpt-4o-transcribe-diarize returns segments carrying a `speaker` label; word
+  // timestamps aren't available for this model, so `words` is best-effort.
+  const rawSegments = Array.isArray(rawResponse.segments)
+    ? rawResponse.segments
+    : Array.isArray(rawResponse)
+    ? rawResponse
+    : [];
+  const segments = rawSegments.map(seg => ({
     speaker: seg.speaker || 'SPEAKER_00', // Fallback if model doesn't inject it
     start: seg.start,
     end: seg.end,
