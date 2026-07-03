@@ -1,6 +1,6 @@
 # Project Structure
 
-Last updated: 2026-06-29
+Last updated: 2026-07-02
 
 ## Top Level
 
@@ -8,17 +8,24 @@ Last updated: 2026-06-29
 live_conversational_threads/
 ├── lct_python_backend/      FastAPI backend (Python)
 ├── lct_app/                 React frontend (Vite, JSX)
-├── docs/                    ADRs, plans, architecture docs
-│   ├── adr/                 Architecture Decision Records (ADR-001 through ADR-058)
+├── docs/                    ADRs, plans, architecture docs — see docs/README.md for the map
+│   ├── adr/                 Architecture Decision Records (through ADR-060, with gaps; see adr/INDEX.md)
 │   ├── handovers/           Session handover notes (historical)
-│   └── plans/               Implementation plans
-├── local_stt/               Standalone mlx-whisper STT server (optional)
-├── logs/                    Backend log files and supervisor scripts
+│   ├── plans/               Implementation plans
+│   ├── design/, contracts/  Subsystem design docs and cross-system data contracts
+│   └── archive/             Dated docs whose useful life has ended
+├── attendee_stack/          Attendee meeting-bot Docker stack (Google Meet bot)
+├── scripts/                 Ops and utility scripts
+├── logs/                    Backend log files and supervisor scripts (gitignored)
+├── tmp/                     Scratch space — all experiment/probe files go here (gitignored)
 ├── setup-once.command       One-time local bootstrap
 ├── start.command            Daily local startup (backend + frontend)
 ├── Dockerfile, docker-compose.yml
 ├── AGENTS.md                Operating instructions for contributors and AI agents
-├── CLAUDE.md                Project-level Claude Code instructions
+├── CLAUDE.md                Project-level Claude Code instructions (points to AGENTS.md)
+├── CONTRIBUTING.md          Human-collaborator onboarding: reading path, setup, etiquette
+├── PRODUCT.md, DESIGN.md    Design register + visual system (read before UI work)
+├── ISSUES.md                Known bugs / feature-request ledger
 └── README.md
 ```
 
@@ -203,11 +210,14 @@ Feature-specific API wrappers for every backend surface. Base: `apiClient.js`.
 
 ## Documentation (`docs/`)
 
-- `adr/` — Architecture Decision Records, ADR-001 through ADR-058 (45 decisions); see `adr/INDEX.md`.
+Full taxonomy: **`docs/README.md`**. Highlights:
+
+- `adr/` — Architecture Decision Records, ADR-001 through ADR-060 (46 on `main`; numbers 041–055 and 057 are burned, see `adr/INDEX.md`).
 - `handovers/` — Session handover notes (historical context, not active references).
 - `plans/` — Implementation plans linked from ADRs.
+- `archive/` — Dated docs whose useful life has ended (old milestones, superseded decision lists).
 - `CONVENTIONS.md` — Naming, patterns, and style ground truth. **Read this first.**
-- `LOCAL_SETUP.md` — Setup and runbook for the Asus dev environment.
+- `LOCAL_SETUP.md` — Setup and runbook for the local dev environment.
 - `DATA_MODEL_V2.md`, `DATA_MODEL_V2_CORRECTIONS.md` — DB schema overview.
 - `INDRASNET_INTEGRATION.md` — IndrasNet↔LCT integration design.
 - `SUPERVISION.md` — Backend supervisor and process management docs.

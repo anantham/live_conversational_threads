@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-06-01 (ADR-034 collision resolved: the inference-catalog ADR renumbered 034 → 037, leaving public-deployment as the sole ADR-034; ADR-021 collision still open — see note below)
+Last updated: 2026-07-02 (backfilled all missing June rows — ADR-034-egress, 036, 039, 040, 056, 058, 059; documented the real numbering gaps 041–055 and 057; ADR-021 collision still open and a second ADR-034 collision surfaced — see notes below)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -39,14 +39,21 @@ Last updated: 2026-06-01 (ADR-034 collision resolved: the inference-catalog ADR 
 | [ADR-032](ADR-032-temporal-swim-lane-layout-and-semantic-edges.md) | Temporal Swim-Lane Layout + Semantic Edge Taxonomy + Enrichment Context | 2026-05-19 | Accepted |
 | [ADR-033](ADR-033-consumption-prayer-matching.md) | Consumption Prayer Matching in the Live Conversation Path | 2026-05-24 | Accepted |
 | [ADR-034](ADR-034-public-lct-deployment-tiered-isolation.md) | Public LCT Deployment — Tiered Access with an Isolated Public Instance | 2026-05-31 | Approved |
+| [ADR-034 ⚠](ADR-034-egress-chokepoint-proposal.md) | Network-Layer Egress Chokepoint for `LCT_LOCAL_ONLY` | 2026-06-05 | Proposed |
 | [ADR-035](ADR-035-crux-detection.md) | Crux Detection | 2026-05-30 | Decided |
+| [ADR-036](ADR-036-shareable-conversation-graph-artifact-and-waitlist.md) | Shareable Conversation-Graph Artifact + Waitlist Demand Capture | 2026-06-05 | Proposed |
 | [ADR-037](ADR-037-inference-backend-catalog-and-three-lane-settings.md) | Inference Backend Catalog & Three-Lane Settings | 2026-05-30 | Decided |
 | [ADR-038](ADR-038-engine-agnostic-privacy-boundary.md) | Engine-Agnostic Privacy Boundary — shared redact/restore/leak-verify primitive enforced at the transport chokepoint | 2026-06-07 | Proposed |
+| [ADR-039](ADR-039-subject-side-privacy-review-surface.md) | Subject-Side Privacy Review Surface (ADR-055 P2) | 2026-06-21 | Approved |
+| [ADR-040](ADR-040-backend-port-ownership-and-restart-authority.md) | Backend Port Ownership & Restart Authority (:43181) | 2026-06-23 | Withdrawn |
+| [ADR-056](ADR-056-m5-edge-stt-cut-audio-relay.md) | M5 Edge STT — Cut the Audio Relay by Moving Live STT to the M5 | 2026-06-23 | Proposed |
+| [ADR-058](ADR-058-human-gated-identity.md) | Human-Gated Identity — Voice→Person Attribution + Contact-Identity Curation | 2026-06-24 | Proposed |
+| [ADR-059](ADR-059-unified-conversation-ingest-and-zombie-cleanup.md) | Unified Conversation Ingest — Narrow-Waist Transcription/Extraction Split + Zombie Cleanup | 2026-06-30 | Proposed |
 | [ADR-060](ADR-060-serverless-byok-thin-proxy.md) | Serverless BYOK — Universal Access via a Thin Stateless OpenAI Proxy | 2026-07-01 | Proposed |
 
-> **⚠ Index gap (ADR-039–059):** this index was last fully maintained 2026-06-01; ADR files 039 through 059 exist in `docs/adr/` but were never added here. ADR-060 is listed out of sequence, ahead of that gap, because it's the one being actively worked on — the gap itself is a pre-existing, separate cleanup task.
+> **Numbering gaps (ADR-041–055, ADR-057):** these numbers have no files on `main`. They were consumed by drafts in branches/PRs that never landed — ADR-057 (capability-token auth) is explicitly known: shelved when its PR #87 was closed as over-scoped (see ADR-056's status note). 041–055 were claimed by parallel sessions' drafts and cross-repo work (e.g. "ADR-055" in ADR-039's title refers to the TemporalCoordination repo's ADR-055) that never merged here. New ADRs should continue from the highest number in this index, not backfill the gaps.
 > **⚠ ADR-021 number collision:** two ADRs shipped as 021 — *Browser-Local Draft Recovery* (2026-04-03) and *Authored Four-Level Conversation Hierarchy* (2026-04-13). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.
-> **ADR-034 number collision — RESOLVED (2026-06-01):** two ADRs had shipped as 034 — *Inference Backend Catalog & Three-Lane Settings* (2026-05-30, feat branch) and *Public LCT Deployment — Tiered Access* (2026-05-31, main). The catalog ADR was renumbered **034 → 037** (no ADR-036/037 file existed; 036 is reserved by ADR-032's future-work list); public-deployment keeps 034. Gap: there is no ADR-036 yet (reserved). Note ADR-037's "Decided (pending human review)" status still wants reconciliation with the index's standard vocabulary.
+> **⚠ ADR-034 number collision (second occurrence, still open):** the first 034 collision was resolved 2026-06-01 by renumbering the inference-catalog ADR 034 → 037 (public-deployment keeps 034). But a *new* collision then shipped: `ADR-034-egress-chokepoint-proposal.md` (2026-06-05, a companion proposal to the public-deployment ADR's `LCT_LOCAL_ONLY` mode) also carries the 034 number. Both are listed above (⚠ marks the companion) until a human renumbers. Note ADR-037's "Decided (pending human review)" status still wants reconciliation with the index's standard vocabulary.
 
 ## Status Definitions
 
@@ -55,3 +62,4 @@ Last updated: 2026-06-01 (ADR-034 collision resolved: the inference-catalog ADR 
 - **Accepted** — Synonym for Approved used by some later ADRs (e.g. ADR-032/033); decision is locked and built
 - **Deprecated** — No longer relevant, superseded by another ADR
 - **Superseded** — Replaced by a newer ADR (link to successor)
+- **Withdrawn** — Retracted by its own author after the motivating diagnosis proved wrong (e.g. ADR-040); kept for the post-mortem value
