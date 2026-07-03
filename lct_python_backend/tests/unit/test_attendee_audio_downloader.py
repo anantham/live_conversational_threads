@@ -82,17 +82,23 @@ def test_get_minio_client_builds_client_with_credentials(monkeypatch):
 # ---------------------------------------------------------------------------
 
 class _FakeS3:
-    """Fakes list_objects_v2 with a scripted sequence of responses, one per call."""
+    """Fakes list_objects_v2 with a scripted sequence of responses, one per call.
+    A response that is an Exception instance is raised instead of returned
+    (transient-failure simulation). Records the kwargs of every call so tests
+    can assert pagination tokens were passed through."""
 
     def __init__(self, responses):
         self._responses = list(responses)
         self.calls = 0
+        self.call_kwargs = []
 
-    def list_objects_v2(self, Bucket):  # noqa: N803 — matches boto3's real kwarg name
+    def list_objects_v2(self, **kwargs):
         self.calls += 1
-        if self.calls <= len(self._responses):
-            return self._responses[self.calls - 1]
-        return self._responses[-1]
+        self.call_kwargs.append(kwargs)
+        resp = self._responses[min(self.calls, len(self._responses)) - 1]
+        if isinstance(resp, Exception):
+            raise resp
+        return resp
 
 
 def test_find_recording_key_finds_on_first_poll():
@@ -128,6 +134,53 @@ def test_find_recording_key_gives_up_after_timeout(monkeypatch):
 
     assert key is None
     assert s3.calls >= 1
+
+
+def test_find_recording_key_walks_paginated_bucket():
+    """The recording can be on a later page of a full bucket (codex review #4)."""
+    s3 = _FakeS3([
+        {"Contents": [{"Key": "unrelated-1.mp3"}], "IsTruncated": True,
+         "NextContinuationToken": "tok-2"},
+        {"Contents": [{"Key": "bot123.mp3", "LastModified": 1}]},
+    ])
+
+    key = asyncio.run(downloader._find_recording_key(s3, "bot123"))
+
+    assert key == "bot123.mp3"
+    assert s3.call_kwargs[0] == {"Bucket": downloader.MINIO_BUCKET}
+    assert s3.call_kwargs[1]["ContinuationToken"] == "tok-2"
+
+
+def test_find_recording_key_prefers_most_recent_of_multiple_matches():
+    """Re-uploads/partials for the same bot: newest LastModified wins (codex review #3)."""
+    from datetime import datetime, timezone
+    old = datetime(2026, 7, 1, tzinfo=timezone.utc)
+    new = datetime(2026, 7, 2, tzinfo=timezone.utc)
+    s3 = _FakeS3([
+        {"Contents": [
+            {"Key": "bot123-partial.mp3", "LastModified": old},
+            {"Key": "bot123-final.mp3", "LastModified": new},
+        ]},
+    ])
+
+    key = asyncio.run(downloader._find_recording_key(s3, "bot123"))
+
+    assert key == "bot123-final.mp3"
+
+
+def test_find_recording_key_survives_transient_listing_error(monkeypatch):
+    """A transient MinIO failure counts as not-ready-yet, not a fatal abort (codex review #5)."""
+    monkeypatch.setattr(downloader, "MINIO_POLL_INTERVAL_S", 0.001)
+    monkeypatch.setattr(downloader, "MINIO_POLL_TIMEOUT_S", 1.0)
+    s3 = _FakeS3([
+        ConnectionError("minio hiccup"),
+        {"Contents": [{"Key": "bot123.mp3", "LastModified": 1}]},
+    ])
+
+    key = asyncio.run(downloader._find_recording_key(s3, "bot123"))
+
+    assert key == "bot123.mp3"
+    assert s3.calls == 2
 
 
 # ---------------------------------------------------------------------------
@@ -266,3 +319,35 @@ def test_fetch_and_transcribe_never_raises_on_unexpected_error(monkeypatch, patc
     asyncio.run(downloader.fetch_and_transcribe("bot123", "conv-1"))
 
     assert patched_downloader.reconcile_calls == []
+
+
+def test_fetch_and_transcribe_dedupes_concurrent_triggers(monkeypatch, patched_downloader):
+    """Attendee webhook retries / repeated terminal states must not race two
+    slow-passes for the same bot (codex review #1)."""
+    segments = [{"start": 0.0, "end": 1.2, "text": "hello"}]
+
+    async def _fake_transcribe(**kwargs):
+        await asyncio.sleep(0.01)  # hold the first run in flight while the second fires
+        return SimpleNamespace(asr_segments=segments)
+    monkeypatch.setattr(downloader, "transcribe_audio_file_detailed", _fake_transcribe)
+
+    async def _run_both():
+        await asyncio.gather(
+            downloader.fetch_and_transcribe("bot123", "conv-1"),
+            downloader.fetch_and_transcribe("bot123", "conv-1"),
+        )
+    asyncio.run(_run_both())
+
+    assert len(patched_downloader.reconcile_calls) == 1  # second trigger skipped
+    # Guard must clear afterwards so a genuinely later re-trigger still works.
+    assert "bot123" not in downloader._inflight_bots
+
+
+def test_fetch_and_transcribe_inflight_guard_clears_after_failure(monkeypatch, patched_downloader):
+    async def _boom(**kwargs):
+        raise RuntimeError("STT service unreachable")
+    monkeypatch.setattr(downloader, "transcribe_audio_file_detailed", _boom)
+
+    asyncio.run(downloader.fetch_and_transcribe("bot123", "conv-1"))
+
+    assert "bot123" not in downloader._inflight_bots
