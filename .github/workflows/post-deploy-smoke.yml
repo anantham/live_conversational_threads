@@ -13,6 +13,11 @@ name: post-deploy smoke (live prod)
 #
 # NOTE: deployment_status / schedule / workflow_dispatch only fire from the
 # workflow file on the default branch, so this activates once merged to main.
+#
+# The smoke asserts only deployment-agnostic build-health (the SPA boots and
+# reaches its first screen), never version-specific behavior. So the daily
+# canary -- which runs main's spec against whatever prod currently serves --
+# can't drift-fail in the brief window where main is ahead of the live deploy.
 
 on:
   deployment_status:
@@ -30,7 +35,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     # Run for manual/scheduled triggers, or a SUCCESSFUL PRODUCTION deploy.
-    # Preview deployments (environment != Production) are ignored.
+    # `environment` is Vercel's own label; verified against this repo's real
+    # deployment_status history that prod deploys report "Production" and
+    # previews report "Preview", so this fires on prod and skips previews.
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
@@ -65,16 +72,19 @@ jobs:
       - name: Wait for the deployment to serve
         run: |
           # Absorb any alias-propagation lag after the deploy-success event.
+          # Follow redirects (-L) so a fronting 30x still resolves, and treat any
+          # non-error final status (2xx/3xx) as "serving". curl prints 000 on a
+          # connection failure, which fails the numeric range check and retries.
           for i in $(seq 1 30); do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "$PLAYWRIGHT_BASE_URL" || true)
-            if [ "$code" = "200" ]; then
-              echo "prod responded 200 after attempt ${i}"
+            code=$(curl -sL -o /dev/null -w '%{http_code}' "$PLAYWRIGHT_BASE_URL" || echo 000)
+            if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+              echo "prod serving (HTTP ${code}) after attempt ${i}"
               exit 0
             fi
             echo "attempt ${i}: got '${code}', retrying in 4s"
             sleep 4
           done
-          echo "prod did not return 200 within timeout"
+          echo "prod did not serve a 2xx/3xx within timeout"
           exit 1
 
       - name: Run live prod smoke
