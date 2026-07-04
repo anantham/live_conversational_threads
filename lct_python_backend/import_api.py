@@ -29,6 +29,7 @@ from lct_python_backend.import_schemas import (
 )
 
 from lct_python_backend.db_session import get_async_session
+from lct_python_backend.route_diagnostics import timed_sync_stage
 from lct_python_backend.services.owner_context import resolve_owner_id
 from lct_python_backend.services.import_pipeline.import_fetchers import (
     download_url_text,
@@ -325,10 +326,14 @@ async def import_turns(
 
 
 @router.get("/health")
-async def health_check():
+async def health_check(request: Request = None):
     """Health check endpoint for import API."""
-    url_import_enabled = _is_url_import_enabled()
-    supported_formats = get_supported_import_formats(url_import_enabled)
+    url_import_enabled = timed_sync_stage(request, "url_import_enabled", _is_url_import_enabled)
+    supported_formats = timed_sync_stage(
+        request,
+        "supported_formats",
+        lambda: get_supported_import_formats(url_import_enabled),
+    )
     return {
         "status": "healthy",
         "service": "import_api",

@@ -1,6 +1,29 @@
 # ISSUES
 
-Last updated: 2026-07-01
+Last updated: 2026-07-03
+
+## 2026-07-03 - Backend catalog selected/effective LLM unit test is red on dirty checkout
+
+**Summary:** While validating route diagnostics for the IndrasNet/LCT supervisor
+investigation, the broader focused backend test batch surfaced
+`lct_python_backend/tests/unit/test_backend_catalog.py::test_llm_selected_vs_effective_differ_when_providers_override`.
+The test expected `cat["active"]["llm"] == "local-ollama"` while the current
+checkout returns `tailscale-rtx-llm`.
+
+**Impact:** Medium diagnosability/product-risk. This may mean the settings UI can
+blur the distinction between the configured selected LLM and the currently
+effective provider override. It also prevents using the backend-catalog unit
+suite as a clean validation gate for unrelated instrumentation.
+
+**Blocker status:** Not blocking the current route-diagnostic instrumentation.
+The failure is in the pure `build_catalog(...)` unit path, not in the route
+wrappers or request-timing helpers.
+
+**Recommended next step:** Inspect recent changes around
+`lct_python_backend/services/backend_catalog.py` and
+`lct_python_backend/tests/unit/test_backend_catalog.py`; decide whether selected
+LLM should remain config-driven while effective LLM reflects provider priority,
+then update code or test intent accordingly.
 
 ## 2026-07-01 — SSRF: resolve-then-connect DNS-rebind TOCTOU in URL/gdoc fetchers (KNOWN RESIDUAL, deferred)
 
