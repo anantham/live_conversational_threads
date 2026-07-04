@@ -1,5 +1,84 @@
 # WORKLOG
 
+## 2026-07-03T08:30:00+05:30 - LCT route timing diagnostics for supervisor investigation
+
+- Context: continuing the IndrasNet/LCT supervisor root-cause investigation after
+  the launcher logs showed `lct_backend` and `web_server` wedging under slow
+  health/settings/catalog traffic. This pass adds default-off LCT route-stage
+  diagnostics so the next live run can distinguish "health endpoint itself slow"
+  from "neighbor routes saturating the backend event loop/threadpool."
+- Files modified:
+  - `lct_python_backend/route_diagnostics.py` (new file, lines 1-78):
+    default-off `LCT_ROUTE_DIAGNOSTICS` helpers, default diagnostic path list,
+    and sanitized sync/async stage timers that write only stage names/durations
+    into `request.state.server_timings`.
+  - `lct_python_backend/middleware.py` (lines 34, 112-124): when diagnostics
+    are enabled for a target path, logs `[LCT-ROUTE-DIAG]` with total request
+    time plus the existing `Server-Timing` stage breakdown; existing `[SLOW]`
+    behavior remains unchanged when diagnostics are off.
+  - `lct_python_backend/import_api.py` (lines 32, 329-337): wraps
+    `/api/import/health` format/enabled checks in gated stage timers.
+  - `lct_python_backend/backend_catalog_api.py` (lines 20, 103-199, 231-280):
+    wraps catalog/settings/telemetry/probe stages for `/api/backend-catalog`
+    and `/api/backend-catalog/probe`.
+  - `lct_python_backend/tests/unit/test_route_diagnostics.py` (new file, lines
+    1-74): records test intent and covers default-off recording, enabled stage
+    capture, target-path selection, and middleware diagnostic logging.
+- Validation:
+  - `python -m py_compile` passed for the touched backend modules using a
+    repo-local pycache prefix after `C:\tmp\lct_pycache` was denied by Windows.
+  - `pytest -q lct_python_backend/tests/unit/test_route_diagnostics.py lct_python_backend/tests/unit/test_import_api_security.py`
+    passed (`13 passed`, existing warnings only).
+  - FastAPI route-registration smoke passed with a dummy `DATABASE_URL`:
+    `/api/import/health`, `/api/backend-catalog`, and
+    `/api/backend-catalog/probe` did not gain bogus query params; the import
+    health route returned HTTP 200.
+  - Falsified an attempted annotation cleanup from `Request = None` to
+    `Optional[Request] = None`: this FastAPI/Pydantic stack treated
+    `Optional[Request]` as a body field and failed route registration. Reverted
+    to the route-registration-smoked form.
+- Related finding:
+  - A broader focused batch that also included
+    `lct_python_backend/tests/unit/test_backend_catalog.py` produced `27 passed`
+    and 1 unrelated failure in
+    `test_llm_selected_vs_effective_differ_when_providers_override` (`local-ollama`
+    expected, `tailscale-rtx-llm` actual). Logged in `ISSUES.md`; not fixed in
+    this diagnostic pass.
+- Next evidence step:
+  - Run the supervisor with `INDRAS_DB_LOCK_DIAGNOSTICS=1`,
+    `INDRAS_LAUNCHER_DIAGNOSTICS=1`, `INDRAS_AGENT_SPAWN_DIAGNOSTICS=1`, and
+    `LCT_ROUTE_DIAGNOSTICS=1`; then compare `[LAUNCHER-DIAG]`,
+    `[DB-LOCK-DIAG]`, `[AGENT-SPAWN-DIAG]`, and `[LCT-ROUTE-DIAG]` timestamps
+    around the next wedge.
+
+## 2026-07-01T12:33:18+05:30 - Claude review gate scripts
+
+- Context: user asked for a standing instruction that every PR be reviewed by
+  Claude before merge. Earlier diagnostics showed `claude -p --bare` falsely
+  reported "Not logged in" because `--bare` disables OAuth/keychain auth; the
+  working non-interactive path is Claude Code auth plus `--safe-mode`, and the
+  native PR review primitive is `claude ultrareview <target> --json`.
+- Files modified:
+  - `scripts/review_pr_with_claude.ps1` (new file, lines 1-237): runs
+    `claude ultrareview` for a PR, writes ignored `.agent-reviews/` artifacts,
+    and conservatively fails the merge gate when Claude fails, reports findings,
+    or returns an unrecognized JSON shape.
+  - `scripts/merge_pr_after_claude.ps1` (new file, lines 1-103): wraps review,
+    GitHub checks, and `gh pr merge`; requires explicit `-ConfirmMerge` because
+    `main` deploys the frontend to production.
+  - `AGENTS.md` (lines 455-477): records the standing Claude review gate, the
+    operator's approval to send PR diff/context to Claude/Anthropic through
+    Claude Code, and the rule not to use `--bare` for this workflow.
+  - `docs/WORKLOG.md` (lines 3-29): preserves the rationale and validation.
+- Validation:
+  - PowerShell parse check passed for both scripts.
+  - `git diff --check` passed for the touched files; only expected CRLF checkout
+    warnings were printed.
+  - `scripts/merge_pr_after_claude.ps1 0` without `-ConfirmMerge` refused to run,
+    proving the merge wrapper does not accidentally merge by default.
+  - Did not run `claude ultrareview` against a real PR in this pass because the
+    repository currently has no open PRs and the checkout contains unrelated WIP.
+
 ## 2026-06-24 — Mobile UX critique batch + edge-STT shelved
 
 Full writeup + backlog: `docs/HANDOVER_2026-06-24_mobile-ux-backlog-and-edge-shelf.md`.
@@ -3198,3 +3277,16 @@ Manual testing not run:
   - exclude screenshots, `.tmp_validation/`, Syncthing artifacts, replay outputs, and ad-hoc probe scripts.
 - Validation:
   - `python -m pytest -q lct_python_backend/tests/unit/test_consumption_trigger.py` passed (`41 passed`).
+
+## 2026-07-01 - Serverless Mode Network & STT Diagnostics
+
+- **Context:** The user reported issues with the LLM routing and STT (Ollama vs LM Studio) settings, along with failures in the "Serverless Mode" BYOK configuration for Edge deployment.
+- **Findings:** 
+  - Diagnosed a configuration mismatch where the Local LLM Base URL was pointing to LM Studio (port 1234) while the user had "Ollama" selected in the active lanes. 
+  - Validated that LM Studio was successfully serving models over the Tailscale network IP 100.81.65.74:1234, while Ollama on 11434 was unresponsive. Advised user to switch to the LM Studio lane.
+  - Attempted to write and execute a Playwright E2E script (	ests/e2e/serverless_live.spec.js) to automatically upload audio and verify the ?edge=1 Serverless processing mode.
+  - The E2E script persistently failed due to React's dynamic DOM rendering and locator timeouts on the file upload button within the /conversation/:id route, despite multiple attempts to adjust the navigation flow.
+- **Next Steps:** 
+  - The E2E automation for the Serverless upload flow was abandoned in favor of manual user testing, as it was blocking progress.
+  - The user will manually test the Serverless mode audio upload in the browser.
+  - **Ready to move on to ADR-058 (Human-Gated Identity) in the next session.**

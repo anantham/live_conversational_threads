@@ -14,9 +14,10 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from lct_python_backend.db_session import get_async_session
+from lct_python_backend.route_diagnostics import timed_async_stage, timed_sync_stage
 from lct_python_backend.services.backend_catalog import build_catalog, load_seed
 from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers
 from lct_python_backend.services.stt.stt_config import STT_CLOUD_PROVIDER_IDS
@@ -100,7 +101,11 @@ async def _resolve_probe_url(
 
 
 @router.post("/api/backend-catalog/probe")
-async def probe_backend_entry(payload: Dict[str, Any], session=Depends(get_async_session)):
+async def probe_backend_entry(
+    payload: Dict[str, Any],
+    request: Request = None,
+    session=Depends(get_async_session),
+):
     """Live-probe a single catalog backend by (capability, id).
 
     The client only names an entry — the server resolves the URL from the seed /
@@ -113,16 +118,37 @@ async def probe_backend_entry(payload: Dict[str, Any], session=Depends(get_async
     if capability not in {"stt", "llm", "diarization"} or not entry_id:
         raise HTTPException(status_code=400, detail="capability (stt|llm|diarization) and id are required.")
 
-    stt_settings = await load_stt_settings(session)
-    diar_settings = await _safe_diar_settings(session)
-    llm_providers_cfg = await load_llm_providers(session, include_secrets=False)
+    stt_settings = await timed_async_stage(
+        request,
+        "load_stt_settings",
+        lambda: load_stt_settings(session),
+    )
+    diar_settings = await timed_async_stage(
+        request,
+        "load_diar_settings",
+        lambda: _safe_diar_settings(session),
+    )
+    llm_providers_cfg = await timed_async_stage(
+        request,
+        "load_llm_providers",
+        lambda: load_llm_providers(session, include_secrets=False),
+    )
     probe_llm_providers = llm_providers_cfg.get("providers") if isinstance(llm_providers_cfg, dict) else []
     probe_llm_providers = probe_llm_providers if isinstance(probe_llm_providers, list) else []
-    catalog = build_catalog(
-        stt_settings=stt_settings,
-        llm_settings=await load_llm_config(session),
-        diar_settings=diar_settings,
-        llm_providers=probe_llm_providers,
+    llm_settings = await timed_async_stage(
+        request,
+        "load_llm_config",
+        lambda: load_llm_config(session),
+    )
+    catalog = timed_sync_stage(
+        request,
+        "build_catalog",
+        lambda: build_catalog(
+            stt_settings=stt_settings,
+            llm_settings=llm_settings,
+            diar_settings=diar_settings,
+            llm_providers=probe_llm_providers,
+        ),
     )
     entry = next((e for e in catalog.get(capability, []) if e.get("id") == entry_id), None)
     if entry is None:
@@ -140,9 +166,16 @@ async def probe_backend_entry(payload: Dict[str, Any], session=Depends(get_async
             "error": None if ok else "pyannote needs to be enabled with a HuggingFace token.",
         }
 
-    health_url = await _resolve_probe_url(
-        capability=capability, entry=entry, stt_settings=stt_settings, diar_settings=diar_settings,
-        llm_providers=probe_llm_providers,
+    health_url = await timed_async_stage(
+        request,
+        "resolve_probe_url",
+        lambda: _resolve_probe_url(
+            capability=capability,
+            entry=entry,
+            stt_settings=stt_settings,
+            diar_settings=diar_settings,
+            llm_providers=probe_llm_providers,
+        ),
     )
     if not health_url:
         return {
@@ -156,7 +189,11 @@ async def probe_backend_entry(payload: Dict[str, Any], session=Depends(get_async
         timeout_seconds = min(max(float(payload.get("timeout_seconds", 3.0)), 0.5), 15.0)
     except (TypeError, ValueError):
         timeout_seconds = 3.0
-    probe = await asyncio.to_thread(probe_health_url, health_url, timeout_seconds)
+    probe = await timed_async_stage(
+        request,
+        "probe_health_url",
+        lambda: asyncio.to_thread(probe_health_url, health_url, timeout_seconds),
+    )
     return {
         "id": entry_id, "capability": capability, "checked_at": checked_at,
         "health_url": health_url, "probe_kind": "http", **probe,
@@ -192,21 +229,52 @@ async def _safe_llm_telemetry(session):
 
 
 @router.get("/api/backend-catalog")
-async def read_backend_catalog(session=Depends(get_async_session)):
-    stt_settings = await load_stt_settings(session)
-    llm_settings = await load_llm_config(session)
-    llm_providers_config = await load_llm_providers(session, include_secrets=False)
+async def read_backend_catalog(
+    request: Request = None,
+    session=Depends(get_async_session),
+):
+    stt_settings = await timed_async_stage(
+        request,
+        "load_stt_settings",
+        lambda: load_stt_settings(session),
+    )
+    llm_settings = await timed_async_stage(
+        request,
+        "load_llm_config",
+        lambda: load_llm_config(session),
+    )
+    llm_providers_config = await timed_async_stage(
+        request,
+        "load_llm_providers",
+        lambda: load_llm_providers(session, include_secrets=False),
+    )
     llm_providers = llm_providers_config.get("providers") if isinstance(llm_providers_config, dict) else []
 
-    stt_telemetry = await aggregate_telemetry(session, 400, stt_settings)
-    llm_telemetry = await _safe_llm_telemetry(session)
-    diar_settings = await _safe_diar_settings(session)
+    stt_telemetry = await timed_async_stage(
+        request,
+        "aggregate_stt_telemetry",
+        lambda: aggregate_telemetry(session, 400, stt_settings),
+    )
+    llm_telemetry = await timed_async_stage(
+        request,
+        "aggregate_llm_telemetry",
+        lambda: _safe_llm_telemetry(session),
+    )
+    diar_settings = await timed_async_stage(
+        request,
+        "load_diar_settings",
+        lambda: _safe_diar_settings(session),
+    )
 
-    return build_catalog(
-        stt_settings=stt_settings,
-        llm_settings=llm_settings,
-        llm_providers=llm_providers if isinstance(llm_providers, list) else [],
-        diar_settings=diar_settings,
-        stt_telemetry=stt_telemetry,
-        llm_telemetry=llm_telemetry,
+    return timed_sync_stage(
+        request,
+        "build_catalog",
+        lambda: build_catalog(
+            stt_settings=stt_settings,
+            llm_settings=llm_settings,
+            llm_providers=llm_providers if isinstance(llm_providers, list) else [],
+            diar_settings=diar_settings,
+            stt_telemetry=stt_telemetry,
+            llm_telemetry=llm_telemetry,
+        ),
     )
