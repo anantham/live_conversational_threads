@@ -22,9 +22,11 @@ test.describe('Serverless BYOK Mode', () => {
     // 5. Submit
     await page.locator('button:has-text("Start Serverless Session")').click();
 
-    // 6. Verify transition to main app (e.g. the New Conversation / Browse page)
-    // After submitting, the App should render <AppRoutes /> which typically defaults to NewConversation or Browse
-    await expect(page.locator('text=Serverless Mode').first()).not.toBeVisible();
+    // 6. Verify transition to main app (e.g. the New Conversation / Browse page).
+    // Assert the GATE is gone via its unique submit button — not a loose
+    // "Serverless Mode" text match, which also hits the home-status pill
+    // ("Serverless mode: ... via OpenAI with your key") that renders in-app.
+    await expect(page.locator('button:has-text("Start Serverless Session")')).not.toBeVisible();
     
     // We expect to see "Live Conversational Threads" or a record button
     // (Assuming the default route is the Home page)
