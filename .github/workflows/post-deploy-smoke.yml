@@ -37,13 +37,15 @@ jobs:
     # Run for manual/scheduled triggers, or a SUCCESSFUL PRODUCTION deploy.
     # `environment` is Vercel's own label; verified against this repo's real
     # deployment_status history that prod deploys report "Production" and
-    # previews report "Preview", so this fires on prod and skips previews.
+    # previews report "Preview". The membership check tolerates a casing change
+    # (e.g. "production") since the label is provider-controlled; previews are
+    # excluded either way.
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
       (github.event_name == 'deployment_status' &&
        github.event.deployment_status.state == 'success' &&
-       github.event.deployment_status.environment == 'Production')
+       contains(fromJson('["Production","production"]'), github.event.deployment_status.environment))
 
     env:
       # The custom production domain always aliases the current production
