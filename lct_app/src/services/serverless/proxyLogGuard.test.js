@@ -4,8 +4,13 @@ import * as path from 'path';
 
 describe('Serverless Proxy Security Guards', () => {
   it('must not contain console.log or print statements that could leak API keys', () => {
-    const proxyDir = path.resolve(__dirname, '../../api/proxy');
-    if (!fs.existsSync(proxyDir)) return; // Skip if no proxy dir yet
+    // Three levels up: this file lives in src/services/serverless/, the proxy
+    // routes in lct_app/api/proxy. The old '../../api/proxy' resolved to the
+    // nonexistent src/api/proxy, so the existsSync escape hatch silently
+    // skipped this guard for its entire life. Resolve the REAL dir and fail
+    // loudly if it ever moves.
+    const proxyDir = path.resolve(__dirname, '../../../api/proxy');
+    expect(fs.existsSync(proxyDir), `proxy dir missing at ${proxyDir}`).toBe(true);
 
     const files = fs.readdirSync(proxyDir);
     for (const file of files) {
