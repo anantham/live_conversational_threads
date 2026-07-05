@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 
-import { corsHeaders, isAllowedOrigin } from '../../../api/proxy/_shared.js';
+import {
+  corsHeaders,
+  evaluateGuard,
+  guardNodeRequest,
+  isAllowedOrigin,
+} from '../../../api/proxy/_shared.js';
 
 // Regression guard for the 2026-07-05 prod outage: the proxy origin allowlist
 // only admitted localhost/*.vercel.app, so every /api/proxy call from the
@@ -38,5 +43,75 @@ describe('proxy origin allowlist', () => {
     expect(headers['Access-Control-Allow-Headers']).toContain('x-lct-byok-key');
     expect(headers['Access-Control-Allow-Headers']).toContain('x-lct-trial');
     expect(headers['Access-Control-Allow-Origin']).toBe('https://threads.adityaarpitha.com');
+  });
+});
+
+// Regression guard for the SECOND 2026-07-05 prod outage: Vercel's Node
+// runtime passes the classic (req, res) pair — req.headers is a plain object
+// with no .get — so the Web-style transcribe/upload handlers crashed with
+// FUNCTION_INVOCATION_FAILED on every request since the day they shipped.
+// The Node routes must consume the guard through guardNodeRequest, which
+// reads plain-object headers only.
+describe('node-runtime guard', () => {
+  const PROD = 'https://threads.adityaarpitha.com';
+
+  function fakeRes() {
+    return {
+      headers: {},
+      statusCode: null,
+      body: undefined,
+      ended: false,
+      setHeader(name, value) { this.headers[name] = value; },
+      status(code) { this.statusCode = code; return this; },
+      send(body) { this.body = body; return this; },
+      end() { this.ended = true; return this; },
+    };
+  }
+
+  it('evaluateGuard works from plain values (no Headers object anywhere)', () => {
+    expect(evaluateGuard({ method: 'POST', origin: PROD, forwardedFor: '1.2.3.4' })).toBeNull();
+    expect(evaluateGuard({ method: 'POST', origin: 'https://evil.example.com', forwardedFor: '1.2.3.4' }))
+      .toMatchObject({ status: 403 });
+    expect(evaluateGuard({ method: 'GET', origin: PROD, forwardedFor: '1.2.3.4' }))
+      .toMatchObject({ status: 405 });
+    expect(evaluateGuard({ method: 'OPTIONS', origin: PROD, forwardedFor: '1.2.3.4' }))
+      .toMatchObject({ status: 204 });
+  });
+
+  it('guardNodeRequest reads plain-object headers and writes via res', () => {
+    // Allowed POST proceeds (returns false, writes nothing).
+    const okRes = fakeRes();
+    const proceed = guardNodeRequest(
+      { method: 'POST', headers: { origin: PROD, 'x-forwarded-for': '9.9.9.1' } },
+      okRes,
+    );
+    expect(proceed).toBe(false);
+    expect(okRes.statusCode).toBeNull();
+
+    // Disallowed origin short-circuits with 403.
+    const badRes = fakeRes();
+    const blocked = guardNodeRequest(
+      { method: 'POST', headers: { origin: 'https://evil.example.com' } },
+      badRes,
+    );
+    expect(blocked).toBe(true);
+    expect(badRes.statusCode).toBe(403);
+
+    // Preflight gets CORS approval + 204 end.
+    const preRes = fakeRes();
+    guardNodeRequest({ method: 'OPTIONS', headers: { origin: PROD } }, preRes);
+    expect(preRes.statusCode).toBe(204);
+    expect(preRes.ended).toBe(true);
+    expect(preRes.headers['Access-Control-Allow-Origin']).toBe(PROD);
+  });
+
+  it('rate limit trips via guardNodeRequest after the per-minute cap', () => {
+    const ipHeaders = { origin: PROD, 'x-forwarded-for': '203.0.113.77' };
+    let lastRes = null;
+    for (let i = 0; i < 6; i += 1) {
+      lastRes = fakeRes();
+      guardNodeRequest({ method: 'POST', headers: ipHeaders }, lastRes, { maxPerMin: 5 });
+    }
+    expect(lastRes.statusCode).toBe(429);
   });
 });
