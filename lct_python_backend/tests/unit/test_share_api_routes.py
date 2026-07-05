@@ -7,13 +7,7 @@ assert the public endpoints refuse revoked or expired shares.
 
 from __future__ import annotations
 
-import os
-
-os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/test_db")
-
-import sys
 import time
-import types
 import uuid
 from datetime import datetime, timedelta
 from types import SimpleNamespace
@@ -22,15 +16,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-if "lct_python_backend.db_session" not in sys.modules:
-    _stub = types.ModuleType("lct_python_backend.db_session")
-
-    async def _dummy_get_async_session():  # pragma: no cover
-        yield object()
-
-    _stub.get_async_session = _dummy_get_async_session
-    sys.modules["lct_python_backend.db_session"] = _stub
-
+# db_session's engine is lazy (created on first use), so importing the real
+# get_async_session below needs no DATABASE_URL and no sys.modules stub. The
+# tests override it via FastAPI dependency_overrides, so no engine is ever
+# built.
 from lct_python_backend.db_session import get_async_session
 from lct_python_backend.share_api import _sign_audio_url, router
 
