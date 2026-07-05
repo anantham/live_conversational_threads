@@ -23,19 +23,26 @@ class _Node:
 
 
 def _patch(mod, monkeypatch, response):
+    # The detectors route through the shared LLM provider-fallback chain
+    # (load_llm_providers + chat_with_provider_fallback, commit 2b841f6) and
+    # read the parsed payload off ProviderResult.data.
     class _PM:
         def render_prompt(self, *_a, **_k):
             return "PROMPT"
 
-    async def _cfg(_db):
-        return {"mode": "local", "base_url": "http://x", "chat_model": "m"}
+    class _Result:
+        def __init__(self, data):
+            self.data = data
 
-    async def _chat(_config, _messages, **_kw):
-        return response
+    async def _cfg(*_a, **_k):
+        return {"providers": [{"id": "local", "base_url": "http://x", "model": "m"}]}
+
+    async def _chat(*_a, **_kw):
+        return _Result(response)
 
     monkeypatch.setattr(mod, "get_prompt_manager", lambda: _PM())
-    monkeypatch.setattr(mod, "load_llm_config", _cfg)
-    monkeypatch.setattr(mod, "local_chat_json", _chat)
+    monkeypatch.setattr(mod, "load_llm_providers", _cfg)
+    monkeypatch.setattr(mod, "chat_with_provider_fallback", _chat)
 
 
 def test_bias_routes_through_gateway(monkeypatch):

@@ -1,0 +1,60 @@
+name: pytest (unit)
+
+# PR gate: run the full backend unit suite (~1800 zero-DB tests).
+#
+# Until 2026-07-05 NOTHING ran these in CI (the only gates were the Playwright
+# smoke and the *_pg integration glob), so breakage landed silently — at one
+# point a single leaked sys.modules stub aborted collection of the entire
+# suite and nobody noticed for a week.
+#
+# Deliberately NO Postgres service and NO DATABASE_URL: the unit tests are
+# zero-DB by contract, and db_session creates its engine lazily, so importing
+# the backend must never require a database. Running without the env var is
+# itself a regression guard for that import-safety property.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pytest-unit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest-unit:
+    name: pytest unit (zero-DB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      AUTH_TOKEN: ""
+      DEBUG: "false"
+      ENVIRONMENT: "test"
+      LOG_LEVEL: "INFO"
+      STT_AUTOSTART: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: lct_python_backend/requirements.txt
+
+      - name: Install backend deps
+        working-directory: lct_python_backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unit tests
+        # Repo root on purpose: `from lct_python_backend import ...` resolves
+        # via the cwd, and it sidesteps the double-nested
+        # lct_python_backend/lct_python_backend/ recordings dir.
+        run: |
+          python -m pytest lct_python_backend/tests/unit -q --tb=short

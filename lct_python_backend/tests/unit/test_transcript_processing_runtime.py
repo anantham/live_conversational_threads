@@ -123,6 +123,11 @@ async def test_graph_timer_forces_update_when_accumulator_keeps_accumulating(mon
         batch_size=4,
         graph_first_update_max_wait_ms=20,
         graph_steady_update_max_wait_ms=20,
+        # The min-flush gate (default 80 chars, "don't LLM tiny fragments")
+        # would defer the 33-char fixture with trigger=timer_deferred. This
+        # test verifies the timer FORCES a flush while the accumulator keeps
+        # accumulating — not the gate — so disable the gate.
+        graph_min_flush_chars=0,
     )
 
     await processor.handle_final_text("First finalized transcript chunk.")
