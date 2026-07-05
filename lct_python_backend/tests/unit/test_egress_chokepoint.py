@@ -128,9 +128,16 @@ def test_tailscale_host_passes_the_guard():
 @pytest.mark.asyncio
 async def test_cloud_allowed_when_local_only_off(monkeypatch):
     """With LCT_LOCAL_ONLY=0 the chokepoint is a no-op: cloud calls pass the
-    guard (and fail later on auth/network, NOT on egress)."""
+    guard. Only a CloudEgressBlocked is a failure — any network outcome
+    (timeout, refusal, or an actual HTTP response on runners with internet,
+    e.g. a 401 from api.openai.com) means the guard let it through. The old
+    pytest.raises(Exception) form flaked on CI, where the request completed
+    inside the 100ms timeout and nothing raised."""
     monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
-    async with httpx.AsyncClient(timeout=0.1) as client:
-        with pytest.raises(Exception) as exc_info:
+    async with httpx.AsyncClient(timeout=0.5) as client:
+        try:
             await client.get("https://api.openai.com/v1/models")
-        assert not isinstance(exc_info.value, CloudEgressBlocked)
+        except CloudEgressBlocked:  # pragma: no cover - would be a guard bug
+            pytest.fail("guard blocked cloud egress despite LCT_LOCAL_ONLY=0")
+        except Exception:
+            pass  # timeout / network failure — fine, the guard let it through
