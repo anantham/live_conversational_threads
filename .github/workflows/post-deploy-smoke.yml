@@ -1,0 +1,104 @@
+name: post-deploy smoke (live prod)
+
+# Verifies the LIVE production deployment after Vercel finishes deploying.
+# threads.adityaarpitha.com is git-connected to this repo: a push to main
+# triggers a Vercel PRODUCTION build, and Vercel reports the result back to
+# GitHub as a `deployment_status`. We run the browser smoke exactly when that
+# status flips to `success` for the Production environment, so it tests the
+# real, just-shipped build rather than a local server.
+#
+# Also runnable on demand (workflow_dispatch) and as a daily uptime canary
+# (schedule). Preview deploys are skipped: their URLs are auth-walled by Vercel
+# Deployment Protection, so a headless browser smoke would 302 to SSO and fail.
+#
+# NOTE: deployment_status / schedule / workflow_dispatch only fire from the
+# workflow file on the default branch, so this activates once merged to main.
+#
+# The smoke asserts only deployment-agnostic build-health (the SPA boots and
+# reaches its first screen), never version-specific behavior. So the daily
+# canary -- which runs main's spec against whatever prod currently serves --
+# can't drift-fail in the brief window where main is ahead of the live deploy.
+
+on:
+  deployment_status:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * *" # 09:00 UTC daily uptime canary
+
+concurrency:
+  group: post-deploy-smoke
+  cancel-in-progress: false
+
+jobs:
+  live-smoke:
+    name: Live prod smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Run for manual/scheduled triggers, or a SUCCESSFUL PRODUCTION deploy.
+    # `environment` is Vercel's own label; verified against this repo's real
+    # deployment_status history that prod deploys report "Production" and
+    # previews report "Preview". The membership check tolerates a casing change
+    # (e.g. "production") since the label is provider-controlled; previews are
+    # excluded either way.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
+      (github.event_name == 'deployment_status' &&
+       github.event.deployment_status.state == 'success' &&
+       contains(fromJson('["Production","production"]'), github.event.deployment_status.environment))
+
+    env:
+      # The custom production domain always aliases the current production
+      # deployment, so it is the most reliable target (more so than the
+      # per-deploy *.vercel.app URL, which can lag domain aliasing).
+      PLAYWRIGHT_BASE_URL: https://threads.adityaarpitha.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: lct_app/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: lct_app
+        run: npm ci
+
+      - name: Install Playwright browser
+        working-directory: lct_app
+        run: npx playwright install --with-deps chromium
+
+      - name: Wait for the deployment to serve
+        run: |
+          # Absorb any alias-propagation lag after the deploy-success event.
+          # Follow redirects (-L) so a fronting 30x still resolves, and treat any
+          # non-error final status (2xx/3xx) as "serving". curl prints 000 on a
+          # connection failure, which fails the numeric range check and retries.
+          for i in $(seq 1 30); do
+            code=$(curl -sL -o /dev/null -w '%{http_code}' "$PLAYWRIGHT_BASE_URL" || echo 000)
+            if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+              echo "prod serving (HTTP ${code}) after attempt ${i}"
+              exit 0
+            fi
+            echo "attempt ${i}: got '${code}', retrying in 4s"
+            sleep 4
+          done
+          echo "prod did not serve a 2xx/3xx within timeout"
+          exit 1
+
+      - name: Run live prod smoke
+        working-directory: lct_app
+        env:
+          CI: "true"
+        run: npx playwright test --config playwright.prod.config.ts
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-smoke-report
+          path: lct_app/playwright-report/
+          retention-days: 14
