@@ -14,6 +14,7 @@ const DIARIZE_PARAMS = {
 // TRIAL path (which must hop through the proxy to keep the owner key server
 // side). BYOK goes straight to OpenAI and gets OpenAI's own 25MB limit.
 const TRIAL_MAX_UPLOAD_BYTES = 4.4 * 1024 * 1024;
+const OPENAI_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 /**
  * Transcribe an audio file with speaker diarization.
@@ -36,8 +37,12 @@ export async function transcribeAudio(apiKey, fileOrBlob) {
   if (!authHeaders) throw new NeedsKeyError();
 
   let res;
-  if (authHeaders['x-lct-byok-key']) {
+  const usingByok = Boolean(authHeaders['x-lct-byok-key']);
+  if (usingByok) {
     // BYOK -> straight to OpenAI.
+    if (fileOrBlob.size > OPENAI_MAX_UPLOAD_BYTES) {
+      throw new Error('This file exceeds OpenAI\'s 25MB transcription limit. Split it or use a compressed format (webm/opus).');
+    }
     const formData = new FormData();
     formData.append('file', fileOrBlob, fileOrBlob.name || 'audio.webm');
     for (const [key, value] of Object.entries(DIARIZE_PARAMS)) {
@@ -59,19 +64,28 @@ export async function transcribeAudio(apiKey, fileOrBlob) {
     const params = new URLSearchParams({
       ...DIARIZE_PARAMS,
       filename: fileOrBlob.name || 'audio.webm',
+      // The real MIME travels as a query param: the Content-Type header is
+      // pinned to application/octet-stream so Vercel's Node body helper
+      // reliably buffers the body (documented Buffer behavior) instead of
+      // whatever it does for arbitrary audio/* types.
+      mimetype: fileOrBlob.type || 'application/octet-stream',
     });
     res = await fetch(`/api/proxy/transcribe?${params.toString()}`, {
       method: 'POST',
       headers: {
         ...authHeaders,
-        'Content-Type': fileOrBlob.type || 'application/octet-stream',
+        'Content-Type': 'application/octet-stream',
       },
       body: fileOrBlob,
     });
   }
 
-  if (res.status === 402) {
+  if (!usingByok && res.status === 402) {
     throw new NeedsKeyError('Free trial used up. Add your OpenAI key to keep going.');
+  }
+  if (usingByok && res.status === 401) {
+    // The user's own key was rejected by OpenAI — re-open the key gate.
+    throw new NeedsKeyError('OpenAI rejected this API key. Check or replace it.');
   }
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');

@@ -18,17 +18,20 @@ import { corsHeaders, guardNodeRequest } from './_shared.js';
 const MAX_BODY_BYTES = 4.6 * 1024 * 1024; // Vercel rejects ~4.5MB anyway; belt & braces
 
 async function readRawBody(req) {
-  // Vercel's Node runtime pre-parses known content types into req.body
-  // (Buffer for unrecognized ones). Fall back to draining the stream when
-  // the helper didn't buffer it.
+  // The client pins Content-Type to application/octet-stream, for which
+  // Vercel's Node helper buffers the body as a Buffer (documented). Fall back
+  // to draining the stream when the helper didn't buffer it. Deliberately NO
+  // string branch: Buffer.from(string) round-trips through UTF-8 and corrupts
+  // binary audio (grok review finding, 2026-07-06).
   if (Buffer.isBuffer(req.body)) return req.body;
-  if (typeof req.body === 'string') return Buffer.from(req.body);
   const chunks = [];
+  let totalBytes = 0;
   for await (const chunk of req) {
-    chunks.push(chunk);
-    if (chunks.reduce((n, c) => n + c.length, 0) > MAX_BODY_BYTES) {
+    totalBytes += chunk.length;
+    if (totalBytes > MAX_BODY_BYTES) {
       throw new Error('body too large');
     }
+    chunks.push(chunk);
   }
   return Buffer.concat(chunks);
 }
@@ -66,12 +69,14 @@ export default async function handler(req, res) {
       return res.status(413).send('Audio too large for the trial path (~4.5MB limit)');
     }
 
-    // 4. Construct Multipart Form for OpenAI
-    const contentType = req.headers['content-type'] || 'application/octet-stream';
+    // 4. Construct Multipart Form for OpenAI. The real MIME rides the
+    // `mimetype` query param (the transport Content-Type is pinned to
+    // octet-stream by the client for reliable body buffering).
+    const mimeType = String(query.mimetype || req.headers['content-type'] || 'application/octet-stream');
     const formData = new FormData();
     formData.append(
       'file',
-      new Blob([audio], { type: contentType }),
+      new Blob([audio], { type: mimeType }),
       String(query.filename || 'audio.webm')
     );
     formData.append('model', String(query.model || 'whisper-1'));

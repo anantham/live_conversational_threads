@@ -57,9 +57,25 @@ describe('transcribeAudio transport selection', () => {
     expect(url).toContain('/api/proxy/transcribe?');
     expect(url).toContain('model=gpt-4o-transcribe-diarize');
     expect(url).toContain('filename=clip.webm');
+    // Real MIME rides the query; the transport Content-Type is pinned to
+    // octet-stream so Vercel's Node helper reliably buffers the body.
+    expect(url).toContain('mimetype=audio%2Fwebm');
+    expect(init.headers['Content-Type']).toBe('application/octet-stream');
     expect(init.headers['x-lct-trial']).toBe('1');
     expect(init.headers['x-lct-byok-key']).toBeUndefined();
     expect(init.body).toBe(file); // raw body, not FormData, not Blob-upload
+  });
+
+  it('BYOK maps a 401 from OpenAI to NeedsKeyError (bad key re-opens the gate)', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 401, text: async () => 'bad key' });
+    const file = new File(['x'], 'clip.wav', { type: 'audio/wav' });
+    await expect(transcribeAudio('sk-revoked', file)).rejects.toBeInstanceOf(NeedsKeyError);
+  });
+
+  it('BYOK rejects files over the OpenAI 25MB limit before fetching', async () => {
+    const big = new File([new ArrayBuffer(26 * 1024 * 1024)], 'huge.wav', { type: 'audio/wav' });
+    await expect(transcribeAudio('sk-user-key', big)).rejects.toThrow(/25MB/);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it('trial rejects files over the function body limit with a clear message', async () => {
