@@ -11,8 +11,13 @@ export default async function handler(req) {
   const origin = req.headers.get('origin');
   const cors = corsHeaders(origin);
 
-  // 2. Extract BYOK key (ADR-060: do NOT use 'Authorization' to avoid CDN log leakage)
-  const apiKey = req.headers.get('x-lct-byok-key');
+  // 2. Resolve the key: BYOK wins; otherwise the 5-minute trial rides the
+  // server-side OPENAI_TRIAL_KEY (never sent to the browser) when the client
+  // opts in via x-lct-trial and the owner has provisioned the env var.
+  // ADR-060: do NOT use 'Authorization' to avoid CDN log leakage.
+  const byokKey = req.headers.get('x-lct-byok-key');
+  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!process.env.OPENAI_TRIAL_KEY;
+  const apiKey = byokKey || (usingTrial ? process.env.OPENAI_TRIAL_KEY : null);
   if (!apiKey) {
     return new Response('Missing x-lct-byok-key header', {
       status: 401,
@@ -25,7 +30,7 @@ export default async function handler(req) {
 
   try {
     const body = await req.text();
-    
+
     // 5. Proxy to OpenAI
     const openAiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -35,6 +40,15 @@ export default async function handler(req) {
       },
       body
     });
+
+    // Trial quota exhausted (the dashboard cap on the dedicated key answers
+    // 429/402): surface a distinct 402 so the client re-opens the key gate.
+    if (usingTrial && (openAiResponse.status === 429 || openAiResponse.status === 402)) {
+      return new Response(JSON.stringify({ error: 'trial_exhausted' }), {
+        status: 402,
+        headers: { 'Content-Type': 'application/json', ...cors }
+      });
+    }
 
     // 6. Stream back
     const responseHeaders = new Headers(openAiResponse.headers);

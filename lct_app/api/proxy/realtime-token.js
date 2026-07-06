@@ -13,7 +13,10 @@ export default async function handler(req) {
   const cors = corsHeaders(origin);
 
   // NO_LOG_BYOK_KEY_ASSERTION
-  const apiKey = req.headers.get('x-lct-byok-key');
+  // BYOK wins; otherwise the trial rides the server-side OPENAI_TRIAL_KEY.
+  const byokKey = req.headers.get('x-lct-byok-key');
+  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!process.env.OPENAI_TRIAL_KEY;
+  const apiKey = byokKey || (usingTrial ? process.env.OPENAI_TRIAL_KEY : null);
   if (!apiKey) {
     return new Response('Missing x-lct-byok-key header', { status: 401, headers: cors });
   }
@@ -32,6 +35,13 @@ export default async function handler(req) {
         instructions: 'You are a helpful assistant.'
       })
     });
+
+    if (usingTrial && (openAiResponse.status === 429 || openAiResponse.status === 402)) {
+      return new Response(JSON.stringify({ error: 'trial_exhausted' }), {
+        status: 402,
+        headers: { 'Content-Type': 'application/json', ...cors }
+      });
+    }
 
     if (!openAiResponse.ok) {
       return new Response('Failed to generate realtime token', { status: openAiResponse.status, headers: cors });

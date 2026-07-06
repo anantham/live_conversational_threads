@@ -18,11 +18,14 @@ export default async function handler(req, res) {
     for (const [name, value] of Object.entries(cors)) res.setHeader(name, value);
   };
 
-  // The client must pass the BYOK key to authorize this upload
+  // The client must show EITHER a BYOK key or a trial opt-in to authorize
+  // this upload (the blob write itself uses Vercel's BLOB token, not the
+  // OpenAI key — this is just a presence gate against anonymous relays).
   // ADR-060: Explicit no-log rule for request headers.
   // NO_LOG_BYOK_KEY_ASSERTION
-  const apiKey = req.headers['x-lct-byok-key'];
-  if (!apiKey) {
+  const byokKey = req.headers['x-lct-byok-key'];
+  const usingTrial = !byokKey && req.headers['x-lct-trial'] === '1' && !!process.env.OPENAI_TRIAL_KEY;
+  if (!byokKey && !usingTrial) {
     applyCors();
     return res.status(401).send('Missing API key');
   }

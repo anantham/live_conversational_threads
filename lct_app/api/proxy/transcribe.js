@@ -17,10 +17,13 @@ export default async function handler(req, res) {
     for (const [name, value] of Object.entries(cors)) res.setHeader(name, value);
   };
 
-  // 2. Extract BYOK key
+  // 2. Resolve the key: BYOK wins; otherwise the trial rides the server-side
+  // OPENAI_TRIAL_KEY (never sent to the browser).
   // ADR-060: Explicit no-log rule for request headers.
   // NO_LOG_BYOK_KEY_ASSERTION
-  const apiKey = req.headers['x-lct-byok-key'];
+  const byokKey = req.headers['x-lct-byok-key'];
+  const usingTrial = !byokKey && req.headers['x-lct-trial'] === '1' && !!process.env.OPENAI_TRIAL_KEY;
+  const apiKey = byokKey || (usingTrial ? process.env.OPENAI_TRIAL_KEY : null);
   if (!apiKey) {
     applyCors();
     return res.status(401).send('Missing x-lct-byok-key header');
@@ -66,6 +69,12 @@ export default async function handler(req, res) {
     // 6. Delete the blob to save space (since it's transient)
     // Fire and forget delete
     del(blobUrl).catch(() => {});
+
+    // Trial quota exhausted: distinct 402 so the client re-opens the key gate.
+    if (usingTrial && (openAiResponse.status === 429 || openAiResponse.status === 402)) {
+      applyCors();
+      return res.status(402).json({ error: 'trial_exhausted' });
+    }
 
     // 7. Return OpenAI response (transcription payloads are small JSON — buffer, don't stream)
     const payload = Buffer.from(await openAiResponse.arrayBuffer());

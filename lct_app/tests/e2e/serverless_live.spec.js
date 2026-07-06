@@ -14,6 +14,10 @@ test.describe('Serverless Live E2E', () => {
     await page.evaluate((key) => {
       localStorage.setItem('lct_serverless_key', key);
       localStorage.setItem('lct_serverless_mode_enabled', 'true');
+      // Home's New button defaults to /new?autostart=true (mic-first muscle
+      // memory), and autostart deliberately HIDES the upload button. This
+      // test uploads a file, so opt out of autostart.
+      localStorage.setItem('lct.autostart_on_new', 'false');
     }, OPENAI_KEY);
     await page.reload();
     
