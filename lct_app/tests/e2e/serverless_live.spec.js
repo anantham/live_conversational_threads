@@ -14,6 +14,10 @@ test.describe('Serverless Live E2E', () => {
     await page.evaluate((key) => {
       localStorage.setItem('lct_serverless_key', key);
       localStorage.setItem('lct_serverless_mode_enabled', 'true');
+      // Home's New button defaults to /new?autostart=true (mic-first muscle
+      // memory), and autostart deliberately HIDES the upload button. This
+      // test uploads a file, so opt out of autostart.
+      localStorage.setItem('lct.autostart_on_new', 'false');
     }, OPENAI_KEY);
     await page.reload();
     
@@ -31,7 +35,9 @@ test.describe('Serverless Live E2E', () => {
     await expect(page.locator('text=Consolidating')).toBeVisible({ timeout: 60000 });
     await expect(page.locator('text=Done')).toBeVisible({ timeout: 60000 });
     
-    // 5. Verify Graph
-    await expect(page.locator('.graph-node')).toHaveCount(1, { timeout: 10000 });
+    // 5. Verify Graph — the canvas is ReactFlow; a real transcript extracts
+    // MANY nodes, so assert presence, not an exact count. (.graph-node never
+    // existed in the renderer — stale selector from the spec's first draft.)
+    await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 15000 });
   });
 });

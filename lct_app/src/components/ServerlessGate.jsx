@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import PropTypes from 'prop-types';
+import { trialAvailable } from '../services/serverless/serverlessAuth';
 
-export default function ServerlessGate({ onEnableServerless }) {
+export default function ServerlessGate({ onEnableServerless, onStartTrial }) {
   const [apiKey, setApiKey] = useState('');
+  const canTrial = Boolean(onStartTrial) && trialAvailable();
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -23,11 +25,31 @@ export default function ServerlessGate({ onEnableServerless }) {
         <p className="mt-5 text-sm font-medium text-gray-800">
           Backend is unreachable
         </p>
-        <p className="mt-2 text-sm leading-relaxed text-gray-600 mb-6">
-          The main backend (Tailnet) is down or unreachable. You can continue in 
-          Serverless Mode (client-side only) by providing an OpenAI API key.
+        <p className="mt-2 text-sm leading-relaxed text-gray-600 mb-5">
+          You can run it right here in your browser (nothing goes to our servers).
+          {canTrial
+            ? ' Take it for a 5 minute spin on us, then continue with your own OpenAI key.'
+            : ' Add your OpenAI key to continue.'}
         </p>
-        
+
+        {canTrial ? (
+          <button
+            type="button"
+            onClick={onStartTrial}
+            className="w-full rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
+          >
+            Try it free for 5 minutes
+          </button>
+        ) : null}
+
+        {canTrial ? (
+          <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-wide text-gray-400">
+            <span className="h-px flex-1 bg-gray-200" />
+            or use your own key
+            <span className="h-px flex-1 bg-gray-200" />
+          </div>
+        ) : null}
+
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <input
             type="password"
@@ -51,4 +73,5 @@ export default function ServerlessGate({ onEnableServerless }) {
 
 ServerlessGate.propTypes = {
   onEnableServerless: PropTypes.func.isRequired,
+  onStartTrial: PropTypes.func,
 };

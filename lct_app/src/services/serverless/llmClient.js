@@ -1,3 +1,5 @@
+import { serverlessAuthHeaders, NeedsKeyError } from "./serverlessAuth";
+
 export function extractJsonFromText(text) {
   if (!text) {
     throw new Error("LLM response text is empty");
@@ -117,15 +119,22 @@ export async function callServerlessLlm(apiKey, messages, options = {}) {
     response_format: options.jsonMode ? { type: "json_object" } : undefined
   };
 
+  const authHeaders = serverlessAuthHeaders(apiKey);
+  if (!authHeaders) throw new NeedsKeyError();
+
   const response = await fetch('/api/proxy/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-lct-byok-key': apiKey
+      ...authHeaders
     },
     body: JSON.stringify(reqBody)
   });
 
+  // 402 = the free trial's shared budget is used up: prompt for the visitor's key.
+  if (response.status === 402) {
+    throw new NeedsKeyError("Free trial used up. Add your OpenAI key to keep going.");
+  }
   if (!response.ok) {
     let errText = await response.text().catch(() => "");
     throw new Error(`LLM Proxy Error (${response.status}): ${errText}`);

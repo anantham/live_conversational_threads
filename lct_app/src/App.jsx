@@ -10,6 +10,7 @@ import { apiFetch } from "./services/apiClient";
 import { DataProviderContext } from "./services/dataProvider";
 import { BackendDataProvider } from "./services/BackendDataProvider";
 import { ServerlessDataProvider } from "./services/ServerlessDataProvider";
+import { isTrialActive, startTrial, trialMsRemaining } from "./services/serverless/serverlessAuth";
 
 export default function App() {
   // Backend reachability gate. The frontend is public (Vercel) but the
@@ -20,14 +21,22 @@ export default function App() {
   const [backendState, setBackendState] = useState("checking");
   const [serverlessKey, setServerlessKey] = useState(() => localStorage.getItem("lct_serverless_key") || "");
   const [serverlessForced, setServerlessForced] = useState(() => localStorage.getItem("lct_serverless_mode_enabled") === "true");
+  // Free "taste" trial: run on the owner's capped key for a short window before
+  // asking for the visitor's own key. Gated on VITE_TRIAL_ENABLED so it only
+  // appears once the owner has provisioned a capped OPENAI_TRIAL_KEY in the
+  // Vercel proxy env — otherwise trial calls would 401. Active when enabled and
+  // the window hasn't elapsed.
+  const trialEnabled = import.meta.env.VITE_TRIAL_ENABLED === "true";
+  const [trialActive, setTrialActive] = useState(() => trialEnabled && isTrialActive());
 
   const activeDataProvider = useMemo(() => {
     const isOffline = backendState === "offline" || backendState === "unreachable";
-    if (serverlessKey && (serverlessForced || isOffline)) {
+    // Serverless is active with a real key OR during an in-window free trial.
+    if ((serverlessKey || trialActive) && (serverlessForced || isOffline)) {
       return new ServerlessDataProvider(serverlessKey);
     }
     return new BackendDataProvider();
-  }, [serverlessKey, serverlessForced, backendState]);
+  }, [serverlessKey, trialActive, serverlessForced, backendState]);
 
   // The .threads viewer (/view) is a fully static, server-free page: it renders a
   // self-contained file client-side and must work with the backend down — and make
@@ -84,6 +93,18 @@ export default function App() {
     void probeBackend();
   }, [probeBackend, isStaticViewer]);
 
+  // When a keyless free trial runs out, drop back to the key gate.
+  useEffect(() => {
+    if (!trialActive || serverlessKey) return;
+    const remaining = trialMsRemaining();
+    if (remaining <= 0) {
+      setTrialActive(false);
+      return;
+    }
+    const timer = setTimeout(() => setTrialActive(false), remaining + 500);
+    return () => clearTimeout(timer);
+  }, [trialActive, serverlessKey]);
+
   if (!isStaticViewer && backendState === "checking") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -92,20 +113,25 @@ export default function App() {
     );
   }
 
-  if (!isStaticViewer && !serverlessForced && (backendState === "offline" || backendState === "unreachable")) {
-    if (!serverlessKey) {
-      return (
-        <ServerlessGate 
-          onEnableServerless={(key) => {
-            localStorage.setItem("lct_serverless_key", key);
-            localStorage.setItem("lct_serverless_mode_enabled", "true");
-            setServerlessKey(key);
-            setServerlessForced(true);
-          }} 
-        />
-      );
-    }
-    // If we have a key but it wasn't forced, an offline backend implicitly forces it below
+  const serverlessEligible =
+    serverlessForced || backendState === "offline" || backendState === "unreachable";
+  if (!isStaticViewer && serverlessEligible && !serverlessKey && !trialActive) {
+    return (
+      <ServerlessGate
+        onEnableServerless={(key) => {
+          localStorage.setItem("lct_serverless_key", key);
+          localStorage.setItem("lct_serverless_mode_enabled", "true");
+          setServerlessKey(key);
+          setServerlessForced(true);
+        }}
+        onStartTrial={trialEnabled ? () => {
+          startTrial();
+          localStorage.setItem("lct_serverless_mode_enabled", "true");
+          setTrialActive(true);
+          setServerlessForced(true);
+        } : undefined}
+      />
+    );
   }
 
   return (
