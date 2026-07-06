@@ -1,40 +1,45 @@
 import { del } from '@vercel/blob';
 
-import { corsHeaders, guardRequest } from './_shared.js';
+import { corsHeaders, guardNodeRequest } from './_shared.js';
 
-// Node runtime (default). @vercel/blob pulls in undici + Node built-ins, which
-// the Edge runtime does not support — declaring runtime:'edge' here fails the build.
+// Node runtime (default; @vercel/blob needs Node built-ins the Edge runtime
+// lacks). Vercel's Node runtime invokes the CLASSIC (req, res) signature:
+// req.headers is a plain object, NOT a Web Headers. The original Web-style
+// handler here crashed with `TypeError: req.headers.get` on EVERY request
+// (FUNCTION_INVOCATION_FAILED) — this route never worked in production until
+// it was rewritten to (req, res). Confirmed via `vercel logs` 2026-07-05.
 
-export default async function handler(req) {
-  // 1. Origin allowlist + preflight + method + rate limit (shared). Previously
-  // this route had NO origin check and NO rate limit — an open relay.
-  const blocked = guardRequest(req, { maxPerMin: 20 });
-  if (blocked) return blocked;
-  const origin = req.headers.get('origin');
-  const cors = corsHeaders(origin);
+export default async function handler(req, res) {
+  // 1. Origin allowlist + preflight + method + rate limit (shared).
+  if (guardNodeRequest(req, res, { maxPerMin: 20 })) return;
+  const cors = corsHeaders(req.headers.origin || null);
+  const applyCors = () => {
+    for (const [name, value] of Object.entries(cors)) res.setHeader(name, value);
+  };
 
   // 2. Extract BYOK key
   // ADR-060: Explicit no-log rule for request headers.
   // NO_LOG_BYOK_KEY_ASSERTION
-  const apiKey = req.headers.get('x-lct-byok-key');
+  const apiKey = req.headers['x-lct-byok-key'];
   if (!apiKey) {
-    return new Response('Missing x-lct-byok-key header', {
-      status: 401,
-      headers: cors
-    });
+    applyCors();
+    return res.status(401).send('Missing x-lct-byok-key header');
   }
 
   try {
-    const { blobUrl, language, chunking_strategy, response_format, model } = await req.json();
+    // Vercel's Node runtime parses JSON bodies into req.body.
+    const { blobUrl, language, chunking_strategy, response_format, model } = req.body || {};
 
     if (!blobUrl) {
-      return new Response('Missing blobUrl', { status: 400, headers: cors });
+      applyCors();
+      return res.status(400).send('Missing blobUrl');
     }
 
     // 3. Fetch the audio from Vercel Blob
     const audioRes = await fetch(blobUrl);
     if (!audioRes.ok) {
-      return new Response('Failed to fetch audio from blob storage', { status: 500, headers: cors });
+      applyCors();
+      return res.status(500).send('Failed to fetch audio from blob storage');
     }
     const audioBlob = await audioRes.blob();
 
@@ -62,20 +67,16 @@ export default async function handler(req) {
     // Fire and forget delete
     del(blobUrl).catch(() => {});
 
-    // 7. Return OpenAI response
-    const responseHeaders = new Headers(openAiResponse.headers);
-    responseHeaders.set('Access-Control-Allow-Origin', cors['Access-Control-Allow-Origin']);
-
-    return new Response(openAiResponse.body, {
-      status: openAiResponse.status,
-      headers: responseHeaders
-    });
+    // 7. Return OpenAI response (transcription payloads are small JSON — buffer, don't stream)
+    const payload = Buffer.from(await openAiResponse.arrayBuffer());
+    applyCors();
+    const contentType = openAiResponse.headers.get('content-type');
+    if (contentType) res.setHeader('Content-Type', contentType);
+    return res.status(openAiResponse.status).send(payload);
 
   } catch (err) {
     // ADR-060: Do not log the error object to avoid leaking API key.
-    return new Response('Proxy Error', {
-      status: 502,
-      headers: cors
-    });
+    applyCors();
+    return res.status(502).send('Proxy Error');
   }
 }

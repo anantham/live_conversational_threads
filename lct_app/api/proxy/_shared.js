@@ -53,8 +53,8 @@ export function corsHeaders(origin) {
 const buckets = new Map();
 const WINDOW_MS = 60 * 1000;
 
-export function rateLimit(req, maxPerMin) {
-  const ip = (req.headers.get('x-forwarded-for') || 'unknown').split(',')[0].trim();
+export function rateLimitIp(forwardedFor, maxPerMin) {
+  const ip = (forwardedFor || 'unknown').split(',')[0].trim();
   const now = Date.now();
   const recent = (buckets.get(ip) || []).filter((t) => t > now - WINDOW_MS);
   if (recent.length >= maxPerMin) return false;
@@ -70,24 +70,63 @@ export function rateLimit(req, maxPerMin) {
 }
 
 /**
- * Common gate for proxy handlers. Returns a Response to short-circuit with
- * (403 / 204 preflight / 405 / 429), or null when the request may proceed.
+ * Signature-agnostic gate. Takes plain values so both runtimes can call it:
+ * Edge handlers read from the Web Request's Headers, Node handlers from the
+ * classic req.headers plain object (THE distinction that broke transcribe/
+ * upload: Vercel's Node runtime passes (req, res) — req.headers has no .get,
+ * so every request crashed with FUNCTION_INVOCATION_FAILED from day one).
+ * Returns {status, body, headers} to short-circuit with, or null to proceed.
  * Origin is checked BEFORE the preflight reply so a disallowed origin never
  * receives CORS approval headers.
  */
-export function guardRequest(req, { maxPerMin = 30 } = {}) {
-  const origin = req.headers.get('origin');
+export function evaluateGuard({ method, origin, forwardedFor, maxPerMin = 30 }) {
   if (!isAllowedOrigin(origin)) {
-    return new Response('Forbidden Origin', { status: 403 });
+    return { status: 403, body: 'Forbidden Origin', headers: {} };
   }
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders(origin) });
+  const cors = corsHeaders(origin);
+  if (method === 'OPTIONS') {
+    return { status: 204, body: null, headers: cors };
   }
-  if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405, headers: corsHeaders(origin) });
+  if (method !== 'POST') {
+    return { status: 405, body: 'Method Not Allowed', headers: cors };
   }
-  if (!rateLimit(req, maxPerMin)) {
-    return new Response('Rate Limit Exceeded', { status: 429, headers: corsHeaders(origin) });
+  if (!rateLimitIp(forwardedFor, maxPerMin)) {
+    return { status: 429, body: 'Rate Limit Exceeded', headers: cors };
   }
   return null;
+}
+
+/**
+ * Edge-runtime gate (Web Request in, Response out). Returns a Response to
+ * short-circuit with, or null when the request may proceed.
+ */
+export function guardRequest(req, { maxPerMin = 30 } = {}) {
+  const verdict = evaluateGuard({
+    method: req.method,
+    origin: req.headers.get('origin'),
+    forwardedFor: req.headers.get('x-forwarded-for'),
+    maxPerMin,
+  });
+  if (!verdict) return null;
+  return new Response(verdict.body, { status: verdict.status, headers: verdict.headers });
+}
+
+/**
+ * Node-runtime gate for Vercel's classic (req, res) handlers. Writes the
+ * short-circuit response to res and returns true, or returns false when the
+ * request may proceed.
+ */
+export function guardNodeRequest(req, res, { maxPerMin = 30 } = {}) {
+  const verdict = evaluateGuard({
+    method: req.method,
+    origin: req.headers.origin || null,
+    forwardedFor: req.headers['x-forwarded-for'],
+    maxPerMin,
+  });
+  if (!verdict) return false;
+  for (const [name, value] of Object.entries(verdict.headers)) res.setHeader(name, value);
+  res.status(verdict.status);
+  if (verdict.body === null) res.end();
+  else res.send(verdict.body);
+  return true;
 }
