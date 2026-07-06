@@ -50,7 +50,10 @@ export default async function handler(req) {
       });
     }
 
-    // 6. Stream back
+    // 6. Stream back. Passing openAiResponse.body straight through means that
+    // when the client requests stream:true, OpenAI's SSE tokens flush to the
+    // browser as they arrive — the Edge function never buffers a whole slow
+    // completion and so never hits the response-window 504 (see llmClient.js).
     const responseHeaders = new Headers(openAiResponse.headers);
     responseHeaders.set('Access-Control-Allow-Origin', cors['Access-Control-Allow-Origin']);
 

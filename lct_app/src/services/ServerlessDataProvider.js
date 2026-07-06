@@ -82,19 +82,21 @@ export class ServerlessDataProvider extends DataProvider {
 
               // 3. Hierarchy Consolidation Phase
               sendEvent('status', { message: 'Consolidating conversation hierarchy...', stage: 'analyzing', progress: 0.8 });
-              // Returns {newNodes, conversation_title, executive_summary} —
-              // NOT a {metadata, nodes} envelope (the old code read
-              // finalGraph.metadata.* and would have thrown here).
-              const consolidated = await generateFullGraph(apiKey, extractedNodes);
-              const allNodes = [...extractedNodes, ...(consolidated.newNodes || [])];
+              // graphGenerator.generateFullGraph returns {nodes, metadata}, where
+              // `nodes` ALREADY includes the extracted tier-1/2 nodes plus the
+              // consolidation tiers (themes/arcs). A prior version read
+              // `.newNodes`/`.conversation_title` (undefined here — that's
+              // consolidateHierarchy's shape), silently dropping the higher
+              // tiers and the title.
+              const { nodes: allNodes, metadata } = await generateFullGraph(apiKey, extractedNodes);
 
               // Save to IndexedDB
               await saveConversation({
                 id: conversationId,
-                title: consolidated.conversation_title || "New Serverless Conversation",
+                title: metadata?.conversation_title || "New Serverless Conversation",
                 status: "completed",
                 duration_ms: (duration || 0) * 1000,
-                executive_summary: consolidated.executive_summary || ""
+                executive_summary: metadata?.executive_summary || ""
               });
               await saveGraph(conversationId, allNodes);
 

@@ -7,7 +7,10 @@ const OPENAI_KEY = process.env.SERVERLESS_TEST_OPENAI_KEY;
 test.describe('Serverless Live E2E', () => {
   test('Uploads audio and processes via Serverless Mode', async ({ page }) => {
     test.skip(!OPENAI_KEY, 'set SERVERLESS_TEST_OPENAI_KEY to run the live serverless e2e');
-    test.setTimeout(120000);
+    // Real transcribe (browser->OpenAI direct) + multi-chunk extraction +
+    // topics/themes/arcs consolidation of a 2-min 3-speaker clip is several
+    // minutes of real wall-clock. Verified end-to-end on prod 2026-07-06.
+    test.setTimeout(360000);
     
     // 1. Setup Serverless Mode via LocalStorage directly
     await page.goto('/');
@@ -29,15 +32,16 @@ test.describe('Serverless Live E2E', () => {
     const fileChooserPromise = page.waitForEvent('filechooser');
     await page.locator('[aria-label="Upload file for bulk processing"]').click();
     const fileChooser = await fileChooserPromise;
-    await fileChooser.setFiles('../lct_python_backend/synthetic_eval/audio/ai-safety-pause.wav');
-    
-    // 4. Wait for processing
-    await expect(page.locator('text=Consolidating')).toBeVisible({ timeout: 60000 });
-    await expect(page.locator('text=Done')).toBeVisible({ timeout: 60000 });
-    
-    // 5. Verify Graph — the canvas is ReactFlow; a real transcript extracts
-    // MANY nodes, so assert presence, not an exact count. (.graph-node never
-    // existed in the renderer — stale selector from the spec's first draft.)
-    await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 15000 });
+    // billing-rewrite-decision.wav has real multi-speaker speech (3 speakers,
+    // 49 diarized segments). ai-safety-pause.wav is ~silence — the diarize
+    // model correctly returns empty for it, so it can't exercise the graph.
+    await fileChooser.setFiles('../lct_python_backend/synthetic_eval/audio/billing-rewrite-decision.wav');
+
+    // 4. Wait for the END STATE directly — a rendered graph node — with one
+    // generous budget. Status text ("Extracting...", "Consolidating...")
+    // appears in 3 places at once (header + toast + HUD), so asserting on it
+    // hits Playwright strict-mode multi-match; the node is the real goal.
+    // (.graph-node never existed in the renderer — a stale early-draft selector.)
+    await expect(page.locator('.react-flow__node').first()).toBeVisible({ timeout: 300000 });
   });
 });
