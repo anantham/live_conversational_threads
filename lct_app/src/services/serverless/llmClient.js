@@ -115,6 +115,13 @@ export async function callServerlessLlm(apiKey, messages, options = {}) {
     model,
     messages,
     temperature,
+    // STREAM. The chat proxy is a Vercel Edge function; a non-streaming call
+    // makes OpenAI buffer the whole completion (~15-60s) before sending any
+    // bytes, and the Edge function's response window expires first -> 504 (seen
+    // intermittently in the live e2e). Streaming flushes the first token in
+    // ~1s so the function keeps producing output and never times out. We
+    // reassemble the deltas below.
+    stream: true,
     // we could enforce response_format: { type: "json_object" } but we parse robustly anyway
     response_format: options.jsonMode ? { type: "json_object" } : undefined
   };
@@ -140,11 +147,56 @@ export async function callServerlessLlm(apiKey, messages, options = {}) {
     throw new Error(`LLM Proxy Error (${response.status}): ${errText}`);
   }
 
-  const json = await response.json();
-  const content = json.choices?.[0]?.message?.content || "";
-  
+  const content = await readChatStream(response);
+
   if (options.jsonMode || options.extractJson) {
     return extractJsonFromText(content);
+  }
+
+  return content;
+}
+
+/**
+ * Reassemble an OpenAI chat-completions SSE stream into the full message text.
+ * Frames look like `data: {json}\n\n`, terminated by `data: [DONE]`; each JSON
+ * carries `choices[0].delta.content`. Tolerates the non-streaming fallback
+ * (a single JSON body) so a proxy that ever returns buffered JSON still works.
+ */
+async function readChatStream(response) {
+  const ctype = response.headers.get('content-type') || '';
+  if (!ctype.includes('text/event-stream')) {
+    // Non-streaming fallback (e.g. an error object or a buffered proxy).
+    const json = await response.json().catch(() => null);
+    return json?.choices?.[0]?.message?.content || '';
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE events are separated by a blank line.
+    let sep;
+    while ((sep = buffer.indexOf('\n\n')) !== -1) {
+      const event = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      for (const line of event.split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        const data = line.slice(5).trim();
+        if (data === '[DONE]') continue;
+        try {
+          const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
+          if (delta) content += delta;
+        } catch {
+          // Ignore keep-alive / partial frames; the buffer split handles the rest.
+        }
+      }
+    }
   }
 
   return content;
