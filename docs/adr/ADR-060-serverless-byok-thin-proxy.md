@@ -19,7 +19,10 @@
 > body with params in the query string — trial clips are 5 minutes (~2–4MB webm) and fit
 > under the cap without Blob. `api/proxy/upload.js` and the `@vercel/blob` dependency are
 > deleted. The proxy surface shrinks to: hosting, trial key-injection (chat/transcribe/
-> realtime-token), nothing else.
+> realtime-token), nothing else. **Enforced, not aspirational** (dual-review convergent
+> finding): `/api/proxy/transcribe` is trial-ONLY — it rejects `x-lct-byok-key` with a 400
+> and pins the transcription params server-side, so BYOK audio cannot transit our infra
+> and trial callers cannot steer model/format spend on the owner key.
 
 ## Issue
 

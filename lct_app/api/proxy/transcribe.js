@@ -44,20 +44,30 @@ export default async function handler(req, res) {
     for (const [name, value] of Object.entries(cors)) res.setHeader(name, value);
   };
 
-  // 2. Resolve the key: BYOK wins (kept for flexibility/tests); otherwise the
-  // trial rides the server-side OPENAI_TRIAL_KEY (never sent to the browser).
+  // 2. TRIAL-ONLY route (dual-review convergent finding, grok+codex): BYOK
+  // browsers transcribe directly against api.openai.com — they hold the key,
+  // so routing their audio through Vercel would contradict the enforced
+  // "key/audio never touch our infra" property. Reject BYOK loudly instead of
+  // silently accepting it. The trial rides the server-side OPENAI_TRIAL_KEY
+  // (never sent to the browser).
   // ADR-060: Explicit no-log rule for request headers.
   // NO_LOG_BYOK_KEY_ASSERTION
-  const byokKey = req.headers['x-lct-byok-key'];
-  const usingTrial = !byokKey && req.headers['x-lct-trial'] === '1' && !!process.env.OPENAI_TRIAL_KEY;
-  const apiKey = byokKey || (usingTrial ? process.env.OPENAI_TRIAL_KEY : null);
+  if (req.headers['x-lct-byok-key']) {
+    applyCors();
+    return res.status(400).send('BYOK clients transcribe directly against api.openai.com; this route is trial-only');
+  }
+  const usingTrial = req.headers['x-lct-trial'] === '1' && !!process.env.OPENAI_TRIAL_KEY;
+  const apiKey = usingTrial ? process.env.OPENAI_TRIAL_KEY : null;
   if (!apiKey) {
     applyCors();
-    return res.status(401).send('Missing x-lct-byok-key header');
+    return res.status(401).send('Trial not active');
   }
 
   try {
-    // 3. The audio is the raw request body; params ride the query string.
+    // 3. The audio is the raw request body. Only filename/mimetype are read
+    // from the query — the transcription params are PINNED server-side so a
+    // trial caller cannot steer model/format spend on the owner's key
+    // (codex review finding, 2026-07-06).
     const query = req.query || {};
     const audio = await readRawBody(req);
     if (!audio || audio.length === 0) {
@@ -72,19 +82,19 @@ export default async function handler(req, res) {
     // 4. Construct Multipart Form for OpenAI. The real MIME rides the
     // `mimetype` query param (the transport Content-Type is pinned to
     // octet-stream by the client for reliable body buffering).
-    const mimeType = String(query.mimetype || req.headers['content-type'] || 'application/octet-stream');
+    const mimeType = String(query.mimetype || 'application/octet-stream');
     const formData = new FormData();
     formData.append(
       'file',
       new Blob([audio], { type: mimeType }),
       String(query.filename || 'audio.webm')
     );
-    formData.append('model', String(query.model || 'whisper-1'));
-    if (query.language) formData.append('language', String(query.language));
-    if (query.response_format) formData.append('response_format', String(query.response_format));
-    // gpt-4o-transcribe-diarize requires chunking_strategy for audio > 30s ("auto"
-    // recommended); it does not support timestamp_granularities.
-    if (query.chunking_strategy) formData.append('chunking_strategy', String(query.chunking_strategy));
+    // gpt-4o-transcribe-diarize contract: diarized_json for speaker segments;
+    // chunking_strategy required for audio > 30s; no timestamp_granularities.
+    formData.append('model', 'gpt-4o-transcribe-diarize');
+    formData.append('language', 'en');
+    formData.append('response_format', 'diarized_json');
+    formData.append('chunking_strategy', 'auto');
 
     // 5. Proxy to OpenAI
     const openAiResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {

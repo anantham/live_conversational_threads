@@ -13,8 +13,11 @@ const DIARIZE_PARAMS = {
 // Vercel functions reject bodies over ~4.5MB, so that is the ceiling for the
 // TRIAL path (which must hop through the proxy to keep the owner key server
 // side). BYOK goes straight to OpenAI and gets OpenAI's own 25MB limit.
-const TRIAL_MAX_UPLOAD_BYTES = 4.4 * 1024 * 1024;
-const OPENAI_MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+// Decimal-byte constants ON PURPOSE (codex review): the platforms document
+// "MB" limits; MiB math (4.4*1024*1024 ≈ 4.61 decimal MB) let files past the
+// client guard only to die on the platform's own rejection.
+const TRIAL_MAX_UPLOAD_BYTES = 4_200_000;
+const OPENAI_MAX_UPLOAD_BYTES = 25_000_000;
 
 /**
  * Transcribe an audio file with speaker diarization.
@@ -61,13 +64,13 @@ export async function transcribeAudio(apiKey, fileOrBlob) {
         'This file is too large for the free trial (~4.5MB limit). Add your own OpenAI key to upload files up to 25MB.'
       );
     }
+    // Only filename + mimetype travel to the proxy — the transcription params
+    // are pinned SERVER-side so trial callers can't steer spend on the owner
+    // key. The real MIME rides a query param because the Content-Type header
+    // is pinned to application/octet-stream, for which Vercel's Node body
+    // helper documents reliable Buffer behavior.
     const params = new URLSearchParams({
-      ...DIARIZE_PARAMS,
       filename: fileOrBlob.name || 'audio.webm',
-      // The real MIME travels as a query param: the Content-Type header is
-      // pinned to application/octet-stream so Vercel's Node body helper
-      // reliably buffers the body (documented Buffer behavior) instead of
-      // whatever it does for arbitrary audio/* types.
       mimetype: fileOrBlob.type || 'application/octet-stream',
     });
     res = await fetch(`/api/proxy/transcribe?${params.toString()}`, {

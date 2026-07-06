@@ -40,7 +40,15 @@ describe('transcribeAudio transport selection', () => {
     const [url, init] = global.fetch.mock.calls[0];
     expect(url).toBe('https://api.openai.com/v1/audio/transcriptions');
     expect(init.headers.Authorization).toBe('Bearer sk-user-key');
+    // No manual Content-Type: fetch must set the multipart boundary itself.
+    expect(init.headers['Content-Type']).toBeUndefined();
     expect(init.body).toBeInstanceOf(FormData);
+    // The actual audio must ride the form (a regression that sends params but
+    // drops or renames the file would otherwise pass).
+    const filePart = init.body.get('file');
+    expect(filePart).toBeInstanceOf(File);
+    expect(filePart.name).toBe('clip.wav');
+    expect(filePart.size).toBe(file.size);
     expect(init.body.get('model')).toBe('gpt-4o-transcribe-diarize');
     expect(init.body.get('response_format')).toBe('diarized_json');
     expect(init.body.get('chunking_strategy')).toBe('auto');
@@ -55,11 +63,13 @@ describe('transcribeAudio transport selection', () => {
 
     const [url, init] = global.fetch.mock.calls[0];
     expect(url).toContain('/api/proxy/transcribe?');
-    expect(url).toContain('model=gpt-4o-transcribe-diarize');
     expect(url).toContain('filename=clip.webm');
     // Real MIME rides the query; the transport Content-Type is pinned to
     // octet-stream so Vercel's Node helper reliably buffers the body.
     expect(url).toContain('mimetype=audio%2Fwebm');
+    // Transcription params are pinned SERVER-side: the client must NOT try to
+    // steer model/format spend on the owner key (codex review).
+    expect(url).not.toContain('model=');
     expect(init.headers['Content-Type']).toBe('application/octet-stream');
     expect(init.headers['x-lct-trial']).toBe('1');
     expect(init.headers['x-lct-byok-key']).toBeUndefined();
