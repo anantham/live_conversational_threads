@@ -7,6 +7,23 @@
 
 > **Review note (2026-07-01):** three-pass adversarial review. codex (gpt-5.5 xhigh) never reached a verdict (network disconnect, then rate-limited). grok-build hit its turn cap before synthesizing but surfaced two real findings (Gemini-only online-extraction path, ADR-038 audio-egress gate has no serverless analog). **claude -p, as a third pass, found the most consequential issue: the "streaming pass-through avoids the 4.5MB limit" claim was factually wrong** — independently re-verified against Vercel's own docs (`vercel.com/docs/functions/limitations`, "Request body size"): the 4.5MB cap is platform-enforced on the request body before function code runs; streaming only exempts response bodies. All findings from both passes are folded in below.
 
+> **Amendment (2026-07-06): Vercel Blob removed; BYOK audio goes browser→OpenAI directly.**
+> The Blob detour (browser → Vercel Blob → `/api/proxy/transcribe` pulling the blobUrl)
+> existed only to dodge the 4.5MB request-body cap above. Two facts dissolved it:
+> (1) `api.openai.com` supports browser CORS (verified live: it echoes our origin and
+> allows `POST` + `authorization` on `/v1/audio/transcriptions` and `/v1/chat/completions`),
+> so a BYOK browser — which holds the key by definition — POSTs audio straight to OpenAI
+> (25MB limit, zero proxy hops, key/audio never touch our infra); and (2) the account's
+> Blob storage got suspended, proving the dependency fragile. The TRIAL path (owner key
+> stays server-side) still hops through `/api/proxy/transcribe`, now as a raw request
+> body with params in the query string — trial clips are 5 minutes (~2–4MB webm) and fit
+> under the cap without Blob. `api/proxy/upload.js` and the `@vercel/blob` dependency are
+> deleted. The proxy surface shrinks to: hosting, trial key-injection (chat/transcribe/
+> realtime-token), nothing else. **Enforced, not aspirational** (dual-review convergent
+> finding): `/api/proxy/transcribe` is trial-ONLY — it rejects `x-lct-byok-key` with a 400
+> and pins the transcription params server-side, so BYOK audio cannot transit our infra
+> and trial callers cannot steer model/format spend on the owner key.
+
 ## Issue
 
 LCT's backend runs on a single machine behind Tailscale. This means:
