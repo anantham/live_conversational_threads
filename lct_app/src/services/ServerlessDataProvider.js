@@ -50,57 +50,75 @@ export class ServerlessDataProvider extends DataProvider {
         const file = formData.get("file");
         if (!file) throw new Error("No file provided");
 
-        // We will simulate a fetch Response with a ReadableStream
+        // Emit the SAME SSE contract the backend's /api/import/process-file
+        // stream speaks: `event: <name>\ndata: <json>\n\n` blocks with event
+        // names status/transcript/graph/done/error. The original emitter here
+        // wrote bare single-newline NDJSON with its own vocabulary
+        // (transcript_update/graph_update/...), which useFileUploadStream
+        // could never parse — the serverless upload path ALWAYS ended with
+        // "Upload stream ended before completion", regardless of the OpenAI
+        // calls succeeding. Caught by the first live e2e run (2026-07-06).
         const stream = new ReadableStream({
           async start(controller) {
-            const sendEvent = (type, data) => {
-              const str = JSON.stringify({ type, data }) + "\n";
-              controller.enqueue(new TextEncoder().encode(str));
+            const encoder = new TextEncoder();
+            const sendEvent = (name, payload) => {
+              controller.enqueue(
+                encoder.encode(`event: ${name}\ndata: ${JSON.stringify(payload)}\n\n`)
+              );
             };
 
             try {
               const conversationId = formData.get("conversation_id") || generateId();
-              
+
               // 1. STT Phase
-              sendEvent('status', { message: 'Uploading & Transcribing...', is_final: false });
-              const { segments, text, duration } = await transcribeAudio(apiKey, file);
-              
-              sendEvent('transcript_update', { text, is_final: true });
+              sendEvent('status', { message: 'Uploading & transcribing audio...', stage: 'transcribing', progress: 0.1 });
+              const { text, duration } = await transcribeAudio(apiKey, file);
+
+              sendEvent('transcript', { phase: 'transcribing', text, index: 1, total: 1 });
 
               // 2. LLM Extraction Phase
-              sendEvent('status', { message: 'Extracting conversation threads...', is_final: false });
+              sendEvent('status', { message: 'Extracting conversation threads...', stage: 'analyzing', progress: 0.55 });
               const extractedNodes = await processTranscriptSegment(apiKey, text, []);
-              
-              sendEvent('graph_update', { nodes: extractedNodes });
 
               // 3. Hierarchy Consolidation Phase
-              sendEvent('status', { message: 'Consolidating conversation hierarchy...', is_final: false });
-              const finalGraph = await generateFullGraph(apiKey, extractedNodes);
+              sendEvent('status', { message: 'Consolidating conversation hierarchy...', stage: 'analyzing', progress: 0.8 });
+              // Returns {newNodes, conversation_title, executive_summary} —
+              // NOT a {metadata, nodes} envelope (the old code read
+              // finalGraph.metadata.* and would have thrown here).
+              const consolidated = await generateFullGraph(apiKey, extractedNodes);
+              const allNodes = [...extractedNodes, ...(consolidated.newNodes || [])];
 
               // Save to IndexedDB
               await saveConversation({
                 id: conversationId,
-                title: finalGraph.metadata.conversation_title || "New Serverless Conversation",
+                title: consolidated.conversation_title || "New Serverless Conversation",
                 status: "completed",
-                duration_ms: duration * 1000,
-                executive_summary: finalGraph.metadata.executive_summary || ""
+                duration_ms: (duration || 0) * 1000,
+                executive_summary: consolidated.executive_summary || ""
               });
-              await saveGraph(conversationId, finalGraph.nodes);
+              await saveGraph(conversationId, allNodes);
 
-              sendEvent('graph_update', finalGraph);
-              
-              // 4. Finish
-              sendEvent('status', { message: 'Done', is_final: true });
+              // existing_json is the payload type onDataReceived consumes for
+              // a full-graph replace (normalizeGraphDataPayload handles the
+              // flat node array).
+              sendEvent('graph', { type: 'existing_json', data: allNodes });
+
+              // 4. Finish — `done` is what flips the client's completed flag.
+              sendEvent('done', {
+                node_count: allNodes.length,
+                chunk_count: 1,
+                conversation_id: conversationId,
+              });
               controller.close();
             } catch (err) {
-              sendEvent('error', { detail: err.message });
+              sendEvent('error', { message: err?.message || 'Serverless processing failed.', retryable: false });
               controller.close();
             }
           }
         });
 
         return new Response(stream, {
-          headers: { 'Content-Type': 'application/x-ndjson' }
+          headers: { 'Content-Type': 'text/event-stream' }
         });
       }
     };
