@@ -31,6 +31,7 @@ from lct_python_backend.rate_limit import (
     RATE_LIMIT_WINDOW,
     RateLimitMiddleware,
 )
+from lct_python_backend.route_diagnostics import should_diagnose_path
 from lct_python_backend.url_import_gate import ENABLE_URL_IMPORT, UrlImportGateMiddleware
 
 logger = logging.getLogger("lct_backend")
@@ -109,9 +110,11 @@ class ServerTimingMiddleware(BaseHTTPMiddleware):
         parts.append(f"total;dur={elapsed_ms:.1f}")
         response.headers["Server-Timing"] = ", ".join(parts)
 
-        if elapsed_ms >= self.SLOW_REQUEST_THRESHOLD_MS:
+        diagnose_path = should_diagnose_path(request.url.path)
+        if diagnose_path or elapsed_ms >= self.SLOW_REQUEST_THRESHOLD_MS:
             logger.info(
-                "[SLOW] %s %s -> %s in %.0fms%s",
+                "[%s] %s %s -> %s in %.0fms%s",
+                "LCT-ROUTE-DIAG" if diagnose_path else "SLOW",
                 request.method,
                 request.url.path,
                 response.status_code,

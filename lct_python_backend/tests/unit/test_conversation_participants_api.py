@@ -107,9 +107,21 @@ class _FakeSession:
     def __init__(self, conversation=None):
         self.conversation = conversation
         self.commits = 0
+        self.added = []
 
     async def execute(self, _stmt):
         return _ExecuteResult(self.conversation)
+
+    async def get(self, _model, _pk):
+        # ensure_conversation (stt_session) looks the row up by primary key;
+        # PUT participants auto-creates the row when it's missing (b190613).
+        return self.conversation
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    async def flush(self):
+        pass
 
     async def commit(self):
         self.commits += 1
@@ -254,10 +266,22 @@ def test_put_empty_list_clears_participants(make_client):
     assert conv.participant_count == 0
 
 
-def test_put_returns_404_for_unknown_conversation(make_client):
-    client, _ = make_client(conversation=None)
+def test_put_autocreates_row_for_unknown_conversation(make_client):
+    """PUT participants no longer 404s on an unknown conversation: the row is
+    lazily created by stt_session.ensure_conversation on first transcript
+    event, but the frontend PUTs participants at session start — before any
+    audio. The endpoint auto-creates the row to close that race (b190613)."""
+    client, session = make_client(conversation=None)
     r = client.put(
         f"/api/conversations/{CONV_ID}/participants",
         json={"participants": [{"contact_id": "c_a", "display_name": "A"}]},
     )
-    assert r.status_code == 404
+    assert r.status_code == 200
+    assert len(r.json()["participants"]) == 1
+    # The conversation row was created and persisted.
+    assert len(session.added) == 1
+    created = session.added[0]
+    assert created.id == uuid.UUID(CONV_ID)
+    assert {p["contact_id"] for p in created.participants} == {"c_a"}
+    assert created.participant_count == 1
+    assert session.commits == 1

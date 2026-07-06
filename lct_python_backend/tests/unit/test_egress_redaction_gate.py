@@ -46,11 +46,17 @@ def test_dirty_body_blocked_when_local_only_off(monkeypatch):
 
 
 def test_clean_body_passes_boundary_when_local_only_off(monkeypatch):
+    # Only a block is a failure. Any network outcome — timeout, refusal, or a
+    # real HTTP response on runners with internet — means the clean body
+    # passed the redaction boundary. pytest.raises(Exception) flaked on CI
+    # where the request completed inside the timeout and nothing raised.
     monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
-    with pytest.raises(Exception) as exc_info:
-        httpx.Client(timeout=0.1).post(E4_URL, content=CLEAN)
-    # It passes the redaction boundary and fails later on the network — NOT a block.
-    assert not isinstance(exc_info.value, UnverifiedEgressBlocked)
+    try:
+        httpx.Client(timeout=0.5).post(E4_URL, content=CLEAN)
+    except UnverifiedEgressBlocked:  # pragma: no cover - would be a guard bug
+        pytest.fail("redaction boundary blocked a clean body")
+    except Exception:
+        pass  # network failure — fine, the boundary let it through
 
 
 def test_dirty_body_blocked_even_when_local_only_on(monkeypatch):

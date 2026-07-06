@@ -361,7 +361,13 @@ def build_catalog(
     if _synth_stt is not None:
         stt_entries.append(_synth_stt)
         active_stt = _synth_stt["id"]
-    active_llm = _effective_llm_id(llm_entries, llm_settings, llm_providers)
+    # SELECTED (what the Settings lane edits) vs EFFECTIVE (what graph-gen
+    # actually runs) are distinct by design — `active.llm` must report the
+    # selected id, while is_active/telemetry decoration follows the effective
+    # one so live numbers attach to the entry that is really serving. A prior
+    # change pointed both at _effective_llm_id, collapsing the distinction.
+    active_llm = _active_llm_id(llm_entries, llm_settings)
+    effective_llm = _effective_llm_id(llm_entries, llm_settings, llm_providers)
     active_diar = _active_diar_id(diar_entries, diar_settings)
 
     stt_buckets = (stt_telemetry or {}).get("providers") if isinstance(stt_telemetry, dict) else {}
@@ -390,8 +396,8 @@ def build_catalog(
         # the M5 sends diarize=true) and no separate diarizer lane is running.
         entry["provides_diarization"] = bool(entry.get("is_active") and stt_provides_diarization)
     for entry in llm_entries:
-        bucket = llm_buckets.get(_norm(entry.get("provider_key"))) if entry.get("id") == active_llm else None
-        decorate(entry, active_llm, _llm_observed(bucket) if bucket else None)
+        bucket = llm_buckets.get(_norm(entry.get("provider_key"))) if entry.get("id") == effective_llm else None
+        decorate(entry, effective_llm, _llm_observed(bucket) if bucket else None)
         entry["runnable"] = _simple_runnable(entry)
     for entry in diar_entries:
         decorate(entry, active_diar, None)
@@ -408,7 +414,7 @@ def build_catalog(
             # runnable fallback). Differs from the selected id when a chosen backend
             # isn't built/configured (e.g. FluidAudio sidecar not running yet).
             "stt_effective": _effective_simple_id(stt_entries, active_stt),
-            "llm_effective": _effective_llm_id(llm_entries, llm_settings, llm_providers),
+            "llm_effective": effective_llm,
             "diarization_effective": _effective_diar_id(diar_entries, diar_settings, active_diar),
         },
         "stt": stt_entries,

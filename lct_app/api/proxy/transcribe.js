@@ -1,54 +1,45 @@
 import { del } from '@vercel/blob';
 
-// Node runtime (default). @vercel/blob pulls in undici + Node built-ins, which
-// the Edge runtime does not support — declaring runtime:'edge' here fails the build.
+import { corsHeaders, guardNodeRequest } from './_shared.js';
 
-export default async function handler(req) {
-  const origin = req.headers.get('origin') || '*';
-  
-  // 1. CORS Preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, x-lct-byok-key, x-lct-trial',
-        'Access-Control-Max-Age': '86400',
-      },
-    });
-  }
+// Node runtime (default; @vercel/blob needs Node built-ins the Edge runtime
+// lacks). Vercel's Node runtime invokes the CLASSIC (req, res) signature:
+// req.headers is a plain object, NOT a Web Headers. The original Web-style
+// handler here crashed with `TypeError: req.headers.get` on EVERY request
+// (FUNCTION_INVOCATION_FAILED) — this route never worked in production until
+// it was rewritten to (req, res). Confirmed via `vercel logs` 2026-07-05.
 
-  if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
-  }
+export default async function handler(req, res) {
+  // 1. Origin allowlist + preflight + method + rate limit (shared).
+  if (guardNodeRequest(req, res, { maxPerMin: 20 })) return;
+  const cors = corsHeaders(req.headers.origin || null);
+  const applyCors = () => {
+    for (const [name, value] of Object.entries(cors)) res.setHeader(name, value);
+  };
 
-  // 2. Resolve the OpenAI key.
+  // 2. Extract BYOK key
   // ADR-060: Explicit no-log rule for request headers.
   // NO_LOG_BYOK_KEY_ASSERTION
-  // Visitor's own key wins; else fall back to the server-side trial key on a
-  // trial request (never returned to the browser).
-  const byokKey = req.headers.get('x-lct-byok-key');
-  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!process.env.OPENAI_TRIAL_KEY;
-  const apiKey = byokKey || (usingTrial ? process.env.OPENAI_TRIAL_KEY : null);
+  const apiKey = req.headers['x-lct-byok-key'];
   if (!apiKey) {
-    return new Response('Missing x-lct-byok-key header', {
-      status: 401,
-      headers: { 'Access-Control-Allow-Origin': origin }
-    });
+    applyCors();
+    return res.status(401).send('Missing x-lct-byok-key header');
   }
 
   try {
-    const { blobUrl, language, chunking_strategy, response_format, model } = await req.json();
+    // Vercel's Node runtime parses JSON bodies into req.body.
+    const { blobUrl, language, chunking_strategy, response_format, model } = req.body || {};
 
     if (!blobUrl) {
-      return new Response('Missing blobUrl', { status: 400 });
+      applyCors();
+      return res.status(400).send('Missing blobUrl');
     }
 
     // 3. Fetch the audio from Vercel Blob
     const audioRes = await fetch(blobUrl);
     if (!audioRes.ok) {
-      return new Response('Failed to fetch audio from blob storage', { status: 500 });
+      applyCors();
+      return res.status(500).send('Failed to fetch audio from blob storage');
     }
     const audioBlob = await audioRes.blob();
 
@@ -76,28 +67,16 @@ export default async function handler(req) {
     // Fire and forget delete
     del(blobUrl).catch(() => {});
 
-    // Trial budget exhausted -> ask the client to switch to its own key.
-    if (usingTrial && (openAiResponse.status === 429 || openAiResponse.status === 402)) {
-      return new Response(JSON.stringify({ error: 'trial_exhausted' }), {
-        status: 402,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': origin }
-      });
-    }
+    // 7. Return OpenAI response (transcription payloads are small JSON — buffer, don't stream)
+    const payload = Buffer.from(await openAiResponse.arrayBuffer());
+    applyCors();
+    const contentType = openAiResponse.headers.get('content-type');
+    if (contentType) res.setHeader('Content-Type', contentType);
+    return res.status(openAiResponse.status).send(payload);
 
-    // 7. Return OpenAI response
-    const responseHeaders = new Headers(openAiResponse.headers);
-    responseHeaders.set('Access-Control-Allow-Origin', origin);
-    
-    return new Response(openAiResponse.body, {
-      status: openAiResponse.status,
-      headers: responseHeaders
-    });
-    
   } catch (err) {
     // ADR-060: Do not log the error object to avoid leaking API key.
-    return new Response('Proxy Error', { 
-      status: 502,
-      headers: { 'Access-Control-Allow-Origin': origin }
-    });
+    applyCors();
+    return res.status(502).send('Proxy Error');
   }
 }

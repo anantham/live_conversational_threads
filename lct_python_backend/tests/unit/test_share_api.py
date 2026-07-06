@@ -17,21 +17,10 @@ deferred to a future integration pass.
 
 from __future__ import annotations
 
-import sys
-import types
-
-# Stub db_session BEFORE importing share_api — the real db_session module
-# eagerly creates a SQLAlchemy engine and dies if DATABASE_URL is unset.
-# Our tests only exercise pure helpers, so a no-op stub is sufficient.
-# Pattern borrowed from tests/unit/test_artifact_api.py.
-if "lct_python_backend.db_session" not in sys.modules:
-    _stub = types.ModuleType("lct_python_backend.db_session")
-
-    async def _dummy_get_async_session():  # pragma: no cover
-        yield object()
-
-    _stub.get_async_session = _dummy_get_async_session
-    sys.modules["lct_python_backend.db_session"] = _stub
+# NOTE: db_session no longer needs stubbing — its engine is created lazily on
+# first use, so importing share_api works without DATABASE_URL. The old
+# sys.modules stub here leaked across the whole pytest collection and broke
+# unrelated test files that needed names the stub lacked.
 
 import json
 import time

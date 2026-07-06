@@ -1,49 +1,40 @@
 import { handleUpload } from '@vercel/blob/client';
 
-// Node runtime (default). @vercel/blob/client pulls in undici + Node built-ins,
-// which the Edge runtime does not support — runtime:'edge' here fails the build.
+import { corsHeaders, guardNodeRequest } from './_shared.js';
 
-const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://localhost:4173',
-];
+// Node runtime (default; @vercel/blob/client needs Node built-ins the Edge
+// runtime lacks). Vercel's Node runtime invokes the CLASSIC (req, res)
+// signature: req.headers is a plain object, NOT a Web Headers. The original
+// Web-style handler here crashed with `TypeError: req.headers.get` on EVERY
+// request (FUNCTION_INVOCATION_FAILED) — this route never worked in
+// production until it was rewritten to (req, res). Confirmed via
+// `vercel logs` 2026-07-05.
 
-export default async function handler(req) {
-  const origin = req.headers.get('origin') || '*';
-  
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, x-lct-byok-key, x-lct-trial',
-        'Access-Control-Max-Age': '86400',
-      },
-    });
-  }
+export default async function handler(req, res) {
+  // Origin allowlist + preflight + method + rate limit (shared).
+  if (guardNodeRequest(req, res, { maxPerMin: 20 })) return;
+  const cors = corsHeaders(req.headers.origin || null);
+  const applyCors = () => {
+    for (const [name, value] of Object.entries(cors)) res.setHeader(name, value);
+  };
 
-  if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
-  }
-
-  // The client must present a key (its own) OR be in a configured trial to
-  // authorize this upload. The blob upload itself is authorized by Vercel's
-  // BLOB token, so we only gate on presence here (no OpenAI call in this route).
+  // The client must pass the BYOK key to authorize this upload
   // ADR-060: Explicit no-log rule for request headers.
   // NO_LOG_BYOK_KEY_ASSERTION
-  const byokKey = req.headers.get('x-lct-byok-key');
-  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!process.env.OPENAI_TRIAL_KEY;
-  if (!byokKey && !usingTrial) {
-    return new Response('Missing API key', { status: 401 });
+  const apiKey = req.headers['x-lct-byok-key'];
+  if (!apiKey) {
+    applyCors();
+    return res.status(401).send('Missing API key');
   }
 
   try {
     const jsonResponse = await handleUpload({
-      body: await req.json(),
+      // Vercel's Node runtime parses the JSON body into req.body; handleUpload
+      // accepts the classic Node request object directly.
+      body: req.body,
       request: req,
       onBeforeGenerateToken: async (pathname) => {
-        // Here we could validate the pathname or user. 
+        // Here we could validate the pathname or user.
         // We just return a generic token payload since this is BYOK.
         return {
           allowedContentTypes: ['audio/webm', 'audio/wav', 'audio/mpeg', 'audio/mp4'],
@@ -57,17 +48,10 @@ export default async function handler(req) {
       },
     });
 
-    return new Response(JSON.stringify(jsonResponse), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': origin
-      }
-    });
+    applyCors();
+    return res.status(200).json(jsonResponse);
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 400, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': origin } }
-    );
+    applyCors();
+    return res.status(400).json({ error: error.message });
   }
 }

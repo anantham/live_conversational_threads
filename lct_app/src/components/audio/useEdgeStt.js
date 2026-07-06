@@ -47,8 +47,6 @@ export default function useEdgeStt({
 }) {
   const dataProvider = useDataProvider();
 
-  // STT settings (sttSettings.json + dynamic env):
-  const sttConfig = useSttSettingsStore((state) => state.sttConfig);
   const framesRef = useRef([]);
   const bufferedBytesRef = useRef(0);
   const utteranceRef = useRef(0);

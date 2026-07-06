@@ -14,7 +14,15 @@ import pytest
 # ---------------------------------------------------------------------------
 
 def _stub_modules(monkeypatch):
-    """Stub out every heavy import so the module loads in the unit-test runner."""
+    """Stub out every heavy import so the module loads in the unit-test runner.
+
+    IMPORTANT: every attribute is set via monkeypatch (auto-reverted at test
+    end). A previous version assigned attributes directly (`mod.attr = ...`)
+    on modules that were often ALREADY imported for real — permanently
+    poisoning the real modules for every later test in the run (e.g.
+    stt_settings_service.load_stt_settings silently became an AsyncMock,
+    breaking test_stt_settings_service and friends).
+    """
     async def _fake_session_gen():
         yield object()
 
@@ -37,43 +45,46 @@ def _stub_modules(monkeypatch):
         if mod_name not in sys.modules:
             monkeypatch.setitem(sys.modules, mod_name, types.ModuleType(mod_name))
 
+    def _set(mod_name, attr, value):
+        # raising=False: the attr may not exist when the module is a fresh stub.
+        monkeypatch.setattr(sys.modules[mod_name], attr, value, raising=False)
+
     # Stub AudioStorageManager so the module-level instance is safe to patch
-    audio_storage_mod = sys.modules["lct_python_backend.services.audio_storage"]
-    audio_storage_mod.AudioStorageManager = MagicMock()
+    _set("lct_python_backend.services.audio_storage", "AudioStorageManager", MagicMock())
 
-    import_bulk = sys.modules["lct_python_backend.services.import_pipeline.import_bulk_processor"]
-    import_bulk.build_process_file_stream = AsyncMock()
-    import_bulk.cleanup_temp_file = MagicMock()
-    import_bulk.copy_temp_upload_for_async_job = AsyncMock()
-    import_bulk.diarization_job_urls = MagicMock()
+    _bulk = "lct_python_backend.services.import_pipeline.import_bulk_processor"
+    _set(_bulk, "build_process_file_stream", AsyncMock())
+    _set(_bulk, "cleanup_temp_file", MagicMock())
+    _set(_bulk, "copy_temp_upload_for_async_job", AsyncMock())
+    _set(_bulk, "diarization_job_urls", MagicMock())
 
-    file_transcriber = sys.modules["lct_python_backend.services.file_transcriber"]
-    file_transcriber.chunk_transcript_lines = MagicMock()
-    file_transcriber.transcribe_audio_segmented = AsyncMock()
-    file_transcriber.transcribe_uploaded_file = AsyncMock()
+    _ft = "lct_python_backend.services.file_transcriber"
+    _set(_ft, "chunk_transcript_lines", MagicMock())
+    _set(_ft, "transcribe_audio_segmented", AsyncMock())
+    _set(_ft, "transcribe_uploaded_file", AsyncMock())
 
-    refine = sys.modules["lct_python_backend.services.import_pipeline.import_graph_refinement"]
-    refine.refine_import_graph_nodes = AsyncMock()
+    _set("lct_python_backend.services.import_pipeline.import_graph_refinement",
+         "refine_import_graph_nodes", AsyncMock())
 
-    llm = sys.modules["lct_python_backend.services.llm_config"]
-    llm.load_llm_config = MagicMock()
-    llm.load_llm_providers = AsyncMock()
+    _llm = "lct_python_backend.services.llm_config"
+    _set(_llm, "load_llm_config", MagicMock())
+    _set(_llm, "load_llm_providers", AsyncMock())
 
-    stt = sys.modules["lct_python_backend.services.stt.stt_settings_service"]
-    stt.load_stt_settings = AsyncMock()
+    _set("lct_python_backend.services.stt.stt_settings_service",
+         "load_stt_settings", AsyncMock())
 
-    artifact_svc = sys.modules["lct_python_backend.services.artifact_settings_service"]
-    artifact_svc.load_artifact_export_settings = AsyncMock()
+    _set("lct_python_backend.services.artifact_settings_service",
+         "load_artifact_export_settings", AsyncMock())
 
-    artifact_exp = sys.modules["lct_python_backend.services.artifact_export_service"]
-    artifact_exp.auto_export_conversation_artifacts = AsyncMock()
+    _set("lct_python_backend.services.artifact_export_service",
+         "auto_export_conversation_artifacts", AsyncMock())
 
-    tc = sys.modules["lct_python_backend.services.transcript.transcript_processing"]
-    tc.TranscriptProcessor = MagicMock()
+    _set("lct_python_backend.services.transcript.transcript_processing",
+         "TranscriptProcessor", MagicMock())
 
-    dq = sys.modules["lct_python_backend.services.import_pipeline.import_diarization_queue"]
-    dq.enqueue_import_diarization_job = AsyncMock()
-    dq.is_async_import_diarization_enabled = MagicMock(return_value=False)
+    _dq = "lct_python_backend.services.import_pipeline.import_diarization_queue"
+    _set(_dq, "enqueue_import_diarization_job", AsyncMock())
+    _set(_dq, "is_async_import_diarization_enabled", MagicMock(return_value=False))
 
 
 def _load_reprocess_api(monkeypatch):
@@ -81,7 +92,13 @@ def _load_reprocess_api(monkeypatch):
     # Force re-import so the stubs are picked up
     sys.modules.pop("lct_python_backend.reprocess_api", None)
     import importlib
-    return importlib.import_module("lct_python_backend.reprocess_api")
+    mod = importlib.import_module("lct_python_backend.reprocess_api")
+    # Don't leak the stub-bound module: re-register it via monkeypatch with
+    # "missing" as the recorded prior state, so teardown drops it and any
+    # later test re-imports reprocess_api fresh against the real deps.
+    saved = sys.modules.pop("lct_python_backend.reprocess_api")
+    monkeypatch.setitem(sys.modules, "lct_python_backend.reprocess_api", saved)
+    return mod
 
 
 def _make_request():

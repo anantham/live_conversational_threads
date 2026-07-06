@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-import sys
-import types
-
 import pytest
 from fastapi import HTTPException
 
@@ -13,22 +9,11 @@ from lct_python_backend.services.import_pipeline.import_validation import (
     assert_url_resolves_to_public_host,
 )
 
+# db_session's engine is lazy (created on first use), so import_api imports
+# cleanly without DATABASE_URL. The old sys.modules stub + reimport dance this
+# file used poisoned the module for the rest of the pytest collection.
+from lct_python_backend import import_api as _import_api
 
-def _load_import_api_with_db_stub():
-    """Import import_api with db_session stubbed out, so module-level
-    create_async_engine doesn't blow up without DATABASE_URL."""
-
-    async def dummy_get_async_session():
-        yield object()
-
-    dummy_db_session = types.ModuleType("lct_python_backend.db_session")
-    dummy_db_session.get_async_session = dummy_get_async_session
-    sys.modules["lct_python_backend.db_session"] = dummy_db_session
-    sys.modules.pop("lct_python_backend.import_api", None)
-    return importlib.import_module("lct_python_backend.import_api")
-
-
-_import_api = _load_import_api_with_db_stub()
 _validate_upload_file = _import_api._validate_upload_file
 _ALLOWED_AUDIO_SUFFIXES = _import_api._ALLOWED_AUDIO_SUFFIXES
 _ALLOWED_TEXT_SUFFIXES = _import_api._ALLOWED_TEXT_SUFFIXES

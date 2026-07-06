@@ -119,7 +119,8 @@ jobs:
             initialization \
             d4-color-mode-smoke \
             d6-autosave-smoke \
-            fullscreen-button
+            fullscreen-button \
+            serverless.spec
 
       - name: Backend log on failure
         if: failure()

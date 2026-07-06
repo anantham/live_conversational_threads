@@ -28,9 +28,14 @@ _mock_torch.from_numpy = lambda x: x  # Pass numpy arrays through
 @pytest.fixture(autouse=True)
 def _allow_egress(monkeypatch):
     """Several tests here exercise the CLOUD STT fallback paths (openai_audio /
-    openrouter_audio) on purpose; the local-only egress guard (default ON)
-    would block them. Egress policy itself is covered by test_egress_guard.py."""
+    openrouter_audio) on purpose against non-local mock hosts. Two independent
+    switches would block them: the local-only egress guard (default ON) AND the
+    ADR-038 audio hard-gate (raw voice can't be redacted, so cloud audio is
+    blocked even at LCT_LOCAL_ONLY=0 unless LCT_ALLOW_CLOUD_AUDIO=1). Opt out
+    of both. Egress policy itself is covered by test_egress_guard.py /
+    test_privacy_boundary.py."""
     monkeypatch.setenv("LCT_LOCAL_ONLY", "0")
+    monkeypatch.setenv("LCT_ALLOW_CLOUD_AUDIO", "1")
 
 
 # ---------------------------------------------------------------------------

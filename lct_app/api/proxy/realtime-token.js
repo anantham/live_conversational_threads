@@ -1,34 +1,21 @@
+import { corsHeaders, guardRequest } from './_shared.js';
+
 export const config = {
   runtime: 'edge',
 };
 
 export default async function handler(req) {
-  const origin = req.headers.get('origin') || '*';
-  
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, x-lct-byok-key, x-lct-trial',
-        'Access-Control-Max-Age': '86400',
-      },
-    });
-  }
-
-  if (req.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 });
-  }
+  // Origin allowlist + preflight + method + rate limit (shared). Previously
+  // this route had NO origin check and NO rate limit — an open relay.
+  const blocked = guardRequest(req, { maxPerMin: 10 });
+  if (blocked) return blocked;
+  const origin = req.headers.get('origin');
+  const cors = corsHeaders(origin);
 
   // NO_LOG_BYOK_KEY_ASSERTION
-  // Visitor's own key wins; else fall back to the server-side trial key on a
-  // trial request (never returned to the browser).
-  const byokKey = req.headers.get('x-lct-byok-key');
-  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!process.env.OPENAI_TRIAL_KEY;
-  const apiKey = byokKey || (usingTrial ? process.env.OPENAI_TRIAL_KEY : null);
+  const apiKey = req.headers.get('x-lct-byok-key');
   if (!apiKey) {
-    return new Response('Missing x-lct-byok-key header', { status: 401 });
+    return new Response('Missing x-lct-byok-key header', { status: 401, headers: cors });
   }
 
   try {
@@ -46,15 +33,8 @@ export default async function handler(req) {
       })
     });
 
-    // Trial budget exhausted -> ask the client to switch to its own key.
-    if (usingTrial && (openAiResponse.status === 429 || openAiResponse.status === 402)) {
-      return new Response(JSON.stringify({ error: 'trial_exhausted' }), {
-        status: 402,
-        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': origin }
-      });
-    }
     if (!openAiResponse.ok) {
-      return new Response('Failed to generate realtime token', { status: openAiResponse.status });
+      return new Response('Failed to generate realtime token', { status: openAiResponse.status, headers: cors });
     }
 
     const data = await openAiResponse.json();
@@ -63,10 +43,10 @@ export default async function handler(req) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': origin
+        ...cors
       }
     });
   } catch (err) {
-    return new Response('Proxy Error', { status: 502, headers: { 'Access-Control-Allow-Origin': origin } });
+    return new Response('Proxy Error', { status: 502, headers: cors });
   }
 }

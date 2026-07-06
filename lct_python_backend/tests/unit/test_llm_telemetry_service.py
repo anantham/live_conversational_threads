@@ -15,7 +15,11 @@ from lct_python_backend.services.llm_telemetry_service import (
 )
 
 
-@pytest.mark.parametrize("base_url,ptype,expected", [
+# NB: the parametrized arg is deliberately NOT named `base_url` — that name
+# collides with the session-scoped `base_url` fixture from the pytest-base-url
+# plugin (installed with playwright-pytest), causing a ScopeMismatch error on
+# any machine that has it.
+@pytest.mark.parametrize("url,ptype,expected", [
     ("http://127.0.0.1:11434", "openai_compatible", "local_ollama"),
     ("http://100.81.65.74:1234", "openai_compatible", "tailscale_rtx"),
     ("https://openrouter.ai/api", "openrouter", "cloud_openrouter"),
@@ -23,8 +27,8 @@ from lct_python_backend.services.llm_telemetry_service import (
     ("http://127.0.0.1:1234", "openai_compatible", "local_lmstudio"),
     ("https://generativelanguage.googleapis.com", "openai_compatible", "cloud_gemini"),
 ])
-def test_catalog_provider_key(base_url, ptype, expected):
-    assert catalog_provider_key(base_url, ptype) == expected
+def test_catalog_provider_key(url, ptype, expected):
+    assert catalog_provider_key(url, ptype) == expected
 
 
 def test_record_and_aggregate_roundtrip(tmp_path, monkeypatch):
