@@ -89,4 +89,64 @@ describe('callServerlessLlm streaming', () => {
     const result = await callServerlessLlm('sk-user', [{ role: 'user', content: 'hi' }]);
     expect(result).toBe('buffered reply');
   });
+
+  // --- dual-review hardening cases (grok+codex) ---
+
+  it('throws on an in-stream error frame instead of returning empty content', async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n',
+        'data: {"error":{"message":"context length exceeded","type":"invalid_request_error"}}\n\n',
+      ])
+    );
+    await expect(callServerlessLlm('sk-user', [{ role: 'user', content: 'hi' }]))
+      .rejects.toThrow(/context length exceeded/);
+  });
+
+  it('tolerates CRLF (\\r\\n\\r\\n) frame separators', async () => {
+    global.fetch = vi.fn().mockResolvedValue(
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"a"}}]}\r\n\r\n',
+        'data: {"choices":[{"delta":{"content":"b"}}]}\r\n\r\n',
+        'data: [DONE]\r\n\r\n',
+      ])
+    );
+    const result = await callServerlessLlm('sk-user', [{ role: 'user', content: 'hi' }]);
+    expect(result).toBe('ab');
+  });
+
+  it('flushes a final frame that arrives without a trailing blank line', async () => {
+    // Truncated / non-conformant upstream: last data line, no closing \n\n.
+    global.fetch = vi.fn().mockResolvedValue(
+      sseResponse([
+        'data: {"choices":[{"delta":{"content":"one "}}]}\n\n',
+        'data: {"choices":[{"delta":{"content":"two"}}]}',
+      ])
+    );
+    const result = await callServerlessLlm('sk-user', [{ role: 'user', content: 'hi' }]);
+    expect(result).toBe('one two');
+  });
+
+  it('reassembles a multibyte UTF-8 char split across network chunks', async () => {
+    // '★' (U+2605) encodes to 3 bytes E2 98 85. Split the frame right inside
+    // those bytes so TextDecoder({stream:true}) must buffer the partial
+    // sequence across two reads.
+    const full = new TextEncoder().encode('data: {"choices":[{"delta":{"content":"★"}}]}\n\n');
+    const star = full.indexOf(0xe2); // first byte of ★
+    const parts = [full.slice(0, star + 1), full.slice(star + 1)]; // split after E2
+    let i = 0;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: (h) => (h.toLowerCase() === 'content-type' ? 'text/event-stream' : null) },
+      body: new ReadableStream({
+        pull(controller) {
+          if (i < parts.length) controller.enqueue(parts[i++]);
+          else controller.close();
+        },
+      }),
+    });
+    const result = await callServerlessLlm('sk-user', [{ role: 'user', content: 'hi' }]);
+    expect(result).toBe('★');
+  });
 });

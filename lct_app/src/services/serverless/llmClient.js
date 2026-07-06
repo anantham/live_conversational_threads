@@ -161,12 +161,40 @@ export async function callServerlessLlm(apiKey, messages, options = {}) {
  * Frames look like `data: {json}\n\n`, terminated by `data: [DONE]`; each JSON
  * carries `choices[0].delta.content`. Tolerates the non-streaming fallback
  * (a single JSON body) so a proxy that ever returns buffered JSON still works.
+ *
+ * Hardened per dual-family review (grok+codex, 2026-07-06): CRLF framing is
+ * normalized; a mid-stream error frame (OpenAI can emit `data: {"error":...}`
+ * at HTTP 200 — context length, content filter, upstream fault) is thrown, not
+ * swallowed into empty content; and a final frame that arrives without a
+ * trailing blank line (truncation / non-conformant upstream) is still flushed.
  */
+function readSseDeltas(eventText, onDelta) {
+  for (const line of eventText.split('\n')) {
+    if (!line.startsWith('data:')) continue; // skip `event:`/`id:`/`:comment` lines
+    const data = line.slice(5).trim();
+    if (!data || data === '[DONE]') continue;
+    let parsed;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      continue; // rare malformed/keep-alive frame; complete frames arrive via the \n\n split
+    }
+    if (parsed.error) {
+      throw new Error(`LLM stream error: ${parsed.error.message || parsed.error.type || 'unknown'}`);
+    }
+    const delta = parsed.choices?.[0]?.delta?.content;
+    if (delta) onDelta(delta);
+  }
+}
+
 async function readChatStream(response) {
   const ctype = response.headers.get('content-type') || '';
   if (!ctype.includes('text/event-stream')) {
     // Non-streaming fallback (e.g. an error object or a buffered proxy).
     const json = await response.json().catch(() => null);
+    if (json?.error) {
+      throw new Error(`LLM error: ${json.error.message || json.error.type || 'unknown'}`);
+    }
     return json?.choices?.[0]?.message?.content || '';
   }
 
@@ -174,30 +202,26 @@ async function readChatStream(response) {
   const decoder = new TextDecoder();
   let buffer = '';
   let content = '';
+  const append = (delta) => { content += delta; };
 
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    // Normalize CRLF framing to LF so the blank-line split is framing-agnostic.
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
 
     // SSE events are separated by a blank line.
     let sep;
     while ((sep = buffer.indexOf('\n\n')) !== -1) {
-      const event = buffer.slice(0, sep);
+      readSseDeltas(buffer.slice(0, sep), append);
       buffer = buffer.slice(sep + 2);
-      for (const line of event.split('\n')) {
-        if (!line.startsWith('data:')) continue;
-        const data = line.slice(5).trim();
-        if (data === '[DONE]') continue;
-        try {
-          const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
-          if (delta) content += delta;
-        } catch {
-          // Ignore keep-alive / partial frames; the buffer split handles the rest.
-        }
-      }
     }
   }
+
+  // Flush any bytes the streaming decoder was still holding, then process a
+  // trailing frame that lacked its terminating blank line.
+  buffer += decoder.decode().replace(/\r\n/g, '\n');
+  if (buffer.trim()) readSseDeltas(buffer, append);
 
   return content;
 }
