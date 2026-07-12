@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .import_bulk_pipeline import run_bulk_processing_worker
 from .import_bulk_sse import stream_event_queue
+from .whatsapp_zip_import import build_whatsapp_transcript_text
 
 
 def cleanup_temp_file(temp_path: Optional[str], *, logger: logging.Logger) -> None:
@@ -90,7 +91,29 @@ async def build_process_file_stream(
         await event_queue.put((event_type, payload))
 
     async def worker() -> None:
+        nonlocal temp_path, content_size
         try:
+            if suffix == ".zip":
+                try:
+                    transcript_text = await build_whatsapp_transcript_text(Path(temp_path), emit=emit)
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception("WhatsApp zip import failed for %s", filename)
+                    await emit("error", {
+                        "stage": "parsing",
+                        "message": f"Failed to process WhatsApp export: {exc}",
+                    })
+                    return
+
+                cleanup_temp_file(temp_path)
+                converted = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+                try:
+                    converted.write(transcript_text.encode("utf-8"))
+                finally:
+                    converted.close()
+                temp_path = converted.name
+                content_size = len(transcript_text.encode("utf-8"))
+                file.filename = (Path(filename).stem or "whatsapp_import") + ".txt"
+
             await run_bulk_processing_worker(
                 request=request,
                 file=file,
