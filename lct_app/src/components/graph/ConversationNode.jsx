@@ -189,8 +189,15 @@ function ConversationNodeImpl({ data, selected }) {
     minWidth: "220px",
     wordBreak: "break-word",
     transform: isTangent ? "rotate(8deg)" : undefined,
+    // Crux glow: cruxes (load-bearing pivots) get an amber halo so they pop out
+    // of the colored debate-clusters at overview zoom — the user can spot the
+    // nodes worth drilling into without reading text. Selection still wins (it
+    // adds a solid 2px amber BORDER above; a crux keeps its thread-colored border
+    // + this halo, so the two read distinctly). Cruxes are sparse by design.
     boxShadow: selected
       ? "0 0 0 3px rgba(245,158,11,0.3)"
+      : isCrux
+      ? "0 0 0 2px #f59e0b, 0 0 12px 2px rgba(245,158,11,0.5)"
       : "0 1px 3px rgba(0,0,0,0.06)",
     position: "relative",
     animation: isDraft ? "lctDraftPulse 1.6s ease-in-out infinite" : undefined,

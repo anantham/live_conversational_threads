@@ -15,7 +15,7 @@ import {
   ZOOM_LEVEL_3,
   buildMultiScaleClusters,
 } from "./graphClustering";
-import { layoutByThread, layoutWithDagre } from "./graphLayout";
+import { layoutByThread, layoutWithDagre, layoutDialectic } from "./graphLayout";
 import {
   extractContextualRelationEntries,
   getAuthoredSemanticLevel,
@@ -31,9 +31,11 @@ import {
   buildTemporalColorMapForNodes,
   buildArgumentStatusMapForNodes,
   buildDateColorMapForNodes,
+  buildThreadColorMapForNodes,
   resolveNodeColors,
 } from "./graph/colorModes";
 import ColorModeToggle from "./graph/ColorModeToggle";
+import ModeLegend from "./graph/ModeLegend";
 import MinimalGraphHud from "./graph/MinimalGraphHud";
 import MinimalGraphPanels from "./graph/MinimalGraphPanels";
 import { mglog } from "./graph/minimalGraphDebug";
@@ -221,6 +223,11 @@ function MinimalGraphInner({
     () => buildDateColorMapForNodes(normalizedChunk),
     [normalizedChunk]
   );
+  // Thread/debate map: id -> categorical color per thread_id (the default mode).
+  const threadColorMap = useMemo(
+    () => buildThreadColorMapForNodes(normalizedChunk),
+    [normalizedChunk]
+  );
 
   // Tap-friendly drill-down. Same fan-out as handleNodeDoubleClick, but callable
   // from a node's âŠ• control by id â€” so it works on touch (double-tap is eaten by
@@ -281,6 +288,7 @@ function MinimalGraphInner({
         temporalColorMap,
         argumentStatusMap,
         dateColorMap,
+        threadColorMap,
       });
       // Non-color cue for the argument view: the actual support/rebut counts.
       let argStatusLabel = null;
@@ -369,7 +377,7 @@ function MinimalGraphInner({
         },
       };
     });
-  }, [colorMode, speakerColorMap, temporalColorMap, argumentStatusMap, dateColorMap, handleExpand, handleOpenDetails]);
+  }, [colorMode, speakerColorMap, temporalColorMap, argumentStatusMap, dateColorMap, threadColorMap, handleExpand, handleOpenDetails]);
 
   const buildRfEdgesForSource = useCallback((sourceNodes) => {
     if (hideEdges) return [];
@@ -553,6 +561,7 @@ function MinimalGraphInner({
     // some room to scroll while keeping nodes readable). Falls back to
     // a fixed value if duration can't be derived.
     let pixelsPerSecond = 6;
+    let timeBasedLayout = true;
     const tsValues = normalizedChunk
       .map((n) => Number(n.timestamp_start))
       .filter((v) => Number.isFinite(v));
@@ -561,7 +570,15 @@ function MinimalGraphInner({
       .filter((v) => Number.isFinite(v));
     if (tsValues.length > 0 && tsEndValues.length > 0) {
       const totalDuration = Math.max(...tsEndValues) - Math.min(...tsValues);
-      if (totalDuration > 0) {
+      if (totalDuration > 48 * 3600) {
+        // ADR-032's time-axis assumed session-scale durations, where dormancy
+        // gaps are meaningful at a single px/s. Wall-clock imports (e.g. a
+        // month-long WhatsApp export with epoch timestamps) degenerate: a
+        // 30-day span at the 2px/s floor is ~5M px of mostly-empty timeline.
+        // Beyond a working-session horizon, use the column layout instead —
+        // chronological order is preserved, dead time is dropped.
+        timeBasedLayout = false;
+      } else if (totalDuration > 0) {
         pixelsPerSecond = Math.max(2, Math.min(20, 3000 / totalDuration));
       }
     }
@@ -590,8 +607,9 @@ function MinimalGraphInner({
                 nodeHeight: 360,
                 // ADR-032 Part A: X=timestamp_start, Y=thread row.
                 // Falls back to column-index automatically when too few
-                // nodes have timestamps (legacy / unrecorded conversations).
-                timeBased: true,
+                // nodes have timestamps (legacy / unrecorded conversations)
+                // or when the span exceeds a working session (see above).
+                timeBased: timeBasedLayout,
                 pixelsPerSecond,
                 minNodeWidth: spec.level >= 3 ? 440 : 320,
               }
@@ -941,13 +959,90 @@ function MinimalGraphInner({
   }, []);
 
   const baseDisplayNodes = interactiveNodes.length > 0 ? interactiveNodes : layoutedDisplayNodes;
-  // ADR-032 Part B pattern 3: when argument-scaffold trace is active,
-  // dim non-traced nodes + edges. Untraced opacity 0.18 keeps them
-  // discoverable (you can still see their layout) without competing
-  // for attention. Selected payoff node + its ancestors stay at full.
+
+  // Weakness lenses: one-click "where is the argument weak" filters computed
+  // from incoming supports/rebuts (argumentStatusMap) + claim_type. A match
+  // set also keeps its ANCESTORS visible (parent_id walk) so the filter stays
+  // meaningful at coarser tiers ("this theme contains unsupported claims").
+  const [weaknessFilter, setWeaknessFilter] = useState(null);
+  const weaknessSets = useMemo(() => {
+    const parentOf = new Map(
+      normalizedChunk.map((n) => [n.id, n.parent_id || null])
+    );
+    const withAncestors = (set) => {
+      const out = new Set(set);
+      set.forEach((id) => {
+        let p = parentOf.get(id);
+        let hops = 0;
+        while (p && !out.has(p) && hops < 6) {
+          out.add(p);
+          p = parentOf.get(p);
+          hops += 1;
+        }
+      });
+      return out;
+    };
+    const unsupported = new Set();
+    const uncontested = new Set();
+    const battleground = new Set();
+    const questions = new Set();
+    normalizedChunk.forEach((n) => {
+      const st = argumentStatusMap[n.id] || {};
+      const sup = st.sup || 0;
+      const reb = st.reb || 0;
+      // With claim_type data, "claim" nodes are the auditable population;
+      // without it (older graphs), fall back to level-2 idea nodes.
+      const isClaim = n.claim_type
+        ? n.claim_type === "claim"
+        : getAuthoredSemanticLevel(n) === 2;
+      if (isClaim && sup === 0) unsupported.add(n.id);
+      if (isClaim && reb === 0) uncontested.add(n.id);
+      if (sup > 0 && reb > 0) battleground.add(n.id);
+      if (
+        n.claim_type === "question" ||
+        (n.node_name || "").toLowerCase().startsWith("open question")
+      ) {
+        questions.add(n.id);
+      }
+    });
+    return {
+      counts: {
+        unsupported: unsupported.size,
+        uncontested: uncontested.size,
+        battleground: battleground.size,
+        questions: questions.size,
+      },
+      visible: {
+        unsupported: withAncestors(unsupported),
+        uncontested: withAncestors(uncontested),
+        battleground: withAncestors(battleground),
+        questions: withAncestors(questions),
+      },
+    };
+  }, [normalizedChunk, argumentStatusMap]);
+
+  // ADR-032 Part B pattern 3 (+ dialectic layout): when argument-scaffold
+  // trace is active, dim non-traced nodes AND re-lay out the graph with the
+  // dialectic fan — focus at origin, supporters fanned left, rebutters right
+  // (layoutDialectic reads incoming supports/rebuts from fullData, matching
+  // the argument color mode). Untraced opacity 0.18 keeps the rest
+  // discoverable without competing for attention. Positions revert when the
+  // trace exits (baseDisplayNodes keeps the original layout).
+  // With no trace active, the weakness lens (if any) dims non-matching nodes.
   const displayNodes = useMemo(() => {
-    if (!traceResult.nodes) return baseDisplayNodes;
-    return baseDisplayNodes.map((n) => {
+    if (!traceResult.nodes) {
+      const matchSet = weaknessFilter ? weaknessSets.visible[weaknessFilter] : null;
+      if (!matchSet) return baseDisplayNodes;
+      return baseDisplayNodes.map((n) => ({
+        ...n,
+        style: {
+          ...(n.style || {}),
+          opacity: matchSet.has(n.id) ? 1 : 0.15,
+          transition: "opacity 200ms ease",
+        },
+      }));
+    }
+    const dimmed = baseDisplayNodes.map((n) => {
       const inTrace = traceResult.nodes.has(n.id);
       return {
         ...n,
@@ -958,7 +1053,21 @@ function MinimalGraphInner({
         },
       };
     });
-  }, [baseDisplayNodes, traceResult.nodes]);
+    return layoutDialectic(dimmed, [], { focusNodeId: argumentTraceFrom });
+  }, [baseDisplayNodes, traceResult.nodes, weaknessFilter, weaknessSets, argumentTraceFrom]);
+
+  // Re-frame the camera when the dialectic fan appears/disappears — the node
+  // set is unchanged (no layout re-key) but positions move drastically.
+  useEffect(() => {
+    const id = setTimeout(() => {
+      try {
+        reactFlow.fitView({ padding: 0.25, duration: reduceMotion ? 0 : 300 });
+      } catch {
+        /* canvas not ready — Center button remains the fallback */
+      }
+    }, 80);
+    return () => clearTimeout(id);
+  }, [argumentTraceFrom, reactFlow, reduceMotion]);
 
   // momentCount = raw L1 total, shown as a size signal in the count readout.
   // Suppressed when L1 is the active tier (else it reads "134 moments Â· 134 moments").
@@ -1309,6 +1418,39 @@ function MinimalGraphInner({
 
   return (
     <div className={`relative w-full h-full${chromeless ? " lct-graph-chromeless" : ""}`}>
+      {/* Weakness lenses — one-click "where is the argument weak" filters.
+          Dim everything except the matching claims (+ their ancestors so
+          coarser tiers stay meaningful). Hidden during argument trace. */}
+      {!argumentTraceFrom && (
+        <div className="absolute bottom-12 left-3 z-40 flex flex-wrap items-center gap-1">
+          {[
+            { key: "unsupported", label: "unsupported", title: "Claims with no incoming support/evidence" },
+            { key: "uncontested", label: "uncontested", title: "Claims nobody pushed back on" },
+            { key: "battleground", label: "battlegrounds", title: "Claims both supported and rebutted" },
+            { key: "questions", label: "open questions", title: "Questions raised in the conversation" },
+          ]
+            .filter((c) => weaknessSets.counts[c.key] > 0)
+            .map((c) => {
+              const active = weaknessFilter === c.key;
+              return (
+                <button
+                  key={c.key}
+                  type="button"
+                  title={c.title}
+                  onClick={() => setWeaknessFilter(active ? null : c.key)}
+                  className={`rounded-full border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors ${
+                    active
+                      ? "border-amber-400 bg-amber-100 text-amber-900"
+                      : "border-gray-200 bg-white/90 text-gray-600 hover:bg-gray-50"
+                  }`}
+                >
+                  {c.label} {weaknessSets.counts[c.key]}
+                  {active ? " ×" : ""}
+                </button>
+              );
+            })}
+        </div>
+      )}
       {/* ADR-032 Part B pattern 3: argument-scaffold trace banner.
           Appears at top-center when trace mode is active. */}
       {argumentTraceFrom && (
@@ -1477,6 +1619,12 @@ function MinimalGraphInner({
             </button>
             <span className="mx-0.5 select-none text-[9px] text-gray-300">|</span>
             <ColorModeToggle mode={colorMode} onChange={handleColorModeChange} />
+            <ModeLegend
+              mode={colorMode}
+              nodes={normalizedChunk}
+              speakerColorMap={speakerColorMap}
+              threadColorMap={threadColorMap}
+            />
           </div>
         </details>
       </div>
