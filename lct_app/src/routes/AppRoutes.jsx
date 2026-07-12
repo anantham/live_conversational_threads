@@ -15,6 +15,7 @@ import SimulacraAnalysis from "../pages/SimulacraAnalysis";
 import BiasAnalysis from "../pages/BiasAnalysis";
 import FrameAnalysis from "../pages/FrameAnalysis";
 import CruxAnalysis from "../pages/CruxAnalysis";
+import ClaimsView from "../pages/ClaimsView";
 import CostDashboard from "../pages/CostDashboard";
 import Bookmarks from "../pages/Bookmarks";
 import PromptLibraryPage from "../pages/settings/PromptLibraryPage";
@@ -49,6 +50,7 @@ export default function AppRoutes() {
       <Route path="/biases/:conversationId" element={<BiasAnalysis />} />
       <Route path="/frames/:conversationId" element={<FrameAnalysis />} />
       <Route path="/cruxes/:conversationId" element={<CruxAnalysis />} />
+      <Route path="/claims/:conversationId" element={<ClaimsView />} />
       <Route path="/cost-dashboard" element={<CostDashboard />} />
       <Route path="/bookmarks" element={<Bookmarks />} />
       <Route path="/settings" element={<SettingsLayout />}>
