@@ -206,6 +206,11 @@ class ClaimExtractor:
         # ondelete=CASCADE — currently harmless because nothing in this codebase
         # populates those two tables yet, but a future feature that does would
         # need to either cascade-clear them here too or add the FK ondelete.
+        # DELETE+INSERT is also unguarded against two concurrent analyzes of
+        # the same conversation (both delete, then both insert → duplicated
+        # claim sets). Fine while the only trigger is the single operator's
+        # button; needs a per-conversation lock before any auto/multi-user
+        # trigger.
         await self.db.execute(delete(Claim).where(Claim.conversation_id == conv_uuid))
 
         local_id_to_uuid: Dict[int, uuid.UUID] = {}

@@ -80,11 +80,24 @@ _SYSTEM_NOTICE_PATTERNS = [
 # — cap how long a body can be and still be treated as this class of notice.
 _SYSTEM_NOTICE_MAX_LEN = 120
 
+_LRM = "‎"
 
-def _is_system_notice(text: str) -> bool:
-    if len(text) > _SYSTEM_NOTICE_MAX_LEN:
+
+def _is_system_notice(raw_text: str) -> bool:
+    """Takes the sender-line body BEFORE invisible-mark cleanup: WhatsApp
+    stamps every generated notice body with a leading U+200E, while
+    human-typed text never starts with one — patterns alone over-match
+    (audited on a real 3754-message export: 165/165 notices carried the
+    mark; the only pattern matches without it were real human messages,
+    e.g. "yeah, bunch of people left"). No mark → fail open to keeping
+    the message."""
+    body = raw_text.lstrip(" \t")
+    if not body.startswith(_LRM):
         return False
-    return any(pattern.match(text) for pattern in _SYSTEM_NOTICE_PATTERNS)
+    cleaned = body.replace("‎", "").replace("‏", "").strip()
+    if len(cleaned) > _SYSTEM_NOTICE_MAX_LEN:
+        return False
+    return any(pattern.match(cleaned) for pattern in _SYSTEM_NOTICE_PATTERNS)
 
 
 class WhatsAppParser:
@@ -199,6 +212,15 @@ class WhatsAppParser:
                     continue
 
                 speaker = sender_match.group("speaker").strip()
+
+                if _is_system_notice(sender_match.group("text")):
+                    # e.g. "Vatsal: ‎Vatsal was added" / "Admin: ‎You added X" —
+                    # a WhatsApp group-management notice, not a real message.
+                    # Checked on the RAW body: the U+200E stamp is the
+                    # discriminator and cleanup below would erase it.
+                    system_message_count += 1
+                    continue
+
                 # Invisible LRM/RLM marks also show up mid-body (e.g. before
                 # "<This message was edited>" or "image omitted"), not just
                 # at line edges — strip everywhere, not just via the outer
@@ -209,12 +231,6 @@ class WhatsAppParser:
                     .replace("‏", "")
                     .strip()
                 )
-
-                if _is_system_notice(text_part):
-                    # e.g. "Vatsal: Vatsal was added" / "Admin: You added X" —
-                    # a WhatsApp group-management notice, not a real message.
-                    system_message_count += 1
-                    continue
 
                 current_speaker = speaker
                 current_text_parts = [text_part] if text_part else []

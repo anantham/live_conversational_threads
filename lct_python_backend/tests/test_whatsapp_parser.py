@@ -70,6 +70,36 @@ class TestMultilineAndSystemMessages:
         assert transcript.utterances[0].speaker == "Alice"
         assert transcript.parse_metadata["system_message_count"] == 2
 
+    def test_sender_shaped_notices_require_the_lrm_stamp(self):
+        # iOS exports emit group-management notices in "Name: text" shape but
+        # stamp the body with U+200E; those are filtered.
+        parser = WhatsAppParser()
+        text = (
+            "[01/02/2026, 09:00:00] Vatsal: ‎Vatsal was added\n"
+            "[01/02/2026, 09:01:00] Admin: ‎You added Aditya\n"
+            "[01/02/2026, 09:02:00] Alice: Hey everyone\n"
+        )
+        transcript = parser.parse_text(text)
+
+        assert [u.speaker for u in transcript.utterances] == ["Alice"]
+        assert transcript.parse_metadata["system_message_count"] == 2
+
+    def test_human_messages_shaped_like_notices_are_kept(self):
+        # Real casualty from a production export: "yeah, bunch of people left"
+        # matched "^.+ left$" and was silently dropped before the U+200E gate.
+        parser = WhatsAppParser()
+        text = (
+            "[01/02/2026, 09:00:00] Saksham: yeah, bunch of people left\n"
+            "[01/02/2026, 09:01:00] Alice: The new migration guard was added\n"
+        )
+        transcript = parser.parse_text(text)
+
+        assert [u.text for u in transcript.utterances] == [
+            "yeah, bunch of people left",
+            "The new migration guard was added",
+        ]
+        assert transcript.parse_metadata["system_message_count"] == 0
+
 
 class TestAttachments:
     def test_attachment_reference_is_captured_in_metadata(self):
