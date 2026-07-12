@@ -986,6 +986,11 @@ function MinimalGraphInner({
     const uncontested = new Set();
     const battleground = new Set();
     const questions = new Set();
+    const contradictions = new Set();
+    const idByName = new Map();
+    normalizedChunk.forEach((n) => {
+      if (n.node_name) idByName.set(String(n.node_name).toLowerCase(), n.id);
+    });
     normalizedChunk.forEach((n) => {
       const st = argumentStatusMap[n.id] || {};
       const sup = st.sup || 0;
@@ -1004,6 +1009,15 @@ function MinimalGraphInner({
       ) {
         questions.add(n.id);
       }
+      // Self-contradiction edges flag BOTH endpoints (edges are stored one
+      // direction, later statement → earlier).
+      (n.edge_relations || []).forEach((e) => {
+        const rt = String(e?.relation_type || "").trim().toLowerCase();
+        if (rt !== "contradicts") return;
+        contradictions.add(n.id);
+        const tid = idByName.get(String(e?.related_node || "").toLowerCase());
+        if (tid) contradictions.add(tid);
+      });
     });
     return {
       counts: {
@@ -1011,12 +1025,14 @@ function MinimalGraphInner({
         uncontested: uncontested.size,
         battleground: battleground.size,
         questions: questions.size,
+        contradictions: contradictions.size,
       },
       visible: {
         unsupported: withAncestors(unsupported),
         uncontested: withAncestors(uncontested),
         battleground: withAncestors(battleground),
         questions: withAncestors(questions),
+        contradictions: withAncestors(contradictions),
       },
     };
   }, [normalizedChunk, argumentStatusMap]);
@@ -1428,6 +1444,7 @@ function MinimalGraphInner({
             { key: "uncontested", label: "uncontested", title: "Claims nobody pushed back on" },
             { key: "battleground", label: "battlegrounds", title: "Claims both supported and rebutted" },
             { key: "questions", label: "open questions", title: "Questions raised in the conversation" },
+            { key: "contradictions", label: "self-contradictions", title: "Statements in tension with the same speaker's other statements" },
           ]
             .filter((c) => weaknessSets.counts[c.key] > 0)
             .map((c) => {

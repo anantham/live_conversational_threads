@@ -17,6 +17,7 @@ export const AUTHORED_LEVELS = [
 export const EDGE_COLORS = {
   supports: "#16a34a",
   rebuts: "#dc2626",
+  contradicts: "#c026d3",
   clarifies: "#2563eb",
   asks: "#0f766e",
   tangent: "#d97706",
@@ -33,6 +34,8 @@ export const EDGE_COLORS = {
 // Categories map to visual treatment:
 //   logical-pos (green solid arrow):    supports, agrees
 //   logical-neg (red solid arrow):      rebuts, disagrees, prevents
+//   self-contradiction (fuchsia dashed): contradicts — same-speaker tension,
+//     kept visually distinct from cross-speaker rebuts
 //   logical-causal (indigo solid):      implies, causes, enables, triggers
 //   logical-meta (gray dashed):         clarifies, exemplifies, generalizes, references_back
 //   conversational-q (amber dotted):    asks
@@ -46,6 +49,7 @@ const EDGE_TYPE_TO_CATEGORY = {
   rebuts: "logical-neg",
   disagrees: "logical-neg",
   prevents: "logical-neg",
+  contradicts: "self-contradiction",
   implies: "logical-causal",
   causes: "logical-causal",
   enables: "logical-causal",
@@ -78,6 +82,13 @@ export const EDGE_CATEGORY_STYLES = {
     strokeWidth: 1.6,
     markerEnd: true,
     label: "rebuts",
+  },
+  "self-contradiction": {
+    stroke: "#c026d3",
+    strokeDasharray: "7 3",
+    strokeWidth: 2,
+    markerEnd: true,
+    label: "contradicts",
   },
   "logical-causal": {
     stroke: "#6366f1",
