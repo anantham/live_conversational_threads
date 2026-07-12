@@ -21,6 +21,7 @@ const ACCEPTED_FILE_TYPES = [
   ".vtt",
   ".srt",
   ".pdf",
+  ".zip",
 ].join(",");
 
 export default function FileUpload() {

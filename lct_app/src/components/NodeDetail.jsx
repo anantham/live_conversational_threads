@@ -28,6 +28,25 @@ function readStoredSpeakerWindow() {
   }
 }
 
+// Wall-clock label for an utterance timestamp. Only epoch-scale values
+// (> 1e9 = real dates) qualify — live-STT rows carry seconds-into-recording,
+// which must not be dressed up as a date. Mirrors buildDateColorMapForNodes'
+// epoch heuristic in graph/colorModes.js.
+function utteranceClockLabel(ts) {
+  if (typeof ts !== "number" || !Number.isFinite(ts) || ts < 1e9) return null;
+  const ms = ts > 1e12 ? ts : ts * 1000;
+  try {
+    return new Date(ms).toLocaleString(undefined, {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return null;
+  }
+}
+
 function normalizeContextualRelations(contextualRelation) {
   if (!contextualRelation || typeof contextualRelation !== "object" || Array.isArray(contextualRelation)) {
     return [];
@@ -666,6 +685,7 @@ export default function NodeDetail({
                 {visibleUtterances.rows.map((u) => {
                   const label = u.speaker_name || u.speaker_id || "?";
                   const isEditing = editingUtteranceId === u.id;
+                  const clock = utteranceClockLabel(u.timestamp_start);
                   return (
                     <div
                       key={u.id}
@@ -676,6 +696,14 @@ export default function NodeDetail({
                       }
                       className={`py-0.5 ${u._hl ? "bg-amber-100 rounded px-0.5" : ""}`}
                     >
+                      {clock && (
+                        <span
+                          className="mr-1 text-[10px] tabular-nums text-gray-400"
+                          title="When this message was sent"
+                        >
+                          {clock}
+                        </span>
+                      )}
                       {isEditing ? (
                         <span className="font-medium text-gray-400">{label}</span>
                       ) : (
@@ -690,6 +718,22 @@ export default function NodeDetail({
                       )}
                       <span className="text-gray-300">: </span>
                       <span>{u.text}</span>
+                      {u._hl && !isEditing && (
+                        <button
+                          type="button"
+                          title="Copy this message — paste into WhatsApp search to jump to it"
+                          onClick={() => {
+                            try {
+                              void navigator.clipboard?.writeText(u.text || "");
+                            } catch {
+                              /* clipboard unavailable (http origin) — no-op */
+                            }
+                          }}
+                          className="ml-1 rounded border border-amber-200 bg-white/70 px-1 text-[9px] text-amber-700 hover:bg-amber-50"
+                        >
+                          copy
+                        </button>
+                      )}
 
                       {isEditing && (
                         <div className="my-1 rounded border border-gray-300 bg-white p-2 space-y-1.5">

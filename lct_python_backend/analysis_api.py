@@ -278,3 +278,46 @@ async def get_node_crux(node_id: str):
     except Exception as e:
         logger.error(f"Failed to get node crux: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Claim Extraction — self-contained, decontextualized claims + their
+# supports/contradicts/depends_on relations. Graph-level (one LLM call over
+# nodes); populates the claims table. Unlike Node.is_crux, claims are
+# independent of who said them or when.
+# ============================================================================
+
+@router.post("/api/conversations/{conversation_id}/claims/analyze")
+async def analyze_claims(conversation_id: str, force_reanalysis: bool = False):
+    """
+    Extract self-contained claims + relations across a conversation.
+
+    Returns {total_nodes, claim_count, relation_count,
+    claims:[{id, claim_text, claim_type, source_node_id, speaker_name, strength,
+    confidence, supports_claim_ids, contradicts_claim_ids, depends_on_claim_ids}]}.
+    """
+    try:
+        async with get_async_session_context() as session:
+            from lct_python_backend.services.claim_extractor import ClaimExtractor
+
+            extractor = ClaimExtractor(session)
+            return await extractor.analyze_conversation(conversation_id, force_reanalysis=force_reanalysis)
+
+    except Exception as e:
+        logger.error(f"Claim extraction failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/api/conversations/{conversation_id}/claims")
+async def get_claim_results(conversation_id: str):
+    """Get persisted claim results for a conversation (no LLM call)."""
+    try:
+        async with get_async_session_context() as session:
+            from lct_python_backend.services.claim_extractor import ClaimExtractor
+
+            extractor = ClaimExtractor(session)
+            return await extractor.get_conversation_results(conversation_id)
+
+    except Exception as e:
+        logger.error(f"Failed to get claim results: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

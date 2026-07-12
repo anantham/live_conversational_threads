@@ -1,6 +1,8 @@
 """SSE streaming coverage for POST /api/import/process-file."""
 
 import asyncio
+import io
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -603,3 +605,67 @@ def test_process_file_reports_auto_exported_artifacts(monkeypatch):
     assert len(done_payload["artifact_export"]["written_files"]) == 2
     assert done_payload["telemetry"]["artifact_export"]["written_files"][0].endswith(".canvas")
     export_mock.assert_awaited_once()
+
+
+def test_process_file_converts_whatsapp_zip_before_transcribing(monkeypatch):
+    """A .zip upload is unzipped/parsed/joined into plain text BEFORE it ever
+    reaches transcribe_uploaded_file — the rest of the pipeline (mocked here)
+    should see an ordinary .txt file, never the original .zip."""
+    import_api = load_import_api_with_stubs(monkeypatch)
+    client = build_test_client(import_api)
+
+    monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
+    monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
+    monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
+
+    captured = {}
+
+    async def fake_transcribe_uploaded_file(*, temp_path, filename, **kwargs):
+        captured["filename"] = filename
+        captured["temp_path"] = temp_path
+        captured["text"] = Path(temp_path).read_text(encoding="utf-8")
+        return SimpleNamespace(
+            transcript_text=captured["text"],
+            source_type="text",
+            metadata={"file_kind": "text"},
+        )
+
+    monkeypatch.setattr(
+        import_api, "transcribe_uploaded_file", AsyncMock(side_effect=fake_transcribe_uploaded_file)
+    )
+
+    class FakeProcessor:
+        def __init__(self, send_update, send_status=None, llm_config=None, **kwargs):
+            self._send_update = send_update
+            self.existing_json = []
+            self.chunk_dict = {}
+
+        async def handle_final_text(self, _text):
+            return None
+
+        async def flush(self):
+            self.existing_json = [{"id": "n1", "node_name": "Node 1", "chunk_id": "c1"}]
+            self.chunk_dict = {"c1": "converted"}
+            await self._send_update(self.existing_json, self.chunk_dict)
+
+    monkeypatch.setattr(import_api, "TranscriptProcessor", FakeProcessor)
+
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        zf.writestr("_chat.txt", "[01/02/2026, 09:15:03] Alice: Hey everyone\n")
+    zip_bytes = zip_buffer.getvalue()
+
+    with client.stream(
+        "POST",
+        "/api/import/process-file",
+        files={"file": ("WhatsApp Chat - Test.zip", zip_bytes, "application/zip")},
+    ) as response:
+        assert response.status_code == 200
+        events = parse_sse_events("".join(response.iter_text()))
+
+    event_names = [name for name, _ in events]
+    assert "done" in event_names
+    assert "error" not in event_names
+
+    assert captured["filename"].endswith(".txt")
+    assert captured["text"] == "Alice: Hey everyone"

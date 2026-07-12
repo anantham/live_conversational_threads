@@ -17,16 +17,24 @@
 
 import { SPEAKER_COLORS } from "../graphConstants";
 
-export const COLOR_MODES = Object.freeze(["tier", "speaker", "temporal", "argument", "date", "rhetoric"]);
-export const DEFAULT_COLOR_MODE = "tier";
+export const COLOR_MODES = Object.freeze(["thread", "tier", "speaker", "temporal", "argument", "date", "rhetoric"]);
+// "thread" (color by debate/thread cluster) is the default: it turns the overview
+// into a scannable colored map — each recurring debate a color — so the user
+// navigates visually and only reads a node's text on drill-in, instead of parsing
+// a wall of monochrome text boxes. Falls back gracefully to one calm color when a
+// conversation has a single thread (same as the date mode's single-meeting case).
+export const DEFAULT_COLOR_MODE = "thread";
 
 const COLOR_MODE_LABELS = {
+  thread: "Color: Thread",
   tier: "Color: Tier",
   speaker: "Color: Speaker",
   temporal: "Color: Time",
   argument: "Color: Argument",
   date: "Color: Date",
-  rhetoric: "Color: Rhetoric",
+  // "Debate" = argument-map roles: claim / evidence / question / assumption
+  // (CLAIM_TYPE_COLORS). Colors the anatomy of the argument itself.
+  rhetoric: "Color: Debate",
 };
 
 export function colorModeLabel(mode) {
@@ -61,6 +69,13 @@ const TIER_BORDER = {
 
 const NEUTRAL_FILL = "#f1f5f9"; // slate-100
 const NEUTRAL_BORDER = "#cbd5e1"; // slate-300
+
+/** Tier swatches for the mode legend (fill/border pairs keyed by tier). */
+export const TIER_LEGEND_COLORS = Object.freeze(
+  Object.fromEntries(
+    Object.keys(TIER_FILL).map((k) => [k, { fill: TIER_FILL[k], border: TIER_BORDER[k] }])
+  )
+);
 
 /**
  * Build a speaker color map. Same shape as `buildSpeakerColorMap` in
@@ -164,6 +179,53 @@ export function buildDateColorMapForNodes(nodes) {
     // One meeting -> a single calm blue; many -> spread across the spectrum.
     const hue = n <= 1 ? 210 : (i / (n - 1)) * 280;
     colorByKey[k] = `hsl(${hue}, 62%, 80%)`;
+  });
+
+  list.forEach((nd) => {
+    const k = keyOf(nd);
+    map[nd.id] = (k && colorByKey[k]) || NEUTRAL_FILL;
+  });
+  return map;
+}
+
+/**
+ * Build a thread/debate color map keyed by node id. CATEGORICAL: every node in
+ * the same `thread_id` gets the same color, so the overview reads as N colored
+ * debate-clusters — the user scans by color instead of reading each text box.
+ *
+ * Threads are ordered by first appearance (stable: adding nodes to an existing
+ * thread doesn't recolor it) and assigned evenly-spaced hues. A single-thread
+ * conversation collapses to one calm blue (expected). Nodes lacking a thread_id
+ * fall back to neutral. This is the counterpart of buildDateColorMapForNodes but
+ * keyed on the conversational thread rather than the meeting.
+ */
+export function buildThreadColorMapForNodes(nodes) {
+  const map = {};
+  const list = nodes || [];
+  if (list.length === 0) return map;
+
+  const keyOf = (n) => {
+    const t = n.thread_id || n.data?.thread_id || n.metadata?.thread_id;
+    return t ? String(t) : null;
+  };
+
+  // Distinct thread keys in first-appearance order (stable coloring).
+  const keys = [];
+  const seen = new Set();
+  list.forEach((n) => {
+    const k = keyOf(n);
+    if (k && !seen.has(k)) {
+      seen.add(k);
+      keys.push(k);
+    }
+  });
+
+  const n = keys.length;
+  const colorByKey = {};
+  keys.forEach((k, i) => {
+    // One thread -> a single calm blue; many -> spread across the spectrum.
+    const hue = n <= 1 ? 210 : (i / n) * 330; // /n (not /(n-1)) so first & last stay distinct
+    colorByKey[k] = `hsl(${hue}, 60%, 80%)`;
   });
 
   list.forEach((nd) => {
@@ -292,8 +354,14 @@ export function resolveNodeColors({
   temporalColorMap,
   argumentStatusMap,
   dateColorMap,
+  threadColorMap,
 }) {
   if (!node) return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
+
+  if (mode === "thread") {
+    const fill = threadColorMap?.[node.id] || NEUTRAL_FILL;
+    return { fill, border: deriveBorder(fill) };
+  }
 
   if (mode === "speaker") {
     const fill =

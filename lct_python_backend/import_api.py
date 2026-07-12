@@ -471,7 +471,11 @@ _ALLOWED_AUDIO_SUFFIXES = frozenset({
 _ALLOWED_TEXT_SUFFIXES = frozenset({
     ".txt", ".md", ".markdown", ".json", ".html", ".htm", ".vtt", ".srt",
 })
-_ALLOWED_UPLOAD_SUFFIXES = _ALLOWED_AUDIO_SUFFIXES | _ALLOWED_TEXT_SUFFIXES
+# .zip: WhatsApp "Export Chat" archives (chat .txt + media), unpacked and
+# converted to a plain text transcript before re-entering this pipeline —
+# see services/import_pipeline/whatsapp_zip_import.py.
+_ALLOWED_ARCHIVE_SUFFIXES = frozenset({".zip"})
+_ALLOWED_UPLOAD_SUFFIXES = _ALLOWED_AUDIO_SUFFIXES | _ALLOWED_TEXT_SUFFIXES | _ALLOWED_ARCHIVE_SUFFIXES
 _ALLOWED_UPLOAD_CONTENT_TYPES = frozenset({
     "audio/wav", "audio/x-wav", "audio/wave",
     "audio/mpeg", "audio/mp3",
@@ -481,6 +485,7 @@ _ALLOWED_UPLOAD_CONTENT_TYPES = frozenset({
     "video/mp4", "video/webm",
     "text/plain", "text/markdown", "text/html",
     "application/json", "application/octet-stream",
+    "application/zip", "application/x-zip-compressed",
 })
 
 

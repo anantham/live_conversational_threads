@@ -59,6 +59,19 @@ export function normalizeGraphNode(item, index) {
       "",
     is_tangent: Boolean(item.is_tangent ?? item.metadata?.is_tangent),
     is_crux: Boolean(item.is_crux ?? item.metadata?.is_crux),
+    // Argument-map role (claim | evidence | question | assumption). Feeds the
+    // debate color mode (CLAIM_TYPE_COLORS) + the card's claim-type chip.
+    claim_type:
+      (typeof item.claim_type === "string" && item.claim_type.trim().toLowerCase()) ||
+      (typeof item.display_preferences?.claim_type === "string"
+        ? item.display_preferences.claim_type.trim().toLowerCase()
+        : "") ||
+      "",
+    // Provenance anchor — NodeDetail's panel reads source_ref.utterance_ids.
+    source_ref:
+      item.source_ref && typeof item.source_ref === "object" && !Array.isArray(item.source_ref)
+        ? item.source_ref
+        : null,
   };
 }
 
