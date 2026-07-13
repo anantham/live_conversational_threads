@@ -409,14 +409,16 @@ function UndefendedCard({ items, total, onOpenMap }) {
           </li>
         ))}
       </ol>
-      <button
-        type="button"
-        onClick={onOpenMap}
-        className="mt-3 text-xs underline decoration-gray-300 underline-offset-2 transition-colors duration-150 hover:decoration-gray-500"
-        style={{ color: META }}
-      >
-        See all {total} on the map
-      </button>
+      {onOpenMap ? (
+        <button
+          type="button"
+          onClick={onOpenMap}
+          className="mt-3 text-xs underline decoration-gray-300 underline-offset-2 transition-colors duration-150 hover:decoration-gray-500"
+          style={{ color: META }}
+        >
+          See all {total} on the map
+        </button>
+      ) : null}
     </section>
   );
 }
@@ -426,7 +428,7 @@ UndefendedCard.propTypes = {
     PropTypes.shape({ node: nodeShape.isRequired, attacked: PropTypes.number })
   ).isRequired,
   total: PropTypes.number.isRequired,
-  onOpenMap: PropTypes.func.isRequired,
+  onOpenMap: PropTypes.func,
 };
 
 function SkeletonCard() {
@@ -448,7 +450,6 @@ export default function WarReport() {
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
-  const [copiedKey, setCopiedKey] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -494,49 +495,9 @@ export default function WarReport() {
     };
   }, [conversationId]);
 
-  const report = useMemo(
-    () => (nodes ? buildWarReport(nodes, utterances) : null),
-    [nodes, utterances]
-  );
-
-  const threadColors = useMemo(() => buildThreadColorMapForNodes(nodes || []), [nodes]);
-  const threadColorsByThread = useMemo(() => {
-    const m = new Map();
-    (nodes || []).forEach((n) => {
-      if (n.thread_id && !m.has(n.thread_id) && threadColors[n.id]) m.set(n.thread_id, threadColors[n.id]);
-    });
-    return m;
-  }, [nodes, threadColors]);
-  const threadTitles = useMemo(() => {
-    const m = new Map();
-    (report?.fronts || []).forEach((f) => m.set(f.threadId, f.title));
-    return m;
-  }, [report]);
-
-  const onCopy = (key, text) => {
-    try {
-      navigator.clipboard.writeText(text);
-      setCopiedKey(key);
-      setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 2200);
-    } catch {
-      // clipboard unavailable: the quote is selectable text
-    }
-  };
-
+  const view = useWarReportView(nodes, utterances);
+  const { report } = view;
   const openMap = () => navigate(`/conversation/${conversationId}`);
-
-  const dekParts = report && !report.empty
-    ? [
-        report.stats.speakers ? `${report.stats.speakers} voices` : null,
-        `${report.stats.claims} claims`,
-        `${report.stats.attacks} clashes`,
-        report.stats.upsets ? `${report.stats.upsets} self-contradictions` : null,
-        report.stats.openQuestions ? `${report.stats.openQuestions} open questions` : null,
-        report.span.start && report.span.end && fmtDate(report.span.start)
-          ? `${fmtDate(report.span.start)} – ${fmtDate(report.span.end)}`
-          : null,
-      ].filter(Boolean)
-    : [];
 
   return (
     <div className="min-h-screen" style={{ background: "#fdfdfb" }}>
@@ -558,11 +519,7 @@ export default function WarReport() {
 
       <main className="mx-auto max-w-[560px] px-4 pb-16 pt-6">
         {loading ? (
-          <div className="space-y-4">
-            <SkeletonCard />
-            <SkeletonCard />
-            <SkeletonCard />
-          </div>
+          <WarReportSkeleton />
         ) : error ? (
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-6 text-center">
             <p className="text-sm" style={{ color: INK_SOFT }}>
@@ -596,81 +553,176 @@ export default function WarReport() {
             </button>
           </div>
         ) : report ? (
-          <>
-            <div className="mb-6">
-              <div className="text-[10px] font-medium uppercase" style={{ color: AMBER, letterSpacing: "0.42em" }}>
-                War report
-              </div>
-              <h1
-                className="mt-1.5 text-2xl font-semibold leading-tight"
-                style={{ color: INK, letterSpacing: "-0.02em", textWrap: "balance" }}
-              >
-                {title || "The debate"}
-              </h1>
-              {dekParts.length > 0 ? (
-                <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: META }}>
-                  {dekParts.map((part, i) => (
-                    <span key={part} className="whitespace-nowrap">
-                      {part}
-                      {i < dekParts.length - 1 ? <span aria-hidden="true"> · </span> : null}
-                    </span>
-                  ))}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="space-y-4">
-              <FrontLines fronts={report.fronts} threadColorsByThread={threadColorsByThread} />
-
-              {report.cards.map((card) => {
-                if (card.kind === "clash") {
-                  return (
-                    <ClashCard
-                      key={`clash:${card.target.id}:${card.actor.id}`}
-                      clash={card}
-                      threadColors={threadColors}
-                      threadTitles={threadTitles}
-                      copiedKey={copiedKey}
-                      onCopy={onCopy}
-                    />
-                  );
-                }
-                if (card.kind === "upset") {
-                  return (
-                    <UpsetCard key={`upset:${card.later.id}:${card.earlier.id}`} upset={card} copiedKey={copiedKey} onCopy={onCopy} />
-                  );
-                }
-                if (card.kind === "challenge") {
-                  return (
-                    <ChallengeCard key={`challenge:${card.node.id}`} challenge={card} copiedKey={copiedKey} onCopy={onCopy} />
-                  );
-                }
-                return null;
-              })}
-
-              <UndefendedCard items={report.undefended} total={report.undefendedTotal} onOpenMap={openMap} />
-
-              <section className="rounded-xl border border-gray-200 bg-white px-4 py-5 text-center">
-                <p className="text-sm leading-relaxed" style={{ color: INK_SOFT }}>
-                  This feed is the surface. The map underneath holds every claim, every edge, every
-                  receipt.
-                </p>
-                <button
-                  type="button"
-                  onClick={openMap}
-                  className="mt-3 inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium text-white transition-colors duration-150 hover:opacity-90"
-                  style={{ background: INK }}
-                >
-                  <MapIcon size={15} /> Open the full map
-                </button>
-                <p className="mt-3 text-xs leading-relaxed" style={{ color: META }}>
-                  To join in: copy any quote, paste it in WhatsApp search, reply there.
-                </p>
-              </section>
-            </div>
-          </>
+          <WarReportFeed title={title} view={view} onOpenMap={openMap} />
         ) : null}
       </main>
     </div>
   );
 }
+
+/** Skeleton feed shown while a report's data loads. */
+export function WarReportSkeleton() {
+  return (
+    <div className="space-y-4">
+      <SkeletonCard />
+      <SkeletonCard />
+      <SkeletonCard />
+    </div>
+  );
+}
+
+/**
+ * Shared view-model for the feed: report computation, thread colors/titles,
+ * and the copy-to-reply interaction. Used by both the backend-fetching page
+ * (WarReport) and the encrypted-snapshot page (/war/s).
+ */
+export function useWarReportView(nodes, utterances) {
+  const [copiedKey, setCopiedKey] = useState(null);
+
+  const report = useMemo(
+    () => (nodes ? buildWarReport(nodes, utterances) : null),
+    [nodes, utterances]
+  );
+
+  const threadColors = useMemo(() => buildThreadColorMapForNodes(nodes || []), [nodes]);
+  const threadColorsByThread = useMemo(() => {
+    const m = new Map();
+    (nodes || []).forEach((n) => {
+      if (n.thread_id && !m.has(n.thread_id) && threadColors[n.id]) m.set(n.thread_id, threadColors[n.id]);
+    });
+    return m;
+  }, [nodes, threadColors]);
+  const threadTitles = useMemo(() => {
+    const m = new Map();
+    (report?.fronts || []).forEach((f) => m.set(f.threadId, f.title));
+    return m;
+  }, [report]);
+
+  const onCopy = (key, text) => {
+    try {
+      navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 2200);
+    } catch {
+      // clipboard unavailable: the quote is selectable text
+    }
+  };
+
+  return { report, threadColors, threadColorsByThread, threadTitles, copiedKey, onCopy };
+}
+
+/** The feed itself — masthead through outro. `onOpenMap` is null on the
+ * public snapshot page, where the map (and its backend) doesn't exist. */
+export function WarReportFeed({ title, view, onOpenMap }) {
+  const { report, threadColors, threadColorsByThread, threadTitles, copiedKey, onCopy } = view;
+  if (!report || report.empty) return null;
+
+  const dekParts = [
+    report.stats.speakers ? `${report.stats.speakers} voices` : null,
+    `${report.stats.claims} claims`,
+    `${report.stats.attacks} clashes`,
+    report.stats.upsets ? `${report.stats.upsets} self-contradictions` : null,
+    report.stats.openQuestions ? `${report.stats.openQuestions} open questions` : null,
+    report.span.start && report.span.end && fmtDate(report.span.start)
+      ? `${fmtDate(report.span.start)} – ${fmtDate(report.span.end)}`
+      : null,
+  ].filter(Boolean);
+
+  return (
+    <>
+      <div className="mb-6">
+        <div className="text-[10px] font-medium uppercase" style={{ color: AMBER, letterSpacing: "0.42em" }}>
+          War report
+        </div>
+        <h1
+          className="mt-1.5 text-2xl font-semibold leading-tight"
+          style={{ color: INK, letterSpacing: "-0.02em", textWrap: "balance" }}
+        >
+          {title || "The debate"}
+        </h1>
+        {dekParts.length > 0 ? (
+          <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: META }}>
+            {dekParts.map((part, i) => (
+              <span key={part} className="whitespace-nowrap">
+                {part}
+                {i < dekParts.length - 1 ? <span aria-hidden="true"> · </span> : null}
+              </span>
+            ))}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="space-y-4">
+        <FrontLines fronts={report.fronts} threadColorsByThread={threadColorsByThread} />
+
+        {report.cards.map((card) => {
+          if (card.kind === "clash") {
+            return (
+              <ClashCard
+                key={`clash:${card.target.id}:${card.actor.id}`}
+                clash={card}
+                threadColors={threadColors}
+                threadTitles={threadTitles}
+                copiedKey={copiedKey}
+                onCopy={onCopy}
+              />
+            );
+          }
+          if (card.kind === "upset") {
+            return (
+              <UpsetCard key={`upset:${card.later.id}:${card.earlier.id}`} upset={card} copiedKey={copiedKey} onCopy={onCopy} />
+            );
+          }
+          if (card.kind === "challenge") {
+            return (
+              <ChallengeCard key={`challenge:${card.node.id}`} challenge={card} copiedKey={copiedKey} onCopy={onCopy} />
+            );
+          }
+          return null;
+        })}
+
+        <UndefendedCard items={report.undefended} total={report.undefendedTotal} onOpenMap={onOpenMap} />
+
+        <section className="rounded-xl border border-gray-200 bg-white px-4 py-5 text-center">
+          {onOpenMap ? (
+            <>
+              <p className="text-sm leading-relaxed" style={{ color: INK_SOFT }}>
+                This feed is the surface. The map underneath holds every claim, every edge, every
+                receipt.
+              </p>
+              <button
+                type="button"
+                onClick={onOpenMap}
+                className="mt-3 inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium text-white transition-colors duration-150 hover:opacity-90"
+                style={{ background: INK }}
+              >
+                <MapIcon size={15} /> Open the full map
+              </button>
+            </>
+          ) : (
+            <p className="text-sm leading-relaxed" style={{ color: INK_SOFT }}>
+              This report was built from the group&apos;s own messages — every card traces back to a
+              real, timestamped message.
+            </p>
+          )}
+          <p className="mt-3 text-xs leading-relaxed" style={{ color: META }}>
+            To join in: copy any quote, paste it in WhatsApp search, reply there.
+          </p>
+        </section>
+      </div>
+    </>
+  );
+}
+
+WarReportFeed.propTypes = {
+  title: PropTypes.string,
+  view: PropTypes.shape({
+    report: PropTypes.object,
+    threadColors: PropTypes.object.isRequired,
+    threadColorsByThread: PropTypes.instanceOf(Map).isRequired,
+    threadTitles: PropTypes.instanceOf(Map).isRequired,
+    copiedKey: PropTypes.string,
+    onCopy: PropTypes.func.isRequired,
+  }).isRequired,
+  onOpenMap: PropTypes.func,
+};
