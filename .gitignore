@@ -154,3 +154,7 @@ playwright-report/
 ~syncthing~*
 **/~syncthing~*
 *.sync-conflict-*
+
+# war-report snapshots hold private chat content (repo is public) — never commit
+lct_app/scripts/out/
+*.war-snapshot.enc
