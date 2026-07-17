@@ -72,12 +72,17 @@ function quoteFor(node, utteranceById) {
     const u = utteranceById.get(String(id));
     if (u && typeof u.text === "string" && u.text.trim()) {
       const ts = u.timestamp ?? u.timestamp_start ?? u.start_time ?? null;
+      // The vision pass left "[Image: caption]" in the text; when the real
+      // image rides along, the bracket becomes redundant on screen — keep
+      // the caption separately as the image's alt text.
+      const raw = u.text.replace(/<This message was edited>/gi, "").trim();
+      const imageCaption = (raw.match(/\[Image:\s*([^\]]*)\]/) || [])[1] || "";
       return {
-        // WhatsApp exports append an edit marker to edited messages — noise
-        // inside a quotation.
-        text: u.text.replace(/<This message was edited>/gi, "").trim(),
+        text: u.image ? raw.replace(/\[Image:[^\]]*\]/g, "").replace(/\s{2,}/g, " ").trim() : raw,
         speaker: u.speaker || u.speaker_id || "",
         ts: Number.isFinite(ts) ? ts : null,
+        image: typeof u.image === "string" ? u.image : null,
+        imageAlt: imageCaption,
       };
     }
   }

@@ -62,6 +62,7 @@ function parseArgs(argv) {
     pathname: "",
     threads: null,
     cleanNames: false,
+    images: "",
     upload: false,
   };
   for (let i = 0; i < rest.length; i += 1) {
@@ -72,6 +73,7 @@ function parseArgs(argv) {
     else if (a === "--key") opts.key = rest[++i];
     else if (a === "--pathname") opts.pathname = rest[++i];
     else if (a === "--clean-names") opts.cleanNames = true;
+    else if (a === "--images") opts.images = rest[++i];
     else if (a === "--threads") {
       // Scope the snapshot to specific debate thread(s): only their nodes —
       // and only the messages THOSE cite — ever leave the machine.
@@ -190,6 +192,22 @@ async function main() {
       });
   } catch (e) {
     console.warn(`utterances unavailable (${e.message}) — receipts will be absent`);
+  }
+
+  // Optional utterance-id -> data-URI map (built locally; never committed).
+  // Images ride INSIDE the encrypted snapshot, so the host still stores
+  // only ciphertext — and only images cited by exported utterances embed.
+  if (opts.images) {
+    const imageMap = JSON.parse(await readFile(opts.images, "utf-8"));
+    let attached = 0;
+    utterances.forEach((row) => {
+      const uri = imageMap[String(row.id)];
+      if (typeof uri === "string" && uri.startsWith("data:image/")) {
+        row.image = uri;
+        attached += 1;
+      }
+    });
+    console.log(`images embedded: ${attached}`);
   }
 
   const payload = {
