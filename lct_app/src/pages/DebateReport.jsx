@@ -159,11 +159,20 @@ function QuoteCard({ card, copiedKey, onCopy, onFocus, compact, highlight }) {
         >
           “{compact && quote.text.length > 180 ? `${quote.text.slice(0, 180).trimEnd()}…` : quote.text}”
         </blockquote>
-      ) : (
+      ) : null}
+      {quote?.image ? (
+        <img
+          src={quote.image}
+          alt={quote.imageAlt || "image shared in the chat"}
+          loading="lazy"
+          className={`mt-2 w-auto rounded-lg border border-gray-100 ${compact ? "max-h-40" : "max-h-72"}`}
+        />
+      ) : null}
+      {!quote ? (
         <p className={`mt-2 leading-snug ${compact ? "text-[13px]" : "text-[15px]"}`} style={{ color: INK }}>
           {card.node.node_name}
         </p>
-      )}
+      ) : null}
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="min-w-0 truncate text-xs" style={{ color: META }}>
           {[card.node.speaker_id || quote?.speaker, fmtClock(quote?.ts) || fmtDate(card.date)]
@@ -186,7 +195,13 @@ QuoteCard.propTypes = {
     asksQuestion: PropTypes.bool,
     pushbackCount: PropTypes.number,
     supportCount: PropTypes.number,
-    quote: PropTypes.shape({ text: PropTypes.string, speaker: PropTypes.string, ts: PropTypes.number }),
+    quote: PropTypes.shape({
+      text: PropTypes.string,
+      speaker: PropTypes.string,
+      ts: PropTypes.number,
+      image: PropTypes.string,
+      imageAlt: PropTypes.string,
+    }),
     date: PropTypes.number,
   }).isRequired,
   copiedKey: PropTypes.string,
@@ -259,11 +274,20 @@ function Bubble({ entry, color, focal, copiedKey, onCopy, onFocus, bubbleRef }) 
           >
             &ldquo;{quote.text}&rdquo;
           </blockquote>
-        ) : (
+        ) : null}
+        {quote?.image ? (
+          <img
+            src={quote.image}
+            alt={quote.imageAlt || "image shared in the chat"}
+            loading="lazy"
+            className="mt-2 max-h-72 w-auto rounded-lg border border-black/5"
+          />
+        ) : null}
+        {!quote ? (
           <p className={"mt-1.5 leading-snug " + (focal ? "text-[15px]" : "text-[13px]")} style={{ color: INK }}>
             {card.node.node_name}
           </p>
-        )}
+        ) : null}
         <div className="mt-1.5 flex items-center justify-between gap-2">
           <TagChip tag={card.tag} isCounter={card.isCounter} asksQuestion={card.asksQuestion} />
           {quote ? (
