@@ -90,9 +90,7 @@ export default function WarReportShared() {
           <span className="text-sm font-medium" style={{ color: INK_SOFT }}>
             Threads
           </span>
-          <span className="text-[11px]" style={{ color: META }}>
-            {report && !report.empty ? `${report.cards.length + 2} dispatches` : ""}
-          </span>
+          <span className="text-[11px]" style={{ color: META }} />
         </div>
       </header>
 

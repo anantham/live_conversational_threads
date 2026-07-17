@@ -32,7 +32,15 @@ import { apiFetchCached, readErrorMessage } from "../services/apiClient";
 import { fetchConversationUtterances } from "../services/speakerNamingApi";
 import { normalizeGraphNode } from "../components/graphNormalization";
 import { buildThreadColorMapForNodes } from "../components/graph/colorModes";
-import { buildWarReport, fmtDate, fmtSpan, isWallClock } from "../services/warReport";
+import {
+  buildArgumentTree,
+  buildWarReport,
+  cardSpeakers,
+  fmtDate,
+  fmtSpan,
+  isWallClock,
+  orderCards,
+} from "../services/warReport";
 
 /** graph_data arrives in several vintages (flat node list, chunked arrays,
  * wrapper objects). The feed only needs the flat node set: collect every
@@ -129,6 +137,79 @@ Receipt.propTypes = {
   onCopy: PropTypes.func.isRequired,
 };
 
+const TREE_TYPE_COLORS = {
+  rebuts: "#dc2626",
+  disagrees: "#dc2626",
+  refutes: "#dc2626",
+  supports: "#16a34a",
+  agrees: "#16a34a",
+  affirms: "#16a34a",
+  contradicts: FUCHSIA,
+};
+
+/** The local argument neighborhood, rendered as an indented typed tree:
+ * counters, support, evidence, contradictions around one claim. */
+function ArgumentTreeRows({ items, depth }) {
+  if (!items || items.length === 0) return null;
+  return (
+    <ul className={depth === 0 ? "mt-1 space-y-2" : "mt-1.5 space-y-1.5"}>
+      {items.map((child) => (
+        <li key={`${child.node.id}:${child.label}`} style={{ paddingLeft: depth === 0 ? 0 : 14 }}>
+          <div className="flex items-baseline gap-1.5">
+            <span
+              className="shrink-0 text-[11px] font-medium"
+              style={{ color: TREE_TYPE_COLORS[child.type] || META }}
+            >
+              {child.label}
+            </span>
+            <span className="min-w-0 text-[13px] font-medium leading-snug" style={{ color: INK_SOFT }}>
+              {child.node.node_name}
+              {child.node.claim_type && child.node.claim_type !== "claim" ? (
+                <span className="ml-1 text-[10px] font-normal uppercase" style={{ color: META }}>
+                  {child.node.claim_type}
+                </span>
+              ) : null}
+            </span>
+          </div>
+          <div className="text-[11px]" style={{ color: META, paddingLeft: 0 }}>
+            {[child.node.speaker_id, fmtDate(child.node.timestamp_start)].filter(Boolean).join(" · ")}
+          </div>
+          <ArgumentTreeRows items={child.children} depth={depth + 1} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+ArgumentTreeRows.propTypes = {
+  items: PropTypes.array,
+  depth: PropTypes.number.isRequired,
+};
+
+function ArgumentTree({ root, moves }) {
+  const tree = useMemo(() => buildArgumentTree(root, moves, 2), [root, moves]);
+  if (!tree.children.length) {
+    return (
+      <p className="mt-2 text-[12px]" style={{ color: META }}>
+        Nothing else connects to this statement yet.
+      </p>
+    );
+  }
+  return (
+    <div className="mt-2 rounded-lg bg-gray-50/70 px-3 py-2.5">
+      <div className="text-[10px] font-medium uppercase tracking-wide" style={{ color: META }}>
+        The argument around this
+      </div>
+      <ArgumentTreeRows items={tree.children} depth={0} />
+    </div>
+  );
+}
+
+ArgumentTree.propTypes = {
+  root: nodeShape.isRequired,
+  moves: PropTypes.array.isRequired,
+};
+
 function stateLine(clash) {
   if (!clash.answered) {
     const span = fmtSpan(clash.standingFor);
@@ -161,7 +242,7 @@ ThreadTag.propTypes = {
   threadTitles: PropTypes.instanceOf(Map).isRequired,
 };
 
-function ClashCard({ clash, threadColors, threadTitles, copiedKey, onCopy }) {
+function ClashCard({ clash, moves, threadColors, threadTitles, copiedKey, onCopy }) {
   const [open, setOpen] = useState(false);
   const state = stateLine(clash);
   const key = `clash:${clash.target.id}:${clash.actor.id}`;
@@ -205,8 +286,9 @@ function ClashCard({ clash, threadColors, threadTitles, copiedKey, onCopy }) {
             {clash.actor.summary ? <p>{clash.actor.summary}</p> : null}
           </div>
         ) : null}
+        {open ? <ArgumentTree root={clash.target} moves={moves} /> : null}
         <div className="mt-2 text-[11px]" style={{ color: META }}>
-          {open ? "Show less" : "Both positions in full"}
+          {open ? "Collapse" : "Expand the argument"}
         </div>
       </button>
 
@@ -230,13 +312,15 @@ ClashCard.propTypes = {
     targetReceipt: receiptShape,
     actorReceipt: receiptShape,
   }).isRequired,
+  moves: PropTypes.array.isRequired,
   threadColors: PropTypes.object.isRequired,
   threadTitles: PropTypes.instanceOf(Map).isRequired,
   copiedKey: PropTypes.string,
   onCopy: PropTypes.func.isRequired,
 };
 
-function UpsetCard({ upset, copiedKey, onCopy }) {
+function UpsetCard({ upset, moves, copiedKey, onCopy }) {
+  const [open, setOpen] = useState(false);
   const key = `upset:${upset.later.id}`;
   const earlierDate = fmtDate(upset.earlier.timestamp_start);
   const laterDate = fmtDate(upset.later.timestamp_start);
@@ -273,6 +357,12 @@ function UpsetCard({ upset, copiedKey, onCopy }) {
           {upset.text}
         </p>
       ) : null}
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="mt-2 block w-full text-left">
+        {open ? <ArgumentTree root={upset.later} moves={moves} /> : null}
+        <div className="mt-1 text-[11px]" style={{ color: META }}>
+          {open ? "Collapse" : "Expand the argument"}
+        </div>
+      </button>
       <Receipt receipt={upset.receipt} copyKey={key} copiedKey={copiedKey} onCopy={onCopy} />
     </article>
   );
@@ -286,11 +376,13 @@ UpsetCard.propTypes = {
     text: PropTypes.string,
     receipt: receiptShape,
   }).isRequired,
+  moves: PropTypes.array.isRequired,
   copiedKey: PropTypes.string,
   onCopy: PropTypes.func.isRequired,
 };
 
-function ChallengeCard({ challenge, copiedKey, onCopy }) {
+function ChallengeCard({ challenge, moves, copiedKey, onCopy }) {
+  const [open, setOpen] = useState(false);
   const key = `challenge:${challenge.node.id}`;
   const standing = fmtSpan(challenge.standingFor);
   return (
@@ -316,6 +408,12 @@ function ChallengeCard({ challenge, copiedKey, onCopy }) {
           {challenge.node.summary}
         </p>
       ) : null}
+      <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="mt-2 block w-full text-left">
+        {open ? <ArgumentTree root={challenge.node} moves={moves} /> : null}
+        <div className="mt-1 text-[11px]" style={{ color: META }}>
+          {open ? "Collapse" : "Expand the argument"}
+        </div>
+      </button>
       <Receipt receipt={challenge.receipt} copyKey={key} copiedKey={copiedKey} onCopy={onCopy} />
     </article>
   );
@@ -328,6 +426,7 @@ ChallengeCard.propTypes = {
     standingFor: PropTypes.number,
     receipt: receiptShape,
   }).isRequired,
+  moves: PropTypes.array.isRequired,
   copiedKey: PropTypes.string,
   onCopy: PropTypes.func.isRequired,
 };
@@ -511,9 +610,7 @@ export default function WarReport() {
           >
             <ArrowLeft size={15} /> Map
           </button>
-          <span className="text-[11px]" style={{ color: META }}>
-            {report && !report.empty ? `${report.cards.length + 2} dispatches` : ""}
-          </span>
+          <span className="text-[11px]" style={{ color: META }} />
         </div>
       </header>
 
@@ -615,52 +712,87 @@ export function useWarReportView(nodes, utterances) {
  * public snapshot page, where the map (and its backend) doesn't exist. */
 export function WarReportFeed({ title, view, onOpenMap }) {
   const { report, threadColors, threadColorsByThread, threadTitles, copiedKey, onCopy } = view;
+  const [sort, setSort] = useState("story");
+  const [speakerFilter, setSpeakerFilter] = useState("");
+
+  const speakers = useMemo(() => {
+    const set = new Set();
+    (report?.cards || []).forEach((c) => cardSpeakers(c).forEach((s) => set.add(s)));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [report]);
+
+  const displayCards = useMemo(
+    () => orderCards(report?.cards || [], { sort, speaker: speakerFilter }),
+    [report, sort, speakerFilter]
+  );
+
   if (!report || report.empty) return null;
 
-  const dekParts = [
-    report.stats.speakers ? `${report.stats.speakers} voices` : null,
-    `${report.stats.claims} claims`,
-    `${report.stats.attacks} clashes`,
-    report.stats.upsets ? `${report.stats.upsets} self-contradictions` : null,
-    report.stats.openQuestions ? `${report.stats.openQuestions} open questions` : null,
+  const dateRange =
     report.span.start && report.span.end && fmtDate(report.span.start)
       ? `${fmtDate(report.span.start)} – ${fmtDate(report.span.end)}`
-      : null,
-  ].filter(Boolean);
+      : "";
+  const selectClass =
+    "rounded-md border border-gray-200 bg-white px-2 py-1 text-xs focus:border-gray-400 focus:outline-none";
 
   return (
     <>
-      <div className="mb-6">
-        <div className="text-[10px] font-medium uppercase" style={{ color: AMBER, letterSpacing: "0.42em" }}>
-          War report
-        </div>
+      <div className="mb-5">
         <h1
-          className="mt-1.5 text-2xl font-semibold leading-tight"
+          className="text-2xl font-semibold leading-tight"
           style={{ color: INK, letterSpacing: "-0.02em", textWrap: "balance" }}
         >
           {title || "The debate"}
         </h1>
-        {dekParts.length > 0 ? (
-          <p className="mt-1.5 text-[13px] leading-relaxed" style={{ color: META }}>
-            {dekParts.map((part, i) => (
-              <span key={part} className="whitespace-nowrap">
-                {part}
-                {i < dekParts.length - 1 ? <span aria-hidden="true"> · </span> : null}
-              </span>
-            ))}
+        {dateRange ? (
+          <p className="mt-1.5 text-[13px]" style={{ color: META }}>
+            {dateRange}
           </p>
         ) : null}
       </div>
 
-      <div className="space-y-4">
-        <FrontLines fronts={report.fronts} threadColorsByThread={threadColorsByThread} />
+      <div className="mb-4 flex items-center justify-end gap-2">
+        <select
+          aria-label="Order cards"
+          className={selectClass}
+          style={{ color: INK_SOFT }}
+          value={sort}
+          onChange={(e) => setSort(e.target.value)}
+        >
+          <option value="story">Story order</option>
+          <option value="oldest">Oldest first</option>
+          <option value="newest">Newest first</option>
+        </select>
+        {speakers.length > 1 ? (
+          <select
+            aria-label="Filter by speaker"
+            className={selectClass}
+            style={{ color: INK_SOFT }}
+            value={speakerFilter}
+            onChange={(e) => setSpeakerFilter(e.target.value)}
+          >
+            <option value="">Everyone</option>
+            {speakers.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        ) : null}
+      </div>
 
-        {report.cards.map((card) => {
+      <div className="space-y-4">
+        {report.fronts.length > 1 ? (
+          <FrontLines fronts={report.fronts} threadColorsByThread={threadColorsByThread} />
+        ) : null}
+
+        {displayCards.map((card) => {
           if (card.kind === "clash") {
             return (
               <ClashCard
                 key={`clash:${card.target.id}:${card.actor.id}`}
                 clash={card}
+                moves={report.moves}
                 threadColors={threadColors}
                 threadTitles={threadTitles}
                 copiedKey={copiedKey}
@@ -670,18 +802,38 @@ export function WarReportFeed({ title, view, onOpenMap }) {
           }
           if (card.kind === "upset") {
             return (
-              <UpsetCard key={`upset:${card.later.id}:${card.earlier.id}`} upset={card} copiedKey={copiedKey} onCopy={onCopy} />
+              <UpsetCard
+                key={`upset:${card.later.id}:${card.earlier.id}`}
+                upset={card}
+                moves={report.moves}
+                copiedKey={copiedKey}
+                onCopy={onCopy}
+              />
             );
           }
           if (card.kind === "challenge") {
             return (
-              <ChallengeCard key={`challenge:${card.node.id}`} challenge={card} copiedKey={copiedKey} onCopy={onCopy} />
+              <ChallengeCard
+                key={`challenge:${card.node.id}`}
+                challenge={card}
+                moves={report.moves}
+                copiedKey={copiedKey}
+                onCopy={onCopy}
+              />
             );
           }
           return null;
         })}
 
-        <UndefendedCard items={report.undefended} total={report.undefendedTotal} onOpenMap={onOpenMap} />
+        {displayCards.length === 0 ? (
+          <div className="rounded-xl border border-gray-200 bg-white px-4 py-6 text-center text-sm" style={{ color: META }}>
+            Nothing matches this filter.
+          </div>
+        ) : null}
+
+        {!speakerFilter ? (
+          <UndefendedCard items={report.undefended} total={report.undefendedTotal} onOpenMap={onOpenMap} />
+        ) : null}
 
         <section className="rounded-xl border border-gray-200 bg-white px-4 py-5 text-center">
           {onOpenMap ? (
@@ -701,8 +853,8 @@ export function WarReportFeed({ title, view, onOpenMap }) {
             </>
           ) : (
             <p className="text-sm leading-relaxed" style={{ color: INK_SOFT }}>
-              This report was built from the group&apos;s own messages — every card traces back to a
-              real, timestamped message.
+              Built from the group&apos;s own messages — every card traces back to a real,
+              timestamped message.
             </p>
           )}
           <p className="mt-3 text-xs leading-relaxed" style={{ color: META }}>

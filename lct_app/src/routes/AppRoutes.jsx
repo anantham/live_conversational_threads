@@ -53,8 +53,8 @@ export default function AppRoutes() {
       <Route path="/frames/:conversationId" element={<FrameAnalysis />} />
       <Route path="/cruxes/:conversationId" element={<CruxAnalysis />} />
       <Route path="/claims/:conversationId" element={<ClaimsView />} />
-      <Route path="/war/s" element={<WarReportShared />} />
-      <Route path="/war/:conversationId" element={<WarReport />} />
+      <Route path="/debate/s" element={<WarReportShared />} />
+      <Route path="/debate/:conversationId" element={<WarReport />} />
       <Route path="/cost-dashboard" element={<CostDashboard />} />
       <Route path="/bookmarks" element={<Bookmarks />} />
       <Route path="/settings" element={<SettingsLayout />}>
