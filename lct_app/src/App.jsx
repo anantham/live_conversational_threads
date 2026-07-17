@@ -42,17 +42,17 @@ export default function App() {
   // self-contained file client-side and must work with the backend down — and make
   // ZERO /api/ calls. /browse is also exempt: on the public deploy it self-detects
   // the unreachable backend and becomes the .threads opener (see Browse.jsx), so it
-  // must render instead of the BetaGate. /war/s is the encrypted-snapshot war
-  // report: it fetches one static ciphertext file and decrypts client-side, so it
-  // must render for recipients with no backend (the dynamic /war/:id stays gated —
+  // must render instead of the BetaGate. /debate/s is the encrypted-snapshot
+  // debate report: it fetches one static ciphertext file and decrypts client-side, so
+  // it must render for recipients with no backend (the dynamic /debate/:id stays gated —
   // it reads the conversation API). /share/:token genuinely needs the backend and
   // stays gated.
   const isStaticViewer =
     typeof window !== "undefined" &&
     (window.location.pathname.startsWith("/view") ||
       window.location.pathname.startsWith("/browse") ||
-      window.location.pathname === "/war/s" ||
-      window.location.pathname === "/war/s/");
+      window.location.pathname === "/debate/s" ||
+      window.location.pathname === "/debate/s/");
 
   const probeBackend = useCallback(async () => {
     setBackendState("checking");

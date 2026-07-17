@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildWarReport, fmtSpan, isWallClock } from "./warReport";
+import { buildArgumentTree, buildWarReport, fmtSpan, isWallClock, orderCards } from "./warReport";
 
 const DAY = 86400;
 const T0 = 1_768_000_000; // wall-clock epoch base
@@ -156,6 +156,51 @@ describe("buildWarReport", () => {
     expect(clash.actorReceipt.text).toBe("the exact counter");
     expect(clash.actorReceipt.speaker).toBe("Bob");
     expect(clash.targetReceipt.text).toBe("the exact words");
+  });
+});
+
+describe("orderCards", () => {
+  const mk = (kind, date, speakers) => {
+    if (kind === "clash") {
+      return { kind, date, target: { id: `t${date}`, speaker_id: speakers[0] }, actor: { id: `a${date}`, speaker_id: speakers[1] } };
+    }
+    if (kind === "upset") return { kind, date, later: { id: `l${date}` }, earlier: { id: `e${date}` }, speaker: speakers[0] };
+    return { kind, date, node: { id: `q${date}`, speaker_id: speakers[0] } };
+  };
+
+  it("sorts oldest and newest by card date", () => {
+    const cards = [mk("clash", 300, ["A", "B"]), mk("upset", 100, ["A"]), mk("challenge", 200, ["C"])];
+    expect(orderCards(cards, { sort: "oldest" }).map((c) => c.date)).toEqual([100, 200, 300]);
+    expect(orderCards(cards, { sort: "newest" }).map((c) => c.date)).toEqual([300, 200, 100]);
+    expect(orderCards(cards, { sort: "story" }).map((c) => c.date)).toEqual([300, 100, 200]);
+  });
+
+  it("filters by any involved speaker", () => {
+    const cards = [mk("clash", 1, ["Tj", "Progyan"]), mk("upset", 2, ["Progyan"]), mk("challenge", 3, ["Diksha"])];
+    expect(orderCards(cards, { speaker: "Progyan" })).toHaveLength(2);
+    expect(orderCards(cards, { speaker: "Tj" })).toHaveLength(1);
+    expect(orderCards(cards, { speaker: "" })).toHaveLength(3);
+  });
+});
+
+describe("buildArgumentTree", () => {
+  it("collects incoming and outgoing moves to depth, cycle-safe", () => {
+    const a = { id: "a", node_name: "A" };
+    const b = { id: "b", node_name: "B" };
+    const c = { id: "c", node_name: "C" };
+    const moves = [
+      { actor: b, target: a, type: "rebuts" },   // b counters a
+      { actor: a, target: c, type: "supports" }, // a supports c
+      { actor: c, target: b, type: "rebuts" },   // c counters b (cycle back)
+    ];
+    const tree = buildArgumentTree(a, moves, 2);
+    const labels = tree.children.map((ch) => `${ch.label}:${ch.node.id}`);
+    expect(labels).toContain("countered by:b");
+    expect(labels).toContain("supports:c");
+    const bBranch = tree.children.find((ch) => ch.node.id === "b");
+    // c already visited via a's own children — cycle must not duplicate it
+    const deepIds = bBranch.children.map((ch) => ch.node.id);
+    expect(deepIds).not.toContain("a");
   });
 });
 

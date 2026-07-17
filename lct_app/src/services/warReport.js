@@ -98,6 +98,7 @@ export function buildWarReport(nodes, utterances) {
   const attacks = [];
   const supports = [];
   const upsetsRaw = [];
+  const allMoves = [];
   argNodes.forEach((actor) => {
     (actor.edge_relations || []).forEach((e) => {
       if (!e || typeof e !== "object") return;
@@ -105,6 +106,7 @@ export function buildWarReport(nodes, utterances) {
       const target = byName.get(String(e.related_node || "").toLowerCase());
       if (!target || target.id === actor.id) return;
       const move = { actor, target, type, text: e.relation_text || "", date: nodeDate(actor) };
+      allMoves.push(move);
       if (type === "contradicts") upsetsRaw.push(move);
       else if (ATTACK_TYPES.has(type)) attacks.push(move);
       else if (SUPPORT_TYPES.has(type)) supports.push(move);
@@ -280,7 +282,132 @@ export function buildWarReport(nodes, utterances) {
     span: { start: spanStart, end: spanEnd },
     fronts,
     cards,
+    moves: allMoves,
     undefended: undefended.slice(0, 5).map((u) => ({ ...u, receipt: receipt(u.node) })),
     undefendedTotal: undefended.length,
   };
+}
+
+// ---- card ordering & filtering (the feed's sort/filter dropdowns) --------
+
+/** The single date a card sorts by. */
+export function cardDate(card) {
+  if (card.kind === "clash") return card.date ?? null;
+  if (card.kind === "upset") return card.date ?? null;
+  if (card.kind === "challenge") return card.date ?? null;
+  return null;
+}
+
+/** Speakers a card involves (for the "who said what" filter). */
+export function cardSpeakers(card) {
+  const out = new Set();
+  const add = (s) => {
+    if (s && String(s).trim()) out.add(String(s).trim());
+  };
+  if (card.kind === "clash") {
+    add(card.target?.speaker_id);
+    add(card.actor?.speaker_id);
+  } else if (card.kind === "upset") {
+    add(card.speaker);
+  } else if (card.kind === "challenge") {
+    add(card.node?.speaker_id);
+  }
+  return [...out];
+}
+
+/**
+ * Order + filter the feed's cards.
+ * sort: "story" (the built weave) | "oldest" | "newest"
+ * speaker: "" (everyone) or an exact speaker id
+ */
+export function orderCards(cards, { sort = "story", speaker = "" } = {}) {
+  let list = Array.isArray(cards) ? [...cards] : [];
+  if (speaker) {
+    list = list.filter((c) => cardSpeakers(c).includes(speaker));
+  }
+  if (sort === "oldest") {
+    list.sort((a, b) => (cardDate(a) ?? Infinity) - (cardDate(b) ?? Infinity));
+  } else if (sort === "newest") {
+    list.sort((a, b) => (cardDate(b) ?? -Infinity) - (cardDate(a) ?? -Infinity));
+  }
+  return list;
+}
+
+// ---- argument neighborhood (the per-card tree) ----------------------------
+
+const TREE_RELATION_LABELS = {
+  rebuts: "countered by",
+  disagrees: "countered by",
+  refutes: "countered by",
+  supports: "supported by",
+  agrees: "supported by",
+  affirms: "supported by",
+  contradicts: "contradicted by",
+  clarifies: "clarified by",
+  asks: "questioned by",
+  contextual: "related",
+};
+
+function treeLabel(type, incoming) {
+  if (incoming) return TREE_RELATION_LABELS[type] || `${type} by`;
+  // Outgoing: this node acting on another.
+  const out = {
+    rebuts: "counters",
+    disagrees: "counters",
+    refutes: "counters",
+    supports: "supports",
+    agrees: "supports",
+    affirms: "supports",
+    contradicts: "contradicts",
+    clarifies: "clarifies",
+    asks: "asks about",
+    contextual: "related",
+  };
+  return out[type] || type;
+}
+
+/**
+ * Local argument tree around a node: incoming moves (what lands ON it) and
+ * outgoing moves (what it acts on), recursively to `depth`, cycle-safe.
+ * Returns { node, children: [{ label, type, incoming, node, children }] }.
+ */
+export function buildArgumentTree(rootNode, moves, depth = 2) {
+  const list = Array.isArray(moves) ? moves : [];
+  const expand = (node, remaining, seen) => {
+    if (remaining <= 0) return [];
+    const children = [];
+    list.forEach((m) => {
+      let other = null;
+      let incoming = false;
+      if (m.target?.id === node.id) {
+        other = m.actor;
+        incoming = true;
+      } else if (m.actor?.id === node.id) {
+        other = m.target;
+        incoming = false;
+      }
+      if (!other || seen.has(other.id)) return;
+      seen.add(other.id);
+      children.push({
+        label: treeLabel(m.type, incoming),
+        type: m.type,
+        incoming,
+        node: other,
+        children: [],
+      });
+    });
+    // Typed argument moves outrank weak contextual links in the display.
+    const weight = (t) =>
+      ATTACK_TYPES.has(t) || t === "contradicts" ? 0 : SUPPORT_TYPES.has(t) ? 1 : t === "contextual" ? 3 : 2;
+    children.sort((a, b) => weight(a.type) - weight(b.type));
+    // Recurse only after the whole level is claimed — a shared `seen` with
+    // depth-first recursion would let a deep branch swallow a node that
+    // belongs beside it as a sibling of the root.
+    children.forEach((child) => {
+      child.children = expand(child.node, remaining - 1, seen);
+    });
+    return children;
+  };
+  const seen = new Set([rootNode.id]);
+  return { node: rootNode, children: expand(rootNode, depth, seen) };
 }

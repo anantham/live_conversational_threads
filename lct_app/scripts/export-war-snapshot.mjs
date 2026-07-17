@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Export an encrypted war-report snapshot for the public /war/s page.
+ * Export an encrypted debate-report snapshot for the public /debate/s page.
  *
  * Reads one conversation from the LOCAL backend, prunes it to exactly what
  * the feed renders (argument + theme nodes, and only the utterances those
@@ -60,6 +60,7 @@ function parseArgs(argv) {
     title: "",
     key: "",
     pathname: "",
+    threads: null,
     upload: false,
   };
   for (let i = 0; i < rest.length; i += 1) {
@@ -69,6 +70,11 @@ function parseArgs(argv) {
     else if (a === "--title") opts.title = rest[++i];
     else if (a === "--key") opts.key = rest[++i];
     else if (a === "--pathname") opts.pathname = rest[++i];
+    else if (a === "--threads") {
+      // Scope the snapshot to specific debate thread(s): only their nodes —
+      // and only the messages THOSE cite — ever leave the machine.
+      opts.threads = new Set(rest[++i].split(",").map((t) => t.trim()).filter(Boolean));
+    }
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!opts.conversationId) {
@@ -129,7 +135,11 @@ async function main() {
     const ct = String(n.claim_type || n.display_preferences?.claim_type || "").toLowerCase();
     const isArgument = ARGUMENT_TYPES.has(ct);
     const isTheme = n.semantic_type === "theme" || n.semantic_level === 4;
-    return isArgument || isTheme;
+    if (!isArgument && !isTheme) return false;
+    if (opts.threads && !opts.threads.has(String(n.thread_id || n.metadata?.cluster_info?.thread_id || ""))) {
+      return false;
+    }
+    return true;
   });
   if (keep.length === 0) throw new Error("no argument-map nodes in this conversation — nothing to share");
 
@@ -211,7 +221,7 @@ async function main() {
   if (!resp.ok) throw new Error(`blob upload failed: ${resp.status} ${await resp.text()}`);
   const blob = await resp.json();
 
-  const link = `${APP_ORIGIN}/war/s?src=${encodeURIComponent(blob.url)}#k=${keyB64}`;
+  const link = `${APP_ORIGIN}/debate/s?src=${encodeURIComponent(blob.url)}#k=${keyB64}`;
   console.log("\nuploaded:", blob.url);
   console.log("\nSHARE LINK (the part after # is the key — share the WHOLE line):\n");
   console.log(link);
