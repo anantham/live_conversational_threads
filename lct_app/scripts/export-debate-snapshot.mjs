@@ -61,6 +61,7 @@ function parseArgs(argv) {
     key: "",
     pathname: "",
     threads: null,
+    cleanNames: false,
     upload: false,
   };
   for (let i = 0; i < rest.length; i += 1) {
@@ -70,6 +71,7 @@ function parseArgs(argv) {
     else if (a === "--title") opts.title = rest[++i];
     else if (a === "--key") opts.key = rest[++i];
     else if (a === "--pathname") opts.pathname = rest[++i];
+    else if (a === "--clean-names") opts.cleanNames = true;
     else if (a === "--threads") {
       // Scope the snapshot to specific debate thread(s): only their nodes —
       // and only the messages THOSE cite — ever leave the machine.
@@ -123,6 +125,18 @@ function pruneEdge(e) {
   };
 }
 
+/** WhatsApp contact names carry personal annotations ("<Name> ai safety",
+ * "<Name> <who-introduced-them>"). For a shared artifact, keep only the
+ * first name: first whitespace token, capitalized; 2-letter names are
+ * uppercased initials (Tj -> TJ). Generic rule — no private mapping ships
+ * in this public script. */
+function cleanSpeakerName(raw) {
+  const token = String(raw || "").trim().split(/\s+/)[0] || "";
+  if (!token) return "";
+  if (token.length === 2) return token.toUpperCase();
+  return token.charAt(0).toUpperCase() + token.slice(1);
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const token = await readAuthToken();
@@ -151,6 +165,7 @@ async function main() {
     if (!out.claim_type && n.display_preferences?.claim_type) {
       out.claim_type = n.display_preferences.claim_type;
     }
+    if (opts.cleanNames && out.speaker_id) out.speaker_id = cleanSpeakerName(out.speaker_id);
     out.edge_relations = Array.isArray(n.edge_relations) ? n.edge_relations.map(pruneEdge) : [];
     return out;
   });
@@ -164,12 +179,15 @@ async function main() {
     );
     utterances = (Array.isArray(u?.utterances) ? u.utterances : [])
       .filter((row) => cited.has(String(row.id)))
-      .map((row) => ({
-        id: row.id,
-        text: row.text,
-        speaker: row.speaker || row.speaker_id || "",
-        timestamp: row.timestamp ?? row.timestamp_start ?? row.start_time ?? null,
-      }));
+      .map((row) => {
+        const speaker = row.speaker || row.speaker_id || "";
+        return {
+          id: row.id,
+          text: row.text,
+          speaker: opts.cleanNames ? cleanSpeakerName(speaker) : speaker,
+          timestamp: row.timestamp ?? row.timestamp_start ?? row.start_time ?? null,
+        };
+      });
   } catch (e) {
     console.warn(`utterances unavailable (${e.message}) — receipts will be absent`);
   }
