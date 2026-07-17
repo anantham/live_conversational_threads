@@ -14,7 +14,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import PropTypes from "prop-types";
 import { ArrowLeft, Check, Copy, Map as MapIcon } from "lucide-react";
 
@@ -62,7 +62,7 @@ function flattenGraphNodes(payload, depth = 0) {
   return [];
 }
 
-function TagChip({ tag, isCounter }) {
+function TagChip({ tag, isCounter, asksQuestion }) {
   const s = TAG_STYLES[tag] || { bg: "#f1f5f9", color: META, label: tag || "note" };
   return (
     <span className="flex items-center gap-1.5">
@@ -77,6 +77,11 @@ function TagChip({ tag, isCounter }) {
           counters
         </span>
       ) : null}
+      {asksQuestion && tag !== "question" ? (
+        <span className="text-[10px] font-medium" style={{ color: TAG_STYLES.question.color }}>
+          asks
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -84,6 +89,7 @@ function TagChip({ tag, isCounter }) {
 TagChip.propTypes = {
   tag: PropTypes.string,
   isCounter: PropTypes.bool,
+  asksQuestion: PropTypes.bool,
 };
 
 function CopyButton({ text, copyKey, copiedKey, onCopy }) {
@@ -128,7 +134,7 @@ function QuoteCard({ card, copiedKey, onCopy, onFocus, compact, highlight }) {
       onClick={onFocus ? () => onFocus(card.node.id) : undefined}
     >
       <div className="flex items-center justify-between gap-2">
-        <TagChip tag={card.tag} isCounter={card.isCounter} />
+        <TagChip tag={card.tag} isCounter={card.isCounter} asksQuestion={card.asksQuestion} />
         {!compact && counts.length > 0 ? (
           <span className="shrink-0 text-[10px]" style={{ color: META }}>
             {counts.join(" · ")}
@@ -202,9 +208,6 @@ function FocusView({ card, data, copiedKey, onCopy, onFocus, onBack }) {
         <ArrowLeft size={15} /> All messages
       </button>
 
-      <div className="mb-1 text-[11px] font-medium" style={{ color: META }}>
-        The idea, in their words
-      </div>
       <QuoteCard card={card} copiedKey={copiedKey} onCopy={onCopy} highlight />
       <p className="mt-2 text-[12px] leading-snug" style={{ color: META }}>
         {card.node.node_name}
@@ -289,11 +292,29 @@ export function useDebateView(nodes, utterances) {
 /** The two-level feed. */
 export function DebateFeed({ title, view, onOpenMap }) {
   const { data, copiedKey, onCopy } = view;
+  const navigate = useNavigate();
+  const location = useLocation();
   const [sort, setSort] = useState("oldest");
   const [tag, setTag] = useState("");
   const [speaker, setSpeaker] = useState("");
-  const [focusId, setFocusId] = useState(null);
   const feedScrollRef = useRef(0);
+
+  // The focused card lives in the URL (?n=<id>) as a REAL history entry:
+  // the browser/gesture back closes the focus view instead of leaving the
+  // page (mobile swipe-back used to land on a blank about:blank), and a
+  // focused card becomes deep-linkable. The #fragment (decryption key on
+  // /debate/s) is explicitly preserved on every navigation.
+  const focusId = new URLSearchParams(location.search).get("n");
+  const prevFocusRef = useRef(focusId);
+  useEffect(() => {
+    const prev = prevFocusRef.current;
+    prevFocusRef.current = focusId;
+    if (typeof window === "undefined") return;
+    if (!prev && focusId) window.scrollTo({ top: 0 });
+    if (prev && !focusId) {
+      requestAnimationFrame(() => window.scrollTo({ top: feedScrollRef.current }));
+    }
+  }, [focusId]);
 
   const cards = useMemo(
     () => orderQuoteCards(data?.cards || [], { sort, tag, speaker }),
@@ -304,15 +325,26 @@ export function DebateFeed({ title, view, onOpenMap }) {
 
   const focusCard = focusId ? data.byId.get(focusId) : null;
   const enterFocus = (id) => {
-    feedScrollRef.current = typeof window !== "undefined" ? window.scrollY : 0;
-    setFocusId(id);
-    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+    if (!focusId && typeof window !== "undefined") {
+      feedScrollRef.current = window.scrollY;
+    }
+    const params = new URLSearchParams(location.search);
+    params.set("n", id);
+    navigate(
+      { search: `?${params.toString()}`, hash: location.hash },
+      { state: { debateFocus: true } }
+    );
   };
   const exitFocus = () => {
-    setFocusId(null);
-    if (typeof window !== "undefined") {
-      requestAnimationFrame(() => window.scrollTo({ top: feedScrollRef.current }));
+    if (location.state?.debateFocus) {
+      navigate(-1);
+      return;
     }
+    // Deep-linked straight into a focus view: there is no feed entry behind
+    // us, so strip the param in place instead of leaving the site.
+    const params = new URLSearchParams(location.search);
+    params.delete("n");
+    navigate({ search: `?${params.toString()}`, hash: location.hash }, { replace: true });
   };
 
   const dateRange =
@@ -350,10 +382,11 @@ export function DebateFeed({ title, view, onOpenMap }) {
         >
           {title || "The debate"}
         </h1>
-        <p className="mt-1.5 text-[13px]" style={{ color: META }}>
-          {dateRange ? `${dateRange} · ` : ""}everyone&apos;s actual words, in order. Tap a card to
-          see what connects to it.
-        </p>
+        {dateRange ? (
+          <p className="mt-1.5 text-[13px]" style={{ color: META }}>
+            {dateRange}
+          </p>
+        ) : null}
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
