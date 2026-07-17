@@ -1,11 +1,10 @@
 /**
- * /war/s — the public, encrypted-snapshot war report.
+ * /debate/s — the public, encrypted-snapshot debate view.
  *
- * Link shape: /war/s?src=<https ciphertext url>#k=<base64url key>
- * The #fragment never leaves the browser, so the host serves bytes it
- * cannot read; the full link is the capability (post it where the audience
- * already is). No backend, no API, no other conversation reachable —
- * the page fetches exactly one static file and decrypts it locally.
+ * Link shape: /debate/s?src=<ciphertext url>#k=<base64url key>
+ * The #fragment never leaves the browser: the host serves bytes it cannot
+ * read, and the full link is the capability. No backend, no API, no other
+ * conversation reachable — one static file, decrypted locally.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -13,11 +12,10 @@ import PropTypes from "prop-types";
 
 import { normalizeGraphNode } from "../components/graphNormalization";
 import { decryptSnapshot, fromBase64Url } from "../services/warSnapshotCrypto";
-import { useWarReportView, WarReportFeed, WarReportSkeleton } from "./WarReport";
+import { DebateFeed, DebateSkeleton, useDebateView } from "./DebateReport";
 
 const INK = "#1e293b";
 const INK_SOFT = "#374151";
-const META = "#64748b";
 
 function readLinkParams() {
   if (typeof window === "undefined") return { src: "", key: "" };
@@ -39,7 +37,12 @@ function Notice({ heading, body }) {
   );
 }
 
-export default function WarReportShared() {
+Notice.propTypes = {
+  heading: PropTypes.string.isRequired,
+  body: PropTypes.string.isRequired,
+};
+
+export default function DebateShared() {
   const [{ src, key }] = useState(readLinkParams);
   const [snapshot, setSnapshot] = useState(null);
   const [error, setError] = useState("");
@@ -77,8 +80,7 @@ export default function WarReportShared() {
     return snapshot.nodes.map((item, i) => normalizeGraphNode(item, i)).filter(Boolean);
   }, [snapshot]);
 
-  const view = useWarReportView(nodes, snapshot?.utterances || []);
-  const { report } = view;
+  const view = useDebateView(nodes, snapshot?.utterances || []);
 
   return (
     <div className="min-h-screen" style={{ background: "#fdfdfb" }}>
@@ -90,7 +92,7 @@ export default function WarReportShared() {
           <span className="text-sm font-medium" style={{ color: INK_SOFT }}>
             Threads
           </span>
-          <span className="text-[11px]" style={{ color: META }} />
+          <span />
         </div>
       </header>
 
@@ -98,26 +100,18 @@ export default function WarReportShared() {
         {!src || !key ? (
           <Notice
             heading="This link is incomplete"
-            body="A shared war report needs both its data address and its key (the part after #). Ask whoever shared it to send the complete link."
+            body="A shared debate needs both its data address and its key (the part after #). Ask whoever shared it to send the complete link."
           />
         ) : loading ? (
-          <WarReportSkeleton />
+          <DebateSkeleton />
         ) : error ? (
           <Notice heading="Couldn't open the report" body={error} />
-        ) : report?.empty ? (
-          <Notice
-            heading="Nothing to report"
-            body="The snapshot decrypted but holds no argument map."
-          />
-        ) : report ? (
-          <WarReportFeed title={snapshot?.title || ""} view={view} onOpenMap={null} />
+        ) : view.data?.empty ? (
+          <Notice heading="Nothing to show" body="The snapshot decrypted but holds no argument map." />
+        ) : view.data ? (
+          <DebateFeed title={snapshot?.title || ""} view={view} onOpenMap={null} />
         ) : null}
       </main>
     </div>
   );
 }
-
-Notice.propTypes = {
-  heading: PropTypes.string.isRequired,
-  body: PropTypes.string.isRequired,
-};

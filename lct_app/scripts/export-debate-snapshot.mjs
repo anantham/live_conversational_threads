@@ -12,7 +12,7 @@
  * files are written to scripts/out/ (gitignored) only.
  *
  * Usage:
- *   node scripts/export-war-snapshot.mjs <conversationId> \
+ *   node scripts/export-debate-snapshot.mjs <conversationId> \
  *     [--backend http://localhost:43181] [--title "..."] \
  *     [--key <base64url>]        reuse a key so an existing link keeps working
  *     [--pathname war/<slug>]    blob path; stable path => updates keep the URL
@@ -78,7 +78,7 @@ function parseArgs(argv) {
     else throw new Error(`unknown argument: ${a}`);
   }
   if (!opts.conversationId) {
-    throw new Error("usage: node scripts/export-war-snapshot.mjs <conversationId> [flags]");
+    throw new Error("usage: node scripts/export-debate-snapshot.mjs <conversationId> [flags]");
   }
   return opts;
 }
@@ -187,7 +187,7 @@ async function main() {
   const cipher = await encryptSnapshot(payload, keyBytes);
 
   await mkdir(OUT_DIR, { recursive: true });
-  const outFile = path.join(OUT_DIR, `${opts.conversationId}.war-snapshot.enc`);
+  const outFile = path.join(OUT_DIR, `${opts.conversationId}.debate-snapshot.enc`);
   await writeFile(outFile, cipher);
   console.log(
     `snapshot: ${nodes.length} nodes, ${utterances.length} cited utterances, ` +
