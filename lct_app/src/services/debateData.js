@@ -138,15 +138,24 @@ export function buildDebateData(nodes, utterances) {
   });
 
   const cards = argNodes
-    .map((n) => ({
-      node: n,
-      tag: normType(n.claim_type),
-      isCounter: outAttack.has(n.id),
-      pushbackCount: inAttack.get(n.id) || 0,
-      supportCount: inSupport.get(n.id) || 0,
-      quote: quoteFor(n, utteranceById),
-      date: nodeDate(n),
-    }))
+    .map((n) => {
+      const quote = quoteFor(n, utteranceById);
+      const tag = normType(n.claim_type);
+      return {
+        node: n,
+        tag,
+        // Rhetorical/Socratic questions ("what is buddhism?") are typed as
+        // claims by the extraction — the MOVE is an assertion — but readers
+        // expect question-shaped messages under the questions filter. Any
+        // card whose verbatim text asks something matches both.
+        asksQuestion: tag === "question" || Boolean(quote && /\?/.test(quote.text)),
+        isCounter: outAttack.has(n.id),
+        pushbackCount: inAttack.get(n.id) || 0,
+        supportCount: inSupport.get(n.id) || 0,
+        quote,
+        date: nodeDate(n),
+      };
+    })
     .sort((a, b) => (a.date ?? Infinity) - (b.date ?? Infinity));
 
   const dates = cards.map((c) => c.date).filter((t) => t !== null);
@@ -176,6 +185,7 @@ export function buildDebateData(nodes, utterances) {
 export function orderQuoteCards(cards, { sort = "oldest", tag = "", speaker = "" } = {}) {
   let list = Array.isArray(cards) ? [...cards] : [];
   if (tag === "counter") list = list.filter((c) => c.isCounter);
+  else if (tag === "question") list = list.filter((c) => c.asksQuestion || c.tag === "question");
   else if (tag) list = list.filter((c) => c.tag === tag);
   if (speaker) list = list.filter((c) => c.node.speaker_id === speaker);
   if (sort === "newest") list.sort((a, b) => (b.date ?? -Infinity) - (a.date ?? -Infinity));

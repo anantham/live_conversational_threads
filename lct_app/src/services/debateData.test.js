@@ -80,6 +80,15 @@ describe("orderQuoteCards", () => {
   it("sorts newest first on request", () => {
     expect(orderQuoteCards(cards, { sort: "newest" }).map((c) => c.date)).toEqual([300, 200, 100]);
   });
+
+  it("questions filter includes question-shaped claims (asksQuestion)", () => {
+    const mixed = [
+      { node: { id: "1" }, tag: "claim", asksQuestion: true, date: 1 },
+      { node: { id: "2" }, tag: "claim", asksQuestion: false, date: 2 },
+      { node: { id: "3" }, tag: "question", asksQuestion: true, date: 3 },
+    ];
+    expect(orderQuoteCards(mixed, { tag: "question" }).map((c) => c.node.id)).toEqual(["1", "3"]);
+  });
 });
 
 describe("relationsAround", () => {
