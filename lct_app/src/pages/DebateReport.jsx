@@ -21,12 +21,13 @@ import { ArrowLeft, Check, Copy, Map as MapIcon } from "lucide-react";
 import { apiFetchCached, readErrorMessage } from "../services/apiClient";
 import { fetchConversationUtterances } from "../services/speakerNamingApi";
 import { normalizeGraphNode } from "../components/graphNormalization";
+import { SPEAKER_COLORS } from "../components/graphConstants";
 import {
   buildDebateData,
   fmtClock,
   fmtDate,
+  focusThread,
   orderQuoteCards,
-  relationsAround,
 } from "../services/debateData";
 
 const INK = "#1e293b";
@@ -182,6 +183,7 @@ QuoteCard.propTypes = {
     node: PropTypes.object.isRequired,
     tag: PropTypes.string,
     isCounter: PropTypes.bool,
+    asksQuestion: PropTypes.bool,
     pushbackCount: PropTypes.number,
     supportCount: PropTypes.number,
     quote: PropTypes.shape({ text: PropTypes.string, speaker: PropTypes.string, ts: PropTypes.number }),
@@ -194,55 +196,182 @@ QuoteCard.propTypes = {
   highlight: PropTypes.bool,
 };
 
-/** Level 2: the clicked idea centered, its connections grouped and explained. */
+/** Speaker -> bubble color, stable by first appearance in the thread. */
+function speakerColorMap(entries) {
+  const map = new Map();
+  entries.forEach(({ card }) => {
+    const s = card?.node.speaker_id || card?.quote?.speaker || "";
+    if (s && !map.has(s)) map.set(s, SPEAKER_COLORS[map.size % SPEAKER_COLORS.length]);
+  });
+  return map;
+}
+
+const RELATION_CAPTIONS = {
+  pushback: "pushback",
+  tension: "in tension",
+  support: "support",
+  outgoing: "responded to",
+  context: "context",
+};
+
+/** One chat bubble in the focus thread. */
+function Bubble({ entry, color, focal, copiedKey, onCopy, onFocus, bubbleRef }) {
+  const { card, relation } = entry;
+  if (!card) return null;
+  const quote = card.quote;
+  const speaker = card.node.speaker_id || quote?.speaker || "";
+  const clock = fmtClock(quote?.ts) || fmtDate(card.date);
+  return (
+    <div ref={bubbleRef}>
+      {relation ? (
+        <div className="mb-1 pl-1 text-[11px] leading-snug">
+          <span className="font-medium" style={{ color: RELATION_STYLES[relation.key] }}>
+            {RELATION_CAPTIONS[relation.key]}
+          </span>
+          {relation.text ? (
+            <span className="italic" style={{ color: INK_SOFT }}>
+              {" "}&middot; {relation.text}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+      <div
+        className={"rounded-2xl px-3.5 py-2.5" + (onFocus && !focal ? " cursor-pointer" : "")}
+        style={{
+          background: color + "2E",
+          boxShadow: focal ? "0 0 0 2px #f59e0b" : "none",
+        }}
+        onClick={onFocus && !focal ? () => onFocus(card.node.id) : undefined}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium" style={{ color: INK_SOFT }}>
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+            <span className="truncate">{speaker}</span>
+          </span>
+          <span className="shrink-0 text-[10px]" style={{ color: META }}>
+            {clock}
+          </span>
+        </div>
+        {quote ? (
+          <blockquote
+            className={"mt-1.5 leading-relaxed " + (focal ? "text-[15px]" : "text-[13px]")}
+            style={{ color: INK }}
+          >
+            &ldquo;{quote.text}&rdquo;
+          </blockquote>
+        ) : (
+          <p className={"mt-1.5 leading-snug " + (focal ? "text-[15px]" : "text-[13px]")} style={{ color: INK }}>
+            {card.node.node_name}
+          </p>
+        )}
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <TagChip tag={card.tag} isCounter={card.isCounter} asksQuestion={card.asksQuestion} />
+          {quote ? (
+            <CopyButton text={quote.text} copyKey={"b:" + card.node.id} copiedKey={copiedKey} onCopy={onCopy} />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Bubble.propTypes = {
+  entry: PropTypes.shape({ card: PropTypes.object, relation: PropTypes.object }).isRequired,
+  color: PropTypes.string.isRequired,
+  focal: PropTypes.bool,
+  copiedKey: PropTypes.string,
+  onCopy: PropTypes.func.isRequired,
+  onFocus: PropTypes.func,
+  bubbleRef: PropTypes.object,
+};
+
+/** Level 2: the clicked idea ringed, its 1-hop neighborhood re-assembled as
+ * a time-ordered chat thread with per-speaker bubble colors and a legend. */
 function FocusView({ card, data, copiedKey, onCopy, onFocus, onBack }) {
-  const sections = useMemo(() => relationsAround(card.node, data.moves), [card, data]);
+  const thread = useMemo(() => focusThread(card.node, data.moves, data.byId), [card, data]);
+  const all = useMemo(() => [...thread.before, thread.focal, ...thread.after], [thread]);
+  const colors = useMemo(() => speakerColorMap(all), [all]);
+  const focalRef = useRef(null);
+  useEffect(() => {
+    if (focalRef.current && thread.before.length > 0) {
+      focalRef.current.scrollIntoView({ block: "center" });
+    }
+  }, [card.node.id, thread.before.length]);
+
+  const rolesPresent = [...new Set(all.map((e) => e.card?.tag).filter(Boolean))];
+  const colorFor = (entry) =>
+    colors.get(entry.card.node.speaker_id || entry.card.quote?.speaker || "") || "#e5e7eb";
+
   return (
     <div>
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-3 flex items-center gap-1.5 rounded px-1.5 py-1 text-sm transition-colors duration-150 hover:bg-gray-100"
-        style={{ color: INK_SOFT }}
-      >
-        <ArrowLeft size={15} /> All messages
-      </button>
+      <div className="mb-3 flex items-start justify-between gap-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="flex shrink-0 items-center gap-1.5 rounded px-1.5 py-1 text-sm transition-colors duration-150 hover:bg-gray-100"
+          style={{ color: INK_SOFT }}
+        >
+          <ArrowLeft size={15} /> All messages
+        </button>
+        <div className="flex max-w-[60%] flex-wrap items-center justify-end gap-x-2 gap-y-0.5">
+          {[...colors.entries()].map(([s, c]) => (
+            <span key={s} className="flex items-center gap-1 text-[10px]" style={{ color: META }}>
+              <span className="h-2 w-2 rounded-full" style={{ background: c }} /> {s}
+            </span>
+          ))}
+          {rolesPresent.map((t) => (
+            <span key={t} className="flex items-center gap-1 text-[10px]" style={{ color: META }}>
+              <span
+                className="h-2 w-2 rounded-sm"
+                style={{
+                  background: (TAG_STYLES[t] || {}).bg,
+                  border: "1px solid " + ((TAG_STYLES[t] || {}).color || "#cbd5e1"),
+                }}
+              />
+              {(TAG_STYLES[t] || { label: t }).label}
+            </span>
+          ))}
+        </div>
+      </div>
 
-      <QuoteCard card={card} copiedKey={copiedKey} onCopy={onCopy} highlight />
-      <p className="mt-2 text-[12px] leading-snug" style={{ color: META }}>
-        {card.node.node_name}
-      </p>
-
-      {sections.length === 0 ? (
-        <p className="mt-5 text-sm" style={{ color: META }}>
-          Nothing else connects to this message yet — it stands on its own.
+      <div className="space-y-3">
+        {thread.before.map((entry) => (
+          <Bubble
+            key={entry.card.node.id}
+            entry={entry}
+            color={colorFor(entry)}
+            copiedKey={copiedKey}
+            onCopy={onCopy}
+            onFocus={onFocus}
+          />
+        ))}
+        <Bubble
+          entry={thread.focal}
+          color={colorFor(thread.focal)}
+          focal
+          copiedKey={copiedKey}
+          onCopy={onCopy}
+          bubbleRef={focalRef}
+        />
+        {thread.after.map((entry) => (
+          <Bubble
+            key={entry.card.node.id}
+            entry={entry}
+            color={colorFor(entry)}
+            copiedKey={copiedKey}
+            onCopy={onCopy}
+            onFocus={onFocus}
+          />
+        ))}
+        {thread.before.length === 0 && thread.after.length === 0 ? (
+          <p className="mt-2 text-sm" style={{ color: META }}>
+            Nothing else connects to this message yet &mdash; it stands on its own.
+          </p>
+        ) : null}
+        <p className="pt-1 text-[11px]" style={{ color: META }}>
+          The AI&rsquo;s gloss of the focused message: {card.node.node_name}
         </p>
-      ) : (
-        sections.map((section) => (
-          <section key={section.key} className="mt-5">
-            <h2 className="text-[12px] font-semibold uppercase tracking-wide" style={{ color: RELATION_STYLES[section.key] }}>
-              {section.title}
-            </h2>
-            <div className="mt-2 space-y-3">
-              {section.entries.map((entry) => {
-                const other = data.byId.get(entry.other.id);
-                return (
-                  <div key={`${section.key}:${entry.other.id}`}>
-                    {entry.text ? (
-                      <p className="mb-1 text-[12px] italic leading-snug" style={{ color: INK_SOFT }}>
-                        {entry.text}
-                      </p>
-                    ) : null}
-                    {other ? (
-                      <QuoteCard card={other} copiedKey={copiedKey} onCopy={onCopy} onFocus={onFocus} compact />
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        ))
-      )}
+      </div>
     </div>
   );
 }

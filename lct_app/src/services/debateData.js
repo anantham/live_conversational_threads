@@ -214,6 +214,54 @@ function sectionOf(move, focusIsTarget) {
  * the extraction's own explanation of the link.
  * Returns [{ key, title, entries: [{ other, text, type, incoming }] }].
  */
+const RELATION_WEIGHT = { pushback: 0, tension: 0, support: 1, outgoing: 2, context: 3 };
+
+/**
+ * The focus view's narrative thread: the focal card plus every 1-hop
+ * connected card, time-ordered like the chat itself. Each related entry
+ * carries its strongest relation to the focal node (typed moves outrank
+ * contextual links) with the extraction's explanation.
+ * Returns { before: [...], focal: entry, after: [...] } where an entry is
+ * { card, relation?: { key, type, text } }.
+ */
+export function focusThread(focalNode, moves, byId) {
+  const best = new Map();
+  (Array.isArray(moves) ? moves : []).forEach((m) => {
+    let other = null;
+    let incoming = false;
+    if (m.target?.id === focalNode.id) {
+      other = m.actor;
+      incoming = true;
+    } else if (m.actor?.id === focalNode.id) {
+      other = m.target;
+      incoming = false;
+    }
+    if (!other) return;
+    const key = sectionOf(m, incoming);
+    const existing = best.get(other.id);
+    if (
+      !existing ||
+      RELATION_WEIGHT[key] < RELATION_WEIGHT[existing.key] ||
+      (existing.key === key && !existing.text && m.text)
+    ) {
+      best.set(other.id, { key, type: m.type, text: m.text });
+    }
+  });
+
+  const entries = [];
+  best.forEach((relation, id) => {
+    const card = byId.get(id);
+    if (card) entries.push({ card, relation });
+  });
+  entries.sort((a, b) => (a.card.date ?? Infinity) - (b.card.date ?? Infinity));
+
+  const focalCard = byId.get(focalNode.id);
+  const focalDate = focalCard?.date ?? null;
+  const before = entries.filter((e) => (e.card.date ?? Infinity) <= (focalDate ?? -Infinity));
+  const after = entries.filter((e) => !before.includes(e));
+  return { before, focal: { card: focalCard, relation: null }, after };
+}
+
 export function relationsAround(node, moves) {
   const buckets = new Map();
   const seen = new Set();
