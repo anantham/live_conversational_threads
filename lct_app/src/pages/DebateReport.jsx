@@ -103,12 +103,12 @@ function CopyButton({ text, copyKey, copiedKey, onCopy }) {
         e.stopPropagation();
         onCopy(copyKey, text);
       }}
-      className="flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors duration-150 hover:bg-gray-50"
+      className="flex shrink-0 items-center rounded p-1 transition-colors duration-150 hover:bg-gray-50"
       style={{ color: copied ? "#16a34a" : META }}
       title="Copy the message, then paste it in WhatsApp search to jump there and reply"
+      aria-label="Copy message to reply in WhatsApp"
     >
-      {copied ? <Check size={12} /> : <Copy size={12} />}
-      {copied ? "Copied · paste in WhatsApp search" : "Copy to reply"}
+      {copied ? <Check size={14} /> : <Copy size={14} />}
     </button>
   );
 }
@@ -427,6 +427,8 @@ export function DebateSkeleton() {
 /** Shared view-model: data + the copy-to-reply interaction. */
 export function useDebateView(nodes, utterances) {
   const [copiedKey, setCopiedKey] = useState(null);
+  const [toast, setToast] = useState(null);
+  const nudgedRef = useRef(false);
   const data = useMemo(
     () => (nodes ? buildDebateData(nodes, utterances) : null),
     [nodes, utterances]
@@ -436,16 +438,23 @@ export function useDebateView(nodes, utterances) {
       navigator.clipboard.writeText(text);
       setCopiedKey(key);
       setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 2200);
+      // One nudge per visit, on the FIRST copy: the participation bridge
+      // explained right when it matters, then out of the way.
+      if (!nudgedRef.current) {
+        nudgedRef.current = true;
+        setToast("Copied. Paste it in WhatsApp search to find this message and reply.");
+        setTimeout(() => setToast(null), 5000);
+      }
     } catch {
       // clipboard unavailable: the quote is selectable text
     }
   };
-  return { data, copiedKey, onCopy };
+  return { data, copiedKey, onCopy, toast };
 }
 
 /** The two-level feed. */
 export function DebateFeed({ title, view, onOpenMap }) {
-  const { data, copiedKey, onCopy } = view;
+  const { data, copiedKey, onCopy, toast } = view;
   const navigate = useNavigate();
   const location = useLocation();
   const [sort, setSort] = useState("oldest");
@@ -515,16 +524,34 @@ export function DebateFeed({ title, view, onOpenMap }) {
   const selectClass =
     "rounded-md border border-gray-200 bg-white px-2 py-1 text-xs focus:border-gray-400 focus:outline-none";
 
+  const toastEl = toast ? (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed inset-x-0 bottom-5 z-50 flex justify-center px-4"
+    >
+      <div
+        className="max-w-[420px] rounded-full px-4 py-2 text-center text-[13px] text-white shadow-lg"
+        style={{ background: INK }}
+      >
+        {toast}
+      </div>
+    </div>
+  ) : null;
+
   if (focusCard) {
     return (
-      <FocusView
-        card={focusCard}
-        data={data}
-        copiedKey={copiedKey}
-        onCopy={onCopy}
-        onFocus={enterFocus}
-        onBack={exitFocus}
-      />
+      <>
+        <FocusView
+          card={focusCard}
+          data={data}
+          copiedKey={copiedKey}
+          onCopy={onCopy}
+          onFocus={enterFocus}
+          onBack={exitFocus}
+        />
+        {toastEl}
+      </>
     );
   }
 
@@ -660,6 +687,7 @@ export function DebateFeed({ title, view, onOpenMap }) {
           </section>
         )}
       </div>
+      {toastEl}
     </>
   );
 }
@@ -670,6 +698,7 @@ DebateFeed.propTypes = {
     data: PropTypes.object,
     copiedKey: PropTypes.string,
     onCopy: PropTypes.func.isRequired,
+    toast: PropTypes.string,
   }).isRequired,
   onOpenMap: PropTypes.func,
 };
