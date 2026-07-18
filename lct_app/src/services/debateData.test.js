@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildDebateData, orderQuoteCards, relationsAround } from "./debateData";
+import { buildDebateData, orderQuoteCards, pacingGap, relationsAround } from "./debateData";
 
 const T0 = 1_768_000_000;
 
@@ -112,5 +112,23 @@ describe("relationsAround", () => {
     // b's contextual edge deduped into... b already appears in pushback, but
     // context is a different section so it appears there too with c's clarifies
     expect(ctx.entries.map((e) => e.other.id).sort()).toEqual(["b", "c"]);
+  });
+});
+
+describe("pacingGap", () => {
+  it("stays tight under 5 minutes and grows log-scaled", () => {
+    expect(pacingGap(1000, 1000 + 120)).toEqual({ extraPx: 0, label: null });
+    const hour = pacingGap(0, 3600);
+    expect(hour.extraPx).toBeGreaterThan(10);
+    expect(hour.label).toBeNull();
+    const days = pacingGap(0, 3 * 86400);
+    expect(days.extraPx).toBeGreaterThan(hour.extraPx);
+    expect(days.extraPx).toBeLessThanOrEqual(96);
+    expect(days.label).toBe("3 days later");
+  });
+
+  it("labels from six hours up and guards missing dates", () => {
+    expect(pacingGap(0, 6 * 3600).label).toBe("6 h later");
+    expect(pacingGap(null, 500)).toEqual({ extraPx: 0, label: null });
   });
 });

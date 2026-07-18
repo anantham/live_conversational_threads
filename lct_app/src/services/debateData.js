@@ -219,6 +219,21 @@ function sectionOf(move, focusIsTarget) {
  * the extraction's own explanation of the link.
  * Returns [{ key, title, entries: [{ other, text, type, incoming }] }].
  */
+/**
+ * "As it happened" pacing: extra vertical space between consecutive cards,
+ * log-scaled so minutes stay tight and days breathe, with a human label
+ * once the silence is long enough to mean something (>= 6 h).
+ * Returns { extraPx, label }.
+ */
+export function pacingGap(prevTs, ts) {
+  if (!Number.isFinite(prevTs) || !Number.isFinite(ts)) return { extraPx: 0, label: null };
+  const dt = ts - prevTs;
+  if (dt <= 300) return { extraPx: 0, label: null };
+  const extraPx = Math.min(96, Math.round(18 * Math.log10(dt / 300)));
+  const label = dt >= 6 * 3600 ? `${fmtSpan(dt)} later` : null;
+  return { extraPx, label };
+}
+
 const RELATION_WEIGHT = { pushback: 0, tension: 0, support: 1, outgoing: 2, context: 3 };
 
 /**

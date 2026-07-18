@@ -28,6 +28,7 @@ import {
   fmtDate,
   focusThread,
   orderQuoteCards,
+  pacingGap,
 } from "../services/debateData";
 
 const INK = "#1e293b";
@@ -450,6 +451,7 @@ export function DebateFeed({ title, view, onOpenMap }) {
   const [sort, setSort] = useState("oldest");
   const [tag, setTag] = useState("");
   const [speaker, setSpeaker] = useState("");
+  const [aboutOpen, setAboutOpen] = useState(false);
   const feedScrollRef = useRef(0);
 
   // The focused card lives in the URL (?n=<id>) as a REAL history entry:
@@ -571,6 +573,7 @@ export function DebateFeed({ title, view, onOpenMap }) {
         >
           <option value="oldest">Oldest first</option>
           <option value="newest">Newest first</option>
+          <option value="pacing">As it happened</option>
         </select>
         {data.speakers.length > 1 ? (
           <select
@@ -591,23 +594,28 @@ export function DebateFeed({ title, view, onOpenMap }) {
       </div>
 
       <div className="space-y-3">
-        {cards.map((card) => (
-          <QuoteCard
-            key={card.node.id}
-            card={card}
-            copiedKey={copiedKey}
-            onCopy={onCopy}
-            onFocus={enterFocus}
-          />
-        ))}
+        {cards.map((card, i) => {
+          const gap =
+            sort === "pacing" && i > 0 ? pacingGap(cards[i - 1].date, card.date) : null;
+          return (
+            <div key={card.node.id} style={gap && gap.extraPx ? { marginTop: gap.extraPx + 12 } : undefined}>
+              {gap?.label ? (
+                <div className="mb-2 text-center text-[11px]" style={{ color: META }}>
+                  · {gap.label} ·
+                </div>
+              ) : null}
+              <QuoteCard card={card} copiedKey={copiedKey} onCopy={onCopy} onFocus={enterFocus} />
+            </div>
+          );
+        })}
         {cards.length === 0 ? (
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-6 text-center text-sm" style={{ color: META }}>
             Nothing matches this filter.
           </div>
         ) : null}
 
-        <section className="rounded-xl border border-gray-200 bg-white px-4 py-5 text-center">
-          {onOpenMap ? (
+        {onOpenMap ? (
+          <section className="rounded-xl border border-gray-200 bg-white px-4 py-5 text-center">
             <button
               type="button"
               onClick={onOpenMap}
@@ -616,17 +624,41 @@ export function DebateFeed({ title, view, onOpenMap }) {
             >
               <MapIcon size={15} /> Open the full map
             </button>
-          ) : (
-            <p className="text-sm leading-relaxed" style={{ color: INK_SOFT }}>
-              These are the group&apos;s own messages, tagged and connected by an AI so the argument
-              is easier to follow. If a tag or connection reads wrong, that&apos;s a defect in the
-              map — say so in the group and it gets fixed.
+            <p className="mt-3 text-xs leading-relaxed" style={{ color: META }}>
+              To join in: copy any quote, paste it in WhatsApp search, reply there.
             </p>
-          )}
-          <p className="mt-3 text-xs leading-relaxed" style={{ color: META }}>
-            To join in: copy any quote, paste it in WhatsApp search, reply there.
-          </p>
-        </section>
+          </section>
+        ) : (
+          <section className="pb-2 text-center">
+            <button
+              type="button"
+              onClick={() => setAboutOpen((v) => !v)}
+              aria-expanded={aboutOpen}
+              className="text-[11px] underline decoration-gray-300 underline-offset-2 transition-colors duration-150 hover:decoration-gray-500"
+              style={{ color: META }}
+            >
+              About this map · AI-generated
+            </button>
+            {aboutOpen ? (
+              <div className="mt-2 rounded-xl border border-gray-200 bg-white px-4 py-4 text-left">
+                <span
+                  className="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase"
+                  style={{ background: "#f1f5f9", color: META }}
+                >
+                  AI note
+                </span>
+                <p className="mt-2 text-[13px] leading-relaxed" style={{ color: INK_SOFT }}>
+                  The quotes are the group&apos;s own messages; an AI tagged and connected them so
+                  the argument is easier to follow. If a tag or connection reads wrong, that&apos;s
+                  a defect in the map. Say so in the group and it gets fixed.
+                </p>
+                <p className="mt-2 text-xs leading-relaxed" style={{ color: META }}>
+                  To join in: copy any quote, paste it in WhatsApp search, reply there.
+                </p>
+              </div>
+            ) : null}
+          </section>
+        )}
       </div>
     </>
   );
