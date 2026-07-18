@@ -40,8 +40,9 @@ export function fmtClock(ts) {
     return new Date(ts * 1000).toLocaleString(undefined, {
       day: "numeric",
       month: "short",
-      hour: "2-digit",
+      hour: "numeric",
       minute: "2-digit",
+      hour12: true,
     });
   } catch {
     return null;
