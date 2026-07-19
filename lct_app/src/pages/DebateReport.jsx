@@ -163,14 +163,24 @@ function QuoteCard({ card, copiedKey, onCopy, onFocus, compact, highlight }) {
   ].filter(Boolean);
   return (
     <article
-      className={`rounded-xl border bg-white ${compact ? "px-3 py-2.5" : "px-4 py-3.5"} ${
-        onFocus ? "cursor-pointer transition-colors duration-150 hover:border-gray-300" : ""
-      }`}
-      style={{ borderColor: highlight ? INK_SOFT : "#e5e7eb" }}
+      className={`rounded-xl border ${card.isContext ? "border-dashed" : "bg-white"} ${
+        compact ? "px-3 py-2.5" : "px-4 py-3.5"
+      } ${onFocus ? "cursor-pointer transition-colors duration-150 hover:border-gray-300" : ""}`}
+      style={
+        card.isContext
+          ? { borderColor: "#e5e7eb", background: "#fafafa" }
+          : { borderColor: highlight ? INK_SOFT : "#e5e7eb" }
+      }
       onClick={onFocus ? () => onFocus(card.node.id) : undefined}
     >
       <div className="flex items-center justify-between gap-2">
-        <TagChip tag={card.tag} isCounter={card.isCounter} asksQuestion={card.asksQuestion} />
+        {card.isContext ? (
+          <span className="text-[10px] font-medium uppercase tracking-wide" style={{ color: META }}>
+            untagged
+          </span>
+        ) : (
+          <TagChip tag={card.tag} isCounter={card.isCounter} asksQuestion={card.asksQuestion} />
+        )}
         {!compact && counts.length > 0 ? (
           <span className="shrink-0 text-[10px]" style={{ color: META }}>
             {counts.join(" · ")}
@@ -465,13 +475,13 @@ export function DebateSkeleton() {
 }
 
 /** Shared view-model: data + the copy-to-reply interaction. */
-export function useDebateView(nodes, utterances) {
+export function useDebateView(nodes, utterances, contextMessages) {
   const [copiedKey, setCopiedKey] = useState(null);
   const [toast, setToast] = useState(null);
   const nudgedRef = useRef(false);
   const data = useMemo(
-    () => (nodes ? buildDebateData(nodes, utterances) : null),
-    [nodes, utterances]
+    () => (nodes ? buildDebateData(nodes, utterances, contextMessages) : null),
+    [nodes, utterances, contextMessages]
   );
   const onCopy = (key, text) => {
     try {
@@ -521,7 +531,7 @@ export function DebateFeed({ title, view, onOpenMap }) {
   }, [focusId]);
 
   const cards = useMemo(
-    () => orderQuoteCards(data?.cards || [], { sort, tag, speaker }),
+    () => orderQuoteCards(data?.cards || [], { sort, tag, speaker, context: data?.contextCards || [] }),
     [data, sort, tag, speaker]
   );
 
@@ -556,8 +566,13 @@ export function DebateFeed({ title, view, onOpenMap }) {
       ? `${fmtDate(data.span.start)} – ${fmtDate(data.span.end)}`
       : "";
   const hasCounters = data.cards.some((c) => c.isCounter);
+  const hasContext = (data.contextCards || []).length > 0;
   const tagChips = [
-    { key: "", label: "All" },
+    // With context messages aboard, "" is the tagged argument and "all" is
+    // literally every participant message in the window (owner's ask: "All"
+    // must not mean "what the AI thought was argument-relevant").
+    { key: "", label: hasContext ? "The argument" : "All" },
+    ...(hasContext ? [{ key: "all", label: "all messages" }] : []),
     ...data.tags.map((t) => ({ key: t, label: `${TAG_STYLES[t]?.label || t}s` })),
     ...(hasCounters ? [{ key: "counter", label: "counters" }] : []),
   ];
@@ -616,7 +631,7 @@ export function DebateFeed({ title, view, onOpenMap }) {
           const active = tag === c.key;
           return (
             <button
-              key={c.key || "all"}
+              key={c.key || "argument"}
               type="button"
               onClick={() => setTag(active && c.key ? "" : c.key)}
               className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
@@ -671,7 +686,12 @@ export function DebateFeed({ title, view, onOpenMap }) {
                   · {gap.label} ·
                 </div>
               ) : null}
-              <QuoteCard card={card} copiedKey={copiedKey} onCopy={onCopy} onFocus={enterFocus} />
+              <QuoteCard
+                card={card}
+                copiedKey={copiedKey}
+                onCopy={onCopy}
+                onFocus={card.isContext ? undefined : enterFocus}
+              />
             </div>
           );
         })}
@@ -719,6 +739,17 @@ export function DebateFeed({ title, view, onOpenMap }) {
                   the argument is easier to follow. If a tag or connection reads wrong, that&apos;s
                   a defect in the map. Say so in the group and it gets fixed.
                 </p>
+                {(data.contextCards || []).length > 0 ? (
+                  <p className="mt-2 text-[13px] leading-relaxed" style={{ color: INK_SOFT }}>
+                    The AI also drew a line: only {data.cards.length} of the debaters&apos;
+                    messages in this window became tagged cards; the other{" "}
+                    {data.contextCards.length} are visible under &ldquo;all messages&rdquo; as
+                    gray untagged cards, so you can judge the line yourself. Some calls are
+                    close: &ldquo;fwiw I find the proposition ludicrous&rdquo; reads like a claim
+                    but stayed untagged as a side thread, and &ldquo;Or that it doesnt go far
+                    enough&rdquo; is a pushback move in miniature.
+                  </p>
+                ) : null}
                 <p className="mt-2 text-xs leading-relaxed" style={{ color: META }}>
                   To join in: copy any quote, paste it in WhatsApp search, reply there.
                 </p>

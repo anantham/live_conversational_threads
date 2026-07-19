@@ -65,6 +65,7 @@ function parseArgs(argv) {
     cleanNames: false,
     images: "",
     spans: "",
+    contextMessages: "",
     upload: false,
   };
   for (let i = 0; i < rest.length; i += 1) {
@@ -77,6 +78,7 @@ function parseArgs(argv) {
     else if (a === "--clean-names") opts.cleanNames = true;
     else if (a === "--images") opts.images = rest[++i];
     else if (a === "--spans") opts.spans = rest[++i];
+    else if (a === "--context-messages") opts.contextMessages = rest[++i];
     else if (a === "--threads") {
       // Scope the snapshot to specific debate thread(s): only their nodes —
       // and only the messages THOSE cite — ever leave the machine.
@@ -236,6 +238,17 @@ async function main() {
     nodes,
     utterances,
   };
+
+  // Optional untagged participant messages for the "all messages" view
+  // ([{id, text, speaker, timestamp}], built + deduped + boundary-checked
+  // locally; never committed in plaintext). Publication boundary is the
+  // OWNER's call — participants-only as of 2026-07-19.
+  if (opts.contextMessages) {
+    const context = JSON.parse(await readFile(opts.contextMessages, "utf-8"));
+    if (!Array.isArray(context)) throw new Error("--context-messages file must be a JSON array");
+    payload.context_messages = context;
+    console.log(`context messages attached: ${context.length}`);
+  }
 
   const keyBytes = opts.key ? fromBase64Url(opts.key) : generateKeyBytes();
   const keyB64 = toBase64Url(keyBytes);
