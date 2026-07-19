@@ -34,6 +34,23 @@ import {
 const INK = "#1e293b";
 const INK_SOFT = "#374151";
 const META = "#64748b";
+// Crux = the pivot of the debate. A solid rose badge so it reads as a FLAG on
+// the card (this disagreement is load-bearing), distinct from the soft tag
+// pills (which classify the card) and the amber focal ring (which is UI state).
+const CRUX = "#e11d48";
+
+/** Marks a card whose disagreement, if resolved, would move the whole debate. */
+function CruxBadge() {
+  return (
+    <span
+      className="flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white"
+      style={{ background: CRUX }}
+      title="A crux — the disagreement that, if resolved, would move the whole debate"
+    >
+      <span aria-hidden="true">◆</span> crux
+    </span>
+  );
+}
 
 const TAG_STYLES = {
   claim: { bg: "#dbeafe", color: "#1d4ed8", label: "claim" },
@@ -169,7 +186,7 @@ function QuoteCard({ card, copiedKey, onCopy, onFocus, compact, highlight }) {
       style={
         card.isContext
           ? { borderColor: "#e5e7eb", background: "#fafafa" }
-          : { borderColor: highlight ? INK_SOFT : "#e5e7eb" }
+          : { borderColor: card.isCrux ? CRUX : highlight ? INK_SOFT : "#e5e7eb" }
       }
       onClick={onFocus ? () => onFocus(card.node.id) : undefined}
     >
@@ -179,7 +196,10 @@ function QuoteCard({ card, copiedKey, onCopy, onFocus, compact, highlight }) {
             untagged
           </span>
         ) : (
-          <TagChip tag={card.tag} isCounter={card.isCounter} asksQuestion={card.asksQuestion} />
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <TagChip tag={card.tag} isCounter={card.isCounter} asksQuestion={card.asksQuestion} />
+            {card.isCrux ? <CruxBadge /> : null}
+          </span>
         )}
         {!compact && counts.length > 0 ? (
           <span className="shrink-0 text-[10px]" style={{ color: META }}>
@@ -340,7 +360,10 @@ function Bubble({ entry, color, focal, copiedKey, onCopy, onFocus, bubbleRef }) 
           </p>
         ) : null}
         <div className="mt-1.5 flex items-center justify-between gap-2">
-          <TagChip tag={card.tag} isCounter={card.isCounter} asksQuestion={card.asksQuestion} />
+          <span className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <TagChip tag={card.tag} isCounter={card.isCounter} asksQuestion={card.asksQuestion} />
+            {card.isCrux ? <CruxBadge /> : null}
+          </span>
           {quote ? (
             <CopyButton text={quote.text} copyKey={"b:" + card.node.id} copiedKey={copiedKey} onCopy={onCopy} />
           ) : null}
@@ -566,6 +589,7 @@ export function DebateFeed({ title, view, onOpenMap }) {
       ? `${fmtDate(data.span.start)} – ${fmtDate(data.span.end)}`
       : "";
   const hasCounters = data.cards.some((c) => c.isCounter);
+  const hasCrux = data.cards.some((c) => c.isCrux);
   const hasContext = (data.contextCards || []).length > 0;
   const tagChips = [
     // With context messages aboard, "" is the tagged argument and "all" is
@@ -573,6 +597,8 @@ export function DebateFeed({ title, view, onOpenMap }) {
     // must not mean "what the AI thought was argument-relevant").
     { key: "", label: hasContext ? "The argument" : "All" },
     ...(hasContext ? [{ key: "all", label: "all messages" }] : []),
+    // Cruxes get pride of place — the assessment layer's highest-value cut.
+    ...(hasCrux ? [{ key: "crux", label: "◆ cruxes" }] : []),
     ...data.tags.map((t) => ({ key: t, label: `${TAG_STYLES[t]?.label || t}s` })),
     ...(hasCounters ? [{ key: "counter", label: "counters" }] : []),
   ];
@@ -629,17 +655,29 @@ export function DebateFeed({ title, view, onOpenMap }) {
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
         {tagChips.map((c) => {
           const active = tag === c.key;
+          const crux = c.key === "crux";
+          // Crux chip carries the crux color in both states so it reads as the
+          // special cut even when inactive; others use the neutral gray scheme.
+          const style = crux
+            ? active
+              ? { background: CRUX, borderColor: CRUX, color: "#fff" }
+              : { borderColor: CRUX, color: CRUX }
+            : active
+              ? undefined
+              : { color: INK_SOFT };
           return (
             <button
               key={c.key || "argument"}
               type="button"
               onClick={() => setTag(active && c.key ? "" : c.key)}
               className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors duration-150 ${
-                active
+                active && !crux
                   ? "border-gray-500 bg-gray-800 text-white"
-                  : "border-gray-200 bg-white hover:bg-gray-50"
+                  : crux
+                    ? "hover:opacity-90"
+                    : "border-gray-200 bg-white hover:bg-gray-50"
               }`}
-              style={active ? undefined : { color: INK_SOFT }}
+              style={style}
             >
               {c.label}
             </button>
@@ -739,6 +777,13 @@ export function DebateFeed({ title, view, onOpenMap }) {
                   the argument is easier to follow. If a tag or connection reads wrong, that&apos;s
                   a defect in the map. Say so in the group and it gets fixed.
                 </p>
+                {hasCrux ? (
+                  <p className="mt-2 text-[13px] leading-relaxed" style={{ color: INK_SOFT }}>
+                    <span className="font-semibold" style={{ color: CRUX }}>◆ crux</span> marks the
+                    disagreements that, if resolved, would move the whole debate — the cheapest place
+                    to spend the next round of attention. Filter to them with the ◆ cruxes chip.
+                  </p>
+                ) : null}
                 {(data.contextCards || []).length > 0 ? (
                   <p className="mt-2 text-[13px] leading-relaxed" style={{ color: INK_SOFT }}>
                     The AI also drew a line: only {data.cards.length} of the debaters&apos;

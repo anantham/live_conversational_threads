@@ -167,6 +167,9 @@ export function buildDebateData(nodes, utterances, contextMessages) {
         // card whose verbatim text asks something matches both.
         asksQuestion: tag === "question" || Boolean(quote && /\?/.test(quote.text)),
         isCounter: outAttack.has(n.id),
+        // A crux: the disagreement that, if resolved, would move the whole
+        // debate. The extraction flags it (node.is_crux); the reader shows it.
+        isCrux: Boolean(n.is_crux),
         pushbackCount: inAttack.get(n.id) || 0,
         supportCount: inSupport.get(n.id) || 0,
         quote,
@@ -186,6 +189,7 @@ export function buildDebateData(nodes, utterances, contextMessages) {
       tag: null,
       asksQuestion: false,
       isCounter: false,
+      isCrux: false,
       pushbackCount: 0,
       supportCount: 0,
       quote: {
@@ -227,12 +231,13 @@ export function buildDebateData(nodes, utterances, contextMessages) {
 /**
  * Level-1 ordering + filtering.
  * sort: "oldest" | "newest" | "pacing"; tag: "" (argument only) | "all"
- * (argument + untagged context) | claim_type | "counter"; speaker: "" | id;
- * context: the contextCards to merge in when tag === "all".
+ * (argument + untagged context) | "crux" | claim_type | "counter";
+ * speaker: "" | id; context: the contextCards to merge in when tag === "all".
  */
 export function orderQuoteCards(cards, { sort = "oldest", tag = "", speaker = "", context = [] } = {}) {
   let list = Array.isArray(cards) ? [...cards] : [];
   if (tag === "all") list = list.concat(Array.isArray(context) ? context : []);
+  else if (tag === "crux") list = list.filter((c) => c.isCrux);
   else if (tag === "counter") list = list.filter((c) => c.isCounter);
   else if (tag === "question") list = list.filter((c) => c.asksQuestion || c.tag === "question");
   else if (tag) list = list.filter((c) => c.tag === tag);
