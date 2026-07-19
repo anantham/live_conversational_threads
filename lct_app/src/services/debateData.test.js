@@ -60,6 +60,36 @@ describe("buildDebateData", () => {
   });
 });
 
+describe("quote excerpts (span pass)", () => {
+  const LONG = "First point setting up. The core claim is stated here. Then a long tail of examples.";
+  const uttOf = (text) => [{ id: "long", text, speaker: "Alice", timestamp: T0 }];
+
+  it("exposes quote_span as the excerpt when it is a verbatim substring", () => {
+    const a = node("a", { utterance_ids: ["long"], quote_span: "The core claim is stated here." });
+    const card = buildDebateData([a], uttOf(LONG)).cards[0];
+    expect(card.quote.excerpt).toBe("The core claim is stated here.");
+    expect(card.quote.text).toBe(LONG);
+  });
+
+  it("fails open to the whole message when the span drifts from the text", () => {
+    const a = node("a", { utterance_ids: ["long"], quote_span: "The core claim is stated here!" });
+    expect(buildDebateData([a], uttOf(LONG)).cards[0].quote.excerpt).toBeNull();
+  });
+
+  it("ignores a span that covers the entire message", () => {
+    const a = node("a", { utterance_ids: ["long"], quote_span: LONG });
+    expect(buildDebateData([a], uttOf(LONG)).cards[0].quote.excerpt).toBeNull();
+  });
+
+  it("matches spans against the cleaned display text, not the raw message", () => {
+    const a = node("a", { utterance_ids: ["long"], quote_span: "The core claim is stated here." });
+    const raw = `${LONG} <This message was edited>`;
+    const card = buildDebateData([a], uttOf(raw)).cards[0];
+    expect(card.quote.text).toBe(LONG);
+    expect(card.quote.excerpt).toBe("The core claim is stated here.");
+  });
+});
+
 describe("orderQuoteCards", () => {
   const cards = [
     { node: { id: "1", speaker_id: "A" }, tag: "claim", isCounter: false, date: 300 },
