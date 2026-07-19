@@ -134,6 +134,25 @@ describe("context messages (all-messages view)", () => {
   });
 });
 
+describe("cruxes", () => {
+  it("flags cards from node.is_crux and leaves the rest false", () => {
+    const a = node("a", { utterance_ids: ["u1"], speaker_id: "Alice", is_crux: true });
+    const b = node("b", { utterance_ids: ["u2"], speaker_id: "Bob", timestamp_start: T0 + 3600 });
+    const data = buildDebateData([a, b], UTTS);
+    expect(data.byId.get("a").isCrux).toBe(true);
+    expect(data.byId.get("b").isCrux).toBe(false);
+  });
+
+  it('the "crux" filter keeps only crux cards', () => {
+    const cards = [
+      { node: { id: "1" }, tag: "claim", isCrux: true, date: 1 },
+      { node: { id: "2" }, tag: "claim", isCrux: false, date: 2 },
+      { node: { id: "3" }, tag: "evidence", isCrux: true, date: 3 },
+    ];
+    expect(orderQuoteCards(cards, { tag: "crux" }).map((c) => c.node.id)).toEqual(["1", "3"]);
+  });
+});
+
 describe("orderQuoteCards", () => {
   const cards = [
     { node: { id: "1", speaker_id: "A" }, tag: "claim", isCounter: false, date: 300 },
