@@ -176,9 +176,6 @@ export function buildDebateData(nodes, utterances, contextMessages) {
     .sort((a, b) => (a.date ?? Infinity) - (b.date ?? Infinity));
 
   const dates = cards.map((c) => c.date).filter((t) => t !== null);
-  const speakers = [...new Set(argNodes.map((n) => n.speaker_id).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b)
-  );
   const tags = [...new Set(cards.map((c) => c.tag))];
 
   const contextCards = (Array.isArray(contextMessages) ? contextMessages : [])
@@ -202,6 +199,15 @@ export function buildDebateData(nodes, utterances, contextMessages) {
       date: Number.isFinite(m.timestamp) ? m.timestamp : null,
     }))
     .sort((a, b) => (a.date ?? Infinity) - (b.date ?? Infinity));
+
+  // Speakers cover BOTH card sets: under "all messages" the dropdown must be
+  // able to select someone who only appears in untagged context.
+  const speakers = [
+    ...new Set([
+      ...argNodes.map((n) => n.speaker_id).filter(Boolean),
+      ...contextCards.map((c) => c.node.speaker_id).filter(Boolean),
+    ]),
+  ].sort((a, b) => a.localeCompare(b));
 
   return {
     empty: false,

@@ -126,6 +126,12 @@ describe("context messages (all-messages view)", () => {
     const bobs = orderQuoteCards(data.cards, { tag: "all", speaker: "Bob", context: data.contextCards });
     expect(bobs.map((c) => c.node.id)).toEqual(["ctx-m2"]);
   });
+
+  it("speaker list covers context-only speakers so the dropdown can select them", () => {
+    // Bob has no tagged card, only the untagged aside — he must still be
+    // offered by the speaker filter.
+    expect(dataWithContext().speakers).toEqual(["Alice", "Bob"]);
+  });
 });
 
 describe("orderQuoteCards", () => {
