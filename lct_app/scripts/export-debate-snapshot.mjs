@@ -50,6 +50,7 @@ const NODE_FIELDS = [
   "semantic_type",
   "timestamp_start",
   "utterance_ids",
+  "quote_span",
 ];
 
 function parseArgs(argv) {
@@ -63,6 +64,7 @@ function parseArgs(argv) {
     threads: null,
     cleanNames: false,
     images: "",
+    spans: "",
     upload: false,
   };
   for (let i = 0; i < rest.length; i += 1) {
@@ -74,6 +76,7 @@ function parseArgs(argv) {
     else if (a === "--pathname") opts.pathname = rest[++i];
     else if (a === "--clean-names") opts.cleanNames = true;
     else if (a === "--images") opts.images = rest[++i];
+    else if (a === "--spans") opts.spans = rest[++i];
     else if (a === "--threads") {
       // Scope the snapshot to specific debate thread(s): only their nodes —
       // and only the messages THOSE cite — ever leave the machine.
@@ -171,6 +174,22 @@ async function main() {
     out.edge_relations = Array.isArray(n.edge_relations) ? n.edge_relations.map(pruneEdge) : [];
     return out;
   });
+
+  if (opts.spans) {
+    // Span-pass output: node id -> the minimal verbatim excerpt of that
+    // card's source message. The UI re-verifies the substring property
+    // before rendering, so a stale map fails open to the whole message.
+    const spanMap = JSON.parse(await readFile(opts.spans, "utf-8"));
+    let spanned = 0;
+    nodes.forEach((n) => {
+      const s = spanMap[n.id];
+      if (typeof s === "string" && s.trim()) {
+        n.quote_span = s;
+        spanned += 1;
+      }
+    });
+    console.log(`quote spans attached: ${spanned}`);
+  }
 
   const cited = new Set(nodes.flatMap((n) => (Array.isArray(n.utterance_ids) ? n.utterance_ids.map(String) : [])));
   let utterances = [];

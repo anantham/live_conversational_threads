@@ -120,9 +120,43 @@ CopyButton.propTypes = {
   onCopy: PropTypes.func.isRequired,
 };
 
+/** Toggle between a card's excerpt and its full message. */
+function ExcerptToggle({ expanded, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className="mt-1 text-[11px] underline decoration-dotted underline-offset-2"
+      style={{ color: META }}
+    >
+      {expanded ? "Show excerpt" : "Show full message"}
+    </button>
+  );
+}
+
+ExcerptToggle.propTypes = {
+  expanded: PropTypes.bool,
+  onToggle: PropTypes.func.isRequired,
+};
+
+/** Ellipses mark an excerpt that starts/ends mid-message. */
+function excerptMarks(quote, excerpt) {
+  return {
+    lead: excerpt && !quote.text.startsWith(excerpt) ? "… " : "",
+    trail: excerpt && !quote.text.endsWith(excerpt) ? " …" : "",
+  };
+}
+
 /** One verbatim message, tagged. The whole card opens the focus view. */
 function QuoteCard({ card, copiedKey, onCopy, onFocus, compact, highlight }) {
   const quote = card.quote;
+  const [expanded, setExpanded] = useState(false);
+  const excerpt = !expanded && quote?.excerpt ? quote.excerpt : null;
+  const shownText = excerpt || quote?.text || "";
+  const { lead, trail } = quote ? excerptMarks(quote, excerpt) : { lead: "", trail: "" };
   const counts = [
     card.pushbackCount ? `${card.pushbackCount} pushback${card.pushbackCount > 1 ? "s" : ""}` : null,
     card.supportCount ? `${card.supportCount} support` : null,
@@ -147,7 +181,7 @@ function QuoteCard({ card, copiedKey, onCopy, onFocus, compact, highlight }) {
         <blockquote
           className={`mt-2 leading-relaxed ${compact ? "text-[13px]" : "text-[15px]"}`}
           style={
-            compact || !onFocus
+            compact || !onFocus || expanded || excerpt
               ? { color: INK }
               : {
                   color: INK,
@@ -158,9 +192,10 @@ function QuoteCard({ card, copiedKey, onCopy, onFocus, compact, highlight }) {
                 }
           }
         >
-          “{compact && quote.text.length > 180 ? `${quote.text.slice(0, 180).trimEnd()}…` : quote.text}”
+          “{lead}{compact && shownText.length > 180 ? `${shownText.slice(0, 180).trimEnd()}…` : shownText}{trail}”
         </blockquote>
       ) : null}
+      {quote?.excerpt ? <ExcerptToggle expanded={expanded} onToggle={() => setExpanded((v) => !v)} /> : null}
       {quote?.image ? (
         <img
           src={quote.image}
@@ -198,6 +233,7 @@ QuoteCard.propTypes = {
     supportCount: PropTypes.number,
     quote: PropTypes.shape({
       text: PropTypes.string,
+      excerpt: PropTypes.string,
       speaker: PropTypes.string,
       ts: PropTypes.number,
       image: PropTypes.string,
@@ -233,8 +269,11 @@ const RELATION_CAPTIONS = {
 /** One chat bubble in the focus thread. */
 function Bubble({ entry, color, focal, copiedKey, onCopy, onFocus, bubbleRef }) {
   const { card, relation } = entry;
+  const quote = card?.quote;
+  const [expanded, setExpanded] = useState(false);
   if (!card) return null;
-  const quote = card.quote;
+  const excerpt = !expanded && quote?.excerpt ? quote.excerpt : null;
+  const { lead, trail } = quote ? excerptMarks(quote, excerpt) : { lead: "", trail: "" };
   const speaker = card.node.speaker_id || quote?.speaker || "";
   const clock = fmtClock(quote?.ts) || fmtDate(card.date);
   return (
@@ -273,9 +312,10 @@ function Bubble({ entry, color, focal, copiedKey, onCopy, onFocus, bubbleRef }) 
             className={"mt-1.5 leading-relaxed " + (focal ? "text-[15px]" : "text-[13px]")}
             style={{ color: INK }}
           >
-            &ldquo;{quote.text}&rdquo;
+            &ldquo;{lead}{excerpt || quote.text}{trail}&rdquo;
           </blockquote>
         ) : null}
+        {quote?.excerpt ? <ExcerptToggle expanded={expanded} onToggle={() => setExpanded((v) => !v)} /> : null}
         {quote?.image ? (
           <img
             src={quote.image}

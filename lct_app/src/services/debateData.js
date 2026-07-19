@@ -78,8 +78,14 @@ function quoteFor(node, utteranceById) {
       // the caption separately as the image's alt text.
       const raw = u.text.replace(/<This message was edited>/gi, "").trim();
       const imageCaption = (raw.match(/\[Image:\s*([^\]]*)\]/) || [])[1] || "";
+      const text = u.image ? raw.replace(/\[Image:[^\]]*\]/g, "").replace(/\s{2,}/g, " ").trim() : raw;
+      // Span pass: node.quote_span holds the card's minimal verbatim excerpt.
+      // It only counts if it is literally a substring of the displayed text —
+      // anything else (drift, paraphrase) fails open to the whole message.
+      const span = typeof node?.quote_span === "string" ? node.quote_span.trim() : "";
       return {
-        text: u.image ? raw.replace(/\[Image:[^\]]*\]/g, "").replace(/\s{2,}/g, " ").trim() : raw,
+        text,
+        excerpt: span && span.length < text.length && text.includes(span) ? span : null,
         speaker: u.speaker || u.speaker_id || "",
         ts: Number.isFinite(ts) ? ts : null,
         image: typeof u.image === "string" ? u.image : null,
