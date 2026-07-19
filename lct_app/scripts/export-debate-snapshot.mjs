@@ -65,6 +65,7 @@ function parseArgs(argv) {
     cleanNames: false,
     images: "",
     spans: "",
+    contextMessages: "",
     upload: false,
   };
   for (let i = 0; i < rest.length; i += 1) {
@@ -77,6 +78,7 @@ function parseArgs(argv) {
     else if (a === "--clean-names") opts.cleanNames = true;
     else if (a === "--images") opts.images = rest[++i];
     else if (a === "--spans") opts.spans = rest[++i];
+    else if (a === "--context-messages") opts.contextMessages = rest[++i];
     else if (a === "--threads") {
       // Scope the snapshot to specific debate thread(s): only their nodes —
       // and only the messages THOSE cite — ever leave the machine.
@@ -236,6 +238,41 @@ async function main() {
     nodes,
     utterances,
   };
+
+  // Optional untagged participant messages for the "all messages" view
+  // ([{id, text, speaker, timestamp}], built + deduped + boundary-checked
+  // locally; never committed in plaintext). Publication boundary is the
+  // OWNER's call — participants-only as of 2026-07-19.
+  if (opts.contextMessages) {
+    const context = JSON.parse(await readFile(opts.contextMessages, "utf-8"));
+    if (!Array.isArray(context)) throw new Error("--context-messages file must be a JSON array");
+    // Normalize to EXACTLY {id, text, speaker, timestamp} before encryption:
+    // extra fields must not ride into the ciphertext, --clean-names must
+    // cover these speakers like every other speaker string in the snapshot,
+    // and a malformed row fails the export loudly instead of shipping.
+    payload.context_messages = context.map((m, i) => {
+      if (!m || typeof m.text !== "string" || !m.text.trim()) {
+        throw new Error(`--context-messages row ${i} has no text`);
+      }
+      if (m.id === undefined || m.id === null || String(m.id).trim() === "") {
+        throw new Error(`--context-messages row ${i} has no id`);
+      }
+      // Number(null) and Number("") are 0 — a missing timestamp must stay
+      // null (sorts last), not become epoch zero (sorts first).
+      const ts =
+        m.timestamp === undefined || m.timestamp === null || m.timestamp === ""
+          ? null
+          : Number(m.timestamp);
+      const speaker = String(m.speaker || "");
+      return {
+        id: m.id,
+        text: m.text,
+        speaker: opts.cleanNames ? cleanSpeakerName(speaker) : speaker,
+        timestamp: Number.isFinite(ts) ? ts : null,
+      };
+    });
+    console.log(`context messages attached: ${payload.context_messages.length}`);
+  }
 
   const keyBytes = opts.key ? fromBase64Url(opts.key) : generateKeyBytes();
   const keyB64 = toBase64Url(keyBytes);

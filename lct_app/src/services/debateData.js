@@ -98,9 +98,14 @@ function quoteFor(node, utteranceById) {
 
 /**
  * Build the card set + move list for one debate snapshot.
- * Returns { empty } or { cards, byId, moves, span, speakers, tags }.
+ * Returns { empty } or { cards, byId, moves, span, speakers, tags, contextCards }.
+ *
+ * contextMessages (optional): every window message from the debate's
+ * participants that the extraction did NOT tag — rendered as plain gray
+ * cards under the "all messages" filter so the AI's inclusion boundary
+ * is visible instead of implicit.
  */
-export function buildDebateData(nodes, utterances) {
+export function buildDebateData(nodes, utterances, contextMessages) {
   const list = Array.isArray(nodes) ? nodes : [];
   const utteranceById = new Map(
     (Array.isArray(utterances) ? utterances : []).map((u) => [String(u.id), u])
@@ -171,10 +176,38 @@ export function buildDebateData(nodes, utterances) {
     .sort((a, b) => (a.date ?? Infinity) - (b.date ?? Infinity));
 
   const dates = cards.map((c) => c.date).filter((t) => t !== null);
-  const speakers = [...new Set(argNodes.map((n) => n.speaker_id).filter(Boolean))].sort((a, b) =>
-    a.localeCompare(b)
-  );
   const tags = [...new Set(cards.map((c) => c.tag))];
+
+  const contextCards = (Array.isArray(contextMessages) ? contextMessages : [])
+    .filter((m) => m && typeof m.text === "string" && m.text.trim())
+    .map((m) => ({
+      isContext: true,
+      node: { id: `ctx-${m.id}`, speaker_id: m.speaker || "" },
+      tag: null,
+      asksQuestion: false,
+      isCounter: false,
+      pushbackCount: 0,
+      supportCount: 0,
+      quote: {
+        text: m.text.replace(/<This message was edited>/gi, "").trim(),
+        excerpt: null,
+        speaker: m.speaker || "",
+        ts: Number.isFinite(m.timestamp) ? m.timestamp : null,
+        image: null,
+        imageAlt: "",
+      },
+      date: Number.isFinite(m.timestamp) ? m.timestamp : null,
+    }))
+    .sort((a, b) => (a.date ?? Infinity) - (b.date ?? Infinity));
+
+  // Speakers cover BOTH card sets: under "all messages" the dropdown must be
+  // able to select someone who only appears in untagged context.
+  const speakers = [
+    ...new Set([
+      ...argNodes.map((n) => n.speaker_id).filter(Boolean),
+      ...contextCards.map((c) => c.node.speaker_id).filter(Boolean),
+    ]),
+  ].sort((a, b) => a.localeCompare(b));
 
   return {
     empty: false,
@@ -187,16 +220,20 @@ export function buildDebateData(nodes, utterances) {
     },
     speakers,
     tags,
+    contextCards,
   };
 }
 
 /**
  * Level-1 ordering + filtering.
- * sort: "oldest" | "newest"; tag: "" | claim_type | "counter"; speaker: "" | id.
+ * sort: "oldest" | "newest" | "pacing"; tag: "" (argument only) | "all"
+ * (argument + untagged context) | claim_type | "counter"; speaker: "" | id;
+ * context: the contextCards to merge in when tag === "all".
  */
-export function orderQuoteCards(cards, { sort = "oldest", tag = "", speaker = "" } = {}) {
+export function orderQuoteCards(cards, { sort = "oldest", tag = "", speaker = "", context = [] } = {}) {
   let list = Array.isArray(cards) ? [...cards] : [];
-  if (tag === "counter") list = list.filter((c) => c.isCounter);
+  if (tag === "all") list = list.concat(Array.isArray(context) ? context : []);
+  else if (tag === "counter") list = list.filter((c) => c.isCounter);
   else if (tag === "question") list = list.filter((c) => c.asksQuestion || c.tag === "question");
   else if (tag) list = list.filter((c) => c.tag === tag);
   if (speaker) list = list.filter((c) => c.node.speaker_id === speaker);

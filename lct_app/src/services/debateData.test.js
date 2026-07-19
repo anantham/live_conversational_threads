@@ -90,6 +90,50 @@ describe("quote excerpts (span pass)", () => {
   });
 });
 
+describe("context messages (all-messages view)", () => {
+  const CTX = [
+    { id: "m2", text: "an untagged aside <This message was edited>", speaker: "Bob", timestamp: T0 + 1800 },
+    { id: "m1", text: "earlier chatter", speaker: "Alice", timestamp: T0 - 600 },
+    { id: "bad", text: "   ", speaker: "Alice", timestamp: T0 },
+  ];
+
+  function dataWithContext() {
+    const a = node("a", { utterance_ids: ["u1"], speaker_id: "Alice" });
+    return buildDebateData([a], UTTS, CTX);
+  }
+
+  it("builds cleaned, chronological context cards without touching the argument set", () => {
+    const data = dataWithContext();
+    expect(data.cards).toHaveLength(1);
+    expect(data.contextCards).toHaveLength(2);
+    expect(data.contextCards[0].quote.text).toBe("earlier chatter");
+    expect(data.contextCards[1].quote.text).toBe("an untagged aside");
+    expect(data.contextCards[0].isContext).toBe(true);
+    expect(data.contextCards[0].tag).toBeNull();
+    expect(data.byId.has("ctx-m1")).toBe(false);
+  });
+
+  it('tag "" stays argument-only; tag "all" interleaves context chronologically', () => {
+    const data = dataWithContext();
+    const argOnly = orderQuoteCards(data.cards, { tag: "", context: data.contextCards });
+    expect(argOnly.map((c) => c.node.id)).toEqual(["a"]);
+    const all = orderQuoteCards(data.cards, { tag: "all", context: data.contextCards });
+    expect(all.map((c) => c.node.id)).toEqual(["ctx-m1", "a", "ctx-m2"]);
+  });
+
+  it("speaker filter applies to context cards under all", () => {
+    const data = dataWithContext();
+    const bobs = orderQuoteCards(data.cards, { tag: "all", speaker: "Bob", context: data.contextCards });
+    expect(bobs.map((c) => c.node.id)).toEqual(["ctx-m2"]);
+  });
+
+  it("speaker list covers context-only speakers so the dropdown can select them", () => {
+    // Bob has no tagged card, only the untagged aside — he must still be
+    // offered by the speaker filter.
+    expect(dataWithContext().speakers).toEqual(["Alice", "Bob"]);
+  });
+});
+
 describe("orderQuoteCards", () => {
   const cards = [
     { node: { id: "1", speaker_id: "A" }, tag: "claim", isCounter: false, date: 300 },
