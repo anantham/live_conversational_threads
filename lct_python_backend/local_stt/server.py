@@ -33,10 +33,33 @@ import time
 import uuid
 from pathlib import Path
 
+import asyncio
+
 import uvicorn
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
+
+# LIVENESS CONTRACT (added 2026-07-26 after a 7-day wedge).
+#
+# The endpoint is `async def`, so its body runs ON THE EVENT LOOP. Every blocking
+# call in it (mlx_whisper.transcribe, the VAD gate, the diarizer) therefore froze
+# the whole server — including `/health`, which then could not answer at all. The
+# process stayed alive and kept LISTENING, so launchd's KeepAlive saw nothing wrong
+# (it only restarts on process EXIT) and the wedge persisted for 7 days at 47% CPU.
+#
+# Fix: every blocking call is offloaded with run_in_threadpool, so the loop stays
+# free and /health always answers. A bounded semaphore then keeps the compute layer
+# from being handed unlimited threads; overflow is shed with 503 + Retry-After
+# rather than queued forever.
+#
+# Contract for clients: refused = down · 503 = healthy but saturated (retry later)
+# · accepts-but-silent must never happen again.
+MAX_CONCURRENCY = int(os.getenv("MLX_STT_MAX_CONCURRENCY", "2"))
+RETRY_AFTER_S = int(os.getenv("MLX_STT_RETRY_AFTER_S", "30"))
+_slots = asyncio.Semaphore(MAX_CONCURRENCY)
+_inflight = {"n": 0}
 
 DEFAULT_MODEL = os.getenv("LOCAL_STT_MODEL", "mlx-community/whisper-large-v3-turbo")
 PORT = int(os.getenv("LOCAL_STT_PORT", "5095"))
@@ -98,6 +121,9 @@ async def _access_log(request: Request, call_next):
 
 @app.get("/health")
 def health() -> dict:
+    # Reports SATURATION, not just liveness: a caller (or watchdog) can now tell
+    # "busy" apart from "wedged" — previously indistinguishable, because a wedged
+    # server simply never answered.
     return {
         "status": "healthy" if _state["ready"] else "starting",
         "engine": "mlx-whisper",
@@ -105,6 +131,9 @@ def health() -> dict:
         "backend": "mlx-metal-ane",
         "requests": _state["requests"],
         "failures": _state["failures"],
+        "inflight": _inflight["n"],
+        "max_concurrency": MAX_CONCURRENCY,
+        "busy": _inflight["n"] >= MAX_CONCURRENCY,
         "diarization": "available" if _diar.get("ok") else (_diar.get("error") or "not loaded"),
     }
 
@@ -305,6 +334,16 @@ async def transcribe(
     want_words = _truthy(word_timestamps) or "word" in (timestamp_granularities or "").lower()
     import mlx_whisper  # lazy import so module import / --help stays cheap
 
+    # Shed load instead of queueing it forever: an unbounded queue is what turned a
+    # slow server into an indistinguishable-from-dead one. 503 + Retry-After tells the
+    # client "healthy, come back" — a signal the old wedge could never send.
+    if _slots.locked() and _inflight["n"] >= MAX_CONCURRENCY:
+        log.warning("saturated: %d in flight >= %d — shedding with 503", _inflight["n"], MAX_CONCURRENCY)
+        return JSONResponse(status_code=503, headers={"Retry-After": str(RETRY_AFTER_S)},
+                            content={"error": "server saturated", "inflight": _inflight["n"],
+                                     "max_concurrency": MAX_CONCURRENCY,
+                                     "retry_after_seconds": RETRY_AFTER_S})
+
     _state["requests"] += 1
     suffix = Path(file.filename or "audio.wav").suffix or ".wav"
     payload = await file.read()
@@ -321,11 +360,14 @@ async def transcribe(
         tmp.write(payload)
         tmp_path = tmp.name
 
+    # Hold a compute slot for the whole blocking region; released in .
+    await _slots.acquire()
+    _inflight["n"] += 1
     try:
         # No-speech gate (#1): if silero-vad finds no voice activity, skip the model
         # entirely and return empty — otherwise it hallucinates filler on silence/
         # ambient. Fails OPEN (None -> transcribe) so a broken gate never drops audio.
-        if VAD_GATE and _has_speech(tmp_path) is False:
+        if VAD_GATE and (await run_in_threadpool(_has_speech, tmp_path)) is False:
             _state["ready"] = True
             log.info("VAD gate: no speech in file=%s -> empty result (transcription skipped)", file.filename)
             return JSONResponse({
@@ -349,7 +391,8 @@ async def transcribe(
             kwargs["hallucination_silence_threshold"] = 2.0  # skip silent spans it tries to fill (needs word ts)
 
         t0 = time.perf_counter()
-        result = mlx_whisper.transcribe(tmp_path, **kwargs)
+        # BLOCKING (seconds-to-minutes of Metal/ANE compute) -> must not run on the loop
+        result = await run_in_threadpool(lambda: mlx_whisper.transcribe(tmp_path, **kwargs))
         elapsed = time.perf_counter() - t0
 
         segments = []
@@ -373,7 +416,8 @@ async def transcribe(
                 log.warning("diarize requested but unavailable: %s", diar_info["error"])
             else:
                 d0 = time.perf_counter()
-                diarization = pipe(tmp_path)          # tmp file still exists (unlinked in finally)
+                # BLOCKING too (pyannote) -> same treatment
+                diarization = await run_in_threadpool(pipe, tmp_path)  # tmp still exists (unlinked in finally)
                 segments, speakers = _assign_speakers(segments, diarization)
                 d_elapsed = time.perf_counter() - d0
                 diar_info = {"device": _diar.get("device"), "speakers": speakers, "n_speakers": len(speakers),
@@ -426,6 +470,11 @@ async def transcribe(
         log.exception("transcribe FAILED: file=%s", file.filename)
         return JSONResponse(status_code=500, content={"error": f"{type(exc).__name__}: {exc}"})
     finally:
+        # Release the compute slot FIRST so a waiting request isn't held behind
+        # tempfile/cache cleanup, and so a cleanup failure can never leak a slot
+        # (a leaked slot would permanently shrink capacity — a slow-motion wedge).
+        _inflight["n"] -= 1
+        _slots.release()
         try:
             os.unlink(tmp_path)
         except OSError:

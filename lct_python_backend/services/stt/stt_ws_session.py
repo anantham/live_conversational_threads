@@ -34,6 +34,10 @@ from lct_python_backend.services.live_prayer import (
     run_for_segment as run_live_prayer_for_segment,
     should_run as should_run_live_prayer,
 )
+from lct_python_backend.services.intent_signal_detector import (
+    detect_intent_signals_for_segment,
+    should_run as should_run_intent_signal_detection,
+)
 from lct_python_backend.services.contacts_cache import read_contacts_cache
 from lct_python_backend.services.user_identity_service import get_self_contact_id
 from lct_python_backend.services.byok_session_store import (
@@ -442,6 +446,82 @@ class WsSessionContext:
             logger.warning("[live-prayer] runner failed: %s", exc)
         finally:
             self._live_prayer_in_flight = False
+
+    async def _run_intent_signal_detection(self, text: str, utterance_id: Any = None) -> None:
+        """Fire-and-forget ADR-013 Contract C detection for one final segment.
+
+        Uses its own DB session so it cannot race the websocket session's graph
+        persistence work. Errors are recorded as durable thread events and never
+        affect the live STT path.
+        """
+        conversation_id = self.state.conversation_id
+        session_id = self.state.session_id
+        if not conversation_id or not session_id:
+            return
+
+        from lct_python_backend.db_session import get_async_session_context
+        from lct_python_backend.services.intent_signal_persistence import persist_intent_signals
+
+        result = await detect_intent_signals_for_segment(
+            segment_text=text,
+            providers=self._runtime_llm_providers,
+        )
+
+        context: Dict[str, Any] = {
+            "provider_id": result.provider_id,
+            "detection_model": result.detection_model,
+            "raw_count": result.raw_count,
+            "validated_count": len(result.validated_items),
+            "utterance_id": str(utterance_id) if utterance_id else None,
+        }
+        metrics = {"elapsed_ms": result.elapsed_ms}
+
+        try:
+            async with get_async_session_context() as db:
+                if result.error:
+                    await record_thread_event(
+                        db,
+                        conversation_id=conversation_id,
+                        session_id=session_id,
+                        stage="intent_signal_detection",
+                        event_type="intent_signal_detection_error",
+                        level="warning",
+                        code="contract_c_detection_failed",
+                        message="Intent-signal detection failed; transcript persistence was unaffected.",
+                        context={**context, "error": result.error},
+                        metrics=metrics,
+                    )
+                    await db.commit()
+                    return
+
+                if not result.validated_items and result.raw_count == 0:
+                    return
+
+                counts = {"created": 0, "sightings": 0, "skipped": 0}
+                if result.validated_items:
+                    utterance_id_map = {"utterance_0": str(utterance_id)} if utterance_id else {}
+                    counts = await persist_intent_signals(
+                        db=db,
+                        conversation_id=str(conversation_id),
+                        validated_items=result.validated_items,
+                        detection_model=result.detection_model or result.provider_id or "unknown",
+                        utterance_id_map=utterance_id_map,
+                    )
+
+                await record_thread_event(
+                    db,
+                    conversation_id=conversation_id,
+                    session_id=session_id,
+                    stage="intent_signal_detection",
+                    event_type="intent_signal_detection",
+                    level="info",
+                    message="Intent-signal detection completed.",
+                    context={**context, **counts},
+                    metrics={**metrics, **counts},
+                )
+                await db.commit()
+        except Exception as exc:  # noqa: BLE001 - live path must never fail on analysis
+            logger.warning("[intent-signal] background detection failed: %s", exc)
 
     def _merge_pending_partial_timestamps(self, timestamps: Optional[Dict[str, Any]]) -> None:
         if not isinstance(timestamps, dict):
@@ -1538,6 +1618,15 @@ class WsSessionContext:
             if should_run_live_prayer():
                 self._track_background_task(
                     asyncio.create_task(self._run_live_prayer_cards(normalized_text))
+                )
+
+            # ADR-013 Contract C — durable pre-formal intent-signal detection.
+            # Off by default; uses a separate DB session inside the background task.
+            if should_run_intent_signal_detection():
+                self._track_background_task(
+                    asyncio.create_task(
+                        self._run_intent_signal_detection(normalized_text, final_utterance_id)
+                    )
                 )
 
         if emit_to_client:
