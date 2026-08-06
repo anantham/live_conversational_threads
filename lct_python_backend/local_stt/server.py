@@ -250,9 +250,45 @@ def _get_vad():
     return _vad["model"]
 
 
-def _has_speech(path: str):
-    """True/False once VAD has run; None if VAD is unavailable/errored — callers FAIL
-    OPEN (transcribe anyway) so a broken gate never silently drops real audio."""
+def _dbfs(chunk) -> float:
+    """RMS level of a torch 1-D audio chunk in dBFS. -inf for digital silence."""
+    import torch
+    if chunk is None or chunk.numel() == 0:
+        return float("-inf")
+    rms = float(torch.sqrt(torch.mean(chunk.float() ** 2)))
+    if rms <= 1e-9:
+        return float("-inf")
+    import math
+    return 20.0 * math.log10(rms)
+
+
+def _vad_analyze(path: str):
+    """{regions, speech_dbfs, head_dbfs, tail_dbfs, total_s} — or None if VAD can't run.
+
+    THE REGIONS ARE THE POINT. silero already returns WHERE the speech is; the
+    previous version summed them into a scalar and threw the locations away:
+
+        speech_s = sum(t["end"] - t["start"] for t in ts) / 16000.0
+        return speech_s >= VAD_MIN_SPEECH_S
+
+    which makes the gate WHOLE-FILE. A 40-minute meeting with 10 minutes of
+    silent lead-in has ~1800s of speech, sails past a 0.25s threshold, and the
+    ENTIRE file — silence included — goes to the model. Whisper fills that
+    silence with filler: 3,739 measured blocks of "Thank you." and similar from
+    this engine, in exactly-30.0s spans (its window length), clustered at
+    recording heads. Zero such blocks came from the whisperx path, which
+    VAD-segments by design.
+
+    ALSO RETURNS LEVELS, because silero is a NEURAL classifier, not a level
+    meter, and acting on it alone is only safe in one direction. Failing to gate
+    costs hallucinated filler — visible junk. Wrongly cropping costs REAL SPEECH
+    — invisible loss. A soft talker, a distant mic, or a quiet non-English
+    passage can all score as non-speech. So the caller gets the actual measured
+    level of the dead air AND of the confirmed speech, and can require a real
+    gap between them before deleting anything. Normalised per-recording, not an
+    absolute threshold: what counts as silence in a loud room is not what counts
+    in a quiet one.
+    """
     m = _get_vad()
     if m is None:
         return None
@@ -260,11 +296,29 @@ def _has_speech(path: str):
         from silero_vad import read_audio, get_speech_timestamps
         wav = read_audio(path, sampling_rate=16000)
         ts = get_speech_timestamps(wav, m, sampling_rate=16000)
-        speech_s = sum((t["end"] - t["start"]) for t in ts) / 16000.0
-        return speech_s >= VAD_MIN_SPEECH_S
+        regions = [(t["start"] / 16000.0, t["end"] / 16000.0) for t in ts]
+        total_s = float(wav.numel()) / 16000.0
+        if not regions:
+            return {"regions": [], "speech_dbfs": float("-inf"),
+                    "head_dbfs": _dbfs(wav), "tail_dbfs": _dbfs(wav), "total_s": total_s}
+        import torch
+        speech = torch.cat([wav[int(s * 16000):int(e * 16000)] for s, e in regions])
+        head = wav[:int(regions[0][0] * 16000)]
+        tail = wav[int(regions[-1][1] * 16000):]
+        return {"regions": regions, "speech_dbfs": _dbfs(speech),
+                "head_dbfs": _dbfs(head), "tail_dbfs": _dbfs(tail), "total_s": total_s}
     except Exception as e:
         log.warning("VAD check failed (%s) — not gating", e)
         return None
+
+
+def _has_speech(path: str):
+    """True/False once VAD has run; None if VAD is unavailable/errored — callers FAIL
+    OPEN (transcribe anyway) so a broken gate never silently drops real audio."""
+    a = _vad_analyze(path)
+    if a is None:
+        return None
+    return sum(e - s for s, e in a["regions"]) >= VAD_MIN_SPEECH_S
 
 
 def _embed_segments(audio_path, segments):
