@@ -17,7 +17,7 @@ const baseURL = process.env.PLAYWRIGHT_BASE_URL || 'https://threads.adityaarpith
 
 export default defineConfig({
   testDir: './tests/e2e',
-  testMatch: /prod-smoke\.spec\.js/,
+  testMatch: /prod-(smoke|threads-opener)\.spec\.js/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 1,

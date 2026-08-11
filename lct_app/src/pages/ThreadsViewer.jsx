@@ -311,10 +311,13 @@ export default function ThreadsViewer() {
           >
             Choose file
           </button>
+          {/* No `accept` attr: mobile pickers filter by MIME, `.threads` has no
+              registered type and downloads arrive as application/octet-stream,
+              so any accept list greys the file out on Android/iOS. Validation
+              happens in handleFile (JSON parse + validateThreads). */}
           <input
             ref={fileInputRef}
             type="file"
-            accept=".threads,application/json"
             className="hidden"
             onChange={(e) => void handleFile(e.target.files?.[0])}
           />
