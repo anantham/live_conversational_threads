@@ -211,7 +211,14 @@ export default function Browse() {
         const response = await dataProvider.conversations.fetchNext("/api/conversations/", {
           signal: controller.signal,
         });
-        gotResponse = true;
+        // A resolved response only counts as a REAL backend answer if it is
+        // JSON: on the public CDN deploy, /api/* rewrites to the SPA's own
+        // index.html with status 200 (the SPA-200 mask), so HTML here means
+        // NO backend exists — not that the owner's backend errored. Without
+        // this check the public site showed the error screen instead of the
+        // .threads opener (operator-caught live, 2026-08-11).
+        const ctype = (response.headers.get("content-type") || "").toLowerCase();
+        gotResponse = ctype.includes("json");
         const res = await response.json();
         const data = res.items || res; // Support both mock and real responses
         data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
