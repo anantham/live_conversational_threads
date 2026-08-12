@@ -612,6 +612,42 @@ def chat_with_provider_fallback_sync(
     if not enabled_providers:
         raise RuntimeError("No enabled LLM providers configured")
 
+    # ── content-addressed cache (LCT_LLM_CACHE=0 disables) ──────────────────
+    # A Phase-2 extract of 1,125 turns made ~1,090 calls over 126 MINUTES, and
+    # re-running it repeated every one — including ~1,080 three-second "keep
+    # accumulating" decisions whose inputs never changed. The key covers
+    # messages + sampling contract + prompt name/VERSION + candidate models,
+    # so a prompt edit or a model swap INVALIDATES rather than replays.
+    # Full correctness + semantics note: services/llm_cache.py.
+    from lct_python_backend.services import llm_cache as _cache
+
+    _key = None
+    _hit = None
+    try:
+        _key = _cache.cache_key(
+            messages, temperature=temperature, max_tokens=max_tokens,
+            require_json=require_json, prompt_name=prompt_name,
+            prompt_version=prompt_version,
+            models=[str(p.get("model", "")) for p in enabled_providers],
+        )
+        _hit = _cache.get(_key)
+    except Exception:  # noqa: BLE001 — a broken cache must never fail a call
+        _key, _hit = None, None
+    if _hit is not None:
+        _first = enabled_providers[0]
+        logger.info("[LLM Fallback Sync] CACHE HIT %s (prompt=%s) — no model call",
+                    _key[:12], prompt_name or "-")
+        return ProviderResult(
+            data=_hit["data"],
+            provider_id=str(_first.get("id", "cache")),
+            provider_name=str(_first.get("name", "cache")) + " (cached)",
+            model=_hit.get("model") or str(_first.get("model", "")),
+            base_url=str(_first.get("base_url", "")),
+            provider_type=str(_first.get("type", "openai_compatible")),
+            attempt_number=0, total_providers_tried=0,
+            prompt_name=prompt_name, prompt_version=prompt_version,
+        )
+
     errors: List[Tuple[str, str]] = []
     total_providers = len(enabled_providers)
     attempt_number = 0
@@ -752,6 +788,10 @@ def chat_with_provider_fallback_sync(
                     elapsed_ms=_elapsed_ms,
                     require_json=require_json,
                 )
+
+                # Cache only SUCCESSES, and only when a key was computable.
+                if _key:
+                    _cache.put(_key, data, served_model, prompt_name)
 
                 return ProviderResult(
                     data=data,
