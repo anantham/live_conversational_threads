@@ -276,6 +276,7 @@ async def extract_graph_for_conversation(
     #    LLM hiccup must NOT lose the import — the L1 nodes are the auditable core
     #    and higher tiers are enhancement, so failures here are caught + logged.
     summary = ""
+    conversation_title = ""
     tiers_built: List[str] = []
 
     def _of_level(nodes, lvl):
@@ -294,11 +295,21 @@ async def extract_graph_for_conversation(
                         existing.extend(themes)
                         tiers_built.append("themes")
                         if len(themes) >= MIN_THEMES_FOR_ARC_CONSOLIDATION:
-                            arcs, _title, s = await consolidate_themes_to_arcs(themes, providers=providers or [])
+                            arcs, title, s = await consolidate_themes_to_arcs(themes, providers=providers or [])
                             if arcs:
                                 existing.extend(arcs)
                                 tiers_built.append("arcs")
                                 summary = s or summary
+                                # The title was BOUND AND DISCARDED here (as
+                                # `_title`) since the tier was written, so no
+                                # export could ever carry a conversation title
+                                # no matter what the model returned — and it
+                                # does return one (verified in a live run
+                                # 2026-08-12: "Redefining Success: AI Research,
+                                # Security, and Collaboration"). conversations_
+                                # api reads source_metadata["conversation_title"],
+                                # so it only ever needed threading through.
+                                conversation_title = title or conversation_title
     except Exception as exc:  # noqa: BLE001 — consolidation is best-effort
         logger.warning(
             "[turns/extract] consolidation failed after tiers=%s; persisting L1 graph anyway: %r",
@@ -318,7 +329,13 @@ async def extract_graph_for_conversation(
         owner_id=owner,
         utterance_chunk_map=processor.chunk_utterance_map,
         indrasnet_group_id=conv.indrasnet_group_id,
-        source_metadata=({"executive_summary": summary} if summary else {}),
+        # Build from whatever the arcs pass produced: the old
+        # `{"executive_summary": summary} if summary else {}` dropped a
+        # perfectly good TITLE whenever the summary happened to be empty.
+        source_metadata={k: v for k, v in (
+            ("executive_summary", summary),
+            ("conversation_title", conversation_title),
+        ) if v},
     )
 
     auditable_nodes = sum(1 for n in existing if n.get("utterance_ids"))
@@ -329,4 +346,5 @@ async def extract_graph_for_conversation(
         "auditable_node_count": auditable_nodes,
         "indrasnet_group_id": conv.indrasnet_group_id,
         "executive_summary": summary or None,
+        "conversation_title": conversation_title or None,
     }

@@ -376,3 +376,56 @@ def test_simplify_uses_node_text_when_summary_missing() -> None:
     ]
     simplified = hc._simplify_for_consolidation(nodes)
     assert simplified[0]["summary"] == "From node_text"
+
+
+# ── orphan adoption ──────────────────────────────────────────────────────────
+# The prompt says "each idea belongs to EXACTLY ONE topic — no overlap, no
+# orphans". The model does not obey it: measured on a real 1,125-turn
+# conversation (2026-08-12), 16 of 82 ideas were claimed by NO topic, so a
+# sixth of the conversation was invisible at every zoom level above L2 —
+# silently, because nothing counted the leftovers.
+
+def _kids(n):
+    return [{"id": f"i{i}", "node_name": f"idea {i}", "summary": ""} for i in range(n)]
+
+
+def test_orphans_join_their_nearest_claimed_neighbour():
+    ideas = _kids(6)                       # i0..i5 in conversation order
+    parents = [
+        {"id": "t1", "children_ids": ["i0", "i1"]},
+        {"id": "t2", "children_ids": ["i4", "i5"]},
+    ]                                       # i2, i3 orphaned
+    assert hc.adopt_orphans(ideas, parents) == 2
+    claimed = {c for p in parents for c in p["children_ids"]}
+    assert claimed == {f"i{i}" for i in range(6)}
+    # i2 sits next to i1 (t1); i3 next to i4 (t2) — order decides, not chance
+    assert "i2" in parents[0]["children_ids"]
+    assert "i3" in parents[1]["children_ids"]
+
+
+def test_no_orphans_is_a_noop():
+    ideas = _kids(3)
+    parents = [{"id": "t1", "children_ids": ["i0", "i1", "i2"]}]
+    assert hc.adopt_orphans(ideas, parents) == 0
+    assert parents[0]["children_ids"] == ["i0", "i1", "i2"]
+
+
+def test_no_parents_claimed_anything_is_a_noop_not_a_crash():
+    """Total consolidation failure must not be papered over by adoption —
+    there is no evidence to attach anything TO."""
+    ideas = _kids(4)
+    parents = [{"id": "t1", "children_ids": []}]
+    assert hc.adopt_orphans(ideas, parents) == 0
+    assert parents[0]["children_ids"] == []
+
+
+def test_every_child_ends_up_claimed_exactly_once():
+    ideas = _kids(10)
+    parents = [
+        {"id": "t1", "children_ids": ["i0"]},
+        {"id": "t2", "children_ids": ["i9"]},
+    ]
+    hc.adopt_orphans(ideas, parents)
+    all_claimed = [c for p in parents for c in p["children_ids"]]
+    assert sorted(all_claimed) == sorted(f"i{i}" for i in range(10))
+    assert len(all_claimed) == len(set(all_claimed))     # no double-claiming

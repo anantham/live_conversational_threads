@@ -180,16 +180,69 @@ def _run_consolidation_llm(
     return parents, extras
 
 
+def adopt_orphans(children: List[Dict[str, Any]],
+                  parents: List[Dict[str, Any]]) -> int:
+    """Attach every child no parent claimed to its nearest claimed neighbour's
+    parent. Returns how many were adopted.
+
+    WHY: the prompt says "each idea belongs to EXACTLY ONE topic — no
+    overlap, no orphans", and the model does not obey it. Measured on a real
+    1,125-turn conversation (2026-08-12): **16 of 82 ideas were claimed by no
+    topic at all**, so a sixth of the conversation was invisible at every zoom
+    level above L2 — silently, because nothing counted the leftovers.
+
+    Deterministic, no second model call: ideas arrive in conversation order,
+    so an unclaimed idea belongs with whatever its neighbours belong to. We
+    walk outward from the orphan's position to the closest claimed sibling and
+    join that parent. The guesser never holds the pen — this is arithmetic on
+    ordering the model already committed to, not a fresh guess about meaning.
+    """
+    ids = [str(c.get("id") or "") for c in children]
+    pos = {cid: i for i, cid in enumerate(ids) if cid}
+    owner: Dict[str, Dict[str, Any]] = {}
+    for p in parents:
+        for cid in (p.get("children_ids") or []):
+            owner.setdefault(str(cid), p)
+    orphans = [cid for cid in ids if cid and cid not in owner]
+    if not orphans or not owner:
+        return 0
+    claimed_positions = sorted(pos[c] for c in owner if c in pos)
+    if not claimed_positions:
+        return 0
+    adopted = 0
+    for cid in orphans:
+        i = pos.get(cid)
+        if i is None:
+            continue
+        nearest = min(claimed_positions, key=lambda j: abs(j - i))
+        parent = owner.get(ids[nearest])
+        if parent is None:
+            continue
+        parent.setdefault("children_ids", []).append(cid)
+        owner[cid] = parent          # so later orphans can chain onto it
+        adopted += 1
+    if adopted:
+        logger.info("[CONSOLIDATE] adopted %d orphaned child node(s) into the "
+                    "nearest neighbouring parent", adopted)
+    return adopted
+
+
 async def consolidate_ideas_to_topics(
     ideas: List[Dict[str, Any]],
     *,
     providers: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
-    """Cluster all ideas into 8-15 topics (semantic_level 3)."""
+    """Cluster all ideas into 8-15 topics (semantic_level 3).
+
+    Leftovers are ADOPTED rather than dropped (see ``adopt_orphans``): the
+    model routinely leaves ideas unclaimed despite the prompt forbidding it,
+    and an unclaimed idea is invisible above L2."""
     import asyncio
     parents, _ = await asyncio.to_thread(
         _run_consolidation_llm, ideas, target_tier=3, providers=providers,
     )
+    if parents:
+        adopt_orphans(ideas, parents)
     return parents
 
 
@@ -198,11 +251,14 @@ async def consolidate_topics_to_themes(
     *,
     providers: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
-    """Cluster all topics into 4-8 themes (semantic_level 4)."""
+    """Cluster all topics into 4-8 themes (semantic_level 4). Leftover topics
+    are adopted too — an unclaimed topic hides its whole subtree."""
     import asyncio
     parents, _ = await asyncio.to_thread(
         _run_consolidation_llm, topics, target_tier=4, providers=providers,
     )
+    if parents:
+        adopt_orphans(topics, parents)
     return parents
 
 
