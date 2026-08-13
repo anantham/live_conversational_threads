@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { useDataProvider } from "../services/dataProvider";
 import MinimalGraph from "../components/MinimalGraph";
 import MinimalLegend from "../components/MinimalLegend";
 import NodeDetail from "../components/NodeDetail";
 import TimelineRibbon from "../components/TimelineRibbon";
+import ThreadsFileButton from "../components/threads/ThreadsFileButton";
 import { buildSpeakerColorMap } from "../components/graphConstants";
+import {
+  flattenThreadsGraph,
+  readThreadsFile,
+  validateThreadsArtifact,
+} from "../services/threadsArtifact";
+import {
+  getThreadsLibraryRecord,
+  rememberThreadsArtifact,
+} from "../services/threadsLibraryStore";
 
 /**
  * Static, server-free viewer for a `.threads` artifact (ADR-036).
@@ -21,62 +32,22 @@ import { buildSpeakerColorMap } from "../components/graphConstants";
  * preference persistence, utterance loading). Audio is not part of the bundle.
  */
 
-const MAX_BYTES = 25 * 1024 * 1024; // 25 MB — reject oversized files pre-parse
-const MAX_NODES = 50000; // main-thread / memory DoS guard before ReactFlow
-const SUPPORTED_VERSIONS = new Set([1]);
-
-function flattenGraph(graphData) {
-  // graph_data may be a FLAT list of node objects (build_graph_data_from_nodes /
-  // the .threads export) OR an array-of-arrays (chunked). Handle both — otherwise
-  // selectedNodeData + speakerColorMap come back empty and node-detail-on-click
-  // silently does nothing.
-  return (graphData || []).flatMap((entry) =>
-    Array.isArray(entry)
-      ? entry.filter((n) => n && typeof n === "object" && !Array.isArray(n))
-      : entry && typeof entry === "object"
-        ? [entry]
-        : [],
-  );
-}
-
-function validateThreads(data) {
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error("Not a .threads object.");
-  }
-  if (data.format !== "lct.threads") {
-    throw new Error("This file is not a .threads artifact.");
-  }
-  if (!SUPPORTED_VERSIONS.has(data.format_version)) {
-    throw new Error(
-      `Unsupported .threads version (${data.format_version}). Update the viewer.`,
-    );
-  }
-  if (!Array.isArray(data.graph_data)) {
-    throw new Error("Missing or invalid graph_data.");
-  }
-  if (data.chunk_dict != null && typeof data.chunk_dict !== "object") {
-    throw new Error("Invalid chunk_dict.");
-  }
-  const nodeCount = data.graph_data.reduce(
-    (acc, chunk) => acc + (Array.isArray(chunk) ? chunk.length : 0),
-    0,
-  );
-  if (nodeCount > MAX_NODES) {
-    throw new Error(`Artifact too large (${nodeCount} nodes).`);
-  }
-  return data;
-}
-
 export default function ThreadsViewer() {
   const dataProvider = useDataProvider();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { artifactId } = useParams();
   const [bundle, setBundle] = useState(null);
   const [error, setError] = useState("");
+  const [libraryStatus, setLibraryStatus] = useState(null);
   const [dragging, setDragging] = useState(false);
   // True while a ?src= hosted artifact is fetching, so a recipient who opened a
   // shared link sees a loading state — not the "drop a file" prompt — until the
   // map arrives. Seeded from the URL so the very first render is already loading.
   const [srcLoading, setSrcLoading] = useState(
-    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("src"),
+    () =>
+      Boolean(artifactId || location.state?.threadsBundle) ||
+      (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("src")),
   );
   const [selectedNode, setSelectedNode] = useState(null);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
@@ -88,7 +59,7 @@ export default function ThreadsViewer() {
   // Canvas-only "focus mode": hide all chrome (header, legend, timeline, graph
   // toolbar) so only the nodes remain. Esc exits.
   const [focusMode, setFocusMode] = useState(false);
-  const fileInputRef = useRef(null);
+  const consumedRouteState = useRef(false);
 
   useEffect(() => {
     if (!focusMode) return undefined;
@@ -99,11 +70,30 @@ export default function ThreadsViewer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [focusMode]);
 
-  const ingest = useCallback((data) => {
+  const ingest = useCallback((data, { sourceName = "", remember = true } = {}) => {
     try {
-      setBundle(validateThreads(data));
+      const validated = validateThreadsArtifact(data);
+      setBundle(validated);
       setError("");
       setSelectedNode(null);
+      if (remember) {
+        setLibraryStatus({ state: "saving", message: "Saving on this device…" });
+        void rememberThreadsArtifact(validated, { sourceName })
+          .then((record) => {
+            setLibraryStatus({
+              state: "saved",
+              message: "Saved on this device",
+              recordId: record.id,
+            });
+          })
+          .catch((storageError) => {
+            console.error("[ThreadsViewer] Could not remember artifact:", storageError);
+            setLibraryStatus({
+              state: "error",
+              message: `Open, but not saved: ${String(storageError?.message || storageError)}`,
+            });
+          });
+      }
     } catch (e) {
       setBundle(null);
       setError(String(e?.message || e));
@@ -113,13 +103,9 @@ export default function ThreadsViewer() {
   const handleFile = useCallback(
     async (file) => {
       if (!file) return;
-      if (file.size > MAX_BYTES) {
-        setError("That file is too large to open.");
-        return;
-      }
       try {
-        const text = await file.text();
-        ingest(JSON.parse(text));
+        const data = await readThreadsFile(file);
+        ingest(data, { sourceName: file.name });
       } catch (e) {
         setBundle(null);
         setError(`Could not read .threads file: ${String(e?.message || e)}`);
@@ -128,10 +114,50 @@ export default function ThreadsViewer() {
     [ingest],
   );
 
+  // Browse passes a parsed bundle through router state so the file opens even
+  // when persistent browser storage is unavailable. The viewer then attempts
+  // the one shared remember step and reports its result honestly in the header.
+  useEffect(() => {
+    const routedBundle = location.state?.threadsBundle;
+    if (!routedBundle || consumedRouteState.current) return;
+    consumedRouteState.current = true;
+    ingest(routedBundle, { sourceName: location.state?.sourceName || "" });
+    setSrcLoading(false);
+  }, [ingest, location.state]);
+
+  // Stable browser-local deep link used by Browse's "On this device" rows.
+  useEffect(() => {
+    if (!artifactId) return;
+    let cancelled = false;
+    setSrcLoading(true);
+    void getThreadsLibraryRecord(artifactId)
+      .then((record) => {
+        if (cancelled) return;
+        if (!record) {
+          throw new Error("This saved conversation is no longer on this device.");
+        }
+        ingest(record.bundle, { sourceName: record.sourceName, remember: false });
+        setLibraryStatus({ state: "saved", message: "Saved on this device", recordId: record.id });
+      })
+      .catch((loadError) => {
+        if (!cancelled) {
+          setBundle(null);
+          setError(`Could not open saved artifact: ${String(loadError?.message || loadError)}`);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setSrcLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [artifactId, ingest]);
+
   // Optional ?src=<url> — fetch a hosted .threads (NOT an /api/ call). Lets a
   // share be a plain link to a hosted file without any backend.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (artifactId || location.state?.threadsBundle) return;
     const src = new URLSearchParams(window.location.search).get("src");
     if (!src) return;
     let cancelled = false;
@@ -141,7 +167,7 @@ export default function ThreadsViewer() {
         const resp = await dataProvider.conversations.fetchThreadsFile(src);
         if (!resp.ok) throw new Error(`fetch failed (${resp.status})`);
         const data = await resp.json();
-        if (!cancelled) ingest(data);
+        if (!cancelled) ingest(data, { sourceName: src });
       } catch (e) {
         if (!cancelled) setError(`Could not load artifact: ${String(e?.message || e)}`);
       } finally {
@@ -151,7 +177,7 @@ export default function ThreadsViewer() {
     return () => {
       cancelled = true;
     };
-  }, [ingest]);
+  }, [artifactId, dataProvider, ingest, location.state]);
 
   const onDrop = useCallback(
     (e) => {
@@ -164,7 +190,7 @@ export default function ThreadsViewer() {
   );
 
   const flatNodes = useMemo(
-    () => (bundle ? flattenGraph(bundle.graph_data) : []),
+    () => (bundle ? flattenThreadsGraph(bundle.graph_data) : []),
     [bundle],
   );
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(flatNodes), [flatNodes]);
@@ -302,25 +328,22 @@ export default function ThreadsViewer() {
           </h1>
           <p className="text-sm text-slate-500">
             Drop it anywhere on this screen, or pick a file below. Everything
-            renders in your browser. Nothing is uploaded.
+            renders in your browser. Nothing is uploaded. Valid files are
+            remembered in this browser&apos;s library.
           </p>
+          <ThreadsFileButton
+            label="Choose file"
+            showIcon={false}
+            onFileSelected={handleFile}
+            className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+          />
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            onClick={() => navigate("/browse")}
+            className="text-xs font-medium text-slate-500 hover:text-slate-700"
           >
-            Choose file
+            Back to library
           </button>
-          {/* No `accept` attr: mobile pickers filter by MIME, `.threads` has no
-              registered type and downloads arrive as application/octet-stream,
-              so any accept list greys the file out on Android/iOS. Validation
-              happens in handleFile (JSON parse + validateThreads). */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            className="hidden"
-            onChange={(e) => void handleFile(e.target.files?.[0])}
-          />
           {error && (
             <p className="mt-2 rounded bg-red-50 px-3 py-2 text-xs text-red-600">
               {error}
@@ -353,6 +376,19 @@ export default function ThreadsViewer() {
                   <p className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
                     {eyebrow}
                   </p>
+                  {libraryStatus && (
+                    <span
+                      className={`text-[10px] font-medium ${
+                        libraryStatus.state === "error"
+                          ? "text-amber-700"
+                          : libraryStatus.state === "saved"
+                            ? "text-emerald-700"
+                            : "text-slate-500"
+                      }`}
+                    >
+                      {libraryStatus.message}
+                    </span>
+                  )}
                   {headerSummary && (
                     <button
                       type="button"
@@ -419,9 +455,18 @@ export default function ThreadsViewer() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => navigate("/browse")}
+                  className="rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
+                >
+                  Library
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
                     setBundle(null);
                     setError("");
+                    setLibraryStatus(null);
+                    navigate("/view");
                   }}
                   className="rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
                 >

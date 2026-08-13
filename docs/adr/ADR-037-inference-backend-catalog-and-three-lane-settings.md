@@ -60,3 +60,27 @@ Option 3 was chosen because the catalog is the reusable substrate the user actua
 - The app keeps collecting data: every STT chunk and LLM generation refines the observed numbers shown.
 - FluidAudio appears as the chosen-but-"planned" diarizer until its sidecar ships; the UI is honest about this rather than showing a false green.
 - Seed cost/accuracy numbers are point-in-time; an after-action review should re-run the benchmarks and refresh the seed periodically.
+
+## Amendment — 2026-08-13: FluidAudio runtime truth comes from live health
+
+**Status:** Approved and implemented.
+
+FluidAudio is now bundled in `local_stt/fluidaudio_stt` and serves Parakeet v3
+ASR plus inline CoreML diarization on the M5. The earlier "planned" catalog
+state is therefore obsolete. Static metadata may describe the installed
+capability, but it must not decide whether speakers are available now.
+
+The home Speakers chip uses the serving STT route's `/health` JSON as the
+authoritative runtime signal:
+
+- `diarization: ready` is green and names FluidAudio;
+- loading/initializing is a neutral loading state;
+- unavailable or another explicit failure is red and displayed verbatim;
+- a legacy provider that does not report diarizer health remains amber as
+  configured-but-unverified.
+
+Catalog runnable resolution separately requires FluidAudio to be explicitly
+enabled and to have a configured URL. This prevents the default localhost URL
+from creating a false effective backend on non-M5 hosts. The catalog probe is
+still useful for lane-level checks, but a generic HTTP 200 from the combined
+ASR service cannot by itself prove that the diarizer models loaded.

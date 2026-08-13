@@ -46,6 +46,7 @@ export default function AppRoutes() {
       {/* Static, server-free .threads viewer (ADR-036). Exempt from the App.jsx
           backend gate; makes zero /api/ calls — renders a self-contained file. */}
       <Route path="/view" element={<ThreadsViewer />} />
+      <Route path="/view/:artifactId" element={<ThreadsViewer />} />
       <Route path="/analytics/:conversationId" element={<Analytics />} />
       <Route path="/edit-history/:conversationId" element={<EditHistory />} />
       <Route path="/simulacra/:conversationId" element={<SimulacraAnalysis />} />

@@ -6,6 +6,9 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 
 | Path | LOC | Concern | Suggested split |
 | --- | --- | --- | --- |
+| lct_app/src/components/home/homeServiceStatusLogic.js | 718 | Settings-driven route plans, HTTP probing, STT/LLM/speaker health normalization, catalog-detail formatting, and home presentation are combined | Extract `sttStatusModel.js`, `llmStatusModel.js`, and `speakerStatusModel.js`; keep transport planning separate from pure presentation so provider health contracts remain testable |
+| lct_app/src/pages/Browse.jsx | 631 | The stable library route still combines browser-local library composition, private server-history fetching/filtering/export/delete behavior, and both sections' rendering | Extract `LocalArtifactLibrary`, `RemoteConversationLibrary`, and `useRemoteConversationHistory`; keep `Browse.jsx` as route-level composition only |
+| lct_app/src/pages/ThreadsViewer.jsx | 535 | Static artifact loading, browser-library persistence status, transcript export, graph-view state, and the complete viewer chrome remain in one route component even after artifact validation/storage moved into services | Extract `ThreadsArtifactOpener`, `ThreadsViewerHeader`, and `useThreadsArtifactRoute`; keep graph interaction state separate from load/persistence state |
 | lct_app/src/pages/NewConversation.jsx | 1346 | The route now also owns live prayer-card state/wiring in addition to graph, transcript, draft/session, participant, and agenda surfaces | Extract `usePrayerCards` plus a `PrayerCardSurface` composition component; then continue the broader route split already noted below |
 | lct_python_backend/services/indrasnet_client.py | 577 | One client module now owns match, pending-discussion reads, retrieval, contacts-adjacent timeouts, health, and LCT prayer detection contracts | Split per IndrasNet API family (`indrasnet_prayers_client.py`, `indrasnet_contacts_client.py`, `indrasnet_retrieval_client.py`) behind a shared error/config helper |
 | lct_python_backend/consumption_prayer_api.py | 366 | Contact agenda lookup, known-contacts cache/search, and generic LCT prayer detection now share one router | Move `/prayer-detect` into `lct_prayer_api.py` and the contact picker/cache endpoints into a focused contacts router before adding durable card persistence |
@@ -88,7 +91,11 @@ From the 8-agent audit (`docs/AUDIT_RATIONALITY_2026-05-30.md`). Logged per CLAU
 - **Dead claim-similarity retrieval** — `find_similar_claims` (brute force, 0 callers) duplicates the never-created pgvector ivfflat index. Pick one.
 - **Alert delivery stubs** — `instrumentation/alerts.py:333-353` email/slack/webhook are log-only TODOs, never registered, yet `DEFAULT_ALERT_RULES` reference `AlertChannel.EMAIL` (silent no-op). Only `LOG` works.
 - **Import-style split** — root-relative `from services/models` vs package `from lct_python_backend.*`; standardize (this is what makes `claim_api`/`argument_api` unimportable).
-- **FluidAudio runnable/planned coupling (honesty trap).** `services/backend_catalog.py` `_diar_runnable` short-circuits on `status=='planned'` before checking the URL; if FluidAudio's seed status ever flips to `available` before the sidecar ships, runnable becomes purely `bool(url)` and the default URL `127.0.0.1:5096` would falsely report runnable=true. Keep gated by a real liveness probe, not URL presence.
+- **RESOLVED — FluidAudio runnable/planned coupling.** The bundled runtime is
+  now `available`, while `_diar_runnable` requires explicit backend enablement
+  plus a configured URL. Home speaker truth comes from FluidAudio's live
+  `/health.diarization` field, so a reachable ASR process cannot imply a loaded
+  diarizer.
 
 ## Known failing / non-running unit tests (filed 2026-05-31; amended 2026-06-20)
 

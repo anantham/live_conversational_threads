@@ -46,7 +46,6 @@ export function useHomeServiceStatus() {
   const dataProvider = useDataProvider();
   const isServerless = Boolean(dataProvider?.isServerless);
   const [llmSettings, setLlmSettings] = useState(null);
-  const [llmProvidersConfig, setLlmProvidersConfig] = useState(null);
   const [sttSettings, setSttSettings] = useState(null);
   const [llmProbe, setLlmProbe] = useState(null);
   const [sttProbe, setSttProbe] = useState(null);
@@ -83,7 +82,6 @@ export function useHomeServiceStatus() {
       const nextCatalog = catalogResult.status === "fulfilled" ? catalogResult.value : null;
 
       setLlmSettings(nextLlmSettings);
-      setLlmProvidersConfig(nextLlmProvidersConfig);
       setSttSettings(nextSttSettings);
       setCatalog(nextCatalog);
 
@@ -138,7 +136,10 @@ export function useHomeServiceStatus() {
     };
   }, [isServerless]);
 
-  const showInitialLoading = loading && !llmSettings && !llmProvidersConfig && !sttSettings && !llmProbe && !sttProbe;
+  // Settings resolve before the live route probes. Treat that whole first pass
+  // as loading; otherwise the intermediate render paints configured/unavailable
+  // pills for healthy services and looks like a real failure for several seconds.
+  const showInitialLoading = loading && !llmProbe && !sttProbe;
 
   const presentation = useMemo(
     () => buildHomeStatusPresentation({

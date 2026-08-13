@@ -109,3 +109,28 @@ Most of the wedge already exists — slice 1 is hardening + verification, not gr
 - docs/ADR_GRAPH_DATAMODEL_CONSISTENCY_2026-06-05.md (H2 and the follow-ups this wedge depends on)
 - ADR-021, ADR-031, ADR-032, ADR-033, ADR-034, ADR-035
 - IndrasNet ADR-026 / ADR-017 / ADR-009 (the deferred reprocessing + retrieval + privacy infra)
+
+## Amendment — 2026-08-13: stable local-first library and renderer routes
+
+**Status:** Approved by the operator and implemented as an additive artifact-access path.
+
+The public `.threads` opener must not replace the meaning of `/browse` based on
+backend reachability. The route identities are now stable:
+
+- `/browse` is the conversation library. It composes browser-local artifacts,
+  the latest local recording draft, and server history when that private source
+  is reachable. A missing, masked, locked, or unhealthy backend affects only
+  the server-history section.
+- `/view` is the standalone `.threads` opener and renderer.
+- `/view/:artifactId` reopens a browser-local artifact by stable local id.
+
+Opening a valid `.threads` artifact stores the full self-contained bundle in a
+dedicated IndexedDB library and requests persistent browser storage. The UI
+labels this scope as **On this device** and provides an explicit remove action.
+This is local convenience, not cloud sync or a durability guarantee; export
+remains the portable safety boundary.
+
+Audio association is intentionally outside this amendment. Server-backed
+conversations retain their existing audio link. A local `.threads` artifact has
+no audio reference or permission contract, so local click-to-seek remains
+unavailable until a separate explicit attachment design is approved.

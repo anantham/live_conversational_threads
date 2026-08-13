@@ -202,6 +202,12 @@ export async function probeConfiguredStt(sttSettings) {
         return {
           ...probe,
           healthy: Boolean(result?.healthy ?? result?.ok),
+          health:
+            result?.response_preview &&
+            typeof result.response_preview === "object" &&
+            !Array.isArray(result.response_preview)
+              ? result.response_preview
+              : null,
           latency_ms: result?.latency_ms,
           error: result?.error || null,
           status_code: result?.status_code,
@@ -536,8 +542,89 @@ export function mergeCatalogDetails(signal, entry, capability) {
   return { ...signal, details: [...catalogDetailRows(entry, capability), ...existing] };
 }
 
-export function buildDiarSignal(selected, effective, probe, sttEntry) {
+function liveSttDiarization(sttProbe) {
+  const results = Array.isArray(sttProbe?.results) ? sttProbe.results : [];
+  const servingRoute = results.find((result) => result.healthy);
+  const health = servingRoute?.health;
+  if (!health || health.diarization == null) return null;
+
+  const rawStatus = String(health.diarization).trim().toLowerCase();
+  const engine = String(health.engine || "").trim();
+  const isFluidAudio = engine.toLowerCase().includes("fluidaudio");
+  const state = ["ready", "available", "healthy", "enabled", "ok"].includes(rawStatus)
+    ? "healthy"
+    : ["loading", "starting", "initializing"].includes(rawStatus)
+      ? "loading"
+      : "unavailable";
+
+  return {
+    engine: engine || "STT provider",
+    isFluidAudio,
+    label: isFluidAudio
+      ? state === "healthy"
+        ? "Speakers: FluidAudio (ANE)"
+        : state === "loading"
+          ? "Speakers: FluidAudio (loading)"
+          : "Speakers: FluidAudio"
+      : "Speakers: via STT",
+    model: String(health.model || "").trim(),
+    rawStatus,
+    route: servingRoute,
+    state,
+  };
+}
+
+function liveSttDiarizationSignal(liveDiar) {
+  const source = liveDiar.isFluidAudio ? "FluidAudio STT service" : liveDiar.engine;
+  const details = [
+    { label: "Source", value: source },
+    { label: "Health", value: liveDiar.rawStatus || liveDiar.state },
+    { label: "Engine", value: liveDiar.engine },
+  ];
+  if (liveDiar.model) details.push({ label: "Model", value: liveDiar.model });
+  if (liveDiar.route?.url) details.push({ label: "Probe", value: liveDiar.route.url });
+
+  if (liveDiar.state === "healthy") {
+    return {
+      details,
+      label: liveDiar.label,
+      state: "healthy",
+      summary: liveDiar.isFluidAudio
+        ? "FluidAudio diarization is running inside the live STT service."
+        : `${liveDiar.engine} reports inline diarization as ready.`,
+    };
+  }
+  if (liveDiar.state === "loading") {
+    return {
+      details,
+      label: liveDiar.label,
+      state: "loading",
+      summary: `${source} is reachable and its diarizer is still loading.`,
+    };
+  }
+  return {
+    details,
+    label: liveDiar.label,
+    state: "unavailable",
+    summary: `${source} reported diarization as ${liveDiar.rawStatus || "unavailable"}.`,
+  };
+}
+
+export function buildDiarSignal(selected, effective, probe, sttEntry, sttProbe) {
+  const liveDiar = liveSttDiarization(sttProbe);
   const sttDiar = sttEntry && sttEntry.provides_diarization ? sttEntry : null;
+
+  // The FluidAudio /health response is the strongest evidence available: it
+  // distinguishes a reachable ASR engine from a loaded diarizer. Prefer it over
+  // static catalog metadata, which can lag a runtime rollout.
+  if (
+    liveDiar &&
+    (liveDiar.state === "healthy" ||
+      !effective ||
+      String(effective.provider_key || effective.id || "").toLowerCase() === "fluidaudio")
+  ) {
+    return liveSttDiarizationSignal(liveDiar);
+  }
 
   if (!selected && !effective && !sttDiar) {
     return {
@@ -549,16 +636,10 @@ export function buildDiarSignal(selected, effective, probe, sttEntry) {
   if (!effective) {
     if (sttDiar) {
       const details = [{ label: "Source", value: `STT provider (${shortName(sttDiar)})` }];
-      if (selected) {
-        details.push({
-          label: "Selected diarizer",
-          value: `${shortName(selected)}${selected.status === "planned" ? " (planned)" : ""} — not running`,
-        });
-      }
       return {
         details,
         state: "configured",
-        summary: `Speaker labels come from your STT provider (${shortName(sttDiar)}); no separate diarizer is running.`,
+        summary: `Speaker labels are configured through ${shortName(sttDiar)}, but its health response did not report diarizer readiness.`,
       };
     }
     const details = selected ? catalogDetailRows(selected, "diarization") : [];
@@ -621,17 +702,17 @@ export function buildHomeStatusPresentation({
 
   const llmSignal = mergeCatalogDetails(buildLlmSignal(llmSettings, llmProbe, probeError), llmEntry, "llm");
   const sttSignal = mergeCatalogDetails(buildSttSignal(sttSettings, sttProbe, probeError), sttEntry, "stt");
-  const diarSignal = buildDiarSignal(diarSelected, diarEffective, diarProbe, sttEntry);
+  const diarSignal = buildDiarSignal(diarSelected, diarEffective, diarProbe, sttEntry, sttProbe);
 
   const sttLabel = sttEntry ? `STT: ${shortName(sttEntry)} (${locShort(sttEntry.runtime)})` : "STT";
   const llmLabel = llmEntry ? `LLM: ${shortName(llmEntry)} (${locShort(llmEntry.runtime)})` : "LLM";
-  const diarLabel = diarEffective
+  const diarLabel = diarSignal.label || (diarEffective
     ? `Speakers: ${shortName(diarEffective)} (${locShort(diarEffective.runtime)})`
     : sttEntry && sttEntry.provides_diarization
     ? "Speakers: via STT"
     : diarSelected
     ? "Speakers: none running"
-    : "Speakers";
+    : "Speakers");
 
   return { llmSignal, sttSignal, diarSignal, sttLabel, llmLabel, diarLabel };
 }

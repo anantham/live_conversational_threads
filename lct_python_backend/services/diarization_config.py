@@ -8,8 +8,8 @@ persisted under the ``diarization_config`` AppSetting key, mirroring the STT/LLM
 config services.
 
 FluidAudio is the intended default (ANE, emits speaker embeddings → voice
-enrollment / contact auto-labelling), but its Swift sidecar is not yet bundled, so
-the runtime falls back to whatever backend is actually available. The config stores
+enrollment / contact auto-labelling). Its Swift service is bundled, but remains an
+explicitly enabled runtime because it only runs on Apple Silicon. The config stores
 the user's PREFERENCE; availability is reported separately via the backend catalog.
 """
 
@@ -34,7 +34,7 @@ def get_env_diarization_defaults() -> Dict[str, Any]:
     pyannote_enabled = _env_pyannote_enabled()
     return {
         # Diarization on by default if anything is wired; FluidAudio is the
-        # preferred primary even though its sidecar may not be running yet.
+        # preferred primary even when this host has not enabled the M5 service.
         "enabled": pyannote_enabled or to_bool(os.getenv("DIARIZATION_ENABLED", "true")),
         "primary": os.getenv("DIARIZATION_PRIMARY", "fluidaudio").strip().lower(),
         "fallback_priority": ["senko", "pyannote"],

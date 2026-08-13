@@ -234,9 +234,9 @@ def _diar_runnable(entry: Dict[str, Any], diar_settings: Dict[str, Any]) -> bool
     if pk == "pyannote":
         return bool(cfg.get("enabled")) and bool(cfg.get("hf_token_set"))
     if pk == "senko":
-        return bool(str(cfg.get("url") or "").strip())
+        return bool(cfg.get("enabled")) and bool(str(cfg.get("url") or "").strip())
     if pk == "fluidaudio":
-        return bool(str(cfg.get("url") or "").strip())  # needs the sidecar URL
+        return bool(cfg.get("enabled")) and bool(str(cfg.get("url") or "").strip())
     return True
 
 

@@ -9,12 +9,15 @@ per lane, observed telemetry attaches ONLY to the active backend, and the
 from lct_python_backend.services.backend_catalog import build_catalog, load_seed
 
 
-def _diar(primary="fluidaudio", pyannote=True):
+def _diar(primary="fluidaudio", pyannote=True, fluidaudio=False):
     return {
         "primary": primary,
         "fallback_priority": ["senko", "pyannote"],
         "backends": {
-            "fluidaudio": {"url": ""},
+            "fluidaudio": {
+                "enabled": fluidaudio,
+                "url": "https://m5.example.test:5443" if fluidaudio else "",
+            },
             "senko": {"url": ""},
             "pyannote": {"enabled": pyannote, "hf_token_set": pyannote},
         },
@@ -93,11 +96,11 @@ def test_local_whisper_url_still_matches_bundled_mlx():
 
 
 def test_effective_falls_past_non_runnable_diarizer():
-    # FluidAudio is selected but planned (no sidecar) -> effective is the next
+    # FluidAudio is selected but disabled -> effective is the next
     # runnable backend (pyannote, enabled + token), NOT the selected one.
     cat = build_catalog(diar_settings=_diar(primary="fluidaudio", pyannote=True))
     fa = next(e for e in cat["diarization"] if e["id"] == "fluidaudio")
-    assert fa["runnable"] is False  # planned -> not runnable
+    assert fa["runnable"] is False  # disabled -> not runnable
     assert cat["active"]["diarization"] == "fluidaudio"  # selected
     assert cat["active"]["diarization_effective"] == "pyannote"  # actually serving
 
@@ -105,6 +108,17 @@ def test_effective_falls_past_non_runnable_diarizer():
 def test_effective_none_when_nothing_runnable():
     cat = build_catalog(diar_settings=_diar(primary="fluidaudio", pyannote=False))
     assert cat["active"]["diarization_effective"] is None
+
+
+def test_fluidaudio_is_available_and_effective_only_when_enabled_with_a_url():
+    cat = build_catalog(
+        stt_settings={"provider": "parakeet"},
+        diar_settings=_diar(primary="fluidaudio", pyannote=False, fluidaudio=True),
+    )
+    fa = next(e for e in cat["diarization"] if e["id"] == "fluidaudio")
+    assert fa["status"] == "available"
+    assert fa["runnable"] is True
+    assert cat["active"]["diarization_effective"] == "fluidaudio"
 
 
 def test_observed_attaches_only_to_active():

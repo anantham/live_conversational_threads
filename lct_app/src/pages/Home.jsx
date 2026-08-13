@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mic, FolderOpen, FileUp, Bookmark, BarChart3, Settings, Video } from "lucide-react";
+import { Mic, FolderOpen, FileAudio, Bookmark, BarChart3, Settings, Video } from "lucide-react";
 import ServiceStatus from "../components/ServiceStatus";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
 import { getAutostartOnNew } from "../utils/homeBehavior";
@@ -109,9 +109,9 @@ export default function Home() {
           title="Upload an audio file instead of recording live"
         >
           <span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
-            <FileUp size={16} />
+            <FileAudio size={16} />
           </span>
-          <span className="text-[10px] font-medium text-gray-500 group-hover:text-gray-700 transition">Upload</span>
+          <span className="text-[10px] font-medium text-gray-500 group-hover:text-gray-700 transition">Import audio</span>
         </button>
 
         <button

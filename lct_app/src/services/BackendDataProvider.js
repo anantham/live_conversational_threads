@@ -51,7 +51,12 @@ export class BackendDataProvider extends DataProvider {
         return resp.json();
       },
       fetchNext: async (nextUrl, options = {}) => {
-        return fetch(`${API_BASE_URL}${nextUrl}`, { method: "POST", ...options });
+        const { headers, ...rest } = options;
+        return fetch(`${API_BASE_URL}${nextUrl}`, {
+          method: "POST",
+          ...rest,
+          headers: { ...apiHeaders(), ...(headers || {}) },
+        });
       },
       fetchSimulacra: async (id) => {
         const resp = await fetch(`${API_BASE_URL}/api/conversations/${id}/simulacra`);

@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import ImportCanvas from "../components/ImportCanvas";
-import { apiFetch, apiFetchCached, API_BASE_URL } from "../services/apiClient";
+import { FileText, HardDrive, Trash2 } from "lucide-react";
+import ThreadsFileButton from "../components/threads/ThreadsFileButton";
+import { apiFetch, API_BASE_URL } from "../services/apiClient";
 import { useDataProvider } from "../services/dataProvider";
-import ThreadsViewer from "./ThreadsViewer";
+import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
+import { readThreadsFile } from "../services/threadsArtifact";
+import {
+  listThreadsLibraryRecords,
+  removeThreadsLibraryRecord,
+} from "../services/threadsLibraryStore";
 
 function formatDuration(seconds) {
   if (!seconds) return null;
@@ -66,11 +72,11 @@ export default function Browse() {
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  // Public deploy (e.g. threads.adityaarpitha.com): the backend is on a private
-  // Tailscale network, so /conversations/ fails at the network layer. When that
-  // happens, /browse becomes the self-contained .threads opener instead of the
-  // owner's conversation list. A reachable-but-errored backend keeps the list+error.
-  const [offline, setOffline] = useState(false);
+  const [localRecords, setLocalRecords] = useState([]);
+  const [localLoading, setLocalLoading] = useState(true);
+  const [localError, setLocalError] = useState("");
+  const [fileError, setFileError] = useState("");
+  const [draftSummary, setDraftSummary] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [deleting, setDeleting] = useState(null);
   // Contact scoping (MVP): pick a contact -> see only their conversations ->
@@ -81,6 +87,52 @@ export default function Browse() {
   const [combining, setCombining] = useState(false);
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([listThreadsLibraryRecords(), loadLatestDraft()])
+      .then(([records, draft]) => {
+        if (cancelled) return;
+        setLocalRecords(records);
+        setDraftSummary(summarizeLocalDraft(draft));
+        setLocalError("");
+      })
+      .catch((localLoadError) => {
+        if (!cancelled) {
+          console.error("[Browse] Could not load browser-local library:", localLoadError);
+          setLocalError(`Could not read this browser's library: ${String(localLoadError?.message || localLoadError)}`);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLocalLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const openThreadsFile = async (file) => {
+    setFileError("");
+    try {
+      const threadsBundle = await readThreadsFile(file);
+      navigate("/view", { state: { threadsBundle, sourceName: file.name } });
+    } catch (fileOpenError) {
+      setFileError(`Could not read .threads file: ${String(fileOpenError?.message || fileOpenError)}`);
+    }
+  };
+
+  const removeLocalArtifact = async (record) => {
+    const confirmed = window.confirm(
+      `Remove “${record.title}” from this browser?\n\nThe original file is not deleted.`,
+    );
+    if (!confirmed) return;
+    try {
+      await removeThreadsLibraryRecord(record.id);
+      setLocalRecords((current) => current.filter((item) => item.id !== record.id));
+    } catch (removeError) {
+      setLocalError(`Could not remove the saved artifact: ${String(removeError?.message || removeError)}`);
+    }
+  };
 
   const handleDelete = async (conversationId) => {
     setDeleting(conversationId);
@@ -201,44 +253,53 @@ export default function Browse() {
 
   useEffect(() => {
     const fetchConversations = async () => {
-      let gotResponse = false;
       // 6s timeout so an off-network visitor (backend on a private Tailscale
-      // host they can't reach) falls back to the .threads opener fast instead
-      // of hanging on a connection that will never complete.
+      // host they can't reach) gets a clear section-level result instead of a
+      // route identity change or a connection that never completes.
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 6000);
       try {
         const response = await dataProvider.conversations.fetchNext("/api/conversations/", {
           signal: controller.signal,
         });
-        // A resolved response only counts as a REAL backend answer if it is
-        // JSON: on the public CDN deploy, /api/* rewrites to the SPA's own
-        // index.html with status 200 (the SPA-200 mask), so HTML here means
-        // NO backend exists — not that the owner's backend errored. Without
-        // this check the public site showed the error screen instead of the
-        // .threads opener (operator-caught live, 2026-08-11).
-        const ctype = (response.headers.get("content-type") || "").toLowerCase();
-        gotResponse = ctype.includes("json");
+        const ctype = (response.headers?.get?.("content-type") || "").toLowerCase();
+        if (ctype && !ctype.includes("json")) {
+          throw new Error("The server history endpoint returned the website instead of conversation data.");
+        }
+        if (response.ok === false) {
+          let detail = "";
+          try {
+            const body = await response.json();
+            detail = body?.detail || body?.message || "";
+          } catch {
+            // Keep the HTTP status when the error response is not JSON.
+          }
+          if (response.status === 401 || response.status === 403) {
+            throw new Error(`Server history is locked (HTTP ${response.status})${detail ? `: ${detail}` : "."}`);
+          }
+          throw new Error(`Server history failed (HTTP ${response.status})${detail ? `: ${detail}` : "."}`);
+        }
         const res = await response.json();
         const data = res.items || res; // Support both mock and real responses
+        if (!Array.isArray(data)) {
+          throw new Error("The server history response did not contain a conversation list.");
+        }
         data.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         setConversations(data);
+        setError("");
       } catch (err) {
-        console.error("Error fetching conversations:", err.message);
-        // No response at all = backend unreachable (public deploy) -> become the
-        // .threads opener. A response that errored = owner-side problem -> show it.
-        if (!gotResponse) {
-          setOffline(true);
-        } else {
-          setError("Failed to load conversations.");
-        }
+        console.error("[Browse] Server history unavailable:", err);
+        const reason = err?.name === "AbortError"
+          ? "The private server did not answer within 6 seconds."
+          : String(err?.message || err);
+        setError(reason);
       } finally {
         clearTimeout(timer);
         setLoading(false);
       }
     };
     fetchConversations();
-  }, []);
+  }, [dataProvider]);
 
   // Distinct contacts across all conversations (MVP contact picker), sorted by
   // name. Derived from the participants now carried on the list response.
@@ -264,14 +325,10 @@ export default function Browse() {
     );
   }, [conversations, contactFilter]);
 
-  // Backend unreachable: render the public, server-free .threads opener (button +
-  // drag-drop). Possession of the file is the capability; no list, no auth.
-  if (offline) return <ThreadsViewer />;
-
   return (
     <div className="flex flex-col h-[100dvh] w-screen bg-[#fafafa] font-sans">
       {/* Header */}
-      <div className="shrink-0 px-6 py-5 flex items-center justify-between border-b border-gray-100 bg-white">
+      <div className="shrink-0 px-4 py-4 md:px-6 flex items-center justify-between gap-3 border-b border-gray-100 bg-white">
         <button
           onClick={() => navigate("/")}
           className="text-sm text-gray-400 hover:text-gray-600 transition"
@@ -279,22 +336,118 @@ export default function Browse() {
           &larr; Back
         </button>
         <h1 className="text-sm font-medium text-gray-500 tracking-wide uppercase">
-          Conversations
+          Library
         </h1>
-        <div className="hidden md:block">
-          <ImportCanvas />
-        </div>
-        <div className="block md:hidden w-12" /> {/* spacer for mobile */}
+        <ThreadsFileButton
+          onFileSelected={openThreadsFile}
+          className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-600"
+        />
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8 md:py-6">
+        <section className="mx-auto max-w-2xl">
+          <div className="mb-3 flex items-end justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-slate-400">
+                On this device
+              </p>
+              <h2 className="mt-1 text-base font-semibold text-slate-800">Opened conversations</h2>
+            </div>
+            <span className="text-[11px] text-slate-400">Browser-local · private</span>
+          </div>
+
+          {fileError && (
+            <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {fileError}
+            </p>
+          )}
+          {localError && (
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              {localError}
+            </p>
+          )}
+
+          {localLoading ? (
+            <p className="py-5 text-sm text-slate-400">Loading this browser&apos;s library…</p>
+          ) : localRecords.length === 0 && !draftSummary ? (
+            <div className="rounded-xl border border-dashed border-slate-250 bg-white px-5 py-6 text-center">
+              <FileText aria-hidden="true" className="mx-auto text-slate-300" size={24} />
+              <p className="mt-2 text-sm font-medium text-slate-600">No saved conversations on this device</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Open a .threads file above; valid files will appear here next time.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {localRecords.map((record) => (
+                <div
+                  key={record.id}
+                  className="group flex cursor-pointer items-center gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 transition hover:border-slate-200 hover:shadow-sm"
+                  onClick={() => navigate(`/view/${encodeURIComponent(record.id)}`)}
+                >
+                  <HardDrive aria-hidden="true" className="shrink-0 text-slate-400" size={17} />
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-medium text-slate-800">{record.title}</h3>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Opened {formatRelativeDate(record.lastOpenedAt)}
+                      {record.nodeCount ? ` · ${record.nodeCount} nodes` : ""}
+                      {record.sourceName ? ` · ${record.sourceName}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    title="Remove from this browser"
+                    aria-label={`Remove ${record.title} from this browser`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void removeLocalArtifact(record);
+                    }}
+                    className="rounded p-2 text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
+                  >
+                    <Trash2 aria-hidden="true" size={15} />
+                  </button>
+                </div>
+              ))}
+
+              {draftSummary && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/new")}
+                  className="flex w-full items-center gap-3 rounded-lg border border-amber-100 bg-amber-50/60 px-4 py-3 text-left transition hover:border-amber-200"
+                >
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-slate-800">{draftSummary.title}</span>
+                    <span className="mt-1 block text-xs text-slate-500">
+                      Local recording draft · {draftSummary.nodeCount} nodes · continue editing
+                    </span>
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+
+        <section className="mx-auto mt-10 max-w-2xl border-t border-slate-200 pt-7">
+          <div className="mb-3">
+            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-slate-400">
+              Server history
+            </p>
+            <h2 className="mt-1 text-base font-semibold text-slate-800">Recorded conversations</h2>
+          </div>
         {loading ? (
-          <p className="text-center text-sm text-gray-400 mt-12">Loading...</p>
+          <p className="py-5 text-sm text-gray-400">Loading server history…</p>
         ) : error ? (
-          <p className="text-center text-sm text-red-500 mt-12">{error}</p>
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+            <p className="text-sm font-medium text-slate-600">Server history is unavailable</p>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">{error}</p>
+            <p className="mt-2 text-[11px] text-slate-400">
+              Conversations saved on this device still work. Connect to the private LCT backend to restore server history.
+            </p>
+          </div>
         ) : conversations.length === 0 ? (
-          <div className="text-center mt-16">
+          <div className="py-5">
             <p className="text-gray-400 text-sm">No conversations yet.</p>
             <p className="text-gray-300 text-xs mt-1">
               Start a live recording to create one.
@@ -439,6 +592,7 @@ export default function Browse() {
             )}
           </>
         )}
+        </section>
       </div>
 
       {/* Delete Confirmation Modal */}

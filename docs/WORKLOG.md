@@ -1,5 +1,102 @@
 # WORKLOG
 
+## 2026-08-13T18:13:38+05:30 — Stable local-first Browse library + honest home probe loading
+
+- Context: the operator approved keeping `/browse` as one stable conversation
+  library rather than switching the entire route into a `.threads` opener when
+  private server history is unreachable. During implementation the operator
+  also showed the home STT/Speakers/LLM pills painting red before the same M5
+  Parakeet/Ollama routes finished healthy; the requested contract is explicit
+  loading first and a concrete visible error only after a real failure.
+- Hypotheses and predictions:
+  - H1: Browse's route-level online/offline branch caused the identity break.
+    Removing that branch should leave browser-local artifacts usable under
+    aborted, HTML-masked, or locked server-history responses.
+  - H2: `.threads` stayed transient because `ThreadsViewer` only kept the
+    bundle in React state. A dedicated IndexedDB record should survive
+    navigation and reopen through `/view/:artifactId`.
+  - H3: the home status hook exposed a partial settings-before-probes render as
+    final status. Holding the first presentation in neutral loading until both
+    STT and LLM probes settle should prevent false red/amber startup states.
+  - H4: `BackendDataProvider.fetchNext` omitted `apiHeaders()`. Adding the same
+    headers as the rest of the authenticated client should prevent avoidable
+    401s while still rendering a section-level locked/unavailable explanation.
+  - H5: the orange Speakers chip and nested Safari tooltip had two independent
+    generators: static provider-name inference treated every Parakeet route as
+    diarized, while `StatusPill` emitted both a native `title` and a custom
+    hover card. Preserving FluidAudio's live `/health` payload should make the
+    speaker state evidence-based; removing `title` should leave one tooltip.
+- Files modified:
+  - `lct_app/src/pages/Browse.jsx` (lines 65-631): made Browse a stable library;
+    added **On this device** artifacts, latest local draft, direct `.threads`
+    open action, local remove action, and an independently loading/erroring
+    server-history section.
+  - `lct_app/src/pages/ThreadsViewer.jsx` (lines 1-535): centralized artifact
+    validation/file opening, remembers valid bundles without blocking viewing
+    on storage failure, loads local deep links, exposes save status, and links
+    back to the library. Audio remains absent by contract.
+  - `lct_app/src/services/threadsArtifact.js` (lines 1-102) and
+    `threadsLibraryStore.js` (lines 1-118): added the v1 artifact contract,
+    correct flat/chunked node counting, stable identity/metadata, dedicated
+    IndexedDB persistence, explicit transaction errors, and a best-effort
+    `navigator.storage.persist()` request.
+  - `lct_app/src/components/threads/ThreadsFileButton.jsx` (lines 1-48): added
+    the shared mobile-safe file input (intentionally no `accept` filter).
+  - `lct_app/src/routes/AppRoutes.jsx` (line 49): added the browser-local
+    `/view/:artifactId` renderer route.
+  - `lct_app/src/services/BackendDataProvider.js` (lines 53-60): made Browse's
+    history request carry configured auth headers.
+  - `lct_app/src/components/home/useHomeServiceStatus.js` (lines 139-142),
+    `ServiceStatus.jsx` (lines 1-54), and
+    `home/serviceStatusPresentation.js` (lines 1-29): render explicit neutral
+    `Loading…` pills during the first probe and expose a confirmed failure's
+    concrete probe reason outside the hover card.
+  - `lct_app/src/pages/Home.jsx` (lines 1, 110-114): renamed ambiguous
+    **Upload** to **Import audio** and changed it to the audio-file icon.
+  - `lct_app/src/components/home/StatusPill.jsx` and
+    `homeServiceStatusLogic.js` (lines 202-711): removed the duplicate native
+    tooltip, retained the accessible label/custom card, preserved the STT
+    health JSON, and now derives FluidAudio speaker readiness from the live
+    `diarization` field (`ready`, `loading`, or `unavailable`).
+  - `lct_python_backend/data/backend_catalog_seed.json`,
+    `services/backend_catalog.py`, and `services/diarization_config.py`: replaced
+    stale FluidAudio/Parakeet v2-MLX/planned metadata with the bundled v3
+    CoreML runtime, and require both explicit enablement and a URL before the
+    catalog calls FluidAudio or Senko runnable.
+  - `lct_app/src/services/threadsArtifact.test.js`,
+    `components/home/serviceStatusPresentation.test.js`, and
+    `tests/e2e/prod-threads-opener.spec.js`: recorded Test Intent and added
+    behavior-first regressions for local persistence/deep links, mobile picker
+    safety, standalone `/view`, loading/error labels, and invalid-file recovery.
+  - `docs/adr/ADR-036-shareable-conversation-graph-artifact-and-waitlist.md`
+    (amendment at line 113): recorded the approved stable route/data-source
+    decision and explicit local-audio non-goal.
+  - `docs/TECH_DEBT.md`: logged `Browse.jsx` and `ThreadsViewer.jsx` as current
+    decomposition candidates (631 and 535 LOC respectively).
+- Validation:
+  - Focused Vitest: `10 passed` (artifact, loading/error, live FluidAudio, and
+    single-tooltip regressions).
+  - Backend catalog pytest: `16 passed` (existing Python 3.9 EOL warnings only).
+  - Scoped ESLint: passed. Full inclusion of `App.jsx` still reports its
+    pre-existing unused `BetaGate` import; this change only touched comments in
+    that file and did not broaden scope to delete it.
+  - Production Vite build: passed (`2277 modules`); existing >500 kB chunk
+    warning remains.
+  - Playwright `.threads opener` group: `3 passed, 1 skipped` (the production
+    CDN-only assertion is expected to skip locally). The first run reached the
+    correct persisted UI but failed on an ambiguous text selector; selector was
+    tightened and the rerun passed.
+  - Rendered QA at 1280×900 and 390×844: no horizontal overflow; amber
+    **Open .threads** action, local artifact row, and independent server-history
+    explanation remain readable on desktop and mobile.
+- Outcome: the later operator screenshot showing green `STT: Parakeet (local)`
+  and `LLM: Ollama (local)` supports H3: the earlier red image was premature UI
+  state, not evidence that the final M5 route URL was wrong. A future genuine
+  failure now stays red but names the unavailable capability and shows the
+  actual probe reason. Speakers no longer uses orange to mean an ambiguous
+  "via STT" assumption: a live FluidAudio `ready` result is green; `loading`
+  is neutral; `unavailable` is red with the reported state.
+
 ## 2026-07-03T08:30:00+05:30 - LCT route timing diagnostics for supervisor investigation
 
 - Context: continuing the IndrasNet/LCT supervisor root-cause investigation after

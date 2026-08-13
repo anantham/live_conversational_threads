@@ -1,13 +1,16 @@
 import { test, expect } from '@playwright/test';
+import { Buffer } from 'node:buffer';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// The public-recipient path, end to end: a visitor with only a .threads file
-// (no backend, no auth) opens it at /browse or /view and gets the rendered
-// conversation map. Operator-caught live twice (2026-08-11): first the SPA-200
-// mask hid the opener, then the file picker refused the file on mobile. This
-// spec exists so that path can never silently regress again.
+/**
+ * Test Intent
+ * - Keep `/browse` a stable local-first library even when no backend answers.
+ * - Open `.threads` from Browse without a mobile-hostile `accept` filter.
+ * - Remember a valid artifact on this device and reopen it by stable `/view/:id` URL.
+ * - Keep `/view` as the recoverable standalone opener for drag-drop and bad files.
+ */
 //
 // Included in BOTH configs: the default (local) run blocks /api/* to force the
 // backendless state; the prod run (playwright.prod.config.ts) additionally
@@ -21,6 +24,7 @@ const FIXTURE = path.resolve(
 const FIXTURE_JSON = fs.readFileSync(FIXTURE, 'utf-8');
 
 const OPENER_HEADING = /Open a\s+\.threads\s+file/;
+const LIBRARY_HEADING = /Library/;
 const LOADED_TITLE = 'E2E fixture conversation'; // conversation_title in the fixture
 
 // Force the backend-unreachable state regardless of environment: abort every
@@ -30,7 +34,7 @@ async function blockBackend(page) {
 }
 
 test.describe('.threads opener (public recipient path)', () => {
-  test('real deploy: /browse reaches the opener via its own backend detection', async ({ page, baseURL }) => {
+  test('real deploy: /browse remains the library when the backend is absent', async ({ page, baseURL }) => {
     // Only meaningful against a public deploy, where /api/* hits the CDN's
     // SPA-200 mask (HTML with status 200). Locally a live backend would
     // legitimately show the conversation list instead, so skip there.
@@ -42,13 +46,14 @@ test.describe('.threads opener (public recipient path)', () => {
     // NO route blocking here: this asserts the deployed content-type check
     // (Browse.jsx gotResponse) classifies the masked /api answer as "no
     // backend" and falls to the opener — the exact live regression of 2026-08-11.
-    await expect(page.getByRole('heading', { name: OPENER_HEADING })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: LIBRARY_HEADING })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('button', { name: /Open \.threads/ })).toBeVisible();
   });
 
-  test('picker upload renders the map, and the input cannot re-grow an accept filter', async ({ page }) => {
+  test('Browse opens, remembers, and reopens a .threads artifact', async ({ page }) => {
     await blockBackend(page);
     await page.goto('/browse', { waitUntil: 'domcontentloaded' });
-    await expect(page.getByRole('heading', { name: OPENER_HEADING })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: LIBRARY_HEADING })).toBeVisible({ timeout: 15000 });
 
     // REGRESSION GUARD (mobile picker): an `accept` attr on this input greys
     // out .threads files in Android/iOS pickers (unregistered extension,
@@ -62,6 +67,15 @@ test.describe('.threads opener (public recipient path)', () => {
     await input.setInputFiles(FIXTURE);
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /Transcript/ })).toBeVisible();
+    await expect(page.getByText('Saved on this device')).toBeVisible();
+
+    await page.goto('/browse', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('On this device', { exact: true })).toBeVisible();
+
+    // Stable deep link: the local library record survives navigation/reload.
+    await page.goto('/view/e2e-fixture', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
   });
 
   test('drag-drop of an octet-stream .threads file renders the map at /view', async ({ page }) => {
