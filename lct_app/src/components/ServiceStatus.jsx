@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 
+import HomeSetupEta from "./home/HomeSetupEta";
 import StatusPill from "./home/StatusPill";
 import {
   initialStatusSignals,
@@ -11,6 +12,7 @@ import { useHomeServiceStatus } from "./home/useHomeServiceStatus";
 export default function ServiceStatus({ className = "" }) {
   const {
     showInitialLoading,
+    setupEta,
     sttLabel,
     diarLabel,
     llmLabel,
@@ -21,10 +23,13 @@ export default function ServiceStatus({ className = "" }) {
 
   if (showInitialLoading) {
     return (
-      <div className={`flex flex-wrap items-center gap-2 ${className}`} aria-live="polite">
-        {initialStatusSignals().map(({ label, signal }) => (
-          <StatusPill key={label} label={label} {...signal} />
-        ))}
+      <div className={className} aria-live="polite">
+        <HomeSetupEta eta={setupEta} />
+        <div className="flex flex-wrap items-center gap-2">
+          {initialStatusSignals(setupEta).map(({ label, signal }) => (
+            <StatusPill key={label} label={label} {...signal} />
+          ))}
+        </div>
       </div>
     );
   }

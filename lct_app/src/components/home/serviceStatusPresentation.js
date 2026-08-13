@@ -1,14 +1,22 @@
-const loadingSignal = (subject) => ({
+const loadingSignal = (subject, eta) => ({
   state: "loading",
   summary: `Checking the configured ${subject} route…`,
-  details: [{ label: "Status", value: "Loading current settings and probing the live route" }],
+  details: [
+    { label: "Status", value: "Loading current settings and probing the live route" },
+    ...(eta
+      ? [
+          { label: "ETA", value: eta.remainingText },
+          { label: "Basis", value: eta.basisText },
+        ]
+      : []),
+  ],
 });
 
-export function initialStatusSignals() {
+export function initialStatusSignals(eta) {
   return [
-    { label: "STT: Loading…", signal: loadingSignal("speech-to-text") },
-    { label: "Speakers: Loading…", signal: loadingSignal("speaker-label") },
-    { label: "LLM: Loading…", signal: loadingSignal("intelligence") },
+    { label: "STT: Loading…", signal: loadingSignal("speech-to-text", eta) },
+    { label: "Speakers: Loading…", signal: loadingSignal("speaker-label", eta) },
+    { label: "LLM: Loading…", signal: loadingSignal("intelligence", eta) },
   ];
 }
 

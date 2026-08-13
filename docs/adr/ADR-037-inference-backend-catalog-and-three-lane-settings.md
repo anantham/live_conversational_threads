@@ -84,3 +84,24 @@ enabled and to have a configured URL. This prevents the default localhost URL
 from creating a false effective backend on non-M5 hosts. The catalog probe is
 still useful for lane-level checks, but a generic HTTP 200 from the combined
 ASR service cannot by itself prove that the diarizer models loaded.
+
+## Amendment — 2026-08-13: empirical initial-setup ETA
+
+**Status:** Approved and implemented.
+
+The home status surface must explain how long its initial settings and live
+route checks are likely to take. This ETA is a presentation of the complete
+observable setup cycle—not a sum of timeout ceilings and not provider inference
+latency.
+
+Each browser retains at most 12 recent completed setup durations and estimates
+the next check using their 75th percentile. The UI displays the remaining time,
+the number of historical checks behind it, and the usual duration. Before any
+history exists it uses a clearly labeled initial estimate and explains that the
+browser is learning. If a check exceeds the estimate, it stops counting down
+and reports that setup is taking longer than usual with live elapsed time.
+
+Timing history is device-local operational metadata: it contains durations and
+completion timestamps only—no endpoint URLs, transcript content, provider
+credentials, or conversation identifiers. Invalid, unavailable, or full browser
+storage degrades to the initial estimate and never blocks readiness checks.

@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useDataProvider } from "../../services/dataProvider";
+import { makeDebug } from "../../utils/debug";
 import {
   POLL_INTERVAL_MS,
   buildHomeStatusPresentation,
@@ -10,6 +11,13 @@ import {
   probeConfiguredStt,
   summarizeError,
 } from "./homeServiceStatusLogic";
+import {
+  buildHomeSetupEta,
+  readHomeSetupTimingHistory,
+  recordHomeSetupDuration,
+} from "./homeSetupTiming";
+
+const debug = makeDebug("home-status");
 
 // In serverless (BYOK) mode there is no Python backend to probe — STT/LLM/
 // diarization all run browser -> Vercel proxy -> OpenAI with the visitor's key.
@@ -53,6 +61,10 @@ export function useHomeServiceStatus() {
   const [diarProbe, setDiarProbe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [probeError, setProbeError] = useState(null);
+  const initialSetupStartedAtRef = useRef(Date.now());
+  const initialSetupRecordedRef = useRef(false);
+  const [setupTimingHistory, setSetupTimingHistory] = useState(() => readHomeSetupTimingHistory());
+  const [setupEtaNowMs, setSetupEtaNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     if (isServerless) {
@@ -62,6 +74,7 @@ export function useHomeServiceStatus() {
     let cancelled = false;
 
     const fetchStatus = async () => {
+      debug("setup check started", { initial: !initialSetupRecordedRef.current });
       setLoading(true);
 
       const [llmResult, llmProvidersResult, sttResult, catalogResult] = await Promise.allSettled([
@@ -126,6 +139,21 @@ export function useHomeServiceStatus() {
       setLlmProbe(resolvedLlmProbe);
       setSttProbe(resolvedSttProbe);
       setLoading(false);
+
+      if (!initialSetupRecordedRef.current) {
+        initialSetupRecordedRef.current = true;
+        const completedAtMs = Date.now();
+        const measuredDurationMs = Math.max(
+          250,
+          completedAtMs - initialSetupStartedAtRef.current,
+        );
+        const nextHistory = recordHomeSetupDuration(measuredDurationMs, undefined, completedAtMs);
+        setSetupTimingHistory(nextHistory);
+        debug("initial setup check completed", {
+          durationMs: measuredDurationMs,
+          historySamples: nextHistory.samples.length,
+        });
+      }
     };
 
     fetchStatus();
@@ -141,6 +169,23 @@ export function useHomeServiceStatus() {
   // pills for healthy services and looks like a real failure for several seconds.
   const showInitialLoading = loading && !llmProbe && !sttProbe;
 
+  useEffect(() => {
+    if (!showInitialLoading) return undefined;
+    const tick = () => setSetupEtaNowMs(Date.now());
+    tick();
+    const intervalId = window.setInterval(tick, 250);
+    return () => window.clearInterval(intervalId);
+  }, [showInitialLoading]);
+
+  const setupEta = useMemo(
+    () => buildHomeSetupEta({
+      history: setupTimingHistory,
+      nowMs: setupEtaNowMs,
+      startedAtMs: initialSetupStartedAtRef.current,
+    }),
+    [setupEtaNowMs, setupTimingHistory],
+  );
+
   const presentation = useMemo(
     () => buildHomeStatusPresentation({
       llmSettings,
@@ -155,8 +200,8 @@ export function useHomeServiceStatus() {
   );
 
   if (isServerless) {
-    return { loading: false, showInitialLoading: false, ...SERVERLESS_PRESENTATION };
+    return { loading: false, setupEta, showInitialLoading: false, ...SERVERLESS_PRESENTATION };
   }
 
-  return { loading, showInitialLoading, ...presentation };
+  return { loading, setupEta, showInitialLoading, ...presentation };
 }

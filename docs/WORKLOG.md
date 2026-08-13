@@ -1,5 +1,56 @@
 # WORKLOG
 
+## 2026-08-13T20:36:00+05:30 — Empirical home setup ETA
+
+- Context: after approving and deploying the stable Browse/status UI, the
+  operator explicitly requested the previously discussed ETA layer for the
+  home screen's initial **Checking live setup…** phase. The ETA must be tied to
+  historical observed time, not merely to configured request timeouts.
+- Hypotheses and predictions:
+  - H1: the status hook currently exposes only `showInitialLoading`, with no
+    cycle timestamps or persisted history. Measuring the complete initial
+    settings-plus-STT/LLM-probe cycle should match the delay the operator sees.
+  - H2: an arithmetic mean would be too optimistic after one warm-cache check.
+    A recent p75 should produce a steadier countdown while remaining responsive
+    when the local network/runtime improves.
+  - H3: a countdown that reaches zero while work continues would recreate the
+    ambiguity. After the learned estimate, the UI should switch to **taking
+    longer than usual** plus elapsed time and keep the progress bar bounded.
+- Files modified:
+  - `lct_app/src/components/home/homeSetupTiming.js`: added a bounded 12-sample
+    per-browser history, validation/corrupt-storage recovery, p75 estimation,
+    an explicit 8-second first-run prior, countdown/overrun presentation data,
+    and default-off `home-status` diagnostics.
+  - `lct_app/src/components/home/useHomeServiceStatus.js`: timestamps the real
+    initial setup lifecycle, records completed durations, and updates the
+    countdown four times per second only while the initial check is visible.
+  - `lct_app/src/components/home/HomeSetupEta.jsx` and `ServiceStatus.jsx`:
+    render visible countdown, empirical basis/sample count, accessible progress,
+    and mobile-bounded width above the three neutral loading pills.
+  - `lct_app/src/components/home/serviceStatusPresentation.js`: carries the ETA
+    and its historical basis into each loading pill's accessible detail card.
+  - `homeSetupTiming.test.js`, `HomeSetupEta.test.jsx`, and
+    `serviceStatusPresentation.test.js`: recorded Test Intent and behavior-first
+    regressions for history, percentile, countdown, overrun, storage, visible
+    copy, progress semantics, and loading-pill detail parity.
+- Validation:
+  - Focused ETA/status Vitest: `12 passed`.
+  - Scoped ESLint: passed.
+  - Production Vite build: passed (`2279 modules`); existing >500 kB chunk
+    warning remains. The ETA slice increased the minified JS by ~3.8 kB before
+    gzip relative to the immediately prior production build.
+  - Final Playwright batch: `4 passed, 1 skipped`; the only skip is the existing
+    production-CDN-only Browse assertion. The ETA test delays the settings and
+    provider phases, observes the initial countdown, verifies no 390 px viewport
+    overflow, waits for completion, reloads, and then observes **Based on 1
+    recent check**.
+- Outcome: H1-H3 were confirmed. The home shelf now shows a visible empirical
+  countdown, learns from the completed end-to-end setup duration on this
+  browser, and switches to elapsed-time honesty when a check overruns history.
+- Confidence: 0.88. Fallback: when localStorage is missing, blocked, or corrupt,
+  the check continues normally and displays the labeled initial estimate; ETA
+  persistence is never allowed to block service readiness.
+
 ## 2026-08-13T18:13:38+05:30 — Stable local-first Browse library + honest home probe loading
 
 - Context: the operator approved keeping `/browse` as one stable conversation
