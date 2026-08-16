@@ -1,6 +1,7 @@
 import { memo } from "react";
 import PropTypes from "prop-types";
 import { Handle, Position } from "reactflow";
+import SpeakerTurnSummary from "./SpeakerTurnSummary";
 
 /**
  * Custom React Flow node renderer per ADR-030 §D4.
@@ -136,6 +137,8 @@ function ConversationNodeImpl({ data, selected }) {
     title,
     fullTitle,
     summary,
+    speakerTurns = [],
+    speakerColorMap = {},
     speakerLabel,
     fillColor = "#f1f5f9",
     borderColor = "#cbd5e1",
@@ -221,13 +224,22 @@ function ConversationNodeImpl({ data, selected }) {
         {isCrux && <CruxDot />}
         {title || "Untitled"}
       </div>
-      {showSummary && truncatedSummary && (
+      {showSummary && speakerTurns.length > 0 && (
+        <SpeakerTurnSummary
+          turns={speakerTurns}
+          speakerColorMap={speakerColorMap}
+          maxLength={summaryMaxLength}
+        />
+      )}
+      {showSummary && speakerTurns.length === 0 && truncatedSummary && (
         <div style={summaryStyle}>{truncatedSummary}</div>
       )}
       <MarkerStrip markers={dimensionMarkers} />
       <RhetoricStrip claimType={claimType} flags={rhetoricFlags} />
       {argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
-      {speakerLabel && <div style={speakerStyle}>{speakerLabel}</div>}
+      {speakerTurns.length === 0 && speakerLabel && (
+        <div style={speakerStyle}>{speakerLabel}</div>
+      )}
 
       {canExpand && (
         <div style={cardFooterStyle}>
@@ -456,6 +468,8 @@ ConversationNodeImpl.propTypes = {
     title: PropTypes.string,
     fullTitle: PropTypes.string,
     summary: PropTypes.string,
+    speakerTurns: PropTypes.array,
+    speakerColorMap: PropTypes.objectOf(PropTypes.string),
     speakerLabel: PropTypes.string,
     fillColor: PropTypes.string,
     borderColor: PropTypes.string,

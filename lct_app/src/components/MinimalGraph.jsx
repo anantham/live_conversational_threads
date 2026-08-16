@@ -309,9 +309,13 @@ function MinimalGraphInner({
       // Summary: passed through; ConversationNode handles truncation.
       const summary = item.summary || item.full_text || "";
 
+      // Recipient artifacts carry structured moment turns so speaker identity
+      // can be shown by stable color markers without repeating names in prose.
+      const speakerTurns = Array.isArray(item.source_turns) ? item.source_turns : [];
+
       // Speaker badge (prefer renamed display name over raw id)
       const speaker = item.speaker_display || item.speaker_id || "";
-      const speakerLabel = isDraftNode
+      const speakerLabel = speakerTurns.length > 0 ? "" : isDraftNode
         ? (speaker ? `${speaker} Â· provisional` : "provisional")
         : speaker;
 
@@ -347,6 +351,8 @@ function MinimalGraphInner({
           title,
           fullTitle,
           summary,
+          speakerTurns,
+          speakerColorMap,
           speakerLabel,
           fillColor: fill,
           borderColor: border,

@@ -84,7 +84,12 @@ export const TIER_LEGEND_COLORS = Object.freeze(
  */
 export function buildSpeakerColorMapForNodes(nodes) {
   const speakers = [
-    ...new Set((nodes || []).map((n) => n.speaker_id || "").filter(Boolean)),
+    ...new Set((nodes || []).flatMap((n) => [
+      n.speaker_id || "",
+      ...(Array.isArray(n.source_turns)
+        ? n.source_turns.map((turn) => turn?.speaker_id || "")
+        : []),
+    ]).filter(Boolean)),
   ];
   const map = {};
   speakers.forEach((s, i) => {

@@ -3437,4 +3437,26 @@ Manual testing not run:
 - **Next Steps:** 
   - The E2E automation for the Serverless upload flow was abandoned in favor of manual user testing, as it was blocking progress.
   - The user will manually test the Serverless mode audio upload in the browser.
-  - **Ready to move on to ADR-058 (Human-Gated Identity) in the next session.**
+- **Ready to move on to ADR-058 (Human-Gated Identity) in the next session.**
+
+## 2026-08-16 — Structured speaker turns in recipient cards
+
+- Recipient `.threads` moment nodes may now carry `source_turns` with stable
+  utterance ID, speaker ID and spoken text. `MinimalGraph` passes those rows to a
+  focused `SpeakerTurnSummary` component; `ConversationNode` suppresses the old
+  visible speaker label and plain summary when structured turns are present.
+- Each utterance is a separate row with a stable speaker-color dot. The full
+  speaker name is not rendered as card text or a nested tooltip; the ID remains
+  machine-readable for graph coloring and provenance. Speaker color discovery
+  now includes every speaker in a multi-speaker moment.
+- Regression coverage adds a server-rendered component test, speaker-color-map
+  test, and `.threads` opener E2E assertion that spoken text is visible while the
+  speaker name is absent. Fixture contract was extended with two structured
+  turns.
+- Validation: 13 focused unit/artifact tests passed; production build passed;
+  focused ESLint reported zero errors and one pre-existing `MinimalGraph.jsx`
+  hook-dependency warning; `.threads` opener E2E passed 3 with 1 deploy-only skip.
+- Files touched: `MinimalGraph.jsx`, `ConversationNode.jsx`, `colorModes.js`,
+  `SpeakerTurnSummary.jsx`, their focused tests, and the opener fixture/spec.
+- Both touched legacy composition files remain above the 300 LOC heuristic;
+  concrete extraction candidates are recorded in `docs/TECH_DEBT.md`.
