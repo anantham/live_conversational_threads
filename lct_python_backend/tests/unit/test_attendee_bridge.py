@@ -523,3 +523,59 @@ def test_attendee_webhook_non_terminal_state_does_not_schedule_even_when_enabled
         monkeypatch, enabled=True, new_state="joined_recording", calls=calls,
     ))
     assert calls == []
+
+
+# --- durable session identity (M3) -------------------------------------------
+
+def _registry_tmp(monkeypatch, tmp_path):
+    path = tmp_path / "attendee_sessions.json"
+    monkeypatch.setenv("ATTENDEE_SESSION_REGISTRY_PATH", str(path))
+    return path
+
+
+def test_durable_registry_persists_identity_and_survives_unregister(monkeypatch, tmp_path):
+    async def _run():
+        _registry_tmp(monkeypatch, tmp_path)
+        sess = attendee_bridge.MeetingSession(
+            conversation_id="c-durable",
+            meeting_url="https://meet.google.com/abc-defg-hij",
+            bot_name="LCT",
+        )
+        await attendee_bridge.register(sess)
+        await attendee_bridge.bind_bot(sess, "bot-durable")
+
+        rec = attendee_bridge.get_durable_by_conversation("c-durable")
+        assert rec["bot_id"] == "bot-durable"
+        assert rec["meeting_url"] == "https://meet.google.com/abc-defg-hij"
+
+        # Query by meeting URL (with ad-hoc params stripped) also resolves.
+        by_url = attendee_bridge.get_durable_by_meeting_url(
+            "https://meet.google.com/abc-defg-hij?ijlm=1"
+        )
+        assert by_url["conversation_id"] == "c-durable"
+
+        # Unregister removes the LIVE session only; the durable record survives
+        # (this is what lets a restart / the meeting-share pipeline recover the
+        # conversation a meeting produced).
+        attendee_bridge._unregister(sess)
+        assert attendee_bridge.get_by_conversation("c-durable") is None
+        assert attendee_bridge.get_durable_by_conversation("c-durable")["conversation_id"] == "c-durable"
+
+    asyncio.run(_run())
+
+
+def test_durable_registry_records_terminal_status_on_close(monkeypatch, tmp_path):
+    async def _run():
+        _registry_tmp(monkeypatch, tmp_path)
+        sess = attendee_bridge.MeetingSession(conversation_id="c-close", meeting_url="u", bot_name="b")
+        await attendee_bridge.register(sess)
+        await sess.close(reason="finalized")
+        assert attendee_bridge.get_durable_by_conversation("c-close")["status"] == "ended"
+
+    asyncio.run(_run())
+
+
+def test_durable_registry_missing_is_none(monkeypatch, tmp_path):
+    _registry_tmp(monkeypatch, tmp_path)
+    assert attendee_bridge.get_durable_by_conversation("never-joined") is None
+    assert attendee_bridge.get_durable_by_meeting_url("https://meet.google.com/nope-000") is None

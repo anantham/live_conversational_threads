@@ -293,6 +293,7 @@ class MeetingSession:
             return
         self._closed = True
         self.status = "ended" if reason in {"finalized", "bot_ended"} else "error"
+        _persist_session(self)  # durable identity: record the terminal status
         # Tell viewers the stream is done, then release them.
         self._relay({"type": "meeting_ended", "data": {"reason": reason, "status": self.status}})
         async with self._sub_lock:
@@ -418,18 +419,96 @@ def _normalize_meeting_url(meeting_url: str) -> str:
     return (meeting_url or "").split("?", 1)[0].rstrip("/").lower()
 
 
+# ---------------------------------------------------------------------------
+# Durable session identity (M3)
+#
+# The in-memory dicts above own LIVE sessions (producer sockets, viewer fan-out).
+# They cannot survive a process restart. The durable registry below persists the
+# session *identity* — conversation_id ↔ meeting_url ↔ bot_id ↔ status — to a
+# JSON sidecar so a restart does not lose the mapping (operator diagnostics, and
+# the meeting-share pipeline can still find the conversation a meeting produced).
+#
+# It is intentionally NOT used for live dedup: live dedup stays in-memory
+# (``get_by_meeting_url``). The durable registry is informational — it never
+# suppresses a join (Google reuses a Meet URL across a recurring series, so a
+# stale record must not block a future instance). The cross-restart "don't
+# double-join" guarantee is owned by the caller's ledger (IndrasNet
+# ``meeting_bot_joins``), not this file.
+# ---------------------------------------------------------------------------
+
+def _registry_path() -> Path:
+    override = env_str_or_none("ATTENDEE_SESSION_REGISTRY_PATH")
+    if override:
+        return Path(override)
+    # services/attendee_bridge.py -> parents[2] == repo root
+    return Path(__file__).resolve().parents[2] / "data" / "attendee_sessions.json"
+
+
+def _load_registry() -> Dict[str, Any]:
+    try:
+        raw = _registry_path().read_text(encoding="utf-8")
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+    except Exception:  # noqa: BLE001 — a corrupt registry must not break a join
+        logger.warning("[attendee-bridge] could not load session registry", exc_info=True)
+        return {}
+
+
+def _save_registry(registry: Dict[str, Any]) -> None:
+    path = _registry_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(registry, indent=2, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, path)
+    except Exception:  # noqa: BLE001 — best-effort; a full disk must not kill a meeting
+        logger.warning("[attendee-bridge] could not persist session registry", exc_info=True)
+
+
+def _persist_session(session: MeetingSession) -> None:
+    registry = _load_registry()
+    registry[session.conversation_id] = {
+        "conversation_id": session.conversation_id,
+        "meeting_url": session.meeting_url,
+        "bot_id": session.bot_id,
+        "status": session.status,
+        "joined_at": registry.get(session.conversation_id, {}).get("joined_at")
+        or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "last_status_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    _save_registry(registry)
+
+
+def get_durable_by_conversation(conversation_id: str) -> Optional[Dict[str, Any]]:
+    """Persisted identity record for a conversation (survives restart)."""
+    return _load_registry().get(conversation_id)
+
+
+def get_durable_by_meeting_url(meeting_url: str) -> Optional[Dict[str, Any]]:
+    """Most-recent persisted record for a meeting URL (survives restart)."""
+    key = _normalize_meeting_url(meeting_url)
+    for record in _load_registry().values():
+        if _normalize_meeting_url(record.get("meeting_url") or "") == key:
+            return record
+    return None
+
+
 async def register(session: MeetingSession) -> None:
     async with _registry_lock:
         _by_conversation[session.conversation_id] = session
         _by_meeting_url[_normalize_meeting_url(session.meeting_url)] = session
         if session.bot_id:
             _by_bot[session.bot_id] = session
+    _persist_session(session)
 
 
 async def bind_bot(session: MeetingSession, bot_id: str) -> None:
     session.attach_bot(bot_id)
     async with _registry_lock:
         _by_bot[bot_id] = session
+    _persist_session(session)
 
 
 def _unregister(session: MeetingSession) -> None:

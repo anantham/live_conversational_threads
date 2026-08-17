@@ -73,10 +73,17 @@ ATTENDEE_RECORDING_FORMAT: str = env_str("ATTENDEE_RECORDING_FORMAT", "mp3")
 # and is a new automatic background trigger, so it's an explicit opt-in.
 ATTENDEE_SLOWPASS_ENABLED: bool = env_bool("ATTENDEE_SLOWPASS_ENABLED", False)
 # Auto-leave timeouts (seconds) so the bot exits empty/ghost meetings promptly
-# (and the LCT loop closes) instead of recording an empty room. Tighter than
-# Attendee's defaults (only_participant 60s, wait_for_host 600s).
-ATTENDEE_ONLY_PARTICIPANT_TIMEOUT_S: int = env_int("ATTENDEE_ONLY_PARTICIPANT_TIMEOUT_S", 30)
-ATTENDEE_WAIT_FOR_HOST_TIMEOUT_S: int = env_int("ATTENDEE_WAIT_FOR_HOST_TIMEOUT_S", 120)
+# (and the LCT loop closes) instead of recording an empty room.
+#
+# Operator spec (2026-08-17, auto-join scheduler): the bot joins ~60s BEFORE the
+# calendar start and must WAIT ~3 minutes for the host / other participants
+# before leaving if it is still alone. Both timeouts are therefore 180s: the
+# sole-participant timer gives the host 3 min to arrive after an early join
+# (instead of leaving at 30s), and the wait-for-host timer caps a no-show at
+# 3 min. Still tighter than Attendee's defaults (only_participant 60s,
+# wait_for_host 600s) on the host side.
+ATTENDEE_ONLY_PARTICIPANT_TIMEOUT_S: int = env_int("ATTENDEE_ONLY_PARTICIPANT_TIMEOUT_S", 180)
+ATTENDEE_WAIT_FOR_HOST_TIMEOUT_S: int = env_int("ATTENDEE_WAIT_FOR_HOST_TIMEOUT_S", 180)
 ATTENDEE_SILENCE_TIMEOUT_S: int = env_int("ATTENDEE_SILENCE_TIMEOUT_S", 600)
 
 
