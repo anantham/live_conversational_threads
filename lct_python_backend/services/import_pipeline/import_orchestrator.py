@@ -36,17 +36,6 @@ def _is_local_provider(provider: Any) -> bool:
     )
 
 
-def _topology_query(title: str, summary: str, nodes: List[Dict[str, Any]]) -> str:
-    high_level_names = [
-        _safe_text(node.get("node_name"))
-        for node in nodes
-        if isinstance(node, dict)
-        and int(node.get("semantic_level") or node.get("level") or 0) >= 3
-    ]
-    parts = [part for part in (title, summary, *high_level_names[:8]) if _safe_text(part)]
-    return " | ".join(map(_safe_text, parts)) or "Unlabelled conversation argument graph"
-
-
 def _topology_marker(edges: List[Dict[str, Any]], *, status: str, reason: str = "") -> Dict[str, Any]:
     counts: Dict[str, int] = {}
     for edge in edges:
@@ -399,11 +388,7 @@ async def extract_graph_for_conversation(
     try:
         semantic_edges, enrichment_telemetry = await run_edge_enrichment(
             nodes=existing,
-            query_summary=_topology_query(
-                conversation_title or conv.conversation_name or "",
-                summary or "",
-                existing,
-            ),
+            query_summary="",
             llm_config=llm_config,
             providers=local_providers,
             skip_context_lookup=True,

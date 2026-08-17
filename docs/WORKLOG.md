@@ -3507,5 +3507,22 @@ Manual testing not run:
 - Native generation now requests, normalizes, consolidates, persists, and
   exports human-readable `thread_label` values, with deterministic readable
   fallback for legacy model output.
-- Validation so far: 94 focused backend tests and 55 focused frontend tests
-  passed. Full suites/build and the mandatory external review rerun remain.
+- Validation: 94 focused backend tests and all 206 frontend tests passed;
+  production build passed. Full backend result was 1,871 passed and two
+  pre-existing environment/contract failures, recorded in `ISSUES.md`.
+
+## 2026-08-17 — PR #170 second ultrareview nit pass
+
+- The second Claude ultrareview verified four low-severity findings. The wrapper
+  failed closed because progress text preceded the final JSON, so the saved raw
+  report was inspected manually and treated as findings, not a pass.
+- Repairs:
+  - speaker-turn clipping stops instead of rendering an ellipsis-only row when
+    one character remains;
+  - malformed all-empty `source_turns` fall back to the readable node summary
+    without restoring speaker names;
+  - an empty combined topology-marker list is explicitly `incomplete`;
+  - owner-local enrichment no longer computes or passes an unused retrieval
+    query, and the now-dead helper was removed.
+- Validation: 95 affected backend tests and all 208 frontend tests passed;
+  production build passed. Final external review rerun remains.

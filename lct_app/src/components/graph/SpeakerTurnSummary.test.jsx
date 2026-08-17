@@ -7,6 +7,7 @@ import SpeakerTurnSummary from "./SpeakerTurnSummary";
  * - Recipient moment cards show spoken text without repeating speaker names.
  * - Separate turns retain a stable, non-textual speaker marker.
  * - Structured identity remains machine-readable without injecting Markdown.
+ * - Exhausted character budgets never create an ellipsis-only turn row.
  */
 describe("SpeakerTurnSummary", () => {
   it("renders separate color-marked turns without visible speaker names", () => {
@@ -27,5 +28,21 @@ describe("SpeakerTurnSummary", () => {
     expect(markup).not.toContain("**");
     expect(markup).toContain('data-speaker-id="Aditya"');
     expect(markup).toContain("#bae6fd");
+  });
+
+  it("does not render an ellipsis-only row when one character remains", () => {
+    const markup = renderToStaticMarkup(
+      <SpeakerTurnSummary
+        turns={[
+          { utterance_id: "u1", speaker_id: "A", text: "abcd" },
+          { utterance_id: "u2", speaker_id: "B", text: "second turn" },
+        ]}
+        maxLength={5}
+      />,
+    );
+
+    expect(markup).toContain("abcd");
+    expect(markup).not.toContain('data-speaker-id="B"');
+    expect(markup).not.toContain(">…<");
   });
 });

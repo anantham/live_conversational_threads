@@ -10,6 +10,7 @@ export default function SpeakerTurnSummary({ turns, speakerColorMap, maxLength =
     if (remaining <= 0) break;
     const text = String(turn?.text || "").trim();
     if (!text) continue;
+    if (text.length > remaining && remaining < 2) break;
     const clipped = text.length > remaining
       ? `${text.slice(0, Math.max(0, remaining - 1)).trim()}…`
       : text;

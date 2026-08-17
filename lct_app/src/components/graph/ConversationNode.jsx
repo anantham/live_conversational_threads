@@ -70,7 +70,7 @@ MarkerStrip.propTypes = {
   markers: PropTypes.arrayOf(PropTypes.string),
 };
 
-// Rhetoric chips (argument-view Phase 2): a quiet claim-type tag (the node's
+// Rhetoric chips (argument-view Phase 2): a quiet argument-role tag (the node's
 // argumentative role) + one ⚠ chip per adversarially-verified rhetoric flag.
 // The flag's full label, confidence, candidate-note and verbatim quote live in
 // the hover tooltip — the chip itself stays small. Always visible (like the crux
@@ -210,6 +210,9 @@ function ConversationNodeImpl({ data, selected }) {
     summary && summary.length > summaryMaxLength
       ? `${summary.slice(0, summaryMaxLength).trim()}…`
       : summary || "";
+  const hasVisibleSpeakerTurns = speakerTurns.some(
+    (turn) => String(turn?.text || "").trim().length > 0
+  );
 
   return (
     <div style={cardStyle}>
@@ -224,20 +227,20 @@ function ConversationNodeImpl({ data, selected }) {
         {isCrux && <CruxDot />}
         {title || "Untitled"}
       </div>
-      {showSummary && speakerTurns.length > 0 && (
+      {showSummary && hasVisibleSpeakerTurns && (
         <SpeakerTurnSummary
           turns={speakerTurns}
           speakerColorMap={speakerColorMap}
           maxLength={summaryMaxLength}
         />
       )}
-      {showSummary && speakerTurns.length === 0 && truncatedSummary && (
+      {showSummary && !hasVisibleSpeakerTurns && truncatedSummary && (
         <div style={summaryStyle}>{truncatedSummary}</div>
       )}
       <MarkerStrip markers={dimensionMarkers} />
       <RhetoricStrip argumentRole={argumentRole} flags={rhetoricFlags} />
       {argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
-      {speakerTurns.length === 0 && speakerLabel && (
+      {!hasVisibleSpeakerTurns && speakerLabel && (
         <div style={speakerStyle}>{speakerLabel}</div>
       )}
 

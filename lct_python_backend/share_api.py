@@ -388,7 +388,7 @@ def _combine_argument_topology(markers: list[Optional[dict]]) -> dict:
     """Roll up per-meeting scan markers without hiding missing/failed scans."""
     relation_counts: dict[str, int] = {}
     edge_count = 0
-    complete = True
+    complete = bool(markers)
     versions = set()
     for marker in markers:
         if not isinstance(marker, dict) or marker.get("status") != "complete":

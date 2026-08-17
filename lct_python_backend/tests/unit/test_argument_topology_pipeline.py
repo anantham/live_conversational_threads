@@ -140,3 +140,12 @@ def test_combined_topology_rollup_fails_closed_on_missing_meeting_marker():
     assert rollup["semantic_edge_count"] == 2
     assert rollup["conversation_count"] == 2
     assert rollup["complete_conversation_count"] == 1
+
+
+def test_combined_topology_rollup_fails_closed_when_no_meetings_are_present():
+    rollup = share_api._combine_argument_topology([])
+
+    assert rollup["status"] == "incomplete"
+    assert rollup["conversation_count"] == 0
+    assert rollup["complete_conversation_count"] == 0
+    assert rollup["reason"] == "one_or_more_conversations_missing_or_failed_topology_scan"
