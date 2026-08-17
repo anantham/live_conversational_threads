@@ -8,7 +8,7 @@ function node(id, over = {}) {
   return {
     id,
     node_name: over.node_name || `Node ${id}`,
-    claim_type: "claim",
+    argument_role: "claim",
     speaker_id: "",
     thread_id: "thread-a",
     edge_relations: [],
@@ -25,9 +25,9 @@ const UTTS = [
 
 describe("buildDebateData", () => {
   it("makes one card per argument node with verbatim quote and tag", () => {
-    const a = node("a", { claim_type: "claim", utterance_ids: ["u1"], speaker_id: "Alice" });
+    const a = node("a", { argument_role: "claim", utterance_ids: ["u1"], speaker_id: "Alice" });
     const b = node("b", {
-      claim_type: "evidence",
+      argument_role: "evidence",
       utterance_ids: ["u2"],
       speaker_id: "Bob",
       timestamp_start: T0 + 3600,
@@ -55,8 +55,8 @@ describe("buildDebateData", () => {
     expect(tCard.pushbackCount).toBe(1);
   });
 
-  it("returns empty for graphs with no claim_type data", () => {
-    expect(buildDebateData([node("x", { claim_type: "" })], []).empty).toBe(true);
+  it("returns empty for graphs with no argument_role data", () => {
+    expect(buildDebateData([node("x", { argument_role: "" })], []).empty).toBe(true);
   });
 });
 

@@ -33,7 +33,7 @@ const COLOR_MODE_LABELS = {
   argument: "Color: Argument",
   date: "Color: Date",
   // "Debate" = argument-map roles: claim / evidence / question / assumption
-  // (CLAIM_TYPE_COLORS). Colors the anatomy of the argument itself.
+  // (ARGUMENT_ROLE_COLORS). Colors the anatomy of the argument itself.
   rhetoric: "Color: Debate",
 };
 
@@ -333,18 +333,17 @@ export function buildArgumentStatusMapForNodes(nodes) {
 
 /**
  * Rhetoric lens (argument-view Phase 2). Colors a node by its argumentative
- * ROLE (claim_type), with any node carrying an adversarially-verified rhetoric
+ * ROLE (argument_role), with any node carrying an adversarially-verified rhetoric
  * flag shown in RED as the headline ("a candidate issue lives here"). The card
- * chips carry the specifics (claim-type label + ⚠ flag with the quote/note).
+ * chips carry the specifics (argument-role label + ⚠ flag with the quote/note).
  * Distinct from the `argument` lens, which colors by incoming supports/rebuts.
  */
-export const CLAIM_TYPE_COLORS = Object.freeze({
+export const ARGUMENT_ROLE_COLORS = Object.freeze({
   claim: { fill: "#dbeafe", border: "#60a5fa" }, // blue
   assumption: { fill: "#ede9fe", border: "#a78bfa" }, // violet
   evidence: { fill: "#dcfce7", border: "#4ade80" }, // green
   question: { fill: "#e2e8f0", border: "#94a3b8" }, // slate
-  definition: { fill: "#ccfbf1", border: "#2dd4bf" }, // teal
-  value: { fill: "#fce7f3", border: "#f472b6" }, // pink
+  context: { fill: "#f1f5f9", border: "#cbd5e1" }, // neutral slate
 });
 export const RHETORIC_FLAG_COLOR = Object.freeze({ fill: "#fee2e2", border: "#ef4444" }); // red
 
@@ -394,7 +393,7 @@ export function resolveNodeColors({
     if (Array.isArray(node.rhetoric_flags) && node.rhetoric_flags.length > 0) {
       return { fill: RHETORIC_FLAG_COLOR.fill, border: RHETORIC_FLAG_COLOR.border };
     }
-    const spec = CLAIM_TYPE_COLORS[node.claim_type];
+    const spec = ARGUMENT_ROLE_COLORS[node.argument_role];
     if (spec) return { fill: spec.fill, border: spec.border };
     return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
   }

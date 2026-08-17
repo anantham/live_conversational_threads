@@ -375,7 +375,7 @@ function MinimalGraphInner({
           onOpenDetails: () => handleOpenDetails(item.id),
           // Rhetoric layer (Phase 2): argumentative role + verified flags drive
           // the card chips + the Rhetoric color lens.
-          claimType: item.claim_type || null,
+          argumentRole: item.argument_role || null,
           rhetoricFlags: Array.isArray(item.rhetoric_flags) ? item.rhetoric_flags : [],
           argStatusLabel,
           // fullData kept for downstream consumers (NodeDetail panel etc.)
@@ -967,7 +967,7 @@ function MinimalGraphInner({
   const baseDisplayNodes = interactiveNodes.length > 0 ? interactiveNodes : layoutedDisplayNodes;
 
   // Weakness lenses: one-click "where is the argument weak" filters computed
-  // from incoming supports/rebuts (argumentStatusMap) + claim_type. A match
+  // from incoming supports/rebuts (argumentStatusMap) + argument_role. A match
   // set also keeps its ANCESTORS visible (parent_id walk) so the filter stays
   // meaningful at coarser tiers ("this theme contains unsupported claims").
   const [weaknessFilter, setWeaknessFilter] = useState(null);
@@ -1001,16 +1001,16 @@ function MinimalGraphInner({
       const st = argumentStatusMap[n.id] || {};
       const sup = st.sup || 0;
       const reb = st.reb || 0;
-      // With claim_type data, "claim" nodes are the auditable population;
+      // With argument_role data, "claim" nodes are the auditable population;
       // without it (older graphs), fall back to level-2 idea nodes.
-      const isClaim = n.claim_type
-        ? n.claim_type === "claim"
+      const isClaim = n.argument_role
+        ? n.argument_role === "claim"
         : getAuthoredSemanticLevel(n) === 2;
       if (isClaim && sup === 0) unsupported.add(n.id);
       if (isClaim && reb === 0) uncontested.add(n.id);
       if (sup > 0 && reb > 0) battleground.add(n.id);
       if (
-        n.claim_type === "question" ||
+        n.argument_role === "question" ||
         (n.node_name || "").toLowerCase().startsWith("open question")
       ) {
         questions.add(n.id);

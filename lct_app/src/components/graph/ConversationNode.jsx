@@ -75,14 +75,14 @@ MarkerStrip.propTypes = {
 // The flag's full label, confidence, candidate-note and verbatim quote live in
 // the hover tooltip — the chip itself stays small. Always visible (like the crux
 // dot), independent of the active color mode.
-function RhetoricStrip({ claimType, flags }) {
+function RhetoricStrip({ argumentRole, flags }) {
   const hasFlags = Array.isArray(flags) && flags.length > 0;
-  if (!claimType && !hasFlags) return null;
+  if (!argumentRole && !hasFlags) return null;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "5px" }}>
-      {claimType && (
-        <span title={`Argumentative role: ${claimType}`} style={claimTypeChipStyle}>
-          {claimType}
+      {argumentRole && (
+        <span title={`Argumentative role: ${argumentRole}`} style={argumentRoleChipStyle}>
+          {argumentRole}
         </span>
       )}
       {hasFlags && flags.map((f, i) => (
@@ -100,11 +100,11 @@ function RhetoricStrip({ claimType, flags }) {
 }
 
 RhetoricStrip.propTypes = {
-  claimType: PropTypes.string,
+  argumentRole: PropTypes.string,
   flags: PropTypes.array,
 };
 
-const claimTypeChipStyle = {
+const argumentRoleChipStyle = {
   display: "inline-flex",
   alignItems: "center",
   fontSize: "9px",
@@ -152,7 +152,7 @@ function ConversationNodeImpl({ data, selected }) {
     expandCount = 0,
     onExpand,
     onOpenDetails,
-    claimType = null,
+    argumentRole = null,
     rhetoricFlags = [],
     argStatusLabel = null,
     showSummary = true,
@@ -235,7 +235,7 @@ function ConversationNodeImpl({ data, selected }) {
         <div style={summaryStyle}>{truncatedSummary}</div>
       )}
       <MarkerStrip markers={dimensionMarkers} />
-      <RhetoricStrip claimType={claimType} flags={rhetoricFlags} />
+      <RhetoricStrip argumentRole={argumentRole} flags={rhetoricFlags} />
       {argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
       {speakerTurns.length === 0 && speakerLabel && (
         <div style={speakerStyle}>{speakerLabel}</div>
@@ -483,7 +483,7 @@ ConversationNodeImpl.propTypes = {
     expandCount: PropTypes.number,
     onExpand: PropTypes.func,
     onOpenDetails: PropTypes.func,
-    claimType: PropTypes.string,
+    argumentRole: PropTypes.string,
     rhetoricFlags: PropTypes.array,
     argStatusLabel: PropTypes.string,
     showSummary: PropTypes.bool,

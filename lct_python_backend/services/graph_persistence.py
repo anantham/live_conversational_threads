@@ -1008,12 +1008,15 @@ async def persist_graph(
             thread_state=thread_state or None,
             cluster_info={
                 "thread_id": str(thread_id) if thread_id else coerce_str(item.get("thread_id")) or None,
+                "thread_label": coerce_str(item.get("thread_label")) or None,
                 "thread_state": thread_state,
                 "linked_nodes": linked_nodes,
             },
             display_preferences={
                 "edge_relations": edge_relations,
-                "claim_type": coerce_str(item.get("claim_type")) or "context",
+                "argument_role": coerce_str(
+                    item.get("argument_role") or item.get("claim_type")
+                ) or "context",
             },
             utterance_ids=_coerce_uuid_array(item.get("utterance_ids")),
             # P0 provenance: persist the source_ref the graph carries (the

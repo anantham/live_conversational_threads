@@ -384,6 +384,36 @@ def _export_argument_topology(conversation) -> Optional[dict]:
     return dict(marker) if isinstance(marker, dict) else None
 
 
+def _combine_argument_topology(markers: list[Optional[dict]]) -> dict:
+    """Roll up per-meeting scan markers without hiding missing/failed scans."""
+    relation_counts: dict[str, int] = {}
+    edge_count = 0
+    complete = True
+    versions = set()
+    for marker in markers:
+        if not isinstance(marker, dict) or marker.get("status") != "complete":
+            complete = False
+            continue
+        versions.add(str(marker.get("version") or "unknown"))
+        edge_count += int(marker.get("semantic_edge_count") or 0)
+        for relation, count in (marker.get("relation_type_counts") or {}).items():
+            relation_counts[str(relation)] = relation_counts.get(str(relation), 0) + int(count or 0)
+    result = {
+        "version": "+".join(sorted(versions)) or "unknown",
+        "status": "complete" if complete else "incomplete",
+        "semantic_edge_count": edge_count,
+        "relation_type_counts": relation_counts,
+        "conversation_count": len(markers),
+        "complete_conversation_count": sum(
+            1 for marker in markers
+            if isinstance(marker, dict) and marker.get("status") == "complete"
+        ),
+    }
+    if not complete:
+        result["reason"] = "one_or_more_conversations_missing_or_failed_topology_scan"
+    return result
+
+
 @router.get("/api/conversations/{conversation_id}/threads-export")
 async def export_threads(
     conversation_id: str,
@@ -609,6 +639,7 @@ async def export_combined_threads(
     combined: list = []
     transcript_sections: list = []
     per_conversation: list = []
+    topology_markers: list[Optional[dict]] = []
     other_participants: set = set()
     total_turns = 0
     covered_turns = 0
@@ -667,6 +698,8 @@ async def export_combined_threads(
         total_turns += cov.get("total_turns") or 0
         covered_turns += cov.get("covered_turns") or 0
         any_auditable = any_auditable or bool(cov.get("auditable"))
+        topology_marker = _export_argument_topology(conv)
+        topology_markers.append(topology_marker)
         per_conversation.append({
             "meeting_idx": idx,
             "label": label,
@@ -674,6 +707,7 @@ async def export_combined_threads(
             "nodes": len(g),
             "auditable": bool(cov.get("auditable")),
             "pct": cov.get("pct"),
+            "argument_topology": topology_marker,
         })
 
     if not combined:
@@ -700,6 +734,7 @@ async def export_combined_threads(
         "chunk_dict": {},
         "full_transcript": "\n\n".join(transcript_sections),
         "transcript_source": "verbatim" if transcript_sections else "none",
+        "argument_topology": _combine_argument_topology(topology_markers),
         "coverage": {
             "total_turns": total_turns,
             "covered_turns": covered_turns,
@@ -874,6 +909,7 @@ async def fetch_share(
         # P0 quality check: how much of the raw the graph covers (honest null
         # when unauditable). The viewer's Coverage Report reads this.
         "coverage": build_coverage_summary(graph_data, utterances),
+        "argument_topology": _export_argument_topology(conversation),
         "audio_url": audio_url,
         "audio_url_expires": audio_url_expires,
         "share": {

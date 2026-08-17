@@ -151,6 +151,17 @@ def _slugify(value: str) -> str:
     return slug[:48] or "untitled-thread"
 
 
+def _thread_label_from_id(thread_id: str, fallback: str) -> str:
+    """Return a readable compatibility label when older output omitted one."""
+    value = _as_clean_str(thread_id)
+    for prefix in ("thread::", "thread-"):
+        if value.lower().startswith(prefix):
+            value = value[len(prefix):]
+            break
+    words = " ".join(part for part in value.replace("_", "-").split("-") if part)
+    return words.capitalize() if words else fallback
+
+
 def _normalize_thread_state(value: Any, predecessor: Optional[str]) -> str:
     raw = _as_clean_str(value).lower()
     if raw in _THREAD_STATES:
@@ -299,6 +310,7 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
         incoming_edges_by_target.setdefault(target_name, []).append(entry)
 
     normalized_nodes: List[Dict[str, Any]] = []
+    thread_labels: Dict[str, str] = {}
     for raw in raw_nodes:
         if not isinstance(raw, dict):
             continue
@@ -354,6 +366,11 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 linked_nodes.append(related_name)
 
         thread_id = _as_clean_str(raw.get("thread_id")) or f"thread::{_slugify(node_name)}"
+        proposed_thread_label = _as_clean_str(raw.get("thread_label"))
+        thread_label = thread_labels.setdefault(
+            thread_id,
+            proposed_thread_label or _thread_label_from_id(thread_id, node_name),
+        )
         thread_state = _normalize_thread_state(raw.get("thread_state"), predecessor)
         parent_id = _as_clean_str(raw.get("parent_id") or raw.get("parent_node_id")) or None
         children_ids = _as_string_list(raw.get("children_ids") or raw.get("child_ids"))
@@ -376,10 +393,17 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 "contextual_relation": contextual_relation,
                 "edge_relations": edge_relations,
                 "thread_id": thread_id,
+                "thread_label": thread_label,
                 "thread_state": thread_state,
                 "linked_nodes": linked_nodes,
                 "claims": _as_string_list(raw.get("claims")),
-                "claim_type": _normalize_argument_role(raw.get("claim_type")),
+                # Node-level conversational function. Keep this distinct from
+                # the analytical Claim entity's factual/normative/worldview
+                # ``claim_type`` taxonomy. Read the legacy key only so older
+                # generated artifacts remain importable.
+                "argument_role": _normalize_argument_role(
+                    raw.get("argument_role") or raw.get("claim_type")
+                ),
                 "is_bookmark": bool(raw.get("is_bookmark")),
                 "is_contextual_progress": bool(raw.get("is_contextual_progress")),
                 # Carry the tangent/crux flags through to persistence. They were

@@ -55,4 +55,19 @@ describe("normalizeGraphNode — #12 thread/tangent lift", () => {
     expect(out.is_tangent).toBe(false);
     expect(out.is_crux).toBe(false);
   });
+
+  it("lifts argument_role and reads legacy claim_type without exposing it", () => {
+    const current = normalizeGraphNode(
+      { id: "n4", node_name: "Evidence", argument_role: "EVIDENCE" },
+      3
+    );
+    const legacy = normalizeGraphNode(
+      { id: "n5", node_name: "Question", display_preferences: { claim_type: "QUESTION" } },
+      4
+    );
+
+    expect(current.argument_role).toBe("evidence");
+    expect(legacy.argument_role).toBe("question");
+    expect(current.claim_type).toBeUndefined();
+  });
 });

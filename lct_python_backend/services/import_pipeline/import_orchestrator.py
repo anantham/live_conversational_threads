@@ -70,35 +70,27 @@ def _merge_semantic_edges(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any
         target_id = _safe_text(edge.get("to_node_id"))
         relation = _safe_text(edge.get("relation_type")).lower()
         source = by_id.get(source_id)
-        if source is None or target_id not in by_id or not relation:
+        target = by_id.get(target_id)
+        if source is None or target is None or not relation:
             continue
         explanation = _safe_text(edge.get("explanation"))
-        confidence = edge.get("confidence")
-        edge_relations = source.setdefault("edge_relations", [])
-        relation_key = (target_id, relation)
+        source_name = _safe_text(source.get("node_name"))
+        if not source_name:
+            continue
+        # graph_persistence's legacy authoring path interprets edge_relations
+        # as INCOMING: related_node -> current node. Attach to the target so
+        # evidence-b supports claim-a remains evidence-b -> claim-a.
+        edge_relations = target.setdefault("edge_relations", [])
+        relation_key = (source_name, relation)
         if not any(
             isinstance(existing, dict)
             and (_safe_text(existing.get("related_node")), _safe_text(existing.get("relation_type")).lower()) == relation_key
             for existing in edge_relations
         ):
             edge_relations.append({
-                "related_node": target_id,
+                "related_node": source_name,
                 "relation_type": relation,
                 "relation_text": explanation or relation,
-            })
-        edges_out = source.setdefault("edges_out", [])
-        if not any(
-            isinstance(existing, dict)
-            and (_safe_text(existing.get("to")), _safe_text(existing.get("relationship_type")).lower()) == relation_key
-            for existing in edges_out
-        ):
-            edges_out.append({
-                "to": target_id,
-                "relationship_type": relation,
-                "relationship_subtype": relation if relation != "contextual" else None,
-                "explanation": explanation or relation,
-                "strength": confidence,
-                "confidence": confidence,
             })
 
 

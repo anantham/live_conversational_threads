@@ -3490,3 +3490,22 @@ Manual testing not run:
 - Non-blocking pre-existing findings: npm reports 10 dependency
   vulnerabilities and the production bundle reports a >500 KB chunk. Logged in
   `ISSUES.md`; no dependency mutation was attempted.
+
+## 2026-08-17 — PR #170 adversarial review repairs
+
+- Claude review found that semantic enrichment wrote a partial `edges_out`
+  structure, which caused persistence to select its faithful-edge branch and
+  omit existing temporal/contextual edges whenever semantic edges were present.
+  The merge now appends incoming semantic `edge_relations` to target nodes; a
+  persistence round-trip test proves all three relation families coexist with
+  correct direction.
+- Topology completion markers now appear in public share payloads and combined
+  exports, with a fail-closed combined rollup.
+- Renamed the node taxonomy to `argument_role` end-to-end while preserving the
+  unrelated Claim model's `claim_type`. The UI palette now matches the reachable
+  five roles and includes neutral `context`.
+- Native generation now requests, normalizes, consolidates, persists, and
+  exports human-readable `thread_label` values, with deterministic readable
+  fallback for legacy model output.
+- Validation so far: 94 focused backend tests and 55 focused frontend tests
+  passed. Full suites/build and the mandatory external review rerun remain.

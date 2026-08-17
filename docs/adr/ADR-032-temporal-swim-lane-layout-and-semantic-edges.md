@@ -344,3 +344,21 @@ without inspecting private content or guessing from edge counts. Existing cached
 graphs without the marker must be regenerated. Relation generation adds one local
 LLM pass to full-graph extraction; the fast transcript-only lane remains a
 separate, explicitly unenriched product contract.
+
+## Amendment — 2026-08-17: review corrections to the topology contract
+
+**Status:** approved for PR #170.
+
+Semantic scan output augments the canonical incoming `edge_relations` model; it
+must not create a partial `edges_out` representation, because persistence treats
+that field as a complete faithful graph and would otherwise discard temporal and
+contextual relations. Public, owner, and combined exports all carry topology
+completion markers; combined status is complete only when every included
+conversation is complete.
+
+Node conversational function is named `argument_role`. The separate analytical
+Claim entity retains `claim_type` for its factual/normative/worldview taxonomy.
+Legacy node `claim_type` values remain read-compatible but are never emitted by
+new graph generation. Native LCT generation, consolidation, persistence, and
+read models also carry a semantic `thread_label`; `thread_id` remains only the
+stable grouping key.
