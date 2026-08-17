@@ -3460,3 +3460,33 @@ Manual testing not run:
   `SpeakerTurnSummary.jsx`, their focused tests, and the opener fixture/spec.
 - Both touched legacy composition files remain above the 300 LOC heuristic;
   concrete extraction candidates are recorded in `docs/TECH_DEBT.md`.
+## 2026-08-17 — Recipient labels and fail-closed argument topology
+
+- Root cause confirmed across the producer/export/viewer chain: the import
+  orchestrator completed hierarchy consolidation without invoking the existing
+  edge-enrichment service; `.threads` export carried no proof that a topology
+  scan had run; generated nodes did not persist an argument role; and the
+  timeline displayed the opaque grouping ID rather than a separate label.
+- Implemented the class-level repair:
+  - owner-local imports run semantic-edge enrichment with local providers only
+    and no second-brain retrieval;
+  - valid zero-edge scans are distinguished from invalid/failed model output;
+  - semantic edge direction survives slug-ID persistence;
+  - export includes a content-free `argument_topology` completion marker;
+  - hierarchy prompts, normalization, consolidation, and persistence carry an
+    explicit argument role;
+  - timeline grouping remains keyed by `thread_id` while rendering
+    `thread_label` when supplied.
+- Main files: `services/import_pipeline/import_orchestrator.py`,
+  `services/edge_enrichment.py`, `services/graph_persistence.py`,
+  `services/transcript/transcript_prompts.py`,
+  `services/transcript/transcript_normalizer.py`, `share_api.py`, and the
+  timeline normalization/layout modules.
+- Validation:
+  - 113 focused backend tests passed;
+  - 26 focused frontend tests passed;
+  - production Vite build passed;
+  - companion IndrasNet source/projection suite passed 37 tests.
+- Non-blocking pre-existing findings: npm reports 10 dependency
+  vulnerabilities and the production bundle reports a >500 KB chunk. Logged in
+  `ISSUES.md`; no dependency mutation was attempted.

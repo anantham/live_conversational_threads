@@ -532,3 +532,13 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Creative: During a brainstorming session, I want the graph to auto-cluster related ideas and let me hide edges so I can drag a “storyline” into a deck outline without visual clutter.
 - Creative: While reviewing a contentious discussion, I want to click a node and have all related nodes pulled into view, then generate a concise narrative I can fact-check before sharing with stakeholders.
 - Creative: In a workshop, I want a smooth left-to-right timeline with fixed zoom presets so I can jump between moments, bookmark highlights, and later re-run higher-quality ASR/diarization on the stored audio for a polished recap.
+## 2026-08-17 — Dependency audit and bundle-size warnings (pre-existing, non-blocking)
+
+- `npm ci` reports 10 dependency vulnerabilities (1 low, 8 high, 1 critical).
+  This work did not run an unreviewed `npm audit fix`; triage direct versus
+  transitive exposure and upgrade through a separate dependency PR.
+- The production build reports a ~1.15 MB JavaScript chunk (>500 KB warning).
+  No regression was introduced by the small label-only viewer change, but route
+  or feature-level dynamic imports should be evaluated separately.
+- Impact: security-maintenance and startup-performance risk; not a blocker for
+  the argument-topology correctness repair.

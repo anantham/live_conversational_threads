@@ -18,6 +18,89 @@ from lct_python_backend.services.graph_persistence import persist_transcript
 
 logger = logging.getLogger(__name__)
 
+ARGUMENT_TOPOLOGY_SCAN_VERSION = "1.0"
+
+
+def _safe_text(value: Any) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def _is_local_provider(provider: Any) -> bool:
+    from lct_python_backend.services.egress_guard import is_local_url
+
+    return bool(
+        isinstance(provider, dict)
+        and provider.get("enabled", True)
+        and _safe_text(provider.get("base_url"))
+        and is_local_url(_safe_text(provider.get("base_url")))
+    )
+
+
+def _topology_query(title: str, summary: str, nodes: List[Dict[str, Any]]) -> str:
+    high_level_names = [
+        _safe_text(node.get("node_name"))
+        for node in nodes
+        if isinstance(node, dict)
+        and int(node.get("semantic_level") or node.get("level") or 0) >= 3
+    ]
+    parts = [part for part in (title, summary, *high_level_names[:8]) if _safe_text(part)]
+    return " | ".join(map(_safe_text, parts)) or "Unlabelled conversation argument graph"
+
+
+def _topology_marker(edges: List[Dict[str, Any]], *, status: str, reason: str = "") -> Dict[str, Any]:
+    counts: Dict[str, int] = {}
+    for edge in edges:
+        relation = _safe_text(edge.get("relation_type")).lower() or "contextual"
+        counts[relation] = counts.get(relation, 0) + 1
+    marker: Dict[str, Any] = {
+        "version": ARGUMENT_TOPOLOGY_SCAN_VERSION,
+        "status": status,
+        "semantic_edge_count": len(edges),
+        "relation_type_counts": counts,
+    }
+    if reason:
+        marker["reason"] = reason
+    return marker
+
+
+def _merge_semantic_edges(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> None:
+    by_id = {_safe_text(node.get("id")): node for node in nodes if isinstance(node, dict)}
+    for edge in edges:
+        source_id = _safe_text(edge.get("from_node_id"))
+        target_id = _safe_text(edge.get("to_node_id"))
+        relation = _safe_text(edge.get("relation_type")).lower()
+        source = by_id.get(source_id)
+        if source is None or target_id not in by_id or not relation:
+            continue
+        explanation = _safe_text(edge.get("explanation"))
+        confidence = edge.get("confidence")
+        edge_relations = source.setdefault("edge_relations", [])
+        relation_key = (target_id, relation)
+        if not any(
+            isinstance(existing, dict)
+            and (_safe_text(existing.get("related_node")), _safe_text(existing.get("relation_type")).lower()) == relation_key
+            for existing in edge_relations
+        ):
+            edge_relations.append({
+                "related_node": target_id,
+                "relation_type": relation,
+                "relation_text": explanation or relation,
+            })
+        edges_out = source.setdefault("edges_out", [])
+        if not any(
+            isinstance(existing, dict)
+            and (_safe_text(existing.get("to")), _safe_text(existing.get("relationship_type")).lower()) == relation_key
+            for existing in edges_out
+        ):
+            edges_out.append({
+                "to": target_id,
+                "relationship_type": relation,
+                "relationship_subtype": relation if relation != "contextual" else None,
+                "explanation": explanation or relation,
+                "strength": confidence,
+                "confidence": confidence,
+            })
+
 
 @dataclass
 class ImportResult:
@@ -169,6 +252,7 @@ async def extract_graph_for_conversation(
     from sqlalchemy import select as _select
 
     from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers
+    from lct_python_backend.services.edge_enrichment import run_edge_enrichment
     from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
     from lct_python_backend.services.graph_persistence import persist_graph
     from lct_python_backend.services.hierarchy_consolidator import (
@@ -251,6 +335,7 @@ async def extract_graph_for_conversation(
     llm_config = await load_llm_config(db)
     providers_cfg = await load_llm_providers(db, include_secrets=True)
     providers = providers_cfg.get("providers") if isinstance(providers_cfg, dict) else []
+    local_providers = [provider for provider in providers if _is_local_provider(provider)]
 
     async def _noop(*_a, **_k):
         return None
@@ -316,7 +401,52 @@ async def extract_graph_for_conversation(
             tiers_built, exc,
         )
 
-    # 5. Persist the GRAPH only. utterances=None → persist_graph rewrites
+    # 5. Scan the completed hierarchy for argumentative topology. Owner-local
+    # imports never retrieve second-brain context and never use remote providers.
+    argument_topology = _topology_marker([], status="failed", reason="not_run")
+    try:
+        semantic_edges, enrichment_telemetry = await run_edge_enrichment(
+            nodes=existing,
+            query_summary=_topology_query(
+                conversation_title or conv.conversation_name or "",
+                summary or "",
+                existing,
+            ),
+            llm_config=llm_config,
+            providers=local_providers,
+            skip_context_lookup=True,
+        )
+        llm_telemetry = enrichment_telemetry.get("llm_telemetry") or {}
+        scan_error = _safe_text(llm_telemetry.get("error"))
+        parse_status = _safe_text(llm_telemetry.get("parse_status"))
+        if scan_error or parse_status != "valid":
+            argument_topology = _topology_marker(
+                [], status="failed", reason=scan_error or "invalid_edge_payload"
+            )
+        else:
+            _merge_semantic_edges(existing, semantic_edges)
+            # A valid empty edge list is a legitimate completed scan. This is
+            # distinct from a missing, truncated, or unparsable model answer.
+            argument_topology = _topology_marker(semantic_edges, status="complete")
+    except Exception as exc:  # noqa: BLE001 - marker makes failure explicit to callers
+        logger.exception(
+            "[turns/extract] argument-topology scan failed for conversation=%s",
+            conversation_id,
+        )
+        argument_topology = _topology_marker(
+            [], status="failed", reason=f"scan_error: {type(exc).__name__}: {exc}"
+        )
+
+    source_metadata = dict(conv.source_metadata or {}) if isinstance(conv.source_metadata, dict) else {}
+    source_metadata.update({
+        key: value for key, value in (
+            ("executive_summary", summary),
+            ("conversation_title", conversation_title),
+            ("argument_topology", argument_topology),
+        ) if value not in (None, "")
+    })
+
+    # 6. Persist the GRAPH only. utterances=None → persist_graph rewrites
     #    nodes/relationships and links to the already-persisted Utterance rows
     #    (it queries them for node timestamps) WITHOUT deleting/re-inserting them.
     node_count = await persist_graph(
@@ -332,10 +462,7 @@ async def extract_graph_for_conversation(
         # Build from whatever the arcs pass produced: the old
         # `{"executive_summary": summary} if summary else {}` dropped a
         # perfectly good TITLE whenever the summary happened to be empty.
-        source_metadata={k: v for k, v in (
-            ("executive_summary", summary),
-            ("conversation_title", conversation_title),
-        ) if v},
+        source_metadata=source_metadata,
     )
 
     auditable_nodes = sum(1 for n in existing if n.get("utterance_ids"))
@@ -347,4 +474,5 @@ async def extract_graph_for_conversation(
         "indrasnet_group_id": conv.indrasnet_group_id,
         "executive_summary": summary or None,
         "conversation_title": conversation_title or None,
+        "argument_topology": argument_topology,
     }

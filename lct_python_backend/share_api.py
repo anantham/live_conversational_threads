@@ -378,6 +378,12 @@ async def revoke_share(token: str, db: AsyncSession = Depends(get_async_session)
 # ---------------------------------------------------------------------------
 
 
+def _export_argument_topology(conversation) -> Optional[dict]:
+    metadata = getattr(conversation, "source_metadata", None)
+    marker = metadata.get("argument_topology") if isinstance(metadata, dict) else None
+    return dict(marker) if isinstance(marker, dict) else None
+
+
 @router.get("/api/conversations/{conversation_id}/threads-export")
 async def export_threads(
     conversation_id: str,
@@ -439,6 +445,9 @@ async def export_threads(
         "conversation_name": conversation.conversation_name,
         "conversation_title": getattr(conversation, "conversation_title", None),
         "executive_summary": getattr(conversation, "executive_summary", None),
+        # Content-free proof that the semantic relation pass actually ran.
+        # Consumers must not infer scan completion merely from hierarchy nodes.
+        "argument_topology": _export_argument_topology(conversation),
         "graph_data": graph_data,
         "chunk_dict": chunk_dict,
         # P0 (audit-against-source): the verbatim raw the graph was built from,

@@ -318,3 +318,29 @@ Order is intentional: backend data shape lands first so frontend doesn't have to
 - **ADR-036**: Argument-quality metrics view (structural integrity scoring)
 - **ADR-037**: Conflict resolution for overlapping enrichment passes
 - **ADR-038**: Mobile-optimized swim-lane layout
+
+## Amendment — 2026-08-17: owner-local imports must prove topology completion
+
+**Status:** approved and implemented for the IndrasNet meeting-share source path.
+
+Hierarchy completion and argument-topology completion are separate facts. A graph
+with topics/themes but no semantic-edge scan may not be advertised as fully
+processed. Owner-local raw imports therefore run edge enrichment after hierarchy
+consolidation with only configured local providers and with IndrasNet/second-brain
+retrieval explicitly disabled. The export carries a content-free
+`argument_topology` marker containing scan version, status, semantic-edge count,
+and relation-type counts. A valid empty edge list is `complete`; a missing,
+truncated, unparsable, or failed model response is `failed`.
+
+Every generated node also carries one argument role (`claim`, `evidence`,
+`question`, `assumption`, or `context`). Unknown or omitted roles normalize to
+`context`; higher-order synthesized nodes remain `context` until a dedicated
+evidenced role pass assigns something stronger. Internal `thread_id` remains the
+stable grouping key, while recipient artifacts may supply a separate human
+`thread_label` for display.
+
+**Consequences:** downstream sharing pipelines can fail closed on scan status
+without inspecting private content or guessing from edge counts. Existing cached
+graphs without the marker must be regenerated. Relation generation adds one local
+LLM pass to full-graph extraction; the fast transcript-only lane remains a
+separate, explicitly unenriched product contract.
