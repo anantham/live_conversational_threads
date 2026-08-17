@@ -3526,3 +3526,18 @@ Manual testing not run:
     query, and the now-dead helper was removed.
 - Validation: 95 affected backend tests and all 208 frontend tests passed;
   production build passed. Final external review rerun remains.
+
+## 2026-08-17 — Provider-neutral independent review gate
+
+- Corrected the PR policy after operator feedback: the invariant is a reviewer
+  from a different AI family than the primary implementation family, not a
+  mandatory Claude review.
+- Added `review_pr_with_independent_ai.ps1` with explicit `-Provider` selection,
+  exact-head recording, Grok and Claude adapters, structured findings, and
+  fail-closed handling for command/schema failures.
+- Added `merge_pr_after_ai_review.ps1`; merge still requires explicit human
+  confirmation and clean GitHub checks. Existing Claude-specific scripts remain
+  compatibility adapters, not the policy definition.
+- Validation: both new PowerShell scripts parse without syntax errors. Grok is
+  installed and selected for PR #170 because the implementation family is
+  OpenAI/Codex.
