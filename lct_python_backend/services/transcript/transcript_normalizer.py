@@ -203,6 +203,14 @@ def _normalize_semantic_type(value: Any, semantic_level: int) -> str:
     }.get(semantic_level, "idea")
 
 
+_ARGUMENT_ROLES = {"claim", "evidence", "question", "assumption", "context"}
+
+
+def _normalize_argument_role(value: Any) -> str:
+    role = _as_clean_str(value).lower()
+    return role if role in _ARGUMENT_ROLES else "context"
+
+
 def _normalize_edge_relations(value: Any) -> List[Dict[str, str]]:
     if not isinstance(value, list):
         return []
@@ -371,6 +379,7 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 "thread_state": thread_state,
                 "linked_nodes": linked_nodes,
                 "claims": _as_string_list(raw.get("claims")),
+                "claim_type": _normalize_argument_role(raw.get("claim_type")),
                 "is_bookmark": bool(raw.get("is_bookmark")),
                 "is_contextual_progress": bool(raw.get("is_contextual_progress")),
                 # Carry the tangent/crux flags through to persistence. They were

@@ -59,6 +59,19 @@ def test_normalize_generated_output_adds_required_defaults():
     assert node["node_text"] == node["summary"]
     assert node["semantic_level"] == 1
     assert node["semantic_type"] == "chunk"
+    assert node["claim_type"] == "context"
+
+
+def test_normalize_generated_output_preserves_only_allowed_argument_roles():
+    parsed = [
+        {"node_name": "Observation", "claim_type": "evidence"},
+        {"node_name": "Unknown role", "claim_type": "rhetorical_flourish"},
+    ]
+
+    normalized = _normalize_generated_output(parsed)
+
+    assert normalized[0]["claim_type"] == "evidence"
+    assert normalized[1]["claim_type"] == "context"
 
 
 def test_normalize_generated_output_coerces_single_contextual_relation_object():

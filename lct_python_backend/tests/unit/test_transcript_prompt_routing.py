@@ -55,6 +55,25 @@ def test_get_transcript_prompt_text_prefers_prompt_manager(monkeypatch):
     assert prompt_text == "managed prompt"
 
 
+def test_hierarchy_prompt_adds_argument_roles_to_managed_template(monkeypatch):
+    class _FakePromptManager:
+        def get_prompt(self, prompt_name):
+            return {"template": "managed hierarchy prompt"}
+
+        def render_prompt_string(self, template, variables, prompt_name="<inline>"):
+            return template
+
+    monkeypatch.setattr(prompt_module, "get_prompt_manager", lambda: _FakePromptManager())
+
+    prompt_text = prompt_module.get_transcript_prompt_text(
+        prompt_module.PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY_LOCAL
+    )
+
+    assert "managed hierarchy prompt" in prompt_text
+    assert "Argument-role contract" in prompt_text
+    assert "claim, evidence, question, assumption, context" in prompt_text
+
+
 def test_generate_lct_json_local_uses_managed_prompt(monkeypatch):
     captured = {}
 

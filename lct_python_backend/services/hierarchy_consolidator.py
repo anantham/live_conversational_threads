@@ -160,6 +160,7 @@ def _run_consolidation_llm(
             "edge_relations": [],
             "linked_nodes": [],
             "claims": [],
+            "claim_type": "context",
             "is_bookmark": False,
             "is_contextual_progress": False,
             "chunk_id": None,

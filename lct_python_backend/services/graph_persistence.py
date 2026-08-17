@@ -1013,6 +1013,7 @@ async def persist_graph(
             },
             display_preferences={
                 "edge_relations": edge_relations,
+                "claim_type": coerce_str(item.get("claim_type")) or "context",
             },
             utterance_ids=_coerce_uuid_array(item.get("utterance_ids")),
             # P0 provenance: persist the source_ref the graph carries (the
