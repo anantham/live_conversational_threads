@@ -12,6 +12,7 @@ describe("normalizeGraphNode — #12 thread/tangent lift", () => {
         id: "n1",
         node_name: "Vision",
         thread_id: "thread::vision",
+        thread_label: "Vision",
         thread_state: "new_thread",
         is_tangent: true,
         is_crux: false,
@@ -19,6 +20,7 @@ describe("normalizeGraphNode — #12 thread/tangent lift", () => {
       0
     );
     expect(out.thread_id).toBe("thread::vision");
+    expect(out.thread_label).toBe("Vision");
     expect(out.thread_state).toBe("new_thread");
     expect(out.is_tangent).toBe(true);
     expect(out.is_crux).toBe(false);
@@ -31,12 +33,17 @@ describe("normalizeGraphNode — #12 thread/tangent lift", () => {
         node_name: "Pricing aside",
         metadata: {
           is_tangent: true,
-          cluster_info: { thread_id: "thread::pricing", thread_state: "return_to_thread" },
+          cluster_info: {
+            thread_id: "thread::pricing",
+            thread_label: "Pricing",
+            thread_state: "return_to_thread",
+          },
         },
       },
       1
     );
     expect(out.thread_id).toBe("thread::pricing");
+    expect(out.thread_label).toBe("Pricing");
     expect(out.thread_state).toBe("return_to_thread");
     expect(out.is_tangent).toBe(true);
   });

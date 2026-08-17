@@ -53,6 +53,10 @@ export function normalizeGraphNode(item, index) {
       (typeof item.thread_id === "string" && item.thread_id) ||
       item.metadata?.cluster_info?.thread_id ||
       "",
+    thread_label:
+      (typeof item.thread_label === "string" && item.thread_label.trim()) ||
+      item.metadata?.cluster_info?.thread_label ||
+      "",
     thread_state:
       (typeof item.thread_state === "string" && item.thread_state) ||
       item.metadata?.cluster_info?.thread_state ||

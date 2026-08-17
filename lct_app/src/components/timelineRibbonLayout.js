@@ -48,10 +48,14 @@ export function threadKey(node) {
   return s === "" ? UNGROUPED_KEY : s;
 }
 
-/** Human label for a thread_id slug. ADR-032 §G uses path-style ids like
+/** Human label for a thread row. ADR-032 §G uses path-style ids like
  *  "thread::vision" or "discussion-of-AI/sub-thread-on-privacy"; show the most
- *  specific segment, de-slugified. */
-export function threadLabel(threadId) {
+ *  specific segment, de-slugified. If a node-level `thread_label` exists, that
+ *  label wins while grouping stays keyed by `thread_id`. */
+export function threadLabel(threadId, explicitLabel = "") {
+  if (typeof explicitLabel === "string" && explicitLabel.trim()) {
+    return explicitLabel.trim();
+  }
   if (threadId === UNGROUPED_KEY) return "ungrouped";
   const s = String(threadId);
   const afterColon = s.includes("::") ? s.slice(s.lastIndexOf("::") + 2) : s;
@@ -72,7 +76,7 @@ export function threadLabel(threadId) {
  * @param {number} [opts.minDotSpacing]     min px between consecutive dots in a row (time mode)
  * @param {number} [opts.returnGapSeconds]
  * @returns {{
- *   rows: Array<{ threadId: string, label: string, count: number,
+ *   rows: Array<{ threadId: string, threadLabel?: string, label: string, count: number,
  *                 nodes: Array<object & { x: number, isReturn: boolean, ts: (number|null) }> }>,
  *   totalWidth: number, timeBased: boolean, span: ({min:number,max:number}|null),
  *   pixelsPerSecond: (number|null)
@@ -109,12 +113,27 @@ export function buildRibbonLayout(nodes, opts = {}) {
   const groups = new Map();
   for (const entry of indexed) {
     const key = threadKey(entry.node);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(entry);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        nodes: [],
+        thread_label: "",
+      });
+    }
+    const bucket = groups.get(key);
+    if (!bucket.thread_label) {
+      const rawLabel =
+        (typeof entry.node?.thread_label === "string" && entry.node.thread_label.trim()) ||
+        (typeof entry.node?.metadata?.cluster_info?.thread_label === "string" &&
+          entry.node.metadata.cluster_info.thread_label.trim()) ||
+        "";
+      bucket.thread_label = rawLabel;
+    }
+    bucket.nodes.push(entry);
   }
 
   const rows = [];
-  for (const [key, entries] of groups) {
+  for (const [key, bucket] of groups) {
+    const entries = bucket.nodes;
     // Sort a row's nodes by time (time mode) or original index.
     const sorted = [...entries].sort((a, b) => {
       if (timeBased && Number.isFinite(a.ts) && Number.isFinite(b.ts)) return a.ts - b.ts;
@@ -153,7 +172,13 @@ export function buildRibbonLayout(nodes, opts = {}) {
       return node;
     });
 
-    rows.push({ threadId: key, label: threadLabel(key), count: placed.length, nodes: placed });
+    rows.push({
+      threadId: key,
+      threadLabel: bucket.thread_label,
+      label: threadLabel(key, bucket.thread_label),
+      count: placed.length,
+      nodes: placed,
+    });
   }
 
   // Most-active thread on top (ADR-032 §A); ungrouped sinks to the bottom.

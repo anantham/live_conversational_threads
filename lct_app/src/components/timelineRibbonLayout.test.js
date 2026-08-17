@@ -33,6 +33,12 @@ describe("threadKey / threadLabel", () => {
     expect(threadLabel("discussion-of-AI/sub-thread-on-privacy")).toBe("sub thread on privacy");
     expect(threadLabel(UNGROUPED_KEY)).toBe("ungrouped");
   });
+  it("prefers explicit thread_label when present", () => {
+    expect(threadLabel("thread::vision", "Team sync follow-up")).toBe("Team sync follow-up");
+  });
+  it("ignores blank explicit labels and falls back to de-slugified thread_id", () => {
+    expect(threadLabel("thread::vision", "   ")).toBe("vision");
+  });
 });
 
 describe("buildRibbonLayout — empty / degenerate", () => {
@@ -79,6 +85,40 @@ describe("buildRibbonLayout — multi-row grouping + activity sort", () => {
     const out = buildRibbonLayout(nodes);
     expect(out.rows.map((r) => r.threadId)).toEqual(["alpha", "beta", UNGROUPED_KEY]);
     expect(out.rows[0].count).toBe(3);
+  });
+
+  it("renders explicit thread labels on rows while grouping by thread_id", () => {
+    const nodes = [
+      { id: "a1", thread_id: "thread::vision", thread_label: "Vision Follow-up", timestamp_start: 0 },
+      { id: "a2", thread_id: "thread::vision", timestamp_start: 20 },
+      { id: "b1", thread_id: "thread::privacy", thread_label: "Privacy", timestamp_start: 0 },
+    ];
+    const out = buildRibbonLayout(nodes);
+    const byThread = Object.fromEntries(out.rows.map((r) => [r.threadId, r.label]));
+    expect(byThread["thread::vision"]).toBe("Vision Follow-up");
+    expect(byThread["thread::privacy"]).toBe("Privacy");
+  });
+
+  it("pulls explicit thread labels from nested cluster metadata when top-level is absent", () => {
+    const nodes = [
+      {
+        id: "legacy",
+        thread_id: "thread::legacy",
+        metadata: { cluster_info: { thread_label: "Legacy Meeting A" } },
+      },
+    ];
+    const out = buildRibbonLayout(nodes);
+    expect(out.rows).toHaveLength(1);
+    expect(out.rows[0].label).toBe("Legacy Meeting A");
+  });
+
+  it("falls back to de-slugified thread_id when thread_label is missing", () => {
+    const nodes = [
+      { id: "a1", thread_id: "thread::project-launch", timestamp_start: 0 },
+      { id: "a2", thread_id: "thread::project-launch", timestamp_start: 20 },
+    ];
+    const out = buildRibbonLayout(nodes);
+    expect(out.rows[0].label).toBe("project launch");
   });
 });
 
