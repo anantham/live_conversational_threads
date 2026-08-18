@@ -1,6 +1,7 @@
 import { memo } from "react";
 import PropTypes from "prop-types";
 import { Handle, Position } from "reactflow";
+import SpeakerTurnSummary from "./SpeakerTurnSummary";
 
 /**
  * Custom React Flow node renderer per ADR-030 §D4.
@@ -69,19 +70,19 @@ MarkerStrip.propTypes = {
   markers: PropTypes.arrayOf(PropTypes.string),
 };
 
-// Rhetoric chips (argument-view Phase 2): a quiet claim-type tag (the node's
+// Rhetoric chips (argument-view Phase 2): a quiet argument-role tag (the node's
 // argumentative role) + one ⚠ chip per adversarially-verified rhetoric flag.
 // The flag's full label, confidence, candidate-note and verbatim quote live in
 // the hover tooltip — the chip itself stays small. Always visible (like the crux
 // dot), independent of the active color mode.
-function RhetoricStrip({ claimType, flags }) {
+function RhetoricStrip({ argumentRole, flags }) {
   const hasFlags = Array.isArray(flags) && flags.length > 0;
-  if (!claimType && !hasFlags) return null;
+  if (!argumentRole && !hasFlags) return null;
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "5px" }}>
-      {claimType && (
-        <span title={`Argumentative role: ${claimType}`} style={claimTypeChipStyle}>
-          {claimType}
+      {argumentRole && (
+        <span title={`Argumentative role: ${argumentRole}`} style={argumentRoleChipStyle}>
+          {argumentRole}
         </span>
       )}
       {hasFlags && flags.map((f, i) => (
@@ -99,11 +100,11 @@ function RhetoricStrip({ claimType, flags }) {
 }
 
 RhetoricStrip.propTypes = {
-  claimType: PropTypes.string,
+  argumentRole: PropTypes.string,
   flags: PropTypes.array,
 };
 
-const claimTypeChipStyle = {
+const argumentRoleChipStyle = {
   display: "inline-flex",
   alignItems: "center",
   fontSize: "9px",
@@ -136,6 +137,8 @@ function ConversationNodeImpl({ data, selected }) {
     title,
     fullTitle,
     summary,
+    speakerTurns = [],
+    speakerColorMap = {},
     speakerLabel,
     fillColor = "#f1f5f9",
     borderColor = "#cbd5e1",
@@ -149,7 +152,7 @@ function ConversationNodeImpl({ data, selected }) {
     expandCount = 0,
     onExpand,
     onOpenDetails,
-    claimType = null,
+    argumentRole = null,
     rhetoricFlags = [],
     argStatusLabel = null,
     showSummary = true,
@@ -207,6 +210,9 @@ function ConversationNodeImpl({ data, selected }) {
     summary && summary.length > summaryMaxLength
       ? `${summary.slice(0, summaryMaxLength).trim()}…`
       : summary || "";
+  const hasVisibleSpeakerTurns = speakerTurns.some(
+    (turn) => String(turn?.text || "").trim().length > 0
+  );
 
   return (
     <div style={cardStyle}>
@@ -221,13 +227,22 @@ function ConversationNodeImpl({ data, selected }) {
         {isCrux && <CruxDot />}
         {title || "Untitled"}
       </div>
-      {showSummary && truncatedSummary && (
+      {showSummary && hasVisibleSpeakerTurns && (
+        <SpeakerTurnSummary
+          turns={speakerTurns}
+          speakerColorMap={speakerColorMap}
+          maxLength={summaryMaxLength}
+        />
+      )}
+      {showSummary && !hasVisibleSpeakerTurns && truncatedSummary && (
         <div style={summaryStyle}>{truncatedSummary}</div>
       )}
       <MarkerStrip markers={dimensionMarkers} />
-      <RhetoricStrip claimType={claimType} flags={rhetoricFlags} />
+      <RhetoricStrip argumentRole={argumentRole} flags={rhetoricFlags} />
       {argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
-      {speakerLabel && <div style={speakerStyle}>{speakerLabel}</div>}
+      {!hasVisibleSpeakerTurns && speakerLabel && (
+        <div style={speakerStyle}>{speakerLabel}</div>
+      )}
 
       {canExpand && (
         <div style={cardFooterStyle}>
@@ -456,6 +471,8 @@ ConversationNodeImpl.propTypes = {
     title: PropTypes.string,
     fullTitle: PropTypes.string,
     summary: PropTypes.string,
+    speakerTurns: PropTypes.array,
+    speakerColorMap: PropTypes.objectOf(PropTypes.string),
     speakerLabel: PropTypes.string,
     fillColor: PropTypes.string,
     borderColor: PropTypes.string,
@@ -469,7 +486,7 @@ ConversationNodeImpl.propTypes = {
     expandCount: PropTypes.number,
     onExpand: PropTypes.func,
     onOpenDetails: PropTypes.func,
-    claimType: PropTypes.string,
+    argumentRole: PropTypes.string,
     rhetoricFlags: PropTypes.array,
     argStatusLabel: PropTypes.string,
     showSummary: PropTypes.bool,

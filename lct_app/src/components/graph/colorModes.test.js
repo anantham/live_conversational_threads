@@ -1,10 +1,26 @@
 import { describe, it, expect } from "vitest";
 import {
   COLOR_MODES,
+  buildSpeakerColorMapForNodes,
   buildDateColorMapForNodes,
   resolveNodeColors,
   argumentStanceOf,
 } from "./colorModes";
+
+describe("speaker color mode", () => {
+  it("discovers every speaker carried by structured source turns", () => {
+    const colors = buildSpeakerColorMapForNodes([{
+      id: "moment-1",
+      source_turns: [
+        { speaker_id: "Aditya", text: "Question" },
+        { speaker_id: "Sai", text: "Answer" },
+      ],
+    }]);
+    expect(colors.Aditya).toBeTruthy();
+    expect(colors.Sai).toBeTruthy();
+    expect(colors.Aditya).not.toBe(colors.Sai);
+  });
+});
 
 describe("date color mode", () => {
   it('is registered in COLOR_MODES', () => {

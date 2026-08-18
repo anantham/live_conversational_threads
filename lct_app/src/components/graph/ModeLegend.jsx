@@ -15,11 +15,11 @@ import PropTypes from "prop-types";
 
 import {
   ARGUMENT_STATUSES,
-  CLAIM_TYPE_COLORS,
+  ARGUMENT_ROLE_COLORS,
   TIER_LEGEND_COLORS,
 } from "./colorModes";
 
-const CLAIM_TYPE_ORDER = ["claim", "evidence", "question", "assumption", "definition", "value"];
+const ARGUMENT_ROLE_ORDER = ["claim", "evidence", "question", "assumption", "context"];
 
 export default function ModeLegend({ mode, nodes, speakerColorMap, threadColorMap }) {
   const entries = useMemo(() => {
@@ -38,12 +38,12 @@ export default function ModeLegend({ mode, nodes, speakerColorMap, threadColorMa
     }
 
     if (mode === "rhetoric") {
-      const present = new Set(list.map((n) => n.claim_type).filter(Boolean));
-      const keys = CLAIM_TYPE_ORDER.filter((k) => present.has(k));
-      // Graph without claim_type data: show the core vocabulary so the mode
+      const present = new Set(list.map((n) => n.argument_role).filter(Boolean));
+      const keys = ARGUMENT_ROLE_ORDER.filter((k) => present.has(k));
+      // Graph without argument-role data: show the core vocabulary so the mode
       // is still self-describing rather than an empty row.
-      const shown = keys.length > 0 ? keys : CLAIM_TYPE_ORDER.slice(0, 4);
-      return shown.map((k) => ({ label: k, ...CLAIM_TYPE_COLORS[k] }));
+      const shown = keys.length > 0 ? keys : ARGUMENT_ROLE_ORDER;
+      return shown.map((k) => ({ label: k, ...ARGUMENT_ROLE_COLORS[k] }));
     }
 
     if (mode === "argument") {

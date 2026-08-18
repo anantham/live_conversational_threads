@@ -53,15 +53,23 @@ export function normalizeGraphNode(item, index) {
       (typeof item.thread_id === "string" && item.thread_id) ||
       item.metadata?.cluster_info?.thread_id ||
       "",
+    thread_label:
+      (typeof item.thread_label === "string" && item.thread_label.trim()) ||
+      item.metadata?.cluster_info?.thread_label ||
+      "",
     thread_state:
       (typeof item.thread_state === "string" && item.thread_state) ||
       item.metadata?.cluster_info?.thread_state ||
       "",
     is_tangent: Boolean(item.is_tangent ?? item.metadata?.is_tangent),
     is_crux: Boolean(item.is_crux ?? item.metadata?.is_crux),
-    // Argument-map role (claim | evidence | question | assumption). Feeds the
-    // debate color mode (CLAIM_TYPE_COLORS) + the card's claim-type chip.
-    claim_type:
+    // Argument-map role (claim | evidence | question | assumption | context).
+    // Legacy claim_type fallback keeps already-exported graphs readable.
+    argument_role:
+      (typeof item.argument_role === "string" && item.argument_role.trim().toLowerCase()) ||
+      (typeof item.display_preferences?.argument_role === "string"
+        ? item.display_preferences.argument_role.trim().toLowerCase()
+        : "") ||
       (typeof item.claim_type === "string" && item.claim_type.trim().toLowerCase()) ||
       (typeof item.display_preferences?.claim_type === "string"
         ? item.display_preferences.claim_type.trim().toLowerCase()

@@ -55,6 +55,7 @@ def _simplify_for_consolidation(nodes: List[Dict[str, Any]]) -> List[Dict[str, A
             "node_name": str(n.get("node_name") or "").strip(),
             "summary": str(n.get("summary") or n.get("node_text") or "").strip(),
             "thread_id": str(n.get("thread_id") or "").strip() or None,
+            "thread_label": str(n.get("thread_label") or "").strip() or None,
         })
     return out
 
@@ -74,6 +75,12 @@ def _run_consolidation_llm(
     mgr = get_prompt_manager()
     prompt_config = mgr.get_prompt(prompt_id)
     system_prompt = str(prompt_config.get("template") or "")
+    if "thread_label" not in system_prompt:
+        system_prompt += (
+            "\n\nFor every node with a thread_id, also return thread_label: a concise "
+            "3-10 word human-readable subject name. Never use hashes, counters, "
+            "or generic labels such as 'Topic 3'."
+        )
     prompt_metadata = {
         "temperature": prompt_config.get("temperature", 0.3),
         "max_tokens": prompt_config.get("max_tokens", 4000),
@@ -124,6 +131,7 @@ def _run_consolidation_llm(
         return [], None
 
     input_ids = {str(n["id"]) for n in simplified}
+    input_by_id = {str(n["id"]): n for n in simplified}
     parents: List[Dict[str, Any]] = []
     semantic_type = _TIER_LABEL[target_tier]
 
@@ -140,6 +148,19 @@ def _run_consolidation_llm(
         node_name = str(raw.get("node_name") or "").strip()
         if not node_name:
             continue
+        thread_id = str(raw.get("thread_id") or "").strip() or None
+        inherited_labels = {
+            str(input_by_id[child_id].get("thread_label") or "").strip()
+            for child_id in children_ids
+            if child_id in input_by_id
+            and input_by_id[child_id].get("thread_id") == thread_id
+            and str(input_by_id[child_id].get("thread_label") or "").strip()
+        }
+        thread_label = (
+            str(raw.get("thread_label") or "").strip()
+            or (next(iter(inherited_labels)) if len(inherited_labels) == 1 else "")
+            or (node_name if thread_id else None)
+        )
         parents.append({
             "id": str(raw.get("id") or "").strip() or f"{semantic_type}-{uuid.uuid4().hex[:8]}",
             "node_name": node_name,
@@ -154,12 +175,14 @@ def _run_consolidation_llm(
             "children_ids": children_ids,
             "predecessor": None,
             "successor": None,
-            "thread_id": str(raw.get("thread_id") or "").strip() or None,
+            "thread_id": thread_id,
+            "thread_label": thread_label,
             "thread_state": "new_thread",
             "contextual_relation": {},
             "edge_relations": [],
             "linked_nodes": [],
             "claims": [],
+            "argument_role": "context",
             "is_bookmark": False,
             "is_contextual_progress": False,
             "chunk_id": None,

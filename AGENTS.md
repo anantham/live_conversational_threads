@@ -493,26 +493,31 @@ Strategic + visual design context for `lct_app/` lives in two root files (writte
 
 Five design principles guide UI work: (1) the graph is **calm** and never competes for attention (ADR-011); (2) **offer, never direct**; (3) **drill, don't dump** (highest tier first, detail on demand); (4) the map is **alive** — it accumulates and breathes; (5) everything is **traceable to the utterance**.
 
-## PR merge gate: Claude review required
+## PR merge gate: independent AI-family review required
 
-Before merging any pull request into `main`, agents must run a Claude Code review
-of the exact PR target and treat it as a merge gate. The operator has approved
-this repo workflow sending PR diffs and relevant repository context to
-Claude/Anthropic through Claude Code for review.
+Before merging any pull request into `main`, agents must run an adversarial
+review of the exact PR target using an AI family different from the family that
+primarily implemented the change. The point is independent error detection, not
+loyalty to a particular provider. Claude, Grok, and Codex are supported examples;
+none satisfies the gate when it is the same family that authored the change.
+
+External review sends the PR diff and relevant repository context to the chosen
+provider. Obtain or rely on explicit operator approval for that provider and
+scope before invoking it.
 
 Use the repo-local scripts:
 
 ```powershell
-.\scripts\review_pr_with_claude.ps1 <PR_NUMBER_OR_URL> -FailOnFindings
-.\scripts\merge_pr_after_claude.ps1 <PR_NUMBER_OR_URL> -ConfirmMerge
+.\scripts\review_pr_with_independent_ai.ps1 <PR_NUMBER_OR_URL> -Provider grok -FailOnFindings
+.\scripts\merge_pr_after_ai_review.ps1 <PR_NUMBER_OR_URL> -Provider grok -ConfirmMerge
 ```
 
 Rules:
 
-- If Claude reports findings, fails, or returns an unrecognized review schema,
+- If the independent reviewer reports findings, fails, or returns an unrecognized review schema,
   stop and ask the human for review instead of merging.
-- Do not use `claude -p --bare` for this workflow; `--bare` bypasses the
-  subscription/OAuth credential path. Prefer Claude Code's native
-  `claude ultrareview` path or `claude -p --safe-mode` for small manual checks.
+- Record the reviewer provider/family and exact PR head SHA in the review artifact.
+- Provider-specific compatibility scripts may remain, but they do not change the
+  family-independence requirement.
 - This gate does not replace CI, tests, or the human approval requirement for
   shared-state writes. It is an additional pre-merge review step.

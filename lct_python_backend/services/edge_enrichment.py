@@ -312,6 +312,14 @@ async def _call_enrich_llm(
     else:
         raw_for_parser = str(parsed or "")
 
+    payload_shape_valid = (
+        isinstance(parsed, list)
+        or (isinstance(parsed, dict) and isinstance(parsed.get("edges"), list))
+    )
+    telemetry["parse_status"] = "valid" if payload_shape_valid else "invalid"
+    if not payload_shape_valid:
+        telemetry["error"] = telemetry.get("error") or "invalid_edge_payload"
+
     edges = _parse_edges_response(
         raw_for_parser,
         valid_node_ids={str(n.get("id") or "") for n in nodes},
@@ -398,6 +406,7 @@ async def run_edge_enrichment(
     participant_external_llm_ok_set: Optional[set] = None,
     llm_config: Optional[Dict[str, Any]] = None,
     providers: Optional[List[Dict[str, Any]]] = None,
+    skip_context_lookup: bool = False,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """ADR-032 Part D entry point.
 
@@ -423,10 +432,21 @@ async def run_edge_enrichment(
     }
     t0 = time.perf_counter()
 
-    context_items, context_telemetry = await gather_context(
-        query=query_summary,
-        participant_external_llm_ok_set=participant_external_llm_ok_set,
-    )
+    if skip_context_lookup:
+        context_items = []
+        context_telemetry = {
+            "indrasnet_called": False,
+            "raw_items": 0,
+            "filtered_items": 0,
+            "ms": 0,
+            "error": "skipped",
+            "skipped_reason": "owner_local_raw_import",
+        }
+    else:
+        context_items, context_telemetry = await gather_context(
+            query=query_summary,
+            participant_external_llm_ok_set=participant_external_llm_ok_set,
+        )
     overall["context_telemetry"] = context_telemetry
 
     edges, llm_telemetry = await _call_enrich_llm(

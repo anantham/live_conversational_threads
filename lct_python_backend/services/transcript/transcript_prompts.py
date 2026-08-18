@@ -22,6 +22,25 @@ PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY = "generate_conversation_hierarchy"
 PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY_LOCAL = "generate_conversation_hierarchy_local"
 PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS = "refine_conversation_subthreads"
 
+_ARGUMENT_ROLE_SPEC = """
+Argument-role contract (required for every node):
+- include argument_role with exactly one of: claim, evidence, question, assumption, context
+- claim: a proposition the speaker advances as true or desirable
+- evidence: an observation, example, datum, or reason offered for a claim
+- question: an explicit question or unresolved inquiry
+- assumption: an implicit or explicit premise on which another point depends
+- context: framing, narration, logistics, or other material with no stronger argumentative role
+- choose the role from the node's conversational function, not from keywords alone
+"""
+
+_THREAD_LABEL_SPEC = """
+Thread identity contract (required for every node):
+- thread_id is the stable machine grouping key and must be reused on returns
+- thread_label is a concise human-readable subject name (3-10 words)
+- never use hashes, counters, or generic labels such as "Topic 3" or "Thread 8"
+- every node sharing a thread_id must share the same thread_label
+"""
+
 _SEMANTIC_HIERARCHY_SPEC = """
 You must author an explicit four-level hierarchy for the CURRENT transcript segment.
 Do not produce a flat list of topic shifts and do not create one-word nodes.
@@ -83,12 +102,14 @@ Output shape:
       "predecessor": null,
       "successor": "chunk-002",
       "thread_id": "thread-vision",
+      "thread_label": "Design vision and trade-offs",
       "thread_state": "new_thread",
       "contextual_relation": {},
       "edge_relations": [],
       "linked_nodes": [],
       "speaker_id": "SPEAKER_00",
       "claims": [],
+      "argument_role": "claim",
       "is_bookmark": false,
       "is_contextual_progress": false,
       "is_tangent": false,
@@ -109,6 +130,10 @@ GENERATE_LCT_PROMPT = f"""You are an advanced AI model that structures conversat
 Your job is to create a navigable hierarchy for conversation review, not merely a flat list of topic shifts.
 
 {_SEMANTIC_HIERARCHY_SPEC}
+
+{_ARGUMENT_ROLE_SPEC}
+
+{_THREAD_LABEL_SPEC}
 
 Handling existing JSON:
 - Existing JSON may already contain earlier nodes from this conversation.
@@ -172,6 +197,10 @@ You may reason freely, but your final answer must be valid JSON.
 
 {_SEMANTIC_HIERARCHY_SPEC}
 
+{_ARGUMENT_ROLE_SPEC}
+
+{_THREAD_LABEL_SPEC}
+
 Additional rules:
 - Return only the nodes for the current transcript segment.
 - Do not rewrite previous nodes from Existing JSON.
@@ -216,12 +245,14 @@ Output requirements:
   - predecessor
   - successor
   - thread_id
+  - thread_label
   - thread_state
   - contextual_relation
   - edge_relations
   - linked_nodes
   - speaker_id
   - claims
+  - argument_role (exactly one of: claim, evidence, question, assumption, context)
   - is_bookmark
   - is_contextual_progress
 
@@ -283,7 +314,20 @@ def get_transcript_prompt_config(prompt_id: str) -> Dict[str, Any]:
         raise KeyError(f"Unknown transcript prompt id: {prompt_id}")
 
     try:
-        return get_prompt_manager().get_prompt(prompt_id)
+        config = get_prompt_manager().get_prompt(prompt_id)
+        if prompt_id in {
+            PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY,
+            PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY_LOCAL,
+            PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS,
+        }:
+            config = dict(config)
+            template = str(config.get("template") or "")
+            if "Argument-role contract" not in template:
+                config["template"] = f"{template}\n\n{_ARGUMENT_ROLE_SPEC}"
+                template = str(config["template"])
+            if "Thread identity contract" not in template:
+                config["template"] = f"{template}\n\n{_THREAD_LABEL_SPEC}"
+        return config
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             "[PROMPTS] Falling back to in-code transcript prompt default for '%s': %s",

@@ -3437,4 +3437,107 @@ Manual testing not run:
 - **Next Steps:** 
   - The E2E automation for the Serverless upload flow was abandoned in favor of manual user testing, as it was blocking progress.
   - The user will manually test the Serverless mode audio upload in the browser.
-  - **Ready to move on to ADR-058 (Human-Gated Identity) in the next session.**
+- **Ready to move on to ADR-058 (Human-Gated Identity) in the next session.**
+
+## 2026-08-16 — Structured speaker turns in recipient cards
+
+- Recipient `.threads` moment nodes may now carry `source_turns` with stable
+  utterance ID, speaker ID and spoken text. `MinimalGraph` passes those rows to a
+  focused `SpeakerTurnSummary` component; `ConversationNode` suppresses the old
+  visible speaker label and plain summary when structured turns are present.
+- Each utterance is a separate row with a stable speaker-color dot. The full
+  speaker name is not rendered as card text or a nested tooltip; the ID remains
+  machine-readable for graph coloring and provenance. Speaker color discovery
+  now includes every speaker in a multi-speaker moment.
+- Regression coverage adds a server-rendered component test, speaker-color-map
+  test, and `.threads` opener E2E assertion that spoken text is visible while the
+  speaker name is absent. Fixture contract was extended with two structured
+  turns.
+- Validation: 13 focused unit/artifact tests passed; production build passed;
+  focused ESLint reported zero errors and one pre-existing `MinimalGraph.jsx`
+  hook-dependency warning; `.threads` opener E2E passed 3 with 1 deploy-only skip.
+- Files touched: `MinimalGraph.jsx`, `ConversationNode.jsx`, `colorModes.js`,
+  `SpeakerTurnSummary.jsx`, their focused tests, and the opener fixture/spec.
+- Both touched legacy composition files remain above the 300 LOC heuristic;
+  concrete extraction candidates are recorded in `docs/TECH_DEBT.md`.
+## 2026-08-17 — Recipient labels and fail-closed argument topology
+
+- Root cause confirmed across the producer/export/viewer chain: the import
+  orchestrator completed hierarchy consolidation without invoking the existing
+  edge-enrichment service; `.threads` export carried no proof that a topology
+  scan had run; generated nodes did not persist an argument role; and the
+  timeline displayed the opaque grouping ID rather than a separate label.
+- Implemented the class-level repair:
+  - owner-local imports run semantic-edge enrichment with local providers only
+    and no second-brain retrieval;
+  - valid zero-edge scans are distinguished from invalid/failed model output;
+  - semantic edge direction survives slug-ID persistence;
+  - export includes a content-free `argument_topology` completion marker;
+  - hierarchy prompts, normalization, consolidation, and persistence carry an
+    explicit argument role;
+  - timeline grouping remains keyed by `thread_id` while rendering
+    `thread_label` when supplied.
+- Main files: `services/import_pipeline/import_orchestrator.py`,
+  `services/edge_enrichment.py`, `services/graph_persistence.py`,
+  `services/transcript/transcript_prompts.py`,
+  `services/transcript/transcript_normalizer.py`, `share_api.py`, and the
+  timeline normalization/layout modules.
+- Validation:
+  - 113 focused backend tests passed;
+  - 26 focused frontend tests passed;
+  - production Vite build passed;
+  - companion IndrasNet source/projection suite passed 37 tests.
+- Non-blocking pre-existing findings: npm reports 10 dependency
+  vulnerabilities and the production bundle reports a >500 KB chunk. Logged in
+  `ISSUES.md`; no dependency mutation was attempted.
+
+## 2026-08-17 — PR #170 adversarial review repairs
+
+- Claude review found that semantic enrichment wrote a partial `edges_out`
+  structure, which caused persistence to select its faithful-edge branch and
+  omit existing temporal/contextual edges whenever semantic edges were present.
+  The merge now appends incoming semantic `edge_relations` to target nodes; a
+  persistence round-trip test proves all three relation families coexist with
+  correct direction.
+- Topology completion markers now appear in public share payloads and combined
+  exports, with a fail-closed combined rollup.
+- Renamed the node taxonomy to `argument_role` end-to-end while preserving the
+  unrelated Claim model's `claim_type`. The UI palette now matches the reachable
+  five roles and includes neutral `context`.
+- Native generation now requests, normalizes, consolidates, persists, and
+  exports human-readable `thread_label` values, with deterministic readable
+  fallback for legacy model output.
+- Validation: 94 focused backend tests and all 206 frontend tests passed;
+  production build passed. Full backend result was 1,871 passed and two
+  pre-existing environment/contract failures, recorded in `ISSUES.md`.
+
+## 2026-08-17 — PR #170 second ultrareview nit pass
+
+- The second Claude ultrareview verified four low-severity findings. The wrapper
+  failed closed because progress text preceded the final JSON, so the saved raw
+  report was inspected manually and treated as findings, not a pass.
+- Repairs:
+  - speaker-turn clipping stops instead of rendering an ellipsis-only row when
+    one character remains;
+  - malformed all-empty `source_turns` fall back to the readable node summary
+    without restoring speaker names;
+  - an empty combined topology-marker list is explicitly `incomplete`;
+  - owner-local enrichment no longer computes or passes an unused retrieval
+    query, and the now-dead helper was removed.
+- Validation: 95 affected backend tests and all 208 frontend tests passed;
+  production build passed. Final external review rerun remains.
+
+## 2026-08-17 — Provider-neutral independent review gate
+
+- Corrected the PR policy after operator feedback: the invariant is a reviewer
+  from a different AI family than the primary implementation family, not a
+  mandatory Claude review.
+- Added `review_pr_with_independent_ai.ps1` with explicit `-Provider` selection,
+  exact-head recording, Grok and Claude adapters, structured findings, and
+  fail-closed handling for command/schema failures.
+- Added `merge_pr_after_ai_review.ps1`; merge still requires explicit human
+  confirmation and clean GitHub checks. Existing Claude-specific scripts remain
+  compatibility adapters, not the policy definition.
+- Validation: both new PowerShell scripts parse without syntax errors. Grok is
+  installed and selected for PR #170 because the implementation family is
+  OpenAI/Codex.

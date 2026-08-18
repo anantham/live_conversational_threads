@@ -172,6 +172,35 @@ async def test_persist_import_graph_honours_authored_semantic_level():
 
 
 @pytest.mark.asyncio
+async def test_persist_import_graph_keeps_thread_label_and_argument_role_separate():
+    from lct_python_backend.models import Node
+
+    db = _make_db_mock(conv=MagicMock())
+    await persist_import_graph(
+        db=db,
+        conversation_id=CONVERSATION_ID,
+        existing_json=[
+            {
+                "id": "claim-1",
+                "node_name": "Local processing protects privacy",
+                "summary": "A privacy claim.",
+                "thread_id": "thread-local-privacy",
+                "thread_label": "Local privacy architecture",
+                "argument_role": "claim",
+            }
+        ],
+    )
+
+    node = next(
+        call.args[0] for call in db.add.call_args_list
+        if isinstance(call.args[0], Node)
+    )
+    assert node.cluster_info["thread_label"] == "Local privacy architecture"
+    assert node.display_preferences["argument_role"] == "claim"
+    assert "claim_type" not in node.display_preferences
+
+
+@pytest.mark.asyncio
 async def test_persist_import_graph_clamps_authored_level_to_valid_range():
     """Authored levels outside [1, 5] are clamped, not propagated."""
     from lct_python_backend.models import Node
