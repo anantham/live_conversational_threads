@@ -17,7 +17,7 @@
 
 const ATTACK_TYPES = new Set(["rebuts", "disagrees", "disagreement", "refutes"]);
 const SUPPORT_TYPES = new Set(["supports", "agrees", "agreement", "affirms"]);
-const ARGUMENT_CLAIM_TYPES = new Set(["claim", "evidence", "question", "assumption", "definition", "value"]);
+const ARGUMENT_ROLES = new Set(["claim", "evidence", "question", "assumption"]);
 
 const DAY = 86400;
 
@@ -112,11 +112,11 @@ export function buildDebateData(nodes, utterances, contextMessages) {
   );
 
   // Statement-level nodes only: topic/theme/arc umbrella nodes (levels 3-5)
-  // also carry a default claim_type in some extractions, but they're
+  // also carry a default argument_role in some extractions, but they're
   // hierarchy, not utterances — they'd appear as orphaned duplicate cards.
   const argNodes = list.filter(
     (n) =>
-      ARGUMENT_CLAIM_TYPES.has(normType(n.claim_type)) &&
+      ARGUMENT_ROLES.has(normType(n.argument_role)) &&
       (n.semantic_level == null || n.semantic_level <= 2)
   );
   if (argNodes.length === 0) return { empty: true };
@@ -157,7 +157,7 @@ export function buildDebateData(nodes, utterances, contextMessages) {
   const cards = argNodes
     .map((n) => {
       const quote = quoteFor(n, utteranceById);
-      const tag = normType(n.claim_type);
+      const tag = normType(n.argument_role);
       return {
         node: n,
         tag,
@@ -231,7 +231,7 @@ export function buildDebateData(nodes, utterances, contextMessages) {
 /**
  * Level-1 ordering + filtering.
  * sort: "oldest" | "newest" | "pacing"; tag: "" (argument only) | "all"
- * (argument + untagged context) | "crux" | claim_type | "counter";
+ * (argument + untagged context) | "crux" | argument_role | "counter";
  * speaker: "" | id; context: the contextCards to merge in when tag === "all".
  */
 export function orderQuoteCards(cards, { sort = "oldest", tag = "", speaker = "", context = [] } = {}) {

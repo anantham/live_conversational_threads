@@ -12,6 +12,10 @@
       "id": "n1",
       "node_name": "[TI] Opening topic",
       "summary": "Two synthetic speakers open the fixture conversation.",
+      "source_turns": [
+        {"utterance_id": "u1", "speaker_id": "Speaker One", "text": "Hello, this is a synthetic fixture."},
+        {"utterance_id": "u2", "speaker_id": "Speaker Two", "text": "Yes, purely for the e2e test."}
+      ],
       "full_text": "[S1] Hello, this is a synthetic fixture. [S2] Yes, purely for the e2e test.",
       "speaker_id": "S1",
       "sequence_number": 1,

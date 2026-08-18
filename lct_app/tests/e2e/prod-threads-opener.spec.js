@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
  * - Open `.threads` from Browse without a mobile-hostile `accept` filter.
  * - Remember a valid artifact on this device and reopen it by stable `/view/:id` URL.
  * - Keep `/view` as the recoverable standalone opener for drag-drop and bad files.
+ * - Render structured utterance text without repeating speaker names in cards.
  */
 //
 // Included in BOTH configs: the default (local) run blocks /api/* to force the
@@ -68,6 +69,9 @@ test.describe('.threads opener (public recipient path)', () => {
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /Transcript/ })).toBeVisible();
     await expect(page.getByText('Saved on this device')).toBeVisible();
+    await expect(page.getByText('Hello, this is a synthetic fixture.')).toBeVisible();
+    await expect(page.getByText('Speaker One', { exact: true })).toHaveCount(0);
+    await expect(page.locator('[data-speaker-id="Speaker One"]')).toHaveCount(1);
 
     await page.goto('/browse', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });

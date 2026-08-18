@@ -59,6 +59,53 @@ def test_normalize_generated_output_adds_required_defaults():
     assert node["node_text"] == node["summary"]
     assert node["semantic_level"] == 1
     assert node["semantic_type"] == "chunk"
+    assert node["argument_role"] == "context"
+
+
+def test_normalize_generated_output_preserves_only_allowed_argument_roles():
+    parsed = [
+        {"node_name": "Observation", "argument_role": "evidence"},
+        {"node_name": "Unknown role", "argument_role": "rhetorical_flourish"},
+    ]
+
+    normalized = _normalize_generated_output(parsed)
+
+    assert normalized[0]["argument_role"] == "evidence"
+    assert normalized[1]["argument_role"] == "context"
+
+
+def test_normalize_generated_output_reads_legacy_node_claim_type():
+    normalized = _normalize_generated_output(
+        [{"node_name": "Legacy evidence", "claim_type": "evidence"}]
+    )
+
+    assert normalized[0]["argument_role"] == "evidence"
+    assert "claim_type" not in normalized[0]
+
+
+def test_normalize_generated_output_authors_readable_stable_thread_labels():
+    normalized = _normalize_generated_output(
+        [
+            {
+                "node_name": "First node",
+                "thread_id": "thread::privacy-republication",
+                "thread_label": "Privacy-aware republication",
+            },
+            {
+                "node_name": "Return node",
+                "thread_id": "thread::privacy-republication",
+                "thread_label": "A conflicting later label",
+            },
+            {
+                "node_name": "Legacy node",
+                "thread_id": "thread-local-stt-quality",
+            },
+        ]
+    )
+
+    assert normalized[0]["thread_label"] == "Privacy-aware republication"
+    assert normalized[1]["thread_label"] == "Privacy-aware republication"
+    assert normalized[2]["thread_label"] == "Local stt quality"
 
 
 def test_normalize_generated_output_coerces_single_contextual_relation_object():

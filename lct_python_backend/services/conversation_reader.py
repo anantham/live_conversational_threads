@@ -423,12 +423,16 @@ def build_graph_data_from_nodes(
             # NodeDetail Provenance panel; survives the re-persist round-trip.
             "source_ref": _compute_source_ref(node, utterance_seq_by_id, utterance_srcid_by_id),
             "thread_id": cluster_info.get("thread_id"),
+            "thread_label": cluster_info.get("thread_label"),
             "thread_state": cluster_info.get("thread_state"),
             "edge_relations": _node_edges,
             # Argument-map role (claim | evidence | question | assumption) —
             # persisted in display_preferences (no column); feeds the frontend
             # rhetoric/debate color mode + the per-card claim-type chip.
-            "claim_type": display_preferences.get("claim_type"),
+            "argument_role": (
+                display_preferences.get("argument_role")
+                or display_preferences.get("claim_type")
+            ),
             "speaker_id": (node.speaker_info or {}).get("primary_speaker") or None,
             **({"timestamp_start": effective_start} if effective_start is not None else {}),
             **({"timestamp_end": effective_end} if effective_end is not None else {}),

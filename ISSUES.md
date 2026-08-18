@@ -548,8 +548,31 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 ## Priorities & Scope
 - Focus first on core transcript viewing/search/retrieval and navigation; defer pipeline steps (e.g., contextual progress markers/formalism triggers) until basics are solid.
 
+## Test Environment Compatibility (2026-08-17, pre-existing)
+
+- Full backend unit runs fail `test_openai_sdk_blocks_cloud_via_httpx` before
+  exercising the egress guard because the installed OpenAI SDK passes the
+  removed `httpx.Client(proxies=...)` argument. Impact: one security regression
+  test cannot run in this environment. Non-blocking for PR #170; align the
+  OpenAI/httpx versions in a dedicated dependency change.
+- On Windows, the extreme traversal case `../../../../tmp/evil` can make
+  `Path.resolve()` raise `PermissionError` before `AudioStorageManager` converts
+  traversal into the public `ValueError`. The path is still not accepted, but
+  the error contract differs. Non-blocking for PR #170; reject lexical parent
+  traversal before filesystem resolution in a focused security repair.
+
 ## User Stories (When/Why)
 - Primary: After a live or imported meeting, I need to quickly surface decisions, action items, and supporting quotes, then export/share them for slides, docs, or follow-up messages with minimal navigation overhead.
 - Creative: During a brainstorming session, I want the graph to auto-cluster related ideas and let me hide edges so I can drag a “storyline” into a deck outline without visual clutter.
 - Creative: While reviewing a contentious discussion, I want to click a node and have all related nodes pulled into view, then generate a concise narrative I can fact-check before sharing with stakeholders.
 - Creative: In a workshop, I want a smooth left-to-right timeline with fixed zoom presets so I can jump between moments, bookmark highlights, and later re-run higher-quality ASR/diarization on the stored audio for a polished recap.
+## 2026-08-17 — Dependency audit and bundle-size warnings (pre-existing, non-blocking)
+
+- `npm ci` reports 10 dependency vulnerabilities (1 low, 8 high, 1 critical).
+  This work did not run an unreviewed `npm audit fix`; triage direct versus
+  transitive exposure and upgrade through a separate dependency PR.
+- The production build reports a ~1.15 MB JavaScript chunk (>500 KB warning).
+  No regression was introduced by the small label-only viewer change, but route
+  or feature-level dynamic imports should be evaluated separately.
+- Impact: security-maintenance and startup-performance risk; not a blocker for
+  the argument-topology correctness repair.

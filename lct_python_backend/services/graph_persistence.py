@@ -1006,11 +1006,15 @@ async def persist_graph(
             thread_state=thread_state or None,
             cluster_info={
                 "thread_id": str(thread_id) if thread_id else coerce_str(item.get("thread_id")) or None,
+                "thread_label": coerce_str(item.get("thread_label")) or None,
                 "thread_state": thread_state,
                 "linked_nodes": linked_nodes,
             },
             display_preferences={
                 "edge_relations": edge_relations,
+                "argument_role": coerce_str(
+                    item.get("argument_role") or item.get("claim_type")
+                ) or "context",
             },
             utterance_ids=_coerce_uuid_array(item.get("utterance_ids")),
             # P0 provenance: persist the source_ref the graph carries (the
@@ -1046,7 +1050,8 @@ async def persist_graph(
             for edge in edges_out:
                 if not isinstance(edge, dict):
                     continue
-                to_node_id = _coerce_uuid(edge.get("to"))
+                to_ref = coerce_str(edge.get("to"))
+                to_node_id = ref_to_id.get(to_ref) or _coerce_uuid(to_ref)
                 # to-node must be one of the rows we're inserting (FK), and
                 # the no_self_reference CHECK forbids from == to.
                 if to_node_id is None or to_node_id == node_id:
