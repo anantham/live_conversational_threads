@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-07-02 (backfilled all missing June rows — ADR-034-egress, 036, 039, 040, 056, 058, 059; documented the real numbering gaps 041–055 and 057; ADR-021 collision still open and a second ADR-034 collision surfaced — see notes below)
+Last updated: 2026-08-15 (approved ADR-063 for personal-private retention and explicit provider trust)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -50,6 +50,9 @@ Last updated: 2026-07-02 (backfilled all missing June rows — ADR-034-egress, 0
 | [ADR-058](ADR-058-human-gated-identity.md) | Human-Gated Identity — Voice→Person Attribution + Contact-Identity Curation | 2026-06-24 | Proposed |
 | [ADR-059](ADR-059-unified-conversation-ingest-and-zombie-cleanup.md) | Unified Conversation Ingest — Narrow-Waist Transcription/Extraction Split + Zombie Cleanup | 2026-06-30 | Proposed |
 | [ADR-060](ADR-060-serverless-byok-thin-proxy.md) | Serverless BYOK — Universal Access via a Thin Stateless OpenAI Proxy | 2026-07-01 | Proposed |
+| [ADR-061](ADR-061-stt-fallback-as-ordered-engine-list.md) | STT Fallback as an Ordered Engine List | 2026-07-02 | Proposed |
+| [ADR-062](ADR-062-overlapping-semantic-memberships-derived-zoom-projections.md) | Overlapping Semantic Memberships with Derived Zoom Projections | 2026-08-13 | Approved |
+| [ADR-063](ADR-063-personal-private-retention-and-provider-trust.md) | Personal-Private Retention and Explicit Provider Trust | 2026-08-15 | Approved |
 
 > **Numbering gaps (ADR-041–055, ADR-057):** these numbers have no files on `main`. They were consumed by drafts in branches/PRs that never landed — ADR-057 (capability-token auth) is explicitly known: shelved when its PR #87 was closed as over-scoped (see ADR-056's status note). 041–055 were claimed by parallel sessions' drafts and cross-repo work (e.g. "ADR-055" in ADR-039's title refers to the TemporalCoordination repo's ADR-055) that never merged here. New ADRs should continue from the highest number in this index, not backfill the gaps.
 > **⚠ ADR-021 number collision:** two ADRs shipped as 021 — *Browser-Local Draft Recovery* (2026-04-03) and *Authored Four-Level Conversation Hierarchy* (2026-04-13). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.

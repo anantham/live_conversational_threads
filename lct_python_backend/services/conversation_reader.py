@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import select
 
 TEMPORAL_RELATIONSHIP_TYPES = {"temporal", "leads_to", "next", "follows"}
+MEMBERSHIP_RELATIONSHIP_TYPE = "member_of"
 
 
 async def fetch_conversation_bundle(db, conversation_uuid):
@@ -50,6 +51,12 @@ def build_relationship_maps(nodes, relationships):
         rel_type_lower = relationship_type.lower()
         relation_label = rel.explanation or relationship_type
 
+        # Membership edges are canonical hierarchy facts, not contextual links.
+        # They are serialized separately as ``memberships`` below so the viewer
+        # can project one zoom tree without erasing secondary memberships.
+        if rel_type_lower == MEMBERSHIP_RELATIONSHIP_TYPE:
+            continue
+
         if rel_type_lower in TEMPORAL_RELATIONSHIP_TYPES:
             successor_by_id[rel.from_node_id] = str(rel.to_node_id)
             predecessor_by_id[rel.to_node_id] = str(rel.from_node_id)
@@ -64,6 +71,53 @@ def build_relationship_maps(nodes, relationships):
 
     linked_by_id = {node_id: sorted(names) for node_id, names in linked_by_id.items()}
     return predecessor_by_id, successor_by_id, contextual_by_id, linked_by_id
+
+
+def build_memberships_by_child(nodes, relationships):
+    """Return canonical many-to-many memberships keyed by child node id.
+
+    ``member_of`` relationships point child -> parent.  Their subtype encodes
+    ``<lens>:<role>`` (currently ``thematic:primary|secondary``).  The legacy
+    ``Node.parent_id`` / ``children_ids`` fields remain a single zoom-view
+    projection and are intentionally not used to reconstruct this richer map.
+    """
+    node_ids = {node.id for node in nodes}
+    memberships_by_child: Dict[Any, List[Dict[str, Any]]] = {}
+    seen = set()
+
+    for rel in relationships:
+        relationship_type = (rel.relationship_type or "").strip().lower()
+        if relationship_type != MEMBERSHIP_RELATIONSHIP_TYPE:
+            continue
+        if rel.from_node_id not in node_ids or rel.to_node_id not in node_ids:
+            continue
+
+        subtype = str(rel.relationship_subtype or "thematic:secondary").strip()
+        lens, separator, role = subtype.partition(":")
+        lens = lens or "thematic"
+        role = role if separator and role in {"primary", "secondary"} else "secondary"
+        key = (rel.from_node_id, rel.to_node_id, lens)
+        if key in seen:
+            continue
+        seen.add(key)
+        memberships_by_child.setdefault(rel.from_node_id, []).append(
+            {
+                "parent_id": str(rel.to_node_id),
+                "lens": lens,
+                "role": role,
+                "confidence": rel.confidence,
+            }
+        )
+
+    for memberships in memberships_by_child.values():
+        memberships.sort(
+            key=lambda item: (
+                item["role"] != "primary",
+                item["lens"],
+                item["parent_id"],
+            )
+        )
+    return memberships_by_child
 
 
 def _compute_source_ref(node, seq_by_id, srcid_by_id):
@@ -113,6 +167,7 @@ def build_graph_data_from_nodes(
         nodes,
         relationships,
     )
+    memberships_by_child = build_memberships_by_child(nodes, relationships)
     utterance_start_by_id: Dict[Any, float] = {}
     utterance_end_by_id: Dict[Any, float] = {}
     chunk_start_by_id: Dict[Any, float] = {}
@@ -188,7 +243,11 @@ def build_graph_data_from_nodes(
     id_to_name = {node.id: node.node_name for node in nodes}
     edge_relations_by_id = {}
     for rel in relationships:
-        if rel.relationship_type in TEMPORAL_RELATIONSHIP_TYPES:
+        relationship_type = (rel.relationship_type or "").strip().lower()
+        if (
+            relationship_type in TEMPORAL_RELATIONSHIP_TYPES
+            or relationship_type == MEMBERSHIP_RELATIONSHIP_TYPE
+        ):
             continue
         target_name = id_to_name.get(rel.from_node_id)
         if not target_name:
@@ -351,6 +410,9 @@ def build_graph_data_from_nodes(
             "utterance_ids": [str(uid) for uid in (node.utterance_ids or [])],
             "parent_id": str(node.parent_id) if node.parent_id else None,
             "children_ids": [str(cid) for cid in (node.children_ids or [])],
+            # Canonical hierarchy is a cover (many-to-many). ``parent_id`` and
+            # ``children_ids`` above are the primary thematic zoom projection.
+            "memberships": memberships_by_child.get(node.id, []),
             # ADR-032 Part G: surface persisted source_excerpt so re-persist
             # round-trips preserve it. Without this the enrich/consolidate
             # scripts wipe it when they call build_graph_data_from_nodes

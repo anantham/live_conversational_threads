@@ -597,6 +597,7 @@ def chat_with_provider_fallback_sync(
     require_json: bool = True,
     prompt_name: Optional[str] = None,
     prompt_version: Optional[str] = None,
+    skip_cache_read: bool = False,
     _backoff_attempt: int = 0,
 ) -> ProviderResult:
     """
@@ -630,7 +631,7 @@ def chat_with_provider_fallback_sync(
             prompt_version=prompt_version,
             models=[str(p.get("model", "")) for p in enabled_providers],
         )
-        _hit = _cache.get(_key)
+        _hit = None if skip_cache_read else _cache.get(_key)
     except Exception:  # noqa: BLE001 — a broken cache must never fail a call
         _key, _hit = None, None
     if _hit is not None:

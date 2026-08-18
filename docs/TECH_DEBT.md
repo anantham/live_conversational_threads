@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-06-20
+Last updated: 2026-08-15
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -26,6 +26,8 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_app/src/components/LlmProvidersPanel.jsx | 645 | Provider list rendering, embedded summary-card mode, edit/add form state, health-check orchestration, and save/reorder/delete mutations are mixed in one component | Split into `ProviderList`, `ProviderEditor`, and `useLlmProviderSettings` so embedded card mode and credentials UX evolve independently |
 | lct_python_backend/llm_api.py | 348 | Gemini model discovery, legacy single-provider settings, provider-priority settings, and health-check routing coexist in one router module | Split into `llm_settings_api.py` and `llm_provider_api.py`; move provider-health resolution into a dedicated service |
 | lct_python_backend/services/llm_config.py | 360 | Default config, provider URL normalization, client-secret masking, and persistence merge rules now share one module | Split into `llm_provider_config.py` and `llm_provider_secrets.py` to isolate normalization and secret-preservation logic |
+| lct_python_backend/services/graph_persistence.py | >1400 | Conversation, utterance, node, relationship, semantic-membership, metadata merge, and transcript-retention persistence rules share one module | Split storage by aggregate (`conversation_store.py`, `utterance_store.py`, `graph_store.py`) and keep deployment/privacy decisions in the dedicated policy module |
+| lct_python_backend/services/import_pipeline/import_orchestrator.py | >380 | Import parsing plus persisted-turn extraction, provider-policy enforcement, batching, hierarchy repair/consolidation, and graph persistence are orchestrated in one module | Extract persisted-turn graph generation into `turn_graph_extractor.py`; keep the import facade focused on phase selection and result shaping |
 | ~~lct_app/src/pages/ViewConversation.jsx~~ | ~~463~~ → 269 | **RESOLVED** — Replaced with a thinner viewer that composes extracted presentation components (`MinimalGraph`, `TimelineRibbon`, `NodeDetail`, `MinimalLegend`). |
 | lct_app/src/components/MinimalGraph.jsx | 1550 | Dagre layout, authored semantic hierarchy mode, legacy clustering fallback, interactive drag state, viewport follow/recenter logic, zoom HUD, cluster detail panel, legend, edge-inspection UI, provisional-draft node styling, and a temporary `react-hooks/rules-of-hooks` suppression all live in one component | Split into `useMinimalGraphViewport.js`, `useMinimalGraphSemanticLevels.js`, `useMinimalGraphClusters.js`, `MinimalGraphHud.jsx`, `MinimalGraphNodeStyles.js`, and `MinimalGraphPanels.jsx` so authored-level rendering can drop the temporary lint suppression and evolve independently from legacy clustering |
 | ~~lct_app/src/components/AudioInput.jsx~~ | ~~329~~ → 137 | **RESOLVED** — Extracted `useTranscriptSockets` (233 LOC) and `useAudioCapture` (69 LOC) hooks; AudioInput is now a thin orchestrator. |

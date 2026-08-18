@@ -6,6 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.services.coercion_helpers import to_bool, coerce_str, coerce_url, safe_int
+from lct_python_backend.services.deployment_privacy_policy import (
+    EXTERNAL,
+    OWNER_PRIVATE,
+    normalize_provider_trust_scope,
+)
 
 LLM_CONFIG_KEY = "llm_config"
 LLM_PROVIDERS_KEY = "llm_providers"
@@ -29,6 +34,7 @@ def get_default_providers() -> List[Dict[str, Any]]:
             "api_key": None,
             "enabled": True,
             "timeout_seconds": 120,
+            "trust_scope": OWNER_PRIVATE,
         },
         {
             "id": "modal_qwen",
@@ -39,6 +45,7 @@ def get_default_providers() -> List[Dict[str, Any]]:
             "api_key": None,
             "enabled": True,
             "timeout_seconds": 180,
+            "trust_scope": EXTERNAL,
         },
         {
             "id": "openrouter_gemini",
@@ -49,6 +56,7 @@ def get_default_providers() -> List[Dict[str, Any]]:
             "api_key": os.getenv("OPENROUTER_API_KEY", ""),
             "enabled": bool(os.getenv("OPENROUTER_API_KEY")),
             "timeout_seconds": 60,
+            "trust_scope": EXTERNAL,
         },
     ]
 
@@ -162,6 +170,11 @@ def normalize_provider_record(
             raw_provider.get("timeout_seconds", existing.get("timeout_seconds", 120)),
             120,
         )),
+        # Fail closed for old/custom records. Trust is never inferred from URL:
+        # a loopback-looking endpoint can still be a proxy to an external model.
+        "trust_scope": normalize_provider_trust_scope(
+            raw_provider.get("trust_scope", existing.get("trust_scope"))
+        ),
     }
 
     clear_api_key = to_bool(raw_provider.get("clear_api_key", False))

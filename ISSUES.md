@@ -1,6 +1,25 @@
 # ISSUES
 
-Last updated: 2026-07-03
+Last updated: 2026-08-15
+
+## 2026-08-15 — Provider trust classification has no dedicated settings control
+
+**Summary:** ADR-063 now enforces an explicit `owner_private` / `external`
+trust scope for every graph-generation provider. The authenticated settings API
+persists the field, and missing or invalid values fail closed as `external`, but
+the provider editor does not yet expose a dedicated trust-scope control.
+
+**Impact:** Safe but operationally awkward. New/custom local providers cannot
+process private-only meetings until an operator classifies them through the API
+or configuration. Existing records are not silently trusted based on their URL.
+
+**Blocker status:** Not blocking the approved owner-operated MVP; the two known
+local routes can be explicitly classified before replay. It is a blocker for a
+non-technical operator adding another private provider through the UI.
+
+**Recommended next step:** Add a clearly explained deployment-boundary selector
+to `LlmProvidersPanel.jsx`, display the effective trust scope in provider cards,
+and behavior-test that a missing choice defaults to external.
 
 ## 2026-07-03 - Backend catalog selected/effective LLM unit test is red on dirty checkout
 
@@ -516,6 +535,8 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Horizontal scrolling should be easy/smooth.
 
 ## Infrastructure / Runtime Drift
+- **2026-08-13 — backend restart diagnosis corrected (resolved for this repair):** the apparent competing Anaconda process was the repo venv's Windows redirector child, as already documented in withdrawn ADR-040. Repeated manual stops consumed the IndrasNet supervisor's retry budget; after the standard hidden launcher started the canonical venv listener, a late supervisor launch lost the port bind and exited while the serving PID remained stable through the successful repair. There is no evidence of two live managers fighting over the listener. Recommended next step: avoid forced reloads during long transactions and expose a deliberate maintenance restart/reset path for a supervisor that has reached its retry limit.
+- **2026-08-13 — private audio route lacks a download token (pre-existing, security):** startup reports `AUTH_TOKEN` is enabled while `AUDIO_DOWNLOAD_TOKEN` is unset, leaving `GET /api/conversations/{id}/audio` unauthenticated because browser audio tags cannot send the bearer header. Impact: unrelated to `.threads` (audio is excluded), but private stored audio may be fetchable by anyone who can reach the backend and knows a conversation ID. Blocker status: security-critical for any non-loopback/private-audio deployment. Recommended next step: set `AUDIO_DOWNLOAD_TOKEN` immediately or migrate audio delivery to short-lived signed URLs before exposing the backend.
 - IndrasNet Windows Scheduled Task `\IndrasNet-WebServer` was previously bypassed by a manual debug launcher `C:\Users\adity\run_web_server_skip_agents.ps1` that forced `INDRAS_SKIP_AGENT_AUTOSTART=1`; this disabled Beeper/Meet/Obsidian autostarts even though DB autostart settings were enabled. Status: mitigated in ops by repointing the task to the repo-owned `scripts/start_web_server_task.cmd` wrapper, but the historical drift explains earlier missing-ingestion incidents.
 - The healthy scheduled-task launch still results in a two-step Python chain (`.venv\Scripts\python.exe` parent spawning `C:\Users\adity\anaconda3\python.exe -m grimoire.IndrasNet.agents.web_server.app`) and repeated `runpy` warnings. Impact: currently non-blocking because `7777` binds and agents autostart, but startup behavior remains harder to reason about. Recommended next step: trace why the app re-enters through `anaconda3\python.exe` and whether a single-interpreter launch path is possible.
 - Remote Whisper finalization issue was traced to deployment drift at the real WSL `8001` service. The actual listener is a WSL `uvicorn whisperx_server:app` process importing `/home/adity/whisperx_server.py` from working directory `/mnt/c/Users/adity/Documents/Ongoing Local/TemporalCoordination/grimoire/IndrasNet/services/transcription`. Impact: the finalization patch was already on disk but a stale long-running process kept serving pre-fix behavior until the WSL uvicorn process was restarted. Current status: mitigated; raw direct websocket validation now returns an `is_final=true` transcript before `done`. Recommended next step: make the WSL WhisperX service launch/restart path explicit and durable so future code syncs do not leave `8001` serving stale logic.

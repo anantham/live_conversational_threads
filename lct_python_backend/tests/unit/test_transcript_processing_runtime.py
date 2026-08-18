@@ -252,3 +252,71 @@ async def test_index_mode_continue_keeps_accumulating(monkeypatch):
     assert graph_emitted is False
     assert cont is True
     assert incomplete_seg == "a fragment another fragment"
+
+
+@pytest.mark.asyncio
+async def test_generation_failure_retains_batch_for_later_retry(monkeypatch):
+    """A provider failure must not silently acknowledge completed turns."""
+    monkeypatch.setattr(mod, "accumulate_text_json_local_indexed", _acc_idx_complete_all)
+    monkeypatch.setattr(mod, "generate_lct_json", lambda mod_input, **kwargs: ([], None))
+
+    processor = TranscriptProcessor(send_update=None, send_status=None, batch_size=1)
+    await processor.handle_final_text(
+        "A completed turn that must remain auditable.",
+        utterance_id="utt-1",
+    )
+
+    assert processor.existing_json == []
+    assert processor.accumulator == ["A completed turn that must remain auditable."]
+    assert processor.accumulator_utterance_ids == [["utt-1"]]
+
+    monkeypatch.setattr(
+        mod,
+        "generate_lct_json",
+        lambda mod_input, **kwargs: ([{"node_name": "recovered"}], "local_test"),
+    )
+    await processor.flush()
+    assert len(processor.existing_json) == 1
+
+
+@pytest.mark.asyncio
+async def test_generation_failure_on_final_flush_fails_loudly(monkeypatch):
+    """A terminal flush has no later retry, so an empty graph is fatal."""
+    monkeypatch.setattr(mod, "accumulate_text_json_local_indexed", _acc_idx_complete_all)
+    monkeypatch.setattr(mod, "generate_lct_json", lambda mod_input, **kwargs: ([], None))
+
+    processor = TranscriptProcessor(send_update=None, send_status=None, batch_size=4)
+    await processor.handle_final_text(
+        "A pending final turn.",
+        utterance_id="utt-final",
+    )
+
+    with pytest.raises(RuntimeError, match="no structured graph output during final transcript flush"):
+        await processor.flush()
+
+    assert processor.accumulator == ["A pending final turn."]
+    assert processor.accumulator_utterance_ids == [["utt-final"]]
+
+
+@pytest.mark.asyncio
+async def test_local_generation_uses_local_context_window(monkeypatch):
+    """Local providers receive the smaller context window, not the online 80."""
+    monkeypatch.setattr(mod, "accumulate_text_json_local_indexed", _acc_idx_complete_all)
+    captured = {}
+
+    def capture_generate(mod_input, **kwargs):
+        captured["input"] = mod_input
+        return ([{"node_name": "new node"}], "local_test")
+
+    monkeypatch.setattr(mod, "generate_lct_json", capture_generate)
+    processor = TranscriptProcessor(send_update=None, send_status=None, batch_size=1)
+    processor.existing_json = [
+        {"id": f"prior-{index}", "node_name": f"Prior {index}"}
+        for index in range(60)
+    ]
+
+    await processor.handle_final_text("A new finalized turn.")
+
+    assert "Existing JSON (last 40 of 60 nodes)" in captured["input"]
+    assert "prior-19" not in captured["input"]
+    assert "prior-20" in captured["input"]

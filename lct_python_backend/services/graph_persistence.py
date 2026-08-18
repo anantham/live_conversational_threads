@@ -22,7 +22,6 @@ Backward-compatible aliases:
 
 import copy
 import logging
-import os
 import time
 import uuid
 from datetime import datetime
@@ -35,6 +34,9 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from lct_python_backend.models import Conversation, Utterance as DBUtterance
 from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
 from lct_python_backend.services.owner_context import resolve_owner_id
+from lct_python_backend.services.deployment_privacy_policy import (
+    assert_raw_transcript_retention_allowed,
+)
 
 logger = logging.getLogger("lct_backend")
 
@@ -344,10 +346,9 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
     slate for re-extraction. Deliberately does NOT reuse ``persist_graph``'s
     utterance insert, which omits ``source_identifier``.
 
-    Privacy (doc §4): the LCT mirror is redacted-by-default; storing raw text
-    (``redaction_applied=false``) additionally requires ``LCT_MIRROR_RAW=1`` on the
-    server (owner-local only). ``redaction_applied`` is an UNVERIFIED upstream
-    claim — LCT trusts it; the real guarantee is ADR-038.
+    Privacy: a personal-private deployment may retain an explicitly owner-local
+    raw payload. Hosted/shared deployments reject raw text. ``redaction_applied``
+    is an UNVERIFIED upstream claim — LCT trusts it; the real guarantee is ADR-038.
 
     Returns ``{conversation_id, utterance_count, participant_count}``.
     """
@@ -357,12 +358,7 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
     privacy = payload.privacy
 
     if not privacy.redaction_applied:
-        allow_raw = os.getenv("LCT_MIRROR_RAW", "").strip().lower() in {"1", "true", "yes", "on"}
-        if not allow_raw:
-            raise ValueError(
-                "redaction_applied=false rejected: set LCT_MIRROR_RAW=1 to let the LCT "
-                "mirror store un-redacted text (owner-local only)."
-            )
+        assert_raw_transcript_retention_allowed()
 
     # Resolve the target conversation (replace-on-reingest). An explicit
     # conversation_id MUST belong to this (owner, group) and not be soft-deleted,
@@ -820,7 +816,9 @@ async def persist_graph(
         if clean_conversation_name:
             conv.conversation_name = clean_conversation_name
     if conv and source_metadata:
-        conv.source_metadata = source_metadata
+        merged_source_metadata = dict(conv.source_metadata or {})
+        merged_source_metadata.update(source_metadata)
+        conv.source_metadata = merged_source_metadata
 
     # ADR-032 Part G: bubble timestamps UP through the hierarchy so higher
     # tiers (topics/themes/arcs) get a temporal span derived from their
@@ -1073,6 +1071,52 @@ async def persist_graph(
                     supporting_utterance_ids=_coerce_uuid_array(edge.get("supporting_utterance_ids")),
                 ))
     else:
+        # Canonical many-to-many hierarchy.  Exported ``.threads`` payloads do
+        # not carry faithful ``edges_out`` by default, so materialize their
+        # explicit memberships before the legacy temporal/contextual edges.
+        # ``parent_id`` remains only the primary zoom projection.
+        membership_seen = set()
+        membership_namespace = uuid.UUID("c1379105-1aa1-470c-a20a-68db3efac684")
+        for child_id, item in node_records:
+            memberships = item.get("memberships")
+            if not isinstance(memberships, list):
+                continue
+            supporting_ids = _coerce_uuid_array(item.get("utterance_ids"))
+            for membership in memberships:
+                if not isinstance(membership, dict):
+                    continue
+                parent_ref = coerce_str(
+                    membership.get("parent_id")
+                    or membership.get("parent")
+                    or membership.get("to")
+                )
+                parent_id = ref_to_id.get(parent_ref) or _coerce_uuid(parent_ref)
+                if parent_id not in node_record_ids or parent_id == child_id:
+                    continue
+                lens = coerce_str(membership.get("lens")) or "thematic"
+                role = coerce_str(membership.get("role")).lower()
+                role = role if role in {"primary", "secondary"} else "secondary"
+                membership_key = (child_id, parent_id, lens)
+                if membership_key in membership_seen:
+                    continue
+                membership_seen.add(membership_key)
+                rel_id = uuid.uuid5(
+                    membership_namespace,
+                    f"{conv_uuid}:{child_id}:{parent_id}:{lens}",
+                )
+                db.add(Relationship(
+                    id=rel_id,
+                    conversation_id=conv_uuid,
+                    from_node_id=child_id,
+                    to_node_id=parent_id,
+                    relationship_type="member_of",
+                    relationship_subtype=f"{lens}:{role}",
+                    explanation=f"{role.title()} membership in the {lens} zoom view",
+                    strength=1.0 if role == "primary" else 0.8,
+                    confidence=coerce_float(membership.get("confidence")),
+                    supporting_utterance_ids=supporting_ids,
+                ))
+
         # 3a. Temporal chain via successor/predecessor fields
         temporal_pairs = set()
         for node_id, item in node_records:

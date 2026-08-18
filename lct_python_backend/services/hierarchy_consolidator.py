@@ -16,8 +16,10 @@ over the completed graph, each seeing its whole input tier at once:
                                                    +  executive_summary
 
 Each pass emits new nodes (semantic_level 3/4/5) that reference the prior
-tier's nodes via children_ids, plus the arcs pass produces a one-line title
-and a 3-sentence summary for the conversation banner.
+tier's nodes via children_ids. A child may appear under multiple parents when
+its meaning is genuinely cross-cutting; hierarchy synchronization preserves
+those memberships and derives one primary zoom projection. The arcs pass also
+produces a one-line title and a 3-sentence summary for the conversation banner.
 """
 
 from __future__ import annotations
@@ -185,8 +187,8 @@ def adopt_orphans(children: List[Dict[str, Any]],
     """Attach every child no parent claimed to its nearest claimed neighbour's
     parent. Returns how many were adopted.
 
-    WHY: the prompt says "each idea belongs to EXACTLY ONE topic — no
-    overlap, no orphans", and the model does not obey it. Measured on a real
+    WHY: the prompt requires every child to have at least one membership, but
+    the model does not always obey it. Measured on a real
     1,125-turn conversation (2026-08-12): **16 of 82 ideas were claimed by no
     topic at all**, so a sixth of the conversation was invisible at every zoom
     level above L2 — silently, because nothing counted the leftovers.

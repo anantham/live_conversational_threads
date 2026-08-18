@@ -1,5 +1,67 @@
 # WORKLOG
 
+## 2026-08-15T19:49:48+05:30 — Personal-private retention and provider-trust enforcement
+
+- Context: the approved Indra's Net meeting flow needs LCT to retain the
+  owner's unredacted canonical transcript as a private, auditable source graph
+  before republication. The previous `LCT_MIRROR_RAW` gate rejected that normal
+  self-hosted case, while graph extraction ignored the conversation's stored
+  `external_llm_ok=false` decision and graph persistence could erase it.
+- Hypotheses and predictions:
+  - H1 (0.55): deployment intent, not redaction status alone, is the missing
+    retention boundary. A `personal_private` profile should admit the explicit
+    owner-local raw contract while `hosted_shared` should continue to refuse it.
+  - H2 (0.35): filtering providers by an explicit trust scope plus affirmative
+    conversation consent should prevent future cloud additions from receiving
+    private graph input. Missing/invalid trust must behave as external and an
+    empty permitted set must fail before model invocation.
+  - H3 (0.10): preserving the privacy block only at import time is insufficient
+    because graph enrichment replaces `source_metadata`. Merging enrichment
+    metadata should keep the decision durable across extraction/reprocessing.
+- Decision: the operator approved H1-H3 as ADR-063. LCT defaults to the
+  single-owner `personal_private` profile; shared hosting must opt into
+  `hosted_shared`. Providers carry `owner_private` or `external`; URL shape is
+  never used as a trust signal. The direct online branch is also forced local
+  when external inference is denied.
+- Product files:
+  - `services/deployment_privacy_policy.py`: centralized deployment validation,
+    raw-retention decision, explicit provider filtering and direct-mode clamp.
+  - `services/llm_config.py`: persisted/default provider `trust_scope`, with
+    missing or invalid records normalized to external.
+  - `services/import_pipeline/import_orchestrator.py`: applies the conversation
+    privacy block before constructing `TranscriptProcessor` and emits only
+    content-free routing diagnostics.
+  - `services/graph_persistence.py`: replaces the raw env escape hatch with the
+    deployment policy and merges graph enrichment into existing source metadata.
+  - `backend.py` and `.env.example`: validate/log the deployment profile at
+    startup and document the two supported profiles.
+- Tests and documentation:
+  - New behavior tests cover profile retention, fail-closed trust normalization,
+    provider/consent intersection, direct online-mode denial, extraction wiring,
+    and preservation of privacy metadata. Existing raw-turn and provider tests
+    were amended to the new public contract.
+  - Focused result: **40 passed**. `git diff --check` passed. The same modules
+    imported/executed in tests; an additional `compileall` cache write was denied
+    by this checkout's existing `__pycache__` permissions and was not treated as
+    a product failure.
+  - `ADR-063-personal-private-retention-and-provider-trust.md`, `ISSUES.md`, and
+    `TECH_DEBT.md` record the decision, missing trust-scope UI, and decomposition
+    candidates in the touched >300-line modules.
+- Live configuration and acceptance:
+  - Explicitly set `LCT_DEPLOYMENT_PROFILE=personal_private`; supervised restart
+    produced canonical venv PID 29476 and logged the validated profile.
+  - The old custom M5 record correctly failed closed as external until explicitly
+    classified. Verified live providers are now M5 Ollama over the owner's
+    Tailscale boundary and localhost LM Studio, both `owner_private`.
+  - Sai attempt `22e31fa2-b3b4-46fb-af20-334054773db9` began at 19:49:48 with
+    477 canonical turns. Live extraction logged `local_llm_ok=True`,
+    `external_llm_ok=False`, and only those two permitted providers. Preparation
+    remains in progress; no recipient ACL or email action is part of this run.
+- Confidence: 0.93 in the boundary implementation; live artifact acceptance is
+  still pending. Fallback: use `hosted_shared` or leave a provider external to
+  fail closed, retain the canonical transcript in Indra's Net, and replay after
+  configuration is corrected.
+
 ## 2026-08-13T20:36:00+05:30 — Empirical home setup ETA
 
 - Context: after approving and deploying the stable Browse/status UI, the
@@ -3438,3 +3500,59 @@ Manual testing not run:
   - The E2E automation for the Serverless upload flow was abandoned in favor of manual user testing, as it was blocking progress.
   - The user will manually test the Serverless mode audio upload in the browser.
   - **Ready to move on to ADR-058 (Human-Gated Identity) in the next session.**
+
+## 2026-08-13T05:23:00Z - Canonical transcript re-extraction and hierarchy repair (stopped after attempt limit)
+
+- Source: IndrasNet share `3521/FINAL_to_send.txt`; LF-normalized SHA-256 `03d6dfda29b95f70f6043828e1b8575c4e206e7cd81ca0f049eadc0c7b494012`.
+- Canonical conversation: `b2d2e288-3812-4b5f-95e5-0d77b1bdba77`, group `privacy-reviewed-prayer-3521-03d6dfda29b95f70-canonical-v2`.
+- Extraction result before repair: 1,117/1,117 turns covered; 437 unique nodes (L1=361, L2=58, L3=10, L4=4, L5=4); no duplicate node IDs, utterance IDs, or dangling utterance references.
+- Root cause confirmed: local streaming graph responses reused batch-local node IDs and occasionally omitted the L2 idea layer. A large 80-node local context also crossed the effective 16K Ollama runtime-context limit and caused repeated generation failures.
+- Files modified:
+  - `lct_python_backend/services/transcript/transcript_identity.py`: canonical UUID rewrite for each generated batch and local references.
+  - `lct_python_backend/services/transcript/transcript_processing.py`: retain failed count/timer batches, fail loudly on final flush, and use the local context-window constant.
+  - `lct_python_backend/services/tuning_constants.py`: local streaming context window set to 40 nodes.
+  - `lct_python_backend/services/import_pipeline/{hierarchy_integrity,idea_repair_llm,import_hierarchy_repair,persisted_hierarchy_repair}.py`: exact adjacent-tier ownership, small-batch L2 repair, edge cleanup, persisted repair orchestration, pre-persist invariants, and validated response retries.
+  - `lct_python_backend/services/local_llm_client.py`: a semantic-validator retry can skip a cached rejected response while still refreshing that content-addressed key.
+  - `lct_python_backend/import_api.py` and `services/import_pipeline/import_orchestrator.py`: repair endpoint and repair-before-consolidation integration.
+  - tests in `lct_python_backend/tests/unit/test_transcript_identity.py`, `test_transcript_processing_runtime.py`, and `test_import_hierarchy_repair.py`.
+- Repair evidence:
+  - 35 source batches lacked L2 ideas; 9 additional L1 chunks were unowned in batches with existing ideas.
+  - Seven small repair calls completed and were cached; reruns restored them instantly. The validated in-memory result created 38 ideas and adopted all 9 strays.
+  - One cached response had exactly one idea for its batch but omitted `children_ids`; this is now handled deterministically by assigning the batch's full ordered child set. Ambiguous invalid responses still retry with cache reads bypassed.
+- Attempt log:
+  - 1/3: seven repair batches ran; final response omitted valid child IDs; transaction rolled back.
+  - 2/3: validation retry replayed the same rejected content-addressed cache entry; transaction rolled back. Root cause was the retry/cache boundary.
+  - 3/3: all hierarchy repair batches validated and higher-order consolidation began, but the backend listener was externally restarted while awaiting the first Ollama consolidation response; the client connection closed and the transaction rolled back.
+- Current durable state after rollback: unchanged pre-repair graph (437 nodes, L1=361/L2=58/L3=10/L4=4/L5=4) with 100% turn coverage. No corrected `.threads` artifact has been exported or shared.
+- Validation: focused suites reached 79 passing before retry changes; hierarchy/cache suites now pass 20/20. Known warnings remain for Python 3.9 EOL and a pytest-asyncio unclosed loop.
+- Stop condition: three pipeline attempts reached. Human guidance is required before another repair run. Recommended next diagnostic is to identify/disable the competing backend watchdog/reloader for one controlled request, then rerun; the seven L2 repair batches should be cache hits and only the higher-order calls should execute.
+
+## 2026-08-13T11:58:00+05:30 - Canonical overlap graph repaired, audited, and exported
+
+- Human decision: semantic membership is many-to-many; the tree-shaped zoom is a derived view that selects one primary parent without erasing secondary memberships. Captured as approved `docs/adr/ADR-062-overlapping-semantic-memberships-derived-zoom-projections.md` and indexed in `docs/adr/INDEX.md`.
+- Canonical representation:
+  - `lct_python_backend/services/import_pipeline/hierarchy_integrity.py:35` materializes `member_of` edges plus explicit `memberships`, then derives `parent_id`/`children_ids` as the thematic primary projection.
+  - `lct_python_backend/services/conversation_reader.py:76` reconstructs memberships from relationship rows for lean `.threads` export and excludes membership edges from generic contextual links.
+  - `lct_python_backend/services/graph_persistence.py:1076` restores explicit exported memberships when `edges_out` is absent.
+  - `lct_python_backend/prompts.json:97-117` now asks L3-L5 consolidation for complete covers with sparse, genuine overlap instead of exactly-one ownership.
+  - `lct_python_backend/services/import_pipeline/hierarchy_audit.py:16` independently verifies membership endpoints, one primary parent per thematic projection, inverse `children_ids`, edge integrity, and overlap preservation.
+- Context resilience:
+  - `lct_python_backend/services/import_pipeline/import_hierarchy_repair.py:65` bisects only an all-provider-failed repair batch, preserving content-addressed cache hits and fitting slower local lanes.
+  - Attempts 1 and 2 rolled back at the same five-group batch: M5 was offline and LM Studio exceeded its 120-second deadline. The repeated outcome confirmed provider/context size, not graph integrity, as the blocker.
+  - Attempt 3 loaded the adaptive code; M5 recovered and completed the remaining batches. The transaction committed only after all tiers and coverage checks succeeded.
+- Durable result for conversation `b2d2e288-3812-4b5f-95e5-0d77b1bdba77`:
+  - 1,117/1,117 turns covered.
+  - 473 nodes: L1=361, L2=93, L3=10, L4=5, L5=4.
+  - 35 missing source groups repaired into 35 ideas; 9 local strays adopted.
+  - 471 canonical adjacent-tier memberships; 469 projected children; 2 children retain secondary topic memberships.
+  - 1,073 total outgoing edges in the exported graph; no dangling endpoints, duplicate IDs, orphan children, or projection mismatches.
+- New non-overwriting artifact:
+  - `C:/Users/adity/Documents/Ongoing Local/TemporalCoordination/grimoire/IndrasNet/data/shares/3521/dhruva-deep-dive.reviewed.03d6dfda.canonical-v2.threads`
+  - size `2,939,840` bytes; SHA-256 `8acfab68c16d4aa251e0d5541d5a538597c23b69679a5d35b8fbb450a1b918b1`.
+  - normalized comparison against `FINAL_to_send.txt` (LF SHA-256 `03d6dfda29b95f70f6043828e1b8575c4e206e7cd81ca0f049eadc0c7b494012`): 1,117 source turns, 1,117 exported turns, zero speaker/text mismatches.
+  - serialized privacy scan: zero matches for Bitcoin, crypto/currency, Ethereum, brain fever, ICU, old conversation ID `9773cd17-f4d4-4e1c-acf9-6ee55216f290`, auth-token/API-key markers, `.env`, local user paths, or `doc_id`.
+  - loaded successfully in `https://threads.adityaarpitha.com/browse`; visible title is “Deep dive with Aditya x Dhruva - privacy-reviewed canonical v2,” coverage shows 100%, and the overview renders 4 arcs / 361 moments.
+- Validation: 128 focused unit tests pass. Known non-blocking warnings: Python 3.9 EOL, pytest-asyncio loop deprecation, and pytest cache write permissions.
+- Runtime note: forced reloads exhausted the supervisor retry budget. The standard hidden launcher was used only after confirming port 43181 empty; `/api/version` reports stable PID `23484`, canonical repo venv, and the expected checkout. A late competing bind attempt exited without replacing the serving listener.
+- Sharing state: the new canonical-v2 artifact is local and open in the client-only viewer. It has **not** been uploaded to Drive and **not** been shared with Dhruva. The older Drive review copy remains owner-only and is superseded by this local artifact.
+- Pre-existing security issue found: `AUDIO_DOWNLOAD_TOKEN` is unset while `AUTH_TOKEN` is enabled, leaving the audio download route unauthenticated. Logged in `ISSUES.md`; `.threads` excludes audio, so this does not affect the artifact.

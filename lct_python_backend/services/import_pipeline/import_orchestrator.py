@@ -169,12 +169,27 @@ async def extract_graph_for_conversation(
     from sqlalchemy import select as _select
 
     from lct_python_backend.services.llm_config import load_llm_config, load_llm_providers
+    from lct_python_backend.services.deployment_privacy_policy import (
+        constrain_llm_config_for_privacy,
+        current_deployment_profile,
+        select_providers_for_privacy,
+    )
     from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
     from lct_python_backend.services.graph_persistence import persist_graph
     from lct_python_backend.services.hierarchy_consolidator import (
         consolidate_ideas_to_topics,
         consolidate_topics_to_themes,
         consolidate_themes_to_arcs,
+    )
+    from lct_python_backend.services.import_pipeline.hierarchy_integrity import (
+        node_level,
+        synchronize_hierarchy,
+    )
+    from lct_python_backend.services.import_pipeline.import_hierarchy_repair import (
+        repair_chunk_idea_hierarchy,
+    )
+    from lct_python_backend.services.transcript.transcript_identity import (
+        canonicalize_batch_node_ids,
     )
     from lct_python_backend.services.tuning_constants import (
         MIN_IDEAS_FOR_TOPIC_CONSOLIDATION,
@@ -251,6 +266,17 @@ async def extract_graph_for_conversation(
     llm_config = await load_llm_config(db)
     providers_cfg = await load_llm_providers(db, include_secrets=True)
     providers = providers_cfg.get("providers") if isinstance(providers_cfg, dict) else []
+    source_metadata = conv.source_metadata if isinstance(conv.source_metadata, dict) else {}
+    privacy = source_metadata.get("privacy") if isinstance(source_metadata.get("privacy"), dict) else None
+    providers = select_providers_for_privacy(providers, privacy)
+    llm_config = constrain_llm_config_for_privacy(llm_config, privacy)
+    logger.info(
+        "[turns/extract][privacy] profile=%s local_llm_ok=%s external_llm_ok=%s provider_ids=%s",
+        current_deployment_profile(),
+        bool(privacy and privacy.get("local_llm_ok") is True),
+        bool(privacy and privacy.get("external_llm_ok") is True),
+        [str(provider.get("id") or "unnamed") for provider in providers],
+    )
 
     async def _noop(*_a, **_k):
         return None
@@ -271,6 +297,11 @@ async def extract_graph_for_conversation(
     await processor.flush()
     existing = list(processor.existing_json)
 
+    # Missing L2 parents make complete transcript regions disappear at every
+    # zoom level above chunks. Repair the local batch hierarchy before global
+    # consolidation; failure is fatal so an incomplete graph is never persisted.
+    await repair_chunk_idea_hierarchy(existing, providers=providers or [])
+
     # 4. Build the tier hierarchy (ideas→topics→themes→arcs), mirroring the live
     #    + bulk post-flush consolidation so the map is drillable. A consolidation
     #    LLM hiccup must NOT lose the import — the L1 nodes are the auditable core
@@ -287,16 +318,28 @@ async def extract_graph_for_conversation(
         if len(ideas) >= MIN_IDEAS_FOR_TOPIC_CONSOLIDATION:
             topics = await consolidate_ideas_to_topics(ideas, providers=providers or [])
             if topics:
+                topics = canonicalize_batch_node_ids(
+                    topics,
+                    existing_nodes=existing,
+                )
                 existing.extend(topics)
                 tiers_built.append("topics")
                 if len(topics) >= MIN_TOPICS_FOR_THEME_CONSOLIDATION:
                     themes = await consolidate_topics_to_themes(topics, providers=providers or [])
                     if themes:
+                        themes = canonicalize_batch_node_ids(
+                            themes,
+                            existing_nodes=existing,
+                        )
                         existing.extend(themes)
                         tiers_built.append("themes")
                         if len(themes) >= MIN_THEMES_FOR_ARC_CONSOLIDATION:
                             arcs, title, s = await consolidate_themes_to_arcs(themes, providers=providers or [])
                             if arcs:
+                                arcs = canonicalize_batch_node_ids(
+                                    arcs,
+                                    existing_nodes=existing,
+                                )
                                 existing.extend(arcs)
                                 tiers_built.append("arcs")
                                 summary = s or summary
@@ -315,6 +358,9 @@ async def extract_graph_for_conversation(
             "[turns/extract] consolidation failed after tiers=%s; persisting L1 graph anyway: %r",
             tiers_built, exc,
         )
+
+    highest_level = max(node_level(node) for node in existing)
+    synchronize_hierarchy(existing, through_parent_level=highest_level)
 
     # 5. Persist the GRAPH only. utterances=None → persist_graph rewrites
     #    nodes/relationships and links to the already-persisted Utterance rows

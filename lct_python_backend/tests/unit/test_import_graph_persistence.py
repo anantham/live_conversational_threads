@@ -100,6 +100,29 @@ async def test_persist_import_graph_returns_node_count():
 
 
 @pytest.mark.asyncio
+async def test_graph_enrichment_preserves_existing_privacy_metadata():
+    conv = MagicMock()
+    conv.source_metadata = {
+        "privacy": {"external_llm_ok": False, "local_llm_ok": True},
+        "contract_version": "1",
+    }
+    db = _make_db_mock(conv=conv)
+
+    await persist_import_graph(
+        db=db,
+        conversation_id=CONVERSATION_ID,
+        existing_json=SAMPLE_NODES,
+        source_metadata={"executive_summary": "A graph summary"},
+    )
+
+    assert conv.source_metadata == {
+        "privacy": {"external_llm_ok": False, "local_llm_ok": True},
+        "contract_version": "1",
+        "executive_summary": "A graph summary",
+    }
+
+
+@pytest.mark.asyncio
 async def test_persist_import_graph_adds_correct_node_types():
     from lct_python_backend.models import Node
 

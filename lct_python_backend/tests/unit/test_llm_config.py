@@ -57,6 +57,28 @@ def test_build_provider_api_url_normalizes_common_roots():
     )
 
 
+def test_default_provider_trust_scopes_are_explicit():
+    providers = {provider["id"]: provider for provider in llm_config.get_default_providers()}
+
+    assert providers["local_lmstudio"]["trust_scope"] == "owner_private"
+    assert providers["modal_qwen"]["trust_scope"] == "external"
+    assert providers["openrouter_gemini"]["trust_scope"] == "external"
+
+
+def test_provider_without_trust_scope_normalizes_to_external():
+    provider = llm_config.normalize_provider_record(
+        {
+            "id": "custom",
+            "name": "Custom",
+            "type": "openai_compatible",
+            "base_url": "http://127.0.0.1:1234",
+            "model": "local-looking-model",
+        }
+    )
+
+    assert provider["trust_scope"] == "external"
+
+
 @pytest.mark.asyncio
 async def test_load_llm_providers_masks_api_keys_from_defaults(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "env-secret")
@@ -87,6 +109,7 @@ async def test_load_llm_providers_inherits_env_secret_for_matching_provider(monk
                     "model": "google/gemini-2.5-flash",
                     "enabled": True,
                     "timeout_seconds": 60,
+                    "trust_scope": "owner_private",
                 }
             ]
         }
@@ -113,6 +136,7 @@ async def test_save_llm_providers_preserves_existing_api_key_when_payload_omits_
                     "api_key": "stored-secret",
                     "enabled": True,
                     "timeout_seconds": 60,
+                    "trust_scope": "owner_private",
                 }
             ]
         },
@@ -142,6 +166,7 @@ async def test_save_llm_providers_preserves_existing_api_key_when_payload_omits_
     stored_provider = existing.value["providers"][0]
     assert stored_provider["api_key"] == "stored-secret"
     assert stored_provider["base_url"] == "https://api.openai.com"
+    assert stored_provider["trust_scope"] == "owner_private"
     assert response["providers"][0]["has_api_key"] is True
 
 

@@ -3,7 +3,7 @@
 These verify the parts that don't need a real DB: that every Utterance is written
 WITH its ``source_identifier`` (the whole point of P1 — the markdown path drops
 it), that the privacy block + group id land on the Conversation, that re-ingest
-deletes prior turns + graph, and that the ``LCT_MIRROR_RAW`` redaction gate holds.
+deletes prior turns + graph, and that deployment-aware raw retention holds.
 
 The DB-enforced invariants (the partial unique indexes) and the FastAPI wiring are
 covered separately by the migration + an integration test against Postgres — not
@@ -159,15 +159,16 @@ def test_explicit_conversation_id_must_match_owner_and_group():
     assert db.deletes == 0  # nothing destroyed
 
 
-def test_raw_text_rejected_without_lct_mirror_raw(monkeypatch):
-    monkeypatch.delenv("LCT_MIRROR_RAW", raising=False)
+def test_raw_text_rejected_on_hosted_shared_deployment(monkeypatch):
+    monkeypatch.setenv("LCT_DEPLOYMENT_PROFILE", "hosted_shared")
     payload = _payload(privacy={"redaction_applied": False}, owner_local_raw=True)
-    with pytest.raises(ValueError, match="LCT_MIRROR_RAW"):
+    with pytest.raises(ValueError, match="hosted_shared"):
         asyncio.run(persist_turns(db=FakeDB(), payload=payload))
 
 
-def test_raw_text_allowed_with_lct_mirror_raw(monkeypatch):
-    monkeypatch.setenv("LCT_MIRROR_RAW", "1")
+def test_raw_text_allowed_on_personal_private_deployment(monkeypatch):
+    monkeypatch.setenv("LCT_DEPLOYMENT_PROFILE", "personal_private")
+    monkeypatch.delenv("LCT_MIRROR_RAW", raising=False)
     payload = _payload(privacy={"redaction_applied": False}, owner_local_raw=True)
     result = asyncio.run(persist_turns(db=FakeDB(existing=None), payload=payload))
     assert result["utterance_count"] == 3

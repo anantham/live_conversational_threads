@@ -1,5 +1,13 @@
 # Handover Index
 
+> ## 👉 CURRENT: [`HANDOVER_2026-07-04_consolidated.md`](HANDOVER_2026-07-04_consolidated.md)
+> As of **2026-07-04**, that single doc is the source of truth. It supersedes **every** file
+> listed below (and every `_session-handover-*` auto-memory note) — all are **archival/history
+> only**. Open work, verified against `git log`/merged-PRs/`ISSUES.md`, lives in §3 there.
+> Everything below is kept for reference; do not action its "next steps" (dead SHAs/branches, mostly merged).
+
+---
+
 Newest-first list of the **dated handover files** in `docs/`. Status legend (from the
 2026-06-21 staleness audit — every pending item cross-checked against merged-PR history):
 
