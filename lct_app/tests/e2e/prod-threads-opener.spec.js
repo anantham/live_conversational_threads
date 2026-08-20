@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
  * - Open `.threads` from Browse without a mobile-hostile `accept` filter.
  * - Remember a valid artifact on this device and reopen it by stable `/view/:id` URL.
  * - Keep `/view` as the recoverable standalone opener for drag-drop and bad files.
+ * - Exercise the version-2 explicit directed-edge artifact contract in a browser.
  * - Render structured utterance text without repeating speaker names in cards.
  */
 //

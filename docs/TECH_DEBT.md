@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-06-20
+Last updated: 2026-08-20
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -13,6 +13,11 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_python_backend/services/indrasnet_client.py | 577 | One client module now owns match, pending-discussion reads, retrieval, contacts-adjacent timeouts, health, and LCT prayer detection contracts | Split per IndrasNet API family (`indrasnet_prayers_client.py`, `indrasnet_contacts_client.py`, `indrasnet_retrieval_client.py`) behind a shared error/config helper |
 | lct_python_backend/consumption_prayer_api.py | 366 | Contact agenda lookup, known-contacts cache/search, and generic LCT prayer detection now share one router | Move `/prayer-detect` into `lct_prayer_api.py` and the contact picker/cache endpoints into a focused contacts router before adding durable card persistence |
 | lct_app/src/components/MinimalGraph.jsx | 1728 | Graph normalization, color maps, React Flow node construction, drilldown, layout, controls and interaction state remain combined; this change only threaded structured speaker-turn data through the existing seam | Extract a pure `buildConversationNodeData` mapper and graph-mode hooks before adding another card-data contract |
+| lct_app/src/components/NodeDetail.jsx | 1035 | Node metadata, semantic relations, hierarchy navigation, source evidence, edit controls, and audio seeking share one detail surface; adding explicit incoming/outgoing edge presentation crossed the contract through this monolith | Extract `NodeRelationsPanel`, `NodeEvidencePanel`, and `NodeHierarchyPanel`; keep `NodeDetail` as the selection/composition boundary |
+| lct_app/src/pages/DebateReport.jsx | 943 | Argument-card rendering, topology view-model construction, clipboard interaction, API loading, and route composition remain coupled | Extract `useDebateReportData`, move card/panel presentation into a `debate/` component directory, and keep `useDebateView` as a pure explicit-edge-aware view-model seam |
+| lct_app/src/pages/ShareConversation.jsx | 365 | Recipient authentication, shared graph loading, timeline state, node detail, and audio playback are combined | Extract `useSharedConversation` and reuse a common conversation-view shell so owner/share explicit-edge wiring cannot drift |
+| lct_app/src/pages/ViewConversation.jsx | 768 | Owner API loading, graph normalization, semantic-edge indexing, sharing, revisions, observability, audio, and viewer chrome have re-accreted after the earlier split | Extract `useOwnerConversationBundle`, `useConversationRevisions`, and a shared graph/detail shell used by owner and recipient routes |
+| lct_python_backend/share_api.py | 985 | Share lifecycle, recipient auth, individual/combined `.threads` serialization, public payload shaping, audio delivery, and topology markers coexist in one router | Extract `threads_export_service.py`, `public_share_reader.py`, and `share_access_service.py`; keep route handlers thin and make the versioned artifact boundary independently testable |
 | lct_app/src/components/graph/ConversationNode.jsx | 496 | Card shell, marker/rhetoric chips, footer controls and visual state remain combined even after speaker-turn rendering moved out | Extract marker strips and card controls into focused components; keep `ConversationNode` as composition and interaction boundary |
 | ~~lct_python_backend/backend.py~~ | ~~3545~~ → 140 | **RESOLVED** — Split into 13 router modules + 4 shared modules. See `refactor/split-backend-monolith` branch. |
 | lct_python_backend/services/llm_helpers.py | 501 | Extracted from backend.py; large LLM prompt inline | Consider moving prompt to separate file if it grows further |

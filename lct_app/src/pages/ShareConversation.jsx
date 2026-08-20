@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import MinimalGraph from "../components/MinimalGraph";
+import { indexExplicitEdges } from "../services/edgeContract";
 import MinimalLegend from "../components/MinimalLegend";
 import NodeDetail from "../components/NodeDetail";
 import TimelineRibbon from "../components/TimelineRibbon";
@@ -214,7 +215,14 @@ export default function ShareConversation() {
     () => conversationPayload?.chunk_dict || {},
     [conversationPayload],
   );
-  const allFlatNodes = useMemo(() => flattenGraph(graphData), [graphData]);
+  const allFlatNodes = useMemo(
+    () => indexExplicitEdges(
+      flattenGraph(graphData),
+      conversationPayload?.edges,
+      Array.isArray(conversationPayload?.edges),
+    ),
+    [graphData, conversationPayload?.edges],
+  );
   const speakerColorMap = useMemo(
     () => buildSpeakerColorMap(allFlatNodes),
     [allFlatNodes],
@@ -316,6 +324,7 @@ export default function ShareConversation() {
       <div className="relative min-h-0 flex-1">
         <MinimalGraph
           graphData={graphData}
+          semanticEdges={conversationPayload?.edges}
           chunkDict={chunkDict}
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
@@ -335,12 +344,10 @@ export default function ShareConversation() {
           <NodeDetail
             node={selectedNodeData}
             chunkDict={chunkDict}
-            allNodes={allFlatNodes}
+            contextNodes={allFlatNodes}
             onClose={() => setSelectedNode(null)}
             onSelectNode={setSelectedNode}
-            speakerColorMap={speakerColorMap}
-            onTraceFrom={setArgumentTraceFrom}
-            readOnly
+            onTraceAncestors={setArgumentTraceFrom}
           />
         )}
       </div>

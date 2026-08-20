@@ -15,6 +15,8 @@
  * {related_node: B, relation_type: "rebuts"} on node A means A rebuts B.
  */
 
+import { explicitEdgeKind } from "./edgeContract";
+
 const ATTACK_TYPES = new Set(["rebuts", "disagrees", "disagreement", "refutes"]);
 const SUPPORT_TYPES = new Set(["supports", "agrees", "agreement", "affirms"]);
 const ARGUMENT_ROLES = new Set(["claim", "evidence", "question", "assumption"]);
@@ -122,12 +124,29 @@ export function buildDebateData(nodes, utterances, contextMessages) {
   if (argNodes.length === 0) return { empty: true };
 
   const byName = new Map();
+  const byId = new Map();
   argNodes.forEach((n) => {
     if (n.node_name) byName.set(String(n.node_name).toLowerCase(), n);
+    if (n.id) byId.set(String(n.id), n);
   });
 
   const moves = [];
   argNodes.forEach((actor) => {
+    if (Array.isArray(actor.explicit_edges_out) && Array.isArray(actor.explicit_edges_in)) {
+      actor.explicit_edges_out.forEach((edge) => {
+        if (explicitEdgeKind(edge) === "temporal") return;
+        const target = byId.get(String(edge?.to_node_id || ""));
+        if (!target || target.id === actor.id) return;
+        moves.push({
+          actor,
+          target,
+          type: normType(edge.relation_type),
+          text: String(edge.explanation || "").trim(),
+          date: nodeDate(actor),
+        });
+      });
+      return;
+    }
     (actor.edge_relations || []).forEach((e) => {
       if (!e || typeof e !== "object") return;
       const target = byName.get(String(e.related_node || "").toLowerCase());

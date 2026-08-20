@@ -13,6 +13,7 @@ import {
   readThreadsFile,
   validateThreadsArtifact,
 } from "../services/threadsArtifact";
+import { indexExplicitEdges } from "../services/edgeContract";
 import {
   getThreadsLibraryRecord,
   rememberThreadsArtifact,
@@ -190,7 +191,13 @@ export default function ThreadsViewer() {
   );
 
   const flatNodes = useMemo(
-    () => (bundle ? flattenThreadsGraph(bundle.graph_data) : []),
+    () => (bundle
+      ? indexExplicitEdges(
+        flattenThreadsGraph(bundle.graph_data),
+        bundle.edges,
+        bundle.format_version >= 2,
+      )
+      : []),
     [bundle],
   );
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(flatNodes), [flatNodes]);
@@ -486,6 +493,7 @@ export default function ThreadsViewer() {
       <div className="relative min-h-0 flex-1">
         <MinimalGraph
           graphData={bundle.graph_data}
+          semanticEdges={bundle.format_version >= 2 ? bundle.edges : undefined}
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
           onVisibleLevelChange={(view) => {

@@ -362,3 +362,100 @@ Legacy node `claim_type` values remain read-compatible but are never emitted by
 new graph generation. Native LCT generation, consolidation, persistence, and
 read models also carry a semantic `thread_label`; `thread_id` remains only the
 stable grouping key.
+
+## Amendment — 2026-08-20: explicit directed-edge artifact contract
+
+**Status:** approved by the operator after the PR #170 cross-boundary direction
+diagnostic.
+
+### Issue
+
+The database has always represented a directed relationship unambiguously as
+`from_node_id -> to_node_id`. The node-local compatibility field
+`edge_relations`, however, has been authored in both directions by different
+pipelines. Import/export code placed an incoming relation on the target node,
+while live STT and several frontend consumers treated the containing node as the
+source. Existing unit tests encoded both interpretations and therefore passed
+while the deployed argument view reversed support attribution.
+
+An asymmetric Evidence -> supports -> Claim diagnostic confirmed the failure:
+the database preserved Evidence -> Claim, but the frontend marked Evidence as
+supported and left Claim unconnected.
+
+### Decision
+
+`.threads` format version 2 carries one canonical top-level `edges` array. Each
+edge has explicit endpoints in the same identifier space as `graph_data[].id`:
+
+```json
+{
+  "edge_schema": {
+    "version": 1,
+    "directed": true,
+    "endpoint_space": "graph_data.id"
+  },
+  "edges": [
+    {
+      "id": "relationship-uuid",
+      "from_node_id": "evidence-node-id",
+      "to_node_id": "claim-node-id",
+      "relation_type": "supports",
+      "edge_kind": "semantic",
+      "relation_subtype": null,
+      "explanation": "The measured result supports the claim.",
+      "strength": 0.8,
+      "confidence": 0.9,
+      "is_bidirectional": false,
+      "supporting_utterance_ids": []
+    }
+  ]
+}
+```
+
+The top-level array is authoritative whenever present. Direction is never
+inferred from which node contains a nested field or from node names. New
+frontend code indexes it into derived incoming/outgoing views for efficient
+rendering, but those indexes are not a second persistence contract.
+
+`edge_kind` is either `semantic` or `temporal`. It is derived from the stored
+relationship family at the serialization boundary, not from fuzzy UI label
+matching. Temporal edges remain part of the canonical graph and obey the
+timeline visibility toggle, but argument analytics and provenance tracing do
+not reinterpret them as rhetorical support.
+
+`edge_relations` and `edges_out` remain in node payloads temporarily for version
+1 and non-artifact API compatibility. Version 2 consumers must not use them when
+the explicit contract is available. Version 1 artifacts remain readable through
+the legacy path; they are not silently relabeled as direction-safe.
+
+Combined artifacts namespace both explicit endpoints with the same conversation
+prefix used for node IDs. Self-edges, missing endpoints, duplicate edge IDs, and
+endpoints outside `graph_data.id` fail validation with descriptive errors.
+
+Owner conversation and recipient-share responses expose the same `edge_schema`
+and `edges` fields so the local, shared, and downloaded views cannot drift again.
+
+### Consequences
+
+- Existing database rows require no migration; their endpoints are already
+  explicit and canonical.
+- New `.threads` exports move from format version 1 to 2. The viewer accepts both
+  versions, but only version 2 receives the direction-safe path.
+- Argument counts, dialectic layout, trace traversal, and visual arrows consume
+  the explicit endpoint indexes together.
+- `is_bidirectional` is retained as producer fidelity metadata; the explicit
+  endpoints remain directed and consumers do not invent a reverse edge. A
+  producer that needs traversal in both directions emits both directed edges.
+  Deduplication must never sort endpoint pairs and erase direction.
+- The artifact is slightly larger because compatibility node fields coexist
+  with the canonical array during migration. Removing those fields requires a
+  later format-version decision, not an opportunistic cleanup here.
+
+### Verification
+
+1. Persist Evidence -> supports -> Claim and export a version 2 artifact.
+2. Assert `edges[0].from_node_id` is Evidence and `to_node_id` is Claim.
+3. Validate and index the artifact in the browser.
+4. Assert the Claim is supported, Evidence is the actor, the drawn arrow points
+   Evidence -> Claim, and incoming trace reaches Evidence from Claim.
+5. Open a version 1 fixture and confirm its legacy behavior remains available.

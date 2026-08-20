@@ -205,7 +205,31 @@ export default function NodeDetail({
     seekTo(n);
   }, [safeNode, seekTo]);
 
-  const relations = Array.isArray(safeNode?.edge_relations) ? safeNode.edge_relations : [];
+  const relations = useMemo(() => {
+    const hasExplicit =
+      Array.isArray(safeNode?.explicit_edges_out) &&
+      Array.isArray(safeNode?.explicit_edges_in);
+    if (!hasExplicit) {
+      return Array.isArray(safeNode?.edge_relations) ? safeNode.edge_relations : [];
+    }
+    const namesById = new Map(
+      (contextNodes || []).map((node) => [String(node?.id || ""), node?.node_name || node?.id]),
+    );
+    const displayName = (nodeId) => namesById.get(String(nodeId || "")) || String(nodeId || "");
+    const outgoing = safeNode.explicit_edges_out.map((edge) => ({
+      relation_type: edge.relation_type,
+      related_node: displayName(edge.to_node_id),
+      relation_text: edge.explanation || "",
+      direction: "outgoing",
+    }));
+    const incoming = safeNode.explicit_edges_in.map((edge) => ({
+      relation_type: edge.relation_type,
+      related_node: displayName(edge.from_node_id),
+      relation_text: edge.explanation || "",
+      direction: "incoming",
+    }));
+    return [...incoming, ...outgoing];
+  }, [contextNodes, safeNode]);
   const contextualRelations = normalizeContextualRelations(safeNode?.contextual_relation);
 
   // "In context" — for a chunk-level moment, reconstruct a mini-transcript from
@@ -868,6 +892,7 @@ export default function NodeDetail({
               {relations.map((rel, i) => (
                 <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
                   <span className="font-medium text-gray-500 shrink-0">
+                    {rel.direction === "incoming" ? "←" : rel.direction === "outgoing" ? "→" : ""}{" "}
                     {rel.relation_type}
                   </span>
                   <span className="text-gray-400">
