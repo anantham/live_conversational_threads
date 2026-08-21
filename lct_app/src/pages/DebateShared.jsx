@@ -80,7 +80,12 @@ export default function DebateShared() {
     return snapshot.nodes.map((item, i) => normalizeGraphNode(item, i)).filter(Boolean);
   }, [snapshot]);
 
-  const view = useDebateView(nodes, snapshot?.utterances || [], snapshot?.context_messages || []);
+  const view = useDebateView(
+    nodes,
+    snapshot?.utterances || [],
+    snapshot?.context_messages || [],
+    Array.isArray(snapshot?.edges) ? snapshot.edges : undefined,
+  );
 
   return (
     <div className="min-h-screen" style={{ background: "#fdfdfb" }}>

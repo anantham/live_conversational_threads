@@ -1,12 +1,32 @@
 {
   "format": "lct.threads",
-  "format_version": 1,
+  "format_version": 2,
   "conversation_id": "e2e-fixture",
   "conversation_name": "e2e-fixture",
   "conversation_title": "E2E fixture conversation",
   "exported_at": "2026-08-11T00:00:00Z",
   "transcript_source": "synthetic",
   "chunk_dict": {},
+  "edge_schema": {
+    "version": 1,
+    "directed": true,
+    "endpoint_space": "graph_data.id"
+  },
+  "edges": [
+    {
+      "id": "edge-evidence-supports-claim",
+      "from_node_id": "n2",
+      "to_node_id": "n1",
+      "relation_type": "supports",
+      "edge_kind": "semantic",
+      "relation_subtype": "example",
+      "explanation": "The tangent supplies an example for the opening claim.",
+      "strength": 0.8,
+      "confidence": 0.9,
+      "is_bidirectional": false,
+      "supporting_utterance_ids": []
+    }
+  ],
   "graph_data": [
     {
       "id": "n1",

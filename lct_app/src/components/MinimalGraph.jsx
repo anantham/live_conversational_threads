@@ -23,6 +23,11 @@ import {
   resolveRequestedSemanticLevel,
 } from "./graphNormalization";
 import { saveConversationDraft } from "../services/apiClient";
+import {
+  explicitEdgeKind,
+  explicitEdgeRenderEndpoints,
+  indexExplicitEdges,
+} from "../services/edgeContract";
 import ConversationNode from "./graph/ConversationNode";
 import {
   COLOR_MODES,
@@ -48,6 +53,7 @@ const EDGE_TYPES = {};
 
 function MinimalGraphInner({
   graphData,
+  semanticEdges,
   selectedNode,
   setSelectedNode,
   focusNode,
@@ -148,10 +154,12 @@ function MinimalGraphInner({
     [graphData]
   );
 
-  const normalizedChunk = useMemo(
-    () => allNodes.map((item, index) => normalizeGraphNode(item, index)).filter(Boolean),
-    [allNodes]
-  );
+  const normalizedChunk = useMemo(() => {
+    const normalized = allNodes
+      .map((item, index) => normalizeGraphNode(item, index))
+      .filter(Boolean);
+    return indexExplicitEdges(normalized, semanticEdges, Array.isArray(semanticEdges));
+  }, [allNodes, semanticEdges]);
   mglog("normalizedChunk", { allNodes: allNodes.length, normalized: normalizedChunk.length, graphDataLen: (graphData || []).length });
 
   // Default landing tier: the TOPMOST populated tier so the canvas opens on
@@ -393,12 +401,14 @@ function MinimalGraphInner({
     const nodeById = new Map(sourceNodes.map((node) => [node.id, node]));
 
     sourceNodes.forEach((item) => {
+      const hasExplicitContract =
+        Array.isArray(item.explicit_edges_out) && Array.isArray(item.explicit_edges_in);
       // ADR-032 Part C: temporal edges are persisted in the data model
       // but hidden by default. Spatial X-position already encodes time
       // via the swim-lane layout (`timeBased: true`); rendering temporal
       // arrows on top would be visual noise. Reveal them only when the
       // per-conversation toggle is on (showTemporalEdges, default false).
-      if (item.successor && showTemporalEdges) {
+      if (!hasExplicitContract && item.successor && showTemporalEdges) {
         const target = nodeById.get(item.successor);
         if (target) {
           const tempStyle = EDGE_CATEGORY_STYLES.temporal;
@@ -427,26 +437,31 @@ function MinimalGraphInner({
         }
       }
 
-      // Contextual edges from edge_relations
-      const relations = Array.isArray(item.edge_relations) ? item.edge_relations : [];
+      // Version 2 uses explicit source/target endpoints. Legacy artifacts keep
+      // the historical node-local edge_relations interpretation.
+      const relations = hasExplicitContract
+        ? item.explicit_edges_out
+        : (Array.isArray(item.edge_relations) ? item.edge_relations : []);
       relations.forEach((rel) => {
-        const targetName = (rel?.related_node || "").trim();
-        if (!targetName) return;
-        // Fuzzy match: exact â†’ case-insensitive â†’ substring containment
+        const targetName = String(rel?.related_node || "").trim();
         const targetLower = targetName.toLowerCase();
-        const related = sourceNodes.find((n) => n.node_name === targetName)
-          || sourceNodes.find((n) => (n.node_name || "").toLowerCase() === targetLower)
-          || sourceNodes.find((n) => {
-            const name = (n.node_name || "").toLowerCase();
-            return name.length > 5 && (name.includes(targetLower) || targetLower.includes(name));
-          });
+        const related = hasExplicitContract
+          ? nodeById.get(String(rel?.to_node_id || ""))
+          : sourceNodes.find((n) => n.node_name === targetName)
+            || sourceNodes.find((n) => (n.node_name || "").toLowerCase() === targetLower)
+            || sourceNodes.find((n) => {
+              const name = (n.node_name || "").toLowerCase();
+              return name.length > 5 && (name.includes(targetLower) || targetLower.includes(name));
+            });
         if (!related) return;
         const relType = rel.relation_type || "contextual";
         // ADR-032 Part C: categorize the free-text relation_type and
         // apply the category's style. Suppresses temporal edges here
         // (already handled by the dedicated successor block above);
         // the toggle still applies.
-        const category = categorizeEdgeRelation(relType);
+        const category = hasExplicitContract && explicitEdgeKind(rel) === "temporal"
+          ? "temporal"
+          : categorizeEdgeRelation(relType);
         if (category === "temporal" && !showTemporalEdges) return;
         const catStyle = EDGE_CATEGORY_STYLES[category] || EDGE_CATEGORY_STYLES.other;
         const isConnectedToSelected = selectedNode === item.id || selectedNode === related.id;
@@ -455,15 +470,21 @@ function MinimalGraphInner({
           ? relType.replace(/_/g, " ")
           : "";
 
-        // Deduplicate bidirectional edges: normalize key as sorted pair
+        // Explicit edges are directed: never sort endpoints or collapse A→B
+        // with B→A. Legacy IDs retain the historical pair deduplication.
         const pairKey = [item.id, related.id].sort().join("--");
-        const edgeId = `c-${pairKey}-${relType}`;
+        const edgeId = hasExplicitContract
+          ? `x-${rel.id || `${item.id}-${related.id}-${relType}`}`
+          : `c-${pairKey}-${relType}`;
         if (seenEdgeKeys.has(edgeId)) return;
         seenEdgeKeys.add(edgeId);
+        const explicitEndpoints = hasExplicitContract
+          ? explicitEdgeRenderEndpoints(rel)
+          : null;
         edges.push({
           id: edgeId,
-          source: related.id,
-          target: item.id,
+          source: explicitEndpoints?.source || related.id,
+          target: explicitEndpoints?.target || item.id,
           // Only "soft" relation types animate (asks/clarifies). Solid
           // logical edges (supports/rebuts/implies) stay static â€” they're
           // structural claims, not transient signals.
@@ -474,10 +495,10 @@ function MinimalGraphInner({
           labelBgPadding: [4, 2],
           data: {
             relationType: relType,
-            relationText: rel.relation_text || "",
+            relationText: rel.explanation || rel.relation_text || "",
             category,
-            sourceLabel: related.node_name,
-            targetLabel: item.node_name,
+            sourceLabel: hasExplicitContract ? item.node_name : related.node_name,
+            targetLabel: hasExplicitContract ? related.node_name : item.node_name,
           },
           style: {
             stroke: isConnectedToSelected ? "#f59e0b" : catStyle.stroke,
@@ -496,7 +517,7 @@ function MinimalGraphInner({
       });
 
       // Fallback: contextual_relation map/object (backward compat)
-      if (relations.length === 0 && item.contextual_relation) {
+      if (!hasExplicitContract && relations.length === 0 && item.contextual_relation) {
         extractContextualRelationEntries(item.contextual_relation).forEach(([relName, relText]) => {
           const relNameLower = (relName || "").toLowerCase();
           const related = sourceNodes.find((n) => n.node_name === relName)
@@ -650,6 +671,24 @@ function MinimalGraphInner({
     // Build adjacency: incomingByTarget[target] = [{from, category, relType}, ...]
     const incomingByTarget = new Map();
     normalizedChunk.forEach((item) => {
+      if (Array.isArray(item.explicit_edges_out) && Array.isArray(item.explicit_edges_in)) {
+        item.explicit_edges_out.forEach((edge) => {
+          const targetId = String(edge?.to_node_id || "");
+          if (!targetId) return;
+          const category = explicitEdgeKind(edge) === "temporal"
+            ? "temporal"
+            : categorizeEdgeRelation(edge.relation_type || "contextual");
+          const arr = incomingByTarget.get(targetId) || [];
+          arr.push({
+            fromId: item.id,
+            category,
+            relType: edge.relation_type || "contextual",
+            edgeId: `x-${edge.id || `${item.id}-${targetId}-${edge.relation_type || "contextual"}`}`,
+          });
+          incomingByTarget.set(targetId, arr);
+        });
+        return;
+      }
       const rels = Array.isArray(item.edge_relations) ? item.edge_relations : [];
       rels.forEach((rel) => {
         const targetName = (rel?.related_node || "").trim();
@@ -668,6 +707,7 @@ function MinimalGraphInner({
           fromId: item.id,
           category,
           relType: rel.relation_type || "contextual",
+          edgeId: null,
         });
         incomingByTarget.set(targetNode.id, arr);
       });
@@ -686,7 +726,7 @@ function MinimalGraphInner({
         // Edge id mirrors what buildRfEdgesForSource produced â€” the
         // pair-key + relType pattern.
         const pairKey = [edge.fromId, id].sort().join("--");
-        tracedEdges.add(`c-${pairKey}-${edge.relType}`);
+        tracedEdges.add(edge.edgeId || `c-${pairKey}-${edge.relType}`);
         if (!visited.has(edge.fromId)) {
           visited.add(edge.fromId);
           queue.push({ id: edge.fromId, depth: depth + 1 });
@@ -1017,11 +1057,16 @@ function MinimalGraphInner({
       }
       // Self-contradiction edges flag BOTH endpoints (edges are stored one
       // direction, later statement → earlier).
-      (n.edge_relations || []).forEach((e) => {
+      const contradictionEdges = Array.isArray(n.explicit_edges_out)
+        ? n.explicit_edges_out
+        : (n.edge_relations || []);
+      contradictionEdges.forEach((e) => {
         const rt = String(e?.relation_type || "").trim().toLowerCase();
         if (rt !== "contradicts") return;
         contradictions.add(n.id);
-        const tid = idByName.get(String(e?.related_node || "").toLowerCase());
+        const tid = Array.isArray(n.explicit_edges_out)
+          ? String(e?.to_node_id || "")
+          : idByName.get(String(e?.related_node || "").toLowerCase());
         if (tid) contradictions.add(tid);
       });
     });
@@ -1689,6 +1734,7 @@ function MinimalGraphInner({
 
 MinimalGraphInner.propTypes = {
   graphData: PropTypes.array,
+  semanticEdges: PropTypes.array,
   selectedNode: PropTypes.string,
   focusNode: PropTypes.string,
   setSelectedNode: PropTypes.func.isRequired,
@@ -1713,6 +1759,7 @@ export default function MinimalGraph(props) {
 
 MinimalGraph.propTypes = {
   graphData: PropTypes.array,
+  semanticEdges: PropTypes.array,
   selectedNode: PropTypes.string,
   focusNode: PropTypes.string,
   setSelectedNode: PropTypes.func.isRequired,

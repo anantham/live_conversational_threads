@@ -259,7 +259,9 @@ export function layoutDialectic(nodes, edges, {
   // phantom fan members (e.g. a node whose name is a substring of the focus).
   const byName = new Map();
   const byLowerName = new Map();
+  const byId = new Map();
   nodes.forEach((n) => {
+    byId.set(String(n.id), n);
     const nm = nameOf(n);
     if (nm) {
       if (!byName.has(nm)) byName.set(nm, n);
@@ -285,46 +287,45 @@ export function layoutDialectic(nodes, edges, {
   if (focus) {
     const focusId = focus.id;
 
-    // INCOMING-relative-to-F only — exactly matching buildArgumentStatusMapForNodes
-    // in colorModes.js. We count edges authored ON OTHER nodes whose related_node
-    // names F ("S supports F" / "S rebuts F"). F's OWN outgoing relations are NOT
-    // folded in: "F rebuts N" does not make N an opponent OF F, and folding it
-    // made the fan disagree with the node's argument-status fill (a genuine
-    // supporter could land in the against gutter). A mutual pair is stored as two
-    // directed edges (N->F and F->N); only N->F is counted, so the neighbour
-    // dedups to one side automatically.
-    nodes.forEach((n) => {
-      if (n.id === focusId) return;
-      const rels = Array.isArray(fullData(n).edge_relations)
-        ? fullData(n).edge_relations
-        : [];
-      rels.forEach((rel) => {
-        const stance = argumentStanceOf(rel?.relation_type);
-        if (!stance) return;
-        const tgt = resolveByName(rel?.related_node);
-        if (!tgt || tgt.id !== focusId) return;
-        bump(stance === "sup" ? supCounts : rebCounts, n.id);
+    const explicitIncoming = fullData(focus).explicit_edges_in;
+    if (Array.isArray(explicitIncoming)) {
+      explicitIncoming.forEach((edge) => {
+        const source = byId.get(String(edge?.from_node_id || ""));
+        const stance = argumentStanceOf(edge?.relation_type);
+        if (!source || source.id === focusId || !stance) return;
+        bump(stance === "sup" ? supCounts : rebCounts, source.id);
       });
-    });
+    } else {
 
-    // Fallback: if NO node carries fullData.edge_relations, derive the fan from
-    // the ReactFlow `edges` arg. buildRfEdgesForSource emits
-    // {source: related.id, target: authoring.id}, so "authoring supports related"
-    // is stored as related <- authoring. An edge INCOMING to F therefore has
-    // source === F (F is the related target of the relation) and the neighbour is
-    // the authoring node === target. (Same incoming-only rule as above.)
-    const haveAnyRel = nodes.some(
-      (n) => Array.isArray(fullData(n).edge_relations) && fullData(n).edge_relations.length
-    );
-    if (!haveAnyRel && Array.isArray(edges)) {
-      edges.forEach((e) => {
-        if (e.source !== focusId) return;
-        const neighbourId = e.target;
-        if (!neighbourId || neighbourId === focusId) return;
-        const stance = argumentStanceOf(e?.data?.relationType ?? e?.label);
-        if (!stance) return;
-        bump(stance === "sup" ? supCounts : rebCounts, neighbourId);
+      // Legacy version-1 interpretation. Explicit version-2 edges use the
+      // endpoint branch above and never infer direction from node ownership.
+      nodes.forEach((n) => {
+        if (n.id === focusId) return;
+        const rels = Array.isArray(fullData(n).edge_relations)
+          ? fullData(n).edge_relations
+          : [];
+        rels.forEach((rel) => {
+          const stance = argumentStanceOf(rel?.relation_type);
+          if (!stance) return;
+          const tgt = resolveByName(rel?.related_node);
+          if (!tgt || tgt.id !== focusId) return;
+          bump(stance === "sup" ? supCounts : rebCounts, n.id);
+        });
       });
+
+      const haveAnyRel = nodes.some(
+        (n) => Array.isArray(fullData(n).edge_relations) && fullData(n).edge_relations.length
+      );
+      if (!haveAnyRel && Array.isArray(edges)) {
+        edges.forEach((e) => {
+          if (e.source !== focusId) return;
+          const neighbourId = e.target;
+          if (!neighbourId || neighbourId === focusId) return;
+          const stance = argumentStanceOf(e?.data?.relationType ?? e?.label);
+          if (!stance) return;
+          bump(stance === "sup" ? supCounts : rebCounts, neighbourId);
+        });
+      }
     }
   }
 

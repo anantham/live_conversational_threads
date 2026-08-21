@@ -20,6 +20,7 @@ import { ArrowLeft, Check, Copy, Map as MapIcon } from "lucide-react";
 
 import { apiFetchCached, readErrorMessage } from "../services/apiClient";
 import { fetchConversationUtterances } from "../services/speakerNamingApi";
+import { indexExplicitEdges } from "../services/edgeContract";
 import { normalizeGraphNode } from "../components/graphNormalization";
 import { SPEAKER_COLORS } from "../components/graphConstants";
 import {
@@ -498,14 +499,15 @@ export function DebateSkeleton() {
 }
 
 /** Shared view-model: data + the copy-to-reply interaction. */
-export function useDebateView(nodes, utterances, contextMessages) {
+export function useDebateView(nodes, utterances, contextMessages, explicitEdges) {
   const [copiedKey, setCopiedKey] = useState(null);
   const [toast, setToast] = useState(null);
   const nudgedRef = useRef(false);
-  const data = useMemo(
-    () => (nodes ? buildDebateData(nodes, utterances, contextMessages) : null),
-    [nodes, utterances, contextMessages]
-  );
+  const data = useMemo(() => {
+    if (!nodes) return null;
+    const indexed = indexExplicitEdges(nodes, explicitEdges, Array.isArray(explicitEdges));
+    return buildDebateData(indexed, utterances, contextMessages);
+  }, [nodes, utterances, contextMessages, explicitEdges]);
   const onCopy = (key, text) => {
     try {
       navigator.clipboard.writeText(text);
@@ -825,6 +827,7 @@ export default function DebateReport() {
   const navigate = useNavigate();
   const [nodes, setNodes] = useState(null);
   const [utterances, setUtterances] = useState([]);
+  const [explicitEdges, setExplicitEdges] = useState(undefined);
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -843,6 +846,7 @@ export default function DebateReport() {
           .map((item, i) => normalizeGraphNode(item, i))
           .filter(Boolean);
         setNodes(flat);
+        setExplicitEdges(Array.isArray(payload.edges) ? payload.edges : undefined);
         if (typeof payload.conversation_title === "string" && payload.conversation_title.trim()) {
           setTitle(payload.conversation_title.trim());
         }
@@ -873,7 +877,7 @@ export default function DebateReport() {
     };
   }, [conversationId]);
 
-  const view = useDebateView(nodes, utterances);
+  const view = useDebateView(nodes, utterances, undefined, explicitEdges);
   const openMap = () => navigate(`/conversation/${conversationId}`);
 
   return (

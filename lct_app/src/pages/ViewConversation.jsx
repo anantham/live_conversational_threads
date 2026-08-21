@@ -11,6 +11,7 @@ import {
 import { fetchConversationObservability } from "../services/conversationDiagnosticsApi";
 
 import MinimalGraph from "../components/MinimalGraph";
+import { indexExplicitEdges } from "../services/edgeContract";
 import MinimalLegend from "../components/MinimalLegend";
 import NodeDetail from "../components/NodeDetail";
 import SearchDialog from "../components/SearchDialog";
@@ -97,6 +98,7 @@ export default function ViewConversation() {
   const navigate = useNavigate();
 
   const [graphData, setGraphData] = useState([]);
+  const [semanticEdges, setSemanticEdges] = useState(undefined);
   const [chunkDict, setChunkDict] = useState({});
   const [conversationName, setConversationName] = useState("");
   const [conversationTitle, setConversationTitle] = useState("");
@@ -141,8 +143,8 @@ export default function ViewConversation() {
         });
       }
     });
-    return out;
-  }, [graphData]);
+    return indexExplicitEdges(out, semanticEdges, Array.isArray(semanticEdges));
+  }, [graphData, semanticEdges]);
 
   useEffect(() => {
     if (!conversationId) {
@@ -173,6 +175,7 @@ export default function ViewConversation() {
         if (isCancelled) return;
 
         setGraphData(normalizeGraphDataPayload(payload.graph_data));
+        setSemanticEdges(Array.isArray(payload.edges) ? payload.edges : undefined);
         setChunkDict(
           payload.chunk_dict && typeof payload.chunk_dict === "object" && !Array.isArray(payload.chunk_dict)
             ? payload.chunk_dict
@@ -313,8 +316,12 @@ export default function ViewConversation() {
   }, [conversationId, revisionActionState.busy]);
 
   const allNodes = useMemo(
-    () => graphData.flatMap((chunk) => (Array.isArray(chunk) ? chunk : [])),
-    [graphData]
+    () => indexExplicitEdges(
+      graphData.flatMap((chunk) => (Array.isArray(chunk) ? chunk : [])),
+      semanticEdges,
+      Array.isArray(semanticEdges),
+    ),
+    [graphData, semanticEdges]
   );
 
   // Download the conversation as a JSON debug bundle. Uses the same
@@ -691,6 +698,7 @@ export default function ViewConversation() {
               >
                 <MinimalGraph
                   graphData={graphData}
+                  semanticEdges={semanticEdges}
                   selectedNode={selectedNode}
                   setSelectedNode={setSelectedNode}
                   viewportReservationKey={graphViewportKey}
@@ -722,6 +730,7 @@ export default function ViewConversation() {
             chunkDict={chunkDict}
             conversationId={conversationId}
             participantNames={participants.map((p) => p.display_name).filter(Boolean)}
+            contextNodes={allNodes}
             audioUrl={audioDownloadUrl ? (audioDownloadUrl.startsWith("http") ? audioDownloadUrl : `${API_BASE_URL}${audioDownloadUrl}`) : null}
             onClose={() => setSelectedNode(null)}
             onTraceAncestors={setArgumentTraceFrom}

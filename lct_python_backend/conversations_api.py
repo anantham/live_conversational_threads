@@ -23,6 +23,11 @@ from lct_python_backend.services.conversation_reader import (
     wrap_graph_data_chunks,
 )
 from lct_python_backend.services.gcs_helpers import LOCAL_SAVE_DIR, load_conversation_from_gcs
+from lct_python_backend.services.edge_contract import (
+    edge_schema_descriptor,
+    serialize_relationships,
+    validate_serialized_edge_contract,
+)
 from lct_python_backend.services.owner_context import get_current_owner_id
 from lct_python_backend.services.turn_synthesizer import build_turn_graph_from_utterances
 
@@ -114,10 +119,14 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
 
         graph_data = []
         chunk_dict = {}
+        explicit_edge_schema = None
+        explicit_edges = None
 
         if nodes:
             # Preferred: use analyzed nodes from DB
             graph_data = build_graph_data_from_nodes(nodes, relationships, utterances=utterances)
+            explicit_edge_schema = edge_schema_descriptor()
+            explicit_edges = serialize_relationships(relationships)
             # Collect all node chunk_id UUIDs so the chunk_dict builder can
             # seed live-STT fallback entries (utterances with chunk_id=NULL
             # but nodes with real UUIDs — the live-recording case).
@@ -140,6 +149,7 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
                 try:
                     saved = load_conversation_from_gcs(json_path)
                     saved_graph = saved.get("graph_data", [])
+                    saved_edges = saved.get("edges")
                     saved_chunks = saved.get("chunk_dict") or saved.get("chunks", {})
                     if saved_graph:
                         # Unwrap nested [[nodes]] format if present
@@ -148,6 +158,22 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
                         else:
                             graph_data = saved_graph
                         chunk_dict = saved_chunks
+                        saved_edge_schema = saved.get("edge_schema")
+                        if saved_edges is not None or saved_edge_schema is not None:
+                            try:
+                                validate_serialized_edge_contract(
+                                    saved_edge_schema,
+                                    saved_edges,
+                                    graph_data,
+                                )
+                                explicit_edge_schema = saved_edge_schema
+                                explicit_edges = saved_edges
+                            except ValueError as edge_error:
+                                logger.warning(
+                                    "Ignoring invalid saved explicit-edge contract from %s: %s",
+                                    json_path,
+                                    edge_error,
+                                )
                         logger.info(
                             "Loaded %s nodes + %s chunks from saved JSON: %s",
                             len(graph_data),
@@ -189,6 +215,8 @@ async def get_conversation(conversation_id: str, db: AsyncSession = Depends(get_
         return ConversationResponse(
             graph_data=graph_data_nested,
             chunk_dict=chunk_dict,
+            edge_schema=explicit_edge_schema,
+            edges=explicit_edges,
             conversation_title=conversation_title,
             executive_summary=executive_summary,
         )
