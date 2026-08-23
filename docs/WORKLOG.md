@@ -1,5 +1,51 @@
 # WORKLOG
 
+## 2026-08-23T17:27:27+05:30 — Repair PR #172's real-Postgres integration gate
+
+- Context: PR #172's frontend Browse repair was blocked by three deterministic
+  failures in the required real-Postgres job. The operator explicitly approved
+  repairing the separate integration harness while preserving production
+  privacy behavior.
+- Hypotheses and evidence:
+  - H1: the Phase-2 extractor fake predated ADR-063 and returned no providers;
+    the new fail-closed selector should accept a fake only when it has explicit
+    `owner_private` trust and the payload has explicit local-only consent.
+    Confirmed: both extraction tests passed with that realistic classification.
+  - H2: constructing a new non-context-managed `TestClient` per request moved
+    the process-global asyncpg engine across portal event loops. One module
+    client should eliminate the cross-loop 500. Confirmed: the request completed
+    normally; fixture shutdown now disposes the pool before its loop closes.
+  - H3: once H2 exposed the real response, the old expected 400 would contradict
+    approved ADR-063. Confirmed against the ADR and `persist_turns`: owner-local
+    raw retention is allowed by default on `personal_private`, while
+    `hosted_shared` must reject it even if retired `LCT_MIRROR_RAW=1` remains.
+- Files modified:
+  - `lct_python_backend/tests/integration/test_extract_graph_phase2_pg.py`:
+    documented test intent; supplied an explicit owner-private fake provider and
+    local-only privacy consent; replaced unrelated hierarchy-repair and
+    argument-edge model calls with deterministic valid fakes. The persistence
+    path and fail-closed production selector remain real.
+  - `lct_python_backend/tests/integration/test_import_turns_endpoint.py`:
+    documented test intent; kept all requests on one lifespan-managed
+    `TestClient`; disposed the async DB pool on that loop; replaced the retired
+    raw-retention expectation with public-route assertions for both deployment
+    profiles.
+  - `ISSUES.md`: amended the blocker with the verified repair and pending remote
+    CI confirmation.
+- Validation:
+  - First focused diagnostic: `6 passed, 1 failed`; the former cross-loop 500
+    became a normal 200, falsifying the stale response expectation and exposing
+    the ADR-063 mismatch.
+  - Refined focused suite: `8 passed` against the configured real Postgres.
+  - Exact workflow-equivalent suite (`*_pg.py` plus endpoint): `55 passed` in
+    67.48 seconds against real Postgres. No model or network inference ran.
+  - `git diff --check`: passed; checkout-only LF/CRLF warnings remain.
+- Product impact: test harness and documentation only. No production route,
+  retention policy, provider selector, schema, or database migration changed.
+- Confidence: 0.98. Fallback: if Linux CI differs, preserve the test-only commit,
+  inspect its exact traceback, and adjust the cross-platform fixture lifecycle;
+  do not weaken ADR-063 to obtain a green check.
+
 ## 2026-08-15T19:49:48+05:30 — Personal-private retention and provider-trust enforcement
 
 - Context: the approved Indra's Net meeting flow needs LCT to retain the

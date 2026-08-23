@@ -2,7 +2,7 @@
 
 Last updated: 2026-08-23
 
-## 2026-08-23 — Postgres integration gate lacks privacy-aware fixtures and shares async loops
+## 2026-08-23 — Postgres integration gate lacks privacy-aware fixtures and shares async loops (REPAIRED LOCALLY)
 
 **Summary:** PR #172's real-Postgres job failed identically on its initial run
 and one rerun: 51 tests pass, while the two Phase-2 extraction tests configure
@@ -15,17 +15,25 @@ merge, but its resulting `main` combines these newer privacy/test-harness paths.
 **Impact:** High CI reliability, low immediate product impact. Correct frontend
 PRs cannot reach a green required-check state. The privacy failure is a stale
 fake, not evidence that production policy should be weakened; the different-loop
-500 masks the endpoint's expected raw-retention 400 response.
+500 masked the endpoint's actual ADR-063 raw-retention behavior.
 
-**Blocker status:** Blocks merging/deploying PR #172 through the normal green-CI
-path. It does not invalidate the Browse provider, drag/drop, or offline-entry
-behavior, whose unit, browser, build, preview, and Vercel checks pass.
+**Blocker status:** The fixture repair passes the complete 55-test real-Postgres
+gate locally; remote CI confirmation is pending. It does not invalidate the
+Browse provider, drag/drop, or offline-entry behavior, whose unit, browser,
+build, preview, and Vercel checks pass.
 
-**Recommended next step:** In a separate CI repair, make the Phase-2 fake return
-one enabled `owner_private` provider and supply matching local consent, then use
-a module-scoped/context-managed `TestClient` (or isolate/dispose the async DB
-engine per client) so all endpoint requests share a valid event-loop lifetime.
-Keep ADR-063 fail-closed product behavior unchanged.
+**Resolution:** The Phase-2 fake now returns one explicitly trusted
+`owner_private` loopback provider, supplies explicit local-only consent, and
+stubs the unrelated hierarchy/edge model stages with valid deterministic
+results. The endpoint module now uses one context-managed `TestClient` and
+disposes its async pool before that portal loop closes. Once the masked request
+completed normally, it also proved the old expected 400 contradicted ADR-063:
+the integration boundary now asserts 200 for `personal_private` and 400 for
+`hosted_shared`, even when the retired `LCT_MIRROR_RAW` flag is set. Production
+privacy behavior was not changed.
+
+**Recommended next step:** Apply the test-only commit to PR #172 and require the
+GitHub real-Postgres job to reproduce the local 55/55 pass before merge.
 
 ## 2026-08-15 — Provider trust classification has no dedicated settings control
 

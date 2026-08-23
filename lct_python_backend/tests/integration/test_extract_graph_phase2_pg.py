@@ -14,6 +14,15 @@ inside extract_graph_for_conversation, so they're monkeypatched here with a
 deterministic fake — no LLM call. The fake emits one level-1 node per turn
 (level 1 → the idea-tier consolidation never triggers, so no consolidation LLM
 call either) linked to the real persisted utterance id.
+
+Test Intent:
+- Exercise the real Postgres phase-1/phase-2 persistence boundary without any
+  network or model dependency.
+- Give the fake model lane the same explicit owner-private trust declaration
+  that production privacy routing requires; never bypass the fail-closed gate.
+- Replace hierarchy repair and edge enrichment with deterministic valid fakes,
+  because their model quality is outside this persistence contract.
+- Prove graph re-extraction never deletes or recreates persisted utterances.
 """
 
 import asyncio
@@ -56,6 +65,8 @@ class _FakeProcessor:
 
 
 def _install_fakes(monkeypatch):
+    import lct_python_backend.services.edge_enrichment as edge_enrichment
+    import lct_python_backend.services.import_pipeline.import_hierarchy_repair as hierarchy_repair
     import lct_python_backend.services.transcript.transcript_processing as tp
     import lct_python_backend.services.llm_config as llm
 
@@ -65,10 +76,32 @@ def _install_fakes(monkeypatch):
         return {}
 
     async def _providers(*_a, **_k):
-        return {"providers": []}
+        return {
+            "providers": [
+                {
+                    "id": "itest-owner-private",
+                    "enabled": True,
+                    "trust_scope": "owner_private",
+                    "base_url": "http://127.0.0.1:11434/v1",
+                }
+            ]
+        }
+
+    async def _repair(*_a, **_k):
+        return {
+            "missing_groups": 0,
+            "ideas_created": 0,
+            "chunks_adopted": 0,
+            "dangling_removed": 0,
+        }
+
+    async def _edges(*_a, **_k):
+        return [], {"llm_telemetry": {"parse_status": "valid"}}
 
     monkeypatch.setattr(llm, "load_llm_config", _cfg)
     monkeypatch.setattr(llm, "load_llm_providers", _providers)
+    monkeypatch.setattr(hierarchy_repair, "repair_chunk_idea_hierarchy", _repair)
+    monkeypatch.setattr(edge_enrichment, "run_edge_enrichment", _edges)
 
 
 def _spy_persist_graph(monkeypatch):
@@ -103,7 +136,11 @@ def _payload(group_id, owner, n_turns):
         conversation_name="ITEST extract phase2",
         source_type="google_meet",
         owner_id=owner,
-        privacy={"redaction_applied": True},
+        privacy={
+            "redaction_applied": True,
+            "local_llm_ok": True,
+            "external_llm_ok": False,
+        },
         turns=[
             {"seq": i, "source_identifier": f"itest-ex:{i}", "speaker_id": "S0", "text": f"turn {i}"}
             for i in range(n_turns)
