@@ -1,6 +1,31 @@
 # ISSUES
 
-Last updated: 2026-08-15
+Last updated: 2026-08-23
+
+## 2026-08-23 — Postgres integration gate lacks privacy-aware fixtures and shares async loops
+
+**Summary:** PR #172's real-Postgres job failed identically on its initial run
+and one rerun: 51 tests pass, while the two Phase-2 extraction tests configure
+`load_llm_providers()` as an empty list after ADR-063 made provider trust
+fail-closed, and the final import-turns HTTP test creates a fresh `TestClient`
+whose event loop reuses a global async database engine bound by earlier tests.
+The failures are outside the frontend-only Browse diff. PR #171 passed before
+merge, but its resulting `main` combines these newer privacy/test-harness paths.
+
+**Impact:** High CI reliability, low immediate product impact. Correct frontend
+PRs cannot reach a green required-check state. The privacy failure is a stale
+fake, not evidence that production policy should be weakened; the different-loop
+500 masks the endpoint's expected raw-retention 400 response.
+
+**Blocker status:** Blocks merging/deploying PR #172 through the normal green-CI
+path. It does not invalidate the Browse provider, drag/drop, or offline-entry
+behavior, whose unit, browser, build, preview, and Vercel checks pass.
+
+**Recommended next step:** In a separate CI repair, make the Phase-2 fake return
+one enabled `owner_private` provider and supply matching local consent, then use
+a module-scoped/context-managed `TestClient` (or isolate/dispose the async DB
+engine per client) so all endpoint requests share a valid event-loop lifetime.
+Keep ADR-063 fail-closed product behavior unchanged.
 
 ## 2026-08-15 — Provider trust classification has no dedicated settings control
 

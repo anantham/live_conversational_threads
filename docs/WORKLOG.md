@@ -3702,6 +3702,12 @@ Manual testing not run:
   (`origin/main` at `ce78a93`) without force-pushing. The combined branch passed
   all 227 frontend unit tests, the production build, targeted ESLint, and the
   focused Chromium suite (5 passed; 1 deploy-only check skipped locally).
+- CI follow-up: the real-Postgres gate failed twice with the same unrelated
+  baseline signature (51 passed, 3 failed): two stale Phase-2 fakes provide no
+  trust-scoped local LLM after ADR-063, and one TestClient case reuses an async
+  engine across event loops. The exact blocker and separate principled repair
+  are recorded in `ISSUES.md`; privacy policy was not weakened and backend test
+  logic was not mixed into this frontend repair.
 
 ## 2026-08-20 — Versioned explicit directed-edge contract (Option C)
 
