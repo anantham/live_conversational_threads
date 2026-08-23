@@ -311,6 +311,13 @@ export function buildArgumentStatusMapForNodes(nodes) {
     return byName.get(name) || byLowerName.get(String(name).toLowerCase()) || null;
   };
   list.forEach((n) => {
+    if (Array.isArray(n?.explicit_edges_in) && Array.isArray(n?.explicit_edges_out)) {
+      n.explicit_edges_in.forEach((edge) => {
+        const kind = argumentStanceOf(edge?.relation_type);
+        if (kind && map[n.id]) map[n.id][kind] += 1;
+      });
+      return;
+    }
     (n.edge_relations || []).forEach((e) => {
       const kind = argumentStanceOf(e?.relation_type);
       if (!kind) return;

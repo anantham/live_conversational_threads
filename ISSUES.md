@@ -561,6 +561,17 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   the error contract differs. Non-blocking for PR #170; reject lexical parent
   traversal before filesystem resolution in a focused security repair.
 
+## Independent-review artifact hygiene (2026-08-20)
+
+- `scripts/review_pr_with_claude.ps1` says `.agent-reviews/` is ignored and
+  writes raw cloud-review packets there, but the root `.gitignore` does not
+  contain that directory. Impact: a future broad `git add` could stage source
+  context or private review material. This did not occur during the Option C
+  review; its raw packet was not written in the repository. Recommended next
+  step: add `/.agent-reviews/` to `.gitignore` in a dedicated tooling-safety
+  change and add a script assertion that refuses to run unless the output path
+  is ignored.
+
 ## User Stories (When/Why)
 - Primary: After a live or imported meeting, I need to quickly surface decisions, action items, and supporting quotes, then export/share them for slides, docs, or follow-up messages with minimal navigation overhead.
 - Creative: During a brainstorming session, I want the graph to auto-cluster related ideas and let me hide edges so I can drag a “storyline” into a deck outline without visual clutter.

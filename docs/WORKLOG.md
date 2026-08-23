@@ -3698,3 +3698,71 @@ Manual testing not run:
 - Structural note: `Browse.jsx` is 648 LOC; the decomposition candidate is
   recorded in `docs/TECH_DEBT.md`. The new drag controller was extracted rather
   than grown inside the page.
+- PR reconciliation: merged the subsequently landed explicit-edge contract
+  (`origin/main` at `ce78a93`) without force-pushing. The combined branch passed
+  all 227 frontend unit tests, the production build, targeted ESLint, and the
+  focused Chromium suite (5 passed; 1 deploy-only check skipped locally).
+
+## 2026-08-20 — Versioned explicit directed-edge contract (Option C)
+
+- Confirmed the cross-boundary root cause with an asymmetric
+  Evidence -> supports -> Claim diagnostic: SQL `Relationship` rows preserve
+  `from_node_id -> to_node_id`, but node-local `edge_relations` is an incoming
+  compatibility view while several frontend consumers interpreted the
+  containing node as the source.
+- Amended ADR-032 with the approved contract: `.threads` format version 2 and
+  owner/public APIs now expose an authoritative top-level `edge_schema` plus
+  directed `edges` array in `graph_data.id` space. Version 1 remains readable
+  through the legacy path.
+- Added `lct_python_backend/services/edge_contract.py` as the single database
+  serialization boundary. Individual, combined, owner, public-share, and
+  encrypted debate-snapshot paths preserve explicit endpoints; combined
+  exports namespace edge IDs and both endpoints alongside node IDs.
+- Added frontend validation and disposable incoming/outgoing indexes in
+  `lct_app/src/services/edgeContract.js`. Graph arrows, dialectic layout,
+  argument status, debate analytics, trace traversal, contradiction marking,
+  and node details consume the same explicit endpoints when present.
+- Artifact validation fails descriptively on missing contracts, malformed or
+  duplicate edges, self-edges, and dangling endpoints. The browser E2E fixture
+  is now a real version-2 artifact; unit coverage retains version-1 support.
+- Validation: 221/221 frontend unit tests passed; production build passed;
+  `.threads` opener E2E passed 3 with the deploy-only case skipped; 58/58
+  focused backend tests passed; full backend unit suite reached 1,886 passed
+  with one known OpenAI/httpx environment incompatibility already recorded in
+  `ISSUES.md`. Focused ESLint over the new contract and pure touched modules
+  passed. The existing >500 kB production chunk warning remains unchanged.
+- No database migration is required. No dependencies, production settings,
+  remote state, commits, or deployments were changed.
+
+### Independent Anthropic review and verified repairs
+
+- Claude Opus independently reviewed the exact uncommitted working tree with
+  read-only `git diff`, `git status`, and file-read permissions. It reported
+  three reproducible findings: temporal chain rows entering argument views,
+  saved JSON being granted a fabricated schema without validation, and scoped
+  encrypted snapshots retaining unused edge audit metadata.
+- Verified all three against the live producer/consumer paths, then repaired
+  them at their boundaries:
+  - serialized edges now carry deterministic `edge_kind` (`semantic` or
+    `temporal`); timeline rendering retains temporal edges while debate
+    analytics and argument trace exclude them;
+  - saved JSON activates explicit mode only when both its schema and every edge
+    validate against the saved graph ID space;
+  - debate snapshots retain only semantic in-scope edges and whitelist the six
+    fields their viewer consumes, excluding supporting utterance IDs and other
+    surplus audit metadata.
+- Post-review focused validation: 73 frontend tests and 60 backend tests passed.
+- Full post-review validation: all 225 frontend tests passed; the production
+  build passed; the `.threads` browser opener passed 3 tests with its
+  deploy-only case skipped; focused ESLint passed. The full backend baseline
+  remains 1,886 passed with the single known OpenAI/httpx environment
+  incompatibility recorded in `ISSUES.md`.
+- A narrow Claude Sonnet follow-up independently re-read the repaired diff and
+  returned `pass` with zero findings. It explicitly verified temporal-edge
+  exclusion from debate/default trace, exact saved-artifact schema and endpoint
+  validation, and field-minimized debate snapshot export. Its attempt to invoke
+  tests was denied by the read-only command allowlist; the test results above
+  were produced locally before the review.
+- Review-tooling issue discovered outside Option C: scripts document
+  `.agent-reviews/` as gitignored, but the root `.gitignore` lacks that entry.
+  Recorded in `ISSUES.md`; no raw review packet was written inside the repo.

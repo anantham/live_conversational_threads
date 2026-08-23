@@ -32,6 +32,7 @@ import {
   toBase64Url,
   fromBase64Url,
 } from "../src/services/warSnapshotCrypto.js";
+import { projectDebateSnapshotEdges } from "../src/services/debateSnapshotEdges.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = path.join(HERE, "out");
@@ -177,6 +178,12 @@ async function main() {
     return out;
   });
 
+  // The conversation API's top-level directed edge list is authoritative.
+  // Debate snapshots intentionally export only a subset of graph nodes, so
+  // retain only relations whose two endpoints survive that projection.
+  const keptNodeIds = new Set(nodes.map((node) => String(node.id || "")).filter(Boolean));
+  const edges = projectDebateSnapshotEdges(convo.edges, keptNodeIds);
+
   if (opts.spans) {
     // Span-pass output: node id -> the minimal verbatim excerpt of that
     // card's source message. The UI re-verifies the substring property
@@ -236,6 +243,12 @@ async function main() {
     title: opts.title || convo.conversation_title || "",
     exported_at: new Date().toISOString(),
     nodes,
+    ...(edges
+      ? {
+          edge_schema: convo.edge_schema,
+          edges,
+        }
+      : {}),
     utterances,
   };
 

@@ -61,6 +61,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.config import AUDIO_RECORDINGS_DIR
 from lct_python_backend.db_session import get_async_session
+from lct_python_backend.services.edge_contract import (
+    THREADS_FORMAT_VERSION,
+    edge_schema_descriptor,
+    serialize_relationships,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -469,7 +474,7 @@ async def export_threads(
 
     bundle = {
         "format": "lct.threads",
-        "format_version": 1,
+        "format_version": THREADS_FORMAT_VERSION,
         "exported_at": int(time.time()),
         "conversation_id": str(conversation.id),
         "conversation_name": conversation.conversation_name,
@@ -479,6 +484,8 @@ async def export_threads(
         # Consumers must not infer scan completion merely from hierarchy nodes.
         "argument_topology": _export_argument_topology(conversation),
         "graph_data": graph_data,
+        "edge_schema": edge_schema_descriptor(),
+        "edges": serialize_relationships(relationships),
         "chunk_dict": chunk_dict,
         # P0 (audit-against-source): the verbatim raw the graph was built from,
         # so the viewer's transcript download + coverage check work without
@@ -637,6 +644,7 @@ async def export_combined_threads(
 
     contact_label = contact_value
     combined: list = []
+    combined_edges: list = []
     transcript_sections: list = []
     per_conversation: list = []
     topology_markers: list[Optional[dict]] = []
@@ -660,6 +668,11 @@ async def export_combined_threads(
         d = _conv_day(conv)
         date_s = d.isoformat() if d else None
         pfx = f"c{idx}-"
+        combined_edges.extend(serialize_relationships(
+            relationships,
+            node_id_transform=lambda value, prefix=pfx: prefix + value,
+            edge_id_transform=lambda value, prefix=pfx: prefix + value,
+        ))
         for n in g:
             # Namespace EVERY structural node-id reference so it stays valid in the
             # merged graph: id, parent_id, children_ids, AND the temporal
@@ -722,7 +735,7 @@ async def export_combined_threads(
         span = f" ({since or '…'} → {until or '…'})"
     bundle = {
         "format": "lct.threads",
-        "format_version": 1,
+        "format_version": THREADS_FORMAT_VERSION,
         "exported_at": int(time.time()),
         "conversation_title": f"{contact_label} — {idx} conversation{'s' if idx != 1 else ''}{span}",
         "executive_summary": (
@@ -731,6 +744,8 @@ async def export_combined_threads(
             f"colour mode to see conversations as clusters and drill by tier."
         ),
         "graph_data": combined,
+        "edge_schema": edge_schema_descriptor(),
+        "edges": combined_edges,
         "chunk_dict": {},
         "full_transcript": "\n\n".join(transcript_sections),
         "transcript_source": "verbatim" if transcript_sections else "none",
@@ -899,6 +914,8 @@ async def fetch_share(
         "conversation_title": getattr(conversation, "conversation_title", None),
         "executive_summary": getattr(conversation, "executive_summary", None),
         "graph_data": graph_data,
+        "edge_schema": edge_schema_descriptor(),
+        "edges": serialize_relationships(relationships),
         "chunk_dict": chunk_dict,
         # P0 (audit-against-source): the verbatim raw the graph was built from,
         # so the viewer's transcript download + coverage check work without

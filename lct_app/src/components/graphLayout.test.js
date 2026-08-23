@@ -217,6 +217,39 @@ describe("layoutDialectic", () => {
     expect(m.get("r1").position.y).not.toBe(m.get("r2").position.y);
   });
 
+  it("uses explicit incoming endpoints for a version-2 dialectic fan", () => {
+    const support = {
+      id: "support-1",
+      from_node_id: "E",
+      to_node_id: "F",
+      relation_type: "supports",
+    };
+    const rebuttal = {
+      id: "rebut-1",
+      from_node_id: "R",
+      to_node_id: "F",
+      relation_type: "rebuts",
+    };
+    const nodes = [
+      makeArgNode("F", "Claim", [], {
+        fullData: { explicit_edges_in: [support, rebuttal], explicit_edges_out: [] },
+      }),
+      makeArgNode("E", "Evidence", [], {
+        fullData: { explicit_edges_in: [], explicit_edges_out: [support] },
+      }),
+      makeArgNode("R", "Counter", [], {
+        fullData: { explicit_edges_in: [], explicit_edges_out: [rebuttal] },
+      }),
+    ];
+
+    const positioned = byId(layoutDialectic(nodes, [], { focusNodeId: "F" }));
+
+    expect(positioned.get("E").data.dialecticRole).toBe("supporter");
+    expect(positioned.get("E").position.x).toBeLessThan(0);
+    expect(positioned.get("R").data.dialecticRole).toBe("rebutter");
+    expect(positioned.get("R").position.x).toBeGreaterThan(0);
+  });
+
   it("handles supporters-only (no rebutters)", () => {
     const nodes = [
       makeArgNode("F", "Vatsal Needs Data To Resolve Calibration"),

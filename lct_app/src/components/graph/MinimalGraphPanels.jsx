@@ -95,9 +95,15 @@ export default function MinimalGraphPanels({
                   {(node.speaker_display || node.speaker_id) && (
                     <span className="text-[9px] text-gray-500">speaker: {node.speaker_display || node.speaker_id}</span>
                   )}
-                  {node.edge_relations?.length > 0 && (
-                    <span className="text-[9px] text-gray-500">{node.edge_relations.length} edges</span>
-                  )}
+                  {(() => {
+                    const explicitCount = Array.isArray(node.explicit_edges_in)
+                      ? node.explicit_edges_in.length + node.explicit_edges_out.length
+                      : null;
+                    const edgeCount = explicitCount ?? node.edge_relations?.length ?? 0;
+                    return edgeCount > 0
+                      ? <span className="text-[9px] text-gray-500">{edgeCount} edges</span>
+                      : null;
+                  })()}
                   {node.thread_state && node.thread_state !== "continue_thread" && (
                     <span className="text-[9px] text-blue-400">{node.thread_state.replace(/_/g, " ")}</span>
                   )}

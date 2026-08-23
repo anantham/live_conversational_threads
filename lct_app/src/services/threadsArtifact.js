@@ -1,7 +1,9 @@
+import { validateExplicitEdgeContract } from "./edgeContract";
+
 export const MAX_THREADS_BYTES = 25 * 1024 * 1024;
 export const MAX_THREADS_NODES = 50000;
 
-const SUPPORTED_VERSIONS = new Set([1]);
+const SUPPORTED_VERSIONS = new Set([1, 2]);
 
 export function flattenThreadsGraph(graphData) {
   return (graphData || []).flatMap((entry) =>
@@ -36,6 +38,13 @@ export function validateThreadsArtifact(data) {
   if (nodeCount > MAX_THREADS_NODES) {
     throw new Error(`Artifact too large (${nodeCount} nodes).`);
   }
+  if (data.format_version === 2) {
+    validateExplicitEdgeContract(
+      data.edge_schema,
+      data.edges,
+      flattenThreadsGraph(data.graph_data),
+    );
+  }
   return data;
 }
 
@@ -61,6 +70,7 @@ export function threadsArtifactId(bundle) {
     title: bundle?.conversation_title || "",
     exportedAt: bundle?.exported_at || "",
     graphData: bundle?.graph_data || [],
+    edges: bundle?.edges || [],
   });
   return `local-${stableTextHash(identityPayload)}`;
 }

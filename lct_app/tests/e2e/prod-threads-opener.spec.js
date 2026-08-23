@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
  * - Remember a valid artifact on this device and reopen it by stable `/view/:id` URL.
  * - Keep `/view` as the recoverable standalone opener for drag-drop and bad files.
  * - Accept a `.threads` drop anywhere on `/browse`, not only in the standalone opener.
+ * - Exercise the version-2 explicit directed-edge artifact contract in a browser.
  * - Render structured utterance text without repeating speaker names in cards.
  */
 //
