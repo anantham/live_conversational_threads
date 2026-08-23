@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
  * - Open `.threads` from Browse without a mobile-hostile `accept` filter.
  * - Remember a valid artifact on this device and reopen it by stable `/view/:id` URL.
  * - Keep `/view` as the recoverable standalone opener for drag-drop and bad files.
+ * - Accept a `.threads` drop anywhere on `/browse`, not only in the standalone opener.
  * - Render structured utterance text without repeating speaker names in cards.
  */
 //
@@ -32,6 +33,7 @@ const LOADED_TITLE = 'E2E fixture conversation'; // conversation_title in the fi
 // /api/* request client-side so Browse's probe rejects -> offline -> opener.
 async function blockBackend(page) {
   await page.route('**/api/**', (route) => route.abort());
+  await page.route('**/conversations/**', (route) => route.abort());
 }
 
 test.describe('.threads opener (public recipient path)', () => {
@@ -79,6 +81,25 @@ test.describe('.threads opener (public recipient path)', () => {
 
     // Stable deep link: the local library record survives navigation/reload.
     await page.goto('/view/e2e-fixture', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
+  });
+
+  test('Browse accepts a .threads file dropped anywhere on the page', async ({ page }) => {
+    await blockBackend(page);
+    await page.goto('/browse', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: LIBRARY_HEADING })).toBeVisible({ timeout: 15000 });
+
+    const dataTransfer = await page.evaluateHandle((json) => {
+      const dt = new DataTransfer();
+      dt.items.add(new File([json], 'sample.threads', { type: 'application/octet-stream' }));
+      return dt;
+    }, FIXTURE_JSON);
+
+    const serverHeading = page.getByRole('heading', { name: 'Recorded conversations' });
+    await serverHeading.dispatchEvent('dragenter', { dataTransfer });
+    await expect(page.getByText('Drop .threads to open')).toBeVisible();
+    await serverHeading.dispatchEvent('drop', { dataTransfer });
+
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
   });
 

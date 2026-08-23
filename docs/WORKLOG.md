@@ -3660,3 +3660,41 @@ Manual testing not run:
 - Validation: both new PowerShell scripts parse without syntax errors. Grok is
   installed and selected for PR #170 because the implementation family is
   OpenAI/Codex.
+
+## 2026-08-23 10:18 +05:30 — Restore Tailnet history and make Browse fully local-first
+
+- Reported behavior: M5 could load the public LCT frontend over Tailnet but
+  `/browse` showed `Server history failed (HTTP 404)`, while off-tailnet `/`
+  presented recording/BYOK as the only visible path and `/browse` accepted files
+  only through its header picker.
+- Hypotheses and evidence:
+  - **Confirmed:** the deployed bundle contains
+    `https://asus-strix-scar.tail4741ad.ts.net`, so this was not a missing
+    Tailnet hostname. An authenticated probe with production Origin returned
+    200 for `GET /conversations/`, 404 for `GET /api/conversations/`, 405 for
+    `POST /conversations/`, and 404 for the deployed caller's
+    `POST /api/conversations/` contract.
+  - **Rejected:** Tailscale does not synchronize browser IndexedDB. The ASUS
+    **On this device** collection is intentionally unavailable to M5; only
+    private server history is cross-device.
+- Implementation:
+  - `BackendDataProvider.js` now owns the canonical
+    `conversations.listSaved()` GET operation; `fetchNext()` remains the POST
+    continuation action used after transcript-revision approval.
+  - `Browse.jsx` uses the provider operation and composes a whole-page drop
+    surface via the new `useThreadsFileDrop.js`. Its overlay states that files
+    stay in the browser and are not uploaded.
+  - `ServerlessGate.jsx` distinguishes the five-minute live-recording trial
+    from the key-free `.threads` library path.
+  - Regression coverage added for the provider method/route contract, offline
+    CTA, and a `.threads` drop on an arbitrary Browse child.
+- Validation: targeted ESLint passed; 6 focused Vitest tests passed; production Vite build passed;
+  focused Chromium suite passed 5 with 1 production-only test skipped locally;
+  desktop visual checks confirmed the Browse fallback and offline two-path gate
+  without overflow. Direct API probing confirmed CORS for
+  `https://threads.adityaarpitha.com`; a localhost-origin browser integration
+  remained blocked by the backend's intentional CORS allowlist and is not a
+  production-path failure.
+- Structural note: `Browse.jsx` is 648 LOC; the decomposition candidate is
+  recorded in `docs/TECH_DEBT.md`. The new drag controller was extracted rather
+  than grown inside the page.

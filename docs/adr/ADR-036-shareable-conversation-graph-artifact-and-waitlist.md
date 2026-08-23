@@ -134,3 +134,23 @@ Audio association is intentionally outside this amendment. Server-backed
 conversations retain their existing audio link. A local `.threads` artifact has
 no audio reference or permission contract, so local click-to-seek remains
 unavailable until a separate explicit attachment design is approved.
+
+## Amendment — 2026-08-23: cross-device history contract and whole-library drop
+
+**Status:** Approved by the operator and implemented as a correction to the
+2026-08-13 local-first library boundary.
+
+Tailnet connectivity and browser-local persistence are distinct capabilities.
+The **On this device** collection remains scoped to one browser profile's
+IndexedDB and is not synchronized by Tailscale. Cross-device owner history comes
+from the private backend's canonical `GET /conversations/` endpoint. Frontend
+data providers expose that operation as `conversations.listSaved()`; the
+existing `fetchNext()` remains a POST continuation action and must not be reused
+for listing.
+
+When the backend is unreachable, the entry screen presents two independent
+paths: record live using the bounded trial/BYOK flow, or open the local-first
+library without a key. `/browse` accepts a `.threads` file dropped anywhere on
+the page, validates it through the existing artifact contract, opens it at
+`/view`, and remembers it in the current browser. This is an **open/import-local**
+operation; no server upload or cross-device synchronization is implied.
