@@ -2,6 +2,47 @@
 
 Last updated: 2026-08-24
 
+## 2026-08-24 — Partial optional hierarchy tier aborted valid lower graph (REPAIRED LOCALLY)
+
+**Summary:** A non-empty arc result that omitted one or more themes reached the
+strict hierarchy synchronizer outside the consolidation exception boundary.
+The resulting L4→L5 orphan error prevented persistence of an otherwise complete
+and auditable lower hierarchy.
+
+**Impact:** High before repair. One imperfect optional model response could
+discard the useful L1-L4 result after all transcript and model work completed.
+
+**Blocker status:** Repaired locally; the new exact head still requires a fresh
+independent review and remote CI before merge.
+
+**Resolution:** Arc consolidation now adopts omitted themes consistently with
+the lower consolidators. A shared best-effort synchronization boundary also
+drops any incomplete optional tier and higher tiers while preserving the
+highest complete prefix. L1-L2 orphaning still fails hard. The actual persisted
+repair path, all affected consumers, and real Postgres have behavioral coverage.
+
+**Recommended next step:** Push the follow-up commit, re-review its exact SHA,
+and let the fail-closed merge wrapper proceed only with zero findings.
+
+## 2026-08-24 — Grok local hooks and timeout enforcement need repair (OPEN, NON-BLOCKING)
+
+**Summary:** The second Grok review was slowed by global hooks pointing to the
+invalid Windows path `/c/Users/adity/anaconda3/python.exe`. The repository
+wrapper also accepts `TimeoutMinutes` for Grok but does not currently enforce a
+process timeout.
+
+**Impact:** Medium operationally, no review-integrity impact. Hook failures are
+explicit and fail open inside Grok; the repository gate still fails closed on
+missing/invalid results. A stalled service could nevertheless hold the wrapper
+longer than its advertised timeout.
+
+**Blocker status:** Not blocking PR #172 because the review completed with a
+parsed result. Out of scope for the hierarchy repair.
+
+**Recommended next step:** Correct the global Grok hook interpreter path and
+enforce `TimeoutMinutes` around the Grok child process with stdout/stderr
+capture preserved.
+
 ## 2026-08-24 — PR #172 independent-review hierarchy findings (REPAIRED LOCALLY)
 
 **Summary:** Independent Grok review found that membership synchronization could

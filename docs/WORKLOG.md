@@ -1,5 +1,41 @@
 # WORKLOG
 
+## 2026-08-24T08:35:00+05:30 — Close Grok's partial optional-tier finding
+
+- Context: the fail-closed merge wrapper's second independent Grok review at
+  head `6f50560` found one high-severity gap after the first pass reported zero
+  findings. Option B handled empty and failed optional model calls, but a
+  non-empty partial arc tier still reached strict synchronization and could
+  discard a complete L1-L4 graph.
+- Hypothesis and falsification: construct two themes and one arc claiming only
+  the first. Predicted and observed result before repair:
+  `HierarchyOrphanError: Hierarchy level 4->5 has 1 orphan child nodes` in the
+  same synchronizer used by fresh extraction and persisted repair.
+- Repair:
+  - `HierarchyOrphanError` now exposes the failed adjacent levels without
+    callers parsing an error string.
+  - `synchronize_hierarchy_best_effort` preserves strict L1-L2 enforcement but
+    removes an incomplete L3-L5 tier and everything above it before retrying.
+  - Fresh extraction and persisted repair use that shared boundary and clear
+    title/summary metadata if the incomplete arc tier is removed.
+  - Arc consolidation adopts omitted themes using the same deterministic
+    nearest-claimed-neighbour rule already used for topics and themes.
+  - Privacy and real-Postgres fixtures now produce realistic complete L1-L2
+    repair outcomes instead of mocking the old synchronizer away.
+- Validation:
+  - Exact content-free reproduction: failed before, now degrades to L4.
+  - Focused hierarchy/consolidator/persisted-repair suite: **42 passed**.
+  - All hierarchy/extraction consumers: **129 passed**.
+  - Full backend unit suite: **1,931 passed, 2 failed**; only the same documented
+    local Windows OpenAI/httpx and path-resolution environment failures remain.
+  - Exact real-Postgres workflow-equivalent suite: **55 passed**.
+- Impact: a partial optional abstraction can no longer erase a valid transcript
+  graph. Mandatory base completeness, privacy filtering, and mixed-edge
+  representation failures remain fail-closed.
+- Confidence: 0.97. Fallback: if a later review finds semantic adoption too
+  aggressive for arcs, retain the boundary degradation and disable only arc
+  adoption; lower-tier evidence will still persist safely.
+
 ## 2026-08-24T10:30:00+05:30 — Option B: repair hierarchy edge, privacy, and optional-tier invariants
 
 - Context: the independent Grok review of PR #172 at head `d368b01` found three

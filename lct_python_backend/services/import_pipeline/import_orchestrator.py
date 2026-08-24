@@ -248,7 +248,7 @@ async def extract_graph_for_conversation(
     )
     from lct_python_backend.services.import_pipeline.hierarchy_integrity import (
         node_level,
-        synchronize_hierarchy,
+        synchronize_hierarchy_best_effort,
     )
     from lct_python_backend.services.import_pipeline.import_hierarchy_repair import (
         repair_chunk_idea_hierarchy,
@@ -430,7 +430,21 @@ async def extract_graph_for_conversation(
         )
 
     highest_level = max(node_level(node) for node in existing)
-    synchronize_hierarchy(existing, through_parent_level=highest_level)
+    hierarchy_stats = synchronize_hierarchy_best_effort(
+        existing,
+        through_parent_level=highest_level,
+        required_parent_level=2,
+    )
+    if hierarchy_stats["highest_level"] < highest_level:
+        logger.warning(
+            "[turns/extract] dropped %d incomplete optional tier(s); "
+            "persisting through level=%d",
+            hierarchy_stats["optional_tiers_dropped"],
+            hierarchy_stats["highest_level"],
+        )
+    if hierarchy_stats["highest_level"] < 5:
+        summary = ""
+        conversation_title = ""
 
     # 5. Scan the completed hierarchy for argumentative topology. Owner-local
     # imports never retrieve second-brain context and never use remote providers.

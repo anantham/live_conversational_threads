@@ -181,3 +181,16 @@ standard input thresholds are met. An unavailable or empty optional tier leaves
 the highest complete lower tier valid and persistable instead of discarding a
 successful repair.
 
+## Amendment: partial optional tiers degrade to the complete prefix (2026-08-24)
+
+A non-empty optional tier is not automatically valid. If it leaves any child in
+the preceding tier without a membership, the pipeline removes that incomplete
+tier and every tier above it, then synchronizes and persists the highest
+complete prefix. This is best-effort only for L3-L5; incomplete L1-L2 remains a
+hard failure because chunks without ideas disappear from every useful zoom.
+
+The standard arc consolidator also adopts omitted themes into the nearest
+claimed arc, matching the existing topic/theme orphan rule. The boundary-level
+degradation remains necessary defense in depth: a malformed or substituted
+consolidator must not make optional abstraction destroy auditable lower tiers.
+

@@ -11,9 +11,10 @@ extraction without re-sending turns) is the property under test.
 
 The extractor (TranscriptProcessor) and the LLM-config loaders are lazy-imported
 inside extract_graph_for_conversation, so they're monkeypatched here with a
-deterministic fake — no LLM call. The fake emits one level-1 node per turn
-(level 1 → the idea-tier consolidation never triggers, so no consolidation LLM
-call either) linked to the real persisted utterance id.
+deterministic fake — no LLM call. The processor emits one level-1 node per turn
+linked to the real persisted utterance id, and the fake repair stage groups
+those chunks under one valid level-2 idea. Higher-tier consolidation remains
+below threshold.
 
 Test Intent:
 - Exercise the real Postgres phase-1/phase-2 persistence boundary without any
@@ -87,10 +88,26 @@ def _install_fakes(monkeypatch):
             ]
         }
 
-    async def _repair(*_a, **_k):
+    async def _repair(nodes, *_a, **_k):
+        chunks = [node for node in nodes if node.get("semantic_level") == 1]
+        idea_id = str(uuid.uuid4())
+        nodes.append(
+            {
+                "id": idea_id,
+                "node_name": "Deterministic integration idea",
+                "summary": "Groups the fake transcript chunks.",
+                "semantic_level": 2,
+                "children_ids": [node["id"] for node in chunks],
+                "utterance_ids": [
+                    utterance_id
+                    for node in chunks
+                    for utterance_id in node.get("utterance_ids", [])
+                ],
+            }
+        )
         return {
-            "missing_groups": 0,
-            "ideas_created": 0,
+            "missing_groups": 1,
+            "ideas_created": 1,
             "chunks_adopted": 0,
             "dangling_removed": 0,
         }
@@ -208,7 +225,7 @@ def test_extract_builds_graph_and_preserves_utterances(monkeypatch):
 
     before, after, n_nodes, linked = asyncio.run(scenario())
     assert len(before) == 3
-    assert n_nodes == 3                 # one node per turn
+    assert n_nodes == 4                 # three chunks plus one valid idea
     assert after == before              # utterances UNTOUCHED by extract
     assert linked == before             # every node linked to a real persisted turn
     # CONTRACT: extract must materialize the graph WITHOUT deleting utterances —
@@ -254,7 +271,7 @@ def test_extract_is_rerunnable_without_touching_utterances(monkeypatch):
     utt_before, utt_mid, utt_after, nodes1, nodes2 = asyncio.run(scenario())
     assert len(utt_before) == 2
     assert utt_before == utt_mid == utt_after   # utterances stable across re-extracts
-    assert len(nodes1) == 2 and len(nodes2) == 2
+    assert len(nodes1) == 3 and len(nodes2) == 3
     assert nodes1.isdisjoint(nodes2)            # graph fully re-materialized (fresh node ids)
     # Both extract passes must leave utterances alone (utterances=None each time).
     assert persist_calls == [None, None]

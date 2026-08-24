@@ -26,7 +26,7 @@ from lct_python_backend.services.import_pipeline.hierarchy_integrity import (
     clean_faithful_edges,
     node_id,
     node_level,
-    synchronize_hierarchy,
+    synchronize_hierarchy_best_effort,
     uses_faithful_edge_representation,
 )
 from lct_python_backend.services.import_pipeline.hierarchy_audit import (
@@ -237,11 +237,23 @@ async def repair_persisted_hierarchy(
 
     repaired_nodes = [*base_nodes, *topics, *themes, *arcs]
     highest_level = max(node_level(node) for node in repaired_nodes)
-    hierarchy_stats = synchronize_hierarchy(
+    hierarchy_stats = synchronize_hierarchy_best_effort(
         repaired_nodes,
         through_parent_level=highest_level,
+        required_parent_level=2,
         materialize_membership_edges=materialize_membership_edges,
     )
+    if hierarchy_stats["highest_level"] < highest_level:
+        logger.warning(
+            "[HIERARCHY REPAIR] dropped %d incomplete optional tier(s); "
+            "persisting through level=%d",
+            hierarchy_stats["optional_tiers_dropped"],
+            hierarchy_stats["highest_level"],
+        )
+    highest_level = hierarchy_stats["highest_level"]
+    if highest_level < 5:
+        title = ""
+        summary = ""
     _assert_unique_ids(repaired_nodes)
     covered_turns = _assert_turn_coverage(repaired_nodes, utterances)
     audit_stats = audit_hierarchy(

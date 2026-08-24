@@ -12,6 +12,8 @@
   faithful `edges_out` persistence lane and hide its temporal/semantic fields.
 - A partially faithful graph fails descriptively instead of choosing a lossy
   persistence lane.
+- An incomplete optional tier is dropped without discarding the highest
+  complete lower hierarchy; L1-L2 incompleteness remains fatal.
 """
 
 import pytest
@@ -19,6 +21,7 @@ import pytest
 from lct_python_backend.services.import_pipeline.hierarchy_integrity import (
     clean_faithful_edges,
     synchronize_hierarchy,
+    synchronize_hierarchy_best_effort,
 )
 from lct_python_backend.services.import_pipeline.idea_repair_llm import (
     materialize_repaired_ideas,
@@ -311,6 +314,42 @@ def test_synchronize_hierarchy_rejects_mixed_edge_representations():
         synchronize_hierarchy(
             [faithful_chunk, legacy_idea],
             through_parent_level=2,
+        )
+
+
+def test_best_effort_sync_drops_partial_arc_and_preserves_complete_themes():
+    chunk = _node("c1", 1)
+    idea = _node("i1", 2, children=["c1"])
+    topic = _node("t1", 3, children=["i1"])
+    first_theme = _node("h1", 4, children=["t1"])
+    second_theme = _node("h2", 4, children=["t1"])
+    partial_arc = _node("a1", 5, children=["h1"])
+    nodes = [chunk, idea, topic, first_theme, second_theme, partial_arc]
+
+    stats = synchronize_hierarchy_best_effort(
+        nodes,
+        through_parent_level=5,
+        required_parent_level=2,
+    )
+
+    assert stats["highest_level"] == 4
+    assert stats["optional_tiers_dropped"] == 1
+    assert [node["id"] for node in nodes if node["semantic_level"] == 4] == [
+        "h1",
+        "h2",
+    ]
+    assert all(node["semantic_level"] < 5 for node in nodes)
+
+
+def test_best_effort_sync_keeps_l1_l2_completeness_mandatory():
+    orphan_chunk = _node("c1", 1)
+    empty_idea = _node("i1", 2)
+
+    with pytest.raises(ValueError, match="Hierarchy level 1->2"):
+        synchronize_hierarchy_best_effort(
+            [orphan_chunk, empty_idea],
+            through_parent_level=2,
+            required_parent_level=2,
         )
 
 

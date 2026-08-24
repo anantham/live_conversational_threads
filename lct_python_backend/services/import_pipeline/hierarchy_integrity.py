@@ -10,6 +10,19 @@ MEMBERSHIP_RELATIONSHIP_TYPE = "member_of"
 MEMBERSHIP_LENS = "thematic"
 
 
+class HierarchyOrphanError(ValueError):
+    """An adjacent hierarchy tier leaves one or more children unclaimed."""
+
+    def __init__(self, *, child_level: int, parent_level: int, orphan_count: int):
+        self.child_level = child_level
+        self.parent_level = parent_level
+        self.orphan_count = orphan_count
+        super().__init__(
+            f"Hierarchy level {child_level}->{parent_level} has "
+            f"{orphan_count} orphan child nodes"
+        )
+
+
 def node_level(node: Dict[str, Any]) -> int:
     try:
         return int(node.get("semantic_level") or node.get("level") or 1)
@@ -150,9 +163,10 @@ def synchronize_hierarchy(
             child_id for child_id, parent_ids in memberships.items() if not parent_ids
         )
         if orphans:
-            raise ValueError(
-                f"Hierarchy level {child_level}->{parent_level} has "
-                f"{len(orphans)} orphan child nodes"
+            raise HierarchyOrphanError(
+                child_level=child_level,
+                parent_level=parent_level,
+                orphan_count=len(orphans),
             )
 
         primary_by_child: Dict[str, str] = {}
@@ -255,6 +269,48 @@ def synchronize_hierarchy(
         "membership_links": membership_links,
         "overlapping_children": overlapping_children,
     }
+
+
+def synchronize_hierarchy_best_effort(
+    nodes: List[Dict[str, Any]],
+    *,
+    through_parent_level: int = 5,
+    required_parent_level: int = 2,
+    materialize_membership_edges: Optional[bool] = None,
+) -> Dict[str, int]:
+    """Synchronize the highest complete hierarchy prefix.
+
+    L1-L2 is the durable minimum and remains a hard invariant. If an optional
+    tier is non-empty but incomplete, discard that tier and every tier above it
+    before retrying. This keeps a partial L5 result from invalidating complete
+    L1-L4 evidence while preserving strict failure for the required base.
+    """
+
+    if materialize_membership_edges is None:
+        materialize_membership_edges = uses_faithful_edge_representation(nodes)
+    target_level = min(5, max(required_parent_level, through_parent_level))
+    dropped_levels: set[int] = set()
+
+    while True:
+        try:
+            stats = synchronize_hierarchy(
+                nodes,
+                through_parent_level=target_level,
+                materialize_membership_edges=materialize_membership_edges,
+            )
+            return {
+                **stats,
+                "highest_level": target_level,
+                "optional_tiers_dropped": len(dropped_levels),
+            }
+        except HierarchyOrphanError as exc:
+            if exc.parent_level <= required_parent_level:
+                raise
+            dropped_levels.update(range(exc.parent_level, target_level + 1))
+            nodes[:] = [
+                node for node in nodes if node_level(node) < exc.parent_level
+            ]
+            target_level = exc.parent_level - 1
 
 
 def clean_faithful_edges(nodes: List[Dict[str, Any]]) -> Dict[str, int]:

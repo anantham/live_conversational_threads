@@ -301,6 +301,8 @@ async def consolidate_themes_to_arcs(
     parents, extras = await asyncio.to_thread(
         _run_consolidation_llm, themes, target_tier=5, providers=providers,
     )
+    if parents:
+        adopt_orphans(themes, parents)
     title = (extras or {}).get("conversation_title")
     summary = (extras or {}).get("executive_summary")
     return parents, title, summary

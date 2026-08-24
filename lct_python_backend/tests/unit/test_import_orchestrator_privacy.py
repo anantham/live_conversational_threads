@@ -3,7 +3,8 @@
 Test Intent:
 - Extraction passes only conversation-authorized providers to the processor.
 - Denying external inference also disables the direct online-model branch.
-- The observable extraction result still persists an auditable graph.
+- The observable extraction result still persists an auditable graph with a
+  realistic complete mandatory L1-L2 hierarchy.
 """
 
 import uuid
@@ -111,14 +112,25 @@ async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch):
             self.chunk_utterance_map = {}
 
         async def handle_final_text(self, _text, *, utterance_id, **_kwargs):
-            self.existing_json.append(
-                {
-                    "id": "chunk-1",
-                    "node_name": "Private test",
-                    "summary": "Private test",
-                    "semantic_level": 1,
-                    "utterance_ids": [utterance_id],
-                }
+            self.existing_json.extend(
+                [
+                    {
+                        "id": "chunk-1",
+                        "node_name": "Private test",
+                        "summary": "Private test",
+                        "semantic_level": 1,
+                        "utterance_ids": [utterance_id],
+                        "parent_id": "idea-1",
+                    },
+                    {
+                        "id": "idea-1",
+                        "node_name": "Private idea",
+                        "summary": "Private idea",
+                        "semantic_level": 2,
+                        "children_ids": ["chunk-1"],
+                        "utterance_ids": [],
+                    },
+                ]
             )
 
         async def flush(self):
