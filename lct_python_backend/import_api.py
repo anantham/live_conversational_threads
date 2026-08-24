@@ -47,6 +47,9 @@ from lct_python_backend.services.import_pipeline.import_orchestrator import (
     parse_validate_and_persist,
     validate_or_raise,
 )
+from lct_python_backend.services.import_pipeline.persisted_hierarchy_repair import (
+    repair_persisted_hierarchy,
+)
 from lct_python_backend.services.graph_persistence import persist_turns
 from lct_python_backend.raw_turn_contract import RawTurnsPayloadV1
 from lct_python_backend.services.import_pipeline.import_validation import (
@@ -292,6 +295,28 @@ async def extract_turns(
             f"({stats['auditable_node_count']} auditable)"
         ),
     )
+
+
+@router.post("/turns/repair-hierarchy")
+async def repair_turn_hierarchy(
+    request: ExtractTurnsRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Repair incomplete hierarchy ownership without re-running extraction."""
+    try:
+        return await repair_persisted_hierarchy(
+            db,
+            conversation_id=request.conversation_id,
+            group_id=request.group_id,
+            owner_id=resolve_owner_id(request.owner_id),
+        )
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.error("Structured hierarchy repair failed: %s", exc)
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to repair hierarchy: {exc}")
 
 
 @router.post("/turns", response_model=ImportStatusResponse)

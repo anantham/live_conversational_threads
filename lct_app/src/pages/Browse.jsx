@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileText, HardDrive, Trash2 } from "lucide-react";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
@@ -6,6 +6,7 @@ import { apiFetch, API_BASE_URL } from "../services/apiClient";
 import { useDataProvider } from "../services/dataProvider";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
 import { readThreadsFile } from "../services/threadsArtifact";
+import { useThreadsFileDrop } from "../hooks/useThreadsFileDrop";
 import {
   listThreadsLibraryRecords,
   removeThreadsLibraryRecord,
@@ -111,7 +112,7 @@ export default function Browse() {
     };
   }, []);
 
-  const openThreadsFile = async (file) => {
+  const openThreadsFile = useCallback(async (file) => {
     setFileError("");
     try {
       const threadsBundle = await readThreadsFile(file);
@@ -119,7 +120,9 @@ export default function Browse() {
     } catch (fileOpenError) {
       setFileError(`Could not read .threads file: ${String(fileOpenError?.message || fileOpenError)}`);
     }
-  };
+  }, [navigate]);
+
+  const { isDraggingFile, dropTargetProps } = useThreadsFileDrop(openThreadsFile);
 
   const removeLocalArtifact = async (record) => {
     const confirmed = window.confirm(
@@ -259,7 +262,7 @@ export default function Browse() {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 6000);
       try {
-        const response = await dataProvider.conversations.fetchNext("/api/conversations/", {
+        const response = await dataProvider.conversations.listSaved({
           signal: controller.signal,
         });
         const ctype = (response.headers?.get?.("content-type") || "").toLowerCase();
@@ -326,7 +329,21 @@ export default function Browse() {
   }, [conversations, contactFilter]);
 
   return (
-    <div className="flex flex-col h-[100dvh] w-screen bg-[#fafafa] font-sans">
+    <div
+      {...dropTargetProps}
+      className="flex flex-col h-[100dvh] w-screen bg-[#fafafa] font-sans"
+    >
+      {isDraggingFile && (
+        <div
+          role="status"
+          className="pointer-events-none fixed inset-0 z-[70] flex items-center justify-center bg-amber-50/90 p-6 backdrop-blur-sm"
+        >
+          <div className="rounded-2xl border-2 border-dashed border-amber-400 bg-white px-10 py-12 text-center shadow-lg">
+            <p className="text-lg font-semibold text-slate-800">Drop .threads to open</p>
+            <p className="mt-2 text-sm text-slate-500">It stays in this browser. Nothing is uploaded.</p>
+          </div>
+        </div>
+      )}
       {/* Header */}
       <div className="shrink-0 px-4 py-4 md:px-6 flex items-center justify-between gap-3 border-b border-gray-100 bg-white">
         <button

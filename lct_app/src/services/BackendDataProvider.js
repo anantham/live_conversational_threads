@@ -46,6 +46,14 @@ export class BackendDataProvider extends DataProvider {
 
     // High-level operations that previously bypassed service modules
     this._conversations = {
+      listSaved: async (options = {}) => {
+        const { headers, ...rest } = options;
+        return fetch(`${API_BASE_URL}/conversations/`, {
+          method: "GET",
+          ...rest,
+          headers: { ...apiHeaders(), ...(headers || {}) },
+        });
+      },
       fetchThreadsData: async (id) => {
         const resp = await fetch(`${API_BASE_URL}/api/conversations/${id}/threads`);
         return resp.json();

@@ -1,7 +1,12 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Serverless BYOK Mode', () => {
-  test('Falls back to ServerlessGate when backend is unreachable, accepts key, and boots app', async ({ page, context }) => {
+  /**
+   * Test Intent
+   * - Keep offline recording available through the bounded live trial or BYOK.
+   * - Keep local `.threads` browsing discoverable without requiring either path.
+   */
+  test('Falls back to ServerlessGate when backend is unreachable, accepts key, and boots app', async ({ page }) => {
     // 1. Mock the health check to force "unreachable" state
     await page.route('**/api/import/health', route => {
       route.abort('timedout');
@@ -14,6 +19,8 @@ test.describe('Serverless BYOK Mode', () => {
     await expect(page.locator('text=Serverless Mode').first()).toBeVisible({ timeout: 10000 });
     await expect(page.locator('text=Backend is unreachable')).toBeVisible();
     await expect(page.locator('text=Start Serverless Session')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open or browse .threads files' })).toHaveAttribute('href', '/browse');
+    await expect(page.getByText(/Record live right here in your browser/)).toBeVisible();
 
     // 4. Enter API key
     const input = page.locator('input[type="password"]');

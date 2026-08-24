@@ -1,6 +1,146 @@
 # ISSUES
 
-Last updated: 2026-07-03
+Last updated: 2026-08-24
+
+## 2026-08-24 — Partial optional hierarchy tier aborted valid lower graph (REPAIRED LOCALLY)
+
+**Summary:** A non-empty arc result that omitted one or more themes reached the
+strict hierarchy synchronizer outside the consolidation exception boundary.
+The resulting L4→L5 orphan error prevented persistence of an otherwise complete
+and auditable lower hierarchy.
+
+**Impact:** High before repair. One imperfect optional model response could
+discard the useful L1-L4 result after all transcript and model work completed.
+
+**Blocker status:** Repaired locally; the new exact head still requires a fresh
+independent review and remote CI before merge.
+
+**Resolution:** Arc consolidation now adopts omitted themes consistently with
+the lower consolidators. A shared best-effort synchronization boundary also
+drops any incomplete optional tier and higher tiers while preserving the
+highest complete prefix. L1-L2 orphaning still fails hard. The actual persisted
+repair path, all affected consumers, and real Postgres have behavioral coverage.
+
+**Recommended next step:** Push the follow-up commit, re-review its exact SHA,
+and let the fail-closed merge wrapper proceed only with zero findings.
+
+## 2026-08-24 — Grok local hooks and timeout enforcement need repair (OPEN, NON-BLOCKING)
+
+**Summary:** The second Grok review was slowed by global hooks pointing to the
+invalid Windows path `/c/Users/adity/anaconda3/python.exe`. The repository
+wrapper also accepts `TimeoutMinutes` for Grok but does not currently enforce a
+process timeout.
+
+**Impact:** Medium operationally, no review-integrity impact. Hook failures are
+explicit and fail open inside Grok; the repository gate still fails closed on
+missing/invalid results. A stalled service could nevertheless hold the wrapper
+longer than its advertised timeout.
+
+**Blocker status:** Not blocking PR #172 because the review completed with a
+parsed result. Out of scope for the hierarchy repair.
+
+**Recommended next step:** Correct the global Grok hook interpreter path and
+enforce `TimeoutMinutes` around the Grok child process with stdout/stderr
+capture preserved.
+
+## 2026-08-24 — PR #172 independent-review hierarchy findings (REPAIRED LOCALLY)
+
+**Summary:** Independent Grok review found that membership synchronization could
+silently select the wrong relationship persistence lane, persisted hierarchy
+repair did not reapply the conversation's ADR-063 provider permissions, and the
+repair path required unjustified upper tiers for short conversations.
+
+**Impact:** High before repair. The first bug could omit authored temporal and
+argument edges, the second could send transcript-derived graph text to an
+external provider despite private-only consent, and the third discarded valid
+L1-L2 repair work.
+
+**Blocker status:** Repaired locally with behavior tests; fresh independent
+review and remote CI are required before merge.
+
+**Resolution:** Hierarchy synchronization now preserves an all-legacy or
+all-faithful edge contract and refuses mixed inputs. Persisted repair uses the
+same fail-closed privacy/provider selector as initial extraction. Topic, theme,
+and arc generation use standard thresholds and remain optional above a durable
+L1-L2 repair. Focused, broader, and real-Postgres suites pass.
+
+**Recommended next step:** Push the repair, run Grok against the exact new head,
+and merge only if the parsed review has zero findings and every required GitHub
+check is green.
+
+## 2026-08-24 — Grok review wrapper mixed diagnostics with JSON (REPAIRED LOCALLY)
+
+**Summary:** The independent-review script redirected stderr into stdout and
+then parsed the combined stream as JSON. Grok also returns the requested schema
+inside an outer `structuredOutput` envelope. A valid review therefore failed
+closed as an unparseable result.
+
+**Impact:** Medium operationally. The gate remained safe, but it could not
+distinguish a real review finding from transport telemetry and blocked an
+otherwise actionable review.
+
+**Blocker status:** Repaired locally; the next live Grok review is the behavioral
+acceptance test.
+
+**Resolution:** Stdout is stored and parsed independently, stderr is retained as
+a separate diagnostic artifact, and `structuredOutput` is unwrapped before the
+verdict/findings schema is evaluated. Unknown shapes and command failures still
+fail closed.
+
+**Recommended next step:** Require the repaired wrapper to produce a parsed,
+head-SHA-bound zero-finding artifact before invoking the merge wrapper.
+
+## 2026-08-23 — Postgres integration gate lacks privacy-aware fixtures and shares async loops (REPAIRED LOCALLY)
+
+**Summary:** PR #172's real-Postgres job failed identically on its initial run
+and one rerun: 51 tests pass, while the two Phase-2 extraction tests configure
+`load_llm_providers()` as an empty list after ADR-063 made provider trust
+fail-closed, and the final import-turns HTTP test creates a fresh `TestClient`
+whose event loop reuses a global async database engine bound by earlier tests.
+The failures are outside the frontend-only Browse diff. PR #171 passed before
+merge, but its resulting `main` combines these newer privacy/test-harness paths.
+
+**Impact:** High CI reliability, low immediate product impact. Correct frontend
+PRs cannot reach a green required-check state. The privacy failure is a stale
+fake, not evidence that production policy should be weakened; the different-loop
+500 masked the endpoint's actual ADR-063 raw-retention behavior.
+
+**Blocker status:** Resolved. The fixture repair passed the complete 55-test
+real-Postgres gate locally and PR #172's remote Linux job. It does not invalidate the
+Browse provider, drag/drop, or offline-entry behavior, whose unit, browser,
+build, preview, and Vercel checks pass.
+
+**Resolution:** The Phase-2 fake now returns one explicitly trusted
+`owner_private` loopback provider, supplies explicit local-only consent, and
+stubs the unrelated hierarchy/edge model stages with valid deterministic
+results. The endpoint module now uses one context-managed `TestClient` and
+disposes its async pool before that portal loop closes. Once the masked request
+completed normally, it also proved the old expected 400 contradicted ADR-063:
+the integration boundary now asserts 200 for `personal_private` and 400 for
+`hosted_shared`, even when the retired `LCT_MIRROR_RAW` flag is set. Production
+privacy behavior was not changed.
+
+**Recommended next step:** Keep the real-Postgres job required on future PRs so
+privacy-aware fixtures and async loop ownership remain continuously exercised.
+
+## 2026-08-15 — Provider trust classification has no dedicated settings control
+
+**Summary:** ADR-063 now enforces an explicit `owner_private` / `external`
+trust scope for every graph-generation provider. The authenticated settings API
+persists the field, and missing or invalid values fail closed as `external`, but
+the provider editor does not yet expose a dedicated trust-scope control.
+
+**Impact:** Safe but operationally awkward. New/custom local providers cannot
+process private-only meetings until an operator classifies them through the API
+or configuration. Existing records are not silently trusted based on their URL.
+
+**Blocker status:** Not blocking the approved owner-operated MVP; the two known
+local routes can be explicitly classified before replay. It is a blocker for a
+non-technical operator adding another private provider through the UI.
+
+**Recommended next step:** Add a clearly explained deployment-boundary selector
+to `LlmProvidersPanel.jsx`, display the effective trust scope in provider cards,
+and behavior-test that a missing choice defaults to external.
 
 ## 2026-07-03 - Backend catalog selected/effective LLM unit test is red on dirty checkout
 
@@ -516,6 +656,8 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Horizontal scrolling should be easy/smooth.
 
 ## Infrastructure / Runtime Drift
+- **2026-08-13 — backend restart diagnosis corrected (resolved for this repair):** the apparent competing Anaconda process was the repo venv's Windows redirector child, as already documented in withdrawn ADR-040. Repeated manual stops consumed the IndrasNet supervisor's retry budget; after the standard hidden launcher started the canonical venv listener, a late supervisor launch lost the port bind and exited while the serving PID remained stable through the successful repair. There is no evidence of two live managers fighting over the listener. Recommended next step: avoid forced reloads during long transactions and expose a deliberate maintenance restart/reset path for a supervisor that has reached its retry limit.
+- **2026-08-13 — private audio route lacks a download token (pre-existing, security):** startup reports `AUTH_TOKEN` is enabled while `AUDIO_DOWNLOAD_TOKEN` is unset, leaving `GET /api/conversations/{id}/audio` unauthenticated because browser audio tags cannot send the bearer header. Impact: unrelated to `.threads` (audio is excluded), but private stored audio may be fetchable by anyone who can reach the backend and knows a conversation ID. Blocker status: security-critical for any non-loopback/private-audio deployment. Recommended next step: set `AUDIO_DOWNLOAD_TOKEN` immediately or migrate audio delivery to short-lived signed URLs before exposing the backend.
 - IndrasNet Windows Scheduled Task `\IndrasNet-WebServer` was previously bypassed by a manual debug launcher `C:\Users\adity\run_web_server_skip_agents.ps1` that forced `INDRAS_SKIP_AGENT_AUTOSTART=1`; this disabled Beeper/Meet/Obsidian autostarts even though DB autostart settings were enabled. Status: mitigated in ops by repointing the task to the repo-owned `scripts/start_web_server_task.cmd` wrapper, but the historical drift explains earlier missing-ingestion incidents.
 - The healthy scheduled-task launch still results in a two-step Python chain (`.venv\Scripts\python.exe` parent spawning `C:\Users\adity\anaconda3\python.exe -m grimoire.IndrasNet.agents.web_server.app`) and repeated `runpy` warnings. Impact: currently non-blocking because `7777` binds and agents autostart, but startup behavior remains harder to reason about. Recommended next step: trace why the app re-enters through `anaconda3\python.exe` and whether a single-interpreter launch path is possible.
 - Remote Whisper finalization issue was traced to deployment drift at the real WSL `8001` service. The actual listener is a WSL `uvicorn whisperx_server:app` process importing `/home/adity/whisperx_server.py` from working directory `/mnt/c/Users/adity/Documents/Ongoing Local/TemporalCoordination/grimoire/IndrasNet/services/transcription`. Impact: the finalization patch was already on disk but a stale long-running process kept serving pre-fix behavior until the WSL uvicorn process was restarted. Current status: mitigated; raw direct websocket validation now returns an `is_final=true` transcript before `done`. Recommended next step: make the WSL WhisperX service launch/restart path explicit and durable so future code syncs do not leave `8001` serving stale logic.

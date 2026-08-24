@@ -26,10 +26,10 @@ export default function ServerlessGate({ onEnableServerless, onStartTrial }) {
           Backend is unreachable
         </p>
         <p className="mt-2 text-sm leading-relaxed text-gray-600 mb-5">
-          You can run it right here in your browser (nothing goes to our servers).
+          Record live right here in your browser, or open a .threads file you already have.
           {canTrial
-            ? ' Take it for a 5 minute spin on us, then continue with your own OpenAI key.'
-            : ' Add your OpenAI key to continue.'}
+            ? ' The live trial runs for 5 minutes; continue recording afterward with your own OpenAI key.'
+            : ' Add your OpenAI key to record a new conversation.'}
         </p>
 
         {canTrial ? (
@@ -38,9 +38,16 @@ export default function ServerlessGate({ onEnableServerless, onStartTrial }) {
             onClick={onStartTrial}
             className="w-full rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-gray-800"
           >
-            Try it free for 5 minutes
+            Record live — free for 5 minutes
           </button>
         ) : null}
+
+        <a
+          href="/browse"
+          className="mt-3 block w-full rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          Open or browse .threads files
+        </a>
 
         {canTrial ? (
           <div className="my-5 flex items-center gap-3 text-[11px] uppercase tracking-wide text-gray-400">

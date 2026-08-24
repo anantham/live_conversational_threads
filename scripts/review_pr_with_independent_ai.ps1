@@ -11,6 +11,8 @@ to the established native ultrareview adapter.
 Test intent:
 - provider choice is explicit, never silently defaulted;
 - the artifact records provider and exact head SHA;
+- Grok stderr telemetry cannot corrupt the structured stdout JSON;
+- an outer CLI envelope exposes its `structuredOutput` as the gate payload;
 - findings, command failures, and unrecognized schemas fail closed.
 #>
 
@@ -85,6 +87,7 @@ $headSha = [string]$metaPayload.headRefOid
 
 $promptPath = Join-Path $outputRoot "pr-$slug-grok-review-$timestamp.prompt.md"
 $rawPath = Join-Path $outputRoot "pr-$slug-grok-review-$timestamp.json"
+$stderrPath = Join-Path $outputRoot "pr-$slug-grok-review-$timestamp.stderr.log"
 $summaryPath = Join-Path $outputRoot "pr-$slug-grok-review-$timestamp.md"
 $prompt = @"
 You are the independent adversarial reviewer for GitHub PR $Pr at exact head $headSha.
@@ -104,7 +107,7 @@ Set-Content -LiteralPath $promptPath -Value $prompt -Encoding UTF8
 
 $schema = '{"type":"object","properties":{"verdict":{"type":"string","enum":["pass","findings"]},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"type":"string"},"file":{"type":"string"},"line":{"type":"integer"},"title":{"type":"string"},"explanation":{"type":"string"},"reproduction":{"type":"string"}},"required":["severity","file","line","title","explanation","reproduction"],"additionalProperties":false}}},"required":["verdict","findings"],"additionalProperties":false}'
 Write-Host "Running Grok independent review for PR '$Pr' at '$headSha'..."
-$reviewOutput = & grok --cwd $repoRoot --permission-mode plan --disable-web-search --no-subagents --max-turns 30 --json-schema $schema --prompt-file $promptPath 2>&1
+$reviewOutput = & grok --cwd $repoRoot --permission-mode plan --disable-web-search --no-subagents --max-turns 30 --json-schema $schema --prompt-file $promptPath 2> $stderrPath
 $reviewExit = $LASTEXITCODE
 $raw = ($reviewOutput | Out-String).Trim()
 if ([string]::IsNullOrWhiteSpace($raw)) { $raw = "<no output>" }
@@ -115,6 +118,12 @@ $parseStatus = "parsed"
 $findingCount = $null
 try {
     $payload = ConvertFrom-ReviewJson $raw
+    if ($payload.PSObject.Properties.Name -contains "structuredOutput") {
+        $payload = $payload.structuredOutput
+        if ($payload -is [string]) {
+            $payload = ConvertFrom-ReviewJson $payload
+        }
+    }
     if ($null -eq $payload.findings -or $payload.verdict -notin @("pass", "findings")) {
         throw "Required verdict/findings schema was not present."
     }
@@ -141,7 +150,8 @@ $summary = @(
     "- Generated: $(Get-Date -Format 'yyyy-MM-ddTHH:mm:sszzz')",
     "- Exit code: $reviewExit", "- Parse status: $parseStatus",
     "- Finding count: $(if ($null -eq $findingCount) { 'unknown' } else { $findingCount })",
-    "- Raw artifact: $rawPath", "", "## Gate result", "", $gate
+    "- Raw stdout artifact: $rawPath", "- Stderr diagnostics: $stderrPath",
+    "", "## Gate result", "", $gate
 )
 Set-Content -LiteralPath $summaryPath -Value $summary -Encoding UTF8
 Write-Host "Independent review summary: $summaryPath"

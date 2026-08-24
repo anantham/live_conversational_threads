@@ -1,5 +1,207 @@
 # WORKLOG
 
+## 2026-08-24T08:35:00+05:30 — Close Grok's partial optional-tier finding
+
+- Context: the fail-closed merge wrapper's second independent Grok review at
+  head `6f50560` found one high-severity gap after the first pass reported zero
+  findings. Option B handled empty and failed optional model calls, but a
+  non-empty partial arc tier still reached strict synchronization and could
+  discard a complete L1-L4 graph.
+- Hypothesis and falsification: construct two themes and one arc claiming only
+  the first. Predicted and observed result before repair:
+  `HierarchyOrphanError: Hierarchy level 4->5 has 1 orphan child nodes` in the
+  same synchronizer used by fresh extraction and persisted repair.
+- Repair:
+  - `HierarchyOrphanError` now exposes the failed adjacent levels without
+    callers parsing an error string.
+  - `synchronize_hierarchy_best_effort` preserves strict L1-L2 enforcement but
+    removes an incomplete L3-L5 tier and everything above it before retrying.
+  - Fresh extraction and persisted repair use that shared boundary and clear
+    title/summary metadata if the incomplete arc tier is removed.
+  - Arc consolidation adopts omitted themes using the same deterministic
+    nearest-claimed-neighbour rule already used for topics and themes.
+  - Privacy and real-Postgres fixtures now produce realistic complete L1-L2
+    repair outcomes instead of mocking the old synchronizer away.
+- Validation:
+  - Exact content-free reproduction: failed before, now degrades to L4.
+  - Focused hierarchy/consolidator/persisted-repair suite: **42 passed**.
+  - All hierarchy/extraction consumers: **129 passed**.
+  - Full backend unit suite: **1,931 passed, 2 failed**; only the same documented
+    local Windows OpenAI/httpx and path-resolution environment failures remain.
+  - Exact real-Postgres workflow-equivalent suite: **55 passed**.
+- Impact: a partial optional abstraction can no longer erase a valid transcript
+  graph. Mandatory base completeness, privacy filtering, and mixed-edge
+  representation failures remain fail-closed.
+- Confidence: 0.97. Fallback: if a later review finds semantic adoption too
+  aggressive for arcs, retain the boundary degradation and disable only arc
+  adoption; lower-tier evidence will still persist safely.
+
+## 2026-08-24T10:30:00+05:30 — Option B: repair hierarchy edge, privacy, and optional-tier invariants
+
+- Context: the independent Grok review of PR #172 at head `d368b01` found three
+  merge-blocking issues: hierarchy synchronization could switch a legacy graph
+  into the faithful persistence lane and hide temporal/semantic edges; persisted
+  hierarchy repair bypassed ADR-063 provider filtering; and short valid L1-L2
+  repairs failed unless all upper tiers were generated. The review gate also
+  mixed Grok stderr telemetry into stdout and could not parse the otherwise
+  valid `structuredOutput` envelope. The operator selected Option B: repair the
+  shared invariants and the gate before re-review and merge.
+- Root-cause evidence:
+  - A content-free reproduction showed a legacy graph had no `edges_out` before
+    synchronization, gained it afterward, and then exposed only `member_of`
+    relationships to the faithful persistence lane despite retaining its legacy
+    successor field.
+  - Provider-selection inspection showed persisted repair passed every enabled
+    provider directly to all hierarchy model calls without consulting stored
+    privacy metadata.
+  - The repair orchestrator required non-empty topics, themes, and arcs even
+    below the existing consolidation thresholds.
+  - The Grok CLI emitted parseable structured JSON on stdout and progress on
+    stderr, while the wrapper combined both streams and did not unwrap the
+    outer `structuredOutput` field.
+- Changes:
+  - `hierarchy_integrity.py` now detects faithful-versus-legacy representation,
+    rejects mixed graphs descriptively, and materializes membership edges only
+    for faithful graphs.
+  - `import_hierarchy_repair.py` captures that representation before appending
+    newly generated nodes, so generated defaults cannot change persistence
+    semantics.
+  - `persisted_hierarchy_repair.py` applies ADR-063 provider filtering and
+    fail-closed missing-privacy behavior; topic/theme/arc tiers use the standard
+    thresholds and are best-effort above a durable L1-L2 repair.
+  - Behavioral tests cover the public persistence result, privacy filtering and
+    fail-closed behavior, short repairs, empty optional tiers, and legacy edge
+    preservation.
+  - `review_pr_with_independent_ai.ps1` separates stderr diagnostics from JSON
+    stdout and unwraps Grok's `structuredOutput` result before gate evaluation.
+- Validation:
+  - New tests failed in the four predicted places before the implementation.
+  - Focused Option B suite: **17 passed**.
+  - Broader affected backend suite: **58 passed**.
+  - Exact real-Postgres workflow-equivalent suite: **55 passed**.
+  - Full backend unit suite with an explicit writable base temp: **1,928 passed,
+    2 failed**. Both failures reproduce the branch's pre-existing local Windows
+    environment issues: OpenAI/httpx `proxies` incompatibility and traversal
+    resolution touching a denied Windows path. Neither is in an Option B path;
+    required Linux CI remains authoritative.
+  - PowerShell syntax parsing and `git diff --check` passed.
+- Impact: legacy argument/temporal topology can no longer disappear when
+  hierarchy memberships are synchronized; persisted repair cannot egress a
+  private conversation to an unapproved provider; short meetings retain useful
+  repaired L1-L2 graphs when higher abstractions are not justified.
+- Confidence: 0.96. Fallback: if independent review or CI finds a remaining
+  representation ambiguity, leave PR #172 unmerged and normalize the complete
+  graph explicitly at the persistence boundary rather than weakening either
+  edge lane or privacy selection.
+
+## 2026-08-23T17:27:27+05:30 — Repair PR #172's real-Postgres integration gate
+
+- Context: PR #172's frontend Browse repair was blocked by three deterministic
+  failures in the required real-Postgres job. The operator explicitly approved
+  repairing the separate integration harness while preserving production
+  privacy behavior.
+- Hypotheses and evidence:
+  - H1: the Phase-2 extractor fake predated ADR-063 and returned no providers;
+    the new fail-closed selector should accept a fake only when it has explicit
+    `owner_private` trust and the payload has explicit local-only consent.
+    Confirmed: both extraction tests passed with that realistic classification.
+  - H2: constructing a new non-context-managed `TestClient` per request moved
+    the process-global asyncpg engine across portal event loops. One module
+    client should eliminate the cross-loop 500. Confirmed: the request completed
+    normally; fixture shutdown now disposes the pool before its loop closes.
+  - H3: once H2 exposed the real response, the old expected 400 would contradict
+    approved ADR-063. Confirmed against the ADR and `persist_turns`: owner-local
+    raw retention is allowed by default on `personal_private`, while
+    `hosted_shared` must reject it even if retired `LCT_MIRROR_RAW=1` remains.
+- Files modified:
+  - `lct_python_backend/tests/integration/test_extract_graph_phase2_pg.py`:
+    documented test intent; supplied an explicit owner-private fake provider and
+    local-only privacy consent; replaced unrelated hierarchy-repair and
+    argument-edge model calls with deterministic valid fakes. The persistence
+    path and fail-closed production selector remain real.
+  - `lct_python_backend/tests/integration/test_import_turns_endpoint.py`:
+    documented test intent; kept all requests on one lifespan-managed
+    `TestClient`; disposed the async DB pool on that loop; replaced the retired
+    raw-retention expectation with public-route assertions for both deployment
+    profiles.
+  - `ISSUES.md`: amended the blocker with the verified repair and pending remote
+    CI confirmation.
+- Validation:
+  - First focused diagnostic: `6 passed, 1 failed`; the former cross-loop 500
+    became a normal 200, falsifying the stale response expectation and exposing
+    the ADR-063 mismatch.
+  - Refined focused suite: `8 passed` against the configured real Postgres.
+  - Exact workflow-equivalent suite (`*_pg.py` plus endpoint): `55 passed` in
+    67.48 seconds against real Postgres. No model or network inference ran.
+  - `git diff --check`: passed; checkout-only LF/CRLF warnings remain.
+- Product impact: test harness and documentation only. No production route,
+  retention policy, provider selector, schema, or database migration changed.
+- Confidence: 0.98. Fallback: if Linux CI differs, preserve the test-only commit,
+  inspect its exact traceback, and adjust the cross-platform fixture lifecycle;
+  do not weaken ADR-063 to obtain a green check.
+
+## 2026-08-15T19:49:48+05:30 — Personal-private retention and provider-trust enforcement
+
+- Context: the approved Indra's Net meeting flow needs LCT to retain the
+  owner's unredacted canonical transcript as a private, auditable source graph
+  before republication. The previous `LCT_MIRROR_RAW` gate rejected that normal
+  self-hosted case, while graph extraction ignored the conversation's stored
+  `external_llm_ok=false` decision and graph persistence could erase it.
+- Hypotheses and predictions:
+  - H1 (0.55): deployment intent, not redaction status alone, is the missing
+    retention boundary. A `personal_private` profile should admit the explicit
+    owner-local raw contract while `hosted_shared` should continue to refuse it.
+  - H2 (0.35): filtering providers by an explicit trust scope plus affirmative
+    conversation consent should prevent future cloud additions from receiving
+    private graph input. Missing/invalid trust must behave as external and an
+    empty permitted set must fail before model invocation.
+  - H3 (0.10): preserving the privacy block only at import time is insufficient
+    because graph enrichment replaces `source_metadata`. Merging enrichment
+    metadata should keep the decision durable across extraction/reprocessing.
+- Decision: the operator approved H1-H3 as ADR-063. LCT defaults to the
+  single-owner `personal_private` profile; shared hosting must opt into
+  `hosted_shared`. Providers carry `owner_private` or `external`; URL shape is
+  never used as a trust signal. The direct online branch is also forced local
+  when external inference is denied.
+- Product files:
+  - `services/deployment_privacy_policy.py`: centralized deployment validation,
+    raw-retention decision, explicit provider filtering and direct-mode clamp.
+  - `services/llm_config.py`: persisted/default provider `trust_scope`, with
+    missing or invalid records normalized to external.
+  - `services/import_pipeline/import_orchestrator.py`: applies the conversation
+    privacy block before constructing `TranscriptProcessor` and emits only
+    content-free routing diagnostics.
+  - `services/graph_persistence.py`: replaces the raw env escape hatch with the
+    deployment policy and merges graph enrichment into existing source metadata.
+  - `backend.py` and `.env.example`: validate/log the deployment profile at
+    startup and document the two supported profiles.
+- Tests and documentation:
+  - New behavior tests cover profile retention, fail-closed trust normalization,
+    provider/consent intersection, direct online-mode denial, extraction wiring,
+    and preservation of privacy metadata. Existing raw-turn and provider tests
+    were amended to the new public contract.
+  - Focused result: **40 passed**. `git diff --check` passed. The same modules
+    imported/executed in tests; an additional `compileall` cache write was denied
+    by this checkout's existing `__pycache__` permissions and was not treated as
+    a product failure.
+  - `ADR-063-personal-private-retention-and-provider-trust.md`, `ISSUES.md`, and
+    `TECH_DEBT.md` record the decision, missing trust-scope UI, and decomposition
+    candidates in the touched >300-line modules.
+- Live configuration and acceptance:
+  - Explicitly set `LCT_DEPLOYMENT_PROFILE=personal_private`; supervised restart
+    produced canonical venv PID 29476 and logged the validated profile.
+  - The old custom M5 record correctly failed closed as external until explicitly
+    classified. Verified live providers are now M5 Ollama over the owner's
+    Tailscale boundary and localhost LM Studio, both `owner_private`.
+  - Sai attempt `22e31fa2-b3b4-46fb-af20-334054773db9` began at 19:49:48 with
+    477 canonical turns. Live extraction logged `local_llm_ok=True`,
+    `external_llm_ok=False`, and only those two permitted providers. Preparation
+    remains in progress; no recipient ACL or email action is part of this run.
+- Confidence: 0.93 in the boundary implementation; live artifact acceptance is
+  still pending. Fallback: use `hosted_shared` or leave a provider external to
+  fail closed, retain the canonical transcript in Indra's Net, and replay after
+  configuration is corrected.
+
 ## 2026-08-13T20:36:00+05:30 — Empirical home setup ETA
 
 - Context: after approving and deploying the stable Browse/status UI, the
@@ -3437,6 +3639,63 @@ Manual testing not run:
 - **Next Steps:** 
   - The E2E automation for the Serverless upload flow was abandoned in favor of manual user testing, as it was blocking progress.
   - The user will manually test the Serverless mode audio upload in the browser.
+  - **Ready to move on to ADR-058 (Human-Gated Identity) in the next session.**
+
+## 2026-08-13T05:23:00Z - Canonical transcript re-extraction and hierarchy repair (stopped after attempt limit)
+
+- Source: IndrasNet share `3521/FINAL_to_send.txt`; LF-normalized SHA-256 `03d6dfda29b95f70f6043828e1b8575c4e206e7cd81ca0f049eadc0c7b494012`.
+- Canonical conversation: `b2d2e288-3812-4b5f-95e5-0d77b1bdba77`, group `privacy-reviewed-prayer-3521-03d6dfda29b95f70-canonical-v2`.
+- Extraction result before repair: 1,117/1,117 turns covered; 437 unique nodes (L1=361, L2=58, L3=10, L4=4, L5=4); no duplicate node IDs, utterance IDs, or dangling utterance references.
+- Root cause confirmed: local streaming graph responses reused batch-local node IDs and occasionally omitted the L2 idea layer. A large 80-node local context also crossed the effective 16K Ollama runtime-context limit and caused repeated generation failures.
+- Files modified:
+  - `lct_python_backend/services/transcript/transcript_identity.py`: canonical UUID rewrite for each generated batch and local references.
+  - `lct_python_backend/services/transcript/transcript_processing.py`: retain failed count/timer batches, fail loudly on final flush, and use the local context-window constant.
+  - `lct_python_backend/services/tuning_constants.py`: local streaming context window set to 40 nodes.
+  - `lct_python_backend/services/import_pipeline/{hierarchy_integrity,idea_repair_llm,import_hierarchy_repair,persisted_hierarchy_repair}.py`: exact adjacent-tier ownership, small-batch L2 repair, edge cleanup, persisted repair orchestration, pre-persist invariants, and validated response retries.
+  - `lct_python_backend/services/local_llm_client.py`: a semantic-validator retry can skip a cached rejected response while still refreshing that content-addressed key.
+  - `lct_python_backend/import_api.py` and `services/import_pipeline/import_orchestrator.py`: repair endpoint and repair-before-consolidation integration.
+  - tests in `lct_python_backend/tests/unit/test_transcript_identity.py`, `test_transcript_processing_runtime.py`, and `test_import_hierarchy_repair.py`.
+- Repair evidence:
+  - 35 source batches lacked L2 ideas; 9 additional L1 chunks were unowned in batches with existing ideas.
+  - Seven small repair calls completed and were cached; reruns restored them instantly. The validated in-memory result created 38 ideas and adopted all 9 strays.
+  - One cached response had exactly one idea for its batch but omitted `children_ids`; this is now handled deterministically by assigning the batch's full ordered child set. Ambiguous invalid responses still retry with cache reads bypassed.
+- Attempt log:
+  - 1/3: seven repair batches ran; final response omitted valid child IDs; transaction rolled back.
+  - 2/3: validation retry replayed the same rejected content-addressed cache entry; transaction rolled back. Root cause was the retry/cache boundary.
+  - 3/3: all hierarchy repair batches validated and higher-order consolidation began, but the backend listener was externally restarted while awaiting the first Ollama consolidation response; the client connection closed and the transaction rolled back.
+- Current durable state after rollback: unchanged pre-repair graph (437 nodes, L1=361/L2=58/L3=10/L4=4/L5=4) with 100% turn coverage. No corrected `.threads` artifact has been exported or shared.
+- Validation: focused suites reached 79 passing before retry changes; hierarchy/cache suites now pass 20/20. Known warnings remain for Python 3.9 EOL and a pytest-asyncio unclosed loop.
+- Stop condition: three pipeline attempts reached. Human guidance is required before another repair run. Recommended next diagnostic is to identify/disable the competing backend watchdog/reloader for one controlled request, then rerun; the seven L2 repair batches should be cache hits and only the higher-order calls should execute.
+
+## 2026-08-13T11:58:00+05:30 - Canonical overlap graph repaired, audited, and exported
+
+- Human decision: semantic membership is many-to-many; the tree-shaped zoom is a derived view that selects one primary parent without erasing secondary memberships. Captured as approved `docs/adr/ADR-062-overlapping-semantic-memberships-derived-zoom-projections.md` and indexed in `docs/adr/INDEX.md`.
+- Canonical representation:
+  - `lct_python_backend/services/import_pipeline/hierarchy_integrity.py:35` materializes `member_of` edges plus explicit `memberships`, then derives `parent_id`/`children_ids` as the thematic primary projection.
+  - `lct_python_backend/services/conversation_reader.py:76` reconstructs memberships from relationship rows for lean `.threads` export and excludes membership edges from generic contextual links.
+  - `lct_python_backend/services/graph_persistence.py:1076` restores explicit exported memberships when `edges_out` is absent.
+  - `lct_python_backend/prompts.json:97-117` now asks L3-L5 consolidation for complete covers with sparse, genuine overlap instead of exactly-one ownership.
+  - `lct_python_backend/services/import_pipeline/hierarchy_audit.py:16` independently verifies membership endpoints, one primary parent per thematic projection, inverse `children_ids`, edge integrity, and overlap preservation.
+- Context resilience:
+  - `lct_python_backend/services/import_pipeline/import_hierarchy_repair.py:65` bisects only an all-provider-failed repair batch, preserving content-addressed cache hits and fitting slower local lanes.
+  - Attempts 1 and 2 rolled back at the same five-group batch: M5 was offline and LM Studio exceeded its 120-second deadline. The repeated outcome confirmed provider/context size, not graph integrity, as the blocker.
+  - Attempt 3 loaded the adaptive code; M5 recovered and completed the remaining batches. The transaction committed only after all tiers and coverage checks succeeded.
+- Durable result for conversation `b2d2e288-3812-4b5f-95e5-0d77b1bdba77`:
+  - 1,117/1,117 turns covered.
+  - 473 nodes: L1=361, L2=93, L3=10, L4=5, L5=4.
+  - 35 missing source groups repaired into 35 ideas; 9 local strays adopted.
+  - 471 canonical adjacent-tier memberships; 469 projected children; 2 children retain secondary topic memberships.
+  - 1,073 total outgoing edges in the exported graph; no dangling endpoints, duplicate IDs, orphan children, or projection mismatches.
+- New non-overwriting artifact:
+  - `C:/Users/adity/Documents/Ongoing Local/TemporalCoordination/grimoire/IndrasNet/data/shares/3521/dhruva-deep-dive.reviewed.03d6dfda.canonical-v2.threads`
+  - size `2,939,840` bytes; SHA-256 `8acfab68c16d4aa251e0d5541d5a538597c23b69679a5d35b8fbb450a1b918b1`.
+  - normalized comparison against `FINAL_to_send.txt` (LF SHA-256 `03d6dfda29b95f70f6043828e1b8575c4e206e7cd81ca0f049eadc0c7b494012`): 1,117 source turns, 1,117 exported turns, zero speaker/text mismatches.
+  - serialized privacy scan: zero matches for Bitcoin, crypto/currency, Ethereum, brain fever, ICU, old conversation ID `9773cd17-f4d4-4e1c-acf9-6ee55216f290`, auth-token/API-key markers, `.env`, local user paths, or `doc_id`.
+  - loaded successfully in `https://threads.adityaarpitha.com/browse`; visible title is “Deep dive with Aditya x Dhruva - privacy-reviewed canonical v2,” coverage shows 100%, and the overview renders 4 arcs / 361 moments.
+- Validation: 128 focused unit tests pass. Known non-blocking warnings: Python 3.9 EOL, pytest-asyncio loop deprecation, and pytest cache write permissions.
+- Runtime note: forced reloads exhausted the supervisor retry budget. The standard hidden launcher was used only after confirming port 43181 empty; `/api/version` reports stable PID `23484`, canonical repo venv, and the expected checkout. A late competing bind attempt exited without replacing the serving listener.
+- Sharing state: the new canonical-v2 artifact is local and open in the client-only viewer. It has **not** been uploaded to Drive and **not** been shared with Dhruva. The older Drive review copy remains owner-only and is superseded by this local artifact.
+- Pre-existing security issue found: `AUDIO_DOWNLOAD_TOKEN` is unset while `AUTH_TOKEN` is enabled, leaving the audio download route unauthenticated. Logged in `ISSUES.md`; `.threads` excludes audio, so this does not affect the artifact.
 - **Ready to move on to ADR-058 (Human-Gated Identity) in the next session.**
 
 ## 2026-08-16 — Structured speaker turns in recipient cards
@@ -3541,6 +3800,54 @@ Manual testing not run:
 - Validation: both new PowerShell scripts parse without syntax errors. Grok is
   installed and selected for PR #170 because the implementation family is
   OpenAI/Codex.
+
+## 2026-08-23 10:18 +05:30 — Restore Tailnet history and make Browse fully local-first
+
+- Reported behavior: M5 could load the public LCT frontend over Tailnet but
+  `/browse` showed `Server history failed (HTTP 404)`, while off-tailnet `/`
+  presented recording/BYOK as the only visible path and `/browse` accepted files
+  only through its header picker.
+- Hypotheses and evidence:
+  - **Confirmed:** the deployed bundle contains
+    `https://asus-strix-scar.tail4741ad.ts.net`, so this was not a missing
+    Tailnet hostname. An authenticated probe with production Origin returned
+    200 for `GET /conversations/`, 404 for `GET /api/conversations/`, 405 for
+    `POST /conversations/`, and 404 for the deployed caller's
+    `POST /api/conversations/` contract.
+  - **Rejected:** Tailscale does not synchronize browser IndexedDB. The ASUS
+    **On this device** collection is intentionally unavailable to M5; only
+    private server history is cross-device.
+- Implementation:
+  - `BackendDataProvider.js` now owns the canonical
+    `conversations.listSaved()` GET operation; `fetchNext()` remains the POST
+    continuation action used after transcript-revision approval.
+  - `Browse.jsx` uses the provider operation and composes a whole-page drop
+    surface via the new `useThreadsFileDrop.js`. Its overlay states that files
+    stay in the browser and are not uploaded.
+  - `ServerlessGate.jsx` distinguishes the five-minute live-recording trial
+    from the key-free `.threads` library path.
+  - Regression coverage added for the provider method/route contract, offline
+    CTA, and a `.threads` drop on an arbitrary Browse child.
+- Validation: targeted ESLint passed; 6 focused Vitest tests passed; production Vite build passed;
+  focused Chromium suite passed 5 with 1 production-only test skipped locally;
+  desktop visual checks confirmed the Browse fallback and offline two-path gate
+  without overflow. Direct API probing confirmed CORS for
+  `https://threads.adityaarpitha.com`; a localhost-origin browser integration
+  remained blocked by the backend's intentional CORS allowlist and is not a
+  production-path failure.
+- Structural note: `Browse.jsx` is 648 LOC; the decomposition candidate is
+  recorded in `docs/TECH_DEBT.md`. The new drag controller was extracted rather
+  than grown inside the page.
+- PR reconciliation: merged the subsequently landed explicit-edge contract
+  (`origin/main` at `ce78a93`) without force-pushing. The combined branch passed
+  all 227 frontend unit tests, the production build, targeted ESLint, and the
+  focused Chromium suite (5 passed; 1 deploy-only check skipped locally).
+- CI follow-up: the real-Postgres gate failed twice with the same unrelated
+  baseline signature (51 passed, 3 failed): two stale Phase-2 fakes provide no
+  trust-scoped local LLM after ADR-063, and one TestClient case reuses an async
+  engine across event loops. The exact blocker and separate principled repair
+  are recorded in `ISSUES.md`; privacy policy was not weakened and backend test
+  logic was not mixed into this frontend repair.
 
 ## 2026-08-20 — Versioned explicit directed-edge contract (Option C)
 

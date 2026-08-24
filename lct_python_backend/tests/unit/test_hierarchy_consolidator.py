@@ -346,6 +346,7 @@ def test_async_wrappers_unwrap_correctly(monkeypatch: pytest.MonkeyPatch) -> Non
     ]
     arcs, title, summary = asyncio.run(hc.consolidate_themes_to_arcs(arcs_in))
     assert len(arcs) == 1
+    assert arcs[0]["children_ids"] == ["idea-0", "theme-1"]
     assert title == "Title"
     assert summary == "Summary."
 

@@ -33,6 +33,7 @@ from .transcript_normalizer import (  # noqa: F401
     _normalize_generated_output,
     format_speaker_prefixed_transcript,
 )
+from .transcript_identity import canonicalize_batch_node_ids
 
 # ---------------------------------------------------------------------------
 # Re-exports: LLM callers (+ config helpers used by tests)
@@ -579,10 +580,16 @@ class TranscriptProcessor:
             )
 
             from lct_python_backend.services.tuning_constants import (
+                LOCAL_STREAMING_CONTEXT_WINDOW_SIZE,
                 STREAMING_CONTEXT_FIELDS,
                 STREAMING_CONTEXT_WINDOW_SIZE,
             )
-            recent_nodes = self.existing_json[-STREAMING_CONTEXT_WINDOW_SIZE:]
+            context_window_size = (
+                LOCAL_STREAMING_CONTEXT_WINDOW_SIZE
+                if str(self._llm_config.get("mode", "")).lower() == "local"
+                else STREAMING_CONTEXT_WINDOW_SIZE
+            )
+            recent_nodes = self.existing_json[-context_window_size:]
             trimmed_context = [
                 {k: n.get(k) for k in STREAMING_CONTEXT_FIELDS if n.get(k) is not None}
                 for n in recent_nodes
@@ -627,6 +634,10 @@ class TranscriptProcessor:
                 )
 
             if output_json:
+                output_json = canonicalize_batch_node_ids(
+                    output_json,
+                    existing_nodes=self.existing_json,
+                )
                 generation_ms = round(
                     max(0.0, (time.perf_counter() - generation_started_at) * 1000.0),
                     2,
@@ -731,6 +742,28 @@ class TranscriptProcessor:
                         "trigger": trigger,
                     },
                 )
+
+                # Never acknowledge/clear transcript text that failed to
+                # produce graph output.  Count/timer batches stay in the
+                # accumulator and are retried with subsequent context.  A
+                # terminal flush has no later opportunity to recover, so fail
+                # the extraction loudly instead of persisting a graph with an
+                # unauditable hole.
+                if trigger in {"flush", "flush_segment"}:
+                    raise RuntimeError(
+                        "LLM returned no structured graph output during final "
+                        f"transcript flush (trigger={trigger}, "
+                        f"segment_chars={len(segmented_input_chunk)})"
+                    )
+
+                logger.error(
+                    "[GRAPH] generation failed; retaining %s transcript fragments "
+                    "for retry (trigger=%s, segment_chars=%s)",
+                    len(text_batch),
+                    trigger,
+                    len(segmented_input_chunk),
+                )
+                return False, True, input_text, segment_batch
 
         logger.info("[ACCUMULATE] Evaluated batch of %s transcripts", len(text_batch))
         return bool(segmented_input_chunk.strip() and output_json), decision, incomplete_seg, carryover_segments

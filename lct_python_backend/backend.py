@@ -134,6 +134,12 @@ def _resolve_cors_origins() -> tuple:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate the retention/trust deployment boundary before accepting traffic.
+    # Unknown profile names fail boot instead of silently choosing a weaker mode.
+    from lct_python_backend.services.deployment_privacy_policy import current_deployment_profile
+    deployment_profile = current_deployment_profile()
+    logger.info("[DEPLOYMENT] privacy profile=%s", deployment_profile)
+
     # Install the network-layer egress chokepoint FIRST — before the provider
     # audit below (which itself probes cloud /v1/models). When LCT_LOCAL_ONLY
     # is on, every httpx/websocket/urllib call to a non-local host now

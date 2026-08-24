@@ -9,7 +9,7 @@ Privacy note (doc §4): ``redaction_applied`` is an UNVERIFIED upstream claim �
 boolean can't prove the text is pseudonymized. LCT trusts it; the real guarantee
 (content-bound stamp + leak-verify) is ADR-038's job. The only redaction rule the
 contract enforces is the ``owner_local_raw`` gate (and the server additionally
-requires ``LCT_MIRROR_RAW=1`` to honor it). The models are fail-closed:
+requires a ``personal_private`` deployment profile to honor it). The models are fail-closed:
 ``extra="forbid"`` (so a misspelled ``redactionApplied`` is rejected, not silently
 ignored) and ``redaction_applied`` is REQUIRED (so omitting privacy can't default
 un-redacted text to "safe").
@@ -63,7 +63,7 @@ class RawTurnsPayloadV1(BaseModel):
     owner_id: str
     privacy: RawTurnPrivacyV1  # REQUIRED — no fail-open default (codex #2)
     # Request-level opt-in to store RAW (un-redacted) text. The server ALSO requires
-    # LCT_MIRROR_RAW=1; this flag alone is not sufficient (doc §4.4 / §6.4).
+    # a personal-private deployment; this flag alone is not sufficient.
     owner_local_raw: bool = False
     turns: List[RawTurnV1] = Field(..., min_length=1)
 

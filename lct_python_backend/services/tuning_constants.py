@@ -24,6 +24,14 @@ from __future__ import annotations
 # below and reasonable transcript chunks.
 STREAMING_CONTEXT_WINDOW_SIZE: int = 80
 
+# Local OpenAI-compatible servers in the current provider pool have materially
+# smaller effective context budgets than the 128K online model used to tune the
+# window above.  At ~75 nodes an 80-node prompt reaches 37-42K characters plus
+# the system prompt and 4K output budget: LM Studio rejects it with HTTP 400 and
+# Ollama begins returning non-JSON.  Keep the online window unchanged while
+# bounding local imports to a stable nearby-context budget.
+LOCAL_STREAMING_CONTEXT_WINDOW_SIZE: int = 40
+
 # Fields included in the trimmed prior-node context. Anything outside
 # this list is dropped before serialization. Keep this minimal — every
 # field multiplies token cost across STREAMING_CONTEXT_WINDOW_SIZE.

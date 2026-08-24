@@ -12,6 +12,17 @@ export class ServerlessDataProvider extends DataProvider {
     this.apiKey = apiKey;
     
     this._conversations = {
+      listSaved: async () => {
+        const convos = await listConversations();
+        convos.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        return {
+          json: async () => ({
+            items: convos,
+            next_url: null,
+            total: convos.length
+          })
+        };
+      },
       fetchNext: async () => {
         // Mock list of conversations
         const convos = await listConversations();

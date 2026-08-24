@@ -109,3 +109,54 @@ def test_edges_out_preserves_multiple_edges_between_the_same_pair():
 
     assert len(a_edges) == 2
     assert {e["relationship_type"] for e in a_edges} == {"supports", "follows"}
+
+
+def test_member_of_edges_serialize_as_memberships_not_contextual_relations():
+    """Canonical memberships survive lean export without polluting semantic edges."""
+    child, primary, secondary = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    child_node = _fake_node(child, "Child")
+    child_node.parent_id = primary
+    primary_node = _fake_node(primary, "Primary")
+    primary_node.level = 2
+    secondary_node = _fake_node(secondary, "Secondary")
+    secondary_node.level = 2
+    rels = [
+        _fake_rel(
+            child,
+            primary,
+            relationship_type="member_of",
+            relationship_subtype="thematic:primary",
+            confidence=0.98,
+        ),
+        _fake_rel(
+            child,
+            secondary,
+            relationship_type="member_of",
+            relationship_subtype="thematic:secondary",
+            confidence=0.72,
+        ),
+    ]
+
+    graph = build_graph_data_from_nodes(
+        [child_node, primary_node, secondary_node],
+        rels,
+    )
+    by_id = {node["id"]: node for node in graph}
+
+    assert by_id[str(child)]["memberships"] == [
+        {
+            "parent_id": str(primary),
+            "lens": "thematic",
+            "role": "primary",
+            "confidence": 0.98,
+        },
+        {
+            "parent_id": str(secondary),
+            "lens": "thematic",
+            "role": "secondary",
+            "confidence": 0.72,
+        },
+    ]
+    assert by_id[str(child)]["contextual_relation"] == {}
+    assert by_id[str(primary)]["edge_relations"] == []
+    assert by_id[str(secondary)]["edge_relations"] == []
