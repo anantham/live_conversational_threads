@@ -14,6 +14,9 @@ from lct_python_backend.services.conversation_reader import (
     fetch_conversation_bundle,
 )
 from lct_python_backend.services.graph_persistence import persist_graph
+from lct_python_backend.services.deployment_privacy_policy import (
+    select_providers_for_privacy,
+)
 from lct_python_backend.services.hierarchy_consolidator import (
     consolidate_ideas_to_topics,
     consolidate_themes_to_arcs,
@@ -24,6 +27,7 @@ from lct_python_backend.services.import_pipeline.hierarchy_integrity import (
     node_id,
     node_level,
     synchronize_hierarchy,
+    uses_faithful_edge_representation,
 )
 from lct_python_backend.services.import_pipeline.hierarchy_audit import (
     audit_hierarchy,
@@ -37,6 +41,11 @@ from lct_python_backend.services.llm_config import (
 from lct_python_backend.services.owner_context import resolve_owner_id
 from lct_python_backend.services.transcript.transcript_identity import (
     canonicalize_batch_node_ids,
+)
+from lct_python_backend.services.tuning_constants import (
+    MIN_IDEAS_FOR_TOPIC_CONSOLIDATION,
+    MIN_THEMES_FOR_ARC_CONSOLIDATION,
+    MIN_TOPICS_FOR_THEME_CONSOLIDATION,
 )
 
 logger = logging.getLogger("lct_backend")
@@ -118,7 +127,7 @@ async def repair_persisted_hierarchy(
     group_id: Optional[str] = None,
     owner_id: str = "anonymous",
 ) -> Dict[str, Any]:
-    """Repair L1->L2, rebuild L3->L5, audit, then atomically re-materialize."""
+    """Repair L1->L2, best-effort upper tiers, then atomically re-materialize."""
 
     conversation = await _resolve_conversation(
         db,
@@ -143,50 +152,102 @@ async def repair_persisted_hierarchy(
     if not base_nodes:
         raise ValueError("conversation has no level-1/level-2 graph to repair")
 
+    materialize_membership_edges = uses_faithful_edge_representation(base_nodes)
     edge_stats = clean_faithful_edges(base_nodes)
     providers_config = await load_llm_providers(db, include_secrets=True)
-    providers = (
+    configured_providers = (
         providers_config.get("providers")
         if isinstance(providers_config, dict)
         else []
     ) or []
+    metadata = dict(conversation.source_metadata or {})
+    privacy = metadata.get("privacy") if isinstance(metadata.get("privacy"), dict) else None
+    providers = select_providers_for_privacy(configured_providers, privacy)
+    logger.info(
+        "[HIERARCHY REPAIR][privacy] local_llm_ok=%s external_llm_ok=%s provider_ids=%s",
+        bool(privacy and privacy.get("local_llm_ok") is True),
+        bool(privacy and privacy.get("external_llm_ok") is True),
+        [str(provider.get("id") or "unnamed") for provider in providers],
+    )
 
     repair_stats = await repair_chunk_idea_hierarchy(
         base_nodes,
         providers=providers,
     )
     ideas = [node for node in base_nodes if node_level(node) == 2]
-    topics = await consolidate_ideas_to_topics(ideas, providers=providers)
-    if not topics:
-        raise RuntimeError("Hierarchy repair produced no topic tier")
-    topics = canonicalize_batch_node_ids(topics, existing_nodes=base_nodes)
+    topics = []
+    themes = []
+    arcs = []
+    title = ""
+    summary = ""
+    try:
+        if len(ideas) >= MIN_IDEAS_FOR_TOPIC_CONSOLIDATION:
+            generated_topics = await consolidate_ideas_to_topics(
+                ideas, providers=providers
+            )
+            if generated_topics:
+                topics = canonicalize_batch_node_ids(
+                    generated_topics, existing_nodes=base_nodes
+                )
+            else:
+                logger.warning(
+                    "[HIERARCHY REPAIR] topic consolidation returned no nodes; "
+                    "persisting the complete L1-L2 repair"
+                )
 
-    themes = await consolidate_topics_to_themes(topics, providers=providers)
-    if not themes:
-        raise RuntimeError("Hierarchy repair produced no theme tier")
-    themes = canonicalize_batch_node_ids(
-        themes,
-        existing_nodes=[*base_nodes, *topics],
-    )
+        if len(topics) >= MIN_TOPICS_FOR_THEME_CONSOLIDATION:
+            generated_themes = await consolidate_topics_to_themes(
+                topics, providers=providers
+            )
+            if generated_themes:
+                themes = canonicalize_batch_node_ids(
+                    generated_themes,
+                    existing_nodes=[*base_nodes, *topics],
+                )
+            else:
+                logger.warning(
+                    "[HIERARCHY REPAIR] theme consolidation returned no nodes; "
+                    "persisting through the topic tier"
+                )
 
-    arcs, title, summary = await consolidate_themes_to_arcs(
-        themes,
-        providers=providers,
-    )
-    if not arcs:
-        raise RuntimeError("Hierarchy repair produced no arc tier")
-    arcs = canonicalize_batch_node_ids(
-        arcs,
-        existing_nodes=[*base_nodes, *topics, *themes],
-    )
+        if len(themes) >= MIN_THEMES_FOR_ARC_CONSOLIDATION:
+            generated_arcs, title, summary = await consolidate_themes_to_arcs(
+                themes,
+                providers=providers,
+            )
+            if generated_arcs:
+                arcs = canonicalize_batch_node_ids(
+                    generated_arcs,
+                    existing_nodes=[*base_nodes, *topics, *themes],
+                )
+            else:
+                title = ""
+                summary = ""
+                logger.warning(
+                    "[HIERARCHY REPAIR] arc consolidation returned no nodes; "
+                    "persisting through the theme tier"
+                )
+    except Exception as exc:  # noqa: BLE001 - repaired base hierarchy remains valid
+        logger.exception(
+            "[HIERARCHY REPAIR] optional upper-tier rebuild failed; "
+            "persisting through level=%d: %s",
+            max(node_level(node) for node in [*base_nodes, *topics, *themes]),
+            exc,
+        )
 
     repaired_nodes = [*base_nodes, *topics, *themes, *arcs]
-    hierarchy_stats = synchronize_hierarchy(repaired_nodes, through_parent_level=5)
+    highest_level = max(node_level(node) for node in repaired_nodes)
+    hierarchy_stats = synchronize_hierarchy(
+        repaired_nodes,
+        through_parent_level=highest_level,
+        materialize_membership_edges=materialize_membership_edges,
+    )
     _assert_unique_ids(repaired_nodes)
     covered_turns = _assert_turn_coverage(repaired_nodes, utterances)
-    audit_stats = audit_hierarchy(repaired_nodes, through_parent_level=5)
+    audit_stats = audit_hierarchy(
+        repaired_nodes, through_parent_level=highest_level
+    )
 
-    metadata = dict(conversation.source_metadata or {})
     if title:
         metadata["conversation_title"] = title
     if summary:

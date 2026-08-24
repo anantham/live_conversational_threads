@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Dict, Iterable, List
+from typing import Any, Dict, Iterable, List, Optional
 
 
 MEMBERSHIP_RELATIONSHIP_TYPE = "member_of"
@@ -32,8 +32,28 @@ def unique_ids(values: Iterable[Any]) -> List[str]:
     return result
 
 
+def uses_faithful_edge_representation(nodes: List[Dict[str, Any]]) -> bool:
+    """Return whether every node carries the lossless ``edges_out`` contract.
+
+    A partially faithful graph is ambiguous: choosing either persistence lane
+    would silently discard the other representation. Fail before mutation so a
+    caller must normalize the graph deliberately.
+    """
+
+    presence = ["edges_out" in node for node in nodes if isinstance(node, dict)]
+    if any(presence) and not all(presence):
+        raise ValueError(
+            "Graph mixes faithful edges_out nodes with legacy-authored nodes; "
+            "normalize one edge representation before hierarchy synchronization"
+        )
+    return bool(presence and all(presence))
+
+
 def synchronize_hierarchy(
-    nodes: List[Dict[str, Any]], *, through_parent_level: int = 5
+    nodes: List[Dict[str, Any]],
+    *,
+    through_parent_level: int = 5,
+    materialize_membership_edges: Optional[bool] = None,
 ) -> Dict[str, int]:
     """Preserve overlapping memberships and derive one stable zoom projection.
 
@@ -42,7 +62,16 @@ def synchronize_hierarchy(
     are a projection cache: exactly one primary parent is selected per child so
     the current drill-down UI can render a tree without erasing secondary
     affiliations.
+
+    ``persist_graph`` selects its lossless relationship path when ``edges_out``
+    is present. Therefore legacy-authored graphs keep canonical memberships only
+    in ``memberships``; injecting even one membership ``edges_out`` key would
+    hide their predecessor/successor and ``edge_relations`` fields. Faithful
+    read-model graphs continue to materialize membership edges losslessly.
     """
+
+    if materialize_membership_edges is None:
+        materialize_membership_edges = uses_faithful_edge_representation(nodes)
 
     dangling_removed = 0
     parent_links_set = 0
@@ -162,37 +191,40 @@ def synchronize_hierarchy(
             ]
             membership_links += len(parent_ids)
 
-            non_membership_edges = [
-                dict(edge)
-                for edge in (child.get("edges_out") or [])
-                if isinstance(edge, dict)
-                and str(edge.get("relationship_type") or "").strip()
-                != MEMBERSHIP_RELATIONSHIP_TYPE
-            ]
-            membership_edges = []
-            for membership in child["memberships"]:
-                parent_id = membership["parent_id"]
-                role = membership["role"]
-                stable_id = uuid.uuid5(
-                    uuid.NAMESPACE_URL,
-                    f"lct:{MEMBERSHIP_LENS}:{child_id}:{parent_id}",
-                )
-                membership_edges.append(
-                    {
-                        "id": str(stable_id),
-                        "to": parent_id,
-                        "relationship_type": MEMBERSHIP_RELATIONSHIP_TYPE,
-                        "relationship_subtype": f"{MEMBERSHIP_LENS}:{role}",
-                        "explanation": "Semantic membership used to derive the zoom projection",
-                        "strength": 1.0,
-                        "confidence": membership["confidence"],
-                        "is_bidirectional": False,
-                        "supporting_utterance_ids": unique_ids(
-                            child.get("utterance_ids") or []
-                        ),
-                    }
-                )
-            child["edges_out"] = [*non_membership_edges, *membership_edges]
+            if materialize_membership_edges:
+                non_membership_edges = [
+                    dict(edge)
+                    for edge in (child.get("edges_out") or [])
+                    if isinstance(edge, dict)
+                    and str(edge.get("relationship_type") or "").strip()
+                    != MEMBERSHIP_RELATIONSHIP_TYPE
+                ]
+                membership_edges = []
+                for membership in child["memberships"]:
+                    parent_id = membership["parent_id"]
+                    role = membership["role"]
+                    stable_id = uuid.uuid5(
+                        uuid.NAMESPACE_URL,
+                        f"lct:{MEMBERSHIP_LENS}:{child_id}:{parent_id}",
+                    )
+                    membership_edges.append(
+                        {
+                            "id": str(stable_id),
+                            "to": parent_id,
+                            "relationship_type": MEMBERSHIP_RELATIONSHIP_TYPE,
+                            "relationship_subtype": f"{MEMBERSHIP_LENS}:{role}",
+                            "explanation": "Semantic membership used to derive the zoom projection",
+                            "strength": 1.0,
+                            "confidence": membership["confidence"],
+                            "is_bidirectional": False,
+                            "supporting_utterance_ids": unique_ids(
+                                child.get("utterance_ids") or []
+                            ),
+                        }
+                    )
+                child["edges_out"] = [*non_membership_edges, *membership_edges]
+            else:
+                child.pop("edges_out", None)
 
         projection_children: Dict[str, List[str]] = {
             parent_id: [] for parent_id in valid_parent_ids
@@ -207,13 +239,16 @@ def synchronize_hierarchy(
         if node_level(node) == through_parent_level:
             node["parent_id"] = None
             node["memberships"] = []
-            node["edges_out"] = [
-                dict(edge)
-                for edge in (node.get("edges_out") or [])
-                if isinstance(edge, dict)
-                and str(edge.get("relationship_type") or "").strip()
-                != MEMBERSHIP_RELATIONSHIP_TYPE
-            ]
+            if materialize_membership_edges:
+                node["edges_out"] = [
+                    dict(edge)
+                    for edge in (node.get("edges_out") or [])
+                    if isinstance(edge, dict)
+                    and str(edge.get("relationship_type") or "").strip()
+                    != MEMBERSHIP_RELATIONSHIP_TYPE
+                ]
+            else:
+                node.pop("edges_out", None)
     return {
         "dangling_removed": dangling_removed,
         "parent_links_set": parent_links_set,

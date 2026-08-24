@@ -160,3 +160,24 @@ Chosen.
   memberships, one primary parent per projected view, and preservation of
   secondary parents.
 
+## Amendment: edge-representation boundary (2026-08-24)
+
+Hierarchy synchronization must preserve the graph's authored edge
+representation. Legacy import graphs keep canonical hierarchy in each node's
+`memberships` array and keep temporal/semantic relationships in their legacy
+fields. Faithful read-model graphs, where every node has `edges_out`, continue
+to materialize `member_of` edges there.
+
+This boundary is required because `persist_graph` intentionally selects one
+relationship persistence lane for the whole graph. Injecting `edges_out` into
+only the hierarchy-touched nodes would select the faithful lane and silently
+hide legacy `predecessor`, `successor`, and `edge_relations` relationships.
+Partially faithful graphs are therefore invalid: synchronization fails with a
+descriptive error until the caller normalizes every node to one representation.
+
+Upper hierarchy tiers are also conditional rather than mandatory. L1-L2 repair
+is the durable minimum; topic, theme, and arc consolidation run only after their
+standard input thresholds are met. An unavailable or empty optional tier leaves
+the highest complete lower tier valid and persistable instead of discarding a
+successful repair.
+

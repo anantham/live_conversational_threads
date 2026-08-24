@@ -1,6 +1,53 @@
 # ISSUES
 
-Last updated: 2026-08-23
+Last updated: 2026-08-24
+
+## 2026-08-24 — PR #172 independent-review hierarchy findings (REPAIRED LOCALLY)
+
+**Summary:** Independent Grok review found that membership synchronization could
+silently select the wrong relationship persistence lane, persisted hierarchy
+repair did not reapply the conversation's ADR-063 provider permissions, and the
+repair path required unjustified upper tiers for short conversations.
+
+**Impact:** High before repair. The first bug could omit authored temporal and
+argument edges, the second could send transcript-derived graph text to an
+external provider despite private-only consent, and the third discarded valid
+L1-L2 repair work.
+
+**Blocker status:** Repaired locally with behavior tests; fresh independent
+review and remote CI are required before merge.
+
+**Resolution:** Hierarchy synchronization now preserves an all-legacy or
+all-faithful edge contract and refuses mixed inputs. Persisted repair uses the
+same fail-closed privacy/provider selector as initial extraction. Topic, theme,
+and arc generation use standard thresholds and remain optional above a durable
+L1-L2 repair. Focused, broader, and real-Postgres suites pass.
+
+**Recommended next step:** Push the repair, run Grok against the exact new head,
+and merge only if the parsed review has zero findings and every required GitHub
+check is green.
+
+## 2026-08-24 — Grok review wrapper mixed diagnostics with JSON (REPAIRED LOCALLY)
+
+**Summary:** The independent-review script redirected stderr into stdout and
+then parsed the combined stream as JSON. Grok also returns the requested schema
+inside an outer `structuredOutput` envelope. A valid review therefore failed
+closed as an unparseable result.
+
+**Impact:** Medium operationally. The gate remained safe, but it could not
+distinguish a real review finding from transport telemetry and blocked an
+otherwise actionable review.
+
+**Blocker status:** Repaired locally; the next live Grok review is the behavioral
+acceptance test.
+
+**Resolution:** Stdout is stored and parsed independently, stderr is retained as
+a separate diagnostic artifact, and `structuredOutput` is unwrapped before the
+verdict/findings schema is evaluated. Unknown shapes and command failures still
+fail closed.
+
+**Recommended next step:** Require the repaired wrapper to produce a parsed,
+head-SHA-bound zero-finding artifact before invoking the merge wrapper.
 
 ## 2026-08-23 — Postgres integration gate lacks privacy-aware fixtures and shares async loops (REPAIRED LOCALLY)
 
@@ -17,8 +64,8 @@ PRs cannot reach a green required-check state. The privacy failure is a stale
 fake, not evidence that production policy should be weakened; the different-loop
 500 masked the endpoint's actual ADR-063 raw-retention behavior.
 
-**Blocker status:** The fixture repair passes the complete 55-test real-Postgres
-gate locally; remote CI confirmation is pending. It does not invalidate the
+**Blocker status:** Resolved. The fixture repair passed the complete 55-test
+real-Postgres gate locally and PR #172's remote Linux job. It does not invalidate the
 Browse provider, drag/drop, or offline-entry behavior, whose unit, browser,
 build, preview, and Vercel checks pass.
 
@@ -32,8 +79,8 @@ the integration boundary now asserts 200 for `personal_private` and 400 for
 `hosted_shared`, even when the retired `LCT_MIRROR_RAW` flag is set. Production
 privacy behavior was not changed.
 
-**Recommended next step:** Apply the test-only commit to PR #172 and require the
-GitHub real-Postgres job to reproduce the local 55/55 pass before merge.
+**Recommended next step:** Keep the real-Postgres job required on future PRs so
+privacy-aware fixtures and async loop ownership remain continuously exercised.
 
 ## 2026-08-15 — Provider trust classification has no dedicated settings control
 

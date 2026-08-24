@@ -117,3 +117,15 @@ to `hosted_shared` or leave providers classified `external`. Extraction will
 stop with a diagnostic; the original transcript remains in Indra's Net and can
 be replayed after configuration is corrected.
 
+## Amendment: persisted graph repair is an inference boundary (2026-08-24)
+
+The same privacy/provider intersection applies to every model-assisted graph
+generation entrypoint, including repair of an already persisted conversation.
+Persisted repair must read the conversation's stored `source_metadata.privacy`
+block and call only providers permitted by `select_providers_for_privacy`.
+Missing privacy metadata fails closed before any model call or graph write.
+
+Diagnostics may record consent booleans and selected provider identifiers, but
+must not log transcript-derived graph text or model reasoning. A repair route is
+not exempt merely because the transcript has already been stored locally.
+

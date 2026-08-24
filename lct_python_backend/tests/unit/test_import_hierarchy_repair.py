@@ -8,6 +8,10 @@
 - Retry bypasses a cached rejected response, while one unambiguous idea may own its whole batch.
 - Adjacent-tier memberships may overlap while the zoom projection has one primary parent.
 - Faithful edges lose dangling, duplicate, and cross-tier temporal rows only.
+- Synchronizing a legacy-authored graph must not silently promote it to the
+  faithful `edges_out` persistence lane and hide its temporal/semantic fields.
+- A partially faithful graph fails descriptively instead of choosing a lossy
+  persistence lane.
 """
 
 import pytest
@@ -271,6 +275,43 @@ def test_synchronize_hierarchy_preserves_overlapping_memberships():
     ]
     assert stats["overlapping_children"] == 1
     assert stats["membership_links"] == 2
+
+
+def test_synchronize_hierarchy_keeps_legacy_graph_in_legacy_edge_lane():
+    chunk = _node("c1", 1)
+    sibling = _node("c2", 1)
+    idea = _node("i1", 2, children=["c1", "c2"])
+    for node in (chunk, sibling, idea):
+        node.pop("edges_out")
+    chunk["successor"] = "c2"
+    sibling["predecessor"] = "c1"
+    sibling["edge_relations"] = [
+        {
+            "related_node": "c1",
+            "relation_type": "supports",
+            "relation_text": "The first chunk supports the second.",
+        }
+    ]
+
+    synchronize_hierarchy([chunk, sibling, idea], through_parent_level=2)
+
+    assert all("edges_out" not in node for node in (chunk, sibling, idea))
+    assert chunk["successor"] == "c2"
+    assert sibling["predecessor"] == "c1"
+    assert sibling["edge_relations"][0]["relation_type"] == "supports"
+    assert chunk["memberships"][0]["parent_id"] == "i1"
+
+
+def test_synchronize_hierarchy_rejects_mixed_edge_representations():
+    faithful_chunk = _node("c1", 1)
+    legacy_idea = _node("i1", 2, children=["c1"])
+    legacy_idea.pop("edges_out")
+
+    with pytest.raises(ValueError, match="mixes faithful edges_out"):
+        synchronize_hierarchy(
+            [faithful_chunk, legacy_idea],
+            through_parent_level=2,
+        )
 
 
 def test_clean_faithful_edges_keeps_only_valid_unique_edges():

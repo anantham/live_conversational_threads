@@ -1,5 +1,63 @@
 # WORKLOG
 
+## 2026-08-24T10:30:00+05:30 — Option B: repair hierarchy edge, privacy, and optional-tier invariants
+
+- Context: the independent Grok review of PR #172 at head `d368b01` found three
+  merge-blocking issues: hierarchy synchronization could switch a legacy graph
+  into the faithful persistence lane and hide temporal/semantic edges; persisted
+  hierarchy repair bypassed ADR-063 provider filtering; and short valid L1-L2
+  repairs failed unless all upper tiers were generated. The review gate also
+  mixed Grok stderr telemetry into stdout and could not parse the otherwise
+  valid `structuredOutput` envelope. The operator selected Option B: repair the
+  shared invariants and the gate before re-review and merge.
+- Root-cause evidence:
+  - A content-free reproduction showed a legacy graph had no `edges_out` before
+    synchronization, gained it afterward, and then exposed only `member_of`
+    relationships to the faithful persistence lane despite retaining its legacy
+    successor field.
+  - Provider-selection inspection showed persisted repair passed every enabled
+    provider directly to all hierarchy model calls without consulting stored
+    privacy metadata.
+  - The repair orchestrator required non-empty topics, themes, and arcs even
+    below the existing consolidation thresholds.
+  - The Grok CLI emitted parseable structured JSON on stdout and progress on
+    stderr, while the wrapper combined both streams and did not unwrap the
+    outer `structuredOutput` field.
+- Changes:
+  - `hierarchy_integrity.py` now detects faithful-versus-legacy representation,
+    rejects mixed graphs descriptively, and materializes membership edges only
+    for faithful graphs.
+  - `import_hierarchy_repair.py` captures that representation before appending
+    newly generated nodes, so generated defaults cannot change persistence
+    semantics.
+  - `persisted_hierarchy_repair.py` applies ADR-063 provider filtering and
+    fail-closed missing-privacy behavior; topic/theme/arc tiers use the standard
+    thresholds and are best-effort above a durable L1-L2 repair.
+  - Behavioral tests cover the public persistence result, privacy filtering and
+    fail-closed behavior, short repairs, empty optional tiers, and legacy edge
+    preservation.
+  - `review_pr_with_independent_ai.ps1` separates stderr diagnostics from JSON
+    stdout and unwraps Grok's `structuredOutput` result before gate evaluation.
+- Validation:
+  - New tests failed in the four predicted places before the implementation.
+  - Focused Option B suite: **17 passed**.
+  - Broader affected backend suite: **58 passed**.
+  - Exact real-Postgres workflow-equivalent suite: **55 passed**.
+  - Full backend unit suite with an explicit writable base temp: **1,928 passed,
+    2 failed**. Both failures reproduce the branch's pre-existing local Windows
+    environment issues: OpenAI/httpx `proxies` incompatibility and traversal
+    resolution touching a denied Windows path. Neither is in an Option B path;
+    required Linux CI remains authoritative.
+  - PowerShell syntax parsing and `git diff --check` passed.
+- Impact: legacy argument/temporal topology can no longer disappear when
+  hierarchy memberships are synchronized; persisted repair cannot egress a
+  private conversation to an unapproved provider; short meetings retain useful
+  repaired L1-L2 graphs when higher abstractions are not justified.
+- Confidence: 0.96. Fallback: if independent review or CI finds a remaining
+  representation ambiguity, leave PR #172 unmerged and normalize the complete
+  graph explicitly at the persistence boundary rather than weakening either
+  edge lane or privacy selection.
+
 ## 2026-08-23T17:27:27+05:30 — Repair PR #172's real-Postgres integration gate
 
 - Context: PR #172's frontend Browse repair was blocked by three deterministic

@@ -19,6 +19,7 @@ from lct_python_backend.services.import_pipeline.hierarchy_integrity import (
     node_level as _level,
     synchronize_hierarchy,
     unique_ids as _unique,
+    uses_faithful_edge_representation,
 )
 from lct_python_backend.services.import_pipeline.idea_repair_llm import (
     REPAIR_GROUP_BATCH_SIZE,
@@ -195,13 +196,18 @@ async def repair_chunk_idea_hierarchy(
 ) -> Dict[str, int]:
     """Make L1->L2 ownership complete, using small LLM calls only when needed."""
 
+    materialize_membership_edges = uses_faithful_edge_representation(nodes)
     missing_groups, adopted = identify_missing_idea_groups(nodes)
     created: List[Dict[str, Any]] = []
     for start in range(0, len(missing_groups), max(1, int(batch_size))):
         batch = missing_groups[start : start + max(1, int(batch_size))]
         created.extend(await _repair_batch_resilient(batch, providers))
     nodes.extend(created)
-    sync_stats = synchronize_hierarchy(nodes, through_parent_level=2)
+    sync_stats = synchronize_hierarchy(
+        nodes,
+        through_parent_level=2,
+        materialize_membership_edges=materialize_membership_edges,
+    )
     logger.info(
         "[HIERARCHY REPAIR] groups=%d ideas_created=%d chunks_adopted=%d dangling_removed=%d",
         len(missing_groups),
