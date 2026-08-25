@@ -1,6 +1,25 @@
 # ISSUES
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
+
+## 2026-08-25 — Overview-collapse browser assertion contradicts compact-header behavior (OPEN, NON-BLOCKING)
+
+**Summary:** The existing `.threads` opener browser journey expects the
+conversation title heading to disappear after activating “Hide conversation
+overview.” The product correctly switches the control to “Show conversation
+overview” but retains the title in the compact persistent header, so the stale
+heading-count assertion fails reproducibly.
+
+**Impact:** Low and test-only. The overview control changes state and the viewer
+remains usable; this does not affect the NodeDetail focus or Library accessible-
+name repairs. The focused regression for the latter passes.
+
+**Blocker status:** Non-blocking for the scoped accessibility repair. The full
+frontend unit suite, lint, build, and new focused browser test are green.
+
+**Recommended next step:** In a separately approved test-contract repair,
+assert that overview-only metadata collapses while the compact header title and
+navigation remain visible.
 
 ## 2026-08-24 — Partial optional hierarchy tier aborted valid lower graph (REPAIRED LOCALLY)
 

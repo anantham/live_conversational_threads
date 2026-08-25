@@ -384,7 +384,6 @@ export default function Browse() {
                     type="button"
                     onClick={() => navigate(`/view/${encodeURIComponent(record.id)}`)}
                     className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded px-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 sm:min-h-0"
-                    aria-label={`Open ${record.title}`}
                   >
                     <HardDrive aria-hidden="true" className="shrink-0 text-slate-400" size={17} />
                     <span className="min-w-0 flex-1">
@@ -515,7 +514,6 @@ export default function Browse() {
                     type="button"
                     onClick={() => navigate(`/conversation/${conv.file_id}`)}
                     className="min-h-11 min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 sm:min-h-0"
-                    aria-label={`Open ${conv.file_name}`}
                   >
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-medium text-gray-800 truncate">

@@ -10,12 +10,14 @@ import NodeDetail from "./NodeDetail";
  * - Shift+Tab from the initially focused panel wraps to the final dialog control.
  * - Escape invokes the public close callback.
  * - Closing restores focus to the control that opened the detail view.
+ * - Switching nodes in an open dialog preserves the user's current navigation focus.
  * - Artifact transcript evidence is read-only when no conversation id exists.
  */
 
 let container;
 let root;
 let opener;
+let navigationControl;
 let originalScrollTo;
 
 beforeEach(() => {
@@ -34,6 +36,8 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   opener.remove();
+  navigationControl?.remove();
+  navigationControl = null;
   if (originalScrollTo) {
     HTMLElement.prototype.scrollTo = originalScrollTo;
   } else {
@@ -89,6 +93,35 @@ describe("NodeDetail dialog behavior", () => {
     });
 
     expect(document.activeElement).toBe(closeButton);
+  });
+
+  it("does not steal focus when the selected node changes while the dialog stays open", () => {
+    const onClose = vi.fn();
+    act(() => {
+      root.render(
+        <NodeDetail
+          node={{ id: "claim-1", node_name: "First claim" }}
+          onClose={onClose}
+        />,
+      );
+    });
+
+    navigationControl = document.createElement("button");
+    navigationControl.textContent = "Next node";
+    document.body.appendChild(navigationControl);
+    navigationControl.focus();
+
+    act(() => {
+      root.render(
+        <NodeDetail
+          node={{ id: "claim-2", node_name: "Second claim" }}
+          onClose={onClose}
+        />,
+      );
+    });
+
+    expect(document.activeElement).toBe(navigationControl);
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain("Second claim");
   });
 
   it("keeps artifact transcript evidence read-only without a conversation id", () => {

@@ -1,5 +1,35 @@
 # WORKLOG
 
+## 2026-08-25T20:35:00+05:30 — Gemini accessibility review repairs
+
+- Gemini 3.1 Pro High independently reviewed PR #175 at exact head `44e498b`
+  using a privacy-sanitized source-and-test diff. The fail-closed gate returned
+  three findings.
+- Confirmed two findings at their shared UI boundaries: `NodeDetail` tied its
+  dialog focus lifecycle to node object identity, so node-to-node navigation
+  re-focused the panel; Browse conversation buttons replaced their visible
+  metadata with title-only `aria-label` values.
+- Rejected the reported epoch-link defect: `buildMediaSeekUrl` and
+  `mediaOffsetLabel` both reject epoch-scale timestamps, and the existing
+  `mediaSeek.test.js` regression explicitly covers that boundary.
+- Repair: focus initialization/restoration now follows dialog open/close state,
+  and Library buttons derive their accessible names from the rendered title and
+  metadata. Added public-behavior regressions for both paths.
+- Predicted validation: the new focus test fails on the reviewed head and passes
+  after the lifecycle repair; the browser-accessible name includes `3 nodes`;
+  focused unit/E2E tests, scoped lint, and the production build remain green.
+- Observed validation: **245/245** frontend unit tests passed; scoped ESLint and
+  the production build passed; the new browser accessibility scenario passed.
+  Impeccable's detector produced one false positive by combining the remove
+  button's normal `text-slate-300` with its separate `hover:bg-rose-50` state.
+- An older combined browser journey failed twice on a stale assertion that a
+  collapsed overview removes the title. The UI intentionally preserves the
+  title in its compact header and correctly changes the action to “Show
+  conversation overview”; this unrelated test-contract mismatch is recorded in
+  `ISSUES.md` without weakening the scoped repair.
+- Confidence: 0.95. Fallback: revert this isolated repair if real keyboard or
+  screen-reader verification contradicts the automated behavior tests.
+
 ## 2026-08-24T08:35:00+05:30 — Close Grok's partial optional-tier finding
 
 - Context: the fail-closed merge wrapper's second independent Grok review at

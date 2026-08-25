@@ -107,11 +107,12 @@ export default function NodeDetail({
   mediaRefs = [],
 }) {
   const safeNode = node ?? null;
+  const isOpen = Boolean(safeNode);
   const panelRef = useRef(null);
   const titleId = useId();
 
   useEffect(() => {
-    if (!safeNode) return undefined;
+    if (!isOpen) return undefined;
     const panel = panelRef.current;
     const previousFocus = document.activeElement;
     panel?.focus();
@@ -147,7 +148,7 @@ export default function NodeDetail({
         previousFocus.focus();
       }
     };
-  }, [safeNode]);
+  }, [isOpen]);
 
   // ADR-032 Part H — structured utterances + windowed inline correction.
   const [utterances, setUtterances] = useState(() => artifactUtterances);
