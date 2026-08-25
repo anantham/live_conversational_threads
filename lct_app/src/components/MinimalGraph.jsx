@@ -46,7 +46,7 @@ import MinimalGraphPanels from "./graph/MinimalGraphPanels";
 import { mglog } from "./graph/minimalGraphDebug";
 import { MIN_READABLE_ZOOM, repackSubset } from "./graphSimilarityLayout";
 
-// ADR-030 Â§D4: custom node renderer with three color modes + state markers.
+// ADR-030 §D4: custom node renderer with three color modes + state markers.
 // Cluster nodes are still default ReactFlow rendering (separate concern).
 const NODE_TYPES = { conversational: ConversationNode };
 const EDGE_TYPES = {};
@@ -127,7 +127,7 @@ function MinimalGraphInner({
     },
     [conversationId]
   );
-  // ADR-030 Â§D4: color mode (tier | speaker | temporal). Default: tier.
+  // ADR-030 §D4: color mode (tier | speaker | temporal). Default: tier.
   // Persisted per conversation via saveConversationDraft when conversationId is provided.
   const [colorMode, setColorMode] = useState(
     COLOR_MODES.includes(initialColorMode) ? initialColorMode : DEFAULT_COLOR_MODE
@@ -211,7 +211,7 @@ function MinimalGraphInner({
     initialLockedAppliedRef.current = true;
   }, [initialLandingLevel]);
 
-  // ADR-030 Â§D4: build all three color maps; the active mode picks among them.
+  // ADR-030 §D4: build all three color maps; the active mode picks among them.
   // No more auto-switching based on speaker count â€” user controls via toggle.
   const speakerColorMap = useMemo(
     () => buildSpeakerColorMapForNodes(normalizedChunk),
@@ -303,7 +303,7 @@ function MinimalGraphInner({
       if (colorMode === "argument") {
         const as = argumentStatusMap[item.id];
         if (as && (as.sup > 0 || as.reb > 0)) {
-          argStatusLabel = `${as.status} Â· ${as.sup} supporting / ${as.reb} rebutting`;
+          argStatusLabel = `${as.status} · ${as.sup} supporting / ${as.reb} rebutting`;
         }
       }
 
@@ -324,10 +324,10 @@ function MinimalGraphInner({
       // Speaker badge (prefer renamed display name over raw id)
       const speaker = item.speaker_display || item.speaker_id || "";
       const speakerLabel = speakerTurns.length > 0 ? "" : isDraftNode
-        ? (speaker ? `${speaker} Â· provisional` : "provisional")
+        ? (speaker ? `${speaker} · provisional` : "provisional")
         : speaker;
 
-      // Authored state markers per ADR-030 Â§D4. Frontend renders only what
+      // Authored state markers per ADR-030 §D4. Frontend renders only what
       // the backend authored; never invents these flags.
       const isTangent = Boolean(item.is_tangent);
       const isCrux = Boolean(item.is_crux);
@@ -985,7 +985,7 @@ function MinimalGraphInner({
     // Same node set â€” merge fresh `data` and `type` into existing nodes so
     // updates that don't change node identity (e.g. color-mode toggle, draft
     // â†’ stable transitions, authored-flag updates) take effect without
-    // discarding the user's drag-positioned coordinates. ADR-030 Â§D4.
+    // discarding the user's drag-positioned coordinates. ADR-030 §D4.
     const layoutNodeMap = new Map(layoutedDisplayNodes.map((n) => [n.id, n]));
     setInteractiveNodes((prev) =>
       prev.map((node) => {
@@ -1135,21 +1135,6 @@ function MinimalGraphInner({
     }, 80);
     return () => clearTimeout(id);
   }, [argumentTraceFrom, reactFlow, reduceMotion]);
-
-  // momentCount = raw L1 total, shown as a size signal in the count readout.
-  // Suppressed when L1 is the active tier (else it reads "134 moments Â· 134 moments").
-  const momentCount = useMemo(
-    () => normalizedChunk.filter((n) => getAuthoredSemanticLevel(n) === 1).length,
-    [normalizedChunk],
-  );
-  const semanticTierSpec = AUTHORED_LEVELS.find((s) => s.level === effectiveView?.level);
-  const semanticTierWord = displayNodes.length === 1
-    ? (semanticTierSpec?.singular || "node")
-    : (semanticTierSpec?.label || "nodes");
-  const semanticCountLabel = `${displayNodes.length} ${semanticTierWord}`
-    + (effectiveView?.level !== 1 && momentCount > 0
-      ? ` Â· ${momentCount} moment${momentCount === 1 ? "" : "s"}`
-      : "");
 
   const displayEdgesWithTrace = useMemo(() => {
     if (!traceResult.edges) return displayEdges;
@@ -1527,7 +1512,7 @@ function MinimalGraphInner({
           <span className="max-w-[260px] truncate text-amber-700">
             {normalizedChunk.find((n) => n.id === argumentTraceFrom)?.node_name || "node"}
           </span>
-          <span className="text-amber-400">Â·</span>
+          <span className="text-amber-400">·</span>
           <span className="text-amber-600">
             {traceResult.nodes ? `${traceResult.nodes.size - 1} ancestors` : "0 ancestors"}
           </span>
@@ -1707,7 +1692,6 @@ function MinimalGraphInner({
         displayEdges={displayEdges}
         normalizedChunk={normalizedChunk}
         lockedLevel={lockedLevel}
-        semanticCountLabel={semanticCountLabel}
         drilldownPath={drilldownPath}
         setDrilldownPath={setDrilldownPath}
         legacyClusterLevel={legacyClusterLevel}
