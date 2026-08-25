@@ -50,6 +50,18 @@ test.describe("responsive .threads viewer", () => {
     test("keeps the compact chrome and frames a readable first card", async ({ page }) => {
       await openFixture(page);
       await expect(page.getByRole("button", { name: "Show thread timeline" })).toBeVisible();
+      for (const name of ["Show conversation overview", "Transcript", "Focus", "Library", "Open"]) {
+        const control = page.getByRole("button", { name, exact: true });
+        await expect(control).toBeVisible();
+        const controlBox = await control.boundingBox();
+        expect(controlBox?.height).toBeGreaterThanOrEqual(44);
+      }
+      const tierControls = page.getByTitle(/^Click to lock at /);
+      expect(await tierControls.count()).toBeGreaterThan(0);
+      for (let index = 0; index < await tierControls.count(); index += 1) {
+        const controlBox = await tierControls.nth(index).boundingBox();
+        expect(controlBox?.height).toBeGreaterThanOrEqual(44);
+      }
       const firstNode = page.locator(".react-flow__node").first();
       await expect(firstNode).toBeVisible();
       const box = await firstNode.boundingBox();

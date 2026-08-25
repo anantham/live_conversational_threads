@@ -4011,3 +4011,28 @@ Manual testing not run:
   default under the full hook, and the timeout cascaded into duplicate-root and
   overlapping-`act()` warnings. With explicit owner approval, only those two
   integration tests now receive a 15s ceiling; all behavior assertions remain.
+
+### Independent Grok gate follow-up
+
+- Grok reviewed PR #175 at exact head
+  `0b476b9de9cda019cf608889a451a7d89e489fb6` and returned four falsifiable
+  findings. Three were confirmed by new red behavioral tests: static artifact
+  evidence exposed backend speaker-correction controls, the initially focused
+  node-detail panel did not wrap `Shift+Tab`, and ID-only participants appeared
+  as Library labels.
+- The reported touch-tablet regression was rejected empirically. A corrected
+  768x1024 Playwright test measured all five viewer actions and every visible
+  tier control at the 44px floor before any CSS change. No compensating CSS was
+  added.
+- `NodeDetail.jsx` now derives edit capability from a real `conversationId`,
+  renders artifact speakers as read-only text, guards the save boundary, and
+  routes initial Tab/Shift+Tab into the dialog's focus cycle.
+- `browseParticipants.js` retains `contact_id` only as a stable hidden key when
+  a human-readable `display_name` or `name` exists; IDs can no longer become
+  labels.
+- Focused validation after repair: 7/7 Vitest checks passed and the corrected
+  touch-tablet Playwright check passed. Full validation then passed: 42 Vitest
+  files / 244 tests, the 3-device responsive Playwright matrix, scoped source
+  ESLint with zero errors, and the production Vite build. The existing
+  1,170.40 kB JS / 347.43 kB gzip warning remains unchanged. Independent
+  re-review remains required before merge.

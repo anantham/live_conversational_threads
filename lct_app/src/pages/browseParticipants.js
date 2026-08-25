@@ -20,7 +20,7 @@ const MARKDOWN_WRAPPER = /^(?:\*\*|__|#+\s*|@\s*$)/;
 export function participantLabel(participant) {
   if (!participant || typeof participant !== "object") return "";
   return String(
-    participant.display_name || participant.name || participant.contact_id || "",
+    participant.display_name || participant.name || "",
   )
     .replace(/\s+/g, " ")
     .trim();

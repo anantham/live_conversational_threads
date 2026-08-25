@@ -128,7 +128,10 @@ export default function NodeDetail({
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (document.activeElement === panel) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -154,6 +157,7 @@ export default function NodeDetail({
   const [correctionSaving, setCorrectionSaving] = useState(false);
   const [correctionError, setCorrectionError] = useState("");
   const [correctionFeedback, setCorrectionFeedback] = useState("");
+  const canEditSpeakers = Boolean(conversationId);
 
   const [factCheckData, setFactCheckData] = useState(null);
   const [factCheckLoading, setFactCheckLoading] = useState(false);
@@ -503,7 +507,7 @@ export default function NodeDetail({
   const handleSaveCorrection = useCallback(
     async (utt) => {
       const newSpeaker = correctionDraft.trim();
-      if (!newSpeaker || correctionSaving) return;
+      if (!conversationId || !newSpeaker || correctionSaving) return;
       setCorrectionSaving(true);
       setCorrectionError("");
       setCorrectionFeedback("");
@@ -800,7 +804,7 @@ export default function NodeDetail({
                       ))}
                       {isEditing ? (
                         <span className="font-medium text-gray-400">{label}</span>
-                      ) : (
+                      ) : canEditSpeakers ? (
                         <button
                           type="button"
                           onClick={() => startEditUtterance(u)}
@@ -809,6 +813,8 @@ export default function NodeDetail({
                         >
                           {label}
                         </button>
+                      ) : (
+                        <span className="font-medium text-gray-500">{label}</span>
                       )}
                       <span className="text-gray-300">: </span>
                       <span>{u.text}</span>

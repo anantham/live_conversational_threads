@@ -11,6 +11,7 @@ import {
  * - Contact filters expose people, not imported metadata keys or speaker placeholders.
  * - Duplicate names differing only by case collapse to one stable filter.
  * - Real participant ids remain stable when the same display name appears elsewhere.
+ * - Opaque contact ids never become user-visible labels by themselves.
  */
 
 describe("browse participant filters", () => {
@@ -34,5 +35,19 @@ describe("browse participant filters", () => {
 
   it("keeps contact ids as the stable identity", () => {
     expect(participantKey({ contact_id: "person-42", display_name: "María" })).toBe("id:person-42");
+  });
+
+  it("omits participants that only have opaque contact ids", () => {
+    const options = buildContactOptions([
+      {
+        participants: [
+          { contact_id: "550e8400-e29b-41d4-a716-446655440000" },
+          { contact_id: "person-42" },
+          { contact_id: "x", display_name: "María" },
+        ],
+      },
+    ]);
+
+    expect(options).toEqual([{ key: "id:x", label: "María" }]);
   });
 });
