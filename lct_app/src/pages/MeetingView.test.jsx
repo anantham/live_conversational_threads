@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * - The meeting viewer should subscribe to the meeting WebSocket route.
  * - A backend transcript_final frame should render immediately in the floating caption overlay.
  * - Speaker labels from Attendee metadata should be visible in minimized caption mode.
+ * - Parallel CI load may delay the dynamic module import, without weakening any behavior assertion.
  */
 
 const navigateMock = vi.fn();
@@ -99,7 +100,7 @@ describe("MeetingView", () => {
     expect(container.textContent).toContain("Meeting transcript");
     expect(container.textContent).toContain("Aditya:");
     expect(container.textContent).toContain("the raw transcript should appear first");
-  });
+  }, 15_000);
 
   it("updates partial transcript frames in place", async () => {
     const { default: MeetingView } = await import("./MeetingView");
@@ -132,5 +133,5 @@ describe("MeetingView", () => {
     expect(container.textContent).toContain("Vatsal:");
     expect(container.textContent).toContain("raw transcript keeps changing");
     expect(container.textContent).not.toContain("raw trans...");
-  });
+  }, 15_000);
 });

@@ -4006,3 +4006,8 @@ Manual testing not run:
   installed, the in-app runtime exposed neither PerformanceObserver nor response
   status inventory, and read-only routes cannot satisfy ux-audit's mandatory
   typed-input manifest row. Product regression gates above are green.
+- Pre-push validation exposed a pre-existing timing-only failure in
+  `MeetingView.test.jsx`: the file passed 2/2 alone but twice crossed the 5s
+  default under the full hook, and the timeout cascaded into duplicate-root and
+  overlapping-`act()` warnings. With explicit owner approval, only those two
+  integration tests now receive a 15s ceiling; all behavior assertions remain.

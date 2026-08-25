@@ -715,6 +715,12 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   ESLint for the 2026-08-25 viewer repair is clean. Establish a lint baseline
   or pay down the listed files separately so new changes can use global lint as
   a meaningful gate.
+- **Resolved — `MeetingView` pre-push timing flake.** Both public-behavior tests
+  passed in isolation (~2.2s total) but the first test twice exceeded Vitest's
+  default 5s timeout under the full Git Bash pre-push suite; its timed-out React
+  work then contaminated the second test with overlapping `act()`/root state.
+  The bounded repair gives only these two integration tests 15s while retaining
+  every WebSocket, speaker-label, transcript, and replacement assertion.
 
 ## 2026-08-17 — Dependency audit and bundle-size warnings (pre-existing, non-blocking)
 
