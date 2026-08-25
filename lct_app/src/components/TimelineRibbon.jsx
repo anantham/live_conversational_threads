@@ -217,7 +217,11 @@ export default function TimelineRibbon({
         )}
       </div>
 
-      <div className="t-acc-panel">
+      <div
+        className="t-acc-panel"
+        aria-hidden={isCollapsed}
+        inert={isCollapsed ? "" : undefined}
+      >
       <div className="t-acc-panel-inner">
       <div
         className="flex w-full overflow-y-auto"

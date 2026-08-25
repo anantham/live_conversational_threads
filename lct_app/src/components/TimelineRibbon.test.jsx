@@ -143,6 +143,9 @@ describe("TimelineRibbon render", () => {
       collapse.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(container.querySelector("section")?.dataset.open).toBe("false");
+    const panel = container.querySelector(".t-acc-panel");
+    expect(panel.getAttribute("aria-hidden")).toBe("true");
+    expect(panel.hasAttribute("inert")).toBe(true);
     expect(container.querySelector('[data-testid="thread-label-gutter"]')).not.toBeNull();
     const expand = container.querySelector('button[aria-label="Show thread timeline"]');
     expect(expand).not.toBeNull();
@@ -151,6 +154,8 @@ describe("TimelineRibbon render", () => {
       expand.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(container.querySelector("section")?.dataset.open).toBe("true");
+    expect(panel.getAttribute("aria-hidden")).toBe("false");
+    expect(panel.hasAttribute("inert")).toBe(false);
     expect(container.querySelector('[data-testid="thread-label-gutter"]')).not.toBeNull();
   });
 

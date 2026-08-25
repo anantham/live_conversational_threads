@@ -155,6 +155,17 @@ describe("buildRibbonLayout — time axis", () => {
     // order preserved
     expect(row.nodes.map((n) => n.id)).toEqual(["a", "b", "z"]);
   });
+
+  it("keeps default same-row centers at least one touch target apart", () => {
+    const nodes = [
+      { id: "a", thread_id: "busy", timestamp_start: 0 },
+      { id: "b", thread_id: "busy", timestamp_start: 0.01 },
+      { id: "z", thread_id: "other", timestamp_start: 1000 },
+    ];
+    const out = buildRibbonLayout(nodes);
+    const [a, b] = out.rows.find((row) => row.threadId === "busy").nodes;
+    expect(b.x - a.x).toBeGreaterThanOrEqual(44);
+  });
 });
 
 describe("buildRibbonLayout — return-to-thread", () => {

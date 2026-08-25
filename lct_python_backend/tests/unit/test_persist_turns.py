@@ -3,7 +3,8 @@
 These verify the parts that don't need a real DB: that every Utterance is written
 WITH its ``source_identifier`` (the whole point of P1 — the markdown path drops
 it), that the privacy block + group id land on the Conversation, that re-ingest
-deletes prior turns + graph, and that deployment-aware raw retention holds.
+deletes prior turns + graph without erasing omitted recording provenance, and
+that deployment-aware raw retention holds.
 
 The DB-enforced invariants (the partial unique indexes) and the FastAPI wiring are
 covered separately by the migration + an integration test against Postgres — not
@@ -137,6 +138,52 @@ def test_reingest_replaces_turns_and_graph_keeping_conversation_id():
     assert len(_utts(db)) == 3
     assert all(u.source_identifier for u in _utts(db))
     assert result["conversation_id"] == str(existing.id)
+
+
+def test_reingest_preserves_media_refs_when_source_metadata_is_omitted():
+    media_refs = [{
+        "provider": "google_drive",
+        "kind": "video",
+        "file_id": "drive-file-123",
+        "view_url": "https://drive.google.com/file/d/drive-file-123/view",
+        "label": "Meeting recording",
+    }]
+    existing = Conversation(
+        id=uuid.uuid4(),
+        conversation_name="old",
+        conversation_type="transcript",
+        source_type="google_meet",
+        owner_id="owner-1",
+        indrasnet_group_id="G",
+        source_metadata={"media_refs": media_refs},
+        deleted_at=None,
+    )
+
+    asyncio.run(persist_turns(db=FakeDB(existing=existing), payload=_payload()))
+
+    assert existing.source_metadata["media_refs"] == media_refs
+
+
+def test_reingest_can_explicitly_clear_media_refs():
+    existing = Conversation(
+        id=uuid.uuid4(),
+        conversation_name="old",
+        conversation_type="transcript",
+        source_type="google_meet",
+        owner_id="owner-1",
+        indrasnet_group_id="G",
+        source_metadata={"media_refs": [{
+            "provider": "google_drive",
+            "file_id": "drive-file-123",
+            "view_url": "https://drive.google.com/file/d/drive-file-123/view",
+        }]},
+        deleted_at=None,
+    )
+
+    payload = _payload(source_metadata={"media_refs": []})
+    asyncio.run(persist_turns(db=FakeDB(existing=existing), payload=payload))
+
+    assert existing.source_metadata["media_refs"] == []
 
 
 def test_explicit_conversation_id_must_match_owner_and_group():

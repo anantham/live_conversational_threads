@@ -1,5 +1,40 @@
 # WORKLOG
 
+## 2026-08-25T22:55:00+05:30 — Independent-review hardening for PR #175
+
+- Claude Opus independently reviewed the privacy-sanitized exact PR #175 diff
+  at `03935e9` and returned eight candidate findings. Direct unit/browser/layout
+  probes confirmed seven underlying contract gaps and rejected one claimed
+  tablet touch-target mismatch: the existing 768px coarse-pointer test already
+  measured every relevant control at 44px or larger.
+- Root causes repaired at shared boundaries:
+  - re-ingestion now distinguishes omitted source metadata from an explicit
+    empty `media_refs` list, preserving recording links unless the caller asks
+    to clear them;
+  - collapsed overview/timeline panels remain mounted for animation but become
+    `inert` and assistive-technology hidden;
+  - the compact bottom sheet remains modal and focus-trapped, while the desktop
+    side panel is correctly non-modal;
+  - elapsed transcript timestamps remain useful without attached media and are
+    labelled “Time in conversation” instead of “Time in recording”;
+  - default same-lane timeline centers are separated by the full 44px hit area;
+  - stale browser assertions now follow the intentional persistent-title and
+    mounted-collapse contracts.
+- Predicted regressions failed before implementation in exactly five frontend
+  assertions and one backend persistence assertion. After repair: **246/246**
+  frontend unit tests, **34/34** related backend tests, scoped ESLint, production
+  build, Impeccable detector (zero findings), seven initial browser scenarios,
+  and the repaired full artifact journey passed. Two additional responsive
+  scenarios passed; one production-only scenario was intentionally skipped by
+  the local fixture.
+- The repository-wide ESLint command remains red with 109 unrelated baseline
+  errors, while all touched files lint cleanly. Local E2E also warns that the
+  worktree's symlinked/shared Fontsource files sit outside Vite's serving allow
+  list; the production build embeds the fonts successfully. Both are recorded
+  in `ISSUES.md` and did not weaken the scoped gates.
+- Confidence: 0.96. Fallback: revert this isolated follow-up commit if the fresh
+  exact-head independent review or remote CI finds a behavioral regression.
+
 ## 2026-08-25T20:35:00+05:30 — Gemini accessibility review repairs
 
 - Gemini 3.1 Pro High independently reviewed PR #175 at exact head `44e498b`

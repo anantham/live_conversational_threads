@@ -6,8 +6,8 @@ import NodeDetail from "./NodeDetail";
 
 /*
  * Test intent:
- * - Opening node details creates a named modal dialog and moves focus into it.
- * - Shift+Tab from the initially focused panel wraps to the final dialog control.
+ * - Opening node details creates a named dialog and moves focus into it.
+ * - Desktop keeps the side panel non-modal; compact touch layouts trap dialog focus.
  * - Escape invokes the public close callback.
  * - Closing restores focus to the control that opened the detail view.
  * - Switching nodes in an open dialog preserves the user's current navigation focus.
@@ -43,6 +43,7 @@ afterEach(() => {
   } else {
     delete HTMLElement.prototype.scrollTo;
   }
+  vi.unstubAllGlobals();
 });
 
 describe("NodeDetail dialog behavior", () => {
@@ -59,7 +60,7 @@ describe("NodeDetail dialog behavior", () => {
 
     const dialog = container.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
-    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(dialog.getAttribute("aria-modal")).toBeNull();
     expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
     expect(document.activeElement).toBe(dialog);
 
@@ -73,6 +74,12 @@ describe("NodeDetail dialog behavior", () => {
   });
 
   it("contains Shift+Tab when focus starts on the dialog panel", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+      matches: true,
+      media: "(max-width: 639px)",
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
     act(() => {
       root.render(
         <NodeDetail
@@ -84,6 +91,7 @@ describe("NodeDetail dialog behavior", () => {
 
     const dialog = container.querySelector('[role="dialog"]');
     const closeButton = container.querySelector('button[aria-label="Close"]');
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
     expect(document.activeElement).toBe(dialog);
 
     act(() => {
@@ -152,5 +160,7 @@ describe("NodeDetail dialog behavior", () => {
     ).toBeNull();
     expect(container.textContent).toContain("Ganesh");
     expect(container.textContent).toContain("The evidence belongs here.");
+    const elapsed = container.querySelector('[title="Time in conversation"]');
+    expect(elapsed?.textContent).toBe("0:12");
   });
 });

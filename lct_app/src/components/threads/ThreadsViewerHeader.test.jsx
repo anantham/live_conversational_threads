@@ -7,6 +7,7 @@ import ThreadsViewerHeader from "./ThreadsViewerHeader";
 /*
  * Test intent:
  * - Readers can collapse the title and summary as one overview surface.
+ * - Collapsed summary content leaves both the tab order and accessibility tree.
  * - The compact state retains an explicit way to restore the overview.
  * - Viewer actions remain available in both overview states.
  */
@@ -57,7 +58,10 @@ describe("ThreadsViewerHeader", () => {
     act(() => collapse.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 
     expect(container.querySelector("header")?.dataset.open).toBe("false");
-    expect(container.querySelector(".t-acc-panel")).not.toBeNull();
+    const panel = container.querySelector(".t-acc-panel");
+    expect(panel).not.toBeNull();
+    expect(panel.getAttribute("aria-hidden")).toBe("true");
+    expect(panel.hasAttribute("inert")).toBe(true);
     expect(container.querySelector('button[aria-label="Show conversation overview"]')).not.toBeNull();
     expect(container.textContent).toContain("Transcript");
 
@@ -67,6 +71,8 @@ describe("ThreadsViewerHeader", () => {
         .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(container.querySelector("header")?.dataset.open).toBe("true");
+    expect(panel.getAttribute("aria-hidden")).toBe("false");
+    expect(panel.hasAttribute("inert")).toBe(false);
     expect(container.textContent).toContain("A short summary");
   });
 

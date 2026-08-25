@@ -2,7 +2,39 @@
 
 Last updated: 2026-08-25
 
-## 2026-08-25 — Overview-collapse browser assertion contradicts compact-header behavior (OPEN, NON-BLOCKING)
+## 2026-08-25 — Repository-wide ESLint baseline is red (OPEN, NON-BLOCKING)
+
+**Summary:** `npm run lint -- --quiet` reports 109 errors across pre-existing,
+untouched frontend, API-proxy, test, and configuration files. The files changed
+for PR #175 pass a scoped ESLint invocation with zero findings.
+
+**Impact:** Medium engineering friction. A repository-wide lint gate cannot
+currently distinguish a new lint regression from the historical baseline.
+
+**Blocker status:** Non-blocking for PR #175 because every touched JavaScript
+file passes scoped lint and the full frontend unit suite and production build
+are green.
+
+**Recommended next step:** Establish and ratchet a zero-new-errors lint baseline,
+then pay down existing groups by runtime domain rather than mixing them into an
+unrelated viewer repair.
+
+## 2026-08-25 — Worktree Fontsource assets rejected by Vite dev allow-list (OPEN, NON-BLOCKING)
+
+**Summary:** Local Playwright runs from the nested git worktree log Vite
+allow-list warnings for Fontsource files resolved through the main checkout's
+shared `node_modules`. The production build resolves and embeds the same fonts.
+
+**Impact:** Low and local-development-only. Browser behavior tests pass, but
+screenshots from this worktree may render fallback fonts.
+
+**Blocker status:** Non-blocking for PR #175; it does not occur in the built
+artifact and is unrelated to the changed viewer semantics.
+
+**Recommended next step:** Give each worktree its own dependency install or add
+the resolved shared dependency directory to Vite's development-only allow-list.
+
+## 2026-08-25 — Overview-collapse browser assertion contradicted compact-header behavior (REPAIRED LOCALLY)
 
 **Summary:** The existing `.threads` opener browser journey expects the
 conversation title heading to disappear after activating “Hide conversation
@@ -14,12 +46,16 @@ heading-count assertion fails reproducibly.
 remains usable; this does not affect the NodeDetail focus or Library accessible-
 name repairs. The focused regression for the latter passes.
 
-**Blocker status:** Non-blocking for the scoped accessibility repair. The full
-frontend unit suite, lint, build, and new focused browser test are green.
+**Blocker status:** Repaired locally; exact-head independent review and remote CI
+remain before merge.
 
-**Recommended next step:** In a separately approved test-contract repair,
-assert that overview-only metadata collapses while the compact header title and
-navigation remain visible.
+**Resolution:** The browser contract now asserts that overview-only content
+collapses while the persistent title and navigation remain visible. The same
+journey also checks that the animated timeline collapses to zero height and is
+inert without requiring its mounted descendants to disappear from the DOM.
+
+**Recommended next step:** Keep the compact-header behavior covered in the
+cross-viewport viewer suite.
 
 ## 2026-08-24 — Partial optional hierarchy tier aborted valid lower graph (REPAIRED LOCALLY)
 

@@ -140,7 +140,11 @@ export default function ThreadsViewerHeader({
             {title}
           </h1>
           {summary && (
-            <div className="t-acc-panel">
+            <div
+              className="t-acc-panel"
+              aria-hidden={collapsed}
+              inert={collapsed ? "" : undefined}
+            >
               <div className="t-acc-panel-inner">
                 <p className="mt-1 max-w-[75ch] text-xs leading-relaxed text-slate-600">
                   {summary}

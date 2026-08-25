@@ -7,6 +7,7 @@ import {
 } from "../services/speakerNamingApi";
 import { apiFetch } from "../services/apiClient";
 import { buildMediaSeekUrl, mediaOffsetLabel, selectMediaRef } from "../services/mediaSeek";
+import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 
 // ADR-032 Part H — windowed speaker correction. The scope selector lives
 // inline in the rename editor; the last-used choice is sticky per browser.
@@ -110,12 +111,24 @@ export default function NodeDetail({
   const isOpen = Boolean(safeNode);
   const panelRef = useRef(null);
   const titleId = useId();
+  const compact = useMediaQuery(COMPACT_VIEWER_QUERY);
 
   useEffect(() => {
     if (!isOpen) return undefined;
     const panel = panelRef.current;
     const previousFocus = document.activeElement;
     panel?.focus();
+
+    return () => {
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !compact) return undefined;
+    const panel = panelRef.current;
 
     const handleKeyDown = (event) => {
       if (event.key !== "Tab" || !panel) return;
@@ -144,11 +157,8 @@ export default function NodeDetail({
     panel?.addEventListener("keydown", handleKeyDown);
     return () => {
       panel?.removeEventListener("keydown", handleKeyDown);
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
-        previousFocus.focus();
-      }
     };
-  }, [isOpen]);
+  }, [compact, isOpen]);
 
   // ADR-032 Part H — structured utterances + windowed inline correction.
   const [utterances, setUtterances] = useState(() => artifactUtterances);
@@ -555,7 +565,7 @@ export default function NodeDetail({
     <div
       ref={panelRef}
       role="dialog"
-      aria-modal="true"
+      aria-modal={compact ? "true" : undefined}
       aria-labelledby={titleId}
       tabIndex={-1}
       className="fixed left-0 right-0 bottom-0 max-h-[75vh] rounded-t-2xl border-t border-gray-200 bg-white shadow-lg z-40 flex flex-col lct-detail-enter outline-none sm:left-auto sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:max-w-[85vw] sm:rounded-t-none sm:border-t-0 sm:border-l"
@@ -772,9 +782,9 @@ export default function NodeDetail({
                 {visibleUtterances.rows.map((u) => {
                   const label = u.speaker_name || u.speaker_id || "?";
                   const isEditing = editingUtteranceId === u.id;
-                  const clock = utteranceClockLabel(u.timestamp_start);
+                  const wallClock = utteranceClockLabel(u.timestamp_start);
                   const seekUrl = buildMediaSeekUrl(mediaRef, u.timestamp_start);
-                  const mediaClock = mediaOffsetLabel(u.timestamp_start);
+                  const elapsedClock = mediaOffsetLabel(u.timestamp_start);
                   return (
                     <div
                       key={u.id}
@@ -785,7 +795,7 @@ export default function NodeDetail({
                       }
                       className={`py-0.5 ${u._hl ? "bg-amber-100 rounded px-0.5" : ""}`}
                     >
-                      {(mediaClock || clock) && (seekUrl ? (
+                      {(elapsedClock || wallClock) && (seekUrl ? (
                         <a
                           href={seekUrl}
                           target="_blank"
@@ -793,14 +803,20 @@ export default function NodeDetail({
                           className="mr-1 text-[10px] tabular-nums text-blue-600 hover:underline"
                           title="Open the meeting recording at this moment"
                         >
-                          {mediaClock}
+                          {elapsedClock}
                         </a>
                       ) : (
                         <span
                           className="mr-1 text-[10px] tabular-nums text-gray-400"
-                          title={mediaClock ? "Time in recording" : "When this message was sent"}
+                          title={
+                            elapsedClock
+                              ? mediaRef
+                                ? "Time in recording"
+                                : "Time in conversation"
+                              : "When this message was sent"
+                          }
                         >
-                          {mediaClock || clock}
+                          {elapsedClock || wallClock}
                         </span>
                       ))}
                       {isEditing ? (

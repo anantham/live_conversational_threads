@@ -79,13 +79,18 @@ test.describe('.threads opener (public recipient path)', () => {
     await expect(page.locator('[data-speaker-id="Speaker One"]')).toHaveCount(1);
 
     await page.getByRole('button', { name: 'Hide conversation overview' }).click();
-    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toHaveCount(0);
+    await expect(page.locator('header.t-acc')).toHaveAttribute('data-open', 'false');
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Show conversation overview' })).toBeVisible();
     await page.getByRole('button', { name: 'Show conversation overview' }).click();
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible();
 
     await page.getByRole('button', { name: 'Hide thread timeline' }).click();
-    await expect(page.locator('[data-testid="thread-label-gutter"]')).toHaveCount(0);
+    await expect(page.locator('section.t-acc')).toHaveAttribute('data-open', 'false');
+    const timelinePanel = page.locator('section.t-acc .t-acc-panel');
+    await expect(timelinePanel).toHaveAttribute('inert', '');
+    await expect.poll(() => timelinePanel.evaluate((el) => el.getBoundingClientRect().height))
+      .toBeLessThanOrEqual(1);
     await expect(page.getByRole('button', { name: 'Show thread timeline' })).toBeVisible();
     await page.getByRole('button', { name: 'Show thread timeline' }).click();
     await expect(page.locator('[data-testid="thread-label-gutter"]')).toBeVisible();
