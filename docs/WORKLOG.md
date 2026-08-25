@@ -1,5 +1,30 @@
 # WORKLOG
 
+## 2026-08-25T23:15:00+05:30 — Close exact-head Claude follow-up findings
+
+- The privacy-sanitized, tools-disabled Claude Opus review of the exact
+  `03935e9..8b819c7` follow-up diff returned one medium implementation finding
+  and one low test-coverage finding. No transcript, recording, participant
+  information, credential, database, or generated artifact was sent.
+- The medium finding was confirmed with two predicted failures: using
+  `model_dump(exclude_unset=True)` for both create and update removed the stable
+  empty `media_refs` key from new conversations and recursively omitted the
+  defaulted `kind` and `label` fields inside supplied media refs.
+- Repair: new conversations now persist the contract's fully materialized
+  source-metadata shape. Re-ingest derives a top-level patch from
+  `model_fields_set` but takes each supplied value from the full model dump, so
+  omitted fields are preserved, explicit empty lists clear, and nested defaults
+  remain materialized.
+- The low finding identified missing positive coverage, not broken behavior.
+  Added a public render assertion that an elapsed utterance with an attached
+  Drive recording becomes the expected `?t=10` deep link; the existing
+  no-recording branch remains pinned as “Time in conversation.” The synthetic
+  speaker fixture was also made generic before the fresh review packet.
+- Validation: **34/34** related backend tests, **41/41** focused UI tests, and
+  **247/247** frontend unit tests passed; scoped ESLint and `git diff --check`
+  passed. Confidence: 0.98. Fallback: revert only this follow-up if the fresh
+  exact-head review contradicts the reproduced model-dump behavior.
+
 ## 2026-08-25T22:55:00+05:30 — Independent-review hardening for PR #175
 
 - Claude Opus independently reviewed the privacy-sanitized exact PR #175 diff

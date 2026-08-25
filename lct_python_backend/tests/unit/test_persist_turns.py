@@ -96,6 +96,7 @@ def test_new_conversation_writes_source_identifier_on_every_turn():
     convs, utts = _convs(db), _utts(db)
     assert len(convs) == 1
     assert convs[0].indrasnet_group_id == "G"
+    assert convs[0].source_metadata["media_refs"] == []
     assert convs[0].source_metadata["privacy"]["redaction_applied"] is True
     assert convs[0].source_metadata["contract_version"] == "1"
     assert len(utts) == 3
@@ -231,7 +232,13 @@ def test_validated_producer_metadata_persists_alongside_server_privacy():
     })
     asyncio.run(persist_turns(db=db, payload=payload))
     (conv,) = _convs(db)
-    assert conv.source_metadata["media_refs"][0]["file_id"] == "drive-file-123"
+    assert conv.source_metadata["media_refs"] == [{
+        "provider": "google_drive",
+        "kind": "video",
+        "file_id": "drive-file-123",
+        "view_url": "https://drive.google.com/file/d/drive-file-123/view",
+        "label": "Meeting recording",
+    }]
     assert conv.source_metadata["privacy"] == {
         "external_llm_ok": False, "local_llm_ok": True,
         "redaction_applied": True, "redaction_map_id": None,

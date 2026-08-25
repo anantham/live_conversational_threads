@@ -12,6 +12,7 @@ import NodeDetail from "./NodeDetail";
  * - Closing restores focus to the control that opened the detail view.
  * - Switching nodes in an open dialog preserves the user's current navigation focus.
  * - Artifact transcript evidence is read-only when no conversation id exists.
+ * - Elapsed timestamps distinguish an unlinked conversation from a recording deep link.
  */
 
 let container;
@@ -145,7 +146,7 @@ describe("NodeDetail dialog behavior", () => {
             {
               id: "u-1",
               speaker_id: "speaker-1",
-              speaker_name: "Ganesh",
+              speaker_name: "Speaker Two",
               text: "The evidence belongs here.",
               timestamp_start: 12,
             },
@@ -158,9 +159,40 @@ describe("NodeDetail dialog behavior", () => {
     expect(
       container.querySelector('button[title="Rename this speaker (windowed correction)"]'),
     ).toBeNull();
-    expect(container.textContent).toContain("Ganesh");
+    expect(container.textContent).toContain("Speaker Two");
     expect(container.textContent).toContain("The evidence belongs here.");
     const elapsed = container.querySelector('[title="Time in conversation"]');
     expect(elapsed?.textContent).toBe("0:12");
+  });
+
+  it("links an elapsed timestamp to the attached recording", () => {
+    act(() => {
+      root.render(
+        <NodeDetail
+          node={{ id: "claim-1", node_name: "A claim", utterance_ids: ["u-1"] }}
+          artifactUtterances={[{
+            id: "u-1",
+            speaker_id: "speaker-1",
+            text: "Recorded evidence.",
+            timestamp_start: 12,
+          }]}
+          mediaRefs={[{
+            provider: "google_drive",
+            kind: "video",
+            file_id: "drive-file-123",
+            view_url: "https://drive.google.com/file/d/drive-file-123/view",
+          }]}
+          onClose={vi.fn()}
+        />,
+      );
+    });
+
+    const timestampLink = container.querySelector(
+      'a[title="Open the meeting recording at this moment"]',
+    );
+    expect(timestampLink?.textContent).toBe("0:12");
+    expect(timestampLink?.getAttribute("href")).toBe(
+      "https://drive.google.com/file/d/drive-file-123/view?t=10",
+    );
   });
 });
