@@ -4,10 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TimelineRibbon from "./TimelineRibbon";
 
 /*
- * Smoke + interaction tests for the multi-row ribbon. The layout MATH is covered
- * exhaustively in timelineRibbonLayout.test.js; this file guards the RENDER path
- * (it mounts in 4 production pages) — it must not throw, must render one lane per
- * thread and one dot per node, and must toggle selection on dot click.
+ * Test intent:
+ * - Preserve one lane per thread and one interactive dot per node.
+ * - Let readers collapse the timeline without losing the graph canvas.
+ * - Make long thread names discoverable and let readers widen the label gutter.
+ * - Preserve return markers, time ticks, selection, and within-thread navigation.
  */
 
 let container;
@@ -55,7 +56,7 @@ describe("TimelineRibbon render", () => {
     expect(visionIdx).toBeGreaterThanOrEqual(0);
     expect(privacyIdx).toBeGreaterThan(visionIdx);
     // one aria-labelled dot per node (4 nodes)
-    const dots = container.querySelectorAll('button[aria-label]');
+    const dots = container.querySelectorAll('[data-testid="timeline-node"]');
     expect(dots.length).toBe(4);
   });
 
@@ -80,7 +81,7 @@ describe("TimelineRibbon render", () => {
     const flat = [[{ id: "n1", node_name: "X" }, { id: "n2", node_name: "Y" }]];
     render({ graphData: flat, selectedNode: null });
     // 2 dots + 1 ungrouped lane label, no crash.
-    expect(container.querySelectorAll('button[aria-label]').length).toBe(2);
+    expect(container.querySelectorAll('[data-testid="timeline-node"]').length).toBe(2);
     expect(container.textContent).toContain("ungrouped");
   });
 
@@ -116,5 +117,44 @@ describe("TimelineRibbon render", () => {
     expect(setSelectedNode).toHaveBeenCalledTimes(1);
     const updater = setSelectedNode.mock.calls[0][0];
     expect(updater(null)).toBe("a1");
+  });
+
+  it("collapses to a compact bar and expands without losing its rows", () => {
+    render({ graphData: threadedGraph, selectedNode: null });
+    const collapse = container.querySelector('button[aria-label="Hide thread timeline"]');
+    expect(collapse).not.toBeNull();
+
+    act(() => {
+      collapse.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(container.querySelector('[data-testid="thread-label-gutter"]')).toBeNull();
+    const expand = container.querySelector('button[aria-label="Show thread timeline"]');
+    expect(expand).not.toBeNull();
+
+    act(() => {
+      expand.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(container.querySelector('[data-testid="thread-label-gutter"]')).not.toBeNull();
+  });
+
+  it("surfaces the full hovered thread name and resizes the label gutter", () => {
+    render({ graphData: threadedGraph, selectedNode: null });
+    const visionLabel = [...container.querySelectorAll("button")].find(
+      (button) => button.textContent.includes("vision") && !button.getAttribute("aria-label"),
+    );
+    act(() => {
+      visionLabel.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    expect(container.querySelector('[data-testid="thread-hover-label"]')?.textContent).toContain("vision");
+
+    const gutter = container.querySelector('[data-testid="thread-label-gutter"]');
+    const resize = container.querySelector('[aria-label="Resize thread label column"]');
+    expect(gutter.style.width).toBe("160px");
+    act(() => {
+      resize.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientX: 160 }));
+      window.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 230 }));
+      window.dispatchEvent(new MouseEvent("pointerup", { bubbles: true }));
+    });
+    expect(gutter.style.width).toBe("230px");
   });
 });

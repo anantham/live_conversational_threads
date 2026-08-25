@@ -15,7 +15,9 @@ import {
 // single "ungrouped" row positioned by index — i.e. the legacy single-row look.
 
 const ROW_HEIGHT = 30; // px per thread lane
-const LABEL_GUTTER_W = 96; // px for the sticky thread-label column
+const DEFAULT_LABEL_GUTTER_W = 160; // px for the sticky thread-label column
+const MIN_LABEL_GUTTER_W = 112;
+const MAX_LABEL_GUTTER_W = 420;
 const MAX_VISIBLE_ROWS = 6; // beyond this the lane stack scrolls vertically
 const RULER_H = 18; // px band under the lanes for the time-axis ruler (time mode)
 
@@ -30,6 +32,10 @@ export default function TimelineRibbon({
   const [isFollowingLive, setIsFollowingLive] = useState(true);
   const [hoveredId, setHoveredId] = useState(null);
   const [highlightedThread, setHighlightedThread] = useState(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [labelGutterWidth, setLabelGutterWidth] = useState(DEFAULT_LABEL_GUTTER_W);
+  const [hoveredThread, setHoveredThread] = useState(null);
+  const labelResizeRef = useRef(null);
 
   const allNodes = useMemo(() => {
     const nodes = (graphData || []).flat().filter(Boolean);
@@ -92,6 +98,27 @@ export default function TimelineRibbon({
     return () => window.removeEventListener("keydown", onKey);
   }, [highlightedThread]);
 
+  useEffect(() => {
+    const onPointerMove = (event) => {
+      const drag = labelResizeRef.current;
+      if (!drag) return;
+      const next = Math.max(
+        MIN_LABEL_GUTTER_W,
+        Math.min(MAX_LABEL_GUTTER_W, drag.startWidth + event.clientX - drag.startX),
+      );
+      setLabelGutterWidth(next);
+    };
+    const onPointerUp = () => {
+      labelResizeRef.current = null;
+    };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+    };
+  }, []);
+
   const handleScroll = () => {
     if (!scrollRef.current || programmaticScrollRef.current) return;
     const maxLeft = Math.max(
@@ -134,16 +161,51 @@ export default function TimelineRibbon({
     Math.min(rows.length, MAX_VISIBLE_ROWS) * ROW_HEIGHT + rulerH + 4;
 
   return (
-    <div
-      className="flex w-full border-t border-gray-200 bg-white/80 backdrop-blur-sm overflow-y-auto"
-      style={{ maxHeight: `${maxHeight}px` }}
-    >
+    <section className="w-full border-t border-gray-200 bg-white/90 backdrop-blur-sm">
+      <div className="flex h-8 min-w-0 items-center gap-2 border-b border-gray-100 px-2 text-[10px] text-gray-500">
+        <button
+          type="button"
+          aria-label={isCollapsed ? "Show thread timeline" : "Hide thread timeline"}
+          onClick={() => {
+            setIsCollapsed((collapsed) => !collapsed);
+            setHoveredThread(null);
+          }}
+          title={isCollapsed ? "Show the thread timeline" : "Minimize the thread timeline"}
+          className="rounded px-1.5 py-1 font-semibold text-gray-600 hover:bg-gray-100 hover:text-gray-800"
+        >
+          <span aria-hidden="true">{isCollapsed ? "▴" : "▾"}</span>{" "}
+          Threads timeline
+        </button>
+        <span className="shrink-0 text-gray-400">
+          {rows.length} thread{rows.length === 1 ? "" : "s"}
+        </span>
+        {hoveredThread && !isCollapsed ? (
+          <span
+            data-testid="thread-hover-label"
+            className="min-w-0 truncate border-l border-gray-200 pl-2 text-gray-700"
+            title={`${hoveredThread.label} — ${hoveredThread.count} node${hoveredThread.count === 1 ? "" : "s"}`}
+          >
+            {hoveredThread.label} · {hoveredThread.count} node{hoveredThread.count === 1 ? "" : "s"}
+          </span>
+        ) : (
+          <span className="min-w-0 truncate text-gray-400">
+            Hover a thread name to read it; drag the divider to widen names.
+          </span>
+        )}
+      </div>
+
+      {!isCollapsed && (
+      <div
+        className="flex w-full overflow-y-auto"
+        style={{ maxHeight: `${maxHeight}px` }}
+      >
       {/* Thread-label gutter (not horizontally scrolled). Click a label to
           highlight that thread; click again or press Escape to clear. When a
           thread is highlighted, ‹ › step selection through its nodes in time. */}
       <div
+        data-testid="thread-label-gutter"
         className="shrink-0 border-r border-gray-100"
-        style={{ width: `${LABEL_GUTTER_W}px`, height: `${contentHeight}px` }}
+        style={{ width: `${labelGutterWidth}px`, height: `${contentHeight}px` }}
       >
         {rows.map((row) => {
           const active = highlightedThread === row.threadId;
@@ -156,6 +218,8 @@ export default function TimelineRibbon({
               <button
                 type="button"
                 onClick={() => toggleThread(row.threadId)}
+                onMouseEnter={() => setHoveredThread({ label: row.label, count: row.count })}
+                onMouseLeave={() => setHoveredThread((current) => current?.label === row.label ? null : current)}
                 title={`${row.label} — ${row.count} node${row.count === 1 ? "" : "s"}${
                   isUngrouped ? " (no thread)" : ""
                 }`}
@@ -195,6 +259,36 @@ export default function TimelineRibbon({
             </div>
           );
         })}
+      </div>
+
+      <div
+        role="separator"
+        tabIndex={0}
+        aria-orientation="vertical"
+        aria-label="Resize thread label column"
+        aria-valuemin={MIN_LABEL_GUTTER_W}
+        aria-valuemax={MAX_LABEL_GUTTER_W}
+        aria-valuenow={labelGutterWidth}
+        title="Drag to resize thread names"
+        onPointerDown={(event) => {
+          event.preventDefault();
+          labelResizeRef.current = {
+            startX: event.clientX,
+            startWidth: labelGutterWidth,
+          };
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+          event.preventDefault();
+          const direction = event.key === "ArrowRight" ? 1 : -1;
+          setLabelGutterWidth((width) => Math.max(
+            MIN_LABEL_GUTTER_W,
+            Math.min(MAX_LABEL_GUTTER_W, width + direction * 16),
+          ));
+        }}
+        className="group relative w-2 shrink-0 cursor-col-resize bg-gray-50 hover:bg-blue-50"
+      >
+        <span className="absolute bottom-0 left-1/2 top-0 w-px -translate-x-1/2 bg-gray-200 group-hover:bg-blue-400" />
       </div>
 
       {/* Dots region — scrolls horizontally along the (time or index) axis. */}
@@ -254,6 +348,7 @@ export default function TimelineRibbon({
                   return (
                     <button
                       key={node.id}
+                      data-testid="timeline-node"
                       type="button"
                       onClick={() => setSelectedNode((prev) => (prev === node.id ? null : node.id))}
                       onMouseEnter={() => setHoveredId(node.id)}
@@ -334,7 +429,9 @@ export default function TimelineRibbon({
           {totalDurationLabel}
         </div>
       ) : null}
-    </div>
+      </div>
+      )}
+    </section>
   );
 }
 

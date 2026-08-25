@@ -13,6 +13,7 @@ import { fileURLToPath } from 'url';
  * - Accept a `.threads` drop anywhere on `/browse`, not only in the standalone opener.
  * - Exercise the version-2 explicit directed-edge artifact contract in a browser.
  * - Render structured utterance text without repeating speaker names in cards.
+ * - Keep the conversation overview and thread timeline independently collapsible.
  */
 //
 // Included in BOTH configs: the default (local) run blocks /api/* to force the
@@ -75,6 +76,18 @@ test.describe('.threads opener (public recipient path)', () => {
     await expect(page.getByText('Hello, this is a synthetic fixture.')).toBeVisible();
     await expect(page.getByText('Speaker One', { exact: true })).toHaveCount(0);
     await expect(page.locator('[data-speaker-id="Speaker One"]')).toHaveCount(1);
+
+    await page.getByRole('button', { name: 'Hide conversation overview' }).click();
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Show conversation overview' })).toBeVisible();
+    await page.getByRole('button', { name: 'Show conversation overview' }).click();
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Hide thread timeline' }).click();
+    await expect(page.locator('[data-testid="thread-label-gutter"]')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Show thread timeline' })).toBeVisible();
+    await page.getByRole('button', { name: 'Show thread timeline' }).click();
+    await expect(page.locator('[data-testid="thread-label-gutter"]')).toBeVisible();
 
     await page.goto('/browse', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });

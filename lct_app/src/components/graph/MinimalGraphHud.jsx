@@ -20,7 +20,6 @@ export default function MinimalGraphHud({
   displayEdges,
   normalizedChunk,
   lockedLevel,
-  semanticCountLabel,
   drilldownPath,
   setDrilldownPath,
   legacyClusterLevel,
@@ -30,6 +29,13 @@ export default function MinimalGraphHud({
   setLockedLevel,
 }) {
   const tierSpecs = displayMode === "semantic" ? AUTHORED_LEVELS : LEGACY_TIER_SPECS;
+  const semanticTierSpec = AUTHORED_LEVELS.find(
+    (spec) => spec.level === effectiveSemanticLevel,
+  );
+  const semanticTierWord = displayNodes.length === 1
+    ? (semanticTierSpec?.singular || "node")
+    : (semanticTierSpec?.label || "nodes");
+  const activeTierCount = `${displayNodes.length} ${semanticTierWord}`;
 
   // left-16 (not left-3) reserves room for the page-level Back button (a ~54px
   // padded icon at top-3 left-3, z-50) so it no longer covers the zoom % chip /
@@ -54,7 +60,7 @@ export default function MinimalGraphHud({
             </span>
             <span className="text-[10px] text-gray-500">
               {displayMode === "semantic"
-                ? semanticCountLabel
+                ? activeTierCount
                 : `${displayNodes.length} clusters · ${normalizedChunk.length} nodes`}
             </span>
             {lockedLevel != null && (
@@ -182,7 +188,6 @@ MinimalGraphHud.propTypes = {
   displayEdges: PropTypes.array.isRequired,
   normalizedChunk: PropTypes.array.isRequired,
   lockedLevel: PropTypes.number,
-  semanticCountLabel: PropTypes.string,
   drilldownPath: PropTypes.array.isRequired,
   setDrilldownPath: PropTypes.func.isRequired,
   legacyClusterLevel: PropTypes.number.isRequired,

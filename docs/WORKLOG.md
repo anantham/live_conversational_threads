@@ -3801,6 +3801,36 @@ Manual testing not run:
   installed and selected for PR #170 because the implementation family is
   OpenAI/Codex.
 
+## 2026-08-25 — Viewer chrome follows the reader's active granularity
+
+- Reported behavior: the `/view` canvas was permanently crowded by the
+  conversation title/summary and bottom thread timeline; long thread names were
+  trapped in a fixed 96px gutter; the zoom HUD showed `5 themes Â· 135 moments`
+  even though the reader had selected the theme tier.
+- Root cause confirmation:
+  - `MinimalGraph` deliberately appended the level-1 moment total to every
+    higher semantic-tier count and the separator was a mojibaked source literal;
+  - `TimelineRibbon` had neither collapse state nor a resizable label gutter;
+  - `ThreadsViewer` exposed only a subtle summary-only toggle, leaving the title
+    and remaining overview chrome permanently visible.
+- Implementation:
+  - extracted `ThreadsViewerHeader.jsx`; the complete overview now collapses to
+    a compact, explicitly restorable bar while keeping viewer actions available;
+  - made `TimelineRibbon` independently collapsible, widened its default label
+    gutter, added a drag divider, and surfaces the complete hovered thread name
+    in its toolbar;
+  - moved semantic count presentation into `MinimalGraphHud`, which now reports
+    only the active tier (`5 themes`, `13 topics`, etc.); removed the lower-tier
+    total and repaired the remaining user-visible `Â·` literals in the graph;
+  - added unit behavior tests and extended the real `.threads` browser opener
+    test through both collapse/restore paths.
+- Validation: 231/231 frontend unit tests passed; focused Chromium opener passed;
+  targeted ESLint passed; production Vite build passed. The existing >500 kB
+  bundle warning remains unchanged and was already tracked.
+- Structure: `ThreadsViewer.jsx` reduced from 535 to 434 LOC. The remaining
+  viewer-route and newly 427-LOC timeline decomposition candidates are recorded
+  in `docs/TECH_DEBT.md`.
+
 ## 2026-08-23 10:18 +05:30 — Restore Tailnet history and make Browse fully local-first
 
 - Reported behavior: M5 could load the public LCT frontend over Tailnet but
