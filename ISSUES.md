@@ -698,6 +698,24 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Creative: During a brainstorming session, I want the graph to auto-cluster related ideas and let me hide edges so I can drag a “storyline” into a deck outline without visual clutter.
 - Creative: While reviewing a contentious discussion, I want to click a node and have all related nodes pulled into view, then generate a concise narrative I can fact-check before sharing with stakeholders.
 - Creative: In a workshop, I want a smooth left-to-right timeline with fixed zoom presets so I can jump between moments, bookmark highlights, and later re-run higher-quality ASR/diarization on the stored audio for a polished recap.
+
+## 2026-08-25 — Viewer audit follow-ups
+
+- **Participant schema pollution remains at the producer boundary.** Real server
+  history returned participant-like values such as `chunk_index`, `doc_id`,
+  `title`, `SPEAKER_00`, and markdown fragments. The Library now filters these
+  defensively, so this is non-blocking for readers. Recommended next step:
+  validate/normalize participant rows during ingestion or API serialization and
+  migrate existing polluted rows.
+- **Automated accessibility scan is not installed.** The responsive repair has
+  semantic and behavioral coverage but no axe-core run. Add axe to the E2E
+  harness in a dedicated dependency/testing change.
+- **Repository-wide ESLint baseline is red.** `npm run lint` currently reports
+  109 errors and 20 warnings across unrelated legacy/API/test files. Scoped
+  ESLint for the 2026-08-25 viewer repair is clean. Establish a lint baseline
+  or pay down the listed files separately so new changes can use global lint as
+  a meaningful gate.
+
 ## 2026-08-17 — Dependency audit and bundle-size warnings (pre-existing, non-blocking)
 
 - `npm ci` reports 10 dependency vulnerabilities (1 low, 8 high, 1 critical).

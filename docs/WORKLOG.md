@@ -3961,3 +3961,48 @@ Manual testing not run:
 - Files touched: RawTurn contract/persistence/export, `ThreadsViewer`,
   `NodeDetail`, artifact validation, new `mediaSeek` utility/tests, ADR-036,
   test intent, and `docs/TECH_DEBT.md`.
+
+## 2026-08-25 — Mobile-first viewer and Library audit repair
+
+- Audited the deployed and local `/browse` + `/view` flows using the
+  `ux-audit`, `impeccable`, and `transitions-dev` guidance and a real 818-turn
+  `.threads` artifact. Evidence and findings are in
+  `docs/audits/2026-08-25/REPORT.md`.
+- Added a shared compact-view media-query hook. Phone viewers now start with
+  overview/timeline collapsed, retain five explicit 44px actions, expose
+  touch-sized tier/lens/graph controls, align tangent cards, and open details as
+  a backed bottom sheet.
+- Repaired the mobile graph camera at the node-set boundary: a stable visible
+  tier frames its first node at 85% below the two-row HUD. Desktop retains its
+  whole-tier fit and expanded/resizable timeline.
+- Added a participant-label boundary for Library filters and separate
+  keyboard-focusable primary actions from export/audio/delete controls.
+- Tests: 239/239 frontend unit tests passed; new responsive Playwright tests
+  passed 2/2; production build passed; scoped changed-source ESLint passed.
+  Global lint remains red on 109 pre-existing errors and is recorded in
+  `ISSUES.md`. Build still warns about the 1.17 MB JS chunk.
+- Impeccable detector was run once after the UI edits. Its two warnings were
+  manually reviewed as false positives: the bookmark corner is a CSS triangle,
+  not a side-tab card accent, and the rose delete hover changes foreground and
+  background together.
+- Applied the transitions.dev accordion primitive verbatim to the overview and
+  timeline disclosures: 250 ms grid-row/opacity/chevron feedback with a required
+  `prefers-reduced-motion` no-transition guard. Graph nodes and tier changes do
+  not receive decorative entrance motion.
+- Independent UX critique caught four cross-device/semantic gaps before release:
+  coarse-pointer tablets could receive compact chrome with desktop camera
+  framing; drill-down counts described the locked parent tier; node detail was
+  visually modal without dialog focus behavior; and reduced-motion left several
+  programmatic graph transitions active. Repaired all four at their shared
+  boundaries and added phone/tablet/desktop behavioral coverage.
+- Library participant filters now require a human display name. Opaque contact
+  IDs remain usable as hidden stable keys but are no longer rendered as labels;
+  cluster-member rows are native keyboard buttons.
+- Final validation after critique: 42 frontend test files / 241 tests passed;
+  responsive Playwright passed 3/3 at phone, touch-tablet, and desktop sizes;
+  the production build passed; scoped changed-source ESLint passed. The build's
+  1,170.23 kB JS / 347.40 kB gzip warning remains documented.
+- The audit verdict is deliberately **Incomplete**, not Pass: axe-core was not
+  installed, the in-app runtime exposed neither PerformanceObserver nor response
+  status inventory, and read-only routes cannot satisfy ux-audit's mandatory
+  typed-input manifest row. Product regression gates above are green.

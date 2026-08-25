@@ -24,6 +24,7 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const threadedGraph = [
@@ -42,6 +43,20 @@ function render(props) {
 }
 
 describe("TimelineRibbon render", () => {
+  it("starts collapsed on touch-sized screens and omits desktop-only resize affordances", () => {
+    vi.stubGlobal("matchMedia", (query) => ({
+      matches: query.includes("max-width"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    render({ graphData: threadedGraph, selectedNode: null });
+
+    expect(container.querySelector('[aria-label="Show thread timeline"]')).not.toBeNull();
+    expect(container.textContent).toContain("Tap a thread");
+    expect(container.querySelector('[role="separator"]')).toBeNull();
+  });
+
   it("renders nothing when there are no nodes", () => {
     render({ graphData: [], selectedNode: null });
     expect(container.querySelector("button")).toBeNull();
@@ -127,13 +142,15 @@ describe("TimelineRibbon render", () => {
     act(() => {
       collapse.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    expect(container.querySelector('[data-testid="thread-label-gutter"]')).toBeNull();
+    expect(container.querySelector("section")?.dataset.open).toBe("false");
+    expect(container.querySelector('[data-testid="thread-label-gutter"]')).not.toBeNull();
     const expand = container.querySelector('button[aria-label="Show thread timeline"]');
     expect(expand).not.toBeNull();
 
     act(() => {
       expand.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
+    expect(container.querySelector("section")?.dataset.open).toBe("true");
     expect(container.querySelector('[data-testid="thread-label-gutter"]')).not.toBeNull();
   });
 

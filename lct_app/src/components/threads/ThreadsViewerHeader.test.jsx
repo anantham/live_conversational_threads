@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ThreadsViewerHeader from "./ThreadsViewerHeader";
 
@@ -23,6 +23,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  vi.unstubAllGlobals();
 });
 
 function renderHeader() {
@@ -55,7 +56,8 @@ describe("ThreadsViewerHeader", () => {
     expect(collapse).not.toBeNull();
     act(() => collapse.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 
-    expect(container.textContent).not.toContain("A short summary");
+    expect(container.querySelector("header")?.dataset.open).toBe("false");
+    expect(container.querySelector(".t-acc-panel")).not.toBeNull();
     expect(container.querySelector('button[aria-label="Show conversation overview"]')).not.toBeNull();
     expect(container.textContent).toContain("Transcript");
 
@@ -64,6 +66,24 @@ describe("ThreadsViewerHeader", () => {
         .querySelector('button[aria-label="Show conversation overview"]')
         .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
+    expect(container.querySelector("header")?.dataset.open).toBe("true");
     expect(container.textContent).toContain("A short summary");
+  });
+
+  it("starts compact on a phone while keeping the title and every action visible", () => {
+    vi.stubGlobal("matchMedia", (query) => ({
+      matches: query.includes("max-width"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    renderHeader();
+
+    expect(container.textContent).toContain("Critiquing Progress, Economics, and Rationality");
+    expect(container.querySelector("header")?.dataset.open).toBe("false");
+    expect(container.querySelector('button[aria-label="Show conversation overview"]')).not.toBeNull();
+    for (const label of ["Transcript", "Focus", "Library", "Open"]) {
+      expect(container.textContent).toContain(label);
+    }
   });
 });

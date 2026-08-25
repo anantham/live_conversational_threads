@@ -24,17 +24,22 @@ afterEach(() => {
   container.remove();
 });
 
-function renderHud() {
+function renderHud({ displayNodes, effectiveSemanticLevel = 4, clusterLevelLabel = "themes" } = {}) {
   const noop = () => {};
+  const visibleNodes = displayNodes
+    || Array.from({ length: 5 }, (_, index) => ({
+      id: `theme-${index}`,
+      data: { fullData: { semantic_level: 4 } },
+    }));
   act(() => {
     root.render(
       <MinimalGraphHud
         zoomLevel={0.65}
-        clusterLevelLabel="themes"
+        clusterLevelLabel={clusterLevelLabel}
         displayMode="semantic"
-        effectiveSemanticLevel={4}
+        effectiveSemanticLevel={effectiveSemanticLevel}
         effectiveClusterLevel={3}
-        displayNodes={Array.from({ length: 5 }, (_, index) => ({ id: `theme-${index}` }))}
+        displayNodes={visibleNodes}
         displayEdges={[]}
         normalizedChunk={Array.from({ length: 135 }, (_, index) => ({ id: `moment-${index}` }))}
         lockedLevel={4}
@@ -56,5 +61,18 @@ describe("MinimalGraphHud active-tier count", () => {
     expect(container.textContent).toContain("5 themes");
     expect(container.textContent).not.toContain("135 moments");
     expect(container.textContent).not.toContain("Â");
+  });
+
+  it("uses the visible drill-down tier rather than the locked parent tier", () => {
+    renderHud({
+      effectiveSemanticLevel: 4,
+      clusterLevelLabel: "topics",
+      displayNodes: Array.from({ length: 3 }, (_, index) => ({
+        id: `topic-${index}`,
+        data: { fullData: { semantic_level: 3 } },
+      })),
+    });
+    expect(container.textContent).toContain("3 topics");
+    expect(container.textContent).not.toContain("3 themes");
   });
 });

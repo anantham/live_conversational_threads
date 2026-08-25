@@ -127,3 +127,11 @@ Historical baseline: merge-base `4e313f3` / tip `2f99913` — **1000 passed / 6 
 `lct_app/src/components/NodeDetail.jsx` is over 1,000 lines and combines evidence
 navigation, speaker correction, media playback, fact checks, and node metadata.
 Extract an `EvidenceTranscript` component before adding further evidence modes.
+
+### 2026-08-25 — Viewer responsive repair touched existing monoliths
+
+| File | Current concern | Recommended split |
+| --- | --- | --- |
+| `lct_app/src/components/MinimalGraph.jsx` | Graph normalization, semantic-tier state, camera policy, weakness lenses, control chrome, and ReactFlow orchestration remain coupled in ~1,700 lines | Extract `useGraphCamera`, `WeaknessLensRail`, and `GraphDisplayControls`; keep the root focused on graph composition |
+| `lct_app/src/pages/Browse.jsx` | Local library, server history, contact corpus export, file-drop import, and destructive actions share ~650 lines | Extract `LocalThreadsLibrary`, `ServerConversationLibrary`, and a contact-filter model/controller |
+| `lct_app/src/components/TimelineRibbon.jsx` | Layout consumption, responsive policy, resize gestures, selection, and rendering share ~400 lines | Extract `TimelineHeader`, `ThreadLabelGutter`, and `TimelineRail`; keep layout math in the existing pure module |

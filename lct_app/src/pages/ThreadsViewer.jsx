@@ -363,7 +363,7 @@ export default function ThreadsViewer() {
 
   // ---- Loaded state: the map ----------------------------------------------
   return (
-    <div className="flex h-[100dvh] w-screen flex-col bg-[#fafafa] font-sans">
+    <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
       {!focusMode && (
         <ThreadsViewerHeader
           bundle={bundle}
@@ -403,12 +403,20 @@ export default function ThreadsViewer() {
             type="button"
             onClick={() => setFocusMode(false)}
             title="Exit focus mode (Esc)"
-            className="absolute right-3 top-3 z-50 rounded-md bg-white/70 px-2.5 py-1 text-[11px] text-slate-500 shadow-sm backdrop-blur hover:bg-white hover:text-slate-800"
+            className="absolute right-3 top-3 z-50 min-h-11 rounded-md bg-white/70 px-3 py-1 text-[11px] text-slate-500 shadow-sm backdrop-blur hover:bg-white hover:text-slate-800 sm:min-h-0 sm:px-2.5"
           >
             ✕ Exit focus
           </button>
         )}
         {!focusMode && <MinimalLegend speakerColorMap={speakerColorMap} />}
+        {selectedNodeData && (
+          <button
+            type="button"
+            aria-label="Close node details"
+            className="fixed inset-0 z-[35] bg-slate-950/20 backdrop-blur-[1px] sm:hidden"
+            onClick={() => setSelectedNode(null)}
+          />
+        )}
         {selectedNodeData && (
           <NodeDetail
             node={selectedNodeData}

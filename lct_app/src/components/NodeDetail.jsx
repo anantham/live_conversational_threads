@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, useRef } from "react";
 import PropTypes from "prop-types";
 import { rerouteConversationArtifacts } from "../services/artifactSettingsApi";
 import {
@@ -107,6 +107,44 @@ export default function NodeDetail({
   mediaRefs = [],
 }) {
   const safeNode = node ?? null;
+  const panelRef = useRef(null);
+  const titleId = useId();
+
+  useEffect(() => {
+    if (!safeNode) return undefined;
+    const panel = panelRef.current;
+    const previousFocus = document.activeElement;
+    panel?.focus();
+
+    const handleKeyDown = (event) => {
+      if (event.key !== "Tab" || !panel) return;
+      const focusable = [...panel.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), audio[controls], [tabindex]:not([tabindex="-1"])',
+      )].filter((element) => !element.hasAttribute("hidden"));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    panel?.addEventListener("keydown", handleKeyDown);
+    return () => {
+      panel?.removeEventListener("keydown", handleKeyDown);
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
+    };
+  }, [safeNode]);
 
   // ADR-032 Part H — structured utterances + windowed inline correction.
   const [utterances, setUtterances] = useState(() => artifactUtterances);
@@ -346,7 +384,11 @@ export default function NodeDetail({
     const box = transcriptScrollRef.current;
     if (!line || !box) return;
     const target = line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2;
-    box.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    box.scrollTo({
+      top: Math.max(0, target),
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
   }, [visibleTranscript, visibleUtterances]);
 
   useEffect(() => {
@@ -505,10 +547,19 @@ export default function NodeDetail({
   if (!safeNode) return null;
 
   return (
-    <div className="fixed left-0 right-0 bottom-0 max-h-[75vh] rounded-t-2xl border-t border-gray-200 bg-white shadow-lg z-40 flex flex-col lct-detail-enter sm:left-auto sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:max-w-[85vw] sm:rounded-t-none sm:border-t-0 sm:border-l">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      className="fixed left-0 right-0 bottom-0 max-h-[75vh] rounded-t-2xl border-t border-gray-200 bg-white shadow-lg z-40 flex flex-col lct-detail-enter outline-none sm:left-auto sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:max-w-[85vw] sm:rounded-t-none sm:border-t-0 sm:border-l"
+    >
+      <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
         <h2
+          id={titleId}
           className="text-sm font-semibold text-gray-800 pr-2 break-words leading-snug"
           title={safeNode.node_name}
         >
@@ -516,7 +567,7 @@ export default function NodeDetail({
         </h2>
         <button
           onClick={onClose}
-          className="p-3 text-gray-400 hover:text-gray-600 transition shrink-0"
+          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-50 hover:text-gray-600"
           aria-label="Close"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

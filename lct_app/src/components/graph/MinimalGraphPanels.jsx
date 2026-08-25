@@ -23,14 +23,14 @@ export default function MinimalGraphPanels({
       )}
 
       {clickedEdge && (
-        <div className="absolute bottom-14 right-4 z-30 w-72 rounded-lg bg-white border border-gray-200 shadow-lg px-4 py-3 text-xs text-gray-700">
+        <div className="absolute bottom-2 left-2 right-2 z-30 rounded-lg border border-gray-200 bg-white px-4 py-3 text-xs text-gray-700 shadow-lg sm:bottom-14 sm:left-auto sm:right-4 sm:w-72">
           <div className="flex items-start justify-between gap-2 mb-2">
             <span className="font-semibold text-gray-900 capitalize leading-tight">
               {clickedEdge.relationType?.replace(/_/g, " ")}
             </span>
             <button
               onClick={() => setClickedEdge(null)}
-              className="text-gray-500 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
+              className="mt-0.5 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-sm leading-none text-gray-500 hover:text-gray-700 sm:min-h-0 sm:min-w-0"
               aria-label="Dismiss"
             >
               ✕
@@ -52,7 +52,7 @@ export default function MinimalGraphPanels({
       )}
 
       {selectedCluster && selectedClusterMembers.length > 0 && (
-        <div className="absolute top-14 right-4 z-30 w-80 max-h-[60vh] rounded-lg bg-white border border-gray-200 shadow-lg text-xs text-gray-700 overflow-hidden flex flex-col">
+        <div className="absolute inset-x-2 bottom-2 z-30 flex max-h-[72vh] flex-col overflow-hidden rounded-lg border border-gray-200 bg-white text-xs text-gray-700 shadow-lg sm:inset-x-auto sm:bottom-auto sm:right-4 sm:top-14 sm:max-h-[60vh] sm:w-80">
           <div className="flex items-start justify-between gap-2 px-4 py-3 border-b border-gray-100 shrink-0">
             <div>
               <span className="font-semibold text-gray-900 text-sm leading-tight block">
@@ -64,7 +64,7 @@ export default function MinimalGraphPanels({
             </div>
             <button
               onClick={() => setSelectedCluster(null)}
-              className="text-gray-500 hover:text-gray-700 shrink-0 leading-none text-sm mt-0.5"
+              className="mt-0.5 inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-sm leading-none text-gray-500 hover:text-gray-700 sm:min-h-0 sm:min-w-0"
               aria-label="Dismiss"
             >
               ✕
@@ -74,7 +74,7 @@ export default function MinimalGraphPanels({
             {selectedClusterMembers.map((node, i) => (
               <div
                 key={node.id}
-                className="py-2 border-b border-gray-50 last:border-0 cursor-pointer hover:bg-gray-50 -mx-1 px-1 rounded"
+                className="-mx-1 min-h-11 cursor-pointer rounded border-b border-gray-50 px-1 py-2 last:border-0 hover:bg-gray-50"
                 onClick={() => {
                   setLockedLevel(0);
                   setSelectedNode(node.id);

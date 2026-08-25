@@ -1,6 +1,12 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import PropTypes from "prop-types";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { buildSpeakerColorMap } from "./graphConstants";
+import {
+  COMPACT_VIEWER_QUERY,
+  mediaQueryMatches,
+  useMediaQuery,
+} from "../hooks/useMediaQuery";
 import {
   buildRibbonLayout,
   buildTimeAxisTicks,
@@ -27,15 +33,24 @@ export default function TimelineRibbon({
   setSelectedNode,
   semanticLevel,
 }) {
+  const compact = useMediaQuery(COMPACT_VIEWER_QUERY);
+  const readerChangedCollapsed = useRef(false);
+  const rowHeight = compact ? 44 : ROW_HEIGHT;
   const scrollRef = useRef(null);
   const programmaticScrollRef = useRef(false);
   const [isFollowingLive, setIsFollowingLive] = useState(true);
   const [hoveredId, setHoveredId] = useState(null);
   const [highlightedThread, setHighlightedThread] = useState(null);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() =>
+    mediaQueryMatches(COMPACT_VIEWER_QUERY),
+  );
   const [labelGutterWidth, setLabelGutterWidth] = useState(DEFAULT_LABEL_GUTTER_W);
   const [hoveredThread, setHoveredThread] = useState(null);
   const labelResizeRef = useRef(null);
+
+  useEffect(() => {
+    if (!readerChangedCollapsed.current) setIsCollapsed(compact);
+  }, [compact]);
 
   const allNodes = useMemo(() => {
     const nodes = (graphData || []).flat().filter(Boolean);
@@ -125,7 +140,7 @@ export default function TimelineRibbon({
       0,
       scrollRef.current.scrollWidth - scrollRef.current.clientWidth,
     );
-    setIsFollowingLive(maxLeft - scrollRef.current.scrollLeft <= ROW_HEIGHT);
+    setIsFollowingLive(maxLeft - scrollRef.current.scrollLeft <= rowHeight);
   };
 
   const toggleThread = useCallback((threadId) => {
@@ -154,26 +169,32 @@ export default function TimelineRibbon({
 
   if (rows.length === 0) return null;
 
-  const stackHeight = rows.length * ROW_HEIGHT;
+  const stackHeight = rows.length * rowHeight;
   const rulerH = timeBased && ticks.length > 0 ? RULER_H : 0;
   const contentHeight = stackHeight + rulerH;
   const maxHeight =
-    Math.min(rows.length, MAX_VISIBLE_ROWS) * ROW_HEIGHT + rulerH + 4;
+    Math.min(rows.length, MAX_VISIBLE_ROWS) * rowHeight + rulerH + 4;
 
   return (
-    <section className="w-full border-t border-gray-200 bg-white/90 backdrop-blur-sm">
-      <div className="flex h-8 min-w-0 items-center gap-2 border-b border-gray-100 px-2 text-[10px] text-gray-500">
+    <section
+      className="t-acc w-full border-t border-gray-200 bg-white/90 backdrop-blur-sm"
+      data-open={String(!isCollapsed)}
+    >
+      <div className="flex min-h-11 min-w-0 items-center gap-2 border-b border-gray-100 px-2 text-[10px] text-gray-500 sm:min-h-8">
         <button
           type="button"
           aria-label={isCollapsed ? "Show thread timeline" : "Hide thread timeline"}
           onClick={() => {
+            readerChangedCollapsed.current = true;
             setIsCollapsed((collapsed) => !collapsed);
             setHoveredThread(null);
           }}
           title={isCollapsed ? "Show the thread timeline" : "Minimize the thread timeline"}
-          className="rounded px-1.5 py-1 font-semibold text-gray-600 hover:bg-gray-100 hover:text-gray-800"
+          className="inline-flex min-h-11 items-center gap-1 rounded px-2 py-1 font-semibold text-gray-600 hover:bg-gray-100 hover:text-gray-800 sm:min-h-0"
         >
-          <span aria-hidden="true">{isCollapsed ? "▴" : "▾"}</span>{" "}
+          <span className="t-acc-chevron">
+            <ChevronDown aria-hidden="true" className="h-3.5 w-3.5" />
+          </span>
           Threads timeline
         </button>
         <span className="shrink-0 text-gray-400">
@@ -189,12 +210,15 @@ export default function TimelineRibbon({
           </span>
         ) : (
           <span className="min-w-0 truncate text-gray-400">
-            Hover a thread name to read it; drag the divider to widen names.
+            {compact
+              ? "Tap a thread to highlight it and step through its moments."
+              : "Hover a thread name to read it; drag the divider to widen names."}
           </span>
         )}
       </div>
 
-      {!isCollapsed && (
+      <div className="t-acc-panel">
+      <div className="t-acc-panel-inner">
       <div
         className="flex w-full overflow-y-auto"
         style={{ maxHeight: `${maxHeight}px` }}
@@ -205,7 +229,7 @@ export default function TimelineRibbon({
       <div
         data-testid="thread-label-gutter"
         className="shrink-0 border-r border-gray-100"
-        style={{ width: `${labelGutterWidth}px`, height: `${contentHeight}px` }}
+        style={{ width: `${compact ? 144 : labelGutterWidth}px`, height: `${contentHeight}px` }}
       >
         {rows.map((row) => {
           const active = highlightedThread === row.threadId;
@@ -213,7 +237,8 @@ export default function TimelineRibbon({
           return (
             <div
               key={row.threadId}
-              className={`flex h-[30px] w-full items-center ${active ? "bg-blue-50" : ""}`}
+              className={`flex w-full items-center ${active ? "bg-blue-50" : ""}`}
+              style={{ height: `${rowHeight}px` }}
             >
               <button
                 type="button"
@@ -241,18 +266,18 @@ export default function TimelineRibbon({
                     onClick={() => cycleWithinThread(row.threadId, -1)}
                     title="Previous node in this thread"
                     aria-label={`Previous node in ${row.label}`}
-                    className="px-0.5 text-[12px] leading-none text-blue-600 hover:text-blue-800"
+                    className="inline-flex h-11 w-8 items-center justify-center text-blue-600 hover:text-blue-800 sm:h-full sm:w-5"
                   >
-                    ‹
+                    <ChevronLeft aria-hidden="true" className="h-4 w-4" />
                   </button>
                   <button
                     type="button"
                     onClick={() => cycleWithinThread(row.threadId, 1)}
                     title="Next node in this thread"
                     aria-label={`Next node in ${row.label}`}
-                    className="pl-0.5 pr-1 text-[12px] leading-none text-blue-600 hover:text-blue-800"
+                    className="inline-flex h-11 w-8 items-center justify-center text-blue-600 hover:text-blue-800 sm:h-full sm:w-5"
                   >
-                    ›
+                    <ChevronRight aria-hidden="true" className="h-4 w-4" />
                   </button>
                 </span>
               ) : null}
@@ -261,7 +286,7 @@ export default function TimelineRibbon({
         })}
       </div>
 
-      <div
+      {!compact && <div
         role="separator"
         tabIndex={0}
         aria-orientation="vertical"
@@ -289,31 +314,31 @@ export default function TimelineRibbon({
         className="group relative w-2 shrink-0 cursor-col-resize bg-gray-50 hover:bg-blue-50"
       >
         <span className="absolute bottom-0 left-1/2 top-0 w-px -translate-x-1/2 bg-gray-200 group-hover:bg-blue-400" />
-      </div>
+      </div>}
 
       {/* Dots region — scrolls horizontally along the (time or index) axis. */}
       <div
         ref={scrollRef}
         onScroll={handleScroll}
         className="flex-1 overflow-x-auto overflow-y-hidden"
-        style={{ scrollBehavior: "smooth" }}
+        style={{ scrollBehavior: compact ? "auto" : "smooth" }}
       >
         <div className="relative" style={{ width: `${totalWidth}px`, minWidth: "100%", height: `${contentHeight}px` }}>
           {rows.map((row, rowIdx) => {
             const dimmed = highlightedThread && highlightedThread !== row.threadId;
-            const rowTop = rowIdx * ROW_HEIGHT;
+            const rowTop = rowIdx * rowHeight;
             const firstX = row.nodes[0]?.x ?? 0;
             const lastX = row.nodes[row.nodes.length - 1]?.x ?? firstX;
             return (
               <div
                 key={row.threadId}
                 className="absolute left-0"
-                style={{ top: `${rowTop}px`, height: `${ROW_HEIGHT}px`, width: `${totalWidth}px`, opacity: dimmed ? 0.25 : 1 }}
+                style={{ top: `${rowTop}px`, height: `${rowHeight}px`, width: `${totalWidth}px`, opacity: dimmed ? 0.25 : 1 }}
               >
                 {/* Lane line spanning the thread's active span. */}
                 <div
                   className="absolute h-px bg-gray-200"
-                  style={{ left: `${firstX}px`, top: `${ROW_HEIGHT / 2}px`, width: `${Math.max(0, lastX - firstX)}px` }}
+                  style={{ left: `${firstX}px`, top: `${rowHeight / 2}px`, width: `${Math.max(0, lastX - firstX)}px` }}
                 />
                 {/* Return arcs: a dotted connector bridging each dormant gap,
                     lifted above the solid lane line so the resumption reads. */}
@@ -324,7 +349,7 @@ export default function TimelineRibbon({
                       className="absolute border-t border-dashed border-slate-400"
                       style={{
                         left: `${node.returnFromX}px`,
-                        top: `${ROW_HEIGHT / 2 - 4}px`,
+                        top: `${rowHeight / 2 - 4}px`,
                         width: `${Math.max(0, node.x - node.returnFromX)}px`,
                         height: 0,
                       }}
@@ -354,7 +379,7 @@ export default function TimelineRibbon({
                       onMouseEnter={() => setHoveredId(node.id)}
                       onMouseLeave={() => setHoveredId((prev) => (prev === node.id ? null : prev))}
                       className="absolute flex items-center justify-center"
-                      style={{ left: `${node.x - 11}px`, top: "0px", width: "22px", height: `${ROW_HEIGHT}px` }}
+                      style={{ left: `${node.x - 22}px`, top: "0px", width: "44px", height: `${rowHeight}px` }}
                       aria-label={title}
                       title={title}
                     >
@@ -362,7 +387,7 @@ export default function TimelineRibbon({
                       {node.isReturn ? (
                         <span
                           className="absolute text-[10px] leading-none text-gray-400"
-                          style={{ left: "-2px", top: `${ROW_HEIGHT / 2 - 6}px` }}
+                          style={{ left: "7px", top: `${rowHeight / 2 - 6}px` }}
                           aria-hidden="true"
                         >
                           ↩
@@ -430,7 +455,8 @@ export default function TimelineRibbon({
         </div>
       ) : null}
       </div>
-      )}
+      </div>
+      </div>
     </section>
   );
 }
