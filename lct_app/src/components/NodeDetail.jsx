@@ -6,6 +6,7 @@ import {
   applySpeakerCorrection,
 } from "../services/speakerNamingApi";
 import { apiFetch } from "../services/apiClient";
+import { buildMediaSeekUrl, mediaOffsetLabel, selectMediaRef } from "../services/mediaSeek";
 
 // ADR-032 Part H — windowed speaker correction. The scope selector lives
 // inline in the rename editor; the last-used choice is sticky per browser.
@@ -102,11 +103,13 @@ export default function NodeDetail({
   participantNames = [],
   contextNodes = null,
   onSelectNode = null,
+  artifactUtterances = null,
+  mediaRefs = [],
 }) {
   const safeNode = node ?? null;
 
   // ADR-032 Part H — structured utterances + windowed inline correction.
-  const [utterances, setUtterances] = useState(null);
+  const [utterances, setUtterances] = useState(() => artifactUtterances);
   const [editingUtteranceId, setEditingUtteranceId] = useState(null);
   const [correctionDraft, setCorrectionDraft] = useState("");
   const [correctionWindow, setCorrectionWindow] = useState(readStoredSpeakerWindow);
@@ -124,6 +127,10 @@ export default function NodeDetail({
   // on every media-ready event + on play, clearing only once it lands on target.
   const targetSeekRef = useRef(null);
   const [audioState, setAudioState] = useState("idle");
+  const mediaRef = useMemo(
+    () => selectMediaRef(mediaRefs),
+    [mediaRefs],
+  );
 
   // Backend timestamps are seconds (Float on DBUtterance.timestamp_start,
   // derived from utterance.start_time which is seconds throughout the
@@ -398,7 +405,7 @@ export default function NodeDetail({
   // On failure or empty result, fall back to the plain-text chunk render.
   useEffect(() => {
     if (!conversationId) {
-      setUtterances(null);
+      setUtterances(Array.isArray(artifactUtterances) ? artifactUtterances : null);
       return undefined;
     }
     let cancelled = false;
@@ -417,7 +424,7 @@ export default function NodeDetail({
     return () => {
       cancelled = true;
     };
-  }, [conversationId]);
+  }, [conversationId, artifactUtterances]);
 
   const refetchUtterances = useCallback(async () => {
     if (!conversationId) return;
@@ -643,11 +650,11 @@ export default function NodeDetail({
         {contextWindow && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-              In context · who said what around this
+              Nearby moments
             </span>
             <div className="mt-1 max-h-60 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs leading-relaxed">
               {contextWindow.rows.map((n) => {
-                const speaker = n.speaker_display || n.speaker_id || "?";
+                const speaker = n.speaker_display || n.speaker_id || "";
                 const text = n.source_excerpt || n.summary || n.node_name || "";
                 const isCur = String(n.id) === contextWindow.currentId;
                 const clickable = !isCur && typeof onSelectNode === "function";
@@ -659,8 +666,8 @@ export default function NodeDetail({
                       clickable ? "cursor-pointer hover:bg-gray-100 rounded px-0.5" : ""
                     }`}
                   >
-                    <span className="font-medium text-gray-500">{speaker}</span>
-                    <span className="text-gray-300">: </span>
+                    {speaker && <span className="font-medium text-gray-500">{speaker}</span>}
+                    {speaker && <span className="text-gray-300">: </span>}
                     <span className={isCur ? "text-gray-800" : "text-gray-600"}>{text}</span>
                   </div>
                 );
@@ -678,7 +685,7 @@ export default function NodeDetail({
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Raw Transcript
+                Transcript evidence
               </span>
               {!showFullTranscript &&
                 (visibleUtterances?.truncated || visibleTranscript?.truncated) && (
@@ -710,6 +717,8 @@ export default function NodeDetail({
                   const label = u.speaker_name || u.speaker_id || "?";
                   const isEditing = editingUtteranceId === u.id;
                   const clock = utteranceClockLabel(u.timestamp_start);
+                  const seekUrl = buildMediaSeekUrl(mediaRef, u.timestamp_start);
+                  const mediaClock = mediaOffsetLabel(u.timestamp_start);
                   return (
                     <div
                       key={u.id}
@@ -720,14 +729,24 @@ export default function NodeDetail({
                       }
                       className={`py-0.5 ${u._hl ? "bg-amber-100 rounded px-0.5" : ""}`}
                     >
-                      {clock && (
+                      {(mediaClock || clock) && (seekUrl ? (
+                        <a
+                          href={seekUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mr-1 text-[10px] tabular-nums text-blue-600 hover:underline"
+                          title="Open the meeting recording at this moment"
+                        >
+                          {mediaClock}
+                        </a>
+                      ) : (
                         <span
                           className="mr-1 text-[10px] tabular-nums text-gray-400"
-                          title="When this message was sent"
+                          title={mediaClock ? "Time in recording" : "When this message was sent"}
                         >
-                          {clock}
+                          {mediaClock || clock}
                         </span>
-                      )}
+                      ))}
                       {isEditing ? (
                         <span className="font-medium text-gray-400">{label}</span>
                       ) : (
@@ -1032,4 +1051,6 @@ NodeDetail.propTypes = {
   participantNames: PropTypes.arrayOf(PropTypes.string),
   contextNodes: PropTypes.arrayOf(PropTypes.object),
   onSelectNode: PropTypes.func,
+  artifactUtterances: PropTypes.arrayOf(PropTypes.object),
+  mediaRefs: PropTypes.arrayOf(PropTypes.object),
 };

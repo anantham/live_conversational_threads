@@ -400,6 +400,9 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
         "redaction_applied": privacy.redaction_applied,
         "redaction_map_id": privacy.redaction_map_id,
     }
+    source_meta = payload.source_metadata.model_dump()
+    source_meta["privacy"] = privacy_meta
+    source_meta["contract_version"] = payload.contract_version
     speakers = {t.speaker_id for t in payload.turns}
     conv_name = (payload.conversation_name or "").strip()
 
@@ -411,7 +414,7 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
             source_type=payload.source_type,
             owner_id=owner_id,
             indrasnet_group_id=payload.group_id,
-            source_metadata={"privacy": privacy_meta, "contract_version": payload.contract_version},
+            source_metadata=source_meta,
             participant_count=len(speakers),
             total_utterances=len(payload.turns),
             started_at=datetime.now(),
@@ -431,6 +434,7 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
         conv.source_type = payload.source_type
         conv.indrasnet_group_id = payload.group_id
         meta = dict(conv.source_metadata or {})
+        meta.update(payload.source_metadata.model_dump())
         meta["privacy"] = privacy_meta
         meta["contract_version"] = payload.contract_version
         conv.source_metadata = meta

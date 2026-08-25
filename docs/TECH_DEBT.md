@@ -121,3 +121,9 @@ Historical baseline: merge-base `4e313f3` / tip `2f99913` — **1000 passed / 6 
 | `test_speaker_naming_api` | **fixed** | Fixture mounts `router_conversations`. |
 | `test_transcript_processing_schema::test_normalize_generated_output_adds_required_defaults` | **fixed** | Asserts `semantic_level==1` (matches `transcript_normalizer` default). |
 | `test_transcript_processing_runtime::test_graph_timer_forces_update` | open | Known asyncio event-loop cross-pollution in full suite (passes alone). |
+
+### 2026-08-25 — NodeDetail remains a mixed-concern component
+
+`lct_app/src/components/NodeDetail.jsx` is over 1,000 lines and combines evidence
+navigation, speaker correction, media playback, fact checks, and node metadata.
+Extract an `EvidenceTranscript` component before adding further evidence modes.

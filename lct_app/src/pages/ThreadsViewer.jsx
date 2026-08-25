@@ -413,6 +413,8 @@ export default function ThreadsViewer() {
           <NodeDetail
             node={selectedNodeData}
             chunkDict={bundle.chunk_dict || {}}
+            artifactUtterances={bundle.utterances || []}
+            mediaRefs={bundle.media_refs || []}
             contextNodes={flatNodes}
             onSelectNode={setSelectedNode}
             onClose={() => setSelectedNode(null)}

@@ -172,3 +172,21 @@ def test_raw_text_allowed_on_personal_private_deployment(monkeypatch):
     payload = _payload(privacy={"redaction_applied": False}, owner_local_raw=True)
     result = asyncio.run(persist_turns(db=FakeDB(existing=None), payload=payload))
     assert result["utterance_count"] == 3
+
+
+def test_validated_producer_metadata_persists_alongside_server_privacy():
+    db = FakeDB(existing=None)
+    payload = _payload(source_metadata={
+        "media_refs": [{
+            "provider": "google_drive", "file_id": "drive-file-123",
+            "view_url": "https://drive.google.com/file/d/drive-file-123/view",
+        }],
+    })
+    asyncio.run(persist_turns(db=db, payload=payload))
+    (conv,) = _convs(db)
+    assert conv.source_metadata["media_refs"][0]["file_id"] == "drive-file-123"
+    assert conv.source_metadata["privacy"] == {
+        "external_llm_ok": False, "local_llm_ok": True,
+        "redaction_applied": True, "redaction_map_id": None,
+    }
+    assert conv.source_metadata["contract_version"] == "1"

@@ -3942,3 +3942,22 @@ Manual testing not run:
 - Review-tooling issue discovered outside Option C: scripts document
   `.agent-reviews/` as gitignored, but the root `.gitignore` lacks that entry.
   Recorded in `ISSUES.md`; no raw review packet was written inside the repo.
+
+## 2026-08-25 — Portable recording deep links
+
+- Approved boundary: preserve aligned utterance timings and a safe Drive video
+  reference through RawTurns persistence and `.threads` export; render seek links
+  only on evidence rows. Drive permissions remain authoritative.
+- `raw_turn_contract.py` and `graph_persistence.py` now preserve producer metadata
+  while overwriting reserved privacy/contract fields. `share_api.py` exports
+  serialized utterances and an allowlisted media projection only.
+- The static viewer receives artifact utterances/media, labels the section
+  **Transcript evidence**, removes the misleading `?` speaker placeholder, and
+  opens Drive at the utterance time with two seconds of preroll. Invalid refs,
+  epoch timestamps, and missing media fail closed to readable text.
+- Tests: 32 focused Python tests passed; 9 focused frontend tests passed; the
+  Vite production build passed. Python 3.9/Google dependency warnings and the
+  existing >500 kB bundle warning remain non-blocking.
+- Files touched: RawTurn contract/persistence/export, `ThreadsViewer`,
+  `NodeDetail`, artifact validation, new `mediaSeek` utility/tests, ADR-036,
+  test intent, and `docs/TECH_DEBT.md`.

@@ -154,3 +154,26 @@ library without a key. `/browse` accepts a `.threads` file dropped anywhere on
 the page, validates it through the existing artifact contract, opens it at
 `/view`, and remembers it in the current browser. This is an **open/import-local**
 operation; no server upload or cross-device synchronization is implied.
+
+## Amendment — 2026-08-25: recording provenance and evidence deep links
+
+**Status:** Approved by the operator as an additive correction to the portable
+artifact contract.
+
+A `.threads` artifact may carry structured `utterances` and an allowlisted
+conversation-level `media_refs` list. The artifact does not embed audio/video,
+tokens, local paths, or arbitrary producer metadata. The supported first media
+reference is a stable Google Drive video file URL; Drive ACLs remain the access
+authority, so possession of the `.threads` file does not itself grant playback.
+
+Timestamp links belong to utterance evidence rows. An aggregate topic/theme/arc
+can span disjoint evidence and must not pretend to have one exact seek point.
+The static viewer formats seconds-into-recording as a timestamp and opens Drive
+with a two-second preroll. Missing time or missing/invalid media degrades to
+ordinary readable transcript evidence.
+
+Raw-turn ingestion preserves bounded producer source metadata, but privacy and
+contract markers are always server-authored and cannot be spoofed upstream.
+Exports project only allowlisted media fields plus serialized utterances. A
+recipient projection requires a separate explicit recording-link authorization;
+transcript sharing alone does not silently widen into video sharing.

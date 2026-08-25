@@ -27,6 +27,12 @@ export function validateThreadsArtifact(data) {
       `Unsupported .threads version (${data.format_version}). Update the viewer.`,
     );
   }
+  if (data.utterances != null && !Array.isArray(data.utterances)) {
+    throw new Error("Invalid utterances.");
+  }
+  if (data.media_refs != null && !Array.isArray(data.media_refs)) {
+    throw new Error("Invalid media_refs.");
+  }
   if (!Array.isArray(data.graph_data)) {
     throw new Error("Missing or invalid graph_data.");
   }

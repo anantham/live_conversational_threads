@@ -389,6 +389,38 @@ def _export_argument_topology(conversation) -> Optional[dict]:
     return dict(marker) if isinstance(marker, dict) else None
 
 
+def _export_media_refs(conversation) -> list[dict]:
+    """Allowlist recording provenance for a portable artifact.
+
+    Local paths, credentials and unrelated producer metadata never cross this
+    boundary. Drive ACLs remain the authority when a recipient follows a URL.
+    """
+    metadata = getattr(conversation, "source_metadata", None)
+    raw_refs = metadata.get("media_refs") if isinstance(metadata, dict) else None
+    refs = []
+    if not isinstance(raw_refs, list):
+        return refs
+    for raw in raw_refs:
+        if not isinstance(raw, dict) or raw.get("provider") != "google_drive":
+            continue
+        file_id = str(raw.get("file_id") or "").strip()
+        expected = f"https://drive.google.com/file/d/{file_id}/view"
+        if (
+            len(file_id) < 8
+            or not all(char.isalnum() or char in "_-" for char in file_id)
+            or str(raw.get("view_url") or "").rstrip("/") != expected
+        ):
+            continue
+        refs.append({
+            "provider": "google_drive",
+            "kind": "video",
+            "file_id": file_id,
+            "view_url": expected,
+            "label": str(raw.get("label") or "Meeting recording").strip()[:240],
+        })
+    return refs
+
+
 def _combine_argument_topology(markers: list[Optional[dict]]) -> dict:
     """Roll up per-meeting scan markers without hiding missing/failed scans."""
     relation_counts: dict[str, int] = {}
@@ -444,6 +476,7 @@ async def export_threads(
     from lct_python_backend.services.conversation_reader import (
         build_full_transcript_for_export,
         build_coverage_summary,
+        serialize_utterances,
     )
 
     conversation_uuid = uuid.UUID(conversation_id)
@@ -487,6 +520,8 @@ async def export_threads(
         "edge_schema": edge_schema_descriptor(),
         "edges": serialize_relationships(relationships),
         "chunk_dict": chunk_dict,
+        "utterances": serialize_utterances(utterances),
+        "media_refs": _export_media_refs(conversation),
         # P0 (audit-against-source): the verbatim raw the graph was built from,
         # so the viewer's transcript download + coverage check work without
         # arbitrary compression. Built from existing Utterance fields (no schema
@@ -855,6 +890,7 @@ async def fetch_share(
     from lct_python_backend.services.conversation_reader import (
         build_full_transcript_for_export,
         build_coverage_summary,
+        serialize_utterances,
     )
 
     conversation_uuid = uuid.UUID(row.conversation_id)
@@ -918,6 +954,7 @@ async def fetch_share(
         "edges": serialize_relationships(relationships),
         "chunk_dict": chunk_dict,
         # P0 (audit-against-source): the verbatim raw the graph was built from,
+        "utterances": serialize_utterances(utterances),
         # so the viewer's transcript download + coverage check work without
         # arbitrary compression. Built from existing Utterance fields (no schema
         # change). transcript_source distinguishes verbatim vs none.
