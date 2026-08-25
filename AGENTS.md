@@ -503,9 +503,22 @@ primarily implemented the change. The point is independent error detection, not
 loyalty to a particular provider. Claude, Grok, and Codex are supported examples;
 none satisfies the gate when it is the same family that authored the change.
 
-External review sends the PR diff and relevant repository context to the chosen
-provider. Obtain or rely on explicit operator approval for that provider and
-scope before invoking it.
+External review sends bounded repository content to the chosen provider. The
+operator grants the following standing authorization for this repository:
+
+> Codex may send committed or uncommitted source diffs, PR metadata, tests, and
+> technical documentation to Anthropic/Claude, xAI/Grok, or Google/Gemini
+> solely for read-only independent code review, without requesting confirmation
+> each time.
+
+This standing authorization excludes credentials, `.env` files, tokens,
+databases, recordings, transcripts, participant information, private review
+reasoning, generated artifacts, and unrelated files. Reviewers may not modify
+repositories, post comments, or trigger paid usage beyond existing
+subscriptions/credits. Inspect the exact outbound packet before invocation and
+fail closed when classification is uncertain. This paragraph satisfies the
+operator-approval requirement for future reviews that remain inside these
+boundaries; do not ask for duplicate content-sharing confirmation.
 
 Use the repo-local scripts:
 
