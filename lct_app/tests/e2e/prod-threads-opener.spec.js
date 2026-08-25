@@ -9,10 +9,12 @@ import { fileURLToPath } from 'url';
  * - Keep `/browse` a stable local-first library even when no backend answers.
  * - Open `.threads` from Browse without a mobile-hostile `accept` filter.
  * - Remember a valid artifact on this device and reopen it by stable `/view/:id` URL.
+ * - Preserve visible Library metadata in each conversation button's accessible name.
  * - Keep `/view` as the recoverable standalone opener for drag-drop and bad files.
  * - Accept a `.threads` drop anywhere on `/browse`, not only in the standalone opener.
  * - Exercise the version-2 explicit directed-edge artifact contract in a browser.
  * - Render structured utterance text without repeating speaker names in cards.
+ * - Keep the conversation overview and thread timeline independently collapsible.
  */
 //
 // Included in BOTH configs: the default (local) run blocks /api/* to force the
@@ -76,6 +78,23 @@ test.describe('.threads opener (public recipient path)', () => {
     await expect(page.getByText('Speaker One', { exact: true })).toHaveCount(0);
     await expect(page.locator('[data-speaker-id="Speaker One"]')).toHaveCount(1);
 
+    await page.getByRole('button', { name: 'Hide conversation overview' }).click();
+    await expect(page.locator('header.t-acc')).toHaveAttribute('data-open', 'false');
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Show conversation overview' })).toBeVisible();
+    await page.getByRole('button', { name: 'Show conversation overview' }).click();
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Hide thread timeline' }).click();
+    await expect(page.locator('section.t-acc')).toHaveAttribute('data-open', 'false');
+    const timelinePanel = page.locator('section.t-acc .t-acc-panel');
+    await expect(timelinePanel).toHaveAttribute('inert', '');
+    await expect.poll(() => timelinePanel.evaluate((el) => el.getBoundingClientRect().height))
+      .toBeLessThanOrEqual(1);
+    await expect(page.getByRole('button', { name: 'Show thread timeline' })).toBeVisible();
+    await page.getByRole('button', { name: 'Show thread timeline' }).click();
+    await expect(page.locator('[data-testid="thread-label-gutter"]')).toBeVisible();
+
     await page.goto('/browse', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText('On this device', { exact: true })).toBeVisible();
@@ -83,6 +102,19 @@ test.describe('.threads opener (public recipient path)', () => {
     // Stable deep link: the local library record survives navigation/reload.
     await page.goto('/view/e2e-fixture', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
+  });
+
+  test('Browse conversation buttons expose their visible metadata to assistive technology', async ({ page }) => {
+    await blockBackend(page);
+    await page.goto('/browse', { waitUntil: 'domcontentloaded' });
+    await page.locator('input[type="file"]').setInputFiles(FIXTURE);
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Saved on this device')).toBeVisible({ timeout: 15000 });
+
+    await page.goto('/browse', { waitUntil: 'domcontentloaded' });
+    await expect(
+      page.getByRole('button', { name: /E2E fixture conversation.*3 nodes/ }),
+    ).toBeVisible({ timeout: 15000 });
   });
 
   test('Browse accepts a .threads file dropped anywhere on the page', async ({ page }) => {

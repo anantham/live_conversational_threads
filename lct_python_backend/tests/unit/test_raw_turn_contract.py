@@ -159,3 +159,29 @@ def test_ts_end_before_ts_start_rejected():
 def test_ts_equal_is_allowed():
     p = RawTurnsPayloadV1(**_payload(turns=[_turn(0, ts_start=3.0, ts_end=3.0)]))
     assert p.turns[0].ts_start == 3.0
+
+
+def test_source_metadata_is_bounded_but_preserved():
+    p = RawTurnsPayloadV1(**_payload(source_metadata={"media_refs": [{
+        "provider": "google_drive", "file_id": "drive-file-123",
+        "view_url": "https://drive.google.com/file/d/drive-file-123/view",
+    }]}))
+    assert p.source_metadata.media_refs[0].file_id == "drive-file-123"
+
+
+def test_source_metadata_cannot_spoof_reserved_server_fields():
+    with pytest.raises(ValidationError):
+        RawTurnsPayloadV1(**_payload(source_metadata={
+            "media_refs": [],
+            "privacy": {"external_llm_ok": True},
+            "contract_version": "spoofed",
+        }))
+
+
+def test_media_ref_url_must_match_the_drive_file_id():
+    with pytest.raises(ValidationError):
+        RawTurnsPayloadV1(**_payload(source_metadata={"media_refs": [{
+            "provider": "google_drive",
+            "file_id": "drive-file-123",
+            "view_url": "https://example.com/file/d/drive-file-123/view",
+        }]}))

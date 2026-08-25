@@ -3,7 +3,8 @@
 These verify the parts that don't need a real DB: that every Utterance is written
 WITH its ``source_identifier`` (the whole point of P1 — the markdown path drops
 it), that the privacy block + group id land on the Conversation, that re-ingest
-deletes prior turns + graph, and that deployment-aware raw retention holds.
+deletes prior turns + graph without erasing omitted recording provenance, and
+that deployment-aware raw retention holds.
 
 The DB-enforced invariants (the partial unique indexes) and the FastAPI wiring are
 covered separately by the migration + an integration test against Postgres — not
@@ -95,6 +96,7 @@ def test_new_conversation_writes_source_identifier_on_every_turn():
     convs, utts = _convs(db), _utts(db)
     assert len(convs) == 1
     assert convs[0].indrasnet_group_id == "G"
+    assert convs[0].source_metadata["media_refs"] == []
     assert convs[0].source_metadata["privacy"]["redaction_applied"] is True
     assert convs[0].source_metadata["contract_version"] == "1"
     assert len(utts) == 3
@@ -139,6 +141,52 @@ def test_reingest_replaces_turns_and_graph_keeping_conversation_id():
     assert result["conversation_id"] == str(existing.id)
 
 
+def test_reingest_preserves_media_refs_when_source_metadata_is_omitted():
+    media_refs = [{
+        "provider": "google_drive",
+        "kind": "video",
+        "file_id": "drive-file-123",
+        "view_url": "https://drive.google.com/file/d/drive-file-123/view",
+        "label": "Meeting recording",
+    }]
+    existing = Conversation(
+        id=uuid.uuid4(),
+        conversation_name="old",
+        conversation_type="transcript",
+        source_type="google_meet",
+        owner_id="owner-1",
+        indrasnet_group_id="G",
+        source_metadata={"media_refs": media_refs},
+        deleted_at=None,
+    )
+
+    asyncio.run(persist_turns(db=FakeDB(existing=existing), payload=_payload()))
+
+    assert existing.source_metadata["media_refs"] == media_refs
+
+
+def test_reingest_can_explicitly_clear_media_refs():
+    existing = Conversation(
+        id=uuid.uuid4(),
+        conversation_name="old",
+        conversation_type="transcript",
+        source_type="google_meet",
+        owner_id="owner-1",
+        indrasnet_group_id="G",
+        source_metadata={"media_refs": [{
+            "provider": "google_drive",
+            "file_id": "drive-file-123",
+            "view_url": "https://drive.google.com/file/d/drive-file-123/view",
+        }]},
+        deleted_at=None,
+    )
+
+    payload = _payload(source_metadata={"media_refs": []})
+    asyncio.run(persist_turns(db=FakeDB(existing=existing), payload=payload))
+
+    assert existing.source_metadata["media_refs"] == []
+
+
 def test_explicit_conversation_id_must_match_owner_and_group():
     # A payload that names conversation A's id but a DIFFERENT group must be
     # refused, not allowed to destructively overwrite A (codex #1).
@@ -172,3 +220,27 @@ def test_raw_text_allowed_on_personal_private_deployment(monkeypatch):
     payload = _payload(privacy={"redaction_applied": False}, owner_local_raw=True)
     result = asyncio.run(persist_turns(db=FakeDB(existing=None), payload=payload))
     assert result["utterance_count"] == 3
+
+
+def test_validated_producer_metadata_persists_alongside_server_privacy():
+    db = FakeDB(existing=None)
+    payload = _payload(source_metadata={
+        "media_refs": [{
+            "provider": "google_drive", "file_id": "drive-file-123",
+            "view_url": "https://drive.google.com/file/d/drive-file-123/view",
+        }],
+    })
+    asyncio.run(persist_turns(db=db, payload=payload))
+    (conv,) = _convs(db)
+    assert conv.source_metadata["media_refs"] == [{
+        "provider": "google_drive",
+        "kind": "video",
+        "file_id": "drive-file-123",
+        "view_url": "https://drive.google.com/file/d/drive-file-123/view",
+        "label": "Meeting recording",
+    }]
+    assert conv.source_metadata["privacy"] == {
+        "external_llm_ok": False, "local_llm_ok": True,
+        "redaction_applied": True, "redaction_map_id": None,
+    }
+    assert conv.source_metadata["contract_version"] == "1"

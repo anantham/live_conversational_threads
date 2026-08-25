@@ -1,4 +1,5 @@
 import PropTypes from "prop-types";
+import { LockKeyhole } from "lucide-react";
 
 import { AUTHORED_LEVELS } from "../graphConstants";
 import { mglog } from "./minimalGraphDebug";
@@ -20,7 +21,6 @@ export default function MinimalGraphHud({
   displayEdges,
   normalizedChunk,
   lockedLevel,
-  semanticCountLabel,
   drilldownPath,
   setDrilldownPath,
   legacyClusterLevel,
@@ -30,20 +30,33 @@ export default function MinimalGraphHud({
   setLockedLevel,
 }) {
   const tierSpecs = displayMode === "semantic" ? AUTHORED_LEVELS : LEGACY_TIER_SPECS;
+  const visibleSemanticLevel = Number(
+    displayNodes[0]?.data?.fullData?.semantic_level
+      ?? displayNodes[0]?.data?.fullData?.level
+      ?? displayNodes[0]?.data?.semantic_level
+      ?? effectiveSemanticLevel,
+  );
+  const semanticTierSpec = AUTHORED_LEVELS.find(
+    (spec) => spec.level === visibleSemanticLevel,
+  );
+  const semanticTierWord = displayNodes.length === 1
+    ? (semanticTierSpec?.singular || "node")
+    : (semanticTierSpec?.label || "nodes");
+  const activeTierCount = `${displayNodes.length} ${semanticTierWord}`;
 
   // left-16 (not left-3) reserves room for the page-level Back button (a ~54px
   // padded icon at top-3 left-3, z-50) so it no longer covers the zoom % chip /
   // tier controls (#6).
   return (
-    <div className="absolute top-3 left-16 right-3 z-40 flex items-center gap-2 select-none overflow-x-auto flex-nowrap whitespace-nowrap">
-      <div className="flex-shrink-0 flex items-center gap-1.5 rounded-md bg-white/95 border border-gray-200 shadow-sm px-2.5 py-1.5">
+    <div className="absolute left-2 right-2 top-2 z-40 flex select-none flex-col items-stretch gap-1 whitespace-nowrap sm:left-16 sm:right-3 sm:top-3 sm:flex-row sm:items-center sm:gap-2 sm:overflow-x-auto">
+      <div className="flex min-h-11 flex-shrink-0 items-center gap-1.5 rounded-md border border-gray-200 bg-white/95 px-2.5 py-1.5 shadow-sm sm:min-h-0">
         <span className="text-[10px] font-mono text-gray-500">{Math.round(zoomLevel * 100)}%</span>
         <span className="text-[9px] text-gray-300">|</span>
         {clusterLevelLabel ? (
           <>
             <span className={`text-[10px] font-semibold ${
               displayMode === "semantic"
-                ? (AUTHORED_LEVELS.find((spec) => spec.level === effectiveSemanticLevel)?.color || "text-blue-600")
+                ? (semanticTierSpec?.color || "text-blue-600")
                 : effectiveClusterLevel === 3
                 ? "text-purple-600"
                 : effectiveClusterLevel === 2
@@ -54,7 +67,7 @@ export default function MinimalGraphHud({
             </span>
             <span className="text-[10px] text-gray-500">
               {displayMode === "semantic"
-                ? semanticCountLabel
+                ? activeTierCount
                 : `${displayNodes.length} clusters · ${normalizedChunk.length} nodes`}
             </span>
             {lockedLevel != null && (
@@ -119,7 +132,7 @@ export default function MinimalGraphHud({
         </div>
       )}
 
-      <div className="flex-shrink-0 flex items-center gap-0 rounded-md bg-white/95 border border-gray-200 shadow-sm overflow-hidden">
+      <div className="flex w-full flex-shrink-0 items-center gap-0 overflow-x-auto rounded-md border border-gray-200 bg-white/95 shadow-sm sm:w-auto sm:overflow-hidden">
         {tierSpecs.map(({ label, level, chip, border, color }) => {
           const isActive = displayMode === "semantic"
             ? effectiveSemanticLevel === level
@@ -128,6 +141,8 @@ export default function MinimalGraphHud({
           return (
             <button
               key={label}
+              type="button"
+              aria-pressed={isLocked}
               onClick={() => {
                 autoFollowRef.current = false;
                 setAutoFollow(false);
@@ -146,7 +161,7 @@ export default function MinimalGraphHud({
                 }
               }}
               title={isLocked ? `Locked to ${label} — click to unlock` : `Click to lock at ${label} level`}
-              className={`px-2 py-1 text-[9px] font-medium transition-colors cursor-pointer ${
+              className={`inline-flex min-h-11 flex-1 items-center justify-center gap-1 px-3 py-1 text-[10px] font-medium transition-colors cursor-pointer sm:min-h-0 sm:flex-none sm:px-2 sm:text-[9px] ${
                 isActive
                   ? `${chip} ${color} border-b-2 ${border}`
                   : isLocked
@@ -154,20 +169,11 @@ export default function MinimalGraphHud({
                   : "text-gray-500 hover:text-gray-600 hover:bg-gray-50"
               }`}
             >
-              {label}{isLocked ? " \u{1F512}" : ""}
+              {label}{isLocked ? <LockKeyhole aria-hidden="true" className="h-3 w-3" /> : null}
             </button>
           );
         })}
       </div>
-      {lockedLevel != null && (
-        <button
-          onClick={() => setLockedLevel(null)}
-          className="text-[9px] text-gray-500 hover:text-gray-600 ml-1"
-          title="Unlock zoom level"
-        >
-          unlock
-        </button>
-      )}
     </div>
   );
 }
@@ -182,7 +188,6 @@ MinimalGraphHud.propTypes = {
   displayEdges: PropTypes.array.isRequired,
   normalizedChunk: PropTypes.array.isRequired,
   lockedLevel: PropTypes.number,
-  semanticCountLabel: PropTypes.string,
   drilldownPath: PropTypes.array.isRequired,
   setDrilldownPath: PropTypes.func.isRequired,
   legacyClusterLevel: PropTypes.number.isRequired,

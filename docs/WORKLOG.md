@@ -1,5 +1,95 @@
 # WORKLOG
 
+## 2026-08-25T23:15:00+05:30 — Close exact-head Claude follow-up findings
+
+- The privacy-sanitized, tools-disabled Claude Opus review of the exact
+  `03935e9..8b819c7` follow-up diff returned one medium implementation finding
+  and one low test-coverage finding. No transcript, recording, participant
+  information, credential, database, or generated artifact was sent.
+- The medium finding was confirmed with two predicted failures: using
+  `model_dump(exclude_unset=True)` for both create and update removed the stable
+  empty `media_refs` key from new conversations and recursively omitted the
+  defaulted `kind` and `label` fields inside supplied media refs.
+- Repair: new conversations now persist the contract's fully materialized
+  source-metadata shape. Re-ingest derives a top-level patch from
+  `model_fields_set` but takes each supplied value from the full model dump, so
+  omitted fields are preserved, explicit empty lists clear, and nested defaults
+  remain materialized.
+- The low finding identified missing positive coverage, not broken behavior.
+  Added a public render assertion that an elapsed utterance with an attached
+  Drive recording becomes the expected `?t=10` deep link; the existing
+  no-recording branch remains pinned as “Time in conversation.” The synthetic
+  speaker fixture was also made generic before the fresh review packet.
+- Validation: **34/34** related backend tests, **41/41** focused UI tests, and
+  **247/247** frontend unit tests passed; scoped ESLint and `git diff --check`
+  passed. Confidence: 0.98. Fallback: revert only this follow-up if the fresh
+  exact-head review contradicts the reproduced model-dump behavior.
+
+## 2026-08-25T22:55:00+05:30 — Independent-review hardening for PR #175
+
+- Claude Opus independently reviewed the privacy-sanitized exact PR #175 diff
+  at `03935e9` and returned eight candidate findings. Direct unit/browser/layout
+  probes confirmed seven underlying contract gaps and rejected one claimed
+  tablet touch-target mismatch: the existing 768px coarse-pointer test already
+  measured every relevant control at 44px or larger.
+- Root causes repaired at shared boundaries:
+  - re-ingestion now distinguishes omitted source metadata from an explicit
+    empty `media_refs` list, preserving recording links unless the caller asks
+    to clear them;
+  - collapsed overview/timeline panels remain mounted for animation but become
+    `inert` and assistive-technology hidden;
+  - the compact bottom sheet remains modal and focus-trapped, while the desktop
+    side panel is correctly non-modal;
+  - elapsed transcript timestamps remain useful without attached media and are
+    labelled “Time in conversation” instead of “Time in recording”;
+  - default same-lane timeline centers are separated by the full 44px hit area;
+  - stale browser assertions now follow the intentional persistent-title and
+    mounted-collapse contracts.
+- Predicted regressions failed before implementation in exactly five frontend
+  assertions and one backend persistence assertion. After repair: **246/246**
+  frontend unit tests, **34/34** related backend tests, scoped ESLint, production
+  build, Impeccable detector (zero findings), seven initial browser scenarios,
+  and the repaired full artifact journey passed. Two additional responsive
+  scenarios passed; one production-only scenario was intentionally skipped by
+  the local fixture.
+- The repository-wide ESLint command remains red with 109 unrelated baseline
+  errors, while all touched files lint cleanly. Local E2E also warns that the
+  worktree's symlinked/shared Fontsource files sit outside Vite's serving allow
+  list; the production build embeds the fonts successfully. Both are recorded
+  in `ISSUES.md` and did not weaken the scoped gates.
+- Confidence: 0.96. Fallback: revert this isolated follow-up commit if the fresh
+  exact-head independent review or remote CI finds a behavioral regression.
+
+## 2026-08-25T20:35:00+05:30 — Gemini accessibility review repairs
+
+- Gemini 3.1 Pro High independently reviewed PR #175 at exact head `44e498b`
+  using a privacy-sanitized source-and-test diff. The fail-closed gate returned
+  three findings.
+- Confirmed two findings at their shared UI boundaries: `NodeDetail` tied its
+  dialog focus lifecycle to node object identity, so node-to-node navigation
+  re-focused the panel; Browse conversation buttons replaced their visible
+  metadata with title-only `aria-label` values.
+- Rejected the reported epoch-link defect: `buildMediaSeekUrl` and
+  `mediaOffsetLabel` both reject epoch-scale timestamps, and the existing
+  `mediaSeek.test.js` regression explicitly covers that boundary.
+- Repair: focus initialization/restoration now follows dialog open/close state,
+  and Library buttons derive their accessible names from the rendered title and
+  metadata. Added public-behavior regressions for both paths.
+- Predicted validation: the new focus test fails on the reviewed head and passes
+  after the lifecycle repair; the browser-accessible name includes `3 nodes`;
+  focused unit/E2E tests, scoped lint, and the production build remain green.
+- Observed validation: **245/245** frontend unit tests passed; scoped ESLint and
+  the production build passed; the new browser accessibility scenario passed.
+  Impeccable's detector produced one false positive by combining the remove
+  button's normal `text-slate-300` with its separate `hover:bg-rose-50` state.
+- An older combined browser journey failed twice on a stale assertion that a
+  collapsed overview removes the title. The UI intentionally preserves the
+  title in its compact header and correctly changes the action to “Show
+  conversation overview”; this unrelated test-contract mismatch is recorded in
+  `ISSUES.md` without weakening the scoped repair.
+- Confidence: 0.95. Fallback: revert this isolated repair if real keyboard or
+  screen-reader verification contradicts the automated behavior tests.
+
 ## 2026-08-24T08:35:00+05:30 — Close Grok's partial optional-tier finding
 
 - Context: the fail-closed merge wrapper's second independent Grok review at
@@ -3801,6 +3891,36 @@ Manual testing not run:
   installed and selected for PR #170 because the implementation family is
   OpenAI/Codex.
 
+## 2026-08-25 — Viewer chrome follows the reader's active granularity
+
+- Reported behavior: the `/view` canvas was permanently crowded by the
+  conversation title/summary and bottom thread timeline; long thread names were
+  trapped in a fixed 96px gutter; the zoom HUD showed `5 themes Â· 135 moments`
+  even though the reader had selected the theme tier.
+- Root cause confirmation:
+  - `MinimalGraph` deliberately appended the level-1 moment total to every
+    higher semantic-tier count and the separator was a mojibaked source literal;
+  - `TimelineRibbon` had neither collapse state nor a resizable label gutter;
+  - `ThreadsViewer` exposed only a subtle summary-only toggle, leaving the title
+    and remaining overview chrome permanently visible.
+- Implementation:
+  - extracted `ThreadsViewerHeader.jsx`; the complete overview now collapses to
+    a compact, explicitly restorable bar while keeping viewer actions available;
+  - made `TimelineRibbon` independently collapsible, widened its default label
+    gutter, added a drag divider, and surfaces the complete hovered thread name
+    in its toolbar;
+  - moved semantic count presentation into `MinimalGraphHud`, which now reports
+    only the active tier (`5 themes`, `13 topics`, etc.); removed the lower-tier
+    total and repaired the remaining user-visible `Â·` literals in the graph;
+  - added unit behavior tests and extended the real `.threads` browser opener
+    test through both collapse/restore paths.
+- Validation: 231/231 frontend unit tests passed; focused Chromium opener passed;
+  targeted ESLint passed; production Vite build passed. The existing >500 kB
+  bundle warning remains unchanged and was already tracked.
+- Structure: `ThreadsViewer.jsx` reduced from 535 to 434 LOC. The remaining
+  viewer-route and newly 427-LOC timeline decomposition candidates are recorded
+  in `docs/TECH_DEBT.md`.
+
 ## 2026-08-23 10:18 +05:30 — Restore Tailnet history and make Browse fully local-first
 
 - Reported behavior: M5 could load the public LCT frontend over Tailnet but
@@ -3912,3 +4032,97 @@ Manual testing not run:
 - Review-tooling issue discovered outside Option C: scripts document
   `.agent-reviews/` as gitignored, but the root `.gitignore` lacks that entry.
   Recorded in `ISSUES.md`; no raw review packet was written inside the repo.
+
+## 2026-08-25 — Portable recording deep links
+
+- Approved boundary: preserve aligned utterance timings and a safe Drive video
+  reference through RawTurns persistence and `.threads` export; render seek links
+  only on evidence rows. Drive permissions remain authoritative.
+- `raw_turn_contract.py` and `graph_persistence.py` now preserve producer metadata
+  while overwriting reserved privacy/contract fields. `share_api.py` exports
+  serialized utterances and an allowlisted media projection only.
+- The static viewer receives artifact utterances/media, labels the section
+  **Transcript evidence**, removes the misleading `?` speaker placeholder, and
+  opens Drive at the utterance time with two seconds of preroll. Invalid refs,
+  epoch timestamps, and missing media fail closed to readable text.
+- Tests: 32 focused Python tests passed; 9 focused frontend tests passed; the
+  Vite production build passed. Python 3.9/Google dependency warnings and the
+  existing >500 kB bundle warning remain non-blocking.
+- Files touched: RawTurn contract/persistence/export, `ThreadsViewer`,
+  `NodeDetail`, artifact validation, new `mediaSeek` utility/tests, ADR-036,
+  test intent, and `docs/TECH_DEBT.md`.
+
+## 2026-08-25 — Mobile-first viewer and Library audit repair
+
+- Audited the deployed and local `/browse` + `/view` flows using the
+  `ux-audit`, `impeccable`, and `transitions-dev` guidance and a real 818-turn
+  `.threads` artifact. Evidence and findings are in
+  `docs/audits/2026-08-25/REPORT.md`.
+- Added a shared compact-view media-query hook. Phone viewers now start with
+  overview/timeline collapsed, retain five explicit 44px actions, expose
+  touch-sized tier/lens/graph controls, align tangent cards, and open details as
+  a backed bottom sheet.
+- Repaired the mobile graph camera at the node-set boundary: a stable visible
+  tier frames its first node at 85% below the two-row HUD. Desktop retains its
+  whole-tier fit and expanded/resizable timeline.
+- Added a participant-label boundary for Library filters and separate
+  keyboard-focusable primary actions from export/audio/delete controls.
+- Tests: 239/239 frontend unit tests passed; new responsive Playwright tests
+  passed 2/2; production build passed; scoped changed-source ESLint passed.
+  Global lint remains red on 109 pre-existing errors and is recorded in
+  `ISSUES.md`. Build still warns about the 1.17 MB JS chunk.
+- Impeccable detector was run once after the UI edits. Its two warnings were
+  manually reviewed as false positives: the bookmark corner is a CSS triangle,
+  not a side-tab card accent, and the rose delete hover changes foreground and
+  background together.
+- Applied the transitions.dev accordion primitive verbatim to the overview and
+  timeline disclosures: 250 ms grid-row/opacity/chevron feedback with a required
+  `prefers-reduced-motion` no-transition guard. Graph nodes and tier changes do
+  not receive decorative entrance motion.
+- Independent UX critique caught four cross-device/semantic gaps before release:
+  coarse-pointer tablets could receive compact chrome with desktop camera
+  framing; drill-down counts described the locked parent tier; node detail was
+  visually modal without dialog focus behavior; and reduced-motion left several
+  programmatic graph transitions active. Repaired all four at their shared
+  boundaries and added phone/tablet/desktop behavioral coverage.
+- Library participant filters now require a human display name. Opaque contact
+  IDs remain usable as hidden stable keys but are no longer rendered as labels;
+  cluster-member rows are native keyboard buttons.
+- Final validation after critique: 42 frontend test files / 241 tests passed;
+  responsive Playwright passed 3/3 at phone, touch-tablet, and desktop sizes;
+  the production build passed; scoped changed-source ESLint passed. The build's
+  1,170.23 kB JS / 347.40 kB gzip warning remains documented.
+- The audit verdict is deliberately **Incomplete**, not Pass: axe-core was not
+  installed, the in-app runtime exposed neither PerformanceObserver nor response
+  status inventory, and read-only routes cannot satisfy ux-audit's mandatory
+  typed-input manifest row. Product regression gates above are green.
+- Pre-push validation exposed a pre-existing timing-only failure in
+  `MeetingView.test.jsx`: the file passed 2/2 alone but twice crossed the 5s
+  default under the full hook, and the timeout cascaded into duplicate-root and
+  overlapping-`act()` warnings. With explicit owner approval, only those two
+  integration tests now receive a 15s ceiling; all behavior assertions remain.
+
+### Independent Grok gate follow-up
+
+- Grok reviewed PR #175 at exact head
+  `0b476b9de9cda019cf608889a451a7d89e489fb6` and returned four falsifiable
+  findings. Three were confirmed by new red behavioral tests: static artifact
+  evidence exposed backend speaker-correction controls, the initially focused
+  node-detail panel did not wrap `Shift+Tab`, and ID-only participants appeared
+  as Library labels.
+- The reported touch-tablet regression was rejected empirically. A corrected
+  768x1024 Playwright test measured all five viewer actions and every visible
+  tier control at the 44px floor before any CSS change. No compensating CSS was
+  added.
+- `NodeDetail.jsx` now derives edit capability from a real `conversationId`,
+  renders artifact speakers as read-only text, guards the save boundary, and
+  routes initial Tab/Shift+Tab into the dialog's focus cycle.
+- `browseParticipants.js` retains `contact_id` only as a stable hidden key when
+  a human-readable `display_name` or `name` exists; IDs can no longer become
+  labels.
+- Focused validation after repair: 7/7 Vitest checks passed and the corrected
+  touch-tablet Playwright check passed. Full validation then passed: 42 Vitest
+  files / 244 tests, the 3-device responsive Playwright matrix, scoped source
+  ESLint with zero errors, and the production Vite build. The existing
+  1,170.40 kB JS / 347.43 kB gzip warning remains unchanged. Independent
+  re-review remains required before merge.

@@ -86,7 +86,7 @@ export function buildRibbonLayout(nodes, opts = {}) {
   const {
     railStart = DEFAULT_RAIL_START,
     dotSpacing = DEFAULT_DOT_SPACING,
-    minDotSpacing = 18,
+    minDotSpacing = 44,
     returnGapSeconds = DEFAULT_RETURN_GAP_SECONDS,
   } = opts;
 

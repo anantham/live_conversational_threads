@@ -49,6 +49,31 @@ class RawTurnV1(BaseModel):
     ts_start: Optional[float] = None
     ts_end: Optional[float] = None
 
+class RawTurnMediaRefV1(BaseModel):
+    """Content-free recording provenance; access remains provider-controlled."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Literal["google_drive"]
+    kind: Literal["video"] = "video"
+    file_id: str = Field(..., min_length=8, max_length=200, pattern=r"^[A-Za-z0-9_-]+$")
+    view_url: str = Field(..., max_length=500)
+    label: str = Field(default="Meeting recording", max_length=240)
+
+    @model_validator(mode="after")
+    def _url_matches_file_id(self) -> "RawTurnMediaRefV1":
+        expected = f"https://drive.google.com/file/d/{self.file_id}/view"
+        if self.view_url.rstrip("/") != expected:
+            raise ValueError("media ref view_url must be the canonical Drive URL for file_id")
+        self.view_url = expected
+        return self
+
+
+class RawTurnSourceMetadataV1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    media_refs: List[RawTurnMediaRefV1] = Field(default_factory=list, max_length=4)
+
+
 
 class RawTurnsPayloadV1(BaseModel):
     """The ingest payload for ``POST /api/import/turns``."""
@@ -65,6 +90,7 @@ class RawTurnsPayloadV1(BaseModel):
     # Request-level opt-in to store RAW (un-redacted) text. The server ALSO requires
     # a personal-private deployment; this flag alone is not sufficient.
     owner_local_raw: bool = False
+    source_metadata: RawTurnSourceMetadataV1 = Field(default_factory=RawTurnSourceMetadataV1)
     turns: List[RawTurnV1] = Field(..., min_length=1)
 
     @field_validator("conversation_id")

@@ -1,6 +1,61 @@
 # ISSUES
 
-Last updated: 2026-08-24
+Last updated: 2026-08-25
+
+## 2026-08-25 — Repository-wide ESLint baseline is red (OPEN, NON-BLOCKING)
+
+**Summary:** `npm run lint -- --quiet` reports 109 errors across pre-existing,
+untouched frontend, API-proxy, test, and configuration files. The files changed
+for PR #175 pass a scoped ESLint invocation with zero findings.
+
+**Impact:** Medium engineering friction. A repository-wide lint gate cannot
+currently distinguish a new lint regression from the historical baseline.
+
+**Blocker status:** Non-blocking for PR #175 because every touched JavaScript
+file passes scoped lint and the full frontend unit suite and production build
+are green.
+
+**Recommended next step:** Establish and ratchet a zero-new-errors lint baseline,
+then pay down existing groups by runtime domain rather than mixing them into an
+unrelated viewer repair.
+
+## 2026-08-25 — Worktree Fontsource assets rejected by Vite dev allow-list (OPEN, NON-BLOCKING)
+
+**Summary:** Local Playwright runs from the nested git worktree log Vite
+allow-list warnings for Fontsource files resolved through the main checkout's
+shared `node_modules`. The production build resolves and embeds the same fonts.
+
+**Impact:** Low and local-development-only. Browser behavior tests pass, but
+screenshots from this worktree may render fallback fonts.
+
+**Blocker status:** Non-blocking for PR #175; it does not occur in the built
+artifact and is unrelated to the changed viewer semantics.
+
+**Recommended next step:** Give each worktree its own dependency install or add
+the resolved shared dependency directory to Vite's development-only allow-list.
+
+## 2026-08-25 — Overview-collapse browser assertion contradicted compact-header behavior (REPAIRED LOCALLY)
+
+**Summary:** The existing `.threads` opener browser journey expects the
+conversation title heading to disappear after activating “Hide conversation
+overview.” The product correctly switches the control to “Show conversation
+overview” but retains the title in the compact persistent header, so the stale
+heading-count assertion fails reproducibly.
+
+**Impact:** Low and test-only. The overview control changes state and the viewer
+remains usable; this does not affect the NodeDetail focus or Library accessible-
+name repairs. The focused regression for the latter passes.
+
+**Blocker status:** Repaired locally; exact-head independent review and remote CI
+remain before merge.
+
+**Resolution:** The browser contract now asserts that overview-only content
+collapses while the persistent title and navigation remain visible. The same
+journey also checks that the animated timeline collapses to zero height and is
+inert without requiring its mounted descendants to disappear from the DOM.
+
+**Recommended next step:** Keep the compact-header behavior covered in the
+cross-viewport viewer suite.
 
 ## 2026-08-24 — Partial optional hierarchy tier aborted valid lower graph (REPAIRED LOCALLY)
 
@@ -698,6 +753,30 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Creative: During a brainstorming session, I want the graph to auto-cluster related ideas and let me hide edges so I can drag a “storyline” into a deck outline without visual clutter.
 - Creative: While reviewing a contentious discussion, I want to click a node and have all related nodes pulled into view, then generate a concise narrative I can fact-check before sharing with stakeholders.
 - Creative: In a workshop, I want a smooth left-to-right timeline with fixed zoom presets so I can jump between moments, bookmark highlights, and later re-run higher-quality ASR/diarization on the stored audio for a polished recap.
+
+## 2026-08-25 — Viewer audit follow-ups
+
+- **Participant schema pollution remains at the producer boundary.** Real server
+  history returned participant-like values such as `chunk_index`, `doc_id`,
+  `title`, `SPEAKER_00`, and markdown fragments. The Library now filters these
+  defensively, so this is non-blocking for readers. Recommended next step:
+  validate/normalize participant rows during ingestion or API serialization and
+  migrate existing polluted rows.
+- **Automated accessibility scan is not installed.** The responsive repair has
+  semantic and behavioral coverage but no axe-core run. Add axe to the E2E
+  harness in a dedicated dependency/testing change.
+- **Repository-wide ESLint baseline is red.** `npm run lint` currently reports
+  109 errors and 20 warnings across unrelated legacy/API/test files. Scoped
+  ESLint for the 2026-08-25 viewer repair is clean. Establish a lint baseline
+  or pay down the listed files separately so new changes can use global lint as
+  a meaningful gate.
+- **Resolved — `MeetingView` pre-push timing flake.** Both public-behavior tests
+  passed in isolation (~2.2s total) but the first test twice exceeded Vitest's
+  default 5s timeout under the full Git Bash pre-push suite; its timed-out React
+  work then contaminated the second test with overlapping `act()`/root state.
+  The bounded repair gives only these two integration tests 15s while retaining
+  every WebSocket, speaker-label, transcript, and replacement assertion.
+
 ## 2026-08-17 — Dependency audit and bundle-size warnings (pre-existing, non-blocking)
 
 - `npm ci` reports 10 dependency vulnerabilities (1 low, 8 high, 1 critical).

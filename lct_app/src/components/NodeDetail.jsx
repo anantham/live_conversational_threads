@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, useRef } from "react";
 import PropTypes from "prop-types";
 import { rerouteConversationArtifacts } from "../services/artifactSettingsApi";
 import {
@@ -6,6 +6,8 @@ import {
   applySpeakerCorrection,
 } from "../services/speakerNamingApi";
 import { apiFetch } from "../services/apiClient";
+import { buildMediaSeekUrl, mediaOffsetLabel, selectMediaRef } from "../services/mediaSeek";
+import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 
 // ADR-032 Part H — windowed speaker correction. The scope selector lives
 // inline in the rename editor; the last-used choice is sticky per browser.
@@ -102,17 +104,71 @@ export default function NodeDetail({
   participantNames = [],
   contextNodes = null,
   onSelectNode = null,
+  artifactUtterances = null,
+  mediaRefs = [],
 }) {
   const safeNode = node ?? null;
+  const isOpen = Boolean(safeNode);
+  const panelRef = useRef(null);
+  const titleId = useId();
+  const compact = useMediaQuery(COMPACT_VIEWER_QUERY);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const panel = panelRef.current;
+    const previousFocus = document.activeElement;
+    panel?.focus();
+
+    return () => {
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus();
+      }
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !compact) return undefined;
+    const panel = panelRef.current;
+
+    const handleKeyDown = (event) => {
+      if (event.key !== "Tab" || !panel) return;
+      const focusable = [...panel.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), audio[controls], [tabindex]:not([tabindex="-1"])',
+      )].filter((element) => !element.hasAttribute("hidden"));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (document.activeElement === panel) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    panel?.addEventListener("keydown", handleKeyDown);
+    return () => {
+      panel?.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [compact, isOpen]);
 
   // ADR-032 Part H — structured utterances + windowed inline correction.
-  const [utterances, setUtterances] = useState(null);
+  const [utterances, setUtterances] = useState(() => artifactUtterances);
   const [editingUtteranceId, setEditingUtteranceId] = useState(null);
   const [correctionDraft, setCorrectionDraft] = useState("");
   const [correctionWindow, setCorrectionWindow] = useState(readStoredSpeakerWindow);
   const [correctionSaving, setCorrectionSaving] = useState(false);
   const [correctionError, setCorrectionError] = useState("");
   const [correctionFeedback, setCorrectionFeedback] = useState("");
+  const canEditSpeakers = Boolean(conversationId);
 
   const [factCheckData, setFactCheckData] = useState(null);
   const [factCheckLoading, setFactCheckLoading] = useState(false);
@@ -124,6 +180,10 @@ export default function NodeDetail({
   // on every media-ready event + on play, clearing only once it lands on target.
   const targetSeekRef = useRef(null);
   const [audioState, setAudioState] = useState("idle");
+  const mediaRef = useMemo(
+    () => selectMediaRef(mediaRefs),
+    [mediaRefs],
+  );
 
   // Backend timestamps are seconds (Float on DBUtterance.timestamp_start,
   // derived from utterance.start_time which is seconds throughout the
@@ -339,7 +399,11 @@ export default function NodeDetail({
     const box = transcriptScrollRef.current;
     if (!line || !box) return;
     const target = line.offsetTop - box.clientHeight / 2 + line.clientHeight / 2;
-    box.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+    box.scrollTo({
+      top: Math.max(0, target),
+      behavior: reduceMotion ? "auto" : "smooth",
+    });
   }, [visibleTranscript, visibleUtterances]);
 
   useEffect(() => {
@@ -398,7 +462,7 @@ export default function NodeDetail({
   // On failure or empty result, fall back to the plain-text chunk render.
   useEffect(() => {
     if (!conversationId) {
-      setUtterances(null);
+      setUtterances(Array.isArray(artifactUtterances) ? artifactUtterances : null);
       return undefined;
     }
     let cancelled = false;
@@ -417,7 +481,7 @@ export default function NodeDetail({
     return () => {
       cancelled = true;
     };
-  }, [conversationId]);
+  }, [conversationId, artifactUtterances]);
 
   const refetchUtterances = useCallback(async () => {
     if (!conversationId) return;
@@ -454,7 +518,7 @@ export default function NodeDetail({
   const handleSaveCorrection = useCallback(
     async (utt) => {
       const newSpeaker = correctionDraft.trim();
-      if (!newSpeaker || correctionSaving) return;
+      if (!conversationId || !newSpeaker || correctionSaving) return;
       setCorrectionSaving(true);
       setCorrectionError("");
       setCorrectionFeedback("");
@@ -498,10 +562,19 @@ export default function NodeDetail({
   if (!safeNode) return null;
 
   return (
-    <div className="fixed left-0 right-0 bottom-0 max-h-[75vh] rounded-t-2xl border-t border-gray-200 bg-white shadow-lg z-40 flex flex-col lct-detail-enter sm:left-auto sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:max-w-[85vw] sm:rounded-t-none sm:border-t-0 sm:border-l">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal={compact ? "true" : undefined}
+      aria-labelledby={titleId}
+      tabIndex={-1}
+      className="fixed left-0 right-0 bottom-0 max-h-[75vh] rounded-t-2xl border-t border-gray-200 bg-white shadow-lg z-40 flex flex-col lct-detail-enter outline-none sm:left-auto sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:max-w-[85vw] sm:rounded-t-none sm:border-t-0 sm:border-l"
+    >
+      <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-slate-200 sm:hidden" aria-hidden="true" />
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
         <h2
+          id={titleId}
           className="text-sm font-semibold text-gray-800 pr-2 break-words leading-snug"
           title={safeNode.node_name}
         >
@@ -509,7 +582,7 @@ export default function NodeDetail({
         </h2>
         <button
           onClick={onClose}
-          className="p-3 text-gray-400 hover:text-gray-600 transition shrink-0"
+          className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-50 hover:text-gray-600"
           aria-label="Close"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -643,11 +716,11 @@ export default function NodeDetail({
         {contextWindow && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-              In context · who said what around this
+              Nearby moments
             </span>
             <div className="mt-1 max-h-60 overflow-y-auto rounded bg-gray-50 border border-gray-100 px-2 py-1.5 text-xs leading-relaxed">
               {contextWindow.rows.map((n) => {
-                const speaker = n.speaker_display || n.speaker_id || "?";
+                const speaker = n.speaker_display || n.speaker_id || "";
                 const text = n.source_excerpt || n.summary || n.node_name || "";
                 const isCur = String(n.id) === contextWindow.currentId;
                 const clickable = !isCur && typeof onSelectNode === "function";
@@ -659,8 +732,8 @@ export default function NodeDetail({
                       clickable ? "cursor-pointer hover:bg-gray-100 rounded px-0.5" : ""
                     }`}
                   >
-                    <span className="font-medium text-gray-500">{speaker}</span>
-                    <span className="text-gray-300">: </span>
+                    {speaker && <span className="font-medium text-gray-500">{speaker}</span>}
+                    {speaker && <span className="text-gray-300">: </span>}
                     <span className={isCur ? "text-gray-800" : "text-gray-600"}>{text}</span>
                   </div>
                 );
@@ -678,7 +751,7 @@ export default function NodeDetail({
           <div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-                Raw Transcript
+                Transcript evidence
               </span>
               {!showFullTranscript &&
                 (visibleUtterances?.truncated || visibleTranscript?.truncated) && (
@@ -709,7 +782,9 @@ export default function NodeDetail({
                 {visibleUtterances.rows.map((u) => {
                   const label = u.speaker_name || u.speaker_id || "?";
                   const isEditing = editingUtteranceId === u.id;
-                  const clock = utteranceClockLabel(u.timestamp_start);
+                  const wallClock = utteranceClockLabel(u.timestamp_start);
+                  const seekUrl = buildMediaSeekUrl(mediaRef, u.timestamp_start);
+                  const elapsedClock = mediaOffsetLabel(u.timestamp_start);
                   return (
                     <div
                       key={u.id}
@@ -720,17 +795,33 @@ export default function NodeDetail({
                       }
                       className={`py-0.5 ${u._hl ? "bg-amber-100 rounded px-0.5" : ""}`}
                     >
-                      {clock && (
+                      {(elapsedClock || wallClock) && (seekUrl ? (
+                        <a
+                          href={seekUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mr-1 text-[10px] tabular-nums text-blue-600 hover:underline"
+                          title="Open the meeting recording at this moment"
+                        >
+                          {elapsedClock}
+                        </a>
+                      ) : (
                         <span
                           className="mr-1 text-[10px] tabular-nums text-gray-400"
-                          title="When this message was sent"
+                          title={
+                            elapsedClock
+                              ? mediaRef
+                                ? "Time in recording"
+                                : "Time in conversation"
+                              : "When this message was sent"
+                          }
                         >
-                          {clock}
+                          {elapsedClock || wallClock}
                         </span>
-                      )}
+                      ))}
                       {isEditing ? (
                         <span className="font-medium text-gray-400">{label}</span>
-                      ) : (
+                      ) : canEditSpeakers ? (
                         <button
                           type="button"
                           onClick={() => startEditUtterance(u)}
@@ -739,6 +830,8 @@ export default function NodeDetail({
                         >
                           {label}
                         </button>
+                      ) : (
+                        <span className="font-medium text-gray-500">{label}</span>
                       )}
                       <span className="text-gray-300">: </span>
                       <span>{u.text}</span>
@@ -1032,4 +1125,6 @@ NodeDetail.propTypes = {
   participantNames: PropTypes.arrayOf(PropTypes.string),
   contextNodes: PropTypes.arrayOf(PropTypes.object),
   onSelectNode: PropTypes.func,
+  artifactUtterances: PropTypes.arrayOf(PropTypes.object),
+  mediaRefs: PropTypes.arrayOf(PropTypes.object),
 };

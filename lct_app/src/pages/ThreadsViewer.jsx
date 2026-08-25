@@ -7,6 +7,7 @@ import MinimalLegend from "../components/MinimalLegend";
 import NodeDetail from "../components/NodeDetail";
 import TimelineRibbon from "../components/TimelineRibbon";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
+import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import {
   flattenThreadsGraph,
@@ -56,7 +57,6 @@ export default function ThreadsViewer() {
   // The part of the conversation currently fanned into (null = whole call). Drives
   // the dynamic header so the title/summary track where you've zoomed.
   const [focusNode, setFocusNode] = useState(null);
-  const [summaryCollapsed, setSummaryCollapsed] = useState(false);
   // Canvas-only "focus mode": hide all chrome (header, legend, timeline, graph
   // toolbar) so only the nodes remain. Esc exits.
   const [focusMode, setFocusMode] = useState(false);
@@ -363,132 +363,23 @@ export default function ThreadsViewer() {
 
   // ---- Loaded state: the map ----------------------------------------------
   return (
-    <div className="flex h-[100dvh] w-screen flex-col bg-[#fafafa] font-sans">
-      {!focusMode && (() => {
-        const TIER = { 1: "moment", 2: "idea", 3: "topic", 4: "theme", 5: "arc" };
-        const headerTitle =
-          focusNode?.title ||
-          bundle.conversation_title ||
-          bundle.conversation_name ||
-          "Untitled";
-        const headerSummary = focusNode?.summary || bundle.executive_summary || "";
-        const eyebrow = focusNode
-          ? `Zoomed into ${TIER[focusNode.level] || "a part"} · ${focusNode.depth} level${focusNode.depth > 1 ? "s" : ""} deep`
-          : "Conversation map · read-only";
-        return (
-          <header className="shrink-0 border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <p className="min-w-0 truncate text-[10px] font-medium uppercase tracking-[0.24em] text-slate-500">
-                    {eyebrow}
-                  </p>
-                  {libraryStatus && (
-                    <span
-                      className={`text-[10px] font-medium ${
-                        libraryStatus.state === "error"
-                          ? "text-amber-700"
-                          : libraryStatus.state === "saved"
-                            ? "text-emerald-700"
-                            : "text-slate-500"
-                      }`}
-                    >
-                      {libraryStatus.message}
-                    </span>
-                  )}
-                  {headerSummary && (
-                    <button
-                      type="button"
-                      onClick={() => setSummaryCollapsed((c) => !c)}
-                      className="shrink-0 px-1.5 py-1 text-[10px] font-medium text-slate-500 hover:text-slate-700"
-                    >
-                      {summaryCollapsed ? "▸ summary" : "▾ summary"}
-                    </button>
-                  )}
-                  {/* Coverage Report (P0) — the honest graph-vs-source check. Reads
-                      the server-computed bundle.coverage: how much of the raw the map
-                      actually links back to. "Unauditable" (amber) when NO node carries
-                      a source link (legacy / live capture) — never a faked %. Absent
-                      on pre-P0 artifacts, so the chip simply doesn't render for them. */}
-                  {(() => {
-                    const cov = bundle.coverage;
-                    if (!cov || typeof cov !== "object") return null;
-                    if (cov.auditable) {
-                      const pct = cov.pct != null ? `${cov.pct}%` : "linked";
-                      return (
-                        <span
-                          title={`Source coverage: ${cov.covered_turns}/${cov.total_turns} raw turns are reachable from a node's source link, so the map can be audited against the transcript.`}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700"
-                        >
-                          <span aria-hidden="true">✓</span>
-                          {pct} audited
-                          <span className="text-emerald-600/70">
-                            · {cov.covered_turns}/{cov.total_turns}
-                          </span>
-                        </span>
-                      );
-                    }
-                    return (
-                      <span
-                        title="No node links to specific raw turns (legacy or live capture). You cannot verify these summaries against the transcript — treat the map as unverified."
-                        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
-                      >
-                        <span aria-hidden="true">⚠</span>
-                        unauditable
-                      </span>
-                    );
-                  })()}
-                </div>
-                <h1 className="truncate text-base font-semibold text-slate-800">
-                  {headerTitle}
-                </h1>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <button
-                  type="button"
-                  onClick={downloadTranscript}
-                  title="Download the raw transcript (reconstructed from the source excerpts the map was built from) to compare against the artifact"
-                  className="rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
-                >
-                  ↓ Transcript
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setFocusMode(true)}
-                  title="Focus mode — hide everything but the nodes (Esc to exit)"
-                  className="rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
-                >
-                  ⛶ Focus
-                </button>
-                <button
-                  type="button"
-                  onClick={() => navigate("/browse")}
-                  className="rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
-                >
-                  Library
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBundle(null);
-                    setError("");
-                    setLibraryStatus(null);
-                    navigate("/view");
-                  }}
-                  className="rounded px-2 py-1 text-[11px] text-slate-500 hover:bg-slate-100"
-                >
-                  Open another
-                </button>
-              </div>
-            </div>
-            {!summaryCollapsed && headerSummary && (
-              <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                {headerSummary}
-              </p>
-            )}
-          </header>
-        );
-      })()}
+    <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
+      {!focusMode && (
+        <ThreadsViewerHeader
+          bundle={bundle}
+          focusNode={focusNode}
+          libraryStatus={libraryStatus}
+          onDownloadTranscript={downloadTranscript}
+          onEnterFocus={() => setFocusMode(true)}
+          onOpenLibrary={() => navigate("/browse")}
+          onOpenAnother={() => {
+            setBundle(null);
+            setError("");
+            setLibraryStatus(null);
+            navigate("/view");
+          }}
+        />
+      )}
 
       <div className="relative min-h-0 flex-1">
         <MinimalGraph
@@ -512,16 +403,26 @@ export default function ThreadsViewer() {
             type="button"
             onClick={() => setFocusMode(false)}
             title="Exit focus mode (Esc)"
-            className="absolute right-3 top-3 z-50 rounded-md bg-white/70 px-2.5 py-1 text-[11px] text-slate-500 shadow-sm backdrop-blur hover:bg-white hover:text-slate-800"
+            className="absolute right-3 top-3 z-50 min-h-11 rounded-md bg-white/70 px-3 py-1 text-[11px] text-slate-500 shadow-sm backdrop-blur hover:bg-white hover:text-slate-800 sm:min-h-0 sm:px-2.5"
           >
             ✕ Exit focus
           </button>
         )}
         {!focusMode && <MinimalLegend speakerColorMap={speakerColorMap} />}
         {selectedNodeData && (
+          <button
+            type="button"
+            aria-label="Close node details"
+            className="fixed inset-0 z-[35] bg-slate-950/20 backdrop-blur-[1px] sm:hidden"
+            onClick={() => setSelectedNode(null)}
+          />
+        )}
+        {selectedNodeData && (
           <NodeDetail
             node={selectedNodeData}
             chunkDict={bundle.chunk_dict || {}}
+            artifactUtterances={bundle.utterances || []}
+            mediaRefs={bundle.media_refs || []}
             contextNodes={flatNodes}
             onSelectNode={setSelectedNode}
             onClose={() => setSelectedNode(null)}

@@ -215,7 +215,10 @@ function ConversationNodeImpl({ data, selected }) {
   );
 
   return (
-    <div style={cardStyle}>
+    <div
+      className={`lct-conversation-node${isTangent ? " lct-conversation-node--tangent" : ""}`}
+      style={cardStyle}
+    >
       {/* React Flow handles for edge attachment.
           Hidden visually since we don't manually connect nodes. */}
       <Handle type="target" position={Position.Top} style={handleStyle} />

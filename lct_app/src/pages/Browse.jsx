@@ -11,6 +11,7 @@ import {
   listThreadsLibraryRecords,
   removeThreadsLibraryRecord,
 } from "../services/threadsLibraryStore";
+import { buildContactOptions, participantKey } from "./browseParticipants";
 
 function formatDuration(seconds) {
   if (!seconds) return null;
@@ -46,23 +47,8 @@ const TYPE_LABELS = {
   hybrid: "Hybrid",
 };
 
-// Two participant shapes share the conversations.participants column:
-//  - contact-picker entries: {contact_id, display_name}
-//  - auto speaker-rollup entries: {name, utterance_count}  (the common case;
-//    `name` is "SPEAKER_00" until speaker correction makes it a real name)
-// Key real contacts on contact_id; everyone else on their (corrected) name, so
-// the filter works on today's live-recorded conversations, not just picked ones.
-function participantLabel(p) {
-  return (p?.display_name || p?.name || p?.contact_id || "").trim();
-}
-function participantKey(p) {
-  const label = participantLabel(p);
-  if (!label) return null;
-  return p?.contact_id ? `id:${p.contact_id}` : `name:${label}`;
-}
-
 function chipClass(active) {
-  return `shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] transition ${
+  return `min-h-11 shrink-0 rounded-full border px-3 py-1 text-[11px] transition sm:min-h-0 sm:px-2.5 sm:py-0.5 ${
     active
       ? "border-gray-800 bg-gray-800 text-white"
       : "border-gray-200 text-gray-500 hover:bg-gray-50"
@@ -306,19 +292,10 @@ export default function Browse() {
 
   // Distinct contacts across all conversations (MVP contact picker), sorted by
   // name. Derived from the participants now carried on the list response.
-  const contactOptions = useMemo(() => {
-    const byKey = new Map();
-    for (const c of conversations) {
-      for (const p of c.participants || []) {
-        const key = participantKey(p);
-        if (!key) continue;
-        if (!byKey.has(key)) {
-          byKey.set(key, { key, label: participantLabel(p) });
-        }
-      }
-    }
-    return [...byKey.values()].sort((a, b) => a.label.localeCompare(b.label));
-  }, [conversations]);
+  const contactOptions = useMemo(
+    () => buildContactOptions(conversations),
+    [conversations],
+  );
 
   // Conversations visible under the current contact filter (all when none).
   const visibleConversations = useMemo(() => {
@@ -347,8 +324,9 @@ export default function Browse() {
       {/* Header */}
       <div className="shrink-0 px-4 py-4 md:px-6 flex items-center justify-between gap-3 border-b border-gray-100 bg-white">
         <button
+          type="button"
           onClick={() => navigate("/")}
-          className="text-sm text-gray-400 hover:text-gray-600 transition"
+          className="min-h-11 rounded px-2 text-sm text-gray-400 transition hover:bg-gray-50 hover:text-gray-600 sm:min-h-0"
         >
           &larr; Back
         </button>
@@ -400,18 +378,23 @@ export default function Browse() {
               {localRecords.map((record) => (
                 <div
                   key={record.id}
-                  className="group flex cursor-pointer items-center gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 transition hover:border-slate-200 hover:shadow-sm"
-                  onClick={() => navigate(`/view/${encodeURIComponent(record.id)}`)}
+                  className="group flex items-center gap-1 rounded-lg border border-slate-100 bg-white px-2 py-2 transition hover:border-slate-200 hover:shadow-sm sm:gap-3 sm:px-4 sm:py-3"
                 >
-                  <HardDrive aria-hidden="true" className="shrink-0 text-slate-400" size={17} />
-                  <div className="min-w-0 flex-1">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/view/${encodeURIComponent(record.id)}`)}
+                    className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded px-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 sm:min-h-0"
+                  >
+                    <HardDrive aria-hidden="true" className="shrink-0 text-slate-400" size={17} />
+                    <span className="min-w-0 flex-1">
                     <h3 className="truncate text-sm font-medium text-slate-800">{record.title}</h3>
                     <p className="mt-1 text-xs text-slate-400">
                       Opened {formatRelativeDate(record.lastOpenedAt)}
                       {record.nodeCount ? ` · ${record.nodeCount} nodes` : ""}
                       {record.sourceName ? ` · ${record.sourceName}` : ""}
                     </p>
-                  </div>
+                    </span>
+                  </button>
                   <button
                     type="button"
                     title="Remove from this browser"
@@ -420,7 +403,7 @@ export default function Browse() {
                       event.stopPropagation();
                       void removeLocalArtifact(record);
                     }}
-                    className="rounded p-2 text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
+                    className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded text-slate-300 transition hover:bg-rose-50 hover:text-rose-500 sm:min-h-0 sm:min-w-0 sm:p-2"
                   >
                     <Trash2 aria-hidden="true" size={15} />
                   </button>
@@ -524,11 +507,14 @@ export default function Browse() {
               return (
                 <div
                   key={conv.file_id}
-                  className="group bg-white rounded-lg border border-gray-100 px-4 py-3 hover:border-gray-200 hover:shadow-sm transition cursor-pointer flex items-center gap-4"
-                  onClick={() => navigate(`/conversation/${conv.file_id}`)}
+                  className="group flex flex-col gap-3 rounded-lg border border-gray-100 bg-white px-4 py-3 transition hover:border-gray-200 hover:shadow-sm sm:flex-row sm:items-center sm:gap-4"
                 >
                   {/* Main content */}
-                  <div className="flex-1 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/conversation/${conv.file_id}`)}
+                    className="min-h-11 min-w-0 flex-1 rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 sm:min-h-0"
+                  >
                     <div className="flex items-center gap-2">
                       <h3 className="text-sm font-medium text-gray-800 truncate">
                         {conv.file_name}
@@ -564,12 +550,13 @@ export default function Browse() {
                         </>
                       )}
                     </div>
-                  </div>
+                  </button>
 
                   {/* Export .threads — generate a shareable artifact for this
                       conversation, then open it at /view to iterate on the raw. */}
+                  <div className="flex w-full items-center justify-end gap-1 border-t border-gray-50 pt-2 sm:w-auto sm:border-0 sm:pt-0">
                   <button
-                    className="shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-xs text-emerald-600 hover:text-emerald-700 transition px-2 py-1"
+                    className="min-h-11 shrink-0 px-3 py-1 text-xs text-emerald-600 opacity-100 transition hover:text-emerald-700 sm:min-h-0 sm:px-2 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation();
                       exportThreads(conv);
@@ -583,7 +570,7 @@ export default function Browse() {
                   {/* Download Audio */}
                   <a
                     href={`${API_BASE_URL}/api/conversations/${conv.file_id}/audio`}
-                    className="shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-xs text-blue-500 hover:text-blue-600 transition px-2 py-1"
+                    className="inline-flex min-h-11 shrink-0 items-center px-3 py-1 text-xs text-blue-500 opacity-100 transition hover:text-blue-600 sm:min-h-0 sm:px-2 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                     onClick={(e) => e.stopPropagation()}
                     title="Download Audio"
                   >
@@ -592,7 +579,7 @@ export default function Browse() {
 
                   {/* Delete */}
                   <button
-                    className="shrink-0 opacity-100 md:opacity-0 md:group-hover:opacity-100 text-xs text-gray-300 hover:text-red-400 transition px-2 py-1"
+                    className="min-h-11 shrink-0 px-3 py-1 text-xs text-gray-400 opacity-100 transition hover:text-red-500 sm:min-h-0 sm:px-2 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation();
                       setDeleteConfirm({ id: conv.file_id, name: conv.file_name });
@@ -602,6 +589,7 @@ export default function Browse() {
                   >
                     {deleting === conv.file_id ? "..." : "Delete"}
                   </button>
+                  </div>
                 </div>
               );
                 })}

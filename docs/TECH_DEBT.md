@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-08-23
+Last updated: 2026-08-25
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -10,7 +10,8 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_python_backend/tests/unit/test_import_hierarchy_repair.py | 305 | LLM repair batching tests and pure hierarchy-integrity/edge-representation tests now cross the decomposition heuristic | Move synchronization, overlap, optional-tier, and edge-cleaning cases to `test_hierarchy_integrity.py`; retain only repair orchestration behavior here |
 | lct_app/src/components/home/homeServiceStatusLogic.js | 718 | Settings-driven route plans, HTTP probing, STT/LLM/speaker health normalization, catalog-detail formatting, and home presentation are combined | Extract `sttStatusModel.js`, `llmStatusModel.js`, and `speakerStatusModel.js`; keep transport planning separate from pure presentation so provider health contracts remain testable |
 | lct_app/src/pages/Browse.jsx | 648 | The stable library route still combines browser-local library composition, private server-history fetching/filtering/export/delete behavior, and both sections' rendering. The 2026-08-23 drop controller was kept in a separate hook instead of growing this page further. | Extract `LocalArtifactLibrary`, `RemoteConversationLibrary`, and `useRemoteConversationHistory`; keep `Browse.jsx` as route-level composition only |
-| lct_app/src/pages/ThreadsViewer.jsx | 535 | Static artifact loading, browser-library persistence status, transcript export, graph-view state, and the complete viewer chrome remain in one route component even after artifact validation/storage moved into services | Extract `ThreadsArtifactOpener`, `ThreadsViewerHeader`, and `useThreadsArtifactRoute`; keep graph interaction state separate from load/persistence state |
+| lct_app/src/pages/ThreadsViewer.jsx | 535 → 434 | Static artifact loading, browser-library persistence status, transcript export, and graph-view state remain in one route component after the conversation header was extracted | Extract `ThreadsArtifactOpener` and `useThreadsArtifactRoute`; keep graph interaction state separate from load/persistence state |
+| lct_app/src/components/TimelineRibbon.jsx | 427 | Thread layout rendering, selection/follow behavior, collapse state, hover disclosure, and label-column resizing now share one component; the layout math is already isolated and tested | Extract `ThreadTimelineToolbar` and `useThreadLabelResize`; keep lane/dot rendering focused on the `buildRibbonLayout` result |
 | lct_app/src/pages/NewConversation.jsx | 1346 | The route now also owns live prayer-card state/wiring in addition to graph, transcript, draft/session, participant, and agenda surfaces | Extract `usePrayerCards` plus a `PrayerCardSurface` composition component; then continue the broader route split already noted below |
 | lct_python_backend/services/indrasnet_client.py | 577 | One client module now owns match, pending-discussion reads, retrieval, contacts-adjacent timeouts, health, and LCT prayer detection contracts | Split per IndrasNet API family (`indrasnet_prayers_client.py`, `indrasnet_contacts_client.py`, `indrasnet_retrieval_client.py`) behind a shared error/config helper |
 | lct_python_backend/consumption_prayer_api.py | 366 | Contact agenda lookup, known-contacts cache/search, and generic LCT prayer detection now share one router | Move `/prayer-detect` into `lct_prayer_api.py` and the contact picker/cache endpoints into a focused contacts router before adding durable card persistence |
@@ -120,3 +121,17 @@ Historical baseline: merge-base `4e313f3` / tip `2f99913` — **1000 passed / 6 
 | `test_speaker_naming_api` | **fixed** | Fixture mounts `router_conversations`. |
 | `test_transcript_processing_schema::test_normalize_generated_output_adds_required_defaults` | **fixed** | Asserts `semantic_level==1` (matches `transcript_normalizer` default). |
 | `test_transcript_processing_runtime::test_graph_timer_forces_update` | open | Known asyncio event-loop cross-pollution in full suite (passes alone). |
+
+### 2026-08-25 — NodeDetail remains a mixed-concern component
+
+`lct_app/src/components/NodeDetail.jsx` is over 1,000 lines and combines evidence
+navigation, speaker correction, media playback, fact checks, and node metadata.
+Extract an `EvidenceTranscript` component before adding further evidence modes.
+
+### 2026-08-25 — Viewer responsive repair touched existing monoliths
+
+| File | Current concern | Recommended split |
+| --- | --- | --- |
+| `lct_app/src/components/MinimalGraph.jsx` | Graph normalization, semantic-tier state, camera policy, weakness lenses, control chrome, and ReactFlow orchestration remain coupled in ~1,700 lines | Extract `useGraphCamera`, `WeaknessLensRail`, and `GraphDisplayControls`; keep the root focused on graph composition |
+| `lct_app/src/pages/Browse.jsx` | Local library, server history, contact corpus export, file-drop import, and destructive actions share ~650 lines | Extract `LocalThreadsLibrary`, `ServerConversationLibrary`, and a contact-filter model/controller |
+| `lct_app/src/components/TimelineRibbon.jsx` | Layout consumption, responsive policy, resize gestures, selection, and rendering share ~400 lines | Extract `TimelineHeader`, `ThreadLabelGutter`, and `TimelineRail`; keep layout math in the existing pure module |

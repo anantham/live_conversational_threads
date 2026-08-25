@@ -41,6 +41,15 @@ describe("threads artifact contract", () => {
     );
   });
 
+  it("rejects malformed optional transcript and media arrays", () => {
+    expect(() => validateThreadsArtifact(artifact({ utterances: {} }))).toThrow(
+      "Invalid utterances",
+    );
+    expect(() => validateThreadsArtifact(artifact({ media_refs: "recording" }))).toThrow(
+      "Invalid media_refs",
+    );
+  });
+
   it("accepts a version 2 artifact with explicit directed endpoints", () => {
     const v2 = artifact({
       format_version: 2,
