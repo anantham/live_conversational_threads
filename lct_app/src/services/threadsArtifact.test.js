@@ -8,7 +8,8 @@ import {
 
 /**
  * Test Intent
- * - Accept both flat and chunked v1 `.threads` graph payloads.
+ * - Accept flat and chunked v2 `.threads` graph payloads.
+ * - Reject beta-era v1 artifacts with an actionable regeneration message.
  * - Accept v2 only when explicit edge endpoints are valid.
  * - Reject malformed and oversized artifacts before the graph renderer mounts.
  * - Produce a stable local-library identity and honest display metadata.
@@ -16,11 +17,13 @@ import {
 
 const artifact = (overrides = {}) => ({
   format: "lct.threads",
-  format_version: 1,
+  format_version: 2,
   conversation_id: "conversation-42",
   conversation_title: "A useful conversation",
   graph_data: [{ id: "n1" }, { id: "n2" }],
   chunk_dict: {},
+  edge_schema: { version: 1, directed: true, endpoint_space: "graph_data.id" },
+  edges: [],
   ...overrides,
 });
 
@@ -38,6 +41,17 @@ describe("threads artifact contract", () => {
     );
     expect(() => validateThreadsArtifact(artifact({ format_version: 99 }))).toThrow(
       "Unsupported .threads version",
+    );
+    [undefined, null, "2", 3].forEach((formatVersion) => {
+      expect(() => validateThreadsArtifact(artifact({ format_version: formatVersion }))).toThrow(
+        "Unsupported .threads version",
+      );
+    });
+  });
+
+  it("rejects legacy v1 artifacts and tells the operator how to recover", () => {
+    expect(() => validateThreadsArtifact(artifact({ format_version: 1 }))).toThrow(
+      "Regenerate or re-export",
     );
   });
 

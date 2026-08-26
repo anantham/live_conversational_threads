@@ -201,7 +201,7 @@ export default function ThreadsViewer() {
       ? indexExplicitEdges(
         flattenThreadsGraph(bundle.graph_data),
         bundle.edges,
-        bundle.format_version >= 2,
+        true,
       )
       : []),
     [bundle],
@@ -398,7 +398,7 @@ export default function ThreadsViewer() {
       <div className="relative min-h-0 flex-1">
         <MinimalGraph
           graphData={bundle.graph_data}
-          semanticEdges={bundle.format_version >= 2 ? bundle.edges : undefined}
+          semanticEdges={bundle.edges}
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
           onVisibleLevelChange={(view) => {

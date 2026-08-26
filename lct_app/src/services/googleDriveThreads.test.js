@@ -19,8 +19,10 @@ import {
 
 const artifact = {
   format: "lct.threads",
-  format_version: 1,
+  format_version: 2,
   graph_data: [],
+  edge_schema: { version: 1, directed: true, endpoint_space: "graph_data.id" },
+  edges: [],
 };
 
 function response(body, { status = 200, headers = {} } = {}) {

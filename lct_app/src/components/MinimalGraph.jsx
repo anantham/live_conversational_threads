@@ -15,7 +15,13 @@ import {
   ZOOM_LEVEL_3,
   buildMultiScaleClusters,
 } from "./graphClustering";
-import { layoutByThread, layoutWithDagre, layoutDialectic } from "./graphLayout";
+import {
+  layoutByThread,
+  layoutDialectic,
+  layoutMacroGraph,
+  layoutWithDagre,
+} from "./graphLayout";
+import { projectSemanticEdgesToLevel } from "./macroGraphProjection";
 import {
   extractContextualRelationEntries,
   getAuthoredSemanticLevel,
@@ -424,8 +430,8 @@ function MinimalGraphInner({
     });
   }, [colorMode, speakerColorMap, temporalColorMap, argumentStatusMap, dateColorMap, threadColorMap, handleExpand, handleOpenDetails]);
 
-  const buildRfEdgesForSource = useCallback((sourceNodes) => {
-    if (hideEdges) return [];
+  const buildRfEdgesForSource = useCallback((sourceNodes, { ignoreHidden = false } = {}) => {
+    if (hideEdges && !ignoreHidden) return [];
 
     const edges = [];
     const seenEdgeKeys = new Set();
@@ -497,9 +503,15 @@ function MinimalGraphInner({
         const catStyle = EDGE_CATEGORY_STYLES[category] || EDGE_CATEGORY_STYLES.other;
         const isConnectedToSelected = selectedNode === item.id || selectedNode === related.id;
 
-        const edgeLabel = relType && relType !== "contextual"
-          ? relType.replace(/_/g, " ")
-          : "";
+        const rolledRelationCounts = rel?.rollup_level && rel?.relation_counts
+          ? Object.entries(rel.relation_counts)
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          : [];
+        const edgeLabel = rolledRelationCounts.length > 0
+          ? `${rolledRelationCounts.slice(0, 2).map(([type, count]) => `${count} ${type.replace(/_/g, " ")}`).join(" · ")}${rolledRelationCounts.length > 2 ? ` · +${rolledRelationCounts.length - 2}` : ""}`
+          : relType && relType !== "contextual"
+            ? relType.replace(/_/g, " ")
+            : "";
 
         // Explicit edges are directed: never sort endpoints or collapse A→B
         // with B→A. Legacy IDs retain the historical pair deduplication.
@@ -530,10 +542,16 @@ function MinimalGraphInner({
             category,
             sourceLabel: hasExplicitContract ? item.node_name : related.node_name,
             targetLabel: hasExplicitContract ? related.node_name : item.node_name,
+            aggregateWeight: Number(rel.aggregate_weight) || 1,
+            underlyingEdgeCount: Number(rel.underlying_edge_count) || 1,
+            relationCounts: rel.relation_counts || null,
+            rollupLevel: rel.rollup_level || null,
           },
           style: {
             stroke: isConnectedToSelected ? "#f59e0b" : catStyle.stroke,
-            strokeWidth: isConnectedToSelected ? 2.5 : (catStyle.strokeWidth || 1.5),
+            strokeWidth: isConnectedToSelected
+              ? 2.5
+              : (catStyle.strokeWidth || 1.5) + Math.min(1.5, Math.log2((Number(rel.underlying_edge_count) || 1) + 1) * 0.35),
             strokeDasharray: catStyle.strokeDasharray,
             opacity: isConnectedToSelected ? 1 : 0.7,
             transition: reduceMotion ? "none" : "all 0.2s ease",
@@ -647,37 +665,62 @@ function MinimalGraphInner({
         acc[spec.level] = null;
         return acc;
       }
-      const rfLevelNodes = buildRfNodesForSource(levelNodes);
-      const rfLevelEdges = buildRfEdgesForSource(levelNodes);
+      const isMacroTier = spec.level >= 3;
+      const quotient = isMacroTier && Array.isArray(semanticEdges)
+        ? projectSemanticEdgesToLevel(normalizedChunk, semanticEdges, spec.level)
+        : null;
+      const projectedLevelNodes = quotient
+        ? indexExplicitEdges(levelNodes, quotient.edges, true)
+        : levelNodes;
+      const rfLevelNodes = buildRfNodesForSource(projectedLevelNodes);
+      // Macro geometry must remain stable when the user merely hides lines.
+      // Build structural edges for layout first, then apply visual visibility.
+      const structuralLevelEdges = buildRfEdgesForSource(
+        projectedLevelNodes,
+        { ignoreHidden: isMacroTier },
+      );
+      const visibleLevelEdges = hideEdges && isMacroTier ? [] : structuralLevelEdges;
       acc[spec.level] = {
         level: spec.level,
         label: spec.label,
         type: spec.type,
-        nodes: levelNodes.length > 1
-          ? layoutByThread(
-              rfLevelNodes,
-              rfLevelEdges,
-              {
-                // ConversationNode caps at 460w; the full LLM summary now
-                // renders (no truncation), pushing card heights to ~330-360.
-                // Layout must reserve that footprint or rows overlap.
+        nodes: levelNodes.length <= 1
+          ? rfLevelNodes
+          : isMacroTier
+            ? layoutMacroGraph(rfLevelNodes, structuralLevelEdges, {
                 nodeWidth: 480,
+                // Macro summaries use the same full-prose card renderer as
+                // lower tiers; reserve its measured worst-case footprint.
                 nodeHeight: 360,
-                // ADR-032 Part A: X=timestamp_start, Y=thread row.
-                // Falls back to column-index automatically when too few
-                // nodes have timestamps (legacy / unrecorded conversations)
-                // or when the span exceeds a working session (see above).
-                timeBased: timeBasedLayout,
-                pixelsPerSecond,
-                minNodeWidth: spec.level >= 3 ? 440 : 320,
-              }
-            )
-          : rfLevelNodes,
-        edges: rfLevelEdges,
+                nodesep: 90,
+                ranksep: 170,
+              })
+            : layoutByThread(
+                rfLevelNodes,
+                structuralLevelEdges,
+                {
+                  // Moments and ideas retain ADR-032's temporal swim lanes:
+                  // X=time, Y=thread. Macro tiers use the quotient graph above.
+                  nodeWidth: 480,
+                  nodeHeight: 360,
+                  timeBased: timeBasedLayout,
+                  pixelsPerSecond,
+                  minNodeWidth: 320,
+                }
+              ),
+        edges: visibleLevelEdges,
+        projectionStats: quotient?.stats || null,
       };
       return acc;
     }, {});
-  }, [buildRfEdgesForSource, buildRfNodesForSource, hasAuthoredHierarchy, normalizedChunk]);
+  }, [
+    buildRfEdgesForSource,
+    buildRfNodesForSource,
+    hasAuthoredHierarchy,
+    hideEdges,
+    normalizedChunk,
+    semanticEdges,
+  ]);
 
   // ADR-032 Part B pattern 3: walk incoming edges from argumentTraceFrom.
   // Default: only logical-pos / logical-causal / logical-meta categories
@@ -1740,6 +1783,7 @@ function MinimalGraphInner({
         effectiveClusterLevel={effectiveClusterLevel}
         displayNodes={displayNodes}
         displayEdges={displayEdges}
+        projectionStats={effectiveView?.projectionStats || null}
         normalizedChunk={normalizedChunk}
         lockedLevel={lockedLevel}
         drilldownPath={drilldownPath}

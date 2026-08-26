@@ -26,6 +26,97 @@ export function layoutWithDagre(nodes, edges, { nodeWidth = 240, nodeHeight = 80
 }
 
 /**
+ * Relationship-led layout for topics, themes, and arcs.
+ *
+ * Directed semantic edges define left-to-right rank. Chronology only breaks
+ * otherwise-equal ordering. When no cross-node relation exists, a compact grid
+ * is deliberately used instead of a one-dimensional order that could imply a
+ * causal chain the artifact did not author.
+ */
+export function layoutMacroGraph(nodes, edges, {
+  nodeWidth = 480,
+  nodeHeight = 220,
+  nodesep = 90,
+  ranksep = 170,
+} = {}) {
+  if (!Array.isArray(nodes) || nodes.length === 0) return [];
+
+  const chronology = (node) => {
+    const fullData = node?.data?.fullData || {};
+    const timestamp = Number(fullData.timestamp_start);
+    const sequence = Number(fullData.sequence_number);
+    return [
+      Number.isFinite(timestamp) ? timestamp : Number.MAX_SAFE_INTEGER,
+      Number.isFinite(sequence) ? sequence : Number.MAX_SAFE_INTEGER,
+      String(fullData.node_name || node?.data?.title || node.id),
+      String(node.id),
+    ];
+  };
+  const sortedNodes = [...nodes].sort((a, b) => {
+    const left = chronology(a);
+    const right = chronology(b);
+    for (let index = 0; index < left.length; index += 1) {
+      if (left[index] === right[index]) continue;
+      return left[index] < right[index] ? -1 : 1;
+    }
+    return 0;
+  });
+
+  const validIds = new Set(sortedNodes.map((node) => node.id));
+  const semanticEdges = (Array.isArray(edges) ? edges : []).filter(
+    (edge) => validIds.has(edge?.source) && validIds.has(edge?.target) && edge.source !== edge.target,
+  );
+
+  if (semanticEdges.length === 0) {
+    const columns = Math.max(1, Math.ceil(Math.sqrt(sortedNodes.length)));
+    const xStep = nodeWidth + ranksep;
+    const yStep = nodeHeight + nodesep;
+    const positions = new Map(sortedNodes.map((node, index) => [
+      node.id,
+      {
+        x: (index % columns) * xStep,
+        y: Math.floor(index / columns) * yStep,
+      },
+    ]));
+    return nodes.map((node) => ({ ...node, position: positions.get(node.id) }));
+  }
+
+  const graph = new dagre.graphlib.Graph();
+  graph.setGraph({
+    rankdir: "LR",
+    nodesep,
+    ranksep,
+    marginx: 20,
+    marginy: 20,
+    acyclicer: "greedy",
+    ranker: "network-simplex",
+  });
+  graph.setDefaultEdgeLabel(() => ({}));
+  sortedNodes.forEach((node) => graph.setNode(node.id, { width: nodeWidth, height: nodeHeight }));
+  semanticEdges.forEach((edge) => {
+    const aggregateWeight = Number(edge?.data?.aggregateWeight);
+    graph.setEdge(edge.source, edge.target, {
+      minlen: 1,
+      weight: Number.isFinite(aggregateWeight)
+        ? Math.max(1, Math.round(aggregateWeight * 4))
+        : 1,
+    });
+  });
+  dagre.layout(graph);
+
+  return nodes.map((node) => {
+    const center = graph.node(node.id) || { x: nodeWidth / 2, y: nodeHeight / 2 };
+    return {
+      ...node,
+      position: {
+        x: center.x - nodeWidth / 2,
+        y: center.y - nodeHeight / 2,
+      },
+    };
+  });
+}
+
+/**
  * Thread-row (swim-lane) layout. Each `thread_id` becomes a horizontal row;
  * rows are sorted largest-thread-first; within a row, nodes follow the
  * predecessor→successor chain. Falls back to Dagre when there are fewer

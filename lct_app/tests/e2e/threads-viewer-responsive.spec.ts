@@ -16,6 +16,7 @@ const MACRO_FIXTURE = path.join(HERE, "fixtures", "macro-overview.threads");
  * - Desktop keeps the richer timeline expanded by default.
  * - Center restores a readable macro overview instead of preserving a tiny fit-all zoom.
  * - Macro card typography retains a readable effective size after viewport scaling.
+ * - Macro cards are arranged by authored cross-tier semantic topology, not a timestamp column.
  */
 
 async function openFixture(page) {
@@ -87,6 +88,14 @@ test.describe("responsive .threads viewer", () => {
     await page.goto("/view");
     await page.locator('input[type="file"]').setInputFiles(MACRO_FIXTURE);
     await expect(page.getByRole("heading", { name: "Macro overview legibility fixture" })).toBeVisible();
+    await expect(page.getByText("4 cross-arc links", { exact: false })).toBeVisible();
+    await expect(page.locator(".react-flow__edge")).toHaveCount(4);
+
+    const macroPositions = await page.locator(".react-flow__node").evaluateAll((nodes) => nodes.map((node) => {
+      const transform = new DOMMatrix(getComputedStyle(node).transform);
+      return { x: Math.round(transform.e), y: Math.round(transform.f) };
+    }));
+    expect(new Set(macroPositions.map(({ x }) => x)).size).toBeGreaterThan(1);
 
     const viewportScale = () => page.locator(".react-flow__viewport").evaluate((viewport) => {
       const transform = new DOMMatrix(getComputedStyle(viewport).transform);

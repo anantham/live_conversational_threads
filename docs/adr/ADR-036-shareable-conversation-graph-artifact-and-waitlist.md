@@ -193,3 +193,21 @@ contract markers are always server-authored and cannot be spoofed upstream.
 Exports project only allowlisted media fields plus serialized utterances. A
 recipient projection requires a separate explicit recording-link authorization;
 transcript sharing alone does not silently widen into video sharing.
+
+## Amendment — 2026-08-26: clean v2 artifact boundary
+
+**Status:** Approved by the operator for the beta. This supersedes the prior
+version-1 compatibility promise and the version-1 verification step.
+
+The portable and Drive-backed viewer accepts only `format="lct.threads"`,
+`format_version=2`, with the canonical directed `edge_schema` and authoritative
+top-level `edges` array. Version 1 is rejected with a descriptive instruction
+to regenerate or re-export the artifact. There is no browser migration,
+fallback indexing mode, or compatibility shim.
+
+This clean break is intentional while the product remains in beta: preserving
+v1 would keep direction inference and tier-local nested relations alive at the
+same boundary where macro topology now depends on explicit endpoints. Existing
+Drive files must be regenerated from their canonical source and replaced before
+the v2-only viewer is deployed. Browser-local v1 records remain local bytes but
+will not open in the new viewer.

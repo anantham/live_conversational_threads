@@ -19,6 +19,7 @@ export default function MinimalGraphHud({
   effectiveClusterLevel,
   displayNodes,
   displayEdges,
+  projectionStats,
   normalizedChunk,
   lockedLevel,
   drilldownPath,
@@ -43,6 +44,16 @@ export default function MinimalGraphHud({
     ? (semanticTierSpec?.singular || "node")
     : (semanticTierSpec?.label || "nodes");
   const activeTierCount = `${displayNodes.length} ${semanticTierWord}`;
+  const macroRelationSummary = displayMode === "semantic" && visibleSemanticLevel >= 3 && projectionStats
+    ? projectionStats.projectionLimited
+      ? "topology too dense to project safely"
+      : projectionStats.projectedPairCount > 0
+      ? `${projectionStats.projectedPairCount} cross-${semanticTierSpec?.singular || "node"} links`
+      : `no cross-${semanticTierSpec?.singular || "node"} links authored`
+    : null;
+  const unmappedRelationSummary = projectionStats?.unmappedEdgeCount > 0
+    ? `${projectionStats.unmappedEdgeCount} unmapped`
+    : null;
 
   // left-16 (not left-3) reserves room for the page-level Back button (a ~54px
   // padded icon at top-3 left-3, z-50) so it no longer covers the zoom % chip /
@@ -70,6 +81,21 @@ export default function MinimalGraphHud({
                 ? activeTierCount
                 : `${displayNodes.length} clusters · ${normalizedChunk.length} nodes`}
             </span>
+            {macroRelationSummary ? (
+              <span
+                className={`text-[10px] ${projectionStats.projectionLimited ? "font-semibold text-amber-700" : "text-slate-600"}`}
+                title={projectionStats.projectionLimited
+                  ? `Macro topology was not rendered: ${projectionStats.limitationReason}.`
+                  : `${projectionStats.semanticEdgeCount} semantic edges considered; ${projectionStats.internalEdgeCount} remain internal at this level; ${projectionStats.unmappedEdgeCount} could not be mapped.`}
+              >
+                · {macroRelationSummary}
+              </span>
+            ) : null}
+            {unmappedRelationSummary && !projectionStats?.projectionLimited ? (
+              <span className="text-[10px] font-semibold text-amber-700">
+                · {unmappedRelationSummary}
+              </span>
+            ) : null}
             {lockedLevel != null && (
               <span className="text-[9px] text-amber-500 ml-1">locked</span>
             )}
@@ -186,6 +212,14 @@ MinimalGraphHud.propTypes = {
   effectiveClusterLevel: PropTypes.number,
   displayNodes: PropTypes.array.isRequired,
   displayEdges: PropTypes.array.isRequired,
+  projectionStats: PropTypes.shape({
+    projectedPairCount: PropTypes.number.isRequired,
+    semanticEdgeCount: PropTypes.number.isRequired,
+    internalEdgeCount: PropTypes.number.isRequired,
+    unmappedEdgeCount: PropTypes.number.isRequired,
+    projectionLimited: PropTypes.bool,
+    limitationReason: PropTypes.string,
+  }),
   normalizedChunk: PropTypes.array.isRequired,
   lockedLevel: PropTypes.number,
   drilldownPath: PropTypes.array.isRequired,

@@ -291,6 +291,38 @@ Data foundations first (because everything else compensates for them):
 10. **Argument-scaffold trace + thread filters (six patterns)**.
 11. **TimelineRibbon multi-row + time-axis**.
 12. **WordSyncedTranscript component**.
+
+## Amendment — 2026-08-26: semantic quotient layout for macro tiers
+
+**Status:** Approved by the operator as Option C. This supersedes Part A's
+statement that every authored tier uses a temporal swim-lane.
+
+Moments and ideas remain temporal: time answers “when did this occur?” Topics,
+themes, and arcs are relationship views: their geometry answers “what supports,
+clarifies, rebuts, enables, or otherwise connects what?” A macro tier therefore
+renders a directed quotient graph derived from the canonical explicit v2 edge
+list and many-to-many hierarchy.
+
+For a visible tier, each explicit non-temporal, non-`member_of` edge resolves
+both endpoints to every ancestor at that tier through `parent_id`,
+`memberships`, and `children_ids`. If the endpoints share any visible ancestor,
+the edge remains internal and no cross-node arrow is invented from secondary
+memberships. Otherwise its total weight is distributed across the Cartesian
+product of disjoint visible representatives, preserving total evidence weight
+instead of multiplying it. Contributions aggregate by ordered visible pair and
+retain relation counts, underlying edge count, confidence, strength, source
+edge IDs, and supporting utterance IDs.
+
+Directed semantic pairs use a left-to-right Dagre ranking. Chronology is only a
+deterministic tie-breaker. A tier with no cross-node semantic pair uses a compact
+grid rather than a line that would imply an unauthored causal order. Hiding
+edges is purely visual and must not move nodes. The HUD states how many
+cross-tier links are visible and how many lower-level relations remained
+internal at the current tier.
+
+This is deliberately not an LLM pass. It is a deterministic view over authored
+hierarchy and edges, so zoom changes the lens without changing the underlying
+conversation model.
 13. **Inline speaker rename in transcript**.
 14. **Search dialog**.
 15. **Polish: animation tuning, edge legend, drill-rescale**.
@@ -459,3 +491,23 @@ and `edges` fields so the local, shared, and downloaded views cannot drift again
 4. Assert the Claim is supported, Evidence is the actor, the drawn arrow points
    Evidence -> Claim, and incoming trace reaches Evidence from Claim.
 5. Open a version 1 fixture and confirm its legacy behavior remains available.
+
+## Amendment — 2026-08-26: bounded macro projection
+
+**Status:** Approved as part of Option C. This amendment also records that the
+version-1 verification step immediately above is superseded by ADR-036's clean
+v2 beta boundary.
+
+Many-to-many ownership remains canonical, but visual projection is a derived
+read model and must not allow an arbitrary local artifact to monopolize the
+browser main thread. Projection therefore fails closed and renders no partial
+topology when any endpoint resolves to more than 32 visible representatives,
+when more than 250,000 representative contributions would be evaluated, or
+when more than 2,000 visible ordered pairs would be handed to layout. The HUD
+must name this bounded state; it must not present a truncated graph as complete.
+
+If source and target share any visible representative, the entire authored edge
+remains internal at that zoom—even when their secondary memberships also have
+non-overlapping pairs. Keeping only those pairs would manufacture cross-arc
+claims from classification overlap rather than preserve the authored relation.
+Unmapped edges are surfaced as an artifact-quality signal.
