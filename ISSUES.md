@@ -1,6 +1,28 @@
 # ISSUES
 
-Last updated: 2026-08-25
+Last updated: 2026-08-26
+
+## 2026-08-26 — Drive-backed viewer needs a Google Web OAuth client
+
+**Summary:** The recipient-side `driveFile` opener is implemented and tested,
+but the existing `bold-rain-455402-b9` credential is an installed/desktop OAuth
+client. Google Identity Services in a browser requires a Web application client
+from the same project with `https://threads.adityaarpitha.com` registered as an
+authorized JavaScript origin. No compatible client id is configured in Vercel.
+
+**Impact:** Local file opening and Browser Library remain fully functional. A
+deployed `/view?driveFile=...` link will explain that Drive-backed opening is not
+configured instead of launching OAuth until `VITE_GOOGLE_DRIVE_CLIENT_ID` is set.
+
+**Blocker status:** Blocks live end-to-end recipient validation and production
+activation of the new one-click link; does not block merging the fail-closed
+code path.
+
+**Recommended next step:** Sign into Google Cloud project
+`bold-rain-455402-b9`, create/locate a Web OAuth client with the production and
+local authorized JavaScript origins documented in
+`docs/DRIVE_BACKED_THREADS.md`, add its public client id to Vercel as
+`VITE_GOOGLE_DRIVE_CLIENT_ID`, redeploy, and test with a Drive-reader account.
 
 ## 2026-08-25 — Repository-wide ESLint baseline is red (OPEN, NON-BLOCKING)
 
