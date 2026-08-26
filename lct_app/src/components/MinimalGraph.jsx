@@ -1210,11 +1210,10 @@ function MinimalGraphInner({
   // no caps produces nonsense viewport (e.g. scale=1 + huge negative y).
   // Two rAFs + explicit minZoom/maxZoom caps fix tab-switch auto-fit.
   //
-  // Mobile (<640px viewport): the swim-lane layout produces 6 themes
-  // across ~1680px. fitView with minZoom=0.04 squishes them all into
-  // 360px at ~0.21 zoom â€” unreadable. Clamp minZoom higher on narrow
-  // viewports so cards stay legible; the user pans to see more rather
-  // than zooming out to nothing.
+  // Never trade away legibility just to fit the complete graph at once.
+  // Dense maps remain pannable; the initial camera frames their origin at a
+  // readable scale on compact screens and clamps desktop fit to the same
+  // effective-type floor.
   useEffect(() => {
     mglog("fitView gate", { willRun: pendingFitViewRef.current && displayNodes.length > 0, pending: pendingFitViewRef.current, displayNodes: displayNodes.length, hasInitiallyFit: hasInitiallyFitRef.current });
     if (!pendingFitViewRef.current || displayNodes.length === 0) return;
@@ -1247,7 +1246,7 @@ function MinimalGraphInner({
           reactFlow.fitView({
             padding: 0.2,
             duration: reduceMotion ? 0 : 300,
-            minZoom: 0.04,
+            minZoom: MIN_READABLE_ZOOM,
             maxZoom: 1.0,
           });
         }
@@ -1335,16 +1334,22 @@ function MinimalGraphInner({
     autoFollowRef.current = autoFollow && !selectedNode;
   }, [autoFollow, selectedNode]);
 
-  // Sync zoom level from ReactFlow viewport on every move (pan, zoom, fitView)
+  // Keep the HUD truthful throughout user and programmatic camera motion.
+  // React Flow does not reliably emit onMoveEnd for every fitView path.
+  const handleMove = useCallback((_event, viewport) => {
+    if (Number.isFinite(viewport?.zoom)) setZoomLevel(viewport.zoom);
+  }, []);
+
+  // Sync zoom level from ReactFlow viewport when motion settles.
   const handleMoveEnd = useCallback((_event, viewport) => {
-    if (viewport?.zoom != null) setZoomLevel(viewport.zoom);
+    handleMove(_event, viewport);
     if (programmaticMoveRef.current) return;
     userOverrodeTierRef.current = true; // genuine user pan/zoom â€” they're driving now
     if (autoFollowRef.current) {
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
-  }, []);
+  }, [handleMove]);
 
   // Also sync on mount â€” fitView doesn't fire onMoveEnd
   useEffect(() => {
@@ -1473,8 +1478,8 @@ function MinimalGraphInner({
   }, []);
 
   const ZOOM_PRESETS = [
-    { label: "Center", hint: "Bring all the nodes back into view", action: () => {
-      // Keep the user's current zoom and anchor the camera so the TOP-LEFT
+    { label: "Center", hint: "Return to a readable overview", action: () => {
+      // Keep a readable zoom and anchor the camera so the TOP-LEFT
       // of the node bounding box lines up with the top-left of the viewport
       // (with a small padding). fitView's previous behavior recomputed zoom
       // AND centered on the bbox centroid â€” on tall wrapped layouts (147
@@ -1498,13 +1503,14 @@ function MinimalGraphInner({
         return;
       }
       const currentZoom = reactFlow.getZoom?.() ?? 1;
+      const readableZoom = Math.max(currentZoom, MIN_READABLE_ZOOM);
       const PADDING_PX = 40;
       programmaticMoveRef.current = true;
       reactFlow.setViewport(
         {
-          x: -minX * currentZoom + PADDING_PX,
-          y: -minY * currentZoom + PADDING_PX,
-          zoom: currentZoom,
+          x: -minX * readableZoom + PADDING_PX,
+          y: -minY * readableZoom + PADDING_PX,
+          zoom: readableZoom,
         },
         { duration: reduceMotion ? 0 : 300 },
       );
@@ -1591,6 +1597,7 @@ function MinimalGraphInner({
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
         onEdgeClick={handleEdgeClick}
+        onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         onEdgeMouseEnter={(_, edge) => setHoveredEdge(edge.data)}
         onEdgeMouseLeave={() => setHoveredEdge(null)}

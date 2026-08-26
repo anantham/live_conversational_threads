@@ -1,0 +1,18 @@
+{
+  "format": "lct.threads",
+  "format_version": 2,
+  "conversation_id": "macro-overview-fixture",
+  "conversation_name": "macro-overview-fixture",
+  "conversation_title": "Macro overview legibility fixture",
+  "exported_at": "2026-08-26T00:00:00Z",
+  "transcript_source": "synthetic",
+  "chunk_dict": {},
+  "edge_schema": {"version": 1, "directed": true, "endpoint_space": "graph_data.id"},
+  "edges": [],
+  "graph_data": [
+    {"id":"arc-1","semantic_level":5,"level":5,"semantic_type":"arc","node_name":"Philosophy and self-inquiry","summary":"Questions about consciousness, identity, and the nature of reality.","thread_id":"philosophy","thread_label":"Philosophy and self-inquiry","timestamp_start":0,"timestamp_end":100,"parent_id":null,"children_ids":[]},
+    {"id":"arc-2","semantic_level":5,"level":5,"semantic_type":"arc","node_name":"Ethics and relationships","summary":"Moral obligations, human bonds, and how to live together well.","thread_id":"ethics","thread_label":"Ethics and relationships","timestamp_start":0,"timestamp_end":100,"parent_id":null,"children_ids":[]},
+    {"id":"arc-3","semantic_level":5,"level":5,"semantic_type":"arc","node_name":"Mind mechanics and cognitive tools","summary":"Attention, metacognition, and practical methods for thinking clearly.","thread_id":"mind","thread_label":"Mind mechanics and cognitive tools","timestamp_start":0,"timestamp_end":100,"parent_id":null,"children_ids":[]},
+    {"id":"arc-4","semantic_level":5,"level":5,"semantic_type":"arc","node_name":"Logistics and procedural details","summary":"Setup, coordination, and the practical close of the conversation.","thread_id":"logistics","thread_label":"Logistics and procedural details","timestamp_start":0,"timestamp_end":100,"parent_id":null,"children_ids":[]}
+  ]
+}

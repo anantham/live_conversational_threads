@@ -4,6 +4,7 @@ import { fileURLToPath } from "url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, "fixtures", "sample.threads");
+const MACRO_FIXTURE = path.join(HERE, "fixtures", "macro-overview.threads");
 
 /*
  * Test intent:
@@ -13,6 +14,8 @@ const FIXTURE = path.join(HERE, "fixtures", "sample.threads");
  * - A touch tablet uses the same compact camera and controls as a phone.
  * - Reduced-motion removes accordion animation instead of merely shortening it.
  * - Desktop keeps the richer timeline expanded by default.
+ * - Center restores a readable macro overview instead of preserving a tiny fit-all zoom.
+ * - Macro card typography retains a readable effective size after viewport scaling.
  */
 
 async function openFixture(page) {
@@ -77,5 +80,32 @@ test.describe("responsive .threads viewer", () => {
     await openFixture(page);
     await expect(page.getByRole("button", { name: "Hide thread timeline" })).toBeVisible();
     await expect(page.getByTestId("thread-label-gutter")).toBeVisible();
+  });
+
+  test("centers a tall macro overview at a readable scale", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/view");
+    await page.locator('input[type="file"]').setInputFiles(MACRO_FIXTURE);
+    await expect(page.getByRole("heading", { name: "Macro overview legibility fixture" })).toBeVisible();
+
+    const viewportScale = () => page.locator(".react-flow__viewport").evaluate((viewport) => {
+      const transform = new DOMMatrix(getComputedStyle(viewport).transform);
+      return transform.a;
+    });
+    await expect.poll(viewportScale).toBeLessThan(0.85);
+    await page.getByRole("button", { name: "Center", exact: true }).click();
+    await expect.poll(viewportScale).toBeGreaterThanOrEqual(0.85);
+    const centeredScale = await viewportScale();
+    await expect(page.getByText(`${Math.round(centeredScale * 100)}%`, { exact: true })).toBeVisible();
+
+    const title = page.locator(".react-flow__node")
+      .filter({ hasText: "Philosophy and self-inquiry" })
+      .getByText("Philosophy and self-inquiry", { exact: true });
+    const effectiveTitleSize = await title.evaluate((element) => {
+      const viewport = element.closest(".react-flow__viewport");
+      const scale = new DOMMatrix(getComputedStyle(viewport).transform).a;
+      return Number.parseFloat(getComputedStyle(element).fontSize) * scale;
+    });
+    expect(effectiveTitleSize).toBeGreaterThanOrEqual(15);
   });
 });
