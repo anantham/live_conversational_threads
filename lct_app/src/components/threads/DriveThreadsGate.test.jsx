@@ -9,6 +9,7 @@ import DriveThreadsGate from "./DriveThreadsGate";
  * - A Drive link is a clear account-selection gate, not a file-upload instruction.
  * - One explicit click authorizes, downloads, and hands the validated artifact to the viewer.
  * - Failed authorization remains recoverable with an account retry.
+ * - Failed Google-library preparation remains recoverable without a page reload.
  * - Missing deployment configuration is named before the user clicks anything.
  */
 
@@ -89,6 +90,39 @@ describe("DriveThreadsGate", () => {
       "This Google account cannot download",
     );
     expect(container.querySelector("button")?.textContent).toContain("Try another Google account");
+  });
+
+  it("retries Google-library preparation after a transient load failure", async () => {
+    const prepareAuthorization = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Google authorization timed out."))
+      .mockResolvedValueOnce(undefined);
+
+    await act(async () => {
+      root.render(
+        <DriveThreadsGate
+          fileId="abc_DEF-1234"
+          clientId="web-client-id"
+          prepareAuthorization={prepareAuthorization}
+          onArtifact={() => {}}
+        />,
+      );
+    });
+
+    const retryButton = container.querySelector("button");
+    expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+      "Google authorization timed out",
+    );
+    expect(retryButton?.textContent).toContain("Retry Google sign-in");
+    expect(retryButton?.disabled).toBe(false);
+
+    clickButton();
+    await act(async () => {});
+
+    expect(prepareAuthorization).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    expect(container.querySelector("button")?.textContent).toContain("Continue with Google");
+    expect(container.querySelector("button")?.disabled).toBe(false);
   });
 
   it("names missing deployment configuration without opening a popup", async () => {

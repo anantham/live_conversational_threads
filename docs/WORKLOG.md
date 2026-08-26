@@ -4169,3 +4169,14 @@ Manual testing not run:
   files created/opened by the requesting app, so the shared-project client flow
   must be tested against a real recipient account before merge; otherwise use
   Picker with the same narrow scope as ADR-036 already specifies.
+
+## 2026-08-26 13:51 +05:30 — DeepSeek review and Google-script retry repair
+
+- OpenCode sent PR #176's bounded metadata and exact diff at head `e49f94e` to
+  DeepSeek V4 Pro under the operator's explicit read-only review approval.
+- DeepSeek found one medium-severity recovery defect: a Google Identity Services
+  load failure displayed a retry label while leaving the button disabled.
+- `DriveThreadsGate.jsx` now distinguishes preparation failure from account or
+  download failure and retries the Google library without requiring a reload.
+- Added behavioral coverage for fail-once/succeed-on-retry preparation. Focused
+  coverage passed (4 tests); the complete frontend suite passed (258 tests), the

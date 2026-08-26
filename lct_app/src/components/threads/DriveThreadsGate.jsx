@@ -25,11 +25,13 @@ export default function DriveThreadsGate({
   const [status, setStatus] = useState("ready");
   const [error, setError] = useState("");
   const [authorizationReady, setAuthorizationReady] = useState(false);
+  const [preparationAttempt, setPreparationAttempt] = useState(0);
 
   useEffect(() => {
     if (!normalizedId || !clientId) return undefined;
     let cancelled = false;
     setStatus("loading_google");
+    setError("");
     void prepareAuthorization()
       .then(() => {
         if (cancelled) return;
@@ -44,7 +46,7 @@ export default function DriveThreadsGate({
     return () => {
       cancelled = true;
     };
-  }, [clientId, normalizedId, prepareAuthorization]);
+  }, [clientId, normalizedId, preparationAttempt, prepareAuthorization]);
 
   const openFromDrive = async () => {
     setStatus("authorizing");
@@ -61,6 +63,7 @@ export default function DriveThreadsGate({
   };
 
   const busy = status === "loading_google" || status === "authorizing" || status === "downloading";
+  const preparationFailed = status === "error" && !authorizationReady;
   const buttonLabel = status === "loading_google"
     ? "Preparing secure Google sign-in…"
     : status === "authorizing"
@@ -68,8 +71,16 @@ export default function DriveThreadsGate({
     : status === "downloading"
       ? "Opening conversation map…"
       : status === "error"
-        ? "Try another Google account"
+        ? preparationFailed
+          ? "Retry Google sign-in"
+          : "Try another Google account"
         : "Continue with Google";
+
+  const retryPreparation = () => {
+    setError("");
+    setStatus("loading_google");
+    setPreparationAttempt((attempt) => attempt + 1);
+  };
 
   return (
     <main className="flex min-h-[100dvh] w-full items-center justify-center bg-[#faf8f3] px-5 py-10 font-sans">
@@ -107,8 +118,13 @@ export default function DriveThreadsGate({
 
         <button
           type="button"
-          disabled={!normalizedId || !clientId || !authorizationReady || busy}
-          onClick={openFromDrive}
+          disabled={
+            !normalizedId
+            || !clientId
+            || busy
+            || (!authorizationReady && !preparationFailed)
+          }
+          onClick={preparationFailed ? retryPreparation : openFromDrive}
           className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy && (
