@@ -1,5 +1,5 @@
 /**
- * Tests for layoutWithDagre and layoutByThread.
+ * Tests for relation-led macro layout, layoutWithDagre, and layoutByThread.
  *
  * Vitest setup sanity check: if these run, the JS unit-test pipeline
  * is wired correctly and the just-extracted graphLayout module is
@@ -8,7 +8,12 @@
 
 import { describe, expect, it } from "vitest";
 
-import { layoutByThread, layoutDialectic, layoutWithDagre } from "./graphLayout";
+import {
+  layoutByThread,
+  layoutDialectic,
+  layoutMacroGraph,
+  layoutWithDagre,
+} from "./graphLayout";
 
 function makeNode(id, extra = {}) {
   return {
@@ -39,6 +44,34 @@ describe("layoutWithDagre", () => {
     const out = layoutWithDagre(nodes, [], { nodeWidth: 999, nodeHeight: 111 });
     expect(out).toHaveLength(1);
     expect(out[0].position).toBeDefined();
+  });
+});
+
+describe("layoutMacroGraph", () => {
+  it("places directed semantic chains from left to right", () => {
+    const nodes = [makeNode("a"), makeNode("b"), makeNode("c"), makeNode("d")];
+    const edges = [
+      { source: "a", target: "b", data: { aggregateWeight: 2 } },
+      { source: "b", target: "c", data: { aggregateWeight: 1 } },
+      { source: "a", target: "d", data: { aggregateWeight: 1 } },
+    ];
+    const out = layoutMacroGraph(nodes, edges);
+    const positions = new Map(out.map((item) => [item.id, item.position]));
+
+    expect(positions.get("b").x).toBeGreaterThan(positions.get("a").x);
+    expect(positions.get("c").x).toBeGreaterThan(positions.get("b").x);
+    expect(positions.get("d").x).toBeGreaterThan(positions.get("a").x);
+  });
+
+  it("uses an honest compact grid when no cross-node relations exist", () => {
+    const nodes = [makeNode("a"), makeNode("b"), makeNode("c"), makeNode("d")];
+    const out = layoutMacroGraph(nodes, []);
+    const xs = new Set(out.map((item) => item.position.x));
+    const ys = new Set(out.map((item) => item.position.y));
+
+    expect(xs.size).toBe(2);
+    expect(ys.size).toBe(2);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(400);
   });
 });
 

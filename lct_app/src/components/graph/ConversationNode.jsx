@@ -373,27 +373,29 @@ const handleStyle = {
   pointerEvents: "none",
 };
 
-// Type sized for full-text readability (user request): title 16 / summary 14
-// with open leading. The full LLM summary now renders (summaryMaxLength 500),
+// Type sized for full-text readability: title 18 / summary 16. The graph
+// camera enforces a 0.85 readable floor, keeping effective on-screen type at
+// roughly 15px / 14px even when an overview needs some scaling. Open leading
+// keeps full LLM summaries readable (summaryMaxLength 500),
 // so the layout's node-size reservation was bumped to match (see MinimalGraph
 // authoredViews: 480w × 360h) to keep cards from overlapping. Weight (600 vs
 // 400) carries the title→summary hierarchy.
 const titleStyle = {
   fontWeight: 600,
-  fontSize: "16px",
+  fontSize: "18px",
   lineHeight: 1.3,
   marginBottom: "5px",
 };
 
 const summaryStyle = {
   fontWeight: 400,
-  fontSize: "14px",
+  fontSize: "16px",
   color: "#475569",
   lineHeight: 1.55,
 };
 
 const speakerStyle = {
-  fontSize: "11px",
+  fontSize: "12px",
   color: "#64748b",
   marginTop: "4px",
 };

@@ -135,3 +135,14 @@ Extract an `EvidenceTranscript` component before adding further evidence modes.
 | `lct_app/src/components/MinimalGraph.jsx` | Graph normalization, semantic-tier state, camera policy, weakness lenses, control chrome, and ReactFlow orchestration remain coupled in ~1,700 lines | Extract `useGraphCamera`, `WeaknessLensRail`, and `GraphDisplayControls`; keep the root focused on graph composition |
 | `lct_app/src/pages/Browse.jsx` | Local library, server history, contact corpus export, file-drop import, and destructive actions share ~650 lines | Extract `LocalThreadsLibrary`, `ServerConversationLibrary`, and a contact-filter model/controller |
 | `lct_app/src/components/TimelineRibbon.jsx` | Layout consumption, responsive policy, resize gestures, selection, and rendering share ~400 lines | Extract `TimelineHeader`, `ThreadLabelGutter`, and `TimelineRail`; keep layout math in the existing pure module |
+
+### 2026-08-26 — Macro quotient view contained outside the graph monolith
+
+`MinimalGraph.jsx` remains a roughly 1,750-line orchestration monolith spanning
+normalization, hierarchy views, camera policy, edge rendering, interaction, and
+ReactFlow composition. This slice kept the mathematical projection in the new
+pure `macroGraphProjection.js` and the geometric policy in `graphLayout.js`, so
+the approved algorithm is independently testable. Before adding another view
+lens, extract authored-tier view construction and camera policy behind typed
+pure inputs; preserve the v2 explicit-edge boundary and the invariant that a
+visibility toggle cannot alter layout geometry.

@@ -37,7 +37,13 @@ function clickButton() {
 
 describe("DriveThreadsGate", () => {
   it("opens the shared artifact after one Google authorization gesture", async () => {
-    const bundle = { format: "lct.threads", format_version: 1, graph_data: [] };
+    const bundle = {
+      format: "lct.threads",
+      format_version: 2,
+      graph_data: [],
+      edge_schema: { version: 1, directed: true, endpoint_space: "graph_data.id" },
+      edges: [],
+    };
     const authorize = vi.fn(async () => "temporary-token");
     const fetchArtifact = vi.fn(async () => bundle);
     const onArtifact = vi.fn();

@@ -3,7 +3,7 @@ import { validateExplicitEdgeContract } from "./edgeContract";
 export const MAX_THREADS_BYTES = 25 * 1024 * 1024;
 export const MAX_THREADS_NODES = 50000;
 
-const SUPPORTED_VERSIONS = new Set([1, 2]);
+const REQUIRED_FORMAT_VERSION = 2;
 
 export function flattenThreadsGraph(graphData) {
   return (graphData || []).flatMap((entry) =>
@@ -22,7 +22,12 @@ export function validateThreadsArtifact(data) {
   if (data.format !== "lct.threads") {
     throw new Error("This file is not a .threads artifact.");
   }
-  if (!SUPPORTED_VERSIONS.has(data.format_version)) {
+  if (data.format_version === 1) {
+    throw new Error(
+      "Legacy .threads version 1 is no longer supported. Regenerate or re-export this artifact from the current pipeline.",
+    );
+  }
+  if (data.format_version !== REQUIRED_FORMAT_VERSION) {
     throw new Error(
       `Unsupported .threads version (${data.format_version}). Update the viewer.`,
     );
@@ -44,13 +49,11 @@ export function validateThreadsArtifact(data) {
   if (nodeCount > MAX_THREADS_NODES) {
     throw new Error(`Artifact too large (${nodeCount} nodes).`);
   }
-  if (data.format_version === 2) {
-    validateExplicitEdgeContract(
-      data.edge_schema,
-      data.edges,
-      flattenThreadsGraph(data.graph_data),
-    );
-  }
+  validateExplicitEdgeContract(
+    data.edge_schema,
+    data.edges,
+    flattenThreadsGraph(data.graph_data),
+  );
   return data;
 }
 

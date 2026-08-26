@@ -15,7 +15,13 @@ import {
   ZOOM_LEVEL_3,
   buildMultiScaleClusters,
 } from "./graphClustering";
-import { layoutByThread, layoutWithDagre, layoutDialectic } from "./graphLayout";
+import {
+  layoutByThread,
+  layoutDialectic,
+  layoutMacroGraph,
+  layoutWithDagre,
+} from "./graphLayout";
+import { projectSemanticEdgesToLevel } from "./macroGraphProjection";
 import {
   extractContextualRelationEntries,
   getAuthoredSemanticLevel,
@@ -424,8 +430,8 @@ function MinimalGraphInner({
     });
   }, [colorMode, speakerColorMap, temporalColorMap, argumentStatusMap, dateColorMap, threadColorMap, handleExpand, handleOpenDetails]);
 
-  const buildRfEdgesForSource = useCallback((sourceNodes) => {
-    if (hideEdges) return [];
+  const buildRfEdgesForSource = useCallback((sourceNodes, { ignoreHidden = false } = {}) => {
+    if (hideEdges && !ignoreHidden) return [];
 
     const edges = [];
     const seenEdgeKeys = new Set();
@@ -497,9 +503,15 @@ function MinimalGraphInner({
         const catStyle = EDGE_CATEGORY_STYLES[category] || EDGE_CATEGORY_STYLES.other;
         const isConnectedToSelected = selectedNode === item.id || selectedNode === related.id;
 
-        const edgeLabel = relType && relType !== "contextual"
-          ? relType.replace(/_/g, " ")
-          : "";
+        const rolledRelationCounts = rel?.rollup_level && rel?.relation_counts
+          ? Object.entries(rel.relation_counts)
+            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          : [];
+        const edgeLabel = rolledRelationCounts.length > 0
+          ? `${rolledRelationCounts.slice(0, 2).map(([type, count]) => `${count} ${type.replace(/_/g, " ")}`).join(" · ")}${rolledRelationCounts.length > 2 ? ` · +${rolledRelationCounts.length - 2}` : ""}`
+          : relType && relType !== "contextual"
+            ? relType.replace(/_/g, " ")
+            : "";
 
         // Explicit edges are directed: never sort endpoints or collapse A→B
         // with B→A. Legacy IDs retain the historical pair deduplication.
@@ -530,10 +542,16 @@ function MinimalGraphInner({
             category,
             sourceLabel: hasExplicitContract ? item.node_name : related.node_name,
             targetLabel: hasExplicitContract ? related.node_name : item.node_name,
+            aggregateWeight: Number(rel.aggregate_weight) || 1,
+            underlyingEdgeCount: Number(rel.underlying_edge_count) || 1,
+            relationCounts: rel.relation_counts || null,
+            rollupLevel: rel.rollup_level || null,
           },
           style: {
             stroke: isConnectedToSelected ? "#f59e0b" : catStyle.stroke,
-            strokeWidth: isConnectedToSelected ? 2.5 : (catStyle.strokeWidth || 1.5),
+            strokeWidth: isConnectedToSelected
+              ? 2.5
+              : (catStyle.strokeWidth || 1.5) + Math.min(1.5, Math.log2((Number(rel.underlying_edge_count) || 1) + 1) * 0.35),
             strokeDasharray: catStyle.strokeDasharray,
             opacity: isConnectedToSelected ? 1 : 0.7,
             transition: reduceMotion ? "none" : "all 0.2s ease",
@@ -647,37 +665,62 @@ function MinimalGraphInner({
         acc[spec.level] = null;
         return acc;
       }
-      const rfLevelNodes = buildRfNodesForSource(levelNodes);
-      const rfLevelEdges = buildRfEdgesForSource(levelNodes);
+      const isMacroTier = spec.level >= 3;
+      const quotient = isMacroTier && Array.isArray(semanticEdges)
+        ? projectSemanticEdgesToLevel(normalizedChunk, semanticEdges, spec.level)
+        : null;
+      const projectedLevelNodes = quotient
+        ? indexExplicitEdges(levelNodes, quotient.edges, true)
+        : levelNodes;
+      const rfLevelNodes = buildRfNodesForSource(projectedLevelNodes);
+      // Macro geometry must remain stable when the user merely hides lines.
+      // Build structural edges for layout first, then apply visual visibility.
+      const structuralLevelEdges = buildRfEdgesForSource(
+        projectedLevelNodes,
+        { ignoreHidden: isMacroTier },
+      );
+      const visibleLevelEdges = hideEdges && isMacroTier ? [] : structuralLevelEdges;
       acc[spec.level] = {
         level: spec.level,
         label: spec.label,
         type: spec.type,
-        nodes: levelNodes.length > 1
-          ? layoutByThread(
-              rfLevelNodes,
-              rfLevelEdges,
-              {
-                // ConversationNode caps at 460w; the full LLM summary now
-                // renders (no truncation), pushing card heights to ~330-360.
-                // Layout must reserve that footprint or rows overlap.
+        nodes: levelNodes.length <= 1
+          ? rfLevelNodes
+          : isMacroTier
+            ? layoutMacroGraph(rfLevelNodes, structuralLevelEdges, {
                 nodeWidth: 480,
+                // Macro summaries use the same full-prose card renderer as
+                // lower tiers; reserve its measured worst-case footprint.
                 nodeHeight: 360,
-                // ADR-032 Part A: X=timestamp_start, Y=thread row.
-                // Falls back to column-index automatically when too few
-                // nodes have timestamps (legacy / unrecorded conversations)
-                // or when the span exceeds a working session (see above).
-                timeBased: timeBasedLayout,
-                pixelsPerSecond,
-                minNodeWidth: spec.level >= 3 ? 440 : 320,
-              }
-            )
-          : rfLevelNodes,
-        edges: rfLevelEdges,
+                nodesep: 90,
+                ranksep: 170,
+              })
+            : layoutByThread(
+                rfLevelNodes,
+                structuralLevelEdges,
+                {
+                  // Moments and ideas retain ADR-032's temporal swim lanes:
+                  // X=time, Y=thread. Macro tiers use the quotient graph above.
+                  nodeWidth: 480,
+                  nodeHeight: 360,
+                  timeBased: timeBasedLayout,
+                  pixelsPerSecond,
+                  minNodeWidth: 320,
+                }
+              ),
+        edges: visibleLevelEdges,
+        projectionStats: quotient?.stats || null,
       };
       return acc;
     }, {});
-  }, [buildRfEdgesForSource, buildRfNodesForSource, hasAuthoredHierarchy, normalizedChunk]);
+  }, [
+    buildRfEdgesForSource,
+    buildRfNodesForSource,
+    hasAuthoredHierarchy,
+    hideEdges,
+    normalizedChunk,
+    semanticEdges,
+  ]);
 
   // ADR-032 Part B pattern 3: walk incoming edges from argumentTraceFrom.
   // Default: only logical-pos / logical-causal / logical-meta categories
@@ -1210,11 +1253,10 @@ function MinimalGraphInner({
   // no caps produces nonsense viewport (e.g. scale=1 + huge negative y).
   // Two rAFs + explicit minZoom/maxZoom caps fix tab-switch auto-fit.
   //
-  // Mobile (<640px viewport): the swim-lane layout produces 6 themes
-  // across ~1680px. fitView with minZoom=0.04 squishes them all into
-  // 360px at ~0.21 zoom â€” unreadable. Clamp minZoom higher on narrow
-  // viewports so cards stay legible; the user pans to see more rather
-  // than zooming out to nothing.
+  // Never trade away legibility just to fit the complete graph at once.
+  // Dense maps remain pannable; the initial camera frames their origin at a
+  // readable scale on compact screens and clamps desktop fit to the same
+  // effective-type floor.
   useEffect(() => {
     mglog("fitView gate", { willRun: pendingFitViewRef.current && displayNodes.length > 0, pending: pendingFitViewRef.current, displayNodes: displayNodes.length, hasInitiallyFit: hasInitiallyFitRef.current });
     if (!pendingFitViewRef.current || displayNodes.length === 0) return;
@@ -1247,7 +1289,7 @@ function MinimalGraphInner({
           reactFlow.fitView({
             padding: 0.2,
             duration: reduceMotion ? 0 : 300,
-            minZoom: 0.04,
+            minZoom: MIN_READABLE_ZOOM,
             maxZoom: 1.0,
           });
         }
@@ -1335,16 +1377,22 @@ function MinimalGraphInner({
     autoFollowRef.current = autoFollow && !selectedNode;
   }, [autoFollow, selectedNode]);
 
-  // Sync zoom level from ReactFlow viewport on every move (pan, zoom, fitView)
+  // Keep the HUD truthful throughout user and programmatic camera motion.
+  // React Flow does not reliably emit onMoveEnd for every fitView path.
+  const handleMove = useCallback((_event, viewport) => {
+    if (Number.isFinite(viewport?.zoom)) setZoomLevel(viewport.zoom);
+  }, []);
+
+  // Sync zoom level from ReactFlow viewport when motion settles.
   const handleMoveEnd = useCallback((_event, viewport) => {
-    if (viewport?.zoom != null) setZoomLevel(viewport.zoom);
+    handleMove(_event, viewport);
     if (programmaticMoveRef.current) return;
     userOverrodeTierRef.current = true; // genuine user pan/zoom â€” they're driving now
     if (autoFollowRef.current) {
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
-  }, []);
+  }, [handleMove]);
 
   // Also sync on mount â€” fitView doesn't fire onMoveEnd
   useEffect(() => {
@@ -1473,8 +1521,8 @@ function MinimalGraphInner({
   }, []);
 
   const ZOOM_PRESETS = [
-    { label: "Center", hint: "Bring all the nodes back into view", action: () => {
-      // Keep the user's current zoom and anchor the camera so the TOP-LEFT
+    { label: "Center", hint: "Return to a readable overview", action: () => {
+      // Keep a readable zoom and anchor the camera so the TOP-LEFT
       // of the node bounding box lines up with the top-left of the viewport
       // (with a small padding). fitView's previous behavior recomputed zoom
       // AND centered on the bbox centroid â€” on tall wrapped layouts (147
@@ -1498,13 +1546,14 @@ function MinimalGraphInner({
         return;
       }
       const currentZoom = reactFlow.getZoom?.() ?? 1;
+      const readableZoom = Math.max(currentZoom, MIN_READABLE_ZOOM);
       const PADDING_PX = 40;
       programmaticMoveRef.current = true;
       reactFlow.setViewport(
         {
-          x: -minX * currentZoom + PADDING_PX,
-          y: -minY * currentZoom + PADDING_PX,
-          zoom: currentZoom,
+          x: -minX * readableZoom + PADDING_PX,
+          y: -minY * readableZoom + PADDING_PX,
+          zoom: readableZoom,
         },
         { duration: reduceMotion ? 0 : 300 },
       );
@@ -1591,6 +1640,7 @@ function MinimalGraphInner({
         onNodeClick={handleNodeClick}
         onPaneClick={handlePaneClick}
         onEdgeClick={handleEdgeClick}
+        onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         onEdgeMouseEnter={(_, edge) => setHoveredEdge(edge.data)}
         onEdgeMouseLeave={() => setHoveredEdge(null)}
@@ -1733,6 +1783,7 @@ function MinimalGraphInner({
         effectiveClusterLevel={effectiveClusterLevel}
         displayNodes={displayNodes}
         displayEdges={displayEdges}
+        projectionStats={effectiveView?.projectionStats || null}
         normalizedChunk={normalizedChunk}
         lockedLevel={lockedLevel}
         drilldownPath={drilldownPath}

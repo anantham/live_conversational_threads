@@ -4180,3 +4180,67 @@ Manual testing not run:
   download failure and retries the Google library without requiring a reload.
 - Added behavioral coverage for fail-once/succeed-on-retry preparation. Focused
   coverage passed (4 tests); the complete frontend suite passed (258 tests), the
+
+## 2026-08-26 16:46 +05:30 — Production OAuth-brand verification and bounded graph-legibility repair
+
+- Reproduced the exact Drive-backed production flow in a clean Google session. The authorization host and configured Web client are correct; `importTranscripts` is the Google OAuth project branding, not an application route or stale LCT bundle. Renaming it is a shared-project product decision because the consent-screen brand applies to the project's clients.
+- H1 (0.70) fixed layout reservations plus fit-all camera scaling made the four arcs unreadable; H2 (0.20) Center preserved an already tiny viewport; H3 (0.10) the screenshot was stale. Production measurement confirmed H1+H2 and rejected H3: four nodes sat at one X coordinate with ~313px Y gaps, the viewport was 0.682×, and Center changed translation while preserving scale.
+- A content-free structural scan of Drive file `10T6kwyUBcObY4eaKNCxUoQXekljvmAtR` found 342 nodes (262 moments, 59 ideas, 11 topics, 6 themes, 4 arcs) and 167 nested semantic relations. Ancestor projection found 8 cross-arc relations across 4 arc pairs, proving the empty macro topology is a viewer-projection defect rather than absent source intelligence.
+- Bounded approved repair: `ConversationNode.jsx` increases title/summary/supporting type to 18/16/12px; `graphSimilarityLayout.js` raises the readable zoom contract from 0.65 to 0.85; `MinimalGraph.jsx` applies that floor to desktop framing, makes Center restore at least that scale, corrects its help text, and updates the zoom HUD during programmatic motion.
+- Added `macro-overview.threads` and a public Playwright regression. Red state reproduced Center staying at 0.546×. Green state verifies Center reaches at least 0.85×, effective title type remains at least 15px, and HUD percentage matches the real viewport. Full responsive Chromium matrix passed (4/4), focused graph/unit coverage passed (26/26), scoped source ESLint had zero errors (the E2E file is outside the configured lint scope), and production build passed with the unchanged large-chunk warning.
+- Impeccable's final detector reported one `side-tab` warning at `BookmarkCorner`; inspection confirmed a false positive on the transparent CSS triangle used for the bookmark corner, not a side-accent card border. Two independent layout assessments agreed the macro tier needs a relationship-led quotient layout. No macro-layout algorithm was changed pending the architectural human gate.
+
+## 2026-08-26 17:25 +05:30 — Option C macro quotient graph and v2-only viewer
+
+- Human gate: Aditya approved Option C and explicitly chose a beta clean break
+  with no v1 backward compatibility. Assumption: LCT and IndrasNet can regenerate
+  canonical artifacts before deployment. Confidence 0.91; fallback is to delay
+  rollout, not restore direction inference.
+- Evidence: the current Aayush v1 artifact contains 167 nested semantic
+  relationships but the arc view renders none. Descendant-to-arc analysis found
+  8 cross-arc relations across 4 ordered arc pairs and 159 relations internal to
+  an arc, falsifying the hypothesis that the artifact simply had no macro
+  topology.
+- `src/components/macroGraphProjection.js` now resolves explicit edge endpoints
+  through the many-to-many hierarchy, conserves edge weight across disjoint
+  representatives, keeps shared-ancestor relations internal, and aggregates
+  directed visible pairs. `graphLayout.js` uses those pairs for LR Dagre ranks
+  and an honest compact grid when no pair exists.
+- `MinimalGraph.jsx` now keeps temporal swim-lanes only for moments/ideas;
+  topics/themes/arcs use the quotient view. Edge hiding is visual-only.
+  `MinimalGraphHud.jsx` reports cross-tier link count and exposes projected vs
+  internal counts. `ThreadsViewer.jsx` has no remaining version branch.
+- `threadsArtifact.js` requires v2 plus its explicit-edge contract and gives v1
+  a descriptive regenerate/re-export error. Unit fixtures, Drive tests, HUD
+  tests, and the macro Playwright fixture were updated to the v2 contract.
+- Validation: 264/264 frontend unit tests passed; production build passed; 4/4
+  responsive browser tests passed; changed-file ESLint passed; Impeccable's
+  final detector returned no findings. Repository-wide lint remains preexisting
+  red (109 errors) and is already tracked. The worktree-only font allow-list
+  warning is caused by the `node_modules` junction and does not occur in the
+  production build.
+- Files intentionally changed: `MinimalGraph.jsx`, `MinimalGraphHud.jsx` and
+  test, `graphLayout.js` and test, new `macroGraphProjection.js` and test,
+  `ThreadsViewer.jsx`, artifact/Drive contract tests, the responsive E2E spec
+  and synthetic fixture, ADR-032, ADR-036, ISSUES, TECH_DEBT, and this worklog.
+
+## 2026-08-26 17:52 +05:30 — Option C independent-review hardening
+
+- Claude's first complete viewer review identified two medium risks: unbounded
+  Cartesian fan-out under adversarial many-owner artifacts and undocumented
+  partial-overlap semantics. A second producer review failed to return a usable
+  verdict; it attempted a denied tool call, so it was treated as inconclusive,
+  not approval.
+- `macroGraphProjection.js` now fails closed with no partial graph when an edge
+  resolves beyond 32 representatives, total projection work exceeds 250,000
+  contributions, or visible ordered pairs exceed 2,000. The HUD names this
+  bounded state and separately surfaces unmapped relationships.
+- The intentionally conservative rule is now documented and tested: if two
+  endpoints share any visible ancestor, the authored edge is wholly internal at
+  that zoom. Non-overlapping secondary-owner pairs do not become invented
+  cross-arc claims. Unsupported missing/null/string/future versions also have
+  regression coverage.
+- Final evidence: 267/267 frontend unit tests passed, 4/4 responsive Chromium
+  tests passed, production build passed, and the post-edit Impeccable detector
+  returned `[]`. Existing React `act(...)`, worktree Fontsource allow-list, and
+  large-chunk warnings remain unchanged and are not regressions from this slice.

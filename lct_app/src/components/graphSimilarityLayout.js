@@ -200,4 +200,6 @@ export function repackSubset(nodes, edges) {
   }));
 }
 
-export const MIN_READABLE_ZOOM = 0.65;
+// Keep card text readable after React Flow applies its viewport transform.
+// At 0.85×, the 18px/16px card type remains roughly 15px/14px on screen.
+export const MIN_READABLE_ZOOM = 0.85;
