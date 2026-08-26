@@ -5,3 +5,5 @@
 - The browser keeps the short-lived access token in memory and validates downloaded bytes as a `.threads` artifact before rendering.
 - Permission, account-selection, missing-file, malformed, and oversized failures stay explicit and recoverable.
 - Existing local file, IndexedDB library, and hosted `src` opener paths remain unchanged.
+- After the first validated download, the same Drive URL reopens the browser-local copy without another Google prompt.
+- A reader explicitly chooses when to refresh from Drive; refresh never stores the temporary OAuth token.

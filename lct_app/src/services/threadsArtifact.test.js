@@ -119,4 +119,16 @@ describe("threads artifact contract", () => {
     expect(record.firstOpenedAt).toBe("2026-08-12T10:00:00.000Z");
     expect(record.lastOpenedAt).toBe("2026-08-13T13:00:00.000Z");
   });
+
+  it("retains opaque Drive provenance without storing authorization", () => {
+    const record = buildThreadsLibraryRecord(artifact(), {
+      sourceName: "Google Drive",
+      driveFileId: "abc_DEF-1234",
+      now: "2026-08-13T13:00:00.000Z",
+    });
+
+    expect(record.driveFileId).toBe("abc_DEF-1234");
+    expect(record).not.toHaveProperty("accessToken");
+    expect(record).not.toHaveProperty("refreshToken");
+  });
 });

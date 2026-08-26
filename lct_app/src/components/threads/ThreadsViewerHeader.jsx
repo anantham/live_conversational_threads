@@ -6,6 +6,7 @@ import {
   FilePlus2,
   LibraryBig,
   Maximize2,
+  RefreshCw,
 } from "lucide-react";
 
 import {
@@ -82,6 +83,7 @@ export default function ThreadsViewerHeader({
   onEnterFocus,
   onOpenLibrary,
   onOpenAnother,
+  onRefreshFromDrive,
 }) {
   const compact = useMediaQuery(COMPACT_VIEWER_QUERY);
   const readerChangedOverview = useRef(false);
@@ -156,7 +158,9 @@ export default function ThreadsViewerHeader({
 
         <nav
           aria-label="Conversation viewer actions"
-          className="grid w-full shrink-0 grid-cols-5 gap-1 border-t border-slate-100 pt-1 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end sm:border-0 sm:pt-0"
+          className={`grid w-full shrink-0 gap-1 border-t border-slate-100 pt-1 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end sm:border-0 sm:pt-0 ${
+            onRefreshFromDrive ? "grid-cols-6" : "grid-cols-5"
+          }`}
         >
           <button
             type="button"
@@ -184,6 +188,14 @@ export default function ThreadsViewerHeader({
             title="Focus mode — hide everything but the nodes (Esc to exit)"
           />
           <ViewerAction icon={LibraryBig} label="Library" onClick={onOpenLibrary} />
+          {onRefreshFromDrive && (
+            <ViewerAction
+              icon={RefreshCw}
+              label="Refresh"
+              onClick={onRefreshFromDrive}
+              title="Check Google Drive for an updated conversation map"
+            />
+          )}
           <ViewerAction icon={FilePlus2} label="Open" onClick={onOpenAnother} title="Open another .threads file" />
         </nav>
       </div>
@@ -212,4 +224,5 @@ ThreadsViewerHeader.propTypes = {
   onEnterFocus: PropTypes.func.isRequired,
   onOpenLibrary: PropTypes.func.isRequired,
   onOpenAnother: PropTypes.func.isRequired,
+  onRefreshFromDrive: PropTypes.func,
 };

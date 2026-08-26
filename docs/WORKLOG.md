@@ -4244,3 +4244,26 @@ Manual testing not run:
   tests passed, production build passed, and the post-edit Impeccable detector
   returned `[]`. Existing React `act(...)`, worktree Fontsource allow-list, and
   large-chunk warnings remain unchanged and are not regressions from this slice.
+## 2026-08-27 05:13 +05:30 — Remembered Drive artifact reopen
+
+- Confirmed the repeat-login generator: the first Drive download was already
+  saved in IndexedDB, but `/view?driveFile=…` never queried the local Library
+  and unconditionally mounted the Google authorization gate. The short-lived
+  OAuth token remains intentionally memory-only.
+- `threadsArtifact.js` and `threadsLibraryStore.js` now retain and resolve the
+  opaque Drive file id as artifact provenance without changing the IndexedDB
+  schema. `ThreadsViewer.jsx` checks that validated cache before Google; missing,
+  invalid, or unavailable storage falls back to the existing authorization gate.
+- Drive-backed loaded maps expose an explicit **Refresh** action. Refresh asks
+  Google for a fresh authorized copy and can be cancelled back to the saved map;
+  no token is written to browser storage.
+- Tests cover provenance without credential fields, refresh/cancel behavior,
+  and a browser reopen that makes zero Google authorization requests. Validation:
+  270/270 frontend unit tests passed, 7/7 applicable opener browser tests passed
+  (one production-only test skipped locally), scoped ESLint passed, production
+  build passed, and Impeccable's final detector returned no findings. Existing
+  React `act(...)`, worktree Fontsource allow-list, and large-chunk warnings are
+  unchanged.
+- `ThreadsViewer.jsx` remains an existing route/orchestration monolith already
+  tracked in `docs/TECH_DEBT.md`; this bounded repair did not add a second route
+  abstraction while the contract was still being proven.

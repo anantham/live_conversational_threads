@@ -16,6 +16,8 @@ const GOOGLE_CLIENT_ID =
 export default function DriveThreadsGate({
   fileId,
   onArtifact,
+  onCancel,
+  refreshing = false,
   clientId = GOOGLE_CLIENT_ID,
   prepareAuthorization = loadGoogleIdentityServices,
   authorize = requestDriveAccessToken,
@@ -55,7 +57,10 @@ export default function DriveThreadsGate({
       const accessToken = await authorize(clientId);
       setStatus("downloading");
       const artifact = await fetchArtifact(normalizedId, accessToken);
-      onArtifact(artifact, { sourceName: driveThreadsSourceName() });
+      onArtifact(artifact, {
+        sourceName: driveThreadsSourceName(),
+        driveFileId: normalizedId,
+      });
     } catch (openError) {
       setStatus("error");
       setError(String(openError?.message || openError));
@@ -92,11 +97,12 @@ export default function DriveThreadsGate({
           Shared conversation map
         </p>
         <h1 className="text-2xl font-semibold tracking-[-0.02em] text-slate-900">
-          Open this conversation in Threads
+          {refreshing ? "Refresh this conversation from Drive" : "Open this conversation in Threads"}
         </h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Sign in with the Google account this file was shared with. Google checks the Drive
-          permission, then the map opens here and is remembered only in this browser.
+          {refreshing
+            ? "Sign in to check the shared Drive file for a newer copy. Your saved map remains available if you cancel."
+            : "Sign in with the Google account this file was shared with. Google checks the Drive permission, then the map opens here and is remembered only in this browser."}
         </p>
 
         {!normalizedId && (
@@ -133,6 +139,17 @@ export default function DriveThreadsGate({
           {buttonLabel}
         </button>
 
+        {refreshing && onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="mt-3 min-h-11 w-full rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Back to saved map
+          </button>
+        )}
+
         <div className="mt-5 flex items-start gap-2 border-t border-slate-100 pt-5 text-xs leading-5 text-slate-500">
           <ShieldCheck aria-hidden="true" className="mt-0.5 shrink-0 text-emerald-600" size={16} />
           <p>
@@ -148,6 +165,8 @@ export default function DriveThreadsGate({
 DriveThreadsGate.propTypes = {
   fileId: PropTypes.string.isRequired,
   onArtifact: PropTypes.func.isRequired,
+  onCancel: PropTypes.func,
+  refreshing: PropTypes.bool,
   clientId: PropTypes.string,
   prepareAuthorization: PropTypes.func,
   authorize: PropTypes.func,

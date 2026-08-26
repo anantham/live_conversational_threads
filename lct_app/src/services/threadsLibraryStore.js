@@ -100,6 +100,16 @@ export async function listThreadsLibraryRecords() {
     .sort((a, b) => String(b.lastOpenedAt || "").localeCompare(String(a.lastOpenedAt || "")));
 }
 
+export async function getThreadsLibraryRecordByDriveFileId(fileId) {
+  const normalizedId = String(fileId || "").trim();
+  if (!normalizedId) return null;
+  const records = await listThreadsLibraryRecords();
+  const record = records.find((candidate) => candidate.driveFileId === normalizedId) || null;
+  if (!record) return null;
+  validateThreadsArtifact(record.bundle);
+  return record;
+}
+
 export async function rememberThreadsArtifact(bundle, options = {}) {
   const validated = validateThreadsArtifact(bundle);
   const provisional = buildThreadsLibraryRecord(validated, options);
