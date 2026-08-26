@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
  * - Exercise the version-2 explicit directed-edge artifact contract in a browser.
  * - Render structured utterance text without repeating speaker names in cards.
  * - Keep the conversation overview and thread timeline independently collapsible.
+ * - Route Drive-backed links to a Google authorization gate rather than the upload prompt.
  */
 //
 // Included in BOTH configs: the default (local) run blocks /api/* to force the
@@ -40,6 +41,16 @@ async function blockBackend(page) {
 }
 
 test.describe('.threads opener (public recipient path)', () => {
+  test('Drive-backed link explains the Google-account handoff', async ({ page }) => {
+    await blockBackend(page);
+    await page.goto('/view?driveFile=abc_DEF-123456', { waitUntil: 'domcontentloaded' });
+
+    await expect(page.getByRole('heading', { name: 'Open this conversation in Threads' }))
+      .toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: OPENER_HEADING })).toHaveCount(0);
+    await expect(page.getByText(/Google account this file was shared with/i)).toBeVisible();
+  });
+
   test('real deploy: /browse remains the library when the backend is absent', async ({ page, baseURL }) => {
     // Only meaningful against a public deploy, where /api/* hits the CDN's
     // SPA-200 mask (HTML with status 200). Locally a live backend would

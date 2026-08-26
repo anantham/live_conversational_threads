@@ -4126,3 +4126,38 @@ Manual testing not run:
   ESLint with zero errors, and the production Vite build. The existing
   1,170.40 kB JS / 347.43 kB gzip warning remains unchanged. Independent
   re-review remains required before merge.
+
+## 2026-08-26 06:52 +05:30 — Drive-backed one-click `.threads` opener
+
+- Approved outcome: replace the recipient's download-then-upload loop with an
+  LCT link that fetches the already-permissioned `.threads` file from Google
+  Drive and remembers the validated artifact in the browser-local Library.
+- Hypotheses: H1 (0.80) direct Drive `files.get?alt=media` succeeds with the
+  narrow `drive.file` scope because Indra's Net created the file; H2 (0.15)
+  requires Google Picker to associate the one named file; H3 (0.05) is missing
+  Web OAuth/deployment configuration. H3 is confirmed for the current deploy;
+  H1 versus H2 requires the configured live-account trial.
+- `lct_app/src/services/googleDriveThreads.js` owns opaque file-id validation,
+  Google Identity Services loading, short-lived access-token acquisition,
+  authenticated CORS download, 25 MiB enforcement, error classification, JSON
+  parsing, and canonical artifact validation. Tokens are never stored or put in
+  URLs.
+- `lct_app/src/components/threads/DriveThreadsGate.jsx` adds the recipient-facing
+  authorization/loading/retry surface. The Google library preloads before the
+  explicit click so popup blockers do not detach OAuth from the user gesture.
+- `lct_app/src/pages/ThreadsViewer.jsx` routes `?driveFile=` through that gate;
+  local file, IndexedDB, and hosted `?src=` behavior remain unchanged.
+- Added unit and browser regression coverage plus the operational guide
+  `docs/DRIVE_BACKED_THREADS.md`; amended ADR-036. The existing >300 LOC viewer
+  decomposition candidate was already recorded in `docs/TECH_DEBT.md` and this
+  change adds only the route seam.
+- Validation: 44 Vitest files / 256 tests passed; production Vite build passed;
+  scoped ESLint passed after adding the repository-standard prop contracts; the
+  focused Chromium Drive-route test passed. The existing 1.18 MB chunk warning,
+  pre-existing React act warnings, and worktree Fontsource allow-list warnings
+  remain unchanged. The required Impeccable detector ran once after UI edits and
+  returned no findings.
+- Activation blocker: the existing Google credential is an installed client;
+  no Web client id is configured. The in-app browser reached Google Cloud sign-in
+  and no Chrome extension session was available. Logged in `ISSUES.md`; live
+  OAuth/Drive validation waits only on that one-time external configuration.

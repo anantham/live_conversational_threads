@@ -7,6 +7,7 @@ import MinimalLegend from "../components/MinimalLegend";
 import NodeDetail from "../components/NodeDetail";
 import TimelineRibbon from "../components/TimelineRibbon";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
+import DriveThreadsGate from "../components/threads/DriveThreadsGate";
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import {
@@ -21,14 +22,16 @@ import {
 } from "../services/threadsLibraryStore";
 
 /**
- * Static, server-free viewer for a `.threads` artifact (ADR-036).
+ * Static, LCT-backend-free viewer for a `.threads` artifact (ADR-036).
  *
  * The whole point: this renders a self-contained conversation map entirely
- * client-side. It makes ZERO /api/ calls — possession of the file is the
- * capability, there is no token, no auth, no backend at view time. (App.jsx
- * exempts /view from the backend-reachability gate.)
+ * client-side. It makes ZERO LCT /api/ calls. A local file is a possession
+ * capability; a Drive link instead uses recipient Google authorization solely
+ * to fetch the permissioned artifact. (App.jsx exempts /view from the
+ * backend-reachability gate.)
  *
- * The data comes from a `.threads` file (drag-drop, file-picker, or ?src=<url>).
+ * The data comes from a `.threads` file (drag-drop, file-picker, ?src=<url>, or
+ * a recipient-authorized Google Drive fetch via ?driveFile=<file-id>).
  * We pass NO conversationId to the child components, which gates off every
  * backend call they would otherwise make (fact-check, speaker fetch/save,
  * preference persistence, utterance loading). Audio is not part of the bundle.
@@ -39,6 +42,9 @@ export default function ThreadsViewer() {
   const location = useLocation();
   const navigate = useNavigate();
   const { artifactId } = useParams();
+  const driveFileId = typeof window === "undefined"
+    ? ""
+    : new URLSearchParams(location.search).get("driveFile") || "";
   const [bundle, setBundle] = useState(null);
   const [error, setError] = useState("");
   const [libraryStatus, setLibraryStatus] = useState(null);
@@ -306,6 +312,14 @@ export default function ThreadsViewer() {
 
   // ---- Empty state: drop zone ---------------------------------------------
   if (!bundle) {
+    if (driveFileId) {
+      return (
+        <DriveThreadsGate
+          fileId={driveFileId}
+          onArtifact={(artifact, options) => ingest(artifact, options)}
+        />
+      );
+    }
     return (
       <div
         onDragOver={(e) => {

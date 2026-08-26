@@ -8,6 +8,22 @@ Supersedes-reservation: ADR-032 reserved ADR-036 for a future "enrichment-contex
 
 # ADR-036: Shareable Conversation-Graph Artifact + Waitlist Demand Capture
 
+## Amendment — 2026-08-26: Drive-backed recipient opener
+
+Recipient delivery uses a stable LCT URL of the form
+`/view?driveFile=<opaque-file-id>`. The `.threads` bytes remain in the owner's
+Google Drive and Drive ACLs remain authoritative. On an explicit user gesture,
+the static viewer requests the non-sensitive `drive.file` scope through Google
+Identity Services, downloads only the named file through Drive's `alt=media`
+endpoint, validates the normal `.threads` contract, and retains the artifact in
+the existing browser-local Library. Access tokens are short-lived, memory-only,
+and never appear in URLs, logs, IndexedDB, or an LCT backend.
+
+If empirical production testing shows that Google does not treat the
+Indra's-Net-created file as app-opened for the web OAuth client, the approved
+fallback is Google Picker with the same `drive.file` scope. Broad
+`drive.readonly` access is not an acceptable convenience fallback.
+
 > The "Google Maps for a conversation" wedge.
 
 ## Issue

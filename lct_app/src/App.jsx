@@ -38,9 +38,10 @@ export default function App() {
     return new BackendDataProvider();
   }, [serverlessKey, trialActive, serverlessForced, backendState]);
 
-  // The .threads viewer (/view) is a fully static, server-free page: it renders a
-  // self-contained file client-side and must work with the backend down — and make
-  // ZERO /api/ calls. /browse is also exempt: it is a stable local-first library
+  // The .threads viewer (/view) is independent of the LCT backend: it renders a
+  // self-contained artifact client-side and must work with the backend down. It
+  // makes ZERO LCT /api/ calls; a driveFile link may fetch from Google Drive after
+  // recipient authorization. /browse is also exempt: it is a stable local-first library
   // whose server-history section may be unavailable without replacing the route.
   // /debate/s is the encrypted-snapshot
   // debate report: it fetches one static ciphertext file and decrypts client-side, so
