@@ -1,6 +1,25 @@
 # ISSUES
 
-Last updated: 2026-08-26
+Last updated: 2026-08-27
+
+## 2026-08-27 — Vercel preview protection blocks anonymous browser smoke (OPEN, NON-BLOCKING)
+
+**Summary:** PR preview deployments redirect an unauthenticated Playwright
+browser to Vercel's own login screen. The deployment check succeeds, but a
+direct post-deploy browser run cannot reach LCT without a Vercel protection
+bypass or authenticated browser state.
+
+**Impact:** Low. Local production-mode browser coverage proves the cached Drive
+reopen behavior, and the public production smoke remains the authoritative
+post-merge check. Preview URLs cannot currently provide anonymous end-to-end
+evidence before merge.
+
+**Blocker status:** Non-blocking for PR #178; Vercel deployment passed and all
+local unit, build, lint, and browser gates are green.
+
+**Recommended next step:** Configure a CI-only Vercel protection bypass secret
+for preview Playwright, or deliberately keep preview protection and document
+that live browser verification occurs after merge on the public domain.
 
 ## 2026-08-26 — Drive-backed viewer needs a Google Web OAuth client
 

@@ -4267,3 +4267,7 @@ Manual testing not run:
 - `ThreadsViewer.jsx` remains an existing route/orchestration monolith already
   tracked in `docs/TECH_DEBT.md`; this bounded repair did not add a second route
   abstraction while the contract was still being proven.
+- PR #178 deployed successfully to Vercel. A direct Playwright run against the
+  preview was redirected to Vercel's own login protection before LCT loaded;
+  this non-product, non-blocking evidence gap is tracked in `ISSUES.md` rather
+  than misclassified as a viewer regression.
