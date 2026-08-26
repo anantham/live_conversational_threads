@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   fetchDriveThreadsArtifact,
+  GOOGLE_IDENTITY_LOAD_TIMEOUT_MS,
+  GOOGLE_IDENTITY_SCRIPT,
+  loadGoogleIdentityServices,
   normalizeDriveFileId,
 } from "./googleDriveThreads";
 
@@ -11,6 +14,7 @@ import {
  * - Download through Google's authenticated media endpoint without persisting a token.
  * - Reuse the canonical .threads validator before the viewer mounts.
  * - Explain permission, missing-file, malformed, and oversized failures to the recipient.
+ * - Fail and permit retry when a stale Google script tag never settles.
  */
 
 const artifact = {
@@ -24,6 +28,12 @@ function response(body, { status = 200, headers = {} } = {}) {
 }
 
 describe("Google Drive .threads opener", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    document.querySelectorAll(`script[src="${GOOGLE_IDENTITY_SCRIPT}"]`).forEach((script) => script.remove());
+    delete window.google;
+  });
+
   it("normalizes only opaque Drive file ids", () => {
     expect(normalizeDriveFileId("  abc_DEF-1234  ")).toBe("abc_DEF-1234");
     expect(normalizeDriveFileId("https://drive.google.com/file/d/abc/view")).toBeNull();
@@ -67,5 +77,19 @@ describe("Google Drive .threads opener", () => {
       "short-lived",
       async () => response("{}", { headers: { "content-length": "30000000" } }),
     )).rejects.toThrow("too large");
+  });
+
+  it("times out and removes a stale Google authorization script so retry can reload it", async () => {
+    vi.useFakeTimers();
+    const staleScript = document.createElement("script");
+    staleScript.src = GOOGLE_IDENTITY_SCRIPT;
+    document.head.appendChild(staleScript);
+
+    const loading = loadGoogleIdentityServices();
+    const rejection = expect(loading).rejects.toThrow("timed out");
+    await vi.advanceTimersByTimeAsync(GOOGLE_IDENTITY_LOAD_TIMEOUT_MS);
+
+    await rejection;
+    expect(document.querySelector(`script[src="${GOOGLE_IDENTITY_SCRIPT}"]`)).toBeNull();
   });
 });

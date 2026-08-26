@@ -2,6 +2,7 @@ import { MAX_THREADS_BYTES, validateThreadsArtifact } from "./threadsArtifact";
 
 export const GOOGLE_DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
 export const GOOGLE_IDENTITY_SCRIPT = "https://accounts.google.com/gsi/client";
+export const GOOGLE_IDENTITY_LOAD_TIMEOUT_MS = 12_000;
 
 const DRIVE_FILE_ID_PATTERN = /^[A-Za-z0-9_-]{10,256}$/;
 
@@ -25,22 +26,45 @@ export function loadGoogleIdentityServices() {
       return;
     }
     const existing = document.querySelector(`script[src="${GOOGLE_IDENTITY_SCRIPT}"]`);
-    if (existing) {
-      existing.addEventListener("load", () => resolve(window.google), { once: true });
-      existing.addEventListener(
-        "error",
-        () => reject(new Error("Google authorization could not be loaded.")),
-        { once: true },
-      );
-      return;
+    const script = existing || document.createElement("script");
+    let settled = false;
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      script.removeEventListener("load", onLoad);
+      script.removeEventListener("error", onError);
+    };
+    const fail = (message) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      // A stale or failed tag would otherwise make every retry wait forever.
+      script.remove();
+      reject(new Error(message));
+    };
+    const onLoad = () => {
+      if (settled) return;
+      if (!window.google?.accounts?.oauth2) {
+        fail("Google authorization loaded without the expected browser API.");
+        return;
+      }
+      settled = true;
+      cleanup();
+      resolve(window.google);
+    };
+    const onError = () => fail("Google authorization could not be loaded.");
+    const timeoutId = window.setTimeout(
+      () => fail("Google authorization timed out. Check your connection and try again."),
+      GOOGLE_IDENTITY_LOAD_TIMEOUT_MS,
+    );
+
+    script.addEventListener("load", onLoad, { once: true });
+    script.addEventListener("error", onError, { once: true });
+    if (!existing) {
+      script.src = GOOGLE_IDENTITY_SCRIPT;
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
     }
-    const script = document.createElement("script");
-    script.src = GOOGLE_IDENTITY_SCRIPT;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve(window.google);
-    script.onerror = () => reject(new Error("Google authorization could not be loaded."));
-    document.head.appendChild(script);
   });
 }
 

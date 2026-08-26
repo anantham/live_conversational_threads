@@ -4161,3 +4161,11 @@ Manual testing not run:
   no Web client id is configured. The in-app browser reached Google Cloud sign-in
   and no Chrome extension session was available. Logged in `ISSUES.md`; live
   OAuth/Drive validation waits only on that one-time external configuration.
+- Independent review: Claude produced no output within the bounded review window;
+  Grok reported exhausted credits; Gemini 3.1 Pro High then completed the review.
+  It correctly identified a stale Google-script hang, repaired with a 12-second
+  timeout, failed-tag removal, and regression coverage. Its broader `drive.file`
+  objection remains a live activation gate: Google documents direct access for
+  files created/opened by the requesting app, so the shared-project client flow
+  must be tested against a real recipient account before merge; otherwise use
+  Picker with the same narrow scope as ADR-036 already specifies.
