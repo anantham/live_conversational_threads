@@ -426,6 +426,7 @@ function MinimalGraphInner({
       return {
         id: item.id,
         type: "conversational",
+        ariaLabel: `Focus relationships around ${title || "Untitled"}`,
         position: { x: 0, y: 0 },
         data: {
           title,
@@ -1284,12 +1285,16 @@ function MinimalGraphInner({
 
   // Re-frame when a relationship neighbourhood or dialectic fan appears. Both
   // projections move nodes without changing the controlled full-layout state.
+  const displayNodesRef = useRef(displayNodes);
+  useEffect(() => {
+    displayNodesRef.current = displayNodes;
+  }, [displayNodes]);
   useEffect(() => {
     if (!argumentTraceFrom && !neighborhoodFocusId) return undefined;
     const id = setTimeout(() => {
       try {
         if (compactViewer) {
-          frameNodesFromTopLeft(reactFlow, displayNodes, {
+          frameNodesFromTopLeft(reactFlow, displayNodesRef.current, {
             zoom: 0.85,
             duration: reduceMotion ? 0 : 300,
             paddingX: 16,
@@ -1308,7 +1313,7 @@ function MinimalGraphInner({
       }
     }, 80);
     return () => clearTimeout(id);
-  }, [argumentTraceFrom, compactViewer, displayNodes, neighborhoodFocusId, reactFlow, reduceMotion]);
+  }, [argumentTraceFrom, compactViewer, neighborhoodFocusId, reactFlow, reduceMotion]);
 
   const displayEdgesWithTrace = useMemo(() => {
     if (!traceResult.edges) return focusedDisplayEdges;
@@ -1433,8 +1438,15 @@ function MinimalGraphInner({
   const lastFocusedRef = useRef(null);
   useEffect(() => {
     if (focusNode === lastFocusedRef.current) return undefined;
-    lastFocusedRef.current = focusNode;
     if (!focusNode) return undefined;
+    if (neighborhoodView && !neighborhoodView.nodes.some((node) => node.id === focusNode)) {
+      // A timeline teleport outside the one-hop projection must first restore
+      // the complete tier. Leave lastFocusedRef untouched so this same target
+      // is centred on the next render after the projection disappears.
+      clearNeighborhoodFocus(false);
+      return undefined;
+    }
+    lastFocusedRef.current = focusNode;
     // user is driving now — stop auto-follow so it doesn't fight the jump
     if (autoFollowRef.current) {
       autoFollowRef.current = false;
@@ -1448,7 +1460,7 @@ function MinimalGraphInner({
       cancelAnimationFrame(raf);
       cleanup?.();
     };
-  }, [focusNode, centerViewportOnNode, reduceMotion]);
+  }, [clearNeighborhoodFocus, focusNode, centerViewportOnNode, neighborhoodView, reduceMotion]);
 
   // Sync ref with state so effects read the latest value
   useEffect(() => {
@@ -1513,6 +1525,12 @@ function MinimalGraphInner({
   // Center selected node when chosen from timeline or graph.
   useEffect(() => {
     mglog("center-on-selected (ribbon/click)", { selectedNode, hasLayoutNode: !!selectedLayoutNode, pos: selectedLayoutNode?.position });
+    if (selectedNode && neighborhoodView && !neighborhoodView.nodes.some((node) => node.id === selectedNode)) {
+      // Timeline/detail navigation owns the next camera move. Do not restore
+      // the pre-focus viewport and briefly point at unrelated focused nodes.
+      clearNeighborhoodFocus(false);
+      return undefined;
+    }
     if (!selectedNode || !selectedLayoutNode?.position) return undefined;
 
     let cleanup;
@@ -1527,7 +1545,7 @@ function MinimalGraphInner({
       cancelAnimationFrame(raf);
       cleanup?.();
     };
-  }, [centerViewportOnNode, reduceMotion, selectedLayoutNode, selectedNode, viewportReservationKey]);
+  }, [centerViewportOnNode, clearNeighborhoodFocus, neighborhoodView, reduceMotion, selectedLayoutNode, selectedNode, viewportReservationKey]);
 
   // Cluster detail panel state
   const [selectedCluster, setSelectedCluster] = useState(null);
@@ -1551,7 +1569,9 @@ function MinimalGraphInner({
       }
       // Card click/tap means "make this the centre of my current question."
       // Hierarchy and provenance stay available as explicit Expand/Details
-      // actions, so one gesture never has multiple meanings.
+      // actions, so one gesture never has multiple meanings. Relationship
+      // focus, weakness lenses, and argument trace are mutually exclusive
+      // analytic questions; starting one deliberately clears the others.
       autoFollowRef.current = false;
       setSelectedCluster(null);
       setClickedEdge(null);
@@ -1566,6 +1586,18 @@ function MinimalGraphInner({
     },
     [clearNeighborhoodFocus, neighborhoodFocusId, reactFlow, setArgumentTraceFrom, setSelectedNode]
   );
+
+  const handleNodeKeyDownCapture = useCallback((event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    if (event.target?.closest?.("button, a, input, select, textarea")) return;
+    const nodeElement = event.target?.closest?.(".react-flow__node");
+    const nodeId = nodeElement?.getAttribute("data-id");
+    const node = displayNodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+    event.preventDefault();
+    event.stopPropagation();
+    handleNodeClick(event, node);
+  }, [displayNodes, handleNodeClick]);
 
   const handlePaneClick = useCallback(() => {
     setSelectedNode(null);
@@ -1714,6 +1746,7 @@ function MinimalGraphInner({
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
         onNodeClick={handleNodeClick}
+        onKeyDownCapture={handleNodeKeyDownCapture}
         onPaneClick={handlePaneClick}
         onEdgeClick={handleEdgeClick}
         onMove={handleMove}

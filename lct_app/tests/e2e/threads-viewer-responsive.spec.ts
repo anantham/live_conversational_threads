@@ -18,6 +18,9 @@ const MACRO_FIXTURE = path.join(HERE, "fixtures", "macro-overview.threads");
  * - Macro card typography retains a readable effective size after viewport scaling.
  * - Macro cards are arranged by authored cross-tier semantic topology, not a timestamp column.
  * - Card click creates a one-hop relationship view; Show all restores the tier.
+ * - Keyboard card activation matches pointer activation.
+ * - Timeline navigation outside a one-hop view restores the full tier before centering.
+ * - Presentation-only color changes do not reset a reader-adjusted focused camera.
  */
 
 async function openFixture(page) {
@@ -47,6 +50,11 @@ test.describe("responsive .threads viewer", () => {
       content: document.body.scrollWidth,
     }));
     expect(pageWidth.content).toBeLessThanOrEqual(pageWidth.viewport);
+
+    await page.locator(".react-flow__node").first().click({ position: { x: 12, y: 12 } });
+    const showAll = page.getByRole("button", { name: "Show all", exact: true });
+    await expect(showAll).toBeVisible();
+    expect((await showAll.boundingBox())?.height).toBeGreaterThanOrEqual(44);
   });
 
   test.describe("touch tablet", () => {
@@ -154,5 +162,34 @@ test.describe("responsive .threads viewer", () => {
     await expect(page.getByTestId("neighborhood-focus-status")).toHaveCount(0);
     await expect(page.locator(".react-flow__node")).toHaveCount(4);
     await expect(page.locator(".react-flow__edge")).toHaveCount(4);
+
+    await root.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByTestId("neighborhood-focus-status")).toContainText(
+      "Related to: Philosophy and self-inquiry",
+    );
+    await page.waitForTimeout(450);
+
+    const viewportTransform = () => page.locator(".react-flow__viewport")
+      .evaluate((viewport) => getComputedStyle(viewport).transform);
+    const paneBox = await page.locator(".react-flow__pane").boundingBox();
+    if (!paneBox) throw new Error("ReactFlow pane did not have a bounding box");
+    await page.mouse.move(paneBox.x + paneBox.width / 2, paneBox.y + paneBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(paneBox.x + paneBox.width / 2 + 120, paneBox.y + paneBox.height / 2 + 55, { steps: 6 });
+    await page.mouse.up();
+    const readerAdjustedTransform = await viewportTransform();
+    await page.getByText("Display", { exact: true }).click();
+    await page.getByRole("button", { name: /Color: Speaker/ }).click();
+    await page.waitForTimeout(450);
+    expect(await viewportTransform()).toBe(readerAdjustedTransform);
+
+    const unrelatedTimelineNode = page.locator('[data-testid="timeline-node"][aria-label*="Logistics and procedural details"]');
+    await unrelatedTimelineNode.click();
+    await expect(page.getByTestId("neighborhood-focus-status")).toHaveCount(0);
+    await expect(page.locator(".react-flow__node")).toHaveCount(4);
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.locator(".react-flow__node").filter({ hasText: "Logistics and procedural details" }))
+      .toBeInViewport();
   });
 });

@@ -135,9 +135,19 @@ describe("MinimalGraphHud active-tier count", () => {
     });
     expect(container.textContent).toContain("Related to: A claim about reality");
     expect(container.textContent).toContain("3 direct links");
+    expect(container.querySelector('[role="status"][aria-live="polite"]')).not.toBeNull();
     const button = [...container.querySelectorAll("button")]
       .find((item) => item.textContent === "Show all");
+    expect(button.className).toContain("min-h-11");
     act(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(clearNeighborhoodFocus).toHaveBeenCalledTimes(1);
+  });
+
+  it("truthfully announces an isolated focused node", () => {
+    renderHud({
+      neighborhoodFocus: { title: "A solitary observation", directNeighborCount: 0 },
+    });
+    expect(container.querySelector('[role="status"]')?.textContent)
+      .toContain("No direct semantic links at this level");
   });
 });

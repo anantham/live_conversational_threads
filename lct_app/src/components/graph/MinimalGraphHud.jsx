@@ -210,6 +210,8 @@ export default function MinimalGraphHud({
       {neighborhoodFocus ? (
         <div
           data-testid="neighborhood-focus-status"
+          role="status"
+          aria-live="polite"
           className="flex min-h-11 min-w-0 flex-shrink items-center gap-2 rounded-md border border-amber-300 bg-amber-50/95 px-2.5 py-1.5 text-[10px] text-amber-950 shadow-sm sm:min-h-0"
         >
           <span className="min-w-0 truncate font-semibold" title={neighborhoodFocus.title}>
@@ -223,7 +225,7 @@ export default function MinimalGraphHud({
           <button
             type="button"
             onClick={() => clearNeighborhoodFocus?.()}
-            className="ml-auto min-h-9 shrink-0 rounded border border-amber-300 bg-white px-2 font-semibold text-amber-800 hover:bg-amber-100 sm:min-h-0 sm:py-0.5"
+            className="ml-auto min-h-11 shrink-0 rounded border border-amber-300 bg-white px-2 font-semibold text-amber-800 hover:bg-amber-100 sm:min-h-0 sm:py-0.5"
           >
             Show all
           </button>

@@ -538,6 +538,18 @@ The interaction contract is deliberately orthogonal:
 - `Details`: open provenance and node details, including for leaf nodes;
 - `Show all`, empty-canvas click, or Escape: return to the full tier.
 
+Keyboard Enter/Space on a focused card is equivalent to card-body activation.
+The focus-state message is a polite live region and its mobile exit respects the
+44px touch-target floor. Timeline, search, or detail navigation to a node outside
+the active one-hop set first restores the complete tier and then centres the
+requested node; navigation must never silently target a filtered-out card.
+
+Neighbourhood focus, weakness lenses, and argument trace are alternative reader
+questions rather than composable filters. Starting relationship focus clears the
+other two. Presentation-only changes such as color mode must preserve a reader's
+manual pan and zoom; automatic framing runs when the analytic focus identity
+changes, not whenever node presentation data is refreshed.
+
 The desktop viewer restores the pre-projection viewport when returning. Tier,
 breadcrumb, and argument-trace transitions discard that saved viewport because
 their own camera policy must frame the new semantic state.
