@@ -794,6 +794,13 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   ESLint for the 2026-08-25 viewer repair is clean. Establish a lint baseline
   or pay down the listed files separately so new changes can use global lint as
   a meaningful gate.
+- **Center zoom percentage can lag the ReactFlow viewport in the responsive
+  browser suite.** The older macro-overview test observed the canvas at 98%
+  while the HUD had not yet rendered `98%` within five seconds. The same test
+  passes alone and the focused-node flow is unaffected, so this is non-blocking.
+  Recommended next step: make the HUD subscribe to the committed viewport or
+  expose one shared camera-state update after `setViewport` completes instead
+  of testing two asynchronously updated representations.
 - **Resolved — `MeetingView` pre-push timing flake.** Both public-behavior tests
   passed in isolation (~2.2s total) but the first test twice exceeded Vitest's
   default 5s timeout under the full Git Bash pre-push suite; its timed-out React

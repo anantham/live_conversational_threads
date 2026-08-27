@@ -208,13 +208,7 @@ export default function TimelineRibbon({
           >
             {hoveredThread.label} · {hoveredThread.count} node{hoveredThread.count === 1 ? "" : "s"}
           </span>
-        ) : (
-          <span className="min-w-0 truncate text-gray-400">
-            {compact
-              ? "Tap a thread to highlight it and step through its moments."
-              : "Hover a thread name to read it; drag the divider to widen names."}
-          </span>
-        )}
+        ) : null}
       </div>
 
       <div

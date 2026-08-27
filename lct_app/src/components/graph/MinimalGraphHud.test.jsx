@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import MinimalGraphHud from "./MinimalGraphHud";
 
@@ -8,6 +8,7 @@ import MinimalGraphHud from "./MinimalGraphHud";
  * Test intent:
  * - The zoom HUD reports only the count for the tier currently being viewed.
  * - Higher tiers do not repeat the leaf/moment total or expose encoding debris.
+ * - Relationship focus is state, not coaching, and has an explicit exit.
  */
 
 let container;
@@ -29,6 +30,8 @@ function renderHud({
   effectiveSemanticLevel = 4,
   clusterLevelLabel = "themes",
   projectionStats = null,
+  neighborhoodFocus = null,
+  clearNeighborhoodFocus,
 } = {}) {
   const noop = () => {};
   const visibleNodes = displayNodes
@@ -56,6 +59,8 @@ function renderHud({
         setAutoFollow={noop}
         userOverrodeTierRef={{ current: false }}
         setLockedLevel={noop}
+        neighborhoodFocus={neighborhoodFocus}
+        clearNeighborhoodFocus={clearNeighborhoodFocus || noop}
       />,
     );
   });
@@ -120,5 +125,19 @@ describe("MinimalGraphHud active-tier count", () => {
 
     expect(container.textContent).toContain("topology too dense to project safely");
     expect(container.querySelector('[title*="Macro topology was not rendered"]')).not.toBeNull();
+  });
+
+  it("names the centered node and restores the full tier on request", () => {
+    const clearNeighborhoodFocus = vi.fn();
+    renderHud({
+      neighborhoodFocus: { title: "A claim about reality", directNeighborCount: 3 },
+      clearNeighborhoodFocus,
+    });
+    expect(container.textContent).toContain("Related to: A claim about reality");
+    expect(container.textContent).toContain("3 direct links");
+    const button = [...container.querySelectorAll("button")]
+      .find((item) => item.textContent === "Show all");
+    act(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(clearNeighborhoodFocus).toHaveBeenCalledTimes(1);
   });
 });

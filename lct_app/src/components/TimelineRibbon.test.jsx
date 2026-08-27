@@ -7,7 +7,8 @@ import TimelineRibbon from "./TimelineRibbon";
  * Test intent:
  * - Preserve one lane per thread and one interactive dot per node.
  * - Let readers collapse the timeline without losing the graph canvas.
- * - Make long thread names discoverable and let readers widen the label gutter.
+ * - Keep the resting header free of persistent instructional copy.
+ * - Make long thread names discoverable on hover and let readers widen the label gutter.
  * - Preserve return markers, time ticks, selection, and within-thread navigation.
  */
 
@@ -53,7 +54,8 @@ describe("TimelineRibbon render", () => {
     render({ graphData: threadedGraph, selectedNode: null });
 
     expect(container.querySelector('[aria-label="Show thread timeline"]')).not.toBeNull();
-    expect(container.textContent).toContain("Tap a thread");
+    expect(container.textContent).not.toContain("Tap a thread");
+    expect(container.textContent).not.toContain("Hover a thread");
     expect(container.querySelector('[role="separator"]')).toBeNull();
   });
 

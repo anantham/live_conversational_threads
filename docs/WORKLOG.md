@@ -4244,3 +4244,42 @@ Manual testing not run:
   tests passed, production build passed, and the post-edit Impeccable detector
   returned `[]`. Existing React `act(...)`, worktree Fontsource allow-list, and
   large-chunk warnings remain unchanged and are not regressions from this slice.
+
+## 2026-08-27 — Node-centred one-hop relationship view
+
+- **Issue:** the timeline permanently coached obvious hover/resize gestures,
+  while graph-card click overloaded hierarchy drill and detail selection. Dense
+  tiers therefore showed every edge at once and offered no way to ask “what is
+  directly related to this node?”
+- **Confirmed root cause:** `TimelineRibbon.jsx` rendered fallback instruction
+  text at rest; `MinimalGraph.jsx` routed card click to `handleExpand` or
+  `handleOpenDetails`; the full current tier and all visible edges remained in
+  the ReactFlow render. `DEFAULT_COLOR_MODE` was `thread`, contradicting
+  ADR-011 and the speaker legend.
+- **Implementation:** added pure `graphNeighborhoodFocus.js` to project the
+  current tier to one semantic hop and deterministically place incoming/focus/
+  outgoing bands. `MinimalGraph.jsx` now keeps neighborhood focus distinct from
+  drawer selection, hierarchy drill, weakness lenses and argument trace; it
+  captures/restores the desktop viewport, keeps hidden-edge topology available,
+  and exposes a compact `Related to … / Show all` state. `ConversationNode.jsx`
+  exposes Details on leaves and marks the focused card without replacing its
+  fill. Timeline fallback coaching is gone. Speaker is the unsaved color
+  default; mixed-speaker aggregate cards use a deterministic mixed fill.
+- **Tests:** added pure one-hop/direction/temporal/bidirectional cases, node-card
+  regressions, timeline-resting-copy coverage, color-default/mixed-speaker
+  coverage, and a Playwright flow proving 4 nodes/4 edges become 3/2 around a
+  selected arc, Details stays independent, and Show all restores 4/4.
+- **Files:** `MinimalGraph.jsx`, `graphNeighborhoodFocus.js` and test,
+  `TimelineRibbon.jsx` and test, `graph/ConversationNode.jsx` and test,
+  `graph/MinimalGraphHud.jsx`, `graph/colorModes.js` and test,
+  `tests/e2e/threads-viewer-responsive.spec.ts`, Test Intent, ADR-011, ADR-032,
+  TECH_DEBT, and this worklog.
+- **Non-blocking pre-existing issue found:** the full responsive suite exposed a
+  Center/HUD timing race: ReactFlow reached 98% while the HUD percentage had not
+  caught up inside the assertion window. The old test passes alone; the new
+  focus scenario passes both alone and in the full run. Logged in `ISSUES.md`
+  for a separate camera-state repair rather than changing unrelated behavior.
+- **Final validation:** 279/279 frontend unit tests passed; changed-file ESLint
+  passed; the production build passed; and the new node-neighborhood Playwright
+  scenario passed. The serial responsive suite passed 4/5 scenarios, with only
+  the separately logged pre-existing Center/HUD timing race failing.

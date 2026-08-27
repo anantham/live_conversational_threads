@@ -17,6 +17,7 @@ const MACRO_FIXTURE = path.join(HERE, "fixtures", "macro-overview.threads");
  * - Center restores a readable macro overview instead of preserving a tiny fit-all zoom.
  * - Macro card typography retains a readable effective size after viewport scaling.
  * - Macro cards are arranged by authored cross-tier semantic topology, not a timestamp column.
+ * - Card click creates a one-hop relationship view; Show all restores the tier.
  */
 
 async function openFixture(page) {
@@ -116,5 +117,42 @@ test.describe("responsive .threads viewer", () => {
       return Number.parseFloat(getComputedStyle(element).fontSize) * scale;
     });
     expect(effectiveTitleSize).toBeGreaterThanOrEqual(15);
+  });
+
+  test("reorients a dense tier around the clicked node", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/view");
+    await page.locator('input[type="file"]').setInputFiles(MACRO_FIXTURE);
+    await expect(page.getByRole("heading", { name: "Macro overview legibility fixture" })).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(4);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(4);
+    await page.getByRole("button", { name: "Center", exact: true }).click();
+
+    const root = page.locator(".react-flow__node").filter({ hasText: "Philosophy and self-inquiry" });
+    await expect(root).toBeInViewport();
+    await root.click();
+
+    await expect(page.getByTestId("neighborhood-focus-status")).toContainText(
+      "Related to: Philosophy and self-inquiry",
+    );
+    await expect(page.getByTestId("neighborhood-focus-status")).toContainText("2 direct links");
+    await expect(page.locator(".react-flow__node")).toHaveCount(3);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(2);
+    await expect(page.locator('[data-neighborhood-focus="true"]')).toHaveCount(1);
+
+    const rootY = await root.evaluate((element) => new DOMMatrix(getComputedStyle(element).transform).f);
+    const outgoingYs = await page.locator(".react-flow__node").filter({ hasNotText: "Philosophy and self-inquiry" })
+      .evaluateAll((nodes) => nodes.map((element) => new DOMMatrix(getComputedStyle(element).transform).f));
+    expect(outgoingYs.every((y) => y > rootY)).toBe(true);
+
+    await root.getByRole("button", { name: "Open details" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(3);
+    await page.getByRole("button", { name: "Close" }).click();
+
+    await page.getByRole("button", { name: "Show all", exact: true }).click();
+    await expect(page.getByTestId("neighborhood-focus-status")).toHaveCount(0);
+    await expect(page.locator(".react-flow__node")).toHaveCount(4);
+    await expect(page.locator(".react-flow__edge")).toHaveCount(4);
   });
 });

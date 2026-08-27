@@ -39,6 +39,7 @@ import {
   COLOR_MODES,
   DEFAULT_COLOR_MODE,
   buildSpeakerColorMapForNodes,
+  buildSpeakerOwnershipMapForNodes,
   buildTemporalColorMapForNodes,
   buildArgumentStatusMapForNodes,
   buildDateColorMapForNodes,
@@ -56,6 +57,7 @@ import {
   mediaQueryMatches,
   useMediaQuery,
 } from "../hooks/useMediaQuery";
+import { buildFocusedNeighborhood } from "./graphNeighborhoodFocus";
 
 // ADR-030 §D4: custom node renderer with three color modes + state markers.
 // Cluster nodes are still default ReactFlow rendering (separate concern).
@@ -121,11 +123,24 @@ function MinimalGraphInner({
   // instance starts false, so it re-forces the landing tier instead of the
   // finest one. See requestedSemanticLevel + initialLandingLevel.
   const userOverrodeTierRef = useRef(false);
-  // Timestamp of the last drill â€” debounces an accidental double-click so a
-  // single tap (= expand, instant) can't fire twice. There is no double-tap
-  // gesture (Option A): single tap expands; a leaf single-tap opens its drawer;
-  // the per-card "details" chip opens the drawer for a node that has children.
-  const lastDrillAtRef = useRef(0);
+  // Card selection is a temporary one-hop relationship view. It is separate
+  // from selectedNode (detail drawer), drilldownPath (hierarchy), and the
+  // multi-hop argument trace.
+  const [neighborhoodFocusId, setNeighborhoodFocusId] = useState(null);
+  const preNeighborhoodViewportRef = useRef(null);
+  const clearNeighborhoodFocus = useCallback((restoreViewport = true) => {
+    const priorViewport = preNeighborhoodViewportRef.current;
+    preNeighborhoodViewportRef.current = null;
+    setNeighborhoodFocusId(null);
+    if (!restoreViewport || !priorViewport || compactViewer) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        programmaticMoveRef.current = true;
+        reactFlow.setViewport(priorViewport, { duration: reduceMotion ? 0 : 280 });
+        setTimeout(() => { programmaticMoveRef.current = false; }, reduceMotion ? 0 : 320);
+      });
+    });
+  }, [compactViewer, reactFlow, reduceMotion]);
   // Drilldown stack: array of { level, nodeId, nodeName } breadcrumbs.
   // Empty = top-level (whatever tier the user is currently locked to).
   // Each click on a non-leaf node pushes one entry; the visible nodes
@@ -143,7 +158,7 @@ function MinimalGraphInner({
   // Broaden toggle stays local.
   const [traceBroaden, setTraceBroaden] = useState(false);
   useEffect(() => {
-    if (!argumentTraceFrom) return undefined;
+    if (!argumentTraceFrom || selectedNode) return undefined;
     const onKey = (event) => {
       if (event.key === "Escape") {
         setArgumentTraceFrom?.(null);
@@ -152,7 +167,10 @@ function MinimalGraphInner({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [argumentTraceFrom, setArgumentTraceFrom]);
+  }, [argumentTraceFrom, selectedNode, setArgumentTraceFrom]);
+  useEffect(() => {
+    if (argumentTraceFrom) clearNeighborhoodFocus(false);
+  }, [argumentTraceFrom, clearNeighborhoodFocus]);
   const handleShowTemporalEdgesChange = useCallback(
     (next) => {
       setShowTemporalEdges(next);
@@ -164,7 +182,8 @@ function MinimalGraphInner({
     },
     [conversationId]
   );
-  // ADR-030 §D4: color mode (tier | speaker | temporal). Default: tier.
+  // ADR-030 §D4: color mode. Speaker is the unsaved default; an explicit
+  // per-conversation preference still wins.
   // Persisted per conversation via saveConversationDraft when conversationId is provided.
   const [colorMode, setColorMode] = useState(
     COLOR_MODES.includes(initialColorMode) ? initialColorMode : DEFAULT_COLOR_MODE
@@ -254,6 +273,10 @@ function MinimalGraphInner({
     () => buildSpeakerColorMapForNodes(normalizedChunk),
     [normalizedChunk]
   );
+  const speakerOwnershipMap = useMemo(
+    () => buildSpeakerOwnershipMapForNodes(normalizedChunk),
+    [normalizedChunk]
+  );
   const temporalColorMap = useMemo(
     () => buildTemporalColorMapForNodes(normalizedChunk),
     [normalizedChunk]
@@ -268,7 +291,7 @@ function MinimalGraphInner({
     () => buildDateColorMapForNodes(normalizedChunk),
     [normalizedChunk]
   );
-  // Thread/debate map: id -> categorical color per thread_id (the default mode).
+  // Thread/debate map: id -> categorical color per thread_id (optional lens).
   const threadColorMap = useMemo(
     () => buildThreadColorMapForNodes(normalizedChunk),
     [normalizedChunk]
@@ -286,16 +309,17 @@ function MinimalGraphInner({
       const ownLevel = Number(node.semantic_level || node.level || 1);
       if (childIds.length === 0 || ownLevel <= 1) return;
       autoFollowRef.current = false;
+      clearNeighborhoodFocus(false);
       setDrilldownPath((prev) => [
         ...prev,
         { level: ownLevel, nodeId, nodeName: node.node_name || "(unnamed)" },
       ]);
     },
-    [normalizedChunk]
+    [clearNeighborhoodFocus, normalizedChunk]
   );
 
-  // Open the NodeDetail drawer for a node by id. Used by the per-card "details"
-  // chip and by a leaf single-tap (a leaf has nothing to expand). Defined early
+  // Open the NodeDetail drawer for a node by id. Used by every card's explicit
+  // "details" chip. Defined early
   // (only needs setSelectedNode, a stable prop) so buildRfNodesForSource can
   // pass it down to ConversationNode.
   const handleOpenDetails = useCallback(
@@ -306,10 +330,20 @@ function MinimalGraphInner({
     [setSelectedNode]
   );
 
-  // Escape pops one drill level (mirrors the â† Back button). Gated on no active
-  // argument-trace so it doesn't fight that mode's own Escape handler.
+  // Escape exits the temporary relationship view before navigating hierarchy.
   useEffect(() => {
-    if (drilldownPath.length === 0 || argumentTraceFrom) return undefined;
+    if (!neighborhoodFocusId || selectedNode) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") clearNeighborhoodFocus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [clearNeighborhoodFocus, neighborhoodFocusId, selectedNode]);
+
+  // Escape pops one drill level (mirrors the Back button). It must not fight
+  // the relationship view, detail drawer, or argument trace.
+  useEffect(() => {
+    if (drilldownPath.length === 0 || argumentTraceFrom || neighborhoodFocusId || selectedNode) return undefined;
     const onKey = (event) => {
       if (event.key === "Escape") {
         autoFollowRef.current = false;
@@ -318,7 +352,7 @@ function MinimalGraphInner({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [drilldownPath.length, argumentTraceFrom]);
+  }, [drilldownPath.length, argumentTraceFrom, neighborhoodFocusId, selectedNode]);
 
   const buildRfNodesForSource = useCallback((sourceNodes) => {
     return sourceNodes.map((item) => {
@@ -334,6 +368,7 @@ function MinimalGraphInner({
         argumentStatusMap,
         dateColorMap,
         threadColorMap,
+        speakerOwnershipMap,
       });
       // Non-color cue for the argument view: the actual support/rebut counts.
       let argStatusLabel = null;
@@ -415,8 +450,8 @@ function MinimalGraphInner({
             Number(item.semantic_level || item.level || 1) > 1,
           expandCount: Array.isArray(item.children_ids) ? item.children_ids.length : 0,
           onExpand: () => handleExpand(item.id),
-          // Option A: a small "details" chip on nodes that have children opens
-          // the drawer (their card-tap expands instead of opening it).
+          // Details is explicit on every card; the card body is reserved for
+          // reorienting the relationship neighbourhood.
           onOpenDetails: () => handleOpenDetails(item.id),
           // Rhetoric layer (Phase 2): argumentative role + verified flags drive
           // the card chips + the Rhetoric color lens.
@@ -428,7 +463,7 @@ function MinimalGraphInner({
         },
       };
     });
-  }, [colorMode, speakerColorMap, temporalColorMap, argumentStatusMap, dateColorMap, threadColorMap, handleExpand, handleOpenDetails]);
+  }, [colorMode, speakerColorMap, speakerOwnershipMap, temporalColorMap, argumentStatusMap, dateColorMap, threadColorMap, handleExpand, handleOpenDetails]);
 
   const buildRfEdgesForSource = useCallback((sourceNodes, { ignoreHidden = false } = {}) => {
     if (hideEdges && !ignoreHidden) return [];
@@ -617,6 +652,10 @@ function MinimalGraphInner({
     () => buildRfEdgesForSource(normalizedChunk),
     [buildRfEdgesForSource, normalizedChunk]
   );
+  const structuralRfEdges = useMemo(
+    () => buildRfEdgesForSource(normalizedChunk, { ignoreHidden: true }),
+    [buildRfEdgesForSource, normalizedChunk]
+  );
 
   const authoredSemanticLevels = useMemo(() => {
     const levels = new Set();
@@ -677,9 +716,9 @@ function MinimalGraphInner({
       // Build structural edges for layout first, then apply visual visibility.
       const structuralLevelEdges = buildRfEdgesForSource(
         projectedLevelNodes,
-        { ignoreHidden: isMacroTier },
+        { ignoreHidden: true },
       );
-      const visibleLevelEdges = hideEdges && isMacroTier ? [] : structuralLevelEdges;
+      const visibleLevelEdges = hideEdges ? [] : structuralLevelEdges;
       acc[spec.level] = {
         level: spec.level,
         label: spec.label,
@@ -709,6 +748,7 @@ function MinimalGraphInner({
                 }
               ),
         edges: visibleLevelEdges,
+        structuralEdges: structuralLevelEdges,
         projectionStats: quotient?.stats || null,
       };
       return acc;
@@ -955,6 +995,7 @@ function MinimalGraphInner({
   const effectiveView = scopedTierView || drilledView || activeSemanticView;
   const layoutedDisplayNodes = effectiveView?.nodes || activeCluster?.nodes || layoutedNodes;
   const displayEdges = effectiveView?.edges || activeCluster?.edges || rfEdges;
+  const structuralDisplayEdges = effectiveView?.structuralEdges || activeCluster?.edges || structuralRfEdges;
   const clusterLevelLabel = effectiveView?.label || activeCluster?.label || null;
   mglog("view-select", { lockedLevel, zoomLevel, requestedSemanticLevel, effectiveSemanticLevel, hasAuthoredHierarchy, authoredLevels: authoredSemanticLevels, displayMode, src: effectiveView ? "effectiveView" : (activeCluster ? "activeCluster" : "layoutedNodes(chunk)"), nodeCount: layoutedDisplayNodes.length });
   mglog("layoutedDisplayNodes", { count: layoutedDisplayNodes.length, firstY: layoutedDisplayNodes[0]?.position?.y, lastY: layoutedDisplayNodes[layoutedDisplayNodes.length - 1]?.position?.y });
@@ -1077,6 +1118,28 @@ function MinimalGraphInner({
   }, []);
 
   const baseDisplayNodes = interactiveNodes.length > 0 ? interactiveNodes : layoutedDisplayNodes;
+  const neighborhoodView = useMemo(
+    () => buildFocusedNeighborhood(
+      baseDisplayNodes,
+      structuralDisplayEdges,
+      neighborhoodFocusId,
+      { compact: compactViewer },
+    ),
+    [baseDisplayNodes, compactViewer, neighborhoodFocusId, structuralDisplayEdges],
+  );
+  const focusedBaseNodes = neighborhoodView?.nodes || baseDisplayNodes;
+  const focusedDisplayEdges = useMemo(
+    () => neighborhoodView
+      ? (hideEdges ? [] : neighborhoodView.edges)
+      : displayEdges,
+    [displayEdges, hideEdges, neighborhoodView],
+  );
+
+  // A tier/drill change can remove the focused node. Let that navigation own
+  // the camera and return to the complete new tier instead of showing stale UI.
+  useEffect(() => {
+    if (neighborhoodFocusId && !neighborhoodView) clearNeighborhoodFocus(false);
+  }, [clearNeighborhoodFocus, neighborhoodFocusId, neighborhoodView]);
 
   // Weakness lenses: one-click "where is the argument weak" filters computed
   // from incoming supports/rebuts (argumentStatusMap) + argument_role. A match
@@ -1171,8 +1234,8 @@ function MinimalGraphInner({
   const displayNodes = useMemo(() => {
     if (!traceResult.nodes) {
       const matchSet = weaknessFilter ? weaknessSets.visible[weaknessFilter] : null;
-      if (!matchSet) return baseDisplayNodes;
-      return baseDisplayNodes.map((n) => ({
+      if (!matchSet) return focusedBaseNodes;
+      return focusedBaseNodes.map((n) => ({
         ...n,
         style: {
           ...(n.style || {}),
@@ -1181,7 +1244,7 @@ function MinimalGraphInner({
         },
       }));
     }
-    const dimmed = baseDisplayNodes.map((n) => {
+    const dimmed = focusedBaseNodes.map((n) => {
       const inTrace = traceResult.nodes.has(n.id);
       return {
         ...n,
@@ -1193,7 +1256,7 @@ function MinimalGraphInner({
       };
     });
     return layoutDialectic(dimmed, [], { focusNodeId: argumentTraceFrom });
-  }, [baseDisplayNodes, traceResult.nodes, weaknessFilter, weaknessSets, argumentTraceFrom, reduceMotion]);
+  }, [focusedBaseNodes, traceResult.nodes, weaknessFilter, weaknessSets, argumentTraceFrom, reduceMotion]);
 
   // ReactFlow measures nodes over several renders. Debounce until the visible
   // node set settles, then frame the first card at a readable phone zoom. The
@@ -1219,22 +1282,37 @@ function MinimalGraphInner({
     return () => window.clearTimeout(id);
   }, [compactViewer, displayNodes, reactFlow, reduceMotion]);
 
-  // Re-frame the camera when the dialectic fan appears/disappears — the node
-  // set is unchanged (no layout re-key) but positions move drastically.
+  // Re-frame when a relationship neighbourhood or dialectic fan appears. Both
+  // projections move nodes without changing the controlled full-layout state.
   useEffect(() => {
+    if (!argumentTraceFrom && !neighborhoodFocusId) return undefined;
     const id = setTimeout(() => {
       try {
-        reactFlow.fitView({ padding: 0.25, duration: reduceMotion ? 0 : 300 });
+        if (compactViewer) {
+          frameNodesFromTopLeft(reactFlow, displayNodes, {
+            zoom: 0.85,
+            duration: reduceMotion ? 0 : 300,
+            paddingX: 16,
+            paddingY: 148,
+          });
+        } else {
+          reactFlow.fitView({
+            padding: 0.2,
+            duration: reduceMotion ? 0 : 300,
+            minZoom: MIN_READABLE_ZOOM,
+            maxZoom: 1,
+          });
+        }
       } catch {
         /* canvas not ready — Center button remains the fallback */
       }
     }, 80);
     return () => clearTimeout(id);
-  }, [argumentTraceFrom, reactFlow, reduceMotion]);
+  }, [argumentTraceFrom, compactViewer, displayNodes, neighborhoodFocusId, reactFlow, reduceMotion]);
 
   const displayEdgesWithTrace = useMemo(() => {
-    if (!traceResult.edges) return displayEdges;
-    return displayEdges.map((edge) => {
+    if (!traceResult.edges) return focusedDisplayEdges;
+    return focusedDisplayEdges.map((edge) => {
       const inTrace = traceResult.edges.has(edge.id);
       return {
         ...edge,
@@ -1245,7 +1323,7 @@ function MinimalGraphInner({
         },
       };
     });
-  }, [displayEdges, traceResult.edges]);
+  }, [focusedDisplayEdges, traceResult.edges]);
 
   // Run fitView after React has committed the new nodes to DOM and ReactFlow
   // has measured their positions. A single rAF isn't enough â€” ReactFlow's
@@ -1309,8 +1387,8 @@ function MinimalGraphInner({
   }, [compactViewer, displayNodes, reactFlow, reduceMotion]);
 
   const selectedLayoutNode = useMemo(
-    () => layoutedDisplayNodes.find((node) => node.id === selectedNode) || null,
-    [layoutedDisplayNodes, selectedNode]
+    () => displayNodes.find((node) => node.id === selectedNode) || null,
+    [displayNodes, selectedNode]
   );
 
   const centerViewportOnNode = useCallback(
@@ -1324,7 +1402,7 @@ function MinimalGraphInner({
       // coordinate parks the camera off-screen. `layoutedDisplayNodes` is the
       // tier the user is actually looking at (and equals `layoutedNodes` in
       // legacy mode), so this is strictly the correct-or-equal source.
-      const fallbackNode = layoutedDisplayNodes.find((node) => node.id === nodeId) || null;
+      const fallbackNode = displayNodes.find((node) => node.id === nodeId) || null;
       const targetNode = liveNode || fallbackNode;
       const targetPosition =
         targetNode?.positionAbsolute || targetNode?.position || fallbackNode?.position || null;
@@ -1345,7 +1423,7 @@ function MinimalGraphInner({
 
       return () => window.clearTimeout(timeout);
     },
-    [layoutedDisplayNodes, reactFlow]
+    [displayNodes, reactFlow]
   );
 
   // Center on a node chosen from the TIMELINE RIBBON without opening the detail
@@ -1467,36 +1545,34 @@ function MinimalGraphInner({
           }
         );
         setSelectedNode(null);
+        clearNeighborhoodFocus();
         setClickedEdge(null);
         return;
       }
-      // Debounce: a fast accidental double-click fires two click events; ignore
-      // the second so a single tap can't drill twice (or into the just-changed
-      // view). zoomOnDoubleClick is also disabled on ReactFlow.
-      if (Date.now() - lastDrillAtRef.current < 350) return;
+      // Card click/tap means "make this the centre of my current question."
+      // Hierarchy and provenance stay available as explicit Expand/Details
+      // actions, so one gesture never has multiple meanings.
+      autoFollowRef.current = false;
       setSelectedCluster(null);
       setClickedEdge(null);
-      // SINGLE TAP (Option A) = expand if the node has children; a leaf opens
-      // its drawer (nothing to expand). Drag is still press-and-move; the
-      // drawer for a node WITH children is its "details" chip.
-      const fd = node.data?.fullData || {};
-      const childIds = Array.isArray(fd.children_ids) ? fd.children_ids : [];
-      const ownLevel = Number(fd.semantic_level || fd.level || 1);
-      if (childIds.length > 0 && ownLevel > 1) {
-        lastDrillAtRef.current = Date.now();
-        handleExpand(node.id);
-      } else {
-        handleOpenDetails(node.id);
+      setSelectedNode(null);
+      setWeaknessFilter(null);
+      setArgumentTraceFrom?.(null);
+      setTraceBroaden(false);
+      if (!neighborhoodFocusId) {
+        preNeighborhoodViewportRef.current = reactFlow.getViewport?.() || null;
       }
+      setNeighborhoodFocusId(node.id);
     },
-    [handleExpand, handleOpenDetails, setSelectedNode]
+    [clearNeighborhoodFocus, neighborhoodFocusId, reactFlow, setArgumentTraceFrom, setSelectedNode]
   );
 
   const handlePaneClick = useCallback(() => {
     setSelectedNode(null);
     setSelectedCluster(null);
     setClickedEdge(null);
-  }, [setSelectedNode]);
+    clearNeighborhoodFocus();
+  }, [clearNeighborhoodFocus, setSelectedNode]);
 
   // Resolve cluster member details for the detail panel
   const selectedClusterMembers = useMemo(() => {
@@ -1566,7 +1642,7 @@ function MinimalGraphInner({
       {/* Weakness lenses — one-click "where is the argument weak" filters.
           Dim everything except the matching claims (+ their ancestors so
           coarser tiers stay meaningful). Hidden during argument trace. */}
-      {!argumentTraceFrom && (
+      {!argumentTraceFrom && !neighborhoodFocusId && (
         <div className="absolute bottom-14 left-2 right-2 z-40 flex items-center gap-1 overflow-x-auto pb-1 sm:bottom-12 sm:left-3 sm:right-auto sm:flex-wrap sm:overflow-visible sm:pb-0">
           {[
             { key: "unsupported", label: "unsupported", title: "Claims with no incoming support/evidence" },
@@ -1782,7 +1858,7 @@ function MinimalGraphInner({
         effectiveSemanticLevel={effectiveSemanticLevel}
         effectiveClusterLevel={effectiveClusterLevel}
         displayNodes={displayNodes}
-        displayEdges={displayEdges}
+        displayEdges={focusedDisplayEdges}
         projectionStats={effectiveView?.projectionStats || null}
         normalizedChunk={normalizedChunk}
         lockedLevel={lockedLevel}
@@ -1793,6 +1869,11 @@ function MinimalGraphInner({
         setAutoFollow={setAutoFollow}
         userOverrodeTierRef={userOverrodeTierRef}
         setLockedLevel={setLockedLevel}
+        neighborhoodFocus={neighborhoodView ? {
+          title: neighborhoodView.focusNode?.data?.title || "Untitled",
+          directNeighborCount: neighborhoodView.directNeighborCount,
+        } : null}
+        clearNeighborhoodFocus={clearNeighborhoodFocus}
       />
 
       <MinimalGraphPanels

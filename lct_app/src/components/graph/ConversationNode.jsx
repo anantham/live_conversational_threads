@@ -155,6 +155,7 @@ function ConversationNodeImpl({ data, selected }) {
     argumentRole = null,
     rhetoricFlags = [],
     argStatusLabel = null,
+    isNeighborhoodFocus = false,
     showSummary = true,
     summaryMaxLength = 500,
   } = data || {};
@@ -167,7 +168,8 @@ function ConversationNodeImpl({ data, selected }) {
   // Rule). Crux no longer hijacks the border — it gets a quiet dot (see
   // CruxDot) so a macro view full of cruxes doesn't flood amber; each card
   // keeps its resolved tier color (e.g. arcs read slate).
-  const borderShorthand = selected
+  const isHighlighted = selected || isNeighborhoodFocus;
+  const borderShorthand = isHighlighted
     ? "2px solid #f59e0b"
     : isDraft
     ? `1px dashed ${borderColor}`
@@ -197,7 +199,7 @@ function ConversationNodeImpl({ data, selected }) {
     // nodes worth drilling into without reading text. Selection still wins (it
     // adds a solid 2px amber BORDER above; a crux keeps its thread-colored border
     // + this halo, so the two read distinctly). Cruxes are sparse by design.
-    boxShadow: selected
+    boxShadow: isHighlighted
       ? "0 0 0 3px rgba(245,158,11,0.3)"
       : isCrux
       ? "0 0 0 2px #f59e0b, 0 0 12px 2px rgba(245,158,11,0.5)"
@@ -217,6 +219,7 @@ function ConversationNodeImpl({ data, selected }) {
   return (
     <div
       className={`lct-conversation-node${isTangent ? " lct-conversation-node--tangent" : ""}`}
+      data-neighborhood-focus={isNeighborhoodFocus ? "true" : undefined}
       style={cardStyle}
     >
       {/* React Flow handles for edge attachment.
@@ -247,9 +250,9 @@ function ConversationNodeImpl({ data, selected }) {
         <div style={speakerStyle}>{speakerLabel}</div>
       )}
 
-      {canExpand && (
+      {(canExpand || onOpenDetails) && (
         <div style={cardFooterStyle}>
-          <ExpandButton count={expandCount} onExpand={onExpand} />
+          {canExpand && <ExpandButton count={expandCount} onExpand={onExpand} />}
           {onOpenDetails && <DetailsButton onOpenDetails={onOpenDetails} />}
         </div>
       )}
@@ -310,8 +313,8 @@ const expandButtonStyle = {
   WebkitTapHighlightColor: "transparent",
 };
 
-// Footer row holding the expand pill + the details chip (Option A: tap the card
-// to expand; tap "details" to open the drawer).
+// Footer row keeps hierarchy and provenance as explicit actions. The card body
+// itself is reserved for reorienting the relationship neighbourhood.
 const cardFooterStyle = {
   display: "flex",
   alignItems: "center",
@@ -320,9 +323,8 @@ const cardFooterStyle = {
   marginTop: "8px",
 };
 
-// Small "details" affordance for nodes WITH children: their card-tap expands,
-// so this is how you reach the drawer (edges, source, ancestors). Leaf nodes
-// don't show it — tapping a leaf opens its drawer directly.
+// Every node exposes the same explicit details action; leaf cards no longer
+// overload body tap with a different meaning.
 function DetailsButton({ onOpenDetails }) {
   return (
     <button
@@ -494,6 +496,7 @@ ConversationNodeImpl.propTypes = {
     argumentRole: PropTypes.string,
     rhetoricFlags: PropTypes.array,
     argStatusLabel: PropTypes.string,
+    isNeighborhoodFocus: PropTypes.bool,
     showSummary: PropTypes.bool,
     summaryMaxLength: PropTypes.number,
   }),
