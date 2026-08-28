@@ -341,10 +341,17 @@ function ProvenanceMetricStrip({ metrics }) {
     metrics?.matched_utterance_count ?? metrics?.utterance_count,
   ) || 0;
   const wordCount = Number(metrics?.word_count) || 0;
-  const duration = formatDurationCompact(metrics?.duration_seconds);
+  const hasTiming = metrics?.duration_seconds != null;
+  const duration = hasTiming
+    ? Number(metrics?.duration_seconds) === 0
+      ? "0s"
+      : formatDurationCompact(metrics?.duration_seconds)
+    : "";
+  const timingUnavailable = matchedCount > 0 && !hasTiming;
   const parts = [
     wordCount > 0 ? `${wordCount.toLocaleString()} ${wordCount === 1 ? "word" : "words"}` : null,
     duration ? `${duration} span` : null,
+    timingUnavailable ? "timing unavailable" : null,
     referencedCount > matchedCount
       ? `${matchedCount.toLocaleString()} of ${referencedCount.toLocaleString()} turns linked`
       : matchedCount > 0
@@ -358,7 +365,9 @@ function ProvenanceMetricStrip({ metrics }) {
       data-testid="provenance-metrics"
       title={incomplete
         ? "Transcript source linkage is incomplete in this artifact"
-        : "Exact transcript material aggregated into this node"}
+        : timingUnavailable
+          ? "Source turns are linked, but this artifact has no aligned timestamps"
+          : "Exact transcript material aggregated into this node"}
       style={provenanceMetricStyle}
     >
       {parts.join(" · ")}

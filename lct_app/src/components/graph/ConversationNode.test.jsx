@@ -10,6 +10,7 @@ import ConversationNode from "./ConversationNode";
  * - Details remains explicit on leaf nodes after card click is reserved for focus.
  * - The neighborhood root is marked without replacing its speaker fill.
  * - Auditable nodes expose aggregate transcript metrics and an exact-source action.
+ * - Linked-but-untimed source turns say timing is unavailable instead of hiding it.
  */
 describe("ConversationNode structured-turn fallback", () => {
   it("shows the summary when every structured turn is empty", () => {
@@ -114,5 +115,27 @@ describe("ConversationNode structured-turn fallback", () => {
     expect(markup).toContain("0 of 1 turns linked");
     expect(markup).toContain('aria-label="Open details"');
     expect(markup).not.toContain('aria-label="Open exact source utterances"');
+  });
+
+  it("states when linked source turns have no aligned timing", () => {
+    const markup = renderToStaticMarkup(
+      <ReactFlowProvider>
+        <ConversationNode
+          selected={false}
+          data={{
+            title: "Untimed claim",
+            provenanceMetrics: {
+              utterance_count: 2,
+              matched_utterance_count: 2,
+              word_count: 18,
+              duration_seconds: null,
+            },
+          }}
+        />
+      </ReactFlowProvider>,
+    );
+
+    expect(markup).toContain("18 words · timing unavailable · 2 turns");
+    expect(markup).toContain("this artifact has no aligned timestamps");
   });
 });
