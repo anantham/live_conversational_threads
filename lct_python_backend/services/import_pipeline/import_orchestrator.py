@@ -53,34 +53,9 @@ def _topology_marker(edges: List[Dict[str, Any]], *, status: str, reason: str = 
 
 
 def _merge_semantic_edges(nodes: List[Dict[str, Any]], edges: List[Dict[str, Any]]) -> None:
-    by_id = {_safe_text(node.get("id")): node for node in nodes if isinstance(node, dict)}
-    for edge in edges:
-        source_id = _safe_text(edge.get("from_node_id"))
-        target_id = _safe_text(edge.get("to_node_id"))
-        relation = _safe_text(edge.get("relation_type")).lower()
-        source = by_id.get(source_id)
-        target = by_id.get(target_id)
-        if source is None or target is None or not relation:
-            continue
-        explanation = _safe_text(edge.get("explanation"))
-        source_name = _safe_text(source.get("node_name"))
-        if not source_name:
-            continue
-        # graph_persistence's legacy authoring path interprets edge_relations
-        # as INCOMING: related_node -> current node. Attach to the target so
-        # evidence-b supports claim-a remains evidence-b -> claim-a.
-        edge_relations = target.setdefault("edge_relations", [])
-        relation_key = (source_name, relation)
-        if not any(
-            isinstance(existing, dict)
-            and (_safe_text(existing.get("related_node")), _safe_text(existing.get("relation_type")).lower()) == relation_key
-            for existing in edge_relations
-        ):
-            edge_relations.append({
-                "related_node": source_name,
-                "relation_type": relation,
-                "relation_text": explanation or relation,
-            })
+    from lct_python_backend.services.edge_enrichment import merge_semantic_edges_into_nodes
+
+    merge_semantic_edges_into_nodes(nodes, edges)
 
 
 @dataclass

@@ -14,6 +14,7 @@ import NodeDetail from "./NodeDetail";
  * - Artifact transcript evidence is read-only when no conversation id exists.
  * - Elapsed timestamps distinguish an unlinked conversation from a recording deep link.
  * - A source_ref-only aggregate still reveals and highlights its exact raw turns.
+ * - Semantic relationships disclose whether they cite exact raw turns.
  */
 
 let container;
@@ -223,5 +224,41 @@ describe("NodeDetail dialog behavior", () => {
     expect(timestampLink?.getAttribute("href")).toBe(
       "https://drive.google.com/file/d/drive-file-123/view?t=10",
     );
+  });
+
+  it("shows whether an explicit semantic edge has direct turn citations", () => {
+    act(() => {
+      root.render(
+        <NodeDetail
+          node={{
+            id: "claim-1",
+            node_name: "A claim",
+            explicit_edges_in: [{
+              from_node_id: "evidence-1",
+              to_node_id: "claim-1",
+              relation_type: "supports",
+              explanation: "The concrete example supports this claim.",
+              supporting_utterance_ids: ["u-1", "u-2"],
+            }],
+            explicit_edges_out: [{
+              from_node_id: "claim-1",
+              to_node_id: "claim-2",
+              relation_type: "implies",
+              explanation: "This leads to a second claim.",
+              supporting_utterance_ids: [],
+            }],
+          }}
+          contextNodes={[
+            { id: "claim-1", node_name: "A claim" },
+            { id: "claim-2", node_name: "A second claim" },
+            { id: "evidence-1", node_name: "A concrete example" },
+          ]}
+          onClose={vi.fn()}
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain("2 cited turns");
+    expect(container.textContent).toContain("no direct turn citation");
   });
 });

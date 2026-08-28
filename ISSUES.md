@@ -878,3 +878,31 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - **Non-blocking provenance hardening follow-ups.** Cyclic hierarchy input can
   memoize an under-counted descendant union, and a span-only/unlinked metric
   strip uses an overconfident tooltip. Validate hierarchy acyclicity and soften
+  the tooltip in a separate evidence-UX repair.
+
+## 2026-08-28 — Real-artifact integrity acceptance repair
+
+- **Resolved — Center then pan could change semantic tiers.** Several camera
+  paths used independent booleans/timeouts, so a late ReactFlow completion made
+  the requested zoom—not the real final zoom—the next gesture's baseline. One
+  generation-ordered viewport tracker now owns every programmatic motion.
+- **Resolved — a graph batch was copied onto every leaf's provenance.** Leaf
+  source excerpts are now deterministically localized to matching transcript
+  fragments. Shared unmatched chunks fail closed instead of claiming the full
+  batch.
+- **Resolved — live edge enrichment reversed its compatibility direction.**
+  Import and live STT now share the same canonical adapter, which attaches the
+  source statement as an incoming relation on the target.
+- **Resolved — edge aliases and duplicate triples polluted topology.** Relation
+  spellings canonicalize before persistence/export, duplicate directed triples
+  merge at export, and exact supporting turns survive the full path.
+- **Open, non-blocking — old artifacts need re-extraction for precise evidence.**
+  Serialization can deduplicate/canonicalize stored edges, but it cannot infer
+  which subset of an old batch supported each old leaf. Re-run extraction from
+  retained utterances to replace broad historical links; do not mutate them
+  heuristically.
+  On the acceptance conversation, exact matching could safely rehabilitate
+  only 31/135 old leaf excerpts; the other 104 were paraphrased rather than
+  verbatim. Their old median provenance set was 35 turns. The generator now
+  requires exact contiguous leaf excerpts, but this historical conversation
+  still needs a deliberate re-extraction before its leaf evidence is precise.

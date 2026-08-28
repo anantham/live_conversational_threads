@@ -368,6 +368,27 @@ def test_split_segments_for_completed_chunk_separates_carryover():
     assert [segment["text"] for segment in carryover[0]] == ["B later"]
 
 
+def test_split_segments_normalizes_the_online_incomplete_suffix_boundary():
+    text_batch = ["Done.", "Tail."]
+    segment_batch = [
+        [{"speaker": "SPEAKER_00", "text": "Done."}],
+        [{"speaker": "SPEAKER_01", "text": "Tail."}],
+    ]
+
+    completed, carryover = (
+        transcript_processing_module.TranscriptProcessor._split_segments_for_completed_chunk(
+            text_batch=text_batch,
+            segment_batch=segment_batch,
+            completed_text="done",
+            incomplete_text="TAIL!!!",
+            stop_accumulating_flag=False,
+        )
+    )
+
+    assert [segment["text"] for segment in completed] == ["Done."]
+    assert [[segment["text"] for segment in slot] for slot in carryover] == [["Tail."]]
+
+
 def test_split_segments_for_completed_chunk_uses_all_segments_on_forced_flush():
     text_batch = ["A done", "B later"]
     segment_batch = [

@@ -4401,3 +4401,123 @@ Manual testing not run:
   regressions cover the boundary. Claude's final exact staged-diff re-review
   returned **APPROVE** with no blocking defects. Its seven non-blocking
   hardening observations are captured in `ISSUES.md` without expanding scope.
+
+## 2026-08-28 — Real-artifact camera, provenance, and topology hardening
+
+- **Observed acceptance failures:** on conversation
+  `a754fe04-a0b7-4472-a181-e0e28236426a`, Center followed by a real pan could
+  jump from three arcs to the 135-moment tier; many moments carried identical
+  broad source sets; stored topology contained duplicate endpoint/type triples
+  and both `rebut`/`rebuts`; semantic edges carried no cited turns. All raw
+  utterance timestamps in this artifact were null.
+- **Hypotheses:** H1 (0.85) independent camera timeouts recorded a requested
+  zoom before ReactFlow's true final zoom; predicted a lifecycle-level tracker
+  would keep Center→pan on the same tier. H2 (0.95) the processor copied the
+  completed batch map onto every generated leaf; predicted two leaf excerpts in
+  one batch would both receive all IDs. H3 (0.90) edge response/persistence had
+  no canonical alias or evidence contract and live/import used divergent
+  adapters; predicted duplicate aliases, empty evidence, and reversed live
+  direction. Focused diagnostics confirmed all three. Missing timestamps were
+  confirmed upstream evidence absence, not a viewer parsing failure.
+- **Implementation:** added a generation-ordered viewport motion tracker and
+  routed every ReactFlow camera mutation through it. Added a pure grounded leaf
+  provenance matcher, precise carryover accounting, shared-chunk localization,
+  and fail-closed unmatched behavior. Canonicalized edge grammar, merged exact
+  duplicate directed triples while retaining evidence, requested/validated
+  supporting turn IDs, and unified live/import direction adaptation. Node cards
+  now state `timing unavailable`; relation details state cited-turn count or
+  absence.
+- **Validation:** focused viewport unit tests 7/7; focused edge pipeline tests
+  18/18; NodeDetail 7/7; ConversationNode 6/6; focused Chromium viewer journeys
+  2/2; complete frontend Vitest 303/303; affected backend suite 59/59; production
+  build and scoped ESLint passed. The PostgreSQL-only integration suite skipped
+  8 tests because this worktree has no direct `DATABASE_URL`. The full backend
+  unit suite passed 1946 tests and exposed one already-recorded environment
+  mismatch: OpenAI 1.54.0 passes the removed `proxies=` argument to httpx 0.28.1
+  before the cloud guard test reaches its assertion. The worktree Fontsource
+  dev allow-list warning remains the already-recorded non-blocking issue;
+  production bundles the fonts.
+- **Exact private-artifact replay:** current backend code exported format v2 for
+  the acceptance conversation with 200 nodes, 818 utterances, and 624
+  deduplicated edges. In a headless browser the landing tier stayed at 3 arcs
+  after Center and all 12 post-pan samples; all three cards disclosed timing as
+  unavailable; exact-source dialog opening passed; four ArrowDown moves crossed
+  authored levels with visible counts 5 → 6 → 1 → 3; ArrowRight preserved
+  relationship focus. Only structural metrics were printed. The temporary
+  artifact and replay script were deleted after the test.
+- **Generator evidence repair:** the acceptance artifact also falsified the
+  assumption that `grounded` implied exact: clearing the old broad links and
+  running deterministic matching recovered only 31/135 leaves (median 0, max 2)
+  versus the old median 35 IDs. Managed and fallback local/online hierarchy
+  prompts now require an exact contiguous verbatim leaf excerpt, no speaker
+  prefix or grammar repair, and empty evidence on uncertainty. The canonical
+  focused prompt/provenance/topology suite passed 34/34 after this addition. A
+  local audit found that the primary local/online fallbacks carried the
+  contract but the refinement fallback did not; the same contract is now
+  concatenated into that fallback and covered through the public prompt
+  resolver.
+- **Files:** `MinimalGraph.jsx`, `viewportMotionTracker.js`,
+  `provenance_linking.py`, transcript prompt/processing/persistence, edge
+  contract and enrichment/adapters, node evidence UI, focused tests, ADR-032,
+  issues, and tech debt. Independent different-family review follows before
+  completion.
+
+### 2026-08-29 — Independent-review hardening pass
+
+- Direct Claude Sonnet reviewed the exact PR diff with repository tools
+  disabled. It found no critical/high defects and raised four candidates. Code
+  inspection confirmed the carryover-boundary, prompt-visible edge-evidence,
+  and dead-cleanup findings. Its camera recommendation was only partially
+  correct: classifying every event-shaped callback as human input made a later
+  programmatic re-center select the moments tier in Chromium.
+- The camera contract now treats a real `onMoveStart` as an explicit
+  interruption: it invalidates the active camera generation and snapshots the
+  gesture's starting zoom. `onMoveEnd` retains conservative programmatic
+  classification for active/no-event settles. The focused browser test begins
+  a drag 30 ms into Center's animation and verifies that human control wins;
+  the full source/keyboard journey verifies later reframes remain semantic-tier
+  stable.
+- Online accumulator suffixes are located in normalized provenance text rather
+  than by raw character subtraction. Speaker segments and utterance IDs now use
+  the same slot boundary, and an unlocatable suffix fails closed to zero
+  completed slots. Edge citations are accepted only from the exact capped ID
+  set shown to the model. Vestigial camera cleanup callbacks were removed.
+- Focused validation: viewport tracker 3/3, Chromium viewer journeys 2/2, and
+  transcript/topology backend tests 46/46. The first parallel Chromium run was
+  intentionally treated as falsification evidence: the new overlap case passed
+  while the older journey exposed the over-broad event-only classifier; both
+  passed serially after the interruption-state repair.
+- Full validation: frontend Vitest 304/304 and production build passed; scoped
+  source ESLint passed (the Playwright TypeScript file is outside that ESLint
+  config and was executed directly). Backend unit tests passed 1950 cases with
+  the same single pre-existing OpenAI 1.54/httpx 0.28 `proxies=` constructor
+  mismatch documented above; it fails before the egress assertion reaches
+  project code.
+
+### 2026-08-29 — Grok final-review camera hardening
+
+- Independent xAI/Grok 4.6 review of the exact `origin/main...003bb22` diff
+  identified three supported camera-test gaps and one disputed online-flush
+  claim.
+- Fixed the supported findings:
+  - `viewportMotionTracker` no longer coerces an omitted `expectedZoom` from
+    `null` to a fabricated zero baseline.
+  - `MinimalGraph.handleMoveEnd` now classifies programmatic motion before it
+    records a settled zoom, leaving programmatic completion writes inside the
+    generation-checked tracker lifecycle.
+  - The Chromium regression now unlocks the semantic tier before interrupting
+    Center at 30 ms and verifies the three-node arc tier both immediately and
+    after the original animation settle window.
+  - Tracker tests cover omitted expected zoom and a stale promise completion
+    after a real pointer interruption.
+- Falsified the claimed online force-flush loss rather than changing correct
+  code: the online branch clears `incomplete_seg` before slot accounting, so
+  `_completed_slot_count(..., "")` selects the complete batch. A new public-path
+  regression proves the forced batch emits the tail node with `utt-tail`, an
+  empty incomplete suffix, and no carryover.
+- Focused validation: viewport tracker 5/5, online provenance/flush 2/2, and
+  Chromium provenance/navigation 2/2.
+- Full validation after repair: frontend Vitest 306/306, production build and
+  scoped ESLint passed; backend unit tests passed 1951 cases with only the same
+  established OpenAI 1.54/httpx 0.28 `proxies=` environment mismatch failing
+  before project code.

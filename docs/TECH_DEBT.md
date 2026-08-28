@@ -157,3 +157,20 @@ before adding another navigation axis. `NodeDetail.jsx` remains about 1,133
 lines; the new source-reference fallback strengthens the existing case for an
 `EvidenceTranscript` extraction rather than adding further evidence modes
 inside the drawer.
+
+### 2026-08-28 — Camera and edge contracts extracted, orchestration still oversized
+
+`MinimalGraph.jsx` is now about 2,116 lines. The approved repair extracted the
+programmatic camera lifecycle into the pure `viewportMotionTracker.js`, but the
+component still owns every trigger for initial fit, focus framing, auto-follow,
+mobile framing, and Center. Complete the existing `useGraphCamera` extraction
+before adding another camera mode.
+
+`edge_enrichment.py` is about 605 lines and now combines context retrieval,
+prompt assembly, provider invocation, response normalization, and compatibility
+adaptation. Extract an `edge_response_contract.py` containing evidence
+validation/canonicalization and the node adapter; keep provider orchestration in
+`edge_enrichment.py`. `graph_persistence.py` (~1,495 lines) and
+`transcript_processing.py` (~815 lines) remain pre-existing mixed-concern
+monoliths; the new provenance matcher was kept in its own pure module rather
+than expanding either one further.

@@ -59,6 +59,7 @@ import {
 import { buildFocusedNeighborhood } from "./graphNeighborhoodFocus";
 import { isGraphNavigationKey, navigateGraphNode } from "./graphNavigation";
 import { semanticLevelAfterViewportMove } from "./semanticTierControl";
+import { createViewportMotionTracker } from "./viewportMotionTracker";
 
 // ADR-030 §D4: custom node renderer with three color modes + state markers.
 // Cluster nodes are still default ReactFlow rendering (separate concern).
@@ -105,8 +106,16 @@ function MinimalGraphInner({
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
-  const programmaticMoveRef = useRef(false);
-  const settledViewportZoomRef = useRef(null);
+  const reactFlowRef = useRef(reactFlow);
+  reactFlowRef.current = reactFlow;
+  const viewportMotionRef = useRef(null);
+  if (viewportMotionRef.current == null) {
+    viewportMotionRef.current = createViewportMotionTracker({
+      getZoom: () => reactFlowRef.current?.getZoom?.(),
+    });
+  }
+  const viewportMotion = viewportMotionRef.current;
+  useEffect(() => () => viewportMotion.dispose(), [viewportMotion]);
   const mobileFramedNodeSetRef = useRef("");
   const [autoFollow, setAutoFollow] = useState(true);
   const [reduceMotion, setReduceMotion] = useState(() =>
@@ -139,12 +148,14 @@ function MinimalGraphInner({
     if (!restoreViewport || !priorViewport || compactViewer) return;
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        programmaticMoveRef.current = true;
-        reactFlow.setViewport(priorViewport, { duration: reduceMotion ? 0 : 280 });
-        setTimeout(() => { programmaticMoveRef.current = false; }, reduceMotion ? 0 : 320);
+        const duration = reduceMotion ? 0 : 280;
+        viewportMotion.run(
+          () => reactFlow.setViewport(priorViewport, { duration }),
+          { expectedZoom: priorViewport.zoom, duration },
+        );
       });
     });
-  }, [compactViewer, reactFlow, reduceMotion]);
+  }, [compactViewer, reactFlow, reduceMotion, viewportMotion]);
   // Drilldown stack: array of { level, nodeId, nodeName } breadcrumbs.
   // Empty = top-level (whatever tier the user is currently locked to).
   // Each click on a non-leaf node pushes one entry; the visible nodes
@@ -996,11 +1007,13 @@ function MinimalGraphInner({
   const handleLockedLevelChange = useCallback((nextLevel) => {
     if (nextLevel == null) {
       const currentZoom = Number(reactFlow.getZoom?.());
-      settledViewportZoomRef.current = Number.isFinite(currentZoom) ? currentZoom : zoomLevel;
+      viewportMotion.updateSettledZoom(
+        Number.isFinite(currentZoom) ? currentZoom : zoomLevel,
+      );
       setUnlockedSemanticLevel(effectiveSemanticLevel);
     }
     setLockedLevel(nextLevel);
-  }, [effectiveSemanticLevel, reactFlow, zoomLevel]);
+  }, [effectiveSemanticLevel, reactFlow, viewportMotion, zoomLevel]);
 
   const displayMode = (scopedTierView || drilledView || activeSemanticView) ? "semantic" : "legacy";
   const effectiveView = scopedTierView || drilledView || activeSemanticView;
@@ -1080,10 +1093,13 @@ function MinimalGraphInner({
     const id = setTimeout(() => {
       const duration = reduceMotion ? 0 : 300;
       if (compactViewer) return;
-      reactFlow.fitView({ padding: 0.15, duration, minZoom: MIN_READABLE_ZOOM });
+      viewportMotion.run(
+        () => reactFlow.fitView({ padding: 0.15, duration, minZoom: MIN_READABLE_ZOOM }),
+        { duration },
+      );
     }, 50);
     return () => clearTimeout(id);
-  }, [compactViewer, displayMode, effectiveSemanticLevel, drilldownPath, layoutedDisplayNodes, reactFlow, reduceMotion]);
+  }, [compactViewer, displayMode, effectiveSemanticLevel, drilldownPath, layoutedDisplayNodes, reactFlow, reduceMotion, viewportMotion]);
 
   // Controlled node state â€” layout provides initial positions, drags persist
   const [interactiveNodes, setInteractiveNodes] = useState([]);
@@ -1281,17 +1297,22 @@ function MinimalGraphInner({
     if (mobileFramedNodeSetRef.current === key) return undefined;
     const id = window.setTimeout(() => {
       const liveNodes = reactFlow.getNodes?.() || displayNodes;
-      if (frameNodesFromTopLeft(reactFlow, liveNodes, {
-        zoom: 0.85,
-        duration: reduceMotion ? 0 : 300,
-        paddingX: 16,
-        paddingY: 112,
-      })) {
+      const duration = reduceMotion ? 0 : 300;
+      let framed = false;
+      viewportMotion.run(() => {
+        framed = frameNodesFromTopLeft(reactFlow, liveNodes, {
+          zoom: 0.85,
+          duration,
+          paddingX: 16,
+          paddingY: 112,
+        });
+      }, { expectedZoom: 0.85, duration });
+      if (framed) {
         mobileFramedNodeSetRef.current = key;
       }
     }, 180);
     return () => window.clearTimeout(id);
-  }, [compactViewer, displayNodes, reactFlow, reduceMotion]);
+  }, [compactViewer, displayNodes, reactFlow, reduceMotion, viewportMotion]);
 
   // Re-frame when a relationship neighbourhood or dialectic fan appears. Both
   // projections move nodes without changing the controlled full-layout state.
@@ -1303,27 +1324,34 @@ function MinimalGraphInner({
     if (!argumentTraceFrom && !neighborhoodFocusId) return undefined;
     const id = setTimeout(() => {
       try {
+        const duration = reduceMotion ? 0 : 300;
         if (compactViewer) {
-          frameNodesFromTopLeft(reactFlow, displayNodesRef.current, {
-            zoom: 0.85,
-            duration: reduceMotion ? 0 : 300,
-            paddingX: 16,
-            paddingY: 148,
-          });
+          viewportMotion.run(
+            () => frameNodesFromTopLeft(reactFlow, displayNodesRef.current, {
+              zoom: 0.85,
+              duration,
+              paddingX: 16,
+              paddingY: 148,
+            }),
+            { expectedZoom: 0.85, duration },
+          );
         } else {
-          reactFlow.fitView({
-            padding: 0.2,
-            duration: reduceMotion ? 0 : 300,
-            minZoom: MIN_READABLE_ZOOM,
-            maxZoom: 1,
-          });
+          viewportMotion.run(
+            () => reactFlow.fitView({
+              padding: 0.2,
+              duration,
+              minZoom: MIN_READABLE_ZOOM,
+              maxZoom: 1,
+            }),
+            { duration },
+          );
         }
       } catch {
         /* canvas not ready — Center button remains the fallback */
       }
     }, 80);
     return () => clearTimeout(id);
-  }, [argumentTraceFrom, compactViewer, neighborhoodFocusId, reactFlow, reduceMotion]);
+  }, [argumentTraceFrom, compactViewer, neighborhoodFocusId, reactFlow, reduceMotion, viewportMotion]);
 
   const displayEdgesWithTrace = useMemo(() => {
     if (!traceResult.edges) return focusedDisplayEdges;
@@ -1360,8 +1388,8 @@ function MinimalGraphInner({
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
-        programmaticMoveRef.current = true;
         const isCompact = compactViewer;
+        const duration = reduceMotion ? 0 : 300;
         if (isCompact) {
           // On mobile, fitView would either squish the whole 1680px
           // swim-lane to 0.21 zoom (unreadable) or, with minZoom
@@ -1370,21 +1398,25 @@ function MinimalGraphInner({
           // bbox at the top-left of the viewport at a readable zoom
           // â€” same logic as the "Center" preset button. User pans to
           // see the rest.
-          if (!frameNodesFromTopLeft(reactFlow, displayNodes, {
-            zoom: 0.85,
-            duration: reduceMotion ? 0 : 300,
-            paddingX: 16,
-            paddingY: 112,
-          })) {
-            reactFlow.fitView({ padding: 0.1, duration: reduceMotion ? 0 : 300, minZoom: 0.6, maxZoom: 1.0 });
-          }
+          viewportMotion.run(() => {
+            if (frameNodesFromTopLeft(reactFlow, displayNodes, {
+              zoom: 0.85,
+              duration,
+              paddingX: 16,
+              paddingY: 112,
+            })) return undefined;
+            return reactFlow.fitView({ padding: 0.1, duration, minZoom: 0.6, maxZoom: 1.0 });
+          }, { expectedZoom: 0.85, duration });
         } else {
-          reactFlow.fitView({
-            padding: 0.2,
-            duration: reduceMotion ? 0 : 300,
-            minZoom: MIN_READABLE_ZOOM,
-            maxZoom: 1.0,
-          });
+          viewportMotion.run(
+            () => reactFlow.fitView({
+              padding: 0.2,
+              duration,
+              minZoom: MIN_READABLE_ZOOM,
+              maxZoom: 1.0,
+            }),
+            { duration },
+          );
         }
         // The graph is now framed. Release the auto-follow gate so live
         // streaming can resume centering on new nodes, but only AFTER this
@@ -1392,14 +1424,13 @@ function MinimalGraphInner({
         hasInitiallyFitRef.current = true;
         pendingFitViewRef.current = false; // consume only now that the fit committed
         mglog("initial fitView COMMITTED", { displayNodes: displayNodes.length, isCompact });
-        setTimeout(() => { programmaticMoveRef.current = false; }, 350);
       });
     });
     return () => {
       cancelAnimationFrame(raf1);
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [compactViewer, displayNodes, reactFlow, reduceMotion]);
+  }, [compactViewer, displayNodes, reactFlow, reduceMotion, viewportMotion]);
 
   const selectedLayoutNode = useMemo(
     () => displayNodes.find((node) => node.id === selectedNode) || null,
@@ -1429,16 +1460,17 @@ function MinimalGraphInner({
       const width = targetNode?.width ?? targetNode?.measured?.width ?? 180;
       const height = targetNode?.height ?? targetNode?.measured?.height ?? 96;
 
-      programmaticMoveRef.current = true;
-      reactFlow.setCenter(targetPosition.x + width / 2, targetPosition.y + height / 2, options);
-
-      const timeout = window.setTimeout(() => {
-        programmaticMoveRef.current = false;
-      }, (options.duration ?? 0) + 50);
-
-      return () => window.clearTimeout(timeout);
+      viewportMotion.run(
+        () => reactFlow.setCenter(
+          targetPosition.x + width / 2,
+          targetPosition.y + height / 2,
+          options,
+        ),
+        { expectedZoom: options.zoom, duration: options.duration ?? 0 },
+      );
+      return undefined;
     },
-    [displayNodes, reactFlow]
+    [displayNodes, reactFlow, viewportMotion]
   );
 
   // Center on a node chosen from the TIMELINE RIBBON without opening the detail
@@ -1462,14 +1494,10 @@ function MinimalGraphInner({
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
-    let cleanup;
     const raf = requestAnimationFrame(() => {
-      cleanup = centerViewportOnNode(focusNode, { zoom: 1.15, duration: reduceMotion ? 0 : 280 });
+      centerViewportOnNode(focusNode, { zoom: 1.15, duration: reduceMotion ? 0 : 280 });
     });
-    return () => {
-      cancelAnimationFrame(raf);
-      cleanup?.();
-    };
+    return () => cancelAnimationFrame(raf);
   }, [clearNeighborhoodFocus, focusNode, centerViewportOnNode, neighborhoodView, reduceMotion]);
 
   // Sync ref with state so effects read the latest value
@@ -1483,14 +1511,18 @@ function MinimalGraphInner({
     if (Number.isFinite(viewport?.zoom)) setZoomLevel(viewport.zoom);
   }, []);
 
+  const handleMoveStart = useCallback((event) => {
+    viewportMotion.interruptForUserGesture(event);
+  }, [viewportMotion]);
+
   // Sync zoom level from ReactFlow viewport when motion settles.
   const handleMoveEnd = useCallback((_event, viewport) => {
     handleMove(_event, viewport);
     const viewportZoom = Number(viewport?.zoom);
-    const previousViewportZoom = settledViewportZoomRef.current;
-    if (Number.isFinite(viewportZoom)) settledViewportZoomRef.current = viewportZoom;
-    const programmatic = programmaticMoveRef.current || !_event;
+    const programmatic = viewportMotion.isProgrammaticEvent(_event);
     if (programmatic) return;
+    const previousViewportZoom = viewportMotion.getSettledZoom();
+    viewportMotion.updateSettledZoom(viewportZoom);
     userOverrodeTierRef.current = true; // genuine user pan/zoom â€” they're driving now
     if (lockedLevel == null && hasAuthoredHierarchy) {
       setUnlockedSemanticLevel((currentLevel) => semanticLevelAfterViewportMove({
@@ -1504,7 +1536,7 @@ function MinimalGraphInner({
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
-  }, [effectiveSemanticLevel, handleMove, hasAuthoredHierarchy, lockedLevel]);
+  }, [effectiveSemanticLevel, handleMove, hasAuthoredHierarchy, lockedLevel, viewportMotion]);
 
   // Also sync on mount â€” fitView doesn't fire onMoveEnd
   useEffect(() => {
@@ -1531,17 +1563,10 @@ function MinimalGraphInner({
     const last = layoutedDisplayNodes[layoutedDisplayNodes.length - 1];
     if (!last?.id) return;
 
-    // Temporarily mark as programmatic so onMoveEnd doesn't disable follow
-    const wasProgrammatic = programmaticMoveRef.current;
-    const cleanup = centerViewportOnNode(last.id, {
+    centerViewportOnNode(last.id, {
       zoom: 1,
       duration: reduceMotion ? 0 : 400,
     });
-
-    return () => {
-      cleanup?.();
-      programmaticMoveRef.current = wasProgrammatic;
-    };
   }, [autoFollow, centerViewportOnNode, lastNodeId, layoutedDisplayNodes, reduceMotion, selectedNode]);
 
   // Center selected node when chosen from timeline or graph.
@@ -1555,18 +1580,13 @@ function MinimalGraphInner({
     }
     if (!selectedNode || !selectedLayoutNode?.position) return undefined;
 
-    let cleanup;
     const raf = requestAnimationFrame(() => {
-      cleanup = centerViewportOnNode(selectedNode, {
+      centerViewportOnNode(selectedNode, {
         zoom: 1.15,
         duration: reduceMotion ? 0 : 280,
       });
     });
-
-    return () => {
-      cancelAnimationFrame(raf);
-      cleanup?.();
-    };
+    return () => cancelAnimationFrame(raf);
   }, [centerViewportOnNode, clearNeighborhoodFocus, neighborhoodView, reduceMotion, selectedLayoutNode, selectedNode, viewportReservationKey]);
 
   // Cluster detail panel state
@@ -1748,7 +1768,11 @@ function MinimalGraphInner({
       // column groups, putting the camera in negative space.
       const nodes = displayNodes;
       if (!nodes || nodes.length === 0) {
-        reactFlow.fitView({ padding: 0.3, duration: reduceMotion ? 0 : 300, minZoom: MIN_READABLE_ZOOM });
+        const duration = reduceMotion ? 0 : 300;
+        viewportMotion.run(
+          () => reactFlow.fitView({ padding: 0.3, duration, minZoom: MIN_READABLE_ZOOM }),
+          { duration },
+        );
         return;
       }
       // Compute bbox from node positions + measured sizes
@@ -1760,22 +1784,28 @@ function MinimalGraphInner({
         if (py < minY) minY = py;
       });
       if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
-        reactFlow.fitView({ padding: 0.3, duration: reduceMotion ? 0 : 300, minZoom: MIN_READABLE_ZOOM });
+        const duration = reduceMotion ? 0 : 300;
+        viewportMotion.run(
+          () => reactFlow.fitView({ padding: 0.3, duration, minZoom: MIN_READABLE_ZOOM }),
+          { duration },
+        );
         return;
       }
       const currentZoom = reactFlow.getZoom?.() ?? 1;
       const readableZoom = Math.max(currentZoom, MIN_READABLE_ZOOM);
       const PADDING_PX = 40;
-      programmaticMoveRef.current = true;
-      reactFlow.setViewport(
-        {
-          x: -minX * readableZoom + PADDING_PX,
-          y: -minY * readableZoom + PADDING_PX,
-          zoom: readableZoom,
-        },
-        { duration: reduceMotion ? 0 : 300 },
+      const duration = reduceMotion ? 0 : 300;
+      viewportMotion.run(
+        () => reactFlow.setViewport(
+          {
+            x: -minX * readableZoom + PADDING_PX,
+            y: -minY * readableZoom + PADDING_PX,
+            zoom: readableZoom,
+          },
+          { duration },
+        ),
+        { expectedZoom: readableZoom, duration },
       );
-      setTimeout(() => { programmaticMoveRef.current = false; }, reduceMotion ? 0 : 350);
     }},
   ];
 
@@ -1859,6 +1889,7 @@ function MinimalGraphInner({
         onKeyDownCapture={handleNodeKeyDownCapture}
         onPaneClick={handlePaneClick}
         onEdgeClick={handleEdgeClick}
+        onMoveStart={handleMoveStart}
         onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         onEdgeMouseEnter={(_, edge) => setHoveredEdge(edge.data)}

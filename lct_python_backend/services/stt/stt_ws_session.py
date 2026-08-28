@@ -820,7 +820,10 @@ class WsSessionContext:
         graph still persists, just without the semantic edge layer.
         """
         try:
-            from lct_python_backend.services.edge_enrichment import run_edge_enrichment
+            from lct_python_backend.services.edge_enrichment import (
+                merge_semantic_edges_into_nodes,
+                run_edge_enrichment,
+            )
 
             existing = list(self.processor.existing_json or [])
             if not existing:
@@ -888,39 +891,10 @@ class WsSessionContext:
                 providers=self._runtime_llm_providers,
             )
 
-            # Attach edges to source nodes' edge_relations so persist_graph
-            # writes them as Relationship rows. Each node's edge_relations
-            # is a list; we extend with the new entries keyed by from_node_id.
-            edges_by_from: Dict[str, List[Dict[str, Any]]] = {}
-            for e in edges:
-                edges_by_from.setdefault(str(e["from_node_id"]), []).append({
-                    "related_node": str(e["to_node_id"]),
-                    "relation_type": e["relation_type"],
-                    "explanation": e.get("explanation") or "",
-                })
-
-            for node in existing:
-                if not isinstance(node, dict):
-                    continue
-                nid = str(node.get("id") or "")
-                if not nid or nid not in edges_by_from:
-                    continue
-                existing_edges = node.get("edge_relations")
-                if not isinstance(existing_edges, list):
-                    existing_edges = []
-                # Append new edges, dedupe by (related_node, relation_type)
-                seen_keys = {
-                    (str(ee.get("related_node") or ""), str(ee.get("relation_type") or ""))
-                    for ee in existing_edges
-                    if isinstance(ee, dict)
-                }
-                for new_edge in edges_by_from[nid]:
-                    key = (new_edge["related_node"], new_edge["relation_type"])
-                    if key in seen_keys:
-                        continue
-                    seen_keys.add(key)
-                    existing_edges.append(new_edge)
-                node["edge_relations"] = existing_edges
+            # edge_relations is an incoming-edge compatibility shape. Use the
+            # same merger as imports so live capture cannot reverse direction
+            # or drop evidence while adapting the canonical explicit edge.
+            merge_semantic_edges_into_nodes(existing, edges)
 
             self.processor.existing_json = existing
 

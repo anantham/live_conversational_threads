@@ -281,12 +281,14 @@ export default function NodeDetail({
       related_node: displayName(edge.to_node_id),
       relation_text: edge.explanation || "",
       direction: "outgoing",
+      supporting_utterance_ids: edge.supporting_utterance_ids || [],
     }));
     const incoming = safeNode.explicit_edges_in.map((edge) => ({
       relation_type: edge.relation_type,
       related_node: displayName(edge.from_node_id),
       relation_text: edge.explanation || "",
       direction: "incoming",
+      supporting_utterance_ids: edge.supporting_utterance_ids || [],
     }));
     return [...incoming, ...outgoing];
   }, [contextNodes, safeNode]);
@@ -998,6 +1000,16 @@ export default function NodeDetail({
                   </span>
                   <span className="text-gray-400">
                     {rel.related_node}: {rel.relation_text}
+                    {Array.isArray(rel.supporting_utterance_ids) && rel.supporting_utterance_ids.length > 0 ? (
+                      <span
+                        className="ml-1 text-emerald-700"
+                        title={rel.supporting_utterance_ids.join("\n")}
+                      >
+                        · {rel.supporting_utterance_ids.length} cited turn{rel.supporting_utterance_ids.length === 1 ? "" : "s"}
+                      </span>
+                    ) : (
+                      <span className="ml-1 text-amber-700">· no direct turn citation</span>
+                    )}
                   </span>
                 </li>
               ))}

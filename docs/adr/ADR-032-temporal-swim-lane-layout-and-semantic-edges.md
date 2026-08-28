@@ -599,3 +599,53 @@ Navigation does not wrap at boundaries and ignores modified key chords and
 events originating in inputs, links, buttons, selectors, or editable content.
 A successful move re-roots the existing one-hop relationship focus; crossing an
 abstraction boundary first changes the tier and then focuses the target.
+
+## Amendment — 2026-08-28: settled camera lifecycle and grounded edge evidence
+
+**Status:** Approved by the operator after acceptance testing a real dense
+artifact exposed gaps that synthetic navigation tests had missed.
+
+Every programmatic camera operation participates in one lifecycle owned by the
+viewer: begin, animate, settle, record the real final viewport, then release.
+Overlapping operations are generation-ordered so an older completion cannot
+release or overwrite a newer motion. A user pan after `Center` therefore
+compares against the actual settled zoom, not the requested zoom or an expired
+timeout. This strengthens rather than replaces the semantic/camera separation
+above.
+
+Direct provenance is leaf-specific. A generation batch may retain its complete
+utterance map for accounting, but it must not copy that batch onto every leaf.
+Each level-one node is linked only when its grounded source excerpt overlaps
+specific ordered transcript fragments. Existing authored links win; an
+unmatched excerpt stays unlinked for later reconciliation. Higher tiers derive
+their evidence through authored children and memberships.
+
+Semantic relation types use one canonical grammatical spelling at extraction,
+persistence, and export (`rebut` becomes `rebuts`, `support` becomes
+`supports`, and equivalent verb forms follow the same rule). Canonicalization
+never reverses endpoints or invents semantics. Exact duplicate directed triples
+collapse at the public artifact boundary while merging their cited turns;
+distinct `member_of` subtypes remain distinct.
+
+Every newly authored semantic edge must cite the smallest exact set of
+`supporting_utterance_ids` from its two endpoint nodes. Returned IDs outside
+those endpoints are discarded. A short grounded source node may provide a
+deterministic fallback when the model omits citations. A broad aggregate may
+not: it remains explicitly without a direct turn citation instead of presenting
+dozens of source turns as edge-specific proof. Import and live-STT flows use the
+same incoming-edge adapter so direction and citations cannot drift.
+
+Timing remains an independent evidence dimension. Linked source text without
+aligned timestamps is rendered as `timing unavailable`; neither the pipeline
+nor viewer synthesizes elapsed time from transcript order.
+
+### Addendum — exact leaf excerpt authoring
+
+The deterministic linker is paired with an authoring contract: every new
+level-one `source_excerpt` must be one exact contiguous verbatim substring from
+the current transcript segment, excluding speaker-label prefixes. Grammar
+repair, paraphrase, ellipses, and splicing belong in `node_name` or `summary`,
+never in direct evidence. If the generator cannot quote an exact supporting
+span, it leaves the excerpt empty and the node remains explicitly unlinked.
+This contract is injected centrally into managed and fallback prompts for both
+local and online generation paths.
