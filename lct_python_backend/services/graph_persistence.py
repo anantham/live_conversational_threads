@@ -33,7 +33,11 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 # ``DATABASE_URL`` is not configured at import time.
 from lct_python_backend.models import Conversation, Utterance as DBUtterance
 from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
+from lct_python_backend.services.edge_contract import canonical_relation_type
 from lct_python_backend.services.owner_context import resolve_owner_id
+from lct_python_backend.services.provenance_linking import (
+    assign_grounded_leaf_utterance_ids,
+)
 from lct_python_backend.services.deployment_privacy_policy import (
     assert_raw_transcript_retention_allowed,
 )
@@ -733,6 +737,45 @@ async def persist_graph(
         for derived_chunk_uuid, derived_utt_ids in derived_chunk_map.items():
             parsed_utterance_chunk_map.setdefault(derived_chunk_uuid, derived_utt_ids)
 
+    # A graph batch may emit several leaf nodes with one shared chunk_id. The
+    # old fallback copied the chunk's complete utterance list onto every leaf,
+    # making distinct summaries cite identical evidence. Count all owners and,
+    # when in-memory import utterances are available, localize each shared leaf
+    # by its grounded excerpt before persistence. Live sessions get the same
+    # deterministic retry from utterance_node_reconciler after the rows exist.
+    chunk_owner_counts: Dict[uuid.UUID, int] = {}
+    for _, item in node_records:
+        chunk_uuid = _coerce_uuid(item.get("chunk_id"))
+        if chunk_uuid is not None:
+            chunk_owner_counts[chunk_uuid] = chunk_owner_counts.get(chunk_uuid, 0) + 1
+
+    if utterances:
+        raw_utterances_by_chunk: Dict[uuid.UUID, List[Dict[str, Any]]] = {}
+        for raw_utterance in utterances:
+            if not isinstance(raw_utterance, dict):
+                continue
+            chunk_uuid = _coerce_uuid(raw_utterance.get("chunk_id"))
+            if chunk_uuid is None:
+                continue
+            raw_utterances_by_chunk.setdefault(chunk_uuid, []).append(raw_utterance)
+        for chunk_uuid, owner_count in chunk_owner_counts.items():
+            if owner_count <= 1:
+                continue
+            chunk_nodes = [
+                item
+                for _, item in node_records
+                if _coerce_uuid(item.get("chunk_id")) == chunk_uuid
+            ]
+            chunk_utterances = sorted(
+                raw_utterances_by_chunk.get(chunk_uuid, []),
+                key=lambda row: (int(row.get("sequence_number") or 0), str(row.get("id") or "")),
+            )
+            assign_grounded_leaf_utterance_ids(
+                chunk_nodes,
+                [coerce_str(row.get("text")) for row in chunk_utterances],
+                [[row.get("id")] if row.get("id") else [] for row in chunk_utterances],
+            )
+
     # ADR-032 Part G: persist timestamp_start/timestamp_end on Node rows
     # at write time. Read-time derivation (conversation_reader.py) becomes a
     # drift-check that asserts these match. Computing at write time means
@@ -858,7 +901,7 @@ async def persist_graph(
             cid_raw = item.get("chunk_id")
             if cid_raw:
                 cuid = _coerce_uuid(cid_raw)
-                if cuid:
+                if cuid and chunk_owner_counts.get(cuid, 0) == 1:
                     candidate_utt_ids = chunk_to_utt_ids.get(cuid, [])
         if not candidate_utt_ids:
             return (None, None)
@@ -912,14 +955,16 @@ async def persist_graph(
     # Step 2: Write Node rows
     for node_id, item in node_records:
         chunk_id = item.get("chunk_id")
-        # Option B: if the LLM didn't author utterance_ids for this node but
-        # the chunk_utterance_map names some, inherit them. The live path
-        # populates utterance_ids on each emitted node via the processor, so
-        # this fallback mostly covers test/legacy paths that pass utterance
-        # links out-of-band rather than embedded.
+        # A chunk-level map is precise only when exactly one node owns that
+        # chunk. Shared chunks were localized above; unmatched shared leaves
+        # remain honestly unlinked for the post-persist reconciler to retry.
         if not item.get("utterance_ids") and chunk_id and parsed_utterance_chunk_map:
             chunk_uuid_for_node = _coerce_uuid(chunk_id)
-            if chunk_uuid_for_node and chunk_uuid_for_node in parsed_utterance_chunk_map:
+            if (
+                chunk_uuid_for_node
+                and chunk_owner_counts.get(chunk_uuid_for_node, 0) == 1
+                and chunk_uuid_for_node in parsed_utterance_chunk_map
+            ):
                 item["utterance_ids"] = [
                     str(uid) for uid in parsed_utterance_chunk_map[chunk_uuid_for_node]
                 ]
@@ -1200,7 +1245,9 @@ async def persist_graph(
                 )
                 if related_name not in ref_to_id:
                     continue
-                relation_type = coerce_str(relation.get("relation_type") or relation.get("type")).lower() or "contextual"
+                relation_type = canonical_relation_type(
+                    relation.get("relation_type") or relation.get("type")
+                ) or "contextual"
                 relation_text = coerce_str(
                     relation.get("relation_text")
                     or relation.get("relationText")
@@ -1221,6 +1268,9 @@ async def persist_graph(
                     explanation=relation_text,
                     strength=0.8,
                     confidence=0.9,
+                    supporting_utterance_ids=_coerce_uuid_array(
+                        relation.get("supporting_utterance_ids")
+                    ),
                 ))
 
     persisted_utterances = _normalize_utterances(utterances)

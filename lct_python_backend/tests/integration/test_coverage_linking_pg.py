@@ -13,6 +13,10 @@ utterances missing an id or chunk_id stay unlinked (their turn is honestly
 uncovered, no crash), duplicate ids are de-duped, and a node whose chunk has no
 utterances gets an empty link set rather than erroring.
 
+Shared graph batches are a separate precision boundary: when multiple leaves
+own one chunk_id, each leaf must be localized by source_excerpt instead of
+inheriting the chunk's complete utterance list.
+
 Skipped unless DATABASE_URL is set; each test creates + cascade-cleans its own
 conversation.
 """
@@ -117,6 +121,25 @@ def test_import_style_persist_makes_coverage_real():
 
     assert all(len(ids) == 2 for ids in node_links.values()), node_links
     assert summary == {"total_turns": 4, "covered_turns": 4, "pct": 100.0, "auditable": True}
+
+
+def test_shared_chunk_localizes_each_leaf_to_its_own_utterance():
+    """Two nodes from one generation batch retain distinct direct evidence."""
+    conv_id = str(uuid.uuid4())
+    shared_chunk = str(uuid.uuid4())
+    utt1, utt2 = _utt(1, shared_chunk), _utt(2, shared_chunk)
+    node_a = _node("Node A", shared_chunk)
+    node_a["source_excerpt"] = utt1["text"]
+    node_b = _node("Node B", shared_chunk)
+    node_b["source_excerpt"] = utt2["text"]
+
+    node_links, summary = asyncio.run(
+        _persist_and_read(conv_id, [node_a, node_b], [utt1, utt2])
+    )
+
+    assert node_links["Node A"] == [utt1["id"]]
+    assert node_links["Node B"] == [utt2["id"]]
+    assert summary == {"total_turns": 2, "covered_turns": 2, "pct": 100.0, "auditable": True}
 
 
 def test_explicit_map_wins_over_derived():

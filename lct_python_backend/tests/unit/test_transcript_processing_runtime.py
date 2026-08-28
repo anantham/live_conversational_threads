@@ -10,6 +10,14 @@ from lct_python_backend.services.transcript.transcript_processing import Transcr
 # DEFAULT_LLM_MODE defaults to "local", so _process_batch uses the boundary-index
 # accumulate path (accumulate_text_json_local_indexed) rather than the echo
 # dispatcher. These cadence/plumbing tests mock that path deterministically.
+#
+# Provenance test intent:
+# - A graph batch may cover several utterances, but each generated leaf receives
+#   only the utterances overlapped by its grounded source excerpt.
+# - A missing/unmatched excerpt fails closed to no direct evidence rather than
+#   copying the whole batch onto every node.
+# - Higher semantic tiers derive provenance through children during persistence;
+#   the streaming batcher must not pre-emptively over-link them.
 def _acc_idx_complete_all(numbered_input, **kwargs):
     return (
         {"decision": "stop_accumulating", "completed_through_index": 10**9, "detected_threads": []},
@@ -252,6 +260,67 @@ async def test_index_mode_continue_keeps_accumulating(monkeypatch):
     assert graph_emitted is False
     assert cont is True
     assert incomplete_seg == "a fragment another fragment"
+
+
+@pytest.mark.asyncio
+async def test_batch_links_each_leaf_only_to_its_grounded_source_turns(monkeypatch):
+    """Public graph output must not copy one batch's evidence onto every node."""
+    monkeypatch.setattr(mod, "accumulate_text_json_local_indexed", _acc_idx_complete_all)
+    monkeypatch.setattr(
+        mod,
+        "generate_lct_json",
+        lambda mod_input, **kwargs: (
+            [
+                {
+                    "id": "chunk-first",
+                    "node_name": "First grounded point",
+                    "semantic_level": 1,
+                    "source_excerpt": "first precise utterance",
+                },
+                {
+                    "id": "chunk-second",
+                    "node_name": "Second grounded point",
+                    "semantic_level": 1,
+                    "source_excerpt": "second separate utterance",
+                },
+                {
+                    "id": "chunk-unmatched",
+                    "node_name": "Unsupported generated point",
+                    "semantic_level": 1,
+                    "source_excerpt": "words absent from the transcript",
+                },
+                {
+                    "id": "idea-parent",
+                    "node_name": "Parent summary",
+                    "semantic_level": 2,
+                    "children_ids": ["chunk-first", "chunk-second"],
+                    "source_excerpt": "first precise utterance second separate utterance",
+                },
+            ],
+            "local_test",
+        ),
+    )
+
+    processor = TranscriptProcessor(send_update=None, send_status=None, batch_size=2)
+    graph_emitted, *_ = await processor._process_batch(
+        ["First precise utterance.", "Second separate utterance."],
+        [[], []],
+        [["utt-1"], ["utt-2"]],
+        stop_accumulating_flag=True,
+        trigger="test",
+    )
+
+    assert graph_emitted is True
+    by_name = {node["node_name"]: node for node in processor.existing_json}
+    assert by_name["First grounded point"]["utterance_ids"] == ["utt-1"]
+    assert by_name["Second grounded point"]["utterance_ids"] == ["utt-2"]
+    assert by_name["Unsupported generated point"].get("utterance_ids") in (None, [])
+    assert by_name["Parent summary"].get("utterance_ids") in (None, [])
+    [chunk_utterance_ids] = processor.chunk_utterance_map.values()
+    assert set(chunk_utterance_ids) == {
+        "utt-1",
+        "utt-2",
+    }
 
 
 @pytest.mark.asyncio

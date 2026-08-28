@@ -1,3 +1,8 @@
+"""Test intent: prompt routing preserves configured prompts while injecting
+load-bearing graph contracts, including exact leaf evidence for deterministic
+utterance linking. Tests assert the public resolved prompt text, not helper calls.
+"""
+
 import json
 
 from lct_python_backend.services.prompt_manager import PromptManager
@@ -55,7 +60,7 @@ def test_get_transcript_prompt_text_prefers_prompt_manager(monkeypatch):
     assert prompt_text == "managed prompt"
 
 
-def test_hierarchy_prompt_adds_argument_roles_and_thread_labels_to_managed_template(monkeypatch):
+def test_hierarchy_prompt_adds_graph_contracts_to_managed_template(monkeypatch):
     class _FakePromptManager:
         def get_prompt(self, prompt_name):
             return {"template": "managed hierarchy prompt"}
@@ -74,6 +79,10 @@ def test_hierarchy_prompt_adds_argument_roles_and_thread_labels_to_managed_templ
     assert "claim, evidence, question, assumption, context" in prompt_text
     assert "Thread identity contract" in prompt_text
     assert "thread_label" in prompt_text
+    assert "Source-evidence contract" in prompt_text
+    assert "exact contiguous" in prompt_text
+    assert "omit speaker-label prefixes" in prompt_text
+    assert "empty source_excerpt" in prompt_text
 
 
 def test_generate_lct_json_local_uses_managed_prompt(monkeypatch):

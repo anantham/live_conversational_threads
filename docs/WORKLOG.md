@@ -4401,3 +4401,59 @@ Manual testing not run:
   regressions cover the boundary. Claude's final exact staged-diff re-review
   returned **APPROVE** with no blocking defects. Its seven non-blocking
   hardening observations are captured in `ISSUES.md` without expanding scope.
+
+## 2026-08-28 — Real-artifact camera, provenance, and topology hardening
+
+- **Observed acceptance failures:** on conversation
+  `a754fe04-a0b7-4472-a181-e0e28236426a`, Center followed by a real pan could
+  jump from three arcs to the 135-moment tier; many moments carried identical
+  broad source sets; stored topology contained duplicate endpoint/type triples
+  and both `rebut`/`rebuts`; semantic edges carried no cited turns. All raw
+  utterance timestamps in this artifact were null.
+- **Hypotheses:** H1 (0.85) independent camera timeouts recorded a requested
+  zoom before ReactFlow's true final zoom; predicted a lifecycle-level tracker
+  would keep Center→pan on the same tier. H2 (0.95) the processor copied the
+  completed batch map onto every generated leaf; predicted two leaf excerpts in
+  one batch would both receive all IDs. H3 (0.90) edge response/persistence had
+  no canonical alias or evidence contract and live/import used divergent
+  adapters; predicted duplicate aliases, empty evidence, and reversed live
+  direction. Focused diagnostics confirmed all three. Missing timestamps were
+  confirmed upstream evidence absence, not a viewer parsing failure.
+- **Implementation:** added a generation-ordered viewport motion tracker and
+  routed every ReactFlow camera mutation through it. Added a pure grounded leaf
+  provenance matcher, precise carryover accounting, shared-chunk localization,
+  and fail-closed unmatched behavior. Canonicalized edge grammar, merged exact
+  duplicate directed triples while retaining evidence, requested/validated
+  supporting turn IDs, and unified live/import direction adaptation. Node cards
+  now state `timing unavailable`; relation details state cited-turn count or
+  absence.
+- **Validation:** focused viewport unit tests 7/7; focused edge pipeline tests
+  18/18; NodeDetail 7/7; ConversationNode 6/6; focused Chromium viewer journeys
+  2/2; complete frontend Vitest 303/303; affected backend suite 59/59; production
+  build and scoped ESLint passed. The PostgreSQL-only integration suite skipped
+  8 tests because this worktree has no direct `DATABASE_URL`. The full backend
+  unit suite passed 1946 tests and exposed one already-recorded environment
+  mismatch: OpenAI 1.54.0 passes the removed `proxies=` argument to httpx 0.28.1
+  before the cloud guard test reaches its assertion. The worktree Fontsource
+  dev allow-list warning remains the already-recorded non-blocking issue;
+  production bundles the fonts.
+- **Exact private-artifact replay:** current backend code exported format v2 for
+  the acceptance conversation with 200 nodes, 818 utterances, and 624
+  deduplicated edges. In a headless browser the landing tier stayed at 3 arcs
+  after Center and all 12 post-pan samples; all three cards disclosed timing as
+  unavailable; exact-source dialog opening passed; four ArrowDown moves crossed
+  authored levels with visible counts 5 → 6 → 1 → 3; ArrowRight preserved
+  relationship focus. Only structural metrics were printed. The temporary
+  artifact and replay script were deleted after the test.
+- **Generator evidence repair:** the acceptance artifact also falsified the
+  assumption that `grounded` implied exact: clearing the old broad links and
+  running deterministic matching recovered only 31/135 leaves (median 0, max 2)
+  versus the old median 35 IDs. Managed and fallback local/online hierarchy
+  prompts now require an exact contiguous verbatim leaf excerpt, no speaker
+  prefix or grammar repair, and empty evidence on uncertainty. The canonical
+  focused prompt/provenance/topology suite passed 33/33 after this addition.
+- **Files:** `MinimalGraph.jsx`, `viewportMotionTracker.js`,
+  `provenance_linking.py`, transcript prompt/processing/persistence, edge
+  contract and enrichment/adapters, node evidence UI, focused tests, ADR-032,
+  issues, and tech debt. Independent different-family review follows before
+  completion.

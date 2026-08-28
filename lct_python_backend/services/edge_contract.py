@@ -15,6 +15,29 @@ from lct_python_backend.services.conversation_reader import TEMPORAL_RELATIONSHI
 EDGE_SCHEMA_VERSION = 1
 THREADS_FORMAT_VERSION = 2
 
+_RELATION_ALIASES = {
+    "support": "supports",
+    "rebut": "rebuts",
+    "agree": "agrees",
+    "disagree": "disagrees",
+    "contradict": "contradicts",
+    "clarify": "clarifies",
+    "generalize": "generalizes",
+    "exemplify": "exemplifies",
+    "answer": "answers",
+    "reference_back": "references_back",
+}
+
+
+def canonical_relation_type(value: Any) -> str:
+    """Return the stable public spelling for a directed relation type.
+
+    These aliases change grammar only; none reverse endpoints or infer a
+    semantic relation that the author did not provide.
+    """
+    normalized = str(value or "").strip().lower()
+    return _RELATION_ALIASES.get(normalized, normalized)
+
 
 def edge_schema_descriptor() -> dict[str, Any]:
     """Return a fresh JSON-safe descriptor for the explicit endpoint space."""
@@ -27,7 +50,7 @@ def edge_schema_descriptor() -> dict[str, Any]:
 
 def relationship_edge_kind(relationship_type: Any) -> str:
     """Classify stored relations without fuzzy semantic inference."""
-    normalized = str(relationship_type or "").strip().lower()
+    normalized = canonical_relation_type(relationship_type)
     return "temporal" if normalized in TEMPORAL_RELATIONSHIP_TYPES else "semantic"
 
 
@@ -84,13 +107,14 @@ def serialize_relationships(
     transform_node = node_id_transform or (lambda value: value)
     transform_edge = edge_id_transform or (lambda value: value)
     result: list[dict[str, Any]] = []
+    result_by_key: dict[tuple[Any, ...], dict[str, Any]] = {}
 
     for index, relationship in enumerate(relationships or []):
         from_id = str(getattr(relationship, "from_node_id", "") or "").strip()
         to_id = str(getattr(relationship, "to_node_id", "") or "").strip()
-        relation_type = str(
-            getattr(relationship, "relationship_type", "") or ""
-        ).strip()
+        relation_type = canonical_relation_type(
+            getattr(relationship, "relationship_type", "")
+        )
         if not from_id or not to_id or not relation_type:
             continue
 
@@ -98,7 +122,7 @@ def serialize_relationships(
         if not raw_edge_id:
             raw_edge_id = f"edge-{index}-{from_id}-{to_id}-{relation_type}"
 
-        result.append({
+        serialized = {
             "id": transform_edge(raw_edge_id),
             "from_node_id": transform_node(from_id),
             "to_node_id": transform_node(to_id),
@@ -117,6 +141,25 @@ def serialize_relationships(
                     getattr(relationship, "supporting_utterance_ids", None) or []
                 )
             ],
-        })
+        }
+        subtype_key = serialized["relation_subtype"] if relation_type == "member_of" else None
+        duplicate_key = (
+            serialized["from_node_id"],
+            serialized["to_node_id"],
+            relation_type,
+            subtype_key,
+        )
+        existing = result_by_key.get(duplicate_key)
+        if existing is not None:
+            known_ids = set(existing["supporting_utterance_ids"])
+            for utterance_id in serialized["supporting_utterance_ids"]:
+                if utterance_id not in known_ids:
+                    known_ids.add(utterance_id)
+                    existing["supporting_utterance_ids"].append(utterance_id)
+            if not existing.get("explanation") and serialized.get("explanation"):
+                existing["explanation"] = serialized["explanation"]
+            continue
+        result.append(serialized)
+        result_by_key[duplicate_key] = serialized
 
     return result
