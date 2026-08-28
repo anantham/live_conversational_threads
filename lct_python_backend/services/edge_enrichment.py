@@ -28,6 +28,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
+from lct_python_backend.services.edge_contract import canonical_relation_type
 from lct_python_backend.services.indrasnet_client import (
     IndrasNetError,
     IndrasNetUnavailable,
@@ -46,6 +47,16 @@ MAX_CONTEXT_ITEMS_DEFAULT = 8
 # Cap on edges per enrichment pass. The prompt instructs "be sparse";
 # this enforces it server-side too.
 MAX_EDGES_PER_PASS = 60
+MAX_EDGE_EVIDENCE_IDS_PER_NODE = 12
+
+EDGE_EVIDENCE_INSTRUCTION = """
+EDGE EVIDENCE CONTRACT:
+- Every node may list source_turn_ids. For each edge, return
+  supporting_utterance_ids containing the smallest exact set of source_turn_ids
+  from either endpoint that makes the relationship auditable.
+- Never invent a source turn id. Return an empty list only when neither endpoint
+  lists source_turn_ids.
+""".strip()
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +222,39 @@ def _format_node_list(nodes: List[Dict[str, Any]]) -> str:
         lines.append(f"- [{nid}] L{level} {name}")
         if summary:
             lines.append(f"  summary: {summary}")
+        evidence_ids = _node_utterance_ids(n)
+        if evidence_ids:
+            shown_ids = _prompt_visible_utterance_ids(n)
+            suffix = (
+                f" (+{len(evidence_ids) - len(shown_ids)} more; prefer a lower-tier endpoint)"
+                if len(evidence_ids) > len(shown_ids)
+                else ""
+            )
+            lines.append(f"  source_turn_ids: {', '.join(shown_ids)}{suffix}")
     return "\n".join(lines)
+
+
+def _node_utterance_ids(node: Any) -> List[str]:
+    if not isinstance(node, dict):
+        return []
+    source_ref = node.get("source_ref") if isinstance(node.get("source_ref"), dict) else {}
+    ordered = [
+        *(node.get("utterance_ids") if isinstance(node.get("utterance_ids"), list) else []),
+        *(source_ref.get("utterance_ids") if isinstance(source_ref.get("utterance_ids"), list) else []),
+    ]
+    seen: set[str] = set()
+    result: List[str] = []
+    for value in ordered:
+        identifier = str(value or "").strip()
+        if identifier and identifier not in seen:
+            seen.add(identifier)
+            result.append(identifier)
+    return result
+
+
+def _prompt_visible_utterance_ids(node: Any) -> List[str]:
+    """Return exactly the evidence IDs disclosed to the edge-authoring model."""
+    return _node_utterance_ids(node)[:MAX_EDGE_EVIDENCE_IDS_PER_NODE]
 
 
 async def _call_enrich_llm(
@@ -245,7 +288,7 @@ async def _call_enrich_llm(
         logger.error("[edge_enrichment] failed to load enrich_semantic_edges prompt: %s", exc)
         return [], telemetry
 
-    system_prompt = spec.get("template") or ""
+    system_prompt = f"{spec.get('template') or ''}\n\n{EDGE_EVIDENCE_INSTRUCTION}"
     user_input = _format_node_list(nodes)
     context_block = _format_context_pack(context_items)
     if context_block:
@@ -322,7 +365,7 @@ async def _call_enrich_llm(
 
     edges = _parse_edges_response(
         raw_for_parser,
-        valid_node_ids={str(n.get("id") or "") for n in nodes},
+        nodes=nodes,
     )
     telemetry["raw_edges"] = len(edges)
     if len(edges) > MAX_EDGES_PER_PASS:
@@ -339,7 +382,12 @@ async def _call_enrich_llm(
     return edges, telemetry
 
 
-def _parse_edges_response(raw_text: str, *, valid_node_ids: set) -> List[Dict[str, Any]]:
+def _parse_edges_response(
+    raw_text: str,
+    *,
+    nodes: Optional[List[Dict[str, Any]]] = None,
+    valid_node_ids: Optional[set] = None,
+) -> List[Dict[str, Any]]:
     """Tolerant parser for the LLM output. Accepts {"edges": [...]} or a
     bare list. Drops edges that reference unknown node ids."""
     if not raw_text:
@@ -368,30 +416,122 @@ def _parse_edges_response(raw_text: str, *, valid_node_ids: set) -> List[Dict[st
     if not isinstance(candidates, list):
         return []
 
+    node_by_id = {
+        str(node.get("id") or "").strip(): node
+        for node in (nodes or [])
+        if isinstance(node, dict) and str(node.get("id") or "").strip()
+    }
+    allowed_node_ids = set(valid_node_ids or node_by_id)
     out: List[Dict[str, Any]] = []
+    by_key: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
     for edge in candidates:
         if not isinstance(edge, dict):
             continue
         frm = str(edge.get("from_node_id") or edge.get("from") or "").strip()
         to = str(edge.get("to_node_id") or edge.get("to") or "").strip()
-        rel = str(edge.get("relation_type") or edge.get("type") or "").strip()
+        rel = canonical_relation_type(edge.get("relation_type") or edge.get("type"))
         if not frm or not to or not rel:
             continue
         if frm == to:
             continue
-        if frm not in valid_node_ids or to not in valid_node_ids:
+        if frm not in allowed_node_ids or to not in allowed_node_ids:
             # Hallucinated reference; drop.
             continue
-        out.append(
-            {
-                "from_node_id": frm,
-                "to_node_id": to,
-                "relation_type": rel,
-                "explanation": str(edge.get("explanation") or "").strip(),
-                "confidence": float(edge.get("confidence")) if edge.get("confidence") is not None else None,
-            }
-        )
+        endpoint_evidence = [
+            *_prompt_visible_utterance_ids(node_by_id.get(frm)),
+            *_prompt_visible_utterance_ids(node_by_id.get(to)),
+        ]
+        allowed_evidence = set(endpoint_evidence)
+        authored_evidence = edge.get("supporting_utterance_ids")
+        supporting_ids = []
+        if isinstance(authored_evidence, list):
+            supporting_ids = [
+                str(value).strip()
+                for value in authored_evidence
+                if str(value).strip() in allowed_evidence
+            ]
+        if not supporting_ids:
+            source_ids = _node_utterance_ids(node_by_id.get(frm))
+            # A short grounded leaf can safely fall back to all its source
+            # turns. A broad aggregate cannot: copying dozens of turns would
+            # manufacture the appearance of edge-specific evidence.
+            if len(source_ids) <= MAX_EDGE_EVIDENCE_IDS_PER_NODE:
+                supporting_ids = source_ids
+        supporting_ids = list(dict.fromkeys(supporting_ids))
+        try:
+            confidence = float(edge.get("confidence")) if edge.get("confidence") is not None else None
+        except (TypeError, ValueError):
+            confidence = None
+        key = (frm, to, rel)
+        existing = by_key.get(key)
+        if existing is not None:
+            known_ids = set(existing["supporting_utterance_ids"])
+            for identifier in supporting_ids:
+                if identifier not in known_ids:
+                    known_ids.add(identifier)
+                    existing["supporting_utterance_ids"].append(identifier)
+            explanation = str(edge.get("explanation") or "").strip()
+            if not existing["explanation"] and explanation:
+                existing["explanation"] = explanation
+            if existing["confidence"] is None and confidence is not None:
+                existing["confidence"] = confidence
+            continue
+        normalized = {
+            "from_node_id": frm,
+            "to_node_id": to,
+            "relation_type": rel,
+            "explanation": str(edge.get("explanation") or "").strip(),
+            "confidence": confidence,
+            "supporting_utterance_ids": supporting_ids,
+        }
+        out.append(normalized)
+        by_key[key] = normalized
     return out
+
+
+def merge_semantic_edges_into_nodes(
+    nodes: List[Dict[str, Any]],
+    edges: List[Dict[str, Any]],
+) -> None:
+    """Attach directed edges to the target node's incoming relation shape."""
+    by_id = {
+        str(node.get("id") or "").strip(): node
+        for node in nodes
+        if isinstance(node, dict) and str(node.get("id") or "").strip()
+    }
+    for edge in edges:
+        source = by_id.get(str(edge.get("from_node_id") or "").strip())
+        target = by_id.get(str(edge.get("to_node_id") or "").strip())
+        relation = canonical_relation_type(edge.get("relation_type"))
+        source_name = str((source or {}).get("node_name") or "").strip()
+        if source is None or target is None or not relation or not source_name:
+            continue
+        relations = target.setdefault("edge_relations", [])
+        key = (source_name, relation)
+        existing = next(
+            (
+                item for item in relations
+                if isinstance(item, dict)
+                and (
+                    str(item.get("related_node") or "").strip(),
+                    canonical_relation_type(item.get("relation_type")),
+                ) == key
+            ),
+            None,
+        )
+        supporting_ids = [str(value) for value in (edge.get("supporting_utterance_ids") or [])]
+        if existing is not None:
+            existing["supporting_utterance_ids"] = list(dict.fromkeys([
+                *(existing.get("supporting_utterance_ids") or []),
+                *supporting_ids,
+            ]))
+            continue
+        relations.append({
+            "related_node": source_name,
+            "relation_type": relation,
+            "relation_text": str(edge.get("explanation") or "").strip() or relation,
+            "supporting_utterance_ids": list(dict.fromkeys(supporting_ids)),
+        })
 
 
 # ---------------------------------------------------------------------------

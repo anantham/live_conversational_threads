@@ -26,7 +26,6 @@ import {
   extractContextualRelationEntries,
   getAuthoredSemanticLevel,
   normalizeGraphNode,
-  resolveRequestedSemanticLevel,
 } from "./graphNormalization";
 import { saveConversationDraft } from "../services/apiClient";
 import {
@@ -39,6 +38,7 @@ import {
   COLOR_MODES,
   DEFAULT_COLOR_MODE,
   buildSpeakerColorMapForNodes,
+  buildSpeakerOwnershipMapForNodes,
   buildTemporalColorMapForNodes,
   buildArgumentStatusMapForNodes,
   buildDateColorMapForNodes,
@@ -56,6 +56,10 @@ import {
   mediaQueryMatches,
   useMediaQuery,
 } from "../hooks/useMediaQuery";
+import { buildFocusedNeighborhood } from "./graphNeighborhoodFocus";
+import { isGraphNavigationKey, navigateGraphNode } from "./graphNavigation";
+import { semanticLevelAfterViewportMove } from "./semanticTierControl";
+import { createViewportMotionTracker } from "./viewportMotionTracker";
 
 // ADR-030 §D4: custom node renderer with three color modes + state markers.
 // Cluster nodes are still default ReactFlow rendering (separate concern).
@@ -102,7 +106,16 @@ function MinimalGraphInner({
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
-  const programmaticMoveRef = useRef(false);
+  const reactFlowRef = useRef(reactFlow);
+  reactFlowRef.current = reactFlow;
+  const viewportMotionRef = useRef(null);
+  if (viewportMotionRef.current == null) {
+    viewportMotionRef.current = createViewportMotionTracker({
+      getZoom: () => reactFlowRef.current?.getZoom?.(),
+    });
+  }
+  const viewportMotion = viewportMotionRef.current;
+  useEffect(() => () => viewportMotion.dispose(), [viewportMotion]);
   const mobileFramedNodeSetRef = useRef("");
   const [autoFollow, setAutoFollow] = useState(true);
   const [reduceMotion, setReduceMotion] = useState(() =>
@@ -112,6 +125,7 @@ function MinimalGraphInner({
   const [hideEdges, setHideEdges] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [lockedLevel, setLockedLevel] = useState(null); // null = unlocked, semantic 1-4 or legacy 0-3
+  const [unlockedSemanticLevel, setUnlockedSemanticLevel] = useState(null);
   const initialLockedAppliedRef = useRef(false);
   // True once the USER has explicitly chosen a tier or driven the camera
   // (locked/unlocked a tier, or manually zoomed/panned). Until then we force
@@ -121,11 +135,27 @@ function MinimalGraphInner({
   // instance starts false, so it re-forces the landing tier instead of the
   // finest one. See requestedSemanticLevel + initialLandingLevel.
   const userOverrodeTierRef = useRef(false);
-  // Timestamp of the last drill â€” debounces an accidental double-click so a
-  // single tap (= expand, instant) can't fire twice. There is no double-tap
-  // gesture (Option A): single tap expands; a leaf single-tap opens its drawer;
-  // the per-card "details" chip opens the drawer for a node that has children.
-  const lastDrillAtRef = useRef(0);
+  // Card selection is a temporary one-hop relationship view. It is separate
+  // from selectedNode (detail drawer), drilldownPath (hierarchy), and the
+  // multi-hop argument trace.
+  const [neighborhoodFocusId, setNeighborhoodFocusId] = useState(null);
+  const pendingKeyboardFocusRef = useRef(null);
+  const preNeighborhoodViewportRef = useRef(null);
+  const clearNeighborhoodFocus = useCallback((restoreViewport = true) => {
+    const priorViewport = preNeighborhoodViewportRef.current;
+    preNeighborhoodViewportRef.current = null;
+    setNeighborhoodFocusId(null);
+    if (!restoreViewport || !priorViewport || compactViewer) return;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const duration = reduceMotion ? 0 : 280;
+        viewportMotion.run(
+          () => reactFlow.setViewport(priorViewport, { duration }),
+          { expectedZoom: priorViewport.zoom, duration },
+        );
+      });
+    });
+  }, [compactViewer, reactFlow, reduceMotion, viewportMotion]);
   // Drilldown stack: array of { level, nodeId, nodeName } breadcrumbs.
   // Empty = top-level (whatever tier the user is currently locked to).
   // Each click on a non-leaf node pushes one entry; the visible nodes
@@ -143,7 +173,7 @@ function MinimalGraphInner({
   // Broaden toggle stays local.
   const [traceBroaden, setTraceBroaden] = useState(false);
   useEffect(() => {
-    if (!argumentTraceFrom) return undefined;
+    if (!argumentTraceFrom || selectedNode) return undefined;
     const onKey = (event) => {
       if (event.key === "Escape") {
         setArgumentTraceFrom?.(null);
@@ -152,7 +182,10 @@ function MinimalGraphInner({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [argumentTraceFrom, setArgumentTraceFrom]);
+  }, [argumentTraceFrom, selectedNode, setArgumentTraceFrom]);
+  useEffect(() => {
+    if (argumentTraceFrom) clearNeighborhoodFocus(false);
+  }, [argumentTraceFrom, clearNeighborhoodFocus]);
   const handleShowTemporalEdgesChange = useCallback(
     (next) => {
       setShowTemporalEdges(next);
@@ -164,7 +197,8 @@ function MinimalGraphInner({
     },
     [conversationId]
   );
-  // ADR-030 §D4: color mode (tier | speaker | temporal). Default: tier.
+  // ADR-030 §D4: color mode. Speaker is the unsaved default; an explicit
+  // per-conversation preference still wins.
   // Persisted per conversation via saveConversationDraft when conversationId is provided.
   const [colorMode, setColorMode] = useState(
     COLOR_MODES.includes(initialColorMode) ? initialColorMode : DEFAULT_COLOR_MODE
@@ -254,6 +288,10 @@ function MinimalGraphInner({
     () => buildSpeakerColorMapForNodes(normalizedChunk),
     [normalizedChunk]
   );
+  const speakerOwnershipMap = useMemo(
+    () => buildSpeakerOwnershipMapForNodes(normalizedChunk),
+    [normalizedChunk]
+  );
   const temporalColorMap = useMemo(
     () => buildTemporalColorMapForNodes(normalizedChunk),
     [normalizedChunk]
@@ -268,7 +306,7 @@ function MinimalGraphInner({
     () => buildDateColorMapForNodes(normalizedChunk),
     [normalizedChunk]
   );
-  // Thread/debate map: id -> categorical color per thread_id (the default mode).
+  // Thread/debate map: id -> categorical color per thread_id (optional lens).
   const threadColorMap = useMemo(
     () => buildThreadColorMapForNodes(normalizedChunk),
     [normalizedChunk]
@@ -286,16 +324,17 @@ function MinimalGraphInner({
       const ownLevel = Number(node.semantic_level || node.level || 1);
       if (childIds.length === 0 || ownLevel <= 1) return;
       autoFollowRef.current = false;
+      clearNeighborhoodFocus(false);
       setDrilldownPath((prev) => [
         ...prev,
         { level: ownLevel, nodeId, nodeName: node.node_name || "(unnamed)" },
       ]);
     },
-    [normalizedChunk]
+    [clearNeighborhoodFocus, normalizedChunk]
   );
 
-  // Open the NodeDetail drawer for a node by id. Used by the per-card "details"
-  // chip and by a leaf single-tap (a leaf has nothing to expand). Defined early
+  // Open the NodeDetail drawer for a node by id. Used by every card's explicit
+  // "details" chip. Defined early
   // (only needs setSelectedNode, a stable prop) so buildRfNodesForSource can
   // pass it down to ConversationNode.
   const handleOpenDetails = useCallback(
@@ -306,10 +345,20 @@ function MinimalGraphInner({
     [setSelectedNode]
   );
 
-  // Escape pops one drill level (mirrors the â† Back button). Gated on no active
-  // argument-trace so it doesn't fight that mode's own Escape handler.
+  // Escape exits the temporary relationship view before navigating hierarchy.
   useEffect(() => {
-    if (drilldownPath.length === 0 || argumentTraceFrom) return undefined;
+    if (!neighborhoodFocusId || selectedNode) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") clearNeighborhoodFocus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [clearNeighborhoodFocus, neighborhoodFocusId, selectedNode]);
+
+  // Escape pops one drill level (mirrors the Back button). It must not fight
+  // the relationship view, detail drawer, or argument trace.
+  useEffect(() => {
+    if (drilldownPath.length === 0 || argumentTraceFrom || neighborhoodFocusId || selectedNode) return undefined;
     const onKey = (event) => {
       if (event.key === "Escape") {
         autoFollowRef.current = false;
@@ -318,7 +367,7 @@ function MinimalGraphInner({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [drilldownPath.length, argumentTraceFrom]);
+  }, [drilldownPath.length, argumentTraceFrom, neighborhoodFocusId, selectedNode]);
 
   const buildRfNodesForSource = useCallback((sourceNodes) => {
     return sourceNodes.map((item) => {
@@ -334,6 +383,7 @@ function MinimalGraphInner({
         argumentStatusMap,
         dateColorMap,
         threadColorMap,
+        speakerOwnershipMap,
       });
       // Non-color cue for the argument view: the actual support/rebut counts.
       let argStatusLabel = null;
@@ -391,6 +441,7 @@ function MinimalGraphInner({
       return {
         id: item.id,
         type: "conversational",
+        ariaLabel: `Focus relationships around ${title || "Untitled"}`,
         position: { x: 0, y: 0 },
         data: {
           title,
@@ -415,20 +466,21 @@ function MinimalGraphInner({
             Number(item.semantic_level || item.level || 1) > 1,
           expandCount: Array.isArray(item.children_ids) ? item.children_ids.length : 0,
           onExpand: () => handleExpand(item.id),
-          // Option A: a small "details" chip on nodes that have children opens
-          // the drawer (their card-tap expands instead of opening it).
+          // Details is explicit on every card; the card body is reserved for
+          // reorienting the relationship neighbourhood.
           onOpenDetails: () => handleOpenDetails(item.id),
           // Rhetoric layer (Phase 2): argumentative role + verified flags drive
           // the card chips + the Rhetoric color lens.
           argumentRole: item.argument_role || null,
           rhetoricFlags: Array.isArray(item.rhetoric_flags) ? item.rhetoric_flags : [],
+          provenanceMetrics: item.provenance_metrics || null,
           argStatusLabel,
           // fullData kept for downstream consumers (NodeDetail panel etc.)
           fullData: item,
         },
       };
     });
-  }, [colorMode, speakerColorMap, temporalColorMap, argumentStatusMap, dateColorMap, threadColorMap, handleExpand, handleOpenDetails]);
+  }, [colorMode, speakerColorMap, speakerOwnershipMap, temporalColorMap, argumentStatusMap, dateColorMap, threadColorMap, handleExpand, handleOpenDetails]);
 
   const buildRfEdgesForSource = useCallback((sourceNodes, { ignoreHidden = false } = {}) => {
     if (hideEdges && !ignoreHidden) return [];
@@ -617,6 +669,10 @@ function MinimalGraphInner({
     () => buildRfEdgesForSource(normalizedChunk),
     [buildRfEdgesForSource, normalizedChunk]
   );
+  const structuralRfEdges = useMemo(
+    () => buildRfEdgesForSource(normalizedChunk, { ignoreHidden: true }),
+    [buildRfEdgesForSource, normalizedChunk]
+  );
 
   const authoredSemanticLevels = useMemo(() => {
     const levels = new Set();
@@ -677,9 +733,9 @@ function MinimalGraphInner({
       // Build structural edges for layout first, then apply visual visibility.
       const structuralLevelEdges = buildRfEdgesForSource(
         projectedLevelNodes,
-        { ignoreHidden: isMacroTier },
+        { ignoreHidden: true },
       );
-      const visibleLevelEdges = hideEdges && isMacroTier ? [] : structuralLevelEdges;
+      const visibleLevelEdges = hideEdges ? [] : structuralLevelEdges;
       acc[spec.level] = {
         level: spec.level,
         label: spec.label,
@@ -709,6 +765,7 @@ function MinimalGraphInner({
                 }
               ),
         edges: visibleLevelEdges,
+        structuralEdges: structuralLevelEdges,
         projectionStats: quotient?.stats || null,
       };
       return acc;
@@ -929,16 +986,12 @@ function MinimalGraphInner({
     }
   }
 
-  // Before the user touches the tier-lock/zoom, fall back to the synchronously
-  // computed landing tier (not the zoom=1 -> finest mapping). This is what
-  // makes render 0 open on the macro tier and keeps the camera framed. After
-  // the auto-landing effect applies (initialLockedAppliedRef), an explicit
-  // UNLOCK returns to zoom-driven resolution as before.
+  // Semantic resolution is discrete state. Camera zoom remains telemetry and
+  // can update this state only through the settled real-user gesture below;
+  // render-time fitView output can never select another tier.
   const requestedSemanticLevel = lockedLevel != null
     ? Math.max(1, Math.min(5, lockedLevel))
-    : (!userOverrodeTierRef.current && initialLandingLevel != null
-        ? initialLandingLevel
-        : resolveRequestedSemanticLevel(zoomLevel));
+    : (unlockedSemanticLevel ?? initialLandingLevel ?? 1);
   let activeSemanticView = null;
   let effectiveSemanticLevel = requestedSemanticLevel;
   if (hasAuthoredHierarchy) {
@@ -951,10 +1004,22 @@ function MinimalGraphInner({
     }
   }
 
+  const handleLockedLevelChange = useCallback((nextLevel) => {
+    if (nextLevel == null) {
+      const currentZoom = Number(reactFlow.getZoom?.());
+      viewportMotion.updateSettledZoom(
+        Number.isFinite(currentZoom) ? currentZoom : zoomLevel,
+      );
+      setUnlockedSemanticLevel(effectiveSemanticLevel);
+    }
+    setLockedLevel(nextLevel);
+  }, [effectiveSemanticLevel, reactFlow, viewportMotion, zoomLevel]);
+
   const displayMode = (scopedTierView || drilledView || activeSemanticView) ? "semantic" : "legacy";
   const effectiveView = scopedTierView || drilledView || activeSemanticView;
   const layoutedDisplayNodes = effectiveView?.nodes || activeCluster?.nodes || layoutedNodes;
   const displayEdges = effectiveView?.edges || activeCluster?.edges || rfEdges;
+  const structuralDisplayEdges = effectiveView?.structuralEdges || activeCluster?.edges || structuralRfEdges;
   const clusterLevelLabel = effectiveView?.label || activeCluster?.label || null;
   mglog("view-select", { lockedLevel, zoomLevel, requestedSemanticLevel, effectiveSemanticLevel, hasAuthoredHierarchy, authoredLevels: authoredSemanticLevels, displayMode, src: effectiveView ? "effectiveView" : (activeCluster ? "activeCluster" : "layoutedNodes(chunk)"), nodeCount: layoutedDisplayNodes.length });
   mglog("layoutedDisplayNodes", { count: layoutedDisplayNodes.length, firstY: layoutedDisplayNodes[0]?.position?.y, lastY: layoutedDisplayNodes[layoutedDisplayNodes.length - 1]?.position?.y });
@@ -1028,10 +1093,13 @@ function MinimalGraphInner({
     const id = setTimeout(() => {
       const duration = reduceMotion ? 0 : 300;
       if (compactViewer) return;
-      reactFlow.fitView({ padding: 0.15, duration, minZoom: MIN_READABLE_ZOOM });
+      viewportMotion.run(
+        () => reactFlow.fitView({ padding: 0.15, duration, minZoom: MIN_READABLE_ZOOM }),
+        { duration },
+      );
     }, 50);
     return () => clearTimeout(id);
-  }, [compactViewer, displayMode, effectiveSemanticLevel, drilldownPath, layoutedDisplayNodes, reactFlow, reduceMotion]);
+  }, [compactViewer, displayMode, effectiveSemanticLevel, drilldownPath, layoutedDisplayNodes, reactFlow, reduceMotion, viewportMotion]);
 
   // Controlled node state â€” layout provides initial positions, drags persist
   const [interactiveNodes, setInteractiveNodes] = useState([]);
@@ -1077,6 +1145,28 @@ function MinimalGraphInner({
   }, []);
 
   const baseDisplayNodes = interactiveNodes.length > 0 ? interactiveNodes : layoutedDisplayNodes;
+  const neighborhoodView = useMemo(
+    () => buildFocusedNeighborhood(
+      baseDisplayNodes,
+      structuralDisplayEdges,
+      neighborhoodFocusId,
+      { compact: compactViewer },
+    ),
+    [baseDisplayNodes, compactViewer, neighborhoodFocusId, structuralDisplayEdges],
+  );
+  const focusedBaseNodes = neighborhoodView?.nodes || baseDisplayNodes;
+  const focusedDisplayEdges = useMemo(
+    () => neighborhoodView
+      ? (hideEdges ? [] : neighborhoodView.edges)
+      : displayEdges,
+    [displayEdges, hideEdges, neighborhoodView],
+  );
+
+  // A tier/drill change can remove the focused node. Let that navigation own
+  // the camera and return to the complete new tier instead of showing stale UI.
+  useEffect(() => {
+    if (neighborhoodFocusId && !neighborhoodView) clearNeighborhoodFocus(false);
+  }, [clearNeighborhoodFocus, neighborhoodFocusId, neighborhoodView]);
 
   // Weakness lenses: one-click "where is the argument weak" filters computed
   // from incoming supports/rebuts (argumentStatusMap) + argument_role. A match
@@ -1171,8 +1261,8 @@ function MinimalGraphInner({
   const displayNodes = useMemo(() => {
     if (!traceResult.nodes) {
       const matchSet = weaknessFilter ? weaknessSets.visible[weaknessFilter] : null;
-      if (!matchSet) return baseDisplayNodes;
-      return baseDisplayNodes.map((n) => ({
+      if (!matchSet) return focusedBaseNodes;
+      return focusedBaseNodes.map((n) => ({
         ...n,
         style: {
           ...(n.style || {}),
@@ -1181,7 +1271,7 @@ function MinimalGraphInner({
         },
       }));
     }
-    const dimmed = baseDisplayNodes.map((n) => {
+    const dimmed = focusedBaseNodes.map((n) => {
       const inTrace = traceResult.nodes.has(n.id);
       return {
         ...n,
@@ -1193,7 +1283,7 @@ function MinimalGraphInner({
       };
     });
     return layoutDialectic(dimmed, [], { focusNodeId: argumentTraceFrom });
-  }, [baseDisplayNodes, traceResult.nodes, weaknessFilter, weaknessSets, argumentTraceFrom, reduceMotion]);
+  }, [focusedBaseNodes, traceResult.nodes, weaknessFilter, weaknessSets, argumentTraceFrom, reduceMotion]);
 
   // ReactFlow measures nodes over several renders. Debounce until the visible
   // node set settles, then frame the first card at a readable phone zoom. The
@@ -1207,34 +1297,65 @@ function MinimalGraphInner({
     if (mobileFramedNodeSetRef.current === key) return undefined;
     const id = window.setTimeout(() => {
       const liveNodes = reactFlow.getNodes?.() || displayNodes;
-      if (frameNodesFromTopLeft(reactFlow, liveNodes, {
-        zoom: 0.85,
-        duration: reduceMotion ? 0 : 300,
-        paddingX: 16,
-        paddingY: 112,
-      })) {
+      const duration = reduceMotion ? 0 : 300;
+      let framed = false;
+      viewportMotion.run(() => {
+        framed = frameNodesFromTopLeft(reactFlow, liveNodes, {
+          zoom: 0.85,
+          duration,
+          paddingX: 16,
+          paddingY: 112,
+        });
+      }, { expectedZoom: 0.85, duration });
+      if (framed) {
         mobileFramedNodeSetRef.current = key;
       }
     }, 180);
     return () => window.clearTimeout(id);
-  }, [compactViewer, displayNodes, reactFlow, reduceMotion]);
+  }, [compactViewer, displayNodes, reactFlow, reduceMotion, viewportMotion]);
 
-  // Re-frame the camera when the dialectic fan appears/disappears — the node
-  // set is unchanged (no layout re-key) but positions move drastically.
+  // Re-frame when a relationship neighbourhood or dialectic fan appears. Both
+  // projections move nodes without changing the controlled full-layout state.
+  const displayNodesRef = useRef(displayNodes);
   useEffect(() => {
+    displayNodesRef.current = displayNodes;
+  }, [displayNodes]);
+  useEffect(() => {
+    if (!argumentTraceFrom && !neighborhoodFocusId) return undefined;
     const id = setTimeout(() => {
       try {
-        reactFlow.fitView({ padding: 0.25, duration: reduceMotion ? 0 : 300 });
+        const duration = reduceMotion ? 0 : 300;
+        if (compactViewer) {
+          viewportMotion.run(
+            () => frameNodesFromTopLeft(reactFlow, displayNodesRef.current, {
+              zoom: 0.85,
+              duration,
+              paddingX: 16,
+              paddingY: 148,
+            }),
+            { expectedZoom: 0.85, duration },
+          );
+        } else {
+          viewportMotion.run(
+            () => reactFlow.fitView({
+              padding: 0.2,
+              duration,
+              minZoom: MIN_READABLE_ZOOM,
+              maxZoom: 1,
+            }),
+            { duration },
+          );
+        }
       } catch {
         /* canvas not ready — Center button remains the fallback */
       }
     }, 80);
     return () => clearTimeout(id);
-  }, [argumentTraceFrom, reactFlow, reduceMotion]);
+  }, [argumentTraceFrom, compactViewer, neighborhoodFocusId, reactFlow, reduceMotion, viewportMotion]);
 
   const displayEdgesWithTrace = useMemo(() => {
-    if (!traceResult.edges) return displayEdges;
-    return displayEdges.map((edge) => {
+    if (!traceResult.edges) return focusedDisplayEdges;
+    return focusedDisplayEdges.map((edge) => {
       const inTrace = traceResult.edges.has(edge.id);
       return {
         ...edge,
@@ -1245,7 +1366,7 @@ function MinimalGraphInner({
         },
       };
     });
-  }, [displayEdges, traceResult.edges]);
+  }, [focusedDisplayEdges, traceResult.edges]);
 
   // Run fitView after React has committed the new nodes to DOM and ReactFlow
   // has measured their positions. A single rAF isn't enough â€” ReactFlow's
@@ -1267,8 +1388,8 @@ function MinimalGraphInner({
     let raf2 = 0;
     const raf1 = requestAnimationFrame(() => {
       raf2 = requestAnimationFrame(() => {
-        programmaticMoveRef.current = true;
         const isCompact = compactViewer;
+        const duration = reduceMotion ? 0 : 300;
         if (isCompact) {
           // On mobile, fitView would either squish the whole 1680px
           // swim-lane to 0.21 zoom (unreadable) or, with minZoom
@@ -1277,21 +1398,25 @@ function MinimalGraphInner({
           // bbox at the top-left of the viewport at a readable zoom
           // â€” same logic as the "Center" preset button. User pans to
           // see the rest.
-          if (!frameNodesFromTopLeft(reactFlow, displayNodes, {
-            zoom: 0.85,
-            duration: reduceMotion ? 0 : 300,
-            paddingX: 16,
-            paddingY: 112,
-          })) {
-            reactFlow.fitView({ padding: 0.1, duration: reduceMotion ? 0 : 300, minZoom: 0.6, maxZoom: 1.0 });
-          }
+          viewportMotion.run(() => {
+            if (frameNodesFromTopLeft(reactFlow, displayNodes, {
+              zoom: 0.85,
+              duration,
+              paddingX: 16,
+              paddingY: 112,
+            })) return undefined;
+            return reactFlow.fitView({ padding: 0.1, duration, minZoom: 0.6, maxZoom: 1.0 });
+          }, { expectedZoom: 0.85, duration });
         } else {
-          reactFlow.fitView({
-            padding: 0.2,
-            duration: reduceMotion ? 0 : 300,
-            minZoom: MIN_READABLE_ZOOM,
-            maxZoom: 1.0,
-          });
+          viewportMotion.run(
+            () => reactFlow.fitView({
+              padding: 0.2,
+              duration,
+              minZoom: MIN_READABLE_ZOOM,
+              maxZoom: 1.0,
+            }),
+            { duration },
+          );
         }
         // The graph is now framed. Release the auto-follow gate so live
         // streaming can resume centering on new nodes, but only AFTER this
@@ -1299,18 +1424,17 @@ function MinimalGraphInner({
         hasInitiallyFitRef.current = true;
         pendingFitViewRef.current = false; // consume only now that the fit committed
         mglog("initial fitView COMMITTED", { displayNodes: displayNodes.length, isCompact });
-        setTimeout(() => { programmaticMoveRef.current = false; }, 350);
       });
     });
     return () => {
       cancelAnimationFrame(raf1);
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [compactViewer, displayNodes, reactFlow, reduceMotion]);
+  }, [compactViewer, displayNodes, reactFlow, reduceMotion, viewportMotion]);
 
   const selectedLayoutNode = useMemo(
-    () => layoutedDisplayNodes.find((node) => node.id === selectedNode) || null,
-    [layoutedDisplayNodes, selectedNode]
+    () => displayNodes.find((node) => node.id === selectedNode) || null,
+    [displayNodes, selectedNode]
   );
 
   const centerViewportOnNode = useCallback(
@@ -1324,7 +1448,7 @@ function MinimalGraphInner({
       // coordinate parks the camera off-screen. `layoutedDisplayNodes` is the
       // tier the user is actually looking at (and equals `layoutedNodes` in
       // legacy mode), so this is strictly the correct-or-equal source.
-      const fallbackNode = layoutedDisplayNodes.find((node) => node.id === nodeId) || null;
+      const fallbackNode = displayNodes.find((node) => node.id === nodeId) || null;
       const targetNode = liveNode || fallbackNode;
       const targetPosition =
         targetNode?.positionAbsolute || targetNode?.position || fallbackNode?.position || null;
@@ -1336,16 +1460,17 @@ function MinimalGraphInner({
       const width = targetNode?.width ?? targetNode?.measured?.width ?? 180;
       const height = targetNode?.height ?? targetNode?.measured?.height ?? 96;
 
-      programmaticMoveRef.current = true;
-      reactFlow.setCenter(targetPosition.x + width / 2, targetPosition.y + height / 2, options);
-
-      const timeout = window.setTimeout(() => {
-        programmaticMoveRef.current = false;
-      }, (options.duration ?? 0) + 50);
-
-      return () => window.clearTimeout(timeout);
+      viewportMotion.run(
+        () => reactFlow.setCenter(
+          targetPosition.x + width / 2,
+          targetPosition.y + height / 2,
+          options,
+        ),
+        { expectedZoom: options.zoom, duration: options.duration ?? 0 },
+      );
+      return undefined;
     },
-    [layoutedDisplayNodes, reactFlow]
+    [displayNodes, reactFlow, viewportMotion]
   );
 
   // Center on a node chosen from the TIMELINE RIBBON without opening the detail
@@ -1355,22 +1480,25 @@ function MinimalGraphInner({
   const lastFocusedRef = useRef(null);
   useEffect(() => {
     if (focusNode === lastFocusedRef.current) return undefined;
-    lastFocusedRef.current = focusNode;
     if (!focusNode) return undefined;
+    if (neighborhoodView && !neighborhoodView.nodes.some((node) => node.id === focusNode)) {
+      // A timeline teleport outside the one-hop projection must first restore
+      // the complete tier. Leave lastFocusedRef untouched so this same target
+      // is centred on the next render after the projection disappears.
+      clearNeighborhoodFocus(false);
+      return undefined;
+    }
+    lastFocusedRef.current = focusNode;
     // user is driving now — stop auto-follow so it doesn't fight the jump
     if (autoFollowRef.current) {
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
-    let cleanup;
     const raf = requestAnimationFrame(() => {
-      cleanup = centerViewportOnNode(focusNode, { zoom: 1.15, duration: reduceMotion ? 0 : 280 });
+      centerViewportOnNode(focusNode, { zoom: 1.15, duration: reduceMotion ? 0 : 280 });
     });
-    return () => {
-      cancelAnimationFrame(raf);
-      cleanup?.();
-    };
-  }, [focusNode, centerViewportOnNode, reduceMotion]);
+    return () => cancelAnimationFrame(raf);
+  }, [clearNeighborhoodFocus, focusNode, centerViewportOnNode, neighborhoodView, reduceMotion]);
 
   // Sync ref with state so effects read the latest value
   useEffect(() => {
@@ -1383,16 +1511,32 @@ function MinimalGraphInner({
     if (Number.isFinite(viewport?.zoom)) setZoomLevel(viewport.zoom);
   }, []);
 
+  const handleMoveStart = useCallback((event) => {
+    viewportMotion.interruptForUserGesture(event);
+  }, [viewportMotion]);
+
   // Sync zoom level from ReactFlow viewport when motion settles.
   const handleMoveEnd = useCallback((_event, viewport) => {
     handleMove(_event, viewport);
-    if (programmaticMoveRef.current) return;
+    const viewportZoom = Number(viewport?.zoom);
+    const programmatic = viewportMotion.isProgrammaticEvent(_event);
+    if (programmatic) return;
+    const previousViewportZoom = viewportMotion.getSettledZoom();
+    viewportMotion.updateSettledZoom(viewportZoom);
     userOverrodeTierRef.current = true; // genuine user pan/zoom â€” they're driving now
+    if (lockedLevel == null && hasAuthoredHierarchy) {
+      setUnlockedSemanticLevel((currentLevel) => semanticLevelAfterViewportMove({
+        currentLevel: currentLevel ?? effectiveSemanticLevel,
+        viewportZoom,
+        previousViewportZoom,
+        programmatic,
+      }));
+    }
     if (autoFollowRef.current) {
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
-  }, [handleMove]);
+  }, [effectiveSemanticLevel, handleMove, hasAuthoredHierarchy, lockedLevel, viewportMotion]);
 
   // Also sync on mount â€” fitView doesn't fire onMoveEnd
   useEffect(() => {
@@ -1419,37 +1563,31 @@ function MinimalGraphInner({
     const last = layoutedDisplayNodes[layoutedDisplayNodes.length - 1];
     if (!last?.id) return;
 
-    // Temporarily mark as programmatic so onMoveEnd doesn't disable follow
-    const wasProgrammatic = programmaticMoveRef.current;
-    const cleanup = centerViewportOnNode(last.id, {
+    centerViewportOnNode(last.id, {
       zoom: 1,
       duration: reduceMotion ? 0 : 400,
     });
-
-    return () => {
-      cleanup?.();
-      programmaticMoveRef.current = wasProgrammatic;
-    };
   }, [autoFollow, centerViewportOnNode, lastNodeId, layoutedDisplayNodes, reduceMotion, selectedNode]);
 
   // Center selected node when chosen from timeline or graph.
   useEffect(() => {
     mglog("center-on-selected (ribbon/click)", { selectedNode, hasLayoutNode: !!selectedLayoutNode, pos: selectedLayoutNode?.position });
+    if (selectedNode && neighborhoodView && !neighborhoodView.nodes.some((node) => node.id === selectedNode)) {
+      // Timeline/detail navigation owns the next camera move. Do not restore
+      // the pre-focus viewport and briefly point at unrelated focused nodes.
+      clearNeighborhoodFocus(false);
+      return undefined;
+    }
     if (!selectedNode || !selectedLayoutNode?.position) return undefined;
 
-    let cleanup;
     const raf = requestAnimationFrame(() => {
-      cleanup = centerViewportOnNode(selectedNode, {
+      centerViewportOnNode(selectedNode, {
         zoom: 1.15,
         duration: reduceMotion ? 0 : 280,
       });
     });
-
-    return () => {
-      cancelAnimationFrame(raf);
-      cleanup?.();
-    };
-  }, [centerViewportOnNode, reduceMotion, selectedLayoutNode, selectedNode, viewportReservationKey]);
+    return () => cancelAnimationFrame(raf);
+  }, [centerViewportOnNode, clearNeighborhoodFocus, neighborhoodView, reduceMotion, selectedLayoutNode, selectedNode, viewportReservationKey]);
 
   // Cluster detail panel state
   const [selectedCluster, setSelectedCluster] = useState(null);
@@ -1467,36 +1605,48 @@ function MinimalGraphInner({
           }
         );
         setSelectedNode(null);
+        clearNeighborhoodFocus();
         setClickedEdge(null);
         return;
       }
-      // Debounce: a fast accidental double-click fires two click events; ignore
-      // the second so a single tap can't drill twice (or into the just-changed
-      // view). zoomOnDoubleClick is also disabled on ReactFlow.
-      if (Date.now() - lastDrillAtRef.current < 350) return;
+      // Card click/tap means "make this the centre of my current question."
+      // Hierarchy and provenance stay available as explicit Expand/Details
+      // actions, so one gesture never has multiple meanings. Relationship
+      // focus, weakness lenses, and argument trace are mutually exclusive
+      // analytic questions; starting one deliberately clears the others.
+      autoFollowRef.current = false;
       setSelectedCluster(null);
       setClickedEdge(null);
-      // SINGLE TAP (Option A) = expand if the node has children; a leaf opens
-      // its drawer (nothing to expand). Drag is still press-and-move; the
-      // drawer for a node WITH children is its "details" chip.
-      const fd = node.data?.fullData || {};
-      const childIds = Array.isArray(fd.children_ids) ? fd.children_ids : [];
-      const ownLevel = Number(fd.semantic_level || fd.level || 1);
-      if (childIds.length > 0 && ownLevel > 1) {
-        lastDrillAtRef.current = Date.now();
-        handleExpand(node.id);
-      } else {
-        handleOpenDetails(node.id);
+      setSelectedNode(null);
+      setWeaknessFilter(null);
+      setArgumentTraceFrom?.(null);
+      setTraceBroaden(false);
+      if (!neighborhoodFocusId) {
+        preNeighborhoodViewportRef.current = reactFlow.getViewport?.() || null;
       }
+      setNeighborhoodFocusId(node.id);
     },
-    [handleExpand, handleOpenDetails, setSelectedNode]
+    [clearNeighborhoodFocus, neighborhoodFocusId, reactFlow, setArgumentTraceFrom, setSelectedNode]
   );
+
+  const handleNodeKeyDownCapture = useCallback((event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    if (event.target?.closest?.("button, a, input, select, textarea")) return;
+    const nodeElement = event.target?.closest?.(".react-flow__node");
+    const nodeId = nodeElement?.getAttribute("data-id");
+    const node = displayNodes.find((candidate) => candidate.id === nodeId);
+    if (!node) return;
+    event.preventDefault();
+    event.stopPropagation();
+    handleNodeClick(event, node);
+  }, [displayNodes, handleNodeClick]);
 
   const handlePaneClick = useCallback(() => {
     setSelectedNode(null);
     setSelectedCluster(null);
     setClickedEdge(null);
-  }, [setSelectedNode]);
+    clearNeighborhoodFocus();
+  }, [clearNeighborhoodFocus, setSelectedNode]);
 
   // Resolve cluster member details for the detail panel
   const selectedClusterMembers = useMemo(() => {
@@ -1520,6 +1670,94 @@ function MinimalGraphInner({
     setClickedEdge((prev) => (prev?.id === edge.id ? null : { id: edge.id, ...edge.data }));
   }, []);
 
+
+  useEffect(() => {
+    const pending = pendingKeyboardFocusRef.current;
+    if (!pending || effectiveSemanticLevel !== pending.targetLevel) return;
+    const displayedLevel = Number(
+      baseDisplayNodes[0]?.data?.fullData?.semantic_level
+        ?? baseDisplayNodes[0]?.data?.semantic_level,
+    );
+    // Controlled ReactFlow nodes trail semantic state by one render.
+    if (displayedLevel !== pending.targetLevel) return;
+    const targetVisible = baseDisplayNodes.some(
+      (node) => String(node.id) === String(pending.targetId),
+    );
+    pendingKeyboardFocusRef.current = null;
+    if (targetVisible) setNeighborhoodFocusId(pending.targetId);
+  }, [baseDisplayNodes, effectiveSemanticLevel]);
+
+  useEffect(() => {
+    if (selectedNode || !hasAuthoredHierarchy) return undefined;
+    const onKey = (event) => {
+      if (!isGraphNavigationKey(event)) return;
+      const graphOwnsKey = Boolean(
+        neighborhoodFocusId || focusNode || event.target?.closest?.(".react-flow"),
+      );
+      if (!graphOwnsKey) return;
+      const directionByKey = {
+        ArrowUp: "up",
+        ArrowDown: "down",
+        ArrowLeft: "left",
+        ArrowRight: "right",
+      };
+      const currentId = neighborhoodFocusId
+        || focusNode
+        || baseDisplayNodes[0]?.id;
+      if (!currentId) return;
+      const navigation = navigateGraphNode(
+        normalizedChunk,
+        currentId,
+        directionByKey[event.key],
+        { temporalCandidateIds: new Set(baseDisplayNodes.map((node) => String(node.id))) },
+      );
+      if (!navigation) return;
+      if (navigation.targetLevel == null) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      autoFollowRef.current = false;
+      setAutoFollow(false);
+      setSelectedCluster(null);
+      setClickedEdge(null);
+      setWeaknessFilter(null);
+      setArgumentTraceFrom?.(null);
+      setTraceBroaden(false);
+
+      const targetVisible = baseDisplayNodes.some(
+        (node) => String(node.id) === navigation.targetId,
+      );
+      const crossesTier = navigation.targetLevel !== effectiveSemanticLevel;
+      if (crossesTier || !targetVisible) {
+        pendingKeyboardFocusRef.current = {
+          targetId: navigation.targetId,
+          targetLevel: navigation.targetLevel,
+        };
+        preNeighborhoodViewportRef.current = null;
+        setNeighborhoodFocusId(null);
+        setDrilldownPath([]);
+        handleLockedLevelChange(navigation.targetLevel);
+        return;
+      }
+      if (!neighborhoodFocusId) {
+        preNeighborhoodViewportRef.current = reactFlow.getViewport?.() || null;
+      }
+      setNeighborhoodFocusId(navigation.targetId);
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [
+    baseDisplayNodes,
+    effectiveSemanticLevel,
+    focusNode,
+    handleLockedLevelChange,
+    hasAuthoredHierarchy,
+    neighborhoodFocusId,
+    normalizedChunk,
+    reactFlow,
+    selectedNode,
+    setArgumentTraceFrom,
+  ]);
   const ZOOM_PRESETS = [
     { label: "Center", hint: "Return to a readable overview", action: () => {
       // Keep a readable zoom and anchor the camera so the TOP-LEFT
@@ -1530,7 +1768,11 @@ function MinimalGraphInner({
       // column groups, putting the camera in negative space.
       const nodes = displayNodes;
       if (!nodes || nodes.length === 0) {
-        reactFlow.fitView({ padding: 0.3, duration: reduceMotion ? 0 : 300, minZoom: MIN_READABLE_ZOOM });
+        const duration = reduceMotion ? 0 : 300;
+        viewportMotion.run(
+          () => reactFlow.fitView({ padding: 0.3, duration, minZoom: MIN_READABLE_ZOOM }),
+          { duration },
+        );
         return;
       }
       // Compute bbox from node positions + measured sizes
@@ -1542,22 +1784,28 @@ function MinimalGraphInner({
         if (py < minY) minY = py;
       });
       if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
-        reactFlow.fitView({ padding: 0.3, duration: reduceMotion ? 0 : 300, minZoom: MIN_READABLE_ZOOM });
+        const duration = reduceMotion ? 0 : 300;
+        viewportMotion.run(
+          () => reactFlow.fitView({ padding: 0.3, duration, minZoom: MIN_READABLE_ZOOM }),
+          { duration },
+        );
         return;
       }
       const currentZoom = reactFlow.getZoom?.() ?? 1;
       const readableZoom = Math.max(currentZoom, MIN_READABLE_ZOOM);
       const PADDING_PX = 40;
-      programmaticMoveRef.current = true;
-      reactFlow.setViewport(
-        {
-          x: -minX * readableZoom + PADDING_PX,
-          y: -minY * readableZoom + PADDING_PX,
-          zoom: readableZoom,
-        },
-        { duration: reduceMotion ? 0 : 300 },
+      const duration = reduceMotion ? 0 : 300;
+      viewportMotion.run(
+        () => reactFlow.setViewport(
+          {
+            x: -minX * readableZoom + PADDING_PX,
+            y: -minY * readableZoom + PADDING_PX,
+            zoom: readableZoom,
+          },
+          { duration },
+        ),
+        { expectedZoom: readableZoom, duration },
       );
-      setTimeout(() => { programmaticMoveRef.current = false; }, reduceMotion ? 0 : 350);
     }},
   ];
 
@@ -1566,7 +1814,7 @@ function MinimalGraphInner({
       {/* Weakness lenses — one-click "where is the argument weak" filters.
           Dim everything except the matching claims (+ their ancestors so
           coarser tiers stay meaningful). Hidden during argument trace. */}
-      {!argumentTraceFrom && (
+      {!argumentTraceFrom && !neighborhoodFocusId && (
         <div className="absolute bottom-14 left-2 right-2 z-40 flex items-center gap-1 overflow-x-auto pb-1 sm:bottom-12 sm:left-3 sm:right-auto sm:flex-wrap sm:overflow-visible sm:pb-0">
           {[
             { key: "unsupported", label: "unsupported", title: "Claims with no incoming support/evidence" },
@@ -1638,8 +1886,10 @@ function MinimalGraphInner({
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
         onNodeClick={handleNodeClick}
+        onKeyDownCapture={handleNodeKeyDownCapture}
         onPaneClick={handlePaneClick}
         onEdgeClick={handleEdgeClick}
+        onMoveStart={handleMoveStart}
         onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         onEdgeMouseEnter={(_, edge) => setHoveredEdge(edge.data)}
@@ -1782,7 +2032,7 @@ function MinimalGraphInner({
         effectiveSemanticLevel={effectiveSemanticLevel}
         effectiveClusterLevel={effectiveClusterLevel}
         displayNodes={displayNodes}
-        displayEdges={displayEdges}
+        displayEdges={focusedDisplayEdges}
         projectionStats={effectiveView?.projectionStats || null}
         normalizedChunk={normalizedChunk}
         lockedLevel={lockedLevel}
@@ -1792,7 +2042,12 @@ function MinimalGraphInner({
         autoFollowRef={autoFollowRef}
         setAutoFollow={setAutoFollow}
         userOverrodeTierRef={userOverrodeTierRef}
-        setLockedLevel={setLockedLevel}
+        setLockedLevel={handleLockedLevelChange}
+        neighborhoodFocus={neighborhoodView ? {
+          title: neighborhoodView.focusNode?.data?.title || "Untitled",
+          directNeighborCount: neighborhoodView.directNeighborCount,
+        } : null}
+        clearNeighborhoodFocus={clearNeighborhoodFocus}
       />
 
       <MinimalGraphPanels
@@ -1802,7 +2057,7 @@ function MinimalGraphInner({
         selectedCluster={selectedCluster}
         selectedClusterMembers={selectedClusterMembers}
         setSelectedCluster={setSelectedCluster}
-        setLockedLevel={setLockedLevel}
+        setLockedLevel={handleLockedLevelChange}
         setSelectedNode={setSelectedNode}
       />
 

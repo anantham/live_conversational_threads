@@ -3,8 +3,11 @@
 - Owner-local extraction must skip second-brain retrieval.
 - A valid empty relation response is distinguishable from a failed scan.
 - Semantic relations keep their direction and survive the persistence shape.
+- Equivalent relation spellings collapse and cite exact endpoint turns.
 - The exported marker is content-free and independently consumable.
 """
+
+import json
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -54,6 +57,81 @@ def test_merge_semantic_edges_preserves_source_to_target_direction():
     assert "edges_out" not in nodes[0] and "edges_out" not in nodes[1]
     assert target["edge_relations"][0]["related_node"] == "Evidence B"
     assert target["edge_relations"][0]["relation_type"] == "supports"
+
+
+def test_parser_canonicalizes_deduplicates_and_keeps_only_grounded_edge_evidence():
+    source_turn = "44444444-4444-4444-4444-444444444444"
+    target_turn = "55555555-5555-5555-5555-555555555555"
+    nodes = [
+        {"id": "claim-a", "utterance_ids": [target_turn]},
+        {"id": "evidence-b", "source_ref": {"utterance_ids": [source_turn]}},
+    ]
+    raw = """{
+      "edges": [
+        {"from_node_id":"evidence-b","to_node_id":"claim-a","relation_type":"rebut",
+         "supporting_utterance_ids":["44444444-4444-4444-4444-444444444444","ghost"]},
+        {"from_node_id":"evidence-b","to_node_id":"claim-a","relation_type":"rebuts",
+         "supporting_utterance_ids":["55555555-5555-5555-5555-555555555555"]}
+      ]
+    }"""
+
+    edges = edge_enrichment._parse_edges_response(raw, nodes=nodes)
+
+    assert edges == [{
+        "from_node_id": "evidence-b",
+        "to_node_id": "claim-a",
+        "relation_type": "rebuts",
+        "explanation": "",
+        "confidence": None,
+        "supporting_utterance_ids": [source_turn, target_turn],
+    }]
+
+
+def test_parser_falls_back_to_source_node_turns_when_model_omits_evidence():
+    source_turn = "44444444-4444-4444-4444-444444444444"
+    nodes = [
+        {"id": "claim-a"},
+        {"id": "evidence-b", "utterance_ids": [source_turn]},
+    ]
+    raw = """{"edges":[{"from_node_id":"evidence-b","to_node_id":"claim-a",
+      "relation_type":"supports","explanation":"Direct evidence"}]}"""
+
+    [edge] = edge_enrichment._parse_edges_response(raw, nodes=nodes)
+
+    assert edge["supporting_utterance_ids"] == [source_turn]
+
+
+def test_parser_does_not_mislabel_a_broad_source_set_as_edge_specific_evidence():
+    nodes = [
+        {"id": "claim-a"},
+        {"id": "theme-b", "utterance_ids": [f"u-{index}" for index in range(20)]},
+    ]
+    raw = """{"edges":[{"from_node_id":"theme-b","to_node_id":"claim-a",
+      "relation_type":"supports"}]}"""
+
+    [edge] = edge_enrichment._parse_edges_response(raw, nodes=nodes)
+
+    assert edge["supporting_utterance_ids"] == []
+
+
+def test_parser_rejects_endpoint_evidence_that_was_not_shown_to_the_model():
+    hidden_turn = "u-13"
+    nodes = [
+        {"id": "claim-a"},
+        {"id": "theme-b", "utterance_ids": [f"u-{index}" for index in range(1, 14)]},
+    ]
+    raw = json.dumps({
+        "edges": [{
+            "from_node_id": "theme-b",
+            "to_node_id": "claim-a",
+            "relation_type": "supports",
+            "supporting_utterance_ids": [hidden_turn],
+        }],
+    })
+
+    [edge] = edge_enrichment._parse_edges_response(raw, nodes=nodes)
+
+    assert edge["supporting_utterance_ids"] == []
 
 
 @pytest.mark.asyncio

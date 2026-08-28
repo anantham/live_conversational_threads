@@ -4271,3 +4271,280 @@ Manual testing not run:
   preview was redirected to Vercel's own login protection before LCT loaded;
   this non-product, non-blocking evidence gap is tracked in `ISSUES.md` rather
   than misclassified as a viewer regression.
+
+## 2026-08-27 — Node-centred one-hop relationship view
+
+- **Issue:** the timeline permanently coached obvious hover/resize gestures,
+  while graph-card click overloaded hierarchy drill and detail selection. Dense
+  tiers therefore showed every edge at once and offered no way to ask “what is
+  directly related to this node?”
+- **Confirmed root cause:** `TimelineRibbon.jsx` rendered fallback instruction
+  text at rest; `MinimalGraph.jsx` routed card click to `handleExpand` or
+  `handleOpenDetails`; the full current tier and all visible edges remained in
+  the ReactFlow render. `DEFAULT_COLOR_MODE` was `thread`, contradicting
+  ADR-011 and the speaker legend.
+- **Implementation:** added pure `graphNeighborhoodFocus.js` to project the
+  current tier to one semantic hop and deterministically place incoming/focus/
+  outgoing bands. `MinimalGraph.jsx` now keeps neighborhood focus distinct from
+  drawer selection, hierarchy drill, weakness lenses and argument trace; it
+  captures/restores the desktop viewport, keeps hidden-edge topology available,
+  and exposes a compact `Related to … / Show all` state. `ConversationNode.jsx`
+  exposes Details on leaves and marks the focused card without replacing its
+  fill. Timeline fallback coaching is gone. Speaker is the unsaved color
+  default; mixed-speaker aggregate cards use a deterministic mixed fill.
+- **Tests:** added pure one-hop/direction/temporal/bidirectional cases, node-card
+  regressions, timeline-resting-copy coverage, color-default/mixed-speaker
+  coverage, and a Playwright flow proving 4 nodes/4 edges become 3/2 around a
+  selected arc, Details stays independent, and Show all restores 4/4.
+- **Files:** `MinimalGraph.jsx`, `graphNeighborhoodFocus.js` and test,
+  `TimelineRibbon.jsx` and test, `graph/ConversationNode.jsx` and test,
+  `graph/MinimalGraphHud.jsx`, `graph/colorModes.js` and test,
+  `tests/e2e/threads-viewer-responsive.spec.ts`, Test Intent, ADR-011, ADR-032,
+  TECH_DEBT, and this worklog.
+- **Non-blocking pre-existing issue found:** the full responsive suite exposed a
+  Center/HUD timing race: ReactFlow reached 98% while the HUD percentage had not
+  caught up inside the assertion window. The old test passes alone; the new
+  focus scenario passes both alone and in the full run. Logged in `ISSUES.md`
+  for a separate camera-state repair rather than changing unrelated behavior.
+- **Final validation:** 279/279 frontend unit tests passed; changed-file ESLint
+  passed; the production build passed; and the new node-neighborhood Playwright
+  scenario passed. The serial responsive suite passed 4/5 scenarios, with only
+  the separately logged pre-existing Center/HUD timing race failing.
+
+## 2026-08-27 — Independent-review hardening for node-centred focus
+
+- Claude's bounded review of PR #179 requested changes for external navigation
+  targeting a node outside the active one-hop projection. The trace confirmed
+  that `selectedNode`/`focusNode` camera lookup searched only `displayNodes`, so
+  the target could remain filtered out with no visible response.
+- `MinimalGraph.jsx` now dismisses the temporary projection before timeline,
+  search, or detail navigation centres an outside node. ReactFlow's focusable
+  card wrapper also maps Enter/Space through the same focus action as pointer
+  activation. Each wrapper receives a descriptive relationship-focus label.
+- Automatic relationship/trace framing is keyed to focus identity and reads the
+  latest node set through a ref, so speaker/color refreshes no longer overwrite
+  a reader-adjusted camera. The mutually exclusive weakness/trace reset is now
+  explicit in ADR-032 rather than an undocumented side effect.
+- The HUD focus message is a polite live region, includes truthful zero-neighbour
+  copy coverage, and its mobile `Show all` target now meets 44px.
+- Evidence: 280/280 frontend unit tests passed, changed-file ESLint passed, the
+  production build passed, and isolated Chromium checks passed for phone touch
+  sizing plus pointer/keyboard focus, camera preservation, and outside-timeline
+  navigation. The first browser attempt reused a stale main-checkout server that
+  rejected v2 fixtures; an isolated worktree server falsified that environment
+  issue without stopping the user's existing server.
+
+## 2026-08-28 — Production smoke speaker-assertion scoping
+
+- **Trigger:** PR #179 merged cleanly at `5b673f0`; merge-triggered unit,
+  Postgres integration, and DB-independent Playwright checks passed, while the
+  Vercel deployment-triggered live smoke failed one of eight journeys.
+- **Hypotheses:** H1 (0.80), the page-wide `Speaker One` locator matched the
+  intentional speaker-colour legend rather than card copy; H2 (0.15), the
+  production bundle was stale; H3 (0.05), a conversation card still rendered
+  a speaker-name label. Prediction for H1: the trace DOM contains `Speaker One`
+  under Display's legend, while `.lct-conversation-node` contains utterance text
+  and `data-speaker-id` but no visible speaker-name text.
+- **Evidence:** The exact production trace confirmed H1 and rejected H2/H3. It
+  contains the new relationship-focus accessible labels from merge commit
+  `5b673f0`; the only visible `Speaker One` text is a legend key. The card uses
+  `data-speaker-id="Speaker One"` with a coloured marker and renders only “Hello,
+  this is a synthetic fixture.”
+- **Repair:** Preserve the product and narrow the assertion to
+  `.lct-conversation-node`. The separate data-attribute assertion remains, so
+  the test still proves speaker attribution powers colour without repeating
+  names inside utterance cards.
+- **Validation:** The repaired focused journey passed 1/1 against production;
+  the complete production suite passed 8/8. The deployed dense-tier journey
+  passed pointer/keyboard focus, Show all, camera preservation, and outside-node
+  navigation; the deployed phone journey passed overflow and 44px touch checks.
+- **Files:** `lct_app/tests/e2e/prod-threads-opener.spec.js`, `ISSUES.md`, and
+  this worklog. Independent different-family review remains required before
+  shipping the test-only repair.
+- **Independent review:** Claude returned no verdict, Grok reported exhausted
+  usage, and Gemini's cached account lacked the required project entitlement;
+  none counted as approval. DeepSeek V4 Pro then approved the exact diff and
+  identified two non-blocking hardening opportunities: the zero-name assertion
+  relied indirectly on a prior utterance check for card existence, and the test
+  intent could be read as forbidding the supported non-turn speaker-label
+  fallback. Both supported findings were adopted by explicitly asserting all
+  three fixture cards plus the scoped utterance and naming the contract as turn
+  summaries. DeepSeek V4 Pro re-reviewed that exact diff and returned APPROVE with no blocking findings.
+
+## 2026-08-28 — Stable semantic navigation and auditable aggregation
+
+- **Issue:** unlocking an authored tier let the graph alternate indefinitely
+  between semantic levels; aggregate cards did not disclose their source size;
+  exact transcript evidence was not reachable from higher-order summaries; and
+  arrow keys did not traverse the conversation map.
+- **Hypotheses and evidence:** H1 was confirmed: the unlocked semantic level
+  was derived directly from live zoom while semantic-level changes themselves
+  called `fitView`, making camera output a new semantic input. H2/H3 were also
+  confirmed: the artifact viewer indexed only top-level node utterance IDs and
+  lacked a recursive provenance read model. H4 was confirmed by the absence of
+  a graph-level arrow-key navigation contract.
+- **Implementation:** `semanticTierControl.js` separates settled user zoom from
+  programmatic viewport motion. `graphProvenance.js` computes a de-duplicated
+  descendant utterance union across primary and secondary memberships and adds
+  exact word, elapsed-span, and turn counts without mutating the artifact.
+  Aggregate cards expose those metrics and a Source action that opens the raw
+  speaker turns. `graphNavigation.js` makes Up/Down follow authored hierarchy
+  and Left/Right follow time at the current tier; `MinimalGraph.jsx` applies the
+  result through the existing node-centred focus view.
+- **Validation:** 299/299 frontend unit tests passed; scoped ESLint and the
+  production build passed. The focused Chromium journey passed stable unlock,
+  a verified real pane drag, aggregate metrics, exact utterances, and all four
+  arrow directions. One older responsive
+  camera assertion missed its 15px threshold by 0.081px and passed immediately
+  when rerun alone, matching the pre-existing Center/HUD timing issue already
+  logged in `ISSUES.md`.
+- **Impeccable check:** the only detector warning was the pre-existing 12px
+  transparent CSS triangle used by `BookmarkCorner`, misclassified as a side
+  tab. Git blame traces it to May 2026 and it is not part of this change.
+- **Validation infrastructure:** Codex's interactive browser controller could
+  not start because its Windows helper hit OS error 206 (path too long).
+  Repository-owned Playwright exercised the actual browser behavior instead.
+- **Files:** `ThreadsViewer.jsx`, `MinimalGraph.jsx`, `NodeDetail.jsx`,
+  `graph/ConversationNode.jsx`, the three new pure behavior modules and tests,
+  a synthetic `.threads` fixture, its E2E scenario, ADR-032, ISSUES, and
+  TECH_DEBT.
+- **Independent review:** Claude's first exact bounded source/test/docs review
+  requested changes. Supported findings were fixed: unlocked rendering has no
+  live-zoom fallback; source actions require matched turns and disclose partial
+  linkage; authored semantic levels gate keyboard traversal; derived provenance
+  no longer overwrites authored fields; IDs are normalized; the key listener
+  runs before ReactFlow; and the E2E now exercises Center as a programmatic move.
+  The stronger cross-tier test exposed a controlled-node timing race, which was
+  repaired by waiting for the requested tier's nodes before moving focus.
+  Three review claims were rejected with counter-evidence: edge indexing starts
+  from fresh empty arrays and is idempotent; arrow navigation intentionally
+  clears mutually exclusive lenses under ADR-032; and a null source event cannot
+  recreate the loop because rendered tiers no longer read zoom. Claude's second
+  pass raised a pan-versus-zoom distinction. Its proposed browser failure was
+  falsified by a verified pane drag that changed the viewport transform without
+  changing the tier, but the pure helper did not encode that distinction. It now
+  compares the previous and current settled zoom with an epsilon, so only an
+  actual zoom delta may select another unlocked tier; both unit and browser
+  regressions cover the boundary. Claude's final exact staged-diff re-review
+  returned **APPROVE** with no blocking defects. Its seven non-blocking
+  hardening observations are captured in `ISSUES.md` without expanding scope.
+
+## 2026-08-28 — Real-artifact camera, provenance, and topology hardening
+
+- **Observed acceptance failures:** on conversation
+  `a754fe04-a0b7-4472-a181-e0e28236426a`, Center followed by a real pan could
+  jump from three arcs to the 135-moment tier; many moments carried identical
+  broad source sets; stored topology contained duplicate endpoint/type triples
+  and both `rebut`/`rebuts`; semantic edges carried no cited turns. All raw
+  utterance timestamps in this artifact were null.
+- **Hypotheses:** H1 (0.85) independent camera timeouts recorded a requested
+  zoom before ReactFlow's true final zoom; predicted a lifecycle-level tracker
+  would keep Center→pan on the same tier. H2 (0.95) the processor copied the
+  completed batch map onto every generated leaf; predicted two leaf excerpts in
+  one batch would both receive all IDs. H3 (0.90) edge response/persistence had
+  no canonical alias or evidence contract and live/import used divergent
+  adapters; predicted duplicate aliases, empty evidence, and reversed live
+  direction. Focused diagnostics confirmed all three. Missing timestamps were
+  confirmed upstream evidence absence, not a viewer parsing failure.
+- **Implementation:** added a generation-ordered viewport motion tracker and
+  routed every ReactFlow camera mutation through it. Added a pure grounded leaf
+  provenance matcher, precise carryover accounting, shared-chunk localization,
+  and fail-closed unmatched behavior. Canonicalized edge grammar, merged exact
+  duplicate directed triples while retaining evidence, requested/validated
+  supporting turn IDs, and unified live/import direction adaptation. Node cards
+  now state `timing unavailable`; relation details state cited-turn count or
+  absence.
+- **Validation:** focused viewport unit tests 7/7; focused edge pipeline tests
+  18/18; NodeDetail 7/7; ConversationNode 6/6; focused Chromium viewer journeys
+  2/2; complete frontend Vitest 303/303; affected backend suite 59/59; production
+  build and scoped ESLint passed. The PostgreSQL-only integration suite skipped
+  8 tests because this worktree has no direct `DATABASE_URL`. The full backend
+  unit suite passed 1946 tests and exposed one already-recorded environment
+  mismatch: OpenAI 1.54.0 passes the removed `proxies=` argument to httpx 0.28.1
+  before the cloud guard test reaches its assertion. The worktree Fontsource
+  dev allow-list warning remains the already-recorded non-blocking issue;
+  production bundles the fonts.
+- **Exact private-artifact replay:** current backend code exported format v2 for
+  the acceptance conversation with 200 nodes, 818 utterances, and 624
+  deduplicated edges. In a headless browser the landing tier stayed at 3 arcs
+  after Center and all 12 post-pan samples; all three cards disclosed timing as
+  unavailable; exact-source dialog opening passed; four ArrowDown moves crossed
+  authored levels with visible counts 5 → 6 → 1 → 3; ArrowRight preserved
+  relationship focus. Only structural metrics were printed. The temporary
+  artifact and replay script were deleted after the test.
+- **Generator evidence repair:** the acceptance artifact also falsified the
+  assumption that `grounded` implied exact: clearing the old broad links and
+  running deterministic matching recovered only 31/135 leaves (median 0, max 2)
+  versus the old median 35 IDs. Managed and fallback local/online hierarchy
+  prompts now require an exact contiguous verbatim leaf excerpt, no speaker
+  prefix or grammar repair, and empty evidence on uncertainty. The canonical
+  focused prompt/provenance/topology suite passed 34/34 after this addition. A
+  local audit found that the primary local/online fallbacks carried the
+  contract but the refinement fallback did not; the same contract is now
+  concatenated into that fallback and covered through the public prompt
+  resolver.
+- **Files:** `MinimalGraph.jsx`, `viewportMotionTracker.js`,
+  `provenance_linking.py`, transcript prompt/processing/persistence, edge
+  contract and enrichment/adapters, node evidence UI, focused tests, ADR-032,
+  issues, and tech debt. Independent different-family review follows before
+  completion.
+
+### 2026-08-29 — Independent-review hardening pass
+
+- Direct Claude Sonnet reviewed the exact PR diff with repository tools
+  disabled. It found no critical/high defects and raised four candidates. Code
+  inspection confirmed the carryover-boundary, prompt-visible edge-evidence,
+  and dead-cleanup findings. Its camera recommendation was only partially
+  correct: classifying every event-shaped callback as human input made a later
+  programmatic re-center select the moments tier in Chromium.
+- The camera contract now treats a real `onMoveStart` as an explicit
+  interruption: it invalidates the active camera generation and snapshots the
+  gesture's starting zoom. `onMoveEnd` retains conservative programmatic
+  classification for active/no-event settles. The focused browser test begins
+  a drag 30 ms into Center's animation and verifies that human control wins;
+  the full source/keyboard journey verifies later reframes remain semantic-tier
+  stable.
+- Online accumulator suffixes are located in normalized provenance text rather
+  than by raw character subtraction. Speaker segments and utterance IDs now use
+  the same slot boundary, and an unlocatable suffix fails closed to zero
+  completed slots. Edge citations are accepted only from the exact capped ID
+  set shown to the model. Vestigial camera cleanup callbacks were removed.
+- Focused validation: viewport tracker 3/3, Chromium viewer journeys 2/2, and
+  transcript/topology backend tests 46/46. The first parallel Chromium run was
+  intentionally treated as falsification evidence: the new overlap case passed
+  while the older journey exposed the over-broad event-only classifier; both
+  passed serially after the interruption-state repair.
+- Full validation: frontend Vitest 304/304 and production build passed; scoped
+  source ESLint passed (the Playwright TypeScript file is outside that ESLint
+  config and was executed directly). Backend unit tests passed 1950 cases with
+  the same single pre-existing OpenAI 1.54/httpx 0.28 `proxies=` constructor
+  mismatch documented above; it fails before the egress assertion reaches
+  project code.
+
+### 2026-08-29 — Grok final-review camera hardening
+
+- Independent xAI/Grok 4.6 review of the exact `origin/main...003bb22` diff
+  identified three supported camera-test gaps and one disputed online-flush
+  claim.
+- Fixed the supported findings:
+  - `viewportMotionTracker` no longer coerces an omitted `expectedZoom` from
+    `null` to a fabricated zero baseline.
+  - `MinimalGraph.handleMoveEnd` now classifies programmatic motion before it
+    records a settled zoom, leaving programmatic completion writes inside the
+    generation-checked tracker lifecycle.
+  - The Chromium regression now unlocks the semantic tier before interrupting
+    Center at 30 ms and verifies the three-node arc tier both immediately and
+    after the original animation settle window.
+  - Tracker tests cover omitted expected zoom and a stale promise completion
+    after a real pointer interruption.
+- Falsified the claimed online force-flush loss rather than changing correct
+  code: the online branch clears `incomplete_seg` before slot accounting, so
+  `_completed_slot_count(..., "")` selects the complete batch. A new public-path
+  regression proves the forced batch emits the tail node with `utt-tail`, an
+  empty incomplete suffix, and no carryover.
+- Focused validation: viewport tracker 5/5, online provenance/flush 2/2, and
+  Chromium provenance/navigation 2/2.
+- Full validation after repair: frontend Vitest 306/306, production build and
+  scoped ESLint passed; backend unit tests passed 1951 cases with only the same
+  established OpenAI 1.54/httpx 0.28 `proxies=` environment mismatch failing
+  before project code.

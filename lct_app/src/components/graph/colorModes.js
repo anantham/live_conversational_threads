@@ -18,12 +18,11 @@
 import { SPEAKER_COLORS } from "../graphConstants";
 
 export const COLOR_MODES = Object.freeze(["thread", "tier", "speaker", "temporal", "argument", "date", "rhetoric"]);
-// "thread" (color by debate/thread cluster) is the default: it turns the overview
-// into a scannable colored map — each recurring debate a color — so the user
-// navigates visually and only reads a node's text on drill-in, instead of parsing
-// a wall of monochrome text boxes. Falls back gracefully to one calm color when a
-// conversation has a single thread (same as the date mode's single-meeting case).
-export const DEFAULT_COLOR_MODE = "thread";
+// Speaker is the default identity layer: node fill answers "who said this?"
+// while edge color answers "how are these statements related?" Readers can
+// still choose thread/tier/time/argument/date/rhetoric explicitly, and a saved
+// per-conversation choice continues to override this default.
+export const DEFAULT_COLOR_MODE = "speaker";
 
 const COLOR_MODE_LABELS = {
   thread: "Color: Thread",
@@ -96,6 +95,57 @@ export function buildSpeakerColorMapForNodes(nodes) {
     map[s] = SPEAKER_COLORS[i % SPEAKER_COLORS.length];
   });
   return map;
+}
+
+/**
+ * Resolve every speaker represented by a node, including descendant ownership
+ * at topic/theme/arc tiers. Many-to-many memberships are additive: an
+ * aggregate can honestly render as mixed instead of inheriting one arbitrary
+ * child or becoming neutral merely because it has no direct utterance.
+ */
+export function buildSpeakerOwnershipMapForNodes(nodes) {
+  const list = Array.isArray(nodes) ? nodes : [];
+  const byId = new Map(list.map((node) => [String(node.id), node]));
+  const childrenByParent = new Map();
+  const addChild = (parentId, childId) => {
+    if (!parentId || !childId || parentId === childId) return;
+    const children = childrenByParent.get(String(parentId)) || new Set();
+    children.add(String(childId));
+    childrenByParent.set(String(parentId), children);
+  };
+  list.forEach((node) => {
+    (Array.isArray(node.children_ids) ? node.children_ids : [])
+      .forEach((childId) => addChild(node.id, childId));
+    addChild(node.parent_id, node.id);
+    (Array.isArray(node.memberships) ? node.memberships : [])
+      .forEach((membership) => addChild(membership?.parent_id, node.id));
+  });
+
+  const cache = new Map();
+  const visiting = new Set();
+  const speakersFor = (nodeId) => {
+    const key = String(nodeId);
+    if (cache.has(key)) return cache.get(key);
+    if (visiting.has(key)) return new Set();
+    visiting.add(key);
+    const node = byId.get(key);
+    const speakers = new Set([
+      node?.speaker_id || "",
+      ...(Array.isArray(node?.source_turns)
+        ? node.source_turns.map((turn) => turn?.speaker_id || "")
+        : []),
+    ].filter(Boolean));
+    (childrenByParent.get(key) || []).forEach((childId) => {
+      speakersFor(childId).forEach((speakerId) => speakers.add(speakerId));
+    });
+    visiting.delete(key);
+    cache.set(key, speakers);
+    return speakers;
+  };
+
+  return Object.fromEntries(
+    list.map((node) => [node.id, [...speakersFor(node.id)].sort()]),
+  );
 }
 
 /**
@@ -366,6 +416,7 @@ export function resolveNodeColors({
   argumentStatusMap,
   dateColorMap,
   threadColorMap,
+  speakerOwnershipMap,
 }) {
   if (!node) return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
 
@@ -375,9 +426,30 @@ export function resolveNodeColors({
   }
 
   if (mode === "speaker") {
-    const fill =
-      speakerColorMap?.[node.speaker_id || ""] || NEUTRAL_FILL;
-    return { fill, border: deriveBorder(fill) };
+    const directSpeakerIds = [
+      node.speaker_id || "",
+      ...(Array.isArray(node.source_turns)
+        ? node.source_turns.map((turn) => turn?.speaker_id || "")
+        : []),
+    ].filter(Boolean);
+    const uniqueSpeakerIds = speakerOwnershipMap?.[node.id]
+      || [...new Set(directSpeakerIds)];
+    if (uniqueSpeakerIds.length === 1) {
+      const fill = speakerColorMap?.[uniqueSpeakerIds[0]] || NEUTRAL_FILL;
+      return { fill, border: deriveBorder(fill) };
+    }
+    if (uniqueSpeakerIds.length > 1) {
+      const stops = uniqueSpeakerIds
+        .map((id) => speakerColorMap?.[id] || NEUTRAL_FILL)
+        .map((color, index, colors) => {
+          const start = Math.round((index / colors.length) * 100);
+          const end = Math.round(((index + 1) / colors.length) * 100);
+          return `${color} ${start}%, ${color} ${end}%`;
+        })
+        .join(", ");
+      return { fill: `linear-gradient(135deg, ${stops})`, border: NEUTRAL_BORDER };
+    }
+    return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
   }
 
   if (mode === "temporal") {
@@ -405,7 +477,7 @@ export function resolveNodeColors({
     return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
   }
 
-  // Default: tier
+  // Defensive fallback for an unknown mode: tier.
   const semanticType = node.semantic_type || tierFromLevel(node.level);
   const fill = TIER_FILL[semanticType] || NEUTRAL_FILL;
   const border = TIER_BORDER[semanticType] || NEUTRAL_BORDER;

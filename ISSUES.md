@@ -1,6 +1,33 @@
 # ISSUES
 
-Last updated: 2026-08-27
+Last updated: 2026-08-28
+
+## 2026-08-28 — Live smoke searched speaker legend instead of conversation cards (REPAIRED)
+
+**Summary:** The deployment-triggered production smoke for merge commit
+`5b673f0` failed because `getByText('Speaker One')` searched the entire DOM.
+The speaker-colour legend intentionally retains participant names, including
+while its Display disclosure is closed. The rendered conversation card itself
+contained only coloured turn markers and utterance text, which is the actual
+product contract the test intended to protect.
+
+**Impact:** The production viewer was healthy and seven of eight live smoke
+journeys passed, but the false-positive assertion made the release signal red.
+It could also encourage removing useful legend information to satisfy a test
+whose scope contradicted its stated intent.
+
+**Blocker status:** Repaired in the smoke harness. This was blocking truthful
+post-deploy verification, not a production rendering defect.
+
+**Resolution:** Scope the no-visible-speaker-name assertion to
+`.lct-conversation-node`, explicitly assert that the fixture's three cards and
+scoped utterance rendered, and keep the separate `data-speaker-id` assertion.
+The speaker-colour semantics therefore remain machine-verifiable without
+rendering the participant name inside a turn summary.
+
+**Recommended next step:** Run the focused assertion and complete production
+suite against the live domain, independently review the exact test/docs diff,
+then ship and require the deployment-triggered smoke to return green.
 
 ## 2026-08-27 — Vercel preview protection blocks anonymous browser smoke (OPEN, NON-BLOCKING)
 
@@ -813,6 +840,13 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   ESLint for the 2026-08-25 viewer repair is clean. Establish a lint baseline
   or pay down the listed files separately so new changes can use global lint as
   a meaningful gate.
+- **Center zoom percentage can lag the ReactFlow viewport in the responsive
+  browser suite.** The older macro-overview test observed the canvas at 98%
+  while the HUD had not yet rendered `98%` within five seconds. The same test
+  passes alone and the focused-node flow is unaffected, so this is non-blocking.
+  Recommended next step: make the HUD subscribe to the committed viewport or
+  expose one shared camera-state update after `setViewport` completes instead
+  of testing two asynchronously updated representations.
 - **Resolved — `MeetingView` pre-push timing flake.** Both public-behavior tests
   passed in isolation (~2.2s total) but the first test twice exceeded Vitest's
   default 5s timeout under the full Git Bash pre-push suite; its timed-out React
@@ -830,3 +864,64 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   or feature-level dynamic imports should be evaluated separately.
 - Impact: security-maintenance and startup-performance risk; not a blocker for
   the argument-topology correctness repair.
+
+## 2026-08-28 — Viewer provenance/navigation repair
+
+- **Resolved — unlocked semantic-tier feedback loop.** Programmatic `fitView`
+  motion no longer selects another semantic tier. Unlock seeds a discrete tier;
+  only a settled real user zoom gesture can change it.
+- **Resolved — aggregate summaries hid their evidence size.** The artifact read
+  model now rolls up de-duplicated descendant utterances across many-to-many
+  memberships, cards disclose words / elapsed span / turns, and Source opens
+  the exact speaker utterances.
+- **Resolved — graph arrows had no reader navigation contract.** Up/Down now
+  follows authored abstraction membership and Left/Right follows chronology at
+  the visible tier, without wrapping or stealing keys from controls/editors.
+- **Non-blocking tooling issue — Codex browser helper path overflow.** The
+  installed interactive browser controller fails to launch on this Windows host
+  with OS error 206. Repo-owned Playwright remains healthy; repair the Codex
+  helper/install path separately rather than weakening product validation.
+- **Non-blocking detector overclaim — bookmark corner.** Impeccable's side-tab
+  heuristic flags the pre-existing transparent CSS triangle in
+  `BookmarkCorner`; it is a 12px corner marker, not a thick card-side accent.
+- **Non-blocking navigation hardening follow-ups.** A null previous zoom is
+  currently coerced to zero inside the pure tier helper, boundary arrows can
+  fall through to browser/ReactFlow defaults, Shift+Arrow is not excluded, and
+  pending cross-tier focus infers the rendered tier from the first visible node.
+  None is reachable as a failure in the validated authored-tier flow; add
+  explicit contracts before supporting mixed-level or alternate key maps.
+- **Non-blocking chronology fallback.** A tier mixing timestamped and
+  untimestamped nodes compares seconds with source-order indices. Normalize
+  missing chronology into a separate sort bucket before accepting hand-edited
+  or partially timed artifacts.
+- **Non-blocking provenance hardening follow-ups.** Cyclic hierarchy input can
+  memoize an under-counted descendant union, and a span-only/unlinked metric
+  strip uses an overconfident tooltip. Validate hierarchy acyclicity and soften
+  the tooltip in a separate evidence-UX repair.
+
+## 2026-08-28 — Real-artifact integrity acceptance repair
+
+- **Resolved — Center then pan could change semantic tiers.** Several camera
+  paths used independent booleans/timeouts, so a late ReactFlow completion made
+  the requested zoom—not the real final zoom—the next gesture's baseline. One
+  generation-ordered viewport tracker now owns every programmatic motion.
+- **Resolved — a graph batch was copied onto every leaf's provenance.** Leaf
+  source excerpts are now deterministically localized to matching transcript
+  fragments. Shared unmatched chunks fail closed instead of claiming the full
+  batch.
+- **Resolved — live edge enrichment reversed its compatibility direction.**
+  Import and live STT now share the same canonical adapter, which attaches the
+  source statement as an incoming relation on the target.
+- **Resolved — edge aliases and duplicate triples polluted topology.** Relation
+  spellings canonicalize before persistence/export, duplicate directed triples
+  merge at export, and exact supporting turns survive the full path.
+- **Open, non-blocking — old artifacts need re-extraction for precise evidence.**
+  Serialization can deduplicate/canonicalize stored edges, but it cannot infer
+  which subset of an old batch supported each old leaf. Re-run extraction from
+  retained utterances to replace broad historical links; do not mutate them
+  heuristically.
+  On the acceptance conversation, exact matching could safely rehabilitate
+  only 31/135 old leaf excerpts; the other 104 were paraphrased rather than
+  verbatim. Their old median provenance set was 35 turns. The generator now
+  requires exact contiguous leaf excerpts, but this historical conversation
+  still needs a deliberate re-extraction before its leaf evidence is precise.

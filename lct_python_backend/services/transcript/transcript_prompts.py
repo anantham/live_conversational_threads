@@ -41,6 +41,20 @@ Thread identity contract (required for every node):
 - every node sharing a thread_id must share the same thread_label
 """
 
+_SOURCE_EVIDENCE_SPEC = """
+Source-evidence contract (required for direct leaf provenance):
+- for every semantic_level=1 chunk, source_excerpt must be one exact contiguous
+  verbatim substring copied from the CURRENT transcript segment
+- copy spoken words only: omit speaker-label prefixes such as [SPEAKER_00]:
+- never paraphrase, splice non-contiguous phrases, add ellipses, or repair grammar
+  inside source_excerpt; those transformations belong only in node_name/summary
+- choose the shortest complete transcript span that directly supports the chunk
+- if no exact supporting substring exists, return an empty source_excerpt rather
+  than inventing evidence
+- higher-level nodes inherit evidence through children and must not claim direct
+  utterance provenance merely because they summarize the same batch
+"""
+
 _SEMANTIC_HIERARCHY_SPEC = """
 You must author an explicit four-level hierarchy for the CURRENT transcript segment.
 Do not produce a flat list of topic shifts and do not create one-word nodes.
@@ -135,6 +149,8 @@ Your job is to create a navigable hierarchy for conversation review, not merely 
 
 {_THREAD_LABEL_SPEC}
 
+{_SOURCE_EVIDENCE_SPEC}
+
 Handling existing JSON:
 - Existing JSON may already contain earlier nodes from this conversation.
 - Continue active threads when the current transcript is clearly extending them.
@@ -201,6 +217,8 @@ You may reason freely, but your final answer must be valid JSON.
 
 {_THREAD_LABEL_SPEC}
 
+{_SOURCE_EVIDENCE_SPEC}
+
 Additional rules:
 - Return only the nodes for the current transcript segment.
 - Do not rewrite previous nodes from Existing JSON.
@@ -234,6 +252,8 @@ Your job:
   - asks
   - tangent
   - return_to_thread
+
+""" + _SOURCE_EVIDENCE_SPEC + """
 
 Output requirements:
 - Return only JSON.
@@ -327,6 +347,9 @@ def get_transcript_prompt_config(prompt_id: str) -> Dict[str, Any]:
                 template = str(config["template"])
             if "Thread identity contract" not in template:
                 config["template"] = f"{template}\n\n{_THREAD_LABEL_SPEC}"
+                template = str(config["template"])
+            if "Source-evidence contract" not in template:
+                config["template"] = f"{template}\n\n{_SOURCE_EVIDENCE_SPEC}"
         return config
     except Exception as exc:  # noqa: BLE001
         logger.warning(

@@ -15,7 +15,7 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_app/src/pages/NewConversation.jsx | 1346 | The route now also owns live prayer-card state/wiring in addition to graph, transcript, draft/session, participant, and agenda surfaces | Extract `usePrayerCards` plus a `PrayerCardSurface` composition component; then continue the broader route split already noted below |
 | lct_python_backend/services/indrasnet_client.py | 577 | One client module now owns match, pending-discussion reads, retrieval, contacts-adjacent timeouts, health, and LCT prayer detection contracts | Split per IndrasNet API family (`indrasnet_prayers_client.py`, `indrasnet_contacts_client.py`, `indrasnet_retrieval_client.py`) behind a shared error/config helper |
 | lct_python_backend/consumption_prayer_api.py | 366 | Contact agenda lookup, known-contacts cache/search, and generic LCT prayer detection now share one router | Move `/prayer-detect` into `lct_prayer_api.py` and the contact picker/cache endpoints into a focused contacts router before adding durable card persistence |
-| lct_app/src/components/MinimalGraph.jsx | 1728 | Graph normalization, color maps, React Flow node construction, drilldown, layout, controls and interaction state remain combined; this change only threaded structured speaker-turn data through the existing seam | Extract a pure `buildConversationNodeData` mapper and graph-mode hooks before adding another card-data contract |
+| lct_app/src/components/MinimalGraph.jsx | 1728+ | Graph normalization, color maps, React Flow node construction, drilldown, controls and interaction state remain combined. One-hop membership/layout is now isolated in `graphNeighborhoodFocus.js`, but viewport restoration and mode precedence still live in the root component. | Extract a pure `buildConversationNodeData` mapper plus `useGraphNavigationModes` / `useGraphViewport` hooks before adding another interaction mode. |
 | lct_app/src/components/NodeDetail.jsx | 1035 | Node metadata, semantic relations, hierarchy navigation, source evidence, edit controls, and audio seeking share one detail surface; adding explicit incoming/outgoing edge presentation crossed the contract through this monolith | Extract `NodeRelationsPanel`, `NodeEvidencePanel`, and `NodeHierarchyPanel`; keep `NodeDetail` as the selection/composition boundary |
 | lct_app/src/pages/DebateReport.jsx | 943 | Argument-card rendering, topology view-model construction, clipboard interaction, API loading, and route composition remain coupled | Extract `useDebateReportData`, move card/panel presentation into a `debate/` component directory, and keep `useDebateView` as a pure explicit-edge-aware view-model seam |
 | lct_app/src/pages/ShareConversation.jsx | 365 | Recipient authentication, shared graph loading, timeline state, node detail, and audio playback are combined | Extract `useSharedConversation` and reuse a common conversation-view shell so owner/share explicit-edge wiring cannot drift |
@@ -146,3 +146,31 @@ the approved algorithm is independently testable. Before adding another view
 lens, extract authored-tier view construction and camera policy behind typed
 pure inputs; preserve the v2 explicit-edge boundary and the invariant that a
 visibility toggle cannot alter layout geometry.
+
+### 2026-08-28 — Viewer navigation state remains in the graph monolith
+
+`MinimalGraph.jsx` is now about 2,059 lines. The semantic/camera decision,
+provenance rollup, and navigation candidate algorithms were contained in pure
+modules, but keyboard orchestration and pending cross-tier focus still live in
+the root component. Extract `useSemanticTierNavigation` and `useGraphKeyboard`
+before adding another navigation axis. `NodeDetail.jsx` remains about 1,133
+lines; the new source-reference fallback strengthens the existing case for an
+`EvidenceTranscript` extraction rather than adding further evidence modes
+inside the drawer.
+
+### 2026-08-28 — Camera and edge contracts extracted, orchestration still oversized
+
+`MinimalGraph.jsx` is now about 2,116 lines. The approved repair extracted the
+programmatic camera lifecycle into the pure `viewportMotionTracker.js`, but the
+component still owns every trigger for initial fit, focus framing, auto-follow,
+mobile framing, and Center. Complete the existing `useGraphCamera` extraction
+before adding another camera mode.
+
+`edge_enrichment.py` is about 605 lines and now combines context retrieval,
+prompt assembly, provider invocation, response normalization, and compatibility
+adaptation. Extract an `edge_response_contract.py` containing evidence
+validation/canonicalization and the node adapter; keep provider orchestration in
+`edge_enrichment.py`. `graph_persistence.py` (~1,495 lines) and
+`transcript_processing.py` (~815 lines) remain pre-existing mixed-concern
+monoliths; the new provenance matcher was kept in its own pure module rather
+than expanding either one further.

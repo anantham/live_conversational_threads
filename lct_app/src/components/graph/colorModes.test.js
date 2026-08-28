@@ -1,13 +1,19 @@
 import { describe, it, expect } from "vitest";
 import {
   COLOR_MODES,
+  DEFAULT_COLOR_MODE,
   buildSpeakerColorMapForNodes,
+  buildSpeakerOwnershipMapForNodes,
   buildDateColorMapForNodes,
   resolveNodeColors,
   argumentStanceOf,
 } from "./colorModes";
 
 describe("speaker color mode", () => {
+  it("is the default color mode", () => {
+    expect(DEFAULT_COLOR_MODE).toBe("speaker");
+  });
+
   it("discovers every speaker carried by structured source turns", () => {
     const colors = buildSpeakerColorMapForNodes([{
       id: "moment-1",
@@ -19,6 +25,28 @@ describe("speaker color mode", () => {
     expect(colors.Aditya).toBeTruthy();
     expect(colors.Sai).toBeTruthy();
     expect(colors.Aditya).not.toBe(colors.Sai);
+  });
+
+  it("uses a mixed-speaker gradient instead of falsely assigning one owner", () => {
+    const node = {
+      id: "topic-1",
+      source_turns: [{ speaker_id: "Aditya" }, { speaker_id: "Sai" }],
+    };
+    const speakerColorMap = buildSpeakerColorMapForNodes([node]);
+    const colors = resolveNodeColors({ mode: "speaker", node, speakerColorMap });
+    expect(colors.fill).toContain("linear-gradient");
+    expect(colors.fill).toContain(speakerColorMap.Aditya);
+    expect(colors.fill).toContain(speakerColorMap.Sai);
+  });
+
+  it("derives mixed ownership for an aggregate from all hierarchy memberships", () => {
+    const nodes = [
+      { id: "arc", children_ids: ["idea-a"] },
+      { id: "idea-a", speaker_id: "Aditya", parent_id: "arc" },
+      { id: "idea-b", speaker_id: "Sai", memberships: [{ parent_id: "arc" }] },
+    ];
+    const ownership = buildSpeakerOwnershipMapForNodes(nodes);
+    expect(ownership.arc).toEqual(["Aditya", "Sai"]);
   });
 });
 

@@ -281,12 +281,14 @@ export default function NodeDetail({
       related_node: displayName(edge.to_node_id),
       relation_text: edge.explanation || "",
       direction: "outgoing",
+      supporting_utterance_ids: edge.supporting_utterance_ids || [],
     }));
     const incoming = safeNode.explicit_edges_in.map((edge) => ({
       relation_type: edge.relation_type,
       related_node: displayName(edge.from_node_id),
       relation_text: edge.explanation || "",
       direction: "incoming",
+      supporting_utterance_ids: edge.supporting_utterance_ids || [],
     }));
     return [...incoming, ...outgoing];
   }, [contextNodes, safeNode]);
@@ -360,9 +362,16 @@ export default function NodeDetail({
   // above. Falls back to the full list when the node has no utterance
   // linkage (live-STT conversations) or when expanded.
   const UTTERANCE_CONTEXT_ROWS = 4;
+  const provenanceSourceRef = safeNode?.provenance_source_ref || safeNode?.source_ref;
   const nodeUtteranceIds = useMemo(
-    () => new Set((safeNode?.utterance_ids || []).map(String)),
-    [safeNode?.utterance_ids]
+    () => new Set([
+      ...(safeNode?.utterance_ids || []),
+      ...(safeNode?.provenance_utterance_ids || []),
+      ...(safeNode?.source_ref?.utterance_ids || []),
+      ...(safeNode?.provenance_source_ref?.utterance_ids || []),
+    ].map(String)),
+    [safeNode?.provenance_source_ref?.utterance_ids, safeNode?.provenance_utterance_ids,
+      safeNode?.source_ref?.utterance_ids, safeNode?.utterance_ids]
   );
   const visibleUtterances = useMemo(() => {
     if (!Array.isArray(utterances) || utterances.length === 0) return null;
@@ -632,12 +641,13 @@ export default function NodeDetail({
         )}
 
         {/* Provenance (P0) — the auditable link from this node back to the exact
-            raw turns it covers. source_ref ({utterance_ids, source_identifiers,
-            start_seq, end_seq}) is the mechanism; the Source/Transcript evidence
+            raw turns it covers. The derived provenance_source_ref rolls up
+            descendants without overwriting the authored source_ref; either uses
+            {utterance_ids, source_identifiers, start_seq, end_seq}. The evidence
             below is what those turns actually said. A null source_ref renders an
             honest "not traceable" notice — never a faked turn range. */}
         {(() => {
-          const sr = safeNode.source_ref;
+          const sr = provenanceSourceRef;
           const uids = Array.isArray(sr?.utterance_ids) ? sr.utterance_ids : [];
           const auditable = Boolean(sr) && uids.length > 0;
           const startSeq = sr?.start_seq;
@@ -990,6 +1000,16 @@ export default function NodeDetail({
                   </span>
                   <span className="text-gray-400">
                     {rel.related_node}: {rel.relation_text}
+                    {Array.isArray(rel.supporting_utterance_ids) && rel.supporting_utterance_ids.length > 0 ? (
+                      <span
+                        className="ml-1 text-emerald-700"
+                        title={rel.supporting_utterance_ids.join("\n")}
+                      >
+                        · {rel.supporting_utterance_ids.length} cited turn{rel.supporting_utterance_ids.length === 1 ? "" : "s"}
+                      </span>
+                    ) : (
+                      <span className="ml-1 text-amber-700">· no direct turn citation</span>
+                    )}
                   </span>
                 </li>
               ))}

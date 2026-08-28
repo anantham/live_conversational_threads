@@ -2,6 +2,8 @@
 
 - Preserve source and target exactly instead of inferring direction from nodes.
 - Preserve fidelity fields needed for audit and future rendering.
+- Canonicalize equivalent relation spellings at the public boundary.
+- Collapse duplicate endpoint/type triples while preserving their evidence.
 - Namespace combined-corpus node and edge identifiers together.
 - Skip malformed rows rather than emitting dangling endpoint placeholders.
 """
@@ -14,6 +16,7 @@ import pytest
 from lct_python_backend.services.edge_contract import (
     EDGE_SCHEMA_VERSION,
     THREADS_FORMAT_VERSION,
+    canonical_relation_type,
     edge_schema_descriptor,
     relationship_edge_kind,
     serialize_relationships,
@@ -85,6 +88,37 @@ def test_temporal_relationships_are_explicitly_classified():
     assert relationship_edge_kind("supports") == "semantic"
     [edge] = serialize_relationships([relationship(relationship_type="follows")])
     assert edge["edge_kind"] == "temporal"
+
+
+def test_relation_aliases_are_canonicalized_without_changing_direction():
+    assert canonical_relation_type("rebut") == "rebuts"
+    assert canonical_relation_type("support") == "supports"
+    [edge] = serialize_relationships([relationship(relationship_type="Rebut")])
+    assert edge["relation_type"] == "rebuts"
+    assert edge["from_node_id"] == "22222222-2222-2222-2222-222222222222"
+    assert edge["to_node_id"] == "33333333-3333-3333-3333-333333333333"
+
+
+def test_duplicate_semantic_triples_merge_supporting_turns():
+    first = relationship(
+        id=UUID("11111111-1111-1111-1111-111111111111"),
+        relationship_type="rebut",
+        supporting_utterance_ids=[UUID("44444444-4444-4444-4444-444444444444")],
+    )
+    second = relationship(
+        id=UUID("55555555-5555-5555-5555-555555555555"),
+        relationship_type="rebuts",
+        supporting_utterance_ids=[UUID("66666666-6666-6666-6666-666666666666")],
+    )
+
+    [edge] = serialize_relationships([first, second])
+
+    assert edge["id"] == "11111111-1111-1111-1111-111111111111"
+    assert edge["relation_type"] == "rebuts"
+    assert edge["supporting_utterance_ids"] == [
+        "44444444-4444-4444-4444-444444444444",
+        "66666666-6666-6666-6666-666666666666",
+    ]
 
 
 def test_saved_contract_requires_real_schema_and_resolvable_endpoints():

@@ -2,6 +2,7 @@ import { memo } from "react";
 import PropTypes from "prop-types";
 import { Handle, Position } from "reactflow";
 import SpeakerTurnSummary from "./SpeakerTurnSummary";
+import { formatDurationCompact } from "../graphProvenance";
 
 /**
  * Custom React Flow node renderer per ADR-030 §D4.
@@ -155,6 +156,8 @@ function ConversationNodeImpl({ data, selected }) {
     argumentRole = null,
     rhetoricFlags = [],
     argStatusLabel = null,
+    provenanceMetrics = null,
+    isNeighborhoodFocus = false,
     showSummary = true,
     summaryMaxLength = 500,
   } = data || {};
@@ -167,7 +170,8 @@ function ConversationNodeImpl({ data, selected }) {
   // Rule). Crux no longer hijacks the border — it gets a quiet dot (see
   // CruxDot) so a macro view full of cruxes doesn't flood amber; each card
   // keeps its resolved tier color (e.g. arcs read slate).
-  const borderShorthand = selected
+  const isHighlighted = selected || isNeighborhoodFocus;
+  const borderShorthand = isHighlighted
     ? "2px solid #f59e0b"
     : isDraft
     ? `1px dashed ${borderColor}`
@@ -197,7 +201,7 @@ function ConversationNodeImpl({ data, selected }) {
     // nodes worth drilling into without reading text. Selection still wins (it
     // adds a solid 2px amber BORDER above; a crux keeps its thread-colored border
     // + this halo, so the two read distinctly). Cruxes are sparse by design.
-    boxShadow: selected
+    boxShadow: isHighlighted
       ? "0 0 0 3px rgba(245,158,11,0.3)"
       : isCrux
       ? "0 0 0 2px #f59e0b, 0 0 12px 2px rgba(245,158,11,0.5)"
@@ -213,10 +217,15 @@ function ConversationNodeImpl({ data, selected }) {
   const hasVisibleSpeakerTurns = speakerTurns.some(
     (turn) => String(turn?.text || "").trim().length > 0
   );
+  const matchedSourceCount = Number(
+    provenanceMetrics?.matched_utterance_count ?? provenanceMetrics?.utterance_count,
+  ) || 0;
+  const hasAuditableSource = matchedSourceCount > 0;
 
   return (
     <div
       className={`lct-conversation-node${isTangent ? " lct-conversation-node--tangent" : ""}`}
+      data-neighborhood-focus={isNeighborhoodFocus ? "true" : undefined}
       style={cardStyle}
     >
       {/* React Flow handles for edge attachment.
@@ -243,14 +252,20 @@ function ConversationNodeImpl({ data, selected }) {
       <MarkerStrip markers={dimensionMarkers} />
       <RhetoricStrip argumentRole={argumentRole} flags={rhetoricFlags} />
       {argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
+      <ProvenanceMetricStrip metrics={provenanceMetrics} />
       {!hasVisibleSpeakerTurns && speakerLabel && (
         <div style={speakerStyle}>{speakerLabel}</div>
       )}
 
-      {canExpand && (
+      {(canExpand || onOpenDetails) && (
         <div style={cardFooterStyle}>
-          <ExpandButton count={expandCount} onExpand={onExpand} />
-          {onOpenDetails && <DetailsButton onOpenDetails={onOpenDetails} />}
+          {canExpand && <ExpandButton count={expandCount} onExpand={onExpand} />}
+          {onOpenDetails && (
+            <DetailsButton
+              onOpenDetails={onOpenDetails}
+              sourceLinked={hasAuditableSource}
+            />
+          )}
         </div>
       )}
 
@@ -310,8 +325,8 @@ const expandButtonStyle = {
   WebkitTapHighlightColor: "transparent",
 };
 
-// Footer row holding the expand pill + the details chip (Option A: tap the card
-// to expand; tap "details" to open the drawer).
+// Footer row keeps hierarchy and provenance as explicit actions. The card body
+// itself is reserved for reorienting the relationship neighbourhood.
 const cardFooterStyle = {
   display: "flex",
   alignItems: "center",
@@ -320,16 +335,68 @@ const cardFooterStyle = {
   marginTop: "8px",
 };
 
-// Small "details" affordance for nodes WITH children: their card-tap expands,
-// so this is how you reach the drawer (edges, source, ancestors). Leaf nodes
-// don't show it — tapping a leaf opens its drawer directly.
-function DetailsButton({ onOpenDetails }) {
+function ProvenanceMetricStrip({ metrics }) {
+  const referencedCount = Number(metrics?.utterance_count) || 0;
+  const matchedCount = Number(
+    metrics?.matched_utterance_count ?? metrics?.utterance_count,
+  ) || 0;
+  const wordCount = Number(metrics?.word_count) || 0;
+  const hasTiming = metrics?.duration_seconds != null;
+  const duration = hasTiming
+    ? Number(metrics?.duration_seconds) === 0
+      ? "0s"
+      : formatDurationCompact(metrics?.duration_seconds)
+    : "";
+  const timingUnavailable = matchedCount > 0 && !hasTiming;
+  const parts = [
+    wordCount > 0 ? `${wordCount.toLocaleString()} ${wordCount === 1 ? "word" : "words"}` : null,
+    duration ? `${duration} span` : null,
+    timingUnavailable ? "timing unavailable" : null,
+    referencedCount > matchedCount
+      ? `${matchedCount.toLocaleString()} of ${referencedCount.toLocaleString()} turns linked`
+      : matchedCount > 0
+      ? `${matchedCount.toLocaleString()} ${matchedCount === 1 ? "turn" : "turns"}`
+      : null,
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  const incomplete = referencedCount > matchedCount;
+  return (
+    <div
+      data-testid="provenance-metrics"
+      title={incomplete
+        ? "Transcript source linkage is incomplete in this artifact"
+        : timingUnavailable
+          ? "Source turns are linked, but this artifact has no aligned timestamps"
+          : "Exact transcript material aggregated into this node"}
+      style={provenanceMetricStyle}
+    >
+      {parts.join(" · ")}
+    </div>
+  );
+}
+
+ProvenanceMetricStrip.propTypes = {
+  metrics: PropTypes.shape({
+    utterance_count: PropTypes.number,
+    matched_utterance_count: PropTypes.number,
+    complete: PropTypes.bool,
+    word_count: PropTypes.number,
+    duration_seconds: PropTypes.number,
+  }),
+};
+
+// Every node exposes the same explicit details action; leaf cards no longer
+// overload body tap with a different meaning.
+function DetailsButton({ onOpenDetails, sourceLinked }) {
+  const label = sourceLinked ? "source" : "details";
   return (
     <button
       type="button"
       className="nodrag nopan"
-      title="Open details — edges, source, ancestors"
-      aria-label="Open details"
+      title={sourceLinked
+        ? "Open exact source utterances, relations, and details"
+        : "Open details — edges, source, ancestors"}
+      aria-label={sourceLinked ? "Open exact source utterances" : "Open details"}
       onPointerDown={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
       onClick={(e) => {
@@ -339,13 +406,14 @@ function DetailsButton({ onOpenDetails }) {
       style={detailsButtonStyle}
     >
       <span aria-hidden="true" style={{ fontSize: "12px", lineHeight: 1 }}>&#9432;</span>
-      <span>details</span>
+      <span>{label}</span>
     </button>
   );
 }
 
 DetailsButton.propTypes = {
   onOpenDetails: PropTypes.func,
+  sourceLinked: PropTypes.bool,
 };
 
 const detailsButtonStyle = {
@@ -408,6 +476,14 @@ const argStatusStyle = {
   color: "#475569",
   marginTop: "4px",
   textTransform: "capitalize",
+};
+
+const provenanceMetricStyle = {
+  fontSize: "11px",
+  fontWeight: 500,
+  color: "#64748b",
+  marginTop: "6px",
+  fontVariantNumeric: "tabular-nums",
 };
 
 function BookmarkCorner() {
@@ -494,6 +570,14 @@ ConversationNodeImpl.propTypes = {
     argumentRole: PropTypes.string,
     rhetoricFlags: PropTypes.array,
     argStatusLabel: PropTypes.string,
+    provenanceMetrics: PropTypes.shape({
+      utterance_count: PropTypes.number,
+      matched_utterance_count: PropTypes.number,
+      complete: PropTypes.bool,
+      word_count: PropTypes.number,
+      duration_seconds: PropTypes.number,
+    }),
+    isNeighborhoodFocus: PropTypes.bool,
     showSummary: PropTypes.bool,
     summaryMaxLength: PropTypes.number,
   }),

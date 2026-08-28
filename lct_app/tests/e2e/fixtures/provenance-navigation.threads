@@ -1,0 +1,33 @@
+{
+  "format": "lct.threads",
+  "format_version": 2,
+  "conversation_id": "provenance-navigation-fixture",
+  "conversation_name": "provenance-navigation-fixture",
+  "conversation_title": "Provenance and navigation fixture",
+  "exported_at": "2026-08-28T00:00:00Z",
+  "transcript_source": "synthetic",
+  "chunk_dict": {},
+  "utterances": [
+    {"id":"u1","sequence_number":1,"speaker_id":"speaker-a","speaker_name":"Speaker A","text":"We should compare the current process with the earlier approach.","timestamp_start":0,"timestamp_end":8},
+    {"id":"u2","sequence_number":2,"speaker_id":"speaker-b","speaker_name":"Speaker B","text":"The earlier approach was slower, but it exposed every assumption.","timestamp_start":8,"timestamp_end":18},
+    {"id":"u3","sequence_number":3,"speaker_id":"speaker-a","speaker_name":"Speaker A","text":"We can preserve that transparency while shortening the review loop.","timestamp_start":20,"timestamp_end":31},
+    {"id":"u4","sequence_number":4,"speaker_id":"speaker-b","speaker_name":"Speaker B","text":"Then the faster process remains auditable instead of merely opaque.","timestamp_start":31,"timestamp_end":44}
+  ],
+  "edge_schema": {"version":1,"directed":true,"endpoint_space":"graph_data.id"},
+  "edges": [
+    {"id":"edge-theme-support","from_node_id":"theme-1","to_node_id":"theme-2","relation_type":"supports","edge_kind":"semantic","explanation":"The comparison motivates a faster auditable review loop."}
+  ],
+  "graph_data": [
+    {"id":"arc-1","semantic_level":5,"level":5,"semantic_type":"arc","node_name":"Auditable process redesign","summary":"The discussion moves from comparing two workflows to designing a faster process that remains inspectable.","timestamp_start":0,"timestamp_end":44,"children_ids":["theme-1","theme-2"]},
+    {"id":"theme-1","semantic_level":4,"level":4,"semantic_type":"theme","node_name":"Compare the workflows","summary":"The speakers compare speed with the visibility of assumptions.","timestamp_start":0,"timestamp_end":18,"parent_id":"arc-1","children_ids":["topic-1"],"memberships":[{"parent_id":"arc-1","role":"primary","lens":"thematic"}]},
+    {"id":"theme-2","semantic_level":4,"level":4,"semantic_type":"theme","node_name":"Keep faster review auditable","summary":"The speakers propose shortening review without losing transparency.","timestamp_start":20,"timestamp_end":44,"parent_id":"arc-1","children_ids":["topic-2"],"memberships":[{"parent_id":"arc-1","role":"primary","lens":"thematic"}]},
+    {"id":"topic-1","semantic_level":3,"level":3,"semantic_type":"topic","node_name":"Speed and exposed assumptions","summary":"The slower approach made assumptions visible.","timestamp_start":0,"timestamp_end":18,"parent_id":"theme-1","children_ids":["idea-1"],"memberships":[{"parent_id":"theme-1","role":"primary","lens":"thematic"}]},
+    {"id":"topic-2","semantic_level":3,"level":3,"semantic_type":"topic","node_name":"Transparent acceleration","summary":"Faster review can retain an inspectable source trail.","timestamp_start":20,"timestamp_end":44,"parent_id":"theme-2","children_ids":["idea-2"],"memberships":[{"parent_id":"theme-2","role":"primary","lens":"thematic"}]},
+    {"id":"idea-1","semantic_level":2,"level":2,"semantic_type":"idea","node_name":"Compare before redesigning","summary":"The current and earlier processes should be compared first.","timestamp_start":0,"timestamp_end":18,"parent_id":"topic-1","children_ids":["moment-1","moment-2"],"memberships":[{"parent_id":"topic-1","role":"primary","lens":"thematic"}]},
+    {"id":"idea-2","semantic_level":2,"level":2,"semantic_type":"idea","node_name":"Preserve auditability","summary":"The shortened loop should preserve transparent reasoning.","timestamp_start":20,"timestamp_end":44,"parent_id":"topic-2","children_ids":["moment-3","moment-4"],"memberships":[{"parent_id":"topic-2","role":"primary","lens":"thematic"}]},
+    {"id":"moment-1","semantic_level":1,"level":1,"semantic_type":"moment","node_name":"Compare the current process","summary":"A comparison is proposed.","timestamp_start":0,"timestamp_end":8,"parent_id":"idea-1","children_ids":[],"utterance_ids":["u1"],"source_ref":{"utterance_ids":["u1"],"start_seq":1,"end_seq":1},"memberships":[{"parent_id":"idea-1","role":"primary","lens":"thematic"}]},
+    {"id":"moment-2","semantic_level":1,"level":1,"semantic_type":"moment","node_name":"Earlier assumptions were visible","summary":"The earlier process exposed assumptions.","timestamp_start":8,"timestamp_end":18,"parent_id":"idea-1","children_ids":[],"utterance_ids":["u2"],"source_ref":{"utterance_ids":["u2"],"start_seq":2,"end_seq":2},"memberships":[{"parent_id":"idea-1","role":"primary","lens":"thematic"}]},
+    {"id":"moment-3","semantic_level":1,"level":1,"semantic_type":"moment","node_name":"Shorten the review loop","summary":"Transparency can survive a shorter loop.","timestamp_start":20,"timestamp_end":31,"parent_id":"idea-2","children_ids":[],"utterance_ids":["u3"],"source_ref":{"utterance_ids":["u3"],"start_seq":3,"end_seq":3},"memberships":[{"parent_id":"idea-2","role":"primary","lens":"thematic"}]},
+    {"id":"moment-4","semantic_level":1,"level":1,"semantic_type":"moment","node_name":"Keep the faster process auditable","summary":"Speed should not make the process opaque.","timestamp_start":31,"timestamp_end":44,"parent_id":"idea-2","children_ids":[],"utterance_ids":["u4"],"source_ref":{"utterance_ids":["u4"],"start_seq":4,"end_seq":4},"memberships":[{"parent_id":"idea-2","role":"primary","lens":"thematic"}]}
+  ]
+}

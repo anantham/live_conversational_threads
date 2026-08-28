@@ -13,7 +13,8 @@ import { fileURLToPath } from 'url';
  * - Keep `/view` as the recoverable standalone opener for drag-drop and bad files.
  * - Accept a `.threads` drop anywhere on `/browse`, not only in the standalone opener.
  * - Exercise the version-2 explicit directed-edge artifact contract in a browser.
- * - Render structured utterance text without repeating speaker names in cards.
+ * - Render structured utterance turn summaries without repeating speaker names,
+ *   while retaining names in the speaker-colour legend.
  * - Keep the conversation overview and thread timeline independently collapsible.
  * - Route Drive-backed links to a Google authorization gate rather than the upload prompt.
  * - Reopen a previously validated Drive artifact without another Google prompt.
@@ -127,9 +128,15 @@ test.describe('.threads opener (public recipient path)', () => {
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('button', { name: /Transcript/ })).toBeVisible();
     await expect(page.getByText('Saved on this device')).toBeVisible();
-    await expect(page.getByText('Hello, this is a synthetic fixture.')).toBeVisible();
-    await expect(page.getByText('Speaker One', { exact: true })).toHaveCount(0);
-    await expect(page.locator('[data-speaker-id="Speaker One"]')).toHaveCount(1);
+    const conversationCards = page.locator('.lct-conversation-node');
+    await expect(conversationCards).toHaveCount(3);
+    await expect(conversationCards.getByText('Hello, this is a synthetic fixture.')).toBeVisible();
+    // Speaker names belong in the colour legend, but must not be repeated in
+    // turn summaries. A page-wide text query would conflate those surfaces.
+    await expect(
+      conversationCards.getByText('Speaker One', { exact: true }),
+    ).toHaveCount(0);
+    await expect(conversationCards.locator('[data-speaker-id="Speaker One"]')).toHaveCount(1);
 
     await page.getByRole('button', { name: 'Hide conversation overview' }).click();
     await expect(page.locator('header.t-acc')).toHaveAttribute('data-open', 'false');

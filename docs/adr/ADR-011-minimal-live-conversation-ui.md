@@ -315,3 +315,14 @@ MVP implemented on branch `feat/minimal-live-ui`. Key files:
 Total new component code: ~535 LOC. Old code removed from NewConversation: ~130 LOC. AudioInput JSX simplified: ~25 LOC reduction.
 
 Old components (ContextualGraph, StructuralGraph, etc.) retained — still used by ViewConversation route.
+
+## Amendment — 2026-08-27: review-mode node click semantics
+
+**Status:** Approved. This supersedes the MVP paragraph that made every graph
+node click open the detail drawer.
+
+In the post-conversation review viewer, card-body click/tap now centres a
+one-hop semantic neighbourhood. `Details` opens the drawer and `Expand` descends
+the hierarchy as separate explicit actions. The timeline may continue selecting
+and navigating nodes without redefining graph-card interaction. The complete
+projection and spatial rules are recorded in ADR-032's 2026-08-27 amendment.

@@ -511,3 +511,141 @@ remains internal at that zoom—even when their secondary memberships also have
 non-overlapping pairs. Keeping only those pairs would manufacture cross-arc
 claims from classification overlap rather than preserve the authored relation.
 Unmapped edges are surfaced as an artifact-quality signal.
+
+## Amendment — 2026-08-27: node-centred one-hop relationship projection
+
+**Status:** Approved by the operator for the beta viewer.
+
+The complete tier remains the canonical overview, but dense graphs need a
+question-relative reading mode. Clicking or tapping a conversational node now
+projects the current tier to that node, every directly connected semantic
+neighbour, and only edges incident to the selected node. Unrelated nodes and
+neighbour-to-neighbour edges are temporarily omitted rather than dimmed. The
+projection consumes the current tier's already-derived quotient edges; it does
+not reinterpret child edges, run another model, or mutate the artifact.
+
+Incoming neighbours are placed above the selected node and outgoing-only
+neighbours below it, matching the renderer's directed top/bottom handles.
+Desktop keeps each directional band unwrapped and pannable at readable scale;
+compact screens use one card per row. A reciprocal neighbour appears once while
+both authored directed edges remain visible. Purely temporal adjacency does not
+qualify as a semantic neighbour. An isolated node is shown honestly by itself.
+
+The interaction contract is deliberately orthogonal:
+
+- card body: re-root the one-hop relationship projection;
+- `Expand`: descend the authored hierarchy;
+- `Details`: open provenance and node details, including for leaf nodes;
+- `Show all`, empty-canvas click, or Escape: return to the full tier.
+
+Keyboard Enter/Space on a focused card is equivalent to card-body activation.
+The focus-state message is a polite live region and its mobile exit respects the
+44px touch-target floor. Timeline, search, or detail navigation to a node outside
+the active one-hop set first restores the complete tier and then centres the
+requested node; navigation must never silently target a filtered-out card.
+
+Neighbourhood focus, weakness lenses, and argument trace are alternative reader
+questions rather than composable filters. Starting relationship focus clears the
+other two. Presentation-only changes such as color mode must preserve a reader's
+manual pan and zoom; automatic framing runs when the analytic focus identity
+changes, not whenever node presentation data is refreshed.
+
+The desktop viewer restores the pre-projection viewport when returning. Tier,
+breadcrumb, and argument-trace transitions discard that saved viewport because
+their own camera policy must frame the new semantic state.
+
+Speaker identity is again the default node-fill channel promised by ADR-011.
+Single-speaker nodes use that speaker's fill; multi-speaker aggregates use a
+deterministic mixed fill instead of falsely assigning one owner. A persisted
+reader-selected color lens still overrides the default. Edge color continues to
+encode relation family.
+
+## Amendment — 2026-08-28: stable semantic axes and auditable provenance
+
+**Status:** Approved by the operator for the beta viewer.
+
+Semantic resolution and camera framing are separate state machines. Locking a
+tier fixes its authored level. Unlocking preserves the currently visible tier;
+after that, only a settled user zoom gesture may choose another level.
+`fitView`, `setCenter`, `setViewport`, initial framing, focus framing, and other
+programmatic camera motion are outputs of semantic state and must never feed
+back into tier selection. The displayed zoom percentage remains live camera
+telemetry and is not itself the semantic source of truth.
+
+The viewer derives an auditable provenance read model at the artifact boundary.
+For each node it unions direct utterance references with every descendant's
+references across primary and secondary hierarchy memberships, de-duplicates
+them by utterance ID, and preserves transcript order. This is a derived view;
+it does not mutate the `.threads` artifact or choose a single owner for
+many-to-many membership. Word count is computed from the matched raw utterance
+text. Turn count is the number of distinct referenced utterances. Time is the
+elapsed source span from earliest start to latest end—not summed speaking time.
+Fallback node bounds may orient the card, but unmatched IDs cannot manufacture
+word counts or raw evidence.
+
+Cards disclose the compact `words · span · turns` measure whenever evidence is
+available. Their Source action opens the exact linked speaker turns in the
+detail view; the generated summary is never presented as its own evidence.
+Higher-order summaries and moments therefore share one provenance path.
+
+Keyboard navigation has two orthogonal axes:
+
+- Up selects the nearest authored parent at a higher abstraction level.
+- Down selects the nearest authored child at a lower abstraction level.
+- Left/Right select the previous/next node by source time at the current tier.
+
+Primary memberships win deterministic ties, followed by temporal/source order.
+Navigation does not wrap at boundaries and ignores modified key chords and
+events originating in inputs, links, buttons, selectors, or editable content.
+A successful move re-roots the existing one-hop relationship focus; crossing an
+abstraction boundary first changes the tier and then focuses the target.
+
+## Amendment — 2026-08-28: settled camera lifecycle and grounded edge evidence
+
+**Status:** Approved by the operator after acceptance testing a real dense
+artifact exposed gaps that synthetic navigation tests had missed.
+
+Every programmatic camera operation participates in one lifecycle owned by the
+viewer: begin, animate, settle, record the real final viewport, then release.
+Overlapping operations are generation-ordered so an older completion cannot
+release or overwrite a newer motion. A user pan after `Center` therefore
+compares against the actual settled zoom, not the requested zoom or an expired
+timeout. This strengthens rather than replaces the semantic/camera separation
+above.
+
+Direct provenance is leaf-specific. A generation batch may retain its complete
+utterance map for accounting, but it must not copy that batch onto every leaf.
+Each level-one node is linked only when its grounded source excerpt overlaps
+specific ordered transcript fragments. Existing authored links win; an
+unmatched excerpt stays unlinked for later reconciliation. Higher tiers derive
+their evidence through authored children and memberships.
+
+Semantic relation types use one canonical grammatical spelling at extraction,
+persistence, and export (`rebut` becomes `rebuts`, `support` becomes
+`supports`, and equivalent verb forms follow the same rule). Canonicalization
+never reverses endpoints or invents semantics. Exact duplicate directed triples
+collapse at the public artifact boundary while merging their cited turns;
+distinct `member_of` subtypes remain distinct.
+
+Every newly authored semantic edge must cite the smallest exact set of
+`supporting_utterance_ids` from its two endpoint nodes. Returned IDs outside
+those endpoints are discarded. A short grounded source node may provide a
+deterministic fallback when the model omits citations. A broad aggregate may
+not: it remains explicitly without a direct turn citation instead of presenting
+dozens of source turns as edge-specific proof. Import and live-STT flows use the
+same incoming-edge adapter so direction and citations cannot drift.
+
+Timing remains an independent evidence dimension. Linked source text without
+aligned timestamps is rendered as `timing unavailable`; neither the pipeline
+nor viewer synthesizes elapsed time from transcript order.
+
+### Addendum — exact leaf excerpt authoring
+
+The deterministic linker is paired with an authoring contract: every new
+level-one `source_excerpt` must be one exact contiguous verbatim substring from
+the current transcript segment, excluding speaker-label prefixes. Grammar
+repair, paraphrase, ellipses, and splicing belong in `node_name` or `summary`,
+never in direct evidence. If the generator cannot quote an exact supporting
+span, it leaves the excerpt empty and the node remains explicitly unlinked.
+This contract is injected centrally into managed and fallback prompts for both
+local and online generation paths.
