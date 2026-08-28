@@ -16,6 +16,7 @@ import {
   validateThreadsArtifact,
 } from "../services/threadsArtifact";
 import { indexExplicitEdges } from "../services/edgeContract";
+import { enrichGraphNodesWithProvenance } from "../components/graphProvenance";
 import {
   getThreadsLibraryRecord,
   rememberThreadsArtifact,
@@ -198,11 +199,11 @@ export default function ThreadsViewer() {
 
   const flatNodes = useMemo(
     () => (bundle
-      ? indexExplicitEdges(
+      ? enrichGraphNodesWithProvenance(indexExplicitEdges(
         flattenThreadsGraph(bundle.graph_data),
         bundle.edges,
         true,
-      )
+      ), bundle.utterances || [])
       : []),
     [bundle],
   );
@@ -397,7 +398,7 @@ export default function ThreadsViewer() {
 
       <div className="relative min-h-0 flex-1">
         <MinimalGraph
-          graphData={bundle.graph_data}
+          graphData={flatNodes}
           semanticEdges={bundle.edges}
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}

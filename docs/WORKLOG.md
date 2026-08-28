@@ -4343,3 +4343,61 @@ Manual testing not run:
   fallback. Both supported findings were adopted by explicitly asserting all
   three fixture cards plus the scoped utterance and naming the contract as turn
   summaries. DeepSeek V4 Pro re-reviewed that exact diff and returned APPROVE with no blocking findings.
+
+## 2026-08-28 — Stable semantic navigation and auditable aggregation
+
+- **Issue:** unlocking an authored tier let the graph alternate indefinitely
+  between semantic levels; aggregate cards did not disclose their source size;
+  exact transcript evidence was not reachable from higher-order summaries; and
+  arrow keys did not traverse the conversation map.
+- **Hypotheses and evidence:** H1 was confirmed: the unlocked semantic level
+  was derived directly from live zoom while semantic-level changes themselves
+  called `fitView`, making camera output a new semantic input. H2/H3 were also
+  confirmed: the artifact viewer indexed only top-level node utterance IDs and
+  lacked a recursive provenance read model. H4 was confirmed by the absence of
+  a graph-level arrow-key navigation contract.
+- **Implementation:** `semanticTierControl.js` separates settled user zoom from
+  programmatic viewport motion. `graphProvenance.js` computes a de-duplicated
+  descendant utterance union across primary and secondary memberships and adds
+  exact word, elapsed-span, and turn counts without mutating the artifact.
+  Aggregate cards expose those metrics and a Source action that opens the raw
+  speaker turns. `graphNavigation.js` makes Up/Down follow authored hierarchy
+  and Left/Right follow time at the current tier; `MinimalGraph.jsx` applies the
+  result through the existing node-centred focus view.
+- **Validation:** 299/299 frontend unit tests passed; scoped ESLint and the
+  production build passed. The focused Chromium journey passed stable unlock,
+  a verified real pane drag, aggregate metrics, exact utterances, and all four
+  arrow directions. One older responsive
+  camera assertion missed its 15px threshold by 0.081px and passed immediately
+  when rerun alone, matching the pre-existing Center/HUD timing issue already
+  logged in `ISSUES.md`.
+- **Impeccable check:** the only detector warning was the pre-existing 12px
+  transparent CSS triangle used by `BookmarkCorner`, misclassified as a side
+  tab. Git blame traces it to May 2026 and it is not part of this change.
+- **Validation infrastructure:** Codex's interactive browser controller could
+  not start because its Windows helper hit OS error 206 (path too long).
+  Repository-owned Playwright exercised the actual browser behavior instead.
+- **Files:** `ThreadsViewer.jsx`, `MinimalGraph.jsx`, `NodeDetail.jsx`,
+  `graph/ConversationNode.jsx`, the three new pure behavior modules and tests,
+  a synthetic `.threads` fixture, its E2E scenario, ADR-032, ISSUES, and
+  TECH_DEBT.
+- **Independent review:** Claude's first exact bounded source/test/docs review
+  requested changes. Supported findings were fixed: unlocked rendering has no
+  live-zoom fallback; source actions require matched turns and disclose partial
+  linkage; authored semantic levels gate keyboard traversal; derived provenance
+  no longer overwrites authored fields; IDs are normalized; the key listener
+  runs before ReactFlow; and the E2E now exercises Center as a programmatic move.
+  The stronger cross-tier test exposed a controlled-node timing race, which was
+  repaired by waiting for the requested tier's nodes before moving focus.
+  Three review claims were rejected with counter-evidence: edge indexing starts
+  from fresh empty arrays and is idempotent; arrow navigation intentionally
+  clears mutually exclusive lenses under ADR-032; and a null source event cannot
+  recreate the loop because rendered tiers no longer read zoom. Claude's second
+  pass raised a pan-versus-zoom distinction. Its proposed browser failure was
+  falsified by a verified pane drag that changed the viewport transform without
+  changing the tier, but the pure helper did not encode that distinction. It now
+  compares the previous and current settled zoom with an epsilon, so only an
+  actual zoom delta may select another unlocked tier; both unit and browser
+  regressions cover the boundary. Claude's final exact staged-diff re-review
+  returned **APPROVE** with no blocking defects. Its seven non-blocking
+  hardening observations are captured in `ISSUES.md` without expanding scope.

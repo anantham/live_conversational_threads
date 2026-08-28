@@ -845,3 +845,36 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   or feature-level dynamic imports should be evaluated separately.
 - Impact: security-maintenance and startup-performance risk; not a blocker for
   the argument-topology correctness repair.
+
+## 2026-08-28 — Viewer provenance/navigation repair
+
+- **Resolved — unlocked semantic-tier feedback loop.** Programmatic `fitView`
+  motion no longer selects another semantic tier. Unlock seeds a discrete tier;
+  only a settled real user zoom gesture can change it.
+- **Resolved — aggregate summaries hid their evidence size.** The artifact read
+  model now rolls up de-duplicated descendant utterances across many-to-many
+  memberships, cards disclose words / elapsed span / turns, and Source opens
+  the exact speaker utterances.
+- **Resolved — graph arrows had no reader navigation contract.** Up/Down now
+  follows authored abstraction membership and Left/Right follows chronology at
+  the visible tier, without wrapping or stealing keys from controls/editors.
+- **Non-blocking tooling issue — Codex browser helper path overflow.** The
+  installed interactive browser controller fails to launch on this Windows host
+  with OS error 206. Repo-owned Playwright remains healthy; repair the Codex
+  helper/install path separately rather than weakening product validation.
+- **Non-blocking detector overclaim — bookmark corner.** Impeccable's side-tab
+  heuristic flags the pre-existing transparent CSS triangle in
+  `BookmarkCorner`; it is a 12px corner marker, not a thick card-side accent.
+- **Non-blocking navigation hardening follow-ups.** A null previous zoom is
+  currently coerced to zero inside the pure tier helper, boundary arrows can
+  fall through to browser/ReactFlow defaults, Shift+Arrow is not excluded, and
+  pending cross-tier focus infers the rendered tier from the first visible node.
+  None is reachable as a failure in the validated authored-tier flow; add
+  explicit contracts before supporting mixed-level or alternate key maps.
+- **Non-blocking chronology fallback.** A tier mixing timestamped and
+  untimestamped nodes compares seconds with source-order indices. Normalize
+  missing chronology into a separate sort bucket before accepting hand-edited
+  or partially timed artifacts.
+- **Non-blocking provenance hardening follow-ups.** Cyclic hierarchy input can
+  memoize an under-counted descendant union, and a span-only/unlinked metric
+  strip uses an overconfident tooltip. Validate hierarchy acyclicity and soften

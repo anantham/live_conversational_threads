@@ -26,7 +26,6 @@ import {
   extractContextualRelationEntries,
   getAuthoredSemanticLevel,
   normalizeGraphNode,
-  resolveRequestedSemanticLevel,
 } from "./graphNormalization";
 import { saveConversationDraft } from "../services/apiClient";
 import {
@@ -58,6 +57,8 @@ import {
   useMediaQuery,
 } from "../hooks/useMediaQuery";
 import { buildFocusedNeighborhood } from "./graphNeighborhoodFocus";
+import { isGraphNavigationKey, navigateGraphNode } from "./graphNavigation";
+import { semanticLevelAfterViewportMove } from "./semanticTierControl";
 
 // ADR-030 §D4: custom node renderer with three color modes + state markers.
 // Cluster nodes are still default ReactFlow rendering (separate concern).
@@ -105,6 +106,7 @@ function MinimalGraphInner({
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
   const programmaticMoveRef = useRef(false);
+  const settledViewportZoomRef = useRef(null);
   const mobileFramedNodeSetRef = useRef("");
   const [autoFollow, setAutoFollow] = useState(true);
   const [reduceMotion, setReduceMotion] = useState(() =>
@@ -114,6 +116,7 @@ function MinimalGraphInner({
   const [hideEdges, setHideEdges] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [lockedLevel, setLockedLevel] = useState(null); // null = unlocked, semantic 1-4 or legacy 0-3
+  const [unlockedSemanticLevel, setUnlockedSemanticLevel] = useState(null);
   const initialLockedAppliedRef = useRef(false);
   // True once the USER has explicitly chosen a tier or driven the camera
   // (locked/unlocked a tier, or manually zoomed/panned). Until then we force
@@ -127,6 +130,7 @@ function MinimalGraphInner({
   // from selectedNode (detail drawer), drilldownPath (hierarchy), and the
   // multi-hop argument trace.
   const [neighborhoodFocusId, setNeighborhoodFocusId] = useState(null);
+  const pendingKeyboardFocusRef = useRef(null);
   const preNeighborhoodViewportRef = useRef(null);
   const clearNeighborhoodFocus = useCallback((restoreViewport = true) => {
     const priorViewport = preNeighborhoodViewportRef.current;
@@ -458,6 +462,7 @@ function MinimalGraphInner({
           // the card chips + the Rhetoric color lens.
           argumentRole: item.argument_role || null,
           rhetoricFlags: Array.isArray(item.rhetoric_flags) ? item.rhetoric_flags : [],
+          provenanceMetrics: item.provenance_metrics || null,
           argStatusLabel,
           // fullData kept for downstream consumers (NodeDetail panel etc.)
           fullData: item,
@@ -970,16 +975,12 @@ function MinimalGraphInner({
     }
   }
 
-  // Before the user touches the tier-lock/zoom, fall back to the synchronously
-  // computed landing tier (not the zoom=1 -> finest mapping). This is what
-  // makes render 0 open on the macro tier and keeps the camera framed. After
-  // the auto-landing effect applies (initialLockedAppliedRef), an explicit
-  // UNLOCK returns to zoom-driven resolution as before.
+  // Semantic resolution is discrete state. Camera zoom remains telemetry and
+  // can update this state only through the settled real-user gesture below;
+  // render-time fitView output can never select another tier.
   const requestedSemanticLevel = lockedLevel != null
     ? Math.max(1, Math.min(5, lockedLevel))
-    : (!userOverrodeTierRef.current && initialLandingLevel != null
-        ? initialLandingLevel
-        : resolveRequestedSemanticLevel(zoomLevel));
+    : (unlockedSemanticLevel ?? initialLandingLevel ?? 1);
   let activeSemanticView = null;
   let effectiveSemanticLevel = requestedSemanticLevel;
   if (hasAuthoredHierarchy) {
@@ -991,6 +992,15 @@ function MinimalGraphInner({
       }
     }
   }
+
+  const handleLockedLevelChange = useCallback((nextLevel) => {
+    if (nextLevel == null) {
+      const currentZoom = Number(reactFlow.getZoom?.());
+      settledViewportZoomRef.current = Number.isFinite(currentZoom) ? currentZoom : zoomLevel;
+      setUnlockedSemanticLevel(effectiveSemanticLevel);
+    }
+    setLockedLevel(nextLevel);
+  }, [effectiveSemanticLevel, reactFlow, zoomLevel]);
 
   const displayMode = (scopedTierView || drilledView || activeSemanticView) ? "semantic" : "legacy";
   const effectiveView = scopedTierView || drilledView || activeSemanticView;
@@ -1476,13 +1486,25 @@ function MinimalGraphInner({
   // Sync zoom level from ReactFlow viewport when motion settles.
   const handleMoveEnd = useCallback((_event, viewport) => {
     handleMove(_event, viewport);
-    if (programmaticMoveRef.current) return;
+    const viewportZoom = Number(viewport?.zoom);
+    const previousViewportZoom = settledViewportZoomRef.current;
+    if (Number.isFinite(viewportZoom)) settledViewportZoomRef.current = viewportZoom;
+    const programmatic = programmaticMoveRef.current || !_event;
+    if (programmatic) return;
     userOverrodeTierRef.current = true; // genuine user pan/zoom â€” they're driving now
+    if (lockedLevel == null && hasAuthoredHierarchy) {
+      setUnlockedSemanticLevel((currentLevel) => semanticLevelAfterViewportMove({
+        currentLevel: currentLevel ?? effectiveSemanticLevel,
+        viewportZoom,
+        previousViewportZoom,
+        programmatic,
+      }));
+    }
     if (autoFollowRef.current) {
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
-  }, [handleMove]);
+  }, [effectiveSemanticLevel, handleMove, hasAuthoredHierarchy, lockedLevel]);
 
   // Also sync on mount â€” fitView doesn't fire onMoveEnd
   useEffect(() => {
@@ -1628,6 +1650,94 @@ function MinimalGraphInner({
     setClickedEdge((prev) => (prev?.id === edge.id ? null : { id: edge.id, ...edge.data }));
   }, []);
 
+
+  useEffect(() => {
+    const pending = pendingKeyboardFocusRef.current;
+    if (!pending || effectiveSemanticLevel !== pending.targetLevel) return;
+    const displayedLevel = Number(
+      baseDisplayNodes[0]?.data?.fullData?.semantic_level
+        ?? baseDisplayNodes[0]?.data?.semantic_level,
+    );
+    // Controlled ReactFlow nodes trail semantic state by one render.
+    if (displayedLevel !== pending.targetLevel) return;
+    const targetVisible = baseDisplayNodes.some(
+      (node) => String(node.id) === String(pending.targetId),
+    );
+    pendingKeyboardFocusRef.current = null;
+    if (targetVisible) setNeighborhoodFocusId(pending.targetId);
+  }, [baseDisplayNodes, effectiveSemanticLevel]);
+
+  useEffect(() => {
+    if (selectedNode || !hasAuthoredHierarchy) return undefined;
+    const onKey = (event) => {
+      if (!isGraphNavigationKey(event)) return;
+      const graphOwnsKey = Boolean(
+        neighborhoodFocusId || focusNode || event.target?.closest?.(".react-flow"),
+      );
+      if (!graphOwnsKey) return;
+      const directionByKey = {
+        ArrowUp: "up",
+        ArrowDown: "down",
+        ArrowLeft: "left",
+        ArrowRight: "right",
+      };
+      const currentId = neighborhoodFocusId
+        || focusNode
+        || baseDisplayNodes[0]?.id;
+      if (!currentId) return;
+      const navigation = navigateGraphNode(
+        normalizedChunk,
+        currentId,
+        directionByKey[event.key],
+        { temporalCandidateIds: new Set(baseDisplayNodes.map((node) => String(node.id))) },
+      );
+      if (!navigation) return;
+      if (navigation.targetLevel == null) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      autoFollowRef.current = false;
+      setAutoFollow(false);
+      setSelectedCluster(null);
+      setClickedEdge(null);
+      setWeaknessFilter(null);
+      setArgumentTraceFrom?.(null);
+      setTraceBroaden(false);
+
+      const targetVisible = baseDisplayNodes.some(
+        (node) => String(node.id) === navigation.targetId,
+      );
+      const crossesTier = navigation.targetLevel !== effectiveSemanticLevel;
+      if (crossesTier || !targetVisible) {
+        pendingKeyboardFocusRef.current = {
+          targetId: navigation.targetId,
+          targetLevel: navigation.targetLevel,
+        };
+        preNeighborhoodViewportRef.current = null;
+        setNeighborhoodFocusId(null);
+        setDrilldownPath([]);
+        handleLockedLevelChange(navigation.targetLevel);
+        return;
+      }
+      if (!neighborhoodFocusId) {
+        preNeighborhoodViewportRef.current = reactFlow.getViewport?.() || null;
+      }
+      setNeighborhoodFocusId(navigation.targetId);
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => window.removeEventListener("keydown", onKey, { capture: true });
+  }, [
+    baseDisplayNodes,
+    effectiveSemanticLevel,
+    focusNode,
+    handleLockedLevelChange,
+    hasAuthoredHierarchy,
+    neighborhoodFocusId,
+    normalizedChunk,
+    reactFlow,
+    selectedNode,
+    setArgumentTraceFrom,
+  ]);
   const ZOOM_PRESETS = [
     { label: "Center", hint: "Return to a readable overview", action: () => {
       // Keep a readable zoom and anchor the camera so the TOP-LEFT
@@ -1901,7 +2011,7 @@ function MinimalGraphInner({
         autoFollowRef={autoFollowRef}
         setAutoFollow={setAutoFollow}
         userOverrodeTierRef={userOverrodeTierRef}
-        setLockedLevel={setLockedLevel}
+        setLockedLevel={handleLockedLevelChange}
         neighborhoodFocus={neighborhoodView ? {
           title: neighborhoodView.focusNode?.data?.title || "Untitled",
           directNeighborCount: neighborhoodView.directNeighborCount,
@@ -1916,7 +2026,7 @@ function MinimalGraphInner({
         selectedCluster={selectedCluster}
         selectedClusterMembers={selectedClusterMembers}
         setSelectedCluster={setSelectedCluster}
-        setLockedLevel={setLockedLevel}
+        setLockedLevel={handleLockedLevelChange}
         setSelectedNode={setSelectedNode}
       />
 

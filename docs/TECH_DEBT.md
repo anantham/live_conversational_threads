@@ -146,3 +146,14 @@ the approved algorithm is independently testable. Before adding another view
 lens, extract authored-tier view construction and camera policy behind typed
 pure inputs; preserve the v2 explicit-edge boundary and the invariant that a
 visibility toggle cannot alter layout geometry.
+
+### 2026-08-28 — Viewer navigation state remains in the graph monolith
+
+`MinimalGraph.jsx` is now about 2,059 lines. The semantic/camera decision,
+provenance rollup, and navigation candidate algorithms were contained in pure
+modules, but keyboard orchestration and pending cross-tier focus still live in
+the root component. Extract `useSemanticTierNavigation` and `useGraphKeyboard`
+before adding another navigation axis. `NodeDetail.jsx` remains about 1,133
+lines; the new source-reference fallback strengthens the existing case for an
+`EvidenceTranscript` extraction rather than adding further evidence modes
+inside the drawer.
