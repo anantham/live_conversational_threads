@@ -224,7 +224,7 @@ def _format_node_list(nodes: List[Dict[str, Any]]) -> str:
             lines.append(f"  summary: {summary}")
         evidence_ids = _node_utterance_ids(n)
         if evidence_ids:
-            shown_ids = evidence_ids[:MAX_EDGE_EVIDENCE_IDS_PER_NODE]
+            shown_ids = _prompt_visible_utterance_ids(n)
             suffix = (
                 f" (+{len(evidence_ids) - len(shown_ids)} more; prefer a lower-tier endpoint)"
                 if len(evidence_ids) > len(shown_ids)
@@ -250,6 +250,11 @@ def _node_utterance_ids(node: Any) -> List[str]:
             seen.add(identifier)
             result.append(identifier)
     return result
+
+
+def _prompt_visible_utterance_ids(node: Any) -> List[str]:
+    """Return exactly the evidence IDs disclosed to the edge-authoring model."""
+    return _node_utterance_ids(node)[:MAX_EDGE_EVIDENCE_IDS_PER_NODE]
 
 
 async def _call_enrich_llm(
@@ -433,8 +438,8 @@ def _parse_edges_response(
             # Hallucinated reference; drop.
             continue
         endpoint_evidence = [
-            *_node_utterance_ids(node_by_id.get(frm)),
-            *_node_utterance_ids(node_by_id.get(to)),
+            *_prompt_visible_utterance_ids(node_by_id.get(frm)),
+            *_prompt_visible_utterance_ids(node_by_id.get(to)),
         ]
         allowed_evidence = set(endpoint_evidence)
         authored_evidence = edge.get("supporting_utterance_ids")

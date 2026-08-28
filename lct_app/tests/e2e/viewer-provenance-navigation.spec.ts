@@ -90,6 +90,7 @@ function denseUntimedArtifact() {
  * Test intent:
  * - Unlocking a semantic tier does not let fitView camera motion choose another tier.
  * - Panning without changing zoom cannot select another semantic tier.
+ * - A user pan that interrupts Center's animation takes control immediately.
  * - Every aggregate card discloses its exact source size and opens its raw utterances.
  * - Left/Right traverses time while Up/Down traverses authored abstraction membership.
  */
@@ -183,11 +184,6 @@ test("keeps a dense untimed macro tier stable after Center then pan", async ({ p
   await expect(page.getByRole("heading", { name: "Dense unlock and pan regression" })).toBeVisible();
   await expect(page.locator(".react-flow__node")).toHaveCount(3);
 
-  await page.getByTitle("Locked to arcs — click to unlock").click();
-  await page.getByRole("button", { name: "Center", exact: true }).click();
-  await expect(page.getByTitle("Click to lock at arcs level")).toBeVisible();
-  await expect(page.locator(".react-flow__node")).toHaveCount(3);
-
   const panStart = await page.evaluate(() => {
     const pane = document.querySelector(".react-flow__pane");
     const bounds = pane?.getBoundingClientRect();
@@ -200,6 +196,23 @@ test("keeps a dense untimed macro tier stable after Center then pan", async ({ p
     return null;
   });
   expect(panStart).not.toBeNull();
+
+  // Start the drag while Center is still animating. A real pointer event must
+  // win over the programmatic settle window and disable auto-follow.
+  await page.getByRole("button", { name: "Center", exact: true }).click();
+  await page.waitForTimeout(30);
+  await page.mouse.move(panStart.x, panStart.y);
+  await page.mouse.down();
+  await page.mouse.move(panStart.x + 48, panStart.y + 8, { steps: 4 });
+  await page.mouse.up();
+  await page.getByText("Display", { exact: true }).click();
+  await expect(page.getByRole("button", { name: "Follow", exact: true })).toBeVisible();
+
+  await page.getByTitle("Locked to arcs — click to unlock").click();
+  await page.getByRole("button", { name: "Center", exact: true }).click();
+  await expect(page.getByTitle("Click to lock at arcs level")).toBeVisible();
+  await expect(page.locator(".react-flow__node")).toHaveCount(3);
+
   await page.mouse.move(panStart.x, panStart.y);
   await page.mouse.down();
   await page.mouse.move(panStart.x + 48, panStart.y + 8, { steps: 4 });

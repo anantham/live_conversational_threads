@@ -5,6 +5,8 @@
  * - The final real ReactFlow zoom becomes the next user gesture's baseline.
  * - Overlapping camera operations cannot let an older completion clear a
  *   newer operation or overwrite its settled zoom.
+ * - A real pointer/touch event remains user-driven even when it interrupts an
+ *   in-flight programmatic animation.
  */
 
 export function createViewportMotionTracker({
@@ -63,6 +65,18 @@ export function createViewportMotionTracker({
     updateSettledZoom,
     getSettledZoom: () => settledZoom,
     isActive: () => active,
+    interruptForUserGesture: (event) => {
+      if (!event) return false;
+      generation += 1;
+      active = false;
+      if (fallbackTimer != null) cancel(fallbackTimer);
+      fallbackTimer = null;
+      updateSettledZoom(getZoom?.());
+      return true;
+    },
+    // ReactFlow supplies no event for ordinary API-driven motion. Some camera
+    // paths can still surface an event-shaped settle callback, so an active
+    // operation remains programmatic until a real onMoveStart interrupts it.
     isProgrammaticEvent: (event) => active || !event,
     dispose: () => {
       generation += 1;

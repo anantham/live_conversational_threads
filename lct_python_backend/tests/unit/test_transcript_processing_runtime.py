@@ -18,6 +18,8 @@ from lct_python_backend.services.transcript.transcript_processing import Transcr
 #   copying the whole batch onto every node.
 # - Higher semantic tiers derive provenance through children during persistence;
 #   the streaming batcher must not pre-emptively over-link them.
+# - The online echo path preserves the completed slot's exact utterance ids even
+#   when its incomplete suffix changes casing or punctuation.
 def _acc_idx_complete_all(numbered_input, **kwargs):
     return (
         {"decision": "stop_accumulating", "completed_through_index": 10**9, "detected_threads": []},
@@ -321,6 +323,52 @@ async def test_batch_links_each_leaf_only_to_its_grounded_source_turns(monkeypat
         "utt-1",
         "utt-2",
     }
+
+
+@pytest.mark.asyncio
+async def test_online_echo_boundary_keeps_completed_turn_provenance(monkeypatch):
+    monkeypatch.setattr(
+        mod,
+        "accumulate_text_json",
+        lambda input_text, **kwargs: (
+            {
+                "Completed_segment": "Done.",
+                "Incomplete_segment": "TAIL!!!",
+                "decision": "stop_accumulating",
+            },
+            "online_test",
+        ),
+    )
+    monkeypatch.setattr(
+        mod,
+        "generate_lct_json",
+        lambda mod_input, **kwargs: (
+            [{
+                "id": "done-node",
+                "node_name": "Completed point",
+                "semantic_level": 1,
+                "source_excerpt": "Done",
+            }],
+            "online_test",
+        ),
+    )
+
+    processor = TranscriptProcessor(
+        send_update=None,
+        send_status=None,
+        batch_size=2,
+        llm_config={"mode": "online"},
+    )
+    graph_emitted, *_ = await processor._process_batch(
+        ["Done.", "Tail."],
+        [[], []],
+        [["utt-done"], ["utt-tail"]],
+        stop_accumulating_flag=False,
+        trigger="test",
+    )
+
+    assert graph_emitted is True
+    assert processor.existing_json[0]["utterance_ids"] == ["utt-done"]
 
 
 @pytest.mark.asyncio

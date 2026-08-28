@@ -1494,14 +1494,10 @@ function MinimalGraphInner({
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
-    let cleanup;
     const raf = requestAnimationFrame(() => {
-      cleanup = centerViewportOnNode(focusNode, { zoom: 1.15, duration: reduceMotion ? 0 : 280 });
+      centerViewportOnNode(focusNode, { zoom: 1.15, duration: reduceMotion ? 0 : 280 });
     });
-    return () => {
-      cancelAnimationFrame(raf);
-      cleanup?.();
-    };
+    return () => cancelAnimationFrame(raf);
   }, [clearNeighborhoodFocus, focusNode, centerViewportOnNode, neighborhoodView, reduceMotion]);
 
   // Sync ref with state so effects read the latest value
@@ -1514,6 +1510,10 @@ function MinimalGraphInner({
   const handleMove = useCallback((_event, viewport) => {
     if (Number.isFinite(viewport?.zoom)) setZoomLevel(viewport.zoom);
   }, []);
+
+  const handleMoveStart = useCallback((event) => {
+    viewportMotion.interruptForUserGesture(event);
+  }, [viewportMotion]);
 
   // Sync zoom level from ReactFlow viewport when motion settles.
   const handleMoveEnd = useCallback((_event, viewport) => {
@@ -1563,14 +1563,10 @@ function MinimalGraphInner({
     const last = layoutedDisplayNodes[layoutedDisplayNodes.length - 1];
     if (!last?.id) return;
 
-    const cleanup = centerViewportOnNode(last.id, {
+    centerViewportOnNode(last.id, {
       zoom: 1,
       duration: reduceMotion ? 0 : 400,
     });
-
-    return () => {
-      cleanup?.();
-    };
   }, [autoFollow, centerViewportOnNode, lastNodeId, layoutedDisplayNodes, reduceMotion, selectedNode]);
 
   // Center selected node when chosen from timeline or graph.
@@ -1584,18 +1580,13 @@ function MinimalGraphInner({
     }
     if (!selectedNode || !selectedLayoutNode?.position) return undefined;
 
-    let cleanup;
     const raf = requestAnimationFrame(() => {
-      cleanup = centerViewportOnNode(selectedNode, {
+      centerViewportOnNode(selectedNode, {
         zoom: 1.15,
         duration: reduceMotion ? 0 : 280,
       });
     });
-
-    return () => {
-      cancelAnimationFrame(raf);
-      cleanup?.();
-    };
+    return () => cancelAnimationFrame(raf);
   }, [centerViewportOnNode, clearNeighborhoodFocus, neighborhoodView, reduceMotion, selectedLayoutNode, selectedNode, viewportReservationKey]);
 
   // Cluster detail panel state
@@ -1898,6 +1889,7 @@ function MinimalGraphInner({
         onKeyDownCapture={handleNodeKeyDownCapture}
         onPaneClick={handlePaneClick}
         onEdgeClick={handleEdgeClick}
+        onMoveStart={handleMoveStart}
         onMove={handleMove}
         onMoveEnd={handleMoveEnd}
         onEdgeMouseEnter={(_, edge) => setHoveredEdge(edge.data)}

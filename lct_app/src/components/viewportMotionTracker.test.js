@@ -48,4 +48,20 @@ describe("programmatic viewport motion tracker", () => {
     expect(tracker.getSettledZoom()).toBe(1.15);
     tracker.dispose();
   });
+
+  it("keeps an interrupting pointer gesture user-driven during animation", () => {
+    vi.useFakeTimers();
+    const tracker = createViewportMotionTracker({ getZoom: () => 0.9 });
+
+    tracker.run(() => undefined, { expectedZoom: 0.85, duration: 300 });
+
+    expect(tracker.isActive()).toBe(true);
+    expect(tracker.isProgrammaticEvent(null)).toBe(true);
+    expect(tracker.interruptForUserGesture({ type: "pointerdown" })).toBe(true);
+    expect(tracker.isActive()).toBe(false);
+    expect(tracker.isProgrammaticEvent({ type: "pointerup" })).toBe(false);
+
+    tracker.dispose();
+    vi.useRealTimers();
+  });
 });

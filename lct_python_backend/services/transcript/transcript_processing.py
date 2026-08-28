@@ -36,6 +36,7 @@ from .transcript_normalizer import (  # noqa: F401
 from .transcript_identity import canonicalize_batch_node_ids
 from lct_python_backend.services.provenance_linking import (
     assign_grounded_leaf_utterance_ids,
+    normalize_provenance_text,
 )
 
 # ---------------------------------------------------------------------------
@@ -123,8 +124,9 @@ class TranscriptProcessor:
         """Return the backend label of the last successful LLM call."""
         return self._last_llm_backend
 
-    @staticmethod
+    @classmethod
     def _split_segments_for_completed_chunk(
+        cls,
         text_batch: List[str],
         segment_batch: List[List[Dict[str, Any]]],
         completed_text: str,
@@ -145,25 +147,24 @@ class TranscriptProcessor:
         if stop_accumulating_flag or not str(incomplete_text or "").strip():
             return flattened_segments, []
 
-        input_text = " ".join(text_batch)
-        completed_chars = max(0, len(input_text) - len(str(incomplete_text or "")))
-        if completed_chars <= 0:
+        completed_slot_count = cls._completed_slot_count(text_batch, incomplete_text)
+        if completed_slot_count <= 0:
             return [], [flattened_segments]
 
-        completed_segments: List[Dict[str, Any]] = []
-        carryover_segments: List[Dict[str, Any]] = []
-        consumed_chars = 0
-
-        for segment in flattened_segments:
-            segment_text = str(segment.get("text", "")).strip()
-            segment_len = len(segment_text)
-            segment_cost = segment_len + (1 if segment_len > 0 else 0)
-
-            if consumed_chars + segment_len <= completed_chars:
-                completed_segments.append(segment)
-            else:
-                carryover_segments.append(segment)
-            consumed_chars += segment_cost
+        completed_segments = [
+            segment
+            for slot in segment_batch[:completed_slot_count]
+            if isinstance(slot, list)
+            for segment in slot
+            if isinstance(segment, dict)
+        ]
+        carryover_segments = [
+            segment
+            for slot in segment_batch[completed_slot_count:]
+            if isinstance(slot, list)
+            for segment in slot
+            if isinstance(segment, dict)
+        ]
 
         if completed_segments:
             return completed_segments, [carryover_segments] if carryover_segments else []
@@ -177,30 +178,42 @@ class TranscriptProcessor:
     ) -> int:
         """Return the number of leading transcript slots that were completed.
 
-        The accumulator's online path can return a verbatim incomplete suffix
-        instead of an index. Mirror the existing speaker-segment split by
-        comparing its character budget to the original joined fragments.
+        The accumulator's online path can return an incomplete suffix instead
+        of an index. Locate that suffix in the same normalized comparison space
+        used for provenance, so harmless casing/spacing/punctuation changes do
+        not move the boundary. An unlocatable suffix fails closed to zero slots.
         """
         if not text_batch:
             return 0
-        incomplete = str(incomplete_text or "").strip()
+        incomplete = normalize_provenance_text(incomplete_text)
         if not incomplete:
             return len(text_batch)
-        input_text = " ".join(text_batch)
-        completed_chars = max(0, len(input_text) - len(incomplete))
-        if completed_chars <= 0:
+
+        normalized_fragments = [normalize_provenance_text(fragment) for fragment in text_batch]
+        fragment_spans: List[Tuple[int, int, int]] = []
+        transcript_parts: List[str] = []
+        cursor = 0
+        for index, fragment in enumerate(normalized_fragments):
+            if not fragment:
+                fragment_spans.append((index, cursor, cursor))
+                continue
+            if transcript_parts:
+                cursor += 1
+            start = cursor
+            transcript_parts.append(fragment)
+            cursor += len(fragment)
+            fragment_spans.append((index, start, cursor))
+
+        normalized_input = " ".join(transcript_parts)
+        suffix_start = normalized_input.rfind(incomplete)
+        if suffix_start < 0 or suffix_start + len(incomplete) != len(normalized_input):
             return 0
 
         completed = 0
-        consumed_chars = 0
-        for fragment in text_batch:
-            fragment_text = str(fragment or "").strip()
-            fragment_len = len(fragment_text)
-            if consumed_chars + fragment_len <= completed_chars:
-                completed += 1
-            else:
+        for index, _start, end in fragment_spans:
+            if end > suffix_start:
                 break
-            consumed_chars += fragment_len + (1 if fragment_len else 0)
+            completed = index + 1
         return completed
 
     async def _emit_status(self, level: str, message: str, context: Optional[Dict[str, Any]] = None) -> None:

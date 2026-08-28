@@ -7,6 +7,8 @@
 - The exported marker is content-free and independently consumable.
 """
 
+import json
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -106,6 +108,26 @@ def test_parser_does_not_mislabel_a_broad_source_set_as_edge_specific_evidence()
     ]
     raw = """{"edges":[{"from_node_id":"theme-b","to_node_id":"claim-a",
       "relation_type":"supports"}]}"""
+
+    [edge] = edge_enrichment._parse_edges_response(raw, nodes=nodes)
+
+    assert edge["supporting_utterance_ids"] == []
+
+
+def test_parser_rejects_endpoint_evidence_that_was_not_shown_to_the_model():
+    hidden_turn = "u-13"
+    nodes = [
+        {"id": "claim-a"},
+        {"id": "theme-b", "utterance_ids": [f"u-{index}" for index in range(1, 14)]},
+    ]
+    raw = json.dumps({
+        "edges": [{
+            "from_node_id": "theme-b",
+            "to_node_id": "claim-a",
+            "relation_type": "supports",
+            "supporting_utterance_ids": [hidden_turn],
+        }],
+    })
 
     [edge] = edge_enrichment._parse_edges_response(raw, nodes=nodes)
 

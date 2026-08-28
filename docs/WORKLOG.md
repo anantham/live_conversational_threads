@@ -4461,3 +4461,35 @@ Manual testing not run:
   contract and enrichment/adapters, node evidence UI, focused tests, ADR-032,
   issues, and tech debt. Independent different-family review follows before
   completion.
+
+### 2026-08-29 — Independent-review hardening pass
+
+- Direct Claude Sonnet reviewed the exact PR diff with repository tools
+  disabled. It found no critical/high defects and raised four candidates. Code
+  inspection confirmed the carryover-boundary, prompt-visible edge-evidence,
+  and dead-cleanup findings. Its camera recommendation was only partially
+  correct: classifying every event-shaped callback as human input made a later
+  programmatic re-center select the moments tier in Chromium.
+- The camera contract now treats a real `onMoveStart` as an explicit
+  interruption: it invalidates the active camera generation and snapshots the
+  gesture's starting zoom. `onMoveEnd` retains conservative programmatic
+  classification for active/no-event settles. The focused browser test begins
+  a drag 30 ms into Center's animation and verifies that human control wins;
+  the full source/keyboard journey verifies later reframes remain semantic-tier
+  stable.
+- Online accumulator suffixes are located in normalized provenance text rather
+  than by raw character subtraction. Speaker segments and utterance IDs now use
+  the same slot boundary, and an unlocatable suffix fails closed to zero
+  completed slots. Edge citations are accepted only from the exact capped ID
+  set shown to the model. Vestigial camera cleanup callbacks were removed.
+- Focused validation: viewport tracker 3/3, Chromium viewer journeys 2/2, and
+  transcript/topology backend tests 46/46. The first parallel Chromium run was
+  intentionally treated as falsification evidence: the new overlap case passed
+  while the older journey exposed the over-broad event-only classifier; both
+  passed serially after the interruption-state repair.
+- Full validation: frontend Vitest 304/304 and production build passed; scoped
+  source ESLint passed (the Playwright TypeScript file is outside that ESLint
+  config and was executed directly). Backend unit tests passed 1950 cases with
+  the same single pre-existing OpenAI 1.54/httpx 0.28 `proxies=` constructor
+  mismatch documented above; it fails before the egress assertion reaches
+  project code.
