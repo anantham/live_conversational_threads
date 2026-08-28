@@ -253,6 +253,8 @@ Your job:
   - tangent
   - return_to_thread
 
+""" + _SOURCE_EVIDENCE_SPEC + """
+
 Output requirements:
 - Return only JSON.
 - Preferred shape: {"nodes": [ ... ]}. A bare JSON array is also acceptable.

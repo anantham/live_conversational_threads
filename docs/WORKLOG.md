@@ -4451,7 +4451,11 @@ Manual testing not run:
   versus the old median 35 IDs. Managed and fallback local/online hierarchy
   prompts now require an exact contiguous verbatim leaf excerpt, no speaker
   prefix or grammar repair, and empty evidence on uncertainty. The canonical
-  focused prompt/provenance/topology suite passed 33/33 after this addition.
+  focused prompt/provenance/topology suite passed 34/34 after this addition. A
+  local audit found that the primary local/online fallbacks carried the
+  contract but the refinement fallback did not; the same contract is now
+  concatenated into that fallback and covered through the public prompt
+  resolver.
 - **Files:** `MinimalGraph.jsx`, `viewportMotionTracker.js`,
   `provenance_linking.py`, transcript prompt/processing/persistence, edge
   contract and enrichment/adapters, node evidence UI, focused tests, ADR-032,

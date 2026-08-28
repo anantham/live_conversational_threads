@@ -85,6 +85,22 @@ def test_hierarchy_prompt_adds_graph_contracts_to_managed_template(monkeypatch):
     assert "empty source_excerpt" in prompt_text
 
 
+def test_refinement_fallback_prompt_keeps_exact_source_contract(monkeypatch):
+    class _BrokenPromptManager:
+        def get_prompt(self, prompt_name):
+            raise RuntimeError(f"managed prompt unavailable: {prompt_name}")
+
+    monkeypatch.setattr(prompt_module, "get_prompt_manager", lambda: _BrokenPromptManager())
+
+    prompt_text = prompt_module.get_transcript_prompt_text(
+        prompt_module.PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS
+    )
+
+    assert "Source-evidence contract" in prompt_text
+    assert "exact contiguous" in prompt_text
+    assert "empty source_excerpt" in prompt_text
+
+
 def test_generate_lct_json_local_uses_managed_prompt(monkeypatch):
     captured = {}
 
