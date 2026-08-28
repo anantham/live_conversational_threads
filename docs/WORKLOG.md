@@ -4244,3 +4244,65 @@ Manual testing not run:
   tests passed, production build passed, and the post-edit Impeccable detector
   returned `[]`. Existing React `act(...)`, worktree Fontsource allow-list, and
   large-chunk warnings remain unchanged and are not regressions from this slice.
+
+## 2026-08-27 — Node-centred one-hop relationship view
+
+- **Issue:** the timeline permanently coached obvious hover/resize gestures,
+  while graph-card click overloaded hierarchy drill and detail selection. Dense
+  tiers therefore showed every edge at once and offered no way to ask “what is
+  directly related to this node?”
+- **Confirmed root cause:** `TimelineRibbon.jsx` rendered fallback instruction
+  text at rest; `MinimalGraph.jsx` routed card click to `handleExpand` or
+  `handleOpenDetails`; the full current tier and all visible edges remained in
+  the ReactFlow render. `DEFAULT_COLOR_MODE` was `thread`, contradicting
+  ADR-011 and the speaker legend.
+- **Implementation:** added pure `graphNeighborhoodFocus.js` to project the
+  current tier to one semantic hop and deterministically place incoming/focus/
+  outgoing bands. `MinimalGraph.jsx` now keeps neighborhood focus distinct from
+  drawer selection, hierarchy drill, weakness lenses and argument trace; it
+  captures/restores the desktop viewport, keeps hidden-edge topology available,
+  and exposes a compact `Related to … / Show all` state. `ConversationNode.jsx`
+  exposes Details on leaves and marks the focused card without replacing its
+  fill. Timeline fallback coaching is gone. Speaker is the unsaved color
+  default; mixed-speaker aggregate cards use a deterministic mixed fill.
+- **Tests:** added pure one-hop/direction/temporal/bidirectional cases, node-card
+  regressions, timeline-resting-copy coverage, color-default/mixed-speaker
+  coverage, and a Playwright flow proving 4 nodes/4 edges become 3/2 around a
+  selected arc, Details stays independent, and Show all restores 4/4.
+- **Files:** `MinimalGraph.jsx`, `graphNeighborhoodFocus.js` and test,
+  `TimelineRibbon.jsx` and test, `graph/ConversationNode.jsx` and test,
+  `graph/MinimalGraphHud.jsx`, `graph/colorModes.js` and test,
+  `tests/e2e/threads-viewer-responsive.spec.ts`, Test Intent, ADR-011, ADR-032,
+  TECH_DEBT, and this worklog.
+- **Non-blocking pre-existing issue found:** the full responsive suite exposed a
+  Center/HUD timing race: ReactFlow reached 98% while the HUD percentage had not
+  caught up inside the assertion window. The old test passes alone; the new
+  focus scenario passes both alone and in the full run. Logged in `ISSUES.md`
+  for a separate camera-state repair rather than changing unrelated behavior.
+- **Final validation:** 279/279 frontend unit tests passed; changed-file ESLint
+  passed; the production build passed; and the new node-neighborhood Playwright
+  scenario passed. The serial responsive suite passed 4/5 scenarios, with only
+  the separately logged pre-existing Center/HUD timing race failing.
+
+## 2026-08-27 — Independent-review hardening for node-centred focus
+
+- Claude's bounded review of PR #179 requested changes for external navigation
+  targeting a node outside the active one-hop projection. The trace confirmed
+  that `selectedNode`/`focusNode` camera lookup searched only `displayNodes`, so
+  the target could remain filtered out with no visible response.
+- `MinimalGraph.jsx` now dismisses the temporary projection before timeline,
+  search, or detail navigation centres an outside node. ReactFlow's focusable
+  card wrapper also maps Enter/Space through the same focus action as pointer
+  activation. Each wrapper receives a descriptive relationship-focus label.
+- Automatic relationship/trace framing is keyed to focus identity and reads the
+  latest node set through a ref, so speaker/color refreshes no longer overwrite
+  a reader-adjusted camera. The mutually exclusive weakness/trace reset is now
+  explicit in ADR-032 rather than an undocumented side effect.
+- The HUD focus message is a polite live region, includes truthful zero-neighbour
+  copy coverage, and its mobile `Show all` target now meets 44px.
+- Evidence: 280/280 frontend unit tests passed, changed-file ESLint passed, the
+  production build passed, and isolated Chromium checks passed for phone touch
+  sizing plus pointer/keyboard focus, camera preservation, and outside-timeline
+  navigation. The first browser attempt reused a stale main-checkout server that
+  rejected v2 fixtures; an isolated worktree server falsified that environment
+  issue without stopping the user's existing server.

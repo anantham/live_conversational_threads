@@ -511,3 +511,51 @@ remains internal at that zoom—even when their secondary memberships also have
 non-overlapping pairs. Keeping only those pairs would manufacture cross-arc
 claims from classification overlap rather than preserve the authored relation.
 Unmapped edges are surfaced as an artifact-quality signal.
+
+## Amendment — 2026-08-27: node-centred one-hop relationship projection
+
+**Status:** Approved by the operator for the beta viewer.
+
+The complete tier remains the canonical overview, but dense graphs need a
+question-relative reading mode. Clicking or tapping a conversational node now
+projects the current tier to that node, every directly connected semantic
+neighbour, and only edges incident to the selected node. Unrelated nodes and
+neighbour-to-neighbour edges are temporarily omitted rather than dimmed. The
+projection consumes the current tier's already-derived quotient edges; it does
+not reinterpret child edges, run another model, or mutate the artifact.
+
+Incoming neighbours are placed above the selected node and outgoing-only
+neighbours below it, matching the renderer's directed top/bottom handles.
+Desktop keeps each directional band unwrapped and pannable at readable scale;
+compact screens use one card per row. A reciprocal neighbour appears once while
+both authored directed edges remain visible. Purely temporal adjacency does not
+qualify as a semantic neighbour. An isolated node is shown honestly by itself.
+
+The interaction contract is deliberately orthogonal:
+
+- card body: re-root the one-hop relationship projection;
+- `Expand`: descend the authored hierarchy;
+- `Details`: open provenance and node details, including for leaf nodes;
+- `Show all`, empty-canvas click, or Escape: return to the full tier.
+
+Keyboard Enter/Space on a focused card is equivalent to card-body activation.
+The focus-state message is a polite live region and its mobile exit respects the
+44px touch-target floor. Timeline, search, or detail navigation to a node outside
+the active one-hop set first restores the complete tier and then centres the
+requested node; navigation must never silently target a filtered-out card.
+
+Neighbourhood focus, weakness lenses, and argument trace are alternative reader
+questions rather than composable filters. Starting relationship focus clears the
+other two. Presentation-only changes such as color mode must preserve a reader's
+manual pan and zoom; automatic framing runs when the analytic focus identity
+changes, not whenever node presentation data is refreshed.
+
+The desktop viewer restores the pre-projection viewport when returning. Tier,
+breadcrumb, and argument-trace transitions discard that saved viewport because
+their own camera policy must frame the new semantic state.
+
+Speaker identity is again the default node-fill channel promised by ADR-011.
+Single-speaker nodes use that speaker's fill; multi-speaker aggregates use a
+deterministic mixed fill instead of falsely assigning one owner. A persisted
+reader-selected color lens still overrides the default. Edge color continues to
+encode relation family.

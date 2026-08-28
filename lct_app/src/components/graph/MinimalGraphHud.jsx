@@ -29,6 +29,8 @@ export default function MinimalGraphHud({
   setAutoFollow,
   userOverrodeTierRef,
   setLockedLevel,
+  neighborhoodFocus,
+  clearNeighborhoodFocus,
 }) {
   const tierSpecs = displayMode === "semantic" ? AUTHORED_LEVELS : LEGACY_TIER_SPECS;
   const visibleSemanticLevel = Number(
@@ -117,6 +119,7 @@ export default function MinimalGraphHud({
             className="flex items-center gap-1 rounded bg-gray-100 border border-gray-300 px-2 py-0.5 font-semibold text-gray-700 hover:bg-gray-200 hover:text-gray-900 cursor-pointer"
             onClick={() => {
               autoFollowRef.current = false;
+              clearNeighborhoodFocus?.(false);
               setDrilldownPath((prev) => prev.slice(0, -1));
             }}
             title="Back up one level (Esc)"
@@ -128,6 +131,7 @@ export default function MinimalGraphHud({
             className="text-blue-600 hover:underline font-medium cursor-pointer"
             onClick={() => {
               autoFollowRef.current = false;
+              clearNeighborhoodFocus?.(false);
               setDrilldownPath([]);
             }}
             title="Jump back to the top tier"
@@ -147,6 +151,7 @@ export default function MinimalGraphHud({
                 onClick={() => {
                   if (idx === drilldownPath.length - 1) return;
                   autoFollowRef.current = false;
+                  clearNeighborhoodFocus?.(false);
                   setDrilldownPath((prev) => prev.slice(0, idx + 1));
                 }}
                 title={crumb.nodeName}
@@ -172,6 +177,7 @@ export default function MinimalGraphHud({
               onClick={() => {
                 autoFollowRef.current = false;
                 setAutoFollow(false);
+                clearNeighborhoodFocus?.(false);
                 userOverrodeTierRef.current = true;
                 mglog("tier button click", { clickedLevel: level, label, prevLockedLevel: lockedLevel, displayMode, willUnlock: lockedLevel === level, drillDepth: drilldownPath.length });
                 const tailLevel = drilldownPath.length
@@ -200,6 +206,31 @@ export default function MinimalGraphHud({
           );
         })}
       </div>
+
+      {neighborhoodFocus ? (
+        <div
+          data-testid="neighborhood-focus-status"
+          role="status"
+          aria-live="polite"
+          className="flex min-h-11 min-w-0 flex-shrink items-center gap-2 rounded-md border border-amber-300 bg-amber-50/95 px-2.5 py-1.5 text-[10px] text-amber-950 shadow-sm sm:min-h-0"
+        >
+          <span className="min-w-0 truncate font-semibold" title={neighborhoodFocus.title}>
+            Related to: {neighborhoodFocus.title}
+          </span>
+          <span className="shrink-0 text-amber-700">
+            {neighborhoodFocus.directNeighborCount > 0
+              ? `${neighborhoodFocus.directNeighborCount} direct ${neighborhoodFocus.directNeighborCount === 1 ? "link" : "links"}`
+              : "No direct semantic links at this level"}
+          </span>
+          <button
+            type="button"
+            onClick={() => clearNeighborhoodFocus?.()}
+            className="ml-auto min-h-11 shrink-0 rounded border border-amber-300 bg-white px-2 font-semibold text-amber-800 hover:bg-amber-100 sm:min-h-0 sm:py-0.5"
+          >
+            Show all
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -229,4 +260,9 @@ MinimalGraphHud.propTypes = {
   setAutoFollow: PropTypes.func.isRequired,
   userOverrodeTierRef: PropTypes.shape({ current: PropTypes.bool }).isRequired,
   setLockedLevel: PropTypes.func.isRequired,
+  neighborhoodFocus: PropTypes.shape({
+    title: PropTypes.string.isRequired,
+    directNeighborCount: PropTypes.number.isRequired,
+  }),
+  clearNeighborhoodFocus: PropTypes.func,
 };
