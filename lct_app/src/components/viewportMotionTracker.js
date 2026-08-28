@@ -7,6 +7,7 @@
  *   newer operation or overwrite its settled zoom.
  * - A real pointer/touch event remains user-driven even when it interrupts an
  *   in-flight programmatic animation.
+ * - An unknown expected zoom never becomes a fabricated zero baseline.
  */
 
 export function createViewportMotionTracker({
@@ -21,6 +22,7 @@ export function createViewportMotionTracker({
   let fallbackTimer = null;
 
   const updateSettledZoom = (zoom) => {
+    if (zoom == null || zoom === "") return settledZoom;
     const numericZoom = Number(zoom);
     if (Number.isFinite(numericZoom)) settledZoom = numericZoom;
     return settledZoom;

@@ -64,4 +64,45 @@ describe("programmatic viewport motion tracker", () => {
     tracker.dispose();
     vi.useRealTimers();
   });
+
+  it("does not invent a zero baseline when fitView has no expected zoom", () => {
+    vi.useFakeTimers();
+    let actualZoom = Number.NaN;
+    const tracker = createViewportMotionTracker({ getZoom: () => actualZoom });
+
+    tracker.run(() => undefined, { duration: 300 });
+    expect(tracker.getSettledZoom()).toBeNull();
+
+    actualZoom = 0.93;
+    vi.advanceTimersByTime(420);
+    expect(tracker.getSettledZoom()).toBe(0.93);
+
+    tracker.dispose();
+    vi.useRealTimers();
+  });
+
+  it("ignores stale completion after a user interrupts camera motion", async () => {
+    vi.useFakeTimers();
+    let actualZoom = 0.85;
+    let resolveOperation;
+    const operation = new Promise((resolve) => { resolveOperation = resolve; });
+    const tracker = createViewportMotionTracker({ getZoom: () => actualZoom });
+
+    tracker.run(() => operation, { expectedZoom: 0.85, duration: 300 });
+    actualZoom = 0.91;
+    tracker.interruptForUserGesture({ type: "pointerdown" });
+    expect(tracker.getSettledZoom()).toBe(0.91);
+
+    actualZoom = 0.4;
+    resolveOperation();
+    await operation;
+    await Promise.resolve();
+    vi.runAllTimers();
+
+    expect(tracker.isActive()).toBe(false);
+    expect(tracker.getSettledZoom()).toBe(0.91);
+
+    tracker.dispose();
+    vi.useRealTimers();
+  });
 });

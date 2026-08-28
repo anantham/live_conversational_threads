@@ -4493,3 +4493,31 @@ Manual testing not run:
   the same single pre-existing OpenAI 1.54/httpx 0.28 `proxies=` constructor
   mismatch documented above; it fails before the egress assertion reaches
   project code.
+
+### 2026-08-29 — Grok final-review camera hardening
+
+- Independent xAI/Grok 4.6 review of the exact `origin/main...003bb22` diff
+  identified three supported camera-test gaps and one disputed online-flush
+  claim.
+- Fixed the supported findings:
+  - `viewportMotionTracker` no longer coerces an omitted `expectedZoom` from
+    `null` to a fabricated zero baseline.
+  - `MinimalGraph.handleMoveEnd` now classifies programmatic motion before it
+    records a settled zoom, leaving programmatic completion writes inside the
+    generation-checked tracker lifecycle.
+  - The Chromium regression now unlocks the semantic tier before interrupting
+    Center at 30 ms and verifies the three-node arc tier both immediately and
+    after the original animation settle window.
+  - Tracker tests cover omitted expected zoom and a stale promise completion
+    after a real pointer interruption.
+- Falsified the claimed online force-flush loss rather than changing correct
+  code: the online branch clears `incomplete_seg` before slot accounting, so
+  `_completed_slot_count(..., "")` selects the complete batch. A new public-path
+  regression proves the forced batch emits the tail node with `utt-tail`, an
+  empty incomplete suffix, and no carryover.
+- Focused validation: viewport tracker 5/5, online provenance/flush 2/2, and
+  Chromium provenance/navigation 2/2.
+- Full validation after repair: frontend Vitest 306/306, production build and
+  scoped ESLint passed; backend unit tests passed 1951 cases with only the same
+  established OpenAI 1.54/httpx 0.28 `proxies=` environment mismatch failing
+  before project code.

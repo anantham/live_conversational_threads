@@ -372,6 +372,55 @@ async def test_online_echo_boundary_keeps_completed_turn_provenance(monkeypatch)
 
 
 @pytest.mark.asyncio
+async def test_online_force_flush_keeps_every_remaining_utterance_id(monkeypatch):
+    """A terminal flush overrides an online model's stale incomplete suffix."""
+    monkeypatch.setattr(
+        mod,
+        "accumulate_text_json",
+        lambda input_text, **kwargs: (
+            {
+                "Completed_segment": "Done.",
+                "Incomplete_segment": "Tail.",
+                "decision": "continue_accumulating",
+            },
+            "online_test",
+        ),
+    )
+    monkeypatch.setattr(
+        mod,
+        "generate_lct_json",
+        lambda mod_input, **kwargs: (
+            [{
+                "id": "tail-node",
+                "node_name": "Flushed tail",
+                "semantic_level": 1,
+                "source_excerpt": "Tail",
+            }],
+            "online_test",
+        ),
+    )
+
+    processor = TranscriptProcessor(
+        send_update=None,
+        send_status=None,
+        batch_size=2,
+        llm_config={"mode": "online"},
+    )
+    graph_emitted, _continue, incomplete, carryover = await processor._process_batch(
+        ["Done.", "Tail."],
+        [[], []],
+        [["utt-done"], ["utt-tail"]],
+        stop_accumulating_flag=True,
+        trigger="flush_segment",
+    )
+
+    assert graph_emitted is True
+    assert incomplete == ""
+    assert carryover == []
+    assert processor.existing_json[0]["utterance_ids"] == ["utt-tail"]
+
+
+@pytest.mark.asyncio
 async def test_generation_failure_retains_batch_for_later_retry(monkeypatch):
     """A provider failure must not silently acknowledge completed turns."""
     monkeypatch.setattr(mod, "accumulate_text_json_local_indexed", _acc_idx_complete_all)

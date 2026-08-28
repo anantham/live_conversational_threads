@@ -1519,10 +1519,10 @@ function MinimalGraphInner({
   const handleMoveEnd = useCallback((_event, viewport) => {
     handleMove(_event, viewport);
     const viewportZoom = Number(viewport?.zoom);
-    const previousViewportZoom = viewportMotion.getSettledZoom();
-    viewportMotion.updateSettledZoom(viewportZoom);
     const programmatic = viewportMotion.isProgrammaticEvent(_event);
     if (programmatic) return;
+    const previousViewportZoom = viewportMotion.getSettledZoom();
+    viewportMotion.updateSettledZoom(viewportZoom);
     userOverrodeTierRef.current = true; // genuine user pan/zoom â€” they're driving now
     if (lockedLevel == null && hasAuthoredHierarchy) {
       setUnlockedSemanticLevel((currentLevel) => semanticLevelAfterViewportMove({

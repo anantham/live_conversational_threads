@@ -197,27 +197,23 @@ test("keeps a dense untimed macro tier stable after Center then pan", async ({ p
   });
   expect(panStart).not.toBeNull();
 
-  // Start the drag while Center is still animating. A real pointer event must
-  // win over the programmatic settle window and disable auto-follow.
+  await page.getByTitle("Locked to arcs — click to unlock").click();
+  await expect(page.getByTitle("Click to lock at arcs level")).toBeVisible();
+
+  // Start the drag while Center is still animating and the semantic tier is
+  // unlocked. A real pointer event must win over the programmatic settle
+  // window without the stale completion selecting another tier.
   await page.getByRole("button", { name: "Center", exact: true }).click();
   await page.waitForTimeout(30);
   await page.mouse.move(panStart.x, panStart.y);
   await page.mouse.down();
   await page.mouse.move(panStart.x + 48, panStart.y + 8, { steps: 4 });
   await page.mouse.up();
+  await expect(page.locator(".react-flow__node")).toHaveCount(3);
+  await page.waitForTimeout(500);
+  await expect(page.locator(".react-flow__node")).toHaveCount(3);
+  await expect(page.getByTitle("Click to lock at arcs level")).toBeVisible();
+
   await page.getByText("Display", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Follow", exact: true })).toBeVisible();
-
-  await page.getByTitle("Locked to arcs — click to unlock").click();
-  await page.getByRole("button", { name: "Center", exact: true }).click();
-  await expect(page.getByTitle("Click to lock at arcs level")).toBeVisible();
-  await expect(page.locator(".react-flow__node")).toHaveCount(3);
-
-  await page.mouse.move(panStart.x, panStart.y);
-  await page.mouse.down();
-  await page.mouse.move(panStart.x + 48, panStart.y + 8, { steps: 4 });
-  await page.mouse.up();
-
-  await expect(page.locator(".react-flow__node")).toHaveCount(3);
-  await expect(page.getByTitle("Click to lock at arcs level")).toBeVisible();
 });
