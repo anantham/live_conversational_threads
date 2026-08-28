@@ -1,6 +1,33 @@
 # ISSUES
 
-Last updated: 2026-08-26
+Last updated: 2026-08-28
+
+## 2026-08-28 — Live smoke searched speaker legend instead of conversation cards (REPAIRED)
+
+**Summary:** The deployment-triggered production smoke for merge commit
+`5b673f0` failed because `getByText('Speaker One')` searched the entire DOM.
+The speaker-colour legend intentionally retains participant names, including
+while its Display disclosure is closed. The rendered conversation card itself
+contained only coloured turn markers and utterance text, which is the actual
+product contract the test intended to protect.
+
+**Impact:** The production viewer was healthy and seven of eight live smoke
+journeys passed, but the false-positive assertion made the release signal red.
+It could also encourage removing useful legend information to satisfy a test
+whose scope contradicted its stated intent.
+
+**Blocker status:** Repaired in the smoke harness. This was blocking truthful
+post-deploy verification, not a production rendering defect.
+
+**Resolution:** Scope the no-visible-speaker-name assertion to
+`.lct-conversation-node`, explicitly assert that the fixture's three cards and
+scoped utterance rendered, and keep the separate `data-speaker-id` assertion.
+The speaker-colour semantics therefore remain machine-verifiable without
+rendering the participant name inside a turn summary.
+
+**Recommended next step:** Run the focused assertion and complete production
+suite against the live domain, independently review the exact test/docs diff,
+then ship and require the deployment-triggered smoke to return green.
 
 ## 2026-08-26 — Drive-backed viewer needs a Google Web OAuth client
 
