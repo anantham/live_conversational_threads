@@ -2,6 +2,7 @@ import { memo } from "react";
 import PropTypes from "prop-types";
 import { Handle, Position } from "reactflow";
 import SpeakerTurnSummary from "./SpeakerTurnSummary";
+import { formatDurationCompact } from "../graphProvenance";
 
 /**
  * Custom React Flow node renderer per ADR-030 §D4.
@@ -155,6 +156,7 @@ function ConversationNodeImpl({ data, selected }) {
     argumentRole = null,
     rhetoricFlags = [],
     argStatusLabel = null,
+    provenanceMetrics = null,
     isNeighborhoodFocus = false,
     showSummary = true,
     summaryMaxLength = 500,
@@ -215,6 +217,10 @@ function ConversationNodeImpl({ data, selected }) {
   const hasVisibleSpeakerTurns = speakerTurns.some(
     (turn) => String(turn?.text || "").trim().length > 0
   );
+  const matchedSourceCount = Number(
+    provenanceMetrics?.matched_utterance_count ?? provenanceMetrics?.utterance_count,
+  ) || 0;
+  const hasAuditableSource = matchedSourceCount > 0;
 
   return (
     <div
@@ -246,6 +252,7 @@ function ConversationNodeImpl({ data, selected }) {
       <MarkerStrip markers={dimensionMarkers} />
       <RhetoricStrip argumentRole={argumentRole} flags={rhetoricFlags} />
       {argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
+      <ProvenanceMetricStrip metrics={provenanceMetrics} />
       {!hasVisibleSpeakerTurns && speakerLabel && (
         <div style={speakerStyle}>{speakerLabel}</div>
       )}
@@ -253,7 +260,12 @@ function ConversationNodeImpl({ data, selected }) {
       {(canExpand || onOpenDetails) && (
         <div style={cardFooterStyle}>
           {canExpand && <ExpandButton count={expandCount} onExpand={onExpand} />}
-          {onOpenDetails && <DetailsButton onOpenDetails={onOpenDetails} />}
+          {onOpenDetails && (
+            <DetailsButton
+              onOpenDetails={onOpenDetails}
+              sourceLinked={hasAuditableSource}
+            />
+          )}
         </div>
       )}
 
@@ -323,15 +335,59 @@ const cardFooterStyle = {
   marginTop: "8px",
 };
 
+function ProvenanceMetricStrip({ metrics }) {
+  const referencedCount = Number(metrics?.utterance_count) || 0;
+  const matchedCount = Number(
+    metrics?.matched_utterance_count ?? metrics?.utterance_count,
+  ) || 0;
+  const wordCount = Number(metrics?.word_count) || 0;
+  const duration = formatDurationCompact(metrics?.duration_seconds);
+  const parts = [
+    wordCount > 0 ? `${wordCount.toLocaleString()} ${wordCount === 1 ? "word" : "words"}` : null,
+    duration ? `${duration} span` : null,
+    referencedCount > matchedCount
+      ? `${matchedCount.toLocaleString()} of ${referencedCount.toLocaleString()} turns linked`
+      : matchedCount > 0
+      ? `${matchedCount.toLocaleString()} ${matchedCount === 1 ? "turn" : "turns"}`
+      : null,
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  const incomplete = referencedCount > matchedCount;
+  return (
+    <div
+      data-testid="provenance-metrics"
+      title={incomplete
+        ? "Transcript source linkage is incomplete in this artifact"
+        : "Exact transcript material aggregated into this node"}
+      style={provenanceMetricStyle}
+    >
+      {parts.join(" · ")}
+    </div>
+  );
+}
+
+ProvenanceMetricStrip.propTypes = {
+  metrics: PropTypes.shape({
+    utterance_count: PropTypes.number,
+    matched_utterance_count: PropTypes.number,
+    complete: PropTypes.bool,
+    word_count: PropTypes.number,
+    duration_seconds: PropTypes.number,
+  }),
+};
+
 // Every node exposes the same explicit details action; leaf cards no longer
 // overload body tap with a different meaning.
-function DetailsButton({ onOpenDetails }) {
+function DetailsButton({ onOpenDetails, sourceLinked }) {
+  const label = sourceLinked ? "source" : "details";
   return (
     <button
       type="button"
       className="nodrag nopan"
-      title="Open details — edges, source, ancestors"
-      aria-label="Open details"
+      title={sourceLinked
+        ? "Open exact source utterances, relations, and details"
+        : "Open details — edges, source, ancestors"}
+      aria-label={sourceLinked ? "Open exact source utterances" : "Open details"}
       onPointerDown={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
       onClick={(e) => {
@@ -341,13 +397,14 @@ function DetailsButton({ onOpenDetails }) {
       style={detailsButtonStyle}
     >
       <span aria-hidden="true" style={{ fontSize: "12px", lineHeight: 1 }}>&#9432;</span>
-      <span>details</span>
+      <span>{label}</span>
     </button>
   );
 }
 
 DetailsButton.propTypes = {
   onOpenDetails: PropTypes.func,
+  sourceLinked: PropTypes.bool,
 };
 
 const detailsButtonStyle = {
@@ -410,6 +467,14 @@ const argStatusStyle = {
   color: "#475569",
   marginTop: "4px",
   textTransform: "capitalize",
+};
+
+const provenanceMetricStyle = {
+  fontSize: "11px",
+  fontWeight: 500,
+  color: "#64748b",
+  marginTop: "6px",
+  fontVariantNumeric: "tabular-nums",
 };
 
 function BookmarkCorner() {
@@ -496,6 +561,13 @@ ConversationNodeImpl.propTypes = {
     argumentRole: PropTypes.string,
     rhetoricFlags: PropTypes.array,
     argStatusLabel: PropTypes.string,
+    provenanceMetrics: PropTypes.shape({
+      utterance_count: PropTypes.number,
+      matched_utterance_count: PropTypes.number,
+      complete: PropTypes.bool,
+      word_count: PropTypes.number,
+      duration_seconds: PropTypes.number,
+    }),
     isNeighborhoodFocus: PropTypes.bool,
     showSummary: PropTypes.bool,
     summaryMaxLength: PropTypes.number,

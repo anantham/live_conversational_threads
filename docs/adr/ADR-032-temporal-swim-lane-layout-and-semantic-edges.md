@@ -559,3 +559,43 @@ Single-speaker nodes use that speaker's fill; multi-speaker aggregates use a
 deterministic mixed fill instead of falsely assigning one owner. A persisted
 reader-selected color lens still overrides the default. Edge color continues to
 encode relation family.
+
+## Amendment — 2026-08-28: stable semantic axes and auditable provenance
+
+**Status:** Approved by the operator for the beta viewer.
+
+Semantic resolution and camera framing are separate state machines. Locking a
+tier fixes its authored level. Unlocking preserves the currently visible tier;
+after that, only a settled user zoom gesture may choose another level.
+`fitView`, `setCenter`, `setViewport`, initial framing, focus framing, and other
+programmatic camera motion are outputs of semantic state and must never feed
+back into tier selection. The displayed zoom percentage remains live camera
+telemetry and is not itself the semantic source of truth.
+
+The viewer derives an auditable provenance read model at the artifact boundary.
+For each node it unions direct utterance references with every descendant's
+references across primary and secondary hierarchy memberships, de-duplicates
+them by utterance ID, and preserves transcript order. This is a derived view;
+it does not mutate the `.threads` artifact or choose a single owner for
+many-to-many membership. Word count is computed from the matched raw utterance
+text. Turn count is the number of distinct referenced utterances. Time is the
+elapsed source span from earliest start to latest end—not summed speaking time.
+Fallback node bounds may orient the card, but unmatched IDs cannot manufacture
+word counts or raw evidence.
+
+Cards disclose the compact `words · span · turns` measure whenever evidence is
+available. Their Source action opens the exact linked speaker turns in the
+detail view; the generated summary is never presented as its own evidence.
+Higher-order summaries and moments therefore share one provenance path.
+
+Keyboard navigation has two orthogonal axes:
+
+- Up selects the nearest authored parent at a higher abstraction level.
+- Down selects the nearest authored child at a lower abstraction level.
+- Left/Right select the previous/next node by source time at the current tier.
+
+Primary memberships win deterministic ties, followed by temporal/source order.
+Navigation does not wrap at boundaries and ignores modified key chords and
+events originating in inputs, links, buttons, selectors, or editable content.
+A successful move re-roots the existing one-hop relationship focus; crossing an
+abstraction boundary first changes the tier and then focuses the target.
