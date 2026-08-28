@@ -4306,3 +4306,40 @@ Manual testing not run:
   navigation. The first browser attempt reused a stale main-checkout server that
   rejected v2 fixtures; an isolated worktree server falsified that environment
   issue without stopping the user's existing server.
+
+## 2026-08-28 — Production smoke speaker-assertion scoping
+
+- **Trigger:** PR #179 merged cleanly at `5b673f0`; merge-triggered unit,
+  Postgres integration, and DB-independent Playwright checks passed, while the
+  Vercel deployment-triggered live smoke failed one of eight journeys.
+- **Hypotheses:** H1 (0.80), the page-wide `Speaker One` locator matched the
+  intentional speaker-colour legend rather than card copy; H2 (0.15), the
+  production bundle was stale; H3 (0.05), a conversation card still rendered
+  a speaker-name label. Prediction for H1: the trace DOM contains `Speaker One`
+  under Display's legend, while `.lct-conversation-node` contains utterance text
+  and `data-speaker-id` but no visible speaker-name text.
+- **Evidence:** The exact production trace confirmed H1 and rejected H2/H3. It
+  contains the new relationship-focus accessible labels from merge commit
+  `5b673f0`; the only visible `Speaker One` text is a legend key. The card uses
+  `data-speaker-id="Speaker One"` with a coloured marker and renders only “Hello,
+  this is a synthetic fixture.”
+- **Repair:** Preserve the product and narrow the assertion to
+  `.lct-conversation-node`. The separate data-attribute assertion remains, so
+  the test still proves speaker attribution powers colour without repeating
+  names inside utterance cards.
+- **Validation:** The repaired focused journey passed 1/1 against production;
+  the complete production suite passed 8/8. The deployed dense-tier journey
+  passed pointer/keyboard focus, Show all, camera preservation, and outside-node
+  navigation; the deployed phone journey passed overflow and 44px touch checks.
+- **Files:** `lct_app/tests/e2e/prod-threads-opener.spec.js`, `ISSUES.md`, and
+  this worklog. Independent different-family review remains required before
+  shipping the test-only repair.
+- **Independent review:** Claude returned no verdict, Grok reported exhausted
+  usage, and Gemini's cached account lacked the required project entitlement;
+  none counted as approval. DeepSeek V4 Pro then approved the exact diff and
+  identified two non-blocking hardening opportunities: the zero-name assertion
+  relied indirectly on a prior utterance check for card existence, and the test
+  intent could be read as forbidding the supported non-turn speaker-label
+  fallback. Both supported findings were adopted by explicitly asserting all
+  three fixture cards plus the scoped utterance and naming the contract as turn
+  summaries. DeepSeek V4 Pro re-reviewed that exact diff and returned APPROVE with no blocking findings.
