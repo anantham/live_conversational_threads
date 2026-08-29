@@ -11,7 +11,14 @@ Google Drive, and the Drive ACL decides whether the selected Google account may
 download it. LCT requests the non-sensitive `drive.file` scope on a user click,
 keeps the short-lived access token in memory, downloads the named file directly
 from Google's `files.get?alt=media` endpoint, validates it, and remembers only
-the artifact in the browser-local Library.
+the artifact plus its opaque Drive file id in the browser-local Library.
+
+The first open in a normal browser profile requires Google authorization. Later
+visits to the same URL on that browser reopen the validated local copy without
+contacting Google. **Refresh from Drive** is an explicit reader action that
+authorizes again and replaces the saved copy. A different device, browser,
+profile, cleared site data, or private/incognito session has a separate local
+Library and therefore requires authorization on its first open.
 
 ## Deployment configuration
 

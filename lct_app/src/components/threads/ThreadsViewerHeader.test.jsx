@@ -10,6 +10,7 @@ import ThreadsViewerHeader from "./ThreadsViewerHeader";
  * - Collapsed summary content leaves both the tab order and accessibility tree.
  * - The compact state retains an explicit way to restore the overview.
  * - Viewer actions remain available in both overview states.
+ * - Drive-backed maps expose an explicit refresh action without persistent auth.
  */
 
 let container;
@@ -27,7 +28,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function renderHeader() {
+function renderHeader(overrides = {}) {
   const noop = () => {};
   act(() => {
     root.render(
@@ -42,9 +43,11 @@ function renderHeader() {
         onEnterFocus={noop}
         onOpenLibrary={noop}
         onOpenAnother={noop}
+        {...overrides}
       />,
     );
   });
+
 }
 
 describe("ThreadsViewerHeader", () => {
@@ -91,5 +94,16 @@ describe("ThreadsViewerHeader", () => {
     for (const label of ["Transcript", "Focus", "Library", "Open"]) {
       expect(container.textContent).toContain(label);
     }
+  });
+
+  it("offers an explicit Drive refresh when the map has Drive provenance", () => {
+    const onRefreshFromDrive = vi.fn();
+    renderHeader({ onRefreshFromDrive });
+
+    const refresh = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent.includes("Refresh"));
+    expect(refresh).not.toBeNull();
+    act(() => refresh.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onRefreshFromDrive).toHaveBeenCalledOnce();
   });
 });

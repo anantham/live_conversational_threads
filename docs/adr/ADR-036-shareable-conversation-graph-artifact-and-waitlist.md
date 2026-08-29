@@ -24,6 +24,17 @@ Indra's-Net-created file as app-opened for the web OAuth client, the approved
 fallback is Google Picker with the same `drive.file` scope. Broad
 `drive.readonly` access is not an acceptable convenience fallback.
 
+### Amendment — 2026-08-27: remembered Drive artifacts
+
+After the first authorized and validated Drive download, the viewer associates
+the opaque Drive file id with the existing browser-local artifact record. A
+later visit to the same stable URL opens that saved copy without another Google
+authorization request. The reader can explicitly choose **Refresh from Drive**
+to authorize and replace the local copy. OAuth tokens remain short-lived and
+memory-only; IndexedDB stores only the validated artifact and its opaque Drive
+file id. If browser storage is unavailable, missing, or invalid, the viewer
+falls back to the ordinary Drive authorization gate.
+
 > The "Google Maps for a conversation" wedge.
 
 ## Issue

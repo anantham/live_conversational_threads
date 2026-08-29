@@ -19,6 +19,7 @@ import { indexExplicitEdges } from "../services/edgeContract";
 import { enrichGraphNodesWithProvenance } from "../components/graphProvenance";
 import {
   getThreadsLibraryRecord,
+  getThreadsLibraryRecordByDriveFileId,
   rememberThreadsArtifact,
 } from "../services/threadsLibraryStore";
 
@@ -56,8 +57,10 @@ export default function ThreadsViewer() {
   const [srcLoading, setSrcLoading] = useState(
     () =>
       Boolean(artifactId || location.state?.threadsBundle) ||
-      (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("src")),
+      (typeof window !== "undefined"
+        && ["src", "driveFile"].some((key) => new URLSearchParams(window.location.search).has(key))),
   );
+  const [driveRefreshRequested, setDriveRefreshRequested] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   const [argumentTraceFrom, setArgumentTraceFrom] = useState(null);
@@ -78,7 +81,11 @@ export default function ThreadsViewer() {
     return () => window.removeEventListener("keydown", onKey);
   }, [focusMode]);
 
-  const ingest = useCallback((data, { sourceName = "", remember = true } = {}) => {
+  const ingest = useCallback((data, {
+    sourceName = "",
+    driveFileId: sourceDriveFileId = "",
+    remember = true,
+  } = {}) => {
     try {
       const validated = validateThreadsArtifact(data);
       setBundle(validated);
@@ -86,7 +93,10 @@ export default function ThreadsViewer() {
       setSelectedNode(null);
       if (remember) {
         setLibraryStatus({ state: "saving", message: "Saving on this device…" });
-        void rememberThreadsArtifact(validated, { sourceName })
+        void rememberThreadsArtifact(validated, {
+          sourceName,
+          driveFileId: sourceDriveFileId,
+        })
           .then((record) => {
             setLibraryStatus({
               state: "saved",
@@ -107,6 +117,37 @@ export default function ThreadsViewer() {
       setError(String(e?.message || e));
     }
   }, []);
+
+  // A Drive link is stable, while its short-lived OAuth token is deliberately
+  // not. Reopen the validated artifact already saved for this exact Drive file
+  // before mounting Google authorization. Explicit Refresh remains the only
+  // operation that contacts Drive again.
+  useEffect(() => {
+    if (!driveFileId || artifactId || location.state?.threadsBundle || driveRefreshRequested) return;
+    let cancelled = false;
+    setSrcLoading(true);
+    void getThreadsLibraryRecordByDriveFileId(driveFileId)
+      .then((record) => {
+        if (cancelled || !record) return;
+        ingest(record.bundle, {
+          sourceName: record.sourceName,
+          driveFileId,
+          remember: false,
+        });
+        setLibraryStatus({ state: "saved", message: "Saved on this device", recordId: record.id });
+      })
+      .catch((storageError) => {
+        // Storage denial/corruption must not strand a valid Drive link. The
+        // existing Google authorization gate is the recoverable fallback.
+        console.warn("[ThreadsViewer] Could not reopen Drive artifact from this device:", storageError);
+      })
+      .finally(() => {
+        if (!cancelled) setSrcLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [artifactId, driveFileId, driveRefreshRequested, ingest, location.state]);
 
   const handleFile = useCallback(
     async (file) => {
@@ -312,12 +353,17 @@ export default function ThreadsViewer() {
   }
 
   // ---- Empty state: drop zone ---------------------------------------------
-  if (!bundle) {
+  if (!bundle || driveRefreshRequested) {
     if (driveFileId) {
       return (
         <DriveThreadsGate
           fileId={driveFileId}
-          onArtifact={(artifact, options) => ingest(artifact, options)}
+          refreshing={driveRefreshRequested}
+          onCancel={driveRefreshRequested ? () => setDriveRefreshRequested(false) : undefined}
+          onArtifact={(artifact, options) => {
+            ingest(artifact, options);
+            setDriveRefreshRequested(false);
+          }}
         />
       );
     }
@@ -387,6 +433,7 @@ export default function ThreadsViewer() {
           onDownloadTranscript={downloadTranscript}
           onEnterFocus={() => setFocusMode(true)}
           onOpenLibrary={() => navigate("/browse")}
+          onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
           onOpenAnother={() => {
             setBundle(null);
             setError("");

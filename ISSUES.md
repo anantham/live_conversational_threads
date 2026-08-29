@@ -1,6 +1,24 @@
 # ISSUES
 
-Last updated: 2026-08-28
+Last updated: 2026-08-29
+
+## 2026-08-29 — Backendless Browse reports expected history absence as console.error (OPEN, NON-BLOCKING)
+
+**Summary:** The local-first `/browse` route remains usable when the private
+history backend is absent, but its expected server-history probe rejection is
+reported with `console.error` as `[Browse] Server history unavailable`.
+
+**Impact:** Low product impact, medium audit noise. Local artifacts still open
+and remain private, but a strict browser-console gate cannot distinguish this
+expected capability absence from a genuine page failure without an allow-list.
+
+**Blocker status:** Non-blocking for the mobile Drive viewer gate. The mobile
+journey asserts zero unexpected console problems and zero network 5xx while
+allowing this one known backendless diagnostic.
+
+**Recommended next step:** Model backendless history as an explicit capability
+state and log it at info/debug level; reserve `console.error` for a server that
+was configured and then failed unexpectedly.
 
 ## 2026-08-28 — Live smoke searched speaker legend instead of conversation cards (REPAIRED)
 
@@ -28,6 +46,25 @@ rendering the participant name inside a turn summary.
 **Recommended next step:** Run the focused assertion and complete production
 suite against the live domain, independently review the exact test/docs diff,
 then ship and require the deployment-triggered smoke to return green.
+
+## 2026-08-27 — Vercel preview protection blocks anonymous browser smoke (OPEN, NON-BLOCKING)
+
+**Summary:** PR preview deployments redirect an unauthenticated Playwright
+browser to Vercel's own login screen. The deployment check succeeds, but a
+direct post-deploy browser run cannot reach LCT without a Vercel protection
+bypass or authenticated browser state.
+
+**Impact:** Low. Local production-mode browser coverage proves the cached Drive
+reopen behavior, and the public production smoke remains the authoritative
+post-merge check. Preview URLs cannot currently provide anonymous end-to-end
+evidence before merge.
+
+**Blocker status:** Non-blocking for PR #178; Vercel deployment passed and all
+local unit, build, lint, and browser gates are green.
+
+**Recommended next step:** Configure a CI-only Vercel protection bypass secret
+for preview Playwright, or deliberately keep preview protection and document
+that live browser verification occurs after merge on the public domain.
 
 ## 2026-08-26 — Drive-backed viewer needs a Google Web OAuth client
 

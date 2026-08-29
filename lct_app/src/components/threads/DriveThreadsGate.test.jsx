@@ -11,6 +11,7 @@ import DriveThreadsGate from "./DriveThreadsGate";
  * - Failed authorization remains recoverable with an account retry.
  * - Failed Google-library preparation remains recoverable without a page reload.
  * - Missing deployment configuration is named before the user clicks anything.
+ * - A refresh identifies the Drive provenance and can return to the saved map.
  */
 
 let container;
@@ -70,7 +71,30 @@ describe("DriveThreadsGate", () => {
     expect(fetchArtifact).toHaveBeenCalledWith("abc_DEF-1234", "temporary-token");
     expect(onArtifact).toHaveBeenCalledWith(bundle, {
       sourceName: "Google Drive",
+      driveFileId: "abc_DEF-1234",
     });
+  });
+
+  it("labels an explicit refresh and lets the reader return to the saved map", async () => {
+    const onCancel = vi.fn();
+    await act(async () => {
+      root.render(
+        <DriveThreadsGate
+          fileId="abc_DEF-1234"
+          clientId="web-client-id"
+          prepareAuthorization={async () => {}}
+          onArtifact={() => {}}
+          onCancel={onCancel}
+          refreshing
+        />,
+      );
+    });
+
+    expect(container.textContent).toContain("Refresh this conversation from Drive");
+    const backButton = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent.includes("Back to saved map"));
+    act(() => backButton.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onCancel).toHaveBeenCalledOnce();
   });
 
   it("explains an account mismatch and offers a retry", async () => {

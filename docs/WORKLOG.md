@@ -4244,6 +4244,33 @@ Manual testing not run:
   tests passed, production build passed, and the post-edit Impeccable detector
   returned `[]`. Existing React `act(...)`, worktree Fontsource allow-list, and
   large-chunk warnings remain unchanged and are not regressions from this slice.
+## 2026-08-27 05:13 +05:30 — Remembered Drive artifact reopen
+
+- Confirmed the repeat-login generator: the first Drive download was already
+  saved in IndexedDB, but `/view?driveFile=…` never queried the local Library
+  and unconditionally mounted the Google authorization gate. The short-lived
+  OAuth token remains intentionally memory-only.
+- `threadsArtifact.js` and `threadsLibraryStore.js` now retain and resolve the
+  opaque Drive file id as artifact provenance without changing the IndexedDB
+  schema. `ThreadsViewer.jsx` checks that validated cache before Google; missing,
+  invalid, or unavailable storage falls back to the existing authorization gate.
+- Drive-backed loaded maps expose an explicit **Refresh** action. Refresh asks
+  Google for a fresh authorized copy and can be cancelled back to the saved map;
+  no token is written to browser storage.
+- Tests cover provenance without credential fields, refresh/cancel behavior,
+  and a browser reopen that makes zero Google authorization requests. Validation:
+  270/270 frontend unit tests passed, 7/7 applicable opener browser tests passed
+  (one production-only test skipped locally), scoped ESLint passed, production
+  build passed, and Impeccable's final detector returned no findings. Existing
+  React `act(...)`, worktree Fontsource allow-list, and large-chunk warnings are
+  unchanged.
+- `ThreadsViewer.jsx` remains an existing route/orchestration monolith already
+  tracked in `docs/TECH_DEBT.md`; this bounded repair did not add a second route
+  abstraction while the contract was still being proven.
+- PR #178 deployed successfully to Vercel. A direct Playwright run against the
+  preview was redirected to Vercel's own login protection before LCT loaded;
+  this non-product, non-blocking evidence gap is tracked in `ISSUES.md` rather
+  than misclassified as a viewer regression.
 
 ## 2026-08-27 — Node-centred one-hop relationship view
 
@@ -4521,3 +4548,75 @@ Manual testing not run:
   scoped ESLint passed; backend unit tests passed 1951 cases with only the same
   established OpenAI 1.54/httpx 0.28 `proxies=` environment mismatch failing
   before project code.
+
+### 2026-08-29 — Mobile recipient gate before real-artifact replay
+
+- **Hypothesis:** the responsive shell could pass while graph controls remained
+  physically too small after ReactFlow scaling and the opening camera could
+  place readable content beneath compact HUD chrome. The predicted failures
+  both reproduced: Source settled at 43.7px high, and the first card overlapped
+  the tier controls by roughly 30px.
+- **Repair:** coarse-pointer graph actions reserve enough base size to remain at
+  least 48px after scaling. Initial open, relationship focus, later refocus,
+  and Center now share documented compact top insets so content opens below the
+  controls. Pointer-fine desktop density is unchanged.
+- **Behavioral test:** added a synthetic 375 × 812 touch-only recipient journey
+  covering browser-local Drive reopen, exact-source drill-down, one-hop focus,
+  Show all, Center, Library, reload, zero Google refetch, zero network 5xx, no
+  horizontal overflow, and stable 48px touch targets. Existing tablet/desktop,
+  provenance, and production-opener journeys were included in the same run.
+- **Validation:** frontend unit suite 309/309; combined browser suite 15 passed
+  with one deployment-only case skipped;
+  production build; scoped changed-source ESLint; and `git diff --check` pass.
+  Repository-wide ESLint remains at its documented 109-error baseline. The
+  Impeccable detector only re-reported the tracked 12px bookmark-corner
+  heuristic plus unrelated existing files.
+- **External gate:** the Codex browser controller exited twice before a page
+  could launch, so real Google OAuth popup/return, axe, and field performance
+  remain post-deploy physical-device checks. This limitation does not weaken
+  the deterministic cached-artifact and touch-interaction contract.
+- **Files:** `MinimalGraph.jsx`, `ConversationNode.jsx`, `index.css`,
+  `threads-viewer-mobile-journey.spec.ts`, this worklog, `ISSUES.md`, and
+  `docs/audits/2026-08-29-mobile-drive-viewer/`. The existing MinimalGraph
+  decomposition entry in `docs/TECH_DEBT.md` already covers the touched
+  orchestration monolith; no duplicate debt entry was added.
+
+### 2026-08-29 — Claude mobile-gate review and adjudication
+
+- Anthropic Claude Sonnet reviewed the exact bounded textual diff for commit
+  `4207091` with all repository tools disabled. Binary screenshot evidence was
+  excluded from the packet under the standing disclosure boundary. Claude
+  returned five findings and four context notes.
+- **Supported and repaired:** the cache test counted only the Google Accounts
+  host; it now intercepts and records Google, Google APIs, Googleusercontent,
+  and gstatic hosts. Generic console-error regexes were replaced with exact
+  message-and-URL classification. Aborted backend routes were replaced with a
+  deterministic backendless 404 fixture, so the response listener sees their
+  real status. Center now uses the focus-status inset while one-hop focus is
+  active, and the touch journey exercises Center both before and after Show
+  all.
+- **Falsification signal:** the first hardened run correctly failed because
+  Chromium reported four `/conversations/` 404 resource messages. The exception
+  was narrowed to that exact path/message pair; generic 404, 403, and load
+  failures remain release failures. The next focused run passed.
+- **Rejected as scope overclaim:** direct IndexedDB setup deliberately creates
+  the persisted-state precondition for this cache-only journey. The production
+  authorization → Drive download → `driveFileId` handoff is separately covered
+  by `DriveThreadsGate.test.jsx`, and `threadsArtifact.test.js` verifies Drive
+  provenance persists without tokens. Real OAuth remains the declared
+  post-deploy physical-device gate.
+- **Context notes resolved:** the 64px action rule is inside the phone/coarse-
+  pointer media query; every changed framing call is under compact-viewer
+  control; and Source has an explicit `aria-label`. No code change was needed
+  for those unverified possibilities.
+- Post-repair validation: the focused phone journey passed, combined browser
+  suite passed 15 with one deployment-only case skipped, production build and
+  scoped changed-source ESLint passed. A final independent re-review follows
+  after the updated exact diff is committed.
+- **Final independent verdict:** Claude Sonnet re-reviewed exact follow-up
+  commit `9ee0ef2` with repository tools disabled and returned **pass with zero
+  findings**. It explicitly confirmed closure of all-Google request accounting,
+  observable backendless responses, source-scoped console classification, and
+  focus-aware Center framing/coverage. It also agreed the direct-IndexedDB item
+  was a resolved scope adjudication. No independent-review overclaim remains
+  for human arbitration, and no private review transcript was retained.

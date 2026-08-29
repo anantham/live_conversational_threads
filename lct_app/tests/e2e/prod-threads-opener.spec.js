@@ -17,6 +17,7 @@ import { fileURLToPath } from 'url';
  *   while retaining names in the speaker-colour legend.
  * - Keep the conversation overview and thread timeline independently collapsible.
  * - Route Drive-backed links to a Google authorization gate rather than the upload prompt.
+ * - Reopen a previously validated Drive artifact without another Google prompt.
  */
 //
 // Included in BOTH configs: the default (local) run blocks /api/* to force the
@@ -50,6 +51,47 @@ test.describe('.threads opener (public recipient path)', () => {
       .toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('heading', { name: OPENER_HEADING })).toHaveCount(0);
     await expect(page.getByText(/Google account this file was shared with/i)).toBeVisible();
+  });
+
+  test('a remembered Drive-backed artifact reopens without Google authorization', async ({ page }) => {
+    await blockBackend(page);
+    let googleRequests = 0;
+    await page.route('https://accounts.google.com/**', (route) => {
+      googleRequests += 1;
+      return route.abort();
+    });
+    await page.goto('/browse', { waitUntil: 'domcontentloaded' });
+    await page.locator('input[type="file"]').setInputFiles(FIXTURE);
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Saved on this device')).toBeVisible();
+
+    await page.evaluate(async () => {
+      const request = indexedDB.open('lct_threads_library', 1);
+      const db = await new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const transaction = db.transaction('artifacts', 'readwrite');
+      const store = transaction.objectStore('artifacts');
+      const getRequest = store.get('e2e-fixture');
+      const record = await new Promise((resolve, reject) => {
+        getRequest.onsuccess = () => resolve(getRequest.result);
+        getRequest.onerror = () => reject(getRequest.error);
+      });
+      record.driveFileId = 'abc_DEF-123456';
+      store.put(record);
+      await new Promise((resolve, reject) => {
+        transaction.oncomplete = resolve;
+        transaction.onerror = () => reject(transaction.error);
+      });
+      db.close();
+    });
+
+    await page.goto('/view?driveFile=abc_DEF-123456', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: 'Open this conversation in Threads' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: /Refresh/ })).toBeVisible();
+    expect(googleRequests).toBe(0);
   });
 
   test('real deploy: /browse remains the library when the backend is absent', async ({ page, baseURL }) => {

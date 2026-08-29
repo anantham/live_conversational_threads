@@ -88,6 +88,7 @@ export function buildThreadsLibraryRecord(bundle, options = {}) {
   const validated = validateThreadsArtifact(bundle);
   const now = options.now || new Date().toISOString();
   const sourceName = String(options.sourceName || options.existing?.sourceName || "").trim();
+  const driveFileId = String(options.driveFileId || options.existing?.driveFileId || "").trim();
 
   return {
     id: threadsArtifactId(validated),
@@ -98,6 +99,7 @@ export function buildThreadsLibraryRecord(bundle, options = {}) {
     nodeCount: flattenThreadsGraph(validated.graph_data).length,
     firstOpenedAt: options.existing?.firstOpenedAt || now,
     lastOpenedAt: now,
+    ...(driveFileId ? { driveFileId } : {}),
     bundle: validated,
   };
 }

@@ -283,7 +283,7 @@ function ExpandButton({ count, onExpand }) {
   return (
     <button
       type="button"
-      className="nodrag nopan"
+      className="nodrag nopan lct-node-action"
       title="Expand to see what's inside"
       aria-label={`Expand ${count || ""} ${count === 1 ? "item" : "items"}`.trim()}
       onPointerDown={(e) => e.stopPropagation()}
@@ -392,7 +392,7 @@ function DetailsButton({ onOpenDetails, sourceLinked }) {
   return (
     <button
       type="button"
-      className="nodrag nopan"
+      className="nodrag nopan lct-node-action"
       title={sourceLinked
         ? "Open exact source utterances, relations, and details"
         : "Open details — edges, source, ancestors"}

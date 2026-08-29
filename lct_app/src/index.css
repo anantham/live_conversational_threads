@@ -44,6 +44,16 @@
   .lct-conversation-node--tangent {
     transform: none !important;
   }
+
+  /* ReactFlow scales the whole node card and its opening camera briefly moves
+     below the 0.85 resting zoom. Reserve 64 CSS pixels so the action remains
+     near the 48px physical floor while that settle animation is still running.
+     The extra space applies only to coarse-pointer readers. */
+  .lct-node-action {
+    min-width: 64px;
+    min-height: 64px;
+    justify-content: center;
+  }
 }
 
 :root {
@@ -120,12 +130,13 @@
 
 /* Touch devices need larger tap targets than the calm desktop chrome provides.
    Scoped to coarse pointers (touch / stylus) so mouse precision on desktop keeps
-   its compact density. Targets WCAG 2.5.5 (44px) for the small graph-chrome,
-   header, and legend controls without bloating the pointer-fine layout. */
+   its compact density. The 48px floor covers graph chrome, header, sheet, and
+   legend controls without bloating the pointer-fine layout. */
 @media (pointer: coarse) {
   button,
   summary,
   [role="button"] {
-    min-height: 44px;
+    min-width: 48px;
+    min-height: 48px;
   }
 }
