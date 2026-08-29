@@ -65,6 +65,11 @@ import { createViewportMotionTracker } from "./viewportMotionTracker";
 // Cluster nodes are still default ReactFlow rendering (separate concern).
 const NODE_TYPES = { conversational: ConversationNode };
 const EDGE_TYPES = {};
+// Two compact HUD rows (tier summary + tier choices) occupy roughly 104px.
+// Keep a calm 56px reading gutter below them so the first card never opens
+// underneath touch chrome. Relationship focus adds another status row.
+const COMPACT_VIEWER_TOP_INSET = 160;
+const COMPACT_VIEWER_FOCUS_TOP_INSET = COMPACT_VIEWER_TOP_INSET + 36;
 
 function frameNodesFromTopLeft(
   reactFlow,
@@ -1304,7 +1309,7 @@ function MinimalGraphInner({
           zoom: 0.85,
           duration,
           paddingX: 16,
-          paddingY: 112,
+          paddingY: COMPACT_VIEWER_TOP_INSET,
         });
       }, { expectedZoom: 0.85, duration });
       if (framed) {
@@ -1331,7 +1336,7 @@ function MinimalGraphInner({
               zoom: 0.85,
               duration,
               paddingX: 16,
-              paddingY: 148,
+              paddingY: COMPACT_VIEWER_FOCUS_TOP_INSET,
             }),
             { expectedZoom: 0.85, duration },
           );
@@ -1403,7 +1408,7 @@ function MinimalGraphInner({
               zoom: 0.85,
               duration,
               paddingX: 16,
-              paddingY: 112,
+              paddingY: COMPACT_VIEWER_TOP_INSET,
             })) return undefined;
             return reactFlow.fitView({ padding: 0.1, duration, minZoom: 0.6, maxZoom: 1.0 });
           }, { expectedZoom: 0.85, duration });
@@ -1793,13 +1798,14 @@ function MinimalGraphInner({
       }
       const currentZoom = reactFlow.getZoom?.() ?? 1;
       const readableZoom = Math.max(currentZoom, MIN_READABLE_ZOOM);
-      const PADDING_PX = 40;
+      const paddingX = compactViewer ? 16 : 40;
+      const paddingY = compactViewer ? COMPACT_VIEWER_TOP_INSET : 40;
       const duration = reduceMotion ? 0 : 300;
       viewportMotion.run(
         () => reactFlow.setViewport(
           {
-            x: -minX * readableZoom + PADDING_PX,
-            y: -minY * readableZoom + PADDING_PX,
+            x: -minX * readableZoom + paddingX,
+            y: -minY * readableZoom + paddingY,
             zoom: readableZoom,
           },
           { duration },

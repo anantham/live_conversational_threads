@@ -1,6 +1,24 @@
 # ISSUES
 
-Last updated: 2026-08-28
+Last updated: 2026-08-29
+
+## 2026-08-29 — Backendless Browse reports expected history absence as console.error (OPEN, NON-BLOCKING)
+
+**Summary:** The local-first `/browse` route remains usable when the private
+history backend is absent, but its expected server-history probe rejection is
+reported with `console.error` as `[Browse] Server history unavailable`.
+
+**Impact:** Low product impact, medium audit noise. Local artifacts still open
+and remain private, but a strict browser-console gate cannot distinguish this
+expected capability absence from a genuine page failure without an allow-list.
+
+**Blocker status:** Non-blocking for the mobile Drive viewer gate. The mobile
+journey asserts zero unexpected console problems and zero network 5xx while
+allowing this one known backendless diagnostic.
+
+**Recommended next step:** Model backendless history as an explicit capability
+state and log it at info/debug level; reserve `console.error` for a server that
+was configured and then failed unexpectedly.
 
 ## 2026-08-28 — Live smoke searched speaker legend instead of conversation cards (REPAIRED)
 

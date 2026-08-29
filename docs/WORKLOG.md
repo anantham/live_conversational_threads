@@ -4548,3 +4548,34 @@ Manual testing not run:
   scoped ESLint passed; backend unit tests passed 1951 cases with only the same
   established OpenAI 1.54/httpx 0.28 `proxies=` environment mismatch failing
   before project code.
+
+### 2026-08-29 — Mobile recipient gate before real-artifact replay
+
+- **Hypothesis:** the responsive shell could pass while graph controls remained
+  physically too small after ReactFlow scaling and the opening camera could
+  place readable content beneath compact HUD chrome. The predicted failures
+  both reproduced: Source settled at 43.7px high, and the first card overlapped
+  the tier controls by roughly 30px.
+- **Repair:** coarse-pointer graph actions reserve enough base size to remain at
+  least 48px after scaling. Initial open, relationship focus, later refocus,
+  and Center now share documented compact top insets so content opens below the
+  controls. Pointer-fine desktop density is unchanged.
+- **Behavioral test:** added a synthetic 375 × 812 touch-only recipient journey
+  covering browser-local Drive reopen, exact-source drill-down, one-hop focus,
+  Show all, Center, Library, reload, zero Google refetch, zero network 5xx, no
+  horizontal overflow, and stable 48px touch targets. Existing tablet/desktop,
+  provenance, and production-opener journeys were included in the same run.
+- **Validation:** frontend unit suite 309/309; combined browser suite 16/16;
+  production build; scoped changed-source ESLint; and `git diff --check` pass.
+  Repository-wide ESLint remains at its documented 109-error baseline. The
+  Impeccable detector only re-reported the tracked 12px bookmark-corner
+  heuristic plus unrelated existing files.
+- **External gate:** the Codex browser controller exited twice before a page
+  could launch, so real Google OAuth popup/return, axe, and field performance
+  remain post-deploy physical-device checks. This limitation does not weaken
+  the deterministic cached-artifact and touch-interaction contract.
+- **Files:** `MinimalGraph.jsx`, `ConversationNode.jsx`, `index.css`,
+  `threads-viewer-mobile-journey.spec.ts`, this worklog, `ISSUES.md`, and
+  `docs/audits/2026-08-29-mobile-drive-viewer/`. The existing MinimalGraph
+  decomposition entry in `docs/TECH_DEBT.md` already covers the touched
+  orchestration monolith; no duplicate debt entry was added.
