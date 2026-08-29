@@ -4565,7 +4565,8 @@ Manual testing not run:
   Show all, Center, Library, reload, zero Google refetch, zero network 5xx, no
   horizontal overflow, and stable 48px touch targets. Existing tablet/desktop,
   provenance, and production-opener journeys were included in the same run.
-- **Validation:** frontend unit suite 309/309; combined browser suite 16/16;
+- **Validation:** frontend unit suite 309/309; combined browser suite 15 passed
+  with one deployment-only case skipped;
   production build; scoped changed-source ESLint; and `git diff --check` pass.
   Repository-wide ESLint remains at its documented 109-error baseline. The
   Impeccable detector only re-reported the tracked 12px bookmark-corner
@@ -4579,3 +4580,36 @@ Manual testing not run:
   `docs/audits/2026-08-29-mobile-drive-viewer/`. The existing MinimalGraph
   decomposition entry in `docs/TECH_DEBT.md` already covers the touched
   orchestration monolith; no duplicate debt entry was added.
+
+### 2026-08-29 — Claude mobile-gate review and adjudication
+
+- Anthropic Claude Sonnet reviewed the exact bounded textual diff for commit
+  `4207091` with all repository tools disabled. Binary screenshot evidence was
+  excluded from the packet under the standing disclosure boundary. Claude
+  returned five findings and four context notes.
+- **Supported and repaired:** the cache test counted only the Google Accounts
+  host; it now intercepts and records Google, Google APIs, Googleusercontent,
+  and gstatic hosts. Generic console-error regexes were replaced with exact
+  message-and-URL classification. Aborted backend routes were replaced with a
+  deterministic backendless 404 fixture, so the response listener sees their
+  real status. Center now uses the focus-status inset while one-hop focus is
+  active, and the touch journey exercises Center both before and after Show
+  all.
+- **Falsification signal:** the first hardened run correctly failed because
+  Chromium reported four `/conversations/` 404 resource messages. The exception
+  was narrowed to that exact path/message pair; generic 404, 403, and load
+  failures remain release failures. The next focused run passed.
+- **Rejected as scope overclaim:** direct IndexedDB setup deliberately creates
+  the persisted-state precondition for this cache-only journey. The production
+  authorization → Drive download → `driveFileId` handoff is separately covered
+  by `DriveThreadsGate.test.jsx`, and `threadsArtifact.test.js` verifies Drive
+  provenance persists without tokens. Real OAuth remains the declared
+  post-deploy physical-device gate.
+- **Context notes resolved:** the 64px action rule is inside the phone/coarse-
+  pointer media query; every changed framing call is under compact-viewer
+  control; and Source has an explicit `aria-label`. No code change was needed
+  for those unverified possibilities.
+- Post-repair validation: the focused phone journey passed, combined browser
+  suite passed 15 with one deployment-only case skipped, production build and
+  scoped changed-source ESLint passed. A final independent re-review follows
+  after the updated exact diff is committed.

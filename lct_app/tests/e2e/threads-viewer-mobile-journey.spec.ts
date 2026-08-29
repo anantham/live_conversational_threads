@@ -6,6 +6,13 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, "fixtures", "provenance-navigation.threads");
 const DRIVE_FILE_ID = "mobile_drive_fixture_123";
 const TITLE = "Provenance and navigation fixture";
+const GOOGLE_OWNED_URL = /^https:\/\/(?:[^/]+\.)?(?:google\.com|googleapis\.com|googleusercontent\.com|gstatic\.com)(?:\/|$)/i;
+
+type BrowserProblem = {
+  type: string;
+  text: string;
+  url: string;
+};
 
 /*
  * Test intent:
@@ -37,15 +44,21 @@ async function expectTouchTarget(locator: Locator, label: string) {
   }).toBeGreaterThanOrEqual(48);
 }
 
-async function expectNodeBelowTierHud(page: Page, node: Locator) {
+async function expectNodeBelowGraphHud(page: Page, node: Locator) {
   await expect.poll(async () => {
-    const [nodeBox, tierBox] = await Promise.all([
+    const focusStatus = page.getByTestId("neighborhood-focus-status");
+    const [nodeBox, tierBox, focusBox] = await Promise.all([
       node.boundingBox(),
       page.getByTitle("Locked to themes — click to unlock").boundingBox(),
+      focusStatus.isVisible().then((visible) => visible ? focusStatus.boundingBox() : null),
     ]);
     if (!nodeBox || !tierBox) return Number.NEGATIVE_INFINITY;
-    return nodeBox.y - (tierBox.y + tierBox.height);
-  }, { message: "First graph card should clear the tier HUD" }).toBeGreaterThanOrEqual(8);
+    const hudBottom = Math.max(
+      tierBox.y + tierBox.height,
+      focusBox ? focusBox.y + focusBox.height : 0,
+    );
+    return nodeBox.y - hudBottom;
+  }, { message: "First graph card should clear every visible graph HUD row" }).toBeGreaterThanOrEqual(8);
 }
 
 async function associateCachedArtifactWithDrive(page) {
@@ -75,24 +88,33 @@ async function associateCachedArtifactWithDrive(page) {
 }
 
 test("a phone recipient can reopen, understand, inspect, and return to a Drive-backed map", async ({ page }, testInfo) => {
-  const consoleProblems: string[] = [];
+  const consoleProblems: BrowserProblem[] = [];
   const serverErrors: string[] = [];
-  let googleRequests = 0;
+  const googleRequestUrls: string[] = [];
 
   page.on("console", (message) => {
     if (["warning", "error"].includes(message.type())) {
-      consoleProblems.push(`${message.type()}: ${message.text()}`);
+      consoleProblems.push({
+        type: message.type(),
+        text: message.text(),
+        url: message.location().url || "",
+      });
     }
   });
   page.on("response", (response) => {
     if (response.status() >= 500) serverErrors.push(`${response.status()} ${response.url()}`);
   });
-  await page.route("https://accounts.google.com/**", (route) => {
-    googleRequests += 1;
+  await page.route(GOOGLE_OWNED_URL, (route) => {
+    googleRequestUrls.push(route.request().url());
     return route.abort();
   });
-  await page.route("**/api/**", (route) => route.abort());
-  await page.route("**/conversations/**", (route) => route.abort());
+  const backendlessResponse = {
+    status: 404,
+    contentType: "application/json",
+    body: JSON.stringify({ detail: "Backend intentionally absent in mobile cache test" }),
+  };
+  await page.route("**/api/**", (route) => route.fulfill(backendlessResponse));
+  await page.route("**/conversations/**", (route) => route.fulfill(backendlessResponse));
 
   await page.goto("/browse", { waitUntil: "domcontentloaded" });
   await page.locator('input[type="file"]').setInputFiles(FIXTURE);
@@ -109,13 +131,13 @@ test("a phone recipient can reopen, understand, inspect, and return to a Drive-b
     content: document.body.scrollWidth,
   }));
   expect(pageWidth.content).toBeLessThanOrEqual(pageWidth.viewport);
-  expect(googleRequests).toBe(0);
+  expect(googleRequestUrls).toEqual([]);
 
   const firstTheme = page.locator(".react-flow__node").filter({ hasText: "Compare the workflows" });
   await expect(firstTheme).toBeVisible();
   const sourceButton = firstTheme.getByRole("button", { name: "Open exact source utterances" });
   await expectTouchTarget(sourceButton, "Exact-source action");
-  await expectNodeBelowTierHud(page, firstTheme);
+  await expectNodeBelowGraphHud(page, firstTheme);
   await page.screenshot({ path: testInfo.outputPath("mobile-map-settled.png"), fullPage: true });
   await sourceButton.tap();
 
@@ -138,13 +160,15 @@ test("a phone recipient can reopen, understand, inspect, and return to a Drive-b
   await connectedTheme.tap();
   await expect(page.getByTestId("neighborhood-focus-status"))
     .toContainText("Related to: Keep faster review auditable");
-  const showAll = page.getByRole("button", { name: "Show all", exact: true });
-  await expectTouchTarget(showAll, "Show-all action");
-  await showAll.tap();
   const center = page.getByRole("button", { name: "Center", exact: true });
   await expectTouchTarget(center, "Center action");
   await center.tap();
-  await expectNodeBelowTierHud(page, firstTheme);
+  await expectNodeBelowGraphHud(page, connectedTheme);
+  const showAll = page.getByRole("button", { name: "Show all", exact: true });
+  await expectTouchTarget(showAll, "Show-all action");
+  await showAll.tap();
+  await center.tap();
+  await expectNodeBelowGraphHud(page, firstTheme);
 
   const library = page.getByRole("button", { name: "Library", exact: true });
   await expectTouchTarget(library, "Library action");
@@ -155,16 +179,32 @@ test("a phone recipient can reopen, understand, inspect, and return to a Drive-b
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: TITLE })).toBeVisible({ timeout: 15_000 });
-  expect(googleRequests).toBe(0);
+  expect(googleRequestUrls).toEqual([]);
   expect(serverErrors).toEqual([]);
-  // This deterministic backendless run aborts Browse's optional history probe,
-  // and this worktree resolves shared Fontsource assets outside Vite's serve
-  // allow-list (tracked in ISSUES.md). Keep those explicit and reject every
-  // other browser warning/error instead of muting the console wholesale.
-  const unexpectedConsoleProblems = consoleProblems.filter((problem) => ![
-    /Failed to load resource: net::ERR_FAILED/,
-    /\[Browse\] Server history unavailable: TypeError: Failed to fetch/,
-    /Failed to load resource: the server responded with a status of 403 \(Forbidden\)/,
-  ].some((expected) => expected.test(problem)));
+  // This deterministic backendless run returns an explicit 404 for Browse's
+  // optional history probe. This worktree also resolves shared Fontsource
+  // assets outside Vite's serve allow-list (tracked in ISSUES.md). Match both
+  // by their exact message/source instead of muting generic load failures.
+  const unexpectedConsoleProblems = consoleProblems.filter((problem) => {
+    const problemPath = (() => {
+      try {
+        return new URL(problem.url).pathname;
+      } catch {
+        return "";
+      }
+    })();
+    const expectedBackendlessHistory =
+      problem.text.startsWith("[Browse] Server history unavailable:")
+      && problem.text.includes("HTTP 404");
+    const expectedBackendlessResource404 =
+      problem.text === "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      && (/^\/api\//.test(problemPath) || /^\/conversations\/?$/.test(problemPath));
+    const expectedWorktreeFont403 =
+      problem.text === "Failed to load resource: the server responded with a status of 403 (Forbidden)"
+      && /@fontsource[\\/]inter[\\/]files[\\/]/i.test(problem.url);
+    return !expectedBackendlessHistory
+      && !expectedBackendlessResource404
+      && !expectedWorktreeFont403;
+  });
   expect(unexpectedConsoleProblems).toEqual([]);
 });

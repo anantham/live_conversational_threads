@@ -1799,7 +1799,9 @@ function MinimalGraphInner({
       const currentZoom = reactFlow.getZoom?.() ?? 1;
       const readableZoom = Math.max(currentZoom, MIN_READABLE_ZOOM);
       const paddingX = compactViewer ? 16 : 40;
-      const paddingY = compactViewer ? COMPACT_VIEWER_TOP_INSET : 40;
+      const paddingY = compactViewer
+        ? (neighborhoodFocusId ? COMPACT_VIEWER_FOCUS_TOP_INSET : COMPACT_VIEWER_TOP_INSET)
+        : 40;
       const duration = reduceMotion ? 0 : 300;
       viewportMotion.run(
         () => reactFlow.setViewport(

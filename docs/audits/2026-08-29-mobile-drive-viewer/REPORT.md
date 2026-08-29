@@ -26,8 +26,8 @@ The synthetic, non-private Playwright journey exercised the actual UI:
 3. Open `/view?driveFile=...` and confirm no Google request is made.
 4. Tap **Source**, scroll the exact utterance into view, and close the sheet.
 5. Tap a visible connected card to enter one-hop relationship focus.
-6. Tap **Show all**, then **Center**, and confirm the first card remains below
-   the tier controls.
+6. Tap **Center** while focused, then **Show all** and **Center** again; confirm
+   the first card remains below every visible HUD row in both states.
 7. Open **Library**, reopen the saved artifact, reload, and confirm the cache
    still avoids Google.
 
@@ -62,7 +62,7 @@ relationship focus adds the extra status-row allowance.
 | Horizontal overflow / layout collapse | 0 |
 | Stable exercised touch targets | ≥48px |
 | Frontend unit suite | 309/309 pass |
-| Browser suite | 16/16 pass |
+| Browser suite | 15 pass; 1 deployment-only case skipped |
 | Production build | Pass |
 | Scoped changed-source ESLint | Pass |
 | Repository-wide ESLint | Known red baseline: 109 unrelated errors |
