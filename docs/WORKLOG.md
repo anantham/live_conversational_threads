@@ -4995,3 +4995,21 @@ Manual testing not run:
 - This was a read-only architecture map plus documentation update. No S3/S4/S5
   behavior, branch, worktree, or remote was changed or pruned; implementation
   remains behind the recorded human arbitration gate.
+
+### 2026-08-30 21:47 +05:30 — Provisional prune manifest built without deletion
+
+- Revalidated deployed `origin/main` (`2429d8c`), every linked worktree head,
+  porcelain status, and origin-main divergence. The consolidation base has not
+  drifted and the consolidation worktree remains clean.
+- Partitioned post-merge worktree candidates into clean/represented, dirty but
+  classified generated/private/superseded state, unintegrated rescue holds,
+  active post-cutoff exclusions, and the untouchable dirty root checkout.
+- Recorded exact worktree paths, branches, and unpublished-file classes in the
+  consolidation ledger. Five dirty historical worktrees require the final
+  prune approval to explicitly authorize discarding generated MCP manifests,
+  review traces, runtime/private data, pytest outputs, or superseded duplicate
+  notes/tests; none was copied, cleaned, or removed.
+- Defined separate future operations for worktree removal, local ref deletion,
+  and remote ref deletion. Raw ahead/behind counts from disconnected rewritten
+  histories are not used as deletion proof; ancestry, merged PR identity,
+  patch-equivalence, and the vision filter remain the evidence.

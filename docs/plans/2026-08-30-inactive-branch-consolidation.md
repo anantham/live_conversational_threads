@@ -263,6 +263,86 @@ merged wholesale.
 Approval of the recommended set means **S3-A, S4-A, S5-B**. Any other
 combination is valid, but should be named explicitly before implementation.
 
+## Provisional post-merge prune manifest — refreshed 2026-08-30 21:47 +05:30
+
+This is a proposed manifest, not authorization to delete anything. It was
+recomputed from `git worktree list --porcelain`, per-worktree porcelain status,
+ref commit times, ancestry, and patch-equivalence evidence. `origin/main`
+remains `2429d8c`, so the consolidation base has not drifted. A final identical
+audit is mandatory after the consolidation result reaches `main`.
+
+### Worktrees safe to propose after merge
+
+These worktrees are clean and their meaningful behavior is already represented
+on deployed main or the consolidation ledger. They may be removed only after
+the final merge and explicit prune approval:
+
+| Worktree | Branch | Current evidence |
+| --- | --- | --- |
+| `.claude/worktrees/sage-vole-twin-drain` | `worktree-sage-vole-twin-drain` | clean; ancestor of `origin/main` |
+| `.lct-worktrees/node-neighborhood-focus` | `codex/node-neighborhood-focus` | clean; ancestor of `origin/main` |
+| TemporalCoordination `.lct-worktrees/explicit-edge-schema` | `codex/explicit-edge-schema` | clean; ancestor of `origin/main` |
+| TemporalCoordination `.lct-worktrees/graph-legibility-topology` | `codex/graph-legibility-topology` | clean; ancestor of `origin/main` |
+| TemporalCoordination `.lct-worktrees/media-deep-links` | `codex/drive-backed-threads-links` | clean; merged PR #176 head |
+| TemporalCoordination `.lct-worktrees/postgres-integration-gate` | `codex/fix-postgres-integration-gate` | clean; validation-only branch represented by the merged stack |
+| TemporalCoordination `.lct-worktrees/viewer-reader-controls` | `codex/viewer-reader-controls` | clean; commit contained by merged PR #175 |
+| `C:/Users/adity/lct-135` | `temp-135-merge` | clean historical merge worktree; no unique patch |
+| `C:/Users/adity/lct-pr1` | `feat/pipeline-spine-wiring` | clean; remote feature represented on main despite disconnected local history |
+
+### Worktrees containing only classified debris or superseded notes
+
+These are *not* clean, so deletion will require the final human prune approval
+to explicitly authorize discarding the listed unpublished files. Nothing here
+will be copied into the consolidation branch:
+
+| Worktree | Unpublished state | Classification |
+| --- | --- | --- |
+| `.claude/worktrees/attendee-audio-revision-rebuild` | untracked `mcps/` | generated MCP manifests; exclude |
+| `.claude/worktrees/test-coverage-models-convapi` | untracked `mcps/` | generated MCP manifests; exclude |
+| `C:/Users/adity/lct-gdoc` | untracked `mcps/` | generated MCP manifests; exclude |
+| TemporalCoordination `.lct-worktrees/local-first-browse` | `.agent-reviews/`, `data/`, three pytest temp trees | review traces, private/runtime data, generated tests; exclude |
+| TemporalCoordination `.lct-worktrees/recipient-semantic-cards` | modified `ISSUES.md`/`WORKLOG.md`, untracked review trace, handover, edge-direction test | stale defect narrative and duplicate contract superseded by PR #171; retain only this ledger's provenance |
+
+### Worktrees held or outside this consolidation scope
+
+- Hold `.lct-worktrees/strict-m5-stt` until S5 is selected and the approved
+  authority/queue invariants are integrated and reviewed.
+- Keep the consolidation worktree until its branch is merged and the final
+  prune manifest is approved.
+- Exclude active post-cutoff worktrees: `codex/prod-speaker-assertion-scope`,
+  `codex/remember-drive-artifacts`, `codex/share-google-token`,
+  `codex/real-artifact-provenance-hardening`, and
+  `codex/mobile-conversation-deck`.
+- Exclude the root `main` worktree. It has 36 porcelain entries and a divergent
+  local history; none was inspected as disposable or modified by this effort.
+
+### Branch/ref prune groups after successful merge
+
+1. **Represented remote refs:** every remote row marked `represented` or
+   `represented/superseded` in the exhaustive ledger above, plus their same-name
+   local branches where present. Their proof is ancestry, exact merged PR head,
+   or zero-positive-patch `git cherry` evidence recorded per row.
+2. **Explicitly rejected architecture:** `feat/backend-lease`, but only because
+   ADR-040 records the Tier-2 lease design as withdrawn; its rejection is
+   semantic, not age-based.
+3. **Split-salvage holds:** `feat/cost-tracking-wire-up` and
+   `codex/strict-m5-stt` remain until every selected S3/S4/S5 invariant is
+   present in the final reviewed diff. They are not prune candidates yet.
+4. **Disconnected local histories:** `chore/gitignore-env-bak-hardening`,
+   `docs/adr040-withdrawn`, `lct-reprocess-port-codex`,
+   `worktree-attendee-audio-revision-rebuild`,
+   `worktree-backend-ownership-tier0`, `codex/fix-postgres-integration-gate`,
+   `feat/serverless-byok`, `fix/browse-opener-spa200-mask`,
+   `worktree-sage-vole-twin-drain`, `temp-135-merge`, and the divergent local
+   refs named in the ledger. These are pruneable only from the recorded semantic
+   and patch evidence; raw ahead/behind counts are meaningless across the old
+   rewritten lineage.
+
+Remote deletion, local branch deletion, and worktree removal are three separate
+operations in the final proposal. No force deletion will be used to conceal an
+unpublished commit or dirty file. The final report will name every exact target
+and ask once for the complete bounded prune set.
+
 ## Validation and prune gates
 
 Before this branch can merge:
