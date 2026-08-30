@@ -996,6 +996,12 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   clean baseline on `main`; focused current-boundary regressions are reliable.
   Recommended next step: migrate every setup assertion to a shared
   `receive_session_started_then_ack` helper without changing product behavior.
+- **Resolved in consolidation — local MLX compute no longer wedges the HTTP
+  server.** Blocking model import/transcription, VAD, diarizer loading/inference,
+  embedding work, temporary-file writes, and accelerator cleanup now run off
+  the ASGI event loop behind bounded admission. `/health` reports inflight,
+  capacity, busy state, and rejection count; overflow receives retryable 503
+  plus `Retry-After` instead of entering an unbounded queue.
 - **Confirmed, non-blocking for current requests — API-call telemetry remains
   unwired.** The cost dashboard reads `api_calls_log`, but production LLM paths
   do not apply the existing tracker. Impact: latency/token/cost breakdowns are

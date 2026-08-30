@@ -4845,3 +4845,25 @@ Manual testing not run:
   `git diff --check` passed. A full-file diagnostic run exposed pre-existing
   message-order drift in older tests and was logged in `ISSUES.md` rather than
   weakening product assertions.
+
+### 2026-08-30 20:38 +05:30 — Consolidation packet S2a: local-STT liveness
+
+- `lct_python_backend/local_stt/server.py`: restored and tightened the dormant
+  production liveness repair. MLX import/transcription, Silero VAD, pyannote
+  load/inference, ECAPA embeddings, temporary-file writes, and cache cleanup all
+  leave the ASGI event loop. A bounded semaphore admits only configured compute
+  concurrency; overflow fails explicitly with HTTP 503, `Retry-After`, and a
+  stable `local_stt_saturated` code rather than waiting without limit.
+- `/health` now distinguishes a reachable saturated worker from a wedged one
+  using `inflight`, `max_concurrency`, `busy`, and `saturated_rejections`.
+- `lct_python_backend/local_stt/test_server_stt.py`: added a public ASGI test
+  that holds fake model compute open, proves `/health` still responds, proves
+  overflow is rejected within one second, then releases and verifies the
+  admitted transcription completes.
+- `docs/TECH_DEBT.md`: logged the 521-line local STT mixed-concern server and a
+  concrete decomposition boundary; no unrelated dormant intent-detection hunk
+  was carried from the source commit.
+- Validation: Python 3.12 local-STT tests 2 passed / 2 optional Silero fixtures
+  skipped; focused liveness test passed; Python compilation and `git diff
+  --check` passed. The repo's older Python 3.9 venv cannot parse this M5-targeted
+  Python 3.12 server, so an ignored minimal 3.12 test venv was used locally.

@@ -1,21 +1,27 @@
 """Regression tests for the STT anti-hallucination fix (#1).
 
-Two failure modes this guards:
+Test intent:
   1. The repeat-loop attractor (endless "thank you"/"excuse me") — broken by
      condition_on_previous_text=False in ANTI_HALLUCINATION_OPTS.
   2. Hallucinated filler on silence/ambient — caught by the silero-vad no-speech
      gate (_has_speech returns False -> the handler returns empty instead of
      transcribing).
+  3. Blocking model compute must not freeze health checks, and excess requests
+     must receive an explicit retryable saturation response instead of queueing.
 
 Run: lct_python_backend/local_stt/.venv/bin/python -m pytest test_server_stt.py -q
 (Set STT_SPEECH_FIXTURE=/path/to/speech.wav to also exercise the speech-passes case;
 skipped by default so CI needs no private audio.)
 """
+import asyncio
 import os
 import sys
 import tempfile
+import threading
+import types
 import wave
 
+import httpx
 import pytest
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -58,3 +64,61 @@ def test_vad_gate_passes_real_speech():
     if server._get_vad() is None:
         pytest.skip("silero-vad unavailable in this env")
     assert server._has_speech(fixture) is True
+
+
+@pytest.mark.asyncio
+async def test_blocking_transcription_keeps_health_live_and_sheds_overflow(monkeypatch):
+    entered = threading.Event()
+    release = threading.Event()
+
+    def blocking_transcribe(_path, **_kwargs):
+        entered.set()
+        if not release.wait(timeout=5):
+            raise TimeoutError("test did not release the fake model")
+        return {"text": "hello", "segments": [], "language": "en"}
+
+    monkeypatch.setitem(
+        sys.modules,
+        "mlx_whisper",
+        types.SimpleNamespace(transcribe=blocking_transcribe),
+    )
+    monkeypatch.setattr(server, "VAD_GATE", False)
+    monkeypatch.setattr(server, "MAX_CONCURRENCY", 1)
+    monkeypatch.setattr(server, "RETRY_AFTER_S", 7)
+    monkeypatch.setattr(server, "_slots", asyncio.BoundedSemaphore(1))
+    server._inflight["n"] = 0
+
+    transport = httpx.ASGITransport(app=server.app)
+    first_request = None
+    try:
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            first_request = asyncio.create_task(
+                client.post(
+                    "/v1/audio/transcriptions",
+                    files={"file": ("first.wav", b"not-real-audio", "audio/wav")},
+                )
+            )
+            assert await asyncio.to_thread(entered.wait, 2), "fake model was never entered"
+
+            health = await asyncio.wait_for(client.get("/health"), timeout=1.0)
+            assert health.status_code == 200
+            assert health.json()["busy"] is True
+            assert health.json()["inflight"] == 1
+
+            overflow = await asyncio.wait_for(
+                client.post(
+                    "/v1/audio/transcriptions",
+                    files={"file": ("second.wav", b"not-real-audio", "audio/wav")},
+                ),
+                timeout=1.0,
+            )
+            assert overflow.status_code == 503
+            assert overflow.headers["Retry-After"] == "7"
+            assert overflow.json()["code"] == "local_stt_saturated"
+            assert overflow.json()["max_concurrency"] == 1
+    finally:
+        release.set()
+        if first_request is not None:
+            response = await first_request
+            assert response.status_code == 200
+        server._inflight["n"] = 0
