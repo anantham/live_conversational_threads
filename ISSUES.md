@@ -1002,6 +1002,11 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   the ASGI event loop behind bounded admission. `/health` reports inflight,
   capacity, busy state, and rejection count; overflow receives retryable 503
   plus `Retry-After` instead of entering an unbounded queue.
+- **Resolved in consolidation — local VAD evidence is no longer discarded.**
+  Local STT responses now retain Silero speech regions, total detected speech,
+  recording duration, and speech/head/tail dBFS as JSON-safe underscore-prefixed
+  telemetry. Non-finite digital-silence levels become `null`; VAD failure still
+  fails open and never suppresses real audio.
 - **Confirmed, non-blocking for current requests — API-call telemetry remains
   unwired.** The cost dashboard reads `api_calls_log`, but production LLM paths
   do not apply the existing tracker. Impact: latency/token/cost breakdowns are

@@ -4867,3 +4867,19 @@ Manual testing not run:
   skipped; focused liveness test passed; Python compilation and `git diff
   --check` passed. The repo's older Python 3.9 venv cannot parse this M5-targeted
   Python 3.12 server, so an ignored minimal 3.12 test venv was used locally.
+
+### 2026-08-30 20:49 +05:30 — Consolidation packet S2b: VAD evidence
+
+- `lct_python_backend/local_stt/server.py`: restored Silero's discarded speech
+  regions and added speech/head/tail RMS dBFS plus total duration. The existing
+  gate still uses the same minimum detected-speech duration and fails open when
+  VAD is unavailable; this packet does not introduce automatic cropping.
+- The additive `_vad_analysis` response field serializes regions and levels in
+  a strict JSON-safe shape (`-inf` digital silence becomes `null`) for empirical
+  diagnosis and a later evidence-bounded crop decision. `_vad_gated` is now
+  explicit on successful as well as gated responses.
+- `lct_python_backend/local_stt/test_server_stt.py`: the public ASGI regression
+  proves exact speech regions and finite levels survive the response while
+  non-finite silence does not produce invalid JSON.
+- Validation: Python 3.12 local-STT suite 3 passed / 2 optional Silero fixtures
+  skipped; Python compilation and `git diff --check` passed.
