@@ -202,4 +202,36 @@ describe("MobileConversationDeck", () => {
     })));
     expect(container.textContent).toContain("Traceable topic");
   });
+
+  it("keeps focus on the chosen More action across parent status rerenders", () => {
+    const { bundle, nodes } = fixture();
+    const callbacks = {
+      onDownloadTranscript: vi.fn(),
+      onOpenAnother: vi.fn(),
+      onOpenLibrary: vi.fn(),
+      onShowMap: vi.fn(),
+    };
+    const renderWithStatus = (message) => {
+      act(() => {
+        root.render(
+          <MobileConversationDeck
+            bundle={bundle}
+            graphNodes={nodes}
+            libraryStatus={{ state: "saved", message }}
+            {...callbacks}
+          />,
+        );
+      });
+    };
+
+    renderWithStatus("Saving on this device");
+    clickByLabel("More conversation options");
+    const library = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent.includes("Library"));
+    expect(library).not.toBeNull();
+    act(() => library.focus());
+
+    renderWithStatus("Saved on this device");
+    expect(document.activeElement).toBe(library);
+  });
 });

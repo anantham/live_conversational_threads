@@ -4716,3 +4716,24 @@ Manual testing not run:
   passed 12/12 applicable cases with the deployment-only case skipped. The
   unrelated animated desktop-center assertion remained intentionally excluded
   under its already-recorded pre-existing issue rather than weakened.
+
+### 2026-08-30 14:48 +05:30 — Second independent-review boundary repair
+
+- Grok reviewed exact PR #183 head
+  `1feee4502b1cdc6ee61989c6bd2c0c53d8dccb3a` and reported two findings. Both
+  were supported by the code and repaired at the shared boundary.
+- `MobileDeckSheet` no longer restarts its focus lifecycle when a consumer's
+  callback identity changes. It stores the latest close callback in a ref and
+  keys focus capture/restoration only to the sheet's open transition;
+  `MobileConversationDeck` also supplies a stable close callback.
+- `MinimalGraph` now distinguishes the normal 160px compact HUD reservation
+  from a 72px chromeless reservation used by every initial, follow-up, and
+  manual compact framing path. The optional mobile map therefore clears its
+  floating Cards control without reserving space for hidden graph HUD rows.
+- New behavioral evidence covers focus remaining on the selected Library action
+  when browser-local save status rerenders the parent, and measures the first
+  chromeless map node inside a 60–100px top reading band. Focused component 4/4
+  and real-phone Playwright 1/1 passed after the repair.
+- Final round-two validation passed: Vitest 317/317, production build, scoped
+  source ESLint, `git diff --check`, and the combined browser gate with 12/12
+  applicable cases plus the deployment-only case skipped.

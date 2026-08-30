@@ -267,6 +267,14 @@ test("a phone recipient can traverse a Drive-backed conversation from arc to utt
   await expect(page.locator(".react-flow")).toBeVisible();
   const returnToCards = page.getByRole("button", { name: "Return to conversation cards" });
   await expectTouchTarget(returnToCards, "Return-to-cards action");
+  await page.waitForTimeout(550);
+  const mapTopGap = await page.locator(".react-flow__node").first().evaluate((node) => {
+    const graph = node.closest(".react-flow");
+    if (!graph) throw new Error("ReactFlow viewport is missing");
+    return node.getBoundingClientRect().top - graph.getBoundingClientRect().top;
+  });
+  expect(mapTopGap).toBeGreaterThanOrEqual(60);
+  expect(mapTopGap).toBeLessThanOrEqual(100);
   await returnToCards.click();
   await expect(page.getByTestId("mobile-deck-card")).toContainText("Earlier assumptions were visible");
 

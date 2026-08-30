@@ -14,6 +14,11 @@ const FOCUSABLE = [
 export default function MobileDeckSheet({ children, onClose, open, title }) {
   const titleId = useId();
   const panelRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -24,7 +29,7 @@ export default function MobileDeckSheet({ children, onClose, open, title }) {
     const onKeyDown = (event) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab" || !panel) return;
@@ -55,7 +60,7 @@ export default function MobileDeckSheet({ children, onClose, open, title }) {
         previousFocus.focus();
       }
     };
-  }, [onClose, open]);
+  }, [open]);
 
   return (
     <div

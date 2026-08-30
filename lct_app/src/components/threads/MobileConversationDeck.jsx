@@ -78,6 +78,8 @@ export default function MobileConversationDeck({
     noticeTimer.current = window.setTimeout(() => setNotice(""), 2800);
   }, []);
 
+  const closeMore = useCallback(() => setMoreOpen(false), []);
+
   const navigate = useCallback((action) => {
     const result = moveMobileDeck(model, deckState, action);
     if (!result.changed) {
@@ -269,7 +271,7 @@ export default function MobileConversationDeck({
         counts={snapshot.counts}
         libraryStatus={libraryStatus}
         onAnnounceLayer={announceLayer}
-        onClose={() => setMoreOpen(false)}
+        onClose={closeMore}
         onDownloadTranscript={onDownloadTranscript}
         onOpenAnother={onOpenAnother}
         onOpenLibrary={onOpenLibrary}
