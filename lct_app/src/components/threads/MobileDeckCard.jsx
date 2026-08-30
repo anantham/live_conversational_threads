@@ -49,6 +49,34 @@ function nodeConnections(node) {
   return edgeIds.size;
 }
 
+function handleCardKeyDown(event) {
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.target !== event.currentTarget) return;
+  const card = event.currentTarget;
+  const maxScrollTop = Math.max(0, card.scrollHeight - card.clientHeight);
+  if (maxScrollTop <= 0) return;
+  const current = card.scrollTop;
+  const lineStep = Math.max(64, Math.round(card.clientHeight * 0.16));
+  const pageStep = Math.max(96, Math.round(card.clientHeight * 0.8));
+  let next = current;
+  if (event.key === "ArrowDown") next = Math.min(maxScrollTop, current + lineStep);
+  else if (event.key === "ArrowUp") next = Math.max(0, current - lineStep);
+  else if (event.key === "PageDown" || (event.key === " " && !event.shiftKey)) {
+    next = Math.min(maxScrollTop, current + pageStep);
+  } else if (event.key === "PageUp" || (event.key === " " && event.shiftKey)) {
+    next = Math.max(0, current - pageStep);
+  } else if (event.key === "Home") next = 0;
+  else if (event.key === "End") next = maxScrollTop;
+  else return;
+
+  // At an arrow boundary, let the event reach the deck-level abstraction
+  // navigator. Within the card, consume it as reading movement.
+  if (next === current) return;
+  event.preventDefault();
+  event.stopPropagation();
+  card.scrollTop = next;
+}
+
 function NodeCard({ snapshot, sourceRows }) {
   const node = snapshot.item;
   const metrics = node?.provenance_metrics || {};
@@ -62,10 +90,13 @@ function NodeCard({ snapshot, sourceRows }) {
 
   return (
     <article
+      aria-label={`${snapshot.levelInfo.singular} conversation card`}
       data-testid="mobile-deck-card"
       data-kind="node"
       data-level={snapshot.level}
-      className="flex h-full min-h-0 flex-col overflow-y-auto rounded-2xl border border-amber-300 bg-white px-5 py-5 shadow-[0_14px_40px_rgba(15,23,42,0.10)]"
+      onKeyDown={handleCardKeyDown}
+      tabIndex={0}
+      className="flex h-full min-h-0 flex-col overflow-y-auto rounded-2xl border border-amber-300 bg-white px-5 py-5 shadow-[0_14px_40px_rgba(15,23,42,0.10)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
     >
       <div className="flex items-center justify-between gap-3">
         <span className={`text-xs font-semibold capitalize ${TIER_TEXT[snapshot.level] || "text-slate-600"}`}>
@@ -126,10 +157,13 @@ function UtteranceCard({ mediaRef, snapshot, speakerColorMap }) {
 
   return (
     <article
+      aria-label="Exact utterance conversation card"
       data-testid="mobile-deck-card"
       data-kind="utterance"
       data-level="0"
-      className="flex h-full min-h-0 flex-col overflow-y-auto rounded-2xl border border-amber-300 bg-white px-5 py-5 shadow-[0_14px_40px_rgba(15,23,42,0.10)]"
+      onKeyDown={handleCardKeyDown}
+      tabIndex={0}
+      className="flex h-full min-h-0 flex-col overflow-y-auto rounded-2xl border border-amber-300 bg-white px-5 py-5 shadow-[0_14px_40px_rgba(15,23,42,0.10)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
     >
       <div className="flex items-center justify-between gap-3 text-xs">
         <span className="font-semibold text-slate-600">Exact utterance</span>

@@ -149,6 +149,18 @@ describe("MobileConversationDeck", () => {
     expect(container.textContent).toContain("0:12");
     expect(container.querySelector('a[href="https://drive.google.com/file/d/recording123/view?t=10"]'))
       .not.toBeNull();
+    Object.defineProperties(utteranceCard, {
+      clientHeight: { configurable: true, value: 100 },
+      scrollHeight: { configurable: true, value: 400 },
+    });
+    act(() => utteranceCard.focus());
+    act(() => utteranceCard.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true,
+      cancelable: true,
+      key: "ArrowDown",
+    })));
+    expect(utteranceCard.scrollTop).toBeGreaterThan(0);
+    expect(utteranceCard.dataset.kind).toBe("utterance");
 
     clickByLabel("Move to a higher level of abstraction");
     expect(container.textContent).toContain("Traceable moment");
@@ -182,6 +194,8 @@ describe("MobileConversationDeck", () => {
     const dialog = container.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
     expect(document.activeElement).toBe(dialog);
+    expect(container.querySelector('[data-testid="mobile-deck-background"]')?.hasAttribute("inert"))
+      .toBe(true);
 
     act(() => dialog.dispatchEvent(new KeyboardEvent("keydown", {
       bubbles: true,
@@ -191,6 +205,8 @@ describe("MobileConversationDeck", () => {
     expect(container.textContent).not.toContain("Traceable theme");
 
     clickByLabel("Close");
+    expect(container.querySelector('[data-testid="mobile-deck-background"]')?.hasAttribute("inert"))
+      .toBe(false);
     const down = container.querySelector('button[aria-label="Drill into a finer level of detail"]');
     act(() => down.focus());
     clickByLabel("Drill into a finer level of detail");

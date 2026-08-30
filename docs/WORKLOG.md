@@ -4737,3 +4737,28 @@ Manual testing not run:
 - Final round-two validation passed: Vitest 317/317, production build, scoped
   source ESLint, `git diff --check`, and the combined browser gate with 12/12
   applicable cases plus the deployment-only case skipped.
+
+### 2026-08-30 15:21 +05:30 — Third independent-review accessibility repair
+
+- Grok reviewed exact PR #183 head
+  `29f2c3279817946883b801258e6dc3638ec36f09` and reported two supported
+  accessibility gaps: overflowing transcript cards could not receive keyboard
+  focus/scroll, and the modal More sheet did not make background controls inert.
+- All cards are now named focusable scroll regions. Arrow keys scroll within an
+  overflowing card and bubble to abstraction navigation only at its boundary;
+  Page Up/Down, Space/Shift+Space, Home, and End provide additional reading
+  controls without changing the semantic trail.
+- The complete deck background is now an inert, aria-hidden sibling while More
+  is open, so programmatic focus or browser-chrome re-entry cannot activate Map
+  or navigation behind the modal. Closing restores the background and the
+  sheet's existing focus restoration remains intact.
+- Focused component coverage passed 4/4 in a deterministic worker. The real
+  Chromium journey proved keyboard scroll advances while the utterance remains
+  selected and a forced background-Map activation is rejected while More stays
+  visible. A camera assertion initially sampled two in-flight transitions; its
+  final form requires two stable 60–100px samples 350ms apart and passed without
+  broadening the geometry contract.
+- Final round-three validation passed: Vitest 317/317, production build, scoped
+  source ESLint, `git diff --check`, focused Chromium 1/1, and the combined
+  browser gate with 12/12 applicable cases plus the deployment-only case
+  skipped.

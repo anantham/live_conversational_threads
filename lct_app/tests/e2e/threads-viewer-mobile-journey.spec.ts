@@ -243,6 +243,15 @@ test("a phone recipient can traverse a Drive-backed conversation from arc to utt
   await expect.poll(() => page.getByTestId("mobile-deck-card").evaluate(
     (element) => element.scrollHeight > element.clientHeight + 1,
   )).toBe(true);
+  await page.getByTestId("mobile-deck-card").focus();
+  await expect(page.getByTestId("mobile-deck-card")).toBeFocused();
+  await page.getByTestId("mobile-deck-card").evaluate((element) => { element.scrollTop = 0; });
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => page.getByTestId("mobile-deck-card").evaluate(
+    (element) => element.scrollTop,
+  )).toBeGreaterThan(0);
+  await expect(page.getByTestId("mobile-deck-card")).toHaveAttribute("data-kind", "utterance");
+  await page.getByTestId("mobile-deck-card").evaluate((element) => { element.scrollTop = 0; });
   await nativeTouchScroll(page, page.getByTestId("mobile-deck-card"));
   await expect.poll(() => page.getByTestId("mobile-deck-card").evaluate(
     (element) => element.scrollTop,
@@ -260,19 +269,37 @@ test("a phone recipient can traverse a Drive-backed conversation from arc to utt
   await expect(options).toContainText("Refresh from Drive");
   await expect(options).toContainText("Open another file");
   await expect(options).toHaveCSS("opacity", "1");
+  const deckBackground = page.getByTestId("mobile-deck-background");
+  await expect(deckBackground).toHaveAttribute("inert", "");
+  const hiddenMapAction = page.locator('button[aria-label="Open conversation map"]');
+  await hiddenMapAction.focus();
+  await page.keyboard.press("Enter");
+  await expect(options).toBeVisible();
+  await expect(page.locator(".react-flow")).toHaveCount(0);
+  await expect(options).toContainText("Conversation options");
   await page.screenshot({ path: testInfo.outputPath("mobile-deck-options.png"), fullPage: true });
   await options.getByRole("button", { name: "Close" }).click();
+  await expect(deckBackground).not.toHaveAttribute("inert", "");
 
   await page.getByRole("button", { name: "Open conversation map" }).click();
   await expect(page.locator(".react-flow")).toBeVisible();
   const returnToCards = page.getByRole("button", { name: "Return to conversation cards" });
   await expectTouchTarget(returnToCards, "Return-to-cards action");
-  await page.waitForTimeout(550);
-  const mapTopGap = await page.locator(".react-flow__node").first().evaluate((node) => {
-    const graph = node.closest(".react-flow");
-    if (!graph) throw new Error("ReactFlow viewport is missing");
-    return node.getBoundingClientRect().top - graph.getBoundingClientRect().top;
+  const readMapTopGap = () => page.locator(".react-flow__node").evaluateAll((nodes) => {
+    const graph = nodes[0]?.closest(".react-flow");
+    if (!graph || nodes.length === 0) throw new Error("ReactFlow viewport is missing");
+    const graphTop = graph.getBoundingClientRect().top;
+    return Math.min(...nodes.map((node) => node.getBoundingClientRect().top - graphTop));
   });
+  await expect.poll(async () => {
+    const first = await readMapTopGap();
+    await page.waitForTimeout(350);
+    const second = await readMapTopGap();
+    const firstInBand = first >= 60 && first <= 100;
+    const secondInBand = second >= 60 && second <= 100;
+    return firstInBand && secondInBand && Math.abs(first - second) <= 2;
+  }, { timeout: 5_000 }).toBe(true);
+  const mapTopGap = await readMapTopGap();
   expect(mapTopGap).toBeGreaterThanOrEqual(60);
   expect(mapTopGap).toBeLessThanOrEqual(100);
   await returnToCards.click();

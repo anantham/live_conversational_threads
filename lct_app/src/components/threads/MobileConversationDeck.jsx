@@ -204,16 +204,22 @@ export default function MobileConversationDeck({
 
   return (
     <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] font-sans text-slate-800">
-      <MobileDeckHeader
-        levelInfo={snapshot.levelInfo}
-        onMore={() => setMoreOpen(true)}
-        onShowMap={onShowMap}
-        position={snapshot.position || 0}
-        title={title}
-        total={snapshot.total || 0}
-      />
+      <div
+        data-testid="mobile-deck-background"
+        aria-hidden={moreOpen ? "true" : undefined}
+        inert={moreOpen ? "" : undefined}
+        className="flex min-h-0 flex-1 flex-col"
+      >
+        <MobileDeckHeader
+          levelInfo={snapshot.levelInfo}
+          onMore={() => setMoreOpen(true)}
+          onShowMap={onShowMap}
+          position={snapshot.position || 0}
+          title={title}
+          total={snapshot.total || 0}
+        />
 
-      <main className="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+        <main className="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
         <div className="h-5 shrink-0 px-2 text-center">
           {parentTitle && (
             <p className="truncate text-xs text-slate-400" title={parentTitle}>
@@ -254,16 +260,17 @@ export default function MobileConversationDeck({
         </div>
 
         <MobileDeckNavigation navigate={navigate} snapshot={snapshot} />
-      </main>
+        </main>
 
-      <div
-        role="status"
-        aria-live="polite"
-        className={`fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[100] mx-auto max-w-sm rounded-xl bg-slate-900 px-4 py-3 text-center text-sm text-white shadow-lg transition-all duration-200 ${
-          notice ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
-        }`}
-      >
-        {notice}
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[100] mx-auto max-w-sm rounded-xl bg-slate-900 px-4 py-3 text-center text-sm text-white shadow-lg transition-all duration-200 ${
+            notice ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
+          }`}
+        >
+          {notice}
+        </div>
       </div>
 
       <MobileDeckOptions
