@@ -96,9 +96,17 @@ The active dirty root checkout and all branches/worktrees with activity on or af
 
 The current live-STT setup still logs `quota exceeded - blocking session` but continues to send `session_ack`. That is an observable dead guard and a concrete bypass. Restore the behavior through the current public session path with regression coverage; do not transplant unrelated middleware/schema deletion from `4deac8b`.
 
+**Integrated:** `badbc8b` moves admission ahead of persistence/runtime startup,
+emits the structured terminal websocket contract, and covers allowed/denied
+sessions through the public boundary.
+
 ### S2 — Local STT concurrency and VAD evidence (recommended: restore now)
 
 Commits `9efa5c2` and `ce343bd` move blocking MLX/VAD/diarization work off the event loop, bound concurrency, expose saturation, and persist speech-region/dBFS evidence. They align with explicit failures, performance telemetry, and raw-evidence durability. Port them onto current `server.py`, add behavior tests, and retain the environment override instead of baking in the historically observed value of four workers.
+
+**Integrated without the unrelated dormant intent-detection hunk:** `b0e5dc0`
+restores bounded off-event-loop compute and explicit saturation; `1d428bc`
+retains JSON-safe VAD region/level evidence without introducing automatic crop.
 
 ### S3 — Cost/latency telemetry (recommended: redesign the salvage)
 
@@ -121,6 +129,21 @@ Decision needed: should strict authority mean **M5-only**, or **explicit owner-a
 ### S6 — Old instrumentation and zombie-table cleanup (recommended: do not transplant)
 
 Commit `4deac8b` also wires a legacy middleware, optional API-key middleware, a daily aggregation loop, and drops three tables. Current `configure_p0_security` supersedes the old API-key hook; the schema deletion lacks current usage/migration proof; and aggregation policy should follow the new telemetry design. Preserve only S1 now. Log the other pieces as focused follow-ups rather than reviving the mixed commit.
+
+## Human arbitration packet — 2026-08-30
+
+The remaining work cannot be selected merely from Git age: each choice changes
+current product architecture or interaction grammar. No old branch will be
+merged wholesale.
+
+| Packet | A | B | C | Recommendation |
+| --- | --- | --- | --- | --- |
+| S3 telemetry | Instrument the canonical LLM gateway with durable facts only: served provider/model, route/feature, input/output tokens when supplied, latency, finish/error state, and conversation/session correlation. Keep prices out. | Instrument only the local-model adapter; faster, but cloud/direct-provider calls remain invisible. | Preserve the design only; dashboard remains knowingly empty. | **A.** It restores the invariant without reviving stale GPT-4o savings claims. Pricing can later consume facts as dated, editable assumptions. |
+| S4 live tangents | Adapt the independent temporal/depth state model into the current mobile conversation deck and discard the old separate surface. | Keep the dormant MeetingView implementation as a feature-flagged live-only UI alongside the static deck. | Preserve screenshots/design intent in the roadmap and discard all old code. | **A.** One interaction grammar across live and historical conversations avoids duplicate mobile UX while retaining the valuable navigation model. |
+| S5 STT authority | Make M5 the sole automatic endpoint; any outage hard-stops unless the global rollback disables strictness. | Define an explicit owner-approved local authority set: M5 primary, Asus local fallback, no silent cloud; scoped BYOK remains the only automatic cloud authority. | Keep today's provider selection unchanged. | **B.** It preserves local privacy/quality authority without turning one sleeping machine into a total pipeline stop. Endpoint identity remains configuration trust until attestation exists. |
+
+Approval of the recommended set means **S3-A, S4-A, S5-B**. Any other
+combination is valid, but should be named explicitly before implementation.
 
 ## Validation and prune gates
 

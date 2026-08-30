@@ -4883,3 +4883,17 @@ Manual testing not run:
   non-finite silence does not produce invalid JSON.
 - Validation: Python 3.12 local-STT suite 3 passed / 2 optional Silero fixtures
   skipped; Python compilation and `git diff --check` passed.
+
+### 2026-08-30 20:57 +05:30 — Consolidation human-arbitration gate
+
+- Updated the consolidation ledger with the exact integrated commits for S1
+  and S2 and a three-choice decision matrix for every remaining meaningful but
+  architecturally ambiguous packet.
+- Recommended set: S3-A (facts-only durable telemetry at the canonical LLM
+  gateway, no embedded prices), S4-A (adapt the temporal/depth navigation model
+  into the current mobile deck, discard the duplicate old surface), and S5-B
+  (M5 primary plus explicit owner-approved Asus local fallback, no silent cloud,
+  scoped BYOK cloud only).
+- Work stops at this human gate before changing provider authority, live/mobile
+  interaction grammar, or the durable telemetry contract. No source branch or
+  worktree has been pruned.
