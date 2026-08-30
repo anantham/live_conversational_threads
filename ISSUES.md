@@ -979,3 +979,34 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   verbatim. Their old median provenance set was 35 turns. The generator now
   requires exact contiguous leaf excerpts, but this historical conversation
   still needs a deliberate re-extraction before its leaf evidence is precise.
+
+## 2026-08-30 — Inactive-branch consolidation findings
+
+- **Confirmed, blocking for quota enforcement — live STT logs a block but
+  continues.** `stt_ws_session.py` logs `quota exceeded - blocking session`
+  when `QuotaService.check_quota()` rejects a session, then continues into the
+  ordinary `session_ack` path. Impact: a configured non-BYOK live quota is not
+  actually enforced. This is in scope for the consolidation repair; restore the
+  public rejection behavior with a regression through the session boundary.
+- **Confirmed, non-blocking for current requests — API-call telemetry remains
+  unwired.** The cost dashboard reads `api_calls_log`, but production LLM paths
+  do not apply the existing tracker. Impact: latency/token/cost breakdowns are
+  incomplete and counterfactual-savings claims cannot be audited. Recommended
+  next step: record provider/model actually served, token counts, latency,
+  route, finish state, and errors before adding dated/configurable cost
+  assumptions.
+- **Decision required — dormant strict STT branch hard-codes M5 as sole
+  automatic authority.** It prevents silent cloud/local substitution and keeps
+  scoped BYOK as the only cloud exception, but also disables an owner-approved
+  Asus/Parakeet fallback and treats the configured URL as identity proof.
+  Recommended direction: an explicit owner-approved local authority set (M5
+  primary, Asus fallback, no silent cloud), with the exact endpoint identity
+  limitation named until attestation exists.
+- **Decision required — live tangent navigation predates the current mobile
+  deck.** Its temporal/depth state model matches the product vision, but its
+  separate MeetingView surface may duplicate the new interaction grammar.
+  Decide whether to adapt the state model into the current deck, retain a
+  feature-flagged live mode, or preserve only the design intent.
+- Full proof and branch-by-branch disposition are recorded in
+  `docs/plans/2026-08-30-inactive-branch-consolidation.md`. These findings do
+  not authorize deleting any branch or dirty worktree.

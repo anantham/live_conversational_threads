@@ -4792,3 +4792,33 @@ Manual testing not run:
   retains the isolated real-browser notice regression; no product assertion or
   geometry threshold was weakened. Exact-head independent re-review remains
   pending.
+
+### 2026-08-30 20:00 +05:30 — Dormant branch consolidation inventory
+
+- Created `codex/consolidate-inactive-20260830` in a new worktree at deployed
+  `main` commit `2429d8c`; the dirty root checkout and every branch/worktree
+  active after `2026-08-27T19:58:10+05:30` remain untouched and out of scope.
+- Fetched/pruned `origin`, read `PRODUCT.md`, `DESIGN.md`, `docs/VISION.md`, and
+  both roadmap documents in full, and classified every remaining inactive
+  remote ref plus local-only/deleted-upstream refs. The exhaustive proof ledger
+  is `docs/plans/2026-08-30-inactive-branch-consolidation.md`.
+- Most apparent unique work is already represented by an ancestor, a squash
+  merge, or a later branch that contained the patch. In particular PR #174's
+  sole viewer-control commit is contained by merged PR #175; the closed
+  transcript-revisions branch was superseded by merged PRs #118/#142; the
+  serverless snapshot was superseded by PR #144; and the backend lease belongs
+  to the explicitly withdrawn portion of ADR-040.
+- Inspected every inactive dirty worktree. Unpublished files are generated MCP
+  manifests, external-review traces, local databases/registries, pytest/media
+  outputs, or an edge-direction diagnostic already committed and resolved by
+  PR #171. None is eligible for product consolidation; no file was deleted.
+- Remaining behavioral packets are: quota enforcement, local-STT
+  concurrency/VAD evidence, telemetry/cost logging, live tangent navigation,
+  and strict STT authority. The legacy mixed branch will never be merged
+  wholesale. Quota and local-STT reliability are recommended for direct port;
+  telemetry requires a current design; tangent UX and M5-only authority need
+  human product/architecture decisions.
+- Diagnostic evidence confirmed a live quota bypass: the code logs that the
+  session is blocked but proceeds to `session_ack`. This was added to
+  `ISSUES.md` as an in-scope repair. No source/runtime/deployment changes have
+  been made yet, and no prune action is authorized.
