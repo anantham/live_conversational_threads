@@ -4916,3 +4916,18 @@ Manual testing not run:
 - Validation: contract suite 13/13, websocket halves 8/8 and 9/9, then combined
   protocol suite 30/30. Only the existing Python 3.9 end-of-life warnings from
   `google-auth` remain; no timeout, product path, or assertion was weakened.
+
+### 2026-08-30 21:22 +05:30 — Independent-review attempt remains gated
+
+- Prepared the exact deployed-main-to-head diff (77,310 bytes, SHA-256
+  `E007082F7F8782C01097C7F2EA6E72E5A99C9BA7522786793D208E4A02F46988`)
+  containing only source, tests, and technical documentation covered by the
+  standing external-review authorization. The temporary bundle was removed
+  after the attempts and never committed.
+- Claude Max was authenticated but refused the run because its session limit
+  resets at 23:00. The installed Gemini command hung before printing version or
+  help. Grok 4.6 authenticated, but both a restricted paged-read attempt and a
+  direct prompt-file attempt failed to produce a verdict within bounded runs.
+- No reviewer result was inferred. Independent approval remains a hard gate
+  before completion or merge; retry after the three human-arbitrated rescue
+  decisions are integrated so the reviewer sees the actual final diff.
