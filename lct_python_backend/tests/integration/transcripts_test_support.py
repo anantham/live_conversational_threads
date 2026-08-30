@@ -44,6 +44,31 @@ def build_processor_class(call_store, *, flush_delay=0.0):
     return Processor
 
 
+def receive_session_ack(websocket):
+    """Receive and validate the public two-frame session startup contract."""
+    started = websocket.receive_json()
+    assert started["type"] == "session_started"
+    ack = websocket.receive_json()
+    assert ack["type"] == "session_ack"
+    assert ack["conversation_id"] == started["conversation_id"]
+    assert ack["session_id"] == started["session_id"]
+    return ack
+
+
+def receive_until_type(websocket, expected_type, *, max_messages=20):
+    """Read an asynchronous protocol stream until the requested public frame."""
+    observed = []
+    for _ in range(max_messages):
+        message = websocket.receive_json()
+        observed.append(message.get("type"))
+        if message.get("type") == expected_type:
+            return message
+    raise AssertionError(
+        f"Did not receive {expected_type!r} within {max_messages} frames; "
+        f"observed={observed}"
+    )
+
+
 def build_test_client(
     monkeypatch,
     *,

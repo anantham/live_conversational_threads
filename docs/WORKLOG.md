@@ -4897,3 +4897,22 @@ Manual testing not run:
 - Work stops at this human gate before changing provider authority, live/mobile
   interaction grammar, or the durable telemetry contract. No source branch or
   worktree has been pruned.
+
+### 2026-08-30 21:08 +05:30 — Websocket validation baseline restored
+
+- `lct_python_backend/tests/integration/transcripts_test_support.py`: added a
+  public-protocol helper that validates `session_started` followed by the
+  matching `session_ack`, plus an asynchronous frame selector for tests whose
+  observable messages may legally interleave.
+- `test_transcripts_ws_contract.py` and `test_transcripts_websocket.py`: moved
+  stale single-frame setup assertions onto that helper, updated the unknown
+  message contract to its current structured error, and kept post-flush checks
+  order-independent without changing their required outcomes.
+- A broad diagnostic initially appeared to hang. Isolating by collection order
+  and enabling live logs falsified a production deadlock: the backend-live
+  `DummyAudioStorage` lacked the public `get_status` method, causing an
+  unhandled fixture-task exception before the expected transcript frame. The
+  realistic fake now reports bytes written per conversation.
+- Validation: contract suite 13/13, websocket halves 8/8 and 9/9, then combined
+  protocol suite 30/30. Only the existing Python 3.9 end-of-life warnings from
+  `google-auth` remain; no timeout, product path, or assertion was weakened.

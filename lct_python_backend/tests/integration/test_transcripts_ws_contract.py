@@ -23,6 +23,8 @@ from lct_python_backend.tests.integration.transcripts_test_support import (
     build_processor_class,
     build_test_client,
     pcm_audio_base64,
+    receive_session_ack,
+    receive_until_type,
 )
 
 
@@ -105,7 +107,7 @@ def test_audio_chunk_after_final_flush_returns_warning(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "final_flush"})
@@ -116,7 +118,7 @@ def test_audio_chunk_after_final_flush_returns_warning(monkeypatch):
         ws.send_json(
             {"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.1)}
         )
-        msg = ws.receive_json()
+        msg = receive_until_type(ws, "processing_status")
 
     assert msg["type"] == "processing_status"
     assert msg["level"] == "warning"
@@ -152,7 +154,7 @@ def test_audio_chunk_with_no_stt_url_returns_provider_error(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
         assert ack["stt_ready"] is False
 
@@ -203,7 +205,7 @@ def test_session_meta_resend_resets_state(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack1 = ws.receive_json()
+        ack1 = receive_session_ack(ws)
         assert ack1["type"] == "session_ack"
         assert ack1["conversation_id"] == conv1
         assert ack1["session_id"] == "s1"
@@ -218,7 +220,7 @@ def test_session_meta_resend_resets_state(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack2 = ws.receive_json()
+        ack2 = receive_session_ack(ws)
         assert ack2["type"] == "session_ack"
         assert ack2["conversation_id"] == conv2
         assert ack2["session_id"] == "s2"
@@ -246,7 +248,7 @@ def test_client_log_produces_no_response(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "client_log", "message": "test log entry"})
@@ -276,15 +278,12 @@ def test_ping_works_without_session_meta(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 9. Unknown message type → silently ignored
+# 9. Unknown message type → structured error, connection remains usable
 # ---------------------------------------------------------------------------
 
 
-def test_unknown_message_type_silently_ignored(monkeypatch):
-    """Unknown message types should not crash the session or produce errors.
-
-    Verify by sending unknown type, then ping, and confirming pong arrives.
-    """
+def test_unknown_message_type_returns_structured_error_and_session_stays_alive(monkeypatch):
+    """Unknown message types fail explicitly without killing the session."""
     client = build_test_client(monkeypatch)
 
     with client.websocket_connect("/ws/transcripts") as ws:
@@ -296,12 +295,17 @@ def test_unknown_message_type_silently_ignored(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "nonexistent_type", "data": "hello"})
+        error = ws.receive_json()
+        assert error["type"] == "error"
+        assert error["code"] == "unsupported_message_type"
+        assert error["context"]["received_message_type"] == "nonexistent_type"
+
         ws.send_json({"type": "ping", "client_ts_ms": 1})
-        msg = ws.receive_json()
+        msg = receive_until_type(ws, "pong")
 
     assert msg["type"] == "pong"
 
@@ -325,9 +329,7 @@ def test_session_ack_has_required_fields(monkeypatch):
                 "store_audio": False,
             }
         )
-        started = ws.receive_json()
-        assert started["type"] == "session_started"
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
 
     assert ack["type"] == "session_ack"
     required_fields = [
@@ -412,11 +414,11 @@ def test_flush_ack_has_telemetry(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "final_flush"})
-        flush_ack = ws.receive_json()
+        flush_ack = receive_until_type(ws, "flush_ack")
 
     assert flush_ack["type"] == "flush_ack"
     assert "telemetry" in flush_ack
@@ -453,13 +455,13 @@ def test_transcript_partial_empty_text_skipped(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "transcript_partial", "text": ""})
         ws.send_json({"type": "transcript_partial", "text": "real text"})
         ws.send_json({"type": "final_flush"})
-        flush_ack = ws.receive_json()
+        flush_ack = receive_until_type(ws, "flush_ack")
         assert flush_ack["type"] == "flush_ack"
 
     time.sleep(0.05)

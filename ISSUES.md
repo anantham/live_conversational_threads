@@ -988,14 +988,12 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   fatal `quota_exceeded` frame with the quota snapshot, closes with policy code
   1008, and returns before `session_started` or `session_ack`. The public
   websocket regression covers both denied and allowed admission.
-- **Non-blocking test debt — websocket contract fixtures drifted behind the
-  live lifecycle.** The shared dummy session did not model newer conversation
-  and durable-observability calls, and several older assertions still assume
-  `session_ack` is the first setup frame even though production emits
-  `session_started` first. Impact: the whole historical contract file is not a
-  clean baseline on `main`; focused current-boundary regressions are reliable.
-  Recommended next step: migrate every setup assertion to a shared
-  `receive_session_started_then_ack` helper without changing product behavior.
+- **Resolved in consolidation — websocket contract fixtures now follow the
+  live lifecycle.** A shared helper validates the public `session_started` then
+  `session_ack` sequence, asynchronous assertions consume frames by type, and
+  the backend-live audio fake implements the current `AudioStorage.get_status`
+  contract. The combined contract/integration boundary now passes 30/30; no
+  product message ordering or timeout was weakened to make the suite green.
 - **Resolved in consolidation — local MLX compute no longer wedges the HTTP
   server.** Blocking model import/transcription, VAD, diarizer loading/inference,
   embedding work, temporary-file writes, and accelerator cleanup now run off
