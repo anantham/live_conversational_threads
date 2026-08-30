@@ -4675,3 +4675,44 @@ Manual testing not run:
   split in `docs/TECH_DEBT.md`.
 - **Independent review:** pending against the exact committed diff before the
   PR can pass the repository's merge gate.
+
+### 2026-08-30 14:13 +05:30 — Independent-review interaction hardening
+
+- Anthropic Claude's read-only ultrareview did not launch because its free
+  allowance was exhausted; no Claude verdict was represented as evidence.
+  The gate failed over to the standing-authorized xAI/Grok family against exact
+  PR #183 head `69c90f5f8d906879d6ab34c445aae3ae583de620`.
+- Grok reported five concrete interaction findings. Four reproduced directly:
+  a `touch-none` stage conflicted with long-card reading; Map unmounted the deck
+  and discarded its trail; global arrows moved the hidden deck while More was
+  open; and focusing a navigation button disabled the promised arrow shortcut.
+- Repaired the common boundaries rather than individual screenshots:
+  - the stage now permits native vertical panning; normal-height cards retain
+    vertical abstraction gestures through Touch events, while overflowing cards
+    reserve vertical motion for reading and retain explicit Up/Down controls;
+  - the compact deck state is controlled by `ThreadsViewer`, so the optional
+    ReactFlow overview can unmount/remount without losing the exact branch;
+  - More gates the window shortcut, while buttons no longer disable deck arrows;
+  - the return-to-cards button now explicitly uses `h-12`.
+- Grok's fifth reproduction claimed that return-to-cards rendered at 44px and
+  that the existing browser assertion failed. The assertion had already passed
+  because the coarse-pointer CSS floor produced a measured ≥48px box. The class
+  was nevertheless aligned to `h-12` as code-level defense; no legibility or
+  test threshold was weakened.
+- Test intent expanded after review to cover long-card native scrolling, modal
+  keyboard isolation, and exact Map round-trip state. The browser journey now
+  uses Chromium touch input to make an utterance overflow, proves `scrollTop`
+  advances without semantic navigation, then verifies accessible Up and Map
+  restoration. Component coverage proves More blocks ArrowDown and a focused
+  deck control retains ArrowDown.
+- Focused post-repair evidence: MobileConversationDeck 3/3 and deck model 4/4;
+  scoped ESLint passed; the real-touch Drive-backed browser journey passed after
+  two test-harness repairs (wait for IndexedDB persistence and use deterministic
+  button activation after synthetic native scrolling). No product assertion was
+  loosened.
+- Full post-repair evidence: Vitest passed 316/316; the production build passed
+  with the established >500kB chunk warning; `git diff --check` passed; source
+  ESLint passed; and the combined mobile/responsive/public-opener Playwright gate
+  passed 12/12 applicable cases with the deployment-only case skipped. The
+  unrelated animated desktop-center assertion remained intentionally excluded
+  under its already-recorded pre-existing issue rather than weakened.

@@ -74,6 +74,7 @@ export default function ThreadsViewer() {
   // toolbar) so only the nodes remain. Esc exits.
   const [focusMode, setFocusMode] = useState(false);
   const [mobileMapOpen, setMobileMapOpen] = useState(false);
+  const [mobileDeckState, setMobileDeckState] = useState(null);
   const consumedRouteState = useRef(false);
   const compactViewer = useMediaQuery(COMPACT_VIEWER_QUERY);
 
@@ -97,6 +98,7 @@ export default function ThreadsViewer() {
       setError("");
       setSelectedNode(null);
       setMobileMapOpen(false);
+      setMobileDeckState(null);
       if (remember) {
         setLibraryStatus({ state: "saving", message: "Saving on this device…" });
         void rememberThreadsArtifact(validated, {
@@ -442,8 +444,10 @@ export default function ThreadsViewer() {
     return (
       <MobileConversationDeck
         bundle={bundle}
+        deckState={mobileDeckState}
         graphNodes={flatNodes}
         libraryStatus={libraryStatus}
+        onDeckStateChange={setMobileDeckState}
         onDownloadTranscript={downloadTranscript}
         onOpenLibrary={openLibrary}
         onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
@@ -492,7 +496,7 @@ export default function ThreadsViewer() {
             onClick={() => setMobileMapOpen(false)}
             title="Return to conversation cards"
             aria-label="Return to conversation cards"
-            className="absolute right-3 top-3 z-50 inline-flex h-11 items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 text-[11px] font-medium text-slate-600 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            className="absolute right-3 top-3 z-50 inline-flex h-12 items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 text-[11px] font-medium text-slate-600 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
           >
             <Rows3 aria-hidden="true" className="h-4 w-4" />
             Cards

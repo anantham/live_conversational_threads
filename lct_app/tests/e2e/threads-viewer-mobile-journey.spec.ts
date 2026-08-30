@@ -16,9 +16,10 @@ type BrowserProblem = {
 
 /*
  * Test intent:
- * - A recipient can complete the shared-map journey as a card deck using touch only at 375px.
+ * - A recipient can complete the shared-map journey with gestures and touch-safe controls at 375px.
  * - Left/Right stays temporal inside one parent; Down drills and Up restores the exact branch.
  * - Exact utterances show speaker, timestamp, transcript text, and a recording deep link.
+ * - Long utterances scroll natively instead of being mistaken for abstraction gestures.
  * - Secondary actions remain absent from primary chrome and available through the More sheet.
  * - The optional map returns to cards, and browser-local Drive reopening never contacts Google.
  * - Every exercised control is touch-safe, emits no unexpected errors, and causes no overflow.
@@ -47,6 +48,36 @@ async function swipeDeck(page: Page, deltaX: number, deltaY: number) {
   const box = await stage.boundingBox();
   if (!box) throw new Error("Mobile deck stage did not have a bounding box.");
   const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  if (Math.abs(deltaY) > Math.abs(deltaX)) {
+    await stage.evaluate((element, delta) => {
+      const rect = element.getBoundingClientRect();
+      const startX = rect.left + rect.width / 2;
+      const startY = rect.top + rect.height / 2;
+      const first = new Touch({
+        clientX: startX,
+        clientY: startY,
+        identifier: 1,
+        target: element,
+      });
+      const last = new Touch({
+        clientX: startX + delta.x,
+        clientY: startY + delta.y,
+        identifier: 1,
+        target: element,
+      });
+      element.dispatchEvent(new TouchEvent("touchstart", {
+        bubbles: true,
+        cancelable: true,
+        touches: [first],
+      }));
+      element.dispatchEvent(new TouchEvent("touchend", {
+        bubbles: true,
+        cancelable: true,
+        changedTouches: [last],
+      }));
+    }, { x: deltaX, y: deltaY });
+    return;
+  }
   const pointerId = Date.now() % 100000;
   await stage.dispatchEvent("pointerdown", {
     pointerId,
@@ -64,6 +95,27 @@ async function swipeDeck(page: Page, deltaX: number, deltaY: number) {
     clientX: start.x + deltaX,
     clientY: start.y + deltaY,
   });
+}
+
+async function nativeTouchScroll(page: Page, card: Locator) {
+  const box = await card.boundingBox();
+  if (!box) throw new Error("Scrollable card did not have a bounding box.");
+  const x = box.x + box.width / 2;
+  const startY = box.y + box.height * 0.72;
+  const endY = box.y + box.height * 0.28;
+  const client = await page.context().newCDPSession(page);
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x, y: startY }],
+  });
+  for (let step = 1; step <= 6; step += 1) {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x, y: startY + ((endY - startY) * step) / 6 }],
+    });
+  }
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await client.detach();
 }
 
 async function associateCachedArtifactWithDrive(page: Page) {
@@ -124,6 +176,7 @@ test("a phone recipient can traverse a Drive-backed conversation from arc to utt
   await page.goto("/browse", { waitUntil: "domcontentloaded" });
   await page.locator('input[type="file"]').setInputFiles(FIXTURE);
   await expect(page.getByRole("heading", { name: TITLE })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Saved on this device")).toBeVisible({ timeout: 15_000 });
   await associateCachedArtifactWithDrive(page);
 
   await page.goto(`/view?driveFile=${DRIVE_FILE_ID}`, { waitUntil: "domcontentloaded" });
@@ -181,9 +234,25 @@ test("a phone recipient can traverse a Drive-backed conversation from arc to utt
 
   await swipeDeck(page, 0, -90);
   await expect(page.getByTestId("mobile-deck-card")).toContainText("Earlier assumptions were visible");
+  await swipeDeck(page, 0, 90);
+  await expect(page.getByTestId("mobile-deck-card")).toHaveAttribute("data-kind", "utterance");
+  await expect(page.getByTestId("mobile-deck-stage")).toHaveCSS("touch-action", "pan-y");
+  await page.getByTestId("mobile-deck-card").locator("blockquote").evaluate((element) => {
+    element.textContent = Array.from({ length: 80 }, (_, index) => `Readable line ${index + 1}.`).join(" ");
+  });
+  await expect.poll(() => page.getByTestId("mobile-deck-card").evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await nativeTouchScroll(page, page.getByTestId("mobile-deck-card"));
+  await expect.poll(() => page.getByTestId("mobile-deck-card").evaluate(
+    (element) => element.scrollTop,
+  )).toBeGreaterThan(0);
+  await expect(page.getByTestId("mobile-deck-card")).toHaveAttribute("data-kind", "utterance");
+  await page.getByRole("button", { name: "Move to a higher level of abstraction" }).click();
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Earlier assumptions were visible");
 
   const more = page.getByRole("button", { name: "More conversation options", exact: true });
-  await more.tap();
+  await more.click();
   const options = page.getByRole("dialog", { name: "Conversation options" });
   await expect(options).toBeVisible();
   await expect(options).toContainText("Download transcript");
@@ -192,21 +261,21 @@ test("a phone recipient can traverse a Drive-backed conversation from arc to utt
   await expect(options).toContainText("Open another file");
   await expect(options).toHaveCSS("opacity", "1");
   await page.screenshot({ path: testInfo.outputPath("mobile-deck-options.png"), fullPage: true });
-  await options.getByRole("button", { name: "Close" }).tap();
+  await options.getByRole("button", { name: "Close" }).click();
 
-  await page.getByRole("button", { name: "Open conversation map" }).tap();
+  await page.getByRole("button", { name: "Open conversation map" }).click();
   await expect(page.locator(".react-flow")).toBeVisible();
   const returnToCards = page.getByRole("button", { name: "Return to conversation cards" });
   await expectTouchTarget(returnToCards, "Return-to-cards action");
-  await returnToCards.tap();
-  await expect(page.getByTestId("mobile-deck-card")).toBeVisible();
+  await returnToCards.click();
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Earlier assumptions were visible");
 
-  await page.getByRole("button", { name: "More conversation options" }).tap();
+  await page.getByRole("button", { name: "More conversation options" }).click();
   await page.getByRole("dialog", { name: "Conversation options" })
     .getByRole("button", { name: /Library/ })
-    .tap();
+    .click();
   await expect(page.getByRole("heading", { name: /Library/ })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: new RegExp(`^${TITLE} Opened`) }).tap();
+  await page.getByRole("button", { name: new RegExp(`^${TITLE} Opened`) }).click();
   await expect(page.getByRole("heading", { name: TITLE })).toBeVisible({ timeout: 15_000 });
 
   await page.reload({ waitUntil: "domcontentloaded" });

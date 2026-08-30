@@ -10,6 +10,7 @@ import MobileConversationDeck from "./MobileConversationDeck";
  * - Repeated drill actions reach a real artifact utterance with speaker, timestamp, and media deep link.
  * - Up returns to the exact parent rather than resetting the conversation branch.
  * - The More sheet contains secondary actions and truthfully explains an absent authored tier.
+ * - Modal focus pauses global arrow shortcuts; focused navigation buttons retain them.
  */
 
 let container;
@@ -173,5 +174,32 @@ describe("MobileConversationDeck", () => {
       .find((button) => button.textContent.includes("Download transcript"));
     act(() => transcript.dispatchEvent(new MouseEvent("click", { bubbles: true })));
     expect(callbacks.onDownloadTranscript).toHaveBeenCalledOnce();
+  });
+
+  it("pauses arrow shortcuts behind More and keeps them active on focused deck controls", () => {
+    renderDeck();
+    clickByLabel("More conversation options");
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(document.activeElement).toBe(dialog);
+
+    act(() => dialog.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true,
+      key: "ArrowDown",
+    })));
+    expect(container.textContent).toContain("Traceable arc");
+    expect(container.textContent).not.toContain("Traceable theme");
+
+    clickByLabel("Close");
+    const down = container.querySelector('button[aria-label="Drill into a finer level of detail"]');
+    act(() => down.focus());
+    clickByLabel("Drill into a finer level of detail");
+    expect(container.textContent).toContain("Traceable theme");
+
+    act(() => down.dispatchEvent(new KeyboardEvent("keydown", {
+      bubbles: true,
+      key: "ArrowDown",
+    })));
+    expect(container.textContent).toContain("Traceable topic");
   });
 });

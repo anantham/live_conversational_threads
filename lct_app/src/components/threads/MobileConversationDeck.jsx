@@ -35,8 +35,10 @@ function buildSpeakerMap(utterances) {
 
 export default function MobileConversationDeck({
   bundle,
+  deckState: controlledDeckState,
   graphNodes,
   libraryStatus,
+  onDeckStateChange,
   onDownloadTranscript,
   onOpenAnother,
   onOpenLibrary,
@@ -47,19 +49,24 @@ export default function MobileConversationDeck({
     () => buildMobileConversationDeck(graphNodes, bundle.utterances || []),
     [bundle.utterances, graphNodes],
   );
-  const [deckState, setDeckState] = useState(() => initialMobileDeckState(model));
+  const [internalDeckState, setInternalDeckState] = useState(() => initialMobileDeckState(model));
   const [motion, setMotion] = useState("none");
   const [motionKey, setMotionKey] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const gesture = useRef(null);
+  const touchGesture = useRef(null);
   const noticeTimer = useRef(null);
+  const initialDeckState = useMemo(() => initialMobileDeckState(model), [model]);
+  const deckState = controlledDeckState
+    || (onDeckStateChange ? initialDeckState : internalDeckState);
+  const commitDeckState = onDeckStateChange || setInternalDeckState;
 
   useEffect(() => {
-    setDeckState(initialMobileDeckState(model));
+    if (!onDeckStateChange) setInternalDeckState(initialDeckState);
     setMotion("none");
     setMotionKey((value) => value + 1);
-  }, [model]);
+  }, [initialDeckState, onDeckStateChange]);
 
   useEffect(() => () => {
     if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
@@ -72,23 +79,22 @@ export default function MobileConversationDeck({
   }, []);
 
   const navigate = useCallback((action) => {
-    setDeckState((current) => {
-      const result = moveMobileDeck(model, current, action);
-      if (!result.changed) {
-        if (result.notice) showNotice(result.notice);
-        return current;
-      }
-      setNotice("");
-      setMotion(action);
-      setMotionKey((value) => value + 1);
-      return result.state;
-    });
-  }, [model, showNotice]);
+    const result = moveMobileDeck(model, deckState, action);
+    if (!result.changed) {
+      if (result.notice) showNotice(result.notice);
+      return;
+    }
+    setNotice("");
+    setMotion(action);
+    setMotionKey((value) => value + 1);
+    commitDeckState(result.state);
+  }, [commitDeckState, deckState, model, showNotice]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
+      if (moreOpen) return;
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
-      if (event.target?.closest?.("input, textarea, select, button, a, [contenteditable='true']")) return;
+      if (event.target?.closest?.("input, textarea, select, a, [contenteditable='true']")) return;
       const action = {
         ArrowLeft: "previous",
         ArrowRight: "next",
@@ -101,7 +107,7 @@ export default function MobileConversationDeck({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [navigate]);
+  }, [moreOpen, navigate]);
 
   const snapshot = mobileDeckSnapshot(model, deckState);
   const sourceRows = useMemo(() => {
@@ -134,6 +140,7 @@ export default function MobileConversationDeck({
 
   const handlePointerCancel = useCallback(() => {
     gesture.current = null;
+    touchGesture.current = null;
   }, []);
 
   const handlePointerUp = useCallback((event) => {
@@ -147,9 +154,33 @@ export default function MobileConversationDeck({
     if (Math.max(absoluteX, absoluteY) < SWIPE_THRESHOLD) return;
     if (absoluteX > absoluteY * DOMINANCE_RATIO) {
       navigate(deltaX < 0 ? "next" : "previous");
-    } else if (absoluteY > absoluteX * DOMINANCE_RATIO) {
+    } else if (event.pointerType !== "touch" && absoluteY > absoluteX * DOMINANCE_RATIO) {
       navigate(deltaY > 0 ? "down" : "up");
     }
+  }, [navigate]);
+
+  const handleTouchStart = useCallback((event) => {
+    const touch = event.touches?.[0];
+    if (!touch || event.target?.closest?.("button, a, input, select, textarea")) return;
+    const card = event.target?.closest?.('[data-testid="mobile-deck-card"]');
+    touchGesture.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      scrollable: Boolean(card && card.scrollHeight > card.clientHeight + 1),
+    };
+  }, []);
+
+  const handleTouchEnd = useCallback((event) => {
+    const start = touchGesture.current;
+    touchGesture.current = null;
+    const touch = event.changedTouches?.[0];
+    if (!start || !touch || start.scrollable) return;
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    const absoluteX = Math.abs(deltaX);
+    const absoluteY = Math.abs(deltaY);
+    if (absoluteY < SWIPE_THRESHOLD || absoluteY <= absoluteX * DOMINANCE_RATIO) return;
+    navigate(deltaY > 0 ? "down" : "up");
   }, [navigate]);
 
   const announceLayer = useCallback((level) => {
@@ -191,10 +222,13 @@ export default function MobileConversationDeck({
 
         <div
           data-testid="mobile-deck-stage"
-          className="relative mt-2 min-h-0 flex-1 touch-none"
+          className="relative mt-2 min-h-0 flex-1 touch-pan-y"
           onPointerDown={handlePointerDown}
           onPointerUp={handlePointerUp}
           onPointerCancel={handlePointerCancel}
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handlePointerCancel}
         >
           {snapshot.item ? (
             <div key={`${snapshot.entry.kind}:${snapshot.entry.id}:${motionKey}`} className={`h-full ${motionClass}`}>
@@ -254,11 +288,18 @@ MobileConversationDeck.propTypes = {
     media_refs: PropTypes.arrayOf(PropTypes.object),
     utterances: PropTypes.arrayOf(PropTypes.object),
   }).isRequired,
+  deckState: PropTypes.shape({
+    trail: PropTypes.arrayOf(PropTypes.shape({
+      id: PropTypes.string.isRequired,
+      kind: PropTypes.oneOf(["node", "utterance"]).isRequired,
+    })).isRequired,
+  }),
   graphNodes: PropTypes.arrayOf(PropTypes.object).isRequired,
   libraryStatus: PropTypes.shape({
     state: PropTypes.string,
     message: PropTypes.string,
   }),
+  onDeckStateChange: PropTypes.func,
   onDownloadTranscript: PropTypes.func.isRequired,
   onOpenAnother: PropTypes.func.isRequired,
   onOpenLibrary: PropTypes.func.isRequired,
