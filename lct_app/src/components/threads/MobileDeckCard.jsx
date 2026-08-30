@@ -1,3 +1,4 @@
+import { useId } from "react";
 import PropTypes from "prop-types";
 import { ExternalLink, GitBranch, MessageSquareText } from "lucide-react";
 
@@ -78,6 +79,7 @@ function handleCardKeyDown(event) {
 }
 
 function NodeCard({ snapshot, sourceRows }) {
+  const headingId = useId();
   const node = snapshot.item;
   const metrics = node?.provenance_metrics || {};
   const duration = formatDurationCompact(metrics.duration_seconds);
@@ -90,7 +92,7 @@ function NodeCard({ snapshot, sourceRows }) {
 
   return (
     <article
-      aria-label={`${snapshot.levelInfo.singular} conversation card`}
+      aria-labelledby={headingId}
       data-testid="mobile-deck-card"
       data-kind="node"
       data-level={snapshot.level}
@@ -106,7 +108,7 @@ function NodeCard({ snapshot, sourceRows }) {
           {snapshot.position} of {snapshot.total}
         </span>
       </div>
-      <h2 className="mt-5 text-[1.45rem] font-semibold leading-[1.22] tracking-[-0.025em] text-slate-900">
+      <h2 id={headingId} className="mt-5 text-[1.45rem] font-semibold leading-[1.22] tracking-[-0.025em] text-slate-900">
         {title}
       </h2>
       <p className="mt-4 text-[1.05rem] leading-7 text-slate-600">
@@ -142,6 +144,7 @@ NodeCard.propTypes = {
 };
 
 function UtteranceCard({ mediaRef, snapshot, speakerColorMap }) {
+  const headingId = useId();
   const utterance = snapshot.item;
   const speaker = utteranceSpeaker(utterance);
   const timestamp = Number(
@@ -157,7 +160,7 @@ function UtteranceCard({ mediaRef, snapshot, speakerColorMap }) {
 
   return (
     <article
-      aria-label="Exact utterance conversation card"
+      aria-labelledby={headingId}
       data-testid="mobile-deck-card"
       data-kind="utterance"
       data-level="0"
@@ -177,7 +180,7 @@ function UtteranceCard({ mediaRef, snapshot, speakerColorMap }) {
           className="h-3 w-3 shrink-0 rounded-full"
           style={{ backgroundColor: speakerColor }}
         />
-        <h2 className="text-base font-semibold text-slate-800">{speaker}</h2>
+        <h2 id={headingId} className="text-base font-semibold text-slate-800">{speaker}</h2>
       </div>
       <blockquote className="mt-5 text-[1.2rem] leading-8 text-slate-800">
         {utterance?.text || utterance?.transcript || utterance?.content || "No transcript text is available."}

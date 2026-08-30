@@ -21,6 +21,7 @@ type BrowserProblem = {
  * - Exact utterances show speaker, timestamp, transcript text, and a recording deep link.
  * - Long utterances scroll natively instead of being mistaken for abstraction gestures.
  * - Secondary actions remain absent from primary chrome and available through the More sheet.
+ * - More-sheet notices stay perceivable and do not click through to covered controls.
  * - The optional map returns to cards, and browser-local Drive reopening never contacts Google.
  * - Every exercised control is touch-safe, emits no unexpected errors, and causes no overflow.
  */
@@ -339,4 +340,31 @@ test("a phone recipient can traverse a Drive-backed conversation from arc to utt
       && !expectedWorktreeFont403;
   });
   expect(unexpectedConsoleProblems).toEqual([]);
+});
+
+test("More notices remain accessible and absorb taps above the modal", async ({ page }) => {
+  const backendlessResponse = {
+    status: 404,
+    contentType: "application/json",
+    body: JSON.stringify({ detail: "Backend intentionally absent in mobile notice test" }),
+  };
+  await page.route("**/api/**", (route) => route.fulfill(backendlessResponse));
+  await page.route("**/conversations/**", (route) => route.fulfill(backendlessResponse));
+
+  await page.goto("/browse", { waitUntil: "domcontentloaded" });
+  await page.locator('input[type="file"]').setInputFiles(FIXTURE);
+  await expect(page.getByRole("heading", { name: TITLE })).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: "More conversation options", exact: true }).click();
+  const options = page.getByRole("dialog", { name: "Conversation options" });
+  await expect(options).toBeVisible();
+  await options.getByRole("button", { name: /themes/i }).click();
+
+  const notice = page.getByTestId("mobile-deck-notice");
+  await expect(notice).toContainText(/theme/);
+  await expect(notice).toBeVisible();
+  expect(await notice.evaluate((element) => Boolean(element.closest('[aria-hidden="true"], [inert]'))))
+    .toBe(false);
+  await notice.click();
+  await expect(options).toBeVisible();
 });

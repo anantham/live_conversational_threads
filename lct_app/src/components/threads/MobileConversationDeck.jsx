@@ -262,15 +262,22 @@ export default function MobileConversationDeck({
         <MobileDeckNavigation navigate={navigate} snapshot={snapshot} />
         </main>
 
-        <div
-          role="status"
-          aria-live="polite"
-          className={`fixed inset-x-4 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-[100] mx-auto max-w-sm rounded-xl bg-slate-900 px-4 py-3 text-center text-sm text-white shadow-lg transition-all duration-200 ${
-            notice ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
-          }`}
-        >
-          {notice}
-        </div>
+      </div>
+
+      <div
+        role="status"
+        aria-atomic="true"
+        aria-live="polite"
+        data-testid="mobile-deck-notice"
+        className={`fixed inset-x-4 z-[100] mx-auto max-w-sm rounded-xl bg-slate-900 px-4 py-3 text-center text-sm text-white shadow-lg transition-all duration-200 ${
+          moreOpen
+            ? "top-[calc(1rem+env(safe-area-inset-top))]"
+            : "bottom-[calc(4.75rem+env(safe-area-inset-bottom))]"
+        } ${
+          notice ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-2 opacity-0"
+        }`}
+      >
+        {notice}
       </div>
 
       <MobileDeckOptions

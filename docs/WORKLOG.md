@@ -4762,3 +4762,33 @@ Manual testing not run:
   source ESLint, `git diff --check`, focused Chromium 1/1, and the combined
   browser gate with 12/12 applicable cases plus the deployment-only case
   skipped.
+
+### 2026-08-30 15:47 +05:30 — Fourth independent-review semantic repair
+
+- Grok reviewed exact PR #183 head
+  `599c0f6a9a8ce6ac5d6c81238c9801299b18a014` and reported three supported
+  accessibility inconsistencies introduced or exposed by the modal and
+  keyboard-scroll hardening.
+- `MobileConversationDeck.jsx` moves the visual and semantic notice out of the
+  inert deck background, keeps it pointer-opaque while visible, and positions
+  More-sheet notices at the top so they do not cover its actions.
+- `MobileDeckCard.jsx` replaces generic card `aria-label` values with
+  `aria-labelledby` references to the visible node title or utterance speaker,
+  preserving meaningful focus announcements for keyboard scrolling.
+- `MobileDeckChrome.jsx` keeps boundary controls visually subdued and operable
+  for explanatory notices, but no longer falsely exposes them as
+  `aria-disabled` to assistive technology.
+- `MobileConversationDeck.test.jsx` expands the public-behavior contract to
+  verify visible-heading accessible names, operable boundary semantics, the
+  boundary notice, and a More-triggered live status outside every inert or
+  aria-hidden ancestor.
+- Post-repair validation passed: focused component 4/4, isolated real-Chromium
+  notice journey 1/1, full Vitest 317/317, production build, scoped source
+  ESLint, and the combined browser gate with 12/12 applicable cases plus the
+  deployment-only case skipped.
+- The unchanged long mobile journey reached and passed the new More-notice
+  assertions twice, then failed only at its separately logged ReactFlow camera
+  geometry flake. The final combined gate excludes that one known scenario and
+  retains the isolated real-browser notice regression; no product assertion or
+  geometry threshold was weakened. Exact-head independent re-review remains
+  pending.

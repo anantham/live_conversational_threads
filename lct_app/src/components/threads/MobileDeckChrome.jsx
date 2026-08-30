@@ -63,7 +63,6 @@ export function MobileDeckNavigation({ navigate, snapshot }) {
         type="button"
         onClick={() => navigate("up")}
         aria-label="Move to a higher level of abstraction"
-        aria-disabled={!snapshot.canUp}
         className={navigationButtonClass(!snapshot.canUp)}
       >
         <ArrowUp aria-hidden="true" className="h-5 w-5" />
@@ -72,7 +71,6 @@ export function MobileDeckNavigation({ navigate, snapshot }) {
         type="button"
         onClick={() => navigate("previous")}
         aria-label={`Previous ${snapshot.levelInfo.singular}`}
-        aria-disabled={!snapshot.canPrevious}
         className={navigationButtonClass(!snapshot.canPrevious)}
       >
         <ArrowLeft aria-hidden="true" className="h-5 w-5" />
@@ -84,7 +82,6 @@ export function MobileDeckNavigation({ navigate, snapshot }) {
         type="button"
         onClick={() => navigate("next")}
         aria-label={`Next ${snapshot.levelInfo.singular}`}
-        aria-disabled={!snapshot.canNext}
         className={navigationButtonClass(!snapshot.canNext)}
       >
         <ArrowRight aria-hidden="true" className="h-5 w-5" />
@@ -93,7 +90,6 @@ export function MobileDeckNavigation({ navigate, snapshot }) {
         type="button"
         onClick={() => navigate("down")}
         aria-label="Drill into a finer level of detail"
-        aria-disabled={!snapshot.canDown}
         className={navigationButtonClass(!snapshot.canDown)}
       >
         <ArrowDown aria-hidden="true" className="h-5 w-5" />

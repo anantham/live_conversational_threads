@@ -11,6 +11,9 @@ import MobileConversationDeck from "./MobileConversationDeck";
  * - Up returns to the exact parent rather than resetting the conversation branch.
  * - The More sheet contains secondary actions and truthfully explains an absent authored tier.
  * - Modal focus pauses global arrow shortcuts; focused navigation buttons retain them.
+ * - Focused cards use their visible title as their accessible name.
+ * - Boundary controls remain operable for explanatory notices without claiming to be disabled.
+ * - More notices remain exposed to assistive technology outside the inert deck background.
  */
 
 let container;
@@ -136,7 +139,18 @@ describe("MobileConversationDeck", () => {
   it("drills from the highest tier to exact timed evidence and returns to its parent", () => {
     renderDeck();
     expect(container.textContent).toContain("Traceable arc");
-    expect(container.querySelector('[data-testid="mobile-deck-card"]')?.dataset.level).toBe("5");
+    const arcCard = container.querySelector('[data-testid="mobile-deck-card"]');
+    expect(arcCard?.dataset.level).toBe("5");
+    const arcHeading = arcCard?.querySelector("h2");
+    expect(arcCard?.hasAttribute("aria-label")).toBe(false);
+    expect(arcCard?.getAttribute("aria-labelledby")).toBe(arcHeading?.id);
+    expect(arcHeading?.textContent).toBe("Traceable arc");
+
+    const up = container.querySelector('button[aria-label="Move to a higher level of abstraction"]');
+    expect(up?.hasAttribute("aria-disabled")).toBe(false);
+    act(() => up.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(container.querySelector('[role="status"]')?.textContent)
+      .toBe("You are already at the highest available level.");
 
     for (let depth = 0; depth < 5; depth += 1) {
       clickByLabel("Drill into a finer level of detail");
@@ -144,6 +158,9 @@ describe("MobileConversationDeck", () => {
 
     const utteranceCard = container.querySelector('[data-testid="mobile-deck-card"]');
     expect(utteranceCard?.dataset.kind).toBe("utterance");
+    const utteranceHeading = utteranceCard?.querySelector("h2");
+    expect(utteranceCard?.getAttribute("aria-labelledby")).toBe(utteranceHeading?.id);
+    expect(utteranceHeading?.textContent).toBe("Aayush");
     expect(container.textContent).toContain("Aayush");
     expect(container.textContent).toContain("The exact words remain available here.");
     expect(container.textContent).toContain("0:12");
@@ -179,8 +196,11 @@ describe("MobileConversationDeck", () => {
       .find((button) => button.textContent.includes("themes") && button.textContent.includes("none"));
     expect(themes).not.toBeNull();
     act(() => themes.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    expect(container.querySelector('[role="status"]')?.textContent)
+    const notice = container.querySelector('[role="status"]');
+    expect(notice?.textContent)
       .toBe("No themes were generated for this conversation.");
+    expect(notice?.closest('[aria-hidden="true"], [inert]')).toBeNull();
+    expect(notice?.className).not.toContain("pointer-events-none");
 
     const transcript = [...container.querySelectorAll("button")]
       .find((button) => button.textContent.includes("Download transcript"));
