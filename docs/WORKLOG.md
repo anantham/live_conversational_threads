@@ -4928,6 +4928,11 @@ Manual testing not run:
   resets at 23:00. The installed Gemini command hung before printing version or
   help. Grok 4.6 authenticated, but both a restricted paged-read attempt and a
   direct prompt-file attempt failed to produce a verdict within bounded runs.
+- A later OpenCode check found its direct Gemini 3.1 Pro route configured but
+  unfunded; it returned `No payment method` before review and incurred no new
+  usage. A proposed OpenRouter Gemini fallback was rejected before execution
+  because the intermediary is outside the standing direct-review disclosure
+  authorization, so no source diff was sent through OpenRouter.
 - No reviewer result was inferred. Independent approval remains a hard gate
   before completion or merge; retry after the three human-arbitrated rescue
   decisions are integrated so the reviewer sees the actual final diff.

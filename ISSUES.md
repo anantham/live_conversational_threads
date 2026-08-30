@@ -1028,9 +1028,12 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   Claude is authenticated but rate-limited until its 23:00 reset; the installed
   Gemini launcher hangs before startup; Grok authenticated and received a
   hashed exact-diff bundle but its paged and direct-file modes did not return a
-  verdict within bounded runs. This does not invalidate local tests, but it
-  blocks representing the consolidation as independently approved. Retry an
-  eligible family after the human arbitration changes are integrated.
+  verdict within bounded runs. OpenCode's direct Gemini route has no funded
+  workspace, and its OpenRouter intermediary was correctly rejected because
+  that destination is outside the standing direct-review authorization; no
+  diff was sent through OpenRouter. This does not invalidate local tests, but
+  it blocks representing the consolidation as independently approved. Retry an
+  eligible direct family after the human arbitration changes are integrated.
 - **Non-blocking local environment skew — backend venv violates the checked-in
   OpenAI requirement.** The shared historical venv has `openai==1.54.0` with
   `httpx==0.28.1`, while `lct_python_backend/requirements.txt` explicitly pins
