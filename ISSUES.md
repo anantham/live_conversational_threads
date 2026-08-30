@@ -1012,6 +1012,13 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   next step: record provider/model actually served, token counts, latency,
   route, finish state, and errors before adding dated/configurable cost
   assumptions.
+- **Resolved in consolidation — delayed diarization jobs no longer retain
+  foreground credentials or cloud authority.** The in-memory queue recursively
+  removes credential-shaped fields, omits unused source metadata, clears the
+  foreground provider override, removes cloud/external fallback configuration,
+  and passes an explicit local-only settings snapshot to the worker. This
+  security invariant is independent of the remaining M5-versus-Asus ordering
+  decision.
 - **Decision required — dormant strict STT branch hard-codes M5 as sole
   automatic authority.** It prevents silent cloud/local substitution and keeps
   scoped BYOK as the only cloud exception, but also disables an owner-approved

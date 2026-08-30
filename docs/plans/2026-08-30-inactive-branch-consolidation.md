@@ -244,6 +244,15 @@ exhaustion. Reject the dormant default-on `INDRAS_STT_NO_CLOUD` switch as the
 primary policy model, hard-coded M5 route names, and URL-shape checks as proof
 of machine identity.
 
+**Integrated independent invariant:** delayed diarization custody no longer
+retains nested credential-shaped fields, unused source metadata, cloud fallback
+configuration, external fallback routes, or a foreground provider override.
+Queued work receives a non-secret local-only STT snapshot and re-enters normal
+resolution when it runs. This does not choose between M5 and Asus and therefore
+does not pre-empt S5-B; it removes the security hazard common to every authority
+choice. Behavioral/security coverage proves both the retained in-memory request
+and the worker's downstream inputs are credential-free.
+
 ### S6 — Old instrumentation and zombie-table cleanup (recommended: do not transplant)
 
 Commit `4deac8b` also wires a legacy middleware, optional API-key middleware, a daily aggregation loop, and drops three tables. Current `configure_p0_security` supersedes the old API-key hook; the schema deletion lacks current usage/migration proof; and aggregation policy should follow the new telemetry design. Preserve only S1 now. Log the other pieces as focused follow-ups rather than reviving the mixed commit.

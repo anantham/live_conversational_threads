@@ -5013,3 +5013,30 @@ Manual testing not run:
   and remote ref deletion. Raw ahead/behind counts from disconnected rewritten
   histories are not used as deletion proof; ancestry, merged PR identity,
   patch-equivalence, and the vision filter remain the evidence.
+
+### 2026-08-30 21:51 +05:30 — S5a delayed-job custody salvaged independently
+
+- Hypothesis: the current `ImportDiarizationQueue.enqueue` deep-copies raw STT,
+  LLM, source metadata, and provider override into a long-lived process job, so
+  a foreground BYOK/API credential and its authority survive beyond the scope
+  that validated them. Prediction: a realistic enqueue containing nested keys
+  such as `api_key`, `refresh_token`, `access_token`, and `session_token` will
+  retain those values and later pass the provider override/settings into the
+  worker. Direct inspection confirmed the raw `_clone` boundary and the normal
+  worker handoff; the dormant branch's failure mechanism applies to current
+  code.
+- `services/import_pipeline/import_diarization_queue.py`: added recursive
+  credential-shaped key removal and a delayed-STT snapshot that keeps only
+  non-cloud provider maps/preferences, removes cloud/external fallback routes,
+  forces local-only/no-remote-fallback flags, clears the foreground provider
+  override, strips LLM credentials, and does not retain unused source metadata.
+  It deliberately does not choose M5 versus Asus.
+- `tests/unit/test_import_diarization_queue_security.py`: added security-level
+  pure-boundary coverage plus a public enqueue/worker execution proving the
+  retained job and downstream transcriber/processor inputs contain no secret
+  keys or sentinel values and no stale override.
+- `docs/TECH_DEBT.md`: recorded the >550-line queue's custody/execution split
+  before any future durable-queue work.
+- Validation: focused security tests 2/2 passed; queue/file-transcriber/import
+  routing matrix 62/62 passed. Only the existing Python 3.9 Google support and
+  pytest-asyncio teardown warnings from older tests remain.

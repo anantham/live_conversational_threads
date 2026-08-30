@@ -200,3 +200,15 @@ controlled/uncontrolled state, modal suspension, and rendering; live-follow
 versus pinned-history state should be a pure model/controller extraction, not
 more component-local state. These are implementation constraints if S3-A and
 S4-A are approved, not authorization to refactor them during the inventory.
+
+### 2026-08-30 — ImportDiarizationQueue mixes custody and processing
+
+`services/import_pipeline/import_diarization_queue.py` is over 550 lines and
+combines delayed-request custody, secret minimization, worker lifecycle,
+transcription, speaker materialization, graph generation, event storage, and
+retention. The consolidation security repair keeps sanitization in small pure
+functions, but a later refactor should extract a typed `QueuedImportRequest`
+builder/custody policy and a separate worker executor. This is especially
+important before replacing the in-memory queue with durable storage: the
+credential-free delayed-work invariant must remain at the serialization
+boundary rather than depending on every worker implementation.
