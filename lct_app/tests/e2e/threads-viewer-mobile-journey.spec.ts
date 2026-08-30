@@ -16,15 +16,14 @@ type BrowserProblem = {
 
 /*
  * Test intent:
- * - A recipient can complete the core shared-map journey using touch only at 375px.
- * - The map reopens from its browser-local Drive association without contacting Google.
- * - Primary controls in that journey expose a 48px physical touch target on coarse pointers.
- * - A tapped aggregate reveals its exact source utterances and returns to the graph cleanly.
- * - Library navigation, reopening, and refresh preserve the artifact without horizontal overflow.
- * - The exercised route emits no browser-console warnings/errors or network 5xx responses.
- *
- * This deliberately uses a synthetic artifact. Real Google OAuth remains a post-deploy device
- * check; this test owns the local, deterministic persistence and interaction contract.
+ * - A recipient can complete the shared-map journey with gestures and touch-safe controls at 375px.
+ * - Left/Right stays temporal inside one parent; Down drills and Up restores the exact branch.
+ * - Exact utterances show speaker, timestamp, transcript text, and a recording deep link.
+ * - Long utterances scroll natively instead of being mistaken for abstraction gestures.
+ * - Secondary actions remain absent from primary chrome and available through the More sheet.
+ * - More-sheet notices stay perceivable and do not click through to covered controls.
+ * - The optional map returns to cards, and browser-local Drive reopening never contacts Google.
+ * - Every exercised control is touch-safe, emits no unexpected errors, and causes no overflow.
  */
 
 test.use({
@@ -44,25 +43,84 @@ async function expectTouchTarget(locator: Locator, label: string) {
   }).toBeGreaterThanOrEqual(48);
 }
 
-async function expectNodeBelowGraphHud(page: Page, node: Locator) {
-  await expect.poll(async () => {
-    const focusStatus = page.getByTestId("neighborhood-focus-status");
-    const [nodeBox, tierBox, focusBox] = await Promise.all([
-      node.boundingBox(),
-      page.getByTitle("Locked to themes — click to unlock").boundingBox(),
-      focusStatus.isVisible().then((visible) => visible ? focusStatus.boundingBox() : null),
-    ]);
-    if (!nodeBox || !tierBox) return Number.NEGATIVE_INFINITY;
-    const hudBottom = Math.max(
-      tierBox.y + tierBox.height,
-      focusBox ? focusBox.y + focusBox.height : 0,
-    );
-    return nodeBox.y - hudBottom;
-  }, { message: "First graph card should clear every visible graph HUD row" }).toBeGreaterThanOrEqual(8);
+async function swipeDeck(page: Page, deltaX: number, deltaY: number) {
+  const stage = page.getByTestId("mobile-deck-stage");
+  await expect(stage).toBeVisible();
+  const box = await stage.boundingBox();
+  if (!box) throw new Error("Mobile deck stage did not have a bounding box.");
+  const start = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  if (Math.abs(deltaY) > Math.abs(deltaX)) {
+    await stage.evaluate((element, delta) => {
+      const rect = element.getBoundingClientRect();
+      const startX = rect.left + rect.width / 2;
+      const startY = rect.top + rect.height / 2;
+      const first = new Touch({
+        clientX: startX,
+        clientY: startY,
+        identifier: 1,
+        target: element,
+      });
+      const last = new Touch({
+        clientX: startX + delta.x,
+        clientY: startY + delta.y,
+        identifier: 1,
+        target: element,
+      });
+      element.dispatchEvent(new TouchEvent("touchstart", {
+        bubbles: true,
+        cancelable: true,
+        touches: [first],
+      }));
+      element.dispatchEvent(new TouchEvent("touchend", {
+        bubbles: true,
+        cancelable: true,
+        changedTouches: [last],
+      }));
+    }, { x: deltaX, y: deltaY });
+    return;
+  }
+  const pointerId = Date.now() % 100000;
+  await stage.dispatchEvent("pointerdown", {
+    pointerId,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    clientX: start.x,
+    clientY: start.y,
+  });
+  await stage.dispatchEvent("pointerup", {
+    pointerId,
+    pointerType: "touch",
+    isPrimary: true,
+    button: 0,
+    clientX: start.x + deltaX,
+    clientY: start.y + deltaY,
+  });
 }
 
-async function associateCachedArtifactWithDrive(page) {
-  await page.evaluate(async (driveFileId) => {
+async function nativeTouchScroll(page: Page, card: Locator) {
+  const box = await card.boundingBox();
+  if (!box) throw new Error("Scrollable card did not have a bounding box.");
+  const x = box.x + box.width / 2;
+  const startY = box.y + box.height * 0.72;
+  const endY = box.y + box.height * 0.28;
+  const client = await page.context().newCDPSession(page);
+  await client.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x, y: startY }],
+  });
+  for (let step = 1; step <= 6; step += 1) {
+    await client.send("Input.dispatchTouchEvent", {
+      type: "touchMove",
+      touchPoints: [{ x, y: startY + ((endY - startY) * step) / 6 }],
+    });
+  }
+  await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await client.detach();
+}
+
+async function associateCachedArtifactWithDrive(page: Page) {
+  await page.evaluate(async ({ driveFileId, title }) => {
     const request = indexedDB.open("lct_threads_library", 1);
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
@@ -75,7 +133,7 @@ async function associateCachedArtifactWithDrive(page) {
       getRequest.onsuccess = () => resolve(getRequest.result);
       getRequest.onerror = () => reject(getRequest.error);
     });
-    const record = records.find((candidate) => candidate.title === "Provenance and navigation fixture");
+    const record = records.find((candidate) => candidate.title === title);
     if (!record) throw new Error("Saved mobile fixture was not found in the Threads library.");
     record.driveFileId = driveFileId;
     store.put(record);
@@ -84,10 +142,10 @@ async function associateCachedArtifactWithDrive(page) {
       transaction.onerror = () => reject(transaction.error);
     });
     db.close();
-  }, DRIVE_FILE_ID);
+  }, { driveFileId: DRIVE_FILE_ID, title: TITLE });
 }
 
-test("a phone recipient can reopen, understand, inspect, and return to a Drive-backed map", async ({ page }, testInfo) => {
+test("a phone recipient can traverse a Drive-backed conversation from arc to utterance", async ({ page }, testInfo) => {
   const consoleProblems: BrowserProblem[] = [];
   const serverErrors: string[] = [];
   const googleRequestUrls: string[] = [];
@@ -124,7 +182,9 @@ test("a phone recipient can reopen, understand, inspect, and return to a Drive-b
 
   await page.goto(`/view?driveFile=${DRIVE_FILE_ID}`, { waitUntil: "domcontentloaded" });
   await expect(page.getByRole("heading", { name: TITLE })).toBeVisible({ timeout: 15_000 });
-  await page.screenshot({ path: testInfo.outputPath("mobile-map-before.png"), fullPage: true });
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Auditable process redesign");
+  await expect(page.locator(".react-flow")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("mobile-deck-arc.png"), fullPage: true });
 
   const pageWidth = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
@@ -133,58 +193,131 @@ test("a phone recipient can reopen, understand, inspect, and return to a Drive-b
   expect(pageWidth.content).toBeLessThanOrEqual(pageWidth.viewport);
   expect(googleRequestUrls).toEqual([]);
 
-  const firstTheme = page.locator(".react-flow__node").filter({ hasText: "Compare the workflows" });
-  await expect(firstTheme).toBeVisible();
-  const sourceButton = firstTheme.getByRole("button", { name: "Open exact source utterances" });
-  await expectTouchTarget(sourceButton, "Exact-source action");
-  await expectNodeBelowGraphHud(page, firstTheme);
-  await page.screenshot({ path: testInfo.outputPath("mobile-map-settled.png"), fullPage: true });
-  await sourceButton.tap();
+  for (const name of [
+    "Open conversation map",
+    "More conversation options",
+    "Move to a higher level of abstraction",
+    "Previous arc",
+    "Next arc",
+    "Drill into a finer level of detail",
+  ]) {
+    await expectTouchTarget(page.getByRole("button", { name, exact: true }), name);
+  }
 
-  const dialog = page.getByRole("dialog");
-  await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("We should compare the current process");
-  await expect(dialog).toContainText("The earlier approach was slower");
-  const exactTurn = dialog.getByText(/We should compare the current process/);
-  await exactTurn.scrollIntoViewIfNeeded();
-  await expect(exactTurn).toBeVisible();
-  await page.screenshot({ path: testInfo.outputPath("mobile-source-sheet.png"), fullPage: true });
-  const closeButton = dialog.getByRole("button", { name: "Close" });
-  await expectTouchTarget(closeButton, "Source-sheet Close action");
-  await closeButton.tap();
-  await expect(dialog).toBeHidden();
+  await swipeDeck(page, 0, 90);
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Compare the workflows");
+  await swipeDeck(page, -90, 0);
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Keep faster review auditable");
+  await swipeDeck(page, 90, 0);
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Compare the workflows");
 
-  const connectedTheme = page.locator(".react-flow__node")
-    .filter({ hasText: "Keep faster review auditable" });
-  await expect(connectedTheme).toBeInViewport();
-  await connectedTheme.tap();
-  await expect(page.getByTestId("neighborhood-focus-status"))
-    .toContainText("Related to: Keep faster review auditable");
-  const center = page.getByRole("button", { name: "Center", exact: true });
-  await expectTouchTarget(center, "Center action");
-  await center.tap();
-  await expectNodeBelowGraphHud(page, connectedTheme);
-  const showAll = page.getByRole("button", { name: "Show all", exact: true });
-  await expectTouchTarget(showAll, "Show-all action");
-  await showAll.tap();
-  await center.tap();
-  await expectNodeBelowGraphHud(page, firstTheme);
+  await swipeDeck(page, 0, 90);
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Speed and exposed assumptions");
+  await swipeDeck(page, 0, 90);
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Compare before redesigning");
+  await swipeDeck(page, 0, 90);
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Compare the current process");
+  await swipeDeck(page, -90, 0);
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Earlier assumptions were visible");
+  await swipeDeck(page, 0, 90);
 
-  const library = page.getByRole("button", { name: "Library", exact: true });
-  await expectTouchTarget(library, "Library action");
-  await library.tap();
+  const utteranceCard = page.getByTestId("mobile-deck-card");
+  await expect(utteranceCard).toHaveAttribute("data-kind", "utterance");
+  await expect(utteranceCard).toContainText("Speaker B");
+  await expect(utteranceCard).toContainText("The earlier approach was slower");
+  const recordingLink = utteranceCard.getByRole("link", { name: /Open recording at this time/ });
+  await expect(recordingLink).toContainText("0:08");
+  await expect(recordingLink).toHaveAttribute(
+    "href",
+    "https://drive.google.com/file/d/mobile-fixture-recording/view?t=6",
+  );
+  await page.screenshot({ path: testInfo.outputPath("mobile-deck-utterance.png"), fullPage: true });
+
+  await swipeDeck(page, 0, -90);
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Earlier assumptions were visible");
+  await swipeDeck(page, 0, 90);
+  await expect(page.getByTestId("mobile-deck-card")).toHaveAttribute("data-kind", "utterance");
+  await expect(page.getByTestId("mobile-deck-stage")).toHaveCSS("touch-action", "pan-y");
+  await page.getByTestId("mobile-deck-card").locator("blockquote").evaluate((element) => {
+    element.textContent = Array.from({ length: 80 }, (_, index) => `Readable line ${index + 1}.`).join(" ");
+  });
+  await expect.poll(() => page.getByTestId("mobile-deck-card").evaluate(
+    (element) => element.scrollHeight > element.clientHeight + 1,
+  )).toBe(true);
+  await page.getByTestId("mobile-deck-card").focus();
+  await expect(page.getByTestId("mobile-deck-card")).toBeFocused();
+  await page.getByTestId("mobile-deck-card").evaluate((element) => { element.scrollTop = 0; });
+  await page.keyboard.press("ArrowDown");
+  await expect.poll(() => page.getByTestId("mobile-deck-card").evaluate(
+    (element) => element.scrollTop,
+  )).toBeGreaterThan(0);
+  await expect(page.getByTestId("mobile-deck-card")).toHaveAttribute("data-kind", "utterance");
+  await page.getByTestId("mobile-deck-card").evaluate((element) => { element.scrollTop = 0; });
+  await nativeTouchScroll(page, page.getByTestId("mobile-deck-card"));
+  await expect.poll(() => page.getByTestId("mobile-deck-card").evaluate(
+    (element) => element.scrollTop,
+  )).toBeGreaterThan(0);
+  await expect(page.getByTestId("mobile-deck-card")).toHaveAttribute("data-kind", "utterance");
+  await page.getByRole("button", { name: "Move to a higher level of abstraction" }).click();
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Earlier assumptions were visible");
+
+  const more = page.getByRole("button", { name: "More conversation options", exact: true });
+  await more.click();
+  const options = page.getByRole("dialog", { name: "Conversation options" });
+  await expect(options).toBeVisible();
+  await expect(options).toContainText("Download transcript");
+  await expect(options).toContainText("Library");
+  await expect(options).toContainText("Refresh from Drive");
+  await expect(options).toContainText("Open another file");
+  await expect(options).toHaveCSS("opacity", "1");
+  const deckBackground = page.getByTestId("mobile-deck-background");
+  await expect(deckBackground).toHaveAttribute("inert", "");
+  const hiddenMapAction = page.locator('button[aria-label="Open conversation map"]');
+  await hiddenMapAction.focus();
+  await page.keyboard.press("Enter");
+  await expect(options).toBeVisible();
+  await expect(page.locator(".react-flow")).toHaveCount(0);
+  await expect(options).toContainText("Conversation options");
+  await page.screenshot({ path: testInfo.outputPath("mobile-deck-options.png"), fullPage: true });
+  await options.getByRole("button", { name: "Close" }).click();
+  await expect(deckBackground).not.toHaveAttribute("inert", "");
+
+  await page.getByRole("button", { name: "Open conversation map" }).click();
+  await expect(page.locator(".react-flow")).toBeVisible();
+  const returnToCards = page.getByRole("button", { name: "Return to conversation cards" });
+  await expectTouchTarget(returnToCards, "Return-to-cards action");
+  const readMapTopGap = () => page.locator(".react-flow__node").evaluateAll((nodes) => {
+    const graph = nodes[0]?.closest(".react-flow");
+    if (!graph || nodes.length === 0) throw new Error("ReactFlow viewport is missing");
+    const graphTop = graph.getBoundingClientRect().top;
+    return Math.min(...nodes.map((node) => node.getBoundingClientRect().top - graphTop));
+  });
+  await expect.poll(async () => {
+    const first = await readMapTopGap();
+    await page.waitForTimeout(350);
+    const second = await readMapTopGap();
+    const firstInBand = first >= 60 && first <= 100;
+    const secondInBand = second >= 60 && second <= 100;
+    return firstInBand && secondInBand && Math.abs(first - second) <= 2;
+  }, { timeout: 5_000 }).toBe(true);
+  const mapTopGap = await readMapTopGap();
+  expect(mapTopGap).toBeGreaterThanOrEqual(60);
+  expect(mapTopGap).toBeLessThanOrEqual(100);
+  await returnToCards.click();
+  await expect(page.getByTestId("mobile-deck-card")).toContainText("Earlier assumptions were visible");
+
+  await page.getByRole("button", { name: "More conversation options" }).click();
+  await page.getByRole("dialog", { name: "Conversation options" })
+    .getByRole("button", { name: /Library/ })
+    .click();
   await expect(page.getByRole("heading", { name: /Library/ })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: new RegExp(`^${TITLE} Opened`) }).tap();
+  await page.getByRole("button", { name: new RegExp(`^${TITLE} Opened`) }).click();
   await expect(page.getByRole("heading", { name: TITLE })).toBeVisible({ timeout: 15_000 });
 
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByRole("heading", { name: TITLE })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("mobile-deck-card")).toBeVisible({ timeout: 15_000 });
   expect(googleRequestUrls).toEqual([]);
   expect(serverErrors).toEqual([]);
-  // This deterministic backendless run returns an explicit 404 for Browse's
-  // optional history probe. This worktree also resolves shared Fontsource
-  // assets outside Vite's serve allow-list (tracked in ISSUES.md). Match both
-  // by their exact message/source instead of muting generic load failures.
   const unexpectedConsoleProblems = consoleProblems.filter((problem) => {
     const problemPath = (() => {
       try {
@@ -207,4 +340,31 @@ test("a phone recipient can reopen, understand, inspect, and return to a Drive-b
       && !expectedWorktreeFont403;
   });
   expect(unexpectedConsoleProblems).toEqual([]);
+});
+
+test("More notices remain accessible and absorb taps above the modal", async ({ page }) => {
+  const backendlessResponse = {
+    status: 404,
+    contentType: "application/json",
+    body: JSON.stringify({ detail: "Backend intentionally absent in mobile notice test" }),
+  };
+  await page.route("**/api/**", (route) => route.fulfill(backendlessResponse));
+  await page.route("**/conversations/**", (route) => route.fulfill(backendlessResponse));
+
+  await page.goto("/browse", { waitUntil: "domcontentloaded" });
+  await page.locator('input[type="file"]').setInputFiles(FIXTURE);
+  await expect(page.getByRole("heading", { name: TITLE })).toBeVisible({ timeout: 15_000 });
+
+  await page.getByRole("button", { name: "More conversation options", exact: true }).click();
+  const options = page.getByRole("dialog", { name: "Conversation options" });
+  await expect(options).toBeVisible();
+  await options.getByRole("button", { name: /themes/i }).click();
+
+  const notice = page.getByTestId("mobile-deck-notice");
+  await expect(notice).toContainText(/theme/);
+  await expect(notice).toBeVisible();
+  expect(await notice.evaluate((element) => Boolean(element.closest('[aria-hidden="true"], [inert]'))))
+    .toBe(false);
+  await notice.click();
+  await expect(options).toBeVisible();
 });

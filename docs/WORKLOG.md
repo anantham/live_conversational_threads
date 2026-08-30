@@ -4620,3 +4620,175 @@ Manual testing not run:
   focus-aware Center framing/coverage. It also agreed the direct-IndexedDB item
   was a resolved scope adjudication. No independent-review overclaim remains
   for human arbitration, and no private review transcript was retained.
+
+## 2026-08-30 13:43 +05:30 — Mobile conversation viewer becomes a branch-preserving card deck
+
+- **Approved product decision:** compact phone/coarse-pointer readers default to
+  one fixed readable card. Left/Right moves chronologically among siblings in
+  the current authored branch; Down follows arc → theme → topic → idea → moment
+  → exact utterance; Up restores the exact parent. Gestures remain paired with
+  48px controls and Arrow-key equivalents. The desktop graph remains the
+  fine-pointer default and an optional Map action on compact surfaces.
+- **Root-cause evidence:** the previous responsive tests explicitly required the
+  desktop ReactFlow graph and five header actions on phones. Inspection of a v2
+  artifact confirmed that hierarchy memberships, exact utterance IDs, speaker,
+  timestamps, and Drive media references already exist, so no artifact mutation
+  or synthetic semantic levels are required.
+- **Implementation:**
+  - `lct_app/src/components/threads/mobileConversationDeckModel.js:1-287`
+    adds the pure primary-parent projection, temporal sibling ordering,
+    moment-to-utterance boundary, trail state, navigation, and truthful boundary
+    notices.
+  - `MobileConversationDeck.jsx:36-267`, `MobileDeckCard.jsx:1-193`,
+    `MobileDeckChrome.jsx:1-116`, `MobileDeckOptions.jsx:1-126`, and
+    `MobileDeckSheet.jsx:1-104` keep gesture orchestration, readable evidence
+    cards, compact controls, secondary actions, and modal focus behavior in
+    separate sub-300-line modules.
+  - `ThreadsViewer.jsx:73-544` chooses the deck only for the existing compact
+    media query and exposes the old graph as an optional chromeless map; desktop
+    rendering remains on its original branch.
+  - `index.css:60-139` adds the transition skill's bottom-sheet reveal and
+    low-amplitude directional card entry, both disabled under reduced motion.
+  - `provenance-navigation.threads` now carries a synthetic Drive media ref so
+    browser tests can verify the exact utterance deep link without disclosing
+    participant data.
+- **Test intent and coverage:** `tests/intent/mobile-conversation-deck.md`, four
+  pure-model tests, two component tests, a touch-only Drive-cache journey, and
+  phone/tablet responsive assertions cover branch-scoped horizontal motion,
+  five-step drill-down, exact speaker/text/time/media, Up restoration, missing
+  levels, More-sheet actions, optional map return, 48px controls, reduced
+  motion, browser-local reopening, zero Google refetch, no unexpected console
+  errors/5xx, and no horizontal overflow.
+- **Validation:** full frontend Vitest passed 315/315; production build passed
+  with the established >500kB chunk warning; scoped ESLint passed; Impeccable's
+  final detector returned `[]`; combined mobile/desktop/public-opener browser
+  gate passed 12 with the deployment-only case skipped, followed by a clean
+  mobile visual journey and unchanged desktop-shell journey. Visual evidence
+  was inspected at 375×812 for arc, utterance, and settled options sheet, plus
+  1280×720 desktop.
+- **Pre-existing findings captured without pivot:** the unchanged desktop
+  centering test samples a still-animating zoom twice and flakes; the desktop
+  sample fixture also visibly overlaps cards on open. Both are recorded in
+  `ISSUES.md`. The new compact branch is inactive in those desktop cases.
+- **Architecture/docs:** appended the approved compact-deck amendment to
+  ADR-032 and recorded the remaining `ThreadsViewer.jsx` ingestion/presentation
+  split in `docs/TECH_DEBT.md`.
+- **Independent review:** pending against the exact committed diff before the
+  PR can pass the repository's merge gate.
+
+### 2026-08-30 14:13 +05:30 — Independent-review interaction hardening
+
+- Anthropic Claude's read-only ultrareview did not launch because its free
+  allowance was exhausted; no Claude verdict was represented as evidence.
+  The gate failed over to the standing-authorized xAI/Grok family against exact
+  PR #183 head `69c90f5f8d906879d6ab34c445aae3ae583de620`.
+- Grok reported five concrete interaction findings. Four reproduced directly:
+  a `touch-none` stage conflicted with long-card reading; Map unmounted the deck
+  and discarded its trail; global arrows moved the hidden deck while More was
+  open; and focusing a navigation button disabled the promised arrow shortcut.
+- Repaired the common boundaries rather than individual screenshots:
+  - the stage now permits native vertical panning; normal-height cards retain
+    vertical abstraction gestures through Touch events, while overflowing cards
+    reserve vertical motion for reading and retain explicit Up/Down controls;
+  - the compact deck state is controlled by `ThreadsViewer`, so the optional
+    ReactFlow overview can unmount/remount without losing the exact branch;
+  - More gates the window shortcut, while buttons no longer disable deck arrows;
+  - the return-to-cards button now explicitly uses `h-12`.
+- Grok's fifth reproduction claimed that return-to-cards rendered at 44px and
+  that the existing browser assertion failed. The assertion had already passed
+  because the coarse-pointer CSS floor produced a measured ≥48px box. The class
+  was nevertheless aligned to `h-12` as code-level defense; no legibility or
+  test threshold was weakened.
+- Test intent expanded after review to cover long-card native scrolling, modal
+  keyboard isolation, and exact Map round-trip state. The browser journey now
+  uses Chromium touch input to make an utterance overflow, proves `scrollTop`
+  advances without semantic navigation, then verifies accessible Up and Map
+  restoration. Component coverage proves More blocks ArrowDown and a focused
+  deck control retains ArrowDown.
+- Focused post-repair evidence: MobileConversationDeck 3/3 and deck model 4/4;
+  scoped ESLint passed; the real-touch Drive-backed browser journey passed after
+  two test-harness repairs (wait for IndexedDB persistence and use deterministic
+  button activation after synthetic native scrolling). No product assertion was
+  loosened.
+- Full post-repair evidence: Vitest passed 316/316; the production build passed
+  with the established >500kB chunk warning; `git diff --check` passed; source
+  ESLint passed; and the combined mobile/responsive/public-opener Playwright gate
+  passed 12/12 applicable cases with the deployment-only case skipped. The
+  unrelated animated desktop-center assertion remained intentionally excluded
+  under its already-recorded pre-existing issue rather than weakened.
+
+### 2026-08-30 14:48 +05:30 — Second independent-review boundary repair
+
+- Grok reviewed exact PR #183 head
+  `1feee4502b1cdc6ee61989c6bd2c0c53d8dccb3a` and reported two findings. Both
+  were supported by the code and repaired at the shared boundary.
+- `MobileDeckSheet` no longer restarts its focus lifecycle when a consumer's
+  callback identity changes. It stores the latest close callback in a ref and
+  keys focus capture/restoration only to the sheet's open transition;
+  `MobileConversationDeck` also supplies a stable close callback.
+- `MinimalGraph` now distinguishes the normal 160px compact HUD reservation
+  from a 72px chromeless reservation used by every initial, follow-up, and
+  manual compact framing path. The optional mobile map therefore clears its
+  floating Cards control without reserving space for hidden graph HUD rows.
+- New behavioral evidence covers focus remaining on the selected Library action
+  when browser-local save status rerenders the parent, and measures the first
+  chromeless map node inside a 60–100px top reading band. Focused component 4/4
+  and real-phone Playwright 1/1 passed after the repair.
+- Final round-two validation passed: Vitest 317/317, production build, scoped
+  source ESLint, `git diff --check`, and the combined browser gate with 12/12
+  applicable cases plus the deployment-only case skipped.
+
+### 2026-08-30 15:21 +05:30 — Third independent-review accessibility repair
+
+- Grok reviewed exact PR #183 head
+  `29f2c3279817946883b801258e6dc3638ec36f09` and reported two supported
+  accessibility gaps: overflowing transcript cards could not receive keyboard
+  focus/scroll, and the modal More sheet did not make background controls inert.
+- All cards are now named focusable scroll regions. Arrow keys scroll within an
+  overflowing card and bubble to abstraction navigation only at its boundary;
+  Page Up/Down, Space/Shift+Space, Home, and End provide additional reading
+  controls without changing the semantic trail.
+- The complete deck background is now an inert, aria-hidden sibling while More
+  is open, so programmatic focus or browser-chrome re-entry cannot activate Map
+  or navigation behind the modal. Closing restores the background and the
+  sheet's existing focus restoration remains intact.
+- Focused component coverage passed 4/4 in a deterministic worker. The real
+  Chromium journey proved keyboard scroll advances while the utterance remains
+  selected and a forced background-Map activation is rejected while More stays
+  visible. A camera assertion initially sampled two in-flight transitions; its
+  final form requires two stable 60–100px samples 350ms apart and passed without
+  broadening the geometry contract.
+- Final round-three validation passed: Vitest 317/317, production build, scoped
+  source ESLint, `git diff --check`, focused Chromium 1/1, and the combined
+  browser gate with 12/12 applicable cases plus the deployment-only case
+  skipped.
+
+### 2026-08-30 15:47 +05:30 — Fourth independent-review semantic repair
+
+- Grok reviewed exact PR #183 head
+  `599c0f6a9a8ce6ac5d6c81238c9801299b18a014` and reported three supported
+  accessibility inconsistencies introduced or exposed by the modal and
+  keyboard-scroll hardening.
+- `MobileConversationDeck.jsx` moves the visual and semantic notice out of the
+  inert deck background, keeps it pointer-opaque while visible, and positions
+  More-sheet notices at the top so they do not cover its actions.
+- `MobileDeckCard.jsx` replaces generic card `aria-label` values with
+  `aria-labelledby` references to the visible node title or utterance speaker,
+  preserving meaningful focus announcements for keyboard scrolling.
+- `MobileDeckChrome.jsx` keeps boundary controls visually subdued and operable
+  for explanatory notices, but no longer falsely exposes them as
+  `aria-disabled` to assistive technology.
+- `MobileConversationDeck.test.jsx` expands the public-behavior contract to
+  verify visible-heading accessible names, operable boundary semantics, the
+  boundary notice, and a More-triggered live status outside every inert or
+  aria-hidden ancestor.
+- Post-repair validation passed: focused component 4/4, isolated real-Chromium
+  notice journey 1/1, full Vitest 317/317, production build, scoped source
+  ESLint, and the combined browser gate with 12/12 applicable cases plus the
+  deployment-only case skipped.
+- The unchanged long mobile journey reached and passed the new More-notice
+  assertions twice, then failed only at its separately logged ReactFlow camera
+  geometry flake. The final combined gate excludes that one known scenario and
+  retains the isolated real-browser notice regression; no product assertion or
+  geometry threshold was weakened. Exact-head independent re-review remains
+  pending.

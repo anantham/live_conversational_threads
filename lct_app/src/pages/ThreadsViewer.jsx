@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { Rows3 } from "lucide-react";
 
 import { useDataProvider } from "../services/dataProvider";
 import MinimalGraph from "../components/MinimalGraph";
@@ -9,7 +10,9 @@ import TimelineRibbon from "../components/TimelineRibbon";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
 import DriveThreadsGate from "../components/threads/DriveThreadsGate";
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
+import MobileConversationDeck from "../components/threads/MobileConversationDeck";
 import { buildSpeakerColorMap } from "../components/graphConstants";
+import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import {
   flattenThreadsGraph,
   readThreadsFile,
@@ -70,7 +73,10 @@ export default function ThreadsViewer() {
   // Canvas-only "focus mode": hide all chrome (header, legend, timeline, graph
   // toolbar) so only the nodes remain. Esc exits.
   const [focusMode, setFocusMode] = useState(false);
+  const [mobileMapOpen, setMobileMapOpen] = useState(false);
+  const [mobileDeckState, setMobileDeckState] = useState(null);
   const consumedRouteState = useRef(false);
+  const compactViewer = useMediaQuery(COMPACT_VIEWER_QUERY);
 
   useEffect(() => {
     if (!focusMode) return undefined;
@@ -91,6 +97,8 @@ export default function ThreadsViewer() {
       setBundle(validated);
       setError("");
       setSelectedNode(null);
+      setMobileMapOpen(false);
+      setMobileDeckState(null);
       if (remember) {
         setLibraryStatus({ state: "saving", message: "Saving on this device…" });
         void rememberThreadsArtifact(validated, {
@@ -337,6 +345,15 @@ export default function ThreadsViewer() {
     triggerDownload(lines.join("\n"));
   }, [bundle, flatNodes]);
 
+  const openLibrary = useCallback(() => navigate("/browse"), [navigate]);
+  const openAnother = useCallback(() => {
+    setBundle(null);
+    setError("");
+    setLibraryStatus(null);
+    setMobileMapOpen(false);
+    navigate("/view");
+  }, [navigate]);
+
   // ---- Loading state: fetching a hosted ?src= artifact --------------------
   if (!bundle && srcLoading && !error) {
     return (
@@ -423,23 +440,36 @@ export default function ThreadsViewer() {
   }
 
   // ---- Loaded state: the map ----------------------------------------------
+  if (compactViewer && !mobileMapOpen) {
+    return (
+      <MobileConversationDeck
+        bundle={bundle}
+        deckState={mobileDeckState}
+        graphNodes={flatNodes}
+        libraryStatus={libraryStatus}
+        onDeckStateChange={setMobileDeckState}
+        onDownloadTranscript={downloadTranscript}
+        onOpenLibrary={openLibrary}
+        onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
+        onOpenAnother={openAnother}
+        onShowMap={() => setMobileMapOpen(true)}
+      />
+    );
+  }
+
+  const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
   return (
     <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
-      {!focusMode && (
+      {!viewerFocusMode && (
         <ThreadsViewerHeader
           bundle={bundle}
           focusNode={focusNode}
           libraryStatus={libraryStatus}
           onDownloadTranscript={downloadTranscript}
           onEnterFocus={() => setFocusMode(true)}
-          onOpenLibrary={() => navigate("/browse")}
+          onOpenLibrary={openLibrary}
           onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
-          onOpenAnother={() => {
-            setBundle(null);
-            setError("");
-            setLibraryStatus(null);
-            navigate("/view");
-          }}
+          onOpenAnother={openAnother}
         />
       )}
 
@@ -456,11 +486,23 @@ export default function ThreadsViewer() {
             setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
           }}
           onFocusChange={setFocusNode}
-          chromeless={focusMode}
+          chromeless={viewerFocusMode}
           argumentTraceFrom={argumentTraceFrom}
           setArgumentTraceFrom={setArgumentTraceFrom}
         />
-        {focusMode && (
+        {compactViewer && mobileMapOpen && (
+          <button
+            type="button"
+            onClick={() => setMobileMapOpen(false)}
+            title="Return to conversation cards"
+            aria-label="Return to conversation cards"
+            className="absolute right-3 top-3 z-50 inline-flex h-12 items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 text-[11px] font-medium text-slate-600 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+          >
+            <Rows3 aria-hidden="true" className="h-4 w-4" />
+            Cards
+          </button>
+        )}
+        {!compactViewer && focusMode && (
           <button
             type="button"
             onClick={() => setFocusMode(false)}
@@ -470,7 +512,7 @@ export default function ThreadsViewer() {
             ✕ Exit focus
           </button>
         )}
-        {!focusMode && <MinimalLegend speakerColorMap={speakerColorMap} />}
+        {!viewerFocusMode && <MinimalLegend speakerColorMap={speakerColorMap} />}
         {selectedNodeData && (
           <button
             type="button"
@@ -493,7 +535,7 @@ export default function ThreadsViewer() {
         )}
       </div>
 
-      {!focusMode && flatNodes.length > 0 && (
+      {!viewerFocusMode && flatNodes.length > 0 && (
         <TimelineRibbon
           graphData={bundle.graph_data}
           selectedNode={selectedNode}

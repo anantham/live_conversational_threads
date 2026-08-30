@@ -57,10 +57,86 @@
 }
 
 :root {
+  --duration-fast: 250ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --panel-open-dur: 400ms;
+  --panel-close-dur: 350ms;
+  --panel-translate-y: 100px;
+  --panel-blur: 2px;
+  --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
   --acc-expand: 250ms;
   --acc-collapse: 250ms;
   --acc-chevron: 250ms;
   --acc-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.t-panel-slide {
+  transform: translateY(var(--panel-translate-y));
+  opacity: 0;
+  filter: blur(var(--panel-blur));
+  pointer-events: none;
+  transition:
+    transform var(--panel-close-dur) var(--panel-ease),
+    opacity   var(--panel-close-dur) var(--panel-ease),
+    filter    var(--panel-close-dur) var(--panel-ease);
+  will-change: transform, opacity, filter;
+}
+.t-panel-slide[data-open="true"] {
+  transform: translateY(0);
+  opacity: 1;
+  filter: blur(0);
+  pointer-events: auto;
+  transition:
+    transform var(--panel-open-dur) var(--panel-ease),
+    opacity   var(--panel-open-dur) var(--panel-ease),
+    filter    var(--panel-open-dur) var(--panel-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-panel-slide { transition: none !important; }
+}
+
+@keyframes lctDeckEnterLeft {
+  from { opacity: 0; transform: translateX(-8px); filter: blur(3px); }
+  to { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+
+@keyframes lctDeckEnterRight {
+  from { opacity: 0; transform: translateX(8px); filter: blur(3px); }
+  to { opacity: 1; transform: translateX(0); filter: blur(0); }
+}
+
+@keyframes lctDeckEnterUp {
+  from { opacity: 0; transform: translateY(-8px); filter: blur(3px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+@keyframes lctDeckEnterDown {
+  from { opacity: 0; transform: translateY(8px); filter: blur(3px); }
+  to { opacity: 1; transform: translateY(0); filter: blur(0); }
+}
+
+.lct-deck-enter-left,
+.lct-deck-enter-right,
+.lct-deck-enter-up,
+.lct-deck-enter-down {
+  animation-duration: var(--duration-fast);
+  animation-timing-function: var(--ease-smooth-out);
+  animation-fill-mode: both;
+  will-change: opacity, transform, filter;
+}
+.lct-deck-enter-left { animation-name: lctDeckEnterLeft; }
+.lct-deck-enter-right { animation-name: lctDeckEnterRight; }
+.lct-deck-enter-up { animation-name: lctDeckEnterUp; }
+.lct-deck-enter-down { animation-name: lctDeckEnterDown; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lct-deck-enter-left,
+  .lct-deck-enter-right,
+  .lct-deck-enter-up,
+  .lct-deck-enter-down {
+    animation: none !important;
+  }
 }
 
 /* grid-template-rows 0fr → 1fr gives a clean height animation

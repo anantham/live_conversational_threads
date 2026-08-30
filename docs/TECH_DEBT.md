@@ -174,3 +174,14 @@ validation/canonicalization and the node adapter; keep provider orchestration in
 `transcript_processing.py` (~815 lines) remain pre-existing mixed-concern
 monoliths; the new provenance matcher was kept in its own pure module rather
 than expanding either one further.
+
+### 2026-08-30 — ThreadsViewer still owns ingestion and presentation routing
+
+`lct_app/src/pages/ThreadsViewer.jsx` remains roughly 540 lines after the mobile
+deck was kept in separate sub-300-line model, card, chrome, options, and sheet
+modules. The page still combines route/Drive/cache ingestion, persistence
+status, loading/error/opener states, desktop graph orchestration, and compact-
+surface selection. Before adding another artifact source, extract a
+`useThreadsArtifactLoader` controller and declarative loaded/empty/error route
+states; keep the page responsible only for choosing desktop graph versus mobile
+deck presentation.

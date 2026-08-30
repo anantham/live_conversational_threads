@@ -70,6 +70,10 @@ const EDGE_TYPES = {};
 // underneath touch chrome. Relationship focus adds another status row.
 const COMPACT_VIEWER_TOP_INSET = 160;
 const COMPACT_VIEWER_FOCUS_TOP_INSET = COMPACT_VIEWER_TOP_INSET + 36;
+// Chromeless compact maps keep only the floating 48px Cards control. Reserve
+// enough room for that control plus a calm gutter, without framing as if the
+// hidden two-row graph HUD still occupied the viewport.
+const COMPACT_VIEWER_CHROMELESS_TOP_INSET = 72;
 
 function frameNodesFromTopLeft(
   reactFlow,
@@ -127,6 +131,12 @@ function MinimalGraphInner({
     mediaQueryMatches("(prefers-reduced-motion: reduce)"),
   );
   const compactViewer = useMediaQuery(COMPACT_VIEWER_QUERY);
+  const compactViewerTopInset = chromeless
+    ? COMPACT_VIEWER_CHROMELESS_TOP_INSET
+    : COMPACT_VIEWER_TOP_INSET;
+  const compactViewerFocusTopInset = chromeless
+    ? COMPACT_VIEWER_CHROMELESS_TOP_INSET
+    : COMPACT_VIEWER_FOCUS_TOP_INSET;
   const [hideEdges, setHideEdges] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [lockedLevel, setLockedLevel] = useState(null); // null = unlocked, semantic 1-4 or legacy 0-3
@@ -1309,7 +1319,7 @@ function MinimalGraphInner({
           zoom: 0.85,
           duration,
           paddingX: 16,
-          paddingY: COMPACT_VIEWER_TOP_INSET,
+          paddingY: compactViewerTopInset,
         });
       }, { expectedZoom: 0.85, duration });
       if (framed) {
@@ -1317,7 +1327,7 @@ function MinimalGraphInner({
       }
     }, 180);
     return () => window.clearTimeout(id);
-  }, [compactViewer, displayNodes, reactFlow, reduceMotion, viewportMotion]);
+  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion]);
 
   // Re-frame when a relationship neighbourhood or dialectic fan appears. Both
   // projections move nodes without changing the controlled full-layout state.
@@ -1336,7 +1346,7 @@ function MinimalGraphInner({
               zoom: 0.85,
               duration,
               paddingX: 16,
-              paddingY: COMPACT_VIEWER_FOCUS_TOP_INSET,
+              paddingY: compactViewerFocusTopInset,
             }),
             { expectedZoom: 0.85, duration },
           );
@@ -1356,7 +1366,7 @@ function MinimalGraphInner({
       }
     }, 80);
     return () => clearTimeout(id);
-  }, [argumentTraceFrom, compactViewer, neighborhoodFocusId, reactFlow, reduceMotion, viewportMotion]);
+  }, [argumentTraceFrom, compactViewer, compactViewerFocusTopInset, neighborhoodFocusId, reactFlow, reduceMotion, viewportMotion]);
 
   const displayEdgesWithTrace = useMemo(() => {
     if (!traceResult.edges) return focusedDisplayEdges;
@@ -1408,7 +1418,7 @@ function MinimalGraphInner({
               zoom: 0.85,
               duration,
               paddingX: 16,
-              paddingY: COMPACT_VIEWER_TOP_INSET,
+              paddingY: compactViewerTopInset,
             })) return undefined;
             return reactFlow.fitView({ padding: 0.1, duration, minZoom: 0.6, maxZoom: 1.0 });
           }, { expectedZoom: 0.85, duration });
@@ -1435,7 +1445,7 @@ function MinimalGraphInner({
       cancelAnimationFrame(raf1);
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [compactViewer, displayNodes, reactFlow, reduceMotion, viewportMotion]);
+  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion]);
 
   const selectedLayoutNode = useMemo(
     () => displayNodes.find((node) => node.id === selectedNode) || null,
@@ -1800,7 +1810,7 @@ function MinimalGraphInner({
       const readableZoom = Math.max(currentZoom, MIN_READABLE_ZOOM);
       const paddingX = compactViewer ? 16 : 40;
       const paddingY = compactViewer
-        ? (neighborhoodFocusId ? COMPACT_VIEWER_FOCUS_TOP_INSET : COMPACT_VIEWER_TOP_INSET)
+        ? (neighborhoodFocusId ? compactViewerFocusTopInset : compactViewerTopInset)
         : 40;
       const duration = reduceMotion ? 0 : 300;
       viewportMotion.run(

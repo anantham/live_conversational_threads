@@ -5,14 +5,14 @@ import { fileURLToPath } from "url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, "fixtures", "sample.threads");
 const MACRO_FIXTURE = path.join(HERE, "fixtures", "macro-overview.threads");
+const PROVENANCE_FIXTURE = path.join(HERE, "fixtures", "provenance-navigation.threads");
 
 /*
  * Test intent:
  * - A phone opens a .threads artifact without horizontal page overflow.
- * - Core viewer actions remain visible and meet the 44px touch-target floor.
- * - The thread timeline starts collapsed on touch-sized screens.
- * - A touch tablet uses the same compact camera and controls as a phone.
- * - Reduced-motion removes accordion animation instead of merely shortening it.
+ * - A phone defaults to one readable card while secondary actions live in More.
+ * - Gesture alternatives meet the 48px touch-target floor on phones and touch tablets.
+ * - Reduced-motion removes card travel instead of merely shortening it.
  * - Desktop keeps the richer timeline expanded by default.
  * - Center restores a readable macro overview instead of preserving a tiny fit-all zoom.
  * - Macro card typography retains a readable effective size after viewport scaling.
@@ -23,73 +23,87 @@ const MACRO_FIXTURE = path.join(HERE, "fixtures", "macro-overview.threads");
  * - Presentation-only color changes do not reset a reader-adjusted focused camera.
  */
 
-async function openFixture(page) {
+async function openFixture(page, fixture = FIXTURE) {
   await page.goto("/view");
-  await page.locator('input[type="file"]').setInputFiles(FIXTURE);
-  await expect(page.getByRole("heading", { name: "E2E fixture conversation" })).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles(fixture);
+  const title = fixture === PROVENANCE_FIXTURE
+    ? "Provenance and navigation fixture"
+    : "E2E fixture conversation";
+  await expect(page.getByRole("heading", { name: title })).toBeVisible();
 }
 
 test.describe("responsive .threads viewer", () => {
   test("uses compact, touch-safe chrome on a phone", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await openFixture(page);
+    await openFixture(page, PROVENANCE_FIXTURE);
 
-    await expect(page.getByRole("button", { name: "Show thread timeline" })).toBeVisible();
-    const timelinePanel = page.locator(".t-acc-panel").last();
-    await expect(timelinePanel).toHaveCSS("transition-duration", "0s");
-    for (const name of ["Show conversation overview", "Transcript", "Focus", "Library", "Open"]) {
+    await expect(page.getByTestId("mobile-deck-card")).toBeVisible();
+    await expect(page.locator(".react-flow")).toHaveCount(0);
+    for (const name of [
+      "Open conversation map",
+      "More conversation options",
+      "Move to a higher level of abstraction",
+      "Previous arc",
+      "Next arc",
+      "Drill into a finer level of detail",
+    ]) {
       const control = page.getByRole("button", { name, exact: true });
       await expect(control).toBeVisible();
       const box = await control.boundingBox();
-      expect(box?.height).toBeGreaterThanOrEqual(44);
+      expect(box?.height).toBeGreaterThanOrEqual(48);
     }
+
+    await page.getByRole("button", { name: "Drill into a finer level of detail" }).click();
+    await expect(page.getByTestId("mobile-deck-card").locator("..")).toHaveCSS("animation-name", "none");
+    await page.getByRole("button", { name: "More conversation options" }).click();
+    const options = page.getByRole("dialog", { name: "Conversation options" });
+    await expect(options).toContainText("Download transcript");
+    await expect(options).toContainText("Library");
+    await expect(options).toContainText("Open another file");
 
     const pageWidth = await page.evaluate(() => ({
       viewport: document.documentElement.clientWidth,
       content: document.body.scrollWidth,
     }));
     expect(pageWidth.content).toBeLessThanOrEqual(pageWidth.viewport);
-
-    await page.locator(".react-flow__node").first().click({ position: { x: 12, y: 12 } });
-    const showAll = page.getByRole("button", { name: "Show all", exact: true });
-    await expect(showAll).toBeVisible();
-    expect((await showAll.boundingBox())?.height).toBeGreaterThanOrEqual(44);
   });
 
   test.describe("touch tablet", () => {
     test.use({ viewport: { width: 768, height: 1024 }, hasTouch: true });
 
-    test("keeps the compact chrome and frames a readable first card", async ({ page }) => {
-      await openFixture(page);
-      await expect(page.getByRole("button", { name: "Show thread timeline" })).toBeVisible();
-      for (const name of ["Show conversation overview", "Transcript", "Focus", "Library", "Open"]) {
+    test("uses the same readable deck on a touch tablet", async ({ page }) => {
+      await openFixture(page, PROVENANCE_FIXTURE);
+      await expect(page.getByTestId("mobile-deck-card")).toBeVisible();
+      await expect(page.locator(".react-flow")).toHaveCount(0);
+      for (const name of [
+        "Open conversation map",
+        "More conversation options",
+        "Move to a higher level of abstraction",
+        "Previous arc",
+        "Next arc",
+        "Drill into a finer level of detail",
+      ]) {
         const control = page.getByRole("button", { name, exact: true });
         await expect(control).toBeVisible();
         const controlBox = await control.boundingBox();
-        expect(controlBox?.height).toBeGreaterThanOrEqual(44);
+        expect(controlBox?.height).toBeGreaterThanOrEqual(48);
       }
-      const tierControls = page.getByTitle(/^Click to lock at /);
-      expect(await tierControls.count()).toBeGreaterThan(0);
-      for (let index = 0; index < await tierControls.count(); index += 1) {
-        const controlBox = await tierControls.nth(index).boundingBox();
-        expect(controlBox?.height).toBeGreaterThanOrEqual(44);
-      }
-      const firstNode = page.locator(".react-flow__node").first();
-      await expect(firstNode).toBeVisible();
-      const box = await firstNode.boundingBox();
+      const card = page.getByTestId("mobile-deck-card");
+      const box = await card.boundingBox();
       expect(box?.x).toBeGreaterThanOrEqual(0);
-      expect(box?.y).toBeGreaterThanOrEqual(100);
+      expect(box?.y).toBeGreaterThanOrEqual(70);
       expect(box?.width).toBeGreaterThanOrEqual(220);
       expect(box?.width).toBeLessThanOrEqual(768);
     });
   });
 
-  test("keeps the desktop timeline expanded", async ({ page }) => {
+  test("keeps the desktop timeline expanded", async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 720 });
     await openFixture(page);
     await expect(page.getByRole("button", { name: "Hide thread timeline" })).toBeVisible();
     await expect(page.getByTestId("thread-label-gutter")).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("desktop-viewer-preserved.png"), fullPage: true });
   });
 
   test("centers a tall macro overview at a readable scale", async ({ page }) => {

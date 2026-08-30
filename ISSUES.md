@@ -1,6 +1,42 @@
 # ISSUES
 
-Last updated: 2026-08-29
+Last updated: 2026-08-30
+
+## 2026-08-30 — Desktop Center legibility test samples an animated viewport twice (OPEN, NON-BLOCKING)
+
+**Summary:** The unchanged desktop macro-centering browser test reads the
+ReactFlow transform, then independently looks for a rounded percentage label
+while the camera animation is still settling. In two isolated/focused runs the
+sample and label differed by one point; another run reached the later typography
+assertion at a transient 0.91 scale and reported 12.7 effective pixels.
+
+**Impact:** Test reliability only in the evidence collected here. The mobile
+deck conditional does not execute at the test's 1440×900 fine-pointer viewport,
+and the corresponding desktop source/test body is unchanged in this branch.
+
+**Blocker status:** Non-blocking for the compact mobile deck. The new phone and
+touch-tablet journeys, plus the unchanged desktop timeline and relationship-
+focus journeys, pass.
+
+**Recommended next step:** Give the graph camera one observable settled-state
+contract and assert the badge and effective type against that single snapshot;
+do not add sleeps or loosen the legibility floor to satisfy animation timing.
+
+## 2026-08-30 — Desktop sample graph can open with overlapping cards (OPEN, NON-BLOCKING)
+
+**Summary:** Bounded desktop visual QA of the unchanged `sample.threads` graph
+shows its three cards overlapping near the upper-left even though the timeline
+and controls remain usable.
+
+**Impact:** A small desktop map is harder to scan on first open. This is not
+caused by the compact card deck: the new presentation branch is inactive at
+the captured 1280×720 fine-pointer viewport.
+
+**Blocker status:** Non-blocking for the mobile viewer productionization.
+
+**Recommended next step:** Reproduce from `sample.threads`, inspect the existing
+node-size/layout contract, and add a minimum non-overlap assertion without
+changing compact card navigation.
 
 ## 2026-08-29 — Backendless Browse reports expected history absence as console.error (OPEN, NON-BLOCKING)
 
