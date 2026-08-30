@@ -68,7 +68,6 @@ function flattenGraph(graphData) {
 export default function ShareConversation() {
   const { token } = useParams();
   const dataProvider = useDataProvider();
-  const navigate = useNavigate();
 
   // Three top-level states: fetching, needs Google sign-in, or ready/error.
   const [status, setStatus] = useState("loading"); // loading | needs_auth | ready | error | revoked

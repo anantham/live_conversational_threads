@@ -122,10 +122,11 @@ export class BackendDataProvider extends DataProvider {
     };
 
     this._share = {
-      fetchShared: async (token) => {
-        return fetch(`${API_BASE_URL}/api/share/${encodeURIComponent(token)}`, {
-          headers: apiHeaders()
-        });
+      fetchShared: async (token, options = {}) => {
+        return fetch(
+          `${API_BASE_URL}/api/share/${encodeURIComponent(token)}`,
+          options
+        );
       }
     };
 
