@@ -138,6 +138,37 @@ retains JSON-safe VAD region/level evidence without introducing automatic crop.
 
 Commit `50cfbe3` proves the existing dashboard is unwired, but it combines raw API-call logging with stale fixed GPT-4o counterfactual prices and savings-first UI. Preserve the telemetry facts first (model actually served, tokens, latency, route, success/failure). Treat counterfactual prices as dated/configurable assumptions and keep them out of the critical logging path. This is meaningful but not safe as a blind cherry-pick.
 
+**Current-code rescue map:** the dormant decorator only covered async
+`LlmGateway.chat`, while current traffic also reaches `chat_sync`, embeddings,
+and the lower provider fallback functions. The current lower provider boundary
+already records actual served model, provider/base URL, latency, token counts,
+JSON validity, and success to a rotating JSONL log through
+`local_llm_client._record_llm_telemetry`; however it has no durable relational
+record, route/feature, conversation/session correlation, finish reason, or
+error rows. The existing `api_calls_log` table is not a clean destination as-is:
+it requires cost fields and the mapper may infer provider from model names.
+
+If S3-A is selected, port the *facts*, not the dormant decorator/UI:
+
+- extend the current provider-result/telemetry boundary so async chat, sync
+  chat, and embeddings emit one canonical fact envelope;
+- persist actual provider/model/route/capability, nullable usage, latency,
+  finish/error state, prompt revision, and optional conversation/session IDs;
+- make price explicitly absent/nullable or migrate to a facts-only event table
+  rather than fabricating zero cost as measured cost;
+- retain the JSONL aggregator only as a compatibility/read-model bridge until
+  the durable store is proven; and
+- test observable records for success, provider fallback, missing usage,
+  errors, sync chat, async chat, and embeddings.
+
+Reject the dormant fixed-price calculator, GPT-4o counterfactual dashboard,
+`ensure_future` logging in edge enrichment, and provider inference from model
+strings. Likely current files are `services/local_llm_client.py`,
+`services/llm_gateway.py`, `services/llm_telemetry_service.py`, a focused
+facts-store/model migration, and their public behavior tests. Both
+`local_llm_client.py` (~850 lines) and `llm_gateway.py` (~519 lines) must not
+absorb another mixed concern; the event envelope/store should be extracted.
+
 ### S4 — Live tangent navigation (human product choice)
 
 Commits `2d0cebb`, `7e07cf5`, and `8a60087` add a three-element live tangent surface with independent temporal and abstraction axes. It matches the long-term vision and the recent mobile-navigation direction, but predates the merged static mobile deck and may create a second interaction grammar. Choose whether to:
@@ -146,11 +177,72 @@ Commits `2d0cebb`, `7e07cf5`, and `8a60087` add a three-element live tangent sur
 2. retain a separate feature-flagged live-meeting tangent mode; or
 3. preserve the design in the roadmap and discard the old implementation.
 
+**Current-code rescue map:** the merged mobile deck already implements the
+important general interaction grammar through pure authored hierarchy state:
+left/right moves chronologically among siblings within the selected parent;
+down follows authored children and ultimately exact utterances; up restores the
+same trail. It already has buttons, keyboard equivalents, swipe handling,
+truthful missing-level notices, `N of M`, provenance counts, speaker/timestamp
+utterance cards, and tests for branch confinement. Therefore the old
+`TangentView` surface and its mocked-websocket E2E test are superseded.
+
+If S4-A is selected, the only distinct dormant behavior to adapt is live-time
+state: `null` cursor means following live, stepping into history pins a bounded
+historical slice, and the UI explains how far behind live the reader is. That
+state belongs in `mobileConversationDeckModel.js` as a pure live-history
+extension and in the existing deck/chrome, not in a second `MeetingView`
+surface. Live nodes must first enter the same authored hierarchy contract; the
+viewer must not reconstruct a competing three-card graph. Tests should prove
+live auto-follow, explicit historical pinning, return-to-live, chronological
+stability while new nodes arrive, and preservation of the abstraction trail.
+
+Reject the dormant duplicate three-card presentation, legacy gesture rules
+that disable time whenever drilled, and synthetic-only websocket harness.
+`MobileConversationDeck.jsx` is already ~324 lines, so the live cursor/gesture
+controller should be extracted rather than expanding the component.
+
 ### S5 — Strict M5 authority (human architecture choice)
 
 The dormant strict branch makes the saved local route and ordinary provider override non-authoritative: automatic live/import STT uses the designated M5 Whisper endpoint, and only a validated scoped BYOK session can select cloud. This is privacy-aligned and eliminates silent quality degradation, but it also disables local Asus/Parakeet fallback unless `INDRAS_STT_NO_CLOUD=0` and trusts a configured URL as "M5" without remote identity attestation.
 
 Decision needed: should strict authority mean **M5-only**, or **explicit owner-approved local authority set** (M5 primary plus Asus fallback, no silent cloud)? The latter is recommended because it preserves privacy and quality authority without turning one machine outage into a hard stop.
+
+**Current-code rescue map:** the three dormant commits contain two independent
+invariants. The first is routing authority: ordinary payload/provider settings
+must not silently authorize cloud, and only a validated scoped BYOK fact may do
+so. The second is delayed-work hygiene: queued diarization jobs must not retain
+credentials or a stale foreground authority decision. Both are meaningful;
+the branch's single configured `whisper` URL equaling "M5" is not.
+
+If S5-B is selected:
+
+- define an explicit ordered local-authority record (stable authority ID,
+  endpoint, capabilities, enabled state) with M5 primary and Asus fallback;
+- have both `resolve_live_stt_candidates` and
+  `resolve_import_audio_candidates` consume that record and return only
+  approved local candidates unless a validated scope grants the requested
+  cloud provider;
+- apply the same selected candidate to segmented and sequential imports so a
+  direct URL cannot bypass the decision;
+- keep cloud-capable large BYOK imports on the provider-aware sequential path,
+  not the backend-only segmented transport;
+- recursively strip credentials from delayed job state, discard provider
+  overrides/authority booleans, and retain only the approved non-secret local
+  authority IDs or resolve them afresh when the worker runs; and
+- fail explicitly when all approved local authorities are unavailable—never
+  silently fall through to saved cloud keys.
+
+The main integration points are `services/stt/stt_config.py`,
+`services/stt/stt_live_provider_selection.py`,
+`services/provider_selection.py`, `services/stt/stt_ws_session.py`,
+`services/file_transcriber.py`, `services/import_pipeline/import_bulk_pipeline.py`,
+`services/import_pipeline/import_bulk_graph_pass.py`, and
+`services/import_pipeline/import_diarization_queue.py`. Behavioral tests must
+cover M5 primary, Asus fallback, no silent cloud, scoped BYOK, large BYOK
+imports, credential-free public queue snapshots, and explicit local-authority
+exhaustion. Reject the dormant default-on `INDRAS_STT_NO_CLOUD` switch as the
+primary policy model, hard-coded M5 route names, and URL-shape checks as proof
+of machine identity.
 
 ### S6 — Old instrumentation and zombie-table cleanup (recommended: do not transplant)
 

@@ -186,3 +186,17 @@ surface selection. Before adding another artifact source, extract a
 `useThreadsArtifactLoader` controller and declarative loaded/empty/error route
 states; keep the page responsible only for choosing desktop graph versus mobile
 deck presentation.
+
+### 2026-08-30 — Rescue packets must not expand current LLM/mobile monoliths
+
+The consolidation audit found useful dormant telemetry and live-history state,
+but their old integration points would worsen current mixed-concern files.
+`local_llm_client.py` (~850 lines) combines provider transport, fallback,
+response normalization, logging, and telemetry; a durable facts contract should
+live in an extracted event envelope/store rather than another inline decorator.
+`llm_gateway.py` (~519 lines) should remain orchestration-only. Likewise,
+`MobileConversationDeck.jsx` (~324 lines) already owns gestures, notices,
+controlled/uncontrolled state, modal suspension, and rendering; live-follow
+versus pinned-history state should be a pure model/controller extraction, not
+more component-local state. These are implementation constraints if S3-A and
+S4-A are approved, not authorization to refactor them during the inventory.

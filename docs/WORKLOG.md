@@ -4969,3 +4969,29 @@ Manual testing not run:
   `openai==2.16.0` with a comment documenting this incompatibility, and neither
   the egress test nor implementation differs from deployed base. Logged the
   stale venv separately; no security assertion or dependency pin was changed.
+
+### 2026-08-30 21:42 +05:30 — Remaining rescue packets mapped onto current architecture
+
+- S3 telemetry: compared dormant `50cfbe3` with the current gateway, provider
+  fallback, JSONL telemetry, instrumentation mapper, and `api_calls_log`
+  schema. The old decorator misses sync/embedding and mixes facts with stale
+  price assumptions. Documented a facts-only event boundary covering actual
+  served provider/model, route/capability, nullable usage, latency,
+  finish/error, prompt revision, and optional conversation/session IDs. No
+  telemetry source was changed before the product/storage decision.
+- S4 live tangents: read the dormant `useTangentNav` model and the current
+  mobile deck/model/cards/chrome/tests. The current deck already owns temporal
+  sibling movement and hierarchy drill-down to exact utterances. The only
+  distinct salvage is live-follow versus pinned-history state; the old
+  duplicate `TangentView` presentation and synthetic-only websocket harness
+  are superseded.
+- S5 STT authority: traced all three strict-M5 commits through current live,
+  import, segmented-import, BYOK, and delayed-diarization paths. Separated the
+  valuable invariants (no settings-authorized cloud; credential-free delayed
+  jobs) from the brittle mechanism (one configured Whisper URL is assumed to
+  be M5). Documented an explicit M5-primary/Asus-fallback local authority set,
+  scoped BYOK exception, provider-aware large import path, and fail-closed
+  tests as the recommended port.
+- This was a read-only architecture map plus documentation update. No S3/S4/S5
+  behavior, branch, worktree, or remote was changed or pruned; implementation
+  remains behind the recorded human arbitration gate.
