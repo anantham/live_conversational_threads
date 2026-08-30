@@ -5,6 +5,11 @@ conditions) without depending on internal implementation details. They
 should survive ADR-017 decomposition as long as the /ws/transcripts
 endpoint preserves its message protocol.
 
+Test intent:
+- A quota denial is a terminal protocol result, never a warning followed by
+  ``session_ack``.
+- Ordinary allowed sessions retain the established acknowledgement contract.
+
 Complements the existing test_transcripts_websocket.py happy-path tests.
 """
 
@@ -12,6 +17,7 @@ import time
 import uuid
 
 import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from lct_python_backend.tests.integration.transcripts_test_support import (
     build_processor_class,
@@ -319,6 +325,8 @@ def test_session_ack_has_required_fields(monkeypatch):
                 "store_audio": False,
             }
         )
+        started = ws.receive_json()
+        assert started["type"] == "session_started"
         ack = ws.receive_json()
 
     assert ack["type"] == "session_ack"
@@ -342,6 +350,44 @@ def test_session_ack_has_required_fields(monkeypatch):
     assert isinstance(ack["fallback_candidates"], list)
     assert isinstance(ack["stt_ready"], bool)
     assert isinstance(ack["store_audio"], bool)
+
+
+def test_session_meta_quota_denial_returns_terminal_error_without_ack(monkeypatch):
+    """A denied free-tier session must close before accepting live audio."""
+    denied = type(
+        "DeniedQuota",
+        (),
+        {
+            "allowed": False,
+            "remaining_minutes": 0.0,
+            "limit_minutes": 10.0,
+            "percent_used": 100.0,
+            "warning": True,
+            "message": "Daily quota exceeded (10 min limit).",
+        },
+    )()
+    client = build_test_client(monkeypatch, quota_result=denied)
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "quota-denied",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        rejection = ws.receive_json()
+        assert rejection["type"] == "quota_exceeded"
+        assert rejection["code"] == "daily_stt_quota_exceeded"
+        assert rejection["fatal"] is True
+        assert rejection["context"]["quota"]["quota_allowed"] is False
+
+        with pytest.raises(WebSocketDisconnect) as disconnect:
+            ws.receive_json()
+
+    assert disconnect.value.code == 1008
 
 
 # ---------------------------------------------------------------------------

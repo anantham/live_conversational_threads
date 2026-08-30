@@ -4822,3 +4822,26 @@ Manual testing not run:
   session is blocked but proceeds to `session_ack`. This was added to
   `ISSUES.md` as an in-scope repair. No source/runtime/deployment changes have
   been made yet, and no prune action is authorized.
+
+### 2026-08-30 20:25 +05:30 — Consolidation packet S1: quota admission
+
+- `lct_python_backend/services/stt/stt_ws_session.py` (session setup): moved the
+  existing quota check ahead of conversation/session creation and STT runtime
+  startup. A denial now emits the canonical structured websocket error
+  (`quota_exceeded` / `daily_stt_quota_exceeded`), includes the quota snapshot,
+  closes with policy code 1008, and returns before either setup acknowledgement.
+- `lct_python_backend/tests/integration/transcripts_test_support.py`: made the
+  shared websocket boundary fixture explicitly model quota and the current
+  persistence/observability seams instead of accidentally traversing a broken
+  dummy database.
+- `lct_python_backend/tests/integration/test_transcripts_ws_contract.py`: added
+  public contract coverage for denied admission and refreshed the allowed
+  acknowledgement check to account for `session_started` preceding
+  `session_ack`. Test intent is recorded in the module docstring.
+- `docs/TECH_DEBT.md`: corrected the websocket-session path/size and recorded
+  quota admission among the setup concerns that still need extraction from the
+  3,367-line orchestration class.
+- Validation: focused allowed/denied websocket admission tests passed 2/2;
+  `git diff --check` passed. A full-file diagnostic run exposed pre-existing
+  message-order drift in older tests and was logged in `ISSUES.md` rather than
+  weakening product assertions.

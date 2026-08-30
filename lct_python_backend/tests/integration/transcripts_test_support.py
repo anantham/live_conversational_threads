@@ -52,9 +52,13 @@ def build_test_client(
     stt_session_cls=None,
     runtime_factory=None,
     persist_side_effect=None,
+    quota_result=None,
 ):
     async def dummy_get_async_session():
         yield DummySession()
+
+    async def noop_async(*_args, **_kwargs):
+        return None
 
     class PlaceholderProcessor:
         def __init__(self, *args, **kwargs):
@@ -86,6 +90,25 @@ def build_test_client(
     stt_api = importlib.import_module("lct_python_backend.stt_api")
     ws_mod = importlib.import_module("lct_python_backend.services.stt.stt_ws_session")
 
+    effective_quota_result = quota_result or types.SimpleNamespace(
+        allowed=True,
+        remaining_minutes=10.0,
+        limit_minutes=10.0,
+        percent_used=0.0,
+        warning=False,
+        message="",
+    )
+
+    class StubQuotaService:
+        def __init__(self, _session):
+            pass
+
+        async def check_quota(self, **_kwargs):
+            return effective_quota_result
+
+        async def record_usage(self, **_kwargs):
+            return None
+
     effective_stt_settings = stt_settings or {
         "provider": "whisper",
         "provider_http_urls": {},
@@ -99,6 +122,12 @@ def build_test_client(
     monkeypatch.setattr(stt_api, "get_async_session_context", dummy_session_context)
     monkeypatch.setattr(stt_api, "load_llm_config", AsyncMock(return_value={}))
     monkeypatch.setattr(stt_api, "_load_llm_providers", AsyncMock(return_value=[]))
+    monkeypatch.setattr(ws_mod, "QuotaService", StubQuotaService)
+    monkeypatch.setattr(ws_mod, "ensure_conversation", noop_async)
+    monkeypatch.setattr(ws_mod, "start_thread_session", noop_async)
+    monkeypatch.setattr(ws_mod, "finish_thread_session", noop_async)
+    monkeypatch.setattr(ws_mod, "record_thread_event", noop_async)
+    monkeypatch.setattr(ws_mod.WsSessionContext, "_detect_resume", noop_async)
     monkeypatch.setattr(
         stt_api,
         "_load_stt_settings",

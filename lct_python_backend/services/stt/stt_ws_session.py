@@ -2802,6 +2802,57 @@ class WsSessionContext:
                 "byok_provider": str(byok_session.get("provider") or ""),
                 "byok_llm_enabled": BYOK_SCOPE_LLM_LIVE in set(byok_session.get("scopes") or set()),
             }
+
+        # Admission happens before creating conversation/session records or
+        # starting a provider runtime. A denied session must not consume local
+        # model capacity and must never emit session_started/session_ack.
+        quota_info: Dict[str, Any] = {}
+        # ADR-034 §F hazard #2: resolve the owner from authenticated server
+        # context, never from spoofable websocket metadata. resolve_owner_id
+        # ignores the supplied value today and can bind OAuth ownership later.
+        owner_id = resolve_owner_id((self.state.metadata or {}).get("owner_id"))
+        is_byok = bool(byok_session and byok_session.get("api_key"))
+        self._quota_owner_id = owner_id
+        self._quota_is_byok = is_byok
+        try:
+            quota_result = await QuotaService(self.session).check_quota(
+                owner_id=owner_id,
+                quota_type="stt_live",
+                is_byok=is_byok,
+            )
+            quota_info = {
+                "quota_allowed": quota_result.allowed,
+                "quota_remaining_minutes": quota_result.remaining_minutes,
+                "quota_limit_minutes": quota_result.limit_minutes,
+                "quota_percent_used": quota_result.percent_used,
+                "quota_warning": quota_result.warning,
+                "quota_message": quota_result.message,
+            }
+            if not quota_result.allowed:
+                quota_message = quota_result.message or "Daily STT quota exceeded."
+                logger.warning(
+                    "[WS][QUOTA] session=%s owner=%s quota exceeded - closing session",
+                    self.state.session_id,
+                    owner_id,
+                )
+                await self._emit_ws_error(
+                    message_type="quota_exceeded",
+                    code="daily_stt_quota_exceeded",
+                    detail=quota_message,
+                    stage="stt_setup",
+                    level="error",
+                    fatal=True,
+                    context={"quota": quota_info},
+                )
+                await self.websocket.close(code=1008, reason="Daily STT quota exceeded")
+                return
+        except Exception as quota_exc:
+            logger.warning(
+                "[WS][QUOTA] session=%s quota check failed: %s",
+                self.state.session_id,
+                quota_exc,
+            )
+
         await ensure_conversation(self.session, conversation_id, self.state.metadata or {})
         # Segment-and-stitch resume detection: if this conversation already
         # has graph nodes, a prior recording segment was persisted here and
@@ -2917,38 +2968,6 @@ class WsSessionContext:
             ),
             runtime_start_error or "-",
         )
-
-        # Check quota before allowing session
-        quota_info = {}
-        # ADR-034 §F hazard #2: owner from the authenticated session, not the
-        # client-supplied WS metadata (spoofable). resolve_owner_id ignores the
-        # passed value today; post-OAuth it returns the session owner.
-        owner_id = resolve_owner_id((self.state.metadata or {}).get("owner_id"))
-        is_byok = bool(byok_session and byok_session.get("api_key"))
-        # Remembered for the post-flush quota debit (see _record_stt_quota_usage).
-        self._quota_owner_id = owner_id
-        self._quota_is_byok = is_byok
-        
-        try:
-            quota_service = QuotaService(self.session)
-            quota_result = await quota_service.check_quota(
-                owner_id=owner_id,
-                quota_type="stt_live",
-                is_byok=is_byok,
-            )
-            quota_info = {
-                "quota_allowed": quota_result.allowed,
-                "quota_remaining_minutes": quota_result.remaining_minutes,
-                "quota_limit_minutes": quota_result.limit_minutes,
-                "quota_percent_used": quota_result.percent_used,
-                "quota_warning": quota_result.warning,
-                "quota_message": quota_result.message,
-            }
-            if not quota_result.allowed:
-                logger.warning("[WS][QUOTA] session=%s owner=%s quota exceeded - blocking session", 
-                    self.state.session_id, owner_id)
-        except Exception as quota_exc:
-            logger.warning("[WS][QUOTA] session=%s quota check failed: %s", self.state.session_id, quota_exc)
 
         await self.websocket.send_json({
             "type": "session_ack",

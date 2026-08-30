@@ -982,12 +982,20 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 
 ## 2026-08-30 — Inactive-branch consolidation findings
 
-- **Confirmed, blocking for quota enforcement — live STT logs a block but
-  continues.** `stt_ws_session.py` logs `quota exceeded - blocking session`
-  when `QuotaService.check_quota()` rejects a session, then continues into the
-  ordinary `session_ack` path. Impact: a configured non-BYOK live quota is not
-  actually enforced. This is in scope for the consolidation repair; restore the
-  public rejection behavior with a regression through the session boundary.
+- **Resolved in consolidation — live STT quota admission no longer falls
+  through.** A rejected `QuotaService.check_quota()` result is now evaluated
+  before conversation/session creation or provider startup, emits a structured
+  fatal `quota_exceeded` frame with the quota snapshot, closes with policy code
+  1008, and returns before `session_started` or `session_ack`. The public
+  websocket regression covers both denied and allowed admission.
+- **Non-blocking test debt — websocket contract fixtures drifted behind the
+  live lifecycle.** The shared dummy session did not model newer conversation
+  and durable-observability calls, and several older assertions still assume
+  `session_ack` is the first setup frame even though production emits
+  `session_started` first. Impact: the whole historical contract file is not a
+  clean baseline on `main`; focused current-boundary regressions are reliable.
+  Recommended next step: migrate every setup assertion to a shared
+  `receive_session_started_then_ack` helper without changing product behavior.
 - **Confirmed, non-blocking for current requests — API-call telemetry remains
   unwired.** The cost dashboard reads `api_calls_log`, but production LLM paths
   do not apply the existing tracker. Impact: latency/token/cost breakdowns are
