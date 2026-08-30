@@ -4947,3 +4947,20 @@ Manual testing not run:
   inactive worktrees remain clean; the active root and historical
   recipient-semantic-cards worktree remain dirty and untouched. No branch,
   worktree, or unpublished file was removed.
+
+### 2026-08-30 21:30 +05:30 — Broader consolidation validation
+
+- Ran all STT-focused unit and integration surfaces affected by quota/session
+  admission and local provider behavior: 185/185 passed. This includes runtime,
+  provider selection, HTTP transcription, circuit breaking, settings,
+  audio/BYOK, and both websocket protocol files.
+- Re-ran the M5-targeted Python 3.12 local-STT suite: 3 passed and the two
+  optional real-Silero fixtures skipped; `server.py` and its test compile under
+  Python 3.12. The websocket implementation and repaired tests also compile
+  under the repo's Python 3.9 backend environment.
+- The complete backend unit suite reached 1,951 passed / 1 failed. The sole
+  failure is environmental: installed `openai==1.54.0` passes `proxies=` to
+  installed `httpx==0.28.1`. Checked-in requirements already pin
+  `openai==2.16.0` with a comment documenting this incompatibility, and neither
+  the egress test nor implementation differs from deployed base. Logged the
+  stale venv separately; no security assertion or dependency pin was changed.

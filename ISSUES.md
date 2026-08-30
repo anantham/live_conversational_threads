@@ -1031,6 +1031,15 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   verdict within bounded runs. This does not invalidate local tests, but it
   blocks representing the consolidation as independently approved. Retry an
   eligible family after the human arbitration changes are integrated.
+- **Non-blocking local environment skew — backend venv violates the checked-in
+  OpenAI requirement.** The shared historical venv has `openai==1.54.0` with
+  `httpx==0.28.1`, while `lct_python_backend/requirements.txt` explicitly pins
+  `openai==2.16.0` because older clients pass the removed `proxies=` argument.
+  Impact: the otherwise clean full unit run stops one egress-chokepoint test in
+  third-party client construction before project code executes (1 failed,
+  1,951 passed). The test and egress code are unchanged from the deployed base.
+  Rebuild the backend venv from checked-in requirements in a separate
+  environment-maintenance task; do not weaken the security test.
 - Full proof and branch-by-branch disposition are recorded in
   `docs/plans/2026-08-30-inactive-branch-consolidation.md`. These findings do
   not authorize deleting any branch or dirty worktree.
