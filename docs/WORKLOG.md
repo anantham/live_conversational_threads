@@ -4620,3 +4620,58 @@ Manual testing not run:
   focus-aware Center framing/coverage. It also agreed the direct-IndexedDB item
   was a resolved scope adjudication. No independent-review overclaim remains
   for human arbitration, and no private review transcript was retained.
+
+## 2026-08-30 13:43 +05:30 — Mobile conversation viewer becomes a branch-preserving card deck
+
+- **Approved product decision:** compact phone/coarse-pointer readers default to
+  one fixed readable card. Left/Right moves chronologically among siblings in
+  the current authored branch; Down follows arc → theme → topic → idea → moment
+  → exact utterance; Up restores the exact parent. Gestures remain paired with
+  48px controls and Arrow-key equivalents. The desktop graph remains the
+  fine-pointer default and an optional Map action on compact surfaces.
+- **Root-cause evidence:** the previous responsive tests explicitly required the
+  desktop ReactFlow graph and five header actions on phones. Inspection of a v2
+  artifact confirmed that hierarchy memberships, exact utterance IDs, speaker,
+  timestamps, and Drive media references already exist, so no artifact mutation
+  or synthetic semantic levels are required.
+- **Implementation:**
+  - `lct_app/src/components/threads/mobileConversationDeckModel.js:1-287`
+    adds the pure primary-parent projection, temporal sibling ordering,
+    moment-to-utterance boundary, trail state, navigation, and truthful boundary
+    notices.
+  - `MobileConversationDeck.jsx:36-267`, `MobileDeckCard.jsx:1-193`,
+    `MobileDeckChrome.jsx:1-116`, `MobileDeckOptions.jsx:1-126`, and
+    `MobileDeckSheet.jsx:1-104` keep gesture orchestration, readable evidence
+    cards, compact controls, secondary actions, and modal focus behavior in
+    separate sub-300-line modules.
+  - `ThreadsViewer.jsx:73-544` chooses the deck only for the existing compact
+    media query and exposes the old graph as an optional chromeless map; desktop
+    rendering remains on its original branch.
+  - `index.css:60-139` adds the transition skill's bottom-sheet reveal and
+    low-amplitude directional card entry, both disabled under reduced motion.
+  - `provenance-navigation.threads` now carries a synthetic Drive media ref so
+    browser tests can verify the exact utterance deep link without disclosing
+    participant data.
+- **Test intent and coverage:** `tests/intent/mobile-conversation-deck.md`, four
+  pure-model tests, two component tests, a touch-only Drive-cache journey, and
+  phone/tablet responsive assertions cover branch-scoped horizontal motion,
+  five-step drill-down, exact speaker/text/time/media, Up restoration, missing
+  levels, More-sheet actions, optional map return, 48px controls, reduced
+  motion, browser-local reopening, zero Google refetch, no unexpected console
+  errors/5xx, and no horizontal overflow.
+- **Validation:** full frontend Vitest passed 315/315; production build passed
+  with the established >500kB chunk warning; scoped ESLint passed; Impeccable's
+  final detector returned `[]`; combined mobile/desktop/public-opener browser
+  gate passed 12 with the deployment-only case skipped, followed by a clean
+  mobile visual journey and unchanged desktop-shell journey. Visual evidence
+  was inspected at 375×812 for arc, utterance, and settled options sheet, plus
+  1280×720 desktop.
+- **Pre-existing findings captured without pivot:** the unchanged desktop
+  centering test samples a still-animating zoom twice and flakes; the desktop
+  sample fixture also visibly overlaps cards on open. Both are recorded in
+  `ISSUES.md`. The new compact branch is inactive in those desktop cases.
+- **Architecture/docs:** appended the approved compact-deck amendment to
+  ADR-032 and recorded the remaining `ThreadsViewer.jsx` ingestion/presentation
+  split in `docs/TECH_DEBT.md`.
+- **Independent review:** pending against the exact committed diff before the
+  PR can pass the repository's merge gate.

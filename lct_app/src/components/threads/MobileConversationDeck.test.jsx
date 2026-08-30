@@ -1,0 +1,177 @@
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import MobileConversationDeck from "./MobileConversationDeck";
+
+/*
+ * Test intent:
+ * - The compact viewer presents one readable highest-tier card and exposes non-gesture navigation.
+ * - Repeated drill actions reach a real artifact utterance with speaker, timestamp, and media deep link.
+ * - Up returns to the exact parent rather than resetting the conversation branch.
+ * - The More sheet contains secondary actions and truthfully explains an absent authored tier.
+ */
+
+let container;
+let root;
+
+beforeEach(() => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  container.remove();
+  globalThis.IS_REACT_ACT_ENVIRONMENT = false;
+});
+
+function fixture({ includeTheme = true } = {}) {
+  const utterance = {
+    id: "u1",
+    sequence_number: 1,
+    speaker_id: "speaker-a",
+    speaker_name: "Aayush",
+    timestamp_start: 12,
+    timestamp_end: 18,
+    text: "The exact words remain available here.",
+  };
+  const nodes = [
+    {
+      id: "topic-1",
+      semantic_level: 3,
+      node_name: "Traceable topic",
+      summary: "A topic that remains grounded.",
+      parent_id: includeTheme ? "theme-1" : null,
+      children_ids: ["idea-1"],
+    },
+    {
+      id: "idea-1",
+      semantic_level: 2,
+      node_name: "Traceable idea",
+      summary: "An idea with one source moment.",
+      parent_id: "topic-1",
+      children_ids: ["moment-1"],
+    },
+    {
+      id: "moment-1",
+      semantic_level: 1,
+      node_name: "Traceable moment",
+      summary: "A moment linked to exact words.",
+      parent_id: "idea-1",
+      children_ids: [],
+      source_ref: { utterance_ids: ["u1"] },
+      provenance_utterance_ids: ["u1"],
+      provenance_metrics: {
+        word_count: 7,
+        matched_utterance_count: 1,
+        duration_seconds: 6,
+      },
+    },
+  ];
+  if (includeTheme) {
+    nodes.unshift(
+      {
+        id: "arc-1",
+        semantic_level: 5,
+        node_name: "Traceable arc",
+        summary: "The conversation’s broadest authored shape.",
+        children_ids: ["theme-1"],
+      },
+      {
+        id: "theme-1",
+        semantic_level: 4,
+        node_name: "Traceable theme",
+        summary: "A theme containing the selected topic.",
+        parent_id: "arc-1",
+        children_ids: ["topic-1"],
+      },
+    );
+  }
+  return {
+    bundle: {
+      conversation_title: "Mobile deck fixture",
+      utterances: [utterance],
+      media_refs: [{
+        provider: "google_drive",
+        file_id: "recording123",
+        view_url: "https://drive.google.com/file/d/recording123/view",
+      }],
+    },
+    nodes,
+  };
+}
+
+function renderDeck(options = {}) {
+  const { bundle, nodes } = fixture(options);
+  const callbacks = {
+    onDownloadTranscript: vi.fn(),
+    onOpenAnother: vi.fn(),
+    onOpenLibrary: vi.fn(),
+    onShowMap: vi.fn(),
+  };
+  act(() => {
+    root.render(
+      <MobileConversationDeck
+        bundle={bundle}
+        graphNodes={nodes}
+        libraryStatus={{ state: "saved", message: "Saved on this device" }}
+        {...callbacks}
+      />,
+    );
+  });
+  return callbacks;
+}
+
+function clickByLabel(label) {
+  const button = container.querySelector(`button[aria-label="${label}"]`);
+  expect(button).not.toBeNull();
+  act(() => button.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+}
+
+describe("MobileConversationDeck", () => {
+  it("drills from the highest tier to exact timed evidence and returns to its parent", () => {
+    renderDeck();
+    expect(container.textContent).toContain("Traceable arc");
+    expect(container.querySelector('[data-testid="mobile-deck-card"]')?.dataset.level).toBe("5");
+
+    for (let depth = 0; depth < 5; depth += 1) {
+      clickByLabel("Drill into a finer level of detail");
+    }
+
+    const utteranceCard = container.querySelector('[data-testid="mobile-deck-card"]');
+    expect(utteranceCard?.dataset.kind).toBe("utterance");
+    expect(container.textContent).toContain("Aayush");
+    expect(container.textContent).toContain("The exact words remain available here.");
+    expect(container.textContent).toContain("0:12");
+    expect(container.querySelector('a[href="https://drive.google.com/file/d/recording123/view?t=10"]'))
+      .not.toBeNull();
+
+    clickByLabel("Move to a higher level of abstraction");
+    expect(container.textContent).toContain("Traceable moment");
+    expect(container.querySelector('[data-testid="mobile-deck-card"]')?.dataset.level).toBe("1");
+  });
+
+  it("moves secondary actions into More and explains a missing theme tier", () => {
+    const callbacks = renderDeck({ includeTheme: false });
+    expect(container.querySelector('[role="dialog"]')?.closest('[aria-hidden="true"]')).not.toBeNull();
+    clickByLabel("More conversation options");
+
+    expect(container.querySelector('[role="dialog"]')?.closest('[aria-hidden="false"]')).not.toBeNull();
+    expect(container.textContent).toContain("Download transcript");
+    expect(container.textContent).toContain("Saved on this device");
+    const themes = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent.includes("themes") && button.textContent.includes("none"));
+    expect(themes).not.toBeNull();
+    act(() => themes.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(container.querySelector('[role="status"]')?.textContent)
+      .toBe("No themes were generated for this conversation.");
+
+    const transcript = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent.includes("Download transcript"));
+    act(() => transcript.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(callbacks.onDownloadTranscript).toHaveBeenCalledOnce();
+  });
+});

@@ -649,3 +649,34 @@ never in direct evidence. If the generator cannot quote an exact supporting
 span, it leaves the excerpt empty and the node remains explicitly unlinked.
 This contract is injected centrally into managed and fallback prompts for both
 local and online generation paths.
+
+## Amendment — 2026-08-30: compact touch surfaces use a branch-preserving card deck
+
+**Status:** Approved by the operator for the beta viewer.
+
+The earlier desktop-first compact graph is superseded on phone-width or coarse-
+pointer surfaces. Compact readers open on one fixed, readable card at the
+highest authored abstraction tier. The graph remains available as an optional
+overview, but it is not the default navigation surface and does not own compact
+semantic state.
+
+The deck preserves two independent axes without mutating the artifact:
+
+- Left/Right selects the previous or next sibling in source-time order under
+  the current authored parent. It never jumps to another branch.
+- Down follows the primary authored hierarchy to the first linked child, then
+  from a moment to its exact cited utterance. Up restores the exact parent and
+  sibling position already traversed.
+
+Primary `parent_id` or primary membership wins; authored `children_ids` is the
+compatibility fallback. Missing levels remain missing and are explained as
+such—no synthetic themes, topics, or utterances are invented. At utterance
+level the viewer displays the artifact's exact speaker, transcript text, source
+timestamp, and recording deep link when a permitted media reference exists.
+
+Gestures are conveniences, not exclusive controls. Every direction has a
+48-pixel button and an Arrow-key equivalent; boundary attempts explain why no
+movement occurred. Secondary file, library, refresh, transcript, and structure
+information lives in an accessible modal sheet with focus trapping, Escape,
+and reduced-motion behavior. Fine-pointer desktop behavior remains governed by
+the graph, timeline, and semantic-camera decisions above.
