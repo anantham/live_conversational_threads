@@ -57,6 +57,27 @@ The remote was fetched with pruning before classification. These are all remote 
 | `feat/serverless-trial` | `b97afe8` | represented | Ancestor of `origin/main`; PR #144. |
 | `feat/settings-runtime-redesign` | `a3ca58e` | represented/superseded | Its one apparent positive patch is the explicitly labeled in-flight BYOK snapshot; the completed implementation merged through PR #144 and later repairs. |
 | `feat/transcript-revisions` | `1c6cbef` | represented/superseded | Review-gated revision flow merged as PR #118; attendee slow-pass integration was rebuilt and merged in PR #142. Current tree has the migration, API, service, UI and tests after package refactors. |
+| `fix/backend-catalog-remote-probe-urls` | `75b742d` | represented | Not an ancestor after history rewriting, but `git cherry origin/main` reports no positive patch; the sole commit is patch-equivalent to `main`. |
+| `fix/persist-graph-analysis-predelete` | `d09aada` | represented | Ancestor of `origin/main`. |
+| `fix/remove-stale-import-services` | `ee0940f` | represented | Ancestor of `origin/main`. |
+| `fix/revision-async-db-caller` | `bff1415` | represented | Ancestor of `origin/main`. |
+| `fix/stt-health-probe-certifi` | `40e8568` | represented | Remote patch is represented on `main`; the divergent local ref is also patch-equivalent after the old history rewrite. |
+| `refactor/services-import-subpackage` | `6764605` | represented | Ancestor of `origin/main`. |
+| `refactor/services-stt-subpackage` | `62e1f55` | represented | Ancestor of `origin/main`. |
+| `refactor/services-transcript-subpackage` | `eba2234` | represented | Ancestor of `origin/main`. |
+| `worktree-all-messages-ship` | `2388607` | represented | Ancestor of `origin/main`. |
+| `worktree-bubble-thread-ship` | `a9125a0` | represented | Ancestor of `origin/main`. |
+| `worktree-clean-names-ship` | `d6b96d6` | represented | Ancestor of `origin/main`; the local branch points to the same commit. |
+| `worktree-copy-toast-ship` | `40193e3` | represented | Ancestor of `origin/main`. |
+| `worktree-crux-surface-ship` | `f1a1c48` | represented | Ancestor of `origin/main`. |
+| `worktree-db-integration-tests` | `feb961c` | represented | Ancestor of `origin/main`. |
+| `worktree-db-integration-tests-b` | `3b67ace` | represented | Ancestor of `origin/main`. |
+| `worktree-debate-images-ship` | `ecba7b6` | represented | Ancestor of `origin/main`. |
+| `worktree-debate-polish-ship` | `1254278` | represented | Ancestor of `origin/main`. |
+| `worktree-pacing-ship` | `2a953fe` | represented | Ancestor of `origin/main`. |
+| `worktree-span-pass-ship` | `9f454c6` | represented | Ancestor of `origin/main`. |
+| `worktree-test-coverage-models-convapi` | `a98529c` | represented | Remote history is represented on `main`; the divergent local worktree adds only generated MCP manifests. |
+| `worktree-war-snapshot-ship` | `f7259fc` | represented | Ancestor of `origin/main`. |
 
 ## Local-only and deleted-upstream refs
 
@@ -87,6 +108,11 @@ The three recurring roots `d37efe1`, `e7df2f5`, and `d5ca1ee` belong to a discon
   - `edgeDirection.contract.test.js`: already present on `main` in its explicit-edge form after PR #171; exclude duplicate.
   - handover and unresolved issue/worklog text: historically useful but describes a defect now fixed by PR #171; retain this ledger's short provenance instead of restoring a stale blocker.
 - All remaining inactive worktrees are clean.
+
+A fresh 2026-08-30 re-audit found no inactive worktree whose clean/dirty state
+changed after classification. The active root checkout and the historical
+recipient-semantic-cards worktree remain the only dirty linked worktrees in
+this inventory; neither was modified or cleaned by consolidation.
 
 The active dirty root checkout and all branches/worktrees with activity on or after the cutoff are excluded from this pass, including `main`, Google-token forwarding, Drive remembrance, provenance hardening, and the mobile deck.
 

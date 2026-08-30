@@ -4931,3 +4931,19 @@ Manual testing not run:
 - No reviewer result was inferred. Independent approval remains a hard gate
   before completion or merge; retry after the three human-arbitrated rescue
   decisions are integrated so the reviewer sees the actual final diff.
+
+### 2026-08-30 21:25 +05:30 — Exhaustiveness re-audit closed a ledger gap
+
+- Recomputed every local and `origin/*` ref older than the fixed
+  `2026-08-27T19:58:10+05:30` cutoff and compared normalized branch names to the
+  consolidation ledger. This exposed twenty remote/local names omitted from
+  the written table even though their behavior had not been selected.
+- Proved nineteen omitted histories are direct ancestors of `origin/main`.
+  `fix/backend-catalog-remote-probe-urls` is not an ancestor after history
+  rewriting, but its sole commit has no positive `git cherry` patch and is
+  therefore patch-equivalent. The ledger now names every omitted ref and its
+  evidence explicitly rather than relying on an “exhaustive” assertion.
+- Re-ran read-only status across every linked worktree. All previously clean
+  inactive worktrees remain clean; the active root and historical
+  recipient-semantic-cards worktree remain dirty and untouched. No branch,
+  worktree, or unpublished file was removed.
