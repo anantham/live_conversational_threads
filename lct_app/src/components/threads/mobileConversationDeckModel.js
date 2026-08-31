@@ -333,8 +333,11 @@ export function moveMobileDeck(model, state, action) {
   }
   if (action === "down") {
     if (!snapshot.canDown) return { state, changed: false, notice: boundaryMessage(action, snapshot) };
+    const target = hasLiveCursor(state) && state.liveCursor === null
+      ? snapshot.deeper[snapshot.deeper.length - 1]
+      : snapshot.deeper[0];
     return {
-      state: { ...state, trail: [...state.trail, snapshot.deeper[0]] },
+      state: { ...state, trail: [...state.trail, target] },
       changed: true,
       notice: "",
     };
@@ -347,7 +350,7 @@ export function moveMobileDeck(model, state, action) {
       ...state,
       trail: [...state.trail.slice(0, -1), target],
     };
-    if (hasLiveCursor(state) && (action === "previous" || state.liveCursor !== null)) {
+    if (hasLiveCursor(state)) {
       nextState.liveCursor = target.id;
     }
     return {

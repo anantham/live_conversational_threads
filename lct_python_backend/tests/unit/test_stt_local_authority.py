@@ -5,7 +5,8 @@ Test intent:
 - A disabled/unavailable primary can fall through only to another approved local authority.
 - Saved cloud configuration and ordinary provider overrides never authorize cloud egress.
 - A validated session-scoped BYOK overlay authorizes only its requested cloud provider.
-- Segmented transcription consumes the same ordered candidates and retains authority identity.
+- Segmented transcription consumes the same ordered candidates, retains authority identity,
+  and keeps the first reachable authority warm for later segments.
 """
 
 from pathlib import Path
@@ -121,7 +122,11 @@ async def test_segmented_transcription_falls_back_across_the_resolved_authority_
     segment = tmp_path / "segment.wav"
     calls = []
 
-    monkeypatch.setattr(audio_transcriber, "detect_segment_boundaries", lambda *_args, **_kwargs: [0, 1000])
+    monkeypatch.setattr(
+        audio_transcriber,
+        "detect_segment_boundaries",
+        lambda *_args, **_kwargs: [0, 1000, 2000],
+    )
 
     def _extract(*_args, **_kwargs):
         segment.write_bytes(b"segment")
@@ -152,6 +157,10 @@ async def test_segmented_transcription_falls_back_across_the_resolved_authority_
     assert calls == [
         "https://m5.example.test/v1/audio/transcriptions",
         "http://asus.example.test/api/transcribe",
+        "http://asus.example.test/api/transcribe",
     ]
-    assert results[0].transcript_text == "Asus completed the segment."
-    assert results[0].metadata["authority_id"] == "asus"
+    assert [result.transcript_text for result in results] == [
+        "Asus completed the segment.",
+        "Asus completed the segment.",
+    ]
+    assert [result.metadata["authority_id"] for result in results] == ["asus", "asus"]

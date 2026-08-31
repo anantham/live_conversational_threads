@@ -215,6 +215,12 @@ shortcut, evidence-selection, and composition concerns leave
 or navigation mode, extract a `useMobileDeckGestures` hook and the transient
 notice lifecycle; do not create a second mobile presentation surface.
 
+The pure `mobileConversationDeckModel.js` is also roughly 370 lines after the
+live follow/pin contract. Its concerns are still cohesive, but the temporal
+cursor rules and hierarchy/index construction now deserve separate modules if
+another navigation policy is added. Keep movement/reconciliation pure and do
+not move cursor policy back into React components.
+
 ### 2026-08-30 — ImportDiarizationQueue mixes custody and processing
 
 `services/import_pipeline/import_diarization_queue.py` is over 550 lines and

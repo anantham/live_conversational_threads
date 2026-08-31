@@ -5166,3 +5166,23 @@ Manual testing not run:
   frontend ESLint passed. The first local validation invocation used an
   incompatible Python 3.9 environment and was rerun in the checked local-STT
   Python 3.12 venv; a sandbox-created pytest cache was removed exactly.
+
+### 2026-08-31 — Independent review round 2 state-machine repair
+
+- Grok's complete updated-diff review again returned `APPROVE`, while correctly
+  finding that a following-live reader drilled into the oldest child and could
+  later be moved to the newest child by reconciliation. Following-live Down now
+  selects the latest authored child; every successful explicit temporal move,
+  including Next, pins the reader.
+- The reviewer accepted the pre-admission upload decision and requested only
+  exact wording. The local-STT comment now states the observable invariant:
+  saturation rejects before `UploadFile.read()` copies the parsed/spooled body
+  into application memory.
+- Its segmented-STT test-gap observation was supported. The authority regression
+  now uses two segments and proves the second starts with the warmed Asus
+  authority rather than retrying failed M5.
+- Focused evidence: mobile model/component 14/14 passed and changed ESLint
+  passed; local authority 4/4 passed; local-STT admission 3 passed with 2
+  optional audio-fixture skips. The repository's Python 3.9 venv emits known
+  dependency/EOL and pytest-loop warnings; the local-STT Python 3.12 venv is
+  clean for the endpoint tests.
