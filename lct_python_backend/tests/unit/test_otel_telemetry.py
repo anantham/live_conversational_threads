@@ -6,10 +6,12 @@ Test intent:
 - a real async HTTPX request emits a client span with a sanitized URL;
 - URL credentials, query values, and fragments never appear in exported spans;
 - shutdown is repeatable and does not leave global instrumentors active.
+- every supported dependency manifest pins the same complete telemetry stack.
 """
 
 import asyncio
 import json
+from pathlib import Path
 
 import httpx
 from fastapi import FastAPI
@@ -20,6 +22,36 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 
 from lct_python_backend.telemetry import configure_telemetry
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+EXPECTED_OTEL_PINS = {
+    "opentelemetry-api": "1.41.1",
+    "opentelemetry-sdk": "1.41.1",
+    "opentelemetry-exporter-otlp-proto-http": "1.41.1",
+    "opentelemetry-instrumentation-fastapi": "0.62b1",
+    "opentelemetry-instrumentation-httpx": "0.62b1",
+    "opentelemetry-instrumentation-sqlalchemy": "0.62b1",
+    "opentelemetry-instrumentation-system-metrics": "0.62b1",
+}
+
+
+def _otel_pins(path: Path) -> dict[str, str]:
+    pins = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if line.startswith("opentelemetry-") and "==" in line:
+            name, version = line.split("==", 1)
+            pins[name] = version
+    return pins
+
+
+def test_deployment_manifests_pin_complete_matching_telemetry_stack():
+    assert _otel_pins(REPO_ROOT / "requirements.txt") == EXPECTED_OTEL_PINS
+    assert (
+        _otel_pins(REPO_ROOT / "lct_python_backend" / "requirements.txt")
+        == EXPECTED_OTEL_PINS
+    )
 
 
 def test_development_telemetry_is_disabled_by_default(monkeypatch):

@@ -5363,3 +5363,32 @@ Manual testing not run:
   reviewer finding was rejected or left for human arbitration. The temporary
   review packet and empty reviewer directories were removed; raw conversations
   were not committed.
+
+### 2026-08-31 22:28 +05:30 — Zero-DB CI packaging and platform contract repaired
+
+- PR #186's first post-observability CI run isolated four failures while the
+  real-Postgres integration suite, frontend gate, and Vercel preview passed.
+  Two telemetry tests failed because the zero-DB workflow installs
+  `lct_python_backend/requirements.txt`, whose older three-package telemetry
+  subset omitted the HTTPX/exporter/SQLAlchemy/system instrumentation used by
+  the rescued runtime. Two supervision tests exercised literal Windows path
+  contracts through PowerShell Core on Ubuntu, where `LOCALAPPDATA` is absent
+  and `System.IO.Path` correctly follows POSIX rather than Windows semantics.
+- Synchronized the backend manifest with the root's complete exact telemetry
+  pins and added a behavioral manifest contract so the two supported install
+  paths cannot silently drift again. Marked only the task-plan and Windows-path
+  ownership probes Windows-only; the remaining platform-neutral supervision,
+  configuration, migration, and alert tests continue to run on Linux CI.
+- Validation at this checkpoint: the focused telemetry/native-supervision
+  matrix passes 20/20 on Windows, `pip check` reports no broken requirements,
+  and `git diff --check` passes. The updated exact diff still requires the
+  standing independent-family review and a fresh CI run before merge or
+  cleanup.
+- Agy/Gemini 3.1 Pro High then reviewed the complete updated PR diff from an
+  empty directory with no tool use (conversation
+  `23812c10-c306-4b6f-bdc2-328b1235a146`) and returned `APPROVED` with no
+  findings. It explicitly validated manifest parity, the narrow Windows-only
+  skips, retained POSIX coverage, telemetry privacy, share-token forwarding,
+  and topology-repair ownership/edge boundaries. A final exact-diff review is
+  performed after this audit note so no committed documentation is left
+  outside the reviewed packet.

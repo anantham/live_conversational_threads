@@ -15,6 +15,10 @@ Test intent:
 - per-component launches do not repeat whole-stack validation or mix log encodings;
 - Prometheus loads actionable rules and scrapes only loopback observability targets;
 - the installed Prometheus toolchain accepts both the scrape config and rule file.
+
+The task-plan and Windows-path ownership probes are platform-bound behavioral
+checks. They run on Windows and skip on POSIX hosts, where PowerShell delegates
+path normalization to the host operating system rather than Windows semantics.
 """
 
 from __future__ import annotations
@@ -38,6 +42,10 @@ MIGRATION_MODULE = OPS_ROOT / "ObservabilityMigration.psm1"
 PROCESS_OWNERSHIP_MODULE = OPS_ROOT / "ObservabilityProcessOwnership.psm1"
 PROMETHEUS_CONFIG = OPS_ROOT / "prometheus.yml"
 PROMETHEUS_RULES = OPS_ROOT / "prometheus-alerts.yml"
+WINDOWS_ONLY = pytest.mark.skipif(
+    os.name != "nt",
+    reason="Native observability task and path contracts require Windows",
+)
 
 
 def _powershell() -> str:
@@ -91,6 +99,7 @@ def _run_powershell(script: str, *, timeout: int = 30) -> subprocess.CompletedPr
     )
 
 
+@WINDOWS_ONLY
 def test_task_plan_owns_exact_components_without_credentials():
     plan = _task_plan()
 
@@ -320,6 +329,7 @@ def test_task_shutdown_waits_for_owned_programdata_children():
     assert "Assert-NoRuntimeProcesses" in installer
 
 
+@WINDOWS_ONLY
 def test_grafana_plugin_helper_ownership_is_path_and_name_scoped():
     root = Path(r"C:\ProgramData\LCT\observability")
     bundled = (
