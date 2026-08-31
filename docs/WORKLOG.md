@@ -5392,3 +5392,26 @@ Manual testing not run:
   and topology-repair ownership/edge boundaries. A final exact-diff review is
   performed after this audit note so no committed documentation is left
   outside the reviewed packet.
+
+### 2026-08-31 22:52 +05:30 — Final dirty-root performance packet reconstructed
+
+- The post-CI byte-level root comparison found that the apparent
+  `import_orchestrator.py` delta is superseded: current code delegates to
+  `merge_semantic_edges_into_nodes`, which already preserves stable endpoint
+  IDs, subtype, confidence, direction, and evidence union with direct tests.
+- The same audit corrected an earlier over-broad classification of the root's
+  frontend performance work. Its old `ViewConversation.jsx` could not be copied
+  because doing so would remove newer explicit-edge and evidence-context
+  behavior, but the content-free timing utility and progressive-loading intent
+  are meaningful. Reconstructed the change on the current viewer: the required
+  graph payload renders before audio/list metadata, the two optional requests
+  run concurrently, and semantic edges/context remain intact.
+- Added utility tests plus a component-level deferred-request regression that
+  proves the graph is visible while both optional requests remain pending and
+  that explicit semantic edges still reach `MinimalGraph`. Focused frontend
+  validation passes 17/17, the full frontend suite passes 331/331, and the
+  production build passes with the existing tracked >500 kB chunk warning. A
+  bounded lint pass has zero errors after removing one stale import; its five
+  pre-existing provider-dependency warnings are recorded in `ISSUES.md` rather
+  than mechanically changed. The required one-pass Impeccable detector returned
+  no findings for the changed viewer, timing helper, or their tests.

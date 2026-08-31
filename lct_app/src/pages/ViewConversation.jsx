@@ -17,9 +17,10 @@ import NodeDetail from "../components/NodeDetail";
 import SearchDialog from "../components/SearchDialog";
 import TimelineRibbon from "../components/TimelineRibbon";
 import { buildSpeakerColorMap } from "../components/graphConstants";
-import { apiFetch, apiFetchCached, apiHeaders, API_BASE_URL, invalidateApiCache, readErrorMessage } from "../services/apiClient";
+import { apiFetchCached, apiHeaders, API_BASE_URL, invalidateApiCache, readErrorMessage } from "../services/apiClient";
 import { useDataProvider } from "../services/dataProvider";
 import { fetchConversationParticipants } from "../services/participantsApi";
+import { measureAsync } from "../utils/performanceTelemetry";
 
 function sanitizeNodeArray(chunk) {
   return (Array.isArray(chunk) ? chunk : []).filter(
@@ -155,6 +156,44 @@ export default function ViewConversation() {
 
     let isCancelled = false;
 
+    async function loadSupplementalData() {
+      // These optional requests must not delay the graph. They are independent
+      // and intentionally start together after the primary payload hydrates.
+      const [audioStatus, conversations] = await Promise.all([
+        measureAsync(
+          "lct:conversation:audio-status",
+          async () => {
+            const response = await apiFetchCached(
+              `/api/conversations/${conversationId}/audio/status`,
+              { ttlMs: 5 * 60 * 1000 },
+            );
+            return response.ok ? response.json() : null;
+          },
+          { cacheTtlMs: 5 * 60 * 1000 },
+        ).catch(() => null),
+        measureAsync(
+          "lct:conversation:list-metadata",
+          async () => {
+            const response = await apiFetchCached("/conversations/", { ttlMs: 60 * 1000 });
+            return response.ok ? response.json() : null;
+          },
+          { cacheTtlMs: 60 * 1000 },
+        ).catch(() => null),
+      ]);
+
+      if (isCancelled) return;
+
+      if (audioStatus?.download_url) {
+        setAudioDownloadUrl(audioStatus.download_url);
+      }
+      if (Array.isArray(conversations)) {
+        const match = conversations.find((item) => item?.file_id === conversationId);
+        if (match?.file_name) {
+          setConversationName(match.file_name);
+        }
+      }
+    }
+
     async function loadConversation() {
       setIsLoading(true);
       setLoadError("");
@@ -163,15 +202,19 @@ export default function ViewConversation() {
       try {
         // 5-minute TTL: a conversation's graph_data changes rarely (only on
         // re-import or refinement). Instant nav-back is a huge UX win.
-        const conversationResponse = await apiFetchCached(
-          `/conversations/${conversationId}`,
-          { ttlMs: 5 * 60 * 1000 },
+        const conversationResponse = await measureAsync(
+          "lct:conversation:primary-response",
+          () => apiFetchCached(`/conversations/${conversationId}`, { ttlMs: 5 * 60 * 1000 }),
+          { cacheTtlMs: 5 * 60 * 1000 },
         );
         if (!conversationResponse.ok) {
           throw new Error(await readErrorMessage(conversationResponse));
         }
 
-        const payload = await conversationResponse.json();
+        const payload = await measureAsync(
+          "lct:conversation:primary-decode",
+          () => conversationResponse.json(),
+        );
         if (isCancelled) return;
 
         setGraphData(normalizeGraphDataPayload(payload.graph_data));
@@ -191,47 +234,14 @@ export default function ViewConversation() {
           setExecutiveSummary(payload.executive_summary.trim());
         }
 
-        // Audio status changes only when the user re-imports or finishes a
-        // live recording — cache 5 min, same as the conversation payload.
-        try {
-          const audioStatusResponse = await apiFetchCached(
-            `/api/conversations/${conversationId}/audio/status`,
-            { ttlMs: 5 * 60 * 1000 },
-          );
-          if (audioStatusResponse.ok) {
-            const audioStatus = await audioStatusResponse.json();
-            if (!isCancelled && audioStatus.download_url) {
-              setAudioDownloadUrl(audioStatus.download_url);
-            }
-          }
-        } catch {
-          // audio status lookup is optional
-        }
-
-        // List is mostly stable but can grow on new imports. 60s is short
-        // enough that revisiting after a new upload sees it; the import
-        // success path calls invalidateApiCache('/conversations/') anyway.
-        try {
-          const listResponse = await apiFetchCached("/conversations/", { ttlMs: 60 * 1000 });
-          if (listResponse.ok) {
-            const conversations = await listResponse.json();
-            if (!isCancelled && Array.isArray(conversations)) {
-              const match = conversations.find((item) => item?.file_id === conversationId);
-              if (match?.file_name) {
-                setConversationName(match.file_name);
-              }
-            }
-          }
-        } catch {
-          // metadata lookup is optional for this view
-        }
+        // Render as soon as the required graph state exists. The remaining
+        // metadata is useful but not part of this page's critical path.
+        setIsLoading(false);
+        void loadSupplementalData();
       } catch (error) {
         if (isCancelled) return;
         setLoadError(error?.message || "Failed to load conversation.");
-      } finally {
-        if (!isCancelled) {
-          setIsLoading(false);
-        }
+        setIsLoading(false);
       }
     }
 

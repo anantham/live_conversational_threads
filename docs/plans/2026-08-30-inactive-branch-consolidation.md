@@ -1,6 +1,6 @@
 # Inactive branch consolidation ledger
 
-**Status:** Consolidation merged; final prune manifest awaiting operator approval
+**Status:** First-pass consolidation merged; second-pass salvage is PR #186 and final one-worktree cleanup awaits operator approval
 **Branch:** `codex/consolidate-inactive-20260830`
 **Base:** `2429d8cf51dfcba84d39d47be7376ab5f898fe39` (deployed `main`, PR #183)
 **Merged:** PR #184 squash-merged to `main` as `f18106b62996c704c95ac536d4bf696a2e844fff` on 2026-08-31
@@ -585,7 +585,7 @@ classified for human arbitration.
 
 | Worktree | Exact source-bearing assessment | Disposition |
 | --- | --- | --- |
-| Dirty root `main` | Contains the approved bounded semantic-window and edge-only topology repair, an incomplete unused frontend performance prototype, a stale generated codemap/handover snapshot, and the final successfully deployed native-observability implementation after an earlier failed migration experiment. Copying the root wholesale would delete or regress later viewer/provenance work now on `origin/main`. | Port the topology repair and only the final LCT-owned observability source/config/tests onto current main. Reject the unused performance prototype as not product-integrated. Exclude runtime data, ignored launcher state, stale generated files, and cross-repository changes. |
+| Dirty root `main` | Contains the approved bounded semantic-window and edge-only topology repair, a partially integrated frontend performance packet, a stale generated codemap/handover snapshot, and the final successfully deployed native-observability implementation after an earlier failed migration experiment. Copying the root wholesale would delete or regress later viewer/provenance work now on `origin/main`. | Reconstruct the topology, final observability source, and the performance packet's content-free timing/progressive-load behavior on current main while preserving newer explicit-edge and evidence-context contracts. Exclude runtime data, ignored launcher state, stale generated files, and cross-repository changes. |
 | `codex/local-first-browse` | Only untracked review traces/runtime data plus three unreadable pytest temp trees; no tracked source delta. | No source to merge. Private/generated material remains excluded from review and cleanup until an exact manifest. |
 | `codex/recipient-semantic-cards` | Tracked stale issue/worklog edits and untracked review/handover/test debris; the source branch itself is represented by merged PR #170. | No product source to merge; retain only useful historical intent in the current ledger. |
 | attendee-audio revision, test-coverage, and `docs/ssrf-toctou-followup` | Each reports only an untracked `mcps/` directory. | No product source to merge; generated manifests require an exact cleanup decision. |
@@ -639,8 +639,21 @@ onto current main. The ADR is renumbered 067 to avoid current main's unrelated
 ADR-064. Runtime data, ignored local launcher state, stale viewer code,
 generated files, and dirty TemporalCoordination changes remain excluded.
 
-The new remaining gate is mechanical rather than architectural: obtain final
-independent review and green CI, then produce a fresh exact cleanup manifest.
+### Final dirty-root correction: preserve the performance intent, not the stale viewer
+
+A direct byte and semantic comparison found that the root's timing helper was
+used by an uncommitted `ViewConversation.jsx`, so calling it wholly
+"unreferenced" was too broad. The old viewer itself is still unsafe to copy: it
+predates the explicit-edge index and node-detail evidence context now on main.
+PR #186 therefore reconstructs only the valid intent on the current viewer:
+content-free browser measures, graph-first hydration, and concurrent optional
+audio/list metadata. A deferred-request component test proves the graph becomes
+usable before either optional request resolves and that semantic edges still
+reach `MinimalGraph`.
+
+The remaining gate is mechanical rather than architectural: review and rerun
+CI for this final reconstructed packet, merge PR #186, then execute a fresh
+exact cleanup manifest.
 The current root checkout should be the sole retained worktree because all four
 installed `LCT-Observability-*` task actions resolve scripts through that
 stable repository path. Deleting or renaming it before deliberately retargeting

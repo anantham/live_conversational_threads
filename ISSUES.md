@@ -848,6 +848,18 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 ## Developer Warnings (2026-02-14)
 - `lct_app/src/components/ContextualGraph.jsx` and `lct_app/src/components/StructuralGraph.jsx` still emit preexisting `react-hooks/exhaustive-deps` warnings in local lint runs. These do not block runtime but create noisy CI/dev output and should be addressed in a dedicated cleanup PR to avoid mixing legacy graph refactors with the minimal-live-ui scope.
 - Frontend production build still emits chunk-size warning (`dist/assets/index-*.js` > 500 kB). This is preexisting technical debt and not introduced by the bulk-upload patch; track for a separate code-splitting pass.
+
+## 2026-08-31 — ViewConversation hook dependencies remain noisy (pre-existing, non-blocking)
+
+- A bounded lint run for the consolidation's progressive-loading salvage found
+  five pre-existing `react-hooks/exhaustive-deps` warnings in
+  `lct_app/src/pages/ViewConversation.jsx`. Each closes over
+  `dataProvider.conversations` while omitting that object from its dependency
+  array. The focused behavior tests and production build pass, so this is not a
+  blocker for the recovered latency work.
+- Recommended next step: stabilize the conversations provider boundary (or
+  destructure stable methods) and repair all five callbacks/effects together;
+  do not add the mutable provider object mechanically and risk request loops.
 - Runtime settings still lack a unified cross-service readiness model. STT cloud fallback providers now support backend-backed `Save & Test`, but Gemini online credentials, embeddings credentials, and broader runtime confidence/benchmark states are still env-driven or probe-limited.
 - Repo-wide `npm run lint` is currently red from a large preexisting ESLint backlog across unrelated UI files (`playwright.config.js`, thematic/formalism/export helpers, older graph components, analysis pages, etc.). New runtime-settings work can be linted file-by-file, but full frontend lint is not yet a reliable validation gate until that backlog is cleaned up.
 - Remote STT topology documentation remains partially stale: `docs/HANDOVER.md` was corrected on 2026-04-08 after verifying the active `TemporalCoordination/grimoire/IndrasNet` orchestrator on `100.81.65.74`, but backend comments in `lct_python_backend/import_api.py` still describe the WhisperX route as `127.0.0.1:7777` / "local WhisperX". Keep repo docs and comments aligned with the verified Tailscale endpoint `http://100.81.65.74:7777/api/transcribe`.
