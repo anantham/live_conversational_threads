@@ -5040,3 +5040,14 @@ Manual testing not run:
 - Validation: focused security tests 2/2 passed; queue/file-transcriber/import
   routing matrix 62/62 passed. Only the existing Python 3.9 Google support and
   pytest-asyncio teardown warnings from older tests remain.
+
+### 2026-08-31 — Consolidation human gate approved
+
+- The operator approved the recommended **S3-A + S4-A + S5-B** set.
+- Added ADR-064 for durable facts-only LLM telemetry, ADR-065 for one mobile
+  live/history deck, and ADR-066 for the explicit M5→Asus local STT authority
+  set. These supersede the ambiguous implementation choices without rewriting
+  the earlier ADR history.
+- Added behavioral test intents before implementation for the telemetry,
+  mobile live-history, and local-authority packets. Merge and destructive prune
+  operations remain separately gated.

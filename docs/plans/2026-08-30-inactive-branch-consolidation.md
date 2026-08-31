@@ -272,6 +272,11 @@ merged wholesale.
 Approval of the recommended set means **S3-A, S4-A, S5-B**. Any other
 combination is valid, but should be named explicitly before implementation.
 
+**Approved by the operator on 2026-08-31:** **S3-A + S4-A + S5-B**.
+The binding contracts are recorded separately in ADR-064, ADR-065, and
+ADR-066. Implementation may now proceed; merge and pruning remain separate
+future approvals.
+
 ## Provisional post-merge prune manifest — refreshed 2026-08-30 21:47 +05:30
 
 This is a proposed manifest, not authorization to delete anything. It was
