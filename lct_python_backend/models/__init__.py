@@ -32,7 +32,7 @@ from .analysis import (  # noqa: F401
     IntentSignalSighting,
 )
 from .interaction import Bookmark, EditsLog  # noqa: F401
-from .system import APICallsLog, AppSetting, PipelineArtifact, ServiceStatus  # noqa: F401
+from .system import APICallsLog, AppSetting, LLMCallFact, PipelineArtifact, ServiceStatus  # noqa: F401
 from .observability import ThreadSession, ThreadSessionEvent  # noqa: F401
 
 __all__ = [
@@ -63,6 +63,7 @@ __all__ = [
     "EditsLog",
     # system
     "APICallsLog",
+    "LLMCallFact",
     "AppSetting",
     "PipelineArtifact",
     "ServiceStatus",

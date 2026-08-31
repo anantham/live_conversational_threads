@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from enum import Enum
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
@@ -41,9 +42,17 @@ from lct_python_backend.services.llm_config import (
 )
 from lct_python_backend.services.local_llm_client import (
     ProviderResult,
+    _response_fact_metrics,
     chat_with_provider_fallback,
     chat_with_provider_fallback_sync,
 )
+from lct_python_backend.services.llm_call_facts import (
+    LLMCallFactContext,
+    LLMCallFactStore,
+    observe_llm_call_async,
+    observe_llm_call_sync,
+)
+from lct_python_backend.services.llm_call_fact_store import default_llm_call_fact_store
 
 logger = logging.getLogger("lct_backend")
 
@@ -91,8 +100,12 @@ class Capability(str, Enum):
 class LlmGateway:
     """Single entry point for LLM/embedding calls.
 
-    Stateless — instances are interchangeable. Tests use the same class.
+    Instances share routing behavior but may receive a different fact store for
+    tests or bounded deployments.
     """
+
+    def __init__(self, *, fact_store: Optional[LLMCallFactStore] = None) -> None:
+        self._fact_store = fact_store or default_llm_call_fact_store()
 
     async def chat(
         self,
@@ -105,6 +118,9 @@ class LlmGateway:
         response_format: Optional[Dict[str, Any]] = None,
         prompt_name: Optional[str] = None,
         prompt_version: Optional[str] = None,
+        route_id: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> ProviderResult:
         """Async chat completion routed through the providers list with
         capability-sensitive policy applied.
@@ -118,16 +134,28 @@ class LlmGateway:
         onto the resulting ``ProviderResult`` for telemetry attribution.
         """
         require_json = capability in {Capability.CHAT_JSON_OBJECT, Capability.CHAT_JSON_SCHEMA}
-        return await chat_with_provider_fallback(
-            messages,
-            providers=providers,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format=response_format,
-            require_json=require_json,
+        context = LLMCallFactContext(
+            capability=capability.value,
+            route_id=route_id,
+            conversation_id=conversation_id,
+            session_id=session_id,
             prompt_name=prompt_name,
             prompt_version=prompt_version,
         )
+
+        async def operation():
+            return await chat_with_provider_fallback(
+                messages,
+                providers=providers,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                require_json=require_json,
+                prompt_name=prompt_name,
+                prompt_version=prompt_version,
+            )
+
+        return await observe_llm_call_async(self._fact_store, operation, context)
 
     def chat_sync(
         self,
@@ -140,21 +168,36 @@ class LlmGateway:
         response_format: Optional[Dict[str, Any]] = None,
         prompt_name: Optional[str] = None,
         prompt_version: Optional[str] = None,
+        route_id: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> ProviderResult:
         """Synchronous variant of ``chat`` for callers running outside an
         async context (legacy helpers). Same capability + prompt-version
         semantics."""
         require_json = capability in {Capability.CHAT_JSON_OBJECT, Capability.CHAT_JSON_SCHEMA}
-        return chat_with_provider_fallback_sync(
-            messages,
-            providers=providers,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            response_format=response_format,
-            require_json=require_json,
+        context = LLMCallFactContext(
+            capability=capability.value,
+            route_id=route_id,
+            conversation_id=conversation_id,
+            session_id=session_id,
             prompt_name=prompt_name,
             prompt_version=prompt_version,
         )
+
+        def operation():
+            return chat_with_provider_fallback_sync(
+                messages,
+                providers=providers,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                response_format=response_format,
+                require_json=require_json,
+                prompt_name=prompt_name,
+                prompt_version=prompt_version,
+            )
+
+        return observe_llm_call_sync(self._fact_store, operation, context)
 
     async def embed(
         self,
@@ -162,6 +205,9 @@ class LlmGateway:
         *,
         providers: Optional[List[Dict[str, Any]]] = None,
         encoding_format: str = "float",
+        route_id: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> List[float]:
         """Generate a vector embedding for ``text``.
 
@@ -171,10 +217,13 @@ class LlmGateway:
         embedding-space outputs corrupts downstream retrieval, so this
         is non-negotiable per ADR-030 §D5.
         """
-        result = await _embed_with_provider_fallback(
+        result = await self._embed_with_facts(
             text=text,
             providers=providers,
             encoding_format=encoding_format,
+            route_id=route_id,
+            conversation_id=conversation_id,
+            session_id=session_id,
         )
         return result.data
 
@@ -184,16 +233,48 @@ class LlmGateway:
         *,
         providers: Optional[List[Dict[str, Any]]] = None,
         encoding_format: str = "float",
+        route_id: Optional[str] = None,
+        conversation_id: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> List[List[float]]:
         """Batch embedding. Same strict-match policy as ``embed``."""
         if not texts:
             return []
-        result = await _embed_with_provider_fallback(
+        result = await self._embed_with_facts(
             text=list(texts),
             providers=providers,
             encoding_format=encoding_format,
+            route_id=route_id,
+            conversation_id=conversation_id,
+            session_id=session_id,
         )
         return result.data
+
+    async def _embed_with_facts(
+        self,
+        *,
+        text,
+        providers: Optional[List[Dict[str, Any]]],
+        encoding_format: str,
+        route_id: Optional[str],
+        conversation_id: Optional[str],
+        session_id: Optional[str],
+    ) -> ProviderResult:
+        context = LLMCallFactContext(
+            capability=Capability.EMBED.value,
+            route_id=route_id,
+            conversation_id=conversation_id,
+            session_id=session_id,
+        )
+
+        async def operation():
+            return await _embed_with_provider_fallback(
+                text=text,
+                providers=providers,
+                encoding_format=encoding_format,
+            )
+
+        return await observe_llm_call_async(self._fact_store, operation, context)
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +342,7 @@ async def _embed_with_provider_fallback(
                 total,
             )
 
+        provider_started = time.perf_counter()
         try:
             assert_local_egress(url, purpose=f"embeddings ({provider_id})")
             async with httpx.AsyncClient(timeout=timeout) as client:
@@ -310,6 +392,7 @@ async def _embed_with_provider_fallback(
             errors.append(f"{provider_id}: {err}")
             continue
 
+        fact_metrics = _response_fact_metrics(body)
         return ProviderResult(
             data=vectors,
             provider_id=provider_id,
@@ -319,6 +402,8 @@ async def _embed_with_provider_fallback(
             provider_type=provider_type,
             attempt_number=attempt_number,
             total_providers_tried=total,
+            provider_latency_ms=(time.perf_counter() - provider_started) * 1000.0,
+            **fact_metrics,
         )
 
     raise RuntimeError(f"All embedding providers failed. Errors: {'; '.join(errors)}")

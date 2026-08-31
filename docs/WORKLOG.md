@@ -5051,3 +5051,27 @@ Manual testing not run:
 - Added behavioral test intents before implementation for the telemetry,
   mobile live-history, and local-authority packets. Merge and destructive prune
   operations remain separately gated.
+
+### 2026-08-31 — S3-A durable facts-only LLM telemetry implemented
+
+- Hypothesis: the canonical gateway can observe every logical async chat, sync
+  chat, and embedding operation while the provider result carries the actual
+  served model and nullable usage. Prediction: public gateway tests will expose
+  a single content-free fact for success/fallback/failure without changing the
+  inference result when persistence fails. The new behavioral matrix confirmed
+  that prediction.
+- Added the `llm_call_facts` relational model and Alembic head. Unlike the old
+  `api_calls_log`, its schema contains no prices or content-bearing fields and
+  preserves unknown usage as null.
+- Extracted the event/observation contract to `services/llm_call_facts.py` and
+  the synchronous Postgres/SQLite adapter to `services/llm_call_fact_store.py`.
+  Async gateway calls offload the short database insert rather than blocking
+  the event loop; store failures are bounded, descriptive, and non-fatal.
+- Extended `ProviderResult` with provider-reported usage, request ID, finish
+  reason, provider latency, and cache-hit state. The gateway adds logical
+  latency, capability, route, prompt revision, fallback position, and optional
+  conversation/session correlation; prompt/response text and exception bodies
+  never enter the fact envelope.
+- Validation: 58/58 focused LLM gateway, provider, legacy telemetry, detector,
+  prompt-routing, and vision tests passed; Python compilation, Alembic single
+  head (`add_llm_call_facts`), and `git diff --check` passed.

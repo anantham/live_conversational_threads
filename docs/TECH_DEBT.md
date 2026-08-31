@@ -201,6 +201,13 @@ versus pinned-history state should be a pure model/controller extraction, not
 more component-local state. These are implementation constraints if S3-A and
 S4-A are approved, not authorization to refactor them during the inventory.
 
+S3-A followed that boundary: the facts envelope/observer is 251 lines and its
+database adapter is 86 lines. `llm_gateway.py` is now 604 lines and remains
+orchestration-only, while `local_llm_client.py` is 910 lines after adding result
+metadata extraction. The remaining refactor candidate is still to split
+provider transport/normalization from sync and async fallback; it was not mixed
+into this telemetry packet because that would broaden the consolidation risk.
+
 ### 2026-08-30 — ImportDiarizationQueue mixes custody and processing
 
 `services/import_pipeline/import_diarization_queue.py` is over 550 lines and
