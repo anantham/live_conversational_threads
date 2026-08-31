@@ -5247,3 +5247,49 @@ Manual testing not run:
   has an unreadable ACL; no directory or ACL was changed. The active worktree
   remains an explicit hold, the ten removal candidates are still fully clean,
   and the operational defect is recorded in `ISSUES.md` for a bounded repair.
+
+### 2026-08-31 21:07 +05:30 — Second-pass held-worktree salvage on current main
+
+- Re-audited all twelve held LCT worktrees rather than treating the count as a
+  deletion target. Five were clean recent branches. Four are represented by
+  merged PRs #178, #180, #182, and #183; `codex/share-google-token` alone had a
+  positive missing patch and was rescued as commit `3855b0b`.
+- Re-read the six dirty held trees. Five historical trees contain no unique
+  product source beyond generated/private manifests, review traces, runtime
+  data, stale documentation edits, and unreadable pytest temp directories.
+  They remain untouched pending an exact cleanup manifest.
+- The dirty root contains three distinct source families. The bounded semantic-
+  window/topology repair was current product intent and was ported onto current
+  main. The unreferenced frontend performance model is an incomplete prototype
+  that would regress later viewer/provenance work if copied wholesale. The
+  native observability experiment remains held because its Prometheus
+  supervision/migration path hit a corruption hard stop and independent review
+  requested changes.
+- Integrated the topology work without replacing newer PR #182 contracts:
+  deterministic <=30-node hierarchy-aware windows, all-required-window
+  fail-closed behavior, global canonical deduplication with evidence union,
+  additive faithful/authored relationship persistence, and an owner-scoped
+  edge-only repair endpoint. Added an immutable ADR-032 amendment and expanded
+  public-behavior tests.
+- Validation evidence: focused topology/repair 20/20; affected backend matrix
+  193/193 outside the Windows sandbox; the one sandbox red was reproduced as a
+  temporary-directory ACL denial and passed unchanged outside it; Google-token
+  forwarding 3/3; Python compilation; JSON parsing; and production Vite build.
+  The build retains the existing >500 KB chunk warning, and `npm ci` retains the
+  already-recorded dependency audit finding (1 low, 8 high, 1 critical).
+- Files changed in this salvage branch: `lct_app/src/pages/ShareConversation.jsx`,
+  `lct_app/src/services/BackendDataProvider.js` and its test (rescued commit);
+  `lct_python_backend/import_api.py`, `prompts.json`,
+  `services/edge_enrichment.py`, new `services/edge_enrichment_windows.py`,
+  `services/graph_persistence.py`, new
+  `services/import_pipeline/argument_topology_repair.py`, and their topology
+  tests; ADR-032, this worklog, the consolidation ledger, `ISSUES.md`, and
+  `docs/TECH_DEBT.md` document intent, evidence, and the remaining blocker.
+- Independent review: Agy using Gemini 3.1 Pro High reviewed only the exact
+  privacy-screened source/test/ADR diff in an empty directory with no tool use.
+  The first stream was interrupted before it emitted a verdict and was not
+  counted. A fresh complete run returned `APPROVED` with no findings. It
+  explicitly checked protected-share auth forwarding, deterministic bounded
+  coverage, all-window fail-closed behavior, transaction/rollback boundaries,
+  additive persistence, citation union, local-provider privacy policy, and the
+  behavioral tests. No reviewer edits or external actions occurred.

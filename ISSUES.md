@@ -2,6 +2,28 @@
 
 Last updated: 2026-08-31
 
+## 2026-08-31 — Native observability experiment needs a fresh supervision decision (OPEN, BLOCKING FINAL WORKTREE PRUNE)
+
+**Summary:** The dirty root contains a source-bearing native operational-
+observability experiment, but its own diagnostics record that union-copying a
+live Prometheus TSDB corrupted head state. A Claude Opus review requested
+changes to the supervision/migration approach. The draft also uses ADR-064,
+which now names the separate facts-only LLM-call telemetry decision on main,
+and it spans ignored launcher plus cross-repository operational files.
+
+**Impact:** This experiment cannot truthfully be merged as production-ready,
+but deleting the root would discard meaningful diagnostic and design work.
+The other held branches can still be consolidated independently.
+
+**Blocker status:** Non-blocking for the Google-token and bounded-topology
+salvage branch. Blocking only for the final goal of reducing all held LCT
+worktrees to one.
+
+**Recommended next step:** Choose between (A) rebuilding a disabled-by-default
+observability slice on current main with a supported fresh-storage migration
+and independent review, or (B) archiving the experiment as rejected design
+evidence before deleting its dirty checkout. Never copy a mutable TSDB.
+
 ## 2026-08-31 — Unreadable pytest temp ACLs make Git status and trusted push fail closed (OPEN, NON-BLOCKING)
 
 **Summary:** Six old root-level `tmp*` pytest directories in the active hygiene

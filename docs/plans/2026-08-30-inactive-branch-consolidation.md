@@ -561,3 +561,78 @@ in order:
 Any target that becomes dirty, advances, gains a new PR, or fails its recorded
 proof before execution is automatically removed from the deletion set and
 reported as a hold. No cleanup command may broaden from these literal targets.
+
+## Second-pass held-worktree salvage audit — 2026-08-31 21:07 +05:30
+
+The first cleanup deliberately held twelve worktrees rather than infer that a
+recent or dirty tree was disposable. This second pass re-read the exact held
+state against `origin/main@6bb8fc992e82df51a6b94c4892272e9a2cb1a2ae`.
+The goal is one operational worktree, but physical consolidation is allowed
+only after source-bearing work is either represented on `main` or explicitly
+classified for human arbitration.
+
+### Clean held worktrees
+
+| Branch | Evidence | Disposition |
+| --- | --- | --- |
+| `codex/prod-speaker-assertion-scope` | Exact merged PR #180 commit is on `origin/main`. | Represented; prune after the salvage branch merges. |
+| `codex/remember-drive-artifacts` | PR #178 is present as squash commit `e2d1835`; current-main behavior and tests retain Drive remembrance. | Represented; prune after final verification. |
+| `codex/real-artifact-provenance-hardening` | PR #182 is present as squash commit `8b8f68f`; current main contains the later provenance/navigation contract. | Represented; prune after final verification. |
+| `codex/mobile-conversation-deck` | PR #183 is present as squash commit `2429d8c`. | Represented; prune after final verification. |
+| `codex/share-google-token` | `git cherry origin/main` exposed one genuinely missing patch, `3b349a3`. | Rescued as `3855b0b` on `codex/consolidate-held-salvage`; 3 focused frontend tests and the production build pass. |
+
+### Dirty held worktrees
+
+| Worktree | Exact source-bearing assessment | Disposition |
+| --- | --- | --- |
+| Dirty root `main` | Contains the approved bounded semantic-window and edge-only topology repair, an incomplete unused frontend performance prototype, a stale generated codemap/handover snapshot, and a separate native-observability experiment. Copying the root wholesale would delete or regress later viewer/provenance work now on `origin/main`. | Port only the topology repair onto current main. Reject the unused performance prototype as not product-integrated. Keep the observability experiment held for human arbitration. |
+| `codex/local-first-browse` | Only untracked review traces/runtime data plus three unreadable pytest temp trees; no tracked source delta. | No source to merge. Private/generated material remains excluded from review and cleanup until an exact manifest. |
+| `codex/recipient-semantic-cards` | Tracked stale issue/worklog edits and untracked review/handover/test debris; the source branch itself is represented by merged PR #170. | No product source to merge; retain only useful historical intent in the current ledger. |
+| attendee-audio revision, test-coverage, and `docs/ssrf-toctou-followup` | Each reports only an untracked `mcps/` directory. | No product source to merge; generated manifests require an exact cleanup decision. |
+
+### Topology salvage contract
+
+The port is deliberately not a wholesale copy from old root state. It applies
+the missing capability to current main while retaining the later PR #182
+grounding/provenance contract:
+
+1. deterministic requests contain at most thirty nodes;
+2. higher-order argument backbones, every node's ancestor closure, and every
+   adjacent L1 boundary receive coverage;
+3. one invalid required window fails the entire scan closed;
+4. overlapping duplicate edges merge by canonical directed triple while
+   unioning grounded utterance citations;
+5. faithful persisted rows and authored memberships/temporal/contextual/
+   semantic additions are additive, so one representation cannot suppress
+   another; and
+6. `/api/import/turns/repair-topology` replaces only the prior topology-owned
+   edges and leaves nodes, hierarchy, temporal flow, and contextual edges
+   untouched.
+
+Validation on the current-main integration:
+
+- focused topology/repair tests: 20 passed;
+- affected persistence, hierarchy, import, provenance, and streaming matrix:
+  193 passed outside the Windows sandbox;
+- the sole sandbox red result was a `Path.resolve()` ACL denial in a temporary
+  WhatsApp extraction directory; the unchanged test passed outside the sandbox;
+- Google-token forwarding tests: 3 passed;
+- Python compilation and prompt JSON parsing passed; and
+- the production frontend build passed.
+
+Agy/Gemini 3.1 Pro High independently reviewed the exact privacy-screened
+source, test, and ADR diff in read-only sandbox mode. Its complete retry ended
+`APPROVED` with no findings; the earlier interrupted stream is not counted as a
+verdict.
+
+### Remaining one-worktree blocker
+
+The native operational-observability experiment is not safe to call merged or
+discarded. Its own notes record a hard stop: union-copying a mutable Prometheus
+TSDB corrupted head state, and Claude Opus requested changes to the supervision
+design. It also collides by number with current main's unrelated ADR-064 and
+spans dirty cross-repository operational files, including an ignored launcher.
+It therefore needs a product/architecture decision: either rebuild it as a
+fresh dormant, disabled-by-default slice on current main, or explicitly archive
+the experiment as rejected design evidence. Until that decision, reducing all
+twelve worktrees to one would risk deleting meaningful unresolved work.

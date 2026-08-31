@@ -50,6 +50,9 @@ from lct_python_backend.services.import_pipeline.import_orchestrator import (
 from lct_python_backend.services.import_pipeline.persisted_hierarchy_repair import (
     repair_persisted_hierarchy,
 )
+from lct_python_backend.services.import_pipeline.argument_topology_repair import (
+    repair_persisted_argument_topology,
+)
 from lct_python_backend.services.graph_persistence import persist_turns
 from lct_python_backend.raw_turn_contract import RawTurnsPayloadV1
 from lct_python_backend.services.import_pipeline.import_validation import (
@@ -317,6 +320,28 @@ async def repair_turn_hierarchy(
         logger.error("Structured hierarchy repair failed: %s", exc)
         await db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to repair hierarchy: {exc}")
+
+
+@router.post("/turns/repair-topology")
+async def repair_turn_topology(
+    request: ExtractTurnsRequest,
+    db: AsyncSession = Depends(get_async_session),
+):
+    """Re-run only bounded argument-edge extraction on a persisted graph."""
+    try:
+        return await repair_persisted_argument_topology(
+            db,
+            conversation_id=request.conversation_id,
+            group_id=request.group_id,
+            owner_id=resolve_owner_id(request.owner_id),
+        )
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("Structured topology repair failed")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to repair topology: {exc}")
 
 
 @router.post("/turns", response_model=ImportStatusResponse)

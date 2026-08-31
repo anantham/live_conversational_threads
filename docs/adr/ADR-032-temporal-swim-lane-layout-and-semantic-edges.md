@@ -680,3 +680,45 @@ movement occurred. Secondary file, library, refresh, transcript, and structure
 information lives in an accessible modal sheet with focus trapping, Escape,
 and reduced-motion behavior. Fine-pointer desktop behavior remains governed by
 the graph, timeline, and semantic-camera decisions above.
+
+## Amendment — 2026-08-31: bounded hierarchy-aware topology scans
+
+**Status:** Approved by the operator on 2026-08-22 and recovered onto current
+`main` during the inactive-worktree consolidation audit.
+
+A finalized graph is never sent to a local model as one unbounded prompt. The
+observed 342-node production request was approximately 75,620 characters; M5
+consumed only about 8,195 input tokens, lost the output-schema instruction, and
+returned a generic summary. The same provider and contract over an authorized
+30-node window returned a valid edge object with 12 accepted edges in 34.6
+seconds.
+
+The canonical scan plans deterministic windows capped at 30 unique nodes.
+L3-L5 nodes form an overlapping argument backbone. Chronological L1/L2 focal
+nodes travel with their complete primary and secondary ancestor closure, and
+every adjacent L1 pair must co-occur in at least one window. A plan that cannot
+satisfy node coverage, adjacency coverage, or the node cap fails closed. The
+model may reference only endpoints visible in its current window and remains
+subject to the exact edge-evidence contract above.
+
+All required windows must return a valid edge payload, including a valid empty
+list, before any semantic edge is merged. Overlap duplicates collapse by the
+canonical directed `(from_node_id, to_node_id, relation_type)` triple;
+grounded turn citations are unioned, while confidence and explanation choose
+the strongest retained representation deterministically. Telemetry contains
+only window kind/count/size, timing, token counts, model, parse status, errors,
+and aggregate edge counts—never node or transcript text.
+
+Faithful `edges_out` and authored predecessor, contextual, membership, and
+semantic fields are additive persistence representations. Faithful rows retain
+their original IDs and parallel-edge distinctions; missing authored relations
+are filled without suppressing membership lenses or duplicating an existing
+directed relation.
+
+Existing owner-scoped graphs may use
+`POST /api/import/turns/repair-topology`. The transaction scans only persisted
+nodes and atomically replaces relationships tagged `argument_topology:v1`; it
+never reruns transcript extraction, hierarchy generation, or consolidation.
+Structural membership, temporal, and contextual relationships remain intact.
+A required-window failure retains a previous complete topology and otherwise
+stores only a content-free failed marker, keeping recipient sharing fail closed.

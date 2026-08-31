@@ -176,6 +176,16 @@ validation/canonicalization and the node adapter; keep provider orchestration in
 monoliths; the new provenance matcher was kept in its own pure module rather
 than expanding either one further.
 
+The 2026-08-31 held-worktree salvage moved bounded-window planning into the
+separate `edge_enrichment_windows.py`, but orchestration and cross-window result
+aggregation raised `edge_enrichment.py` to roughly 722 lines. The earlier
+`edge_response_contract.py` extraction is now higher priority: it should own
+payload validation, canonical directed-triple deduplication, citation union,
+and compatibility-node adaptation, leaving window execution/provider telemetry
+in the orchestration service. `graph_persistence.py` remains roughly 1,383
+lines after its faithful/authored representations became additive; extract the
+relationship persistence phase before adding another relationship source.
+
 ### 2026-08-30 — ThreadsViewer still owns ingestion and presentation routing
 
 `lct_app/src/pages/ThreadsViewer.jsx` remains roughly 540 lines after the mobile
