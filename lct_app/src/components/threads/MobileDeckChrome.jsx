@@ -56,6 +56,43 @@ MobileDeckHeader.propTypes = {
   total: PropTypes.number.isRequired,
 };
 
+export function MobileDeckLiveStatus({ isFollowingLive, onReturnToLive, updatesBehind }) {
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex min-h-11 shrink-0 items-center justify-center gap-3 border-b border-slate-200/70 bg-white/70 px-3 text-xs"
+    >
+      {isFollowingLive ? (
+        <span className="inline-flex items-center gap-2 font-medium text-emerald-700">
+          <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" />
+          Following live
+        </span>
+      ) : (
+        <>
+          <span className="font-medium tabular-nums text-slate-600">
+            {updatesBehind} {updatesBehind === 1 ? "update" : "updates"} behind
+          </span>
+          <button
+            type="button"
+            aria-label="Return to live"
+            onClick={onReturnToLive}
+            className="inline-flex min-h-11 items-center rounded-full px-3 font-semibold text-emerald-700 underline decoration-emerald-300 underline-offset-4 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          >
+            Return to live
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+MobileDeckLiveStatus.propTypes = {
+  isFollowingLive: PropTypes.bool.isRequired,
+  onReturnToLive: PropTypes.func.isRequired,
+  updatesBehind: PropTypes.number.isRequired,
+};
+
 export function MobileDeckNavigation({ navigate, snapshot }) {
   return (
     <nav aria-label="Conversation deck navigation" className="mt-3 flex shrink-0 items-center justify-center gap-2">

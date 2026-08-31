@@ -208,6 +208,13 @@ metadata extraction. The remaining refactor candidate is still to split
 provider transport/normalization from sync and async fallback; it was not mixed
 into this telemetry packet because that would broaden the consolidation risk.
 
+S4-A extracted the live/historical state lifecycle into the 61-line
+`useMobileConversationDeckState.js` controller, but the gesture, notice,
+shortcut, evidence-selection, and composition concerns leave
+`MobileConversationDeck.jsx` at roughly 348 lines. Before adding another gesture
+or navigation mode, extract a `useMobileDeckGestures` hook and the transient
+notice lifecycle; do not create a second mobile presentation surface.
+
 ### 2026-08-30 — ImportDiarizationQueue mixes custody and processing
 
 `services/import_pipeline/import_diarization_queue.py` is over 550 lines and

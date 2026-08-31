@@ -175,6 +175,14 @@ export function initialMobileDeckState(model) {
   };
 }
 
+export function initialLiveMobileDeckState(model) {
+  const latestId = model?.rootIds?.[model.rootIds.length - 1];
+  return {
+    trail: latestId ? [entry("node", latestId)] : [],
+    liveCursor: null,
+  };
+}
+
 function currentEntry(state) {
   return state?.trail?.[state.trail.length - 1] || null;
 }
@@ -213,6 +221,42 @@ function deeperEntries(model, itemEntry) {
       .map((id) => entry("utterance", id));
   }
   return (model.childrenByParent.get(itemEntry.id) || []).map((id) => entry("node", id));
+}
+
+function latestTrailAtDepth(model, requestedDepth) {
+  const latestRoot = model?.rootIds?.[model.rootIds.length - 1];
+  if (!latestRoot) return [];
+
+  const trail = [entry("node", latestRoot)];
+  const depth = Math.max(1, Number(requestedDepth) || 1);
+  while (trail.length < depth) {
+    const children = deeperEntries(model, trail[trail.length - 1]);
+    const latestChild = children[children.length - 1];
+    if (!latestChild) break;
+    trail.push(latestChild);
+  }
+  return trail;
+}
+
+function hasLiveCursor(state) {
+  return Boolean(state) && Object.prototype.hasOwnProperty.call(state, "liveCursor");
+}
+
+export function reconcileLiveMobileDeckState(model, state) {
+  if (!hasLiveCursor(state)) return initialLiveMobileDeckState(model);
+  if (state.liveCursor !== null) return state;
+  return {
+    ...state,
+    trail: latestTrailAtDepth(model, state.trail?.length),
+    liveCursor: null,
+  };
+}
+
+export function returnMobileDeckToLive(model, state) {
+  return reconcileLiveMobileDeckState(model, {
+    ...(state || {}),
+    liveCursor: null,
+  });
 }
 
 function boundaryMessage(action, snapshot) {
@@ -254,6 +298,29 @@ export function mobileDeckSnapshot(model, state) {
   };
 }
 
+export function mobileDeckLiveStatus(model, state) {
+  const isFollowingLive = hasLiveCursor(state) && state.liveCursor === null;
+  if (!hasLiveCursor(state) || isFollowingLive) {
+    return { isFollowingLive, updatesBehind: 0 };
+  }
+
+  const rootEntry = state.trail?.[0];
+  const rootIndex = model.rootIds.indexOf(rootEntry?.id);
+  const laterRoots = rootIndex >= 0 ? model.rootIds.length - rootIndex - 1 : 0;
+  if ((state.trail?.length || 0) <= 1) {
+    return { isFollowingLive: false, updatesBehind: laterRoots };
+  }
+
+  const snapshot = mobileDeckSnapshot(model, state);
+  const laterSiblings = snapshot.position > 0
+    ? Math.max(0, snapshot.total - snapshot.position)
+    : 0;
+  return {
+    isFollowingLive: false,
+    updatesBehind: laterRoots + laterSiblings,
+  };
+}
+
 export function moveMobileDeck(model, state, action) {
   const snapshot = mobileDeckSnapshot(model, state);
   if (!snapshot.entry) {
@@ -262,18 +329,29 @@ export function moveMobileDeck(model, state, action) {
 
   if (action === "up") {
     if (!snapshot.canUp) return { state, changed: false, notice: boundaryMessage(action, snapshot) };
-    return { state: { trail: state.trail.slice(0, -1) }, changed: true, notice: "" };
+    return { state: { ...state, trail: state.trail.slice(0, -1) }, changed: true, notice: "" };
   }
   if (action === "down") {
     if (!snapshot.canDown) return { state, changed: false, notice: boundaryMessage(action, snapshot) };
-    return { state: { trail: [...state.trail, snapshot.deeper[0]] }, changed: true, notice: "" };
+    return {
+      state: { ...state, trail: [...state.trail, snapshot.deeper[0]] },
+      changed: true,
+      notice: "",
+    };
   }
   if (action === "previous" || action === "next") {
     const offset = action === "next" ? 1 : -1;
     const target = snapshot.siblings[snapshot.position - 1 + offset];
     if (!target) return { state, changed: false, notice: boundaryMessage(action, snapshot) };
+    const nextState = {
+      ...state,
+      trail: [...state.trail.slice(0, -1), target],
+    };
+    if (hasLiveCursor(state) && (action === "previous" || state.liveCursor !== null)) {
+      nextState.liveCursor = target.id;
+    }
     return {
-      state: { trail: [...state.trail.slice(0, -1), target] },
+      state: nextState,
       changed: true,
       notice: "",
     };

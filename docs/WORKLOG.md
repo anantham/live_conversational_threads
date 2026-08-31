@@ -5075,3 +5075,28 @@ Manual testing not run:
 - Validation: 58/58 focused LLM gateway, provider, legacy telemetry, detector,
   prompt-routing, and vision tests passed; Python compilation, Alembic single
   head (`add_llm_call_facts`), and `git diff --check` passed.
+
+### 2026-08-31 — S4-A one mobile live/history deck implemented
+
+- Hypothesis: the existing mobile deck's authored hierarchy and temporal
+  sibling model can support live reading by adding one explicit cursor state,
+  without reviving the dormant second tangent UI. Prediction: null-cursor
+  readers will follow the newest authored branch at their current depth, while
+  a backward move will remain stable across later websocket updates. Pure model
+  and component tests confirmed that behavior.
+- `mobileConversationDeckModel.js`: added latest-live initialization,
+  follow/pin reconciliation, a truthful updates-behind count, and explicit
+  return-to-live. Existing historical initialization and left/right versus
+  up/down semantics remain unchanged.
+- Extracted controlled/uncontrolled live reconciliation to
+  `useMobileConversationDeckState.js`; `MobileConversationDeck.jsx` adds only a
+  compact live status surface and delegates state lifecycle to that controller.
+  Historical artifacts never render the live chrome.
+- `MeetingView.jsx`: compact/coarse-pointer live meetings now render the same
+  deck used by saved `.threads` artifacts. Opening the map remains available,
+  and its back control returns to the deck. Live transcript timestamps are
+  preserved for exact-utterance cards when the authored graph links them.
+- Validation: 21/21 focused model, component, transcript, and live-meeting tests
+  passed; changed-file ESLint passed; the production build passed. The
+  Impeccable detector reported no mechanical UI findings on the changed
+  surfaces. Vite retains its pre-existing >500 kB chunk warning.

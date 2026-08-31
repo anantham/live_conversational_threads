@@ -7,11 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * - The meeting viewer should subscribe to the meeting WebSocket route.
  * - A backend transcript_final frame should render immediately in the floating caption overlay.
  * - Speaker labels from Attendee metadata should be visible in minimized caption mode.
+ * - Compact live meetings use the same conversation deck as saved artifacts.
  * - Parallel CI load may delay the dynamic module import, without weakening any behavior assertion.
  */
 
 const navigateMock = vi.fn();
 const sendWsAuthMock = vi.fn();
+let compactViewerMock = false;
 
 vi.mock("react-router-dom", () => ({
   useParams: () => ({ conversationId: "meeting-123" }),
@@ -25,6 +27,11 @@ vi.mock("../components/MinimalGraph", () => ({
 vi.mock("../services/apiClient", () => ({
   wsUrl: (path) => `ws://lct.test${path}`,
   sendWsAuth: (...args) => sendWsAuthMock(...args),
+}));
+
+vi.mock("../hooks/useMediaQuery", () => ({
+  COMPACT_VIEWER_QUERY: "compact-viewer",
+  useMediaQuery: () => compactViewerMock,
 }));
 
 class FakeWebSocket {
@@ -53,6 +60,7 @@ describe("MeetingView", () => {
     vi.resetModules();
     navigateMock.mockReset();
     sendWsAuthMock.mockReset();
+    compactViewerMock = false;
     FakeWebSocket.instances = [];
     originalWebSocket = globalThis.WebSocket;
     originalActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
@@ -133,5 +141,43 @@ describe("MeetingView", () => {
     expect(container.textContent).toContain("Vatsal:");
     expect(container.textContent).toContain("raw transcript keeps changing");
     expect(container.textContent).not.toContain("raw trans...");
+  }, 15_000);
+
+  it("renders compact live graph updates through the shared mobile deck", async () => {
+    compactViewerMock = true;
+    const { default: MeetingView } = await import("./MeetingView");
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<MeetingView />);
+    });
+    await act(async () => {
+      FakeWebSocket.instances[0].onmessage?.({
+        data: JSON.stringify({
+          type: "existing_json",
+          data: [
+            {
+              id: "arc-old",
+              chunk_id: "chunk-1",
+              semantic_level: 5,
+              timestamp_start: 1,
+              node_name: "Earlier live arc",
+            },
+            {
+              id: "arc-current",
+              chunk_id: "chunk-2",
+              semantic_level: 5,
+              timestamp_start: 2,
+              node_name: "Current live arc",
+            },
+          ],
+        }),
+      });
+    });
+
+    expect(container.querySelector('[data-testid="mobile-deck-card"]')).not.toBeNull();
+    expect(container.textContent).toContain("Current live arc");
+    expect(container.textContent).toContain("Following live");
+    expect(container.querySelector('[data-testid="minimal-graph"]')).toBeNull();
   }, 15_000);
 });

@@ -7,6 +7,7 @@ import { upsertLiveTranscriptLine } from "./liveTranscriptLines";
  * - Streaming partials should update in place instead of flooding the overlay.
  * - A final for the same speaker/text should stabilize the current draft line.
  * - Long meetings should keep only the configured recent line window.
+ * - Provider timestamps survive normalization for exact-utterance navigation.
  */
 
 function lineRef() {
@@ -113,5 +114,24 @@ describe("upsertLiveTranscriptLine", () => {
     );
 
     expect(lines.map((line) => line.text)).toEqual(["two", "three"]);
+  });
+
+  it("preserves provider timestamps for mobile exact-utterance cards", () => {
+    const ref = lineRef();
+    const lines = upsertLiveTranscriptLine(
+      [],
+      {
+        text: "A timed live utterance.",
+        eventType: "transcript_final",
+        metadata: { speaker_name: "Aditya" },
+        timestamps: { start: 12.5, end: 18.25 },
+      },
+      ref,
+    );
+
+    expect(lines[0]).toMatchObject({
+      timestamp_start: 12.5,
+      timestamp_end: 18.25,
+    });
   });
 });

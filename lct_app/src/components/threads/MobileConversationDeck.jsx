@@ -4,14 +4,20 @@ import PropTypes from "prop-types";
 import { SPEAKER_COLORS } from "../graphConstants";
 import { selectMediaRef } from "../../services/mediaSeek";
 import MobileDeckCard from "./MobileDeckCard";
-import { MobileDeckHeader, MobileDeckNavigation } from "./MobileDeckChrome";
+import {
+  MobileDeckHeader,
+  MobileDeckLiveStatus,
+  MobileDeckNavigation,
+} from "./MobileDeckChrome";
 import MobileDeckOptions from "./MobileDeckOptions";
+import useMobileConversationDeckState from "./useMobileConversationDeckState";
 import {
   buildMobileConversationDeck,
-  initialMobileDeckState,
+  mobileDeckLiveStatus,
   mobileDeckLevelInfo,
   mobileDeckSnapshot,
   moveMobileDeck,
+  returnMobileDeckToLive,
 } from "./mobileConversationDeckModel";
 
 const SWIPE_THRESHOLD = 44;
@@ -38,6 +44,7 @@ export default function MobileConversationDeck({
   deckState: controlledDeckState,
   graphNodes,
   libraryStatus,
+  live = false,
   onDeckStateChange,
   onDownloadTranscript,
   onOpenAnother,
@@ -49,7 +56,12 @@ export default function MobileConversationDeck({
     () => buildMobileConversationDeck(graphNodes, bundle.utterances || []),
     [bundle.utterances, graphNodes],
   );
-  const [internalDeckState, setInternalDeckState] = useState(() => initialMobileDeckState(model));
+  const { commitDeckState, deckState } = useMobileConversationDeckState({
+    controlledDeckState,
+    live,
+    model,
+    onDeckStateChange,
+  });
   const [motion, setMotion] = useState("none");
   const [motionKey, setMotionKey] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
@@ -57,16 +69,10 @@ export default function MobileConversationDeck({
   const gesture = useRef(null);
   const touchGesture = useRef(null);
   const noticeTimer = useRef(null);
-  const initialDeckState = useMemo(() => initialMobileDeckState(model), [model]);
-  const deckState = controlledDeckState
-    || (onDeckStateChange ? initialDeckState : internalDeckState);
-  const commitDeckState = onDeckStateChange || setInternalDeckState;
-
   useEffect(() => {
-    if (!onDeckStateChange) setInternalDeckState(initialDeckState);
     setMotion("none");
     setMotionKey((value) => value + 1);
-  }, [initialDeckState, onDeckStateChange]);
+  }, [model]);
 
   useEffect(() => () => {
     if (noticeTimer.current) window.clearTimeout(noticeTimer.current);
@@ -112,6 +118,7 @@ export default function MobileConversationDeck({
   }, [moreOpen, navigate]);
 
   const snapshot = mobileDeckSnapshot(model, deckState);
+  const liveStatus = live ? mobileDeckLiveStatus(model, deckState) : null;
   const sourceRows = useMemo(() => {
     if (!snapshot.entry) return [];
     if (snapshot.entry.kind === "utterance") return snapshot.item ? [snapshot.item] : [];
@@ -195,6 +202,13 @@ export default function MobileConversationDeck({
     }
   }, [showNotice, snapshot.counts]);
 
+  const handleReturnToLive = useCallback(() => {
+    setNotice("");
+    setMotion("next");
+    setMotionKey((value) => value + 1);
+    commitDeckState(returnMobileDeckToLive(model, deckState));
+  }, [commitDeckState, deckState, model]);
+
   const motionClass = {
     previous: "lct-deck-enter-left",
     next: "lct-deck-enter-right",
@@ -218,6 +232,14 @@ export default function MobileConversationDeck({
           title={title}
           total={snapshot.total || 0}
         />
+
+        {liveStatus && (
+          <MobileDeckLiveStatus
+            isFollowingLive={liveStatus.isFollowingLive}
+            onReturnToLive={handleReturnToLive}
+            updatesBehind={liveStatus.updatesBehind}
+          />
+        )}
 
         <main className="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
         <div className="h-5 shrink-0 px-2 text-center">
@@ -284,6 +306,7 @@ export default function MobileConversationDeck({
         bundle={bundle}
         counts={snapshot.counts}
         libraryStatus={libraryStatus}
+        live={live}
         onAnnounceLayer={announceLayer}
         onClose={closeMore}
         onDownloadTranscript={onDownloadTranscript}
@@ -315,6 +338,7 @@ MobileConversationDeck.propTypes = {
     state: PropTypes.string,
     message: PropTypes.string,
   }),
+  live: PropTypes.bool,
   onDeckStateChange: PropTypes.func,
   onDownloadTranscript: PropTypes.func.isRequired,
   onOpenAnother: PropTypes.func.isRequired,

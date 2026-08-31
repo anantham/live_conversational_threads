@@ -14,6 +14,8 @@ import MobileConversationDeck from "./MobileConversationDeck";
  * - Focused cards use their visible title as their accessible name.
  * - Boundary controls remain operable for explanatory notices without claiming to be disabled.
  * - More notices remain exposed to assistive technology outside the inert deck background.
+ * - Live mode follows the newest branch, pins when moving backward, and exposes a direct return-to-live action.
+ * - Historical artifacts retain the same deck without live-only status chrome.
  */
 
 let container;
@@ -269,5 +271,57 @@ describe("MobileConversationDeck", () => {
 
     renderWithStatus("Saved on this device");
     expect(document.activeElement).toBe(library);
+  });
+
+  it("pins a live reader without moving them when a newer branch arrives", () => {
+    const bundle = { conversation_title: "Live deck", utterances: [], media_refs: [] };
+    const callbacks = {
+      onDownloadTranscript: vi.fn(),
+      onOpenAnother: vi.fn(),
+      onOpenLibrary: vi.fn(),
+      onShowMap: vi.fn(),
+    };
+    const liveNodes = [
+      { id: "arc-old", semantic_level: 5, timestamp_start: 1, node_name: "Older arc" },
+      { id: "arc-live", semantic_level: 5, timestamp_start: 2, node_name: "Current arc" },
+    ];
+    const renderLive = (graphNodes) => {
+      act(() => {
+        root.render(
+          <MobileConversationDeck
+            bundle={bundle}
+            graphNodes={graphNodes}
+            live
+            {...callbacks}
+          />,
+        );
+      });
+    };
+
+    renderLive(liveNodes);
+    expect(container.textContent).toContain("Current arc");
+    expect(container.textContent).toContain("Following live");
+
+    clickByLabel("Previous arc");
+    expect(container.textContent).toContain("Older arc");
+    expect(container.textContent).toContain("1 update behind");
+
+    renderLive([
+      ...liveNodes,
+      { id: "arc-new", semantic_level: 5, timestamp_start: 3, node_name: "Newest arc" },
+    ]);
+    expect(container.textContent).toContain("Older arc");
+    expect(container.textContent).toContain("2 updates behind");
+    expect(container.textContent).not.toContain("Newest arc");
+
+    clickByLabel("Return to live");
+    expect(container.textContent).toContain("Newest arc");
+    expect(container.textContent).toContain("Following live");
+  });
+
+  it("does not add live status chrome to a historical artifact", () => {
+    renderDeck();
+    expect(container.textContent).not.toContain("Following live");
+    expect(container.querySelector('button[aria-label="Return to live"]')).toBeNull();
   });
 });

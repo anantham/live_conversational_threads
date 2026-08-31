@@ -33,6 +33,7 @@ export default function MobileDeckOptions({
   bundle,
   counts,
   libraryStatus,
+  live = false,
   onAnnounceLayer,
   onClose,
   onDownloadTranscript,
@@ -66,37 +67,39 @@ export default function MobileDeckOptions({
         </div>
       </div>
 
-      <div className="mt-5 border-t border-slate-100 pt-3">
-        <ActionRow
-          icon={Download}
-          label="Download transcript"
-          secondary="Save the artifact’s transcript as text"
-          onClick={() => {
-            onClose();
-            onDownloadTranscript();
-          }}
-        />
-        <ActionRow
-          icon={LibraryBig}
-          label="Library"
-          secondary="Return to conversations saved in this browser"
-          onClick={onOpenLibrary}
-        />
-        {onRefreshFromDrive && (
+      {!live && (
+        <div className="mt-5 border-t border-slate-100 pt-3">
           <ActionRow
-            icon={RefreshCw}
-            label="Refresh from Drive"
-            secondary="Fetch the newest permitted copy"
-            onClick={onRefreshFromDrive}
+            icon={Download}
+            label="Download transcript"
+            secondary="Save the artifact’s transcript as text"
+            onClick={() => {
+              onClose();
+              onDownloadTranscript();
+            }}
           />
-        )}
-        <ActionRow
-          icon={FilePlus2}
-          label="Open another file"
-          secondary="Choose a different .threads artifact"
-          onClick={onOpenAnother}
-        />
-      </div>
+          <ActionRow
+            icon={LibraryBig}
+            label="Library"
+            secondary="Return to conversations saved in this browser"
+            onClick={onOpenLibrary}
+          />
+          {onRefreshFromDrive && (
+            <ActionRow
+              icon={RefreshCw}
+              label="Refresh from Drive"
+              secondary="Fetch the newest permitted copy"
+              onClick={onRefreshFromDrive}
+            />
+          )}
+          <ActionRow
+            icon={FilePlus2}
+            label="Open another file"
+            secondary="Choose a different .threads artifact"
+            onClick={onOpenAnother}
+          />
+        </div>
+      )}
 
       {(libraryStatus || bundle.coverage) && (
         <div className="mt-4 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500">
@@ -116,6 +119,7 @@ MobileDeckOptions.propTypes = {
   bundle: PropTypes.shape({ coverage: PropTypes.object }).isRequired,
   counts: PropTypes.objectOf(PropTypes.number).isRequired,
   libraryStatus: PropTypes.shape({ message: PropTypes.string, state: PropTypes.string }),
+  live: PropTypes.bool,
   onAnnounceLayer: PropTypes.func.isRequired,
   onClose: PropTypes.func.isRequired,
   onDownloadTranscript: PropTypes.func.isRequired,
