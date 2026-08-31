@@ -1,8 +1,9 @@
 # Inactive branch consolidation ledger
 
-**Status:** In progress
+**Status:** Consolidation merged; final prune manifest awaiting operator approval
 **Branch:** `codex/consolidate-inactive-20260830`
 **Base:** `2429d8cf51dfcba84d39d47be7376ab5f898fe39` (deployed `main`, PR #183)
+**Merged:** PR #184 squash-merged to `main` as `f18106b62996c704c95ac536d4bf696a2e844fff` on 2026-08-31
 **Activity cutoff:** `2026-08-27T19:58:10+05:30`
 **Scope:** Branches and worktrees whose newest commit and unpublished file activity are both older than the cutoff.
 
@@ -370,3 +371,193 @@ Before this branch can merge:
 7. the human explicitly approves merge.
 
 Only after the merged result is present on `main` may pruning be proposed. Pruning needs a fresh clean/dirty audit, exact proof for every target, and separate human approval. Dirty worktrees are never removed merely because their visible files look generated.
+
+## Final post-merge hygiene manifest — 2026-08-31 13:52 +05:30
+
+This section supersedes the provisional prune manifest above. It is an exact
+proposal, not deletion authorization. The audit refreshed `origin` with pruning,
+used `origin/main@f18106b62996c704c95ac536d4bf696a2e844fff` as the authority,
+re-read every proposed-removal worktree's porcelain state, classified every
+local and remote ref against the fixed activity cutoff, and checked GitHub PR
+state. Six inaccessible pytest temp directories in the held active hygiene
+worktree prevent a complete untracked-state claim for that held path; this does
+not weaken any proposed-removal worktree proof.
+
+Current inventory before cleanup:
+
+- 22 linked worktrees;
+- 37 local branches, including dirty/divergent `main` and the active hygiene
+  branch;
+- 49 remote refs including `origin/main`;
+- zero open PRs after conclusively superseded PR #174 was closed; and
+- root `main` is three commits ahead and nineteen commits behind `origin/main`,
+  with 36 porcelain entries. It remains an explicit preserve/hold target.
+
+### Remote PR closure already completed
+
+PR #174 was the only open PR. Its exact head
+`0b8b5d1e9108bf0030699347fc60a58875186b58` is an ancestor of merged PR
+#175's exact head `2ec377e0d58d607b7db04e50db070ca911c985c6`.
+It was closed as superseded with that proof in the GitHub comment. No other PR
+was closed; the repository now has zero open PRs.
+
+### A. Clean inactive worktrees proposed for removal (10)
+
+Every path below is clean now. Its branch is either a direct ancestor of
+`origin/main`, an exact merged PR head, a patch/semantic reconstruction recorded
+in this ledger, or a historical merge worktree with no unique patch. Removal
+must use ordinary `git worktree remove` without `--force`.
+
+| Worktree path | Branch | Baseline OID | Preservation proof |
+| --- | --- | --- | --- |
+| `C:/Users/adity/Documents/Ongoing Local/live_conversational_threads/.claude/worktrees/sage-vole-twin-drain` | `worktree-sage-vole-twin-drain` | `73ac3eb05c236d7095618855af703f92353c0f03` | Direct ancestor of `origin/main`. |
+| `C:/Users/adity/Documents/Ongoing Local/live_conversational_threads/.lct-worktrees/node-neighborhood-focus` | `codex/node-neighborhood-focus` | `334082cde1e3ba49a3be3730b2dc40cde9accac2` | Direct ancestor; merged PR #179. |
+| `C:/Users/adity/Documents/Ongoing Local/live_conversational_threads/.lct-worktrees/strict-m5-stt` | `codex/strict-m5-stt` | `826f09cca9b141f7668f856e2120c1570fa062ab` | Its accepted authority/custody invariants were reconstructed as approved S5-B in merged PR #184; its rejected M5-only switch is intentionally not retained. |
+| `C:/Users/adity/Documents/Ongoing Local/TemporalCoordination/.lct-worktrees/explicit-edge-schema` | `codex/explicit-edge-schema` | `ec44ec9b8c41cd41ee1184d365fcb355d7c36e44` | Direct ancestor; merged PR #171. |
+| `C:/Users/adity/Documents/Ongoing Local/TemporalCoordination/.lct-worktrees/graph-legibility-topology` | `codex/graph-legibility-topology` | `4bfa14b8e77f84d42e78e4ab6a64be48b97f2a56` | Direct ancestor; merged PR #177. |
+| `C:/Users/adity/Documents/Ongoing Local/TemporalCoordination/.lct-worktrees/media-deep-links` | `codex/drive-backed-threads-links` | `4452cf1537bf25c06f6b86ea48ae0cd085fc8052` | Exact merged PR #176 head. |
+| `C:/Users/adity/Documents/Ongoing Local/TemporalCoordination/.lct-worktrees/postgres-integration-gate` | `codex/fix-postgres-integration-gate` | `d368b0131d8daa4509fffc0163cf363aca1da00e` | Validation-only repair represented by the merged privacy/hierarchy stack. |
+| `C:/Users/adity/Documents/Ongoing Local/TemporalCoordination/.lct-worktrees/viewer-reader-controls` | `codex/viewer-reader-controls` | `0b8b5d1e9108bf0030699347fc60a58875186b58` | Exact head is contained by merged PR #175; PR #174 is closed as superseded. |
+| `C:/Users/adity/lct-135` | `temp-135-merge` | `a62b5ad30ec815ba8c915ecc6ce1a5f1ddadb5a8` | Historical PR #135 merge worktree with no unique patch. |
+| `C:/Users/adity/lct-pr1` | `feat/pipeline-spine-wiring` | `d9958cbf33114c4f2f2c7d04b0c230c2303fabe8` | Exact merged PR #138 head despite disconnected local history. |
+
+### B. Worktrees preserved and excluded from removal (12)
+
+No approval of this manifest authorizes touching these paths.
+
+| Worktree class | Exact paths / branches | Reason for hold |
+| --- | --- | --- |
+| Dirty/divergent root | `C:/Users/adity/Documents/Ongoing Local/live_conversational_threads` (`main`) | 36 porcelain entries plus three local commits; explicitly protected. |
+| Dirty historical worktrees | attendee-audio revision (`worktree-attendee-audio-revision-rebuild`), test coverage (`worktree-test-coverage-models-convapi`), local-first browse (`codex/local-first-browse`), recipient semantic cards (`codex/recipient-semantic-cards`), and `C:/Users/adity/lct-gdoc` (`docs/ssrf-toctou-followup`) | Dirty state is preserved even when visible untracked material looks generated, private, or superseded. No dirty worktree is deleted. |
+| Recent clean worktrees | speaker assertion (`codex/prod-speaker-assertion-scope`), Drive remembrance (`codex/remember-drive-artifacts`), Google-token share (`codex/share-google-token`), provenance hardening (`codex/real-artifact-provenance-hardening`), and mobile deck (`codex/mobile-conversation-deck`) | Post-cutoff activity remains protected despite merged PR evidence. |
+| Active hygiene worktree | `C:/Users/adity/Documents/Ongoing Local/TemporalCoordination/.lct-worktrees/consolidate-inactive-20260830` (`codex/post-consolidation-hygiene`) | Owns this audit and remains active until its documentation lands. Six old `tmp*` pytest directories have unreadable ACLs; the path is a hold and no cleanup authorization applies to them. |
+
+### C. Local branches proposed for deletion after worktree removal (23)
+
+These are the complete bounded local-ref targets. Branches attached to the five
+dirty historical worktrees, every post-cutoff branch, `main`, and the active
+hygiene branch are excluded. Every line records the exact audited OID and its
+allowed deletion mode. `normal` means `git branch -d`; `force-after-oid-check`
+means `git branch -D` is permitted only after the ref still equals that exact
+OID and every worktree in section A has been removed normally.
+
+```text
+chore/gitignore-env-bak-hardening|135729927793a8247c9628be74024ec3b51a8af8|force-after-oid-check
+codex/drive-backed-threads-links|4452cf1537bf25c06f6b86ea48ae0cd085fc8052|force-after-oid-check
+codex/explicit-edge-schema|ec44ec9b8c41cd41ee1184d365fcb355d7c36e44|normal
+codex/fix-postgres-integration-gate|d368b0131d8daa4509fffc0163cf363aca1da00e|force-after-oid-check
+codex/graph-legibility-topology|4bfa14b8e77f84d42e78e4ab6a64be48b97f2a56|normal
+codex/media-deep-links|2ec377e0d58d607b7db04e50db070ca911c985c6|force-after-oid-check
+codex/node-neighborhood-focus|334082cde1e3ba49a3be3730b2dc40cde9accac2|normal
+codex/strict-m5-stt|826f09cca9b141f7668f856e2120c1570fa062ab|force-after-oid-check
+codex/viewer-reader-controls|0b8b5d1e9108bf0030699347fc60a58875186b58|force-after-oid-check
+docs/adr040-withdrawn|a75469f6258975ae0e44486ef8b8cd4095063932|force-after-oid-check
+feat/backend-lease|78ed009c5403162866cd29bdb2144d9edb1f743b|force-after-oid-check
+feat/gdoc-secure-egress|48e3b5fd25fc3c5916e2e5cd8df01f91e8aaaf4e|force-after-oid-check
+feat/pipeline-spine-wiring|d9958cbf33114c4f2f2c7d04b0c230c2303fabe8|force-after-oid-check
+feat/serverless-byok|9d40480aa8ecd9e4ffa5a67ce76077456a7626f6|force-after-oid-check
+feat/settings-runtime-redesign|a3ca58e722bf52b8005a4dc6d434c9c390337d7a|force-after-oid-check
+feat/transcript-revisions|996a7a4980f1cff75bbd920691526712bb054236|force-after-oid-check
+fix/browse-opener-spa200-mask|3d5263041e0086dce48e0f511fc3988289cc4bc3|normal
+fix/stt-health-probe-certifi|dfa0cc3fba7d5fb6d8f872a4a1a191a96f602f7e|force-after-oid-check
+lct-reprocess-port-codex|b020b28fd1c15b0b8a77ada3a3d15cfd03b6d367|force-after-oid-check
+temp-135-merge|a62b5ad30ec815ba8c915ecc6ce1a5f1ddadb5a8|force-after-oid-check
+worktree-backend-ownership-tier0|1b341aefe5069872d6a89ad39fd10a0ca2150fbc|force-after-oid-check
+worktree-clean-names-ship|d6b96d6a033b738d321b21d7a65996631a00926b|normal
+worktree-sage-vole-twin-drain|73ac3eb05c236d7095618855af703f92353c0f03|normal
+```
+
+The untethered local branch `codex/media-deep-links` is the merged PR #175
+history. It is distinct from the similarly named `media-deep-links` worktree,
+which is tethered to `codex/drive-backed-threads-links` at merged PR #176.
+
+The five inactive local branches held because their worktrees are dirty are
+`codex/local-first-browse`, `codex/recipient-semantic-cards`,
+`docs/ssrf-toctou-followup`, `worktree-attendee-audio-revision-rebuild`, and
+`worktree-test-coverage-models-convapi`. Seven post-cutoff source branches plus
+`main` and `codex/post-consolidation-hygiene` are also held.
+
+### D. Remote branches proposed for deletion (38)
+
+Twenty-eight are direct ancestors of `origin/main`; two have zero positive
+`git cherry` patches; six are exact merged, contained, or explicitly
+superseded PR histories; and two (`feat/cost-tracking-wire-up` and
+`codex/strict-m5-stt`) had their accepted invariants reconstructed and reviewed
+in PR #184 while their rejected legacy design was deliberately excluded.
+Every line records the exact remote OID that must still be returned by
+`git ls-remote origin refs/heads/<name>` immediately before deletion.
+
+```text
+chore/docs-cleanup|8a891efe9c39db5799a3ea382f30385f82deb62c|ancestor
+chore/pr0-zombie-cleanup|8e8303fe06b764dea2b36c3ece42e7f124d39861|ancestor
+chore/root-cleanup|de5fc1d70d53700c1acad4f579a7357be306985b|ancestor
+codex/drive-backed-threads-links|4452cf1537bf25c06f6b86ea48ae0cd085fc8052|merged-or-superseded-pr
+codex/explicit-edge-schema|ec44ec9b8c41cd41ee1184d365fcb355d7c36e44|ancestor
+codex/graph-legibility-topology|4bfa14b8e77f84d42e78e4ab6a64be48b97f2a56|ancestor
+codex/media-deep-links|2ec377e0d58d607b7db04e50db070ca911c985c6|merged-or-superseded-pr
+codex/node-neighborhood-focus|334082cde1e3ba49a3be3730b2dc40cde9accac2|ancestor
+codex/strict-m5-stt|826f09cca9b141f7668f856e2120c1570fa062ab|semantic-reconstruction-pr184
+codex/viewer-reader-controls|0b8b5d1e9108bf0030699347fc60a58875186b58|merged-or-superseded-pr
+feat/commit-fluidaudio-stt|ee0801c351e404c2208a9af332adffdefc3f7b90|ancestor
+feat/cost-tracking-wire-up|ce343bd1fe47ff81a1d7a1749de8db444ba80cbc|semantic-reconstruction-pr184
+feat/gdoc-secure-egress|1a6e38a34633170a7ab577704447bc1a541498f9|ancestor
+feat/pipeline-spine-wiring|b44ea23a0fb68f073d9ee36919da8f0665cc1117|ancestor
+feat/reprocess-endpoint|62757e6b0d2da197c59e57280523065343f47419|merged-or-superseded-pr
+feat/serverless-trial|b97afe8d0bcd0dbde241f7299c746e0be253ab95|ancestor
+feat/settings-runtime-redesign|a3ca58e722bf52b8005a4dc6d434c9c390337d7a|merged-or-superseded-pr
+feat/transcript-revisions|1c6cbef51200e9eb4bd114a06a4f096fffe719d2|merged-or-superseded-pr
+fix/backend-catalog-remote-probe-urls|75b742dfceb225814cd058af961ac59faf57da2c|patch-equivalent
+fix/persist-graph-analysis-predelete|d09aada117d596f1986d6f3b7d7d06b9ead9a835|ancestor
+fix/remove-stale-import-services|ee0940ffc86f2d5a1001008d3892ccf37932be9d|ancestor
+fix/revision-async-db-caller|bff141584ccbab05505179153ad50cf752691b06|ancestor
+fix/stt-health-probe-certifi|40e8568d44ecabf404db288f02b08a14e9e3d735|patch-equivalent
+refactor/services-import-subpackage|67646050c670df832fbb56afc04c90a184ede5a4|ancestor
+refactor/services-stt-subpackage|62e1f558326a9eb5b23e281c3b2e2b258a417ee3|ancestor
+refactor/services-transcript-subpackage|eba223442fa822a3dad029e35bb9d71e0a77f559|ancestor
+worktree-all-messages-ship|238860738bfecd9314f19d7018429247a990659e|ancestor
+worktree-bubble-thread-ship|a9125a01f6ea5e7efba45e18df8db5d9156008f1|ancestor
+worktree-clean-names-ship|d6b96d6a033b738d321b21d7a65996631a00926b|ancestor
+worktree-copy-toast-ship|40193e329939fe906e3bfe9a76d33d87f9af6ad3|ancestor
+worktree-crux-surface-ship|f1a1c48aa4a10e0d34b5f9e1c351a1d7cb723711|ancestor
+worktree-db-integration-tests|feb961c3611e6119bcaa97ae70b88c7ca699c399|ancestor
+worktree-db-integration-tests-b|3b67acee99e42bd98be7c1fd753f6f059975b199|ancestor
+worktree-debate-images-ship|ecba7b6bafe9471ca71dc63a30b8da2b8c87a3d9|ancestor
+worktree-debate-polish-ship|12542787ef276f68d36dccbebbedc78ce0256903|ancestor
+worktree-pacing-ship|2a953febb8ad7d8925796d03a7c229fb4bb8ba84|ancestor
+worktree-span-pass-ship|9f454c6452dff6b000ad53962d1108ef2f7e5190|ancestor
+worktree-war-snapshot-ship|f7259fcb32ce4e534957c674d17de8ccd91b4b69|ancestor
+```
+
+The six post-cutoff remote branches remain held:
+`codex/viewer-provenance-navigation`,
+`codex/real-artifact-provenance-hardening`,
+`codex/remember-drive-artifacts`, `codex/share-google-token`,
+`codex/mobile-conversation-deck`, and
+`codex/consolidate-inactive-20260830`. `origin/main` is never a prune target.
+Four additional remote refs remain held because their corresponding local
+worktrees are dirty: `codex/local-first-browse`,
+`codex/recipient-semantic-cards`, `docs/ssrf-toctou-followup`, and
+`worktree-test-coverage-models-convapi`. Keeping these refs preserves an
+additional recovery layer until their dirty worktrees receive a separate audit.
+
+### E. Single bounded approval and verification contract
+
+One operator approval of this final manifest will authorize only these actions,
+in order:
+
+1. re-fetch, prove `origin/main` is still the recorded merged commit, prove
+   every target ref/path still has its recorded OID and clean state, and move
+   any drifted target to a hold;
+2. remove the ten clean worktrees in section A without force;
+3. delete the twenty-three exact local branches in section C using only each
+   line's recorded deletion mode;
+4. delete the thirty-eight exact remote branches in section D only when
+   `git ls-remote` still returns the recorded OID;
+5. fetch with pruning and prove the ten worktree paths, twenty-three local refs,
+   and thirty-eight remote refs are absent;
+6. prove every held worktree/ref remains present and byte-untouched, root dirty
+   state still exists, `origin/main` is unchanged, and GitHub has zero open PRs.
+
+Any target that becomes dirty, advances, gains a new PR, or fails its recorded
+proof before execution is automatically removed from the deletion set and
+reported as a hold. No cleanup command may broaden from these literal targets.
