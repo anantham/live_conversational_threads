@@ -1,6 +1,28 @@
 # ISSUES
 
-Last updated: 2026-08-30
+Last updated: 2026-08-31
+
+## 2026-08-31 — Unreadable pytest temp ACLs make Git status and trusted push fail closed (OPEN, NON-BLOCKING)
+
+**Summary:** Six old root-level `tmp*` pytest directories in the active hygiene
+worktree exist with ACLs that the current user cannot read. `git status` emits
+permission warnings, and the bounded trusted-push wrapper correctly treats that
+native stderr as a failure before running its test/push gate.
+
+**Impact:** The directories are outside the reviewed commit and no proposed
+prune target depends on them, but the active worktree cannot make a complete
+untracked-state claim and cannot use the trusted wrapper until the ACLs are
+repaired or the generated directories are removed through an explicitly
+approved bounded cleanup.
+
+**Blocker status:** Non-blocking for the manifest or its ten clean worktree
+targets. Blocking only for the trusted wrapper in this held active worktree.
+No directory, ACL, branch, or tracked file was changed during diagnosis.
+
+**Recommended next step:** Establish why pytest created owner-inaccessible
+directories, move future `--basetemp` output outside linked worktrees, then use
+a separately approved exact-path ownership/cleanup operation for the six known
+directories. Do not weaken the wrapper's status gate or hide untracked files.
 
 ## 2026-08-31 — Attendee-bridge unit tests write synthetic registry state to the repo (OPEN, NON-BLOCKING)
 

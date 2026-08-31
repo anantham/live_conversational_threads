@@ -5199,3 +5199,51 @@ Manual testing not run:
 - The review CLI's optional local hooks emitted unrelated Windows-path and
   telemetry-shutdown warnings after the verdict; the reviewer had no tools,
   did not edit the repository, and exited successfully.
+
+### 2026-08-31 13:52 +05:30 — Final post-merge hygiene audit and PR closure
+
+- Created `codex/post-consolidation-hygiene` at merged
+  `origin/main@f18106b62996c704c95ac536d4bf696a2e844fff` by repurposing the
+  tracked-clean consolidation worktree. The original consolidation branch,
+  dirty root, and every other linked worktree remained untouched.
+- Refreshed/pruned remote-tracking refs and audited 22 worktrees, 37 local
+  branches, and 49 remote refs including `origin/main`. The root checkout is
+  intentionally held with 36 porcelain entries and three local commits; five
+  other dirty historical worktrees and all post-cutoff work remain held.
+- Proved PR #174's exact head is an ancestor of merged PR #175's exact head,
+  closed only PR #174 as superseded with that evidence, and verified GitHub now
+  reports zero open PRs.
+- Replaced the provisional cleanup proposal in
+  `docs/plans/2026-08-30-inactive-branch-consolidation.md` with a literal final
+  manifest: ten clean worktrees, twenty-three local branches, and thirty-eight
+  remote branches are proposed; twelve worktrees and all dirty/recent/protected
+  refs are explicit holds.
+- No worktree, local branch, remote branch, dirty file, or private/runtime file
+  was deleted. The exact documentation diff still requires validation and
+  independent review before the operator receives the single prune approval
+  request.
+
+### 2026-08-31 14:03 +05:30 — Independent manifest review round 1 repaired
+
+- Claude produced no review because its authenticated session quota was
+  exhausted; Grok produced no review because its subscription balance was
+  exhausted. Gemini 3.1 Pro High then reviewed the exact two-file diff in
+  read-only plan/sandbox mode through Google Antigravity.
+- Gemini returned `REQUEST_CHANGES`. Supported findings were repaired: every
+  deletion target now carries its audited OID; local force deletion is limited
+  to named non-ancestor refs after exact-OID validation; and four remote refs
+  associated with dirty held worktrees moved out of the prune set.
+- Its naming-ambiguity observation was also accepted: the untethered local
+  `codex/media-deep-links` branch is now distinguished from the worktree named
+  `media-deep-links`, which is tethered to `codex/drive-backed-threads-links`.
+- The revised manifest proposes ten clean worktrees, twenty-three local refs,
+  and thirty-eight remote refs. No deletion occurred. Mechanical revalidation
+  passed against every recorded OID, worktree status, deletion mode, and
+  machine-checkable proof class. Gemini's complete updated-diff re-review
+  returned `APPROVE` with no new findings after confirming all four repairs.
+- The trusted push wrapper then failed closed before tests because six old
+  root-level pytest temp directories in the active hygiene worktree deny status
+  traversal. Read-only inspection confirmed each exists, is not ignored, and
+  has an unreadable ACL; no directory or ACL was changed. The active worktree
+  remains an explicit hold, the ten removal candidates are still fully clean,
+  and the operational defect is recorded in `ISSUES.md` for a bounded repair.
