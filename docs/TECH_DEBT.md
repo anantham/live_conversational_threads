@@ -235,3 +235,11 @@ shared 54-line `stt_authority.py` contract. The live/session integration still
 lives inside the pre-existing multi-thousand-line `stt_ws_session.py`; further
 authority features should enter through the resolver contract rather than add
 new selection branches to that session monolith.
+
+`local_stt/server.py` remains a roughly 620-line process boundary combining
+HTTP admission, model/VAD/diarizer/embedder lifecycle, audio staging, response
+adaptation, and accelerator cleanup. The consolidation keeps admission wording
+and its regression beside the existing endpoint rather than obscuring the
+reviewed behavior in a refactor. Before adding another engine or preprocessing
+stage, extract a request-lifecycle service that owns the bounded processing
+slot and cleanup, leaving the FastAPI endpoint as validation/response glue.

@@ -5145,3 +5145,24 @@ Manual testing not run:
   `data/attendee_sessions.json`. The file was classified by fixture ID,
   excluded and removed; the bounded follow-up is recorded in `ISSUES.md`
   rather than expanding S5 into an unrelated attendee-bridge repair.
+
+### 2026-08-31 — Independent review round 1 classified and repaired
+
+- Grok independently reviewed the exact `origin/main...HEAD` source/tests/docs
+  diff in read-only, tool-disabled prompt-file mode. It returned `APPROVE` but
+  identified two P2 observations, which were classified rather than waived.
+- Confirmed: compact live mode reused the mobile deck while hiding all
+  historical-only More actions, leaving no in-app route home. More now exposes
+  `Leave live view` and explicitly says the meeting keeps recording; both the
+  shared deck and composed `MeetingView` route have regressions.
+- Rejected as proposed: moving `UploadFile.read()` ahead of admission would
+  copy every saturated request's already parsed/spooled upload into application
+  memory before returning 503. The intended invariant is bounded end-to-end STT
+  processing, not GPU occupancy alone. Wording now says processing capacity,
+  and a public endpoint regression proves saturated work is rejected before a
+  second `UploadFile.read()`.
+- Focused validation after classification: local STT 3 passed / 2 optional
+  audio-environment skips; mobile deck and MeetingView 10/10 passed; changed
+  frontend ESLint passed. The first local validation invocation used an
+  incompatible Python 3.9 environment and was rerun in the checked local-STT
+  Python 3.12 venv; a sandbox-created pytest cache was removed exactly.

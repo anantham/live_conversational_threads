@@ -7,7 +7,8 @@ Test intent:
      gate, while speech regions and relative levels remain visible as JSON-safe
      evidence for later cropping policy.
   3. Blocking model compute must not freeze health checks, and excess requests
-     must receive an explicit retryable saturation response instead of queueing.
+     must receive an explicit retryable saturation response instead of queueing
+     or materializing another parsed/spooled upload in memory.
 
 Run: lct_python_backend/local_stt/.venv/bin/python -m pytest test_server_stt.py -q
 (Set STT_SPEECH_FIXTURE=/path/to/speech.wav to also exercise the speech-passes case;
@@ -105,6 +106,14 @@ async def test_blocking_transcription_keeps_health_live_and_sheds_overflow(monke
             assert health.json()["busy"] is True
             assert health.json()["inflight"] == 1
 
+            async def rejected_upload_must_not_be_read(_upload):
+                raise AssertionError("saturated request materialized its upload")
+
+            # FastAPI has already parsed the multipart body into UploadFile by
+            # endpoint dispatch. The processing lane rejects here, before a
+            # second body is copied from its spool into application memory.
+            monkeypatch.setattr(server.UploadFile, "read", rejected_upload_must_not_be_read)
+
             overflow = await asyncio.wait_for(
                 client.post(
                     "/v1/audio/transcriptions",
@@ -116,6 +125,7 @@ async def test_blocking_transcription_keeps_health_live_and_sheds_overflow(monke
             assert overflow.headers["Retry-After"] == "7"
             assert overflow.json()["code"] == "local_stt_saturated"
             assert overflow.json()["max_concurrency"] == 1
+            assert overflow.json()["error"] == "Local STT is at processing capacity; retry later."
     finally:
         release.set()
         if first_request is not None:

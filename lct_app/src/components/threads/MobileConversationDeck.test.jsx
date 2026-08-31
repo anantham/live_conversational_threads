@@ -15,6 +15,7 @@ import MobileConversationDeck from "./MobileConversationDeck";
  * - Boundary controls remain operable for explanatory notices without claiming to be disabled.
  * - More notices remain exposed to assistive technology outside the inert deck background.
  * - Live mode follows the newest branch, pins when moving backward, and exposes a direct return-to-live action.
+ * - Live mode keeps a clear exit inside More without implying that recording stops.
  * - Historical artifacts retain the same deck without live-only status chrome.
  */
 
@@ -317,6 +318,14 @@ describe("MobileConversationDeck", () => {
     clickByLabel("Return to live");
     expect(container.textContent).toContain("Newest arc");
     expect(container.textContent).toContain("Following live");
+
+    clickByLabel("More conversation options");
+    const leaveLive = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent.includes("Leave live view"));
+    expect(leaveLive).not.toBeNull();
+    expect(leaveLive.textContent).toContain("the meeting keeps recording");
+    act(() => leaveLive.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(callbacks.onOpenLibrary).toHaveBeenCalledOnce();
   });
 
   it("does not add live status chrome to a historical artifact", () => {

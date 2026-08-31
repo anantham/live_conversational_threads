@@ -68,8 +68,10 @@ ANTI_HALLUCINATION_OPTS = {
 CORS_ORIGINS = os.getenv("LOCAL_STT_CORS_ORIGINS", "*").strip()
 
 # Blocking MLX/PyTorch inference must never run on the ASGI event loop. Bound
-# the worker admission as well: an unlimited thread queue makes saturation look
-# exactly like a dead server to callers and watchdogs.
+# the complete request-processing lane as well: reject before materializing a
+# parsed/spooled upload in memory, then retain the slot through import, temp-file
+# I/O, VAD/inference/diarization, and cleanup. An unlimited worker or memory
+# queue makes saturation look exactly like a dead server to callers/watchdogs.
 MAX_CONCURRENCY = max(1, int(os.getenv("MLX_STT_MAX_CONCURRENCY", "2")))
 RETRY_AFTER_S = max(1, int(os.getenv("MLX_STT_RETRY_AFTER_S", "30")))
 _slots = asyncio.BoundedSemaphore(MAX_CONCURRENCY)
@@ -423,7 +425,7 @@ async def transcribe(
             status_code=503,
             headers={"Retry-After": str(RETRY_AFTER_S)},
             content={
-                "error": "Local STT is at compute capacity; retry later.",
+                "error": "Local STT is at processing capacity; retry later.",
                 "code": "local_stt_saturated",
                 "inflight": _inflight["n"],
                 "max_concurrency": MAX_CONCURRENCY,

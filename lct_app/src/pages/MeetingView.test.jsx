@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * - A backend transcript_final frame should render immediately in the floating caption overlay.
  * - Speaker labels from Attendee metadata should be visible in minimized caption mode.
  * - Compact live meetings use the same conversation deck as saved artifacts.
+ * - Compact live meetings can leave the deck without stopping the recording.
  * - Parallel CI load may delay the dynamic module import, without weakening any behavior assertion.
  */
 
@@ -179,5 +180,26 @@ describe("MeetingView", () => {
     expect(container.textContent).toContain("Current live arc");
     expect(container.textContent).toContain("Following live");
     expect(container.querySelector('[data-testid="minimal-graph"]')).toBeNull();
+  }, 15_000);
+
+  it("lets a compact live reader leave through More while recording continues", async () => {
+    compactViewerMock = true;
+    const { default: MeetingView } = await import("./MeetingView");
+
+    await act(async () => {
+      root = createRoot(container);
+      root.render(<MeetingView />);
+    });
+
+    const more = container.querySelector('button[aria-label="More conversation options"]');
+    expect(more).not.toBeNull();
+    act(() => more.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    const leaveLive = [...container.querySelectorAll("button")]
+      .find((button) => button.textContent.includes("Leave live view"));
+    expect(leaveLive).not.toBeNull();
+    expect(leaveLive.textContent).toContain("the meeting keeps recording");
+
+    act(() => leaveLive.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(navigateMock).toHaveBeenCalledWith("/");
   }, 15_000);
 });
