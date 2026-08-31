@@ -7,4 +7,3 @@
 - Missing provider usage remains null rather than being fabricated as zero.
 - The schema has no price or content-bearing fields, and persistence failure
   never changes the model call's observable result.
-

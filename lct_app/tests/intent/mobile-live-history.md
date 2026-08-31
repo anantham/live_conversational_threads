@@ -8,4 +8,3 @@
   current abstraction trail wherever the authored hierarchy still resolves.
 - All time/depth boundary messages and keyboard, button, and swipe semantics
   remain unchanged outside the new live-follow state.
-

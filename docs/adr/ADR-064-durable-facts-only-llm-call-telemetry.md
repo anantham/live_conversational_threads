@@ -1,9 +1,9 @@
 # ADR-064: Durable Facts-Only LLM Call Telemetry
 
-**Status:** Approved  
-**Date:** 2026-08-31  
-**Decider:** Aditya  
-**Group:** Observability  
+**Status:** Approved
+**Date:** 2026-08-31
+**Decider:** Aditya
+**Group:** Observability
 **Related:** ADR-003, ADR-007, ADR-029, ADR-030
 
 ## Issue
@@ -59,4 +59,3 @@ transition. The legacy cost-bearing table and decorator are not revived.
 - Tests must exercise success, fallback, missing usage, failure, sync chat,
   async chat, and embeddings through public gateway methods.
 - Schema tests must prove that no content-bearing or price fields exist.
-

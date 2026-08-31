@@ -82,4 +82,3 @@ def downgrade() -> None:
     op.drop_index("idx_llm_call_facts_conversation", table_name="llm_call_facts")
     op.drop_index("idx_llm_call_facts_started", table_name="llm_call_facts")
     op.drop_table("llm_call_facts")
-

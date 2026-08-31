@@ -1,9 +1,9 @@
 # Inactive branch consolidation ledger
 
-**Status:** In progress  
-**Branch:** `codex/consolidate-inactive-20260830`  
-**Base:** `2429d8cf51dfcba84d39d47be7376ab5f898fe39` (deployed `main`, PR #183)  
-**Activity cutoff:** `2026-08-27T19:58:10+05:30`  
+**Status:** In progress
+**Branch:** `codex/consolidate-inactive-20260830`
+**Base:** `2429d8cf51dfcba84d39d47be7376ab5f898fe39` (deployed `main`, PR #183)
+**Activity cutoff:** `2026-08-27T19:58:10+05:30`
 **Scope:** Branches and worktrees whose newest commit and unpublished file activity are both older than the cutoff.
 
 ## Purpose

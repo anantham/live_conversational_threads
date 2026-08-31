@@ -8,4 +8,3 @@
   provider and keeps large imports on the provider-aware path.
 - Segmented, sequential, and delayed jobs cannot bypass the resolved authority;
   delayed state remains credential-free and re-resolves when executed.
-

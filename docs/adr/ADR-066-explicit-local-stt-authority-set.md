@@ -1,9 +1,9 @@
 # ADR-066: Explicit Local STT Authority Set
 
-**Status:** Approved  
-**Date:** 2026-08-31  
-**Decider:** Aditya  
-**Group:** Integration and Privacy  
+**Status:** Approved
+**Date:** 2026-08-31
+**Decider:** Aditya
+**Group:** Integration and Privacy
 **Related:** ADR-017, ADR-020, ADR-023, ADR-056, ADR-061, ADR-063
 
 ## Issue

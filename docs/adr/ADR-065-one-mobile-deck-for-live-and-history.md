@@ -1,9 +1,9 @@
 # ADR-065: One Mobile Conversation Deck for Live and Historical Reading
 
-**Status:** Approved  
-**Date:** 2026-08-31  
-**Decider:** Aditya  
-**Group:** Presentation  
+**Status:** Approved
+**Date:** 2026-08-31
+**Decider:** Aditya
+**Group:** Presentation
 **Related:** ADR-011, ADR-016, ADR-021 (authored hierarchy), ADR-031
 
 ## Issue
@@ -51,4 +51,3 @@ Pure model tests must cover initial live-follow, explicit pinning, stable
 history when new nodes arrive, distance-behind-live, return-to-live, and
 preservation of the abstraction trail. Component tests must prove live chrome
 is absent for historical artifacts and present only when meaningful.
-
