@@ -2,6 +2,24 @@
 
 Last updated: 2026-08-30
 
+## 2026-08-31 — Attendee-bridge unit tests write synthetic registry state to the repo (OPEN, NON-BLOCKING)
+
+**Summary:** Six pre-existing attendee-bridge unit tests exercise session
+persistence without overriding `ATTENDEE_SESSION_REGISTRY_PATH`. A complete
+unit run therefore creates `data/attendee_sessions.json` in the active
+worktree with synthetic `c-*` fixture records.
+
+**Impact:** Test isolation and worktree hygiene only; the generated file is not
+user data and is excluded from the consolidation commit. Left unaddressed, it
+can be mistaken for a real artifact or accidentally staged by a broad add.
+
+**Blocker status:** Non-blocking for the explicit STT authority repair. The
+file was identified by its fixture IDs and removed after validation.
+
+**Recommended next step:** Give every attendee-bridge persistence test a
+temporary registry path through an autouse fixture, then assert the default
+repository path remains untouched.
+
 ## 2026-08-30 — Desktop Center legibility test samples an animated viewport twice (OPEN, NON-BLOCKING)
 
 **Summary:** The unchanged desktop macro-centering browser test reads the
@@ -979,3 +997,77 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   verbatim. Their old median provenance set was 35 turns. The generator now
   requires exact contiguous leaf excerpts, but this historical conversation
   still needs a deliberate re-extraction before its leaf evidence is precise.
+
+## 2026-08-30 — Inactive-branch consolidation findings
+
+- **Resolved in consolidation — live STT quota admission no longer falls
+  through.** A rejected `QuotaService.check_quota()` result is now evaluated
+  before conversation/session creation or provider startup, emits a structured
+  fatal `quota_exceeded` frame with the quota snapshot, closes with policy code
+  1008, and returns before `session_started` or `session_ack`. The public
+  websocket regression covers both denied and allowed admission.
+- **Resolved in consolidation — websocket contract fixtures now follow the
+  live lifecycle.** A shared helper validates the public `session_started` then
+  `session_ack` sequence, asynchronous assertions consume frames by type, and
+  the backend-live audio fake implements the current `AudioStorage.get_status`
+  contract. The combined contract/integration boundary now passes 30/30; no
+  product message ordering or timeout was weakened to make the suite green.
+- **Resolved in consolidation — local MLX compute no longer wedges the HTTP
+  server.** Blocking model import/transcription, VAD, diarizer loading/inference,
+  embedding work, temporary-file writes, and accelerator cleanup now run off
+  the ASGI event loop behind bounded admission. `/health` reports inflight,
+  capacity, busy state, and rejection count; overflow receives retryable 503
+  plus `Retry-After` instead of entering an unbounded queue.
+- **Resolved in consolidation — local VAD evidence is no longer discarded.**
+  Local STT responses now retain Silero speech regions, total detected speech,
+  recording duration, and speech/head/tail dBFS as JSON-safe underscore-prefixed
+  telemetry. Non-finite digital-silence levels become `null`; VAD failure still
+  fails open and never suppresses real audio.
+- **Confirmed, non-blocking for current requests — API-call telemetry remains
+  unwired.** The cost dashboard reads `api_calls_log`, but production LLM paths
+  do not apply the existing tracker. Impact: latency/token/cost breakdowns are
+  incomplete and counterfactual-savings claims cannot be audited. Recommended
+  next step: record provider/model actually served, token counts, latency,
+  route, finish state, and errors before adding dated/configurable cost
+  assumptions.
+- **Resolved in consolidation — delayed diarization jobs no longer retain
+  foreground credentials or cloud authority.** The in-memory queue recursively
+  removes credential-shaped fields, omits unused source metadata, clears the
+  foreground provider override, removes cloud/external fallback configuration,
+  and passes an explicit local-only settings snapshot to the worker. This
+  security invariant is independent of the remaining M5-versus-Asus ordering
+  decision.
+- **Decision required — dormant strict STT branch hard-codes M5 as sole
+  automatic authority.** It prevents silent cloud/local substitution and keeps
+  scoped BYOK as the only cloud exception, but also disables an owner-approved
+  Asus/Parakeet fallback and treats the configured URL as identity proof.
+  Recommended direction: an explicit owner-approved local authority set (M5
+  primary, Asus fallback, no silent cloud), with the exact endpoint identity
+  limitation named until attestation exists.
+- **Decision required — live tangent navigation predates the current mobile
+  deck.** Its temporal/depth state model matches the product vision, but its
+  separate MeetingView surface may duplicate the new interaction grammar.
+  Decide whether to adapt the state model into the current deck, retain a
+  feature-flagged live mode, or preserve only the design intent.
+- **Operational review gate — no independent family returned a verdict yet.**
+  Claude is authenticated but rate-limited until its 23:00 reset; the installed
+  Gemini launcher hangs before startup; Grok authenticated and received a
+  hashed exact-diff bundle but its paged and direct-file modes did not return a
+  verdict within bounded runs. OpenCode's direct Gemini route has no funded
+  workspace, and its OpenRouter intermediary was correctly rejected because
+  that destination is outside the standing direct-review authorization; no
+  diff was sent through OpenRouter. This does not invalidate local tests, but
+  it blocks representing the consolidation as independently approved. Retry an
+  eligible direct family after the human arbitration changes are integrated.
+- **Non-blocking local environment skew — backend venv violates the checked-in
+  OpenAI requirement.** The shared historical venv has `openai==1.54.0` with
+  `httpx==0.28.1`, while `lct_python_backend/requirements.txt` explicitly pins
+  `openai==2.16.0` because older clients pass the removed `proxies=` argument.
+  Impact: the otherwise clean full unit run stops one egress-chokepoint test in
+  third-party client construction before project code executes (1 failed,
+  1,951 passed). The test and egress code are unchanged from the deployed base.
+  Rebuild the backend venv from checked-in requirements in a separate
+  environment-maintenance task; do not weaken the security test.
+- Full proof and branch-by-branch disposition are recorded in
+  `docs/plans/2026-08-30-inactive-branch-consolidation.md`. These findings do
+  not authorize deleting any branch or dirty worktree.

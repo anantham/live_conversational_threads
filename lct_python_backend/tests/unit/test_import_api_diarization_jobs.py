@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 from lct_python_backend.tests.unit.import_api_test_support import (
     build_test_client,
     load_import_api_with_stubs,
+    local_stt_settings,
     parse_sse_events,
 )
 
@@ -14,10 +15,10 @@ def test_process_file_enqueues_async_diarization_job_for_audio(monkeypatch):
     import_api = load_import_api_with_stubs(monkeypatch)
     client = build_test_client(import_api)
 
-    stt_settings = {
-        "provider": "parakeet",
-        "provider_http_urls": {"parakeet": "http://localhost:9000/v1/audio/transcriptions"},
-    }
+    stt_settings = local_stt_settings(
+        provider="parakeet",
+        http_url="http://localhost:9000/v1/audio/transcriptions",
+    )
     monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value=stt_settings))
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
     monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))

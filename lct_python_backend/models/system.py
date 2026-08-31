@@ -3,7 +3,7 @@
 import uuid
 
 from sqlalchemy import (
-    Boolean, Column, Integer, Float, String, Text, DateTime,
+    Boolean, CheckConstraint, Column, Integer, Float, String, Text, DateTime,
     ForeignKey, Index, Date,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
@@ -56,6 +56,55 @@ class APICallsLog(Base):
         Index('idx_api_calls_provider_model', 'provider', 'model'),
         Index('idx_api_calls_started', 'started_at'),
         Index('idx_api_calls_cost', 'total_cost'),
+    )
+
+
+class LLMCallFact(Base):
+    """Content-free, price-free durable fact for one logical LLM operation."""
+
+    __tablename__ = "llm_call_facts"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    conversation_id = Column(Text)
+    session_id = Column(Text)
+    route_id = Column(Text)
+    capability = Column(Text, nullable=False)
+
+    provider_id = Column(Text)
+    provider_type = Column(Text)
+    model = Column(Text)
+    attempt_number = Column(Integer)
+    total_providers_tried = Column(Integer)
+
+    prompt_name = Column(Text)
+    prompt_version = Column(Text)
+
+    prompt_tokens = Column(Integer)
+    completion_tokens = Column(Integer)
+    total_tokens = Column(Integer)
+
+    latency_ms = Column(Integer, nullable=False)
+    provider_latency_ms = Column(Float)
+    status = Column(Text, nullable=False)
+    finish_reason = Column(Text)
+    error_code = Column(Text)
+    request_id = Column(Text)
+
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('success', 'error', 'cache_hit')",
+            name="check_llm_call_fact_status",
+        ),
+        Index("idx_llm_call_facts_started", "started_at"),
+        Index("idx_llm_call_facts_conversation", "conversation_id", "started_at"),
+        Index("idx_llm_call_facts_session", "session_id", "started_at"),
+        Index("idx_llm_call_facts_provider_model", "provider_id", "model"),
+        Index("idx_llm_call_facts_capability", "capability"),
+        Index("idx_llm_call_facts_status", "status"),
     )
 
 

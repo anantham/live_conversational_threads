@@ -26,7 +26,10 @@ debug. Run:
 """
 from __future__ import annotations
 
+import asyncio
+import importlib
 import logging
+import math
 import os
 import tempfile
 import time
@@ -37,6 +40,7 @@ import uvicorn
 from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 DEFAULT_MODEL = os.getenv("LOCAL_STT_MODEL", "mlx-community/whisper-large-v3-turbo")
 PORT = int(os.getenv("LOCAL_STT_PORT", "5095"))
@@ -63,6 +67,17 @@ ANTI_HALLUCINATION_OPTS = {
 # LOCAL_STT_CORS_ORIGINS to a comma-separated allowlist to tighten.
 CORS_ORIGINS = os.getenv("LOCAL_STT_CORS_ORIGINS", "*").strip()
 
+# Blocking MLX/PyTorch inference must never run on the ASGI event loop. Bound
+# the complete request-processing lane as well: reject before a parsed/spooled
+# UploadFile is copied into application memory by ``UploadFile.read()``, then
+# retain the slot through import, temp-file I/O, VAD/inference/diarization, and
+# cleanup. An unlimited worker or memory queue makes saturation look exactly
+# like a dead server to callers/watchdogs.
+MAX_CONCURRENCY = max(1, int(os.getenv("MLX_STT_MAX_CONCURRENCY", "2")))
+RETRY_AFTER_S = max(1, int(os.getenv("MLX_STT_RETRY_AFTER_S", "30")))
+_slots = asyncio.BoundedSemaphore(MAX_CONCURRENCY)
+_inflight = {"n": 0}
+
 logging.basicConfig(
     level=logging.DEBUG if DEBUG else logging.INFO,
     format="%(asctime)s %(levelname)s [local_stt] %(message)s",
@@ -76,7 +91,7 @@ app.add_middleware(
     allow_methods=["POST", "OPTIONS"],
     allow_headers=["*"],
 )
-_state = {"ready": False, "requests": 0, "failures": 0}
+_state = {"ready": False, "requests": 0, "failures": 0, "saturated_rejections": 0}
 
 
 @app.middleware("http")
@@ -105,6 +120,10 @@ def health() -> dict:
         "backend": "mlx-metal-ane",
         "requests": _state["requests"],
         "failures": _state["failures"],
+        "inflight": _inflight["n"],
+        "max_concurrency": MAX_CONCURRENCY,
+        "busy": _inflight["n"] >= MAX_CONCURRENCY,
+        "saturated_rejections": _state["saturated_rejections"],
         "diarization": "available" if _diar.get("ok") else (_diar.get("error") or "not loaded"),
     }
 
@@ -221,21 +240,109 @@ def _get_vad():
     return _vad["model"]
 
 
-def _has_speech(path: str):
-    """True/False once VAD has run; None if VAD is unavailable/errored — callers FAIL
-    OPEN (transcribe anyway) so a broken gate never silently drops real audio."""
+def _dbfs(chunk) -> float:
+    """Return RMS dBFS for a 1-D torch audio tensor; -inf means silence."""
+    import torch
+
+    if chunk is None or chunk.numel() == 0:
+        return float("-inf")
+    rms = float(torch.sqrt(torch.mean(chunk.float() ** 2)))
+    if rms <= 1e-9:
+        return float("-inf")
+    return 20.0 * math.log10(rms)
+
+
+def _vad_analyze(path: str):
+    """Return speech regions and relative levels, or None when VAD cannot run.
+
+    Silero already tells us *where* speech occurs. Keeping only the summed
+    duration made a long recording with a silent head indistinguishable from a
+    tightly cropped recording, which prevented evidence-based cropping and
+    hallucination diagnosis. Levels remain advisory: a neural VAD miss must not
+    silently delete quiet real speech.
+    """
     m = _get_vad()
     if m is None:
         return None
     try:
         from silero_vad import read_audio, get_speech_timestamps
+
         wav = read_audio(path, sampling_rate=16000)
         ts = get_speech_timestamps(wav, m, sampling_rate=16000)
-        speech_s = sum((t["end"] - t["start"]) for t in ts) / 16000.0
-        return speech_s >= VAD_MIN_SPEECH_S
+        regions = [
+            (float(item["start"]) / 16000.0, float(item["end"]) / 16000.0)
+            for item in ts
+        ]
+        total_s = float(wav.numel()) / 16000.0
+        if not regions:
+            level = _dbfs(wav)
+            return {
+                "regions": [],
+                "speech_dbfs": float("-inf"),
+                "head_dbfs": level,
+                "tail_dbfs": level,
+                "total_s": total_s,
+            }
+
+        import torch
+
+        speech = torch.cat(
+            [wav[int(start * 16000):int(end * 16000)] for start, end in regions]
+        )
+        head = wav[:int(regions[0][0] * 16000)]
+        tail = wav[int(regions[-1][1] * 16000):]
+        return {
+            "regions": regions,
+            "speech_dbfs": _dbfs(speech),
+            "head_dbfs": _dbfs(head),
+            "tail_dbfs": _dbfs(tail),
+            "total_s": total_s,
+        }
     except Exception as e:
         log.warning("VAD check failed (%s) — not gating", e)
         return None
+
+
+def _vad_speech_seconds(analysis) -> float:
+    if not isinstance(analysis, dict):
+        return 0.0
+    return sum(
+        max(0.0, float(end) - float(start))
+        for start, end in (analysis.get("regions") or [])
+    )
+
+
+def _serialize_vad_analysis(analysis):
+    """Convert internal tuples/-inf levels into a strict JSON-safe shape."""
+    if not isinstance(analysis, dict):
+        return None
+
+    def finite_or_none(value):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if math.isfinite(number) else None
+
+    return {
+        "regions": [
+            {"start": float(start), "end": float(end)}
+            for start, end in (analysis.get("regions") or [])
+        ],
+        "speech_seconds": round(_vad_speech_seconds(analysis), 3),
+        "speech_dbfs": finite_or_none(analysis.get("speech_dbfs")),
+        "head_dbfs": finite_or_none(analysis.get("head_dbfs")),
+        "tail_dbfs": finite_or_none(analysis.get("tail_dbfs")),
+        "total_seconds": finite_or_none(analysis.get("total_s")),
+    }
+
+
+def _has_speech(path: str):
+    """True/False after VAD; None means unavailable/error and callers fail open."""
+    analysis = _vad_analyze(path)
+    if analysis is None:
+        return None
+    return _vad_speech_seconds(analysis) >= VAD_MIN_SPEECH_S
 
 
 def _embed_segments(audio_path, segments):
@@ -303,29 +410,67 @@ async def transcribe(
     want_embeddings = _truthy(include_embeddings)
     want_diarize = _truthy(diarize) or want_embeddings          # embeddings need speaker turns
     want_words = _truthy(word_timestamps) or "word" in (timestamp_granularities or "").lower()
-    import mlx_whisper  # lazy import so module import / --help stays cheap
 
-    _state["requests"] += 1
-    suffix = Path(file.filename or "audio.wav").suffix or ".wav"
-    payload = await file.read()
-    log.info(
-        "transcribe request: file=%s bytes=%d model=%s language=%s format=%s",
-        file.filename, len(payload), model or DEFAULT_MODEL, language or "auto", response_format,
-    )
-    if not payload:
-        _state["failures"] += 1
-        log.warning("empty audio payload for file=%s", file.filename)
-        return JSONResponse(status_code=400, content={"error": "empty audio payload"})
+    # Do not create an unbounded wait queue. In the single event loop there is
+    # no suspension point between this check and the immediate semaphore
+    # acquire, so an available slot cannot be stolen between the two operations.
+    if _slots.locked():
+        _state["saturated_rejections"] += 1
+        log.warning(
+            "STT saturated: inflight=%d max=%d; rejecting with retry_after=%ds",
+            _inflight["n"],
+            MAX_CONCURRENCY,
+            RETRY_AFTER_S,
+        )
+        return JSONResponse(
+            status_code=503,
+            headers={"Retry-After": str(RETRY_AFTER_S)},
+            content={
+                "error": "Local STT is at processing capacity; retry later.",
+                "code": "local_stt_saturated",
+                "inflight": _inflight["n"],
+                "max_concurrency": MAX_CONCURRENCY,
+                "retry_after_seconds": RETRY_AFTER_S,
+            },
+        )
 
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(payload)
-        tmp_path = tmp.name
+    await _slots.acquire()
+    _inflight["n"] += 1
+    tmp_path = None
 
     try:
+        # Lazy import remains cheap at module import time, but first-load work is
+        # itself blocking and therefore belongs in the worker pool.
+        mlx_whisper = await run_in_threadpool(importlib.import_module, "mlx_whisper")
+        _state["requests"] += 1
+        suffix = Path(file.filename or "audio.wav").suffix or ".wav"
+        payload = await file.read()
+        log.info(
+            "transcribe request: file=%s bytes=%d model=%s language=%s format=%s",
+            file.filename, len(payload), model or DEFAULT_MODEL, language or "auto", response_format,
+        )
+        if not payload:
+            _state["failures"] += 1
+            log.warning("empty audio payload for file=%s", file.filename)
+            return JSONResponse(status_code=400, content={"error": "empty audio payload"})
+
+        def _write_temp_audio() -> str:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                tmp.write(payload)
+                return tmp.name
+
+        tmp_path = await run_in_threadpool(_write_temp_audio)
+
         # No-speech gate (#1): if silero-vad finds no voice activity, skip the model
         # entirely and return empty — otherwise it hallucinates filler on silence/
         # ambient. Fails OPEN (None -> transcribe) so a broken gate never drops audio.
-        if VAD_GATE and _has_speech(tmp_path) is False:
+        vad_analysis = (
+            await run_in_threadpool(_vad_analyze, tmp_path)
+            if VAD_GATE
+            else None
+        )
+        serialized_vad = _serialize_vad_analysis(vad_analysis)
+        if vad_analysis is not None and _vad_speech_seconds(vad_analysis) < VAD_MIN_SPEECH_S:
             _state["ready"] = True
             log.info("VAD gate: no speech in file=%s -> empty result (transcription skipped)", file.filename)
             return JSONResponse({
@@ -334,6 +479,7 @@ async def transcribe(
                 "diarization": None, "embeddings": None,
                 "_engine": "mlx-whisper", "_model": DEFAULT_MODEL,
                 "_requested_model": model, "_elapsed_seconds": 0.0, "_vad_gated": True,
+                "_vad_analysis": serialized_vad,
             })
         # OpenAI-compatible clients send a `model` form field (e.g. "whisper-1",
         # "whisper-large-v3-turbo"). This server serves ONE preloaded model, so IGNORE
@@ -349,7 +495,9 @@ async def transcribe(
             kwargs["hallucination_silence_threshold"] = 2.0  # skip silent spans it tries to fill (needs word ts)
 
         t0 = time.perf_counter()
-        result = mlx_whisper.transcribe(tmp_path, **kwargs)
+        result = await run_in_threadpool(
+            lambda: mlx_whisper.transcribe(tmp_path, **kwargs)
+        )
         elapsed = time.perf_counter() - t0
 
         segments = []
@@ -367,13 +515,13 @@ async def transcribe(
         diar_info = None
         speakers = None
         if want_diarize:
-            pipe = _get_diarizer()
+            pipe = await run_in_threadpool(_get_diarizer)
             if pipe is None:                          # missing dep / auth / download — report, don't crash
                 diar_info = {"error": _diar.get("error") or "diarizer unavailable"}
                 log.warning("diarize requested but unavailable: %s", diar_info["error"])
             else:
                 d0 = time.perf_counter()
-                diarization = pipe(tmp_path)          # tmp file still exists (unlinked in finally)
+                diarization = await run_in_threadpool(pipe, tmp_path)
                 segments, speakers = _assign_speakers(segments, diarization)
                 d_elapsed = time.perf_counter() - d0
                 diar_info = {"device": _diar.get("device"), "speakers": speakers, "n_speakers": len(speakers),
@@ -387,7 +535,11 @@ async def transcribe(
         if want_embeddings:
             e0 = time.perf_counter()
             try:
-                segments, speaker_embeddings, edim = _embed_segments(tmp_path, segments)
+                segments, speaker_embeddings, edim = await run_in_threadpool(
+                    _embed_segments,
+                    tmp_path,
+                    segments,
+                )
                 if edim:
                     emb_info = {"model": "speechbrain/spkrec-ecapa-voxceleb", "dim": edim,
                                 "n_speaker_vectors": len(speaker_embeddings or {}),
@@ -420,6 +572,8 @@ async def transcribe(
             "_model": DEFAULT_MODEL,
             "_requested_model": model,
             "_elapsed_seconds": round(elapsed, 3),
+            "_vad_gated": False,
+            "_vad_analysis": serialized_vad,
         })
     except Exception as exc:  # fail loudly, never silently (AGENTS.md §9)
         _state["failures"] += 1
@@ -427,25 +581,31 @@ async def transcribe(
         return JSONResponse(status_code=500, content={"error": f"{type(exc).__name__}: {exc}"})
     finally:
         try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        # Release GPU memory caches after every request. mlx-whisper (Metal) and
-        # pyannote-on-MPS each keep a buffer cache at the high-water mark of the
-        # largest allocation and never free it on their own -> the server creeps
-        # (observed ~11 GB after 7 days). clear_cache() returns those buffers; the
-        # model weights stay resident (they live in the lru-cached model objects).
-        try:
-            import mlx.core as mx
-            mx.clear_cache()
-        except Exception:
-            pass
-        try:
-            import torch
-            if torch.backends.mps.is_available():
-                torch.mps.empty_cache()
-        except Exception:
-            pass
+            def _cleanup_request() -> None:
+                if tmp_path:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+                # Release GPU memory caches after every request. mlx-whisper
+                # (Metal) and pyannote-on-MPS retain high-water buffers while
+                # model weights remain cached.
+                try:
+                    import mlx.core as mx
+                    mx.clear_cache()
+                except Exception:
+                    pass
+                try:
+                    import torch
+                    if torch.backends.mps.is_available():
+                        torch.mps.empty_cache()
+                except Exception:
+                    pass
+
+            await run_in_threadpool(_cleanup_request)
+        finally:
+            _inflight["n"] -= 1
+            _slots.release()
 
 
 if __name__ == "__main__":

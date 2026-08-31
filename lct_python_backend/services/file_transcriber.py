@@ -32,8 +32,6 @@ from lct_python_backend.services.audio_transcriber import (
     transcribe_audio_segmented,
 )
 from lct_python_backend.services.provider_selection import (
-    _is_local_http_url,
-    _resolve_audio_provider_candidates,
     resolve_import_audio_candidates,
 )
 from lct_python_backend.services.speaker_alignment import (
@@ -81,13 +79,10 @@ from lct_python_backend.services.transcript.transcription_utils import (
     SRT_EXTENSIONS,
     STT_PARAKEET_PYANNOTE_ENABLED,
     STT_PARAKEET_PYANNOTE_RESPONSE_FORMAT,
-    STT_PROVIDER_ORDER,
     STT_PYANNOTE_DEVICE,
     STT_PYANNOTE_MAX_SPEAKERS,
     STT_PYANNOTE_MIN_SPEAKERS,
     STT_PYANNOTE_MODEL,
-    STT_UPLOAD_LOCAL_FIRST,
-    STT_UPLOAD_REMOTE_FALLBACK,
     TEXT_EXTENSIONS,
     VTT_EXTENSIONS,
     AudioTranscriptionDetail,
@@ -115,9 +110,6 @@ __all__ = [
     "STT_PYANNOTE_DEVICE",
     "STT_PYANNOTE_MIN_SPEAKERS",
     "STT_PYANNOTE_MAX_SPEAKERS",
-    "STT_UPLOAD_LOCAL_FIRST",
-    "STT_UPLOAD_REMOTE_FALLBACK",
-    "STT_PROVIDER_ORDER",
     "DEFAULT_CHUNK_DURATION_S",
     "DEFAULT_CHUNK_OVERLAP_S",
     "DEFAULT_CHUNK_MAX_RETRIES",
@@ -156,8 +148,6 @@ __all__ = [
     "_load_pyannote_pipeline",
     "_run_pyannote_diarization",
     # provider_selection
-    "_is_local_http_url",
-    "_resolve_audio_provider_candidates",
     "resolve_import_audio_candidates",
     "build_line_utterances",
     "build_segment_utterances",
@@ -281,7 +271,9 @@ async def transcribe_uploaded_file(
             provider_override=provider_override,
         )
         if not provider_candidates:
-            raise ValueError("No STT HTTP URL configured for upload transcription.")
+            raise ValueError(
+                "No approved local STT authority is enabled, and no validated session BYOK grant was provided."
+            )
         timeout = float(settings.get("http_timeout_seconds", 120.0) or 120.0)
         response_format = coerce_str(settings.get("response_format"))
         provider_attempts: List[Dict[str, Any]] = []
@@ -316,6 +308,8 @@ async def transcribe_uploaded_file(
             active_transport = transport
             active_model = coerce_str(candidate.get("model")) or coerce_str(settings.get("http_model"))
             attempt_record: Dict[str, Any] = {
+                "authority_id": candidate.get("authority_id"),
+                "authority_scope": candidate.get("authority_scope"),
                 "provider": provider,
                 "transport": transport,
                 "http_url": http_url,
@@ -553,6 +547,14 @@ async def transcribe_uploaded_file(
                 "http_url": active_http_url,
                 "transport": active_transport,
                 "model": active_model,
+                "authority_id": next(
+                    (
+                        item.get("authority_id")
+                        for item in reversed(provider_attempts)
+                        if item.get("status") == "success"
+                    ),
+                    None,
+                ),
             }
         )
         if stt_backend:

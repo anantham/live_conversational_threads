@@ -13,6 +13,8 @@ from lct_python_backend.tests.integration.transcripts_test_support import (
     build_processor_class,
     build_test_client,
     pcm_audio_base64,
+    receive_session_ack,
+    receive_until_type,
 )
 
 
@@ -113,6 +115,16 @@ def test_transcripts_ws_streams_audio_to_http_stt_and_requests_diarization(monke
             monkeypatch,
             stt_settings={
                 "provider": "whisper",
+                "local_authorities": [
+                    {
+                        "id": "test-whisper",
+                        "enabled": True,
+                        "provider": "whisper",
+                        "http_url": http_url,
+                        "supports_diarization": True,
+                        "request_diarization": True,
+                    }
+                ],
                 "provider_http_urls": {"whisper": http_url},
                 "http_url": http_url,
                 "http_chunk_seconds": 0.25,
@@ -135,15 +147,15 @@ def test_transcripts_ws_streams_audio_to_http_stt_and_requests_diarization(monke
                     "store_audio": False,
                 }
             )
-            ack = ws.receive_json()
+            ack = receive_session_ack(ws)
             assert ack["type"] == "session_ack"
             assert ack["stt_ready"] is True
             assert ack["provider_http_url"] == http_url
 
             ws.send_json({"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.3)})
 
-            partial_msg = ws.receive_json()
-            final_msg = ws.receive_json()
+            partial_msg = receive_until_type(ws, "transcript_partial")
+            final_msg = receive_until_type(ws, "transcript_final")
             assert partial_msg["type"] == "transcript_partial"
             assert final_msg["type"] == "transcript_final"
             assert final_msg["text"] == "stream chunk."
@@ -195,6 +207,16 @@ def test_transcripts_ws_streams_audio_to_http_stt_and_sends_diarize_false(monkey
             monkeypatch,
             stt_settings={
                 "provider": "whisper",
+                "local_authorities": [
+                    {
+                        "id": "test-whisper",
+                        "enabled": True,
+                        "provider": "whisper",
+                        "http_url": http_url,
+                        "supports_diarization": True,
+                        "request_diarization": False,
+                    }
+                ],
                 "provider_http_urls": {"whisper": http_url},
                 "http_url": http_url,
                 "http_chunk_seconds": 0.25,
@@ -213,13 +235,13 @@ def test_transcripts_ws_streams_audio_to_http_stt_and_sends_diarize_false(monkey
                     "store_audio": False,
                 }
             )
-            ack = ws.receive_json()
+            ack = receive_session_ack(ws)
             assert ack["type"] == "session_ack"
             assert ack["stt_ready"] is True
 
             ws.send_json({"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.3)})
-            assert ws.receive_json()["type"] == "transcript_partial"
-            assert ws.receive_json()["type"] == "transcript_final"
+            assert receive_until_type(ws, "transcript_partial")["type"] == "transcript_partial"
+            assert receive_until_type(ws, "transcript_final")["type"] == "transcript_final"
 
             ws.send_json({"type": "final_flush"})
             assert ws.receive_json()["type"] == "flush_ack"

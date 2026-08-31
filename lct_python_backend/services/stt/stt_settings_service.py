@@ -57,7 +57,11 @@ def _preserve_cloud_provider_secrets(
     payload: Dict[str, Any],
     existing_value: Mapping[str, Any],
 ) -> Dict[str, Any]:
-    normalized_payload = dict(payload)
+    normalized_payload = {
+        key: value
+        for key, value in dict(payload).items()
+        if key != "local_authorities" and not str(key).startswith("_validated_stt_")
+    }
     incoming_raw = normalized_payload.get("cloud_fallback_providers")
     incoming_providers = dict(incoming_raw) if isinstance(incoming_raw, Mapping) else {}
     existing_raw = existing_value.get("cloud_fallback_providers")

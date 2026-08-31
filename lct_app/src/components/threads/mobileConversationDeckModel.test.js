@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildMobileConversationDeck,
+  initialLiveMobileDeckState,
   initialMobileDeckState,
+  mobileDeckLiveStatus,
   mobileDeckSnapshot,
   moveMobileDeck,
+  reconcileLiveMobileDeckState,
+  returnMobileDeckToLive,
 } from "./mobileConversationDeckModel";
 
 /*
@@ -13,6 +17,9 @@ import {
  * - Horizontal navigation remains scoped to the selected parent rather than leaking into another branch.
  * - Down follows authored children into exact utterances and Up restores the same contextual trail.
  * - Missing descendants produce a truthful boundary state instead of silently changing branches.
+ * - A live deck follows the newest branch until the reader moves backward in time.
+ * - Following live descends through the newest child; any explicit temporal move pins.
+ * - New live arrivals never move a pinned reader, and Return to live restores the newest compatible depth.
  */
 
 const utterances = [
@@ -107,5 +114,128 @@ describe("mobile conversation deck model", () => {
     expect(result.changed).toBe(false);
     expect(result.state).toBe(state);
     expect(result.notice).toBe("No topics are linked beneath this theme.");
+  });
+
+  it("follows the newest live branch while preserving the reader's abstraction depth", () => {
+    const model = buildMobileConversationDeck(nodes, utterances);
+    let state = initialLiveMobileDeckState(model);
+    expect(mobileDeckSnapshot(model, state).entry.id).toBe("arc-b");
+    expect(mobileDeckLiveStatus(model, state)).toMatchObject({
+      isFollowingLive: true,
+      updatesBehind: 0,
+    });
+
+    state = moveMobileDeck(model, state, "down").state;
+    expect(mobileDeckSnapshot(model, state).entry.id).toBe("theme-b");
+
+    const nextNodes = [
+      ...nodes,
+      { id: "arc-c", semantic_level: 5, timestamp_start: 60, children_ids: ["theme-c"] },
+      {
+        id: "theme-c",
+        semantic_level: 4,
+        parent_id: "arc-c",
+        timestamp_start: 60,
+        children_ids: ["topic-c"],
+      },
+      {
+        id: "topic-c",
+        semantic_level: 3,
+        parent_id: "theme-c",
+        timestamp_start: 60,
+        children_ids: [],
+      },
+    ];
+    const nextModel = buildMobileConversationDeck(nextNodes, utterances);
+    state = reconcileLiveMobileDeckState(nextModel, state);
+
+    expect(mobileDeckSnapshot(nextModel, state).entry.id).toBe("theme-c");
+    expect(state.trail).toHaveLength(2);
+    expect(mobileDeckLiveStatus(nextModel, state).isFollowingLive).toBe(true);
+  });
+
+  it("descends through the newest live child and pins any explicit temporal move", () => {
+    const liveNodes = [
+      { id: "arc-live", semantic_level: 5, timestamp_start: 0, children_ids: ["theme-live"] },
+      {
+        id: "theme-live",
+        semantic_level: 4,
+        parent_id: "arc-live",
+        timestamp_start: 0,
+        children_ids: ["topic-old", "topic-new"],
+      },
+      {
+        id: "topic-old",
+        semantic_level: 3,
+        parent_id: "theme-live",
+        timestamp_start: 1,
+      },
+      {
+        id: "topic-new",
+        semantic_level: 3,
+        parent_id: "theme-live",
+        timestamp_start: 2,
+      },
+    ];
+    const model = buildMobileConversationDeck(liveNodes, []);
+    let state = initialLiveMobileDeckState(model);
+
+    state = moveMobileDeck(model, state, "down").state;
+    state = moveMobileDeck(model, state, "down").state;
+    expect(mobileDeckSnapshot(model, state).entry.id).toBe("topic-new");
+    expect(mobileDeckLiveStatus(model, state).isFollowingLive).toBe(true);
+
+    const olderFollowingState = {
+      trail: [
+        { kind: "node", id: "arc-live" },
+        { kind: "node", id: "theme-live" },
+        { kind: "node", id: "topic-old" },
+      ],
+      liveCursor: null,
+    };
+    const moved = moveMobileDeck(model, olderFollowingState, "next");
+    expect(moved.changed).toBe(true);
+    expect(mobileDeckSnapshot(model, moved.state).entry.id).toBe("topic-new");
+    expect(moved.state.liveCursor).toBe("topic-new");
+    expect(mobileDeckLiveStatus(model, moved.state).isFollowingLive).toBe(false);
+  });
+
+  it("pins on backward time navigation and reports later live updates without moving", () => {
+    const model = buildMobileConversationDeck(nodes, utterances);
+    let state = initialLiveMobileDeckState(model);
+    state = moveMobileDeck(model, state, "previous").state;
+
+    expect(mobileDeckSnapshot(model, state).entry.id).toBe("arc-a");
+    expect(mobileDeckLiveStatus(model, state)).toMatchObject({
+      isFollowingLive: false,
+      updatesBehind: 1,
+    });
+
+    const nextNodes = [
+      ...nodes,
+      { id: "arc-c", semantic_level: 5, timestamp_start: 60, children_ids: [] },
+    ];
+    const nextModel = buildMobileConversationDeck(nextNodes, utterances);
+    state = reconcileLiveMobileDeckState(nextModel, state);
+
+    expect(mobileDeckSnapshot(nextModel, state).entry.id).toBe("arc-a");
+    expect(mobileDeckLiveStatus(nextModel, state).updatesBehind).toBe(2);
+  });
+
+  it("returns to the newest live branch at the nearest available authored depth", () => {
+    const model = buildMobileConversationDeck(nodes, utterances);
+    let state = initialLiveMobileDeckState(model);
+    state = moveMobileDeck(model, state, "previous").state;
+    state = descend(model, state, 3);
+    expect(mobileDeckSnapshot(model, state).entry.id).toBe("idea-a");
+
+    state = returnMobileDeckToLive(model, state);
+
+    expect(mobileDeckSnapshot(model, state).entry.id).toBe("theme-b");
+    expect(state.trail).toHaveLength(2);
+    expect(mobileDeckLiveStatus(model, state)).toMatchObject({
+      isFollowingLive: true,
+      updatesBehind: 0,
+    });
   });
 });

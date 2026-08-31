@@ -5,6 +5,11 @@ conditions) without depending on internal implementation details. They
 should survive ADR-017 decomposition as long as the /ws/transcripts
 endpoint preserves its message protocol.
 
+Test intent:
+- A quota denial is a terminal protocol result, never a warning followed by
+  ``session_ack``.
+- Ordinary allowed sessions retain the established acknowledgement contract.
+
 Complements the existing test_transcripts_websocket.py happy-path tests.
 """
 
@@ -12,11 +17,14 @@ import time
 import uuid
 
 import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from lct_python_backend.tests.integration.transcripts_test_support import (
     build_processor_class,
     build_test_client,
     pcm_audio_base64,
+    receive_session_ack,
+    receive_until_type,
 )
 
 
@@ -99,7 +107,7 @@ def test_audio_chunk_after_final_flush_returns_warning(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "final_flush"})
@@ -110,7 +118,7 @@ def test_audio_chunk_after_final_flush_returns_warning(monkeypatch):
         ws.send_json(
             {"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.1)}
         )
-        msg = ws.receive_json()
+        msg = receive_until_type(ws, "processing_status")
 
     assert msg["type"] == "processing_status"
     assert msg["level"] == "warning"
@@ -122,10 +130,8 @@ def test_audio_chunk_after_final_flush_returns_warning(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_audio_chunk_with_no_stt_url_returns_provider_error(monkeypatch):
-    """When no STT HTTP URL is configured, audio_chunk should return
-    stt_provider_error (at most once per session).
-    """
+def test_session_meta_without_approved_authority_fails_before_start(monkeypatch):
+    """An exhausted authority set fails descriptively before session startup."""
     processor_calls = {"final": [], "flush": 0}
     client = build_test_client(
         monkeypatch,
@@ -133,6 +139,7 @@ def test_audio_chunk_with_no_stt_url_returns_provider_error(monkeypatch):
             "provider": "whisper",
             "provider_http_urls": {},
             "http_url": "",
+            "local_authorities": [],
         },
         processor_cls=build_processor_class(processor_calls),
     )
@@ -146,23 +153,12 @@ def test_audio_chunk_with_no_stt_url_returns_provider_error(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
-        assert ack["type"] == "session_ack"
-        assert ack["stt_ready"] is False
+        error = ws.receive_json()
+        assert error["type"] == "stt_setup_failed"
+        assert error["code"] == "local_stt_authorities_exhausted"
+        assert error["fatal"] is True
 
-        # First audio chunk → should get provider error
-        ws.send_json(
-            {"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.1)}
-        )
-        msg = ws.receive_json()
-        assert msg["type"] == "stt_provider_error"
-
-        # Second audio chunk → error should NOT repeat (stt_unready_notified flag)
-        ws.send_json(
-            {"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.1)}
-        )
-
-        # Send ping to verify connection is still alive and no error queued
+        # The websocket remains usable for a corrected session_meta retry.
         ws.send_json({"type": "ping", "client_ts_ms": 42})
         pong = ws.receive_json()
         assert pong["type"] == "pong"
@@ -197,7 +193,7 @@ def test_session_meta_resend_resets_state(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack1 = ws.receive_json()
+        ack1 = receive_session_ack(ws)
         assert ack1["type"] == "session_ack"
         assert ack1["conversation_id"] == conv1
         assert ack1["session_id"] == "s1"
@@ -212,7 +208,7 @@ def test_session_meta_resend_resets_state(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack2 = ws.receive_json()
+        ack2 = receive_session_ack(ws)
         assert ack2["type"] == "session_ack"
         assert ack2["conversation_id"] == conv2
         assert ack2["session_id"] == "s2"
@@ -240,7 +236,7 @@ def test_client_log_produces_no_response(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "client_log", "message": "test log entry"})
@@ -270,15 +266,12 @@ def test_ping_works_without_session_meta(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# 9. Unknown message type → silently ignored
+# 9. Unknown message type → structured error, connection remains usable
 # ---------------------------------------------------------------------------
 
 
-def test_unknown_message_type_silently_ignored(monkeypatch):
-    """Unknown message types should not crash the session or produce errors.
-
-    Verify by sending unknown type, then ping, and confirming pong arrives.
-    """
+def test_unknown_message_type_returns_structured_error_and_session_stays_alive(monkeypatch):
+    """Unknown message types fail explicitly without killing the session."""
     client = build_test_client(monkeypatch)
 
     with client.websocket_connect("/ws/transcripts") as ws:
@@ -290,12 +283,17 @@ def test_unknown_message_type_silently_ignored(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "nonexistent_type", "data": "hello"})
+        error = ws.receive_json()
+        assert error["type"] == "error"
+        assert error["code"] == "unsupported_message_type"
+        assert error["context"]["received_message_type"] == "nonexistent_type"
+
         ws.send_json({"type": "ping", "client_ts_ms": 1})
-        msg = ws.receive_json()
+        msg = receive_until_type(ws, "pong")
 
     assert msg["type"] == "pong"
 
@@ -319,7 +317,7 @@ def test_session_ack_has_required_fields(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
 
     assert ack["type"] == "session_ack"
     required_fields = [
@@ -344,6 +342,44 @@ def test_session_ack_has_required_fields(monkeypatch):
     assert isinstance(ack["store_audio"], bool)
 
 
+def test_session_meta_quota_denial_returns_terminal_error_without_ack(monkeypatch):
+    """A denied free-tier session must close before accepting live audio."""
+    denied = type(
+        "DeniedQuota",
+        (),
+        {
+            "allowed": False,
+            "remaining_minutes": 0.0,
+            "limit_minutes": 10.0,
+            "percent_used": 100.0,
+            "warning": True,
+            "message": "Daily quota exceeded (10 min limit).",
+        },
+    )()
+    client = build_test_client(monkeypatch, quota_result=denied)
+
+    with client.websocket_connect("/ws/transcripts") as ws:
+        ws.send_json(
+            {
+                "type": "session_meta",
+                "conversation_id": str(uuid.uuid4()),
+                "session_id": "quota-denied",
+                "provider": "whisper",
+                "store_audio": False,
+            }
+        )
+        rejection = ws.receive_json()
+        assert rejection["type"] == "quota_exceeded"
+        assert rejection["code"] == "daily_stt_quota_exceeded"
+        assert rejection["fatal"] is True
+        assert rejection["context"]["quota"]["quota_allowed"] is False
+
+        with pytest.raises(WebSocketDisconnect) as disconnect:
+            ws.receive_json()
+
+    assert disconnect.value.code == 1008
+
+
 # ---------------------------------------------------------------------------
 # 11. flush_ack shape validation
 # ---------------------------------------------------------------------------
@@ -366,11 +402,11 @@ def test_flush_ack_has_telemetry(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "final_flush"})
-        flush_ack = ws.receive_json()
+        flush_ack = receive_until_type(ws, "flush_ack")
 
     assert flush_ack["type"] == "flush_ack"
     assert "telemetry" in flush_ack
@@ -407,13 +443,13 @@ def test_transcript_partial_empty_text_skipped(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "transcript_partial", "text": ""})
         ws.send_json({"type": "transcript_partial", "text": "real text"})
         ws.send_json({"type": "final_flush"})
-        flush_ack = ws.receive_json()
+        flush_ack = receive_until_type(ws, "flush_ack")
         assert flush_ack["type"] == "flush_ack"
 
     time.sleep(0.05)

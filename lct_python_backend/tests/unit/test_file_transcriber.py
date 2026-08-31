@@ -4,6 +4,9 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
+from lct_python_backend.services.byok_session_store import (
+    build_runtime_stt_settings_for_byok,
+)
 from lct_python_backend.services.file_transcriber import (
     AudioTranscriptionDetail,
     _decode_text_bytes,
@@ -22,6 +25,41 @@ from lct_python_backend.services.file_transcriber import (
     transcribe_audio_file_detailed,
     transcribe_uploaded_file,
 )
+
+
+def _local_stt_settings():
+    return {
+        "http_timeout_seconds": 120.0,
+        "local_authorities": [
+            {
+                "id": "m5",
+                "enabled": True,
+                "provider": "parakeet",
+                "http_url": "http://localhost:5092/v1/audio/transcriptions",
+                "supports_diarization": True,
+            },
+            {
+                "id": "asus",
+                "enabled": True,
+                "provider": "whisper",
+                "http_url": "http://100.81.65.74:8001/v1/audio/transcriptions",
+                "supports_diarization": True,
+            },
+        ],
+    }
+
+
+def _validated_openai_stt_settings():
+    return build_runtime_stt_settings_for_byok(
+        _local_stt_settings(),
+        {
+            "provider": "openai_audio",
+            "base_url": "https://api.openai.com",
+            "api_key": "session-key",
+            "model": "gpt-4o-mini-transcribe",
+            "diarize_model": "gpt-4o-transcribe-diarize",
+        },
+    )
 
 
 def test_detect_file_kind_by_audio_extension():
@@ -612,14 +650,7 @@ async def test_transcribe_uploaded_file_falls_back_to_remote_provider(monkeypatc
         temp_path=wav,
         filename="clip.wav",
         content_type="audio/wav",
-        stt_settings={
-            "provider": "whisper",
-            "provider_http_urls": {
-                "parakeet": "http://localhost:5092/v1/audio/transcriptions",
-                "whisper": "http://100.81.65.74:8001/v1/audio/transcriptions",
-            },
-            "http_timeout_seconds": 120.0,
-        },
+        stt_settings=_local_stt_settings(),
         enable_parakeet_pyannote=False,
         on_provider_fallback=on_fallback,
     )
@@ -639,37 +670,11 @@ async def test_transcribe_uploaded_file_falls_back_to_remote_provider(monkeypatc
     assert fallback_events[0][1] == "whisper"
 
 
-def test_resolve_import_audio_candidates_prefers_openai_diarized_for_quality():
-    """With ``upload_local_first`` disabled, uploads prefer the OpenAI diarized
-    cloud path for transcript quality even when a local URL is configured.
-
-    Note: ``upload_local_first`` defaults to True, in which case the local URL
-    wins instead — that default-on path is covered by
-    test_stt_import_provider_selection.py. This test pins the quality-first
-    branch by explicitly opting out of local-first.
-    """
+def test_resolve_import_audio_candidates_uses_validated_openai_diarized_byok():
+    """Validated session BYOK can place OpenAI diarized STT before local authorities."""
     candidates = resolve_import_audio_candidates(
-        settings={
-            "provider": "whisper",
-            "local_only": False,
-            "upload_local_first": False,
-            "live_cloud_fallback_enabled": True,
-            "provider_http_urls": {
-                "parakeet": "http://localhost:5092/v1/audio/transcriptions",
-                "whisper": "http://100.81.65.74:7777/api/transcribe",
-            },
-            "live_fallback_priority": ["openai_audio", "remote_whisper"],
-            "cloud_fallback_providers": {
-                "openai_audio": {
-                    "enabled": True,
-                    "base_url": "https://api.openai.com",
-                    "api_key": "sk-openai-secret",
-                    "model": "gpt-4o-mini-transcribe",
-                    "diarize_model": "gpt-4o-transcribe-diarize",
-                }
-            },
-        },
-        provider_override=None,
+        settings=_validated_openai_stt_settings(),
+        provider_override="openai_audio",
     )
 
     assert candidates[0]["provider"] == "openai_audio"
@@ -707,29 +712,14 @@ async def test_transcribe_uploaded_file_prefers_openai_diarized_candidate(monkey
     monkeypatch.setattr(mod, "transcribe_wav_stt_candidate", transcribe_candidate_mock)
     monkeypatch.setattr(mod, "transcribe_audio_chunked", chunked_mock)
 
+    runtime_settings = _validated_openai_stt_settings()
+    runtime_settings["http_timeout_seconds"] = 10.0
     result = await mod.transcribe_uploaded_file(
         temp_path=wav,
         filename="clip.wav",
         content_type="audio/wav",
-        stt_settings={
-            "provider": "whisper",
-            "local_only": False,
-            "live_cloud_fallback_enabled": True,
-            "provider_http_urls": {
-                "parakeet": "http://localhost:5092/v1/audio/transcriptions",
-                "whisper": "http://100.81.65.74:7777/api/transcribe",
-            },
-            "http_timeout_seconds": 10.0,
-            "cloud_fallback_providers": {
-                "openai_audio": {
-                    "enabled": True,
-                    "base_url": "https://api.openai.com",
-                    "api_key": "sk-openai-secret",
-                    "model": "gpt-4o-mini-transcribe",
-                    "diarize_model": "gpt-4o-transcribe-diarize",
-                }
-            },
-        },
+        stt_settings=runtime_settings,
+        provider_override="openai_audio",
     )
 
     assert result.source_type == "audio"
@@ -785,9 +775,16 @@ async def test_transcribe_uploaded_file_parakeet_pyannote_sidecar(monkeypatch, t
         filename="clip.wav",
         content_type="audio/wav",
         stt_settings={
-            "provider": "parakeet",
-            "provider_http_urls": {"parakeet": "http://stt.local/v1/audio/transcriptions"},
             "http_timeout_seconds": 120.0,
+            "local_authorities": [
+                {
+                    "id": "m5",
+                    "enabled": True,
+                    "provider": "parakeet",
+                    "http_url": "http://stt.local/v1/audio/transcriptions",
+                    "supports_diarization": True,
+                }
+            ],
         },
         provider_override="parakeet",
     )
@@ -881,9 +878,16 @@ async def test_transcribe_uploaded_file_surfaces_stt_backend_in_metadata(monkeyp
         filename="gpu.wav",
         content_type="audio/wav",
         stt_settings={
-            "provider": "parakeet",
-            "provider_http_urls": {"parakeet": "http://stt.local/v1/audio/transcriptions"},
             "http_timeout_seconds": 120.0,
+            "local_authorities": [
+                {
+                    "id": "m5",
+                    "enabled": True,
+                    "provider": "parakeet",
+                    "http_url": "http://stt.local/v1/audio/transcriptions",
+                    "supports_diarization": True,
+                }
+            ],
         },
         provider_override="parakeet",
     )
@@ -913,9 +917,16 @@ async def test_transcribe_uploaded_file_omits_stt_backend_when_empty(monkeypatch
         filename="direct.wav",
         content_type="audio/wav",
         stt_settings={
-            "provider": "parakeet",
-            "provider_http_urls": {"parakeet": "http://stt.local/v1/audio/transcriptions"},
             "http_timeout_seconds": 120.0,
+            "local_authorities": [
+                {
+                    "id": "m5",
+                    "enabled": True,
+                    "provider": "parakeet",
+                    "http_url": "http://stt.local/v1/audio/transcriptions",
+                    "supports_diarization": True,
+                }
+            ],
         },
         provider_override="parakeet",
     )

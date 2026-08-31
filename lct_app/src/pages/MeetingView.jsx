@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import MinimalGraph from "../components/MinimalGraph";
@@ -8,6 +8,8 @@ import { createBackendMessageHandler } from "../components/audio/audioMessages";
 import { upsertLiveTranscriptLine } from "../components/transcript/liveTranscriptLines";
 import { normalizeGraphDataPayload, applyGraphPatch } from "./newConversationGraphState";
 import NodeDetail from "../components/NodeDetail";
+import MobileConversationDeck from "../components/threads/MobileConversationDeck";
+import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 
 /**
  * Read-only live viewer for a meeting bot. Subscribes to /ws/meeting/:id, which
@@ -47,6 +49,8 @@ export default function MeetingView() {
   const [chunkDict, setChunkDict] = useState({});
   const [transcriptLines, setTranscriptLines] = useState([]);
   const [transcriptMinimized, setTranscriptMinimized] = useState(true);
+  const [mobileMapOpen, setMobileMapOpen] = useState(false);
+  const compactViewer = useMediaQuery(COMPACT_VIEWER_QUERY);
 
   const graphFromSocketRef = useRef(false);
   const flushResolveRef = useRef(null);
@@ -108,15 +112,47 @@ export default function MeetingView() {
   const statusStyle = STATUS_STYLES[status] || STATUS_STYLES.starting;
   const transcriptOverlayVisible = transcriptLines.length > 0;
   const viewportBottom = transcriptOverlayVisible ? (transcriptMinimized ? "4.5rem" : "40%") : "0";
+  const flatGraphNodes = useMemo(
+    () => graphData.flatMap((chunk) => (Array.isArray(chunk) ? chunk : [])),
+    [graphData],
+  );
+  const liveBundle = useMemo(() => ({
+    conversation_title: `Live meeting · ${statusLabel}`,
+    utterances: transcriptLines.map((line, index) => ({
+      ...line,
+      id: String(line.id),
+      sequence_number: index + 1,
+      speaker_name: line.speaker,
+      speaker_id: line.speakerId,
+    })),
+    media_refs: [],
+  }), [statusLabel, transcriptLines]);
+
+  if (compactViewer && !mobileMapOpen) {
+    return (
+      <MobileConversationDeck
+        bundle={liveBundle}
+        graphNodes={flatGraphNodes}
+        live
+        onDownloadTranscript={() => {}}
+        onOpenAnother={() => {}}
+        onOpenLibrary={() => navigate("/")}
+        onShowMap={() => setMobileMapOpen(true)}
+      />
+    );
+  }
 
   return (
     <div className="relative flex h-[100dvh] w-screen flex-col bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)]">
       <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white/70 px-4 py-2 backdrop-blur">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => {
+              if (compactViewer && mobileMapOpen) setMobileMapOpen(false);
+              else navigate("/");
+            }}
             className="rounded-full p-1.5 text-slate-500 hover:bg-slate-100"
-            title="Home"
+            title={compactViewer && mobileMapOpen ? "Back to conversation deck" : "Home"}
           >
             <ArrowLeft size={18} />
           </button>

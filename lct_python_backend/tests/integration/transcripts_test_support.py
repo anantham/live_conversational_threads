@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import copy
 import importlib
 import struct
 import sys
@@ -44,6 +45,31 @@ def build_processor_class(call_store, *, flush_delay=0.0):
     return Processor
 
 
+def receive_session_ack(websocket):
+    """Receive and validate the public two-frame session startup contract."""
+    started = websocket.receive_json()
+    assert started["type"] == "session_started"
+    ack = websocket.receive_json()
+    assert ack["type"] == "session_ack"
+    assert ack["conversation_id"] == started["conversation_id"]
+    assert ack["session_id"] == started["session_id"]
+    return ack
+
+
+def receive_until_type(websocket, expected_type, *, max_messages=20):
+    """Read an asynchronous protocol stream until the requested public frame."""
+    observed = []
+    for _ in range(max_messages):
+        message = websocket.receive_json()
+        observed.append(message.get("type"))
+        if message.get("type") == expected_type:
+            return message
+    raise AssertionError(
+        f"Did not receive {expected_type!r} within {max_messages} frames; "
+        f"observed={observed}"
+    )
+
+
 def build_test_client(
     monkeypatch,
     *,
@@ -52,9 +78,13 @@ def build_test_client(
     stt_session_cls=None,
     runtime_factory=None,
     persist_side_effect=None,
+    quota_result=None,
 ):
     async def dummy_get_async_session():
         yield DummySession()
+
+    async def noop_async(*_args, **_kwargs):
+        return None
 
     class PlaceholderProcessor:
         def __init__(self, *args, **kwargs):
@@ -86,11 +116,58 @@ def build_test_client(
     stt_api = importlib.import_module("lct_python_backend.stt_api")
     ws_mod = importlib.import_module("lct_python_backend.services.stt.stt_ws_session")
 
-    effective_stt_settings = stt_settings or {
+    effective_quota_result = quota_result or types.SimpleNamespace(
+        allowed=True,
+        remaining_minutes=10.0,
+        limit_minutes=10.0,
+        percent_used=0.0,
+        warning=False,
+        message="",
+    )
+
+    class StubQuotaService:
+        def __init__(self, _session):
+            pass
+
+        async def check_quota(self, **_kwargs):
+            return effective_quota_result
+
+        async def record_usage(self, **_kwargs):
+            return None
+
+    effective_stt_settings = copy.deepcopy(stt_settings) if stt_settings is not None else {
         "provider": "whisper",
-        "provider_http_urls": {},
-        "http_url": "",
+        "provider_http_urls": {
+            "whisper": "http://stt.example.test/api/transcribe",
+        },
+        "http_url": "http://stt.example.test/api/transcribe",
     }
+    if "local_authorities" not in effective_stt_settings:
+        provider_urls = effective_stt_settings.get("provider_http_urls")
+        provider_urls = provider_urls if isinstance(provider_urls, dict) else {}
+        local_authorities = []
+        for provider, http_url in provider_urls.items():
+            normalized_provider = str(provider or "").strip().lower()
+            if normalized_provider in {"openai_audio", "openrouter_audio"} or not http_url:
+                continue
+            local_authorities.append({
+                "id": f"test-{normalized_provider}",
+                "enabled": True,
+                "provider": normalized_provider,
+                "http_url": str(http_url),
+                "supports_diarization": normalized_provider == "whisper",
+            })
+        if not local_authorities and effective_stt_settings.get("http_url"):
+            provider = str(effective_stt_settings.get("provider") or "whisper").strip().lower()
+            if provider not in {"openai_audio", "openrouter_audio"}:
+                local_authorities.append({
+                    "id": f"test-{provider}",
+                    "enabled": True,
+                    "provider": provider,
+                    "http_url": str(effective_stt_settings["http_url"]),
+                    "supports_diarization": provider == "whisper",
+                })
+        effective_stt_settings["local_authorities"] = local_authorities
 
     async def _always_authed(_websocket):
         return True
@@ -99,6 +176,12 @@ def build_test_client(
     monkeypatch.setattr(stt_api, "get_async_session_context", dummy_session_context)
     monkeypatch.setattr(stt_api, "load_llm_config", AsyncMock(return_value={}))
     monkeypatch.setattr(stt_api, "_load_llm_providers", AsyncMock(return_value=[]))
+    monkeypatch.setattr(ws_mod, "QuotaService", StubQuotaService)
+    monkeypatch.setattr(ws_mod, "ensure_conversation", noop_async)
+    monkeypatch.setattr(ws_mod, "start_thread_session", noop_async)
+    monkeypatch.setattr(ws_mod, "finish_thread_session", noop_async)
+    monkeypatch.setattr(ws_mod, "record_thread_event", noop_async)
+    monkeypatch.setattr(ws_mod.WsSessionContext, "_detect_resume", noop_async)
     monkeypatch.setattr(
         stt_api,
         "_load_stt_settings",

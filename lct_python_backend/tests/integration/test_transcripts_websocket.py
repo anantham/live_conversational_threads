@@ -34,6 +34,7 @@ from lct_python_backend.tests.integration.transcripts_test_support import (
     build_processor_class,
     build_test_client,
     pcm_audio_base64,
+    receive_session_ack,
 )
 
 
@@ -72,7 +73,7 @@ def test_transcripts_ws_persists_partial_and_final(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
         assert ack["conversation_id"] == conversation_id
         assert ack["session_id"] == "session-1"
@@ -81,7 +82,7 @@ def test_transcripts_ws_persists_partial_and_final(monkeypatch):
         assert ack["model_source"] == "server_default"
         assert ack["supports_diarization"] is True
         assert ack["degraded"] is False
-        assert ack["stt_ready"] is False
+        assert ack["stt_ready"] is True
 
         ws.send_json({"type": "transcript_partial", "text": "hello"})
         ws.send_json(
@@ -169,7 +170,7 @@ def test_transcripts_ws_accepts_audio_chunk_backend_owned_stt(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
         assert ack["stt_mode"] == "backend_http"
         assert ack["transport"] == "backend_http"
@@ -308,7 +309,7 @@ def test_transcripts_ws_accepts_streaming_runtime_events(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
         assert ack["stt_mode"] == "openai_realtime"
         assert ack["transport"] == "openai_realtime"
@@ -399,6 +400,15 @@ def test_transcripts_ws_backend_realtime_forces_audio_storage_and_schedules_file
         async def append_chunk(self, conversation_id, chunk_bytes):
             self.appended.append((conversation_id, bytes(chunk_bytes)))
 
+        def get_status(self, conversation_id):
+            return {
+                "bytes_written": sum(
+                    len(chunk)
+                    for stored_conversation_id, chunk in self.appended
+                    if stored_conversation_id == conversation_id
+                )
+            }
+
         async def finalize(self, conversation_id):
             self.finalized.append(conversation_id)
             return {
@@ -411,6 +421,16 @@ def test_transcripts_ws_backend_realtime_forces_audio_storage_and_schedules_file
         monkeypatch,
         stt_settings={
             "provider": "whisper",
+            "local_authorities": [
+                {
+                    "id": "asus",
+                    "enabled": True,
+                    "provider": "whisper",
+                    "http_url": "http://100.81.65.74:7777/api/transcribe",
+                    "ws_url": "ws://100.81.65.74:7777/api/transcribe/stream",
+                    "supports_diarization": True,
+                }
+            ],
             "provider_http_urls": {
                 "whisper": "http://100.81.65.74:7777/api/transcribe",
             },
@@ -448,7 +468,7 @@ def test_transcripts_ws_backend_realtime_forces_audio_storage_and_schedules_file
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
         assert ack["stt_mode"] == "backend_ws"
         assert ack["transport"] == "backend_ws"
@@ -593,7 +613,7 @@ def test_transcripts_ws_session_meta_uses_byok_openai_candidate(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
 
     assert ack["type"] == "session_ack"
     assert ack["provider"] == "openai_audio"
@@ -706,14 +726,16 @@ def test_transcripts_ws_byok_token_does_not_override_whisper_primary(monkeypatch
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
 
     assert ack["type"] == "session_ack"
     assert ack["provider"] == "whisper"
     assert ack["transport"] == "backend_http"
     assert captured["kwargs"]["candidates"][0]["provider"] == "whisper"
-    assert captured["kwargs"]["candidates"][0]["route_id"] == "configured_provider"
-    assert captured["kwargs"]["candidates"][1]["provider"] == "openai_audio"
+    assert captured["kwargs"]["candidates"][0]["route_id"] == (
+        "local_authority_test-whisper"
+    )
+    assert len(captured["kwargs"]["candidates"]) == 1
 
 
 def test_transcripts_ws_background_refinement_persists_speaker_segments_with_window_timestamps(monkeypatch):
@@ -839,7 +861,7 @@ def test_transcripts_ws_background_refinement_persists_speaker_segments_with_win
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
         assert ack["stt_mode"] == "openai_realtime"
 
@@ -903,7 +925,7 @@ def test_transcripts_ws_graph_status_includes_queue_and_generation_metrics(monke
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "transcript_final", "text": "graph me now"})
@@ -964,7 +986,7 @@ def test_transcripts_ws_emits_draft_then_finalized_graph_patch(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "transcript_partial", "text": "this is a live draft node"})
@@ -1031,7 +1053,7 @@ def test_transcripts_ws_persists_canonical_graph_on_finalized_patch(monkeypatch)
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "transcript_final", "text": "persist me canonically"})
@@ -1082,7 +1104,7 @@ def test_transcripts_ws_flush_complete_is_not_blocked_by_slow_processor_flush(mo
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "transcript_final", "text": "quick final segment"})
@@ -1113,7 +1135,7 @@ def test_transcripts_ws_pong_echoes_client_timestamp(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "ping", "client_ts_ms": 123456789})
@@ -1173,7 +1195,7 @@ def test_transcripts_ws_session_ack_includes_live_fallback_candidates(monkeypatc
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
 
     assert ack["type"] == "session_ack"
     assert ack["transport"] == "backend_http"
@@ -1183,21 +1205,18 @@ def test_transcripts_ws_session_ack_includes_live_fallback_candidates(monkeypatc
     assert ack["degraded"] is False
     assert ack["stt_ready"] is True
     assert ack["provider_http_url"] == "http://localhost:5092/v1/audio/transcriptions"
+    assert ack["authority_id"] == "test-parakeet"
+    assert ack["authority_scope"] == "owner_approved_local"
     assert ack["fallback_candidates"] == [
         {
-            "route_id": "openai_audio",
-            "provider": "openai_audio",
-            "transport": "openai_audio",
-            "reason": "fallback_openai_audio",
-            "degraded": False,
-        },
-        {
-            "route_id": "remote_whisper",
+            "route_id": "local_authority_test-whisper",
+            "authority_id": "test-whisper",
+            "authority_scope": "owner_approved_local",
             "provider": "whisper",
             "transport": "backend_http",
-            "reason": "fallback_remote_whisper",
+            "reason": "approved_local_test-whisper",
             "degraded": False,
-        },
+        }
     ]
 
 
@@ -1224,7 +1243,7 @@ def test_transcripts_ws_requires_session_meta_before_audio(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
 
     assert ack["type"] == "session_ack"
 
@@ -1252,7 +1271,7 @@ def test_transcripts_ws_rejects_malformed_json_with_structured_error(monkeypatch
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
 
     assert ack["type"] == "session_ack"
 
@@ -1270,7 +1289,7 @@ def test_transcripts_ws_rejects_unsupported_message_type(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         assert ack["type"] == "session_ack"
 
         ws.send_json({"type": "mystery_event", "payload": "???"})
@@ -1380,7 +1399,7 @@ def test_transcripts_ws_surfaces_runtime_start_failure_after_ack(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = ws.receive_json()
+        ack = receive_session_ack(ws)
         error = ws.receive_json()
 
     assert ack["type"] == "session_ack"

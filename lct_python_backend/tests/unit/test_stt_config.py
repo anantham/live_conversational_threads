@@ -22,6 +22,11 @@ def test_env_defaults_respect_auth(monkeypatch):
     )
     monkeypatch.setenv("STT_STORE_AUDIO_DEFAULT", "1")
     monkeypatch.setenv("STT_LOCAL_ONLY", "true")
+    monkeypatch.setenv(
+        "STT_M5_HTTP_URL",
+        "https://m5.example.test/v1/audio/transcriptions",
+    )
+    monkeypatch.setenv("STT_ASUS_HTTP_URL", "http://asus.example.test/api/transcribe")
     defaults = get_env_stt_defaults()
 
     assert defaults["provider"] == "parakeet"
@@ -34,6 +39,16 @@ def test_env_defaults_respect_auth(monkeypatch):
     assert defaults["store_audio"] is True
     assert defaults["local_only"] is True
     assert defaults["live_fallback_priority"] == DEFAULT_STT_LIVE_FALLBACK_PRIORITY
+    assert [authority["id"] for authority in defaults["local_authorities"]] == [
+        "m5",
+        "asus",
+    ]
+    assert defaults["local_authorities"][0]["http_url"] == (
+        "https://m5.example.test/v1/audio/transcriptions"
+    )
+    assert defaults["local_authorities"][1]["http_url"] == (
+        "http://asus.example.test/api/transcribe"
+    )
 
 
 def test_merge_overrides_converts_booleans_and_preserves_provider_map():
@@ -62,6 +77,32 @@ def test_merge_overrides_converts_booleans_and_preserves_provider_map():
     assert merged["provider_http_urls"]["parakeet"] == "http://127.0.0.1:5092/v1/audio/transcriptions"
     assert merged["ws_url"] == "ws://127.0.0.1:3211/stream"
     assert merged["http_url"] == "http://127.0.0.1:3211/v1/audio/transcriptions"
+
+
+def test_merge_cannot_replace_environment_authority_or_mint_byok(monkeypatch):
+    monkeypatch.setenv(
+        "STT_M5_HTTP_URL",
+        "https://m5.example.test/v1/audio/transcriptions",
+    )
+    merged = merge_stt_config(
+        {
+            "local_authorities": [
+                {
+                    "id": "spoofed",
+                    "enabled": True,
+                    "provider": "whisper",
+                    "http_url": "https://attacker.example/transcribe",
+                }
+            ],
+            "_validated_stt_byok_provider": "openai_audio",
+        }
+    )
+
+    assert merged["local_authorities"][0]["id"] == "m5"
+    assert merged["local_authorities"][0]["http_url"] == (
+        "https://m5.example.test/v1/audio/transcriptions"
+    )
+    assert "_validated_stt_byok_provider" not in merged
 
 
 def test_merge_legacy_ws_url_updates_selected_provider_slot():

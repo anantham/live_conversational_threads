@@ -19,6 +19,7 @@ from lct_python_backend.services.file_transcriber import (
     transcribe_uploaded_file,
 )
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
+from lct_python_backend.services.stt.stt_config import get_env_stt_defaults
 from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,104 @@ def _elapsed_ms(started_at: float) -> int:
 
 def _clone(value: Any) -> Any:
     return copy.deepcopy(value)
+
+
+_SENSITIVE_QUEUE_KEY_NAMES = {
+    "api_key",
+    "access_token",
+    "refresh_token",
+    "token",
+    "secret",
+    "password",
+}
+_CLOUD_STT_PROVIDER_IDS = {"openai_audio", "openrouter_audio"}
+
+
+def _is_sensitive_queue_key(value: Any) -> bool:
+    normalized = str(value or "").strip().lower()
+    return normalized in _SENSITIVE_QUEUE_KEY_NAMES or normalized.endswith(
+        ("_api_key", "_token", "_secret", "_password")
+    )
+
+
+def _sanitize_runtime_for_queue(value: Any) -> Any:
+    """Return a deep copy with credential-shaped fields removed recursively."""
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_runtime_for_queue(item)
+            for key, item in value.items()
+            if not _is_sensitive_queue_key(key)
+        }
+    if isinstance(value, list):
+        return [_sanitize_runtime_for_queue(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_runtime_for_queue(item) for item in value)
+    return _clone(value)
+
+
+def _non_cloud_provider_map(value: Any) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(key): _sanitize_runtime_for_queue(item)
+        for key, item in value.items()
+        if str(key or "").strip().lower() not in _CLOUD_STT_PROVIDER_IDS
+    }
+
+
+def _sanitize_stt_settings_for_queue(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Strip credentials and cloud authority from delayed STT job state.
+
+    A queued job executes after the foreground BYOK/session scope has ended, so
+    it may retain non-secret local endpoint preferences but must not inherit a
+    cloud credential, provider override, or external fallback route.
+    """
+    sanitized = _sanitize_runtime_for_queue(settings)
+    if not isinstance(sanitized, dict):
+        return {}
+
+    provider_http_urls = _non_cloud_provider_map(sanitized.get("provider_http_urls"))
+    provider_urls = _non_cloud_provider_map(sanitized.get("provider_urls"))
+    sanitized["provider_http_urls"] = provider_http_urls
+    sanitized["provider_urls"] = provider_urls
+
+    configured_provider = str(sanitized.get("provider") or "").strip().lower()
+    configured_local_provider = configured_provider if (
+        configured_provider not in _CLOUD_STT_PROVIDER_IDS
+        and (provider_http_urls.get(configured_provider) or provider_urls.get(configured_provider))
+    ) else ""
+    if configured_local_provider:
+        sanitized["provider"] = configured_local_provider
+        if provider_http_urls.get(configured_local_provider):
+            sanitized["http_url"] = provider_http_urls[configured_local_provider]
+        else:
+            sanitized.pop("http_url", None)
+        if provider_urls.get(configured_local_provider):
+            sanitized["ws_url"] = provider_urls[configured_local_provider]
+        else:
+            sanitized.pop("ws_url", None)
+    else:
+        sanitized.pop("provider", None)
+        sanitized.pop("http_url", None)
+        sanitized.pop("ws_url", None)
+
+    for key in (
+        "local_authorities",
+        "cloud_fallback_providers",
+        "external_fallback_http_url",
+        "external_fallback_ws_url",
+        "fallback_provider",
+        "live_fallback_priority",
+    ):
+        sanitized.pop(key, None)
+    for key in tuple(sanitized):
+        if str(key).startswith("_validated_stt_"):
+            sanitized.pop(key, None)
+    sanitized["local_only"] = True
+    sanitized["live_cloud_fallback_enabled"] = False
+    sanitized["live_allow_text_only_fallback"] = False
+    sanitized["upload_remote_fallback"] = False
+    return sanitized
 
 
 @dataclass
@@ -134,12 +233,13 @@ class ImportDiarizationQueue:
                 "filename": filename,
                 "content_type": content_type,
                 "source_type_override": source_type_override,
-                "provider_override": provider_override,
+                # Foreground provider/BYOK authority expires before this
+                # delayed job runs. Re-enter the ordinary local-only resolver.
+                "provider_override": None,
                 "conversation_id": conversation_id,
                 "speaker_id": speaker_id,
-                "stt_settings": _clone(stt_settings),
-                "llm_config": _clone(llm_config),
-                "source_metadata": _clone(source_metadata) if isinstance(source_metadata, dict) else {},
+                "stt_settings": _sanitize_stt_settings_for_queue(stt_settings),
+                "llm_config": _sanitize_runtime_for_queue(llm_config),
             },
         )
 
@@ -291,11 +391,15 @@ class ImportDiarizationQueue:
             )
             active_stage = "transcribing"
             transcribe_started_at = time.perf_counter()
+            execution_stt_settings = _clone(job.request.get("stt_settings") or {})
+            execution_stt_settings["local_authorities"] = _clone(
+                get_env_stt_defaults().get("local_authorities") or []
+            )
             transcript_result = await transcribe_uploaded_file(
                 temp_path=job.audio_path,
                 filename=str(job.request.get("filename") or job.audio_path.name),
                 content_type=job.request.get("content_type"),
-                stt_settings=_clone(job.request.get("stt_settings") or {}),
+                stt_settings=execution_stt_settings,
                 provider_override=job.request.get("provider_override"),
                 source_type_override=job.request.get("source_type_override"),
                 enable_parakeet_pyannote=True,

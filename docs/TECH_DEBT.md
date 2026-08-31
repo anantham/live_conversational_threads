@@ -49,7 +49,8 @@ Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-
 | lct_python_backend/stt_api.py | 377 | Router now carries settings persistence, health probes, cloud-provider smoke tests, audio upload routes, websocket mount wiring, the new BYOK session-mint route, and backward-compat wrappers in one module | Re-split routes into `stt_settings_api.py`, `stt_diagnostics_api.py`, `stt_audio_api.py`, and a small `stt_byok_api.py`; keep websocket mount and compatibility wrappers thin |
 | lct_python_backend/services/thread_observability_service.py | 332 | Session lifecycle writes, terminal-state mutation, aggregate rollups, error breakdowns, and conversation-detail shaping all landed in one service for the first observability slice | Split durable writes into `thread_session_store.py` and move aggregate query/rollup logic into `thread_observability_queries.py` before adding dashboards or non-live entrypoints |
 | lct_python_backend/middleware.py | 456 | Auth mode selection, admin-route classification, websocket auth helpers, rate limiting, upload/body size enforcement, and URL-import gating all live in one module | Split into `auth_policy.py`, `ws_auth.py`, `rate_limit.py`, and `body_limits.py` so public/admin deployment policy can evolve without touching unrelated enforcement code |
-| lct_python_backend/services/stt_ws_session.py | 1935 | Session bootstrap, websocket message loop, STT runtime selection, realtime and HTTP event handling, draft-graph orchestration, transcript persistence, flush orchestration, structured websocket error emission, background file-backed refinement scheduling, audio-retention policy, correlated observability logging, speaker reconciliation, graph-persist scheduling, timestamp-window tracking, durable speaker-materialization handoff, and BYOK runtime overlay still share one class. Backend-owned graph persistence has been partially extracted to `live_graph_persistence.py`, but the orchestration glue remains monolithic. | Continue splitting into `stt_ws_session_setup.py`, `stt_ws_audio_ingest.py`, `stt_ws_runtime_events.py`, `stt_ws_draft_graph.py`, `stt_ws_refinement.py`, `stt_ws_observability.py`, and `stt_ws_flush.py`, with BYOK/runtime-selection policy moved into the setup slice and file-backed refinement moved into the refinement slice |
+| lct_python_backend/services/stt/stt_ws_session.py | 3367 | Session bootstrap, quota admission, websocket message loop, STT runtime selection, realtime and HTTP event handling, draft-graph orchestration, transcript persistence, flush orchestration, structured websocket error emission, background file-backed refinement scheduling, audio-retention policy, correlated observability logging, speaker reconciliation, graph-persist scheduling, timestamp-window tracking, durable speaker-materialization handoff, and BYOK runtime overlay still share one class. Backend-owned graph persistence has been partially extracted to `live_graph_persistence.py`, but the orchestration glue remains monolithic. | Continue splitting into `stt_ws_session_setup.py`, `stt_ws_audio_ingest.py`, `stt_ws_runtime_events.py`, `stt_ws_draft_graph.py`, `stt_ws_refinement.py`, `stt_ws_observability.py`, and `stt_ws_flush.py`, with quota/BYOK/runtime-selection policy moved into the setup slice and file-backed refinement moved into the refinement slice |
+| lct_python_backend/local_stt/server.py | 619 | FastAPI transport, capacity admission, MLX transcription, Silero VAD/evidence serialization, pyannote diarization, ECAPA embeddings, temporary-file lifecycle, and accelerator-cache cleanup still share one executable module | Extract a small `compute_runtime.py` for bounded admission/offloading and separate `vad.py`, `diarization.py`, and `embeddings.py` adapters before adding another local engine; keep `server.py` focused on the HTTP contract |
 | lct_python_backend/services/stt_backend_realtime.py | 323 | Backend websocket transport setup, PCM resampling, startup handshake, upstream event normalization, queue draining, and flush/close state all live in one module | Split into `stt_backend_realtime_transport.py` and `stt_backend_realtime_events.py` once a second backend streaming provider lands or the protocol grows beyond the current Whisper adapter |
 | lct_python_backend/services/speaker_materialization.py | 300 | Immutable segment-row normalization, deterministic overlap assignment, DB persistence, and utterance read-model mutation landed together in the first Phase 2A slice | If Phase 2B adds an evidence-bounded aligner, split pure overlap/scoring helpers into `speaker_alignment_rules.py` and keep `speaker_materialization.py` focused on persistence/orchestration |
 | lct_python_backend/services/stt_openai_realtime.py | 422 | Provider websocket transport, realtime session configuration, PCM resampling, committed-audio bookkeeping, provider-event normalization, and runtime queue management are all mixed in one module | Split into `stt_openai_realtime_transport.py`, `stt_openai_realtime_events.py`, and `stt_audio_resample.py`; keep the top-level runtime focused on orchestration only |
@@ -185,3 +186,66 @@ surface selection. Before adding another artifact source, extract a
 `useThreadsArtifactLoader` controller and declarative loaded/empty/error route
 states; keep the page responsible only for choosing desktop graph versus mobile
 deck presentation.
+
+### 2026-08-30 — Rescue packets must not expand current LLM/mobile monoliths
+
+The consolidation audit found useful dormant telemetry and live-history state,
+but their old integration points would worsen current mixed-concern files.
+`local_llm_client.py` (~850 lines) combines provider transport, fallback,
+response normalization, logging, and telemetry; a durable facts contract should
+live in an extracted event envelope/store rather than another inline decorator.
+`llm_gateway.py` (~519 lines) should remain orchestration-only. Likewise,
+`MobileConversationDeck.jsx` (~324 lines) already owns gestures, notices,
+controlled/uncontrolled state, modal suspension, and rendering; live-follow
+versus pinned-history state should be a pure model/controller extraction, not
+more component-local state. These are implementation constraints if S3-A and
+S4-A are approved, not authorization to refactor them during the inventory.
+
+S3-A followed that boundary: the facts envelope/observer is 251 lines and its
+database adapter is 86 lines. `llm_gateway.py` is now 604 lines and remains
+orchestration-only, while `local_llm_client.py` is 910 lines after adding result
+metadata extraction. The remaining refactor candidate is still to split
+provider transport/normalization from sync and async fallback; it was not mixed
+into this telemetry packet because that would broaden the consolidation risk.
+
+S4-A extracted the live/historical state lifecycle into the 61-line
+`useMobileConversationDeckState.js` controller, but the gesture, notice,
+shortcut, evidence-selection, and composition concerns leave
+`MobileConversationDeck.jsx` at roughly 348 lines. Before adding another gesture
+or navigation mode, extract a `useMobileDeckGestures` hook and the transient
+notice lifecycle; do not create a second mobile presentation surface.
+
+The pure `mobileConversationDeckModel.js` is also roughly 370 lines after the
+live follow/pin contract. Its concerns are still cohesive, but the temporal
+cursor rules and hierarchy/index construction now deserve separate modules if
+another navigation policy is added. Keep movement/reconciliation pure and do
+not move cursor policy back into React components.
+
+### 2026-08-30 — ImportDiarizationQueue mixes custody and processing
+
+`services/import_pipeline/import_diarization_queue.py` is over 550 lines and
+combines delayed-request custody, secret minimization, worker lifecycle,
+transcription, speaker materialization, graph generation, event storage, and
+retention. The consolidation security repair keeps sanitization in small pure
+functions, but a later refactor should extract a typed `QueuedImportRequest`
+builder/custody policy and a separate worker executor. This is especially
+important before replacing the in-memory queue with durable storage: the
+credential-free delayed-work invariant must remain at the serialization
+boundary rather than depending on every worker implementation.
+
+### 2026-08-31 — STT authority extracted; session orchestration remains oversized
+
+S5-B removed the 410-line legacy preference/hostname routing implementation
+and replaced it with a 62-line explicit import authority resolver plus the
+shared 54-line `stt_authority.py` contract. The live/session integration still
+lives inside the pre-existing multi-thousand-line `stt_ws_session.py`; further
+authority features should enter through the resolver contract rather than add
+new selection branches to that session monolith.
+
+`local_stt/server.py` remains a roughly 620-line process boundary combining
+HTTP admission, model/VAD/diarizer/embedder lifecycle, audio staging, response
+adaptation, and accelerator cleanup. The consolidation keeps admission wording
+and its regression beside the existing endpoint rather than obscuring the
+reviewed behavior in a refactor. Before adding another engine or preprocessing
+stage, extract a request-lifecycle service that owns the bounded processing
+slot and cleanup, leaving the FastAPI endpoint as validation/response glue.

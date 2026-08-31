@@ -19,6 +19,9 @@ from lct_python_backend.services.stt.stt_config import (
     DEFAULT_OPENAI_AUDIO_MODEL,
     normalize_cloud_provider_base_url,
 )
+from lct_python_backend.services.stt.stt_authority import (
+    VALIDATED_STT_BYOK_PROVIDER_KEY,
+)
 
 BYOK_PROVIDER_IDS = ("openai_audio",)
 BYOK_SCOPE_LLM_IMPORT = "llm_import"
@@ -269,6 +272,12 @@ def build_runtime_stt_settings_for_byok(
     )
     runtime_settings["local_only"] = False
     runtime_settings["live_cloud_fallback_enabled"] = True
+    # Internal capability marker: only a successfully resolved scoped BYOK
+    # session reaches this builder. Saved settings and request payloads are not
+    # permitted to mint it through merge_stt_config.
+    runtime_settings[VALIDATED_STT_BYOK_PROVIDER_KEY] = str(
+        byok_session.get("provider") or "openai_audio"
+    ).strip().lower()
     runtime_settings["cloud_fallback_providers"] = {
         **cloud_providers,
         "openai_audio": {

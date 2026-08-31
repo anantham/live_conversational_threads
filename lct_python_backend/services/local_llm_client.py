@@ -78,6 +78,43 @@ def _resolve_served_model(result_json: Any, requested_model: str, provider_id: s
     return served
 
 
+def _optional_int(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _response_fact_metrics(result_json: Any) -> Dict[str, Any]:
+    """Extract content-free provider facts while preserving missing usage."""
+
+    body = result_json if isinstance(result_json, dict) else {}
+    usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+    prompt_tokens = _optional_int(usage.get("prompt_tokens"))
+    completion_tokens = _optional_int(usage.get("completion_tokens"))
+    total_tokens = _optional_int(usage.get("total_tokens"))
+    if total_tokens is None and prompt_tokens is not None and completion_tokens is not None:
+        total_tokens = prompt_tokens + completion_tokens
+
+    finish_reason = None
+    choices = body.get("choices")
+    if isinstance(choices, list) and choices and isinstance(choices[0], dict):
+        candidate = choices[0].get("finish_reason")
+        if candidate is not None:
+            finish_reason = str(candidate)
+
+    request_id = body.get("id")
+    return {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "finish_reason": finish_reason,
+        "request_id": str(request_id) if request_id is not None else None,
+    }
+
+
 def _record_llm_telemetry(
     result_json: Any,
     *,
@@ -347,6 +384,13 @@ class ProviderResult:
         total_providers_tried: int = 1,
         prompt_name: Optional[str] = None,
         prompt_version: Optional[str] = None,
+        prompt_tokens: Optional[int] = None,
+        completion_tokens: Optional[int] = None,
+        total_tokens: Optional[int] = None,
+        provider_latency_ms: Optional[float] = None,
+        finish_reason: Optional[str] = None,
+        request_id: Optional[str] = None,
+        cache_hit: bool = False,
     ):
         self.data = data
         self.provider_id = provider_id
@@ -358,6 +402,13 @@ class ProviderResult:
         self.total_providers_tried = total_providers_tried
         self.prompt_name = prompt_name
         self.prompt_version = prompt_version
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+        self.total_tokens = total_tokens
+        self.provider_latency_ms = provider_latency_ms
+        self.finish_reason = finish_reason
+        self.request_id = request_id
+        self.cache_hit = cache_hit
 
     def backend_label(self) -> str:
         """Return a backend label that reflects the actual provider class."""
@@ -534,6 +585,8 @@ async def chat_with_provider_fallback(
                     require_json=require_json,
                 )
 
+                fact_metrics = _response_fact_metrics(result_json)
+
                 return ProviderResult(
                     data=data,
                     provider_id=provider_id,
@@ -545,6 +598,8 @@ async def chat_with_provider_fallback(
                     total_providers_tried=total_providers,
                     prompt_name=prompt_name,
                     prompt_version=prompt_version,
+                    provider_latency_ms=_elapsed_ms,
+                    **fact_metrics,
                 )
 
         except httpx.HTTPStatusError as exc:
@@ -647,6 +702,7 @@ def chat_with_provider_fallback_sync(
             provider_type=str(_first.get("type", "openai_compatible")),
             attempt_number=0, total_providers_tried=0,
             prompt_name=prompt_name, prompt_version=prompt_version,
+            cache_hit=True,
         )
 
     errors: List[Tuple[str, str]] = []
@@ -790,6 +846,8 @@ def chat_with_provider_fallback_sync(
                     require_json=require_json,
                 )
 
+                fact_metrics = _response_fact_metrics(result_json)
+
                 # Cache only SUCCESSES, and only when a key was computable.
                 if _key:
                     _cache.put(_key, data, served_model, prompt_name)
@@ -805,6 +863,8 @@ def chat_with_provider_fallback_sync(
                     total_providers_tried=total_providers,
                     prompt_name=prompt_name,
                     prompt_version=prompt_version,
+                    provider_latency_ms=_elapsed_ms,
+                    **fact_metrics,
                 )
 
         except httpx.HTTPStatusError as exc:

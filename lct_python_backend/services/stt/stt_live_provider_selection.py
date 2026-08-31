@@ -3,247 +3,69 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from urllib.parse import urlparse, urlunparse
 
 from lct_python_backend.services.coercion_helpers import coerce_str, to_bool
-from .stt_config import (
-    STT_CLOUD_PROVIDER_IDS,
-    STT_PROVIDER_IDS,
-    _normalize_provider,
-    build_cloud_provider_api_url,
-    normalize_live_fallback_priority,
+from .stt_authority import (
+    VALIDATED_BYOK_SCOPE,
+    resolve_local_authority_candidates,
+    validated_byok_provider,
 )
-
-
-def _is_local_http_url(raw_url: str) -> bool:
-    if not raw_url:
-        return False
-    try:
-        parsed = urlparse(raw_url)
-    except ValueError:
-        return False
-    host = (parsed.hostname or "").strip().lower()
-    if not host:
-        return False
-    if host in {"localhost", "127.0.0.1", "::1", "0.0.0.0", "host.docker.internal"}:
-        return True
-    return host.endswith(".local")
-
-
-def _build_backend_ws_url(raw_url: str) -> str:
-    if not raw_url:
-        return ""
-    try:
-        parsed = urlparse(raw_url)
-    except ValueError:
-        return ""
-    if not parsed.scheme or not parsed.netloc:
-        return ""
-
-    scheme = "wss" if parsed.scheme == "https" else "ws"
-    path = parsed.path.rstrip("/")
-    if path.endswith("/api/transcribe"):
-        ws_path = f"{path}/stream"
-    elif path.endswith("/v1/audio/transcriptions"):
-        ws_path = f"{path[:-len('/v1/audio/transcriptions')]}/v1/audio/stream"
-    else:
-        return ""
-    return urlunparse((scheme, parsed.netloc, ws_path, "", parsed.query, ""))
-
+from .stt_config import (
+    build_cloud_provider_api_url,
+)
 
 def resolve_live_stt_candidates(
     *,
     settings: Dict[str, Any],
     provider_override: Optional[str],
 ) -> List[Dict[str, Any]]:
-    """Resolve ordered live-STT candidates for websocket transcription."""
-    provider_http_urls = settings.get("provider_http_urls")
-    provider_http_map = provider_http_urls if isinstance(provider_http_urls, dict) else {}
-    configured_provider = _normalize_provider(settings.get("provider"))
-    normalized_override = coerce_str(provider_override).lower()
-    cloud_override_provider = (
-        normalized_override if normalized_override in STT_CLOUD_PROVIDER_IDS else ""
-    )
-    selected_provider = _normalize_provider(
-        configured_provider if cloud_override_provider else (provider_override or configured_provider)
-    )
-    configured_http_url = coerce_str(
-        provider_http_map.get(selected_provider) or settings.get("http_url")
-    )
-    local_only = to_bool(settings.get("local_only"), True)
-    live_cloud_fallback_enabled = to_bool(settings.get("live_cloud_fallback_enabled"), False)
-    live_require_diarization = to_bool(settings.get("live_require_diarization"), True)
-    live_allow_text_only_fallback = to_bool(
-        settings.get("live_allow_text_only_fallback"),
-        False,
-    )
-    external_fallback_http_url = coerce_str(settings.get("external_fallback_http_url"))
+    """Resolve live STT from explicit authority records only.
+
+    Saved provider choices describe preference, not egress authority. Local
+    records are ordered by the owner-controlled environment configuration. A
+    cloud route is considered only when ``byok_session_store`` minted the
+    validated session marker for the exact requested provider.
+    """
     cloud_providers = (
         settings.get("cloud_fallback_providers")
         if isinstance(settings.get("cloud_fallback_providers"), dict)
         else {}
     )
-
     candidates: List[Dict[str, Any]] = []
-    seen_keys: set[tuple[str, str, str]] = set()
-    fallback_priority = normalize_live_fallback_priority(settings.get("live_fallback_priority"))
 
-    def add_candidate(candidate: Dict[str, Any]) -> None:
-        provider = coerce_str(candidate.get("provider")).lower() or "whisper"
-        transport = coerce_str(candidate.get("transport")).lower() or "backend_http"
-        endpoint = coerce_str(candidate.get("http_url") or candidate.get("base_url"))
-        if not endpoint:
-            return
-        key = (provider, transport, endpoint)
-        if key in seen_keys:
-            return
-        seen_keys.add(key)
-        candidates.append(candidate)
-
-    primary_candidate = {
-        "route_id": "configured_provider",
-        "provider": selected_provider,
-        "transport": "openai_audio" if selected_provider == "openai_audio" else "backend_http",
-        "http_url": configured_http_url,
-        "reason": "configured_provider",
-        "supports_diarization": selected_provider == "whisper",
-        "degraded": False,
-    }
-    if selected_provider == "openai_audio":
-        cloud_providers = (
-            settings.get("cloud_fallback_providers")
-            if isinstance(settings.get("cloud_fallback_providers"), dict)
-            else {}
-        )
-        openai_provider = cloud_providers.get("openai_audio")
-        if isinstance(openai_provider, dict):
-            primary_candidate.update({
-                "api_key": coerce_str(openai_provider.get("api_key")),
-                "model": coerce_str(openai_provider.get("model")),
-                "diarize_model": coerce_str(openai_provider.get("diarize_model")),
-                "base_url": coerce_str(openai_provider.get("base_url")),
-                "supports_realtime_streaming": True,
-                "request_diarization": False,
-            })
-    
-    if selected_provider == "whisper":
-        # Only advertise a streaming WebSocket for a REMOTE whisper backend. A
-        # local on-device STT server (e.g. lct_python_backend/local_stt) is
-        # HTTP-only (POST /v1/audio/transcriptions, no WS route), so handing the
-        # live runtime a ws_url makes it attempt a WebSocket that 404s and surfaces
-        # a scary — but already-recovered — warning to the client. For local URLs
-        # skip the ws_url so we go straight to the working HTTP-chunked runtime.
-        primary_ws_url = _build_backend_ws_url(configured_http_url)
-        if primary_ws_url and not _is_local_http_url(configured_http_url):
-            primary_candidate["ws_url"] = primary_ws_url
-            primary_candidate["supports_realtime_streaming"] = True
-
-    if local_only:
-        add_candidate(primary_candidate)
-        return candidates
-
-    fallback_candidates: Dict[str, Dict[str, Any]] = {}
-
-    whisper_http_url = coerce_str(provider_http_map.get("whisper"))
-    if selected_provider != "whisper" and whisper_http_url and not _is_local_http_url(whisper_http_url):
-        remote_whisper_candidate = {
-            "route_id": "remote_whisper",
-            "provider": "whisper",
-            "transport": "backend_http",
-            "http_url": whisper_http_url,
-            "reason": "fallback_remote_whisper",
-            "supports_diarization": True,
-            "degraded": False,
-        }
-        remote_ws_url = _build_backend_ws_url(whisper_http_url)
-        if remote_ws_url:
-            remote_whisper_candidate["ws_url"] = remote_ws_url
-            remote_whisper_candidate["supports_realtime_streaming"] = True
-        fallback_candidates["remote_whisper"] = remote_whisper_candidate
-
-    if external_fallback_http_url:
-        fallback_candidates["external_http"] = {
-            "route_id": "external_http",
-            "provider": "external",
-            "transport": "backend_http",
-            "http_url": external_fallback_http_url,
-            "reason": "fallback_external_http",
-            "supports_diarization": False,
-            "degraded": True,
-        }
-
-    if live_cloud_fallback_enabled:
-        openai_provider = cloud_providers.get("openai_audio")
-        if isinstance(openai_provider, dict):
-            openai_api_key = coerce_str(openai_provider.get("api_key"))
-            openai_base_url = coerce_str(openai_provider.get("base_url"))
-            openai_model = coerce_str(openai_provider.get("model"))
-            openai_diarize_model = coerce_str(openai_provider.get("diarize_model"))
-            if (
-                to_bool(openai_provider.get("enabled"), False)
-                and openai_api_key
-                and openai_base_url
-                and openai_model
-                and (openai_diarize_model or not live_require_diarization)
-            ):
-                fallback_candidates["openai_audio"] = {
-                    "route_id": "openai_audio",
-                    "provider": "openai_audio",
-                    "transport": "openai_audio",
-                    "base_url": openai_base_url,
-                    "http_url": build_cloud_provider_api_url("openai_audio", openai_base_url),
-                    "api_key": openai_api_key,
-                    "model": openai_model,
-                    "diarize_model": openai_diarize_model,
-                    "reason": "fallback_openai_audio",
-                    "supports_diarization": bool(openai_diarize_model),
-                    "supports_realtime_streaming": True,
-                    "degraded": False,
+    granted_provider = validated_byok_provider(settings, provider_override)
+    if granted_provider:
+        provider = cloud_providers.get(granted_provider)
+        if isinstance(provider, dict):
+            api_key = coerce_str(provider.get("api_key"))
+            base_url = coerce_str(provider.get("base_url"))
+            model = coerce_str(provider.get("model"))
+            if to_bool(provider.get("enabled"), False) and api_key and base_url and model:
+                candidates.append({
+                    "route_id": f"byok_{granted_provider}_live",
+                    "authority_scope": VALIDATED_BYOK_SCOPE,
+                    "provider": granted_provider,
+                    "transport": granted_provider,
+                    "base_url": base_url,
+                    "http_url": build_cloud_provider_api_url(granted_provider, base_url),
+                    "api_key": api_key,
+                    "model": model,
+                    "diarize_model": coerce_str(provider.get("diarize_model")),
+                    "reason": "validated_session_byok",
+                    "supports_diarization": bool(coerce_str(provider.get("diarize_model"))),
+                    "supports_realtime_streaming": granted_provider == "openai_audio",
+                    "degraded": granted_provider == "openrouter_audio",
                     "request_diarization": False,
-                }
+                })
 
-        openrouter_provider = cloud_providers.get("openrouter_audio")
-        if isinstance(openrouter_provider, dict) and (live_allow_text_only_fallback or not live_require_diarization):
-            openrouter_api_key = coerce_str(openrouter_provider.get("api_key"))
-            openrouter_base_url = coerce_str(openrouter_provider.get("base_url"))
-            openrouter_model = coerce_str(openrouter_provider.get("model"))
-            if (
-                to_bool(openrouter_provider.get("enabled"), False)
-                and openrouter_api_key
-                and openrouter_base_url
-                and openrouter_model
-            ):
-                fallback_candidates["openrouter_audio"] = {
-                    "route_id": "openrouter_audio",
-                    "provider": "openrouter_audio",
-                    "transport": "openrouter_audio",
-                    "base_url": openrouter_base_url,
-                    "http_url": build_cloud_provider_api_url("openrouter_audio", openrouter_base_url),
-                    "api_key": openrouter_api_key,
-                    "model": openrouter_model,
-                    "reason": "fallback_openrouter_audio",
-                    "supports_diarization": False,
-                    "degraded": True,
-                }
-
-    if cloud_override_provider:
-        add_candidate(fallback_candidates.get(cloud_override_provider) or {})
-        add_candidate(primary_candidate)
-        for route_id in fallback_priority:
-            if route_id == cloud_override_provider:
-                continue
-            candidate = fallback_candidates.get(route_id)
-            if candidate:
-                add_candidate(candidate)
-        return candidates
-
-    add_candidate(primary_candidate)
-
-    for route_id in fallback_priority:
-        candidate = fallback_candidates.get(route_id)
-        if candidate:
-            add_candidate(candidate)
-
+    for candidate in resolve_local_authority_candidates(settings):
+        local_candidate = dict(candidate)
+        if local_candidate.get("provider") == "whisper":
+            ws_url = coerce_str(local_candidate.get("ws_url"))
+            if ws_url:
+                local_candidate["ws_url"] = ws_url
+                local_candidate["supports_realtime_streaming"] = True
+        candidates.append(local_candidate)
     return candidates
 
 
@@ -257,7 +79,7 @@ def build_live_stt_background_refinement_candidate(
     primary_provider = coerce_str(candidate.get("provider")).lower()
     primary_transport = coerce_str(candidate.get("transport")).lower()
     primary_http_url = coerce_str(candidate.get("http_url"))
-    
+
     # If primary is already diarizing, we don't need a separate background refinement loop.
     # OpenAI realtime reuses the "openai_audio" route family for low-latency captions, but
     # that primary route is request_diarization=False and still benefits from a slower
@@ -269,6 +91,8 @@ def build_live_stt_background_refinement_candidate(
     ):
         return {
             "route_id": "whisper_diarize_background",
+            "authority_id": coerce_str(candidate.get("authority_id")),
+            "authority_scope": coerce_str(candidate.get("authority_scope")),
             "provider": "whisper",
             "transport": "backend_http",
             "http_url": primary_http_url,
@@ -281,41 +105,48 @@ def build_live_stt_background_refinement_candidate(
             "request_diarization": True,
         }
 
+    if not to_bool(settings.get("live_require_diarization"), True):
+        return None
+
     if (
-        primary_provider == "openai_audio"
-        and primary_transport == "openai_audio"
+        to_bool(candidate.get("supports_diarization"), False)
         and to_bool(candidate.get("request_diarization"), False)
-        and to_bool(settings.get("live_require_diarization"), True)
     ):
         return None
 
-    cloud_providers = (
-        settings.get("cloud_fallback_providers")
-        if isinstance(settings.get("cloud_fallback_providers"), dict)
-        else {}
-    )
-    openai_provider = cloud_providers.get("openai_audio")
-    if not isinstance(openai_provider, dict):
+    primary_authority_id = coerce_str(candidate.get("authority_id"))
+    for local_candidate in resolve_local_authority_candidates(settings):
+        if coerce_str(local_candidate.get("authority_id")) == primary_authority_id:
+            continue
+        if not to_bool(local_candidate.get("supports_diarization"), False):
+            continue
+        return {
+            **local_candidate,
+            "route_id": f"{local_candidate['route_id']}_diarize_background",
+            "reason": f"background_{local_candidate['reason']}",
+            "supports_realtime_streaming": False,
+            "request_diarization": True,
+        }
+
+    if (
+        primary_provider != "openai_audio"
+        or primary_transport != "openai_audio"
+        or coerce_str(candidate.get("authority_scope")) != VALIDATED_BYOK_SCOPE
+    ):
         return None
 
-    api_key = coerce_str(openai_provider.get("api_key"))
-    base_url = coerce_str(openai_provider.get("base_url"))
-    diarize_model = coerce_str(openai_provider.get("diarize_model"))
-    if not (
-        to_bool(openai_provider.get("enabled"), False)
-        and api_key
-        and base_url
-        and diarize_model
-    ):
+    diarize_model = coerce_str(candidate.get("diarize_model"))
+    if not diarize_model:
         return None
 
     return {
         "route_id": "openai_audio_diarize_background",
+        "authority_scope": VALIDATED_BYOK_SCOPE,
         "provider": "openai_audio",
         "transport": "openai_audio",
-        "base_url": base_url,
-        "http_url": build_cloud_provider_api_url("openai_audio", base_url),
-        "api_key": api_key,
+        "base_url": coerce_str(candidate.get("base_url")),
+        "http_url": coerce_str(candidate.get("http_url")),
+        "api_key": coerce_str(candidate.get("api_key")),
         "model": diarize_model,
         "reason": "background_openai_diarize",
         "supports_diarization": True,

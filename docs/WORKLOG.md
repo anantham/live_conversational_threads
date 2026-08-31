@@ -4792,3 +4792,410 @@ Manual testing not run:
   retains the isolated real-browser notice regression; no product assertion or
   geometry threshold was weakened. Exact-head independent re-review remains
   pending.
+
+### 2026-08-30 20:00 +05:30 — Dormant branch consolidation inventory
+
+- Created `codex/consolidate-inactive-20260830` in a new worktree at deployed
+  `main` commit `2429d8c`; the dirty root checkout and every branch/worktree
+  active after `2026-08-27T19:58:10+05:30` remain untouched and out of scope.
+- Fetched/pruned `origin`, read `PRODUCT.md`, `DESIGN.md`, `docs/VISION.md`, and
+  both roadmap documents in full, and classified every remaining inactive
+  remote ref plus local-only/deleted-upstream refs. The exhaustive proof ledger
+  is `docs/plans/2026-08-30-inactive-branch-consolidation.md`.
+- Most apparent unique work is already represented by an ancestor, a squash
+  merge, or a later branch that contained the patch. In particular PR #174's
+  sole viewer-control commit is contained by merged PR #175; the closed
+  transcript-revisions branch was superseded by merged PRs #118/#142; the
+  serverless snapshot was superseded by PR #144; and the backend lease belongs
+  to the explicitly withdrawn portion of ADR-040.
+- Inspected every inactive dirty worktree. Unpublished files are generated MCP
+  manifests, external-review traces, local databases/registries, pytest/media
+  outputs, or an edge-direction diagnostic already committed and resolved by
+  PR #171. None is eligible for product consolidation; no file was deleted.
+- Remaining behavioral packets are: quota enforcement, local-STT
+  concurrency/VAD evidence, telemetry/cost logging, live tangent navigation,
+  and strict STT authority. The legacy mixed branch will never be merged
+  wholesale. Quota and local-STT reliability are recommended for direct port;
+  telemetry requires a current design; tangent UX and M5-only authority need
+  human product/architecture decisions.
+- Diagnostic evidence confirmed a live quota bypass: the code logs that the
+  session is blocked but proceeds to `session_ack`. This was added to
+  `ISSUES.md` as an in-scope repair. No source/runtime/deployment changes have
+  been made yet, and no prune action is authorized.
+
+### 2026-08-30 20:25 +05:30 — Consolidation packet S1: quota admission
+
+- `lct_python_backend/services/stt/stt_ws_session.py` (session setup): moved the
+  existing quota check ahead of conversation/session creation and STT runtime
+  startup. A denial now emits the canonical structured websocket error
+  (`quota_exceeded` / `daily_stt_quota_exceeded`), includes the quota snapshot,
+  closes with policy code 1008, and returns before either setup acknowledgement.
+- `lct_python_backend/tests/integration/transcripts_test_support.py`: made the
+  shared websocket boundary fixture explicitly model quota and the current
+  persistence/observability seams instead of accidentally traversing a broken
+  dummy database.
+- `lct_python_backend/tests/integration/test_transcripts_ws_contract.py`: added
+  public contract coverage for denied admission and refreshed the allowed
+  acknowledgement check to account for `session_started` preceding
+  `session_ack`. Test intent is recorded in the module docstring.
+- `docs/TECH_DEBT.md`: corrected the websocket-session path/size and recorded
+  quota admission among the setup concerns that still need extraction from the
+  3,367-line orchestration class.
+- Validation: focused allowed/denied websocket admission tests passed 2/2;
+  `git diff --check` passed. A full-file diagnostic run exposed pre-existing
+  message-order drift in older tests and was logged in `ISSUES.md` rather than
+  weakening product assertions.
+
+### 2026-08-30 20:38 +05:30 — Consolidation packet S2a: local-STT liveness
+
+- `lct_python_backend/local_stt/server.py`: restored and tightened the dormant
+  production liveness repair. MLX import/transcription, Silero VAD, pyannote
+  load/inference, ECAPA embeddings, temporary-file writes, and cache cleanup all
+  leave the ASGI event loop. A bounded semaphore admits only configured compute
+  concurrency; overflow fails explicitly with HTTP 503, `Retry-After`, and a
+  stable `local_stt_saturated` code rather than waiting without limit.
+- `/health` now distinguishes a reachable saturated worker from a wedged one
+  using `inflight`, `max_concurrency`, `busy`, and `saturated_rejections`.
+- `lct_python_backend/local_stt/test_server_stt.py`: added a public ASGI test
+  that holds fake model compute open, proves `/health` still responds, proves
+  overflow is rejected within one second, then releases and verifies the
+  admitted transcription completes.
+- `docs/TECH_DEBT.md`: logged the 521-line local STT mixed-concern server and a
+  concrete decomposition boundary; no unrelated dormant intent-detection hunk
+  was carried from the source commit.
+- Validation: Python 3.12 local-STT tests 2 passed / 2 optional Silero fixtures
+  skipped; focused liveness test passed; Python compilation and `git diff
+  --check` passed. The repo's older Python 3.9 venv cannot parse this M5-targeted
+  Python 3.12 server, so an ignored minimal 3.12 test venv was used locally.
+
+### 2026-08-30 20:49 +05:30 — Consolidation packet S2b: VAD evidence
+
+- `lct_python_backend/local_stt/server.py`: restored Silero's discarded speech
+  regions and added speech/head/tail RMS dBFS plus total duration. The existing
+  gate still uses the same minimum detected-speech duration and fails open when
+  VAD is unavailable; this packet does not introduce automatic cropping.
+- The additive `_vad_analysis` response field serializes regions and levels in
+  a strict JSON-safe shape (`-inf` digital silence becomes `null`) for empirical
+  diagnosis and a later evidence-bounded crop decision. `_vad_gated` is now
+  explicit on successful as well as gated responses.
+- `lct_python_backend/local_stt/test_server_stt.py`: the public ASGI regression
+  proves exact speech regions and finite levels survive the response while
+  non-finite silence does not produce invalid JSON.
+- Validation: Python 3.12 local-STT suite 3 passed / 2 optional Silero fixtures
+  skipped; Python compilation and `git diff --check` passed.
+
+### 2026-08-30 20:57 +05:30 — Consolidation human-arbitration gate
+
+- Updated the consolidation ledger with the exact integrated commits for S1
+  and S2 and a three-choice decision matrix for every remaining meaningful but
+  architecturally ambiguous packet.
+- Recommended set: S3-A (facts-only durable telemetry at the canonical LLM
+  gateway, no embedded prices), S4-A (adapt the temporal/depth navigation model
+  into the current mobile deck, discard the duplicate old surface), and S5-B
+  (M5 primary plus explicit owner-approved Asus local fallback, no silent cloud,
+  scoped BYOK cloud only).
+- Work stops at this human gate before changing provider authority, live/mobile
+  interaction grammar, or the durable telemetry contract. No source branch or
+  worktree has been pruned.
+
+### 2026-08-30 21:08 +05:30 — Websocket validation baseline restored
+
+- `lct_python_backend/tests/integration/transcripts_test_support.py`: added a
+  public-protocol helper that validates `session_started` followed by the
+  matching `session_ack`, plus an asynchronous frame selector for tests whose
+  observable messages may legally interleave.
+- `test_transcripts_ws_contract.py` and `test_transcripts_websocket.py`: moved
+  stale single-frame setup assertions onto that helper, updated the unknown
+  message contract to its current structured error, and kept post-flush checks
+  order-independent without changing their required outcomes.
+- A broad diagnostic initially appeared to hang. Isolating by collection order
+  and enabling live logs falsified a production deadlock: the backend-live
+  `DummyAudioStorage` lacked the public `get_status` method, causing an
+  unhandled fixture-task exception before the expected transcript frame. The
+  realistic fake now reports bytes written per conversation.
+- Validation: contract suite 13/13, websocket halves 8/8 and 9/9, then combined
+  protocol suite 30/30. Only the existing Python 3.9 end-of-life warnings from
+  `google-auth` remain; no timeout, product path, or assertion was weakened.
+
+### 2026-08-30 21:22 +05:30 — Independent-review attempt remains gated
+
+- Prepared the exact deployed-main-to-head diff (77,310 bytes, SHA-256
+  `E007082F7F8782C01097C7F2EA6E72E5A99C9BA7522786793D208E4A02F46988`)
+  containing only source, tests, and technical documentation covered by the
+  standing external-review authorization. The temporary bundle was removed
+  after the attempts and never committed.
+- Claude Max was authenticated but refused the run because its session limit
+  resets at 23:00. The installed Gemini command hung before printing version or
+  help. Grok 4.6 authenticated, but both a restricted paged-read attempt and a
+  direct prompt-file attempt failed to produce a verdict within bounded runs.
+- A later OpenCode check found its direct Gemini 3.1 Pro route configured but
+  unfunded; it returned `No payment method` before review and incurred no new
+  usage. A proposed OpenRouter Gemini fallback was rejected before execution
+  because the intermediary is outside the standing direct-review disclosure
+  authorization, so no source diff was sent through OpenRouter.
+- No reviewer result was inferred. Independent approval remains a hard gate
+  before completion or merge; retry after the three human-arbitrated rescue
+  decisions are integrated so the reviewer sees the actual final diff.
+
+### 2026-08-30 21:25 +05:30 — Exhaustiveness re-audit closed a ledger gap
+
+- Recomputed every local and `origin/*` ref older than the fixed
+  `2026-08-27T19:58:10+05:30` cutoff and compared normalized branch names to the
+  consolidation ledger. This exposed twenty remote/local names omitted from
+  the written table even though their behavior had not been selected.
+- Proved nineteen omitted histories are direct ancestors of `origin/main`.
+  `fix/backend-catalog-remote-probe-urls` is not an ancestor after history
+  rewriting, but its sole commit has no positive `git cherry` patch and is
+  therefore patch-equivalent. The ledger now names every omitted ref and its
+  evidence explicitly rather than relying on an “exhaustive” assertion.
+- Re-ran read-only status across every linked worktree. All previously clean
+  inactive worktrees remain clean; the active root and historical
+  recipient-semantic-cards worktree remain dirty and untouched. No branch,
+  worktree, or unpublished file was removed.
+
+### 2026-08-30 21:30 +05:30 — Broader consolidation validation
+
+- Ran all STT-focused unit and integration surfaces affected by quota/session
+  admission and local provider behavior: 185/185 passed. This includes runtime,
+  provider selection, HTTP transcription, circuit breaking, settings,
+  audio/BYOK, and both websocket protocol files.
+- Re-ran the M5-targeted Python 3.12 local-STT suite: 3 passed and the two
+  optional real-Silero fixtures skipped; `server.py` and its test compile under
+  Python 3.12. The websocket implementation and repaired tests also compile
+  under the repo's Python 3.9 backend environment.
+- The complete backend unit suite reached 1,951 passed / 1 failed. The sole
+  failure is environmental: installed `openai==1.54.0` passes `proxies=` to
+  installed `httpx==0.28.1`. Checked-in requirements already pin
+  `openai==2.16.0` with a comment documenting this incompatibility, and neither
+  the egress test nor implementation differs from deployed base. Logged the
+  stale venv separately; no security assertion or dependency pin was changed.
+
+### 2026-08-30 21:42 +05:30 — Remaining rescue packets mapped onto current architecture
+
+- S3 telemetry: compared dormant `50cfbe3` with the current gateway, provider
+  fallback, JSONL telemetry, instrumentation mapper, and `api_calls_log`
+  schema. The old decorator misses sync/embedding and mixes facts with stale
+  price assumptions. Documented a facts-only event boundary covering actual
+  served provider/model, route/capability, nullable usage, latency,
+  finish/error, prompt revision, and optional conversation/session IDs. No
+  telemetry source was changed before the product/storage decision.
+- S4 live tangents: read the dormant `useTangentNav` model and the current
+  mobile deck/model/cards/chrome/tests. The current deck already owns temporal
+  sibling movement and hierarchy drill-down to exact utterances. The only
+  distinct salvage is live-follow versus pinned-history state; the old
+  duplicate `TangentView` presentation and synthetic-only websocket harness
+  are superseded.
+- S5 STT authority: traced all three strict-M5 commits through current live,
+  import, segmented-import, BYOK, and delayed-diarization paths. Separated the
+  valuable invariants (no settings-authorized cloud; credential-free delayed
+  jobs) from the brittle mechanism (one configured Whisper URL is assumed to
+  be M5). Documented an explicit M5-primary/Asus-fallback local authority set,
+  scoped BYOK exception, provider-aware large import path, and fail-closed
+  tests as the recommended port.
+- This was a read-only architecture map plus documentation update. No S3/S4/S5
+  behavior, branch, worktree, or remote was changed or pruned; implementation
+  remains behind the recorded human arbitration gate.
+
+### 2026-08-30 21:47 +05:30 — Provisional prune manifest built without deletion
+
+- Revalidated deployed `origin/main` (`2429d8c`), every linked worktree head,
+  porcelain status, and origin-main divergence. The consolidation base has not
+  drifted and the consolidation worktree remains clean.
+- Partitioned post-merge worktree candidates into clean/represented, dirty but
+  classified generated/private/superseded state, unintegrated rescue holds,
+  active post-cutoff exclusions, and the untouchable dirty root checkout.
+- Recorded exact worktree paths, branches, and unpublished-file classes in the
+  consolidation ledger. Five dirty historical worktrees require the final
+  prune approval to explicitly authorize discarding generated MCP manifests,
+  review traces, runtime/private data, pytest outputs, or superseded duplicate
+  notes/tests; none was copied, cleaned, or removed.
+- Defined separate future operations for worktree removal, local ref deletion,
+  and remote ref deletion. Raw ahead/behind counts from disconnected rewritten
+  histories are not used as deletion proof; ancestry, merged PR identity,
+  patch-equivalence, and the vision filter remain the evidence.
+
+### 2026-08-30 21:51 +05:30 — S5a delayed-job custody salvaged independently
+
+- Hypothesis: the current `ImportDiarizationQueue.enqueue` deep-copies raw STT,
+  LLM, source metadata, and provider override into a long-lived process job, so
+  a foreground BYOK/API credential and its authority survive beyond the scope
+  that validated them. Prediction: a realistic enqueue containing nested keys
+  such as `api_key`, `refresh_token`, `access_token`, and `session_token` will
+  retain those values and later pass the provider override/settings into the
+  worker. Direct inspection confirmed the raw `_clone` boundary and the normal
+  worker handoff; the dormant branch's failure mechanism applies to current
+  code.
+- `services/import_pipeline/import_diarization_queue.py`: added recursive
+  credential-shaped key removal and a delayed-STT snapshot that keeps only
+  non-cloud provider maps/preferences, removes cloud/external fallback routes,
+  forces local-only/no-remote-fallback flags, clears the foreground provider
+  override, strips LLM credentials, and does not retain unused source metadata.
+  It deliberately does not choose M5 versus Asus.
+- `tests/unit/test_import_diarization_queue_security.py`: added security-level
+  pure-boundary coverage plus a public enqueue/worker execution proving the
+  retained job and downstream transcriber/processor inputs contain no secret
+  keys or sentinel values and no stale override.
+- `docs/TECH_DEBT.md`: recorded the >550-line queue's custody/execution split
+  before any future durable-queue work.
+- Validation: focused security tests 2/2 passed; queue/file-transcriber/import
+  routing matrix 62/62 passed. Only the existing Python 3.9 Google support and
+  pytest-asyncio teardown warnings from older tests remain.
+
+### 2026-08-31 — Consolidation human gate approved
+
+- The operator approved the recommended **S3-A + S4-A + S5-B** set.
+- Added ADR-064 for durable facts-only LLM telemetry, ADR-065 for one mobile
+  live/history deck, and ADR-066 for the explicit M5→Asus local STT authority
+  set. These supersede the ambiguous implementation choices without rewriting
+  the earlier ADR history.
+- Added behavioral test intents before implementation for the telemetry,
+  mobile live-history, and local-authority packets. Merge and destructive prune
+  operations remain separately gated.
+
+### 2026-08-31 — S3-A durable facts-only LLM telemetry implemented
+
+- Hypothesis: the canonical gateway can observe every logical async chat, sync
+  chat, and embedding operation while the provider result carries the actual
+  served model and nullable usage. Prediction: public gateway tests will expose
+  a single content-free fact for success/fallback/failure without changing the
+  inference result when persistence fails. The new behavioral matrix confirmed
+  that prediction.
+- Added the `llm_call_facts` relational model and Alembic head. Unlike the old
+  `api_calls_log`, its schema contains no prices or content-bearing fields and
+  preserves unknown usage as null.
+- Extracted the event/observation contract to `services/llm_call_facts.py` and
+  the synchronous Postgres/SQLite adapter to `services/llm_call_fact_store.py`.
+  Async gateway calls offload the short database insert rather than blocking
+  the event loop; store failures are bounded, descriptive, and non-fatal.
+- Extended `ProviderResult` with provider-reported usage, request ID, finish
+  reason, provider latency, and cache-hit state. The gateway adds logical
+  latency, capability, route, prompt revision, fallback position, and optional
+  conversation/session correlation; prompt/response text and exception bodies
+  never enter the fact envelope.
+- Validation: 58/58 focused LLM gateway, provider, legacy telemetry, detector,
+  prompt-routing, and vision tests passed; Python compilation, Alembic single
+  head (`add_llm_call_facts`), and `git diff --check` passed.
+
+### 2026-08-31 — S4-A one mobile live/history deck implemented
+
+- Hypothesis: the existing mobile deck's authored hierarchy and temporal
+  sibling model can support live reading by adding one explicit cursor state,
+  without reviving the dormant second tangent UI. Prediction: null-cursor
+  readers will follow the newest authored branch at their current depth, while
+  a backward move will remain stable across later websocket updates. Pure model
+  and component tests confirmed that behavior.
+- `mobileConversationDeckModel.js`: added latest-live initialization,
+  follow/pin reconciliation, a truthful updates-behind count, and explicit
+  return-to-live. Existing historical initialization and left/right versus
+  up/down semantics remain unchanged.
+- Extracted controlled/uncontrolled live reconciliation to
+  `useMobileConversationDeckState.js`; `MobileConversationDeck.jsx` adds only a
+  compact live status surface and delegates state lifecycle to that controller.
+  Historical artifacts never render the live chrome.
+- `MeetingView.jsx`: compact/coarse-pointer live meetings now render the same
+  deck used by saved `.threads` artifacts. Opening the map remains available,
+  and its back control returns to the deck. Live transcript timestamps are
+  preserved for exact-utterance cards when the authored graph links them.
+- Validation: 21/21 focused model, component, transcript, and live-meeting tests
+  passed; changed-file ESLint passed; the production build passed. The
+  Impeccable detector reported no mechanical UI findings on the changed
+  surfaces. Vite retains its pre-existing >500 kB chunk warning.
+
+### 2026-08-31 — S5-B explicit M5→Asus STT authority implemented
+
+- Hypothesis: the current routing layer conflated saved provider preferences,
+  endpoint reachability, and egress authority. Prediction: once routing accepts
+  only environment-owned local authority records or an internal marker minted
+  by validated session BYOK, legacy URL-map tests will fail while explicit
+  M5→Asus, exhaustion, and BYOK contracts pass. The initial red run failed 4/4
+  new authority tests; the implementation then made all new contracts green.
+- Added `services/stt/stt_authority.py` as the shared facts-only authority
+  boundary. Environment defaults explicitly name M5 first and Asus second;
+  saved settings cannot persist or replace that set and cannot mint the BYOK
+  marker. Live and import acknowledgements/telemetry retain authority identity.
+- Live, sequential-import, and segmented-import paths now consume the same
+  ordered candidates. A failed segmented authority moves behind the first
+  reachable approved authority for later segments. Exhaustion produces a
+  descriptive terminal error and never falls through to saved cloud keys.
+- Delayed diarization jobs remove credentials, stale authorities, cloud routes,
+  and BYOK markers at custody time, then rebuild the current environment-owned
+  authority set when the worker runs. No session credential is retained.
+- Falsification found two real defects during integration testing. First,
+  deriving a websocket URL from an HTTP endpoint violated explicit capability
+  authority and caused spurious network attempts; websocket URLs are now
+  separately configured. Second, the early import hard stop preceded
+  `existing_checkpoint` initialization and masked the intended SSE error with
+  `UnboundLocalError`; initialization now precedes every failure path and a
+  public regression covers it.
+- Removed the superseded preference/hostname resolver instead of leaving a
+  shadow compatibility algorithm. `provider_selection.py` changed from 410 to
+  62 physical lines (−84.9%). Cyclomatic tooling (`radon`/`ruff`) is not
+  installed in the validation environment, so a numeric before/after measure
+  was not fabricated. Test coverage was exercised behaviorally; this backend
+  refactor has no frontend bundle, type-safety, or rendering-performance delta.
+- Validation checkpoints: 87/87 focused authority/settings/transcriber tests;
+  43/43 websocket/runtime/HTTP streaming tests; 28/28 import API/resume/security
+  tests; and the combined 153/153 S5 matrix passed. Python compilation and
+  `git diff --check` passed. The complete backend unit suite passed 1,963/1,963
+  and the complete integration directory passed 43 with 58 environment-bound
+  tests skipped. Only independent external AI review remains before the
+  consolidation branch can be declared ready for push/CI consideration.
+- The full unit run exposed a pre-existing isolation defect: attendee-bridge
+  tests wrote six synthetic `c-*` records to the repository-default
+  `data/attendee_sessions.json`. The file was classified by fixture ID,
+  excluded and removed; the bounded follow-up is recorded in `ISSUES.md`
+  rather than expanding S5 into an unrelated attendee-bridge repair.
+
+### 2026-08-31 — Independent review round 1 classified and repaired
+
+- Grok independently reviewed the exact `origin/main...HEAD` source/tests/docs
+  diff in read-only, tool-disabled prompt-file mode. It returned `APPROVE` but
+  identified two P2 observations, which were classified rather than waived.
+- Confirmed: compact live mode reused the mobile deck while hiding all
+  historical-only More actions, leaving no in-app route home. More now exposes
+  `Leave live view` and explicitly says the meeting keeps recording; both the
+  shared deck and composed `MeetingView` route have regressions.
+- Rejected as proposed: moving `UploadFile.read()` ahead of admission would
+  copy every saturated request's already parsed/spooled upload into application
+  memory before returning 503. The intended invariant is bounded end-to-end STT
+  processing, not GPU occupancy alone. Wording now says processing capacity,
+  and a public endpoint regression proves saturated work is rejected before a
+  second `UploadFile.read()`.
+- Focused validation after classification: local STT 3 passed / 2 optional
+  audio-environment skips; mobile deck and MeetingView 10/10 passed; changed
+  frontend ESLint passed. The first local validation invocation used an
+  incompatible Python 3.9 environment and was rerun in the checked local-STT
+  Python 3.12 venv; a sandbox-created pytest cache was removed exactly.
+
+### 2026-08-31 — Independent review round 2 state-machine repair
+
+- Grok's complete updated-diff review again returned `APPROVE`, while correctly
+  finding that a following-live reader drilled into the oldest child and could
+  later be moved to the newest child by reconciliation. Following-live Down now
+  selects the latest authored child; every successful explicit temporal move,
+  including Next, pins the reader.
+- The reviewer accepted the pre-admission upload decision and requested only
+  exact wording. The local-STT comment now states the observable invariant:
+  saturation rejects before `UploadFile.read()` copies the parsed/spooled body
+  into application memory.
+- Its segmented-STT test-gap observation was supported. The authority regression
+  now uses two segments and proves the second starts with the warmed Asus
+  authority rather than retrying failed M5.
+- Focused evidence: mobile model/component 14/14 passed and changed ESLint
+  passed; local authority 4/4 passed; local-STT admission 3 passed with 2
+  optional audio-fixture skips. The repository's Python 3.9 venv emits known
+  dependency/EOL and pytest-loop warnings; the local-STT Python 3.12 venv is
+  clean for the endpoint tests.
+
+### 2026-08-31 — Independent review gate passed
+
+- Grok reviewed the complete final `origin/main...a0f2287` diff in read-only,
+  tool-disabled prompt-file mode after both repair rounds.
+- Final verdict: `APPROVE`. Findings: none. Plausible regression-test gaps:
+  none. It explicitly confirmed S3-A's facts-only/non-fatal telemetry, S4-A's
+  latest-child follow/pin/return-live/compact-exit behavior, and S5-B's
+  environment-owned M5→Asus authority, BYOK boundary, delayed custody,
+  warmed segmented failover, and terminal exhaustion behavior.
+- The review CLI's optional local hooks emitted unrelated Windows-path and
+  telemetry-shutdown warnings after the verdict; the reviewer had no tools,
+  did not edit the repository, and exited successfully.

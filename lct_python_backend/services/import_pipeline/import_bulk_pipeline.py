@@ -95,6 +95,7 @@ async def run_bulk_processing_worker(
     transcription_started_at: Optional[float] = None
     graph_started_at: Optional[float] = None
     active_stage = "uploading"
+    existing_checkpoint: Optional[dict[str, Any]] = None
 
     logger.info(
         "[PROCESS FILE] Starting pipeline for %s (%d bytes, source_type=%s, provider=%s)",
@@ -125,18 +126,24 @@ async def run_bulk_processing_worker(
             provider,
         )
 
-        stt_http_url = str(runtime_stt_settings.get("http_url", "")).strip()
         import_candidates = resolve_import_audio_candidates(
             settings=runtime_stt_settings,
             provider_override=provider_override,
         )
         primary_import_candidate = import_candidates[0] if import_candidates else None
+        stt_http_url = str(
+            (primary_import_candidate or {}).get("http_url")
+            or (primary_import_candidate or {}).get("base_url")
+            or ""
+        ).strip()
         stt_backend = _candidate_backend_label(primary_import_candidate, stt_http_url)
         telemetry["stt_backend"] = stt_backend
         telemetry["stt_http_url"] = stt_http_url
         if isinstance(primary_import_candidate, dict):
             telemetry["stt_candidate_provider"] = str(primary_import_candidate.get("provider") or "")
             telemetry["stt_candidate_transport"] = str(primary_import_candidate.get("transport") or "")
+            telemetry["stt_authority_id"] = str(primary_import_candidate.get("authority_id") or "")
+            telemetry["stt_authority_scope"] = str(primary_import_candidate.get("authority_scope") or "")
 
         # Emit progress before the (potentially slow) transcription call.
         resolved_source_type = source_type if source_type != "auto" else None
@@ -144,6 +151,11 @@ async def run_bulk_processing_worker(
             resolved_source_type == "audio"
             or (resolved_source_type is None and suffix in _AUDIO_SUFFIXES)
         )
+        if is_likely_audio and not import_candidates:
+            raise ValueError(
+                "No approved local STT authority is enabled. Enable the M5 or Asus "
+                "authority, or start a validated BYOK session for this import."
+            )
         active_stage = "transcribing" if is_likely_audio else "parsing"
         telemetry["is_likely_audio"] = is_likely_audio
         telemetry["source_type_override"] = resolved_source_type or "auto"
@@ -300,6 +312,7 @@ async def run_bulk_processing_worker(
                 request=request,
                 temp_path=temp_path,
                 runtime_stt_settings=runtime_stt_settings,
+                stt_candidates=import_candidates,
                 transcribe_audio_segmented=transcribe_audio_segmented,
                 resume_from_chunk=resume_from_chunk,
                 checkpoint_transcript_parts=checkpoint_transcript_parts,

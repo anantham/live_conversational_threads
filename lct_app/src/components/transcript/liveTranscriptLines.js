@@ -30,6 +30,12 @@ export function upsertLiveTranscriptLine(previousLines, event, lineIdRef, option
   const metadata = event?.metadata || {};
   const speaker = speakerFromMetadata(metadata);
   const speakerId = metadata.speaker_uuid || metadata.speaker_id || null;
+  const timestampStart = event?.timestamps?.start == null
+    ? null
+    : Number(event.timestamps.start);
+  const timestampEnd = event?.timestamps?.end == null
+    ? null
+    : Number(event.timestamps.end);
   const lastLine = previousLines[previousLines.length - 1] || null;
   const trimLines = (lines) => lines.slice(-maxLines);
 
@@ -39,6 +45,8 @@ export function upsertLiveTranscriptLine(previousLines, event, lineIdRef, option
     isFinal,
     speaker,
     speakerId,
+    ...(Number.isFinite(timestampStart) ? { timestamp_start: timestampStart } : {}),
+    ...(Number.isFinite(timestampEnd) ? { timestamp_end: timestampEnd } : {}),
   };
 
   if (shouldReplaceLastLine(lastLine, cleanText, speaker, isFinal)) {
