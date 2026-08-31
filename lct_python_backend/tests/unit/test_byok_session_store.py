@@ -43,6 +43,7 @@ def test_create_byok_session_returns_opaque_token_and_overlay(monkeypatch):
     openai_provider = runtime_settings["cloud_fallback_providers"]["openai_audio"]
     assert runtime_settings["local_only"] is False
     assert runtime_settings["live_cloud_fallback_enabled"] is True
+    assert runtime_settings[byok.VALIDATED_STT_BYOK_PROVIDER_KEY] == "openai_audio"
     assert openai_provider["enabled"] is True
     assert openai_provider["api_key"] == "sk-test-secret"
 

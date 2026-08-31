@@ -1,153 +1,100 @@
-"""Tests for ``resolve_import_audio_candidates`` — the LCT upload STT routing.
+"""Behavioral tests for ADR-066 import STT authority resolution.
 
-Separate from the live STT tests (``test_stt_live_provider_selection.py``)
-because import/upload audio has different routing priorities — quality and
-cost matter more than time-to-first-token.
-
-The 2026-05-31 change makes ``upload_local_first`` actually win for uploads
-when a local URL is configured, instead of being silently shadowed by the
-cloud-primary block. Cloud remains available via ``fallback_enabled``.
+Test intent:
+- Endpoint preferences and provider overrides never mint authority.
+- Import order comes only from explicit owner-approved local records.
+- A session-scoped BYOK grant authorizes only its matching provider.
 """
 
-from lct_python_backend.services.provider_selection import (
-    resolve_import_audio_candidates,
+from lct_python_backend.services.byok_session_store import (
+    build_runtime_stt_settings_for_byok,
 )
+from lct_python_backend.services.provider_selection import resolve_import_audio_candidates
 
 
-def _openai_provider_block():
+def _settings():
     return {
-        "enabled": True,
-        "base_url": "https://api.openai.com",
-        "model": "gpt-4o-mini-transcribe",
-        "diarize_model": "gpt-4o-transcribe-diarize",
-        "api_key": "sk-openai-secret",
+        "local_authorities": [
+            {
+                "id": "m5",
+                "enabled": True,
+                "provider": "parakeet",
+                "http_url": "https://m5.example.test/v1/audio/transcriptions",
+                "supports_diarization": True,
+            },
+            {
+                "id": "asus",
+                "enabled": True,
+                "provider": "whisper",
+                "http_url": "http://asus.example.test/api/transcribe",
+                "supports_diarization": True,
+            },
+        ],
+        "cloud_fallback_providers": {
+            "openai_audio": {
+                "enabled": True,
+                "base_url": "https://api.openai.com",
+                "model": "gpt-4o-mini-transcribe",
+                "diarize_model": "gpt-4o-transcribe-diarize",
+                "api_key": "saved-key-is-not-authority",
+            }
+        },
     }
 
 
-def test_local_first_wins_primary_when_local_url_configured():
-    """upload_local_first=true + local parakeet URL → parakeet primary, not OpenAI.
+def test_import_uses_explicit_local_authority_order_only():
+    settings = _settings()
+    settings["provider_http_urls"] = {
+        "openai_audio": "https://api.openai.com/v1/audio/transcriptions",
+        "whisper": "https://unapproved.example/transcribe",
+    }
 
-    Pre-2026-05-31 this returned OpenAI as primary because the cloud-primary
-    block ran before the local_first block.
-    """
     candidates = resolve_import_audio_candidates(
-        settings={
-            "provider": "whisper",
-            "provider_http_urls": {
-                "parakeet": "http://127.0.0.1:5092/v1/audio/transcriptions",
-            },
-            "upload_local_first": True,
-            "upload_remote_fallback": True,
-            "live_cloud_fallback_enabled": True,
-            "cloud_fallback_providers": {"openai_audio": _openai_provider_block()},
-        },
-        provider_override=None,
+        settings=settings,
+        provider_override="openai_audio",
     )
 
-    assert candidates, "expected at least one candidate"
-    assert candidates[0]["provider"] == "parakeet"
-    assert candidates[0]["reason"] == "local_first"
-    # OpenAI still present as fallback when upload_remote_fallback enabled.
-    providers = [c["provider"] for c in candidates]
-    assert "openai_audio" in providers
+    assert [candidate["authority_id"] for candidate in candidates] == ["m5", "asus"]
+    assert all(candidate["authority_scope"] == "owner_approved_local" for candidate in candidates)
 
 
-def test_local_first_is_the_default_for_uploads(monkeypatch):
-    """``upload_local_first`` defaults to STT_UPLOAD_LOCAL_FIRST (True), so a
-    configured local URL wins for uploads even when the flag is not passed.
-
-    This documents the behavior the older file_transcriber quality-first test
-    used to rely on being a no-op: the default now actually takes effect, so a
-    local parakeet URL beats cloud OpenAI for uploads unless local-first is
-    explicitly disabled. Pinned to True via monkeypatch for determinism
-    regardless of the ambient STT_UPLOAD_LOCAL_FIRST env value.
-    """
-    import lct_python_backend.services.provider_selection as ps
-
-    monkeypatch.setattr(ps, "STT_UPLOAD_LOCAL_FIRST", True)
-    candidates = ps.resolve_import_audio_candidates(
-        settings={
-            "provider": "whisper",
-            "provider_http_urls": {
-                "parakeet": "http://127.0.0.1:5092/v1/audio/transcriptions",
-            },
-            # upload_local_first intentionally NOT set → inherits default True
-            "live_cloud_fallback_enabled": True,
-            "cloud_fallback_providers": {"openai_audio": _openai_provider_block()},
-        },
-        provider_override=None,
-    )
-
-    assert candidates
-    assert candidates[0]["provider"] == "parakeet"
-    assert candidates[0]["reason"] == "local_first"
-
-
-def test_cloud_remains_primary_when_no_local_url():
-    """No local URL configured → cloud (OpenAI) is still the primary.
-
-    Regression guard: the change must not break the cloud-only case.
-    """
+def test_import_without_authority_fails_closed():
     candidates = resolve_import_audio_candidates(
         settings={
-            "provider": "whisper",
-            "provider_http_urls": {},  # no local urls
-            "upload_local_first": True,
-            "live_cloud_fallback_enabled": True,
-            "cloud_fallback_providers": {"openai_audio": _openai_provider_block()},
-        },
-        provider_override=None,
-    )
-
-    assert candidates
-    assert candidates[0]["provider"] == "openai_audio"
-
-
-def test_local_only_skips_cloud_entirely():
-    """local_only=true → cloud must NOT appear in the candidate list.
-
-    Strictest privacy mode: refuse the request rather than route to cloud.
-    """
-    candidates = resolve_import_audio_candidates(
-        settings={
-            "provider": "whisper",
+            "provider": "openai_audio",
             "provider_http_urls": {
-                "parakeet": "http://127.0.0.1:5092/v1/audio/transcriptions",
+                "openai_audio": "https://api.openai.com/v1/audio/transcriptions"
             },
-            "upload_local_first": True,
-            "local_only": True,
-            "upload_remote_fallback": False,  # also block fallback cloud
-            "live_cloud_fallback_enabled": True,
-            "cloud_fallback_providers": {"openai_audio": _openai_provider_block()},
-        },
-        provider_override=None,
-    )
-
-    providers = {c["provider"] for c in candidates}
-    assert "openai_audio" not in providers
-    assert "openrouter_audio" not in providers
-    # parakeet local should still be present
-    assert "parakeet" in providers
-
-
-def test_cloud_override_still_forces_cloud():
-    """provider_override='openai_audio' wins over local_first.
-
-    Regression guard: explicit caller override (e.g. via admin UI) must
-    not be silently ignored by the local-first preference.
-    """
-    candidates = resolve_import_audio_candidates(
-        settings={
-            "provider": "whisper",
-            "provider_http_urls": {
-                "parakeet": "http://127.0.0.1:5092/v1/audio/transcriptions",
-            },
-            "upload_local_first": True,
-            "live_cloud_fallback_enabled": True,
-            "cloud_fallback_providers": {"openai_audio": _openai_provider_block()},
+            "cloud_fallback_providers": _settings()["cloud_fallback_providers"],
         },
         provider_override="openai_audio",
     )
 
-    assert candidates
-    assert candidates[0]["provider"] == "openai_audio"
+    assert candidates == []
+
+
+def test_validated_byok_is_scoped_to_the_matching_requested_provider():
+    runtime = build_runtime_stt_settings_for_byok(
+        _settings(),
+        {
+            "provider": "openai_audio",
+            "base_url": "https://api.openai.com",
+            "model": "gpt-4o-mini-transcribe",
+            "diarize_model": "gpt-4o-transcribe-diarize",
+            "api_key": "session-key",
+        },
+    )
+
+    granted = resolve_import_audio_candidates(
+        settings=runtime,
+        provider_override="openai_audio",
+    )
+    mismatched = resolve_import_audio_candidates(
+        settings=runtime,
+        provider_override="openrouter_audio",
+    )
+
+    assert granted[0]["provider"] == "openai_audio"
+    assert granted[0]["authority_scope"] == "validated_session_byok"
+    assert [candidate["authority_id"] for candidate in granted[1:]] == ["m5", "asus"]
+    assert [candidate["authority_id"] for candidate in mismatched] == ["m5", "asus"]

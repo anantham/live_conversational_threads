@@ -503,6 +503,7 @@ async def transcribe_audio_segmented(
     transport: Optional[httpx.AsyncBaseTransport] = None,
     resume_from_segment: int = 0,
     resumed_segment_texts: Optional[list[str]] = None,
+    candidates: Optional[list[dict[str, Any]]] = None,
 ) -> AsyncGenerator[SegmentResult, None]:
     """Yield transcripts per natural segment instead of waiting for full file.
 
@@ -530,6 +531,9 @@ async def transcribe_audio_segmented(
     )
 
     _resumed_texts = resumed_segment_texts or []
+    candidate_chain = [dict(candidate) for candidate in (candidates or []) if isinstance(candidate, dict)]
+    if not candidate_chain:
+        candidate_chain = [{"provider": "", "http_url": http_url}]
 
     for i in range(segment_count):
         start_ms, end_ms = boundaries[i], boundaries[i + 1]
@@ -565,21 +569,46 @@ async def transcribe_audio_segmented(
         segment_started_at = time.perf_counter()
 
         try:
-            transcript_text = await transcribe_audio_chunked(
-                segment_audio_path,
-                http_url=http_url,
-                model=model,
-                language=language,
-                timeout_seconds=timeout_seconds,
-                chunk_duration_s=chunk_duration_s,
-                overlap_s=overlap_s,
-                chunk_max_retries=chunk_max_retries,
-                chunk_retry_backoff_s=chunk_retry_backoff_s,
-                on_chunk_progress=on_chunk_progress,
-                response_format=response_format,
-                initial_prompt=initial_prompt,
-                transport=transport,
-            )
+            transcript_text: Optional[str] = None
+            selected_candidate: dict[str, Any] = {}
+            last_error: Optional[Exception] = None
+            for candidate_index, candidate in enumerate(candidate_chain):
+                candidate_url = str(candidate.get("http_url") or "").strip()
+                if not candidate_url:
+                    continue
+                try:
+                    transcript_text = await transcribe_audio_chunked(
+                        segment_audio_path,
+                        http_url=candidate_url,
+                        model=str(candidate.get("model") or model or "").strip(),
+                        language=str(candidate.get("language") or language or "").strip(),
+                        timeout_seconds=timeout_seconds,
+                        chunk_duration_s=chunk_duration_s,
+                        overlap_s=overlap_s,
+                        chunk_max_retries=chunk_max_retries,
+                        chunk_retry_backoff_s=chunk_retry_backoff_s,
+                        on_chunk_progress=on_chunk_progress,
+                        response_format=response_format,
+                        initial_prompt=initial_prompt,
+                        transport=transport,
+                    )
+                    selected_candidate = candidate
+                    if candidate_index > 0:
+                        # Keep the first reachable approved authority warm for
+                        # later segments instead of retrying a known outage.
+                        candidate_chain = candidate_chain[candidate_index:] + candidate_chain[:candidate_index]
+                    break
+                except Exception as exc:  # noqa: BLE001 - fallback boundary
+                    last_error = exc
+                    logger.warning(
+                        "[SEGMENT %d/%d] STT authority %s failed: %s",
+                        segment_index,
+                        segment_count,
+                        candidate.get("authority_id") or candidate.get("provider") or "unknown",
+                        type(exc).__name__,
+                    )
+            if transcript_text is None:
+                raise last_error or RuntimeError("Approved local STT authorities are unavailable.")
 
             elapsed = _elapsed_ms(segment_started_at)
             stt_backend = _last_stt_backend.get("")
@@ -596,7 +625,12 @@ async def transcribe_audio_segmented(
                 end_ms=end_ms,
                 transcript_text=transcript_text,
                 elapsed_ms=elapsed,
-                metadata={"stt_backend": stt_backend, "duration_ms": end_ms - start_ms},
+                metadata={
+                    "stt_backend": stt_backend,
+                    "duration_ms": end_ms - start_ms,
+                    "authority_id": selected_candidate.get("authority_id"),
+                    "provider": selected_candidate.get("provider"),
+                },
             )
         finally:
             segment_audio_path.unlink(missing_ok=True)

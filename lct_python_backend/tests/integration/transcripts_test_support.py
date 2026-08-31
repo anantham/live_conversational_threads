@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import copy
 import importlib
 import struct
 import sys
@@ -134,11 +135,39 @@ def build_test_client(
         async def record_usage(self, **_kwargs):
             return None
 
-    effective_stt_settings = stt_settings or {
+    effective_stt_settings = copy.deepcopy(stt_settings) if stt_settings is not None else {
         "provider": "whisper",
-        "provider_http_urls": {},
-        "http_url": "",
+        "provider_http_urls": {
+            "whisper": "http://stt.example.test/api/transcribe",
+        },
+        "http_url": "http://stt.example.test/api/transcribe",
     }
+    if "local_authorities" not in effective_stt_settings:
+        provider_urls = effective_stt_settings.get("provider_http_urls")
+        provider_urls = provider_urls if isinstance(provider_urls, dict) else {}
+        local_authorities = []
+        for provider, http_url in provider_urls.items():
+            normalized_provider = str(provider or "").strip().lower()
+            if normalized_provider in {"openai_audio", "openrouter_audio"} or not http_url:
+                continue
+            local_authorities.append({
+                "id": f"test-{normalized_provider}",
+                "enabled": True,
+                "provider": normalized_provider,
+                "http_url": str(http_url),
+                "supports_diarization": normalized_provider == "whisper",
+            })
+        if not local_authorities and effective_stt_settings.get("http_url"):
+            provider = str(effective_stt_settings.get("provider") or "whisper").strip().lower()
+            if provider not in {"openai_audio", "openrouter_audio"}:
+                local_authorities.append({
+                    "id": f"test-{provider}",
+                    "enabled": True,
+                    "provider": provider,
+                    "http_url": str(effective_stt_settings["http_url"]),
+                    "supports_diarization": provider == "whisper",
+                })
+        effective_stt_settings["local_authorities"] = local_authorities
 
     async def _always_authed(_websocket):
         return True

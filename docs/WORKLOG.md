@@ -5100,3 +5100,48 @@ Manual testing not run:
   passed; changed-file ESLint passed; the production build passed. The
   Impeccable detector reported no mechanical UI findings on the changed
   surfaces. Vite retains its pre-existing >500 kB chunk warning.
+
+### 2026-08-31 — S5-B explicit M5→Asus STT authority implemented
+
+- Hypothesis: the current routing layer conflated saved provider preferences,
+  endpoint reachability, and egress authority. Prediction: once routing accepts
+  only environment-owned local authority records or an internal marker minted
+  by validated session BYOK, legacy URL-map tests will fail while explicit
+  M5→Asus, exhaustion, and BYOK contracts pass. The initial red run failed 4/4
+  new authority tests; the implementation then made all new contracts green.
+- Added `services/stt/stt_authority.py` as the shared facts-only authority
+  boundary. Environment defaults explicitly name M5 first and Asus second;
+  saved settings cannot persist or replace that set and cannot mint the BYOK
+  marker. Live and import acknowledgements/telemetry retain authority identity.
+- Live, sequential-import, and segmented-import paths now consume the same
+  ordered candidates. A failed segmented authority moves behind the first
+  reachable approved authority for later segments. Exhaustion produces a
+  descriptive terminal error and never falls through to saved cloud keys.
+- Delayed diarization jobs remove credentials, stale authorities, cloud routes,
+  and BYOK markers at custody time, then rebuild the current environment-owned
+  authority set when the worker runs. No session credential is retained.
+- Falsification found two real defects during integration testing. First,
+  deriving a websocket URL from an HTTP endpoint violated explicit capability
+  authority and caused spurious network attempts; websocket URLs are now
+  separately configured. Second, the early import hard stop preceded
+  `existing_checkpoint` initialization and masked the intended SSE error with
+  `UnboundLocalError`; initialization now precedes every failure path and a
+  public regression covers it.
+- Removed the superseded preference/hostname resolver instead of leaving a
+  shadow compatibility algorithm. `provider_selection.py` changed from 410 to
+  62 physical lines (−84.9%). Cyclomatic tooling (`radon`/`ruff`) is not
+  installed in the validation environment, so a numeric before/after measure
+  was not fabricated. Test coverage was exercised behaviorally; this backend
+  refactor has no frontend bundle, type-safety, or rendering-performance delta.
+- Validation checkpoints: 87/87 focused authority/settings/transcriber tests;
+  43/43 websocket/runtime/HTTP streaming tests; 28/28 import API/resume/security
+  tests; and the combined 153/153 S5 matrix passed. Python compilation and
+  `git diff --check` passed. The complete backend unit suite passed 1,963/1,963
+  and the complete integration directory passed 43 with 58 environment-bound
+  tests skipped. Only independent external AI review remains before the
+  consolidation branch can be declared ready for push/CI consideration.
+- The full unit run exposed a pre-existing isolation defect: attendee-bridge
+  tests wrote six synthetic `c-*` records to the repository-default
+  `data/attendee_sessions.json`. The file was classified by fixture ID,
+  excluded and removed; the bounded follow-up is recorded in `ISSUES.md`
+  rather than expanding S5 into an unrelated attendee-bridge repair.

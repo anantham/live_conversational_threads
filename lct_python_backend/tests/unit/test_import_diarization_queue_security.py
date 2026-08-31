@@ -2,8 +2,8 @@
 
 - Queuing must not retain credential-shaped fields at any nesting depth.
 - Foreground provider/BYOK authority must not survive into delayed execution.
-- Delayed STT may retain configured non-secret local endpoints, but cloud and
-  external fallback routes must be removed and local-only routing made explicit.
+- Delayed STT re-resolves the current environment-owned local authority set;
+  stale or request-supplied authority records must not survive queue custody.
 - The worker must receive the sanitized settings through its normal public
   enqueue/process behavior, not merely through a helper-level assertion.
 """
@@ -42,6 +42,15 @@ def _assert_no_secret_keys(value):
 def test_queue_sanitizers_strip_nested_credentials_and_cloud_authority():
     sanitized = queue_module._sanitize_stt_settings_for_queue({
         "provider": "openai_audio",
+        "_validated_stt_byok_provider": "openai_audio",
+        "local_authorities": [
+            {
+                "id": "spoofed",
+                "enabled": True,
+                "provider": "whisper",
+                "http_url": "https://attacker.example/transcribe",
+            }
+        ],
         "http_url": "https://api.openai.com/v1/audio/transcriptions",
         "provider_http_urls": {
             "parakeet": "http://127.0.0.1:5092/v1/audio/transcriptions",
@@ -64,6 +73,8 @@ def test_queue_sanitizers_strip_nested_credentials_and_cloud_authority():
     _assert_no_secret_keys(sanitized)
     assert "provider" not in sanitized
     assert "http_url" not in sanitized
+    assert "local_authorities" not in sanitized
+    assert "_validated_stt_byok_provider" not in sanitized
     assert sanitized["provider_http_urls"] == {
         "parakeet": "http://127.0.0.1:5092/v1/audio/transcriptions",
         "whisper": "http://100.81.65.74:7777/api/transcribe",
@@ -77,6 +88,29 @@ def test_queue_sanitizers_strip_nested_credentials_and_cloud_authority():
 
 def test_public_enqueue_worker_receives_only_sanitized_delayed_state(monkeypatch, tmp_path):
     captured = {}
+
+    monkeypatch.setattr(
+        queue_module,
+        "get_env_stt_defaults",
+        lambda: {
+            "local_authorities": [
+                {
+                    "id": "m5",
+                    "enabled": True,
+                    "provider": "parakeet",
+                    "http_url": "https://m5.example.test/v1/audio/transcriptions",
+                    "supports_diarization": True,
+                },
+                {
+                    "id": "asus",
+                    "enabled": True,
+                    "provider": "whisper",
+                    "http_url": "http://asus.example.test/api/transcribe",
+                    "supports_diarization": True,
+                },
+            ]
+        },
+    )
 
     async def fake_transcribe_uploaded_file(**kwargs):
         captured["transcribe"] = kwargs
@@ -117,6 +151,15 @@ def test_public_enqueue_worker_receives_only_sanitized_delayed_state(monkeypatch
             speaker_id="speaker-1",
             stt_settings={
                 "provider": "whisper",
+                "_validated_stt_byok_provider": "openai_audio",
+                "local_authorities": [
+                    {
+                        "id": "stale",
+                        "enabled": True,
+                        "provider": "whisper",
+                        "http_url": "http://stale.example.test/transcribe",
+                    }
+                ],
                 "provider_http_urls": {
                     "whisper": "http://100.81.65.74:7777/api/transcribe",
                 },
@@ -144,8 +187,12 @@ def test_public_enqueue_worker_receives_only_sanitized_delayed_state(monkeypatch
             assert current["status"] == "completed"
             transcribe = captured["transcribe"]
             assert transcribe["provider_override"] is None
-            assert transcribe["stt_settings"]["provider"] == "whisper"
+            assert [
+                authority["id"]
+                for authority in transcribe["stt_settings"]["local_authorities"]
+            ] == ["m5", "asus"]
             assert transcribe["stt_settings"]["local_only"] is True
+            assert "_validated_stt_byok_provider" not in transcribe["stt_settings"]
             assert "cloud_fallback_providers" not in transcribe["stt_settings"]
             _assert_no_secret_keys(transcribe["stt_settings"])
             assert captured["llm_config"] == {

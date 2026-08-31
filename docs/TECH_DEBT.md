@@ -226,3 +226,12 @@ builder/custody policy and a separate worker executor. This is especially
 important before replacing the in-memory queue with durable storage: the
 credential-free delayed-work invariant must remain at the serialization
 boundary rather than depending on every worker implementation.
+
+### 2026-08-31 — STT authority extracted; session orchestration remains oversized
+
+S5-B removed the 410-line legacy preference/hostname routing implementation
+and replaced it with a 62-line explicit import authority resolver plus the
+shared 54-line `stt_authority.py` contract. The live/session integration still
+lives inside the pre-existing multi-thousand-line `stt_ws_session.py`; further
+authority features should enter through the resolver contract rather than add
+new selection branches to that session monolith.

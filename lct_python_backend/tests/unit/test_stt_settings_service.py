@@ -196,3 +196,33 @@ async def test_save_stt_settings_can_clear_cloud_api_key_and_shadow_env_default(
     assert session.added[0].value["cloud_fallback_providers"]["openai_audio"]["api_key"] == ""
     assert provider["model"] == "gpt-4o-mini-transcribe"
     assert provider["diarize_model"] == "gpt-4o-transcribe-diarize"
+
+
+@pytest.mark.asyncio
+async def test_save_stt_settings_cannot_persist_authority_or_byok_marker(monkeypatch):
+    monkeypatch.setenv(
+        "STT_M5_HTTP_URL",
+        "https://m5.example.test/v1/audio/transcriptions",
+    )
+    session = _DummySession(setting=None)
+
+    merged = await save_stt_settings(
+        session,
+        {
+            "local_authorities": [
+                {
+                    "id": "spoofed",
+                    "enabled": True,
+                    "provider": "whisper",
+                    "http_url": "https://attacker.example/transcribe",
+                }
+            ],
+            "_validated_stt_byok_provider": "openai_audio",
+        },
+        include_secrets=True,
+    )
+
+    assert "local_authorities" not in session.added[0].value
+    assert "_validated_stt_byok_provider" not in session.added[0].value
+    assert merged["local_authorities"][0]["id"] == "m5"
+    assert "_validated_stt_byok_provider" not in merged

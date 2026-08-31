@@ -19,6 +19,7 @@ from lct_python_backend.services.file_transcriber import (
     transcribe_uploaded_file,
 )
 from lct_python_backend.services.speaker_materialization import persist_speaker_refinement
+from lct_python_backend.services.stt.stt_config import get_env_stt_defaults
 from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
 
 logger = logging.getLogger(__name__)
@@ -149,6 +150,7 @@ def _sanitize_stt_settings_for_queue(settings: Dict[str, Any]) -> Dict[str, Any]
         sanitized.pop("ws_url", None)
 
     for key in (
+        "local_authorities",
         "cloud_fallback_providers",
         "external_fallback_http_url",
         "external_fallback_ws_url",
@@ -156,6 +158,9 @@ def _sanitize_stt_settings_for_queue(settings: Dict[str, Any]) -> Dict[str, Any]
         "live_fallback_priority",
     ):
         sanitized.pop(key, None)
+    for key in tuple(sanitized):
+        if str(key).startswith("_validated_stt_"):
+            sanitized.pop(key, None)
     sanitized["local_only"] = True
     sanitized["live_cloud_fallback_enabled"] = False
     sanitized["live_allow_text_only_fallback"] = False
@@ -386,11 +391,15 @@ class ImportDiarizationQueue:
             )
             active_stage = "transcribing"
             transcribe_started_at = time.perf_counter()
+            execution_stt_settings = _clone(job.request.get("stt_settings") or {})
+            execution_stt_settings["local_authorities"] = _clone(
+                get_env_stt_defaults().get("local_authorities") or []
+            )
             transcript_result = await transcribe_uploaded_file(
                 temp_path=job.audio_path,
                 filename=str(job.request.get("filename") or job.audio_path.name),
                 content_type=job.request.get("content_type"),
-                stt_settings=_clone(job.request.get("stt_settings") or {}),
+                stt_settings=execution_stt_settings,
                 provider_override=job.request.get("provider_override"),
                 source_type_override=job.request.get("source_type_override"),
                 enable_parakeet_pyannote=True,

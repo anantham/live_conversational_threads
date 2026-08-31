@@ -6,6 +6,7 @@ import lct_python_backend.services.import_pipeline.import_bulk_checkpoint_flow a
 from lct_python_backend.tests.unit.import_api_test_support import (
     build_test_client,
     load_import_api_with_stubs,
+    local_stt_settings,
     parse_sse_events,
 )
 
@@ -16,7 +17,7 @@ def test_process_file_error_event_surfaces_resume_metadata(monkeypatch):
     monkeypatch.setattr(
         import_api,
         "load_stt_settings",
-        AsyncMock(return_value={"provider": "whisper", "http_timeout_seconds": 10.0}),
+        AsyncMock(return_value=local_stt_settings()),
     )
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
     monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))

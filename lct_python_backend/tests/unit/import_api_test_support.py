@@ -121,3 +121,24 @@ def parse_sse_events(raw_stream: str):
         payload = json.loads("\n".join(data_lines))
         events.append((current_event, payload))
     return events
+
+
+def local_stt_settings(
+    *,
+    provider: str = "whisper",
+    http_url: str = "http://stt.example.test/api/transcribe",
+):
+    """Return an explicit test-only authority record for audio import fixtures."""
+    return {
+        "provider": provider,
+        "http_timeout_seconds": 10.0,
+        "local_authorities": [
+            {
+                "id": f"test-{provider}",
+                "enabled": True,
+                "provider": provider,
+                "http_url": http_url,
+                "supports_diarization": True,
+            }
+        ],
+    }

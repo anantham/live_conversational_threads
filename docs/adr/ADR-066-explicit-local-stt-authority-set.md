@@ -56,3 +56,16 @@ Behavioral tests must cover M5 primary, Asus fallback, local exhaustion, no
 silent cloud, scoped BYOK, large BYOK imports, consistent segmented/sequential
 routing, and credential-free delayed jobs.
 
+## Implementation Note — 2026-08-31
+
+Implemented as one shared authority resolver contract consumed by live,
+sequential import, and segmented import. Delayed jobs discard request/session
+authority and rebuild the current environment-owned M5→Asus set when they
+execute. Websocket capability is explicit: an HTTP URL never implies a
+realtime endpoint. The Asus default therefore names its websocket URL as a
+separate owner-controlled setting.
+
+The previous preference/hostname routing implementation was removed rather
+than retained as a compatibility path. Provider overrides and saved cloud
+settings remain preferences; only the internal marker minted by a validated
+BYOK session grants cloud authority.

@@ -16,8 +16,12 @@ STT_LIVE_FALLBACK_ROUTE_IDS = (
 DEFAULT_STT_LIVE_FALLBACK_PRIORITY = list(STT_LIVE_FALLBACK_ROUTE_IDS)
 DEFAULT_STT_PROVIDER = "parakeet"
 DEFAULT_STT_HTTP_URL = "http://localhost:5092/v1/audio/transcriptions"
+DEFAULT_STT_M5_HTTP_URL = (
+    "https://adityas-macbook-pro.tail4741ad.ts.net:5443/v1/audio/transcriptions"
+)
 # IndrasNet orchestrator endpoint (routes local WhisperX first, then Modal fallback).
 DEFAULT_STT_WHISPER_HTTP_URL = "http://100.81.65.74:7777/api/transcribe"
+DEFAULT_STT_ASUS_WS_URL = "ws://100.81.65.74:7777/api/transcribe/stream"
 DEFAULT_OPENAI_AUDIO_BASE_URL = "https://api.openai.com"
 DEFAULT_OPENAI_AUDIO_MODEL = "gpt-4o-mini-transcribe"
 DEFAULT_OPENAI_AUDIO_DIARIZE_MODEL = "gpt-4o-transcribe-diarize"
@@ -260,6 +264,35 @@ def _build_provider_http_urls(default_http_url: str) -> Dict[str, str]:
     }
 
 
+def _build_local_authorities() -> list[Dict[str, Any]]:
+    m5_http_url = coerce_str(os.getenv("STT_M5_HTTP_URL", DEFAULT_STT_M5_HTTP_URL))
+    asus_http_url = coerce_str(
+        os.getenv("STT_ASUS_HTTP_URL", os.getenv("DEFAULT_STT_WHISPER_HTTP_URL", DEFAULT_STT_WHISPER_HTTP_URL))
+    )
+    return [
+        {
+            "id": "m5",
+            "enabled": to_bool(os.getenv("STT_M5_ENABLED", bool(m5_http_url))),
+            "provider": coerce_str(os.getenv("STT_M5_PROVIDER", "parakeet")) or "parakeet",
+            "http_url": m5_http_url,
+            "ws_url": coerce_str(os.getenv("STT_M5_WS_URL", "")),
+            "supports_diarization": to_bool(os.getenv("STT_M5_SUPPORTS_DIARIZATION", "true")),
+            "request_diarization": to_bool(os.getenv("STT_M5_REQUEST_DIARIZATION", "true")),
+            "degraded": False,
+        },
+        {
+            "id": "asus",
+            "enabled": to_bool(os.getenv("STT_ASUS_ENABLED", bool(asus_http_url))),
+            "provider": coerce_str(os.getenv("STT_ASUS_PROVIDER", "whisper")) or "whisper",
+            "http_url": asus_http_url,
+            "ws_url": coerce_str(os.getenv("STT_ASUS_WS_URL", DEFAULT_STT_ASUS_WS_URL)),
+            "supports_diarization": to_bool(os.getenv("STT_ASUS_SUPPORTS_DIARIZATION", "true")),
+            "request_diarization": to_bool(os.getenv("STT_ASUS_REQUEST_DIARIZATION", "true")),
+            "degraded": False,
+        },
+    ]
+
+
 def _merge_provider_urls(raw_urls: Any, base_urls: Mapping[str, str]) -> Dict[str, str]:
     merged = {provider: coerce_str(base_urls.get(provider, "")) for provider in STT_PROVIDER_IDS}
     if not isinstance(raw_urls, Mapping):
@@ -284,6 +317,7 @@ def get_env_stt_defaults() -> Dict[str, Any]:
         "provider_http_urls": provider_http_urls,
         "ws_url": provider_urls.get(provider) or legacy_ws_url,
         "http_url": provider_http_urls.get(provider) or default_http_url,
+        "local_authorities": _build_local_authorities(),
         "local_only": to_bool(os.getenv("STT_LOCAL_ONLY", "true")),
         "external_fallback_ws_url": coerce_str(os.getenv("STT_EXTERNAL_FALLBACK_WS_URL", "")),
         "external_fallback_http_url": coerce_str(os.getenv("STT_EXTERNAL_FALLBACK_HTTP_URL", "")),
@@ -377,7 +411,10 @@ def merge_stt_config(overrides: Dict[str, Any]) -> Dict[str, Any]:
             "http_url",
             "cloud_fallback_providers",
             "live_fallback_priority",
+            "local_authorities",
         }:
+            continue
+        elif str(key).startswith("_validated_stt_"):
             continue
         else:
             sanitized[key] = value

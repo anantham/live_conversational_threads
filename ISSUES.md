@@ -2,6 +2,24 @@
 
 Last updated: 2026-08-30
 
+## 2026-08-31 — Attendee-bridge unit tests write synthetic registry state to the repo (OPEN, NON-BLOCKING)
+
+**Summary:** Six pre-existing attendee-bridge unit tests exercise session
+persistence without overriding `ATTENDEE_SESSION_REGISTRY_PATH`. A complete
+unit run therefore creates `data/attendee_sessions.json` in the active
+worktree with synthetic `c-*` fixture records.
+
+**Impact:** Test isolation and worktree hygiene only; the generated file is not
+user data and is excluded from the consolidation commit. Left unaddressed, it
+can be mistaken for a real artifact or accidentally staged by a broad add.
+
+**Blocker status:** Non-blocking for the explicit STT authority repair. The
+file was identified by its fixture IDs and removed after validation.
+
+**Recommended next step:** Give every attendee-bridge persistence test a
+temporary registry path through an autouse fixture, then assert the default
+repository path remains untouched.
+
 ## 2026-08-30 — Desktop Center legibility test samples an animated viewport twice (OPEN, NON-BLOCKING)
 
 **Summary:** The unchanged desktop macro-centering browser test reads the

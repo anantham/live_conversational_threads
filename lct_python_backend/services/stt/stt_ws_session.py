@@ -2755,6 +2755,20 @@ class WsSessionContext:
             settings=runtime_stt_settings,
             provider_override=requested_provider or payload.get("provider"),
         )
+        if not stt_candidates:
+            await self._emit_ws_error(
+                message_type="stt_setup_failed",
+                code="local_stt_authorities_exhausted",
+                detail=(
+                    "No approved local STT authority is enabled. Enable the M5 or Asus "
+                    "authority, or start a validated BYOK session for this request."
+                ),
+                stage="stt_setup",
+                level="error",
+                fatal=True,
+                context={"requested_provider": requested_provider or None},
+            )
+            return
         primary_candidate = stt_candidates[0] if stt_candidates else {}
         self.refinement_candidate = build_live_stt_background_refinement_candidate(
             settings=runtime_stt_settings,
@@ -2975,6 +2989,8 @@ class WsSessionContext:
             "session_id": self.state.session_id,
             "store_audio": self.state.store_audio,
             "provider": getattr(self.stt_runtime, "provider", active_provider),
+            "authority_id": primary_candidate.get("authority_id"),
+            "authority_scope": primary_candidate.get("authority_scope"),
             "transport": getattr(self.stt_runtime, "transport", active_transport),
             "model": getattr(self.stt_runtime, "model", active_model) or active_model or None,
             "model_source": "configured_override" if active_model else "server_default",
@@ -2993,6 +3009,8 @@ class WsSessionContext:
             "fallback_candidates": [
                 {
                     "route_id": str(candidate.get("route_id") or ""),
+                    "authority_id": str(candidate.get("authority_id") or ""),
+                    "authority_scope": str(candidate.get("authority_scope") or ""),
                     "provider": str(candidate.get("provider") or ""),
                     "transport": str(candidate.get("transport") or ""),
                     "reason": str(candidate.get("reason") or ""),
@@ -3008,6 +3026,8 @@ class WsSessionContext:
             message="Live STT session initialized.",
             context={
                 "provider": getattr(self.stt_runtime, "provider", active_provider),
+                "authority_id": primary_candidate.get("authority_id"),
+                "authority_scope": primary_candidate.get("authority_scope"),
                 "transport": getattr(self.stt_runtime, "transport", active_transport),
                 "stt_mode": self._runtime_mode(),
                 "stt_ready": bool(self.stt_runtime.is_ready()),

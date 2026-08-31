@@ -11,6 +11,7 @@ import lct_python_backend.services.import_pipeline.import_bulk_graph_pass as gra
 from lct_python_backend.tests.unit.import_api_test_support import (
     build_test_client,
     load_import_api_with_stubs,
+    local_stt_settings,
     parse_sse_events,
 )
 
@@ -76,10 +77,7 @@ def test_process_file_passes_provider_override_to_transcriber(monkeypatch):
     import_api = load_import_api_with_stubs(monkeypatch)
     client = build_test_client(import_api)
 
-    stt_settings = {
-        "provider": "whisper",
-        "provider_http_urls": {"whisper": "http://localhost:5092/v1/audio/transcriptions"},
-    }
+    stt_settings = local_stt_settings()
     monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value=stt_settings))
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
     monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
@@ -120,6 +118,32 @@ def test_process_file_passes_provider_override_to_transcriber(monkeypatch):
     kwargs = transcribe_mock.await_args.kwargs
     assert kwargs["provider_override"] == "senko"
     assert kwargs["stt_settings"] == stt_settings
+
+
+def test_process_file_without_approved_stt_authority_emits_descriptive_error(monkeypatch):
+    import_api = load_import_api_with_stubs(monkeypatch)
+    client = build_test_client(import_api)
+
+    monkeypatch.setattr(
+        import_api,
+        "load_stt_settings",
+        AsyncMock(return_value={"local_authorities": []}),
+    )
+
+    with client.stream(
+        "POST",
+        "/api/import/process-file",
+        files={"file": ("clip.wav", b"RIFF....WAVE", "audio/wav")},
+    ) as response:
+        assert response.status_code == 200
+        events = parse_sse_events("".join(response.iter_text()))
+
+    error = [payload for name, payload in events if name == "error"][-1]
+    assert "No approved local STT authority is enabled" in error["message"]
+    assert error["failure_stage"] == "uploading"
+    assert error["resume_available"] is False
+
+
 def test_process_file_uses_sequential_path_for_cloud_import_candidate(monkeypatch):
     import_api = load_import_api_with_stubs(monkeypatch)
     import lct_python_backend.services.import_pipeline.import_bulk_graph_pass as graph_pass
@@ -127,25 +151,20 @@ def test_process_file_uses_sequential_path_for_cloud_import_candidate(monkeypatc
     client = build_test_client(import_api)
     monkeypatch.setattr(graph_pass, "SEGMENT_PROCESSING_FORCE_ENABLED", True)
 
-    stt_settings = {
-        "provider": "whisper",
-        "local_only": False,
-        "upload_local_first": False,
-        "live_cloud_fallback_enabled": True,
-        "provider_http_urls": {
-            "parakeet": "http://localhost:5092/v1/audio/transcriptions",
-            "whisper": "http://100.81.65.74:7777/api/transcribe",
+    from lct_python_backend.services.byok_session_store import (
+        build_runtime_stt_settings_for_byok,
+    )
+
+    stt_settings = build_runtime_stt_settings_for_byok(
+        local_stt_settings(),
+        {
+            "provider": "openai_audio",
+            "base_url": "https://api.openai.com",
+            "api_key": "session-key",
+            "model": "gpt-4o-mini-transcribe",
+            "diarize_model": "gpt-4o-transcribe-diarize",
         },
-        "cloud_fallback_providers": {
-            "openai_audio": {
-                "enabled": True,
-                "base_url": "https://api.openai.com",
-                "api_key": "sk-openai-secret",
-                "model": "gpt-4o-mini-transcribe",
-                "diarize_model": "gpt-4o-transcribe-diarize",
-            }
-        },
-    }
+    )
     monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value=stt_settings))
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
     monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
@@ -184,6 +203,7 @@ def test_process_file_uses_sequential_path_for_cloud_import_candidate(monkeypatc
     with client.stream(
         "POST",
         "/api/import/process-file",
+        data={"provider": "openai_audio"},
         files={"file": ("clip.wav", b"RIFF....WAVE", "audio/wav")},
     ) as response:
         assert response.status_code == 200
@@ -198,7 +218,11 @@ def test_process_file_applies_graph_refinement_when_available(monkeypatch):
     import_api = load_import_api_with_stubs(monkeypatch)
     client = build_test_client(import_api)
 
-    monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
+    monkeypatch.setattr(
+        import_api,
+        "load_stt_settings",
+        AsyncMock(return_value=local_stt_settings(provider="parakeet")),
+    )
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
     monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
     monkeypatch.setattr(
@@ -325,7 +349,11 @@ def test_process_file_streams_error_event_when_transcriber_fails(monkeypatch):
     import_api = load_import_api_with_stubs(monkeypatch)
     client = build_test_client(import_api)
 
-    monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
+    monkeypatch.setattr(
+        import_api,
+        "load_stt_settings",
+        AsyncMock(return_value=local_stt_settings()),
+    )
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
     monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
 
@@ -416,7 +444,11 @@ def test_process_file_emits_fallback_status_notice(monkeypatch):
     import_api = load_import_api_with_stubs(monkeypatch)
     client = build_test_client(import_api)
 
-    monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
+    monkeypatch.setattr(
+        import_api,
+        "load_stt_settings",
+        AsyncMock(return_value=local_stt_settings(provider="parakeet")),
+    )
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
     monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
 
@@ -471,7 +503,11 @@ def test_process_file_emits_transcribing_transcript_events(monkeypatch):
     import_api = load_import_api_with_stubs(monkeypatch)
     client = build_test_client(import_api)
 
-    monkeypatch.setattr(import_api, "load_stt_settings", AsyncMock(return_value={"provider": "whisper"}))
+    monkeypatch.setattr(
+        import_api,
+        "load_stt_settings",
+        AsyncMock(return_value=local_stt_settings()),
+    )
     monkeypatch.setattr(import_api, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
     monkeypatch.setattr(import_api, "load_llm_providers", AsyncMock(return_value={"providers": []}))
 

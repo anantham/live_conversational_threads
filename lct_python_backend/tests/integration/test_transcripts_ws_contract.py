@@ -130,10 +130,8 @@ def test_audio_chunk_after_final_flush_returns_warning(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_audio_chunk_with_no_stt_url_returns_provider_error(monkeypatch):
-    """When no STT HTTP URL is configured, audio_chunk should return
-    stt_provider_error (at most once per session).
-    """
+def test_session_meta_without_approved_authority_fails_before_start(monkeypatch):
+    """An exhausted authority set fails descriptively before session startup."""
     processor_calls = {"final": [], "flush": 0}
     client = build_test_client(
         monkeypatch,
@@ -141,6 +139,7 @@ def test_audio_chunk_with_no_stt_url_returns_provider_error(monkeypatch):
             "provider": "whisper",
             "provider_http_urls": {},
             "http_url": "",
+            "local_authorities": [],
         },
         processor_cls=build_processor_class(processor_calls),
     )
@@ -154,23 +153,12 @@ def test_audio_chunk_with_no_stt_url_returns_provider_error(monkeypatch):
                 "store_audio": False,
             }
         )
-        ack = receive_session_ack(ws)
-        assert ack["type"] == "session_ack"
-        assert ack["stt_ready"] is False
+        error = ws.receive_json()
+        assert error["type"] == "stt_setup_failed"
+        assert error["code"] == "local_stt_authorities_exhausted"
+        assert error["fatal"] is True
 
-        # First audio chunk → should get provider error
-        ws.send_json(
-            {"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.1)}
-        )
-        msg = ws.receive_json()
-        assert msg["type"] == "stt_provider_error"
-
-        # Second audio chunk → error should NOT repeat (stt_unready_notified flag)
-        ws.send_json(
-            {"type": "audio_chunk", "audio_base64": pcm_audio_base64(0.1)}
-        )
-
-        # Send ping to verify connection is still alive and no error queued
+        # The websocket remains usable for a corrected session_meta retry.
         ws.send_json({"type": "ping", "client_ts_ms": 42})
         pong = ws.receive_json()
         assert pong["type"] == "pong"

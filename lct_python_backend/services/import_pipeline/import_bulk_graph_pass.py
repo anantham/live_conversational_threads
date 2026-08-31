@@ -200,6 +200,7 @@ async def run_segmented_graph_pass(
     request: Request,
     temp_path: str,
     runtime_stt_settings: dict[str, Any],
+    stt_candidates: Optional[list[dict[str, Any]]] = None,
     transcribe_audio_segmented: Callable[..., AsyncGenerator[Any, None]],
     resume_from_chunk: int,
     checkpoint_transcript_parts: list[str],
@@ -225,7 +226,10 @@ async def run_segmented_graph_pass(
     total_nodes_generated = 0
     segmented_transcript_parts: list[str] = list(checkpoint_transcript_parts)
 
-    stt_http_url = str(runtime_stt_settings.get("http_url", "")).strip()
+    primary_candidate = stt_candidates[0] if stt_candidates else {}
+    stt_http_url = str(
+        primary_candidate.get("http_url") or runtime_stt_settings.get("http_url", "")
+    ).strip()
     if not stt_http_url:
         log.error("[PROCESS FILE] No STT HTTP URL configured for segmented transcription")
         raise ValueError("No STT HTTP URL configured for segmented transcription.")
@@ -237,15 +241,22 @@ async def run_segmented_graph_pass(
 
     segment_idx = 0
     accumulated_utterances: list[dict[str, Any]] = []
-    async for segment in transcribe_audio_segmented(
-        file_path=Path(temp_path),
-        http_url=stt_http_url,
-        model=str(runtime_stt_settings.get("http_model", "")).strip(),
-        language=str(runtime_stt_settings.get("http_language", "")).strip(),
-        timeout_seconds=float(runtime_stt_settings.get("http_timeout_seconds", 120.0) or 120.0),
-        resume_from_segment=resume_from_chunk,
-        resumed_segment_texts=checkpoint_transcript_parts if resume_from_chunk > 0 else None,
-    ):
+    segment_kwargs = {
+        "file_path": Path(temp_path),
+        "http_url": stt_http_url,
+        "model": str(runtime_stt_settings.get("http_model", "")).strip(),
+        "language": str(runtime_stt_settings.get("http_language", "")).strip(),
+        "timeout_seconds": float(
+            runtime_stt_settings.get("http_timeout_seconds", 120.0) or 120.0
+        ),
+        "resume_from_segment": resume_from_chunk,
+        "resumed_segment_texts": (
+            checkpoint_transcript_parts if resume_from_chunk > 0 else None
+        ),
+    }
+    if stt_candidates is not None:
+        segment_kwargs["candidates"] = stt_candidates
+    async for segment in transcribe_audio_segmented(**segment_kwargs):
         segment_idx += 1
         if await request.is_disconnected():
             log.info(
