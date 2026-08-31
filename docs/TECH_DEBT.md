@@ -231,6 +231,24 @@ cursor rules and hierarchy/index construction now deserve separate modules if
 another navigation policy is added. Keep movement/reconciliation pure and do
 not move cursor policy back into React components.
 
+### 2026-08-31 — Native observability scripts are bounded but still oversized
+
+`ops/observability/install_observability_tasks.ps1` is roughly 874 lines even
+after migration and process-ownership logic moved into separate modules. It
+still combines the public task plan, ACL setup, inventory/integrity checks,
+readiness probes, task registration, adoption, rollback, and status shaping.
+Before adding another component or migration mode, extract task-plan/status and
+runtime-copy verification into focused modules while keeping the install switch
+as the thin transactional orchestrator.
+
+`ops/observability/start_observability.ps1` is roughly 551 lines and combines
+the pinned component manifest, verified download/install, process ownership,
+configuration validation, foreground supervision, and manual fallback. Extract
+the immutable component manifest and verified installer before changing
+versions or adding platforms. `lct_python_backend/telemetry/otel.py` is roughly
+355 lines; separate privacy hooks/runtime gauges from provider construction
+before adding another exporter or content-bearing instrumentor.
+
 ### 2026-08-30 — ImportDiarizationQueue mixes custody and processing
 
 `services/import_pipeline/import_diarization_queue.py` is over 550 lines and

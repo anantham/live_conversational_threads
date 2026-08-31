@@ -54,6 +54,11 @@ def get_engine():
                     # negotiation path on Windows proactor loop.
                     connect_args={"ssl": False},
                 )
+                from lct_python_backend.telemetry import (
+                    instrument_sqlalchemy_engine,
+                )
+
+                instrument_sqlalchemy_engine(_engine)
     return _engine
 
 

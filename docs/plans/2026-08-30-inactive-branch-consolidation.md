@@ -585,7 +585,7 @@ classified for human arbitration.
 
 | Worktree | Exact source-bearing assessment | Disposition |
 | --- | --- | --- |
-| Dirty root `main` | Contains the approved bounded semantic-window and edge-only topology repair, an incomplete unused frontend performance prototype, a stale generated codemap/handover snapshot, and a separate native-observability experiment. Copying the root wholesale would delete or regress later viewer/provenance work now on `origin/main`. | Port only the topology repair onto current main. Reject the unused performance prototype as not product-integrated. Keep the observability experiment held for human arbitration. |
+| Dirty root `main` | Contains the approved bounded semantic-window and edge-only topology repair, an incomplete unused frontend performance prototype, a stale generated codemap/handover snapshot, and the final successfully deployed native-observability implementation after an earlier failed migration experiment. Copying the root wholesale would delete or regress later viewer/provenance work now on `origin/main`. | Port the topology repair and only the final LCT-owned observability source/config/tests onto current main. Reject the unused performance prototype as not product-integrated. Exclude runtime data, ignored launcher state, stale generated files, and cross-repository changes. |
 | `codex/local-first-browse` | Only untracked review traces/runtime data plus three unreadable pytest temp trees; no tracked source delta. | No source to merge. Private/generated material remains excluded from review and cleanup until an exact manifest. |
 | `codex/recipient-semantic-cards` | Tracked stale issue/worklog edits and untracked review/handover/test debris; the source branch itself is represented by merged PR #170. | No product source to merge; retain only useful historical intent in the current ledger. |
 | attendee-audio revision, test-coverage, and `docs/ssrf-toctou-followup` | Each reports only an untracked `mcps/` directory. | No product source to merge; generated manifests require an exact cleanup decision. |
@@ -625,14 +625,23 @@ source, test, and ADR diff in read-only sandbox mode. Its complete retry ended
 `APPROVED` with no findings; the earlier interrupted stream is not counted as a
 verdict.
 
-### Remaining one-worktree blocker
+### Second-pass correction: native observability is salvageable
 
-The native operational-observability experiment is not safe to call merged or
-discarded. Its own notes record a hard stop: union-copying a mutable Prometheus
-TSDB corrupted head state, and Claude Opus requested changes to the supervision
-design. It also collides by number with current main's unrelated ADR-064 and
-spans dirty cross-repository operational files, including an ignored launcher.
-It therefore needs a product/architecture decision: either rebuild it as a
-fresh dormant, disabled-by-default slice on current main, or explicitly archive
-the experiment as rejected design evidence. Until that decision, reducing all
-twelve worktrees to one would risk deleting meaningful unresolved work.
+The first pass stopped at the failed union-copy experiment and therefore
+misclassified the entire observability family. Later entries in the same
+worklog record a completed principled repair: a fresh restricted ProgramData
+stage, full inventory/byte comparison, Prometheus head continuity, exact binary
+hashes, journaled two-rename promotion/rollback, and wrapper-owned child
+restart. Live evidence replaced a killed Collector in 9.16 seconds.
+
+The final LCT-owned source, configs, behavioral tests, and ADR are now ported
+onto current main. The ADR is renumbered 067 to avoid current main's unrelated
+ADR-064. Runtime data, ignored local launcher state, stale viewer code,
+generated files, and dirty TemporalCoordination changes remain excluded.
+
+The new remaining gate is mechanical rather than architectural: obtain final
+independent review and green CI, then produce a fresh exact cleanup manifest.
+The current root checkout should be the sole retained worktree because all four
+installed `LCT-Observability-*` task actions resolve scripts through that
+stable repository path. Deleting or renaming it before deliberately retargeting
+those tasks would break durable supervision.

@@ -1,0 +1,108 @@
+groups:
+  - name: native-observability
+    interval: 15s
+    rules:
+      - alert: ObservabilityTargetDown
+        expr: up{job=~"otel-collector|indrasnet|tempo|grafana"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          domain: observability
+        annotations:
+          summary: "{{ $labels.job }} has stopped responding"
+          description: "Prometheus has been unable to scrape {{ $labels.instance }} for two minutes. Check the matching LCT-Observability scheduled task before changing any probe timeout."
+
+      - alert: IndrasNetErrorWriterMissing
+        expr: absent(error_persistence_writer_running{job="indrasnet"}) == 1
+        for: 2m
+        labels:
+          severity: critical
+          domain: error-persistence
+        annotations:
+          summary: "IndrasNet error-writer telemetry is missing"
+          description: "IndrasNet is scrapeable, but its bounded error writer metric is absent. Confirm the deployed web process includes Stage 1 instrumentation."
+
+      - alert: IndrasNetErrorWriterStopped
+        expr: error_persistence_writer_running{job="indrasnet"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          domain: error-persistence
+        annotations:
+          summary: "IndrasNet error writer is stopped"
+          description: "HTTP requests can still be served, but structured error persistence is unavailable. Inspect the web lifecycle and writer logs."
+
+      - alert: IndrasNetErrorPersistenceLoss
+        expr: sum(increase(error_persistence_events_total{job="indrasnet",outcome=~"dropped|write_failed|unavailable|abandoned"}[5m])) > 0
+        labels:
+          severity: critical
+          domain: error-persistence
+        annotations:
+          summary: "IndrasNet lost at least one structured error record"
+          description: "A bounded-writer terminal loss outcome occurred in the last five minutes. Use the outcome and kind labels to distinguish pressure, DB failure, lifecycle loss, or shutdown abandonment."
+
+      - alert: IndrasNetErrorQueuePressure
+        expr: max_over_time(error_persistence_queue_depth{job="indrasnet"}[5m]) > 128
+        for: 2m
+        labels:
+          severity: warning
+          domain: error-persistence
+        annotations:
+          summary: "IndrasNet error writer queue is under sustained pressure"
+          description: "Queue depth stayed above 128. Correlate with writer latency, SQLite timing, CPU, and tracked thread count before changing queue or timeout limits."
+
+      - alert: CollectorDeliveryFailure
+        expr: |
+          (
+            (sum(increase(otelcol_exporter_send_failed_spans[5m])) or vector(0))
+            + (sum(increase(otelcol_exporter_send_failed_metric_points[5m])) or vector(0))
+            + (sum(increase(otelcol_receiver_failed_spans[5m])) or vector(0))
+            + (sum(increase(otelcol_receiver_refused_spans[5m])) or vector(0))
+            + (sum(increase(otelcol_receiver_failed_metric_points[5m])) or vector(0))
+            + (sum(increase(otelcol_receiver_refused_metric_points[5m])) or vector(0))
+          ) > 0
+        labels:
+          severity: critical
+          domain: telemetry-delivery
+        annotations:
+          summary: "OpenTelemetry Collector lost or rejected telemetry"
+          description: "The collector reported failed delivery or receiver rejection during the last five minutes. Inspect collector logs and exporter labels."
+
+      - alert: CollectorQueueBacklog
+        expr: max(otelcol_exporter_queue_size / clamp_min(otelcol_exporter_queue_capacity, 1)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          domain: telemetry-delivery
+        annotations:
+          summary: "OpenTelemetry Collector export queue is backing up"
+          description: "An exporter queue has remained over 50 percent full for five minutes. Correlate with Prometheus or Tempo availability and host saturation."
+
+      - alert: TempoStorageFailure
+        expr: increase(tempodb_retention_errors_total[10m]) > 0 or increase(tempo_ingester_failed_flushes_total[10m]) > 0
+        labels:
+          severity: critical
+          domain: trace-storage
+        annotations:
+          summary: "Tempo reported a retention or flush failure"
+          description: "Trace storage failed during retention or ingestion. Inspect Tempo logs and disk state; do not treat an isolated poller race as application latency."
+
+      - alert: SharedHostCpuSaturation
+        expr: 1 - avg(system_cpu_utilization_ratio{state="idle",otel_scope_name=~".*cpuscraper"}) > 0.95
+        for: 10m
+        labels:
+          severity: warning
+          domain: host-contention
+        annotations:
+          summary: "Shared host CPU saturation is sustained"
+          description: "Host CPU utilization exceeded 95 percent for ten minutes. Use process workload CPU and thread series to attribute contention before changing health-probe timeouts."
+
+      - alert: TrackedProcessThreadGrowth
+        expr: sum(process_threads{otel_scope_name=~".*processscraper"}) > 1500
+        for: 10m
+        labels:
+          severity: warning
+          domain: host-contention
+        annotations:
+          summary: "Tracked process thread count is above the evidence threshold"
+          description: "The selected Python, Node, browser, media, and local-model processes exceeded 1,500 threads for ten minutes. Compare by process_workload and process_pid; this threshold is diagnostic, not a capacity target."

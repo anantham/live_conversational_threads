@@ -5293,3 +5293,73 @@ Manual testing not run:
   coverage, all-window fail-closed behavior, transaction/rollback boundaries,
   additive persistence, citation union, local-provider privacy policy, and the
   behavioral tests. No reviewer edits or external actions occurred.
+
+### 2026-08-31 21:51 +05:30 — Second-pass observability classification corrected and ported
+
+- Re-read the dirty root's later operational evidence instead of stopping at
+  the earlier mutable-Prometheus union-copy failure. The final implementation
+  uses a fresh restricted ProgramData stage, complete inventory/byte and
+  executable-hash verification, Prometheus head continuity, an external
+  migration journal with recoverable two-rename promotion, and a long-lived
+  wrapper that restarts failed native children. The unsafe merge-copy path is
+  not present in the rescued source.
+- Ported only the LCT-owned final slice onto current main:
+  `lct_python_backend/telemetry/__init__.py` and `otel.py` (standard,
+  privacy-bounded FastAPI/HTTPX/SQLAlchemy/system/runtime instrumentation);
+  `backend.py` and `db_session.py` lifecycle integration;
+  exact OpenTelemetry pins in `requirements.txt`; the complete
+  `ops/observability/` native stack, configs, and task/migration modules; and
+  two behavioral test files. Runtime data, PID/log state, ignored launch
+  profiles, stale generated files, dirty TemporalCoordination source, and the
+  unrelated frontend performance prototype were not copied.
+- Renumbered the native stack decision from colliding ADR-064 to ADR-067 and
+  updated only its internal README/index references. The original decision and
+  two evidence-driven amendments remain otherwise unchanged.
+- Static/focused validation: Python compilation passed; all copied PowerShell
+  scripts/modules parsed; normalized line-by-line comparison proves the copied
+  implementation/tests/configs exactly match the deployed source; focused
+  telemetry/supervision tests passed 19/19, including journal recovery,
+  ownership scoping, task-plan privacy, alert coverage, and installed
+  `promtool` validation.
+- Full backend unit validation outside the Windows sandbox reached 1,990
+  passes with one known environment-only failure: the shared Python 3.9 venv
+  has `openai==1.54.0` with newer HTTPX and fails client construction on the
+  removed `proxies=` argument. The sandbox run's 94 setup errors and eight
+  path failures were falsified as sandbox-created temp ACL denials.
+- Live read-only evidence from the installed stack: all four exact
+  `LCT-Observability-*` tasks are installed/running; every native PID and
+  listener is ownership-verified; Collector, Prometheus, Tempo, Grafana, and
+  Collector metrics endpoints return HTTP 200; all five Prometheus targets are
+  up; ten alert rules are loaded with none firing; and current
+  `service_name=lct-backend` request, runtime, process, and system metrics are
+  queryable. The initial sandboxed task query falsely reported absent tasks
+  because Windows management access was denied; an outside-sandbox read-only
+  rerun established the actual state.
+- Operational cleanup guard: installed task actions intentionally point at the
+  stable root `live_conversational_threads\ops\observability` path. The
+  final one-worktree manifest must retain that root as the sole checkout, or
+  explicitly retarget and revalidate all four tasks before removing it.
+- Files above 300 lines were assessed and decomposition candidates were added
+  to `docs/TECH_DEBT.md`; no refactor was mixed into this preservation port.
+  Independent review and CI were still pending at this checkpoint.
+
+### 2026-08-31 22:00 +05:30 — Native observability independent review passed
+
+- The first Agy/Gemini 3.1 Pro High attempt correctly rejected a malformed
+  packet after PowerShell serialized the diff array as `System.Object[]`;
+  it made no code judgment. A corrected continuation then terminated inside
+  Agy without a verdict. Grok 4.6 was authenticated but returned 402 because
+  its subscription balance is exhausted; Claude Opus was authenticated but
+  returned 429 until its 00:30 reset. Neither reviewed the code.
+- A final fresh Agy conversation received the complete exact staged diff as a
+  verified single string (56,378 input tokens) from an empty directory with no
+  tool use. Gemini 3.1 Pro High returned `APPROVED` with no product defects.
+  It explicitly accepted the loopback/privacy boundaries, non-fatal
+  application integration, exact task supervision and backoff, journaled
+  fresh-stage migration, executable/head verification, ownership-scoped
+  Grafana helper cleanup, readiness budgets, tests, and ADR-067 renumbering.
+- The reviewer classified the sole 1,990-pass unit-suite failure as the
+  documented pre-existing Python 3.9/OpenAI/HTTPX environment mismatch. No
+  reviewer finding was rejected or left for human arbitration. The temporary
+  review packet and empty reviewer directories were removed; raw conversations
+  were not committed.

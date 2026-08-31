@@ -83,6 +83,8 @@ logger.info("LCT Backend Starting - Logging initialized")
 logger.info(f"Log file: {os.path.join(LOG_DIR, 'backend.log')}")
 logger.info("=" * 60)
 
+_telemetry_runtime = None
+
 
 # ============================================================================
 # CORS CONFIGURATION
@@ -202,9 +204,19 @@ async def lifespan(app: FastAPI):
     except Exception:  # noqa: BLE001
         logger.exception("[STARTUP] contacts-cache warm-up failed to schedule (non-fatal)")
 
-    yield
-    logger.info("Disconnecting from database...")
-    await db.disconnect()
+    if _telemetry_runtime is not None:
+        await _telemetry_runtime.start()
+
+    try:
+        yield
+    finally:
+        if _telemetry_runtime is not None:
+            try:
+                await _telemetry_runtime.shutdown()
+            except Exception:
+                logger.exception("[OTEL] shutdown failed (non-fatal)")
+        logger.info("Disconnecting from database...")
+        await db.disconnect()
 
 
 # ============================================================================
@@ -343,3 +355,13 @@ lct_app.include_router(revisions_router)
 
 # Alias for uvicorn compatibility
 app = lct_app
+
+# Configure standard instrumentation after every route is mounted. Export
+# failures are intentionally non-fatal; telemetry must never become a service
+# availability dependency.
+from lct_python_backend.telemetry import configure_telemetry
+
+_telemetry_runtime = configure_telemetry(
+    lct_app,
+    environment=_ENVIRONMENT,
+)

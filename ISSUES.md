@@ -2,27 +2,29 @@
 
 Last updated: 2026-08-31
 
-## 2026-08-31 — Native observability experiment needs a fresh supervision decision (OPEN, BLOCKING FINAL WORKTREE PRUNE)
+## 2026-08-31 — Native observability experiment needed a fresh supervision decision (RESOLVED IN CONSOLIDATION)
 
-**Summary:** The dirty root contains a source-bearing native operational-
-observability experiment, but its own diagnostics record that union-copying a
-live Prometheus TSDB corrupted head state. A Claude Opus review requested
-changes to the supervision/migration approach. The draft also uses ADR-064,
-which now names the separate facts-only LLM-call telemetry decision on main,
-and it spans ignored launcher plus cross-repository operational files.
+**Correction:** The first held-worktree pass stopped reading at the failed
+union-copy experiment. The same worklog later records the principled repair:
+a fresh restricted ProgramData stage, complete inventory/byte comparison,
+Prometheus head-chunk continuity, exact executable hashes, a journaled
+two-rename promotion/rollback, and wrapper-owned child restart. The installed
+stack then replaced a killed Collector in 9.16 seconds. The unsafe mutable-tree
+merge is not part of the final source.
 
-**Impact:** This experiment cannot truthfully be merged as production-ready,
-but deleting the root would discard meaningful diagnostic and design work.
-The other held branches can still be consolidated independently.
+**Resolution:** Ported the final LCT-owned source/config/tests onto current main
+without copying runtime data, ignored launcher state, cross-repository files,
+or stale viewer code. The colliding draft number was changed from ADR-064 to
+ADR-067. Focused contracts pass 19/19; all PowerShell sources parse; live
+read-only verification reports all four exact scheduled tasks running with
+owned PIDs/listeners, all five Prometheus targets up, ten rules loaded, no
+alerts firing, and current LCT OTLP metrics in Prometheus.
 
-**Blocker status:** Non-blocking for the Google-token and bounded-topology
-salvage branch. Blocking only for the final goal of reducing all held LCT
-worktrees to one.
-
-**Recommended next step:** Choose between (A) rebuilding a disabled-by-default
-observability slice on current main with a supported fresh-storage migration
-and independent review, or (B) archiving the experiment as rejected design
-evidence before deleting its dirty checkout. Never copy a mutable TSDB.
+**Remaining gate:** The bounded final diff still requires independent review,
+commit/push, and CI. The final cleanup manifest must retain the current root
+checkout as the sole worktree (or explicitly retarget its four scheduled task
+actions first), because the installed tasks intentionally reference
+`live_conversational_threads\ops\observability`.
 
 ## 2026-08-31 — Unreadable pytest temp ACLs make Git status and trusted push fail closed (OPEN, NON-BLOCKING)
 
