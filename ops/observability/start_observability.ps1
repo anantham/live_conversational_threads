@@ -482,9 +482,11 @@ function Test-ObservabilityConfigurations {
         }
     }
 
-    & $Executables.Collector validate "--config=$CollectorConfig"
-    if ($LASTEXITCODE -ne 0) {
-        throw "OpenTelemetry Collector configuration validation failed"
+    Invoke-WithEnvironment -Environment @{ LCT_OBSERVABILITY_RUNTIME_ROOT = $RuntimeRoot } -Script {
+        & $Executables.Collector validate "--config=$CollectorConfig"
+        if ($LASTEXITCODE -ne 0) {
+            throw "OpenTelemetry Collector configuration validation failed"
+        }
     }
 }
 
@@ -496,8 +498,8 @@ function Get-ComponentRuntime {
             $data = (New-Item -ItemType Directory -Force -Path (Join-Path $DataRoot "prometheus")).FullName
             return @{
                 Executable = $Executables.Prometheus
-                Arguments = @("--config.file=$PrometheusConfig", "--storage.tsdb.path=$data", "--web.listen-address=127.0.0.1:9090", "--web.enable-remote-write-receiver")
-                StartArguments = '--config.file="' + $PrometheusConfig + '" --storage.tsdb.path="' + $data + '" --web.listen-address=127.0.0.1:9090 --web.enable-remote-write-receiver'
+                Arguments = @("--config.file=$PrometheusConfig", "--storage.tsdb.path=$data", "--web.listen-address=127.0.0.1:9090")
+                StartArguments = '--config.file="' + $PrometheusConfig + '" --storage.tsdb.path="' + $data + '" --web.listen-address=127.0.0.1:9090'
                 WorkingDirectory = Split-Path -Parent $Executables.Prometheus
                 Environment = @{}
             }
@@ -555,7 +557,9 @@ function Get-ComponentRuntime {
                 Arguments = @("--config=$CollectorConfig")
                 StartArguments = '--config="' + $CollectorConfig + '"'
                 WorkingDirectory = Split-Path -Parent $Executables.Collector
-                Environment = @{}
+                Environment = @{
+                    LCT_OBSERVABILITY_RUNTIME_ROOT = $RuntimeRoot
+                }
             }
         }
     }

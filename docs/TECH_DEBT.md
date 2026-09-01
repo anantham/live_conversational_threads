@@ -242,17 +242,35 @@ migration mode, extract task-plan/status, task registration/reconciliation, and
 runtime-copy verification into focused modules while keeping the install switch
 as the thin transactional orchestrator.
 
-`ops/observability/start_observability.ps1` is 676 lines and combines
+`ops/observability/start_observability.ps1` is 680 lines and combines
 the pinned component manifest, verified download/install, process ownership,
 configuration validation, readiness, fixed-cadence watchdog supervision, and
 manual fallback. Extract the immutable component manifest and verified
 installer, then isolate the health/readiness watchdog behind a small public
-contract before changing versions or adding platforms.
+contract before changing versions or adding platforms. The 2026-09-01 rollout
+also showed that wrapper entry, validation, spawn request, native PID
+publication, listener ownership, and readiness need one launch-correlated event
+stream; the current split can report a stale prior stderr tail when a new native
+PID was never created.
 `ops/observability/run_observability_task.ps1` is 176 lines and remains cohesive
 as the Scheduled Task wrapper; do not move lifecycle orchestration into it.
 `lct_python_backend/telemetry/otel.py` is roughly 355 lines; separate privacy
 hooks/runtime gauges from provider construction before adding another exporter
 or content-bearing instrumentor.
+
+The 2026-09-01 forensic-attribution change deliberately reused the existing
+Collector instead of adding a fifth supervised Windows component. Its launcher
+change stayed limited to the Prometheus argument list, Collector runtime-root
+environment, and configuration validation environment. The module extraction
+recommendation above remains open before any future component, download, or
+cross-platform lifecycle mode is added.
+
+`lct_python_backend/tests/unit/test_native_observability_supervision.py` is now
+790 lines and mixes configuration/privacy contracts with Windows task,
+migration, and watchdog behavior. Before another observability feature, extract
+the Collector/Prometheus configuration and installed-tool validation cases into
+`test_native_observability_config.py`; keep shared path and PowerShell helpers in
+one small test-support module rather than duplicating them.
 
 ### 2026-09-01 — Attendee integration and runtime migration boundaries
 

@@ -2,8 +2,17 @@ groups:
   - name: native-observability
     interval: 15s
     rules:
+      - record: lct:host_cpu_busy_ratio:avg1m
+        expr: 1 - avg(avg_over_time(system_cpu_utilization_ratio{state="idle",otel_scope_name=~".*cpuscraper"}[1m]))
+
+      - record: lct:process_cpu_observed_ratio:avg1m
+        expr: sum(avg_over_time(process_cpu_utilization_ratio{otel_scope_name=~".*processscraper"}[1m]))
+
+      - record: lct:process_cpu_unattributed_ratio:avg1m
+        expr: clamp_min(lct:host_cpu_busy_ratio:avg1m - lct:process_cpu_observed_ratio:avg1m, 0)
+
       - alert: ObservabilityTargetDown
-        expr: up{job=~"otel-collector|indrasnet|tempo|grafana"} == 0
+        expr: up{job=~"otel-collector|otel-metrics|indrasnet|tempo|grafana"} == 0
         for: 2m
         labels:
           severity: critical
@@ -88,21 +97,41 @@ groups:
           description: "Trace storage failed during retention or ingestion. Inspect Tempo logs and disk state; do not treat an isolated poller race as application latency."
 
       - alert: SharedHostCpuSaturation
-        expr: 1 - avg(system_cpu_utilization_ratio{state="idle",otel_scope_name=~".*cpuscraper"}) > 0.95
-        for: 10m
+        expr: lct:host_cpu_busy_ratio:avg1m > 0.95
+        for: 2m
         labels:
           severity: warning
           domain: host-contention
         annotations:
           summary: "Shared host CPU saturation is sustained"
-          description: "Host CPU utilization exceeded 95 percent for ten minutes. Use process workload CPU and thread series to attribute contention before changing health-probe timeouts."
+          description: "Host CPU utilization exceeded 95 percent for two minutes, matching the measured window that caused local telemetry loss. Use process executable and PID series to attribute contention before changing health-probe timeouts."
+
+      - alert: ProcessAttributionGap
+        expr: lct:host_cpu_busy_ratio:avg1m > 0.80 and lct:process_cpu_unattributed_ratio:avg1m > 0.25
+        for: 2m
+        labels:
+          severity: warning
+          domain: host-contention
+        annotations:
+          summary: "Host CPU pressure is not explained by process telemetry"
+          description: "More than 25 percentage points of CPU remain unattributed while host CPU exceeds 80 percent. Check Collector process-scraper errors or permissions; do not guess which workload is responsible."
+
+      - alert: ProcessCardinalityPressure
+        expr: count(count by (process_pid) (process_cpu_utilization_ratio{otel_scope_name=~".*processscraper"})) > 750
+        for: 10m
+        labels:
+          severity: warning
+          domain: telemetry-cardinality
+        annotations:
+          summary: "Process telemetry cardinality exceeded its evidence threshold"
+          description: "More than 750 process IDs have been observed continuously for ten minutes. Measure Collector CPU and Prometheus series growth before changing collection cadence or retention."
 
       - alert: TrackedProcessThreadGrowth
-        expr: sum(process_threads{otel_scope_name=~".*processscraper"}) > 1500
+        expr: sum(process_threads{otel_scope_name=~".*processscraper"}) > 12000
         for: 10m
         labels:
           severity: warning
           domain: host-contention
         annotations:
-          summary: "Tracked process thread count is above the evidence threshold"
-          description: "The selected Python, Node, browser, media, and local-model processes exceeded 1,500 threads for ten minutes. Compare by process_workload and process_pid; this threshold is diagnostic, not a capacity target."
+          summary: "Host process thread count is above the evidence threshold"
+          description: "Observed processes exceeded 12,000 threads for ten minutes, compared with a measured baseline near 8,400. Compare by process_executable_name and process_pid; this threshold is diagnostic, not a capacity target."

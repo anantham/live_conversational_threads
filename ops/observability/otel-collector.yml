@@ -1,6 +1,11 @@
 extensions:
   health_check:
     endpoint: 127.0.0.1:13133
+  file_storage/tempo_queue:
+    directory: '${env:LCT_OBSERVABILITY_RUNTIME_ROOT}\data\collector-storage'
+    timeout: 1s
+    max_size: 268435456
+    create_directory: true
 
 receivers:
   otlp:
@@ -9,25 +14,36 @@ receivers:
         endpoint: 127.0.0.1:4317
       http:
         endpoint: 127.0.0.1:4318
-  hostmetrics:
+  hostmetrics/system:
     collection_interval: 10s
     initial_delay: 1s
     scrapers:
       cpu:
+        metrics:
+          system.cpu.utilization:
+            enabled: true
       memory:
       paging:
       disk:
       network:
       system:
+  hostmetrics/processes:
+    collection_interval: 15s
+    initial_delay: 2s
+    scrapers:
       process:
-        include:
-          names:
-            - '(?i)^(python|pythonw|node|chrome|msedge|ollama|lmstudio|ffmpeg|com\.docker\.backend|docker desktop)(\.exe)?$'
-          match_type: regexp
         mute_process_all_errors: true
         metrics:
+          process.cpu.time:
+            enabled: false
           process.cpu.utilization:
             enabled: true
+          process.disk.io:
+            enabled: true
+          process.memory.usage:
+            enabled: true
+          process.memory.virtual:
+            enabled: false
           process.handles:
             enabled: true
           process.threads:
@@ -45,7 +61,7 @@ processors:
     metric_statements:
       - context: resource
         statements:
-          - 'set(attributes["process.workload"], "lct-backend") where IsMatch(attributes["process.command_line"], "(?i)(live_conversational_threads|uvicorn.*43181)") or IsMatch(attributes["process.executable.path"], "(?i)live_conversational_threads")'
+          - 'set(attributes["process.workload"], "lct-backend") where IsMatch(attributes["process.command_line"], "(?i)lct_python_backend\\.backend:lct_app")'
           - 'set(attributes["process.workload"], "indrasnet-web") where IsMatch(attributes["process.command_line"], "(?i)grimoire\\.IndrasNet\\.agents\\.web_server")'
           - 'set(attributes["process.workload"], "indrasnet-supervisor") where IsMatch(attributes["process.command_line"], "(?i)start_all\\.py")'
           - 'set(attributes["process.workload"], "indrasnet-prayer") where IsMatch(attributes["process.command_line"], "(?i)grimoire\\.IndrasNet\\.agents\\.prayer_agent")'
@@ -56,6 +72,8 @@ processors:
           - 'set(attributes["process.workload"], "codex") where IsMatch(attributes["process.command_line"], "(?i)OpenAI.*Codex") or IsMatch(attributes["process.executable.path"], "(?i)OpenAI.*Codex")'
   resource/privacy:
     attributes:
+      - key: process.command
+        action: delete
       - key: process.command_line
         action: delete
       - key: process.command_args
@@ -100,18 +118,20 @@ exporters:
     sending_queue:
       enabled: true
       queue_size: 2048
+      storage: file_storage/tempo_queue
     retry_on_failure:
       enabled: true
-  prometheusremotewrite:
-    endpoint: http://127.0.0.1:9090/api/v1/write
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 10m
+  prometheus:
+    endpoint: 127.0.0.1:9464
+    metric_expiration: 5m
     resource_to_telemetry_conversion:
       enabled: true
-    remote_write_queue:
-      enabled: true
-      queue_size: 2048
 
 service:
-  extensions: [health_check]
+  extensions: [health_check, file_storage/tempo_queue]
   telemetry:
     logs:
       level: info
@@ -131,6 +151,6 @@ service:
       processors: [memory_limiter, resource/privacy, attributes/privacy, batch]
       exporters: [otlp/tempo]
     metrics:
-      receivers: [otlp, hostmetrics]
+      receivers: [otlp, hostmetrics/system, hostmetrics/processes]
       processors: [memory_limiter, transform/process_classification, resource/privacy, attributes/privacy, batch]
-      exporters: [prometheusremotewrite]
+      exporters: [prometheus]
