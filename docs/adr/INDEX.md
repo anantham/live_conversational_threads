@@ -1,6 +1,6 @@
 # Architecture Decision Records — Index
 
-Last updated: 2026-08-31 (approved consolidation decisions ADR-064–067)
+Last updated: 2026-09-01 (stable per-user runtime data in ADR-068)
 
 | ADR | Title | Date | Status |
 |-----|-------|------|--------|
@@ -57,6 +57,7 @@ Last updated: 2026-08-31 (approved consolidation decisions ADR-064–067)
 | [ADR-065](ADR-065-one-mobile-deck-for-live-and-history.md) | One Mobile Conversation Deck for Live and Historical Reading | 2026-08-31 | Approved |
 | [ADR-066](ADR-066-explicit-local-stt-authority-set.md) | Explicit Local STT Authority Set | 2026-08-31 | Approved |
 | [ADR-067](ADR-067-native-operational-observability-stack.md) | Native Operational Observability Stack | 2026-08-30 | Approved |
+| [ADR-068](ADR-068-stable-per-user-mutable-runtime-data.md) | Stable Per-User Mutable Runtime Data | 2026-09-01 | Approved |
 
 > **Numbering gaps (ADR-041–055, ADR-057):** these numbers have no files on `main`. They were consumed by drafts in branches/PRs that never landed — ADR-057 (capability-token auth) is explicitly known: shelved when its PR #87 was closed as over-scoped (see ADR-056's status note). 041–055 were claimed by parallel sessions' drafts and cross-repo work (e.g. "ADR-055" in ADR-039's title refers to the TemporalCoordination repo's ADR-055) that never merged here. New ADRs should continue from the highest number in this index, not backfill the gaps.
 > **⚠ ADR-021 number collision:** two ADRs shipped as 021 — *Browser-Local Draft Recovery* (2026-04-03) and *Authored Four-Level Conversation Hierarchy* (2026-04-13). ADRs are immutable, so renumbering is a human decision; both are listed above until it's resolved.

@@ -27,8 +27,9 @@ host itself:
     powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Plan
     powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Install
 
-`Plan` is read-only JSON. Run `Install`, `Status`, `Start`, `Stop`, and
-`Uninstall` from an elevated PowerShell. `Install` validates binaries and
+`Plan` is read-only JSON. Run `Install`, `Reconcile`, `Status`, `Start`,
+`Stop`, `Restart`, and `Uninstall` from an elevated PowerShell. `Install`
+validates binaries and
 configuration before stopping the manual launcher, copies the stopped legacy
 runtime into a fresh restricted ProgramData stage, verifies the complete file
 inventory and component hashes, promotes it through an external crash journal,
@@ -41,15 +42,38 @@ Inspect, start, stop, or remove only those tasks:
     powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Status
     powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Start
     powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Stop
+    powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Restart
     powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Uninstall
+
+`Start`, `Stop`, `Restart`, and `Status` can target one component without
+cycling its peers:
+
+    powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Restart -Component Collector
+    powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Status -Component Collector
+
+Use `Reconcile` when the restricted ProgramData runtime is already valid but a
+task definition is absent or stale:
+
+    powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Reconcile
+    powershell -ExecutionPolicy Bypass -File ops\observability\install_observability_tasks.ps1 -Action Reconcile -Component Grafana
+
+`Reconcile` validates the existing runtime and configuration, registers only
+the requested task definitions, and starts or adopts ownership-verified native
+children. It never performs the runtime migration, stops native children, or
+merges mutable telemetry data.
 
 Task lifecycle evidence is appended as JSON lines to
 `logs\observability\<component>.task.jsonl`. Wrapper output goes to
 `<component>.task-output.log`, while each native launch receives separate
 timestamped stdout and stderr logs. The wrapper reports every child start,
-exit, and scheduled retry. Installation/readiness may wait up to 300 seconds
-under host pressure, but every HTTP request still uses the unchanged 3-second
-probe timeout.
+health transition, exit, and scheduled retry. After readiness it checks the
+exact child, listener ownership, and HTTP health every 10 seconds. Six
+consecutive failures trigger an ownership-verified restart, giving a 90-second
+new-PID recovery objective while tolerating brief scheduler pressure.
+Installation and cold-start readiness may wait up to 300 seconds per component,
+including through the Scheduled Task wrapper, but every HTTP request still uses
+the unchanged 3-second probe timeout. A probe that cannot initialize emits a
+structured `probe_failure` event with its exception type and message.
 
 Prometheus evaluates `prometheus-alerts.yml` every 15 seconds. The rules cover
 target loss, IndrasNet error-writer absence/stoppage/data loss/queue pressure,

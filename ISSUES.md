@@ -1,8 +1,8 @@
 # ISSUES
 
-Last updated: 2026-08-31
+Last updated: 2026-09-01
 
-## 2026-08-31 — Native observability experiment needed a fresh supervision decision (RESOLVED IN CONSOLIDATION)
+## 2026-08-31 — Native observability experiment needed a fresh supervision decision (RESOLVED IN CURRENT BRANCH; DELIVERY IN PROGRESS)
 
 **Correction:** The first held-worktree pass stopped reading at the failed
 union-copy experiment. The same worklog later records the principled repair:
@@ -20,11 +20,41 @@ read-only verification reports all four exact scheduled tasks running with
 owned PIDs/listeners, all five Prometheus targets up, ten rules loaded, no
 alerts firing, and current LCT OTLP metrics in Prometheus.
 
-**Remaining gate:** The bounded final diff still requires independent review,
-commit/push, and CI. The final cleanup manifest must retain the current root
-checkout as the sole worktree (or explicitly retarget its four scheduled task
-actions first), because the installed tasks intentionally reference
-`live_conversational_threads\ops\observability`.
+**2026-09-01 follow-up:** The four tasks had disappeared while their native
+children remained healthy. The bounded repair adds a public non-migrating
+`Reconcile` action, independently scoped lifecycle/status actions, fixed-cadence
+health watchdogs, 300-second Scheduled Task startup propagation, and descriptive
+probe-failure evidence. Live validation re-registered all four tasks without
+restarting adopted children, restarted only Collector while peer PIDs remained
+stable, recovered a deliberately suspended Collector in 71.818 seconds, and
+completed a full cold start with every component ready and ownership-verified.
+
+**Remaining delivery gate:** The updated exact diff requires focused/full
+validation, independent-family review, commit/push, CI, merge, and post-merge
+verification. The installed task actions intentionally reference the stable
+root `live_conversational_threads\ops\observability` path, so that checkout
+remains operationally retained.
+
+## 2026-09-01 — Mutable attendee registry was coupled to repository lifecycle (RESOLVED IN CURRENT BRANCH; DELIVERY IN PROGRESS)
+
+**Summary:** The production attendee registry defaulted to
+`data/attendee_sessions.json` below whichever checkout ran the backend. An
+archive retained 293 canonical records while the active checkout held 16 newer
+canonical records plus six identified test fixtures. Worktree cleanup could
+therefore lose history or promote fixture data.
+
+**Resolution:** Production now resolves the registry below the platform's
+per-user LCT data directory, while the explicit environment override retains
+highest precedence. The fail-closed migration validates every record, backs up
+every input byte-for-byte, rejects conflicting identities, permits exclusions
+only through a source-specific validated manifest, atomically replaces the
+destination, verifies it, and never deletes sources. The completed Windows
+migration preserved 309 canonical records at the stable path with SHA-256
+`093ad41e26374e7746fad151eb83be8bc1989a47db75d86c6344fb87da2fefcc`.
+
+**Blocker status:** No runtime blocker. Delivery follows the same remaining
+review/CI/merge gates as the supervision repair. Original inputs and the
+run-specific migration backup remain intentionally preserved.
 
 ## 2026-08-31 — Unreadable pytest temp ACLs make Git status and trusted push fail closed (OPEN, NON-BLOCKING)
 
@@ -48,7 +78,7 @@ directories, move future `--basetemp` output outside linked worktrees, then use
 a separately approved exact-path ownership/cleanup operation for the six known
 directories. Do not weaken the wrapper's status gate or hide untracked files.
 
-## 2026-08-31 — Attendee-bridge unit tests write synthetic registry state to the repo (OPEN, NON-BLOCKING)
+## 2026-08-31 — Attendee-bridge unit tests write synthetic registry state to the repo (RESOLVED 2026-09-01)
 
 **Summary:** Six pre-existing attendee-bridge unit tests exercise session
 persistence without overriding `ATTENDEE_SESSION_REGISTRY_PATH`. A complete
@@ -59,12 +89,11 @@ worktree with synthetic `c-*` fixture records.
 user data and is excluded from the consolidation commit. Left unaddressed, it
 can be mistaken for a real artifact or accidentally staged by a broad add.
 
-**Blocker status:** Non-blocking for the explicit STT authority repair. The
-file was identified by its fixture IDs and removed after validation.
-
-**Recommended next step:** Give every attendee-bridge persistence test a
-temporary registry path through an autouse fixture, then assert the default
-repository path remains untouched.
+**Resolution:** The attendee-bridge test module now has an autouse fixture that
+sets `ATTENDEE_SESSION_REGISTRY_PATH` to a per-test temporary file. Production
+code no longer defaults to a repository path, and `/data/` is ignored as a
+second guard. The six known fixture records were preserved in the migration
+backup and explicitly quarantined from the canonical per-user registry.
 
 ## 2026-08-30 — Desktop Center legibility test samples an animated viewport twice (OPEN, NON-BLOCKING)
 

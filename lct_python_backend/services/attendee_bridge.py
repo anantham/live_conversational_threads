@@ -37,6 +37,9 @@ from typing import Any, Dict, List, Optional, Set
 import websockets
 
 from lct_python_backend.services.env_helpers import env_float, env_str_or_none
+from lct_python_backend.services.runtime_paths import (
+    get_attendee_session_registry_path,
+)
 
 logger = logging.getLogger("lct_backend")
 
@@ -437,11 +440,7 @@ def _normalize_meeting_url(meeting_url: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _registry_path() -> Path:
-    override = env_str_or_none("ATTENDEE_SESSION_REGISTRY_PATH")
-    if override:
-        return Path(override)
-    # services/attendee_bridge.py -> parents[2] == repo root
-    return Path(__file__).resolve().parents[2] / "data" / "attendee_sessions.json"
+    return get_attendee_session_registry_path()
 
 
 def _load_registry() -> Dict[str, Any]:

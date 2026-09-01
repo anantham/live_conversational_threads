@@ -5415,3 +5415,99 @@ Manual testing not run:
   pre-existing provider-dependency warnings are recorded in `ISSUES.md` rather
   than mechanically changed. The required one-pass Impeccable detector returned
   no findings for the changed viewer, timing helper, or their tests.
+
+### 2026-09-01 14:42 +05:30 — Independent observability supervision and stable runtime-data migration
+
+- **Approved objective:** Make Prometheus, Tempo, Grafana, and Collector
+  independently startable, stoppable, restartable, and health-reporting;
+  preserve archived and current attendee state outside repository lifecycle;
+  prove unresponsive-process recovery and cold start before review/CI/merge.
+- **Hypothesis H1 (confirmed):** Task registration had drifted while all four
+  native children remained healthy. A safe repair therefore needed to adopt
+  ownership-verified children and recreate task definitions without invoking
+  the destructive install/migration path. Added public `Reconcile` and
+  component-scoped lifecycle/status actions in
+  `ops/observability/install_observability_tasks.ps1` (parameter contract,
+  `Resolve-TargetComponents`, task-set functions, and final action switch).
+  Reconciliation recreated all four tasks while keeping the original native
+  PIDs; a subsequent Collector-only restart changed Collector PID 37228 to
+  34548 while all peer PIDs remained unchanged.
+- **Hypothesis H2 (confirmed):** The foreground wrapper detected child exit but
+  could leave a live, listener-owning process indefinitely unhealthy after a
+  suspend/wake-like event. Added exact process/listener/HTTP health evaluation,
+  readiness waiting, and a fixed ten-second watchdog cadence with six
+  consecutive failures in `ops/observability/start_observability.ps1`
+  (`Get-ComponentHealth`, `Wait-ComponentHealthy`,
+  `Watch-ComponentHealth`, and `Invoke-ForegroundComponent`). A first
+  90-second observer reached its boundary just before replacement and safely
+  used the public restart fallback. A calibrated repeat suspended exact owned
+  Collector PID 5284 and observed replacement PID 7664 after 71.818 seconds;
+  Prometheus, Tempo, and Grafana kept their PIDs.
+- **Hypothesis H3 (confirmed):** The installer allowed 300 seconds for cold
+  readiness, but its registered wrapper omitted the parameter and silently
+  invoked the launcher's 90-second default. Grafana empirically loaded 56
+  plugins in 82.968 seconds and bound HTTP after roughly 86 seconds, so it was
+  killed at the former boundary despite progressing normally. Added a
+  300-second wrapper parameter and exact task-action propagation in
+  `run_observability_task.ps1` and `install_observability_tasks.ps1`. After
+  updating all four task definitions, a complete public Stop/Start from the
+  persisted ProgramData runtime brought Prometheus PID 35164, Tempo PID 2380,
+  Grafana PID 6760, and Collector PID 6348 to ready state with exact process and
+  listener ownership.
+- A transient Task Scheduler entry probe returned code 1 without evidence.
+  `run_observability_task.ps1` now encloses the complete probe path and emits a
+  structured `probe_failure` event with exception type/message; the installer
+  surfaces that evidence. A bounded retry succeeded. This diagnostic repair is
+  covered by behavioral tests rather than a swallowed exception or timeout
+  increase.
+- **Runtime-data decision:** Added
+  `lct_python_backend/services/runtime_paths.py` and changed
+  `attendee_bridge._registry_path()` to default to the platform-conventional
+  per-user LCT data root, with `ATTENDEE_SESSION_REGISTRY_PATH` retaining highest
+  precedence. Added `runtime_data_migration.py` for validated conflict-fail-
+  closed merge, byte-verifying backups, source-specific fixture exclusion,
+  same-directory atomic replacement, read-back verification, and zero source
+  deletion. `.gitignore` now excludes repository `/data/`; attendee-bridge tests
+  inject a per-test registry through an autouse fixture.
+- **Migration evidence:** The preserved archive supplied 293 canonical records.
+  The active source supplied 22 records, six of which matched the validated
+  source-specific test-fixture manifest, leaving 16 canonical current records.
+  All three inputs were copied byte-for-byte into one run-specific directory
+  below `%LOCALAPPDATA%\LCT\data\migration-backups`. The authoritative
+  destination contains exactly 309 records, is 92,392 bytes, and has SHA-256
+  `093ad41e26374e7746fad151eb83be8bc1989a47db75d86c6344fb87da2fefcc`.
+  Original sources and backups remain untouched.
+- **Test intent and coverage:** New runtime-path tests assert Windows/macOS/Linux
+  defaults and override precedence. Migration tests assert source preservation,
+  byte-identical backups, idempotency, conflicts, invalid shapes, atomic cleanup,
+  and source-scoped exclusions. Native-supervision tests assert component
+  targeting, non-migrating reconciliation, watchdog cadence, timeout propagation,
+  and descriptive probe evidence. The latest focused observability run before
+  this documentation pass was 23/23; full final regression and exact-diff
+  independent review remain the next gates.
+- **Documentation:** Amended ADR-067 with empirical supervision evidence; added
+  ADR-068 for the runtime-data boundary; updated the ADR index, observability
+  runbook, project structure, issues ledger, and tech-debt assessment. No
+  runtime registry, telemetry data, logs, migration backups, or review packets
+  are eligible for commit or external review.
+- **Final local validation checkpoint:** The combined runtime-path, migration,
+  attendee-bridge, and native-supervision matrix passed 72/72. Native Windows
+  PowerShell parsed all three changed scripts, and Python compiled all three
+  changed service modules with bytecode redirected outside the repository.
+  The full backend unit suite reached 2,012 passed / 1 failed. The sole failure
+  is the already-recorded environment mismatch: installed `openai==1.54.0`
+  passes the removed `proxies=` argument to installed `httpx==0.28.1` before
+  project code or the egress assertion runs. The changed branch has no diff
+  from `main` in that test or either requirements manifest, and direct client
+  construction reproduces the same package-level `TypeError`.
+- **Independent review:** Agy using Gemini 3.1 Pro High reviewed only the exact
+  staged 19-file source/test/documentation diff from an empty temporary
+  directory, made no tool calls or external changes, and returned `APPROVED`
+  with no requested changes. It explicitly checked migration conflict/atomicity
+  behavior, cross-platform paths, watchdog timing, Task Scheduler integration,
+  test isolation, and documentation evidence. One explanatory sentence in the
+  response attributed the bounded child-restart backoff to Task Scheduler;
+  direct inspection falsified that narration because
+  `run_observability_task.ps1` owns the 2/5/10/30/60-second loop. The source,
+  ADR, runbook, tests, and verdict already describe/accept the correct wrapper
+  mechanism, so no product change or human architecture arbitration is needed.

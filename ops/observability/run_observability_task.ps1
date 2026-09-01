@@ -5,6 +5,12 @@ param(
     [string]$Component,
     [Guid]$RunId = [Guid]::NewGuid(),
     [string]$RuntimeRoot = "C:\ProgramData\LCT\observability",
+    [ValidateRange(30, 600)]
+    [int]$StartupTimeoutSeconds = 300,
+    [ValidateRange(2, 300)]
+    [int]$HealthCheckIntervalSeconds = 10,
+    [ValidateRange(2, 60)]
+    [int]$HealthFailureThreshold = 6,
     [switch]$SkipDownload
 )
 
@@ -48,32 +54,42 @@ Write-TaskEvent @{
 }
 
 if ($Action -eq "Probe") {
-    $collectorInstall = Join-Path $RuntimeRoot "bin\collector-0.159.0"
-    $collectorMarker = Join-Path $collectorInstall ".installed-sha256"
-    $collectorExecutable = Join-Path $collectorInstall "otelcol-contrib.exe"
-    $markerError = $null
-    $executableError = $null
     try {
-        Get-Item -LiteralPath $collectorMarker -Force -ErrorAction Stop | Out-Null
+        $collectorInstall = Join-Path $RuntimeRoot "bin\collector-0.159.0"
+        $collectorMarker = Join-Path $collectorInstall ".installed-sha256"
+        $collectorExecutable = Join-Path $collectorInstall "otelcol-contrib.exe"
+        $markerError = $null
+        $executableError = $null
+        try {
+            Get-Item -LiteralPath $collectorMarker -Force -ErrorAction Stop | Out-Null
+        } catch {
+            $markerError = "{0}: {1} (0x{2:X8})" -f $_.Exception.GetType().FullName, $_.Exception.Message, $_.Exception.HResult
+        }
+        try {
+            Get-Item -LiteralPath $collectorExecutable -Force -ErrorAction Stop | Out-Null
+        } catch {
+            $executableError = "{0}: {1} (0x{2:X8})" -f $_.Exception.GetType().FullName, $_.Exception.Message, $_.Exception.HResult
+        }
+        Write-TaskEvent @{
+            event = "runtime_check"
+            runtime_root_exists = Test-Path -LiteralPath $RuntimeRoot -PathType Container
+            collector_install = $collectorInstall
+            collector_marker_exists = $null -eq $markerError
+            collector_executable_exists = $null -eq $executableError
+            collector_marker_error = $markerError
+            collector_executable_error = $executableError
+        }
+        Write-TaskEvent @{ event = "probe_complete"; exit_code = 0 }
+        return
     } catch {
-        $markerError = "{0}: {1} (0x{2:X8})" -f $_.Exception.GetType().FullName, $_.Exception.Message, $_.Exception.HResult
+        Write-TaskEvent @{
+            event = "probe_failure"
+            exception_type = $_.Exception.GetType().FullName
+            error = $_.Exception.Message
+            exit_code = 1
+        }
+        throw
     }
-    try {
-        Get-Item -LiteralPath $collectorExecutable -Force -ErrorAction Stop | Out-Null
-    } catch {
-        $executableError = "{0}: {1} (0x{2:X8})" -f $_.Exception.GetType().FullName, $_.Exception.Message, $_.Exception.HResult
-    }
-    Write-TaskEvent @{
-        event = "runtime_check"
-        runtime_root_exists = Test-Path -LiteralPath $RuntimeRoot -PathType Container
-        collector_install = $collectorInstall
-        collector_marker_exists = $null -eq $markerError
-        collector_executable_exists = $null -eq $executableError
-        collector_marker_error = $markerError
-        collector_executable_error = $executableError
-    }
-    Write-TaskEvent @{ event = "probe_complete"; exit_code = 0 }
-    return
 }
 
 $Launcher = Join-Path $PSScriptRoot "start_observability.ps1"
@@ -115,6 +131,9 @@ try {
                 -Action RunComponent `
                 -Component $Component `
                 -RuntimeRoot $RuntimeRoot `
+                -StartupTimeoutSeconds $StartupTimeoutSeconds `
+                -HealthCheckIntervalSeconds $HealthCheckIntervalSeconds `
+                -HealthFailureThreshold $HealthFailureThreshold `
                 -SkipDownload *>> $TaskOutputLog
             $exitCode = $LASTEXITCODE
         } finally {

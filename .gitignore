@@ -38,6 +38,7 @@ outputs/
 # =====================================================================
 # Runtime state (dev machine) — expected at the root of a running checkout
 # =====================================================================
+/data/
 .backend-port
 .run/
 .postgres_data/
