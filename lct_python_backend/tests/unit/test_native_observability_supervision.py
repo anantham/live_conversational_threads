@@ -4,14 +4,21 @@ Test intent:
 - the public task plan owns exactly the four approved local components;
 - every task runs as the interactive owner at logon with bounded restart policy;
 - task actions use the launcher's foreground component contract and carry no secrets;
+- task-entry probes record descriptive failures before returning a non-zero result;
 - the machine-scoped runtime migration preserves the legacy manual rollback;
 - migrated component executables are integrity-checked before task ownership changes;
 - runtime promotion is journaled and an interrupted two-rename swap is recoverable;
 - installation readiness is PID/listener-bound with a distinct 300-second budget;
+- scheduled cold starts propagate that 300-second orchestration budget to the launcher;
 - no native process may remain under either runtime tree during copy or rename;
 - orphaned Grafana plugin helpers are stopped only when both name and path prove ownership;
 - supervised children remain attributable and stoppable after Task Scheduler exits;
 - the long-lived task wrapper restarts a crashed native child with bounded backoff;
+- per-component launches resolve only their own runtime and adopt an owned child;
+- a bounded health watchdog restarts a live-but-unhealthy owned child after wake;
+- every watchdog probe advances a fixed cadence, including healthy probes;
+- start, stop, restart, and status can target one component without touching peers;
+- reconciliation restores missing task definitions without migrating or stopping children;
 - per-component launches do not repeat whole-stack validation or mix log encodings;
 - Prometheus loads actionable rules and scrapes only loopback observability targets;
 - the installed Prometheus toolchain accepts both the scrape config and rule file.
@@ -109,6 +116,8 @@ def test_task_plan_owns_exact_components_without_credentials():
     assert plan["restart_interval_seconds"] == 60
     assert plan["restart_count"] == 999
     assert plan["restart_pid_slo_seconds"] == 90
+    assert plan["health_check_interval_seconds"] == 10
+    assert plan["health_failure_threshold"] == 6
     assert plan["install_readiness_budget_seconds"] == 300
     assert plan["http_probe_timeout_seconds"] == 3
     assert plan["manual_launcher_stopped_before_install"] is True
@@ -132,6 +141,8 @@ def test_task_plan_owns_exact_components_without_credentials():
     assert all(task["task_name"].startswith("LCT-Observability-") for task in tasks)
     assert all(task["ready_url"].startswith("http://127.0.0.1:") for task in tasks)
     assert all(task["ownership_contract"] == "native-pid-file-and-listener" for task in tasks)
+    assert all(task["health_check_interval_seconds"] == 10 for task in tasks)
+    assert all(task["health_failure_threshold"] == 6 for task in tasks)
     assert all(
         task["pid_path"].lower().startswith("c:\\programdata\\lct\\observability\\pids\\")
         for task in tasks
@@ -144,6 +155,9 @@ def test_task_plan_owns_exact_components_without_credentials():
     assert "-file" in serialized
     assert "run_observability_task.ps1" in serialized
     assert "-runtimeroot" in serialized
+    assert "-healthcheckintervalseconds 10" in serialized
+    assert "-healthfailurethreshold 6" in serialized
+    assert "-startuptimeoutseconds 300" in serialized
     assert r"c:\\programdata\\lct\\observability" in serialized
     assert "-command" not in serialized
     for forbidden in ("password", "authorization", "cookie", "api_key", "token="):
@@ -156,9 +170,20 @@ def test_task_wrapper_logs_entry_before_launching_a_component():
     assert 'ValidateSet("Probe", "RunComponent")' in wrapper
     assert 'event = "entry"' in wrapper
     assert 'event = "probe_complete"' in wrapper
+    assert 'event = "probe_failure"' in wrapper
     assert wrapper.index('event = "entry"') < wrapper.index("start_observability.ps1")
     assert "authorization" not in wrapper.lower()
     assert "cookie" not in wrapper.lower()
+
+
+def test_task_entry_surfaces_probe_failure_evidence():
+    installer = TASK_INSTALLER.read_text(encoding="utf-8")
+    probe = installer.split("function Test-TaskEntry", 1)[1].split(
+        "\nfunction ", 1
+    )[0]
+
+    assert '$record.event -eq "probe_failure"' in probe
+    assert "Task Scheduler probe failed inside the wrapper" in probe
 
 
 def test_programdata_migration_is_restartable_and_preserves_legacy_rollback():
@@ -303,6 +328,139 @@ def test_supervised_component_has_owned_pid_and_separate_native_logs():
     assert run_component_index < validation_index
 
 
+def test_foreground_component_adopts_owned_child_before_rejecting_port_owner():
+    launcher = STACK_LAUNCHER.read_text(encoding="utf-8")
+    foreground = launcher.split("function Invoke-ForegroundComponent", 1)[1].split(
+        "New-Item -ItemType Directory", 1
+    )[0]
+
+    adopt_index = foreground.index("Get-ManagedProcess")
+    port_index = foreground.index("Assert-PortAvailable")
+    assert adopt_index < port_index
+    assert "[ADOPT]" in foreground
+    assert "Wait-ComponentHealthy" in foreground
+    assert "Watch-ComponentHealth" in foreground
+
+
+def test_component_action_resolves_only_selected_runtime():
+    launcher = STACK_LAUNCHER.read_text(encoding="utf-8")
+    action_dispatch = launcher.split(
+        "New-Item -ItemType Directory -Force -Path", 1
+    )[1]
+    run_component_index = action_dispatch.index('if ($Action -eq "RunComponent")')
+    all_component_validation_index = action_dispatch.index(
+        "Test-ObservabilityConfigurations -Executables"
+    )
+    run_component = action_dispatch[
+        run_component_index:all_component_validation_index
+    ]
+
+    assert (
+        "$targetNames = if ($Component) { @($Component) } else { @($Components.Keys) }"
+        in action_dispatch[:run_component_index]
+    )
+    assert "foreach ($name in $targetNames)" in action_dispatch[:run_component_index]
+    assert "Install-Component -Name $name" in action_dispatch[:run_component_index]
+    assert "foreach ($name in $Components.Keys)" not in action_dispatch[:run_component_index]
+    assert "Get-ComponentRuntime -Name $Component" in run_component
+
+
+def test_health_watchdog_is_bounded_and_causes_wrapper_restart():
+    launcher = STACK_LAUNCHER.read_text(encoding="utf-8")
+    wrapper = TASK_WRAPPER.read_text(encoding="utf-8")
+
+    assert "[int]$HealthCheckIntervalSeconds = 10" in launcher
+    assert "[int]$HealthFailureThreshold = 6" in launcher
+    assert "function Get-ComponentHealth" in launcher
+    assert "function Watch-ComponentHealth" in launcher
+    assert "$consecutiveFailures -ge $HealthFailureThreshold" in launcher
+    assert "$nextProbeAt = $nextProbeAt.AddSeconds($HealthCheckIntervalSeconds)" in launcher
+    assert "WaitForExit($HealthCheckIntervalSeconds * 1000)" not in launcher
+    assert "health watchdog failed" in launcher.lower()
+    assert "-HealthCheckIntervalSeconds $HealthCheckIntervalSeconds" in wrapper
+    assert "-HealthFailureThreshold $HealthFailureThreshold" in wrapper
+    assert 'event = "child_exit"' in wrapper
+
+
+def test_health_watchdog_advances_cadence_after_healthy_probe():
+    launcher = STACK_LAUNCHER.read_text(encoding="utf-8")
+    watchdog = launcher.split("function Watch-ComponentHealth", 1)[1].split(
+        "\nfunction Test-ObservabilityConfigurations", 1
+    )[0]
+    healthy_branch = watchdog.split("if ($health.healthy)", 1)[1].split(
+        "$consecutiveFailures += 1", 1
+    )[0]
+
+    assert "continue" not in healthy_branch
+    assert watchdog.count(
+        "$nextProbeAt = $nextProbeAt.AddSeconds($HealthCheckIntervalSeconds)"
+    ) == 1
+
+
+def test_public_lifecycle_actions_can_target_one_component():
+    installer = TASK_INSTALLER.read_text(encoding="utf-8")
+
+    assert (
+        'ValidateSet("Plan", "Probe", "Install", "Reconcile", "Uninstall", "Start", "Stop", "Restart", "Status")'
+        in installer
+    )
+    assert '[ValidateSet("Collector", "Prometheus", "Tempo", "Grafana")]' in installer
+    assert "function Resolve-TargetComponents" in installer
+    assert "function Restart-TaskSet" in installer
+    for function_name in (
+        "Wait-PortsReleased",
+        "Stop-TaskSet",
+        "Stop-SupervisedRuntime",
+        "Start-TaskSet",
+        "Show-TaskStatus",
+    ):
+        function_block = installer.split(f"function {function_name}", 1)[1].split(
+            "\nfunction ", 1
+        )[0]
+        assert "[string[]]$Components" in function_block
+    restart_block = installer.split('    "Restart" {', 1)[1].split(
+        '    "Status" {', 1
+    )[0]
+    assert "Resolve-TargetComponents" in restart_block
+    assert "Restart-TaskSet" in restart_block
+
+
+def test_reconcile_repairs_task_definitions_without_migration_or_stopping_children():
+    installer = TASK_INSTALLER.read_text(encoding="utf-8")
+
+    assert (
+        'ValidateSet("Plan", "Probe", "Install", "Reconcile", "Uninstall", "Start", "Stop", "Restart", "Status")'
+        in installer
+    )
+    register_block = installer.split("function Register-TaskSet", 1)[1].split(
+        "\nfunction ", 1
+    )[0]
+    assert "[string[]]$Components" in register_block
+
+    reconcile_block = installer.split("function Reconcile-TaskSet", 1)[1].split(
+        "\nfunction ", 1
+    )[0]
+    assert "-Action Prepare -RuntimeRoot $RuntimeRoot -SkipDownload" in reconcile_block
+    assert "Test-TaskEntry -RequireRuntimeFiles" in reconcile_block
+    assert "Register-TaskSet -Components $Components" in reconcile_block
+    assert "Start-TaskSet -Components $Components" in reconcile_block
+    for forbidden in (
+        "Stop-TaskSet",
+        "Stop-SupervisedRuntime",
+        "Wait-PortsReleased",
+        "Copy-LegacyRuntime",
+        "Invoke-ObservabilityRuntimePromotion",
+        "Restore-ObservabilityRuntime",
+    ):
+        assert forbidden not in reconcile_block
+
+    reconcile_action = installer.split('    "Reconcile" {', 1)[1].split(
+        '    "Uninstall" {', 1
+    )[0]
+    assert "Resolve-TargetComponents" in reconcile_action
+    assert "Reconcile-TaskSet -Components $targets" in reconcile_action
+
+
 def test_task_wrapper_restarts_crashed_child_with_bounded_backoff():
     wrapper = TASK_WRAPPER.read_text(encoding="utf-8")
 
@@ -402,9 +560,12 @@ def test_controlled_stops_clean_grafana_helpers_before_process_gate():
 
 def test_installer_uses_extended_budget_only_for_startup_or_rollback():
     installer = TASK_INSTALLER.read_text(encoding="utf-8")
+    wrapper = TASK_WRAPPER.read_text(encoding="utf-8")
     launcher = STACK_LAUNCHER.read_text(encoding="utf-8")
 
     assert "-StartupTimeoutSeconds $InstallReadinessBudgetSeconds" in installer
+    assert "[int]$StartupTimeoutSeconds = 300" in wrapper
+    assert "-StartupTimeoutSeconds $StartupTimeoutSeconds" in wrapper
     assert "[int]$StartupTimeoutSeconds = 90" in launcher
     assert "-TimeoutSec 3" in launcher
 

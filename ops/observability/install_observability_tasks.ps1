@@ -1,6 +1,8 @@
 param(
-    [ValidateSet("Plan", "Probe", "Install", "Uninstall", "Start", "Stop", "Status")]
+    [ValidateSet("Plan", "Probe", "Install", "Reconcile", "Uninstall", "Start", "Stop", "Restart", "Status")]
     [string]$Action = "Plan",
+    [ValidateSet("Collector", "Prometheus", "Tempo", "Grafana")]
+    [string]$Component,
     [ValidateRange(120, 600)]
     [int]$InstallReadinessBudgetSeconds = 300
 )
@@ -18,6 +20,8 @@ $TaskLogRoot = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..\..")) "logs\
 $PowerShellExe = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $HttpProbeTimeoutSeconds = 3
 $RestartPidSloSeconds = 90
+$HealthCheckIntervalSeconds = 10
+$HealthFailureThreshold = 6
 $ComponentOrder = @("Prometheus", "Tempo", "Grafana", "Collector")
 $ExecutableNames = [ordered]@{
     Prometheus = "prometheus.exe"
@@ -35,7 +39,14 @@ $ReadyUrls = [ordered]@{
 function Get-TaskArguments {
     param([string]$Component)
 
-    return '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $TaskWrapper + '" -Action RunComponent -Component ' + $Component + ' -RuntimeRoot "' + $RuntimeRoot + '" -SkipDownload'
+    return '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $TaskWrapper + '" -Action RunComponent -Component ' + $Component + ' -RuntimeRoot "' + $RuntimeRoot + '" -StartupTimeoutSeconds ' + $InstallReadinessBudgetSeconds + ' -HealthCheckIntervalSeconds ' + $HealthCheckIntervalSeconds + ' -HealthFailureThreshold ' + $HealthFailureThreshold + ' -SkipDownload'
+}
+
+function Resolve-TargetComponents {
+    if ($Component) {
+        return @($Component)
+    }
+    return @($ComponentOrder)
 }
 
 function Get-TaskPlan {
@@ -48,6 +59,8 @@ function Get-TaskPlan {
             ready_url = $ReadyUrls[$component]
             pid_path = Join-Path $RuntimeRoot ("pids\{0}.pid" -f $component.ToLowerInvariant())
             ownership_contract = "native-pid-file-and-listener"
+            health_check_interval_seconds = $HealthCheckIntervalSeconds
+            health_failure_threshold = $HealthFailureThreshold
         }
     }
 
@@ -58,6 +71,8 @@ function Get-TaskPlan {
         restart_interval_seconds = 60
         restart_count = 999
         restart_pid_slo_seconds = $RestartPidSloSeconds
+        health_check_interval_seconds = $HealthCheckIntervalSeconds
+        health_failure_threshold = $HealthFailureThreshold
         install_readiness_budget_seconds = $InstallReadinessBudgetSeconds
         http_probe_timeout_seconds = $HttpProbeTimeoutSeconds
         manual_launcher_stopped_before_install = $true
@@ -260,6 +275,7 @@ function Test-TaskEntry {
             if (Test-Path -LiteralPath $probeLog) {
                 $runtimeCheck = $null
                 $probeComplete = $false
+                $probeFailure = $null
                 foreach ($line in Get-Content -LiteralPath $probeLog -Tail 30) {
                     try {
                         $record = $line | ConvertFrom-Json
@@ -275,6 +291,12 @@ function Test-TaskEntry {
                     if ($record.event -eq "probe_complete") {
                         $probeComplete = $true
                     }
+                    if ($record.event -eq "probe_failure") {
+                        $probeFailure = $record
+                    }
+                }
+                if ($probeFailure) {
+                    throw "Task Scheduler probe failed inside the wrapper (type=$($probeFailure.exception_type)): $($probeFailure.error)"
                 }
                 if ($probeComplete) {
                     if (-not $runtimeCheck) {
@@ -595,9 +617,9 @@ function Test-MigratedExecutableIntegrity {
 }
 
 function Wait-PortsReleased {
-    param([int]$TimeoutSeconds = 30)
+    param([string[]]$Components = $ComponentOrder, [int]$TimeoutSeconds = 30)
 
-    $expectedPorts = @($ReadyUrls.Values | ForEach-Object { ([Uri]$_).Port })
+    $expectedPorts = @($Components | ForEach-Object { ([Uri]$ReadyUrls[$_]).Port })
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     do {
         $listeners = @(Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -in $expectedPorts })
@@ -612,7 +634,11 @@ function Wait-PortsReleased {
 }
 
 function Stop-TaskSet {
-    foreach ($component in @($ComponentOrder[($ComponentOrder.Count - 1)..0])) {
+    param([string[]]$Components = $ComponentOrder)
+
+    $orderedTargets = @($ComponentOrder | Where-Object { $_ -in $Components })
+    [array]::Reverse($orderedTargets)
+    foreach ($component in $orderedTargets) {
         $taskName = "$TaskPrefix$component"
         $task = Get-RegisteredTask -TaskName $taskName
         if ($task -and $task.State -eq "Running") {
@@ -644,11 +670,19 @@ function Start-LegacyManualStack {
 }
 
 function Stop-SupervisedRuntime {
-    & $Launcher -Action Stop -RuntimeRoot $RuntimeRoot -SkipDownload
+    param([string[]]$Components = $ComponentOrder)
+
+    foreach ($target in $Components) {
+        & $Launcher -Action Stop -Component $target -RuntimeRoot $RuntimeRoot -SkipDownload
+    }
 }
 
 function Stop-OrphanedRuntimeHelpers {
-    param([string[]]$Roots)
+    param([string[]]$Roots, [string[]]$Components = $ComponentOrder)
+
+    if ("Grafana" -notin $Components) {
+        return
+    }
 
     foreach ($root in @($Roots | Where-Object { $_ } | Select-Object -Unique)) {
         Stop-ObservabilityOrphanedGrafanaPluginProcesses -RuntimeRoot $root | Out-Null
@@ -656,14 +690,29 @@ function Stop-OrphanedRuntimeHelpers {
 }
 
 function Start-TaskSet {
-    foreach ($component in $ComponentOrder) {
+    param([string[]]$Components = $ComponentOrder)
+
+    foreach ($component in @($ComponentOrder | Where-Object { $_ -in $Components })) {
         $taskName = "$TaskPrefix$component"
         if (-not (Get-RegisteredTask -TaskName $taskName)) {
             throw "Scheduled task $taskName is not installed"
         }
-        Start-ScheduledTask -TaskName $taskName
+        $task = Get-RegisteredTask -TaskName $taskName
+        if ($task.State -ne "Running") {
+            Start-ScheduledTask -TaskName $taskName
+        }
         Wait-ComponentReady -Component $component -TimeoutSeconds $InstallReadinessBudgetSeconds | Out-Null
     }
+}
+
+function Restart-TaskSet {
+    param([string[]]$Components = $ComponentOrder)
+
+    Stop-TaskSet -Components $Components
+    Stop-SupervisedRuntime -Components $Components
+    Stop-OrphanedRuntimeHelpers -Roots @($RuntimeRoot) -Components $Components
+    Wait-PortsReleased -Components $Components
+    Start-TaskSet -Components $Components
 }
 
 function Recover-IncompleteMigrations {
@@ -699,6 +748,8 @@ function Recover-IncompleteMigrations {
 }
 
 function Register-TaskSet {
+    param([string[]]$Components = $ComponentOrder)
+
     $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent().Name
     $principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive -RunLevel Limited
     $settings = New-ScheduledTaskSettingsSet `
@@ -711,7 +762,7 @@ function Register-TaskSet {
         -RestartInterval (New-TimeSpan -Minutes 1) `
         -StartWhenAvailable
 
-    foreach ($component in $ComponentOrder) {
+    foreach ($component in @($ComponentOrder | Where-Object { $_ -in $Components })) {
         $taskName = "$TaskPrefix$component"
         $taskAction = New-ScheduledTaskAction `
             -Execute $PowerShellExe `
@@ -730,8 +781,25 @@ function Register-TaskSet {
     }
 }
 
+function Reconcile-TaskSet {
+    param([string[]]$Components = $ComponentOrder)
+
+    Assert-ApprovedRuntimeRoot
+    if (-not (Test-Path -LiteralPath $RuntimeRoot -PathType Container)) {
+        throw "Cannot reconcile task supervision because the existing runtime is missing: $RuntimeRoot"
+    }
+    Assert-OrdinaryDirectory -Path $RuntimeRoot
+    & $Launcher -Action Prepare -RuntimeRoot $RuntimeRoot -SkipDownload
+    Test-TaskEntry -RequireRuntimeFiles
+    Register-TaskSet -Components $Components
+    Start-TaskSet -Components $Components
+    Write-Host "[READY] Reconciled native observability task supervision without migrating runtime data or stopping native children"
+}
+
 function Show-TaskStatus {
-    $status = foreach ($component in $ComponentOrder) {
+    param([string[]]$Components = $ComponentOrder)
+
+    $status = foreach ($component in @($ComponentOrder | Where-Object { $_ -in $Components })) {
         $taskName = "$TaskPrefix$component"
         $task = Get-RegisteredTask -TaskName $taskName
         $info = if ($task) { Get-ScheduledTaskInfo -TaskName $taskName } else { $null }
@@ -763,6 +831,9 @@ function Show-TaskStatus {
 if ($Action -eq "Plan") {
     Get-TaskPlan | ConvertTo-Json -Depth 5
     return
+}
+if ($Component -and $Action -notin @("Reconcile", "Start", "Stop", "Restart", "Status")) {
+    throw "-Component is supported only for Reconcile, Start, Stop, Restart, and Status"
 }
 
 if (-not (Test-Path -LiteralPath $Launcher)) {
@@ -852,6 +923,10 @@ switch ($Action) {
             throw $migrationFailure
         }
     }
+    "Reconcile" {
+        $targets = Resolve-TargetComponents
+        Reconcile-TaskSet -Components $targets
+    }
     "Uninstall" {
         Stop-TaskSet
         Stop-SupervisedRuntime
@@ -860,15 +935,22 @@ switch ($Action) {
         Unregister-TaskSet
     }
     "Start" {
-        Start-TaskSet
+        $targets = Resolve-TargetComponents
+        Start-TaskSet -Components $targets
     }
     "Stop" {
-        Stop-TaskSet
-        Stop-SupervisedRuntime
-        Stop-OrphanedRuntimeHelpers -Roots @($RuntimeRoot)
-        Wait-PortsReleased
+        $targets = Resolve-TargetComponents
+        Stop-TaskSet -Components $targets
+        Stop-SupervisedRuntime -Components $targets
+        Stop-OrphanedRuntimeHelpers -Roots @($RuntimeRoot) -Components $targets
+        Wait-PortsReleased -Components $targets
+    }
+    "Restart" {
+        $targets = Resolve-TargetComponents
+        Restart-TaskSet -Components $targets
     }
     "Status" {
-        Show-TaskStatus
+        $targets = Resolve-TargetComponents
+        Show-TaskStatus -Components $targets
     }
 }

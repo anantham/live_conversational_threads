@@ -1,6 +1,6 @@
 # TECH_DEBT
 
-Last updated: 2026-08-25
+Last updated: 2026-09-01
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.
 
@@ -233,21 +233,43 @@ not move cursor policy back into React components.
 
 ### 2026-08-31 — Native observability scripts are bounded but still oversized
 
-`ops/observability/install_observability_tasks.ps1` is roughly 874 lines even
+`ops/observability/install_observability_tasks.ps1` is 956 lines even
 after migration and process-ownership logic moved into separate modules. It
 still combines the public task plan, ACL setup, inventory/integrity checks,
-readiness probes, task registration, adoption, rollback, and status shaping.
-Before adding another component or migration mode, extract task-plan/status and
+readiness probes, task registration, reconciliation, component lifecycle,
+adoption, rollback, and status shaping. Before adding another component or
+migration mode, extract task-plan/status, task registration/reconciliation, and
 runtime-copy verification into focused modules while keeping the install switch
 as the thin transactional orchestrator.
 
-`ops/observability/start_observability.ps1` is roughly 551 lines and combines
+`ops/observability/start_observability.ps1` is 676 lines and combines
 the pinned component manifest, verified download/install, process ownership,
-configuration validation, foreground supervision, and manual fallback. Extract
-the immutable component manifest and verified installer before changing
-versions or adding platforms. `lct_python_backend/telemetry/otel.py` is roughly
-355 lines; separate privacy hooks/runtime gauges from provider construction
-before adding another exporter or content-bearing instrumentor.
+configuration validation, readiness, fixed-cadence watchdog supervision, and
+manual fallback. Extract the immutable component manifest and verified
+installer, then isolate the health/readiness watchdog behind a small public
+contract before changing versions or adding platforms.
+`ops/observability/run_observability_task.ps1` is 176 lines and remains cohesive
+as the Scheduled Task wrapper; do not move lifecycle orchestration into it.
+`lct_python_backend/telemetry/otel.py` is roughly 355 lines; separate privacy
+hooks/runtime gauges from provider construction before adding another exporter
+or content-bearing instrumentor.
+
+### 2026-09-01 — Attendee integration and runtime migration boundaries
+
+`lct_python_backend/services/attendee_bridge.py` is 537 lines and combines
+webhook parsing, bot lifecycle transitions, registry persistence, downstream
+transcription dispatch, and error shaping. The stable runtime-path decision was
+kept in the new 69-line `runtime_paths.py` rather than expanding it further.
+Before adding another attendee event family, extract registry persistence and
+bot-state transitions behind typed services, leaving the bridge as transport
+orchestration.
+
+`lct_python_backend/services/runtime_data_migration.py` is 298 lines. It is near
+the decomposition heuristic but currently has one cohesive, security-sensitive
+transaction: validate, back up, merge, atomically replace, and verify. Keep that
+sequence together until another runtime-data family exists; if one is added,
+extract generic validated-registry I/O without separating fail-closed conflict
+checking from the transaction.
 
 ### 2026-08-30 — ImportDiarizationQueue mixes custody and processing
 

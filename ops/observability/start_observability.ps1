@@ -6,6 +6,10 @@ param(
     [string]$RuntimeRoot,
     [ValidateRange(30, 600)]
     [int]$StartupTimeoutSeconds = 90,
+    [ValidateRange(2, 300)]
+    [int]$HealthCheckIntervalSeconds = 10,
+    [ValidateRange(2, 60)]
+    [int]$HealthFailureThreshold = 6,
     [switch]$SkipDownload
 )
 
@@ -341,9 +345,9 @@ function Remove-OwnedPidFile {
 }
 
 function Show-Status {
-    param([hashtable]$Executables)
+    param([hashtable]$Executables, [string[]]$Names = @($Components.Keys))
 
-    foreach ($name in $Components.Keys) {
+    foreach ($name in $Names) {
         $process = Get-ManagedProcess -Name $name -ExpectedExecutable $Executables[$name]
         if (-not $process) {
             Write-Host ("{0,-12} stopped" -f $name)
@@ -356,6 +360,105 @@ function Show-Status {
             $health = "probe failed: $($_.Exception.Message)"
         }
         Write-Host ("{0,-12} PID {1,-7} {2}" -f $name, $process.Id, $health)
+    }
+}
+
+function Get-ComponentHealth {
+    param([string]$Name, [System.Diagnostics.Process]$Process)
+
+    if ($Process.HasExited) {
+        return [pscustomobject][ordered]@{
+            healthy = $false
+            evidence = "PID $($Process.Id) exited"
+        }
+    }
+
+    $component = $Components[$Name]
+    $listeners = @(Get-NetTCPConnection -LocalPort $component.Port -State Listen -ErrorAction SilentlyContinue)
+    $ownedListeners = @($listeners | Where-Object { $_.OwningProcess -eq $Process.Id })
+    if ($ownedListeners.Count -eq 0) {
+        $owners = @($listeners | Select-Object -ExpandProperty OwningProcess -Unique)
+        $ownerText = if ($owners.Count -gt 0) { $owners -join ", " } else { "none" }
+        return [pscustomobject][ordered]@{
+            healthy = $false
+            evidence = "PID $($Process.Id) does not own port $($component.Port); listener owners: $ownerText"
+        }
+    }
+
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $component.ReadyUrl -TimeoutSec 3
+        if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+            return [pscustomobject][ordered]@{
+                healthy = $true
+                evidence = "HTTP $($response.StatusCode), owned listener"
+            }
+        }
+        return [pscustomobject][ordered]@{
+            healthy = $false
+            evidence = "HTTP $($response.StatusCode), owned listener"
+        }
+    } catch {
+        return [pscustomobject][ordered]@{
+            healthy = $false
+            evidence = "probe failed: $($_.Exception.Message)"
+        }
+    }
+}
+
+function Wait-ComponentHealthy {
+    param(
+        [string]$Name,
+        [System.Diagnostics.Process]$Process,
+        [int]$TimeoutSeconds = $StartupTimeoutSeconds
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastEvidence = "health probe has not run"
+    do {
+        $health = Get-ComponentHealth -Name $Name -Process $Process
+        if ($health.healthy) {
+            Write-Host "[READY] $Name PID $($Process.Id): $($health.evidence)"
+            return
+        }
+        $lastEvidence = $health.evidence
+        if ($Process.HasExited) {
+            throw "$Name PID $($Process.Id) exited before readiness. Last evidence: $lastEvidence"
+        }
+        Start-Sleep -Seconds 2
+    } while ((Get-Date) -lt $deadline)
+
+    throw "$Name PID $($Process.Id) did not become healthy within $TimeoutSeconds seconds. Last evidence: $lastEvidence"
+}
+
+function Watch-ComponentHealth {
+    param([string]$Name, [System.Diagnostics.Process]$Process)
+
+    $consecutiveFailures = 0
+    $nextProbeAt = [DateTimeOffset]::UtcNow.AddSeconds($HealthCheckIntervalSeconds)
+    while ($true) {
+        $waitMilliseconds = [Math]::Max(
+            0,
+            [Math]::Ceiling(($nextProbeAt - [DateTimeOffset]::UtcNow).TotalMilliseconds)
+        )
+        if ($Process.WaitForExit([int]$waitMilliseconds)) {
+            return $Process.ExitCode
+        }
+        $health = Get-ComponentHealth -Name $Name -Process $Process
+        if ($health.healthy) {
+            if ($consecutiveFailures -gt 0) {
+                Write-Host "[RECOVERED] $Name PID $($Process.Id) after $consecutiveFailures failed health probe(s)"
+            }
+            $consecutiveFailures = 0
+        } else {
+            $consecutiveFailures += 1
+            Write-Warning "$Name PID $($Process.Id) health probe failed $consecutiveFailures/$HealthFailureThreshold`: $($health.evidence)"
+            if ($consecutiveFailures -ge $HealthFailureThreshold) {
+                throw "$Name health watchdog failed after $consecutiveFailures consecutive probes for PID $($Process.Id). Last evidence: $($health.evidence)"
+            }
+        }
+        do {
+            $nextProbeAt = $nextProbeAt.AddSeconds($HealthCheckIntervalSeconds)
+        } while ($nextProbeAt -le [DateTimeOffset]::UtcNow)
     }
 }
 
@@ -461,35 +564,56 @@ function Get-ComponentRuntime {
 function Invoke-ForegroundComponent {
     param([string]$Name, [hashtable]$Runtime)
 
-    Assert-PortAvailable -Name $Name -Port $Components[$Name].Port
-    $launchId = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssfffZ")
-    $stdoutPath = Join-Path $LogRoot ("{0}.{1}.supervised.stdout.log" -f $Name.ToLowerInvariant(), $launchId)
-    $stderrPath = Join-Path $LogRoot ("{0}.{1}.supervised.stderr.log" -f $Name.ToLowerInvariant(), $launchId)
+    $process = Get-ManagedProcess -Name $Name -ExpectedExecutable $Runtime.Executable
+    $stdoutPath = $null
+    $stderrPath = $null
+    if ($process) {
+        Write-Host "[ADOPT] $Name PID $($process.Id) from its ownership-verified PID file"
+    } else {
+        Assert-PortAvailable -Name $Name -Port $Components[$Name].Port
+        $launchId = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssfffZ")
+        $stdoutPath = Join-Path $LogRoot ("{0}.{1}.supervised.stdout.log" -f $Name.ToLowerInvariant(), $launchId)
+        $stderrPath = Join-Path $LogRoot ("{0}.{1}.supervised.stderr.log" -f $Name.ToLowerInvariant(), $launchId)
 
-    $startArgs = @{
-        FilePath = $Runtime.Executable
-        ArgumentList = $Runtime.StartArguments
-        WorkingDirectory = $Runtime.WorkingDirectory
-        WindowStyle = "Hidden"
-        RedirectStandardOutput = $stdoutPath
-        RedirectStandardError = $stderrPath
-        PassThru = $true
+        $startArgs = @{
+            FilePath = $Runtime.Executable
+            ArgumentList = $Runtime.StartArguments
+            WorkingDirectory = $Runtime.WorkingDirectory
+            WindowStyle = "Hidden"
+            RedirectStandardOutput = $stdoutPath
+            RedirectStandardError = $stderrPath
+            PassThru = $true
+        }
+        $process = Invoke-WithEnvironment -Environment $Runtime.Environment -Script { Start-Process @startArgs }
+        $pidPath = Join-Path $PidRoot ("{0}.pid" -f $Name.ToLowerInvariant())
+        Set-Content -LiteralPath $pidPath -Value $process.Id -Encoding ascii
+        Write-Host "[RUN] $Name PID $($process.Id); stdout=$stdoutPath stderr=$stderrPath"
     }
-    $process = Invoke-WithEnvironment -Environment $Runtime.Environment -Script { Start-Process @startArgs }
-    $pidPath = Join-Path $PidRoot ("{0}.pid" -f $Name.ToLowerInvariant())
-    Set-Content -LiteralPath $pidPath -Value $process.Id -Encoding ascii
-    Write-Host "[RUN] $Name PID $($process.Id); stdout=$stdoutPath stderr=$stderrPath"
 
     try {
-        $process.WaitForExit()
-        $exitCode = $process.ExitCode
+        Wait-ComponentHealthy -Name $Name -Process $process
+        $exitCode = Watch-ComponentHealth -Name $Name -Process $process
+    } catch {
+        $failure = $_
+        $current = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
+        if ($current) {
+            $currentPath = $current.Path
+            if (-not $currentPath -or -not $currentPath.Equals($Runtime.Executable, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "$Name supervision failed, but PID $($process.Id) no longer matches $($Runtime.Executable); refusing to terminate it. Original failure: $($failure.Exception.Message)"
+            }
+            Stop-Process -Id $process.Id -Force -ErrorAction Stop
+            Wait-Process -Id $process.Id -Timeout 20 -ErrorAction SilentlyContinue
+        }
+        throw $failure
     } finally {
         Remove-OwnedPidFile -Name $Name -ProcessId $process.Id
     }
 
-    $exitHeader = "--- exit {0:o} code={1} ---" -f (Get-Date), $exitCode
-    Add-Content -LiteralPath $stdoutPath -Value $exitHeader -Encoding utf8
-    Add-Content -LiteralPath $stderrPath -Value $exitHeader -Encoding utf8
+    if ($stdoutPath -and $stderrPath) {
+        $exitHeader = "--- exit {0:o} code={1} ---" -f (Get-Date), $exitCode
+        Add-Content -LiteralPath $stdoutPath -Value $exitHeader -Encoding utf8
+        Add-Content -LiteralPath $stderrPath -Value $exitHeader -Encoding utf8
+    }
     if ([int]$exitCode -eq 0) {
         Write-Error "$Name exited unexpectedly with code 0; returning failure so Task Scheduler restarts it"
         exit 1
@@ -499,26 +623,27 @@ function Invoke-ForegroundComponent {
 
 New-Item -ItemType Directory -Force -Path $RuntimeRoot, $InstallRoot, $DataRoot, $PidRoot, $LogRoot | Out-Null
 
+if ($Action -eq "RunComponent" -and -not $Component) {
+    throw "-Component is required when -Action RunComponent is used"
+}
+$targetNames = if ($Component) { @($Component) } else { @($Components.Keys) }
 $executables = @{}
-foreach ($name in $Components.Keys) {
+foreach ($name in $targetNames) {
     $executables[$name] = Install-Component -Name $name -Component $Components[$name]
 }
 
 if ($Action -eq "Stop") {
-    foreach ($name in @("Collector", "Grafana", "Tempo", "Prometheus")) {
+    foreach ($name in @("Collector", "Grafana", "Tempo", "Prometheus") | Where-Object { $_ -in $targetNames }) {
         Stop-Component -Name $name -Executable $executables[$name]
     }
     return
 }
 
 if ($Action -eq "Status") {
-    Show-Status -Executables $executables
+    Show-Status -Executables $executables -Names $targetNames
     return
 }
 if ($Action -eq "RunComponent") {
-    if (-not $Component) {
-        throw "-Component is required when -Action RunComponent is used"
-    }
     $runtime = Get-ComponentRuntime -Name $Component -Executables $executables
     Invoke-ForegroundComponent -Name $Component -Runtime $runtime
 }

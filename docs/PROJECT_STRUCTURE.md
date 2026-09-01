@@ -108,6 +108,8 @@ live_conversational_threads/
 - `attendee_client.py` — REST client for the Attendee API
 - `attendee_bridge.py` — webhook event dispatcher (bot state machine)
 - `attendee_audio_downloader.py` — downloads MP3 from MinIO, runs slow-pass STT, proposes a revision
+- `runtime_paths.py` — platform-conventional per-user locations for mutable LCT state
+- `runtime_data_migration.py` — explicit backup-first, conflict-fail-closed attendee-registry migration
 
 **Analysis detectors** (routed through `llm_gateway.py`)
 - `bias_detector.py`, `frame_detector.py`, `simulacra_detector.py`, `crux_detector.py`

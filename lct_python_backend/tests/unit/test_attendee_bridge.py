@@ -26,6 +26,15 @@ from lct_python_backend.services import attendee_audio_downloader as downloader_
 from lct_python_backend.services import attendee_bridge
 
 
+@pytest.fixture(autouse=True)
+def _isolate_durable_registry(monkeypatch, tmp_path):
+    """Every test gets private runtime state, including tests not about persistence."""
+    monkeypatch.setenv(
+        "ATTENDEE_SESSION_REGISTRY_PATH",
+        str(tmp_path / "attendee_sessions.json"),
+    )
+
+
 class _FakeWS:
     """Captures frames the bridge sends over the loopback producer."""
 

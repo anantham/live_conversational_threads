@@ -176,3 +176,43 @@ accommodate measured pre-main disk/page pressure. Individual HTTP probes remain
 3 seconds, and the new-PID recovery objective remains 90 seconds. This separates
 orchestration patience from endpoint latency instead of hiding saturation by
 widening probes.
+
+## Amendment: independent lifecycle, health watchdog, and repair (2026-09-01)
+
+Each component is now an independently addressable operational unit. `Start`,
+`Stop`, `Restart`, and `Status` accept an optional component name and affect only
+that component's exact Scheduled Task, ownership-verified process, and listener.
+Peer components remain running with the same PIDs. The new `Reconcile` action is
+the non-destructive repair path for missing or stale task registrations: it
+validates the existing restricted ProgramData runtime, runs configuration
+preparation without downloads, registers only the selected task definitions,
+and starts or adopts their already-owned native children. It does not migrate
+runtime data, stop native children, or merge mutable telemetry trees.
+
+The long-lived wrapper now evaluates process existence, exact listener
+ownership, and the component readiness endpoint on a fixed ten-second cadence.
+Six consecutive failures are required before the wrapper terminates the exact
+ownership-verified child and enters its bounded restart loop. Healthy probes
+advance the same cadence; they cannot busy-loop. Every HTTP probe retains the
+three-second timeout. Probe failures that occur before normal wrapper startup
+are written as structured `probe_failure` events with the exception type and
+message instead of disappearing as an unexplained task exit.
+
+The Scheduled Task action passes a 300-second startup budget through the wrapper
+to the native launcher. This is an orchestration budget, not a widened health
+probe. Live cold-start evidence showed Grafana loading 56 plugins in 82.968
+seconds and binding HTTP after roughly 86 seconds. The former wrapper default of
+90 seconds killed that healthy-but-not-yet-ready process at the boundary. After
+propagating the 300-second budget, a full stop and cold start brought
+Prometheus, Tempo, Grafana, and Collector up from the persisted ProgramData
+runtime with all readiness, process-ownership, and listener-ownership checks
+passing.
+
+The wake-equivalent validation suspended the exact ownership-verified Collector
+process rather than merely killing it. The first 90-second observer reached its
+deadline just before the replacement appeared and safely fell back to the
+public restart path. A calibrated repeat replaced suspended Collector PID 5284
+with PID 7664 in 71.818 seconds while Prometheus, Tempo, and Grafana retained
+their PIDs. This satisfies the 90-second recovery objective while preserving the
+boundary miss as evidence that observer deadlines should not be treated as
+exact scheduler guarantees.
