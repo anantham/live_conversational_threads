@@ -5247,3 +5247,171 @@ Manual testing not run:
   has an unreadable ACL; no directory or ACL was changed. The active worktree
   remains an explicit hold, the ten removal candidates are still fully clean,
   and the operational defect is recorded in `ISSUES.md` for a bounded repair.
+
+### 2026-08-31 21:07 +05:30 — Second-pass held-worktree salvage on current main
+
+- Re-audited all twelve held LCT worktrees rather than treating the count as a
+  deletion target. Five were clean recent branches. Four are represented by
+  merged PRs #178, #180, #182, and #183; `codex/share-google-token` alone had a
+  positive missing patch and was rescued as commit `3855b0b`.
+- Re-read the six dirty held trees. Five historical trees contain no unique
+  product source beyond generated/private manifests, review traces, runtime
+  data, stale documentation edits, and unreadable pytest temp directories.
+  They remain untouched pending an exact cleanup manifest.
+- The dirty root contains three distinct source families. The bounded semantic-
+  window/topology repair was current product intent and was ported onto current
+  main. The unreferenced frontend performance model is an incomplete prototype
+  that would regress later viewer/provenance work if copied wholesale. The
+  native observability experiment remains held because its Prometheus
+  supervision/migration path hit a corruption hard stop and independent review
+  requested changes.
+- Integrated the topology work without replacing newer PR #182 contracts:
+  deterministic <=30-node hierarchy-aware windows, all-required-window
+  fail-closed behavior, global canonical deduplication with evidence union,
+  additive faithful/authored relationship persistence, and an owner-scoped
+  edge-only repair endpoint. Added an immutable ADR-032 amendment and expanded
+  public-behavior tests.
+- Validation evidence: focused topology/repair 20/20; affected backend matrix
+  193/193 outside the Windows sandbox; the one sandbox red was reproduced as a
+  temporary-directory ACL denial and passed unchanged outside it; Google-token
+  forwarding 3/3; Python compilation; JSON parsing; and production Vite build.
+  The build retains the existing >500 KB chunk warning, and `npm ci` retains the
+  already-recorded dependency audit finding (1 low, 8 high, 1 critical).
+- Files changed in this salvage branch: `lct_app/src/pages/ShareConversation.jsx`,
+  `lct_app/src/services/BackendDataProvider.js` and its test (rescued commit);
+  `lct_python_backend/import_api.py`, `prompts.json`,
+  `services/edge_enrichment.py`, new `services/edge_enrichment_windows.py`,
+  `services/graph_persistence.py`, new
+  `services/import_pipeline/argument_topology_repair.py`, and their topology
+  tests; ADR-032, this worklog, the consolidation ledger, `ISSUES.md`, and
+  `docs/TECH_DEBT.md` document intent, evidence, and the remaining blocker.
+- Independent review: Agy using Gemini 3.1 Pro High reviewed only the exact
+  privacy-screened source/test/ADR diff in an empty directory with no tool use.
+  The first stream was interrupted before it emitted a verdict and was not
+  counted. A fresh complete run returned `APPROVED` with no findings. It
+  explicitly checked protected-share auth forwarding, deterministic bounded
+  coverage, all-window fail-closed behavior, transaction/rollback boundaries,
+  additive persistence, citation union, local-provider privacy policy, and the
+  behavioral tests. No reviewer edits or external actions occurred.
+
+### 2026-08-31 21:51 +05:30 — Second-pass observability classification corrected and ported
+
+- Re-read the dirty root's later operational evidence instead of stopping at
+  the earlier mutable-Prometheus union-copy failure. The final implementation
+  uses a fresh restricted ProgramData stage, complete inventory/byte and
+  executable-hash verification, Prometheus head continuity, an external
+  migration journal with recoverable two-rename promotion, and a long-lived
+  wrapper that restarts failed native children. The unsafe merge-copy path is
+  not present in the rescued source.
+- Ported only the LCT-owned final slice onto current main:
+  `lct_python_backend/telemetry/__init__.py` and `otel.py` (standard,
+  privacy-bounded FastAPI/HTTPX/SQLAlchemy/system/runtime instrumentation);
+  `backend.py` and `db_session.py` lifecycle integration;
+  exact OpenTelemetry pins in `requirements.txt`; the complete
+  `ops/observability/` native stack, configs, and task/migration modules; and
+  two behavioral test files. Runtime data, PID/log state, ignored launch
+  profiles, stale generated files, dirty TemporalCoordination source, and the
+  unrelated frontend performance prototype were not copied.
+- Renumbered the native stack decision from colliding ADR-064 to ADR-067 and
+  updated only its internal README/index references. The original decision and
+  two evidence-driven amendments remain otherwise unchanged.
+- Static/focused validation: Python compilation passed; all copied PowerShell
+  scripts/modules parsed; normalized line-by-line comparison proves the copied
+  implementation/tests/configs exactly match the deployed source; focused
+  telemetry/supervision tests passed 19/19, including journal recovery,
+  ownership scoping, task-plan privacy, alert coverage, and installed
+  `promtool` validation.
+- Full backend unit validation outside the Windows sandbox reached 1,990
+  passes with one known environment-only failure: the shared Python 3.9 venv
+  has `openai==1.54.0` with newer HTTPX and fails client construction on the
+  removed `proxies=` argument. The sandbox run's 94 setup errors and eight
+  path failures were falsified as sandbox-created temp ACL denials.
+- Live read-only evidence from the installed stack: all four exact
+  `LCT-Observability-*` tasks are installed/running; every native PID and
+  listener is ownership-verified; Collector, Prometheus, Tempo, Grafana, and
+  Collector metrics endpoints return HTTP 200; all five Prometheus targets are
+  up; ten alert rules are loaded with none firing; and current
+  `service_name=lct-backend` request, runtime, process, and system metrics are
+  queryable. The initial sandboxed task query falsely reported absent tasks
+  because Windows management access was denied; an outside-sandbox read-only
+  rerun established the actual state.
+- Operational cleanup guard: installed task actions intentionally point at the
+  stable root `live_conversational_threads\ops\observability` path. The
+  final one-worktree manifest must retain that root as the sole checkout, or
+  explicitly retarget and revalidate all four tasks before removing it.
+- Files above 300 lines were assessed and decomposition candidates were added
+  to `docs/TECH_DEBT.md`; no refactor was mixed into this preservation port.
+  Independent review and CI were still pending at this checkpoint.
+
+### 2026-08-31 22:00 +05:30 — Native observability independent review passed
+
+- The first Agy/Gemini 3.1 Pro High attempt correctly rejected a malformed
+  packet after PowerShell serialized the diff array as `System.Object[]`;
+  it made no code judgment. A corrected continuation then terminated inside
+  Agy without a verdict. Grok 4.6 was authenticated but returned 402 because
+  its subscription balance is exhausted; Claude Opus was authenticated but
+  returned 429 until its 00:30 reset. Neither reviewed the code.
+- A final fresh Agy conversation received the complete exact staged diff as a
+  verified single string (56,378 input tokens) from an empty directory with no
+  tool use. Gemini 3.1 Pro High returned `APPROVED` with no product defects.
+  It explicitly accepted the loopback/privacy boundaries, non-fatal
+  application integration, exact task supervision and backoff, journaled
+  fresh-stage migration, executable/head verification, ownership-scoped
+  Grafana helper cleanup, readiness budgets, tests, and ADR-067 renumbering.
+- The reviewer classified the sole 1,990-pass unit-suite failure as the
+  documented pre-existing Python 3.9/OpenAI/HTTPX environment mismatch. No
+  reviewer finding was rejected or left for human arbitration. The temporary
+  review packet and empty reviewer directories were removed; raw conversations
+  were not committed.
+
+### 2026-08-31 22:28 +05:30 — Zero-DB CI packaging and platform contract repaired
+
+- PR #186's first post-observability CI run isolated four failures while the
+  real-Postgres integration suite, frontend gate, and Vercel preview passed.
+  Two telemetry tests failed because the zero-DB workflow installs
+  `lct_python_backend/requirements.txt`, whose older three-package telemetry
+  subset omitted the HTTPX/exporter/SQLAlchemy/system instrumentation used by
+  the rescued runtime. Two supervision tests exercised literal Windows path
+  contracts through PowerShell Core on Ubuntu, where `LOCALAPPDATA` is absent
+  and `System.IO.Path` correctly follows POSIX rather than Windows semantics.
+- Synchronized the backend manifest with the root's complete exact telemetry
+  pins and added a behavioral manifest contract so the two supported install
+  paths cannot silently drift again. Marked only the task-plan and Windows-path
+  ownership probes Windows-only; the remaining platform-neutral supervision,
+  configuration, migration, and alert tests continue to run on Linux CI.
+- Validation at this checkpoint: the focused telemetry/native-supervision
+  matrix passes 20/20 on Windows, `pip check` reports no broken requirements,
+  and `git diff --check` passes. The updated exact diff still requires the
+  standing independent-family review and a fresh CI run before merge or
+  cleanup.
+- Agy/Gemini 3.1 Pro High then reviewed the complete updated PR diff from an
+  empty directory with no tool use (conversation
+  `23812c10-c306-4b6f-bdc2-328b1235a146`) and returned `APPROVED` with no
+  findings. It explicitly validated manifest parity, the narrow Windows-only
+  skips, retained POSIX coverage, telemetry privacy, share-token forwarding,
+  and topology-repair ownership/edge boundaries. A final exact-diff review is
+  performed after this audit note so no committed documentation is left
+  outside the reviewed packet.
+
+### 2026-08-31 22:52 +05:30 — Final dirty-root performance packet reconstructed
+
+- The post-CI byte-level root comparison found that the apparent
+  `import_orchestrator.py` delta is superseded: current code delegates to
+  `merge_semantic_edges_into_nodes`, which already preserves stable endpoint
+  IDs, subtype, confidence, direction, and evidence union with direct tests.
+- The same audit corrected an earlier over-broad classification of the root's
+  frontend performance work. Its old `ViewConversation.jsx` could not be copied
+  because doing so would remove newer explicit-edge and evidence-context
+  behavior, but the content-free timing utility and progressive-loading intent
+  are meaningful. Reconstructed the change on the current viewer: the required
+  graph payload renders before audio/list metadata, the two optional requests
+  run concurrently, and semantic edges/context remain intact.
+- Added utility tests plus a component-level deferred-request regression that
+  proves the graph is visible while both optional requests remain pending and
+  that explicit semantic edges still reach `MinimalGraph`. Focused frontend
+  validation passes 17/17, the full frontend suite passes 331/331, and the
+  production build passes with the existing tracked >500 kB chunk warning. A
+  bounded lint pass has zero errors after removing one stale import; its five
+  pre-existing provider-dependency warnings are recorded in `ISSUES.md` rather
+  than mechanically changed. The required one-pass Impeccable detector returned
+  no findings for the changed viewer, timing helper, or their tests.

@@ -176,6 +176,16 @@ validation/canonicalization and the node adapter; keep provider orchestration in
 monoliths; the new provenance matcher was kept in its own pure module rather
 than expanding either one further.
 
+The 2026-08-31 held-worktree salvage moved bounded-window planning into the
+separate `edge_enrichment_windows.py`, but orchestration and cross-window result
+aggregation raised `edge_enrichment.py` to roughly 722 lines. The earlier
+`edge_response_contract.py` extraction is now higher priority: it should own
+payload validation, canonical directed-triple deduplication, citation union,
+and compatibility-node adaptation, leaving window execution/provider telemetry
+in the orchestration service. `graph_persistence.py` remains roughly 1,383
+lines after its faithful/authored representations became additive; extract the
+relationship persistence phase before adding another relationship source.
+
 ### 2026-08-30 — ThreadsViewer still owns ingestion and presentation routing
 
 `lct_app/src/pages/ThreadsViewer.jsx` remains roughly 540 lines after the mobile
@@ -220,6 +230,24 @@ live follow/pin contract. Its concerns are still cohesive, but the temporal
 cursor rules and hierarchy/index construction now deserve separate modules if
 another navigation policy is added. Keep movement/reconciliation pure and do
 not move cursor policy back into React components.
+
+### 2026-08-31 — Native observability scripts are bounded but still oversized
+
+`ops/observability/install_observability_tasks.ps1` is roughly 874 lines even
+after migration and process-ownership logic moved into separate modules. It
+still combines the public task plan, ACL setup, inventory/integrity checks,
+readiness probes, task registration, adoption, rollback, and status shaping.
+Before adding another component or migration mode, extract task-plan/status and
+runtime-copy verification into focused modules while keeping the install switch
+as the thin transactional orchestrator.
+
+`ops/observability/start_observability.ps1` is roughly 551 lines and combines
+the pinned component manifest, verified download/install, process ownership,
+configuration validation, foreground supervision, and manual fallback. Extract
+the immutable component manifest and verified installer before changing
+versions or adding platforms. `lct_python_backend/telemetry/otel.py` is roughly
+355 lines; separate privacy hooks/runtime gauges from provider construction
+before adding another exporter or content-bearing instrumentor.
 
 ### 2026-08-30 — ImportDiarizationQueue mixes custody and processing
 

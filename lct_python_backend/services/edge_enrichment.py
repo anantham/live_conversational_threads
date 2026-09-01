@@ -29,6 +29,7 @@ import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from lct_python_backend.services.edge_contract import canonical_relation_type
+from lct_python_backend.services.edge_enrichment_windows import plan_edge_windows
 from lct_python_backend.services.indrasnet_client import (
     IndrasNetError,
     IndrasNetUnavailable,
@@ -263,6 +264,9 @@ async def _call_enrich_llm(
     context_items: List[Dict[str, Any]],
     llm_config: Optional[Dict[str, Any]] = None,
     providers: Optional[List[Dict[str, Any]]] = None,
+    window_kind: str = "full_graph",
+    window_index: int = 1,
+    window_count: int = 1,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Run the ``enrich_semantic_edges`` prompt. Returns (edges, telemetry).
 
@@ -290,6 +294,17 @@ async def _call_enrich_llm(
 
     system_prompt = f"{spec.get('template') or ''}\n\n{EDGE_EVIDENCE_INSTRUCTION}"
     user_input = _format_node_list(nodes)
+    if window_count > 1:
+        user_input = (
+            "WINDOW SCOPE\n"
+            f"- purpose: {window_kind}\n"
+            f"- required window: {window_index} of {window_count}\n"
+            "- author only evidence-backed edges whose two endpoint ids are "
+            "present below\n"
+            "- do not infer or invent absent endpoints; overlapping windows are "
+            "merged deterministically by the caller\n\n"
+            f"{user_input}"
+        )
     context_block = _format_context_pack(context_items)
     if context_block:
         user_input = f"{user_input}\n\n{context_block}"
@@ -500,22 +515,27 @@ def merge_semantic_edges_into_nodes(
         if isinstance(node, dict) and str(node.get("id") or "").strip()
     }
     for edge in edges:
-        source = by_id.get(str(edge.get("from_node_id") or "").strip())
-        target = by_id.get(str(edge.get("to_node_id") or "").strip())
+        source_id = str(edge.get("from_node_id") or "").strip()
+        target_id = str(edge.get("to_node_id") or "").strip()
+        source = by_id.get(source_id)
+        target = by_id.get(target_id)
         relation = canonical_relation_type(edge.get("relation_type"))
         source_name = str((source or {}).get("node_name") or "").strip()
         if source is None or target is None or not relation or not source_name:
             continue
         relations = target.setdefault("edge_relations", [])
-        key = (source_name, relation)
         existing = next(
             (
                 item for item in relations
                 if isinstance(item, dict)
+                and canonical_relation_type(item.get("relation_type")) == relation
                 and (
-                    str(item.get("related_node") or "").strip(),
-                    canonical_relation_type(item.get("relation_type")),
-                ) == key
+                    str(item.get("related_node_id") or "").strip() == source_id
+                    or (
+                        not str(item.get("related_node_id") or "").strip()
+                        and str(item.get("related_node") or "").strip() == source_name
+                    )
+                )
             ),
             None,
         )
@@ -525,11 +545,15 @@ def merge_semantic_edges_into_nodes(
                 *(existing.get("supporting_utterance_ids") or []),
                 *supporting_ids,
             ]))
+            existing.setdefault("relationship_subtype", "argument_topology:v1")
             continue
         relations.append({
+            "related_node_id": source_id,
             "related_node": source_name,
             "relation_type": relation,
             "relation_text": str(edge.get("explanation") or "").strip() or relation,
+            "relationship_subtype": "argument_topology:v1",
+            "confidence": edge.get("confidence"),
             "supporting_utterance_ids": list(dict.fromkeys(supporting_ids)),
         })
 
@@ -589,12 +613,125 @@ async def run_edge_enrichment(
         )
     overall["context_telemetry"] = context_telemetry
 
-    edges, llm_telemetry = await _call_enrich_llm(
-        nodes=nodes,
-        context_items=context_items,
-        llm_config=llm_config,
-        providers=providers,
+    try:
+        windows = plan_edge_windows(nodes)
+    except ValueError as exc:
+        llm_telemetry = {
+            "parse_status": "invalid",
+            "error": f"window_planning: {exc}",
+            "ms": 0,
+            "input_tokens": None,
+            "output_tokens": None,
+            "raw_edges": 0,
+            "kept_edges": 0,
+            "model": None,
+            "window_count": 0,
+            "completed_windows": 0,
+            "max_window_nodes": 0,
+            "deduplicated_edges": 0,
+            "windows": [],
+        }
+        overall["llm_telemetry"] = llm_telemetry
+        overall["total_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
+        logger.error("[edge_enrichment] bounded-window planning failed: %s", exc)
+        return [], overall
+
+    if not windows:
+        llm_telemetry = {
+            "parse_status": "valid",
+            "error": None,
+            "ms": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "raw_edges": 0,
+            "kept_edges": 0,
+            "model": None,
+            "window_count": 0,
+            "completed_windows": 0,
+            "max_window_nodes": 0,
+            "deduplicated_edges": 0,
+            "windows": [],
+        }
+        overall["llm_telemetry"] = llm_telemetry
+        overall["total_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
+        return [], overall
+
+    all_edges: List[Dict[str, Any]] = []
+    window_telemetry: List[Dict[str, Any]] = []
+    input_tokens: List[int] = []
+    output_tokens: List[int] = []
+    models: List[str] = []
+    llm_ms = 0.0
+    raw_edges = 0
+    failure: Optional[str] = None
+
+    for index, window in enumerate(windows, start=1):
+        window_edges, telemetry = await _call_enrich_llm(
+            nodes=list(window.nodes),
+            context_items=context_items,
+            llm_config=llm_config,
+            providers=providers,
+            window_kind=window.kind,
+            window_index=index,
+            window_count=len(windows),
+        )
+        llm_ms += float(telemetry.get("ms") or 0)
+        raw_edges += int(telemetry.get("raw_edges") or 0)
+        if isinstance(telemetry.get("input_tokens"), int):
+            input_tokens.append(telemetry["input_tokens"])
+        if isinstance(telemetry.get("output_tokens"), int):
+            output_tokens.append(telemetry["output_tokens"])
+        if telemetry.get("model"):
+            models.append(str(telemetry["model"]))
+        parse_status = _safe_parse_status(telemetry)
+        window_error = str(telemetry.get("error") or "").strip() or None
+        window_telemetry.append({
+            "index": index,
+            "kind": window.kind,
+            "node_count": len(window.nodes),
+            "focal_node_count": window.focal_node_count,
+            "parse_status": parse_status,
+            "error": window_error,
+            "ms": telemetry.get("ms"),
+            "input_tokens": telemetry.get("input_tokens"),
+            "output_tokens": telemetry.get("output_tokens"),
+            "raw_edges": telemetry.get("raw_edges", 0),
+            "kept_edges": telemetry.get("kept_edges", len(window_edges)),
+            "model": telemetry.get("model"),
+        })
+        if window_error or parse_status != "valid":
+            failure = f"window_{index}: {window_error or 'invalid_edge_payload'}"
+            break
+        all_edges.extend(window_edges)
+
+    edges = _deduplicate_edges(
+        all_edges,
+        valid_node_ids={
+            str(node.get("id") or node.get("node_id") or "").strip()
+            for node in nodes
+            if isinstance(node, dict)
+        },
     )
+    if failure:
+        # Required coverage is all-or-nothing. Never publish a partial scan.
+        edges = []
+
+    unique_models = list(dict.fromkeys(models))
+    llm_telemetry = {
+        "parse_status": "invalid" if failure else "valid",
+        "error": failure,
+        "ms": round(llm_ms, 1),
+        "input_tokens": sum(input_tokens) if input_tokens else None,
+        "output_tokens": sum(output_tokens) if output_tokens else None,
+        "raw_edges": raw_edges,
+        "kept_edges": len(edges),
+        "model": unique_models[0] if len(unique_models) == 1 else unique_models or None,
+        "window_count": len(windows),
+        "completed_windows": len(window_telemetry),
+        "max_window_nodes": max(len(window.nodes) for window in windows),
+        "deduplicated_edges": max(0, len(all_edges) - len(edges)) if not failure else 0,
+        "windows": window_telemetry,
+    }
     overall["llm_telemetry"] = llm_telemetry
     overall["edges_emitted"] = len(edges)
     overall["total_ms"] = round((time.perf_counter() - t0) * 1000.0, 1)
@@ -608,3 +745,60 @@ async def run_edge_enrichment(
     )
 
     return edges, overall
+
+
+def _safe_parse_status(telemetry: Dict[str, Any]) -> str:
+    return str(telemetry.get("parse_status") or "").strip().lower()
+
+
+def _deduplicate_edges(
+    edges: List[Dict[str, Any]], *, valid_node_ids: set[str]
+) -> List[Dict[str, Any]]:
+    """Validate globally and collapse overlap duplicates without losing citations."""
+    selected: Dict[
+        Tuple[str, str, str],
+        Tuple[Tuple[float, int, int], Dict[str, Any]],
+    ] = {}
+    evidence_by_key: Dict[Tuple[str, str, str], List[str]] = {}
+
+    for index, edge in enumerate(edges):
+        if not isinstance(edge, dict):
+            continue
+        source_id = str(edge.get("from_node_id") or "").strip()
+        target_id = str(edge.get("to_node_id") or "").strip()
+        relation_type = canonical_relation_type(edge.get("relation_type"))
+        if (
+            not source_id
+            or not target_id
+            or not relation_type
+            or source_id == target_id
+            or source_id not in valid_node_ids
+            or target_id not in valid_node_ids
+        ):
+            continue
+
+        key = (source_id, target_id, relation_type)
+        evidence = evidence_by_key.setdefault(key, [])
+        for value in edge.get("supporting_utterance_ids") or []:
+            identifier = str(value or "").strip()
+            if identifier and identifier not in evidence:
+                evidence.append(identifier)
+
+        normalized = dict(edge)
+        normalized["from_node_id"] = source_id
+        normalized["to_node_id"] = target_id
+        normalized["relation_type"] = relation_type
+        try:
+            confidence = float(edge.get("confidence"))
+        except (TypeError, ValueError):
+            confidence = -1.0
+        explanation = str(edge.get("explanation") or "").strip()
+        rank = (confidence, len(explanation), -index)
+        if key not in selected or rank > selected[key][0]:
+            selected[key] = (rank, normalized)
+
+    result: List[Dict[str, Any]] = []
+    for key, (_rank, edge) in selected.items():
+        edge["supporting_utterance_ids"] = evidence_by_key.get(key, [])
+        result.append(edge)
+    return result

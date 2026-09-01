@@ -1,6 +1,6 @@
 # Inactive branch consolidation ledger
 
-**Status:** Consolidation merged; final prune manifest awaiting operator approval
+**Status:** First-pass consolidation merged; second-pass salvage is PR #186 and final one-worktree cleanup awaits operator approval
 **Branch:** `codex/consolidate-inactive-20260830`
 **Base:** `2429d8cf51dfcba84d39d47be7376ab5f898fe39` (deployed `main`, PR #183)
 **Merged:** PR #184 squash-merged to `main` as `f18106b62996c704c95ac536d4bf696a2e844fff` on 2026-08-31
@@ -561,3 +561,100 @@ in order:
 Any target that becomes dirty, advances, gains a new PR, or fails its recorded
 proof before execution is automatically removed from the deletion set and
 reported as a hold. No cleanup command may broaden from these literal targets.
+
+## Second-pass held-worktree salvage audit — 2026-08-31 21:07 +05:30
+
+The first cleanup deliberately held twelve worktrees rather than infer that a
+recent or dirty tree was disposable. This second pass re-read the exact held
+state against `origin/main@6bb8fc992e82df51a6b94c4892272e9a2cb1a2ae`.
+The goal is one operational worktree, but physical consolidation is allowed
+only after source-bearing work is either represented on `main` or explicitly
+classified for human arbitration.
+
+### Clean held worktrees
+
+| Branch | Evidence | Disposition |
+| --- | --- | --- |
+| `codex/prod-speaker-assertion-scope` | Exact merged PR #180 commit is on `origin/main`. | Represented; prune after the salvage branch merges. |
+| `codex/remember-drive-artifacts` | PR #178 is present as squash commit `e2d1835`; current-main behavior and tests retain Drive remembrance. | Represented; prune after final verification. |
+| `codex/real-artifact-provenance-hardening` | PR #182 is present as squash commit `8b8f68f`; current main contains the later provenance/navigation contract. | Represented; prune after final verification. |
+| `codex/mobile-conversation-deck` | PR #183 is present as squash commit `2429d8c`. | Represented; prune after final verification. |
+| `codex/share-google-token` | `git cherry origin/main` exposed one genuinely missing patch, `3b349a3`. | Rescued as `3855b0b` on `codex/consolidate-held-salvage`; 3 focused frontend tests and the production build pass. |
+
+### Dirty held worktrees
+
+| Worktree | Exact source-bearing assessment | Disposition |
+| --- | --- | --- |
+| Dirty root `main` | Contains the approved bounded semantic-window and edge-only topology repair, a partially integrated frontend performance packet, a stale generated codemap/handover snapshot, and the final successfully deployed native-observability implementation after an earlier failed migration experiment. Copying the root wholesale would delete or regress later viewer/provenance work now on `origin/main`. | Reconstruct the topology, final observability source, and the performance packet's content-free timing/progressive-load behavior on current main while preserving newer explicit-edge and evidence-context contracts. Exclude runtime data, ignored launcher state, stale generated files, and cross-repository changes. |
+| `codex/local-first-browse` | Only untracked review traces/runtime data plus three unreadable pytest temp trees; no tracked source delta. | No source to merge. Private/generated material remains excluded from review and cleanup until an exact manifest. |
+| `codex/recipient-semantic-cards` | Tracked stale issue/worklog edits and untracked review/handover/test debris; the source branch itself is represented by merged PR #170. | No product source to merge; retain only useful historical intent in the current ledger. |
+| attendee-audio revision, test-coverage, and `docs/ssrf-toctou-followup` | Each reports only an untracked `mcps/` directory. | No product source to merge; generated manifests require an exact cleanup decision. |
+
+### Topology salvage contract
+
+The port is deliberately not a wholesale copy from old root state. It applies
+the missing capability to current main while retaining the later PR #182
+grounding/provenance contract:
+
+1. deterministic requests contain at most thirty nodes;
+2. higher-order argument backbones, every node's ancestor closure, and every
+   adjacent L1 boundary receive coverage;
+3. one invalid required window fails the entire scan closed;
+4. overlapping duplicate edges merge by canonical directed triple while
+   unioning grounded utterance citations;
+5. faithful persisted rows and authored memberships/temporal/contextual/
+   semantic additions are additive, so one representation cannot suppress
+   another; and
+6. `/api/import/turns/repair-topology` replaces only the prior topology-owned
+   edges and leaves nodes, hierarchy, temporal flow, and contextual edges
+   untouched.
+
+Validation on the current-main integration:
+
+- focused topology/repair tests: 20 passed;
+- affected persistence, hierarchy, import, provenance, and streaming matrix:
+  193 passed outside the Windows sandbox;
+- the sole sandbox red result was a `Path.resolve()` ACL denial in a temporary
+  WhatsApp extraction directory; the unchanged test passed outside the sandbox;
+- Google-token forwarding tests: 3 passed;
+- Python compilation and prompt JSON parsing passed; and
+- the production frontend build passed.
+
+Agy/Gemini 3.1 Pro High independently reviewed the exact privacy-screened
+source, test, and ADR diff in read-only sandbox mode. Its complete retry ended
+`APPROVED` with no findings; the earlier interrupted stream is not counted as a
+verdict.
+
+### Second-pass correction: native observability is salvageable
+
+The first pass stopped at the failed union-copy experiment and therefore
+misclassified the entire observability family. Later entries in the same
+worklog record a completed principled repair: a fresh restricted ProgramData
+stage, full inventory/byte comparison, Prometheus head continuity, exact binary
+hashes, journaled two-rename promotion/rollback, and wrapper-owned child
+restart. Live evidence replaced a killed Collector in 9.16 seconds.
+
+The final LCT-owned source, configs, behavioral tests, and ADR are now ported
+onto current main. The ADR is renumbered 067 to avoid current main's unrelated
+ADR-064. Runtime data, ignored local launcher state, stale viewer code,
+generated files, and dirty TemporalCoordination changes remain excluded.
+
+### Final dirty-root correction: preserve the performance intent, not the stale viewer
+
+A direct byte and semantic comparison found that the root's timing helper was
+used by an uncommitted `ViewConversation.jsx`, so calling it wholly
+"unreferenced" was too broad. The old viewer itself is still unsafe to copy: it
+predates the explicit-edge index and node-detail evidence context now on main.
+PR #186 therefore reconstructs only the valid intent on the current viewer:
+content-free browser measures, graph-first hydration, and concurrent optional
+audio/list metadata. A deferred-request component test proves the graph becomes
+usable before either optional request resolves and that semantic edges still
+reach `MinimalGraph`.
+
+The remaining gate is mechanical rather than architectural: review and rerun
+CI for this final reconstructed packet, merge PR #186, then execute a fresh
+exact cleanup manifest.
+The current root checkout should be the sole retained worktree because all four
+installed `LCT-Observability-*` task actions resolve scripts through that
+stable repository path. Deleting or renaming it before deliberately retargeting
+those tasks would break durable supervision.

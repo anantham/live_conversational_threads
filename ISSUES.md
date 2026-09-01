@@ -2,6 +2,30 @@
 
 Last updated: 2026-08-31
 
+## 2026-08-31 — Native observability experiment needed a fresh supervision decision (RESOLVED IN CONSOLIDATION)
+
+**Correction:** The first held-worktree pass stopped reading at the failed
+union-copy experiment. The same worklog later records the principled repair:
+a fresh restricted ProgramData stage, complete inventory/byte comparison,
+Prometheus head-chunk continuity, exact executable hashes, a journaled
+two-rename promotion/rollback, and wrapper-owned child restart. The installed
+stack then replaced a killed Collector in 9.16 seconds. The unsafe mutable-tree
+merge is not part of the final source.
+
+**Resolution:** Ported the final LCT-owned source/config/tests onto current main
+without copying runtime data, ignored launcher state, cross-repository files,
+or stale viewer code. The colliding draft number was changed from ADR-064 to
+ADR-067. Focused contracts pass 19/19; all PowerShell sources parse; live
+read-only verification reports all four exact scheduled tasks running with
+owned PIDs/listeners, all five Prometheus targets up, ten rules loaded, no
+alerts firing, and current LCT OTLP metrics in Prometheus.
+
+**Remaining gate:** The bounded final diff still requires independent review,
+commit/push, and CI. The final cleanup manifest must retain the current root
+checkout as the sole worktree (or explicitly retarget its four scheduled task
+actions first), because the installed tasks intentionally reference
+`live_conversational_threads\ops\observability`.
+
 ## 2026-08-31 — Unreadable pytest temp ACLs make Git status and trusted push fail closed (OPEN, NON-BLOCKING)
 
 **Summary:** Six old root-level `tmp*` pytest directories in the active hygiene
@@ -824,6 +848,18 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 ## Developer Warnings (2026-02-14)
 - `lct_app/src/components/ContextualGraph.jsx` and `lct_app/src/components/StructuralGraph.jsx` still emit preexisting `react-hooks/exhaustive-deps` warnings in local lint runs. These do not block runtime but create noisy CI/dev output and should be addressed in a dedicated cleanup PR to avoid mixing legacy graph refactors with the minimal-live-ui scope.
 - Frontend production build still emits chunk-size warning (`dist/assets/index-*.js` > 500 kB). This is preexisting technical debt and not introduced by the bulk-upload patch; track for a separate code-splitting pass.
+
+## 2026-08-31 — ViewConversation hook dependencies remain noisy (pre-existing, non-blocking)
+
+- A bounded lint run for the consolidation's progressive-loading salvage found
+  five pre-existing `react-hooks/exhaustive-deps` warnings in
+  `lct_app/src/pages/ViewConversation.jsx`. Each closes over
+  `dataProvider.conversations` while omitting that object from its dependency
+  array. The focused behavior tests and production build pass, so this is not a
+  blocker for the recovered latency work.
+- Recommended next step: stabilize the conversations provider boundary (or
+  destructure stable methods) and repair all five callbacks/effects together;
+  do not add the mutable provider object mechanically and risk request loops.
 - Runtime settings still lack a unified cross-service readiness model. STT cloud fallback providers now support backend-backed `Save & Test`, but Gemini online credentials, embeddings credentials, and broader runtime confidence/benchmark states are still env-driven or probe-limited.
 - Repo-wide `npm run lint` is currently red from a large preexisting ESLint backlog across unrelated UI files (`playwright.config.js`, thematic/formalism/export helpers, older graph components, analysis pages, etc.). New runtime-settings work can be linted file-by-file, but full frontend lint is not yet a reliable validation gate until that backlog is cleaned up.
 - Remote STT topology documentation remains partially stale: `docs/HANDOVER.md` was corrected on 2026-04-08 after verifying the active `TemporalCoordination/grimoire/IndrasNet` orchestrator on `100.81.65.74`, but backend comments in `lct_python_backend/import_api.py` still describe the WhisperX route as `127.0.0.1:7777` / "local WhisperX". Keep repo docs and comments aligned with the verified Tailscale endpoint `http://100.81.65.74:7777/api/transcribe`.
