@@ -35,6 +35,36 @@
   push wrapper require the `codex/` prefix. The updated exact diff requires a
   fresh independent verdict before merge.
 
+## 2026-09-02T14:15:00+05:30 — Collector self-noise containment
+
+- Correlated IndrasNet/LCT slowdown evidence with the native telemetry plane.
+  The current Collector generated 12.5 MB of stderr in roughly three hours;
+  568/2,000 sampled lines were repeated info-level metric-description conflicts.
+- Genuine error evidence remains distinct: one Prometheus process scrape reached
+  10.003 seconds, Collector 9464 writes timed out, and LCT OTLP exports timed
+  out. Receiver refusal/drop counters remained zero, so loss is not claimed.
+- Changed only Collector internal log level from `info` to `warn`. Process
+  metrics, privacy redaction, collection cadence, scrape timeout, application
+  export timeout, and three-second health probes remain unchanged.
+- This intentionally removes the Collector's info-level startup banner; the
+  PID-bound health extension and Prometheus target state remain the authoritative
+  startup evidence.
+- Claude Opus 4.6 independently reviewed the final exact IndrasNet and LCT
+  diffs and returned APPROVE. Its NaN concern was already covered by finite-value
+  normalization; a new public snapshot regression now proves the behavior.
+- Collector-only activation replaced PID 4892 with PID 43140. Prometheus,
+  Tempo, Grafana, IndrasNet web, LCT, and crawler PIDs were unchanged. Across
+  multiple scrape cycles the new stderr stayed at 1,112 bytes with zero info
+  conflicts and zero errors; three retained warnings identify deprecated
+  component aliases for a future config upgrade.
+- Final health: web, LCT, crawler, and Collector returned HTTP 200; Prometheus
+  reported the `otel-metrics` target up.
+- Assumption: warning-level logging suppresses descriptor-conflict I/O while
+  retaining scrape and exporter failures. Predicted validation: config contract
+  and installed Collector validation pass; after a Collector-only restart the
+  new stderr file contains no info conflict lines and readiness remains green.
+  Confidence: 0.93. Fallback: restore `level: info` and restart Collector only.
+
 ## 2026-08-25T23:15:00+05:30 — Close exact-head Claude follow-up findings
 
 - The privacy-sanitized, tools-disabled Claude Opus review of the exact

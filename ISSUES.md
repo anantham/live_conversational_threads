@@ -1,6 +1,31 @@
 # ISSUES
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
+
+## 2026-09-02 — Pull exporter stalls and collector log amplification (LOG AMPLIFICATION RESOLVED; BACKPRESSURE OPEN)
+
+**Evidence:** The Collector produced 12.5 MB of stderr in roughly three hours;
+568 of the last 2,000 lines were repeated info-level metric-description
+conflicts. Prometheus simultaneously recorded a 10.003-second `otel-metrics`
+scrape, and the Collector logged many 9464 write timeouts while LCT reported
+three-second OTLP receiver timeouts. Receiver refusal/drop counters remained
+zero, so current evidence shows delay and amplification rather than proven loss.
+
+**Mitigation:** Set Collector internal logging to warning level. Warning/error
+evidence remains; metric selection, privacy, cadence, scrape and health-probe
+timeouts are unchanged.
+
+**Deployment evidence:** Claude Opus 4.6 returned an `APPROVE` review verdict
+for the exact bounded two-repository diff. Collector-only activation replaced
+PID 4892 with PID 43140 while
+Prometheus, Tempo, Grafana, web, LCT, and crawler retained their PIDs. After
+multiple scrape cycles the new stderr contained zero info conflicts, three
+actionable alias-deprecation warnings, and zero errors; Collector health and the
+Prometheus target were green.
+
+**Blocker status:** Log amplification is resolved. Scrape/receiver backpressure
+remains open. Measure it after the noise change before reducing metric coverage
+or changing cadence.
 
 ## 2026-09-01 — Local remote write lost telemetry under shared-host contention (RESOLVED AND DEPLOYED)
 

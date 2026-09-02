@@ -297,3 +297,23 @@ Privacy redaction intentionally leaves some generic Python and Node roles
 unnamed. Coarse pre-redaction workload categories and bounded scrape-error
 counts may improve that coverage; retaining commands, paths, arguments, or
 owners is not an acceptable remedy.
+
+## Amendment: preserve failures without scrape-cycle log amplification (2026-09-02)
+
+The current Collector generated 12.5 MB of stderr in roughly three hours. In a
+2,000-line tail, 568 lines were repeated info-level metric-description conflicts
+emitted while merging application and host-process metrics. The same window also
+contained genuine error-level evidence: the Prometheus exporter reached its
+ten-second response deadline and LCT reported OTLP receiver timeouts.
+
+Collector internal logging now starts at warning level. This suppresses repeated
+informational descriptor conflicts while preserving warning and error evidence.
+The process metric set, privacy processors, 15-second process cadence, 10-second
+Prometheus scrape timeout, application OTLP settings, and three-second service
+health probes are unchanged.
+
+This is a log-I/O containment measure, not a claim that scrape backpressure is
+resolved. If exporter timeouts persist after deployment, measure render duration,
+payload size, collector CPU, and disk pressure before reducing process metrics or
+changing cadence. Failure-level logs and Prometheus target health remain the
+acceptance evidence.

@@ -25,6 +25,8 @@ Test intent:
 - the host CPU scraper explicitly emits the utilization metric used for attribution;
 - process forensics cover every process at a bounded cadence without retaining command,
   path, owner, or argument attributes;
+- collector internal logs retain warnings/errors without repeating info-level metric
+  description conflicts on every process scrape;
 - workload classification uses exact service identity before privacy redaction, not a
   repository path that can mislabel telemetry binaries as application processes;
 - Tempo's exporter queue is persisted beneath the restricted ProgramData runtime;
@@ -667,6 +669,7 @@ def test_collector_uses_privacy_bounded_process_forensics_and_pull_metrics():
     assert "storage: file_storage/tempo_queue" in config
     assert "extensions: [health_check, file_storage/tempo_queue]" in config
     assert "receivers: [otlp, hostmetrics/system, hostmetrics/processes]" in config
+    assert "logs:\n      level: warn" in config
 
     launcher = STACK_LAUNCHER.read_text(encoding="utf-8")
     collector_runtime = launcher.split('        "Collector" {', 1)[1].split(

@@ -134,7 +134,7 @@ service:
   extensions: [health_check, file_storage/tempo_queue]
   telemetry:
     logs:
-      level: info
+      level: warn
     metrics:
       level: normal
       readers:
