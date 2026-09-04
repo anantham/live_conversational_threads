@@ -444,6 +444,14 @@ Next_Review: on first loop‑limit or context‑overflow incident
 
 # PROJECT-LOCAL - live_conversational_threads
 
+## Autonomy, attention, and authority
+
+Read `docs/AUTONOMY_AND_AUTHORITY_POLICY.md` before deciding whether an action
+may proceed autonomously, may proceed inside an approved envelope, requires a
+human ruling, or must stop. The shared core above and the project-local sections
+below define engineering procedure after that classification. The policy does not
+weaken any applicable platform, security, privacy, or repository restriction.
+
 Concrete paths for the shared-core protocols above (everything else lives in the synced core; never hand-edit inside the markers):
 
 - Preexisting-issues tracking (#11) -> `ISSUES.md` + a timestamped note in `docs/WORKLOG.md` in the same session
