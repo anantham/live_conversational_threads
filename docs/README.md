@@ -7,6 +7,7 @@ need. Newcomers: follow the reading path in [CONTRIBUTING.md](../CONTRIBUTING.md
 
 | Doc | What it gives you |
 |---|---|
+| [AUTONOMY_AND_AUTHORITY_POLICY.md](AUTONOMY_AND_AUTHORITY_POLICY.md) | What agents may do autonomously, when they must ask, and when they must stop |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | The map: every backend router/service and frontend page, one file |
 | [CONVENTIONS.md](CONVENTIONS.md) | Naming, patterns, style ground truth — read before writing code |
 | [LOCAL_SETUP.md](LOCAL_SETUP.md) | Setup + daily startup runbook |

@@ -1,5 +1,28 @@
 # WORKLOG
 
+### 2026-09-04 — LexiconForge authority kernel adapted for LCT
+
+- **Status:** Implemented in isolated worktree; publication and merge remain
+  separate gates.
+- **Task:** Carry LexiconForge's autonomy, attention, and authority policy into
+  Live Conversational Threads so agents distinguish autonomous evidence work,
+  approved reversible mechanics, reserved human judgment, and stop conditions.
+- **Source:** `LexiconForge.worktrees/codex-authority-kernel/docs/AUTONOMY_AND_AUTHORITY_POLICY.md`
+  version 0.2.0. Its committed 0.1.0 body had independent Grok 4.6 approval;
+  the 0.2.0 mandatory Attention-status addition was present as an uncommitted
+  owner-ruling amendment and is carried here transparently rather than described
+  as previously reviewed.
+- **Adaptation:** Replaced LexiconForge names and paths with LCT's real ledgers,
+  retained LCT's existing repository-scoped review-egress authorization, linked
+  the policy from `AGENTS.md` outside the generated shared-core block, and added
+  it to `docs/README.md`.
+- **Files modified:** `docs/AUTONOMY_AND_AUTHORITY_POLICY.md`, `AGENTS.md`,
+  `docs/README.md`, and this worklog.
+- **Safety:** The dirty deploy checkout was not edited. Work was isolated on
+  `codex/autonomy-authority-policy`, initially from local `72fef420`, then
+  rebased onto `origin/main@b98714f8` before publication so the unrelated
+  observability commit is absent from this change.
+
 ## 2026-08-25T23:15:00+05:30 — Close exact-head Claude follow-up findings
 
 - The privacy-sanitized, tools-disabled Claude Opus review of the exact
