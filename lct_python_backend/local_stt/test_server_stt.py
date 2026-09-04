@@ -11,12 +11,16 @@ Run: lct_python_backend/local_stt/.venv/bin/python -m pytest test_server_stt.py 
 (Set STT_SPEECH_FIXTURE=/path/to/speech.wav to also exercise the speech-passes case;
 skipped by default so CI needs no private audio.)
 """
+import asyncio
 import os
 import sys
 import tempfile
 import wave
+from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
+from starlette.datastructures import UploadFile
 
 sys.path.insert(0, os.path.dirname(__file__))
 import server  # noqa: E402
@@ -58,3 +62,36 @@ def test_vad_gate_passes_real_speech():
     if server._get_vad() is None:
         pytest.skip("silero-vad unavailable in this env")
     assert server._has_speech(fixture) is True
+
+
+def test_diarization_failure_preserves_the_transcript(monkeypatch):
+    """Test intent: optional speaker enrichment never turns usable STT into HTTP 500."""
+    def fail_diarization(audio):
+        assert audio == {"waveform": "decoded", "sample_rate": 16000}
+        raise RuntimeError("decoder unavailable")
+
+    monkeypatch.setitem(sys.modules, "mlx_whisper", SimpleNamespace(
+        transcribe=lambda _path, **_kwargs: {
+            "text": "Radhika's message",
+            "language": "en",
+            "segments": [{"start": 0.0, "end": 1.0, "text": "Radhika's message"}],
+        },
+    ))
+    monkeypatch.setattr(server, "VAD_GATE", False)
+    monkeypatch.setattr(server, "_get_diarizer", lambda: fail_diarization)
+    monkeypatch.setattr(server, "_decode_audio_for_model", lambda _path: {"waveform": "decoded", "sample_rate": 16000})
+
+    response = asyncio.run(server.transcribe(
+        UploadFile(filename="voice.wav", file=BytesIO(b"not-a-real-wav")),
+        model=None,
+        language=None,
+        response_format="json",
+        diarize="true",
+        include_embeddings=None,
+        word_timestamps=None,
+        timestamp_granularities=None,
+    ))
+
+    assert response.status_code == 200
+    assert b'Radhika\'s message' in response.body
+    assert b'RuntimeError: decoder unavailable' in response.body

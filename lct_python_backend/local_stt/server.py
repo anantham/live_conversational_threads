@@ -196,6 +196,30 @@ def _assign_speakers(segments, diarization):
     return segments, sorted({t[2] for t in turns})
 
 
+def _decode_audio_for_model(path: str) -> dict:
+    """Decode with the service's FFmpeg CLI for in-memory model inputs.
+
+    Pyannote accepts ``{"waveform", "sample_rate"}``; Silero VAD accepts the
+    waveform tensor. Keeping both on this boundary avoids TorchCodec's file
+    decoder and its FFmpeg shared-library ABI, while retaining explicit decode
+    errors when service FFmpeg is unavailable or the input is unreadable.
+    """
+    import subprocess
+    import numpy as np
+    import torch
+
+    decoded = subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-i", path,
+         "-f", "f32le", "-acodec", "pcm_f32le", "-ac", "1", "-ar", "16000", "pipe:1"],
+        check=True,
+        capture_output=True,
+    )
+    samples = np.frombuffer(decoded.stdout, dtype=np.float32)
+    if samples.size == 0:
+        raise ValueError("FFmpeg decoded no audio samples for diarization")
+    return {"waveform": torch.from_numpy(samples.copy()).unsqueeze(0), "sample_rate": 16000}
+
+
 # ---------------------------------------------------------------------------
 # Optional speaker EMBEDDINGS — speechbrain ECAPA-TDNN (spkrec-ecapa-voxceleb, 192-dim).
 # CRITICAL: this is the SAME embedding space Strix/IndrasNet store (ADR-022). pyannote
@@ -293,8 +317,8 @@ def _vad_analyze(path: str):
     if m is None:
         return None
     try:
-        from silero_vad import read_audio, get_speech_timestamps
-        wav = read_audio(path, sampling_rate=16000)
+        from silero_vad import get_speech_timestamps
+        wav = _decode_audio_for_model(path)["waveform"].squeeze(0)
         ts = get_speech_timestamps(wav, m, sampling_rate=16000)
         regions = [(t["start"] / 16000.0, t["end"] / 16000.0) for t in ts]
         total_s = float(wav.numel()) / 16000.0
@@ -471,14 +495,22 @@ async def transcribe(
             else:
                 d0 = time.perf_counter()
                 # BLOCKING too (pyannote) -> same treatment
-                diarization = await run_in_threadpool(pipe, tmp_path)  # tmp still exists (unlinked in finally)
-                segments, speakers = _assign_speakers(segments, diarization)
-                d_elapsed = time.perf_counter() - d0
-                diar_info = {"device": _diar.get("device"), "speakers": speakers, "n_speakers": len(speakers),
-                             "elapsed_seconds": round(d_elapsed, 3),
-                             "realtime_x": round(audio_dur / d_elapsed, 2) if (audio_dur and d_elapsed) else None}
-                log.info("diarize ok: %d speaker(s) on %s in %.2fs (%.1fx realtime)", len(speakers),
-                         _diar.get("device"), d_elapsed, (audio_dur / d_elapsed) if (audio_dur and d_elapsed) else 0.0)
+                try:
+                    audio_for_diarization = await run_in_threadpool(_decode_audio_for_model, tmp_path)
+                    diarization = await run_in_threadpool(pipe, audio_for_diarization)
+                    segments, speakers = _assign_speakers(segments, diarization)
+                    d_elapsed = time.perf_counter() - d0
+                    diar_info = {"device": _diar.get("device"), "speakers": speakers, "n_speakers": len(speakers),
+                                 "elapsed_seconds": round(d_elapsed, 3),
+                                 "realtime_x": round(audio_dur / d_elapsed, 2) if (audio_dur and d_elapsed) else None}
+                    log.info("diarize ok: %d speaker(s) on %s in %.2fs (%.1fx realtime)", len(speakers),
+                             _diar.get("device"), d_elapsed, (audio_dur / d_elapsed) if (audio_dur and d_elapsed) else 0.0)
+                except Exception as exc:
+                    # The transcript has already been computed. Speaker labels are optional
+                    # enrichment, so a decoder/model failure must not throw the transcript
+                    # away or make callers retry the whole recording on another machine.
+                    diar_info = {"error": f"{type(exc).__name__}: {exc}"}
+                    log.exception("diarize FAILED after transcription; returning unlabelled transcript")
 
         emb_info = None
         speaker_embeddings = None
