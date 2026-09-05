@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-09-05 — Observability rescue validation
+
+- Reconstructed local commits `72fef42` and `7e6729d` on `origin/main@17f8ef4`
+  in `codex/telemetry-truthfulness-v2`, preserving both dated WORKLOG entries
+  and the recorded September 2 deployment evidence. No runtime restart occurred.
+- Fresh validation: 26/26 native-observability tests passed, with three existing
+  Python 3.9 maintenance warnings. The deploy checkout and source branch remain
+  unchanged. The unrelated shared-core sync and inaccessible pytest directory
+  are excluded. Independent review and publication remain pending.
+- Assumption: the preserved commits capture the intended observability changes.
+  Confidence: 0.96. Fallback: retain the original branch if validation fails.
+
 ### 2026-09-04 — LexiconForge authority kernel adapted for LCT
 
 - **Status:** Implemented in isolated worktree; publication and merge remain
