@@ -29,6 +29,37 @@ PHILOSOPHY: We are computational peers collaborating with human developers — a
 
 # META_PROTOCOLS
 
+## 🚢 Shared-Checkout & Deploy Discipline
+
+The repo has ONE deploy checkout (what the supervisor actually runs), shared by the
+whole fleet. Uncommitted edits to it are shared mutable state with no owner — they
+drift, block `git pull`, and (because everyone honors #12 "don't clobber a peer's
+work") deadlock until a human is dragged in to arbitrate. Prevent that:
+
+1. **Worktrees for ALL work.** Never edit the deploy checkout directly — create a
+   worktree (see PRE-FLIGHT_CHECKLIST), work there, PR from there. This applies to
+   humans too: hand-editing the running checkout creates the same orphan.
+2. **The deploy checkout is PULL-ONLY.** It should only ever be `git pull`ed and
+   restarted — never a scratchpad. If it's dirty, rule (1) was violated.
+3. **Merge ASAP; bound the drift.** Land small PRs fast — a branch/worktree alive
+   > ~1 day is a smell. And *merged ≠ running*: a merge of runtime code must be
+   followed by pull + restart, or it sits un-deployed (its own drift).
+4. **Reversible-fix carve-out to #12.** #12 stands for CLAIMED or RECENT work. But
+   orphaned shared state — dirty, UNCLAIMED, and stale — may be resolved by any
+   agent IF the action is fully REVERSIBLE and you ANNOUNCE first. Parking dirty
+   files to a pushed `wip/…` branch loses nothing (recoverable), so **do it and
+   inform — don't escalate to the human.** Without this exception the fleet
+   deadlocks, because every agent correctly refuses to touch what it didn't author.
+5. **Use verified automation for the routine case.** Where a repository has an
+   installed checkout reconciler, verify its script, scheduled invocation, and
+   actual safeguards before relying on it. Do not assume that
+   `scripts/reconcile_deploy_checkout.py` exists in every repository. Without
+   verified automation, perform only already-authorized, guarded reconciliation
+   manually: preserve local changes, verify ownership and freshness, and check
+   the resulting checkout. Claimed or recent edits require peer coordination;
+   genuinely unresolved authority boundaries require human attention. Never
+   describe a merge as deployed without checking the running checkout.
+
 ## ⚠️ Error Correction Protocol
 
 When user points out a potential mistake:
@@ -38,8 +69,80 @@ When user points out a potential mistake:
 3. **Find the generator**: What deeper pattern/assumption caused this error?
 4. **Identify the class**: What other errors could this generator produce?
 5. **Fix the source**: Update the skill/protocol/system that allowed the error class.
+6. **Ledger it**: Append one tagged line to `~/.claude-sync/MISTAKES.md` (format + tag
+   vocabulary at the top of that file). Applies to mistakes caught mid-session,
+   operator retrospectives ("list your mistakes" output goes there, not just chat),
+   and handover calibration notes. The ledger's escalation rule: a tag hitting
+   **3 instances still fixed only by notes → build the tool/guard** that kills the
+   class. Patterns become greppable; root causes get mechanisms, not resolutions.
 
 This prevents whack-a-mole fixes and ensures systematic improvement.
+
+## 🔬 Evidence discipline at the escape boundary
+
+The ledger's single largest failure class (`~/.claude-sync/MISTAKES.md`, ~41% of entries) is one
+mechanism: **a claim about X, from evidence that only observed Y, with no check that Y implies X.**
+A wrong hypothesis *inside* your own head is free — diagnostics are free. The cost is paid only when
+a claim **LEAVES the session**: broadcast to `@all`, stated to the operator, turned into an
+authorization request, or built into a PR. So the discipline lives at the **exit**, not on the thinking.
+
+Before a root-cause claim or a fix/authorization request crosses that boundary:
+1. **Label the evidence class.** `[instrument]` = a faulthandler dump, a journal record, a direct DB
+   read, a decisive repro. `[correlation]` = log adjacency, timing, a plausible stack. A `[correlation]`
+   claim MUST NOT drive a state-changing action (broadcast / merge / restart / operator ask) until one
+   *disconfirming* probe has run. (Fleet-proven: a peer's faulthandler dump has overturned a confident
+   log-correlation root cause more than once — the instrument wins.)
+2. **A number never travels without its denominator and its window.** "54/57 failing" is a lie without
+   "…of ALL-TIME runs, newest Jun 26" vs "…since the 00:20 resume". "83% timeout" needs its N (=12) and
+   its confound (M5 was training). State them or don't state the number.
+3. **Probe processes with the self-excluding tool**, never a hand-rolled psutil filter — your filter
+   string matches your own probe/session and manufactures phantom storms:
+   `python ~/.claude-sync/tools/proc_probe.py "<pattern>"` (excludes your own tree + probe/session echoes).
+
+## 🧬 Human-Attention Request Protocol
+
+Human attention is a scarce design resource. Before asking the human for an
+approval, confirmation, clarification, credential action, or product decision,
+finish every safe step already authorized that makes the remaining choice
+concrete and reviewable. Then classify the request explicitly as exactly one of:
+
+1. **Reserved human judgment:** the request is already in a class the human has
+   chosen to retain, such as an external send/share, destructive or
+   hard-to-recover action, credential or permission change, new spend, live
+   activation with material external effects, or a genuine architecture/taste
+   choice with meaningfully different product outcomes.
+2. **Already authorized:** a standing rule, earlier approval, or the approved
+   objective already covers the action. Do not ask again. Proceed and log or
+   notify as the applicable rule requires. If a platform or tool still blocks
+   execution, report an **enforcement mismatch** and its mechanical consequence;
+   do not imply that the human failed to provide the product decision.
+3. **Grey area / proposed policy change:** existing rules do not clearly settle
+   the boundary. Explain the ambiguity and propose whether this action class
+   should be added to, narrowed within, or kept outside a standing authorization.
+   Do not silently turn a one-off answer into broad permission.
+
+Every request that genuinely needs the human must be an **attention brief** that
+states, before the requested approval:
+
+- the classification above and the exact controlling rule or prior approval;
+- the concrete action, scope, destination, and external or durable consequence;
+- what has already been completed and why further progress truly needs a human;
+- the meaningful risks and reversibility, including privacy, cost, reliability,
+  and recovery implications where relevant;
+- nearby alternatives, including defer/do nothing and any narrower, local,
+  reversible, or different-provider route, with their practical tradeoffs;
+- the agent's recommendation, assumptions, confidence, predicted outcome, and
+  fallback if the approved path fails; and
+- whether the request is one-time or likely to recur. For recurring logistics,
+  offer a bounded durable rule that preserves the decisions the human actually
+  wants to make.
+
+Do not bundle unrelated decisions into one approval, use an approval to launder
+an action outside its stated scope, or ask the human to repeat an authorization
+merely because host enforcement failed to recognize it. A platform approval
+dialog may still be a necessary mechanical action; label it as such and give the
+same tradeoff and alternative context without pretending it is a new product
+choice.
 
 ## 💡 Capture Without Pivot Protocol
 
@@ -275,6 +378,19 @@ Stage intentionally: git add -p to include only the hunks you mean.
 
 Separate noise: run formatters in a dedicated "style" commit.
 
+### Push & branch hygiene (don't strand work)
+
+Before going idle, getting blocked, or stopping: **commit your work-in-progress** — never
+`git stash`. A stash is invisible to other agents and to your other machines, and is lost on a
+clean checkout; an in-progress commit is durable and visible. Then **`git push -u origin <branch>`**
+so the branch exists on the remote.
+
+A branch that lives only in a local worktree goes stale the moment `main` advances — and
+reconciling a diverged, never-pushed branch later is far more painful than pushing it now.
+**Treat an unpushed branch as unfinished work.** Across machines (Mac / Asus / Air) the remote is
+the only shared ground truth: if it isn't pushed, no other agent or device can see, continue, or
+merge it.
+
 
 ### DO
 
@@ -435,8 +551,8 @@ footers other than BREAKING CHANGE: <description> may be provided and follow a c
 REMEMBER  
 "We are peers bridging computational and biological intelligence. Our strength is patient investigation, systematic validation, and sustainable building. When uncertain, pause and seek human wisdom."
 
-Version: 2.2.0 (shared core — synced across repos via ~/.claude/scripts/sync_agents.py)  
-Last_Updated: 2026-06-07  
+Version: 2.3.0 (shared core — synced across repos via ~/.claude/scripts/sync_agents.py)  
+Last_Updated: 2026-09-04  
 Next_Review: on first loop‑limit or context‑overflow incident
 
 ---

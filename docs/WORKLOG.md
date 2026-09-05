@@ -1,5 +1,34 @@
 # WORKLOG
 
+## 2026-09-05 — Guarded shared-core synchronization and cleanup preparation
+
+- Corrected the canonical shared core's universal claim that a scheduled
+  checkout reconciler exists. Agents must verify installed automation and its
+  safeguards; otherwise only authorized guarded manual reconciliation applies.
+- Regenerated AGENTS.md from the canonical source. Generator parity and
+  unchanged content outside the generated block both passed. The corresponding
+  blocks in TemporalCoordination and Map TPOT were synced with byte-preserved
+  backups and project-local preservation checks; their other files were untouched.
+- Preserved the six dirty deploy-checkout files byte-for-byte in the private
+  lct-cleanup-preservation-20260905 archive. A verified full-history Git bundle
+  retains the pre-cleanup refs. No branches or worktrees have been deleted yet.
+- Test intent: generated block matches source, project-local policy survives,
+  and the rule does not claim nonexistent automation. Documentation-only change;
+  no backend or frontend behavior changes. Markdown hard-break trailing spaces
+  in the synchronized version footer are intentional, not test failures.
+- Gemini 3.1 Pro High independently approved the AGENTS diff. Its suggestion to
+  unify .claude-sync and .claude paths was falsified by checking the distinct
+  installed tools; the reviewer explicitly withdrew it and reported no actionable
+  findings (receipt d0ca3156-3d88-4230-92e3-576c4a1a38f6).
+- Readiness probes returned HTTP 200 for Collector, Prometheus, Tempo and Grafana.
+  The generic LCT /health route returned 404; this is not evidence of service
+  failure. Route-specific verification, checkout reconciliation and final pruning
+  remain pending. No service restart occurred.
+- The existing tmp_pytest_reprocess_port directory remains access-denied even
+  for read-only ACL inspection. It has not been removed or had permissions changed.
+- Assumption: only known preserved work is eligible for cleanup. Confidence 0.95.
+  Fallback: retain any target whose contents, ownership or preservation is unclear.
+
 ## 2026-09-05 — Observability rescue validation
 
 - Reconstructed local commits `72fef42` and `7e6729d` on `origin/main@17f8ef4`
