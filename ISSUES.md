@@ -1,6 +1,204 @@
 # ISSUES
 
-Last updated: 2026-09-01
+Last updated: 2026-09-02
+
+## 2026-09-02 — Pull exporter stalls and collector log amplification (LOG AMPLIFICATION RESOLVED; BACKPRESSURE OPEN)
+
+**Evidence:** The Collector produced 12.5 MB of stderr in roughly three hours;
+568 of the last 2,000 lines were repeated info-level metric-description
+conflicts. Prometheus simultaneously recorded a 10.003-second `otel-metrics`
+scrape, and the Collector logged many 9464 write timeouts while LCT reported
+three-second OTLP receiver timeouts. Receiver refusal/drop counters remained
+zero, so current evidence shows delay and amplification rather than proven loss.
+
+**Mitigation:** Set Collector internal logging to warning level. Warning/error
+evidence remains; metric selection, privacy, cadence, scrape and health-probe
+timeouts are unchanged.
+
+**Deployment evidence:** Claude Opus 4.6 returned an `APPROVE` review verdict
+for the exact bounded two-repository diff. Collector-only activation replaced
+PID 4892 with PID 43140 while
+Prometheus, Tempo, Grafana, web, LCT, and crawler retained their PIDs. After
+multiple scrape cycles the new stderr contained zero info conflicts, three
+actionable alias-deprecation warnings, and zero errors; Collector health and the
+Prometheus target were green.
+
+**Blocker status:** Log amplification is resolved. Scrape/receiver backpressure
+remains open. Measure it after the noise change before reducing metric coverage
+or changing cadence.
+
+## 2026-09-01 — Local remote write lost telemetry under shared-host contention (RESOLVED AND DEPLOYED)
+
+**RCA:** At 20:18:50 IST, OpenTelemetry Collector dropped exactly 916 metric
+points after its localhost Prometheus remote-write request exceeded its
+deadline. The queue was not full, neither process restarted, Prometheus
+reported no 5xx response, and host CPU remained approximately 100 percent for
+two minutes. The selected-process allowlist explained only 6.7 percent of CPU,
+so the exact competing executable was irrecoverable. Collector logs contain 28
+remote-write loss events totaling 17,008 points for the day; two delayed batches
+were subsequently rejected by Prometheus as out of order. Overlapping Tempo
+deadlines and elevated disk queues confirm a recurring shared-host contention
+class rather than one unhealthy endpoint.
+
+**Resolution:** The current branch replaces same-host remote write with the
+Collector's loopback Prometheus exporter and a Prometheus scrape job, separates
+10-second host metrics from privacy-bounded 15-second all-process forensics,
+persists Tempo's queue beneath the selected runtime root, and adds two-minute
+CPU, attribution-gap, cardinality, and host-thread evidence rules. Commands,
+arguments, paths, owners, prompts, transcripts, and credentials remain excluded.
+The process-metrics job has a ten-second scrape deadline beneath its 15-second
+interval; the three-second HTTP health probes are unchanged.
+
+**Deployment evidence:** Gemini 3.1 Pro independently reviewed the exact diff in
+two non-overlapping packets with no P0-P3 finding. After controlled component
+restarts, all six Prometheus targets were up, 15 rules were loaded, no alert was
+firing, process scrapes completed in 0.42-0.54 seconds under 74-91 percent host
+CPU, and prohibited process labels were absent. The corrected recording window
+reported 75.2 percent host CPU, 49.6 percent observed-process CPU, and a 25.5
+percent explicit attribution gap. The three-second HTTP probes remain unchanged.
+
+**Blocker status:** Resolved. The stack is collecting current evidence. The
+remaining coverage and cold-start limitations are tracked separately below.
+
+## 2026-09-01 — IndrasNet replacement exposed an optional-service startup race (OPEN, SIBLING REPO)
+
+**Summary:** During post-deployment verification, Windows Task Scheduler event
+330 proved that the incumbent `IndraSupervisor` was explicitly stopped at
+22:23:44 by the interactive user account; it did not crash. The one-minute
+self-heal trigger launched replacement supervisor PID 17484 two seconds later.
+Windows recorded the requesting account but not the client process, and neither
+PowerShell operational history nor Security process-creation history contained
+a matching caller. The LCT observability installer cannot target this task: its
+stop paths derive names only from the static `LCT-Observability-` prefix.
+
+The replacement web child then blocked before binding port 7777 while FastAPI's
+lifespan awaited ComfyUI autostart. ComfyUI PID 15872 never opened port 8188.
+IndrasNet gives ComfyUI a 600-second readiness timeout and gives the enclosing
+web-server startup the same 600-second timeout, so the outer supervisor killed
+web PID 29196 and its child near the point where the optional inner dependency
+should have timed out. Earlier replacement generations also logged synchronous
+SQLite settings reads on the event-loop thread during this critical startup
+path.
+
+**Impact:** An optional GPU service can keep the primary HTTP health endpoint
+unbound for ten minutes and race the supervisor's own deadline, producing
+repeated cold starts even while the event loop remains live. Separately, an
+operator-initiated scheduled-task stop cannot currently be attributed to the
+calling process after the fact.
+
+**Blocker status:** Blocks IndrasNet availability, not the native telemetry
+plane. Prometheus, Tempo, Collector, and Grafana remained healthy and recorded
+the IndrasNet target outage. Fix in `TemporalCoordination`: bind the web health
+surface before optional service autostart, move optional service startup out of
+the lifespan critical path, and give inner dependency deadlines strict margin
+inside the outer supervisor deadline. Add an append-only supervisor control
+journal carrying action, initiator PID/process, reason, generation ID, and
+result; do not widen HTTP health probes.
+
+## 2026-09-01 — Repository-path workload matching mislabeled Tempo as LCT (RESOLVED IN CURRENT BRANCH)
+
+**RCA:** Live validation of the IndrasNet telemetry dashboard labeled Tempo PID
+6244 as `LCT backend`. The Collector classified any command line containing
+`live_conversational_threads` as LCT; Tempo's command line legitimately contains
+that repository path because its config file lives under `ops/observability`.
+
+**Resolution:** The pre-redaction classifier now requires the actual ASGI target
+`lct_python_backend.backend:lct_app`. A regression contract rejects repository
+path and executable-path matching for this workload. Privacy deletion still
+runs after classification, so no command line or path is exported.
+
+**Blocker status:** Resolved and deployed. A later, distinct Collector process
+became ready after the component-only restart; Windows reused numeric PID 3876,
+which had belonged to an earlier failed launch generation. Direct Prometheus
+vectors identify the real LCT
+launcher/worker PIDs 42032 and 35148 as `lct-backend`, while Tempo PID 6244 has
+no workload label. The UI still showed its old row because its operational
+snapshot cache was expired and stuck refreshing, tracked separately below.
+
+## 2026-09-01 — Telemetry dashboard conflates Tempo search latency with readiness (OPEN, SIBLING REPO)
+
+**Summary:** The operational dashboard returned HTTP 200 with current host and
+process data, but reported Tempo unavailable with `error=timeout`. Direct
+verification returned Tempo `/ready` in about 200 ms while
+`/api/search?tags=service.name%3Dlct-backend&limit=20` exceeded three seconds.
+The sibling `OperationalObservabilityReader` uses one 0.8-second client timeout
+for both calls and only sets `tempo.available=true` after the trace search.
+
+**Impact:** A healthy Tempo backend is shown as offline whenever trace search is
+slow, obscuring the distinction between service readiness and query freshness.
+
+**Blocker status:** Non-blocking for metric collection but misleading in the
+single telemetry view. Fix in `TemporalCoordination`: publish readiness and
+trace-query status separately, keep the readiness check strict, and give the
+bounded search its own deadline/stale-result semantics rather than widening one
+shared timeout.
+
+## 2026-09-01 — Operational telemetry cache can remain expired while refresh is in progress (OPEN, SIBLING REPO)
+
+**Summary:** After the corrected Collector had completed two process-scrape
+cycles, `/api/telemetry/dashboard` continued returning the snapshot collected at
+22:56:50. Its freshness metadata reported `expired=true`, age 448.016 seconds,
+`refresh_in_progress=true`, and no `last_error`. A second read after 12 more
+seconds returned the same snapshot in 244 ms, including the now-stale Tempo
+workload label. The direct Prometheus vectors were already correct.
+
+**Impact:** The single telemetry view can look responsive while presenting an
+expired process topology and backend status indefinitely, hiding successful
+source corrections and current incidents.
+
+**Blocker status:** Non-blocking for collection, blocking trustworthy UI
+freshness. The terminal wait inside the refresh thread is not yet identified.
+Fix in `TemporalCoordination`: instrument refresh generation/start/phase/end,
+enforce an outer refresh deadline, clear abandoned in-progress state, and show
+the collected-at age prominently when serving stale data.
+
+## 2026-09-01 — Native child launch phases can stall without attributable evidence (OPEN, NON-BLOCKING)
+
+**Summary:** During the controlled rollout, unrelated native binaries repeatedly
+stalled before normal readiness. Collector PID 3876 and Prometheus PID 9184 each
+remained at one thread, near-zero CPU, no listener, and empty stderr until the
+300-second PID-bound gate failed. A later Collector launch stalled in the
+PowerShell launcher before any native PID was published. Ownership-aware retries
+recovered all components without widening a timeout, proving that the reviewed
+configs were valid but not identifying which Windows loader, security, disk, or
+scheduler phase consumed the time.
+
+Windows later reused numeric PID 3876 for a separate healthy Collector
+generation during the final classifier rollout. PID equality across those
+non-overlapping generations does not imply process continuity; launch identity
+must include creation time or a generated launch ID.
+
+**Impact:** A component can be absent for several minutes while status shows a
+live wrapper but no actionable native phase. When no new native log exists, the
+installer currently reports the previous launch's stderr tail, which can be
+misread as the current failure. One retry also encountered a transient lock
+while removing `prometheus.pid`; the lock cleared without manual deletion.
+
+**Blocker status:** Non-blocking after recovery; all four native components are
+ready and ownership-verified. Next step: emit one launch ID across wrapper,
+validation, spawn request, native PID publication, first listener, and first
+ready probe; report only logs carrying that launch ID; and retry a verified
+stale PID-file removal for a short bounded interval.
+
+## 2026-09-01 — Process attribution is best-effort and generic runtimes remain coarse (OPEN, NON-BLOCKING)
+
+**Summary:** The deployed process scraper attempts every process, but the live
+CPU series represented 368 PIDs while Windows reported 571 processes. Windows
+access limits, process churn, and muted per-process errors account for some of
+the difference. Executable name, PID, and parent PID identify Chrome, Syncthing,
+Codex, ChatGPT, and bounded app workloads, but generic `python.exe` and
+`node.exe` children remain historically ambiguous after privacy redaction.
+
+**Impact:** The new telemetry can rank the largest contributors and quantify the
+unattributed gap, but it cannot always name the job behind a generic runtime.
+The Collector also logs a process CPU metric-description conflict every 15
+seconds because application and host instrumentation use the same standard
+metric name with different descriptions; samples remain queryable by scope.
+
+**Blocker status:** Non-blocking. Do not retain command lines to close this gap.
+Next step: add a small reviewed set of coarse pre-redaction workload categories
+for test runners and known background jobs, expose bounded process-scrape error
+counts, and deduplicate overlapping application/host process CPU instruments.
 
 ## 2026-08-31 — Native observability experiment needed a fresh supervision decision (RESOLVED IN CURRENT BRANCH; DELIVERY IN PROGRESS)
 

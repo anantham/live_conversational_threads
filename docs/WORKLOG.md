@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-09-05 — Observability rescue validation
+
+- Reconstructed local commits `72fef42` and `7e6729d` on `origin/main@17f8ef4`
+  in `codex/telemetry-truthfulness-v2`, preserving both dated WORKLOG entries
+  and the recorded September 2 deployment evidence. No runtime restart occurred.
+- Fresh validation: 26/26 native-observability tests passed, with three existing
+  Python 3.9 maintenance warnings. The deploy checkout and source branch remain
+  unchanged. The unrelated shared-core sync and inaccessible pytest directory
+  are excluded. Independent review and publication remain pending.
+- Assumption: the preserved commits capture the intended observability changes.
+  Confidence: 0.96. Fallback: retain the original branch if validation fails.
+- **Independent review:** Gemini 3.1 Pro High via Antigravity reviewed
+  `17f8ef4..56dbbe5` and returned `APPROVED`, with no findings. The 63,929-byte
+  packet contained the exact ten-file diff and review specification/validation;
+  credential-pattern scan found no hits. No credentials, participant data,
+  recordings, transcripts, runtime data, or private artifacts were included.
+  The reviewer used no tools. Receipt conversation:
+  `081939aa-1957-426f-87a2-ad09758b5639`. This records a review verdict,
+  not fresh runtime health or authorization. A final review covers this receipt.
+
 ### 2026-09-04 — LexiconForge authority kernel adapted for LCT
 
 - **Status:** Implemented in isolated worktree; publication and merge remain
@@ -34,6 +54,36 @@
   xAI/Grok as an eligible reviewer, and LCT's branch convention and trusted
   push wrapper require the `codex/` prefix. The updated exact diff requires a
   fresh independent verdict before merge.
+
+## 2026-09-02T14:15:00+05:30 — Collector self-noise containment
+
+- Correlated IndrasNet/LCT slowdown evidence with the native telemetry plane.
+  The current Collector generated 12.5 MB of stderr in roughly three hours;
+  568/2,000 sampled lines were repeated info-level metric-description conflicts.
+- Genuine error evidence remains distinct: one Prometheus process scrape reached
+  10.003 seconds, Collector 9464 writes timed out, and LCT OTLP exports timed
+  out. Receiver refusal/drop counters remained zero, so loss is not claimed.
+- Changed only Collector internal log level from `info` to `warn`. Process
+  metrics, privacy redaction, collection cadence, scrape timeout, application
+  export timeout, and three-second health probes remain unchanged.
+- This intentionally removes the Collector's info-level startup banner; the
+  PID-bound health extension and Prometheus target state remain the authoritative
+  startup evidence.
+- Claude Opus 4.6 independently reviewed the final exact IndrasNet and LCT
+  diffs and returned APPROVE. Its NaN concern was already covered by finite-value
+  normalization; a new public snapshot regression now proves the behavior.
+- Collector-only activation replaced PID 4892 with PID 43140. Prometheus,
+  Tempo, Grafana, IndrasNet web, LCT, and crawler PIDs were unchanged. Across
+  multiple scrape cycles the new stderr stayed at 1,112 bytes with zero info
+  conflicts and zero errors; three retained warnings identify deprecated
+  component aliases for a future config upgrade.
+- Final health: web, LCT, crawler, and Collector returned HTTP 200; Prometheus
+  reported the `otel-metrics` target up.
+- Assumption: warning-level logging suppresses descriptor-conflict I/O while
+  retaining scrape and exporter failures. Predicted validation: config contract
+  and installed Collector validation pass; after a Collector-only restart the
+  new stderr file contains no info conflict lines and readiness remains green.
+  Confidence: 0.93. Fallback: restore `level: info` and restart Collector only.
 
 ## 2026-08-25T23:15:00+05:30 — Close exact-head Claude follow-up findings
 
@@ -5546,3 +5596,168 @@ Manual testing not run:
   `run_observability_task.ps1` owns the 2/5/10/30/60-second loop. The source,
   ADR, runbook, tests, and verdict already describe/accept the correct wrapper
   mechanism, so no product change or human architecture arbitration is needed.
+
+### 2026-09-01 21:02 +05:30 — RCA-driven forensic observability redesign checkpoint
+
+- **Approved objective:** Preserve enough bounded, privacy-safe evidence to
+  attribute the next shared-host contention incident, stop losing same-host
+  metrics through Collector-to-Prometheus remote write, and make the remaining
+  Tempo push queue restart-durable without increasing any three-second HTTP
+  health probe.
+- **H1 confirmed:** At 20:18:50 IST the Collector dropped exactly 916 metric
+  points with `context deadline exceeded` while host CPU remained approximately
+  100 percent for two minutes. The in-memory queue was not full and Prometheus
+  returned no 5xx. Across 2026-09-01 logs, 28 remote-write loss events dropped
+  17,008 points; two delayed batches were rejected as out of order. Tempo
+  deadlines during overlapping windows plus disk pressure support shared-host
+  scheduling/I/O contention as the failure class.
+- **H2 confirmed:** The existing executable allowlist made exact attribution
+  impossible. At the failure, allowlisted processes explained only 6.7 percent
+  of host CPU. A live pre-change Windows baseline found 545 processes and 8,422
+  threads, so the change uses a 15-second all-process receiver with a 750-PID
+  cardinality warning and the existing 14-day/4-GB Prometheus cap rather than an
+  unbounded high-frequency stream.
+- **Implementation:** `ops/observability/otel-collector.yml` (lines 4-151)
+  splits 10-second system and 15-second process receivers, retains bounded CPU,
+  memory, disk I/O, thread, handle, uptime, executable-name/PID evidence,
+  removes process command/command-line/arguments/path/owner attributes, exposes
+  metrics at loopback `:9464`, and persists the Tempo queue through
+  `file_storage/tempo_queue`. `ops/observability/prometheus.yml` (lines 21-24)
+  adds the loopback pull target. `ops/observability/start_observability.ps1`
+  (lines 485-563) supplies the selected runtime root to validation/runtime and
+  removes Prometheus's remote-write receiver flag.
+- **Evidence rules:** `ops/observability/prometheus-alerts.yml` (lines 5-138)
+  records host, observed-process, and unattributed CPU ratios; changes the CPU
+  alert to the measured two-minute failure window; and adds attribution-gap,
+  process-cardinality, and host-wide thread thresholds. These remain diagnostic
+  thresholds, not performance objectives.
+- **Tests and docs:** `test_native_observability_supervision.py` (lines 1-764)
+  adds public config/privacy/pull/persistence/runtime-isolation contracts and an
+  installed-Collector validation. ADR-067 (from line 220), the runbook,
+  `ISSUES.md` (from line 5), and `docs/TECH_DEBT.md` (from line 257) record the
+  decision, RCA, rollback, and why a fifth Windows component was rejected.
+- **Validation checkpoint:** The intentional red run produced the four expected
+  contract failures. After implementation, the focused native-observability
+  suite passes 26/26, including installed `otelcol-contrib validate`, `promtool
+  check config`, and `promtool check rules`. One intermediate run hit the
+  already-recorded owner-inaccessible pytest basetemp class; rerunning without
+  the explicit repository basetemp passed unchanged. Live restart, privacy and
+  series-count checks, exact-diff review, and deployment remain pending.
+
+### 2026-09-01 22:11 +05:30 — Forensic observability deployed and live gaps corrected
+
+- **Independent review:** Agy/Gemini 3.1 Pro reviewed the complete pre-deploy
+  diff in two exact, non-overlapping packets from outside the repository with
+  no tool use. Packet 1 covered source/config/tests and returned `PACKET 1
+  CLEAN`; packet 2 covered runbook/ADR/issues/worklog/tech debt and returned
+  `APPROVED`. No P0-P3 finding was raised. Claude Opus was quota-limited, Grok
+  returned 402, and standalone Gemini required an unconfigured cloud project;
+  none of those providers reviewed or influenced the code.
+- **Pre-rollout baseline:** Prometheus held 22,540 head series. Windows exposed
+  545 processes and 8,080 threads in the bounded sample. Host CPU was 83
+  percent; the largest sampled users included Codex, Node, Syncthing, Collector,
+  System, Chrome, Defender, ChatGPT, and WMI. Existing Prometheus target scrapes
+  were already taking up to 8.6 seconds during the contention window.
+- **Canary behavior:** The first Collector PID remained at one thread with no
+  listener or stderr and failed the unchanged 300-second PID-bound gate. The
+  same binary validated the exact config in 0.403 seconds. One ownership-aware
+  retry reached all three listeners. The cold `:9464` response was 1.00 MB in
+  5.38 seconds; four subsequent 15-second-cadence scrapes were 1.11-1.13 MB and
+  0.42-0.54 seconds at 74-91 percent host CPU. Collector stayed near 67-76 MB
+  during the canary. No prohibited process label was present.
+- **Prometheus deployment:** The first Prometheus native PID reproduced the
+  one-thread/no-listener stall and failed the 300-second gate. A transient lock
+  then blocked stale PID-file removal, but cleared without manual deletion. A
+  clean public `Start` recovered PID 2692. Its command line contains the config,
+  TSDB path, and loopback listen address only; the remote-write receiver flag is
+  absent. Head series increased to 25,967 after the new target warmed.
+- **Live defect found and fixed:** The host CPU recording rule was healthy but
+  empty because the Collector CPU scraper does not emit
+  `system.cpu.utilization` by default. Explicitly enabling the metric plus a
+  regression assertion restored the intended scope without weakening PromQL to
+  consume application-local CPU metrics. Focused tests remain 26/26 and the
+  installed Collector accepts the corrected config.
+- **Final state:** After one hung wrapper was stopped through the public
+  ownership-aware restart path, Collector PID 17488 became ready. All six
+  Prometheus targets are up; `otel-metrics` scrapes in about 0.20 seconds; 15
+  rules are loaded; Grafana and IndrasNet recovered through their existing
+  supervisors; and no alert is firing. The one-minute records show 75.2 percent
+  host CPU, 49.6 percent observed-process CPU, and a 25.5 percent explicit gap.
+  A current aggregate query represents 368 PIDs and 6,491 threads and ranks
+  Codex Node, generic Python, IndrasNet web, Chrome, Beeper, ChatGPT, the feed
+  crawler, and Syncthing without retaining command lines or paths.
+- **Frank residuals:** Process coverage is best-effort and generic Python/Node
+  roles remain coarse. The Prometheus exporter logs a process CPU description
+  conflict every 15 seconds because app and host instruments share a standard
+  name. Launch failures without a new native PID can surface stale previous
+  stderr. These are recorded in `ISSUES.md`; none is being hidden with a wider
+  timeout or a blind allowlist. Final updated-diff review remains pending after
+  this evidence documentation.
+
+### 2026-09-01 22:40-23:05 +05:30 — Live incident captured after deployment
+
+- Post-deployment verification caught a real IndrasNet outage while the native
+  telemetry plane stayed available. Grafana, Tempo, Prometheus, Collector, and
+  the Collector metrics target remained healthy under the unchanged
+  three-second checks; Prometheus reported `indrasnet=0` and preserved the host
+  and process evidence rather than losing the incident through localhost remote
+  write.
+- Task Scheduler event 330 establishes that the incumbent `IndraSupervisor`
+  was stopped at 22:23:44 at the request of `ASUS-STRIX-SCAR\adity`; event 129
+  records replacement supervisor PID 17484 at 22:23:46. This was an explicit
+  control-plane stop, not a supervisor crash. Windows recorded no caller PID,
+  and bounded PowerShell/Security event queries found no matching invocation.
+  Local source inspection excludes this deployment path: both stop sites in
+  `install_observability_tasks.ps1` derive task names from the fixed
+  `LCT-Observability-` prefix.
+- Replacement web PID 29196 entered FastAPI startup but did not bind port 7777.
+  The last application event was ComfyUI PID 15872 starting without ever
+  opening port 8188. Code inspection confirms `lifecycle.py` awaits
+  `autostart_services()`, which awaits `require_managed_service("comfyui")`.
+  ComfyUI's configured 600-second startup timeout equals the enclosing web
+  supervisor's 600-second startup timeout. At the boundary, web PID 29196 and
+  ComfyUI PID 15872 disappeared while supervisor PID 17484 remained alive,
+  confirming the deadline race. Multiple synchronous SQLite settings reads on
+  the event-loop thread make the startup path slower but were not the terminal
+  wait in this generation.
+- No sibling-repository code, task definition, or process was modified. The
+  principled follow-up belongs in `TemporalCoordination`: make the base web
+  health endpoint ready before optional GPU/service autostart, run optional
+  service startup outside lifespan readiness, nest dependency deadlines below
+  the outer deadline, and journal supervisor control requests with caller and
+  generation identity. The current LCT change remains scoped to collecting and
+  retaining the evidence needed to prove those causes.
+- **Independent-review correction:** Gemini identified that the measured 5.38
+  second cold process-metrics render exceeded the configured five-second scrape
+  timeout, guaranteeing loss if Prometheus selected that first response. The
+  supported finding was fixed rather than documented away: only the
+  `otel-metrics` collection deadline is now ten seconds, still below its
+  15-second interval. The three-second HTTP health probes remain unchanged, and
+  a regression assertion protects that distinction.
+- **Dashboard data-quality check:** The real UI endpoint
+  `/api/telemetry/dashboard` returned in 2.159 seconds with Prometheus online,
+  468 tracked processes, and 7,372 tracked threads. It also exposed a false
+  workload label: Tempo PID 6244 appeared as `LCT backend` because its config
+  argument contains the repository path matched by the broad classifier. The
+  classifier now requires `lct_python_backend.backend:lct_app`, with a
+  regression forbidding repository/executable-path matching; privacy redaction
+  order is unchanged.
+- The same dashboard marked Tempo unavailable. Direct `/ready` completed in
+  about 200 ms while the bounded `/api/search` probe exceeded three seconds.
+  Sibling code uses one 0.8-second `httpx` timeout and does not mark Tempo
+  available until search completes, so this is a confirmed status-model defect,
+  not evidence that Tempo is down. It is recorded in `ISSUES.md`; no dirty
+  sibling file was edited.
+- **Live classifier proof and cache boundary:** Collector-only restart replaced
+  PID 17488 with a distinct ready process for which Windows reused numeric PID
+  3876 from an earlier failed launch generation. After two scrape cycles,
+  direct Prometheus
+  vectors attached `lct-backend` only to Python PIDs 42032/35148 (the Windows
+  venv launcher shim and its port-43181 Uvicorn child); Tempo PID 6244 carried
+  no workload label. All six targets were up, no alert was active, and the
+  metrics payload contained none of the prohibited command/path/owner labels.
+  The dashboard itself did not incorporate the correction: it repeatedly
+  served its 22:56:50 snapshot with age 448.016 seconds, `expired=true`, and
+  `refresh_in_progress=true` even after a further 12-second wait. This separate
+  sibling cache-wedge is recorded in `ISSUES.md`; source-metric correctness is
+  not being conflated with UI freshness.

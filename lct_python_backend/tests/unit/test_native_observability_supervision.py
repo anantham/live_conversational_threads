@@ -21,6 +21,17 @@ Test intent:
 - reconciliation restores missing task definitions without migrating or stopping children;
 - per-component launches do not repeat whole-stack validation or mix log encodings;
 - Prometheus loads actionable rules and scrapes only loopback observability targets;
+- same-host application and host metrics use Prometheus pull rather than remote write;
+- the host CPU scraper explicitly emits the utilization metric used for attribution;
+- process forensics cover every process at a bounded cadence without retaining command,
+  path, owner, or argument attributes;
+- collector internal logs retain warnings/errors without repeating info-level metric
+  description conflicts on every process scrape;
+- workload classification uses exact service identity before privacy redaction, not a
+  repository path that can mislabel telemetry binaries as application processes;
+- Tempo's exporter queue is persisted beneath the restricted ProgramData runtime;
+- alerting detects short saturation incidents, attribution gaps, and process-cardinality
+  pressure without changing HTTP probe timeouts;
 - the installed Prometheus toolchain accepts both the scrape config and rule file.
 
 The task-plan and Windows-path ownership probes are platform-bound behavioral
@@ -49,6 +60,7 @@ MIGRATION_MODULE = OPS_ROOT / "ObservabilityMigration.psm1"
 PROCESS_OWNERSHIP_MODULE = OPS_ROOT / "ObservabilityProcessOwnership.psm1"
 PROMETHEUS_CONFIG = OPS_ROOT / "prometheus.yml"
 PROMETHEUS_RULES = OPS_ROOT / "prometheus-alerts.yml"
+COLLECTOR_CONFIG = OPS_ROOT / "otel-collector.yml"
 WINDOWS_ONLY = pytest.mark.skipif(
     os.name != "nt",
     reason="Native observability task and path contracts require Windows",
@@ -591,13 +603,85 @@ def test_prometheus_config_loads_rules_and_loopback_targets():
     for job, target in {
         "prometheus": "127.0.0.1:9090",
         "otel-collector": "127.0.0.1:18888",
+        "otel-metrics": "127.0.0.1:9464",
         "indrasnet": "127.0.0.1:7777",
         "tempo": "127.0.0.1:3200",
         "grafana": "127.0.0.1:3000",
     }.items():
         assert f"job_name: {job}" in config
         assert target in config
+    otel_metrics_job = config.split("- job_name: otel-metrics", 1)[1].split(
+        "- job_name:", 1
+    )[0]
+    assert "scrape_timeout: 10s" in otel_metrics_job
     assert "0.0.0.0" not in config
+
+
+def test_collector_uses_privacy_bounded_process_forensics_and_pull_metrics():
+    config = COLLECTOR_CONFIG.read_text(encoding="utf-8")
+
+    assert "hostmetrics/system:" in config
+    assert "hostmetrics/processes:" in config
+    system_receiver = config.split("hostmetrics/system:", 1)[1].split(
+        "\n  hostmetrics/processes:", 1
+    )[0]
+    assert "system.cpu.utilization:" in system_receiver
+    assert "enabled: true" in system_receiver
+    process_receiver = config.split("hostmetrics/processes:", 1)[1].split(
+        "\nprocessors:", 1
+    )[0]
+    assert "collection_interval: 15s" in process_receiver
+    assert "include:" not in process_receiver
+    assert "exclude:" not in process_receiver
+    for metric in (
+        "process.cpu.utilization",
+        "process.disk.io",
+        "process.memory.usage",
+        "process.handles",
+        "process.threads",
+    ):
+        assert metric in process_receiver
+
+    privacy = config.split("resource/privacy:", 1)[1].split(
+        "\n  attributes/privacy:", 1
+    )[0]
+    for attribute in (
+        "process.command",
+        "process.command_line",
+        "process.command_args",
+        "process.executable.path",
+        "process.owner",
+    ):
+        assert attribute in privacy
+
+    lct_classifier = next(
+        line for line in config.splitlines() if '"lct-backend"' in line
+    )
+    assert r"lct_python_backend\\.backend:lct_app" in lct_classifier
+    assert "live_conversational_threads" not in lct_classifier
+    assert "process.executable.path" not in lct_classifier
+
+    assert "prometheus:" in config
+    assert "endpoint: 127.0.0.1:9464" in config
+    assert "prometheusremotewrite" not in config
+    assert "file_storage/tempo_queue:" in config
+    assert r"${env:LCT_OBSERVABILITY_RUNTIME_ROOT}\data\collector-storage" in config
+    assert "storage: file_storage/tempo_queue" in config
+    assert "extensions: [health_check, file_storage/tempo_queue]" in config
+    assert "receivers: [otlp, hostmetrics/system, hostmetrics/processes]" in config
+    assert "logs:\n      level: warn" in config
+
+    launcher = STACK_LAUNCHER.read_text(encoding="utf-8")
+    collector_runtime = launcher.split('        "Collector" {', 1)[1].split(
+        "\n        }", 1
+    )[0]
+    assert "LCT_OBSERVABILITY_RUNTIME_ROOT = $RuntimeRoot" in collector_runtime
+
+
+def test_prometheus_remote_write_receiver_is_disabled_for_local_pull_pipeline():
+    launcher = STACK_LAUNCHER.read_text(encoding="utf-8")
+
+    assert "--web.enable-remote-write-receiver" not in launcher
 
 
 def test_alert_rules_cover_loss_pressure_and_host_contention():
@@ -612,6 +696,8 @@ def test_alert_rules_cover_loss_pressure_and_host_contention():
         "CollectorQueueBacklog",
         "TempoStorageFailure",
         "SharedHostCpuSaturation",
+        "ProcessAttributionGap",
+        "ProcessCardinalityPressure",
         "TrackedProcessThreadGrowth",
     }
 
@@ -624,6 +710,10 @@ def test_alert_rules_cover_loss_pressure_and_host_contention():
     assert "tempodb_retention_errors_total" in rules
     assert "tempo_ingester_failed_flushes_total" in rules
     assert "process_threads" in rules
+    assert "lct:host_cpu_busy_ratio:avg1m" in rules
+    assert "lct:process_cpu_observed_ratio:avg1m" in rules
+    assert "lct:process_cpu_unattributed_ratio:avg1m" in rules
+    assert "count by (process_pid)" in rules
     assert '__name__=~"otelcol_' not in rules
     for metric in (
         "otelcol_exporter_send_failed_spans",
@@ -651,6 +741,43 @@ def _installed_promtool() -> Path | None:
         )
     )
     return candidates[-1] if candidates else None
+
+
+def _installed_collector() -> Path | None:
+    roots = [Path(os.environ.get("PROGRAMDATA", r"C:\ProgramData"))]
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        roots.append(Path(local_app_data))
+    candidates = sorted(
+        candidate
+        for root in roots
+        for candidate in (root / "LCT" / "observability" / "bin").glob(
+            "collector-*/**/otelcol-contrib.exe"
+        )
+    )
+    return candidates[-1] if candidates else None
+
+
+def test_installed_collector_accepts_forensic_pull_config():
+    collector = _installed_collector()
+    if collector is None:
+        pytest.skip("Pinned native OpenTelemetry Collector is not installed on this host")
+
+    result = subprocess.run(
+        [str(collector), "validate", f"--config={COLLECTOR_CONFIG}"],
+        cwd=OPS_ROOT,
+        env={
+            **os.environ,
+            "LCT_OBSERVABILITY_RUNTIME_ROOT": str(
+                REPO_ROOT / "tmp" / "collector-config-validation"
+            ),
+        },
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 def test_installed_promtool_accepts_config_and_rules():

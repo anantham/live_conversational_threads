@@ -2,19 +2,29 @@
 
 This stack implements ADR-067 with standard components:
 
-- a native Windows OpenTelemetry Collector receives OTLP and observes the real
-  host and selected high-impact processes;
+- a native Windows OpenTelemetry Collector receives OTLP, observes the real
+  host, and samples every process at a bounded cadence;
 - Prometheus stores metrics for 14 days or 4 GB, whichever limit is reached;
 - Prometheus also scrapes IndrasNet's existing `/metrics/` endpoint;
 - Tempo stores traces for 7 days;
 - Grafana provides local drill-down while IndrasNet remains the summary view.
 
-All listeners bind to 127.0.0.1. The Collector removes query strings,
-authorization and cookie attributes, full command lines and arguments,
-usernames, and the dedicated executable-path attribute before exporting. The
-remaining process command is the executable only; it contains no arguments.
-Conversation, transcript, prompt, and response content must never be added as
-telemetry attributes.
+All listeners bind to 127.0.0.1. System metrics are sampled every 10 seconds;
+per-process CPU, memory, disk I/O, thread, handle, and uptime evidence is sampled
+every 15 seconds. The Collector removes query strings, authorization and cookie
+attributes, process commands, full command lines and arguments, usernames, and
+executable paths before exporting. Only executable name, PID, parent PID, and a
+bounded classified workload label remain for process attribution. Conversation,
+transcript, prompt, and response content must never be added as telemetry
+attributes.
+
+Collector metrics are exposed at `127.0.0.1:9464` and pulled by Prometheus.
+They are not pushed through Prometheus's remote-write receiver. This avoids a
+same-host timeout and out-of-order failure mode that lost metric batches during
+resource contention. Tempo remains a push destination, so its Collector queue
+uses the file-storage extension beneath the selected runtime root and survives
+Collector restarts. The queue is a bounded buffer, not a substitute for fixing
+sustained host or Tempo saturation.
 
 ## Install durable supervision
 
@@ -78,9 +88,10 @@ structured `probe_failure` event with its exception type and message.
 Prometheus evaluates `prometheus-alerts.yml` every 15 seconds. The rules cover
 target loss, IndrasNet error-writer absence/stoppage/data loss/queue pressure,
 Collector delivery loss/backlog, Tempo storage failures, sustained host CPU,
-and tracked-process thread growth. Threshold alerts are diagnostic evidence,
-not capacity targets: correlate them before tuning timeouts, queue sizes, or
-worker limits.
+process-attribution gaps, process-cardinality pressure, and host-wide thread
+growth. The CPU rule uses the measured two-minute incident window rather than
+waiting ten minutes. Threshold alerts are diagnostic evidence, not capacity
+targets: correlate them before tuning timeouts, queue sizes, or worker limits.
 
 ## Manual fallback
 
@@ -113,9 +124,33 @@ to adopt or terminate an unknown process using a configured port.
 | --- | --- |
 | Collector health | http://127.0.0.1:13133/ |
 | Collector diagnostics | http://127.0.0.1:18888/metrics |
+| Collected OTLP and host metrics | http://127.0.0.1:9464/metrics |
 | Prometheus | http://127.0.0.1:9090 |
 | Tempo API | http://127.0.0.1:3200 |
 | Grafana | http://127.0.0.1:3000 |
+
+## Process evidence interpretation
+
+The process receiver attempts every process, but Windows may deny or lose an
+individual process during collection. Treat the observed PID count as coverage
+evidence, not as the authoritative Windows process count. Prohibited command,
+argument, path, and owner labels must remain absent even when that leaves a
+generic `python.exe` or `node.exe` role unresolved.
+
+`process_cpu_utilization_ratio` has separate `state="user"` and
+`state="system"` series. Aggregate both states by PID before ranking a process.
+The recording rules use only the Collector process-scraper scope and explicitly
+enable the Collector CPU-scraper utilization metric for the host comparison.
+`lct:process_cpu_unattributed_ratio:avg1m` is the remaining host CPU that
+observed processes do not explain; it is evidence of incomplete attribution,
+not proof of one hidden process.
+
+Under live shared-host pressure, the first all-process scrape took 5.38 seconds
+while four steady-state scrapes took 0.42-0.54 seconds. The `otel-metrics` job
+uses a ten-second scrape deadline beneath its 15-second interval so the measured
+cold response is not discarded. This collection deadline is separate from the
+unchanged three-second service health probes. Investigate repeated steady-state
+breaches before changing either deadline.
 
 LCT exports to http://127.0.0.1:4318 by default. Set
 LCT_TELEMETRY_ENABLED=0 for an immediate application-side rollback. Stopping
