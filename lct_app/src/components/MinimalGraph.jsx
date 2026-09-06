@@ -106,6 +106,7 @@ function MinimalGraphInner({
   viewportReservationKey,
   onVisibleLevelChange,
   onFocusChange,
+  onActiveNodeChange,
   chromeless = false,
   conversationId,
   initialColorMode,
@@ -139,6 +140,7 @@ function MinimalGraphInner({
     : COMPACT_VIEWER_FOCUS_TOP_INSET;
   const [hideEdges, setHideEdges] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [unlockedLegacyLevel, setUnlockedLegacyLevel] = useState(0);
   const [lockedLevel, setLockedLevel] = useState(null); // null = unlocked, semantic 1-4 or legacy 0-3
   const [unlockedSemanticLevel, setUnlockedSemanticLevel] = useState(null);
   const initialLockedAppliedRef = useRef(false);
@@ -154,6 +156,9 @@ function MinimalGraphInner({
   // from selectedNode (detail drawer), drilldownPath (hierarchy), and the
   // multi-hop argument trace.
   const [neighborhoodFocusId, setNeighborhoodFocusId] = useState(null);
+  useEffect(() => {
+    onActiveNodeChange?.(neighborhoodFocusId);
+  }, [neighborhoodFocusId, onActiveNodeChange]);
   const pendingKeyboardFocusRef = useRef(null);
   const preNeighborhoodViewportRef = useRef(null);
   const clearNeighborhoodFocus = useCallback((restoreViewport = true) => {
@@ -230,11 +235,9 @@ function MinimalGraphInner({
     [conversationId]
   );
 
-  const legacyClusterLevel = lockedLevel != null ? lockedLevel
-    : zoomLevel < ZOOM_LEVEL_3 ? 3
-    : zoomLevel < ZOOM_LEVEL_2 ? 2
-    : zoomLevel < ZOOM_LEVEL_1 ? 1
-    : 0;
+  // Camera framing is telemetry, not a request to replace the node set.
+  // As with authored tiers, only a settled user zoom changes legacy detail.
+  const legacyClusterLevel = lockedLevel ?? unlockedLegacyLevel;
   const allNodes = useMemo(
     () => (graphData || []).flat(),
     [graphData]
@@ -1026,9 +1029,10 @@ function MinimalGraphInner({
         Number.isFinite(currentZoom) ? currentZoom : zoomLevel,
       );
       setUnlockedSemanticLevel(effectiveSemanticLevel);
+      setUnlockedLegacyLevel(effectiveClusterLevel);
     }
     setLockedLevel(nextLevel);
-  }, [effectiveSemanticLevel, reactFlow, viewportMotion, zoomLevel]);
+  }, [effectiveClusterLevel, effectiveSemanticLevel, reactFlow, viewportMotion, zoomLevel]);
 
   const displayMode = (scopedTierView || drilledView || activeSemanticView) ? "semantic" : "legacy";
   const effectiveView = scopedTierView || drilledView || activeSemanticView;
@@ -1538,6 +1542,13 @@ function MinimalGraphInner({
     if (programmatic) return;
     const previousViewportZoom = viewportMotion.getSettledZoom();
     viewportMotion.updateSettledZoom(viewportZoom);
+    if (lockedLevel == null && !hasAuthoredHierarchy
+      && Number.isFinite(viewportZoom) && previousViewportZoom != null
+      && Math.abs(viewportZoom - previousViewportZoom) > 0.0001) {
+      setUnlockedLegacyLevel(viewportZoom < ZOOM_LEVEL_3 ? 3
+        : viewportZoom < ZOOM_LEVEL_2 ? 2
+        : viewportZoom < ZOOM_LEVEL_1 ? 1 : 0);
+    }
     userOverrodeTierRef.current = true; // genuine user pan/zoom â€” they're driving now
     if (lockedLevel == null && hasAuthoredHierarchy) {
       setUnlockedSemanticLevel((currentLevel) => semanticLevelAfterViewportMove({
@@ -2084,6 +2095,7 @@ function MinimalGraphInner({
 }
 
 MinimalGraphInner.propTypes = {
+  onActiveNodeChange: PropTypes.func,
   graphData: PropTypes.array,
   semanticEdges: PropTypes.array,
   selectedNode: PropTypes.string,
@@ -2109,6 +2121,7 @@ export default function MinimalGraph(props) {
 }
 
 MinimalGraph.propTypes = {
+  onActiveNodeChange: PropTypes.func,
   graphData: PropTypes.array,
   semanticEdges: PropTypes.array,
   selectedNode: PropTypes.string,

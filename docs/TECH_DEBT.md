@@ -1,5 +1,15 @@
 # TECH_DEBT
 
+## 2026-09-06 — Viewer release boundaries
+
+MinimalGraph remains a >2,000-line controller combining graph projection,
+interaction and camera effects. This release makes only a source-selection
+callback and discrete legacy-tier repair there. Extract viewport orchestration
+behind the existing viewportMotionTracker boundary in a separately tested pass.
+ThreadsViewer is still >600 lines; the new public gate and YouTube source panel
+are separate components rather than inline transport/player implementations.
+Static initial framing remains an ISSUES.md follow-up, not a claimed repair.
+
 Last updated: 2026-09-01
 
 Guidance: 300 LOC is a heuristic, not a hard gate. When touching large or mixed-concern files, log refactor candidates here.

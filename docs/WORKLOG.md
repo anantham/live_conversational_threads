@@ -1,5 +1,110 @@
 # WORKLOG
 
+## 2026-09-06 — Review findings repaired within the approved envelope
+
+- Attention-policy correction: the user confirmed that reversible fixes and
+  retesting are green/A1 within the approved objective. The earlier request
+  incorrectly bundled those mechanics with the failed-review merge gate.
+  No new architecture, privacy, data-sharing or deployment scope was selected.
+- Hypotheses from the first review were reproduced through exported helpers.
+  Regression tests first failed on transcript replacement, manufactured missing
+  transcript, and dropped 12,000-second passage. Repair: preserve original
+  full_transcript via bundle spread, and use the existing media seek/label
+  epoch guard instead of the import pipeline's three-hour duration ceiling.
+  Invalid/non-numeric/negative/infinite times and reversed intervals still fail.
+  The old millisecond-magnitude test intent was corrected: source units are
+  declared by the media reference, not inferred from duration alone.
+- Files: youtubeMedia.js, youtubeMedia.test.js, youtube-source.spec.ts and
+  release documentation. The browser test compares timestamped, CRLF-containing
+  transcript bytes after rename and reviewed-file download before reopening.
+  It also checks that the structured speaker name changed as intended.
+- Validation: 62 focused unit tests and 7 non-opt-in Chromium tests passed;
+  live YouTube smoke remains opt-in. No golden/snapshot was rewritten. No
+  original artifact, backend service or shared checkout was modified.
+- Rerun independent review against the complete final PR head. Attach the
+  exact-head verdict, packet inventory/checksum and capability restrictions as
+  a durable PR review receipt so logging the result does not alter the reviewed
+  code/commit. Merge/deployment remain conditional on a clean review and CI.
+
+## 2026-09-06 — Claude review completed with confirmed findings; merge held
+
+- User explicitly said "try now" after the permission block. The same scanned
+  80,775-byte packet (SHA-256 recorded below) was submitted to Anthropic using
+  the existing account. Empty MCP configuration required the documented
+  mcpServers object; the first CLI invocation failed before review began.
+  Corrected invocation retained safe mode, no tools/hooks/MCP/customizations,
+  no Chrome access, no session persistence, and an explicit system prompt.
+- Reviewer: Claude Sonnet 5 (Anthropic; CLI also reports a Haiku routing call).
+  Implementation target reviewed: 7ca2608126256b237969a73ab69e621c0651f9f5
+  versus a1520cbf32931941d59a2809b0d4833b8d269695. No external tools or
+  subagents were used. Structured verdict: findings, two P3 reports in
+  youtubeMedia.js. No pass is claimed for this or the subsequent receipt-only
+  PR head. A corrected release will require exact-target review again.
+- Both reports reproduced through exported helpers with synthetic inputs:
+  renameArtifactSpeaker overwrote a timestamped full_transcript, dropping its
+  original timestamp; nodeVideoPassages returned zero for one valid bound
+  utterance at 12,000 seconds. Source bytes and original artifacts were not
+  modified. The review did not establish the separate assertion that adding
+  speaker-display metadata to graph nodes is itself invalid.
+- PR #191 exists; Vercel preview, backend unit/integration and Playwright CI
+  passed. Anonymous preview requests hit Vercel SSO protection; no protection
+  settings were changed and no anonymous preview success is claimed. Actual
+  anonymous local viewer checks remain valid. Production is untouched.
+- Per AGENTS independent-review rule, stop before merge and request human
+  authorization to repair the two findings, retest, and rerun exact-head
+  independent review. Recommend preserving immutable full_transcript during
+  display-name edits and accepting finite nonnegative media times rather than
+  imposing the import pipeline's three-hour limit on the generic viewer.
+
+## 2026-09-06 19:06 MUT — Independent review blocked by permission enforcement
+
+- Tested implementation commit: 7ca2608126256b237969a73ab69e621c0651f9f5,
+  base a1520cbf32931941d59a2809b0d4833b8d269695. Review packet includes the
+  exact 26-file source/test/doc diff plus unchanged api/proxy/_shared.js.
+  Byte count: 80,775. SHA-256:
+  685399322be2d9db70fc00187d03aaa9112109bd19d446331332624320587d2a.
+- Packet excluded credentials, environment files, databases, recordings,
+  transcripts, generated artifacts and the actual public Drive file ID.
+  Inspection and credential-pattern scan found no prohibited content.
+- Planned recipient was Anthropic/Claude through the existing subscription,
+  with tools, hooks, MCP, repository context and session persistence disabled.
+  The repository helper permits broader repository access, so a bounded,
+  tool-free CLI packet was selected to preserve REVIEW-EGRESS-A1 restrictions.
+- The platform rejected process creation before transmission, saying this
+  specific payload needed user authorization. This is an enforcement mismatch
+  with the repository's standing review envelope, not a missing implementation
+  decision. No reviewer ran and there is no verdict. No merge or production
+  deployment occurred. Request explicit approval for this exact review packet;
+  do not bypass the denial or independent-review gate.
+
+## 2026-09-06 19:01 MUT — Viewer-only public Drive release preparation
+
+- Authority: user approved public no-sign-in viewing and proceeding with Vercel
+  after clarifying the host split. No Asus runtime/backend change is included.
+  Isolated release worktree starts from origin/main a1520cb; original dirty
+  checkout and unfinished integration branch are preserved.
+- Scope: public-drive edge handler + Vite adapter, explicit public=1 gate,
+  source playback/seek/rename/download, source-only mobile deck, and focused
+  tests. Private Drive links retain Google authorization. No import controls,
+  backend modules, recordings, transcripts or generated artifacts are staged.
+- Actual public Drive download returned 200 and matched local SHA-256;
+  signed-out Chromium 390/1440 checks opened the artifact with zero Google
+  identity requests and zero JS errors. Desktop checks use Center before card
+  selection. This is not physical-device testing or production verification.
+- Camera hypothesis: render-time zoom selected legacy clusters, node-set
+  changes triggered fitView, and fitView changed zoom again. Existing debug
+  instrumentation showed repeated 104/21 replacements. Synthetic valid source
+  fixture reproduced detached clicks; separating discrete legacy tier state
+  from automatic camera telemetry made the regression pass. Confidence 0.95.
+  Authored-tier logic is unchanged; real settled zoom still selects legacy
+  detail and pure panning does not. Fallback is revert the narrow repair.
+- Validation: 60/60 focused unit tests; 7/7 non-opt-in Chromium E2E tests;
+  live YouTube test skipped this run; production build passed. Known initial
+  framing, jsdom Blob mismatch, and bundle warning are recorded in ISSUES.md.
+  No failing harness was represented as a product pass. Broad camera/UI
+  redesign was deferred. Large-file decomposition assessment is in TECH_DEBT.
+- Independent review, push/merge, and production checks are still pending.
+
 ## 2026-09-05 — Guarded shared-core synchronization and cleanup preparation
 
 - Corrected the canonical shared core's universal claim that a scheduled
