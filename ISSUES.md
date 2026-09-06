@@ -1,5 +1,24 @@
 # ISSUES
 
+## 2026-09-06 — Public viewer independent review blockers (OPEN)
+
+Claude Sonnet 5 reviewed implementation 7ca2608 and returned two P3 findings;
+the repository gate holds PR #191 pending human review and repairs.
+
+1. `lct_app/src/services/youtubeMedia.js:65`: renaming one speaker rewrites
+   full_transcript from utterances, discarding original timestamps/formatting.
+   Confirmed with a synthetic timestamped transcript. Preserve the original
+   transcript and apply names to structured display fields; test reviewed-file
+   persistence/export without losing original source fidelity.
+2. `lct_app/src/services/youtubeMedia.js:31`: the three-hour seconds ceiling
+   suppresses genuinely bound late passages in imported .threads artifacts.
+   Confirmed: one bound utterance at 12,000s produces zero passages. Validate
+   finite nonnegative media time independently from import duration policy;
+   retain rejection of NaN/infinite/negative times and invalid intervals.
+
+No repair or production deployment is claimed. The reviewed public example is
+shorter than the time ceiling, but generic viewer correctness still matters.
+
 ## 2026-09-06 — Public viewer release checks
 
 - **Legacy camera/clustering feedback: resolved locally.** A 104-node source

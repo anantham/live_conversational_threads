@@ -1,5 +1,35 @@
 # WORKLOG
 
+## 2026-09-06 — Claude review completed with confirmed findings; merge held
+
+- User explicitly said "try now" after the permission block. The same scanned
+  80,775-byte packet (SHA-256 recorded below) was submitted to Anthropic using
+  the existing account. Empty MCP configuration required the documented
+  mcpServers object; the first CLI invocation failed before review began.
+  Corrected invocation retained safe mode, no tools/hooks/MCP/customizations,
+  no Chrome access, no session persistence, and an explicit system prompt.
+- Reviewer: Claude Sonnet 5 (Anthropic; CLI also reports a Haiku routing call).
+  Implementation target reviewed: 7ca2608126256b237969a73ab69e621c0651f9f5
+  versus a1520cbf32931941d59a2809b0d4833b8d269695. No external tools or
+  subagents were used. Structured verdict: findings, two P3 reports in
+  youtubeMedia.js. No pass is claimed for this or the subsequent receipt-only
+  PR head. A corrected release will require exact-target review again.
+- Both reports reproduced through exported helpers with synthetic inputs:
+  renameArtifactSpeaker overwrote a timestamped full_transcript, dropping its
+  original timestamp; nodeVideoPassages returned zero for one valid bound
+  utterance at 12,000 seconds. Source bytes and original artifacts were not
+  modified. The review did not establish the separate assertion that adding
+  speaker-display metadata to graph nodes is itself invalid.
+- PR #191 exists; Vercel preview, backend unit/integration and Playwright CI
+  passed. Anonymous preview requests hit Vercel SSO protection; no protection
+  settings were changed and no anonymous preview success is claimed. Actual
+  anonymous local viewer checks remain valid. Production is untouched.
+- Per AGENTS independent-review rule, stop before merge and request human
+  authorization to repair the two findings, retest, and rerun exact-head
+  independent review. Recommend preserving immutable full_transcript during
+  display-name edits and accepting finite nonnegative media times rather than
+  imposing the import pipeline's three-hour limit on the generic viewer.
+
 ## 2026-09-06 19:06 MUT — Independent review blocked by permission enforcement
 
 - Tested implementation commit: 7ca2608126256b237969a73ab69e621c0651f9f5,
