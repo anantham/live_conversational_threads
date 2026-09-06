@@ -4,6 +4,9 @@ import { buildMediaSeekUrl, mediaOffsetLabel } from "./mediaSeek";
 
 // Test intent: source identity and seconds survive offline export, unrelated
 // passages stay separate, missing evidence never produces a fictitious seek.
+// Speaker display-name edits preserve source transcript bytes, including when
+// no transcript field exists. Valid late passages use the declared seconds
+// unit; viewer validation must not inherit the import pipeline's duration cap.
 const ref = { provider: "youtube", video_id: "6HmR9IaqM88", view_url: "https://www.youtube.com/watch?v=6HmR9IaqM88", time_unit: "seconds" };
 const utterances = [
   { id: "u1", speaker_id: "SPEAKER_00", text: "First", timestamp_start: 1.25, timestamp_end: 4.8 },
@@ -30,18 +33,31 @@ describe("YouTube conversation provenance", () => {
     expect(nodeVideoPassages({ id: "vague", timestamp_start: 0, timestamp_end: 5000 }, [], utterances)).toEqual([]);
     expect(nodeVideoPassages(utterances[0], [], utterances)).toEqual([utterances[0]]);
   });
-  it("never converts null, missing or millisecond timestamps into playable evidence", () => {
-    for (const invalid of [null, undefined, "", false, 4900000]) expect(buildMediaSeekUrl(ref, invalid)).toBeNull();
+  it("rejects missing, nonnumeric, negative, infinite and epoch timestamps", () => {
+    for (const invalid of [null, undefined, "", false, "12000", -1, NaN, Infinity, 1700000000]) expect(buildMediaSeekUrl(ref, invalid)).toBeNull();
     expect(mediaOffsetLabel(null)).toBeNull();
     expect(buildMediaSeekUrl(ref, 4900, 0)).toBe(`${ref.view_url}&t=4900s`);
   });
   it("renames one speaker without changing IDs/timestamps and survives JSON export", () => {
-    const bundle = { utterances, graph_data: [{ id: "n", speaker_id: "SPEAKER_00" }], media_refs: [ref] };
+    const bundle = { utterances, graph_data: [{ id: "n", speaker_id: "SPEAKER_00" }], media_refs: [ref], full_transcript: "[00:00:01.250] SPEAKER_00: First\r\n[pause]\r\n[01:21:40] SPEAKER_01: Later" };
     const reviewed = JSON.parse(JSON.stringify(renameArtifactSpeaker(bundle, "SPEAKER_00", "Aditya")));
     expect(reviewed.utterances[0]).toMatchObject({ speaker_id: "SPEAKER_00", speaker_name: "Aditya", timestamp_start: 1.25 });
     expect(reviewed.utterances[1]).toEqual(utterances[1]);
-    expect(reviewed.full_transcript).toContain("Aditya: First");
+    expect(reviewed.full_transcript).toBe(bundle.full_transcript);
     expect(bundle.utterances[0].speaker_name).toBeUndefined();
     expect(selectYouTubeRef(reviewed)).toEqual(ref);
+  });
+  it("does not manufacture a full transcript when naming a speaker", () => {
+    const reviewed = renameArtifactSpeaker({ utterances, graph_data: [] }, "SPEAKER_00", "Test speaker");
+    expect(reviewed).not.toHaveProperty("full_transcript");
+    expect(reviewed.utterances[0].speaker_name).toBe("Test speaker");
+  });
+  it("preserves bound passages and seek links beyond three hours", () => {
+    const node = { id: "late-node", utterance_ids: ["late", "invalid"] };
+    const late = { id: "late", text: "Synthetic late passage", timestamp_start: 12000.25, timestamp_end: 12005 };
+    const invalid = { id: "invalid", timestamp_start: 12010, timestamp_end: 12000 };
+    expect(nodeVideoPassages(node, [node], [late, invalid])).toEqual([late]);
+    expect(buildMediaSeekUrl(ref, late.timestamp_start, 0)).toBe(`${ref.view_url}&t=12000s`);
+    expect(mediaOffsetLabel(late.timestamp_start)).toBe("3:20:00");
   });
 });

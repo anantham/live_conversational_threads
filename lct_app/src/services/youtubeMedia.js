@@ -29,7 +29,9 @@ export function selectYouTubeRef(bundle) {
 }
 
 export function validMediaSeconds(value) {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 10800;
+  // The source declares seconds. Import duration limits do not constrain
+  // existing artifacts; retain the shared seek/label guard against epoch time.
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value < 1e9;
 }
 
 export function nodeVideoPassages(node, nodes = [], utterances = []) {
@@ -66,6 +68,6 @@ export function renameArtifactSpeaker(bundle, speakerId, name) {
     ...bundle,
     utterances,
     graph_data: (bundle.graph_data || []).map((entry) => Array.isArray(entry) ? entry.map(renamed) : renamed(entry)),
-    full_transcript: utterances.map((u) => `${u.speaker_name || u.speaker_id || "UNKNOWN"}: ${u.text}`).join("\n"),
+    // full_transcript remains the original source, not a display-name export.
   };
 }

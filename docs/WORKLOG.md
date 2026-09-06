@@ -1,5 +1,31 @@
 # WORKLOG
 
+## 2026-09-06 — Review findings repaired within the approved envelope
+
+- Attention-policy correction: the user confirmed that reversible fixes and
+  retesting are green/A1 within the approved objective. The earlier request
+  incorrectly bundled those mechanics with the failed-review merge gate.
+  No new architecture, privacy, data-sharing or deployment scope was selected.
+- Hypotheses from the first review were reproduced through exported helpers.
+  Regression tests first failed on transcript replacement, manufactured missing
+  transcript, and dropped 12,000-second passage. Repair: preserve original
+  full_transcript via bundle spread, and use the existing media seek/label
+  epoch guard instead of the import pipeline's three-hour duration ceiling.
+  Invalid/non-numeric/negative/infinite times and reversed intervals still fail.
+  The old millisecond-magnitude test intent was corrected: source units are
+  declared by the media reference, not inferred from duration alone.
+- Files: youtubeMedia.js, youtubeMedia.test.js, youtube-source.spec.ts and
+  release documentation. The browser test compares timestamped, CRLF-containing
+  transcript bytes after rename and reviewed-file download before reopening.
+  It also checks that the structured speaker name changed as intended.
+- Validation: 62 focused unit tests and 7 non-opt-in Chromium tests passed;
+  live YouTube smoke remains opt-in. No golden/snapshot was rewritten. No
+  original artifact, backend service or shared checkout was modified.
+- Rerun independent review against the complete final PR head. Attach the
+  exact-head verdict, packet inventory/checksum and capability restrictions as
+  a durable PR review receipt so logging the result does not alter the reviewed
+  code/commit. Merge/deployment remain conditional on a clean review and CI.
+
 ## 2026-09-06 — Claude review completed with confirmed findings; merge held
 
 - User explicitly said "try now" after the permission block. The same scanned

@@ -53,7 +53,11 @@ desktop layouts can still require Center or timeline navigation to reach a
 card; that existing framing limitation is recorded in ISSUES.md. Automatic
 camera motion no longer changes legacy clustering tiers in a feedback loop.
 
-Local release checks: 60 focused unit tests and 7 Chromium E2E tests passed;
+Speaker name edits preserve full_transcript exactly; structured labels carry
+the reviewed names. The viewer does not inherit a three-hour import limit:
+valid longer offsets remain seekable, with the existing epoch-value guard.
+
+Local release checks: 62 focused unit tests and 7 Chromium E2E tests passed;
 the opt-in live YouTube test was skipped in this release run. Production build
 passed with the existing large-bundle warning. Deployment remains a separate
 step, subject to the independent review gate and post-deployment verification.

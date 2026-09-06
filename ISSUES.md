@@ -1,9 +1,9 @@
 # ISSUES
 
-## 2026-09-06 — Public viewer independent review blockers (OPEN)
+## 2026-09-06 — Public viewer independent review findings (REPAIRED LOCALLY)
 
 Claude Sonnet 5 reviewed implementation 7ca2608 and returned two P3 findings;
-the repository gate holds PR #191 pending human review and repairs.
+the repository gate holds PR #191 pending re-review of the repaired head.
 
 1. `lct_app/src/services/youtubeMedia.js:65`: renaming one speaker rewrites
    full_transcript from utterances, discarding original timestamps/formatting.
@@ -16,8 +16,10 @@ the repository gate holds PR #191 pending human review and repairs.
    finite nonnegative media time independently from import duration policy;
    retain rejection of NaN/infinite/negative times and invalid intervals.
 
-No repair or production deployment is claimed. The reviewed public example is
-shorter than the time ceiling, but generic viewer correctness still matters.
+Both repairs now pass regressions: source transcript bytes survive speaker
+rename and browser reviewed-file download/reopen; bound passages at 12,000s
+remain playable. Seconds retain the existing seek/label guard against epoch
+values, not an import-duration cap. No production deployment is claimed yet.
 
 ## 2026-09-06 — Public viewer release checks
 

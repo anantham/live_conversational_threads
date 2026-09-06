@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 // Synthetic timing contract, explicitly not evidence of transcription quality.
 const fixture = {
   format: "lct.threads", format_version: 2, conversation_id: "youtube-ui-test",
   conversation_title: "YouTube playback test", chunk_dict: {}, edges: [],
+  full_transcript: "[00:00:01.250] SPEAKER_00: Opening passage\r\n[pause]\r\n[01:21:40] SPEAKER_01: Later passage",
   edge_schema: { version: 1, directed: true, endpoint_space: "graph_data.id" },
   media_refs: [{ provider: "youtube", kind: "video", video_id: "6HmR9IaqM88", view_url: "https://www.youtube.com/watch?v=6HmR9IaqM88", time_unit: "seconds" }],
   utterances: [
@@ -60,6 +62,9 @@ test("desktop node selection seeks queued and ready playback; reviewed artifact 
   const downloadPromise = page.waitForEvent("download");
   await source.getByRole("button", { name: "Download reviewed .threads" }).click();
   const download = await downloadPromise;
+  const reviewed = JSON.parse(await readFile(await download.path(), "utf8"));
+  expect(reviewed.full_transcript).toBe(fixture.full_transcript);
+  expect(reviewed.utterances[0].speaker_name).toBe("Aditya");
   await page.goto("/view");
   await page.locator('input[type="file"]').setInputFiles(await download.path());
   await page.getByRole("button", { name: "Center", exact: true }).click();
