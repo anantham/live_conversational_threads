@@ -1,5 +1,26 @@
 # ISSUES
 
+## 2026-09-06 — Public viewer release checks
+
+- **Legacy camera/clustering feedback: resolved locally.** A 104-node source
+  graph alternated with 21 clusters on automatic fitView; each node replacement
+  armed another fit. Legacy detail now changes only on settled real-user zoom,
+  matching the authored-tier boundary. A synthetic browser regression failed
+  on detached nodes before the repair and passes after it.
+- **Desktop initial framing: open, non-blocking.** Wide layouts may initially
+  leave early cards outside the viewport or under the source panel. Center
+  restores a clickable start, and timeline navigation selects distant nodes.
+  Investigate static-view auto-follow and readable framing separately; do not
+  force-click off-screen cards or claim the initial camera is fixed.
+- **Node 26/jsdom private Drive unit harness: open, non-blocking.** The existing
+  googleDriveThreads happy-path test receives a jsdom Blob without .text() from
+  native Response.blob(). Native Chromium transport was checked separately.
+  Align the test runtime's Blob/Response pair; do not change product transport
+  to accommodate the mismatched harness.
+- **Frontend bundle: open, non-blocking.** Viewer release build succeeds but
+  emits the existing >500kB chunk warning. Investigate route-level splitting
+  after profiling; this release adds no dependency.
+
 Last updated: 2026-09-02
 
 ## 2026-09-02 — Pull exporter stalls and collector log amplification (LOG AMPLIFICATION RESOLVED; BACKPRESSURE OPEN)

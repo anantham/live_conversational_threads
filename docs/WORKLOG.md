@@ -1,5 +1,33 @@
 # WORKLOG
 
+## 2026-09-06 19:01 MUT — Viewer-only public Drive release preparation
+
+- Authority: user approved public no-sign-in viewing and proceeding with Vercel
+  after clarifying the host split. No Asus runtime/backend change is included.
+  Isolated release worktree starts from origin/main a1520cb; original dirty
+  checkout and unfinished integration branch are preserved.
+- Scope: public-drive edge handler + Vite adapter, explicit public=1 gate,
+  source playback/seek/rename/download, source-only mobile deck, and focused
+  tests. Private Drive links retain Google authorization. No import controls,
+  backend modules, recordings, transcripts or generated artifacts are staged.
+- Actual public Drive download returned 200 and matched local SHA-256;
+  signed-out Chromium 390/1440 checks opened the artifact with zero Google
+  identity requests and zero JS errors. Desktop checks use Center before card
+  selection. This is not physical-device testing or production verification.
+- Camera hypothesis: render-time zoom selected legacy clusters, node-set
+  changes triggered fitView, and fitView changed zoom again. Existing debug
+  instrumentation showed repeated 104/21 replacements. Synthetic valid source
+  fixture reproduced detached clicks; separating discrete legacy tier state
+  from automatic camera telemetry made the regression pass. Confidence 0.95.
+  Authored-tier logic is unchanged; real settled zoom still selects legacy
+  detail and pure panning does not. Fallback is revert the narrow repair.
+- Validation: 60/60 focused unit tests; 7/7 non-opt-in Chromium E2E tests;
+  live YouTube test skipped this run; production build passed. Known initial
+  framing, jsdom Blob mismatch, and bundle warning are recorded in ISSUES.md.
+  No failing harness was represented as a product pass. Broad camera/UI
+  redesign was deferred. Large-file decomposition assessment is in TECH_DEBT.
+- Independent review, push/merge, and production checks are still pending.
+
 ## 2026-09-05 — Guarded shared-core synchronization and cleanup preparation
 
 - Corrected the canonical shared core's universal claim that a scheduled
