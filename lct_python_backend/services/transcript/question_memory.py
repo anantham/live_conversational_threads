@@ -1,6 +1,6 @@
 """Rebuild provisional question state from immutable, source-backed events.
 
-This validates provenance and transitions, not whether a speaker's answer is
+This validates provenance and records transition conflicts, not whether an answer is
 true or adequate. The event history remains on its original nodes; this compact
 projection never rewrites earlier evidence or infers resolution from silence.
 """
@@ -42,9 +42,11 @@ def fold_question_memory(nodes, source_chunks):
             if previous is None:
                 raise ValueError("Question update refers to an unknown question")
             if action == "partial_answer" and previous["status"] != "open":
-                raise ValueError("Partial answer requires an open question; reopen explicitly first")
+                event['transition_issue'] = 'partial_answer_after_non_open_state'
+                event['prior_provisional_status'] = previous['status']
+                previous['status'] = 'uncertain'
             if action == "reopen" and previous["status"] == "open":
-                raise ValueError("Cannot reopen a question that is already open")
+                event['transition_issue'] = 'reopening_already_open_question'
             status = {"answer": "answered", "withdraw": "withdrawn", "reopen": "open"}.get(action)
             if status:
                 previous["status"] = status

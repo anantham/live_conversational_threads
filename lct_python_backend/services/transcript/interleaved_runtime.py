@@ -140,7 +140,7 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
         # The chat tokenizer is not the embedding model's tokenizer.
         batch_token_budget=budgets.embedding_batch_tokens, count_tokens=conservative_tokens,
     )
-    identity = {"version": "interleaved_runtime_v3_question_reviews", "inference": envelope.fingerprint,
+    identity = {"version": "interleaved_runtime_v4_question_conflicts", "inference": envelope.fingerprint,
                 "retrieval": retrieval.fingerprint, "budgets": asdict(budgets), "tokenizer_id": tokenizer_id}
     fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     journal = PassageJournalSession(session_factory=session_factory, conversation_id=conversation_id,

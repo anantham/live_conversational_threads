@@ -38,14 +38,15 @@ rationale (strings), and evidence_line_ids (a nonempty list of IDs selected from
 current_source_lines). Do not copy or reconstruct an evidence_quote.
 - open: a genuinely new inquiry; use a new stable question_id.
 - clarify: refine an existing question without changing whether it is open.
-- partial_answer: addresses only part of an OPEN question; keep it open. State
+- partial_answer: addresses only part of a known question; do not claim closure. State
   what was addressed and what remains unresolved in wording/rationale.
 - answer: the speaker presents an answer to the whole known question, not
   necessarily a true answer. Retain attribution and caveats; use partial_answer
   when the source leaves part of the inquiry outstanding, not answer.
 - withdraw: the speaker explicitly withdraws the known question.
 - reopen: the speaker explicitly reopens a previously answered/withdrawn question.
-  Use an explicit reopen update before a partial_answer to a closed question.
+  Never invent a reopen event to satisfy a provisional status. A partial answer
+  conflicting with earlier closure is retained as an uncertain transition for review.
 Reuse the exact question_id from question_memory for all non-open actions.
 wording describes the current contribution; original question wording is retained
 separately. Select current_source_lines supporting THIS update, including every

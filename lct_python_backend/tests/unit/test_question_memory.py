@@ -2,6 +2,8 @@
 - Questions survive digressions; source-backed updates never erase originals.
 - Partial answers preserve open status and their exact attributed evidence.
 - Partial answers cannot implicitly reopen answered or withdrawn questions.
+- A source-backed contribution conflicting with provisional closure is retained
+  as uncertain, not rejected and not converted into an invented reopening.
 """
 import copy
 import json
@@ -81,15 +83,67 @@ def test_partial_answer_keeps_inquiry_open_across_digression_until_full_answer()
 
 
 @pytest.mark.parametrize("closing_action", ["answer", "withdraw"])
-def test_partial_answer_requires_explicit_reopening_of_closed_question(closing_action):
+def test_partial_answer_after_provisional_closure_preserves_conflict_without_reopening(closing_action):
     chunks = {"a": "Who pays?", "b": "That question is settled.",
               "c": "Only hosting is covered.", "d": "Who pays staffing is still a question."}
     nodes = [node("a", "open", chunks["a"]), node("b", closing_action, chunks["b"])]
     partial = node("c", "partial_answer", chunks["c"])
-    with pytest.raises(ValueError, match="Partial answer requires an open question"):
-        fold_question_memory(nodes + [partial], chunks)
+    before = copy.deepcopy(nodes + [partial])
+    memory = fold_question_memory(nodes + [partial], chunks)['funding']
+    assert memory['status'] == 'uncertain'
+    assert memory['latest']['action'] == 'partial_answer'
+    assert memory['latest']['transition_issue'] == 'partial_answer_after_non_open_state'
+    assert memory['latest']['prior_provisional_status'] == ('answered' if closing_action == 'answer' else 'withdrawn')
+    assert memory['intermediate'][0]['action'] == closing_action
+    assert nodes + [partial] == before
     nodes.extend([node("d", "reopen", chunks["d"]), partial])
     assert fold_question_memory(nodes, chunks)["funding"]["status"] == "open"
+
+
+def test_explicit_reopening_while_provisionally_open_is_retained_with_discrepancy():
+    chunks = {'a': 'Who pays?', 'b': 'I want to reopen who pays.'}
+    nodes = [node('a', 'open', chunks['a']), node('b', 'reopen', chunks['b'])]
+    memory = fold_question_memory(nodes, chunks)['funding']
+    assert memory['status'] == 'open'
+    assert memory['latest']['transition_issue'] == 'reopening_already_open_question'
+    assert memory['original']['action'] == 'open'
+
+
+def test_conflict_survives_journal_restore_and_review_can_identify_prior_aside():
+    from lct_python_backend.services.transcript.passage_journal import build_record, restore_records
+    from lct_python_backend.services.transcript.question_review import build_question_review, validate_question_review
+    from lct_python_backend.services.transcript.question_review_projection import project_question_review
+    from lct_python_backend.services.transcript.inference_envelope import InferenceEnvelope
+    chunks = {'a': 'Who pays hosting and staffing?', 'b': 'Someone else paid for their own project.',
+              'c': 'I can cover our hosting, but staffing is undecided.'}
+    nodes = [node('a', 'open', chunks['a']), node('b', 'answer', chunks['b']),
+             node('c', 'partial_answer', chunks['c'])]
+    records = []
+    for sequence, original in enumerate(nodes, 1):
+        cid = original['chunk_id']
+        records.append(build_record(sequence, sequence - 1,
+            [{'id': cid, 'sequence_number': sequence, 'text': chunks[cid]}],
+            {'nodes': [original], 'chunks': {cid: chunks[cid]}, 'utterance_chunk_map': {cid: [cid]}},
+            policy_fingerprint='synthetic-question-conflicts-v1'))
+    restored = restore_records(json.loads(json.dumps(records)))
+    assert restored['nodes'] == nodes
+    memory = fold_question_memory(restored['nodes'], restored['chunks'])['funding']
+    assert memory['status'] == 'uncertain'
+    assert memory['latest']['transition_issue'] == 'partial_answer_after_non_open_state'
+    envelope = InferenceEnvelope(system_prompt='Synthetic review',
+        providers=[{'id': 'local', 'trust_scope': 'owner_private', 'context_tokens': 16000}],
+        privacy={'local_llm_ok': True}, output_tokens=1000, headroom_tokens=512)
+    request = build_question_review(restored['nodes'], restored['chunks'], 'funding', envelope=envelope)
+    response = {'assessments': [
+        {'event_id': 'event-1', 'scope': 'related_aside', 'resolution': 'not_an_answer',
+         'reason': 'A different project does not answer this inquiry.', 'evidence_ids': ['source-0', 'source-1']},
+        {'event_id': 'event-2', 'scope': 'same_question', 'resolution': 'partial_answer',
+         'reason': 'Hosting is offered but staffing remains undecided.', 'evidence_ids': ['source-0', 'source-2']}]}
+    result = project_question_review(request, validate_question_review(response, request))
+    assert result['provisional_status'] == 'uncertain'
+    assert result['reviewed_status'] == 'open'
+    assert [e['original']['action'] for e in result['events']] == ['open', 'answer', 'partial_answer']
+    assert restored['nodes'] == nodes
 
 
 def test_partial_answer_requires_exact_current_source_evidence():

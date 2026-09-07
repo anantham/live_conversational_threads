@@ -1,5 +1,34 @@
 # WORKLOG
 
+## 2026-09-08 — Preserve contributions conflicting with provisional closure
+
+- Prior goal turn was progress (6db1a45 pushed), current checkout clean. The
+  historical transition validator treated earlier machine closure as authoritative:
+  it rejected a source-backed partial contribution unless the model first emitted
+  reopening. Three failing-first cases confirmed this for answered/withdrawn
+  states and explicit reopening when the provisional ledger was already open.
+- Updated the event contract: provenance/known identity/action validation still
+  rejects unsupported events. A partial answer after non-open provisional state
+  is retained with transition_issue and prior_provisional_status in the derived
+  memory, status uncertain, never silently open. Explicit reopening while already
+  open is retained with a discrepancy marker. Original node events are unchanged.
+  Later review may distinguish an earlier aside from a genuine closure using source.
+- Updated interpreter and registered prompts together: no instruction to invent
+  reopening for state-machine compatibility. Runtime identity advances to v4 so
+  old journals cannot silently resume with changed interpretation semantics.
+  The planner prioritizes uncertain inquiries alongside open ones.
+- Test intent explicitly changes rejection into visible uncertainty, preserving
+  the existing no-implicit-reopening guarantee rather than weakening provenance.
+  A serialized journal restore + source-review scenario retains open/answer/partial
+  events, identifies the middle event as an aside, and projects reviewed-open
+  separately from provisionally-uncertain. No source or past event is rewritten.
+- Focused unit/import/journal suites: 58 passed, one existing asyncio warning.
+  Added a separate real PostgreSQL commit/restart/.threads export test: one passed.
+  Its three original events survive DB recovery/export with no fabricated reopen.
+- These are synthetic contract tests, not evidence of actual model judgment quality.
+  Real local/frontier comparison, global thread/question reconciliation, bounded
+  long-history review, independent review and deployment are still incomplete.
+
 ## 2026-09-08 — Feed current question reviews into passage context
 
 - Previous turn made progress (0d491df pushed); clean checkout verified. Added

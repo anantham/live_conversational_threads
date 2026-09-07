@@ -226,7 +226,7 @@ def plan_conversation_context(
     # Keep unresolved questions available even if unrelated discussion has
     # displaced their raw passage. Exact original/intermediate/latest quotes and node/chunk
     # IDs remain attached. Closed questions are still eligible for callbacks.
-    for qid in sorted(questions, key=lambda qid: questions[qid]["status"] != "open"):
+    for qid in sorted(questions, key=lambda qid: questions[qid]["status"] not in ("open", "uncertain")):
         add("question_memory", qid, questions[qid], selected_questions)
     for tid in threads:
         add_thread(tid)
