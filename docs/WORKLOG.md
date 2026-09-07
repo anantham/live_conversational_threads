@@ -1,5 +1,22 @@
 # WORKLOG
 
+## 2026-09-08 — Single public semantic-selection quality probe started
+
+- Added tools/probe_canonical_selection.py: default readiness validates the exact
+  authorized public artifact and all persisted utterance fields, current consent,
+  source excerpts, canonical snapshot and full request budget. Explicit --run
+  performs one local request, saves public diagnostic output and validates it;
+  it never writes graph/DB state or publishes an artifact.
+- Readiness passed with eight candidate observations and 21,666 conservative
+  byte-budget units. Local qwen3.8:27b-mlx request uses temperature 0, explicit
+  reasoning_effort none, output 4,096 and context 32,768. It is a diagnostic,
+  not the fair comparison or a tokenizer activation.
+- Started exec session 42805 and verified it remains live. No result yet at this
+  checkpoint; poll that exact session rather than starting another request.
+- Also verified checked-in OTEL instrumentation pins 0.62b1, unlike installed
+  0.43b0. Existing unit environment failures reflect dependency skew; no shared
+  environment or requirements were changed.
+
 ## 2026-09-08 — Canonical-candidate adversarial commit tests
 
 - Full unit sweep after semantic endpoint integration: 2,258 passed, five failed,
