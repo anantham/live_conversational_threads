@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Resumable source-page subdivisions for output pressure
+
+- SourceInspectionRunner now defaults to at most 32 original source spans per
+  request when an unsaved page is larger. New processing partitions retain the
+  same span IDs/text/offsets/attribution, with a partition index. Existing complete
+  pages are recovered first and unchanged. A single long span can still exceed
+  output capacity; this span-count limit is not a complete oversized-turn fix.
+- Each partition commits under a page-specific artifact stage; the complete-page
+  receipt validates exact ordered coverage and reproduces its result from those
+  receipts. It preserves partition audits and reports abstained_partitions.
+  No dropped characters, overlapping source, synthetic semantic boundaries or
+  byte-budget increase. Failing partition retries reuse earlier saved partitions.
+- Thirty cross-stage tests pass, including real-DB partition interruption/restart,
+  existing inspection/reconciliation, context retrieval and citation repair.
+  Four existing asyncio teardown warnings remain. The dedicated interruption
+  test proves exact page coverage and no regeneration of completed partitions.
+- Public diagnostic session 84674 verified 1,263 original sources, recovered six
+  pages and requested page index 6 / partition 0. Diagnostic progress now includes
+  the partition index. Poll this live handle; real subdivision completion is not
+  yet claimed. No public artifact replacement or production activation.
+
+
 ## 2026-09-08 — Accepted memberships reach canonical parent commit
 
 - Added parent_synthesis.py: accepted, evidenced decisions for every child are

@@ -82,8 +82,10 @@ async def main():
         output.mkdir(parents=True, exist_ok=True)
         class RecordedEnvelope(InferenceEnvelope):
             def complete_json(self, prompt):
-                page = json.loads(prompt)['page_index']
-                print(json.dumps({'phase': 'requesting', 'page': page}), flush=True)
+                request = json.loads(prompt)
+                page = request['page_index']
+                print(json.dumps({'phase': 'requesting', 'page': page,
+                                  'partition': request.get('partition_index')}), flush=True)
                 started = time.monotonic()
                 result = super().complete_json(prompt)
                 # Generated diagnostic artifact, public source only; never committed.
@@ -91,6 +93,7 @@ async def main():
                 target.write_text(json.dumps({'prompt': json.loads(prompt), 'response': result.data,
                     'policy_fingerprint': self.fingerprint}, ensure_ascii=False), encoding='utf-8')
                 print(json.dumps({'phase': 'response_received', 'page': page,
+                    'partition': request.get('partition_index'),
                     'seconds': round(time.monotonic() - started, 2), 'diagnostic': str(target)}), flush=True)
                 return result
         envelope = RecordedEnvelope(system_prompt=INSPECTION_PROMPT,
