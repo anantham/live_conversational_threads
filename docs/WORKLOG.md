@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-07 — Partial answers retain unresolved question state
+
+- Confirmed the question fold accepted only open/clarify/answer/withdraw/reopen;
+  any answer event marked the inquiry answered. Added source-backed
+  partial_answer for open questions without replacing the original question.
+  Previously answered/withdrawn inquiries require an explicit reopen event
+  before this action. Updated the interpreter contract and registered prompt
+  together. This changes the interpretation fingerprint, not saved history.
+- Four new regressions failed on the old implementation, then passed after the
+  change. All 32 focused question, context, callback and runtime-factory tests
+  pass. Seven preexisting pytest-asyncio teardown warnings remain. These tests
+  prove state handling, not a model's ability to classify partial answers.
+- Public inspection session 87755 completed page index 1 in 219.68s and requested
+  index 2, then exited 1 on a provider request timeout at 240s. The handle is now
+  terminal, not merely silent. Pages 0/1 were committed by the runner before
+  requesting the next page. Recovery must validate those receipts and resume
+  index 2 without regenerating saved pages. No published artifact was replaced.
+
+
 ## 2026-09-07 — Exact public source replay and real inspection diagnostic
 
 - Read-only comparison of the older local replay conversation

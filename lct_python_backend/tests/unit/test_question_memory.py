@@ -1,4 +1,8 @@
-"""Questions survive digressions; source-backed updates never erase originals."""
+"""Test intent:
+- Questions survive digressions; source-backed updates never erase originals.
+- Partial answers preserve open status and their exact attributed evidence.
+- Partial answers cannot implicitly reopen answered or withdrawn questions.
+"""
 import copy
 
 import pytest
@@ -55,3 +59,40 @@ def test_one_passage_can_advance_two_questions_without_merging_them():
     first["question_updates"].append(node("a", "open", "Who consents?", question="consent")["question_updates"][0])
     memory = fold_question_memory([first], {"a": "Who pays? Who consents?"})
     assert set(memory) == {"funding", "consent"}
+
+
+def test_partial_answer_keeps_inquiry_open_across_digression_until_full_answer():
+    chunks = {"a": "Who pays?", "b": "I can cover hosting, but not staffing.",
+              "c": "The roses are blooming.", "d": "The grant covers the rest."}
+    nodes = [node("a", "open", chunks["a"]),
+             node("b", "partial_answer", chunks["b"], "Hosting covered; staffing unresolved."),
+             {"id": "c", "chunk_id": "c", "thread_id": "garden"}]
+    before = copy.deepcopy(nodes)
+    memory = fold_question_memory(nodes, chunks)["funding"]
+    assert memory["status"] == "open"
+    assert memory["original"]["wording"] == "Who pays?"
+    assert memory["latest"]["action"] == "partial_answer"
+    assert memory["latest"]["evidence_quote"] == chunks["b"]
+    assert memory["update_count"] == 2
+    assert nodes == before
+    nodes.append(node("d", "answer", chunks["d"]))
+    assert fold_question_memory(nodes, chunks)["funding"]["status"] == "answered"
+
+
+@pytest.mark.parametrize("closing_action", ["answer", "withdraw"])
+def test_partial_answer_requires_explicit_reopening_of_closed_question(closing_action):
+    chunks = {"a": "Who pays?", "b": "That question is settled.",
+              "c": "Only hosting is covered.", "d": "Who pays staffing is still a question."}
+    nodes = [node("a", "open", chunks["a"]), node("b", closing_action, chunks["b"])]
+    partial = node("c", "partial_answer", chunks["c"])
+    with pytest.raises(ValueError, match="Partial answer requires an open question"):
+        fold_question_memory(nodes + [partial], chunks)
+    nodes.extend([node("d", "reopen", chunks["d"]), partial])
+    assert fold_question_memory(nodes, chunks)["funding"]["status"] == "open"
+
+
+def test_partial_answer_requires_exact_current_source_evidence():
+    with pytest.raises(ValueError, match="exact source evidence"):
+        fold_question_memory([node("a", "open", "Who pays?"),
+                              node("b", "partial_answer", "Invented offer")],
+                             {"a": "Who pays?", "b": "I do not know."})

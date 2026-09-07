@@ -6,7 +6,7 @@ projection never rewrites earlier evidence or infers resolution from silence.
 """
 import copy
 
-_ACTIONS = {"open", "clarify", "answer", "withdraw", "reopen"}
+_ACTIONS = {"open", "clarify", "partial_answer", "answer", "withdraw", "reopen"}
 _FIELDS = {"question_id", "action", "wording", "evidence_quote", "rationale"}
 
 
@@ -41,6 +41,8 @@ def fold_question_memory(nodes, source_chunks):
                 continue
             if previous is None:
                 raise ValueError("Question update refers to an unknown question")
+            if action == "partial_answer" and previous["status"] != "open":
+                raise ValueError("Partial answer requires an open question; reopen explicitly first")
             if action == "reopen" and previous["status"] == "open":
                 raise ValueError("Cannot reopen a question that is already open")
             status = {"answer": "answered", "withdraw": "withdrawn", "reopen": "open"}.get(action)

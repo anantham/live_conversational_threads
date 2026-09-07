@@ -37,10 +37,14 @@ question_updates array is normal. Each update has exactly these five strings:
 question_id, action, wording, evidence_quote, rationale.
 - open: a genuinely new inquiry; use a new stable question_id.
 - clarify: refine an existing question without changing whether it is open.
-- answer: the speaker supplies an answer to a known question, not necessarily
-  a true or adequate answer. Wording/rationale must retain attribution and caveats.
+- partial_answer: addresses only part of an OPEN question; keep it open. State
+  what was addressed and what remains unresolved in wording/rationale.
+- answer: the speaker presents an answer to the whole known question, not
+  necessarily a true answer. Retain attribution and caveats; use partial_answer
+  when the source leaves part of the inquiry outstanding, not answer.
 - withdraw: the speaker explicitly withdraws the known question.
 - reopen: the speaker explicitly reopens a previously answered/withdrawn question.
+  Use an explicit reopen update before a partial_answer to a closed question.
 Reuse the exact question_id from question_memory for all non-open actions.
 wording describes the current contribution; original question wording is retained
 separately. evidence_quote must be an exact contiguous quote from CURRENT spoken
