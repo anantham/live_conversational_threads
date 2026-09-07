@@ -1,5 +1,14 @@
 # TECH_DEBT
 
+## 2026-09-08 — Provider identity normalization boundary
+
+llm_config.py combines defaults, endpoint normalization, credential handling,
+provider record normalization and persistence. Its size warrants extracting
+the pure provider schema/normalization layer behind save/load contract tests.
+Explicit embedding and model-revision fields were previously silently dropped.
+Do not expand arbitrary field passthrough; retain an explicit allowlist and
+secret sanitization. Extraction is deferred to avoid unrelated deployment churn.
+
 ## 2026-09-07 — Incremental canonical materialization
 
 The existing ~1,500-line graph_persistence.py now supports append-only inserts

@@ -30,6 +30,28 @@ class _FakeSession:
         self.committed = True
 
 
+@pytest.mark.asyncio
+async def test_embedding_identity_survives_provider_save_load_and_partial_updates():
+    """Actual config normalization must preserve explicit retrieval model pins."""
+    session = _FakeSession()
+    provider = {'id': 'synthetic', 'base_url': 'http://127.0.0.1:1234',
+                'model': 'chat-model', 'embedding_model': 'embed-model',
+                'embedding_model_revision': 'revision-a', 'model_revision': 'chat-a',
+                'trust_scope': 'owner_private'}
+    await llm_config.save_llm_providers(session, {'providers': [provider]})
+    loaded = await llm_config.load_llm_providers(session)
+    assert loaded['providers'][0]['embedding_model'] == 'embed-model'
+    await llm_config.save_llm_providers(session, {'providers': [{'id': 'synthetic', 'name': 'Renamed'}]})
+    loaded = await llm_config.load_llm_providers(session)
+    assert loaded['providers'][0]['embedding_model_revision'] == 'revision-a'
+    assert loaded['providers'][0]['model_revision'] == 'chat-a'
+
+
+def test_embedding_identity_rejects_structured_values():
+    with pytest.raises(ValueError, match='embedding_model'):
+        llm_config.normalize_provider_record({'id': 'synthetic', 'embedding_model': {'name': 'not-a-string'}})
+
+
 def test_build_provider_api_url_normalizes_common_roots():
     assert (
         llm_config.build_provider_api_url(

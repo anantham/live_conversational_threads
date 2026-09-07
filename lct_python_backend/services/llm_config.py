@@ -177,6 +177,16 @@ def normalize_provider_record(
         ),
     }
 
+    # Optional model identities must survive the same storage boundary as chat
+    # routing. Dropping them silently prevents explicit retrieval configuration
+    # and makes model-revision fingerprints meaningless.
+    for field in ('embedding_model', 'embedding_model_revision', 'model_revision'):
+        value = raw_provider.get(field, existing.get(field))
+        if value is not None:
+            if not isinstance(value, str):
+                raise ValueError(f'{field} must be a string or null')
+            provider[field] = value.strip()
+
     clear_api_key = to_bool(raw_provider.get("clear_api_key", False))
     incoming_api_key = raw_provider.get("api_key")
     if clear_api_key:

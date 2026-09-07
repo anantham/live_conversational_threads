@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Preserve explicit model identity through config persistence
+
+- Preflight found only mac_ollama, local qwen3.8:27b-mlx, in the isolated replay
+  provider configuration; normalized embedding_model was absent. Code inspection
+  established normalization drops that field even when supplied. This does not
+  prove the stored database had an embedding model before normalization.
+- Reproduced two failing tests, then preserved explicit embedding_model,
+  embedding_model_revision and model_revision across real normalization/save/load
+  functions. Reject structured values; preserve omitted fields on partial updates.
+  No default embedding model is invented and no live settings were changed.
+- Validation: 16 config/runtime tests passed. Original import tests mocked provider
+  loading, so these additional boundary tests cover a previously missed seam.
+  Broader llm_config decomposition candidate recorded in TECH_DEBT.
+- Replay session 84674 advanced to page 15 partition 0. Next preflight must verify
+  an available local embedding model and pin it before full public graph execution.
+
 ## 2026-09-08 — Atomic verification exposes two evidence-location mislabels
 
 - Session 13714 completed with eight claims. The verifier located missing source
