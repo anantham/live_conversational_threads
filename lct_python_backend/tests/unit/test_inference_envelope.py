@@ -122,3 +122,27 @@ def test_planner_budget_includes_escaping_inside_message_envelope():
     chunks = {str(i): 'A quoted "callback" with \\ paths. ' * 4 for i in range(100)}
     plan = plan_conversation_context('Returning to the callback.', [], chunks, {}, contract.context_policy())
     contract.validate(plan.prompt)
+
+
+def test_explicit_message_counter_controls_all_task_envelopes_and_identity():
+    """A verified chat-template counter is not raw JSON-string token counting."""
+    measured = []
+    def counter(messages):
+        measured.append(messages)
+        return 20 + sum(len(m['content']) for m in messages)
+    contract = envelope(count_messages=counter, tokenizer_id='synthetic-template-v1')
+    assert contract.validate('hello') == 20 + len('Exact instructions') + 5
+    assert contract.with_system_prompt('Other').validate('hello') == 30
+    assert measured[-1][0]['content'] == 'Other'
+    assert contract.fingerprint != envelope(count_messages=counter, tokenizer_id='synthetic-template-v2').fingerprint
+
+
+def test_custom_message_counter_requires_versioned_identity():
+    with pytest.raises(ValueError, match='tokenizer'):
+        envelope(count_messages=lambda messages: 10)
+
+
+@pytest.mark.parametrize('value', [-1, True, 1.5, None])
+def test_malformed_message_counts_fail_closed(value):
+    with pytest.raises(ValueError, match='count'):
+        envelope(count_messages=lambda messages: value, tokenizer_id='invalid-counter-v1')

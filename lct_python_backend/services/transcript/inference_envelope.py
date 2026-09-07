@@ -19,7 +19,10 @@ from .transcript_normalizer import _normalize_generated_output
 
 class InferenceEnvelope:
     def __init__(self, *, system_prompt, providers, privacy, output_tokens, headroom_tokens,
-                 temperature=0.3, count_tokens=conservative_tokens):
+                 temperature=0.3, count_tokens=conservative_tokens,
+                 count_messages=None, tokenizer_id="utf8_bytes_v1"):
+        if not tokenizer_id or (count_messages is not None and tokenizer_id == 'utf8_bytes_v1'):
+            raise ValueError('Custom message counter requires an explicit tokenizer identity')
         allowed = select_providers_for_privacy(providers, privacy)
         capacities = [p.get("context_tokens") for p in allowed]
         if any(type(value) is not int or value <= 0 for value in capacities):
@@ -33,6 +36,8 @@ class InferenceEnvelope:
         self._headroom_tokens = headroom_tokens
         self._temperature = temperature
         self.count_tokens = count_tokens
+        self.count_messages = count_messages
+        self.tokenizer_id = tokenizer_id
         self._context_tokens = min(capacities)
         self.input_token_budget = self._context_tokens - output_tokens - headroom_tokens - self._message_tokens("")
         if self.input_token_budget <= 0:
@@ -41,6 +46,8 @@ class InferenceEnvelope:
                     "headroom_tokens": headroom_tokens, "temperature": temperature,
                     "providers": [{k: p.get(k) for k in ("id", "model", "model_revision", "base_url", "trust_scope", "context_tokens")}
                                   for p in self._providers]}
+        if tokenizer_id != 'utf8_bytes_v1':
+            identity['tokenizer_id'] = tokenizer_id
         self.fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
     @property
@@ -52,7 +59,8 @@ class InferenceEnvelope:
         return type(self)(system_prompt=system_prompt, providers=self.providers,
             privacy=self._privacy, output_tokens=self._output_tokens,
             headroom_tokens=self._headroom_tokens, temperature=self._temperature,
-            count_tokens=self.count_tokens)
+            count_tokens=self.count_tokens, count_messages=self.count_messages,
+            tokenizer_id=self.tokenizer_id)
 
     def context_policy(self, *, passage_target_tokens=None):
         # Count the user content in the same serialized envelope as validate.
@@ -68,7 +76,11 @@ class InferenceEnvelope:
         return [{"role": "system", "content": self._system_prompt}, {"role": "user", "content": prompt}]
 
     def _message_tokens(self, prompt):
-        return self.count_tokens(json.dumps(self._messages(prompt), ensure_ascii=False, separators=(",", ":")))
+        value = (self.count_messages(self._messages(prompt)) if self.count_messages is not None else
+                 self.count_tokens(json.dumps(self._messages(prompt), ensure_ascii=False, separators=(",", ":"))))
+        if type(value) is not int or value < 0:
+            raise ValueError('Message token count must be a nonnegative integer')
+        return value
 
     def validate(self, prompt):
         measured = self._message_tokens(prompt)

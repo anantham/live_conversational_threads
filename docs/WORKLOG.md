@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-09-08 — Template-aware counter boundary prepared, not activated
+
+- Local synthetic server probe (one output token) produced no response during
+  its 45-second observation window while replay was busy. The curl-to-jq pipeline
+  hid curl's status, so no server-parity conclusion is available. No duplicate
+  generation submitted. Local template predicts 58 input tokens with thinking
+  enabled/default and 22 disabled. Serving mode remains unverified.
+- Read-only /api/ps reports chat context_length 262144 and embedding 40960.
+  These reported capacities are not a demonstrated reliable effective window.
+- Added explicit count_messages/tokenizer_id to the inference envelope and
+  trusted runtime config. All derived task envelopes preserve the counter;
+  custom identity enters checkpoint fingerprints. Default byte policy retains
+  its prior identity. Malformed counts fail before inference. Chat tokenizers
+  no longer implicitly count a different embedding model's input.
+- Twenty-seven focused envelope/factory tests pass. No new dependency, runtime
+  counter activation or running-replay policy change. Need serving parity and
+  calibrated tests before selecting model-specific counters for fair replay.
+
 ## 2026-09-08 — Actual tokenizer diagnostic changes context plan
 
 - Before adding question paging, inspected pinned local model metadata. Its

@@ -40,10 +40,16 @@ class InterleavedRuntimeConfig:
     embedding_provider_ids: tuple[str, ...]
     budgets: RuntimeBudgets = RuntimeBudgets()
     temperature: float = 0.3
+    count_tokens: object = conservative_tokens
+    count_messages: object = None
+    tokenizer_id: str = 'utf8_bytes_v1'
 
     def __post_init__(self):
         if type(self.temperature) not in (int, float) or not math.isfinite(self.temperature) or not 0 <= self.temperature <= 2:
             raise ValueError('Explicit sampling temperature must be finite and between 0 and 2')
+        if not self.tokenizer_id or ((self.count_tokens is not conservative_tokens or self.count_messages is not None)
+                                     and self.tokenizer_id == 'utf8_bytes_v1'):
+            raise ValueError('Custom counters require an explicit tokenizer identity')
 
     def build_reconciliation(self, *, conversation_id, owner_id, providers, privacy):
         """Use the same owner, frozen routes and budgets for post-passage review."""
@@ -81,6 +87,8 @@ class InterleavedRuntimeConfig:
             providers=chat, privacy=privacy, output_tokens=self.budgets.output_tokens,
             headroom_tokens=self.budgets.headroom_tokens,
             temperature=self.temperature,
+            count_tokens=self.count_tokens, count_messages=self.count_messages,
+            tokenizer_id=self.tokenizer_id,
         )
         return BoundedAggregationRunner(session_factory=self.session_factory, conversation_id=conversation_id,
                                  owner_id=owner_id, envelope=envelope)
@@ -91,14 +99,17 @@ class InterleavedRuntimeConfig:
         embedding = [p for p in providers if p.get("id") in self.embedding_provider_ids]
         return build_interleaved_processor(
             session_factory=self.session_factory, providers=chat, embedding_providers=embedding,
-            budgets=self.budgets, temperature=self.temperature, **kwargs,
+            budgets=self.budgets, temperature=self.temperature,
+            count_tokens=self.count_tokens, count_messages=self.count_messages,
+            tokenizer_id=self.tokenizer_id, **kwargs,
         )
 
 
 def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
                                 providers, embedding_providers, privacy, send_update,
                                 send_status=None, budgets=RuntimeBudgets(), system_prompt=None,
-                                count_tokens=conservative_tokens, tokenizer_id="utf8_bytes_v1", temperature=0.3):
+                                count_tokens=conservative_tokens, tokenizer_id="utf8_bytes_v1", temperature=0.3,
+                                count_messages=None):
     uuid.UUID(conversation_id)
     if not isinstance(owner_id, str) or not owner_id.strip() or session_factory is None:
         raise ValueError("Owner and durable session factory are required")
@@ -111,13 +122,15 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
         system_prompt=prompt, providers=providers, privacy=privacy,
         output_tokens=budgets.output_tokens, headroom_tokens=budgets.headroom_tokens,
         count_tokens=count_tokens,
+        count_messages=count_messages, tokenizer_id=tokenizer_id,
         temperature=temperature,
     )
     context = envelope.context_policy(passage_target_tokens=budgets.passage_target_tokens)
     retrieval = SemanticCandidates(
         providers=embedding_providers, privacy=privacy,
         input_token_budget=budgets.embedding_input_tokens,
-        batch_token_budget=budgets.embedding_batch_tokens, count_tokens=count_tokens,
+        # The chat tokenizer is not the embedding model's tokenizer.
+        batch_token_budget=budgets.embedding_batch_tokens, count_tokens=conservative_tokens,
     )
     identity = {"version": "interleaved_runtime_v2_question_history", "inference": envelope.fingerprint,
                 "retrieval": retrieval.fingerprint, "budgets": asdict(budgets), "tokenizer_id": tokenizer_id}

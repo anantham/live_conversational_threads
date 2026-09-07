@@ -29,6 +29,26 @@ def test_runtime_sampling_reaches_generation_transport(monkeypatch):
     assert calls[0]['temperature'] == 0
 
 
+def test_host_counter_reaches_aggregation_and_inspection():
+    from lct_python_backend.services.transcript.interleaved_runtime import InterleavedRuntimeConfig
+    measured = []
+    def counter(messages):
+        measured.append(messages)
+        return 40 + sum(len(m['content']) for m in messages)
+    config = InterleavedRuntimeConfig(object(), {'chat': 32768}, ('chat',),
+        count_messages=counter, tokenizer_id='synthetic-chat-v1')
+    scope = dict(conversation_id='11111111-1111-4111-8111-111111111111', owner_id='owner',
+        providers=[{'id': 'chat', 'model': 'synthetic', 'embedding_model': 'synthetic-embedding',
+                    'trust_scope': 'owner_private'}], privacy={'local_llm_ok': True})
+    aggregate = config.build_aggregation(**scope)
+    relations = config.build_reconciliation(**scope)
+    for envelope in (aggregate.envelope, relations.envelope, relations.inspection.envelope):
+        result = envelope.validate('sample')
+        assert measured[-1][-1] == {'role': 'user', 'content': 'sample'}
+        assert result == 40 + sum(len(m['content']) for m in measured[-1])
+        assert envelope.tokenizer_id == 'synthetic-chat-v1'
+
+
 def build(**overrides):
     args = dict(conversation_id="11111111-1111-4111-8111-111111111111", owner_id="owner",
                 session_factory=object(), send_update=None,
