@@ -1,5 +1,31 @@
 # WORKLOG
 
+## 2026-09-08 — Public probe completed; measured token parity
+
+- Revalidated clean task head 59a774f before resuming. The preceding user-facing
+  resume clarification was not implementation progress. No full replay restarted.
+- Probe 42805 is terminal, exit 0. Saved public diagnostic
+  tmp/public-pipeline/canonical-probe-1788823507641630000.json contains all eight
+  structurally valid comparisons, two question-to-statement asks relations with
+  explicit canonical selections, and six unrelated judgments. These are plausible
+  sampled decisions, not a broad semantic-quality score or fair comparison.
+- Offline counting with the existing mlx-audio diagnostic environment (no install,
+  backend activation or egress) and tokenizer SHA
+  0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3
+  produced 8,261 tokens, exactly matching reported prompt_tokens 8,261;
+  completion_tokens was 2,565. Render used trimmed system/user ChatML messages,
+  assistant prefix and empty closed think block for explicit reasoning_effort none.
+  One matching request establishes neither model capacity nor universal parity.
+- The old receipt does not embed its messages; reconstruction used the unchanged
+  RELATION_PROMPT at the verified head. Updated the diagnostic to persist exact
+  messages, requested/served model, reasoning mode, cache-hit and finish status
+  so later audits need not trust a subsequent checkout or infer fresh execution.
+  No existing receipt was rewritten and no additional inference was launched.
+- Test intent added with two synthetic receipt cases; combined receipt/envelope
+  suite: 20 passed, one existing asyncio teardown warning. Runtime remains on
+  conservative byte budgeting pending the previously requested dependency ruling.
+  Independent review, fair full comparison, integration and deployment remain open.
+
 ## 2026-09-08 — Single public semantic-selection quality probe started
 
 - Added tools/probe_canonical_selection.py: default readiness validates the exact

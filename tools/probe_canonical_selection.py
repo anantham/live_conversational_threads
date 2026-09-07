@@ -19,6 +19,23 @@ from lct_python_backend.services.transcript.source_inspection_runner import chec
 from tools.replay_public_source_inspection import REPLAY_ID, SHA, verified_public_source, verify_rows
 
 
+def probe_receipt(request, result, policy_fingerprint):
+    """Preserve exact messages and serving telemetry for offline token audits.
+
+    This public-only diagnostic must not reconstruct instructions from a later
+    checkout or mistake a cached response for a fresh measurement.
+    """
+    prompt = json.dumps(request, ensure_ascii=False, separators=(',', ':'))
+    return {'request': request, 'response': result.data,
+        'policy_fingerprint': policy_fingerprint, 'source_sha256': SHA,
+        'messages': [{'role': 'system', 'content': RELATION_PROMPT},
+                     {'role': 'user', 'content': prompt}],
+        'requested_model': 'qwen3.8:27b-mlx', 'reasoning_effort': 'none',
+        'served_model': result.model, 'cache_hit': result.cache_hit,
+        'finish_reason': result.finish_reason,
+        'prompt_tokens': result.prompt_tokens, 'completion_tokens': result.completion_tokens}
+
+
 async def main(run=False):
     source = verified_public_source()
     root = Path(__file__).resolve().parents[1]
@@ -52,9 +69,8 @@ async def main(run=False):
         if run:
             result = await asyncio.to_thread(envelope.complete_json, prompt)
             target = root / 'tmp/public-pipeline' / f'canonical-probe-{time.time_ns()}.json'
-            target.write_text(json.dumps({'request': request, 'response': result.data,
-                'policy_fingerprint': envelope.fingerprint, 'source_sha256': SHA,
-                'prompt_tokens': result.prompt_tokens, 'completion_tokens': result.completion_tokens}, ensure_ascii=False), encoding='utf-8')
+            target.write_text(json.dumps(probe_receipt(request, result, envelope.fingerprint),
+                                         ensure_ascii=False), encoding='utf-8')
             print(json.dumps({'response_saved': str(target)}), flush=True)
             checked = validate_relation_review(result.data, request)
             print(json.dumps({'validated_comparisons': len(checked['comparisons']),
