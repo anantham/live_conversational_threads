@@ -1,5 +1,26 @@
 # WORKLOG
 
+## 2026-09-08 — Actual tokenizer diagnostic changes context plan
+
+- Before adding question paging, inspected pinned local model metadata. Its
+  Ollama manifest contains tokenizer.json digest
+  0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3
+  and tokenizer_config.json digest
+  5a205aa76328f59df93a9091d0496aeda4615c6b0c495cbd37e14c79c0cd0f94.
+  Verified tokenizer bytes match the manifest digest. No model download/install.
+- Backend venv lacks tokenizers/transformers; existing mlx-audio tool environment
+  supplies both (tokenizers 0.23.0-rc0). Read-only diagnostic on the second public
+  request: 19,982 UTF-8 bytes versus 6,024 raw tokens. Its local chat template
+  with a synthetic short system prompt yields 6,079 input_ids.
+- Initial diagnostic used len(BatchEncoding), yielding two mapping keys rather
+  than token count. Inspected actual result type/keys and corrected to input_ids;
+  two is not a token measurement. No runtime decisions used that value.
+- This establishes substantial conservative underutilization for this request,
+  not serving parity or reliable maximum context. Next: verify server token
+  accounting/template and provide a pinned counter for all runtime stages before
+  escalating paging complexity. Keep current replay policy unchanged; session
+  50729 continues. No dependency, production or model-configuration change.
+
 ## 2026-09-08 — Compact attributed question context without dropping speech
 
 - Measured quote-range substitution alone: the 13-update and seven-update
