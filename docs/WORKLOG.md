@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — Question review consent and actual-context sizing
+
+- Added stored-consent revocation at the review checkpoint boundary, including
+  when an existing receipt is present. Four isolated integration cases pass.
+- Read-only sizing at public source sequence 324 found all four question reviews
+  exceeded context. Requests duplicated full chunks per event and again as
+  attributed utterance text. Deduplicate chunks and retain attribution as exact
+  offsets into their unchanged text; retain every event and full source.
+- Ten synthetic review/import tests pass. Re-measuring the same sequence now
+  fits both two-update questions. Histories with 13 and seven updates still
+  exceed budget; bounded multi-request review remains required, not silently
+  bypassed. No review model call or source mutation was made by these probes.
+- Public replay session 50729 remains running; no mid-run prompt change.
+
 ## 2026-09-08 — Persisted question-review runner
 
 - Added question_review_runner.py: reconstructs journal-backed question history

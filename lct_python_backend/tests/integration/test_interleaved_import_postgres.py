@@ -8,6 +8,7 @@ synthesis at every tier before its canonical commit; summaries alone are not eno
 Source inspection and relation review must run through the actual import entrypoint.
 Question source selections and their exact quotes must survive export and restart.
 Question review must retain speaker-labelled source and recover without another call.
+Revoked consent must reject a captured review even when a receipt already exists.
 """
 import json
 import os
@@ -62,9 +63,12 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         if 'question_id' in request:
             question_reviews.append(request)
             assert request['sources'][0]['utterances'][0]['speaker_id'] == 'SPEAKER_00'
+            span = request['sources'][0]['utterances'][0]
+            assert request['sources'][0]['text'][span['start']:span['end']] == text
+            assert 'text' not in span
             return Result({'assessments': [{'event_id': 'event-1', 'scope': 'same_question',
                 'resolution': 'not_an_answer', 'reason': 'The inquiry remains undecided.',
-                'evidence_ids': ['source-0', 'source-1']}]})
+                'evidence_ids': ['source-0']}]})
         if 'spans' in request:
             stages.append('inspection')
             spans = request['spans']
@@ -191,6 +195,14 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
                              .values(summary='A human corrected the interpretation.'))
         async with sessions.begin() as db:
             with pytest.raises(JournalConflict, match='changed during review'):
+                await runner.checkpoint(db, basis, 0, request)
+        assert len(question_reviews) == 1
+        from lct_python_backend.services.deployment_privacy_policy import DeploymentPrivacyError
+        async with sessions.begin() as db:
+            await db.execute(update(Conversation).where(Conversation.id == cid).values(
+                source_metadata={'privacy': {'local_llm_ok': False, 'external_llm_ok': False}}))
+        async with sessions.begin() as db:
+            with pytest.raises(DeploymentPrivacyError):
                 await runner.checkpoint(db, basis, 0, request)
         assert len(question_reviews) == 1
     finally:

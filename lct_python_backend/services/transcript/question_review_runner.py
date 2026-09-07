@@ -31,7 +31,14 @@ def attributed_question_request(basis, question_id, envelope):
         fragments = [rows[uid] for uid in ids]
         if ' '.join(row['text'] for row in fragments) != source['text']:
             raise JournalConflict('Question review source differs from committed passage')
-        source['utterances'] = copy.deepcopy(fragments)
+        offset = 0
+        source['utterances'] = []
+        for row in fragments:
+            # Attribute exact ranges of the already supplied full source.
+            # Repeating each utterance's text here wastes context, not evidence.
+            source['utterances'].append({**{k: copy.deepcopy(v) for k, v in row.items() if k != 'text'},
+                                         'start': offset, 'end': offset + len(row['text'])})
+            offset += len(row['text']) + 1
     envelope.validate(json.dumps(request, ensure_ascii=False, separators=(',', ':')))
     return request
 

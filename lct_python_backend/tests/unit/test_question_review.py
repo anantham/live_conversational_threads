@@ -57,3 +57,14 @@ def test_over_budget_history_is_not_cropped():
     chunks = {str(k): v + ' context' * 2000 for k, v in chunks.items()}
     with pytest.raises(ContextBudgetExceeded):
         build_question_review(nodes, chunks, 'studies', envelope=Envelope())
+
+
+def test_multiple_updates_share_one_unabridged_source_passage():
+    nodes, chunks = fixture()
+    passage = ' '.join(chunks.values())
+    for node in nodes:
+        node['chunk_id'] = 'shared'
+    request = build_question_review(nodes, {'shared': passage}, 'studies', envelope=Envelope())
+    assert request['sources'] == [{'id': 'source-0', 'chunk_id': 'shared', 'text': passage}]
+    assert {event['source_id'] for event in request['events']} == {'source-0'}
+    assert len(request['events']) == 3
