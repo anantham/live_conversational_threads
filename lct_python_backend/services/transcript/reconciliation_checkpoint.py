@@ -13,6 +13,7 @@ from lct_python_backend.models import Node, PipelineArtifact, Relationship
 from .passage_journal import JournalConflict, _hash
 from .reconciliation_mapping import map_reviewed_relations
 from .source_inspection_runner import capture_inspection, check_inference_consent
+from .canonical_selection import canonical_candidates
 
 STAGE = 'conversation_relation_review_v1'
 
@@ -41,6 +42,9 @@ def validate_context_source(context, snapshot):
     if type(watermark) is not int:
         raise JournalConflict('Relation context requires an explicit source watermark')
     for observation in [context['focal'], *context['candidates']]:
+        if ('canonical_candidates' in observation and
+                observation['canonical_candidates'] != canonical_candidates(observation, snapshot['nodes'])):
+            raise JournalConflict('Canonical candidates differ from the captured node snapshot')
         for excerpt in observation['source_excerpts']:
             source = sources.get(excerpt['utterance_id'])
             start, end = excerpt['start'], excerpt['end']
@@ -88,7 +92,7 @@ async def checkpoint_relation_review(db, *, conversation_id, owner_id, snapshot,
     mapped = map_reviewed_relations(review, context, snapshot['nodes'])
     grouped = {}
     for proposal in mapped:
-        if proposal['disposition'] == 'unique_source_ownership':
+        if proposal['disposition'] in ('unique_source_ownership', 'semantic_selection'):
             key = (proposal['from_node_id'], proposal['to_node_id'], proposal['relation']['relation_type'])
             grouped.setdefault(key, []).append(proposal)
     edges = []

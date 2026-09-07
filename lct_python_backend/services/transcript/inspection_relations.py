@@ -8,6 +8,7 @@ import asyncio
 import copy
 import json
 from .passage_journal import _hash
+from .canonical_selection import validate_node_selections
 
 RELATION_PROMPT = '''Review each candidate's relationship to the focal observation.
 Observations are interpretations; supplied source excerpts are the evidence.
@@ -33,6 +34,12 @@ Every relation must cite BOTH observations. Each evidence item has observation_i
 utterance_id and an exact uniquely occurring quote from that observation's supplied
 source excerpts. Include enough surrounding words to disambiguate a repeated quote.
 Do not cite only summaries, invent sources, or infer a relation from its retrieval rank.
+When observations include canonical_candidates, each relation also requires
+node_selections: exactly two entries with observation_id, node_id and rationale.
+Select a canonical node only if its meaning matches this endpoint AND it owns
+all your cited source. Source overlap alone is insufficient, even with one
+candidate. Use node_id:null with an explanation if no candidate fits or you are
+uncertain. Never invent a node, merge nodes, or select merely to fill the field.
 '''
 
 RELATIONS = {'return_to_thread', 'clarifies', 'supports', 'rebuts', 'asks', 'tangent', 'contextual'}
@@ -96,6 +103,9 @@ def validate_relation_review(payload, context, *, allow_partial=False):
             validated.append({'relation_type': relation['relation_type'], 'rationale': relation['rationale'],
                               'from_observation_id': origin, 'to_observation_id': destination,
                               'evidence': evidence})
+            selections = validate_node_selections(relation, endpoints)
+            if selections is not None:
+                validated[-1]['node_selections'] = selections
         comparisons.append({'focal_id': focal['id'], 'candidate_id': identity, 'status': status,
                             'reason': reason, 'relations': validated})
     if seen != set(candidates) and not allow_partial:

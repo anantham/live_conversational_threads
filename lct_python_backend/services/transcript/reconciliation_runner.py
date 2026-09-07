@@ -31,7 +31,7 @@ class ReconciliationRunner:
         self.envelope, self.retriever = review_envelope, retriever
         self.max_candidates, self.excerpt_characters = max_candidates, excerpt_characters
         self.providers = [*review_envelope.providers, *retriever.providers]
-        self.fingerprint = _hash({'version': 2, 'generation': review_envelope.fingerprint,
+        self.fingerprint = _hash({'version': 3, 'generation': review_envelope.fingerprint,
             'inspection': inspection_envelope.fingerprint, 'retrieval': retriever.fingerprint,
             'max_candidates': max_candidates, 'excerpt_characters': excerpt_characters})
 
@@ -75,7 +75,7 @@ class ReconciliationRunner:
                 prompt = await plan_inspection_context(source, inspection['receipts'], focal_id=focal_id,
                     available_through_sequence=watermark, envelope=self.envelope, retriever=self.retriever,
                     max_candidates=self.max_candidates, excerpt_characters=self.excerpt_characters,
-                    request_guard=self.check_retrieval_consent)
+                    request_guard=self.check_retrieval_consent, canonical_nodes=snapshot['nodes'])
                 context = json.loads(prompt)
                 async with self.sessions.begin() as db:
                     saved = await checkpoint_relation_review(db, **args, context=context)
@@ -93,7 +93,7 @@ class ReconciliationRunner:
             receipts.append(saved)
         return {'source_hash': source['input_hash'], 'receipts': receipts,
                 'review_pass_complete': True,
-                'unresolved_mappings': sum(p['disposition'] != 'unique_source_ownership'
+                'unresolved_mappings': sum(p['disposition'] not in ('unique_source_ownership', 'semantic_selection')
                     for receipt in receipts for p in receipt['mapping']),
                 'abstained_inspection_pages': inspection['abstained_pages'],
                 'abstained_inspection_partitions': index['abstained_partitions'],

@@ -18,6 +18,7 @@ def map_reviewed_relations(review, context, nodes):
             {'relation_type': relation['relation_type'], 'rationale': relation['rationale'],
              'from_observation_id': relation['from_observation_id'],
              'to_observation_id': relation['to_observation_id'],
+             **({'node_selections': relation['node_selections']} if 'node_selections' in relation else {}),
              'evidence': [{key: citation[key] for key in ('observation_id', 'utterance_id', 'quote')}
                           for citation in relation['evidence']]}
             for relation in comparison['relations']]
@@ -45,8 +46,19 @@ def map_reviewed_relations(review, context, nodes):
                 disposition = 'within_node'
             else:
                 disposition = 'unique_source_ownership'
+            if 'node_selections' in relation:
+                selected = {row['observation_id']: row['node_id'] for row in relation['node_selections']}
+                origin_id, destination_id = selected[relation['from_observation_id']], selected[relation['to_observation_id']]
+                if origin_id is None or destination_id is None:
+                    disposition = 'semantic_mapping_unresolved'
+                elif origin_id not in origin or destination_id not in destination:
+                    raise ValueError('Selected canonical node differs from current source ownership')
+                elif origin_id == destination_id:
+                    disposition = 'within_node'
+                else:
+                    origin, destination, disposition = [origin_id], [destination_id], 'semantic_selection'
             mapped.append({'focal_id': comparison['focal_id'], 'candidate_id': comparison['candidate_id'],
                 'relation': relation, 'endpoint_candidates': endpoint_candidates, 'disposition': disposition,
-                'from_node_id': origin[0] if disposition == 'unique_source_ownership' else None,
-                'to_node_id': destination[0] if disposition == 'unique_source_ownership' else None})
+                'from_node_id': origin[0] if disposition in ('unique_source_ownership', 'semantic_selection') else None,
+                'to_node_id': destination[0] if disposition in ('unique_source_ownership', 'semantic_selection') else None})
     return mapped

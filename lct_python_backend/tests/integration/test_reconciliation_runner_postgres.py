@@ -65,6 +65,10 @@ async def test_full_review_loop_restart_and_export(monkeypatch, reverse, omit_fi
                     'rationale': 'Question concerns the statement.' if reverse else 'Explicit unresolved callback.',
                     'from_observation_id': candidate['id'] if reverse else focal['id'],
                     'to_observation_id': focal['id'] if reverse else candidate['id'],
+                    'node_selections': [{'observation_id': obs['id'],
+                        'node_id': obs['canonical_candidates'][0]['id'],
+                        'rationale': 'The canonical leaf expresses this source-backed observation.'}
+                        for obs in (focal, candidate)],
                     'evidence': [{'observation_id': obs['id'], 'utterance_id': obs['source_excerpts'][0]['utterance_id'],
                                   'quote': obs['source_excerpts'][0]['text']} for obs in (focal, candidate)]}]
             comparisons.append({'candidate_id': candidate['id'], 'status': 'related' if later else 'uncertain',
@@ -106,6 +110,7 @@ async def test_full_review_loop_restart_and_export(monkeypatch, reverse, omit_fi
         assert len(result['receipts'][1]['review']['coverage_attempts']) == 1 + int(omit_first)
         assert result['review_pass_complete'] and result['unresolved_mappings'] == 0
         assert not result['semantic_reconciliation_complete']
+        assert result['receipts'][1]['mapping'][0]['disposition'] == 'semantic_selection'
         before = dict(calls)
         assert await runner().run() == result
         assert calls == before, 'Restarted saved pass must invoke neither embeddings nor generation'

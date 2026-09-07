@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-09-08 — Semantic canonical endpoint selection in relation review
+
+- Three failing-first mapping cases reproduced discarded explicit selection and
+  unique-source ownership overriding semantic abstention. Runtime relation contexts
+  now include source-overlapping canonical leaf names/summaries/source IDs under
+  the existing full-request budget. No separate model pass is added.
+- For these contexts, each relation requires an explicit node selection or null
+  abstention for both observation endpoints, plus rationale. Selected nodes must
+  belong to the supplied options and own every cited source. Commit rechecks the
+  supplied candidate objects against the captured canonical snapshot.
+- Explicit choices can resolve overlapping ownership; unique-but-unmatched nodes
+  remain semantic_mapping_unresolved. Direction is preserved through mapping and
+  export. Legacy source-only diagnostic contexts retain their prior reader contract,
+  but the real runner always supplies canonical candidates and advances policy v3.
+- Thirty-six unit and PostgreSQL integration tests pass: selection/abstention,
+  foreign and wrong-source rejection, both directions, interrupted recovery and
+  shared imports. Existing asyncio warnings remain. No real model-quality claim,
+  new replay, production activation or publication. Global thread/question identity
+  reconciliation and fair tokenizer-backed comparison are still unfinished.
+
 ## 2026-09-08 — Canonical mapping evidence and next integration boundary
 
 - Read-only inspection of the stopped public diagnostic found three committed

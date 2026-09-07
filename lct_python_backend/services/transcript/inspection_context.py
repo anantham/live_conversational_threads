@@ -14,6 +14,7 @@ from .source_inspection import validate_inspection
 from .source_inspection_pages import inspection_sources
 from .source_inspection_runner import validate_page
 from .inspection_partitions import merge_partitions
+from .canonical_selection import canonical_candidates
 
 
 def inspection_index(snapshot, receipts):
@@ -80,7 +81,7 @@ def inspection_index(snapshot, receipts):
 
 async def plan_inspection_context(snapshot, receipts, *, focal_id, available_through_sequence,
                                   envelope, retriever, max_candidates=8, excerpt_characters=400,
-                                  request_guard=None):
+                                  request_guard=None, canonical_nodes=None):
     """Rank across all eligible pages, then pack cited raw context under budget.
 
 This does not generate relationships. Retrieval scores are not evidence that
@@ -113,7 +114,10 @@ interpret and validate proposed links against supplied sources.
                 'start': start, 'end': end, 'text': source['text'][start:end],
                 'omitted_prefix_characters': start, 'omitted_suffix_characters': len(source['text']) - end,
                 **{key: source[key] for key in ('speaker_id', 'speaker_revision') if key in source}})
-        return {**copy.deepcopy(observation), 'source_excerpts': excerpts}
+        result = {**copy.deepcopy(observation), 'source_excerpts': excerpts}
+        if canonical_nodes is not None:
+            result['canonical_candidates'] = canonical_candidates(result, canonical_nodes)
+        return result
 
     candidates = {identity: value for identity, value in eligible.items() if identity != focal_id}
     payload = {'contract': 'Candidate relevance is not a semantic relationship. Sources are evidence; '
