@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-07 — Resume exact public inspection after transport timeout
+
+- Read-only DB inspection verified exactly two saved source-inspection receipts:
+  page 0 has 77 spans / 11 observations; page 1 has 80 spans / 13 observations.
+  The previous process exited on the 240-second transport timeout at page 2.
+- Increased only this public diagnostic's transport deadline to 600 seconds.
+  Source, model, prompt, routing, output reserve and context budget are unchanged.
+  Added a regression proving deadline-only changes preserve interpretation
+  identity and request measurement. All 22 envelope, replay-guard and real-DB
+  inspection recovery tests pass, with one existing asyncio teardown warning.
+- New process session 4618 verified all 1,263 original sources, validated the
+  saved receipts and requested page 2 directly. It did not regenerate pages 0/1.
+  Poll that handle rather than restarting on an observation timeout. The longer
+  deadline is an experiment, not a claim that the underlying latency is solved.
+- Follow-up live privacy audit found PassageJournalSession capture/commit checks
+  ownership but not fresh stored inference consent; TranscriptProcessor retrieval
+  also omits the new per-batch guard. The already-open rollout gate remains.
+  Next correction must bind those checks to the factory's exact frozen routes,
+  test revocation before embedding/generation and during commit, and preserve
+  pending source for retry. No runtime activation or private replay occurred.
+
+
 ## 2026-09-07 — Partial answers retain unresolved question state
 
 - Confirmed the question fold accepted only open/clarify/answer/withdraw/reopen;

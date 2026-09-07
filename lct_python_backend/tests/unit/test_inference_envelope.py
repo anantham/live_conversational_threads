@@ -95,3 +95,12 @@ def test_processor_rejects_planner_larger_than_request_budget():
     with pytest.raises(ValueError, match="budget"):
         TranscriptProcessor(send_update=None, inference_envelope=envelope(),
                             passage_context_policy=PassageContextPolicy(999999))
+
+
+def test_transport_deadline_change_preserves_interpretation_identity_and_budget():
+    """A longer wait can resume receipts without changing model or input semantics."""
+    short = envelope([{**provider(), "timeout_seconds": 240}])
+    longer = envelope([{**provider(), "timeout_seconds": 600}])
+    assert short.fingerprint == longer.fingerprint
+    assert short.validate("same source") == longer.validate("same source")
+    assert longer.providers[0]["timeout_seconds"] == 600

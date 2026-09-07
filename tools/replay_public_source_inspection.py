@@ -96,7 +96,7 @@ async def main():
         envelope = RecordedEnvelope(system_prompt=INSPECTION_PROMPT,
             providers=[{'id': 'public-local-inspection', 'model': 'qwen3.8:27b-mlx',
                 'type': 'openai_compatible', 'base_url': 'http://127.0.0.1:11434',
-                'trust_scope': 'owner_private', 'context_tokens': 32768, 'timeout_seconds': 240}],
+                'trust_scope': 'owner_private', 'context_tokens': 32768, 'timeout_seconds': 600}],
             privacy={'local_llm_ok': True, 'external_llm_ok': False},
             output_tokens=4096, headroom_tokens=512, temperature=0)
         print(json.dumps({'phase': 'verified_source', 'conversation_id': str(REPLAY_ID),
