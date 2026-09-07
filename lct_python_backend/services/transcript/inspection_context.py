@@ -13,6 +13,7 @@ from .passage_journal import _hash
 from .source_inspection import validate_inspection
 from .source_inspection_pages import inspection_sources
 from .source_inspection_runner import validate_page
+from .inspection_partitions import merge_partitions
 
 
 def inspection_index(snapshot, receipts):
@@ -21,6 +22,8 @@ def inspection_index(snapshot, receipts):
     sources = {s['id']: s for s in inspection_sources(snapshot['request']['sources'])}
     cursors = {identity: 0 for identity in sources}
     seen_sources, observations = set(), {}
+    abstentions = []
+    abstained_partitions = 0
     policy = receipts[0]['policy_fingerprint']
     last_sequence = None
     for index, receipt in enumerate(receipts):
@@ -48,6 +51,18 @@ def inspection_index(snapshot, receipts):
                 {key: citation[key] for key in ('span_id', 'start', 'end', 'quote')}
                 for citation in observation['citations']]
         checked = validate_inspection(raw, page)
+        parts = receipt.get('partitions')
+        if parts is not None:
+            if (any(p.get('input_hash') != snapshot['input_hash'] or p.get('policy_fingerprint') != policy
+                    for p in parts) or validate_inspection(merge_partitions(page, parts), page) != checked):
+                raise ValueError('Partition audit does not reproduce the inspected page')
+            abstained_partitions += sum(not p['result']['observations'] for p in parts)
+        for unit in parts if parts is not None else [receipt]:
+            if not unit['result']['observations']:
+                abstentions.append({'page_index': index,
+                    'partition_index': unit['page'].get('partition_index'),
+                    'span_ids': copy.deepcopy(unit['result']['reviewed_span_ids']),
+                    'reason': unit['result']['abstention_reason']})
         for original, validated in zip(result['observations'], checked['observations']):
             identity = original.get('id')
             if not isinstance(identity, str) or not identity or identity in observations:
@@ -59,6 +74,7 @@ def inspection_index(snapshot, receipts):
     if seen_sources != set(sources) or any(cursors[identity] != len(s['text']) for identity, s in sources.items()):
         raise ValueError('Inspection receipts do not cover the complete source snapshot')
     return {'sources': sources, 'observations': observations,
+            'abstained_partitions': abstained_partitions, 'abstained_source_spans': abstentions,
             'abstained_pages': sum(not r['result']['observations'] for r in receipts)}
 
 
@@ -111,6 +127,8 @@ interpret and validate proposed links against supplied sources.
             'omitted_candidates': len(candidates) - len(payload['candidates']),
             'excluded_future_informed_observations': len(all_observations) - len(eligible),
             'abstained_inspection_pages': index['abstained_pages'],
+            'abstained_inspection_partitions': index['abstained_partitions'],
+            'abstained_source_span_count': sum(len(a['span_ids']) for a in index['abstained_source_spans']),
             'semantic_reconciliation_complete': False}
         return json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
 

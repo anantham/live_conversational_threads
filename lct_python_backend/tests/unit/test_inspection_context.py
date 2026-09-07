@@ -13,6 +13,7 @@ from lct_python_backend.services.transcript.conversation_context import ContextB
 from lct_python_backend.services.transcript.passage_journal import _hash
 from lct_python_backend.services.transcript.source_inspection import validate_inspection
 from lct_python_backend.services.transcript.source_inspection_pages import inspection_sources, source_span
+from lct_python_backend.services.transcript.inspection_partitions import merge_partitions
 
 
 def fixture():
@@ -34,6 +35,35 @@ def fixture():
         receipts.append({'page': page, 'result': result, 'policy_fingerprint': 'synthetic',
                          'input_hash': snapshot['input_hash']})
     return snapshot, receipts
+
+
+def test_mixed_partition_abstention_remains_visible_and_audit_is_revalidated():
+    """A productive neighbouring subdivision must not hide uninterpreted source."""
+    snapshot, receipts = fixture()
+    parts = copy.deepcopy(receipts[:2])
+    page = copy.deepcopy(parts[0]['page'])
+    page['spans'].extend(parts[1]['page']['spans'])
+    for i, part in enumerate(parts):
+        part['page']['page_index'] = 0
+        part['page']['partition_index'] = i
+    parts[1]['result'] = validate_inspection({'reviewed_span_ids': [
+        s['span_id'] for s in parts[1]['page']['spans']], 'observations': [],
+        'abstention_reason': 'Insufficient context to interpret this passage.'}, parts[1]['page'])
+    merged = {**receipts[0], 'page': page, 'partitions': parts,
+              'result': validate_inspection(merge_partitions(page, parts), page)}
+    receipts = [merged] + receipts[2:]
+    for i, receipt in enumerate(receipts):
+        receipt['page']['page_index'] = i
+    index = inspection_index(snapshot, receipts)
+    assert index['abstained_pages'] == 0
+    assert index['abstained_partitions'] == 1
+    assert index['abstained_source_spans'] == [{
+        'page_index': 0, 'partition_index': 1,
+        'span_ids': parts[1]['result']['reviewed_span_ids'],
+        'reason': 'Insufficient context to interpret this passage.'}]
+    parts[1]['result']['abstention_reason'] = 'Tampered explanation'
+    with pytest.raises(ValueError, match='Partition'):
+        inspection_index(snapshot, receipts)
 
 
 @pytest.mark.asyncio

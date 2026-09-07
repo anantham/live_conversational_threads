@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Preserve partial inspection abstentions in reconciliation
+
+- Reproduced loss of subdivision abstention accounting when a neighbouring
+  subdivision supplied observations. The complete page had zero page-level
+  abstentions, concealing source the model did not interpret.
+- Reconciliation now revalidates partition audits against the merged page and
+  retains abstained span identities and reasons in its index. Bounded model
+  context includes explicit partition and span counts, without copying an
+  unbounded audit into every request. This does not equate inspection with
+  semantic completeness.
+- Validation: 18 focused context/partition/relation tests passed, including a
+  regression first observed failing and a tampered-partition audit rejection.
+  Existing pytest event-loop deprecation warnings remain.
+- Public local replay session 84674 advanced beyond pages 6 and 7 and requested
+  page 8 partition 0. It remains in flight; this is not full quality acceptance.
+
 ## 2026-09-08 — Automatic proposals compose the opt-in import hierarchy
 
 - Added BoundedAggregationRunner: complete overview -> checkpointed model grouping
