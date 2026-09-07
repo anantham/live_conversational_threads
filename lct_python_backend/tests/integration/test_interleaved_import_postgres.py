@@ -23,7 +23,9 @@ from lct_python_backend.services.transcript.interleaved_runtime import Interleav
 
 
 @pytest.mark.asyncio
-async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch):
+@pytest.mark.parametrize('revise_first', [False, True, 'always'])
+async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revise_first):
+    """Rejected grouping is revised with evidence; restart never replays rejected work."""
     url = os.getenv("PASSAGE_JOURNAL_TEST_DATABASE_URL")
     if not url:
         pytest.skip("Explicit isolated local database URL required")
@@ -63,7 +65,10 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch):
         if request.get('status') == 'proposal_only':
             calls.append(request['target_level'])
             stages.append('proposal')
-            return Result({'groups': [{'label': 'Borrowing inquiry', 'rationale': 'Unresolved borrowing policy.',
+            if 'revision' in request:
+                feedback = request['revision']['membership_feedback']
+                assert feedback[0]['decision'] == 'reject' and feedback[0]['citations']
+            return Result({'groups': [{'label': 'Open borrowing question' if 'revision' in request else 'Borrowing inquiry', 'rationale': 'Unresolved borrowing policy.',
                                       'children_ids': [c['id'] for c in request['children']]}]})
         if 'source_page' in request:
             stages.append('review')
@@ -74,7 +79,8 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch):
                            'rationale': 'Evidence concerns the unresolved inquiry.', 'evidence_span_ids': ids})
         if 'reviews' in request:
             stages.append('decision')
-            return Result({'decision': 'accept', 'rationale': 'Same inquiry.', 'qualifications': 'Still unresolved.',
+            return Result({'decision': 'reject' if revise_first == 'always' or (revise_first and stages.count('decision') == 1) else 'accept',
+                'rationale': 'Scope should explicitly preserve the open question.', 'qualifications': 'Still unresolved.',
                 'reviewed_ids': [r['review_id'] for r in request['reviews']],
                 'evidence_ids': [e['evidence_id'] for r in request['reviews'] for e in r['evidence']]})
         stages.append('parent')
@@ -92,13 +98,24 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch):
             await db.flush()
             db.add(Utterance(id=uid, conversation_id=cid, sequence_number=1, text=text,
                              speaker_id="SPEAKER_00", timestamp_start=0, timestamp_end=3))
+        if revise_first == 'always':
+            from lct_python_backend.services.transcript.bounded_aggregation_runner import AbstractionNeedsRevision
+            for retry in range(2):
+                async with sessions() as db:
+                    with pytest.raises(AbstractionNeedsRevision, match='3 audited proposal attempts'):
+                        await extract_graph_for_conversation(db, conversation_id=str(cid), owner_id=owner,
+                                                            interleaved_runtime=config)
+                assert calls == [1, 2, 2, 2]
+                assert stages == ['moment'] + ['proposal', 'review', 'decision'] * 3
+            return
         async with sessions() as db:
             result = await extract_graph_for_conversation(db, conversation_id=str(cid), owner_id=owner,
                                                           interleaved_runtime=config)
         assert result["node_count"] == result["auditable_node_count"] == 5
         assert result["pipeline_status"] == "reconciliation_pending"
-        assert calls == [1, 2, 3, 4, 5]
-        assert stages == ['moment'] + ['proposal', 'review', 'decision', 'parent'] * 4
+        expected_calls = [1, 2, 2, 3, 4, 5] if revise_first else [1, 2, 3, 4, 5]
+        assert calls == expected_calls
+        assert stages == ['moment'] + (['proposal', 'review', 'decision'] if revise_first else []) + ['proposal', 'review', 'decision', 'parent'] * 4
         from lct_python_backend.share_api import export_threads
         async with sessions() as db:
             first = json.loads((await export_threads(str(cid), db=db)).body)
@@ -109,8 +126,8 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch):
             retried = await extract_graph_for_conversation(db, conversation_id=str(cid), owner_id=owner,
                                                            interleaved_runtime=config)
         assert retried == result
-        assert calls == [1, 2, 3, 4, 5]
-        assert len(stages) == 17
+        assert calls == expected_calls
+        assert len(stages) == (20 if revise_first else 17)
         async with sessions() as db:
             second = json.loads((await export_threads(str(cid), db=db)).body)
         assert second["graph_data"] == first["graph_data"]

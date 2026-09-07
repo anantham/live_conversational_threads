@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-09-08 — Automatic audited grouping revision
+
+- The opt-in bounded hierarchy now feeds the prior proposal and all source-cited
+  membership decisions back into grouping when a membership is rejected or
+  uncertain. It can change scope or split groups while retaining full child
+  coverage. The complete feedback request is checked against the same envelope;
+  oversize evidence still fails explicitly, without silent truncation.
+- Proposal/review/decision/parent receipts use separate revision generations.
+  Original receipts remain intact, and restart reconstructs the saved chain.
+  Three total attempts bound repeated inference. Persistent disagreement raises
+  AbstractionNeedsRevision; no parent is synthesized to satisfy coverage.
+- Validation: 14 real-DB integration/runtime tests passed. Synthetic full import
+  includes initial acceptance, rejection then successful revision through all
+  four higher tiers, and persistent rejection. Successful and unsuccessful
+  restart paths repeat zero model calls; failed tiers never reach synthesis.
+- This is execution/recovery evidence, not real-model grouping quality proof.
+  General oversized-feedback handling and live incremental revision remain open.
+
 ## 2026-09-08 — Preserve partial inspection abstentions in reconciliation
 
 - Reproduced loss of subdivision abstention accounting when a neighbouring

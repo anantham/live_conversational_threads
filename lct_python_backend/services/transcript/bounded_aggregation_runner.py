@@ -34,12 +34,14 @@ class BoundedAggregationRunner:
         await check_inference_consent(db, **self.scope, providers=self.envelope.providers)
         return await capture_aggregation(db, **self.scope, target_level=level, lock=lock)
 
-    async def _proposal_checkpoint(self, db, snapshot, request, payload=None):
+    async def _proposal_checkpoint(self, db, snapshot, request, payload=None, *, generation=0):
         level = snapshot['request']['target_level']
         if await self._capture(db, level, lock=True) != snapshot:
             raise JournalConflict('Abstraction inputs changed during proposal generation')
         cid = uuid.UUID(self.scope['conversation_id'])
         stage = 'conversation_abstraction_proposal_v1'
+        if generation:
+            stage += f'_revision{generation}'
         rows = (await db.execute(select(PipelineArtifact).where(PipelineArtifact.conversation_id == cid,
             PipelineArtifact.stage == stage, PipelineArtifact.stage_index == level))).scalars().all()
         if len(rows) > 1:
@@ -65,17 +67,32 @@ class BoundedAggregationRunner:
         children = [{**c, 'semantic_level': target_level - 1} for c in snapshot['request']['children']]
         request = build_proposal_request(children, target_level=target_level,
             source_snapshot_hash=_hash(snapshot['request']['sources']), envelope=self.envelope)
-        async with self.sessions.begin() as db:
-            saved = await self._proposal_checkpoint(db, snapshot, request)
-        if saved is None:
-            result = await asyncio.to_thread(self.envelope.complete_json,
-                json.dumps(request, ensure_ascii=False, separators=(',', ':')))
+        previous = None
+        for generation in range(3):
+            attempt = copy.deepcopy(request)
+            if previous is not None:
+                attempt['revision'] = {
+                    'instruction': 'Revise the previous grouping using all membership feedback. '
+                        'Retain uncertainty and unanswered questions. Do not force acceptance. '
+                        'You may split groups or revise their scope; cover every child.',
+                    'previous_groups': previous['proposals'],
+                    'membership_feedback': [d['result'] for d in previous['decisions']]}
+            prompt = json.dumps(attempt, ensure_ascii=False, separators=(',', ':'))
+            self.envelope.validate(prompt)
             async with self.sessions.begin() as db:
-                saved = await self._proposal_checkpoint(db, snapshot, request, result.data)
-        result = await self.memberships.run_synthesis(saved['groups'], target_level=target_level)
-        if result['status'] != 'tier_committed':
-            raise AbstractionNeedsRevision(f'Abstraction tier {target_level} has rejected or uncertain memberships')
-        return result['tier']
+                saved = await self._proposal_checkpoint(db, snapshot, attempt, generation=generation)
+            if saved is None:
+                result = await asyncio.to_thread(self.envelope.complete_json, prompt)
+                async with self.sessions.begin() as db:
+                    saved = await self._proposal_checkpoint(db, snapshot, attempt, result.data, generation=generation)
+            runner = self.memberships if generation == 0 else MembershipReviewRunner(
+                session_factory=self.sessions, **self.scope,
+                envelope=self.memberships.envelope, generation=generation)
+            previous = await runner.run_synthesis(saved['groups'], target_level=target_level)
+            if previous['status'] == 'tier_committed':
+                return previous['tier']
+        raise AbstractionNeedsRevision(
+            f'Abstraction tier {target_level} remains unsupported after 3 audited proposal attempts')
 
     async def run_through(self, highest_level=5):
         if type(highest_level) is not int or highest_level not in {2, 3, 4, 5}:

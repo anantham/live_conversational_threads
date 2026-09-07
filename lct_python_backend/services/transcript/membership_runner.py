@@ -17,7 +17,10 @@ from .source_inspection_runner import check_inference_consent
 
 
 class MembershipReviewRunner:
-    def __init__(self, *, session_factory, conversation_id, owner_id, envelope):
+    def __init__(self, *, session_factory, conversation_id, owner_id, envelope, generation=0):
+        if type(generation) is not int or generation < 0:
+            raise ValueError('Membership generation must be a nonnegative integer')
+        self.generation = generation
         self.sessions = session_factory
         self.scope = {'conversation_id': conversation_id, 'owner_id': owner_id}
         self.envelope = envelope
@@ -36,6 +39,8 @@ class MembershipReviewRunner:
         cid = uuid.UUID(self.scope['conversation_id'])
         kind = 'parent' if parent else ('decision' if decision else 'review')
         stage = f'conversation_membership_{kind}_l{level}_v1'
+        if self.generation:
+            stage += f'_revision{self.generation}'
         rows = (await db.execute(select(PipelineArtifact).where(
             PipelineArtifact.conversation_id == cid, PipelineArtifact.stage == stage,
             PipelineArtifact.stage_index == index))).scalars().all()
