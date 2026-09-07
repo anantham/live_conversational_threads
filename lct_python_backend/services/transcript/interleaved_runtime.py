@@ -7,6 +7,7 @@ graph; the owner-scoped journal checks those boundaries on first recovery.
 from dataclasses import asdict, dataclass
 import hashlib
 import json
+import math
 import uuid
 
 from lct_python_backend.services.deployment_privacy_policy import assert_raw_transcript_retention_allowed
@@ -38,6 +39,11 @@ class InterleavedRuntimeConfig:
     context_limits: dict
     embedding_provider_ids: tuple[str, ...]
     budgets: RuntimeBudgets = RuntimeBudgets()
+    temperature: float = 0.3
+
+    def __post_init__(self):
+        if type(self.temperature) not in (int, float) or not math.isfinite(self.temperature) or not 0 <= self.temperature <= 2:
+            raise ValueError('Explicit sampling temperature must be finite and between 0 and 2')
 
     def build_reconciliation(self, *, conversation_id, owner_id, providers, privacy):
         """Use the same owner, frozen routes and budgets for post-passage review."""
@@ -74,6 +80,7 @@ class InterleavedRuntimeConfig:
             system_prompt=get_transcript_prompt_text(PROMPT_ID_SOURCE_AGGREGATION),
             providers=chat, privacy=privacy, output_tokens=self.budgets.output_tokens,
             headroom_tokens=self.budgets.headroom_tokens,
+            temperature=self.temperature,
         )
         return BoundedAggregationRunner(session_factory=self.session_factory, conversation_id=conversation_id,
                                  owner_id=owner_id, envelope=envelope)
@@ -84,14 +91,14 @@ class InterleavedRuntimeConfig:
         embedding = [p for p in providers if p.get("id") in self.embedding_provider_ids]
         return build_interleaved_processor(
             session_factory=self.session_factory, providers=chat, embedding_providers=embedding,
-            budgets=self.budgets, **kwargs,
+            budgets=self.budgets, temperature=self.temperature, **kwargs,
         )
 
 
 def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
                                 providers, embedding_providers, privacy, send_update,
                                 send_status=None, budgets=RuntimeBudgets(), system_prompt=None,
-                                count_tokens=conservative_tokens, tokenizer_id="utf8_bytes_v1"):
+                                count_tokens=conservative_tokens, tokenizer_id="utf8_bytes_v1", temperature=0.3):
     uuid.UUID(conversation_id)
     if not isinstance(owner_id, str) or not owner_id.strip() or session_factory is None:
         raise ValueError("Owner and durable session factory are required")
@@ -104,6 +111,7 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
         system_prompt=prompt, providers=providers, privacy=privacy,
         output_tokens=budgets.output_tokens, headroom_tokens=budgets.headroom_tokens,
         count_tokens=count_tokens,
+        temperature=temperature,
     )
     context = envelope.context_policy(passage_target_tokens=budgets.passage_target_tokens)
     retrieval = SemanticCandidates(

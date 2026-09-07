@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Real local embedding preflight and explicit sampling
+
+- Loopback /v1/models lists qwen3-embedding:8b and qwen3-embedding:0.6b.
+  Actual SemanticCandidates/gateway call with the 8b model and synthetic input
+  returned valid vectors: funding callback score 0.624696, unrelated garden
+  0.176500. This is a two-candidate route sanity check, not retrieval quality
+  evaluation. Existing fact_store_write_failed telemetry warning also occurred;
+  vector generation succeeded. No settings, models or private source changed.
+- Runtime previously inherited temperature 0.3 while public source inspection
+  used 0. Added explicit validated host temperature configuration, propagated to
+  passage and aggregation/reconciliation envelopes and their existing policy hashes.
+  Defaults remain compatible; an explicit changed policy changes recovery identity.
+- Validation: 18 config/runtime tests passed, including transport-observed zero
+  temperature and fingerprint changes. Full graph replay still requires a pinned
+  configuration and cannot silently reuse incompatible inspection receipts.
+
 ## 2026-09-08 — Preserve explicit model identity through config persistence
 
 - Preflight found only mac_ollama, local qwen3.8:27b-mlx, in the isolated replay
