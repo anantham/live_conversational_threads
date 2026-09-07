@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Independent review route refreshed; source send denied
+
+- Claude auth status is currently loggedIn=false (including host-access check).
+  Existing AGY gemini-3.1-pro-high answered the content-free preflight READY;
+  AGY warns that plan mode has no effect with slash expansion disabled, so no
+  repository review packet was sent through it.
+- Grok with empty tool allowlist, wildcard deny, web disabled and one-turn limit
+  answered READY, model grok-4.5-build, reported cost USD 0.010232776 through
+  the existing account. This establishes a working request route, not review.
+- Proposed bounded review at implementation HEAD 052a000: exact tracked
+  bounded_aggregation_runner.py, membership_runner.py and question_memory.py,
+  plus narrow specification and synthetic test results. Planned inventory and
+  secret scan run before transmission. No transcripts, runtime artifacts,
+  credentials or untracked files were included in the intended packet.
+- Execution host rejected process creation before inventory or transmission,
+  requiring explicit authorization for these exact files to Grok despite the
+  documented REVIEW-EGRESS-A1 envelope. No packet was sent, no byte count/hash
+  was produced, and no independent verdict exists. Do not reroute this denied
+  source send via another provider. Exact-packet human approval is now needed
+  for that review action; local implementation/testing remains available.
+- Public inspection remains active in session 84674, page 10 partition 2.
+
 ## 2026-09-08 — Preserve intermediate question evidence in working context
 
 - Broad architecture regression before this change: 159 passed, 2168 deselected,
