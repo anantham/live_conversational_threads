@@ -10,6 +10,7 @@ import json
 
 from .passage_journal import _hash
 from .source_inspection import validate_inspection
+from .inspection_structure import normalize_structure
 
 REPAIR_POLICY = 'inspection_span_selection_v2'
 REPAIR_PROMPT = '''Select source evidence for one observation whose copied citation was invalid.
@@ -101,11 +102,13 @@ async def repair_inspection(payload, page, *, envelope, request_guard):
     with the accepted page; failed attempts remain failures, never partial pages.
     """
     correction_envelope = envelope.with_system_prompt(REPAIR_PROMPT)
-    plans = plan_repairs(payload, page, envelope=correction_envelope)
-    output = copy.deepcopy(payload)
+    output, normalized_indices = normalize_structure(payload)
+    plans = plan_repairs(output, page, envelope=correction_envelope)
     audit = {'policy': REPAIR_POLICY, 'original_response': copy.deepcopy(payload),
              'inference_policy': envelope.fingerprint,
              'correction_inference_policy': correction_envelope.fingerprint, 'corrections': []}
+    if normalized_indices:
+        audit['normalized_indices'] = normalized_indices
     for plan in plans:
         await request_guard()
         result = await asyncio.to_thread(correction_envelope.complete_json, plan['prompt'])
@@ -121,9 +124,15 @@ def validate_repair_audit(audit, payload, page, policy_fingerprint):
     if audit.get('policy') != REPAIR_POLICY or audit.get('inference_policy') != policy_fingerprint:
         raise ValueError('Citation repair policy mismatch')
     corrections = audit.get('corrections')
-    if not isinstance(corrections, list) or not 1 <= len(corrections) <= 4:
+    if not isinstance(corrections, list) or not 0 <= len(corrections) <= 4:
         raise ValueError('Invalid citation correction count')
     current = copy.deepcopy(audit['original_response'])
+    if 'normalized_indices' in audit:
+        current, indices = normalize_structure(current)
+        if not indices or indices != audit['normalized_indices']:
+            raise ValueError('Structure normalization audit differs')
+    elif not corrections:
+        raise ValueError('Empty correction audit')
     seen = set()
     for correction in corrections:
         plan = correction['plan']

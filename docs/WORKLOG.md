@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Recover unambiguous displaced observation fields
+
+- Replay 84674 terminated at page 15 partition 1. One object had its explicit
+  kind and unchanged narrative in JSON key/value positions rather than the
+  required fields. Citation-only repair could not correct that structure.
+- Added conservative lossless field relocation: requires exactly one explicit
+  known kind and one narrative string across the two non-citation field pairs.
+  Missing, ambiguous, extra-field or structured candidates still fail rather
+  than guessing a meaning. Original response is retained in the reproducible
+  repair audit; no observation text or source citation is synthesized.
+- Exact failed public response: only observation index 5 normalized, narrative
+  reused verbatim, full page validation passed without model correction.
+  Validation: 11 repair unit tests and 3 isolated-DB/checkpoint tests passed.
+- Resumed the terminal replay from its existing checkpoints; no completed
+  source inspection pages were discarded and no publication occurred.
+
 ## 2026-09-08 — Real local embedding preflight and explicit sampling
 
 - Loopback /v1/models lists qwen3-embedding:8b and qwen3-embedding:0.6b.

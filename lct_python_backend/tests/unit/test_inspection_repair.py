@@ -28,6 +28,28 @@ def case():
     return page, payload
 
 
+@pytest.mark.asyncio
+async def test_displaced_fields_are_relocated_without_semantic_rewriting_or_model_call():
+    """Only unambiguous existing tokens may recover malformed object fields."""
+    page, payload = case()
+    payload['observations'] = [{'question': 'text', 'Who holds the key?': 'citations',
+        'citations': [{'span_id': s['span_id'], 'quote': s['text']} for s in page['spans']]}]
+    original = copy.deepcopy(payload)
+    corrected, audit = await repair_inspection(payload, page, envelope=envelope(), request_guard=lambda: None)
+    assert corrected['observations'][0]['kind'] == 'question'
+    assert corrected['observations'][0]['text'] == 'Who holds the key?'
+    assert audit['normalized_indices'] == [0] and audit['corrections'] == []
+    validate_repair_audit(audit, corrected, page, envelope().fingerprint)
+    assert payload == original
+
+
+def test_ambiguous_structure_cannot_choose_between_two_meanings():
+    from lct_python_backend.services.transcript.inspection_structure import normalize_structure
+    with pytest.raises(ValueError, match='Ambiguous'):
+        normalize_structure({'observations': [{'claim': 'First meaning', 'Other meaning': 'text',
+                                             'citations': [{'span_id': 'a', 'quote': 'x'}]}]})
+
+
 def test_split_quote_repair_preserves_meaning_and_original():
     page, payload = case()
     before = copy.deepcopy(payload)
