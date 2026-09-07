@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Public question-scope diagnostic running
+
+- Prior turn was progress (6ddf93a pushed), current checkout clean. Added
+  tools/probe_public_question_review.py for the known childhood-inquiry/peer-anecdote
+  scope concern. Pins the authorized public artifact SHA, verifies all persisted
+  utterance fields and consent, then selects exactly the first two committed
+  passages and q_childhood_interests. No future question events enter the request.
+- Readiness: eight events, two full source passages, 19,145 conservative byte
+  units. Explicit local qwen3.8:27b-mlx, reasoning none, temperature 0, context
+  32,768, output 4,096, headroom 512. No tokenizer/dependency activation.
+- --run launched one model call in exec session 23978. Polled the exact handle;
+  still live at this checkpoint, no result yet. Do not restart due to silence.
+  On completion the tool saves exact messages, scope, policy and serving usage
+  before schema/projection validation. Generated output stays gitignored.
+- Validation exception for this diagnostic: readiness exercises real pinned source
+  and attribution construction; no automated model-output oracle is added. This
+  selected repair case cannot stand in for blinded full-podcast quality evaluation.
+  No DB/graph mutation, source repair, publication, merge or deployment.
+
 ## 2026-09-08 — Preserve contributions conflicting with provisional closure
 
 - Prior goal turn was progress (6db1a45 pushed), current checkout clean. The
