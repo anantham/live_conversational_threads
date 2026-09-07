@@ -1,5 +1,29 @@
 # WORKLOG
 
+## 2026-09-07 — Complete overview for bounded abstraction proposals
+
+- Added abstraction_proposals.py as the first stage of bounded higher-tier
+  aggregation, not a replacement summary-only aggregator. A complete compact
+  child catalog preserves interpretations, thread/question state and attribution
+  flags; its source and complete child snapshot hashes bind candidate identity.
+  Outputs are explicitly source_verification_required, with no final node summary
+  or semantic_level. Later evidence verification remains necessary for every
+  proposed membership; no graph rows are written by these helpers.
+- Six behavioral tests pass: overlapping proposals and singleton coverage,
+  deterministic snapshot-bound IDs, missing/foreign/duplicate membership rejection,
+  adjacent tier validation and full-request overflow without truncation.
+- Read-only audit of the existing public candidate using the actual new request
+  and prompt: L2 overview 51 children / 20,852 full-message byte units; L3 23 /
+  8,724; L4 10 / 4,451; L5 4 / 2,549. All fit the configured 32,768 envelope with
+  4,608 reserved for output/headroom and zero omitted children. These are
+  conservative byte units, not measured model tokenizer counts. This establishes
+  overview feasibility, not semantic quality or raw-evidence budget fit.
+- Session 10056 was polled twice and remains live processing page index 3. No
+  new completion output. Next architecture step: bounded source verification of
+  proposed memberships, followed by atomic tier persistence, not publishing
+  these unverified grouping proposals as finished abstractions.
+
+
 ## 2026-09-07 — Source-span selection replaces quote-copying repair
 
 - Superseded experimental correction policy v1 with inspection_span_selection_v2.
