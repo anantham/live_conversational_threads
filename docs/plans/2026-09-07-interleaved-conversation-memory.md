@@ -6,6 +6,13 @@ stopped and retained as diagnostic evidence, not a model-quality baseline.
 
 ## Implementation checkpoint (2026-09-07)
 
+Full opt-in import now has a real-DB integration proof through actual source
+processing, passage recovery, four-tier aggregation and .threads export. A
+second import invokes no models and exports identical nodes/edges. The test
+uses synthetic source and doubled provider transport, retaining the configured
+owner and speaker-labelled request contracts. It does not prove model quality
+or large-conversation processing; those remain required gates.
+
 Opt-in persisted-turn extraction now uses the checkpointed aggregation runner
 and bypasses the legacy positional-repair/replacement path. Trusted runtime
 composition registers the aggregation prompt and enforces existing stored

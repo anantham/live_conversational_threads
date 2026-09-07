@@ -1,5 +1,26 @@
 # WORKLOG
 
+## 2026-09-07 — Full persisted-turn import through cited .threads export
+
+- Added a real isolated-Postgres integration test that uses the actual import
+  orchestrator, runtime factory, TranscriptProcessor, passage journal,
+  aggregation runner/checkpoints and .threads exporter. Only provider transport
+  and configured provider inventory are doubled; source is synthetic and the
+  test owner is set via the existing host-owner environment seam.
+- Initial fixture errors exposed correct existing contracts: caller owner is
+  intentionally ignored in favor of the configured host owner, and passage
+  requests carry speaker labels. Corrected those fixture assumptions rather
+  than changing or bypassing authorization/diarization behavior.
+- One persisted source produces L1-L5 with retained source and speaker. A second
+  full import makes no further model calls and exports identical graph data.
+  Every provider request contains only the permitted local provider despite an
+  external provider in the configured inventory. Reconciliation remains marked
+  pending rather than inferred complete from the presence of higher tiers.
+- This proves small-input orchestration and provenance, not semantic model
+  quality, large-input feasibility, HTTP auth, browser rendering or deployment.
+  No private transcript or external inference was used; only the fixture's
+  exact random conversation and owner were removed during cleanup.
+
 ## 2026-09-07 — Opt-in imported-turn aggregation wiring and privacy proof
 
 - Execution review initially rejected the combined wiring patch over possible
