@@ -151,6 +151,12 @@ export default function MobileConversationDeck({
 
   const handlePointerCancel = useCallback(() => {
     gesture.current = null;
+    // Native vertical panning cancels Pointer Events, but Touch Events still
+    // finish normally. Keep that separate gesture until touchend/touchcancel.
+  }, []);
+
+  const handleTouchCancel = useCallback(() => {
+    gesture.current = null;
     touchGesture.current = null;
   }, []);
 
@@ -261,7 +267,7 @@ export default function MobileConversationDeck({
           onPointerCancel={handlePointerCancel}
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
-          onTouchCancel={handlePointerCancel}
+          onTouchCancel={handleTouchCancel}
         >
           {snapshot.item ? (
             <div key={`${snapshot.entry.kind}:${snapshot.entry.id}:${motionKey}`} className={`h-full ${motionClass}`}>

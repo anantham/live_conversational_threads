@@ -98,7 +98,7 @@ function NodeCard({ snapshot, sourceRows }) {
       data-level={snapshot.level}
       onKeyDown={handleCardKeyDown}
       tabIndex={0}
-      className="flex h-full min-h-0 flex-col overflow-y-auto rounded-2xl border border-amber-300 bg-white px-5 py-5 shadow-[0_14px_40px_rgba(15,23,42,0.10)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
+      className="flex h-full min-h-0 flex-col touch-pan-y overflow-y-auto rounded-2xl border border-amber-300 bg-white px-5 py-5 shadow-[0_14px_40px_rgba(15,23,42,0.10)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
     >
       <div className="flex items-center justify-between gap-3">
         <span className={`text-xs font-semibold capitalize ${TIER_TEXT[snapshot.level] || "text-slate-600"}`}>
@@ -166,7 +166,7 @@ function UtteranceCard({ mediaRef, snapshot, speakerColorMap }) {
       data-level="0"
       onKeyDown={handleCardKeyDown}
       tabIndex={0}
-      className="flex h-full min-h-0 flex-col overflow-y-auto rounded-2xl border border-amber-300 bg-white px-5 py-5 shadow-[0_14px_40px_rgba(15,23,42,0.10)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
+      className="flex h-full min-h-0 flex-col touch-pan-y overflow-y-auto rounded-2xl border border-amber-300 bg-white px-5 py-5 shadow-[0_14px_40px_rgba(15,23,42,0.10)] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-500"
     >
       <div className="flex items-center justify-between gap-3 text-xs">
         <span className="font-semibold text-slate-600">Exact utterance</span>

@@ -1,5 +1,51 @@
 # WORKLOG
 
+## 2026-09-07 18:38 +04:00 — Native-touch regression and scoped repair
+
+- Signed-out browser touch trace reproduced pointercancel on the card, not a
+  wrong target. Temporary browser-only article touch-pan-y restored horizontal
+  navigation and all six abstraction levels via taps.
+- New native-touch browser tests failed first on node swipes and short-card
+  vertical navigation. Corrected a test-fixture assumption: utterance siblings
+  must share a parent; extended the first synthetic moment to include two turns.
+- Adding the pan rule to both MobileDeckCard articles passed horizontal node and
+  utterance navigation plus long-card native scrolling, while vertical remained
+  red. MobileConversationDeck now distinguishes pointer cancellation during native
+  panning from actual touch cancellation. Initial repaired validation: 16 browser
+  tests passed (one opt-in live video test skipped), 23 focused unit tests passed,
+  and production build passed with the pre-existing large-bundle warning.
+- No styling redesign, source data, provider route, dependency or privacy change.
+  Release config includes the native-touch suite. Existing DOM-event tests are
+  not being treated as proof of real touch handling. Deployment/review pending.
+- Added actual touch-cancel recovery coverage; all four native-touch checks pass.
+  Focused source lint passes. Refreshed origin/main matches the worktree base.
+- Independent-review preflight is held: the isolated Grok configuration disables
+  foreign instructions and direct MCP connectors, but inspection still reports
+  an enabled compatibility plugin/hook despite its explicit disable setting.
+  No review packet was sent and no reviewer tools were enabled. Resolve the
+  runner's capability boundary or restore an already-approved tool-free reviewer
+  before merge. Local publication artifact does not depend on this code release.
+
+## 2026-09-07 — Public podcast replacement and local comparison
+
+- Published source-grounded Codex artifact for public video 6HmR9IaqM88 by
+  replacing its existing Drive file; preserved original preview in durable
+  `tmp/podcast-release/source-preview.threads`. Public relay SHA256 matches
+  candidate 4d67f632007fdf9aec84a60abd0e420bd70c59a5cc3bfd75457c56b0d90d01a0.
+- Verified signed-out production desktop abstraction controls and mobile-sized
+  six-level drill-down, named threads, speaker-labelled sources, and source link
+  updating to 949 seconds. Physical Android currently unavailable through ADB;
+  real YouTube embed subsequently reached 15:50 after the 15:49 seek without
+  player errors. No product deployment required.
+- Local comparison uses unchanged production extractor and Mac Ollama, same
+  utterance text/speaker order through a synthetic Meet-format adapter. Timestamp
+  rounding and explicit test-DB source_metadata consent are documented confounds.
+  Benchmark remains running; no comparison-quality conclusions yet.
+- Recorded confirmed Meet metadata integration mismatch in ISSUES.md. No product
+  fix included. Durable scripts, source, candidates and test receipts live under
+  `tmp/podcast-release`; these are public-podcast task artifacts, not private data.
+
+
 ## 2026-09-07 — Optional-media reading compatibility repair
 
 - Review of 40789f6 completed, retaining one low-severity finding. Initially

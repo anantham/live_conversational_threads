@@ -1,5 +1,13 @@
 # TECH_DEBT
 
+## 2026-09-07 — Mobile deck gesture boundary
+
+MobileConversationDeck.jsx (352 lines before touch repair) composes navigation,
+keyboard/pointer/touch recognition, notices and display. A future input change
+should extract gesture recognition into a focused hook, retaining native-scroll
+browser regressions. This repair only separates pointer and touch cancellation;
+no broader refactor is needed for the confirmed behavior.
+
 ## 2026-09-06 — Viewer release boundaries
 
 MinimalGraph remains a >2,000-line controller combining graph projection,
