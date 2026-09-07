@@ -1,5 +1,32 @@
 # WORKLOG
 
+## 2026-09-07 — Bounded source scrutiny for abstraction memberships
+
+- Added membership_review.py plus six behavioral tests. Each proposed child
+  membership is inspected across all of that child's source, using the existing
+  lossless Unicode span planner. The budget wrapper includes the actual proposal,
+  child context and source page, rather than measuring source alone. No canonical
+  utterance splitting, source omission or graph persistence occurs here.
+- Page results distinguish supports/contradicts/uncertain/unrelated, retain
+  rationale and exact backend-attached source evidence, and explicitly remain
+  proposal_reconciliation_required. A page cannot finalize membership because
+  later source can qualify or contradict it. Missing acknowledgements, foreign
+  IDs and unsupported positive/negative judgments reject. Twenty-two combined
+  membership/proposal/source-planning tests pass.
+- Offline public candidate audit of the largest source-bearing child at each
+  level: L1 3,122 characters -> 1 request; L2 10,139 -> 3; L3 17,719 -> 4;
+  L4 25,316 -> 6. Missing characters zero in all four. Max full input measurements
+  20,065 / 28,098 / 28,154 / 28,142 byte units respectively, plus 4,608 reserved
+  within 32,768. Legacy candidate provenance_utterance_ids were projected only
+  in memory for this audit; no artifact/database correction or inference.
+- Remaining: execute/checkpoint page judgments, reconcile disagreements and
+  synthesize verified parents, preserve canonical source unions, integrate with
+  tier commits. These pure helpers are not a completed production aggregator.
+- Public inspection session 10056 returned page 3 in 240.89s, committed and
+  requested page 4. A later poll confirmed the handle remains live with no new
+  output. Do not restart solely for silence; no new published artifact.
+
+
 ## 2026-09-07 — Complete overview for bounded abstraction proposals
 
 - Added abstraction_proposals.py as the first stage of bounded higher-tier
