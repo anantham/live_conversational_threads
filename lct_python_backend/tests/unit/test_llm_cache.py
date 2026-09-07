@@ -92,7 +92,8 @@ def test_stats_reports_entries():
     assert s["entries"] == 1 and s["enabled"] is True
 
 
-def test_old_fragment_cache_is_bypassed_and_truncated_response_is_not_cached(monkeypatch):
+@pytest.mark.parametrize('finish_reason', [None, 'length'])
+def test_old_fragment_cache_is_bypassed_and_truncated_response_is_not_cached(monkeypatch, finish_reason):
     """A parser revision must neither reuse nor create inner-fragment successes."""
     import httpx
     from lct_python_backend.services.local_llm_client import chat_with_provider_fallback_sync
@@ -106,10 +107,10 @@ def test_old_fragment_cache_is_bypassed_and_truncated_response_is_not_cached(mon
         def post(self, url, **kwargs):
             sent.append(url)
             return httpx.Response(200, request=httpx.Request('POST', url), json={
-                'model': 'gemma4:latest', 'choices': [{'message': {
-                    'content': '{"reviewed_span_ids":["s1"],"observations":['}}]})
+                'model': 'gemma4:latest', 'choices': [{'finish_reason': finish_reason, 'message': {
+                    'content': '{"valid":true}' if finish_reason else '{"reviewed_span_ids":["s1"],"observations":['}}]})
     monkeypatch.setattr('lct_python_backend.services.local_llm_client.httpx.Client', Client)
-    with pytest.raises(RuntimeError, match='JSON parse error'):
+    with pytest.raises(RuntimeError, match='Incomplete structured completion' if finish_reason else 'JSON parse error'):
         chat_with_provider_fallback_sync(_MSGS,
             providers=[{'id': 'synthetic', 'model': 'gemma4:latest', 'base_url': 'http://127.0.0.1:11434'}],
             **{k: v for k, v in _ARGS.items() if k != 'models'})

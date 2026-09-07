@@ -14,6 +14,7 @@ from lct_python_backend.services.llm_config import (
     get_default_providers,
 )
 from lct_python_backend.services.egress_guard import assert_local_egress
+from lct_python_backend.services.structured_completion import check_structured_completion
 
 logger = logging.getLogger("lct_backend")
 
@@ -189,6 +190,15 @@ def extract_json_from_text(text: str) -> Any:
         return decoded
 
     raise json.JSONDecodeError("No JSON object found", normalized, 0)
+
+
+def extract_structured_completion(content, response, output_limit):
+    metadata = check_structured_completion(response, output_limit=output_limit)
+    try:
+        return extract_json_from_text(content)
+    except json.JSONDecodeError as exc:
+        detail = ' '.join(f'{key}={value}' for key, value in metadata.items())
+        raise json.JSONDecodeError(f'{exc.msg}; {detail}', exc.doc, exc.pos) from exc
 
 
 def get_local_client(config: Optional[Dict[str, Any]] = None) -> "LocalLLMClient":
@@ -564,7 +574,7 @@ async def chat_with_provider_fallback(
                     content = _msg.get("reasoning") or _msg.get("thinking") or ""
 
                 if require_json:
-                    data = extract_json_from_text(content)
+                    data = extract_structured_completion(content, result_json, max_tokens)
                 else:
                     data = content
 
@@ -682,7 +692,7 @@ def chat_with_provider_fallback_sync(
         _key = _cache.cache_key(
             messages, temperature=temperature, max_tokens=max_tokens,
             require_json=require_json, prompt_name=prompt_name,
-            prompt_version=f"{prompt_version or ''}:json-container-v2" if require_json else prompt_version,
+            prompt_version=f"{prompt_version or ''}:json-completion-v3" if require_json else prompt_version,
             models=[str(p.get("model", "")) for p in enabled_providers],
         )
         _hit = None if skip_cache_read else _cache.get(_key)
@@ -810,7 +820,7 @@ def chat_with_provider_fallback_sync(
                     content = _msg.get("reasoning") or _msg.get("thinking") or ""
 
                 if require_json:
-                    data = extract_json_from_text(content)
+                    data = extract_structured_completion(content, result_json, max_tokens)
                 else:
                     data = content
 

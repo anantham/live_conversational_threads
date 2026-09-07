@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Check structured completion metadata before parsing/cache
+
+- Added structured_completion.py with sanitized finish reason, numeric token
+  usage and configured output limit. Length/max_tokens, filtering and tool-call
+  terminations reject structured results even if content happens to be valid
+  JSON. Unreported metadata remains explicitly unreported, not inferred as stop.
+- Sync and async fallback transports check this before parsing. Parse errors now
+  include safe completion metadata, not source text. JSON cache namespace v3
+  excludes earlier successes whose completion status was unchecked. No cache
+  purge, private data disclosure, routing or output budget change.
+- Thirty-one parser/cache/metadata tests pass, including unknown metadata
+  sanitization and a fake HTTP response whose valid JSON is marked length-limited:
+  it rejects and creates no cache entry. No test uses a real remote provider.
+- Resumed authorized public replay as session 40712, verified all original
+  sources, recovered six pages and requested page index 6. This is a bounded
+  diagnostic to distinguish completion-limit truncation from malformed JSON,
+  not an assertion that truncation is already proven. Poll the same live handle.
+
+
 ## 2026-09-08 — Durable all-reviews membership decisions
 
 - MembershipReviewRunner.run_decisions now recovers the complete source reviews,
