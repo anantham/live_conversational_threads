@@ -1,5 +1,20 @@
 # WORKLOG
 
+## 2026-09-08 — Atomic-claim verifier experiment and lexical checks
+
+- Added --atomic mode to the public diagnostic: same exact source/request,
+  distinct verification prompt/policy, one local model call. Session 13714 is
+  active; no outcome yet. The original general-verifier result is preserved.
+- Added atomic_evidence_audit with four passing synthetic tests: rejects a quote
+  assigned to the preceding source span, reports expanded evidence outside the
+  originally selected citation (including uncited words in the same span), and
+  rejects omitted observations. Both semantic entailment and complete atomic
+  claim coverage explicitly remain unverified.
+- Diagnostic integration writes raw model output before lexical audit, so a
+  rejected verifier response remains available for examination rather than lost.
+  The already-running session began before that integration edit; audit its
+  saved response explicitly when it finishes.
+
 ## 2026-09-08 — Local verifier repairs attribution but misses entailment gap
 
 - Session 3965 completed. Structural audit: all 3 selected observation IDs once,
