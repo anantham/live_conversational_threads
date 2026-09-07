@@ -13,8 +13,10 @@ The shared import path must run question review, not require a manual second tas
 Fresh interpretation revisions retain old reviews and recover the new review independently.
 Explicit review export must omit superseded content and reject a different owner.
 Revoked consent must reject a captured review even when a receipt already exists.
+Question checkpoints must reject an incorrect slot before saving a duplicate review.
 """
 import json
+import copy
 import os
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -210,6 +212,16 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         async with sessions.begin() as db:
             basis = await runner.capture(db)
         request = attributed_question_request(basis, 'borrowing', runner.envelope)
+        for invalid_index in (-1, 1, True):
+            async with sessions.begin() as db:
+                with pytest.raises(JournalConflict, match='question index'):
+                    await runner.checkpoint(db, basis, invalid_index, request,
+                                            reviewed['receipts'][0]['response'])
+        altered = copy.deepcopy(request)
+        altered['sources'][0]['utterances'][0][-1] = 'invented-speaker'
+        async with sessions.begin() as db:
+            with pytest.raises(JournalConflict, match='canonical question'):
+                await runner.checkpoint(db, basis, 0, altered, reviewed['receipts'][0]['response'])
         async with sessions.begin() as db:
             await db.execute(update(Node).where(Node.conversation_id == cid, Node.level == 1)
                              .values(summary='A human corrected the interpretation.'))

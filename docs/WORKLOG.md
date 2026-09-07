@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Bind question review checkpoints to canonical question slots
+
+- Prior goal turn was progress (15a2f83 pushed); current checkout was clean.
+  Inspected the live planner: it still folds provisional question events rather
+  than consuming reviewed state. That integration remains unfinished, including
+  handling new events against a revised status without rewriting the source ledger.
+- Before using those reviews as live memory, tested the checkpoint hypothesis:
+  a caller-controlled stage index could save a duplicate review for the same
+  question/basis/policy. The isolated PostgreSQL regression failed as predicted:
+  index -1 did not raise and reached persistence. Confidence in this narrow cause
+  is high; no claim of production corruption is made.
+- QuestionReviewRunner.checkpoint now derives sorted question identities from
+  the locked current basis, rejects out-of-range/non-integer (including bool)
+  indices, rebuilds the attributed request for that slot, and requires equality
+  before lookup or persistence. Wrong question/source/speaker content cannot be
+  accepted merely because a supplied request hashes consistently.
+- Synthetic integration attacks cover indices -1, 1 and True plus altered source
+  speaker attribution. Question review/projection/shared import suite: 20 passed.
+  Existing revision, consent, export and restart contracts still pass. No real
+  transcript, historical receipt, deployment checkout or production state changed.
+  Runner remains under 150 lines; no decomposition needed for this scoped check.
+
 ## 2026-09-08 — Public probe completed; measured token parity
 
 - Revalidated clean task head 59a774f before resuming. The preceding user-facing

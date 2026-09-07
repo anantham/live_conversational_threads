@@ -61,6 +61,12 @@ class QuestionReviewRunner:
         current = await self.capture(db, lock=True)
         if current != basis:
             raise JournalConflict('Question source or interpretation changed during review')
+        question_ids = sorted(fold_question_memory(current['state']['nodes'], current['state']['chunks']))
+        if type(index) is not int or not 0 <= index < len(question_ids):
+            raise JournalConflict('Invalid question index for captured source revision')
+        expected = attributed_question_request(current, question_ids[index], self.envelope)
+        if request != expected:
+            raise JournalConflict('Review request differs from canonical question at this index')
         cid = uuid.UUID(self.scope['conversation_id'])
         identity = {'basis_hash': _hash(basis), 'request_hash': _hash(request),
                     'policy_fingerprint': self.envelope.fingerprint}
