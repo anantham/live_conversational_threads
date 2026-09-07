@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — First-page semantic audit, not just quote validity
+
+- Read the full public page-0 source and its 11 saved observations. Recorded
+  findings in docs/plans/2026-09-08-public-inspection-quality-audit.md: blended
+  speaker contributions, unmarked source tension, selected evidence narrower
+  than a claim, and suspected mixed-speaker source segmentation. Audio has not
+  been checked, so no canonical source correction or human identity claim made.
+- This page used the older full-page request, not the newer subdivisions.
+  Findings cannot establish whole-artifact quality or assess partition effects.
+- The evidence changes acceptance: source-grounded prose must be checked for
+  atomic attribution and entailment in addition to exact quote provenance.
+  Local/frontier runs must share the same source revision and uncertainty.
+- Replay session 84674 is still active, most recently requesting page 12 part 1.
+
 ## 2026-09-08 — Public replay checkpoint coverage audit
 
 - Read-only isolated-DB audit planned 17 pages under the exact replay envelope.
