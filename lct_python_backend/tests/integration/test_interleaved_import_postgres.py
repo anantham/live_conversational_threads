@@ -3,6 +3,8 @@
 Only the provider transport/configuration is doubled. Exercise real passage
 processing, source journal, runtime factory, aggregation and .threads export.
 Restart must neither regenerate nodes nor replace prior canonical rows.
+Abstraction must execute proposal, source review, membership decision and parent
+synthesis at every tier before its canonical commit; summaries alone are not enough.
 """
 import json
 import os
@@ -42,6 +44,7 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch):
     monkeypatch.setattr(llm_config, "load_llm_config", AsyncMock(return_value={"mode": "local"}))
     monkeypatch.setattr(llm_config, "load_llm_providers", AsyncMock(return_value={"providers": [local, cloud]}))
     calls = []
+    stages = []
     class Result:
         def __init__(self, data):
             self.data = data
@@ -50,18 +53,34 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch):
     def provider_call(**kwargs):
         assert [p["id"] for p in kwargs["providers"]] == ["local"]
         request = json.loads(kwargs["messages"][1]["content"])
-        level = request.get("target_level", 1)
-        calls.append(level)
-        if level == 1:
+        if 'current_passage' in request:
+            calls.append(1)
+            stages.append('moment')
             assert request["current_passage"] == f"[SPEAKER_00]: {text}"
             return Result({"nodes": [{"node_name": "Borrowing remains undecided", "summary": text,
                 "semantic_level": 1, "source_excerpt": text, "thread_id": "borrowing",
                 "thread_label": "Shared key borrowing", "thread_state": "new_thread"}]})
-        assert request["sources"][0]["text"] == text
-        return Result({"nodes": [{"node_name": "Unresolved borrowing policy", "summary": text,
-            "children_ids": [child["id"] for child in request["children"]],
-            "membership_evidence": [{"child_id": child["id"], "utterance_id": str(uid), "quote": text}
-                                    for child in request["children"]]}]})
+        if request.get('status') == 'proposal_only':
+            calls.append(request['target_level'])
+            stages.append('proposal')
+            return Result({'groups': [{'label': 'Borrowing inquiry', 'rationale': 'Unresolved borrowing policy.',
+                                      'children_ids': [c['id'] for c in request['children']]}]})
+        if 'source_page' in request:
+            stages.append('review')
+            spans = request['source_page']['spans']
+            assert spans[0]['text'] == text
+            ids = [s['span_id'] for s in spans]
+            return Result({'reviewed_span_ids': ids, 'judgment': 'supports',
+                           'rationale': 'Evidence concerns the unresolved inquiry.', 'evidence_span_ids': ids})
+        if 'reviews' in request:
+            stages.append('decision')
+            return Result({'decision': 'accept', 'rationale': 'Same inquiry.', 'qualifications': 'Still unresolved.',
+                'reviewed_ids': [r['review_id'] for r in request['reviews']],
+                'evidence_ids': [e['evidence_id'] for r in request['reviews'] for e in r['evidence']]})
+        stages.append('parent')
+        return Result({'node_name': 'Unresolved borrowing policy', 'summary': text,
+            'memberships': [{'child_id': m['child']['id'], 'evidence_ids': [m['evidence'][0]['evidence_id']]}
+                            for m in request['members']]})
     monkeypatch.setattr("lct_python_backend.services.transcript.inference_envelope.chat_with_provider_fallback_sync", provider_call)
     config = InterleavedRuntimeConfig(session_factory=sessions,
         context_limits={"local": 32768, "cloud": 32768}, embedding_provider_ids=("local",))
@@ -79,6 +98,7 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch):
         assert result["node_count"] == result["auditable_node_count"] == 5
         assert result["pipeline_status"] == "reconciliation_pending"
         assert calls == [1, 2, 3, 4, 5]
+        assert stages == ['moment'] + ['proposal', 'review', 'decision', 'parent'] * 4
         from lct_python_backend.share_api import export_threads
         async with sessions() as db:
             first = json.loads((await export_threads(str(cid), db=db)).body)
@@ -90,6 +110,7 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch):
                                                            interleaved_runtime=config)
         assert retried == result
         assert calls == [1, 2, 3, 4, 5]
+        assert len(stages) == 17
         async with sessions() as db:
             second = json.loads((await export_threads(str(cid), db=db)).body)
         assert second["graph_data"] == first["graph_data"]

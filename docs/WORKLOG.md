@@ -1,5 +1,29 @@
 # WORKLOG
 
+## 2026-09-08 — Automatic proposals compose the opt-in import hierarchy
+
+- Added BoundedAggregationRunner: complete overview -> checkpointed model grouping
+  proposal -> source reviews -> membership decisions -> parent synthesis -> atomic
+  canonical tier commit. Rejected/uncertain memberships raise the explicit
+  AbstractionNeedsRevision outcome, never become forced parents. Proposal revision
+  remains a follow-up requirement; retries currently retain the original proposal.
+- InterleavedRuntimeConfig.build_aggregation now selects this composition for
+  the already-experimental opt-in import path. Legacy/default entry points are
+  not activated. All stages retain frozen local/provider capacity and consent
+  boundaries, and fail on oversized complete packets rather than omitting evidence.
+- Actual full import integration fixture now exercises moment extraction plus
+  proposal/review/decision/parent generation for each of tiers 2-5 (17 synthetic
+  transport responses total), then .threads export and no-call restart. All five
+  canonical tiers and original source/speaker survive. Initial focused import
+  and runtime-factory run: eight tests passed.
+- Combined automatic proposal/membership/synthesis/import regression suite:
+  nineteen tests passed. No full-repository CI or real-model semantic result is
+  implied by these isolated synthetic fixtures.
+- Public session 84674 completed page 6 partitions 0/1 in 148.33s/108.03s and
+  requested partition 2. Those completed subdivisions are checkpointed. This is
+  actual progress past output pressure, not yet a complete page/run quality claim.
+
+
 ## 2026-09-08 — Resumable source-page subdivisions for output pressure
 
 - SourceInspectionRunner now defaults to at most 32 original source spans per

@@ -46,7 +46,7 @@ class InterleavedRuntimeConfig:
         filters the caller's already-narrowed providers: external_llm_ok=False
         excludes every external route, and missing consent fails closed.
         """
-        from .aggregation_runner import AggregationRunner
+        from .bounded_aggregation_runner import BoundedAggregationRunner
         uuid.UUID(conversation_id)
         if not isinstance(owner_id, str) or not owner_id.strip() or self.session_factory is None:
             raise ValueError("Owner and durable session factory are required")
@@ -59,7 +59,7 @@ class InterleavedRuntimeConfig:
             providers=chat, privacy=privacy, output_tokens=self.budgets.output_tokens,
             headroom_tokens=self.budgets.headroom_tokens,
         )
-        return AggregationRunner(session_factory=self.session_factory, conversation_id=conversation_id,
+        return BoundedAggregationRunner(session_factory=self.session_factory, conversation_id=conversation_id,
                                  owner_id=owner_id, envelope=envelope)
 
     def build(self, *, providers, **kwargs):
