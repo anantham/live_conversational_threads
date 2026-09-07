@@ -32,8 +32,7 @@ def attach_question_evidence(nodes, passage, fragments=None):
             start = min(lines[i]['start'] for i in ids)
             end = max(lines[i]['end'] for i in ids)
             update['evidence_quote'] = passage[start:end]
-            preferences = node.setdefault('display_preferences', {})
-            preferences.setdefault('question_evidence_selections', []).append({
+            node.setdefault('question_evidence_selections', []).append({
                 'question_id': update.get('question_id'), 'action': update.get('action'),
                 'line_ids': ids, 'start': start, 'end': end, 'includes_intervening_context': True})
     return output

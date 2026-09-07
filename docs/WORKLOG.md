@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Persist question-selection audit and resume public replay
+
+- Extended the real PostgreSQL import/export/restart contract with model-selected
+  question lines. It reproduced a missing question_evidence_selections field:
+  nested display preferences were not part of graph persistence's allowlist.
+- Keep the audit top-level in the processing graph and explicitly round-trip
+  it through canonical display preferences and the conversation reader. Exact
+  quotes, source line IDs and covering offsets now survive export and restart.
+- Nine selected synthetic integration/unit tests pass. Existing large-file
+  persistence decomposition debt remains; this change only extends its evidence
+  allowlist, not its orchestration responsibilities.
+- Public replay session 26316 started with exact source SHA verification:
+  1,263 utterances, 17 completed inspection pages, 313 observations, pinned
+  local chat/embedding models. It is running, not yet a completed candidate;
+  no publication or deployment has occurred.
+
 ## 2026-09-08 — Question source selection and raw-fragment preservation
 
 - Added current-source line references to interleaved context and prompt. The

@@ -1107,6 +1107,7 @@ async def persist_graph(
                 # stage; storing a citation is not semantic verification.
                 **{key: copy.deepcopy(item[key]) for key in (
                     "membership_evidence", "thread_ids", "attribution_review_required", "source_attributions",
+                    "question_evidence_selections",
                 ) if key in item},
                 "argument_role": coerce_str(
                     item.get("argument_role") or item.get("claim_type")

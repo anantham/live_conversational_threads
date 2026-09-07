@@ -6,6 +6,7 @@ Restart must neither regenerate nodes nor replace prior canonical rows.
 Abstraction must execute proposal, source review, membership decision and parent
 synthesis at every tier before its canonical commit; summaries alone are not enough.
 Source inspection and relation review must run through the actual import entrypoint.
+Question source selections and their exact quotes must survive export and restart.
 """
 import json
 import os
@@ -68,7 +69,10 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
             assert request["current_passage"] == f"[SPEAKER_00]: {text}"
             return Result({"nodes": [{"node_name": "Borrowing remains undecided", "summary": text,
                 "semantic_level": 1, "source_excerpt": text, "thread_id": "borrowing",
-                "thread_label": "Shared key borrowing", "thread_state": "new_thread"}]})
+                "thread_label": "Shared key borrowing", "thread_state": "new_thread",
+                "question_updates": [{"question_id": "borrowing", "action": "open",
+                    "wording": "Who may borrow?", "rationale": "Explicitly undecided",
+                    "evidence_line_ids": ["line-0"]}]}]})
         if request.get('status') == 'proposal_only':
             calls.append(request['target_level'])
             stages.append('proposal')
@@ -140,6 +144,10 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         assert sorted(node["semantic_level"] for node in first["graph_data"]) == [1, 2, 3, 4, 5]
         assert first["utterances"][0]["text"] == text
         assert first["utterances"][0]["speaker_id"] == "SPEAKER_00"
+        leaf = next(n for n in first['graph_data'] if n['semantic_level'] == 1)
+        assert leaf['question_updates'][0]['evidence_quote'] == text
+        assert leaf['question_evidence_selections'][0]['line_ids'] == ['line-0']
+        assert leaf['question_evidence_selections'][0]['end'] == len(text)
         async with sessions() as db:
             retried = await extract_graph_for_conversation(db, conversation_id=str(cid), owner_id=owner,
                                                            interleaved_runtime=config)

@@ -431,6 +431,7 @@ def build_graph_data_from_nodes(
             "question_updates": display_preferences.get("question_updates", []),
             **{key: copy.deepcopy(display_preferences[key]) for key in (
                 "membership_evidence", "thread_ids", "attribution_review_required", "source_attributions",
+                "question_evidence_selections",
             ) if key in display_preferences},
             # Argument-map role (claim | evidence | question | assumption) —
             # persisted in display_preferences (no column); feeds the frontend
