@@ -8,6 +8,7 @@ synthesis at every tier before its canonical commit; summaries alone are not eno
 Source inspection and relation review must run through the actual import entrypoint.
 Question source selections and their exact quotes must survive export and restart.
 Question review must retain speaker-labelled source and recover without another call.
+Its review-qualified projection must reproduce from persisted receipts on restart.
 Revoked consent must reject a captured review even when a receipt already exists.
 """
 import json
@@ -179,6 +180,9 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         reviewed = await runner.run()
         assert reviewed['accepted_for_projection'] is False
         assert len(reviewed['receipts']) == 1
+        assert reviewed['projections'][0]['reviewed_status'] == 'open'
+        assert reviewed['projections'][0]['events'][1]['original']['action'] == 'clarify'
+        assert reviewed['projections'][0]['verification'] == 'model_reviewed_not_human_verified'
         assert await runner.run() == reviewed
         assert len(question_reviews) == 1
         async with sessions() as db:

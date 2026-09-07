@@ -10,6 +10,7 @@ from .passage_projection import load_interpretation_projection
 from .source_inspection_runner import capture_inspection, check_inference_consent
 from .question_memory import fold_question_memory
 from .question_review import build_question_review, validate_question_review, QUESTION_REVIEW_PROMPT
+from .question_review_projection import project_question_review
 
 STAGE = 'conversation_question_review_v1'
 
@@ -105,4 +106,6 @@ class QuestionReviewRunner:
                 async with self.sessions.begin() as db:
                     saved = await self.checkpoint(db, basis, index, request, response)
             receipts.append(saved)
-        return {'receipts': receipts, 'accepted_for_projection': False}
+        return {'receipts': receipts,
+                'projections': [project_question_review(saved['request'], saved['review']) for saved in receipts],
+                'accepted_for_projection': False}

@@ -1,5 +1,22 @@
 # WORKLOG
 
+## 2026-09-08 — Review-qualified question state without ledger replacement
+
+- Added question_review_projection.py: revalidate request/review binding before
+  deriving current reviewed state. Retain provisional status and every original
+  event beside its assessment, sources, rationale and unresolved transition IDs.
+- Related asides cannot close an inquiry. Uncertain assessments stay visible;
+  partial answers after reviewed closure are marked uncertain rather than
+  silently reopening. Explicit reopening remains an explicit transition.
+- QuestionReviewRunner returns these projections reconstructed from its durable
+  validated receipts. No source/node mutation or human-verification claim.
+  accepted_for_projection remains false; publication/application is not wired yet.
+- Twenty unit and isolated PostgreSQL integration tests pass, including immutable
+  source/history, tampered binding rejection and identical recovery without a
+  second model call. The public diagnostic replay remains live (session 50729).
+- Pending: connect review-qualified memory to revision-safe pipeline/export,
+  bounded long-history review, tokenizer dependency approval and fair rerun.
+
 ## 2026-09-08 — Preserve custom-tokenizer transport policy
 
 - Traced the real sync client: it sends reasoning_effort=none by default, unlike
