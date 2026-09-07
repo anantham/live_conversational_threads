@@ -1,5 +1,32 @@
 # ISSUES
 
+## 2026-09-07 — Native mobile swipes cancelled (repaired locally)
+
+- Public viewer touch input starts on the article but receives pointercancel,
+  leaving horizontal navigation inert. A browser-only touch-pan-y rule on the
+  article restores it; the existing wrapper rule alone is insufficient.
+- Vertical short-card swipes also fail because pointercancel clears the separate
+  touch gesture before touchend. Long-card native reading scroll already works.
+- Scoped repair: apply the pan rule to both card scroll containers; retain touch
+  state on pointercancel and clear it on actual touchcancel. Browser regressions
+  exercise native horizontal/vertical gestures, long text and touch controls.
+- Existing synthetic gesture tests missed native cancellation. Physical Android
+  remains unavailable; browser touch emulation is not physical-device evidence.
+
+## 2026-09-07 — Meet import metadata does not reach extraction privacy gate
+
+- Confirmed in isolated podcast benchmark: `persist_transcript` constructs a
+  Conversation with `metadata=`, while `extract_graph_for_conversation` reads
+  `source_metadata.privacy`. Passing explicit local consent through the import
+  metadata argument therefore still fails closed before inference.
+- Scope: production import/extract integration, not local-model quality. No
+  privacy guard was weakened; benchmark explicitly supplied source_metadata in
+  its isolated database. Not blocking the published standalone artifact.
+- Next step: reproduce through the HTTP Meet import/extract endpoints, preserve
+  owner resolution and explicit consent, and test metadata persistence and
+  fail-closed behavior before implementing a production repair.
+
+
 ## 2026-09-06 — Public viewer independent review findings (REPAIRED LOCALLY)
 
 Claude Sonnet 5 reviewed implementation 7ca2608 and returned two P3 findings;
