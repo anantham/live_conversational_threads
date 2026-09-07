@@ -63,7 +63,8 @@ def inspection_index(snapshot, receipts):
 
 
 async def plan_inspection_context(snapshot, receipts, *, focal_id, available_through_sequence,
-                                  envelope, retriever, max_candidates=8, excerpt_characters=400):
+                                  envelope, retriever, max_candidates=8, excerpt_characters=400,
+                                  request_guard=None):
     """Rank across all eligible pages, then pack cited raw context under budget.
 
 This does not generate relationships. Retrieval scores are not evidence that
@@ -114,7 +115,8 @@ interpret and validate proposed links against supplied sources.
         return json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
 
     envelope.validate(render())  # Oversized focal evidence fails before embedding.
-    scores = await retriever.rank(document(focal), {identity: document(value) for identity, value in candidates.items()})
+    guard_args = {'request_guard': request_guard} if request_guard is not None else {}
+    scores = await retriever.rank(document(focal), {identity: document(value) for identity, value in candidates.items()}, **guard_args)
     if (not isinstance(scores, dict) or any(identity not in candidates or type(score) not in (int, float)
             or not math.isfinite(score) for identity, score in scores.items())):
         raise ValueError('Retriever returned invalid observation candidates')

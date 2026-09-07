@@ -12,15 +12,14 @@ the warning or infer failed embeddings from this secondary persistence failure.
 
 ## 2026-09-07 — Refresh consent during long inference jobs (OPEN; rollout gate)
 
-`AggregationRunner` currently uses its frozen admission envelope for all four
-tiers without rereading stored conversation consent between requests. Initial
-privacy filtering is not proof that later revocation is respected. The new
-`SourceInspectionRunner` rereads owner-bound stored consent before every page
-and commit; a real-DB test revokes consent during a provider call and verifies
-that its returned result is not persisted. An in-flight request already sent
-cannot be recalled by a database update. Carry this invariant into aggregation
-and audit shared live/import scheduling before activation. This is a rollout
-blocker, not a reason to stop the approved implementation work.
+SourceInspectionRunner and AggregationRunner now reread owner-bound stored
+consent before requests and result commits. Real-DB tests revoke consent during
+generation and verify that returned output is not persisted. Reconciliation
+retrieval also checks consent before and after every embedding sub-batch; a
+regression proves revocation stops later batches without publishing partial
+cache results. An in-flight request already sent cannot be recalled by a
+database update. Shared live/passage scheduling still needs the same audit
+before activation. This remaining rollout gate does not block implementation.
 
 ## 2026-09-07 — Interleaved conversation context (OPEN; experimental foundation)
 

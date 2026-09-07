@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-07 — Fresh consent for aggregation and embedding sub-batches
+
+- AggregationRunner now uses the shared owner-bound stored-consent check before
+  source capture, recovery/generation admission and result commit. A real-DB
+  parameterized regression revokes consent during L3 generation, verifies only
+  saved L1/L2 remain, verifies no further requests while revoked, then restores
+  only the synthetic fixture's consent and completes without regenerating L2.
+- SemanticCandidates accepts a per-operation async request guard, invoked
+  before and after every embedding sub-batch. The reconciliation context/runner
+  supplies a fresh stored-consent guard. Revocation after a batch prevents later
+  batches and prevents partial vectors from becoming the published cache. The
+  callback changes no provider route or budget, and direct callers retain their
+  existing behavior unless they supply it; live/passage callers still need audit.
+- Validation: 25 focused tests passed, including real isolated-Postgres complete
+  import and reconciliation-loop regressions, both aggregation recovery cases,
+  source context and semantic retrieval. Existing asyncio teardown warnings
+  remain. git diff --check passed. No private replay, external inference, main
+  merge, deployment or claim of completed large-input aggregation.
+
 ## 2026-09-07 — Canonical relation integration and complete internal review loop
 
 - Decoupled inspection from aggregation/graph snapshots. Raw inspection now

@@ -65,15 +65,15 @@ class SemanticCandidates:
         """Frozen content recipients for fresh stored-consent checks."""
         return [copy.deepcopy(self._provider)]
 
-    async def rank(self, current_passage, source_chunks):
+    async def rank(self, current_passage, source_chunks, *, request_guard=None):
         # This instance belongs to one processor/conversation. Snapshot before
         # awaiting and serialize updates so failures cannot partially publish
         # a cache generation. Store hashes/vectors, not another copy of source.
         chunks = dict(source_chunks)
         async with self._lock:
-            return await self._rank(current_passage, chunks)
+            return await self._rank(current_passage, chunks, request_guard=request_guard)
 
-    async def _rank(self, current_passage, source_chunks):
+    async def _rank(self, current_passage, source_chunks, *, request_guard=None):
         if not source_chunks:
             self._cache.clear()
             return {}
@@ -100,7 +100,11 @@ class SemanticCandidates:
             batches.append(batch)
         vectors = []
         for batch in batches:
+            if request_guard is not None:
+                await request_guard()
             result = await self._embed_batch(batch, providers=[copy.deepcopy(self._provider)])
+            if request_guard is not None:
+                await request_guard()
             vectors.extend(normalized_vectors(result, len(batch)))
         vectors = normalized_vectors(vectors, len(texts))
         query = vectors[-1]

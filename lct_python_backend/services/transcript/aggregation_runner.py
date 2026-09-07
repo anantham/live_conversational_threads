@@ -7,6 +7,7 @@ import asyncio
 import json
 
 from .aggregation_checkpoint import capture_aggregation, commit_aggregation
+from .source_inspection_runner import check_inference_consent
 
 
 class AggregationRunner:
@@ -18,10 +19,12 @@ class AggregationRunner:
 
     async def run_level(self, target_level):
         scope = {"conversation_id": self.conversation_id, "owner_id": self.owner_id}
-        async with self.sessions() as db:
+        async with self.sessions.begin() as db:
+            await check_inference_consent(db, **scope, providers=self.envelope.providers)
             snapshot = await capture_aggregation(db, **scope, target_level=target_level)
         commit_args = {**scope, "snapshot": snapshot, "policy_fingerprint": self.envelope.fingerprint}
         async with self.sessions.begin() as db:
+            await check_inference_consent(db, **scope, providers=self.envelope.providers)
             saved = await commit_aggregation(db, **commit_args, payload=None)
         if saved is not None:
             return saved
@@ -29,6 +32,7 @@ class AggregationRunner:
         prompt = json.dumps(snapshot["request"], ensure_ascii=False, separators=(",", ":"))
         result = await asyncio.to_thread(self.envelope.complete_json, prompt)
         async with self.sessions.begin() as db:
+            await check_inference_consent(db, **scope, providers=self.envelope.providers)
             saved = await commit_aggregation(db, **commit_args, payload=result.data)
         return saved
 

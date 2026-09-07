@@ -34,6 +34,10 @@ class ReconciliationRunner:
             'inspection': inspection_envelope.fingerprint, 'retrieval': retriever.fingerprint,
             'max_candidates': max_candidates, 'excerpt_characters': excerpt_characters})
 
+    async def check_retrieval_consent(self):
+        async with self.sessions.begin() as db:
+            await check_inference_consent(db, conversation_id=self.cid, owner_id=self.owner, providers=self.providers)
+
     async def run(self):
         scope = {'conversation_id': self.cid, 'owner_id': self.owner}
         # Check every eventual recipient before starting a potentially long scan.
@@ -69,7 +73,8 @@ class ReconciliationRunner:
             if saved is None:
                 prompt = await plan_inspection_context(source, inspection['receipts'], focal_id=focal_id,
                     available_through_sequence=watermark, envelope=self.envelope, retriever=self.retriever,
-                    max_candidates=self.max_candidates, excerpt_characters=self.excerpt_characters)
+                    max_candidates=self.max_candidates, excerpt_characters=self.excerpt_characters,
+                    request_guard=self.check_retrieval_consent)
                 context = json.loads(prompt)
                 async with self.sessions.begin() as db:
                     saved = await checkpoint_relation_review(db, **args, context=context)

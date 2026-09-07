@@ -60,6 +60,30 @@ def test_embedding_budget_checks_all_inputs_before_any_call():
     assert all(sum(len(text.encode()) for text in batch) <= 300 for batch in calls)
 
 
+def test_revocation_between_embedding_batches_stops_calls_and_discards_partial_cache():
+    """A long retrieval must not retain initial consent for all its batches."""
+    calls, allowed, revoke = [], True, True
+    async def guard():
+        if not allowed:
+            raise PermissionError('Synthetic consent revoked')
+    async def embed(texts, **kwargs):
+        nonlocal allowed
+        calls.append(list(texts))
+        if revoke:
+            allowed = False
+        return [[1., 0.] for _ in texts]
+    retriever = SemanticCandidates(providers=[PROVIDER], privacy={'local_llm_ok': True}, embed_batch=embed,
+                                   input_token_budget=200, batch_token_budget=300)
+    sources = {'a': 'a' * 180, 'b': 'b' * 180, 'c': 'c' * 180}
+    with pytest.raises(PermissionError, match='consent revoked'):
+        asyncio.run(retriever.rank('q', sources, request_guard=guard))
+    assert len(calls) == 1
+    allowed, revoke = True, False
+    scores = asyncio.run(retriever.rank('q', sources, request_guard=guard))
+    assert set(scores) == set(sources)
+    assert calls[1] == calls[0], 'Failed retrieval must not publish a partial embedding cache'
+
+
 def test_dimension_drift_against_cached_sources_fails_without_installing_bad_vectors():
     dimension = 2
     async def embed(texts, **kwargs):
