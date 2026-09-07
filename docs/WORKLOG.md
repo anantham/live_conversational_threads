@@ -1,5 +1,18 @@
 # WORKLOG
 
+## 2026-09-08 — Local verifier repairs attribution but misses entailment gap
+
+- Session 3965 completed. Structural audit: all 3 selected observation IDs once,
+  valid statuses and supplied evidence IDs; 2 supported, 1 revise. No canonical
+  writes or original-output replacement.
+- Manual check finds the attribution revision useful, but the verifier accepts
+  an incomplete selected citation and incorrectly places a continuation in the
+  preceding span. Academic-history tension remains inconclusive pending audio,
+  not a proven semantic failure. Detailed outcome recorded in the quality audit.
+- The next verification experiment must test atomic claim-to-source support;
+  a generic reviewer approval alone cannot be an acceptance gate. Results are
+  selected-case repair evidence, not unbiased accuracy or frontier comparison.
+
 ## 2026-09-08 — Local semantic verification diagnostic started
 
 - Added a public-artifact-pinned diagnostic for the three audited page-0

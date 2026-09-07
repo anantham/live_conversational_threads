@@ -62,3 +62,32 @@ Full-envelope validation passed at 32,768 conservative capacity units with
 The diagnostic is repair-oriented and selected after manual inspection, not a
 blind baseline or throughput benchmark. Its raw response requires manual source
 assessment before any result can be accepted.
+
+## Local verifier result
+
+Session 3965 completed successfully. Raw response remains gitignored at
+`tmp/public-inspection-quality/1788814825908375000.json`. All three input IDs were
+reviewed once, statuses were recognized and cited span IDs belonged to the page.
+Two were marked supported and one revise. These structural checks are not
+semantic acceptance.
+
+- **Attribution case (observation 10): useful repair.** The verifier identified
+  that the turtle detail belonged to the guest's machine label, not the host's,
+  and proposed wording that separates their contributions. The proposed wording
+  accords with the supplied source labels. Human speaker identity remains
+  dependent on unverified diarization.
+- **Degree citation case (observation 4): verifier miss.** The verifier marked
+  the observation supported and attributed the full degree discipline to span
+  14. The continuation is actually in span 15. It neither acknowledged the
+  selected-evidence gap nor added that span to its evidence. Merely asking for
+  an audit is not a sufficient claim-entailment gate.
+- **Academic-history case (observation 6): inconclusive.** The verifier accepted
+  the literal source as compatible with subject-specific difficulty. That is a
+  possible reading; the earlier manual audit identified a tension, not a proven
+  falsehood. Do not score this as a definitive model error without audio/source
+  adjudication, and do not silently correct the transcript.
+
+Next experiment should require each atomic claim's supporting source spans and
+separately report source ambiguity. Preserve both original and verifier output.
+One successful attribution repair does not establish reliable verification over
+the conversation, and these three selected cases do not yield an accuracy rate.
