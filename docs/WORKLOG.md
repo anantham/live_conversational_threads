@@ -26,6 +26,13 @@
   or semantic-quality result is claimed yet. Poll this exact handle and/or
   inspect its authoritative checkpoint rows before any retry. This is a
   diagnostic of real-source inspection, not a completed fair comparison.
+- Subsequent live poll: page index 0 returned in 178.23s, passed validation and
+  committed; the same process then requested page index 1. Saved diagnostic
+  page-0-1788808430116440000.json contains 77 acknowledged spans and 11 cited
+  observations covering the introduction, childhood/education and early
+  programming discussion. This proves first-page execution/provenance, not
+  comprehensive semantic recall or the remaining pages. Session 87755 remains
+  the running handle; do not restart it while it is live.
 
 ## 2026-09-07 — Fresh consent for aggregation and embedding sub-batches
 
