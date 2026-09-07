@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { selectYouTubeRef } from "./youtubeMedia";
+import { buildMediaSeekUrl, selectMediaRef } from "./mediaSeek";
 
 import {
   buildThreadsLibraryRecord,
@@ -28,6 +30,21 @@ const artifact = (overrides = {}) => ({
 });
 
 describe("threads artifact contract", () => {
+  // Optional unsupported media must not destroy the preexisting ability to
+  // read a valid graph. Retain metadata losslessly but never activate its URL.
+  it.each([
+    { view_url: "https://youtu.be/6HmR9IaqM88", time_unit: "seconds" },
+    { view_url: "https://www.youtube.com/watch?v=6HmR9IaqM88" },
+    { view_url: "https://evil.test/watch?v=6HmR9IaqM88", time_unit: "seconds" },
+  ])("preserves a readable artifact without enabling unsupported source metadata: %j", (fields) => {
+    const ref = { provider: "youtube", video_id: "6HmR9IaqM88", ...fields };
+    const bundle = artifact({ media_refs: [ref] });
+    expect(validateThreadsArtifact(bundle)).toBe(bundle);
+    expect(buildThreadsLibraryRecord(bundle).bundle.media_refs).toEqual([ref]);
+    expect(selectYouTubeRef(bundle)).toBeNull();
+    expect(selectMediaRef(bundle.media_refs)).toBeNull();
+    expect(buildMediaSeekUrl(ref, 10)).toBeNull();
+  });
   it("flattens flat and chunked graph data without dropping nodes", () => {
     expect(flattenThreadsGraph(artifact().graph_data)).toHaveLength(2);
     expect(

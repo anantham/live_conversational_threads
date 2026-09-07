@@ -9,8 +9,11 @@ import NodeDetail from "../components/NodeDetail";
 import TimelineRibbon from "../components/TimelineRibbon";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
 import DriveThreadsGate from "../components/threads/DriveThreadsGate";
+import PublicDriveThreadsGate from "../components/threads/PublicDriveThreadsGate";
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
 import MobileConversationDeck from "../components/threads/MobileConversationDeck";
+import YouTubeSourcePanel from "../components/threads/YouTubeSourcePanel";
+import { renameArtifactSpeaker } from "../services/youtubeMedia";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import {
@@ -30,10 +33,11 @@ import {
  * Static, LCT-backend-free viewer for a `.threads` artifact (ADR-036).
  *
  * The whole point: this renders a self-contained conversation map entirely
- * client-side. It makes ZERO LCT /api/ calls. A local file is a possession
+ * client-side. It makes no private LCT backend calls. A local file is a possession
  * capability; a Drive link instead uses recipient Google authorization solely
  * to fetch the permissioned artifact. (App.jsx exempts /view from the
  * backend-reachability gate.)
+ * Explicit &public=1 links use a credential-free public Drive relay instead.
  *
  * The data comes from a `.threads` file (drag-drop, file-picker, ?src=<url>, or
  * a recipient-authorized Google Drive fetch via ?driveFile=<file-id>).
@@ -50,6 +54,8 @@ export default function ThreadsViewer() {
   const driveFileId = typeof window === "undefined"
     ? ""
     : new URLSearchParams(location.search).get("driveFile") || "";
+  const DriveOpener = new URLSearchParams(location.search).get("public") === "1"
+    ? PublicDriveThreadsGate : DriveThreadsGate;
   const [bundle, setBundle] = useState(null);
   const [error, setError] = useState("");
   const [libraryStatus, setLibraryStatus] = useState(null);
@@ -65,6 +71,7 @@ export default function ThreadsViewer() {
   );
   const [driveRefreshRequested, setDriveRefreshRequested] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [mediaNode, setMediaNode] = useState(null);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   const [argumentTraceFrom, setArgumentTraceFrom] = useState(null);
   // The part of the conversation currently fanned into (null = whole call). Drives
@@ -97,6 +104,7 @@ export default function ThreadsViewer() {
       setBundle(validated);
       setError("");
       setSelectedNode(null);
+      setMediaNode(null);
       setMobileMapOpen(false);
       setMobileDeckState(null);
       if (remember) {
@@ -346,6 +354,14 @@ export default function ThreadsViewer() {
   }, [bundle, flatNodes]);
 
   const openLibrary = useCallback(() => navigate("/browse"), [navigate]);
+  const renameSpeaker = useCallback((speakerId, name) => {
+    const updated = renameArtifactSpeaker(bundle, speakerId, name);
+    setBundle(updated);
+    setLibraryStatus({ state: "saving", message: "Saving speaker names…" });
+    void rememberThreadsArtifact(updated).then((record) => {
+      setLibraryStatus({ state: "saved", message: "Speaker names saved on this device", recordId: record.id });
+    }).catch(() => setLibraryStatus({ state: "error", message: "Names changed here but could not be saved. Download the reviewed file." }));
+  }, [bundle]);
   const openAnother = useCallback(() => {
     setBundle(null);
     setError("");
@@ -373,7 +389,7 @@ export default function ThreadsViewer() {
   if (!bundle || driveRefreshRequested) {
     if (driveFileId) {
       return (
-        <DriveThreadsGate
+        <DriveOpener
           fileId={driveFileId}
           refreshing={driveRefreshRequested}
           onCancel={driveRefreshRequested ? () => setDriveRefreshRequested(false) : undefined}
@@ -453,6 +469,7 @@ export default function ThreadsViewer() {
         onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
         onOpenAnother={openAnother}
         onShowMap={() => setMobileMapOpen(true)}
+        onRenameSpeaker={renameSpeaker}
       />
     );
   }
@@ -473,7 +490,9 @@ export default function ThreadsViewer() {
         />
       )}
 
-      <div className="relative min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1">
+        {!compactViewer && <YouTubeSourcePanel bundle={bundle} node={selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode))} nodes={flatNodes} onRenameSpeaker={renameSpeaker} />}
+      <div className="relative min-h-0 min-w-0 flex-1">
         <MinimalGraph
           graphData={flatNodes}
           semanticEdges={bundle.edges}
@@ -486,6 +505,7 @@ export default function ThreadsViewer() {
             setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
           }}
           onFocusChange={setFocusNode}
+          onActiveNodeChange={setMediaNode}
           chromeless={viewerFocusMode}
           argumentTraceFrom={argumentTraceFrom}
           setArgumentTraceFrom={setArgumentTraceFrom}
@@ -533,6 +553,7 @@ export default function ThreadsViewer() {
             onTraceAncestors={setArgumentTraceFrom}
           />
         )}
+      </div>
       </div>
 
       {!viewerFocusMode && flatNodes.length > 0 && (

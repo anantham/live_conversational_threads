@@ -1,0 +1,23 @@
+{
+  "head": "40789f6e173fab1a3082bb16573b06aa8b51c4e8",
+  "base": "a1520cbf32931941d59a2809b0d4833b8d269695",
+  "provider": "Anthropic",
+  "model": "claude-sonnet-5",
+  "packetBytes": 102295,
+  "packetSHA256": "2373e1871a824ba4ace2f7ed0fc8cf16f3eacbe66e8efd2396c71638a32e2463",
+  "toolFree": true,
+  "permissionDenials": [],
+  "result": {
+    "findings": [
+      {
+        "severity": "low",
+        "file": "lct_app/src/services/threadsArtifact.js",
+        "line": 42,
+        "title": "Non-canonical YouTube media_ref makes the whole artifact fail validation instead of being ignored",
+        "explanation": "The new check `(data.media_refs || []).some((ref) => ref?.provider === \"youtube\" && !validYouTubeRef(ref))` throws \"Invalid YouTube source reference.\" for the entire artifact. `validYouTubeRef` requires an exact match: `view_url === \"https://www.youtube.com/watch?v=<id>\"`, an 11-char `video_id`, and `time_unit === \"seconds\"`. Before this release the viewer had no YouTube handling at all, so such a ref was simply ignored and the graph still rendered. Now any deviation (a `youtu.be` short URL, an extra query parameter, a `watch` URL with different casing/order, a missing or differently spelled `time_unit`) hard-fails `validateThreadsArtifact`, which is shared by local file open, `?src=<url>`, the authenticated Drive path, and the new public Drive path. This is a stricter, whole-artifact-fatal contract than the rest of the validator (which tolerates unknown fields) and couples artifact viability to one exact string produced only by the still-unfinished companion importer. No supported-input regression is proven (the real exported artifact and the importer's canonical output pass), so severity is low, but an adversarial reading is that invalid media metadata should be dropped/flagged while still rendering nodes/edges, rather than blocking the viewer entirely.",
+        "reproduction": "Open a local `.threads` file whose graph_data/edges are valid but whose media_refs contains `{ \"provider\": \"youtube\", \"video_id\": \"6HmR9IaqM88\", \"view_url\": \"https://youtu.be/6HmR9IaqM88\", \"time_unit\": \"seconds\" }` (or omit `time_unit`). `validateThreadsArtifact` throws \"Invalid YouTube source reference.\" and ThreadsViewer shows an error with no graph, whereas the same file minus the media_ref (or on the base commit) renders normally."
+      }
+    ],
+    "verdict": "findings"
+  }
+}

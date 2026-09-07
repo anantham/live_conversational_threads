@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import tailwindcss from "@tailwindcss/vite";
 import fs from "fs";
+import { publicDrivePlugin } from "./dev/publicDrivePlugin.js";
 
 // Backend port discovery: read from .backend-port (written by the repo launchers),
 // fall back to VITE_BACKEND_PORT env var, then default 43180.
@@ -20,7 +21,7 @@ const backendPort = resolveBackendPort();
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [publicDrivePlugin(), react(), tailwindcss()],
   // Defense-in-depth: strip console.* and debugger from production bundles.
   // App diagnostics are already gated (utils/debug.js, default OFF), but this
   // guarantees no stray console.log can leak conversation content from the

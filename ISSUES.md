@@ -1,5 +1,47 @@
 # ISSUES
 
+## 2026-09-06 — Public viewer independent review findings (REPAIRED LOCALLY)
+
+Claude Sonnet 5 reviewed implementation 7ca2608 and returned two P3 findings;
+the repository gate holds PR #191 pending re-review of the repaired head.
+
+1. `lct_app/src/services/youtubeMedia.js:65`: renaming one speaker rewrites
+   full_transcript from utterances, discarding original timestamps/formatting.
+   Confirmed with a synthetic timestamped transcript. Preserve the original
+   transcript and apply names to structured display fields; test reviewed-file
+   persistence/export without losing original source fidelity.
+2. `lct_app/src/services/youtubeMedia.js:31`: the three-hour seconds ceiling
+   suppresses genuinely bound late passages in imported .threads artifacts.
+   Confirmed: one bound utterance at 12,000s produces zero passages. Validate
+   finite nonnegative media time independently from import duration policy;
+   retain rejection of NaN/infinite/negative times and invalid intervals.
+
+Both repairs now pass regressions: source transcript bytes survive speaker
+rename and browser reviewed-file download/reopen; bound passages at 12,000s
+remain playable. Seconds retain the existing seek/label guard against epoch
+values, not an import-duration cap. No production deployment is claimed yet.
+
+## 2026-09-06 — Public viewer release checks
+
+- **Legacy camera/clustering feedback: resolved locally.** A 104-node source
+  graph alternated with 21 clusters on automatic fitView; each node replacement
+  armed another fit. Legacy detail now changes only on settled real-user zoom,
+  matching the authored-tier boundary. A synthetic browser regression failed
+  on detached nodes before the repair and passes after it.
+- **Desktop initial framing: open, non-blocking.** Wide layouts may initially
+  leave early cards outside the viewport or under the source panel. Center
+  restores a clickable start, and timeline navigation selects distant nodes.
+  Investigate static-view auto-follow and readable framing separately; do not
+  force-click off-screen cards or claim the initial camera is fixed.
+- **Node 26/jsdom private Drive unit harness: open, non-blocking.** The existing
+  googleDriveThreads happy-path test receives a jsdom Blob without .text() from
+  native Response.blob(). Native Chromium transport was checked separately.
+  Align the test runtime's Blob/Response pair; do not change product transport
+  to accommodate the mismatched harness.
+- **Frontend bundle: open, non-blocking.** Viewer release build succeeds but
+  emits the existing >500kB chunk warning. Investigate route-level splitting
+  after profiling; this release adds no dependency.
+
 Last updated: 2026-09-02
 
 ## 2026-09-02 — Pull exporter stalls and collector log amplification (LOG AMPLIFICATION RESOLVED; BACKPRESSURE OPEN)

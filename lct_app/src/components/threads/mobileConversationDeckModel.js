@@ -146,9 +146,12 @@ export function buildMobileConversationDeck(nodes, artifactUtterances = []) {
         : graphNodes.filter((node) => levelOf(node) === level).length];
     }),
   );
-  const highestLevel = [5, 4, 3, 2, 1].find((level) => counts[level] > 0) || null;
+  const highestLevel = [5, 4, 3, 2, 1].find((level) => counts[level] > 0)
+    ?? (utteranceById.size ? 0 : null);
   const rootIds = highestLevel == null
     ? []
+    : highestLevel === 0
+      ? sortIds([...utteranceById.keys()], utteranceById, utteranceOrder)
     : sortIds(
         graphNodes.filter((node) => levelOf(node) === highestLevel).map((node) => node.id),
         nodeById,
@@ -171,14 +174,14 @@ export function buildMobileConversationDeck(nodes, artifactUtterances = []) {
 export function initialMobileDeckState(model) {
   const firstId = model?.rootIds?.[0];
   return {
-    trail: firstId ? [entry("node", firstId)] : [],
+    trail: firstId ? [entry(model.highestLevel === 0 ? "utterance" : "node", firstId)] : [],
   };
 }
 
 export function initialLiveMobileDeckState(model) {
   const latestId = model?.rootIds?.[model.rootIds.length - 1];
   return {
-    trail: latestId ? [entry("node", latestId)] : [],
+    trail: latestId ? [entry(model.highestLevel === 0 ? "utterance" : "node", latestId)] : [],
     liveCursor: null,
   };
 }
@@ -191,6 +194,9 @@ function siblingsFor(model, state) {
   const current = currentEntry(state);
   if (!current) return [];
   if (current.kind === "utterance") {
+    if (state.trail.length === 1 && model.highestLevel === 0) {
+      return model.rootIds.map((id) => entry("utterance", id));
+    }
     const moment = state.trail[state.trail.length - 2];
     return (model.utterancesByMoment.get(moment?.id) || []).map((id) => entry("utterance", id));
   }
@@ -227,7 +233,7 @@ function latestTrailAtDepth(model, requestedDepth) {
   const latestRoot = model?.rootIds?.[model.rootIds.length - 1];
   if (!latestRoot) return [];
 
-  const trail = [entry("node", latestRoot)];
+  const trail = [entry(model.highestLevel === 0 ? "utterance" : "node", latestRoot)];
   const depth = Math.max(1, Number(requestedDepth) || 1);
   while (trail.length < depth) {
     const children = deeperEntries(model, trail[trail.length - 1]);

@@ -4,6 +4,7 @@ import PropTypes from "prop-types";
 import { SPEAKER_COLORS } from "../graphConstants";
 import { selectMediaRef } from "../../services/mediaSeek";
 import MobileDeckCard from "./MobileDeckCard";
+import YouTubeSourcePanel from "./YouTubeSourcePanel";
 import {
   MobileDeckHeader,
   MobileDeckLiveStatus,
@@ -51,6 +52,7 @@ export default function MobileConversationDeck({
   onOpenLibrary,
   onRefreshFromDrive,
   onShowMap,
+  onRenameSpeaker,
 }) {
   const model = useMemo(
     () => buildMobileConversationDeck(graphNodes, bundle.utterances || []),
@@ -242,6 +244,7 @@ export default function MobileConversationDeck({
         )}
 
         <main className="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+        <YouTubeSourcePanel bundle={bundle} node={snapshot.item} nodes={graphNodes} compact onRenameSpeaker={onRenameSpeaker} />
         <div className="h-5 shrink-0 px-2 text-center">
           {parentTitle && (
             <p className="truncate text-xs text-slate-400" title={parentTitle}>
@@ -345,4 +348,5 @@ MobileConversationDeck.propTypes = {
   onOpenLibrary: PropTypes.func.isRequired,
   onRefreshFromDrive: PropTypes.func,
   onShowMap: PropTypes.func.isRequired,
+  onRenameSpeaker: PropTypes.func,
 };
