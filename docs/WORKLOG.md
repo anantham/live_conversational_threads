@@ -1,5 +1,28 @@
 # WORKLOG
 
+## 2026-09-07 — Reconcile all membership page evidence
+
+- Added membership_decision.py: complete expected page reviews are required,
+  each stored review is revalidated against its exact source request, and every
+  supporting/contrary/uncertain report remains in the decision packet with exact
+  evidence. Acceptance/rejection requires known evidence IDs; uncertainty remains
+  a valid outcome. No majority vote or first-positive shortcut. Full packet is
+  budget-checked without truncation; oversized packets still need a bounded
+  evidence strategy before general activation. This is not yet a decision runner
+  or completed parent synthesis. Fifteen proposal/review/decision tests pass.
+- Session 10056 is terminal after page 6 returned in 277.94s. Parsed response is
+  a list of 79 strings, not the required object. Citation repair then raised a
+  secondary TypeError; added an explicit structural-regeneration error and test.
+  Six earlier pages remain saved; no new accepted page or public replacement.
+- Do NOT attribute the list shape conclusively to model output. Inspection of
+  local_llm_client.extract_json_from_text shows it scans every object/array start
+  after top-level JSON failure and can return a nested reviewed_span_ids array
+  from an incomplete outer response. The saved diagnostic records parsed data,
+  not raw response, so truncation is a hypothesis, not established on this run.
+  Next: reproduce this parser class with synthetic malformed outer JSON and
+  ensure strict pipeline calls reject incomplete containers before caching.
+
+
 ## 2026-09-07 — Durable bounded membership review runner
 
 - Added MembershipReviewRunner over the canonical aggregation snapshot. It

@@ -1,5 +1,16 @@
 # ISSUES
 
+## 2026-09-07 — Structured response parser may accept nested fragments (OPEN)
+
+local_llm_client.extract_json_from_text scans every `{`/`[` after top-level JSON
+parse failure. An incomplete outer response can therefore yield a valid nested
+array, which the transport treats as successful parsed data and may cache.
+Public inspection page 6 returned a parsed 79-string list; raw response was not
+retained, so this mechanism is not yet established as that run's exact cause.
+Reproduce with synthetic incomplete JSON and require whole-container parsing for
+strict pipeline calls. Preserve legacy behavior only where deliberately needed;
+do not count fragment extraction as valid structured-model performance.
+
 ## 2026-09-07 — Standalone embedding probe fact-store warnings (OPEN; non-blocking)
 
 The local inspection-retrieval probe completed successfully but emitted

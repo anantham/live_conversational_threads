@@ -71,6 +71,12 @@ def test_unknown_referent_is_not_guessed_and_full_repair_request_is_budgeted():
         plan_repairs(payload, page, envelope=Reject())
 
 
+def test_non_object_response_requires_structural_recovery_not_citation_repair():
+    page, _ = case()
+    with pytest.raises(ValueError, match='structural regeneration'):
+        plan_repairs([], page, envelope=envelope())
+
+
 @pytest.mark.asyncio
 async def test_correction_preserves_audit_and_checks_consent(monkeypatch):
     page, payload = case()

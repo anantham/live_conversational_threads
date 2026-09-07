@@ -31,6 +31,8 @@ def plan_repairs(payload, page, *, envelope):
     No source is truncated to make the request fit. Overflow requires a new plan.
     """
     # Validate the page acknowledgement independently of observation citations.
+    if not isinstance(payload, dict):
+        raise ValueError('Citation repair requires an inspection object; structural regeneration required')
     validate_inspection({**payload, 'observations': [],
                          'abstention_reason': 'Structural validation only'}, page)
     observations = payload.get('observations')
