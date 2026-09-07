@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-07 — Durable bounded membership review runner
+
+- Added MembershipReviewRunner over the canonical aggregation snapshot. It
+  validates complete grouping coverage, plans every proposed child's source
+  pages, checks current owner-bound consent, generates outside transactions and
+  atomically stores each validated review in PipelineArtifact. Source/child
+  revisions, exact request and inference policy must match on recovery. Existing
+  receipts are reused without generation; no parent nodes or source rewrites.
+- Thirteen tests passed including real-DB interruption at page 1: page 0 stays
+  committed, resume begins at page 1, another full restart makes no calls, and
+  source correction rejects before further inference. Original child remains
+  the only graph node. All source text remains unchanged until the test's
+  deliberate correction. Cleanup is limited to random synthetic conversation.
+- This connects bounded reviews to durable execution; proposal generation,
+  reconciliation of all page judgments, parent synthesis and adjacent-tier
+  commits still need composition. Review results explicitly remain
+  proposal_reconciliation_required; they are not completed abstractions.
+- Public inspection session 10056 completed page 4 in 174.94s, saved it and
+  requested page 5. Five pages (indices 0-4) have now completed in the running
+  pipeline. No whole-conversation quality or publication claim.
+
+
 ## 2026-09-07 — Bounded source scrutiny for abstraction memberships
 
 - Added membership_review.py plus six behavioral tests. Each proposed child
