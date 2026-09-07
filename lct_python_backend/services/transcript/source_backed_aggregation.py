@@ -100,6 +100,16 @@ def validate_aggregation(payload, request):
             "summary": raw["summary"].strip(), "semantic_level": level,
             "semantic_type": {2: "idea", 3: "topic", 4: "theme", 5: "arc"}[level],
             "children_ids": list(ids), "membership_evidence": copy.deepcopy(citations),
+            # Canonical relationships point child -> parent. These authored
+            # relations can be appended without rewriting historical children
+            # merely to attach membership metadata. Primary zoom projection is
+            # a separate view; retain every membership here as secondary.
+            "edge_relations": [{"related_node_id": child_id, "relation_type": "member_of",
+                "relationship_subtype": "thematic:secondary",
+                "relation_text": "Source-backed abstraction membership",
+                "supporting_utterance_ids": list(dict.fromkeys(
+                    citation["utterance_id"] for citation in citations if citation["child_id"] == child_id))}
+                for child_id in ids],
             "utterance_ids": [source["id"] for source in request["sources"] if source["id"] in source_ids],
             "thread_ids": thread_ids, "thread_id": thread_ids[0] if len(thread_ids) == 1 else None,
             "attribution_review_required": any(children[i].get("attribution_review_required") for i in ids)})

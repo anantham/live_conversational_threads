@@ -6,6 +6,16 @@ stopped and retained as diagnostic evidence, not a model-quality baseline.
 
 ## Implementation checkpoint (2026-09-07)
 
+Canonical aggregate persistence/export now preserves source citations and
+multi-thread metadata. Source-backed parents emit child-to-parent member_of
+edges so overlapping memberships survive append-only writes without rewriting
+historical moments. A failing-first real-Postgres test now passes through
+append, actual .threads JSON export and disposable re-materialization, preserving
+source bytes, citations and both memberships. The combined suite passes 34
+tests. This supersedes the canonical-serialization gap below, but NOT the
+aggregation stage journal, bounded global passes, browser verification or
+production rollout gates.
+
 Source-backed aggregation now has a reusable request/generation/validation
 module, tested for complete raw-source inclusion, many-to-many memberships,
 distant grouping, child-bound exact quotes, invalid output rejection and full

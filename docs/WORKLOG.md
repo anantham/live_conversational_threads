@@ -1,5 +1,31 @@
 # WORKLOG
 
+## 2026-09-07 — Aggregate evidence survives canonical and .threads roundtrips
+
+- Failing-first isolated-Postgres test reproduced loss of membership citations
+  in the canonical writer/reader (`KeyError: membership_evidence`). Preserved
+  the explicit interpretation fields membership_evidence, thread_ids,
+  attribution_review_required and source_attributions in display_preferences
+  and lean graph export, using copies rather than shared mutable references.
+  Metadata preservation is not semantic validation or speaker verification.
+- Source-backed parents now author canonical child-to-parent member_of edges,
+  with cited supporting utterance IDs. All memberships are retained as
+  secondary; choosing a primary zoom projection remains separate. This allows
+  append-only persistence without rewriting historical child rows.
+- The real DB test creates a random synthetic conversation, appends moments
+  then overlapping aggregates, exports, and re-materializes only that disposable
+  conversation. Citations, multi-thread identities, original source text,
+  existing moment summaries and both memberships survive. Exact owner/ID
+  cleanup removes only the fixture. No live conversation was changed.
+- Exercised the actual `share_api.export_threads` JSON response producer in
+  the same DB test. Its graph_data matches the faithful read model and raw
+  utterances remain unchanged. This is serialization evidence, not HTTP-auth
+  or browser-rendering verification.
+- 34 combined DB/journal/aggregation/reader/persistence tests pass. Existing
+  pytest-asyncio teardown warnings remain. Aggregation's revision-safe stage
+  journal, bounded global passes and runtime wiring are still outstanding;
+  passing serialization tests do not authorize production activation.
+
 ## 2026-09-07 — Source-backed aggregation contract and first local probe
 
 - Inspected the importer's higher-tier path and confirmed summary-only input

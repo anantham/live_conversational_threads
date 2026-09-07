@@ -1,5 +1,7 @@
 """Conversation read and serialization helpers."""
 
+import copy
+
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select
@@ -427,6 +429,9 @@ def build_graph_data_from_nodes(
             "thread_state": cluster_info.get("thread_state"),
             "edge_relations": _node_edges,
             "question_updates": display_preferences.get("question_updates", []),
+            **{key: copy.deepcopy(display_preferences[key]) for key in (
+                "membership_evidence", "thread_ids", "attribution_review_required", "source_attributions",
+            ) if key in display_preferences},
             # Argument-map role (claim | evidence | question | assumption) —
             # persisted in display_preferences (no column); feeds the frontend
             # rhetoric/debate color mode + the per-card claim-type chip.

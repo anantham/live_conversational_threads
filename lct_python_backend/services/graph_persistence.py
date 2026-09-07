@@ -1102,6 +1102,12 @@ async def persist_graph(
             display_preferences={
                 "edge_relations": edge_relations,
                 "question_updates": item.get("question_updates", []),
+                # Preserve source-backed interpretation evidence across export
+                # and re-materialization. Validation belongs to the producing
+                # stage; storing a citation is not semantic verification.
+                **{key: copy.deepcopy(item[key]) for key in (
+                    "membership_evidence", "thread_ids", "attribution_review_required", "source_attributions",
+                ) if key in item},
                 "argument_role": coerce_str(
                     item.get("argument_role") or item.get("claim_type")
                 ) or "context",
