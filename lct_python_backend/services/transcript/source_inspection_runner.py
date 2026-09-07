@@ -16,6 +16,7 @@ from lct_python_backend.services.deployment_privacy_policy import (
 )
 from .passage_journal import JournalConflict, _authorized_conversation, _hash, _source
 from .source_inspection import validate_inspection
+from .inspection_repair import repair_inspection, validate_repair_audit
 from .source_inspection_pages import inspection_sources, plan_inspection_pages, source_span
 
 STAGE = 'conversation_source_inspection_v2'
@@ -74,7 +75,7 @@ def validate_page(page, snapshot):
 
 
 async def checkpoint_inspection(db, *, conversation_id, owner_id, snapshot, page,
-                                policy_fingerprint, payload=None):
+                                policy_fingerprint, payload=None, repair_audit=None):
     """Caller owns transaction; no inference or long-held locks here."""
     if not isinstance(policy_fingerprint, str) or not policy_fingerprint.strip():
         raise ValueError('Inspection policy fingerprint required')
@@ -105,8 +106,12 @@ async def checkpoint_inspection(db, *, conversation_id, owner_id, snapshot, page
     if payload is None:
         return None
     result = validate_inspection(payload, page)
+    if repair_audit is not None:
+        validate_repair_audit(repair_audit, payload, page, policy_fingerprint)
     receipt = {'input_hash': snapshot['input_hash'], 'page': copy.deepcopy(page),
                'policy_fingerprint': policy_fingerprint, 'result': result}
+    if repair_audit is not None:
+        receipt['repair_audit'] = copy.deepcopy(repair_audit)
     db.add(PipelineArtifact(conversation_id=uuid.UUID(conversation_id), stage=STAGE,
         stage_index=page['page_index'], artifact_type='source_inspection',
         artifact_json=receipt, content_hash=_hash(receipt)))
@@ -125,6 +130,10 @@ class SourceInspectionRunner:
         await check_inference_consent(db, conversation_id=self.conversation_id,
                                       owner_id=self.owner_id, providers=self.envelope.providers)
 
+    async def check_request_consent(self):
+        async with self.sessions.begin() as db:
+            await self.check_consent(db)
+
     async def run(self):
         scope = {'conversation_id': self.conversation_id, 'owner_id': self.owner_id}
         async with self.sessions.begin() as db:
@@ -141,9 +150,15 @@ class SourceInspectionRunner:
             if receipt is None:
                 prompt = json.dumps(page, ensure_ascii=False, separators=(',', ':'))
                 result = await asyncio.to_thread(self.envelope.complete_json, prompt)
+                payload, repair_audit = result.data, None
+                try:
+                    validate_inspection(payload, page)
+                except ValueError:
+                    payload, repair_audit = await repair_inspection(payload, page,
+                        envelope=self.envelope, request_guard=self.check_request_consent)
                 async with self.sessions.begin() as db:
                     await self.check_consent(db)
-                    receipt = await checkpoint_inspection(db, **args, payload=result.data)
+                    receipt = await checkpoint_inspection(db, **args, payload=payload, repair_audit=repair_audit)
             receipts.append(receipt)
         return {'input_hash': snapshot['input_hash'], 'receipts': receipts,
                 'submitted_characters': sum(span['end'] - span['start'] for page in pages for span in page['spans']),

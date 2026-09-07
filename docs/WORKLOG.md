@@ -1,5 +1,29 @@
 # WORKLOG
 
+## 2026-09-07 — Bounded citation correction in source inspection
+
+- Added inspection_repair.py and regression tests. A failed observation receives
+  its cited spans plus up to three neighboring spans on each side, within the
+  same page only. Full serialized request is budget-checked; no truncation or
+  future-page access. At most four observations receive one correction request
+  each. Original kind/text and page acknowledgements cannot change; unknown
+  spans, unsupported/empty correction, changed meaning and invalid quotes fail.
+- SourceInspectionRunner now invokes this path on validation failure with fresh
+  consent before/after each correction request. The accepted checkpoint includes
+  original response, correction requests/responses and policy identity. Before
+  commit, applying the audit must exactly reproduce accepted output. Quotes are
+  still strictly validated; provenance does not prove semantic support.
+- Eighteen focused unit and existing real-DB inspection tests passed before
+  additional audit-tampering assertions. A real-DB test specifically exercising
+  a corrected receipt/restart remains to be added; existing DB test exercises
+  unchanged success/failure/revision paths. Failed real responses are preserved
+  in the public diagnostic files, not published or committed as source fixtures.
+- Resumed public diagnostic as session 32264. Page 2's prior response was
+  returned from the local client's cache in 0.0s; the runner then issued the
+  first correction request for that page. Earlier pages remain untouched.
+  Poll this exact handle; correction completion/quality is not yet claimed.
+
+
 ## 2026-09-07 — Fresh consent in the shared passage runtime
 
 - Final combined validation: 37 tests passed across shared runtime, real-DB
