@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-09-08 — Source-reference budget boundary verified
+
+- Added a 100-short-fragment context test: source-line metadata is included in
+  the complete serialized byte-based token estimate; a budget one unit below
+  the full request rejects it rather than truncating or dropping source lines.
+  All seven context-planner tests pass. Separately, 38 context/question/privacy/
+  runtime regressions pass (ten existing pytest-asyncio teardown warnings).
+- Replay session 26316 remains live on direct session polls with no response
+  yet. Do not restart from the absence of output. The optional proc_probe tool
+  could not inspect processes because psutil is unavailable; it did not prove
+  absence and no dependency was installed. No candidate completion claimed.
+
 ## 2026-09-08 — Persist question-selection audit and resume public replay
 
 - Extended the real PostgreSQL import/export/restart contract with model-selected

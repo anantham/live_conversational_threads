@@ -83,3 +83,21 @@ def test_custom_token_counter_is_applied_to_complete_serialized_request():
     plan = plan_conversation_context("当前问题", [], {"earlier": "较早的证据"}, {}, policy)
     assert plan.estimated_tokens == counter(plan.prompt)
     assert plan.estimated_tokens <= policy.input_token_budget
+
+
+def test_question_line_reference_overhead_is_inside_budget_without_source_truncation():
+    """Many short source fragments cost more than just their joined prose."""
+    from lct_python_backend.services.transcript.question_evidence import question_source_lines
+    fragments = ['Yes.'] * 100
+    source = ' '.join(fragments)
+    lines = question_source_lines(source, fragments)
+    complete = plan_conversation_context(source, [], {}, {}, PassageContextPolicy(20000),
+                                         evidence_lines=lines)
+    payload = json.loads(complete.prompt)
+    assert payload['current_source_lines'] == lines
+    assert payload['current_passage'] == source
+    assert complete.estimated_tokens == len(complete.prompt.encode('utf-8'))
+    with pytest.raises(ContextBudgetExceeded):
+        plan_conversation_context(source, [], {}, {},
+                                  PassageContextPolicy(complete.estimated_tokens - 1),
+                                  evidence_lines=lines)
