@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-07 — Resumable four-tier aggregation runner
+
+- Added `AggregationRunner` over the source-backed checkpoint contract. It
+  captures owner-scoped evidence, probes for a valid saved result, calls the
+  frozen envelope outside database transactions, then commits one tier before
+  advancing. Ideas through arcs use the same mechanism. No legacy summary-only
+  fallback or catch-and-publish-partial-success behavior was added.
+- `commit_aggregation(payload=None)` is a recovery probe: it performs the same
+  owner/snapshot/existing-tier checks but creates nothing when no saved result
+  exists. A saved valid tier returns original identities before model invocation.
+- Real isolated-Postgres runner test uses synthetic source and a deterministic
+  provider double. A simulated L3 failure leaves only L1/L2; restart reuses the
+  original L2, generates L3-L5, and a further run performs zero new provider
+  calls. Actual .threads JSON export carries all five levels and citations.
+  These are orchestration/provenance results, not semantic-model quality.
+- Combined validation: 23 database/aggregation/envelope tests passed; existing
+  pytest-asyncio teardown warnings remain.
+- Production entry points remain unactivated. Trusted prompt composition,
+  oversized global context handling, evolving-tier reconciliation and full
+  public-podcast comparison are still required. The current runner deliberately
+  propagates those failures rather than calling its narrower path completion.
+
 ## 2026-09-07 — Atomic aggregation snapshot and recovery checkpoint
 
 - Added `aggregation_checkpoint.py` using existing PipelineArtifact storage.

@@ -6,6 +6,13 @@ stopped and retained as diagnostic evidence, not a model-quality baseline.
 
 ## Implementation checkpoint (2026-09-07)
 
+The source-backed aggregation runner now builds L2-L5 with per-tier checkpoint
+recovery and no provider call for already-saved valid tiers. A synthetic real-DB
+test proves L3 failure leaves L2 saved, restart preserves IDs, and the eventual
+.threads export retains all five levels and source citations. It remains a
+callable internal runner, not activated production wiring. Large-context
+planning and changed-tier reconciliation are still explicit required work.
+
 Aggregation initial-tier commit now has owner-scoped snapshot capture and an
 atomic canonical-parent/membership plus request/result receipt transaction.
 Real-DB tests verify rollback, source/speaker and summary races, recapture,

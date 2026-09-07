@@ -77,6 +77,10 @@ Current output edits are never overwritten by receipt recovery.
         Node.conversation_id == cid, Node.level == level).limit(1))).scalar_one_or_none()
     if existing_tier is not None:
         raise JournalConflict("Existing tier has no aggregation receipt; explicit reconciliation required")
+    if payload is None:
+        # Recovery probe: all ownership/snapshot/existing-tier checks above
+        # still apply, but no graph or receipt is created.
+        return None
     parents = validate_aggregation(payload, request)
     await persist_graph(db=db, conversation_id=conversation_id, owner_id=owner_id,
                         existing_json=copy.deepcopy(parents), append_only=True, commit=False)
