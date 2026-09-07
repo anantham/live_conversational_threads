@@ -1,5 +1,32 @@
 # WORKLOG
 
+## 2026-09-07 — Exact public source replay and real inspection diagnostic
+
+- Read-only comparison of the older local replay conversation
+  11a871f3-9c40-4e38-9653-c15688b28f0c against the hash-verified public source
+  found 1,263/1,263 text and speaker matches but different IDs and sequence
+  numbers. Start timestamps differed for 1,241 turns and end timestamps for
+  1,243, with maximum deltas 0.98s / 3.64s. Do not treat that dataset as an
+  exact-source timing/provenance baseline; it was not modified.
+- Added tools/replay_public_source_inspection.py. It pins source SHA256
+  e1c1b6236b3604740d83754823ffbe82dbdc1cd4eee365692b2dcf25f765093f, isolated
+  database localhost:55439/podcast, and the existing local model. Original
+  source-ID collision count was zero. Created separate local replay
+  fc002eff-150f-5666-8263-2a18328f6420 with private visibility and local-only
+  processing consent. All 1,263 original IDs, sequence numbers, speaker fields,
+  text and timing fields compare exactly after insertion. No source overwrite,
+  graph replacement, published artifact change or external inference occurred.
+- Twelve replay guard tests pass: an unrecognized source file fails its pinned
+  digest check; every checked source-field mismatch rejects resume instead of
+  overwriting. Public responses are generated into gitignored
+  tmp/public-source-inspection for diagnostic review, with input and policy
+  identity. Successful pages use the ordinary durable inspection checkpoint.
+- Started the real local qwen3.8:27b-mlx inspection. At this checkpoint the
+  tool session 87755 is live and has requested page index 0; no page completion
+  or semantic-quality result is claimed yet. Poll this exact handle and/or
+  inspect its authoritative checkpoint rows before any retry. This is a
+  diagnostic of real-source inspection, not a completed fair comparison.
+
 ## 2026-09-07 — Fresh consent for aggregation and embedding sub-batches
 
 - AggregationRunner now uses the shared owner-bound stored-consent check before
