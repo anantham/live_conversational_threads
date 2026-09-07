@@ -7,6 +7,7 @@ Abstraction must execute proposal, source review, membership decision and parent
 synthesis at every tier before its canonical commit; summaries alone are not enough.
 Source inspection and relation review must run through the actual import entrypoint.
 Question source selections and their exact quotes must survive export and restart.
+Question review must retain speaker-labelled source and recover without another call.
 """
 import json
 import os
@@ -49,6 +50,7 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
     monkeypatch.setattr(llm_config, "load_llm_providers", AsyncMock(return_value={"providers": [local, cloud]}))
     calls = []
     stages = []
+    question_reviews = []
     class Result:
         def __init__(self, data):
             self.data = data
@@ -57,6 +59,12 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
     def provider_call(**kwargs):
         assert [p["id"] for p in kwargs["providers"]] == ["local"]
         request = json.loads(kwargs["messages"][1]["content"])
+        if 'question_id' in request:
+            question_reviews.append(request)
+            assert request['sources'][0]['utterances'][0]['speaker_id'] == 'SPEAKER_00'
+            return Result({'assessments': [{'event_id': 'event-1', 'scope': 'same_question',
+                'resolution': 'not_an_answer', 'reason': 'The inquiry remains undecided.',
+                'evidence_ids': ['source-0', 'source-1']}]})
         if 'spans' in request:
             stages.append('inspection')
             spans = request['spans']
@@ -72,7 +80,9 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
                 "thread_label": "Shared key borrowing", "thread_state": "new_thread",
                 "question_updates": [{"question_id": "borrowing", "action": "open",
                     "wording": "Who may borrow?", "rationale": "Explicitly undecided",
-                    "evidence_line_ids": ["line-0"]}]}]})
+                    "evidence_line_ids": ["line-0"]},
+                    {"question_id": "borrowing", "action": "clarify", "wording": "Borrowing remains undecided",
+                     "rationale": "No resolution stated", "evidence_line_ids": ["line-0"]}]}]})
         if request.get('status') == 'proposal_only':
             calls.append(request['target_level'])
             stages.append('proposal')
@@ -157,6 +167,32 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         async with sessions() as db:
             second = json.loads((await export_threads(str(cid), db=db)).body)
         assert second["graph_data"] == first["graph_data"]
+        from lct_python_backend.services.transcript.question_review_runner import QuestionReviewRunner
+        runner = QuestionReviewRunner(session_factory=sessions, conversation_id=str(cid), owner_id=owner,
+            envelope=config.build_aggregation(conversation_id=str(cid), owner_id=owner,
+                providers=[local], privacy={'local_llm_ok': True, 'external_llm_ok': False}).envelope)
+        reviewed = await runner.run()
+        assert reviewed['accepted_for_projection'] is False
+        assert len(reviewed['receipts']) == 1
+        assert await runner.run() == reviewed
+        assert len(question_reviews) == 1
+        async with sessions() as db:
+            unchanged = json.loads((await export_threads(str(cid), db=db)).body)
+        assert unchanged['graph_data'] == second['graph_data']
+        from sqlalchemy import update
+        from lct_python_backend.models import Node
+        from lct_python_backend.services.transcript.question_review_runner import attributed_question_request
+        from lct_python_backend.services.transcript.passage_journal import JournalConflict
+        async with sessions.begin() as db:
+            basis = await runner.capture(db)
+        request = attributed_question_request(basis, 'borrowing', runner.envelope)
+        async with sessions.begin() as db:
+            await db.execute(update(Node).where(Node.conversation_id == cid, Node.level == 1)
+                             .values(summary='A human corrected the interpretation.'))
+        async with sessions.begin() as db:
+            with pytest.raises(JournalConflict, match='changed during review'):
+                await runner.checkpoint(db, basis, 0, request)
+        assert len(question_reviews) == 1
     finally:
         async with sessions.begin() as db:
             await db.execute(delete(Conversation).where(Conversation.id == cid, Conversation.owner_id == owner))

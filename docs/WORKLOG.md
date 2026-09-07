@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-09-08 — Persisted question-review runner
+
+- Added question_review_runner.py: reconstructs journal-backed question history
+  plus current canonical interpretation and current speaker-labelled utterances.
+  Each request includes exact full source and is re-budgeted after attribution
+  metadata. Checks owner/stored consent before inference and again at commit.
+- Review receipts bind source/interpretation basis, request and provider policy.
+  Commit recaptures under the conversation lock; stale input is rejected. Saved
+  raw responses are revalidated on recovery. Reviews do not mutate question
+  status, historical events, graph nodes or manual corrections.
+- Nine synthetic import/review tests pass, including real PostgreSQL receipt
+  persistence, restart without model calls, unchanged export and rejection after
+  a canonical interpretation edit. No claim of semantic accuracy from fixtures.
+- Pending: application/projection of reviewed decisions, changed-generation
+  reconciliation, bounded handling of oversized question histories and shared
+  runtime activation. Runner is internal, not yet called by the public replay.
+  Existing replay session 50729 continues and has emitted another response.
+
 ## 2026-09-08 — Question-scope review contract
 
 - Added question_review.py as an internal source-backed reconciliation boundary.
