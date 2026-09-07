@@ -22,6 +22,12 @@
   returned from the local client's cache in 0.0s; the runner then issued the
   first correction request for that page. Earlier pages remain untouched.
   Poll this exact handle; correction completion/quality is not yet claimed.
+- Subsequent poll: session 32264 exited 1 after its first correction returned in
+  24.23s. The model repeated the same cross-span quote for s180:0-98; strict
+  validation rejected it. No new page receipt. Next test should reduce copying
+  demands through explicit span selection and backend-attached exact evidence,
+  while retaining the unresolved semantic-support evaluation. Do not rerun this
+  identical failed request or describe correction as proven on the public data.
 
 
 ## 2026-09-07 — Fresh consent in the shared passage runtime
