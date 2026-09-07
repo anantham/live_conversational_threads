@@ -6,6 +6,17 @@ stopped and retained as diagnostic evidence, not a model-quality baseline.
 
 ## Implementation checkpoint (2026-09-07)
 
+Cross-page inspection context now retrieves candidates across all eligible
+observations and rereads exact source excerpts at both ends. Availability uses
+the inspection page's full input watermark, preventing future-informed prose
+from entering a past-only view via an old citation. Relation review emits only
+cited proposals or explicit unrelated/uncertain decisions, never edges from
+similarity scores. A local embedding/model probe recovered the original question
+after 45 interruptions and rejected two astronomy distractors. Required next:
+revision/consent-checked proposal persistence, canonical node mapping and real
+thread/question/hierarchy reconciliation; these helpers are not production
+activation or full-podcast acceptance.
+
 Bounded source inspection now splits oversized evidence into exact offset-based
 windows and journals model observations per page. It is an internal building
 block, not yet connected to final aggregation. Tests prove recovery, source

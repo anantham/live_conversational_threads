@@ -1,5 +1,15 @@
 # ISSUES
 
+## 2026-09-07 — Standalone embedding probe fact-store warnings (OPEN; non-blocking)
+
+The local inspection-retrieval probe completed successfully but emitted
+`[LLM FACTS] persistence unavailable code=fact_store_write_failed type=RuntimeError`
+once per embedding batch. This is observed in the standalone probe environment,
+not established as a production telemetry outage. Semantic results and timings
+were printed, but gateway fact persistence is not proven. Check the probe's
+configured fact-store lifecycle before changing runtime behavior; do not mask
+the warning or infer failed embeddings from this secondary persistence failure.
+
 ## 2026-09-07 — Refresh consent during long inference jobs (OPEN; rollout gate)
 
 `AggregationRunner` currently uses its frozen admission envelope for all four
