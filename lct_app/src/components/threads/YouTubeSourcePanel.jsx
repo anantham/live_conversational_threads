@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { mediaOffsetLabel } from "../../services/mediaSeek";
-import { nodeVideoPassages, selectYouTubeRef } from "../../services/youtubeMedia";
+import { nodeVideoPassages, selectYouTubeRef, validYouTubeRef } from "../../services/youtubeMedia";
 
 let apiPromise;
 function loadPlayerApi() {
@@ -76,7 +76,12 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
     return () => { canceled = true; player.current = null; instance?.destroy(); };
   }, [enabled, videoId, videoLabel]);
 
-  if (!media) return null;
+  if (!media) {
+    const unsupported = (bundle.media_refs || []).some((ref) => ref?.provider === "youtube" && !validYouTubeRef(ref));
+    return unsupported ? <aside role="status" className={`shrink-0 border-slate-200 bg-amber-50 p-3 text-xs text-slate-700 ${compact ? "border-b" : "w-[360px] max-w-[38vw] border-r"}`}>
+      YouTube source unavailable: its video identity or time units could not be verified. The conversation remains readable; the original source metadata is preserved.
+    </aside> : null;
+  }
   const seek = (seconds) => {
     pending.current = seconds;
     setActive(seconds);

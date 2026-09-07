@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-07 — Optional-media reading compatibility repair
+
+- Review of 40789f6 completed, retaining one low-severity finding. Initially
+  considered a compatibility suggestion; actual base validator inspection
+  confirmed that this release newly blocked previously readable graph files.
+- Three failing-first regressions showed unsupported optional YouTube metadata
+  rejected otherwise valid conversations. Removed that new whole-file guard,
+  retaining the existing strict selectors and seek builders at every playback
+  boundary. Preserve the raw metadata losslessly; do not create URLs for it.
+- Added a visible source-unavailable warning and desktop/mobile-viewport tests
+  that graphs remain readable with no untrusted link or network request.
+- This restores the pre-release reading contract, not broadening playback or
+  identity/unit inference. Exact prior-review receipt stored in docs/reviews.
+  Device QA and repaired-head review remain pending. No push or deployment.
+- Validation after repair: 14/14 browser tests including live YouTube seek,
+  43/43 focused unit tests across seven files, build passed. Fixed the new
+  observer's false positive on the local youtubeMedia.js module by checking
+  actual destination hostnames; no product behavior was altered for that issue.
+
 ## 2026-09-07 — Public viewer readiness goal, local testing only
 
 - User set an explicit desktop + physical Android readiness goal, with no merge

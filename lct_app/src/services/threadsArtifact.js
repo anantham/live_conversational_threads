@@ -1,5 +1,4 @@
 import { validateExplicitEdgeContract } from "./edgeContract";
-import { validYouTubeRef } from "./youtubeMedia";
 
 export const MAX_THREADS_BYTES = 25 * 1024 * 1024;
 export const MAX_THREADS_NODES = 50000;
@@ -39,9 +38,9 @@ export function validateThreadsArtifact(data) {
   if (data.media_refs != null && !Array.isArray(data.media_refs)) {
     throw new Error("Invalid media_refs.");
   }
-  if ((data.media_refs || []).some((ref) => ref?.provider === "youtube" && !validYouTubeRef(ref))) {
-    throw new Error("Invalid YouTube source reference.");
-  }
+  // Optional unsupported media does not invalidate the conversation itself.
+  // Playback selectors validate identity/units independently; retain original
+  // metadata so opening and re-exporting never silently discards source data.
   if (!Array.isArray(data.graph_data)) {
     throw new Error("Missing or invalid graph_data.");
   }

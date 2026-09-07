@@ -37,7 +37,7 @@ request reaches /download; /private-target is not fetched. This is stronger than
 a synthetic Response assertion, but is not a deployed-Vercel measurement.
 No production code change is justified by the original Undici claim.
 
-### Non-canonical media references: compatibility request, not established bug
+### Non-canonical media references: compatibility regression confirmed and repaired
 
 The viewer currently requires a canonical URL matching video_id and explicit
 seconds before loading a YouTube reference. The companion integration worktree's
@@ -46,11 +46,21 @@ supported input URL forms before export. The user's actual public artifact
 passes and plays. The reviewer supplied a hand-authored non-canonical artifact,
 not an artifact produced by the current pipeline.
 
-Ignoring invalid media while rendering the remaining artifact would be a
-different validation contract. Do not silently weaken source identity/unit
-validation simply to obtain a passing review. Ask the independent reviewer to
-distinguish a demonstrated supported-input regression from this compatibility
-suggestion. No new validation semantics have been selected in this test pass.
+The first pass treated this as an optional compatibility request. Further
+comparison with the actual base validator established that valid graph files
+with unsupported media were readable before this release. The fatal check was
+new, while every playback surface already calls strict media selectors. Three
+new tests first failed solely at that new guard (short URL, missing units, and
+untrusted host). Removing the whole-artifact guard restores the base reading
+contract without relaxing playback validation. Original metadata stays intact
+in the library record/export; no normalization or source URL activation occurs.
+An inline warning now explains that the source cannot be verified while the
+conversation remains readable. Browser tests cover desktop and mobile viewport
+rendering and absence of links/network requests to the untrusted source.
+
+Independent review of 40789f6 returned only this low-severity concern; the
+redirect claim was not repeated. Exact structured receipt is in
+`docs/reviews/public-viewer-40789f6.json`. The repair needs fresh exact-head review.
 
 ## Reproduction
 
@@ -74,6 +84,12 @@ run must be recorded, rather than treating overlapping run counts as additive.
 Final aggregate on 2026-09-07: **12/12 browser tests passed**, including the
 opt-in real YouTube test; **38/38 focused unit tests passed** across six files.
 Fresh production build passed (main JS 1,252.93 kB / 370.90 kB gzip).
+
+After compatibility repair: **14/14 browser tests**, **43/43 focused unit
+tests** across seven files, and fresh build pass (1,253.20 kB / 370.97 kB gzip).
+The first browser run falsely counted the local youtubeMedia.js module as an
+external request; the observer now checks destination hostnames. Both new UI
+cases pass with no source-provider/untrusted-host requests and no unsafe links.
 
 Existing non-blocking limitations remain explicit: initial wide desktop graph
 can need Center, large bundle warning, and Node/jsdom Blob mismatch in the

@@ -102,6 +102,26 @@ test("blocked YouTube API preserves source text and a usable timestamped link", 
   await expect(source.getByRole("link")).toHaveAttribute("href", `${fixture.media_refs[0].view_url}&t=1s`);
 });
 
+for (const width of [390, 1440]) {
+  test(`unsupported optional YouTube metadata leaves the conversation readable at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const sourceRequests: string[] = [];
+    page.on("request", request => {
+      const host = new URL(request.url()).hostname;
+      if (/(^|\.)(youtube\.com|youtube-nocookie\.com|youtu\.be|evil\.test)$/.test(host)) sourceRequests.push(request.url());
+    });
+    await page.goto("/view");
+    const bundle = { ...fixture, media_refs: [{ ...fixture.media_refs[0], view_url: "https://evil.test/watch?v=6HmR9IaqM88" }] };
+    await page.locator('input[type="file"]').setInputFiles({ name: "unsupported-media.threads", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
+    await expect(page.getByRole("status").filter({ hasText: "YouTube source unavailable" })).toBeVisible();
+    if (width === 390) await expect(page.getByTestId("mobile-deck-card")).toBeVisible();
+    else await expect(page.locator(".react-flow__node")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Watch the source conversation" })).toHaveCount(0);
+    await expect(page.locator('a[href*="evil.test"]')).toHaveCount(0);
+    expect(sourceRequests).toEqual([]);
+  });
+}
+
 test("live YouTube iframe reports the requested playhead time", async ({ page }) => {
   test.skip(process.env.YOUTUBE_LIVE_SMOKE !== "1", "Opt-in public network/video test, not a fixture-only check.");
   await page.setViewportSize({ width: 1440, height: 900 });
