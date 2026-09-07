@@ -2,6 +2,15 @@
 
 ## 2026-09-07 — Interleaved conversation context (OPEN; experimental foundation)
 
+Aggregation rollout gate: legacy consolidation sees summaries only, and
+`import_hierarchy_repair._clean_group_ownership` can adopt missing memberships
+by position. The new source-backed aggregator rejects missing coverage instead
+of positional adoption and requires child-bound source citations. It remains
+unactivated pending bounded global passes and revision-safe persistence/export:
+`graph_persistence.py` and `conversation_reader.py` currently omit its
+`membership_evidence` and multi-thread metadata. Completion requires a real DB
+and exported-view roundtrip retaining those citations, not just unit validation.
+
 The production processor asks for completed conversational segments and local
 generation sees only the last 40 compact nodes. A failing-first synthetic
 callback after 45 unrelated passages proves that earlier source evidence is

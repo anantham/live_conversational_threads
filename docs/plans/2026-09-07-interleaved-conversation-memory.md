@@ -6,6 +6,16 @@ stopped and retained as diagnostic evidence, not a model-quality baseline.
 
 ## Implementation checkpoint (2026-09-07)
 
+Source-backed aggregation now has a reusable request/generation/validation
+module, tested for complete raw-source inclusion, many-to-many memberships,
+distant grouping, child-bound exact quotes, invalid output rejection and full
+request budgeting. A three-moment local-model probe correctly kept astronomy
+separate from a resumed key-custody exchange (29.95 seconds). Seventeen focused
+aggregation/envelope tests pass. This is not connected to production: bounded
+global passes, registered prompt composition, revision-safe persistence and
+canonical membership-evidence export must be completed first. Semantic
+reconciliation is still separate from provenance validation.
+
 Inference snapshot commit validation is now covered by real isolated-Postgres
 tests for pending speaker refinement and applied historical context edits.
 Both reject the stale result without graph/cursor advancement; fresh capture

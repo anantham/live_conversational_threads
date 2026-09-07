@@ -1,5 +1,36 @@
 # WORKLOG
 
+## 2026-09-07 — Source-backed aggregation contract and first local probe
+
+- Inspected the importer's higher-tier path and confirmed summary-only input
+  in `hierarchy_consolidator._simplify_for_consolidation`. The old idea repair
+  also adopts unrepresented children by nearest position. These defaults have
+  NOT been activated in the new source-backed aggregation path or removed from
+  production during this experimental slice.
+- Added `source_backed_aggregation.py`: complete adjacent-tier requests retain
+  all referenced raw utterances and current attribution, plus child thread and
+  question metadata. Output validation requires exact child-bound source quotes
+  for every membership, full child coverage, and known identities. Overlapping
+  memberships and distant grouping survive; no positional repairs or invented
+  thread IDs. Parents carry the source union so the next tier can reread it.
+- Added `InferenceEnvelope.complete_json` as a raw structured-result seam under
+  the same frozen routing and full-message budget checks; existing extraction
+  normalization remains in `generate`. Aggregation uses the raw seam so citation
+  metadata is validated before any schema normalization can discard it.
+- Seventeen aggregation/envelope tests pass, including full source at the
+  provider boundary, invalid/omitted membership rejection, input immutability,
+  overlapping memberships and overflow rejection before inference. Existing
+  pytest-asyncio teardown warnings remain.
+- One real local qwen3.8:27b-mlx probe over three synthetic moments completed
+  in 29.95 seconds: the key question and later answer grouped together, with
+  astronomy separate and all membership quotes valid. This easy single case
+  is NOT full semantic acceptance or a fair podcast comparison.
+- Rollout gaps remain explicit: bounded source retrieval for oversized global
+  passes, prompt-manager registration/runtime composition, revision-safe
+  aggregation persistence and canonical citation/export preservation. Existing
+  writer/reader do not yet retain the new membership-evidence fields; do not
+  route new aggregates through them and call the provenance preserved.
+
 ## 2026-09-07 — Inference snapshot races and retry receipts
 
 - Revalidated the current local worktree and twelve runtime/context tests,

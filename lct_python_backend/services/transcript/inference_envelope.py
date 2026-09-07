@@ -62,15 +62,17 @@ class InferenceEnvelope:
             raise ContextBudgetExceeded("Full request plus output/headroom exceeds an allowed provider's context")
         return measured
 
-    def generate(self, prompt, **_legacy_kwargs):
+    def complete_json(self, prompt):
         # Do not widen routes from kwargs supplied by a legacy caller. The
         # admitted provider set and prompt are precisely those budgeted above.
         self.validate(prompt)
-        result = chat_with_provider_fallback_sync(
+        return chat_with_provider_fallback_sync(
             messages=self._messages(prompt), providers=self.providers,
             temperature=self._temperature, max_tokens=self._output_tokens,
             require_json=True, prompt_name="interleaved_conversation", prompt_version=self.fingerprint,
         )
+    def generate(self, prompt, **_legacy_kwargs):
+        result = self.complete_json(prompt)
         nodes = _normalize_generated_output(result.data)
         if not nodes:
             raise ValueError("Interleaved interpreter returned no valid graph nodes")
