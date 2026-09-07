@@ -15,6 +15,7 @@ from .inspection_context import inspection_index, plan_inspection_context
 from .inspection_relations import review_inspection_context
 from .passage_journal import JournalConflict, _hash
 from .reconciliation_checkpoint import STAGE, capture_reconciliation, checkpoint_relation_review
+from .relation_attempt_checkpoint import checkpoint_relation_attempt
 from .source_inspection_runner import SourceInspectionRunner, check_inference_consent
 
 
@@ -30,7 +31,7 @@ class ReconciliationRunner:
         self.envelope, self.retriever = review_envelope, retriever
         self.max_candidates, self.excerpt_characters = max_candidates, excerpt_characters
         self.providers = [*review_envelope.providers, *retriever.providers]
-        self.fingerprint = _hash({'version': 1, 'generation': review_envelope.fingerprint,
+        self.fingerprint = _hash({'version': 2, 'generation': review_envelope.fingerprint,
             'inspection': inspection_envelope.fingerprint, 'retrieval': retriever.fingerprint,
             'max_candidates': max_candidates, 'excerpt_characters': excerpt_characters})
 
@@ -79,7 +80,12 @@ class ReconciliationRunner:
                 async with self.sessions.begin() as db:
                     saved = await checkpoint_relation_review(db, **args, context=context)
                 if saved is None:
-                    review = await review_inspection_context(prompt, envelope=self.envelope)
+                    async def checkpoint(attempt, request, response=None):
+                        async with self.sessions.begin() as db:
+                            return await checkpoint_relation_attempt(db, **scope, snapshot=snapshot,
+                                parent_context=context, context=request, attempt=attempt,
+                                policy_fingerprint=self.fingerprint, providers=self.providers, response=response)
+                    review = await review_inspection_context(prompt, envelope=self.envelope, checkpoint=checkpoint)
                     review['generation_policy_fingerprint'] = review['policy_fingerprint']
                     review['policy_fingerprint'] = self.fingerprint
                     async with self.sessions.begin() as db:

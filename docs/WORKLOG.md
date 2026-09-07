@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-09-08 — Bounded, durable missing-comparison recovery
+
+- Failing-first tests reproduced terminal omission and lack of checkpoint reuse.
+  Relation review now validates partial responses without weakening final full
+  coverage validation, retains checked judgments and requests only outstanding
+  candidates. Foreign/duplicate/bad-evidence judgments still fail validation.
+- At most three attempts are permitted. Incomplete coverage then fails visibly;
+  absence is never converted to unrelated. Final review retains per-attempt
+  request/response hashes and reviewed IDs under the original coverage contract.
+- Added relation_attempt_checkpoint.py, bound to source/interpretation snapshot,
+  full parent context, request and policy. It rechecks owner/consent and locked
+  source basis before reads/writes; only validated partial outputs are stored.
+  Canonical edge commit remains after complete coverage. No source rewrite.
+- Reconciliation policy version advances to 2, distinguishing old one-shot
+  receipts. Thirty-one unit/isolated PostgreSQL tests pass, including omission
+  followed by interruption, resumed attempt reuse, both edge directions, and
+  shared imports. Existing pytest asyncio warnings remain.
+- Public replay 50729 remains terminal; no new run or deployment started. Need
+  new versioned fair run after tokenizer activation, plus semantic identity work.
+
 ## 2026-09-08 — Diagnostic replay terminal on incomplete relation coverage
 
 - Session 50729 is now authoritatively terminal (exit 1), not a slow observation.

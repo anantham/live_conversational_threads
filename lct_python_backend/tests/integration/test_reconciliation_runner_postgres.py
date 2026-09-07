@@ -1,6 +1,7 @@
 """Test intent: full inspection -> retrieval -> relation review -> canonical
 edge export with durable restart that skips saved embedding/generation work.
 Both focal-to-candidate and candidate-to-focal directions survive persistence.
+An omitted comparison is checkpointed before an interruption and not regenerated.
 Real isolated PostgreSQL, synthetic source and doubled provider transports.
 """
 import json
@@ -25,7 +26,8 @@ from lct_python_backend.services.transcript.source_inspection import INSPECTION_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('reverse', [False, True])
-async def test_full_review_loop_restart_and_export(monkeypatch, reverse):
+@pytest.mark.parametrize('omit_first', [False, True])
+async def test_full_review_loop_restart_and_export(monkeypatch, reverse, omit_first):
     url = os.getenv('PASSAGE_JOURNAL_TEST_DATABASE_URL')
     if not url:
         pytest.skip('Explicit isolated database required')
@@ -38,6 +40,7 @@ async def test_full_review_loop_restart_and_export(monkeypatch, reverse):
     texts = ['Who may borrow the key?', 'Returning to borrowing: the question remains open.']
     calls = {'inspection': 0, 'review': 0, 'embedding': 0}
     fail = {'later': True}
+    omissions = []
     def transport(**kwargs):
         request = json.loads(kwargs['messages'][1]['content'])
         if 'spans' in request:
@@ -49,6 +52,9 @@ async def test_full_review_loop_restart_and_export(monkeypatch, reverse):
         calls['review'] += 1
         focal = request['focal']
         later = focal['text'].startswith('Returning')
+        if later and omit_first and not omissions:
+            omissions.append(1)
+            return SimpleNamespace(data={'comparisons': []})
         if later and fail['later']:
             raise RuntimeError('Synthetic relation provider interrupted')
         comparisons = []
@@ -93,10 +99,11 @@ async def test_full_review_loop_restart_and_export(monkeypatch, reverse):
                     for nid, uid, text in zip((old, new), (first, second), texts)])
         with pytest.raises(RuntimeError, match='provider interrupted'):
             await runner().run()
-        assert calls['inspection'] == 1 and calls['review'] == 2
+        assert calls['inspection'] == 1 and calls['review'] == 2 + int(omit_first)
         fail['later'] = False
         result = await runner().run()
-        assert calls['inspection'] == 1 and calls['review'] == 3
+        assert calls['inspection'] == 1 and calls['review'] == 3 + int(omit_first)
+        assert len(result['receipts'][1]['review']['coverage_attempts']) == 1 + int(omit_first)
         assert result['review_pass_complete'] and result['unresolved_mappings'] == 0
         assert not result['semantic_reconciliation_complete']
         before = dict(calls)

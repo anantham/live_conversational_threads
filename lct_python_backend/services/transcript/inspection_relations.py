@@ -5,6 +5,7 @@ to canonical nodes, revision-checked persistence and question reconciliation are
 separate required stages. This module does not close questions or merge threads.
 """
 import asyncio
+import copy
 import json
 from .passage_journal import _hash
 
@@ -37,7 +38,7 @@ Do not cite only summaries, invent sources, or infer a relation from its retriev
 RELATIONS = {'return_to_thread', 'clarifies', 'supports', 'rebuts', 'asks', 'tangent', 'contextual'}
 
 
-def validate_relation_review(payload, context):
+def validate_relation_review(payload, context, *, allow_partial=False):
     focal = context['focal']
     candidates = {value['id']: value for value in context['candidates']}
     if not isinstance(payload, dict) or not isinstance(payload.get('comparisons'), list):
@@ -97,17 +98,40 @@ def validate_relation_review(payload, context):
                               'evidence': evidence})
         comparisons.append({'focal_id': focal['id'], 'candidate_id': identity, 'status': status,
                             'reason': reason, 'relations': validated})
-    if seen != set(candidates):
+    if seen != set(candidates) and not allow_partial:
         raise ValueError('Relation review omitted candidates; no implicit unrelated decisions')
     return {'comparisons': comparisons, 'coverage': dict(context['coverage']), 'context_hash': _hash(context),
             'semantic_reconciliation_complete': False}
 
 
-async def review_inspection_context(prompt, *, envelope):
+async def review_inspection_context(prompt, *, envelope, checkpoint=None):
     context = json.loads(prompt)
     if not context['candidates']:
         # Nothing admitted is not proof that the omitted candidates are unrelated.
         return {**validate_relation_review({'comparisons': []}, context),
                 'policy_fingerprint': envelope.fingerprint}
-    result = await asyncio.to_thread(envelope.complete_json, prompt)
-    return {**validate_relation_review(result.data, context), 'policy_fingerprint': envelope.fingerprint}
+    completed, attempts = {}, []
+    for attempt in range(3):
+        request = copy.deepcopy(context)
+        request['candidates'] = [candidate for candidate in context['candidates'] if candidate['id'] not in completed]
+        if completed:
+            request['coverage']['omitted_candidates'] = context['coverage'].get('omitted_candidates', 0) + len(completed)
+            request['coverage']['previously_reviewed_candidates'] = len(completed)
+        response = await checkpoint(attempt, request) if checkpoint is not None else None
+        if response is None:
+            result = await asyncio.to_thread(envelope.complete_json,
+                json.dumps(request, ensure_ascii=False, separators=(',', ':')))
+            response = result.data
+            validate_relation_review(response, request, allow_partial=True)
+            if checkpoint is not None:
+                response = await checkpoint(attempt, request, response)
+        # Saved responses receive the same validation as fresh model output.
+        validate_relation_review(response, request, allow_partial=True)
+        completed.update({row['candidate_id']: copy.deepcopy(row) for row in response['comparisons']})
+        attempts.append({'request_hash': _hash(request), 'response_hash': _hash(response),
+                         'reviewed_candidate_ids': [row['candidate_id'] for row in response['comparisons']]})
+        if len(completed) == len(context['candidates']):
+            raw = {'comparisons': [completed[c['id']] for c in context['candidates']]}
+            return {**validate_relation_review(raw, context), 'coverage_attempts': attempts,
+                    'policy_fingerprint': envelope.fingerprint}
+    raise ValueError(f'Relation coverage incomplete after 3 attempts: {len(completed)}/{len(context["candidates"])} reviewed')
