@@ -1,5 +1,20 @@
 # ISSUES
 
+## 2026-09-08 — Local unit acceptance environment gaps (OPEN)
+
+Broader interleaved-architecture unit run: 2,252 passed, six failed, four skipped.
+One new fake-runtime mismatch was repaired by adding/asserting question-review
+privacy routing. Remaining failures: installed openai 1.54.0/httpx 0.28.1 raises
+unsupported proxies argument before the egress test (previously recorded skew);
+two OpenTelemetry redaction tests cannot import pkg_resources with setuptools
+82.0.1 and opentelemetry-instrumentation 0.43b0. Two scratch-directory tests fail
+inside this sandbox, but with bounded write permission both skip because
+PowerShell is unavailable. These are missing acceptance evidence, not passing
+security/runtime tests. Use a separately provisioned compatible test environment
+and Windows/PowerShell acceptance before release; do not weaken assertions or
+mutate the shared historical venv incidentally. Non-blocking for local architecture
+work, blocking a claim of full backend validation.
+
 ## 2026-09-07 — Structured response parser accepted nested fragments (FIXED on task branch)
 
 local_llm_client.extract_json_from_text scans every `{`/`[` after top-level JSON

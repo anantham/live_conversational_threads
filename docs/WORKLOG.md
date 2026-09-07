@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — Broad unit regression sweep
+
+- Full unit suite: 2,252 passed, six failed, four skipped (470 warnings). Repaired
+  the newly stale privacy test runtime and extended its observable assertions:
+  question review must receive the same owner/consent/narrowed providers as
+  aggregation and reconciliation. Focused privacy cases now pass.
+- Reproduced five remaining failures separately: two scratch writes denied by
+  sandbox, two OTEL pkg_resources import failures, one previously documented
+  OpenAI/httpx proxies incompatibility. Bounded escalated scratch tests both skip
+  because PowerShell is unavailable; they are not reported as passed.
+- Verified installed dependency versions and recorded the acceptance gap in
+  ISSUES.md. No package installation, assertion weakening, production change or
+  inference. These environment limits do not complete the full validation gate.
+
 ## 2026-09-08 — Current-only question review export for explicit public candidate
 
 - Added an owner-checked read helper that exports only reviews matching the

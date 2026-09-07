@@ -4,6 +4,7 @@ Test Intent:
 - Extraction passes only conversation-authorized providers to the processor.
 - Denying external inference also disables the direct online-model branch.
 - The source reconciliation stage receives that same narrowed provider/owner scope.
+- Question review receives the identical narrowed scope, never an external fallback.
 - The observable extraction result still persists an auditable graph with a
   realistic complete mandatory L1-L2 hierarchy.
 """
@@ -160,6 +161,10 @@ async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch, 
                             for level in range(2, 6)]
             return Runner()
 
+        def build_question_review(self, **kwargs):
+            observed['question_review'] = kwargs
+            return SimpleNamespace(run=AsyncMock(return_value={'receipts': [], 'projections': []}))
+
     result = await extract_graph_for_conversation(
         _FakeDb(conversation, [utterance]),
         conversation_id=str(conversation_id),
@@ -176,6 +181,8 @@ async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch, 
         assert [p["id"] for p in observed["aggregation"]["providers"]] == ["m5"]
         assert observed["aggregation"]["privacy"]["external_llm_ok"] is False
         assert observed['reconciliation'] == observed['aggregation']
+        assert observed['question_review'] == observed['aggregation']
+        assert result['question_review']['reviewed_count'] == 0
         assert result["auditable_node_count"] == 5
         assert result["pipeline_status"] == "reconciliation_pending"
         persist_graph.assert_not_awaited()
