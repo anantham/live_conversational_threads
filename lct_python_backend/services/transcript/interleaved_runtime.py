@@ -67,6 +67,14 @@ class InterleavedRuntimeConfig:
             inspection_envelope=base.with_system_prompt(INSPECTION_PROMPT),
             review_envelope=base.with_system_prompt(RELATION_PROMPT), retriever=retrieval)
 
+    def build_question_review(self, *, conversation_id, owner_id, providers, privacy):
+        """Use the same frozen routes, budget and tokenizer for question review."""
+        from .question_review_runner import QuestionReviewRunner
+        base = self.build_aggregation(conversation_id=conversation_id, owner_id=owner_id,
+                                      providers=providers, privacy=privacy).envelope
+        return QuestionReviewRunner(session_factory=self.session_factory,
+            conversation_id=conversation_id, owner_id=owner_id, envelope=base)
+
     def build_aggregation(self, *, conversation_id, owner_id, providers, privacy):
         """Compose an unactivated runner under the existing consent envelope.
 

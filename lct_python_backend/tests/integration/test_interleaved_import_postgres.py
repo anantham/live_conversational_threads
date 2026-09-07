@@ -9,6 +9,7 @@ Source inspection and relation review must run through the actual import entrypo
 Question source selections and their exact quotes must survive export and restart.
 Question review must retain speaker-labelled source and recover without another call.
 Its review-qualified projection must reproduce from persisted receipts on restart.
+The shared import path must run question review, not require a manual second task.
 Revoked consent must reject a captured review even when a receipt already exists.
 """
 import json
@@ -148,6 +149,9 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
                                                           interleaved_runtime=config)
         assert result["node_count"] == result["auditable_node_count"] == 5
         assert result["pipeline_status"] == "reconciliation_pending"
+        assert result['question_review']['reviewed_count'] == 1
+        assert result['question_review']['uncertain_count'] == 0
+        assert len(question_reviews) == 1
         assert result['source_review'] == {'review_pass_complete': True, 'unresolved_mappings': 0,
                                           'abstained_inspection_partitions': 0,
                                           'abstained_inspection_pages': 0, 'semantic_reconciliation_complete': False}

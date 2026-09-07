@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Shared import automatically runs question review
+
+- Added runtime factory composition for QuestionReviewRunner under the same
+  frozen inference routes, privacy, reserves and tokenizer contract. The shared
+  opt-in import sequence now runs it after aggregation and returns reviewed and
+  uncertain counts. Saved receipts remain the source for detailed projections.
+- Two failing-first real import cases previously lacked question_review output;
+  both now pass. Thirty integration/factory/question tests pass, proving review
+  executes through extract_graph_for_conversation and restart reuses it without
+  another inference call. Existing graph export remains unchanged.
+- This does not activate the opt-in runtime on production or alter the already
+  running replay process. A genuinely over-budget question still fails visibly;
+  verified token counting and long-history paging remain required before release.
+- Pipeline status deliberately remains reconciliation_pending: global identity,
+  semantic edge application and exported review-qualified views are unfinished.
+
 ## 2026-09-08 — Review-qualified question state without ledger replacement
 
 - Added question_review_projection.py: revalidate request/review binding before
