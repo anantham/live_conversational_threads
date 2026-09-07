@@ -3,6 +3,7 @@
 Test Intent:
 - Extraction passes only conversation-authorized providers to the processor.
 - Denying external inference also disables the direct online-model branch.
+- The source reconciliation stage receives that same narrowed provider/owner scope.
 - The observable extraction result still persists an auditable graph with a
   realistic complete mandatory L1-L2 hierarchy.
 """
@@ -144,6 +145,13 @@ async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch, 
             observed["runtime"] = kwargs
             return _RecordingProcessor(llm_config={"mode": "local"}, providers=kwargs["providers"])
 
+        def build_reconciliation(self, **kwargs):
+            observed['reconciliation'] = kwargs
+            return SimpleNamespace(run=AsyncMock(return_value={
+                'review_pass_complete': True, 'unresolved_mappings': 0,
+                'abstained_inspection_pages': 0, 'abstained_inspection_partitions': 0,
+                'semantic_reconciliation_complete': False}))
+
         def build_aggregation(self, **kwargs):
             observed["aggregation"] = kwargs
             class Runner:
@@ -167,6 +175,7 @@ async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch, 
         assert observed["runtime"]["privacy"]["external_llm_ok"] is False
         assert [p["id"] for p in observed["aggregation"]["providers"]] == ["m5"]
         assert observed["aggregation"]["privacy"]["external_llm_ok"] is False
+        assert observed['reconciliation'] == observed['aggregation']
         assert result["auditable_node_count"] == 5
         assert result["pipeline_status"] == "reconciliation_pending"
         persist_graph.assert_not_awaited()

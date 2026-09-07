@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-09-08 — Full graph run exposes question evidence representation failure
+
+- Import regression selection initially failed because the privacy test double
+  lacked the newly required reconciliation stage. Updated it to assert identical
+  narrowed provider/owner/privacy scope across reconciliation and aggregation;
+  no product fallback or weakened privacy assertion. All 72 selected tests pass.
+- Full public graph session 75253 terminated during first moment extraction:
+  fold_question_memory rejected non-exact source evidence. Added a public-only
+  response observer to the replay process, leaving inference inputs/outputs
+  unchanged. Retry recovered the cached response and reproduced the failure.
+- Diagnostic tmp/public-pipeline/inference-1788816578200271000.json contains five
+  proposed nodes and three question updates. All three quote fields are not exact
+  current-passage substrings: joined utterances omit speaker/newline boundaries,
+  and two quotes contain synthesized ellipses. Question actions are open and
+  partial_answer, retaining the open inquiry, but provenance must not be relaxed.
+- Next correction should use source-reference selection with backend-attached
+  evidence, not permissive fuzzy quote matching. Preserve failed output, question
+  wording/actions and original source. No graph completion/export observed;
+  completed source-inspection receipts remain available.
+
 ## 2026-09-08 — Full public graph run started through shared import stages
 
 - Inspection replay completed all 17 pages / 74,009 characters. Full index

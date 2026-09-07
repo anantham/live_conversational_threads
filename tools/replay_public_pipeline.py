@@ -7,6 +7,8 @@ No configuration mutation, remote model fallback, publication or deployment.
 import argparse
 import asyncio
 import json
+import time
+from unittest.mock import patch
 from pathlib import Path
 
 from sqlalchemy import select
@@ -16,6 +18,7 @@ from lct_python_backend.services.transcript.interleaved_runtime import Interleav
 from lct_python_backend.services.transcript.source_inspection_runner import STAGE, capture_inspection
 from lct_python_backend.services.transcript.inspection_context import inspection_index
 from lct_python_backend.services.transcript.passage_journal import _hash
+from lct_python_backend.services.transcript.inference_envelope import InferenceEnvelope
 from lct_python_backend.services.import_pipeline.interleaved_stages import run_interleaved_stages
 from tools.replay_public_source_inspection import REPLAY_ID, SHA, verified_public_source, verify_rows
 
@@ -53,12 +56,23 @@ async def main(run=False):
             'temperature': 0, 'chat_model': provider['model'], 'embedding_model': provider['embedding_model'],
             'run_requested': run}), flush=True)
         if run:
-            result = await run_interleaved_stages(runtime=runtime, utterances=source, **scope)
+            original = InferenceEnvelope.complete_json
+            output = Path(__file__).resolve().parents[1] / 'tmp' / 'public-pipeline'
+            output.mkdir(parents=True, exist_ok=True)
+            def record_response(envelope, prompt):
+                response = original(envelope, prompt)
+                target = output / f'inference-{time.time_ns()}.json'
+                target.write_text(json.dumps({'request': json.loads(prompt), 'response': response.data,
+                    'policy_fingerprint': envelope.fingerprint}, ensure_ascii=False), encoding='utf-8')
+                print(json.dumps({'phase': 'inference_received', 'path': str(target)}), flush=True)
+                return response
+            # Public-only diagnostic observer; generation and return values are
+            # unchanged. Patch is confined to this isolated process/run scope.
+            with patch.object(InferenceEnvelope, 'complete_json', record_response):
+                result = await run_interleaved_stages(runtime=runtime, utterances=source, **scope)
             from lct_python_backend.share_api import export_threads
             async with sessions() as db:
                 exported = await export_threads(str(REPLAY_ID), db=db)
-            output = Path(__file__).resolve().parents[1] / 'tmp' / 'public-pipeline'
-            output.mkdir(parents=True, exist_ok=True)
             target = output / 'local-candidate.threads'
             target.write_bytes(exported.body)
             print(json.dumps({'phase': 'candidate_exported', 'path': str(target), 'result': result,
