@@ -1,5 +1,18 @@
 # WORKLOG
 
+## 2026-09-08 — Budget fix passes persisted recovery; replay advances
+
+- Seven real-Postgres synthetic import/journal tests pass. Ninety architecture
+  unit tests pass (2,134 deselected, 19 existing warnings).
+- Resumed public replay in session 50729 after prior terminal session 26316.
+  Read-only checkpoint query verified six nodes/six relationships through source
+  sequence 60. The second model response arrived and execution continued past
+  the former full-message budget failure; the replay remains running.
+- Recorded a semantic scope concern from that response in the quality audit:
+  a related anecdote about another person was treated as partial progress on
+  the guest's childhood question. No prompt changes mid-run, semantic acceptance,
+  completed export or publication. Continue polling session 50729.
+
 ## 2026-09-08 — Replay exposes outer-message budgeting mismatch
 
 - Session 26316 is terminal (exit 1), not stalled: first response was captured

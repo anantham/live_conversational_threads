@@ -15,6 +15,23 @@ Do not overwrite the source, inferred speaker names, or saved model response.
 
 ## Findings
 
+### Incremental interpreter, second passage (2026-09-08)
+
+Diagnostic `tmp/public-pipeline/inference-1788818037379020000.json` is the
+second incremental model response, not the inspection output discussed below.
+The request retained one question memory and all thread memories while explicitly
+omitting one whole earlier passage under the context budget. The childhood
+question stays open and a peer-status question is opened and answered separately.
+
+Semantic concern: the host's anecdote about a self-taught peer is labelled a
+partial answer to the question about the guest's childhood. Shared subject matter
+does not establish that it answers the same person's inquiry. This is a concrete
+scope/subject distinction for the local/frontier comparison and reconciliation
+checks. Source citations alone cannot prove the question update appropriate.
+Do not change the running prompt mid-replay or repair only one comparison arm.
+Assess whether this should be a related side discussion rather than progress on
+the parent question, retaining the original output as diagnostic evidence.
+
 | Evidence location | Assessment | Required treatment |
 | --- | --- | --- |
 | Observation 10; spans 63, 69, 71 | Programming recollections from two speaker labels are compressed into one sentence. The host's generalization and the guest's turtle recollection are not clearly separated. Citation provenance retains the distinction, but prose blurs it. | Score atomic speaker attribution, not just presence of valid citations. Preserve who supplied which detail in a revised observation. |
