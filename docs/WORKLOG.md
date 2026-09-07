@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-09-08 — Do not re-review unchanged unsupported proposals
+
+- Local inspection found revision request hashes change even when the model
+  returns identical group content. Separate revision receipts could therefore
+  re-review the same rejected proposal and accept it by sampling variation.
+- Compare normalized proposal content across attempts (trimmed label/rationale,
+  order-independent group and child IDs). Repeated content is durably retained
+  but raises AbstractionNeedsRevision before a fresh source review/decision.
+  This catches exact repeats and ordering/whitespace changes, not semantic
+  paraphrases; substantive revision quality still requires model/evaluation work.
+- Validation: 7 isolated-DB tests passed, including a provider that would accept
+  the repeated proposal on a second review. That second review is never called,
+  and restart repeats neither generation nor review. Existing successful revision
+  and bounded persistent-rejection paths remain passing.
+- Independent source review remains pending the previously requested exact-packet
+  execution-host approval. No denied egress was retried or rerouted. Local work
+  continues, so the overall goal is not blocked.
+
 ## 2026-09-08 — Independent review route refreshed; source send denied
 
 - Claude auth status is currently loggedIn=false (including host-access check).

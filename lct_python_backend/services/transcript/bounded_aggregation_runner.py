@@ -68,6 +68,7 @@ class BoundedAggregationRunner:
         request = build_proposal_request(children, target_level=target_level,
             source_snapshot_hash=_hash(snapshot['request']['sources']), envelope=self.envelope)
         previous = None
+        seen_proposals = set()
         for generation in range(3):
             attempt = copy.deepcopy(request)
             if previous is not None:
@@ -85,6 +86,14 @@ class BoundedAggregationRunner:
                 result = await asyncio.to_thread(self.envelope.complete_json, prompt)
                 async with self.sessions.begin() as db:
                     saved = await self._proposal_checkpoint(db, snapshot, attempt, result.data, generation=generation)
+            # Request hashes change across revisions; compare proposal content
+            # itself so unchanged rejected work cannot obtain a fresh verdict.
+            signature = _hash(sorted((g['label'].strip(), g['rationale'].strip(),
+                tuple(sorted(g['children_ids']))) for g in saved['groups']['groups']))
+            if signature in seen_proposals:
+                raise AbstractionNeedsRevision(
+                    f'Abstraction tier {target_level} repeated an unsupported proposal; no re-review')
+            seen_proposals.add(signature)
             runner = self.memberships if generation == 0 else MembershipReviewRunner(
                 session_factory=self.sessions, **self.scope,
                 envelope=self.memberships.envelope, generation=generation)

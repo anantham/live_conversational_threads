@@ -24,7 +24,7 @@ from lct_python_backend.services.transcript.interleaved_runtime import Interleav
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('revise_first', [False, True, 'always'])
+@pytest.mark.parametrize('revise_first', [False, True, 'always', 'repeat'])
 async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revise_first):
     """Rejected grouping is revised with evidence; restart never replays rejected work."""
     url = os.getenv("PASSAGE_JOURNAL_TEST_DATABASE_URL")
@@ -75,7 +75,10 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
             if 'revision' in request:
                 feedback = request['revision']['membership_feedback']
                 assert feedback[0]['decision'] == 'reject' and feedback[0]['citations']
-            return Result({'groups': [{'label': 'Open borrowing question' if 'revision' in request else 'Borrowing inquiry', 'rationale': 'Unresolved borrowing policy.',
+            label = 'Open borrowing question' if 'revision' in request and revise_first != 'repeat' else 'Borrowing inquiry'
+            if revise_first == 'always':
+                label += f' scope {stages.count("proposal")}'
+            return Result({'groups': [{'label': label, 'rationale': 'Unresolved borrowing policy.',
                                       'children_ids': [c['id'] for c in request['children']]}]})
         if 'source_page' in request:
             stages.append('review')
@@ -105,15 +108,20 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
             await db.flush()
             db.add(Utterance(id=uid, conversation_id=cid, sequence_number=1, text=text,
                              speaker_id="SPEAKER_00", timestamp_start=0, timestamp_end=3))
-        if revise_first == 'always':
+        if revise_first in ('always', 'repeat'):
             from lct_python_backend.services.transcript.bounded_aggregation_runner import AbstractionNeedsRevision
             for retry in range(2):
                 async with sessions() as db:
-                    with pytest.raises(AbstractionNeedsRevision, match='3 audited proposal attempts'):
+                    message = '3 audited proposal attempts' if revise_first == 'always' else 'repeated an unsupported proposal'
+                    with pytest.raises(AbstractionNeedsRevision, match=message):
                         await extract_graph_for_conversation(db, conversation_id=str(cid), owner_id=owner,
                                                             interleaved_runtime=config)
-                assert calls == [1, 2, 2, 2]
-                assert stages == ['moment', 'inspection'] + ['proposal', 'review', 'decision'] * 3
+                if revise_first == 'always':
+                    assert calls == [1, 2, 2, 2]
+                    assert stages == ['moment', 'inspection'] + ['proposal', 'review', 'decision'] * 3
+                else:
+                    assert calls == [1, 2, 2]
+                    assert stages == ['moment', 'inspection', 'proposal', 'review', 'decision', 'proposal']
             return
         async with sessions() as db:
             result = await extract_graph_for_conversation(db, conversation_id=str(cid), owner_id=owner,
