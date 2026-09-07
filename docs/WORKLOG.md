@@ -1,5 +1,22 @@
 # WORKLOG
 
+## 2026-09-08 — Relationship direction follows meaning, not retrieval order
+
+- Public diagnostic inference-1788821644360835000 describes a candidate question
+  asking about the focal career statement. The prior fixed focal-to-candidate
+  mapping would persist the inverse meaning. Four failing-first unit tests
+  reproduced discarded direction and acceptance of absent/foreign/self endpoints.
+- Relation proposals now explicitly name from_observation_id/to_observation_id.
+  Both must be distinct compared endpoints. Mapping preserves that direction;
+  duplicate detection is per directed type, not merely per type. Prompt explains
+  question/statement, evidence/claim and callback direction independently of rank.
+- Twenty-one tests pass, including both directions through PostgreSQL persistence,
+  interrupted-run recovery and .threads export. This fixes a structural bias, not
+  a proof that model semantic direction is always correct.
+- The changed prompt changes review policy identity. Old saved reviews are not
+  silently upgraded or inverted. Running session 50729 retains its loaded old
+  schema and remains diagnostic; its artifact must not be published as validated.
+
 ## 2026-09-08 — Immutable question-review revisions
 
 - Two failing-first PostgreSQL import cases reproduced a stale receipt conflict

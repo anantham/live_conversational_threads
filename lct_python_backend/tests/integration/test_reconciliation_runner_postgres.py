@@ -1,5 +1,6 @@
 """Test intent: full inspection -> retrieval -> relation review -> canonical
 edge export with durable restart that skips saved embedding/generation work.
+Both focal-to-candidate and candidate-to-focal directions survive persistence.
 Real isolated PostgreSQL, synthetic source and doubled provider transports.
 """
 import json
@@ -23,7 +24,8 @@ from lct_python_backend.services.transcript.source_inspection import INSPECTION_
 
 
 @pytest.mark.asyncio
-async def test_full_review_loop_restart_and_export(monkeypatch):
+@pytest.mark.parametrize('reverse', [False, True])
+async def test_full_review_loop_restart_and_export(monkeypatch, reverse):
     url = os.getenv('PASSAGE_JOURNAL_TEST_DATABASE_URL')
     if not url:
         pytest.skip('Explicit isolated database required')
@@ -53,7 +55,10 @@ async def test_full_review_loop_restart_and_export(monkeypatch):
         for candidate in request['candidates']:
             relations = []
             if later:
-                relations = [{'relation_type': 'return_to_thread', 'rationale': 'Explicit unresolved callback.',
+                relations = [{'relation_type': 'asks' if reverse else 'return_to_thread',
+                    'rationale': 'Question concerns the statement.' if reverse else 'Explicit unresolved callback.',
+                    'from_observation_id': candidate['id'] if reverse else focal['id'],
+                    'to_observation_id': focal['id'] if reverse else candidate['id'],
                     'evidence': [{'observation_id': obs['id'], 'utterance_id': obs['source_excerpts'][0]['utterance_id'],
                                   'quote': obs['source_excerpts'][0]['text']} for obs in (focal, candidate)]}]
             comparisons.append({'candidate_id': candidate['id'], 'status': 'related' if later else 'uncertain',
@@ -100,8 +105,10 @@ async def test_full_review_loop_restart_and_export(monkeypatch):
         from lct_python_backend.share_api import export_threads
         async with sessions() as db:
             bundle = json.loads((await export_threads(str(cid), db=db)).body)
-        edges = [edge for edge in bundle['edges'] if edge['relation_type'] == 'return_to_thread']
-        assert len(edges) == 1 and edges[0]['from_node_id'] == str(new) and edges[0]['to_node_id'] == str(old)
+        edges = [edge for edge in bundle['edges'] if edge['relation_type'] == ('asks' if reverse else 'return_to_thread')]
+        assert len(edges) == 1
+        assert edges[0]['from_node_id'] == str(old if reverse else new)
+        assert edges[0]['to_node_id'] == str(new if reverse else old)
         assert [u['text'] for u in bundle['utterances']] == texts
     finally:
         async with sessions.begin() as db:

@@ -1,5 +1,6 @@
 """Test intent: retrieval becomes only source-cited proposals, with explicit
 abstention and coverage. Foreign, missing and one-sided evidence must reject.
+Directed relationships explicitly name both observation endpoints.
 """
 import copy
 import json
@@ -18,9 +19,21 @@ def fixture():
     response = {'comparisons': [{'candidate_id': 'earlier', 'status': 'related',
         'reason': 'The later remark returns to the borrowing question without answering it.',
         'relations': [{'relation_type': 'return_to_thread', 'rationale': 'Explicit unresolved callback.',
+            'from_observation_id': 'later', 'to_observation_id': 'earlier',
             'evidence': [{'observation_id': 'later', 'utterance_id': 'u90', 'quote': 'Returning to borrowing'},
                          {'observation_id': 'earlier', 'utterance_id': 'u1', 'quote': 'Who may borrow the key?'}]}]}]}
     return context, response
+
+
+@pytest.mark.parametrize('fault', ['missing', 'foreign', 'self'])
+def test_direction_requires_both_distinct_available_endpoints(fault):
+    context, response = fixture()
+    relation = response['comparisons'][0]['relations'][0]
+    if fault == 'missing': relation.pop('from_observation_id')
+    elif fault == 'foreign': relation['from_observation_id'] = 'unavailable'
+    else: relation['to_observation_id'] = relation['from_observation_id']
+    with pytest.raises(ValueError, match='direction'):
+        validate_relation_review(response, context)
 
 
 def test_cited_callback_is_a_proposal_not_an_answer_or_thread_merge():

@@ -16,6 +16,8 @@ def map_reviewed_relations(review, context, nodes):
         raw['comparisons'].append({key: comparison[key] for key in ('candidate_id', 'status', 'reason')})
         raw['comparisons'][-1]['relations'] = [
             {'relation_type': relation['relation_type'], 'rationale': relation['rationale'],
+             'from_observation_id': relation['from_observation_id'],
+             'to_observation_id': relation['to_observation_id'],
              'evidence': [{key: citation[key] for key in ('observation_id', 'utterance_id', 'quote')}
                           for citation in relation['evidence']]}
             for relation in comparison['relations']]
@@ -33,8 +35,8 @@ def map_reviewed_relations(review, context, nodes):
                 source_ids = {c['utterance_id'] for c in relation['evidence'] if c['observation_id'] == oid}
                 endpoint_candidates[oid] = sorted(node['id'] for node in leaves
                     if source_ids and source_ids.issubset(node['utterance_ids']))
-            origin = endpoint_candidates[comparison['focal_id']]
-            destination = endpoint_candidates[comparison['candidate_id']]
+            origin = endpoint_candidates[relation['from_observation_id']]
+            destination = endpoint_candidates[relation['to_observation_id']]
             if not origin or not destination:
                 disposition = 'unmapped_source'
             elif len(origin) != 1 or len(destination) != 1:

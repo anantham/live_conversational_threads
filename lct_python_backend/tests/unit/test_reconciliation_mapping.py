@@ -27,6 +27,18 @@ def test_unique_leaf_ownership_preserves_later_to_earlier_callback():
     assert (context, review, nodes) == before
 
 
+def test_candidate_question_can_ask_about_focal_statement():
+    context, raw = fixture()
+    raw['comparisons'][0]['relations'][0].update(
+        relation_type='asks', from_observation_id='earlier', to_observation_id='later')
+    review = validate_relation_review(raw, context)
+    nodes = [{'id': 'question', 'level': 1, 'utterance_ids': ['u1']},
+             {'id': 'statement', 'level': 1, 'utterance_ids': ['u90']}]
+    mapped = map_reviewed_relations(review, context, nodes)
+    assert mapped[0]['from_node_id'] == 'question'
+    assert mapped[0]['to_node_id'] == 'statement'
+
+
 @pytest.mark.parametrize('fault,expected', [('overlap', 'ambiguous_node_ownership'),
                                            ('missing', 'unmapped_source'), ('same_node', 'within_node')])
 def test_unsafe_endpoint_mapping_remains_explicit(fault, expected):
