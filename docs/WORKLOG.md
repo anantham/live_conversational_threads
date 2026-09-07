@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Question-scope review contract
+
+- Added question_review.py as an internal source-backed reconciliation boundary.
+  Requests preserve original/intermediate/latest events and full source passages;
+  envelope budgeting rejects oversized history rather than clipping evidence.
+- Review distinguishes same-question contributions, related asides, unrelated
+  material and uncertainty from resolution state. It requires every non-original
+  event once and exact original/current source IDs; backend attaches evidence.
+  No event is erased and validated reviews remain unaccepted for projection.
+- Failing-first tests initially found the absent module. Eighteen review/memory
+  tests now pass for scope distinction, unknown evidence, omitted events,
+  contradictory decisions, preservation and overflow. These are contract tests,
+  not a model-quality result. Next: revision/consent checked runner persistence,
+  source attribution input and review-derived projection integration.
+- Existing public replay session 50729 remains live; its prompt is unchanged.
+
 ## 2026-09-08 — Budget fix passes persisted recovery; replay advances
 
 - Seven real-Postgres synthetic import/journal tests pass. Ninety architecture
