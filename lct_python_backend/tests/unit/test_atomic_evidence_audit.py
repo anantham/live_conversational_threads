@@ -19,6 +19,7 @@ def test_valid_source_continuation_is_not_original_selected_evidence():
     result = audit_atomic_response(*case(support='selected'))
     assert result['claims'][0]['citation_location'] == 'elsewhere'
     assert result['claims'][0]['support_label_mismatch']
+    assert result['observations_requiring_citation_revision'] == ['o']
     assert not result['semantic_entailment_verified'] and not result['claim_coverage_verified']
 
 

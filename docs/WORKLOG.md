@@ -1,5 +1,16 @@
 # WORKLOG
 
+## 2026-09-08 — Atomic verification exposes two evidence-location mislabels
+
+- Session 13714 completed with eight claims. The verifier located missing source
+  continuations but called two expanded citation sets selected evidence. The
+  deterministic audit rejected that classification; all quote/span matches passed.
+- Added explicit observations_requiring_citation_revision to the audit result,
+  derived from actual quote inclusion, not the model's supported verdict.
+  Semantic entailment and complete claim coverage remain unverified.
+- Detailed public experiment outcome recorded in the quality audit. No source,
+  original observations or published artifacts were overwritten.
+
 ## 2026-09-08 — Atomic-claim verifier experiment and lexical checks
 
 - Added --atomic mode to the public diagnostic: same exact source/request,

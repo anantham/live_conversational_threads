@@ -91,3 +91,27 @@ Next experiment should require each atomic claim's supporting source spans and
 separately report source ambiguity. Preserve both original and verifier output.
 One successful attribution repair does not establish reliable verification over
 the conversation, and these three selected cases do not yield an accuracy rate.
+
+## Atomic-claim follow-up result
+
+Session 13714 completed; raw output is retained in
+`tmp/public-inspection-quality/1788815187645607000.json`. Same request source and
+observation selection, atomic prompt fingerprint
+`881cfa84785fb34ed948ef4241a42779c81d7a0433cf1055ca60ef7824b6c15d`.
+
+The model produced eight atomic claims and correctly located the degree
+continuation in span 15. It also added span 35 for the specific language names.
+However, it labelled both expanded citation sets as selected, even though those
+spans were absent from their original observations' citations. The deterministic
+lexical audit caught both mismatches and marks those two observations as requiring
+citation revision, regardless of the model's overall supported status.
+
+The attribution case again receives a useful proposed correction separating
+speakers. All proposed quotes were found in their stated source spans. Neither
+that check nor the decomposition proves every claim was covered or entailed.
+The academic-history ambiguity is still unresolved; no audio was inspected.
+
+Implication: separate model-proposed evidence discovery from code-verified
+source location and from semantic acceptance. Do not use the verifier's supported
+label to skip a required citation revision. Original observations and source
+remain unchanged. This is a focused experiment, not a fair frontier comparison.

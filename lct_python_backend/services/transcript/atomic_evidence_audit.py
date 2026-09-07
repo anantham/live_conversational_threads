@@ -45,5 +45,8 @@ def audit_atomic_response(response, request):
                 'support_label_mismatch': asserted != 'ambiguous' and asserted != actual})
     if seen != set(observations):
         raise ValueError('Atomic verifier omitted observations')
-    return {'claims': audited, 'semantic_entailment_verified': False,
+    return {'claims': audited,
+            'observations_requiring_citation_revision': sorted({c['observation_id'] for c in audited
+                if c['citation_location'] in {'elsewhere', 'missing'}}),
+            'semantic_entailment_verified': False,
             'claim_coverage_verified': False}
