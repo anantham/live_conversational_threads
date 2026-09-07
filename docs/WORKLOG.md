@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Public replay checkpoint coverage audit
+
+- Read-only isolated-DB audit planned 17 pages under the exact replay envelope.
+  At audit time 12 complete page receipts were committed, covering 54,444 of
+  74,009 source characters and containing 221 observations. Each saved receipt
+  digest, input hash, policy fingerprint and exact planned page matched current
+  source. Recorded subdivision abstentions: zero. No inference or DB writes
+  were performed by this audit.
+- This proves checkpoint identity/coverage for those pages, not semantic recall,
+  attribution quality or correctness of inferred meanings. Model acknowledgments
+  and zero recorded abstentions do not prove understanding.
+- Validation after recent context changes: 31 isolated synthetic tests passed
+  across import, consent, passage recovery, partition recovery, reconciliation,
+  question memory and runtime factory. The source replay remains in session
+  84674; no restart or production replacement was issued.
+
 ## 2026-09-08 — Do not re-review unchanged unsupported proposals
 
 - Local inspection found revision request hashes change even when the model
