@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Durable all-reviews membership decisions
+
+- MembershipReviewRunner.run_decisions now recovers the complete source reviews,
+  reconstructs their exact expected requests from the current snapshot, builds
+  an all-evidence packet, and checkpoints the model disposition under a separate
+  decision-stage/prompt identity. Fresh consent and source/child identity checks
+  apply before generation and commit; no long-running DB transaction.
+- Initial integration test exposed a reconstruction mismatch: review planning
+  included semantic_level in the child hash but decision reconstruction omitted
+  it. Reconstructed the same adjacent-tier child representation, then tested all
+  three dispositions. Nineteen tests pass across proposal, review, decision and
+  real-DB runner paths. Interrupted decision retries do not regenerate reviews;
+  another restart makes no model calls. Exact source and sole child remain intact.
+- All-accepted results report parent_synthesis_required, never completed parents.
+  Reject/uncertain report proposal_revision_required. Qualifications survive in
+  the receipt. Proposal generation/revision, parent synthesis, tier commits and
+  larger-than-budget combined evidence packets still need composition/validation.
+- Public inspection session 70629 was polled twice, remains live requesting page
+  index 6 after corrected parser/cache rollout, and produced no new output during
+  these observations. Do not infer a terminal timeout or restart from silence.
+
+
 ## 2026-09-08 — Reject incomplete outer JSON instead of accepting inner fragments
 
 - Reproduced the parser class with synthetic incomplete responses: an unfinished

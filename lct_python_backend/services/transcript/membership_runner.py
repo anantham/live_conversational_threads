@@ -10,6 +10,7 @@ from lct_python_backend.models import PipelineArtifact
 from .abstraction_proposals import build_proposal_request, validate_proposals
 from .aggregation_checkpoint import capture_aggregation
 from .membership_review import plan_membership_reviews, validate_membership_review
+from .membership_decision import DECISION_PROMPT, build_decision_request, validate_decision
 from .passage_journal import JournalConflict, _hash
 from .source_inspection_runner import check_inference_consent
 
@@ -19,25 +20,27 @@ class MembershipReviewRunner:
         self.sessions = session_factory
         self.scope = {'conversation_id': conversation_id, 'owner_id': owner_id}
         self.envelope = envelope
+        self.decision_envelope = envelope.with_system_prompt(DECISION_PROMPT)
 
     async def _capture(self, db, level, *, lock=False):
         await check_inference_consent(db, **self.scope, providers=self.envelope.providers)
         return await capture_aggregation(db, **self.scope, target_level=level, lock=lock)
 
-    async def _checkpoint(self, db, snapshot, request, index, payload=None):
+    async def _checkpoint(self, db, snapshot, request, index, payload=None, *, decision=False):
         level = snapshot['request']['target_level']
         current = await self._capture(db, level, lock=True)
         if current != snapshot:
             raise JournalConflict('Membership source or child interpretation changed')
         cid = uuid.UUID(self.scope['conversation_id'])
-        stage = f'conversation_membership_review_l{level}_v1'
+        kind = 'decision' if decision else 'review'
+        stage = f'conversation_membership_{kind}_l{level}_v1'
         rows = (await db.execute(select(PipelineArtifact).where(
             PipelineArtifact.conversation_id == cid, PipelineArtifact.stage == stage,
             PipelineArtifact.stage_index == index))).scalars().all()
         if len(rows) > 1:
             raise JournalConflict('Multiple membership review receipts require reconciliation')
         identity = {'input_hash': snapshot['input_hash'], 'request': request,
-                    'policy_fingerprint': self.envelope.fingerprint}
+                    'policy_fingerprint': (self.decision_envelope if decision else self.envelope).fingerprint}
         if rows:
             saved = rows[0].artifact_json
             if _hash(saved) != rows[0].content_hash or any(saved.get(k) != v for k, v in identity.items()):
@@ -45,10 +48,10 @@ class MembershipReviewRunner:
             return copy.deepcopy(saved)
         if payload is None:
             return None
-        result = validate_membership_review(payload, request)
+        result = (validate_decision if decision else validate_membership_review)(payload, request)
         receipt = {**copy.deepcopy(identity), 'result': result}
         db.add(PipelineArtifact(conversation_id=cid, stage=stage, stage_index=index,
-            artifact_type='abstraction_membership_review', artifact_json=receipt, content_hash=_hash(receipt)))
+            artifact_type=f'abstraction_membership_{kind}', artifact_json=receipt, content_hash=_hash(receipt)))
         await db.flush()
         return receipt
 
@@ -77,3 +80,31 @@ class MembershipReviewRunner:
             receipts.append(saved)
         return {'input_hash': snapshot['input_hash'], 'proposals': proposals, 'receipts': receipts,
                 'status': 'proposal_reconciliation_required'}
+
+    async def run_decisions(self, groups, *, target_level):
+        reviews = await self.run(groups, target_level=target_level)
+        async with self.sessions.begin() as db:
+            snapshot = await self._capture(db, target_level)
+        if snapshot['input_hash'] != reviews['input_hash']:
+            raise JournalConflict('Source changed between review and decision')
+        children = {c['id']: {**c, 'semantic_level': target_level - 1}
+                    for c in snapshot['request']['children']}
+        sources = {s['id']: s for s in snapshot['request']['sources']}
+        by_request = {_hash(r['request']): r for r in reviews['receipts']}
+        decisions = []
+        for proposal in reviews['proposals']:
+            for identity in proposal['children_ids']:
+                expected = plan_membership_reviews(proposal, children[identity], sources, envelope=self.envelope)
+                receipts = [by_request[_hash(r)] for r in expected]
+                request = build_decision_request(expected, receipts, envelope=self.decision_envelope)
+                index = len(decisions)
+                async with self.sessions.begin() as db:
+                    saved = await self._checkpoint(db, snapshot, request, index, decision=True)
+                if saved is None:
+                    prompt = json.dumps(request, ensure_ascii=False, separators=(',', ':'))
+                    result = await asyncio.to_thread(self.decision_envelope.complete_json, prompt)
+                    async with self.sessions.begin() as db:
+                        saved = await self._checkpoint(db, snapshot, request, index, result.data, decision=True)
+                decisions.append(saved)
+        return {**reviews, 'decisions': decisions, 'status': 'parent_synthesis_required'
+                if all(r['result']['decision'] == 'accept' for r in decisions) else 'proposal_revision_required'}
