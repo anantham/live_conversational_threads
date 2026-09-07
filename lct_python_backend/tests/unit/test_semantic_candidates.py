@@ -79,6 +79,13 @@ def test_private_provider_selection_happens_before_any_content_call():
                            privacy={"local_llm_ok": True})
 
 
+def test_consent_check_inventory_cannot_mutate_pinned_embedding_route():
+    retriever = SemanticCandidates(providers=[PROVIDER], privacy={"local_llm_ok": True}, embed_batch=lambda *args: None)
+    exposed = retriever.providers
+    exposed[0]['trust_scope'] = 'external'
+    assert retriever.providers[0]['trust_scope'] == 'owner_private'
+
+
 @pytest.mark.parametrize("vectors", [[], [[1., 0.]], [[1., 0.], [1.]],
                                      [[1., 0.], [float("nan"), 1.]], [[1., 0.], [0., 0.]]])
 def test_malformed_vectors_fail_before_source_ranking(vectors):

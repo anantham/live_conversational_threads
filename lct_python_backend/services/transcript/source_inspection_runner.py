@@ -10,14 +10,41 @@ import uuid
 
 from sqlalchemy import select
 
-from lct_python_backend.models import PipelineArtifact
+from lct_python_backend.models import PipelineArtifact, Utterance
 from lct_python_backend.services.deployment_privacy_policy import (
     DeploymentPrivacyError, assert_raw_transcript_retention_allowed, select_providers_for_privacy,
 )
-from .aggregation_checkpoint import capture_aggregation
-from .passage_journal import JournalConflict, _authorized_conversation, _hash
+from .passage_journal import JournalConflict, _authorized_conversation, _hash, _source
 from .source_inspection import validate_inspection
 from .source_inspection_pages import inspection_sources, plan_inspection_pages, source_span
+
+STAGE = 'conversation_source_inspection_v2'
+
+
+async def check_inference_consent(db, *, conversation_id, owner_id, providers):
+    conversation = await _authorized_conversation(db, conversation_id, owner_id, lock=True)
+    metadata = conversation.source_metadata if isinstance(conversation.source_metadata, dict) else {}
+    privacy = metadata.get('privacy')
+    permitted = select_providers_for_privacy(providers, privacy)
+    if permitted != providers:
+        raise DeploymentPrivacyError('Stored consent no longer permits the frozen inference routes')
+    if not isinstance(privacy, dict) or privacy.get('redaction_applied') is not True:
+        assert_raw_transcript_retention_allowed()
+
+
+async def capture_inspection(db, *, conversation_id, owner_id, lock=False):
+    """Raw source owns inspection identity; graph revisions own later mapping.
+
+    Read ALL authorized utterances, including ones extraction may have missed.
+    No historical graph-bound receipts are silently reinterpreted as this format.
+    """
+    await _authorized_conversation(db, conversation_id, owner_id, lock=lock)
+    statement = select(Utterance).where(Utterance.conversation_id == uuid.UUID(conversation_id)).order_by(Utterance.sequence_number)
+    if lock:
+        statement = statement.with_for_update()
+    rows = (await db.execute(statement.execution_options(populate_existing=True))).scalars().all()
+    request = {'sources': [_source(row) for row in rows]}
+    return {'request': request, 'input_hash': _hash(request)}
 
 
 def validate_page(page, snapshot):
@@ -53,15 +80,13 @@ async def checkpoint_inspection(db, *, conversation_id, owner_id, snapshot, page
         raise ValueError('Inspection policy fingerprint required')
     if _hash(snapshot['request']) != snapshot['input_hash']:
         raise JournalConflict('Inspection snapshot digest mismatch')
-    current = await capture_aggregation(db, conversation_id=conversation_id, owner_id=owner_id,
-        target_level=snapshot['request']['target_level'], lock=True)
+    current = await capture_inspection(db, conversation_id=conversation_id, owner_id=owner_id, lock=True)
     if current != snapshot:
-        raise JournalConflict('Inspection source or interpretation changed; recapture required')
+        raise JournalConflict('Inspection source changed; recapture required')
     validate_page(page, snapshot)
-    stage = f"conversation_inspection_l{snapshot['request']['target_level']}_v1"
     rows = (await db.execute(select(PipelineArtifact).where(
         PipelineArtifact.conversation_id == uuid.UUID(conversation_id),
-        PipelineArtifact.stage == stage, PipelineArtifact.stage_index == page['page_index']))).scalars().all()
+        PipelineArtifact.stage == STAGE, PipelineArtifact.stage_index == page['page_index']))).scalars().all()
     if len(rows) > 1:
         raise JournalConflict('Multiple inspection receipts for one page')
     if rows:
@@ -72,12 +97,17 @@ async def checkpoint_inspection(db, *, conversation_id, owner_id, snapshot, page
                 or saved['policy_fingerprint'] != policy_fingerprint):
             raise JournalConflict('Saved inspection requires explicit revision reconciliation')
         return copy.deepcopy(saved)
+    legacy = (await db.execute(select(PipelineArtifact.id).where(
+        PipelineArtifact.conversation_id == uuid.UUID(conversation_id),
+        PipelineArtifact.stage.like('conversation_inspection_l%')).limit(1))).scalar_one_or_none()
+    if legacy is not None:
+        raise JournalConflict('Legacy graph-bound inspection requires explicit migration or separate replay')
     if payload is None:
         return None
     result = validate_inspection(payload, page)
     receipt = {'input_hash': snapshot['input_hash'], 'page': copy.deepcopy(page),
                'policy_fingerprint': policy_fingerprint, 'result': result}
-    db.add(PipelineArtifact(conversation_id=uuid.UUID(conversation_id), stage=stage,
+    db.add(PipelineArtifact(conversation_id=uuid.UUID(conversation_id), stage=STAGE,
         stage_index=page['page_index'], artifact_type='source_inspection',
         artifact_json=receipt, content_hash=_hash(receipt)))
     await db.flush()
@@ -92,21 +122,14 @@ class SourceInspectionRunner:
         self.envelope = envelope
 
     async def check_consent(self, db):
-        conversation = await _authorized_conversation(db, self.conversation_id, self.owner_id, lock=True)
-        metadata = conversation.source_metadata if isinstance(conversation.source_metadata, dict) else {}
-        privacy = metadata.get('privacy')
-        configured = self.envelope.providers
-        permitted = select_providers_for_privacy(configured, privacy)
-        if permitted != configured:
-            raise DeploymentPrivacyError('Stored consent no longer permits the frozen inspection routes')
-        if not isinstance(privacy, dict) or privacy.get('redaction_applied') is not True:
-            assert_raw_transcript_retention_allowed()
+        await check_inference_consent(db, conversation_id=self.conversation_id,
+                                      owner_id=self.owner_id, providers=self.envelope.providers)
 
-    async def run(self, target_level=2):
+    async def run(self):
         scope = {'conversation_id': self.conversation_id, 'owner_id': self.owner_id}
         async with self.sessions.begin() as db:
             await self.check_consent(db)
-            snapshot = await capture_aggregation(db, **scope, target_level=target_level)
+            snapshot = await capture_inspection(db, **scope)
         pages = plan_inspection_pages(snapshot['request']['sources'], envelope=self.envelope)
         receipts = []
         for page in pages:

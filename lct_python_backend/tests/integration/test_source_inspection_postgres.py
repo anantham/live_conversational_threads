@@ -1,6 +1,7 @@
 """Test intent: long-source inspection checkpoints resume across model failure,
 preserve exact source, reject stale/foreign-owner results, and create no graph
-nodes. Real isolated PostgreSQL; synthetic source and provider transport only.
+nodes. Inspection works before graph creation and survives graph-only changes.
+Real isolated PostgreSQL; synthetic source and provider transport only.
 """
 import asyncio
 import json
@@ -17,12 +18,13 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from lct_python_backend.models import Conversation, Node, PipelineArtifact, Utterance
 from lct_python_backend.services.graph_persistence import persist_graph
 from lct_python_backend.services.deployment_privacy_policy import DeploymentPrivacyError
-from lct_python_backend.services.transcript.aggregation_checkpoint import capture_aggregation
 from lct_python_backend.services.transcript.inference_envelope import InferenceEnvelope
 from lct_python_backend.services.transcript.passage_journal import JournalConflict
 from lct_python_backend.services.transcript.source_inspection import INSPECTION_PROMPT
 from lct_python_backend.services.transcript.source_inspection_pages import plan_inspection_pages
-from lct_python_backend.services.transcript.source_inspection_runner import SourceInspectionRunner, checkpoint_inspection
+from lct_python_backend.services.transcript.source_inspection_runner import (
+    SourceInspectionRunner, checkpoint_inspection, capture_inspection,
+)
 
 
 @pytest.mark.asyncio
@@ -76,13 +78,18 @@ async def test_long_inspection_restart_and_revision_boundaries(monkeypatch):
                 source_metadata={'privacy': {'local_llm_ok': True, 'external_llm_ok': False}}))
             await db.flush()
             db.add(Utterance(id=uid, conversation_id=cid, sequence_number=1, text=text, speaker_id='SPEAKER_00'))
-        async with sessions.begin() as db:
-            await persist_graph(db=db, conversation_id=str(cid), owner_id=owner, append_only=True, commit=False,
-                existing_json=[{'id': str(nid), 'semantic_level': 1, 'node_name': 'Borrowing',
-                                'summary': 'Borrowing remains open.', 'utterance_ids': [str(uid)]}])
         with pytest.raises(PermissionError):
             await runner('wrong-owner').run()
         assert not calls
+        legacy_id = uuid.uuid4()
+        async with sessions.begin() as db:
+            db.add(PipelineArtifact(id=legacy_id, conversation_id=cid, stage='conversation_inspection_l2_v1',
+                stage_index=0, artifact_type='synthetic_legacy_receipt', artifact_json={}, content_hash='synthetic'))
+        with pytest.raises(JournalConflict, match='Legacy graph-bound'):
+            await runner().run()
+        assert not calls, 'Old experimental receipts must not silently trigger a new source replay'
+        async with sessions.begin() as db:
+            await db.execute(delete(PipelineArtifact).where(PipelineArtifact.id == legacy_id, PipelineArtifact.conversation_id == cid))
         with pytest.raises(RuntimeError, match='interrupted inspection'):
             await runner().run()
         assert calls == [0, 1]
@@ -98,7 +105,7 @@ async def test_long_inspection_restart_and_revision_boundaries(monkeypatch):
         async with sessions() as db:
             saved = (await db.execute(select(PipelineArtifact).where(PipelineArtifact.conversation_id == cid))).scalars().all()
             assert len(saved) == 1 and saved[0].stage_index == 0
-            snapshot = await capture_aggregation(db, conversation_id=str(cid), owner_id=owner, target_level=2)
+            snapshot = await capture_inspection(db, conversation_id=str(cid), owner_id=owner)
         pages = plan_inspection_pages(snapshot['request']['sources'], envelope=envelope)
         failure['page'] = None
         revocation['page'] = 1
@@ -117,6 +124,10 @@ async def test_long_inspection_restart_and_revision_boundaries(monkeypatch):
         assert result['submitted_characters'] == len(text)
         assert not result['semantic_reconciliation_complete']
         assert result['abstained_pages'] == 0
+        async with sessions.begin() as db:
+            await persist_graph(db=db, conversation_id=str(cid), owner_id=owner, append_only=True, commit=False,
+                existing_json=[{'id': str(nid), 'semantic_level': 1, 'node_name': 'Borrowing',
+                                'summary': 'Borrowing remains open.', 'utterance_ids': [str(uid)]}])
         assert await runner().run() == result
         assert len(calls) == len(pages) + 2
         async with sessions() as db:

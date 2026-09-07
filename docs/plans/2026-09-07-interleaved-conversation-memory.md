@@ -6,6 +6,17 @@ stopped and retained as diagnostic evidence, not a model-quality baseline.
 
 ## Implementation checkpoint (2026-09-07)
 
+Internal ReconciliationRunner now executes source inspection, cross-page
+retrieval/review, conservative canonical endpoint mapping and atomic edge/review
+receipts. A real-DB synthetic test proves restart skips saved embedding and
+generation calls and exports the directed callback without changing source or
+thread IDs. Human edges remain untouched; ambiguous/shared source ownership
+produces no guessed edge. Source-inspection revisions are now independent of
+graph revisions and cover every authorized utterance, not just extracted-node
+coverage. Legacy experimental inspection receipts require explicit migration.
+This is not activated production wiring. Ambiguity adjudication, question/thread
+reconciliation, bounded abstractions and full model-quality/release gates remain.
+
 Cross-page inspection context now retrieves candidates across all eligible
 observations and rereads exact source excerpts at both ends. Availability uses
 the inspection page's full input watermark, preventing future-informed prose

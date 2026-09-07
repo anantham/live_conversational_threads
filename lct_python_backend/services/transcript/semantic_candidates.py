@@ -60,6 +60,11 @@ class SemanticCandidates:
             embed_batch = gateway().embed_batch
         self._embed_batch = embed_batch
 
+    @property
+    def providers(self):
+        """Frozen content recipients for fresh stored-consent checks."""
+        return [copy.deepcopy(self._provider)]
+
     async def rank(self, current_passage, source_chunks):
         # This instance belongs to one processor/conversation. Snapshot before
         # awaiting and serialize updates so failures cannot partially publish

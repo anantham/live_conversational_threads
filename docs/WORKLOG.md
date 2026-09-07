@@ -1,5 +1,45 @@
 # WORKLOG
 
+## 2026-09-07 — Canonical relation integration and complete internal review loop
+
+- Decoupled inspection from aggregation/graph snapshots. Raw inspection now
+  reads all authorized utterances, even if a leaf extractor omitted some, and
+  can run before any graph exists. Graph-only writes no longer invalidate a
+  source scan. Source/attribution edits still reject stale results. New receipt
+  stage conversation_source_inspection_v2 explicitly rejects legacy graph-bound
+  receipts instead of silently migrating or replaying them. Real-DB tests prove
+  pre-graph inspection, graph creation afterward and unchanged source recovery.
+- Added reconciliation_mapping.py: reviewed observation endpoints map only when
+  each has one canonical L1 source owner. Shared utterances, missing nodes and
+  within-one-node relations remain explicit unresolved mappings. Representative
+  source_excerpt display snippets are not used to eliminate competing nodes.
+- Added reconciliation_checkpoint.py: owner/current-consent/source/leaf-revision
+  checks precede append-only canonical Relationship rows and an atomic full
+  review/evidence receipt. The explicit model contract's focal-to-candidate
+  direction is preserved. Existing human edges and explanations are untouched;
+  retries recover original IDs, and deleted/structurally changed outputs fail
+  instead of being recreated. Numeric confidence/strength remain NULL, not
+  invented calibration. No question closure or thread-ID write occurs here.
+- Added ReconciliationRunner joining source inspection, existing semantic
+  retrieval, source-cited review, canonical mapping and checkpoint recovery.
+  Saved batches skip BOTH generation and embedding calls, including across a
+  recreated runner. Inference runs outside transactions; current stored consent
+  and snapshot checks precede review requests and result commits. Embedding
+  route inventory is exposed as a defensive copy for consent checks.
+- Actual isolated-Postgres tests prove joint rollback, later-to-earlier export
+  direction, original source and thread IDs, ambiguous ownership abstention,
+  human explanation preservation, owner and revoked-consent rejection, plus
+  full loop failure/restart into .threads JSON export without duplicate edges.
+  Provider transports are synthetic; this is orchestration evidence, not model
+  quality. Combined suite: 77 passed, with existing asyncio teardown warnings.
+- The internal loop is not production activation or finished reconciliation.
+  Still required: semantic adjudication of ambiguous node ownership, question
+  and thread identity reconciliation, bounded higher abstractions, refreshed
+  consent throughout legacy aggregation and embedding sub-batches, fair full
+  public replay, independent review and deployment. Live append/revision
+  generations also need reconciliation rather than treating rejected old
+  source snapshots as a completed incremental implementation.
+
 ## 2026-09-07 — Cross-page source retrieval and cited relation proposals
 
 - Added inspection_context.py: validate lossless inspection receipt coverage,
