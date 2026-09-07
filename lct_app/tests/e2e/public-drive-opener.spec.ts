@@ -52,6 +52,23 @@ test("ordinary Drive links retain the existing private opener", async ({ page })
   expect(publicRequests).toEqual([]);
 });
 
+// Invalid public bytes must not be saved or mounted as a graph, even when the
+// transport succeeds. This checks the browser boundary beyond relay mocks.
+for (const [name, payload] of [
+  ["malformed JSON", "{not json"],
+  ["invalid graph", JSON.stringify({ ...artifact, graph_data: {} })],
+  ["dangling edge", JSON.stringify({ ...artifact, edges: [{ id: "bad", from_node_id: "n1", to_node_id: "missing", relation_type: "supports" }] })],
+]) {
+  test(`public opener rejects ${name} without mounting or saving it`, async ({ page }) => {
+    await page.route("**/api/public-drive?*", route => route.fulfill({ contentType: "application/json", body: payload }));
+    await page.goto(`/view?driveFile=${fileId}&public=1`);
+    await expect(page.getByRole("alert")).toBeVisible();
+    await expect(page.locator(".react-flow__node")).toHaveCount(0);
+    await expect(page.getByText("Saved on this device", { exact: true })).toHaveCount(0);
+    expect(await page.locator('script[src*="accounts.google.com"]').count()).toBe(0);
+  });
+}
+
 // Test intent: a large source-only graph must settle after automatic framing,
 // remain clickable, and retain its source selection through camera motion.
 test("source-only graph settles without zoom-driven clustering feedback", async ({ page }) => {

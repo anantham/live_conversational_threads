@@ -1,5 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
+import { createServer } from "node:http";
+import { once } from "node:events";
 import { handlePublicDrive, MAX_PUBLIC_DRIVE_BYTES } from "../../api/_publicDrive.js";
 
 // Test intent: anonymous read only, fixed Google destination, bounded bytes and
@@ -10,6 +12,37 @@ const request = (query = `fileId=${id}`, options = {}) => new Request(`https://t
 const fetchArtifact = () => new Response(JSON.stringify(artifact));
 
 describe("public Drive relay", () => {
+  // Real socket + native fetch, not a synthetic Response: server-side manual
+  // redirects retain numeric status. Also prove the destination is not fetched.
+  it("refuses real HTTP redirects without visiting their target", async () => {
+    const paths = [];
+    const server = createServer((req, res) => {
+      paths.push(req.url);
+      res.writeHead(302, { location: "/private-target" });
+      res.end("Do not expose this upstream body");
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    let upstreamStatus;
+    try {
+      const result = await handlePublicDrive(request(), {
+        allowRequest: () => true,
+        fetchImpl: async (_url, options) => {
+          const upstream = await fetch(`${origin}/download`, options);
+          upstreamStatus = upstream.status;
+          return upstream;
+        },
+      });
+      expect(upstreamStatus).toBe(302);
+      expect(result.status).toBe(403);
+      expect(await result.json()).toMatchObject({ error: "not_public" });
+      expect(paths).toEqual(["/download"]);
+    } finally {
+      server.closeAllConnections();
+      await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
+  });
   it("returns public bytes without forwarding reader cookies or tokens", async () => {
     const fetchImpl = vi.fn(fetchArtifact);
     const result = await handlePublicDrive(request(undefined, {

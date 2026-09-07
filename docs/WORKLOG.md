@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-09-07 — Public viewer readiness goal, local testing only
+
+- User set an explicit desktop + physical Android readiness goal, with no merge
+  or deployment. Added PUBLIC_VIEWER_READINESS.md as a requirement/evidence
+  checklist; device testing and exact-head re-review remain incomplete.
+- A native-fetch real HTTP redirect test contradicts the prior reviewer claim:
+  upstream 302 remains numeric, returns 403/not_public, never follows target.
+  Undici docs and Vercel public Edge fetch implementation corroborate the
+  server/browser distinction. No deployment-runtime proof is claimed.
+- Added browser malformed JSON/graph/edge rejection tests, mobile viewport
+  next/previous seek checks, and blocked-YouTube fallback coverage. Added an
+  isolated Playwright release config to avoid the shared port discovery file.
+- Actual public Drive opened signed out in fresh Chromium at 390/1440 px;
+  real YouTube playhead test passed. These are not physical Android tests.
+- ADB reports no connected device. Asked for reconnection while continuing
+  desktop work. No permissions, dependency, product semantics, or production
+  files changed. Retain local commits: a branch push would deploy a preview.
+
 ## 2026-09-06 — Review findings repaired within the approved envelope
 
 - Attention-policy correction: the user confirmed that reversible fixes and

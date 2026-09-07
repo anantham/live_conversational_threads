@@ -82,6 +82,24 @@ test("phone offers source passages beside its readable deck without page overflo
   expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(390);
   const card = await page.getByTestId("mobile-deck-card").boundingBox();
   expect(card?.height).toBeGreaterThan(180);
+  await page.getByRole("button", { name: /^Next / }).click();
+  await expect(source).toContainText("Later passage");
+  await expect.poll(() => page.evaluate(() => window.__youtubeSeeks.at(-1))).toBe(4900);
+  await page.getByRole("button", { name: /^Previous / }).click();
+  await expect(source).toContainText("Opening passage");
+  await expect.poll(() => page.evaluate(() => window.__youtubeSeeks.at(-1))).toBe(1.25);
+});
+
+test("blocked YouTube API preserves source text and a usable timestamped link", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route("https://www.youtube.com/iframe_api", route => route.abort());
+  await open(page, false);
+  await page.locator(".react-flow__node").filter({ hasText: "Opening discussion" }).click();
+  const source = page.getByRole("complementary", { name: "YouTube source" });
+  await source.getByRole("button", { name: "Watch the source conversation" }).click();
+  await expect(source.getByRole("alert")).toContainText("YouTube could not load here");
+  await expect(source).toContainText("Opening passage");
+  await expect(source.getByRole("link")).toHaveAttribute("href", `${fixture.media_refs[0].view_url}&t=1s`);
 });
 
 test("live YouTube iframe reports the requested playhead time", async ({ page }) => {
