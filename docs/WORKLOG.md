@@ -1,5 +1,51 @@
 # WORKLOG
 
+## 2026-09-07 — Lossless bounded inspection with recovery and real-model evidence
+
+- Added source_inspection_pages.py, source_inspection.py and
+  source_inspection_runner.py. Inspection pages retain exact Unicode ranges,
+  original IDs, speaker revisions and original utterance timestamps; they do
+  not partition semantic threads or rewrite canonical source. Requests use the
+  full envelope validator. Platform metadata is excluded. Compact local span
+  handles are bound by a full source-snapshot hash, avoiding long digest copies
+  in every model acknowledgement.
+- The internal runner journals each validated page in existing PipelineArtifact
+  storage, under owner/snapshot/policy checks. Interrupted requests resume from
+  saved pages; changed input or policy requires reconciliation instead of
+  replacement. No graph nodes are created by this inspection. It is not yet
+  the production aggregation path or a completed global reconciliation pass.
+- Every page rechecks stored consent before inference and before committing a
+  result. The real isolated-Postgres test proves wrong-owner rejection, failure
+  recovery, no repeated saved-page inference, unchanged source and node counts,
+  stale-speaker rejection, and revoked consent both between retries and while
+  a request is in flight. Revoked in-flight output is not persisted. Existing
+  AggregationRunner needs the same refresh; recorded that rollout gate in ISSUES.
+- First actual local qwen3.8:27b-mlx probe: 254 synthetic source characters,
+  68.54 seconds, meaningful seven observations but incorrect model-counted
+  character offsets. No output was accepted. Revised the protocol: quote a
+  unique exact substring and let the backend derive offsets; ambiguous repeated
+  quotes need explicit disambiguation, and incorrect supplied offsets still
+  reject. Second probe: 35.42 seconds, seven validated observations, preserved
+  borrowing-versus-copying distinction and explicit unresolved qualification.
+  One easy case is not a model-quality or distant-callback benchmark. Reusable
+  command: `PYTHONPATH=. python tools/probe_source_inspection.py` (synthetic,
+  local-only, no automatic retries). Both observed processes are terminal.
+- Offline full public source-preview paging: all 1,263 sources / 74,009
+  characters submitted exactly once across 17 pages. Largest complete message
+  28,141 byte units plus 4,608 reserved units fits 32,768. No podcast inference
+  was run. Numeric budget units are conservative UTF8 estimates, not model
+  token counts. Inspection acknowledgement is not semantic completeness.
+- Verification: final combined run passed all 41 focused tests, including the
+  strengthened in-flight revocation case. An
+  initial newly-written range test miscounted the final period (40 vs 41); its
+  expected end now derives from the literal source length, not a guessed count.
+  Existing pytest-asyncio teardown warnings remain. No private transcript,
+  external inference, production activation, merge or deployment.
+- Next: use the cited inspection observations as a bounded source index for
+  cross-page retrieval/reconciliation and abstraction, with raw-source reread
+  for proposed memberships. Do not simply group pages, use observation counts
+  as completeness, or declare source inspection the finished architecture.
+
 ## 2026-09-07 — Measured full-podcast aggregation budget, offline
 
 - Added `tools/audit_aggregation_budget.py` and three regression tests. The

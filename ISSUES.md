@@ -1,5 +1,17 @@
 # ISSUES
 
+## 2026-09-07 — Refresh consent during long inference jobs (OPEN; rollout gate)
+
+`AggregationRunner` currently uses its frozen admission envelope for all four
+tiers without rereading stored conversation consent between requests. Initial
+privacy filtering is not proof that later revocation is respected. The new
+`SourceInspectionRunner` rereads owner-bound stored consent before every page
+and commit; a real-DB test revokes consent during a provider call and verifies
+that its returned result is not persisted. An in-flight request already sent
+cannot be recalled by a database update. Carry this invariant into aggregation
+and audit shared live/import scheduling before activation. This is a rollout
+blocker, not a reason to stop the approved implementation work.
+
 ## 2026-09-07 — Interleaved conversation context (OPEN; experimental foundation)
 
 Aggregation rollout gate: legacy consolidation sees summaries only, and

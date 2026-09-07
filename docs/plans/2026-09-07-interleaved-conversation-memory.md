@@ -6,6 +6,20 @@ stopped and retained as diagnostic evidence, not a model-quality baseline.
 
 ## Implementation checkpoint (2026-09-07)
 
+Bounded source inspection now splits oversized evidence into exact offset-based
+windows and journals model observations per page. It is an internal building
+block, not yet connected to final aggregation. Tests prove recovery, source
+and attribution integrity, owner/privacy boundaries and in-flight consent
+revocation. A local synthetic probe exposed model offset-counting errors;
+unique exact quotes are now resolved to offsets by the backend, with ambiguity
+rejected. The revised small probe preserved an unresolved borrowing question
+despite a related answer about making key copies. Offline paging covers all
+public podcast source in 17 bounded requests without source loss. Still required:
+cross-page semantic retrieval/reconciliation, source-reread membership decisions,
+live/import activation and full fair model comparison. Page acknowledgements
+are not semantic completeness; abstentions remain visible. The existing
+aggregation runner still needs current stored-consent checks between requests.
+
 Full opt-in import now has a real-DB integration proof through actual source
 processing, passage recovery, four-tier aggregation and .threads export. A
 second import invokes no models and exports identical nodes/edges. The test
