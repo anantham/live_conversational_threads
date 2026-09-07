@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Reject incomplete outer JSON instead of accepting inner fragments
+
+- Reproduced the parser class with synthetic incomplete responses: an unfinished
+  inspection object returned its reviewed_span_ids array, and another unfinished
+  object returned its nested dictionary. Four regression cases failed before
+  the correction, including fenced and prose-prefaced malformed containers.
+- extract_json_from_text now requires the first discovered outer container to
+  parse completely rather than scanning deeper after failure. Supported reasoning
+  wrappers, valid fenced JSON, complete arrays and trailing notes still pass.
+  Sync JSON cache keys include json-container-v2 so prior fragment successes
+  cannot bypass the corrected parser; old cache data is retained, not deleted.
+- Thirty-four parser/cache/envelope tests pass. A synthetic HTTP transport test
+  seeds an old fragment cache entry, verifies it is bypassed, returns truncated
+  JSON, and proves the rejected response creates no additional cache entry.
+  One existing asyncio teardown warning remains. This proves the parser defect;
+  raw output was not retained for the prior public failure, so its exact upstream
+  cause (including possible output truncation) remains unconfirmed.
+- Resumed exact public replay with corrected parsing as session 70629. It
+  verified all 1,263 sources, recovered six existing pages and requested index 6.
+  Poll this live handle; no private input or public replacement.
+
+
 ## 2026-09-07 — Reconcile all membership page evidence
 
 - Added membership_decision.py: complete expected page reviews are required,

@@ -90,3 +90,29 @@ def test_stats_reports_entries():
     lc.put(lc.cache_key(_MSGS, **_ARGS), {"x": 1}, "m", "p")
     s = lc.stats()
     assert s["entries"] == 1 and s["enabled"] is True
+
+
+def test_old_fragment_cache_is_bypassed_and_truncated_response_is_not_cached(monkeypatch):
+    """A parser revision must neither reuse nor create inner-fragment successes."""
+    import httpx
+    from lct_python_backend.services.local_llm_client import chat_with_provider_fallback_sync
+    old = lc.cache_key(_MSGS, **_ARGS)
+    lc.put(old, ['nested-span'], 'gemma4:latest', _ARGS['prompt_name'])
+    sent = []
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def post(self, url, **kwargs):
+            sent.append(url)
+            return httpx.Response(200, request=httpx.Request('POST', url), json={
+                'model': 'gemma4:latest', 'choices': [{'message': {
+                    'content': '{"reviewed_span_ids":["s1"],"observations":['}}]})
+    monkeypatch.setattr('lct_python_backend.services.local_llm_client.httpx.Client', Client)
+    with pytest.raises(RuntimeError, match='JSON parse error'):
+        chat_with_provider_fallback_sync(_MSGS,
+            providers=[{'id': 'synthetic', 'model': 'gemma4:latest', 'base_url': 'http://127.0.0.1:11434'}],
+            **{k: v for k, v in _ARGS.items() if k != 'models'})
+    assert len(sent) == 1
+    assert lc.stats()['entries'] == 1
+    assert lc.get(old)['data'] == ['nested-span'], 'Old cache remains recoverable, not destructively purged'

@@ -178,16 +178,15 @@ def extract_json_from_text(text: str) -> Any:
                     except json.JSONDecodeError:
                         continue
 
-    # Robust fallback: decode the first valid JSON value from any object/array start.
+    # A preface/trailing note is permitted, but the FIRST container must be
+    # complete. Scanning further after its failure can turn a truncated outer
+    # object into a successful inner array and poison structured-response caches.
     decoder = json.JSONDecoder()
     for index, char in enumerate(normalized):
         if char not in "{[":
             continue
-        try:
-            decoded, _ = decoder.raw_decode(normalized[index:])
-            return decoded
-        except json.JSONDecodeError:
-            continue
+        decoded, _ = decoder.raw_decode(normalized[index:])
+        return decoded
 
     raise json.JSONDecodeError("No JSON object found", normalized, 0)
 
@@ -683,7 +682,7 @@ def chat_with_provider_fallback_sync(
         _key = _cache.cache_key(
             messages, temperature=temperature, max_tokens=max_tokens,
             require_json=require_json, prompt_name=prompt_name,
-            prompt_version=prompt_version,
+            prompt_version=f"{prompt_version or ''}:json-container-v2" if require_json else prompt_version,
             models=[str(p.get("model", "")) for p in enabled_providers],
         )
         _hit = None if skip_cache_read else _cache.get(_key)

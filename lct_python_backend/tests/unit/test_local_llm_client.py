@@ -1,3 +1,7 @@
+"""Test intent: parse complete outer containers, never nested fragments from
+truncated JSON; preserve supported wrappers and complete arrays/objects.
+"""
+import json
 import pytest
 
 from lct_python_backend.services.local_llm_client import ProviderResult, extract_json_from_text
@@ -20,6 +24,22 @@ def test_extract_json_from_text_handles_trailing_non_json_text():
 def test_extract_json_from_text_raises_on_missing_json():
     with pytest.raises(Exception):
         extract_json_from_text("<think>only reasoning without payload</think>")
+
+
+@pytest.mark.parametrize('payload', [
+    '{"reviewed_span_ids":["s1","s2"],"observations":[',
+    '{"outer":{"valid":"nested"},"broken":',
+    '```json\n{"outer":[1,2],"broken":\n```',
+    'Here is the result: {"outer":[1,2],"broken":',
+])
+def test_incomplete_outer_container_never_returns_valid_inner_fragment(payload):
+    with pytest.raises(json.JSONDecodeError):
+        extract_json_from_text(payload)
+
+
+def test_complete_fenced_and_prefaced_objects_remain_supported():
+    assert extract_json_from_text('```json\n{"ok":true}\n```') == {'ok': True}
+    assert extract_json_from_text('Result: [{"ok":true}]\nDone.') == [{'ok': True}]
 
 
 def test_provider_result_backend_label_prefers_openai_provider_type():
