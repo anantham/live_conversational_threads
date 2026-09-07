@@ -5,6 +5,7 @@ processing, source journal, runtime factory, aggregation and .threads export.
 Restart must neither regenerate nodes nor replace prior canonical rows.
 Abstraction must execute proposal, source review, membership decision and parent
 synthesis at every tier before its canonical commit; summaries alone are not enough.
+Source inspection and relation review must run through the actual import entrypoint.
 """
 import json
 import os
@@ -55,6 +56,12 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
     def provider_call(**kwargs):
         assert [p["id"] for p in kwargs["providers"]] == ["local"]
         request = json.loads(kwargs["messages"][1]["content"])
+        if 'spans' in request:
+            stages.append('inspection')
+            spans = request['spans']
+            return Result({'reviewed_span_ids': [s['span_id'] for s in spans], 'observations': [
+                {'kind': 'question', 'text': text, 'citations': [
+                    {'span_id': spans[0]['span_id'], 'quote': text}]}]})
         if 'current_passage' in request:
             calls.append(1)
             stages.append('moment')
@@ -106,16 +113,19 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
                         await extract_graph_for_conversation(db, conversation_id=str(cid), owner_id=owner,
                                                             interleaved_runtime=config)
                 assert calls == [1, 2, 2, 2]
-                assert stages == ['moment'] + ['proposal', 'review', 'decision'] * 3
+                assert stages == ['moment', 'inspection'] + ['proposal', 'review', 'decision'] * 3
             return
         async with sessions() as db:
             result = await extract_graph_for_conversation(db, conversation_id=str(cid), owner_id=owner,
                                                           interleaved_runtime=config)
         assert result["node_count"] == result["auditable_node_count"] == 5
         assert result["pipeline_status"] == "reconciliation_pending"
+        assert result['source_review'] == {'review_pass_complete': True, 'unresolved_mappings': 0,
+                                          'abstained_inspection_partitions': 0,
+                                          'abstained_inspection_pages': 0, 'semantic_reconciliation_complete': False}
         expected_calls = [1, 2, 2, 3, 4, 5] if revise_first else [1, 2, 3, 4, 5]
         assert calls == expected_calls
-        assert stages == ['moment'] + (['proposal', 'review', 'decision'] if revise_first else []) + ['proposal', 'review', 'decision', 'parent'] * 4
+        assert stages == ['moment', 'inspection'] + (['proposal', 'review', 'decision'] if revise_first else []) + ['proposal', 'review', 'decision', 'parent'] * 4
         from lct_python_backend.share_api import export_threads
         async with sessions() as db:
             first = json.loads((await export_threads(str(cid), db=db)).body)
@@ -127,7 +137,7 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
                                                            interleaved_runtime=config)
         assert retried == result
         assert calls == expected_calls
-        assert len(stages) == (20 if revise_first else 17)
+        assert len(stages) == (21 if revise_first else 18)
         async with sessions() as db:
             second = json.loads((await export_threads(str(cid), db=db)).body)
         assert second["graph_data"] == first["graph_data"]

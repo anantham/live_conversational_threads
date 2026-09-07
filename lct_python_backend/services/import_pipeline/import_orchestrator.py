@@ -352,6 +352,9 @@ async def extract_graph_for_conversation(
     existing = list(processor.existing_json)
 
     if interleaved_runtime is not None:
+        reconciliation = await interleaved_runtime.build_reconciliation(
+            conversation_id=conversation_id, owner_id=owner, providers=providers, privacy=privacy,
+        ).run()
         # Both this provider list and the new runner's frozen envelope apply
         # the stored conversation consent. Private source cannot acquire an
         # external fallback here; the public API still supplies no opt-in.
@@ -362,8 +365,8 @@ async def extract_graph_for_conversation(
         aggregated = [node for receipt in receipts for node in receipt["nodes"]]
         # Passage and aggregation transactions already saved the canonical
         # graph. Do not run positional repair or replacement persistence below.
-        # Global reconciliation is still pending and must not be called a
-        # completed semantic scan merely because the hierarchy now exists.
+        # Source-reviewed edges do not settle thread/question identity. Keep
+        # that remaining semantic work explicit even with a complete hierarchy.
         return {
             "conversation_id": conversation_id,
             "utterance_count": len(utterances),
@@ -372,7 +375,11 @@ async def extract_graph_for_conversation(
             "indrasnet_group_id": conv.indrasnet_group_id,
             "executive_summary": None,
             "conversation_title": None,
-            "argument_topology": _topology_marker([], status="failed", reason="source_backed_reconciliation_not_run"),
+            "argument_topology": _topology_marker([], status="failed", reason="thread_question_reconciliation_pending"),
+            "source_review": {key: reconciliation[key] for key in (
+                'review_pass_complete', 'unresolved_mappings', 'abstained_inspection_pages',
+                'abstained_inspection_partitions',
+                'semantic_reconciliation_complete')},
             "pipeline_status": "reconciliation_pending",
         }
 

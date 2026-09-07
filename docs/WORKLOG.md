@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Source reconciliation runs in the opt-in import entrypoint
+
+- InterleavedRuntimeConfig now composes source inspection, semantic candidate
+  retrieval and source-reviewed relation persistence under the same explicit
+  owner/privacy/capacity envelope. Import runs that stage after passage flush
+  and before hierarchy generation; legacy/default runtime remains unchanged.
+- Import returns review-pass, unresolved-mapping and abstention counts while
+  retaining reconciliation_pending for unfinished thread/question identity work.
+  A completed candidate review pass is not semantic completeness.
+- Validation: 11 synthetic isolated-DB/runtime tests passed, covering the actual
+  import entrypoint with source inspection plus all higher tiers, source review
+  runner recovery and runtime configuration. The one-observation import fixture
+  needs no embedding or relation inference; separate runner tests cover relations.
+- Public inspection session 84674 remains live on page 9 partition 0; no restart
+  was issued during silence. No production activation or artifact replacement.
+
 ## 2026-09-08 — Automatic audited grouping revision
 
 - The opt-in bounded hierarchy now feeds the prior proposal and all source-cited

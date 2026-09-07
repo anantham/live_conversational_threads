@@ -39,6 +39,22 @@ class InterleavedRuntimeConfig:
     embedding_provider_ids: tuple[str, ...]
     budgets: RuntimeBudgets = RuntimeBudgets()
 
+    def build_reconciliation(self, *, conversation_id, owner_id, providers, privacy):
+        """Use the same owner, frozen routes and budgets for post-passage review."""
+        from .reconciliation_runner import ReconciliationRunner
+        from .source_inspection import INSPECTION_PROMPT
+        from .inspection_relations import RELATION_PROMPT
+        base = self.build_aggregation(conversation_id=conversation_id, owner_id=owner_id,
+                                      providers=providers, privacy=privacy).envelope
+        retrieval = SemanticCandidates(
+            providers=[p for p in providers if p.get('id') in self.embedding_provider_ids],
+            privacy=privacy, input_token_budget=self.budgets.embedding_input_tokens,
+            batch_token_budget=self.budgets.embedding_batch_tokens)
+        return ReconciliationRunner(session_factory=self.session_factory,
+            conversation_id=conversation_id, owner_id=owner_id,
+            inspection_envelope=base.with_system_prompt(INSPECTION_PROMPT),
+            review_envelope=base.with_system_prompt(RELATION_PROMPT), retriever=retrieval)
+
     def build_aggregation(self, *, conversation_id, owner_id, providers, privacy):
         """Compose an unactivated runner under the existing consent envelope.
 

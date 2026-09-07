@@ -90,4 +90,5 @@ class ReconciliationRunner:
                 'unresolved_mappings': sum(p['disposition'] != 'unique_source_ownership'
                     for receipt in receipts for p in receipt['mapping']),
                 'abstained_inspection_pages': inspection['abstained_pages'],
+                'abstained_inspection_partitions': index['abstained_partitions'],
                 'semantic_reconciliation_complete': False}
