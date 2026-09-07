@@ -15,7 +15,7 @@ from .inference_envelope import InferenceEnvelope
 from .passage_runtime import PassageJournalSession
 from .semantic_candidates import SemanticCandidates
 from .transcript_processing import TranscriptProcessor
-from .transcript_prompts import get_transcript_prompt_text, PROMPT_ID_INTERLEAVED_CONVERSATION
+from .transcript_prompts import get_transcript_prompt_text, PROMPT_ID_INTERLEAVED_CONVERSATION, PROMPT_ID_SOURCE_AGGREGATION
 
 
 @dataclass(frozen=True)
@@ -38,6 +38,29 @@ class InterleavedRuntimeConfig:
     context_limits: dict
     embedding_provider_ids: tuple[str, ...]
     budgets: RuntimeBudgets = RuntimeBudgets()
+
+    def build_aggregation(self, *, conversation_id, owner_id, providers, privacy):
+        """Compose an unactivated runner under the existing consent envelope.
+
+        No network calls or deployment occur here. InferenceEnvelope again
+        filters the caller's already-narrowed providers: external_llm_ok=False
+        excludes every external route, and missing consent fails closed.
+        """
+        from .aggregation_runner import AggregationRunner
+        uuid.UUID(conversation_id)
+        if not isinstance(owner_id, str) or not owner_id.strip() or self.session_factory is None:
+            raise ValueError("Owner and durable session factory are required")
+        if not isinstance(privacy, dict) or privacy.get("redaction_applied") is not True:
+            assert_raw_transcript_retention_allowed()
+        chat = [{**p, "context_tokens": self.context_limits[p["id"]]}
+                for p in providers if p.get("id") in self.context_limits]
+        envelope = InferenceEnvelope(
+            system_prompt=get_transcript_prompt_text(PROMPT_ID_SOURCE_AGGREGATION),
+            providers=chat, privacy=privacy, output_tokens=self.budgets.output_tokens,
+            headroom_tokens=self.budgets.headroom_tokens,
+        )
+        return AggregationRunner(session_factory=self.session_factory, conversation_id=conversation_id,
+                                 owner_id=owner_id, envelope=envelope)
 
     def build(self, *, providers, **kwargs):
         chat = [{**p, "context_tokens": self.context_limits[p["id"]]}

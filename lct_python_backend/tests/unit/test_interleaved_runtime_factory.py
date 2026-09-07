@@ -50,6 +50,9 @@ def test_registered_prompt_matches_bootstrap_contract():
     path = Path(__file__).resolve().parents[2] / "prompts.json"
     config = json.loads(path.read_text())["prompts"]["interpret_interleaved_conversation"]
     assert config["template"] == INTERLEAVED_SYSTEM_PROMPT
+    from lct_python_backend.services.transcript.source_backed_aggregation import AGGREGATION_SYSTEM_PROMPT
+    aggregation = json.loads(path.read_text())["prompts"]["aggregate_source_backed_conversation"]
+    assert aggregation["template"] == AGGREGATION_SYSTEM_PROMPT
 
 
 def test_embedding_identity_and_tokenizer_change_recovery_fingerprint():
@@ -59,3 +62,22 @@ def test_embedding_identity_and_tokenizer_change_recovery_fingerprint():
     with pytest.raises(ValueError, match="tokenizer_id"):
         build(count_tokens=len)
     assert build(count_tokens=len, tokenizer_id="synthetic_character_counter_v1").interpretation_policy_fingerprint != original
+
+
+def test_aggregation_factory_keeps_private_source_off_external_routes(monkeypatch):
+    from lct_python_backend.services.transcript.interleaved_runtime import InterleavedRuntimeConfig
+    config = InterleavedRuntimeConfig(session_factory=object(),
+        context_limits={"local": 32768, "cloud": 32768}, embedding_provider_ids=())
+    providers = [{"id": "local", "model": "synthetic", "trust_scope": "owner_private"},
+                 {"id": "cloud", "model": "synthetic", "trust_scope": "external"}]
+    kwargs = dict(conversation_id="11111111-1111-4111-8111-111111111111", owner_id="owner",
+                  providers=providers, privacy={"local_llm_ok": True, "external_llm_ok": False})
+    runner = config.build_aggregation(**kwargs)
+    assert [p["id"] for p in runner.envelope.providers] == ["local"]
+    with pytest.raises(ValueError, match="No enabled LLM provider"):
+        config.build_aggregation(**{**kwargs, "providers": providers[1:]})
+    with pytest.raises(ValueError, match="No enabled LLM provider"):
+        config.build_aggregation(**{**kwargs, "privacy": {}})
+    monkeypatch.setenv("LCT_DEPLOYMENT_PROFILE", "hosted_shared")
+    with pytest.raises(ValueError, match="retention"):
+        config.build_aggregation(**kwargs)

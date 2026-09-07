@@ -351,6 +351,31 @@ async def extract_graph_for_conversation(
     await processor.flush()
     existing = list(processor.existing_json)
 
+    if interleaved_runtime is not None:
+        # Both this provider list and the new runner's frozen envelope apply
+        # the stored conversation consent. Private source cannot acquire an
+        # external fallback here; the public API still supplies no opt-in.
+        runner = interleaved_runtime.build_aggregation(
+            conversation_id=conversation_id, owner_id=owner, providers=providers, privacy=privacy,
+        )
+        receipts = await runner.run_through()
+        aggregated = [node for receipt in receipts for node in receipt["nodes"]]
+        # Passage and aggregation transactions already saved the canonical
+        # graph. Do not run positional repair or replacement persistence below.
+        # Global reconciliation is still pending and must not be called a
+        # completed semantic scan merely because the hierarchy now exists.
+        return {
+            "conversation_id": conversation_id,
+            "utterance_count": len(utterances),
+            "node_count": len(existing) + len(aggregated),
+            "auditable_node_count": sum(bool(n.get("utterance_ids")) for n in [*existing, *aggregated]),
+            "indrasnet_group_id": conv.indrasnet_group_id,
+            "executive_summary": None,
+            "conversation_title": None,
+            "argument_topology": _topology_marker([], status="failed", reason="source_backed_reconciliation_not_run"),
+            "pipeline_status": "reconciliation_pending",
+        }
+
     # Missing L2 parents make complete transcript regions disappear at every
     # zoom level above chunks. Repair the local batch hierarchy before global
     # consolidation; failure is fatal so an incomplete graph is never persisted.

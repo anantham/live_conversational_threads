@@ -14,6 +14,7 @@ from typing import Any, Dict, Optional
 
 from lct_python_backend.services.prompt_manager import get_prompt_manager
 from .interleaved_prompt import INTERLEAVED_SYSTEM_PROMPT
+from .source_backed_aggregation import AGGREGATION_SYSTEM_PROMPT
 
 logger = logging.getLogger("lct_backend")
 
@@ -23,6 +24,7 @@ PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY = "generate_conversation_hierarchy"
 PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY_LOCAL = "generate_conversation_hierarchy_local"
 PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS = "refine_conversation_subthreads"
 PROMPT_ID_INTERLEAVED_CONVERSATION = "interpret_interleaved_conversation"
+PROMPT_ID_SOURCE_AGGREGATION = "aggregate_source_backed_conversation"
 
 _ARGUMENT_ROLE_SPEC = """
 Argument-role contract (required for every node):
@@ -286,6 +288,14 @@ Critical constraints:
 """
 
 TRANSCRIPT_PROMPT_DEFAULTS: Dict[str, Dict[str, Any]] = {
+    PROMPT_ID_SOURCE_AGGREGATION: {
+        "description": "Build adjacent abstraction tiers with exact source-backed membership citations.",
+        "model": "configured-provider",
+        "temperature": 0.3,
+        "max_tokens": 4096,
+        "output_format": "json_object",
+        "template": AGGREGATION_SYSTEM_PROMPT,
+    },
     PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT: {
         "description": "Determine whether buffered transcript text contains at least one complete conversational segment.",
         "model": "gpt-4",

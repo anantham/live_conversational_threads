@@ -6,6 +6,14 @@ stopped and retained as diagnostic evidence, not a model-quality baseline.
 
 ## Implementation checkpoint (2026-09-07)
 
+Opt-in persisted-turn extraction now uses the checkpointed aggregation runner
+and bypasses the legacy positional-repair/replacement path. Trusted runtime
+composition registers the aggregation prompt and enforces existing stored
+consent/capacity/retention boundaries; 36 focused tests pass. Production API
+activation is unchanged. The import reports reconciliation_pending rather than
+claiming a completed global edge scan. Full real-import replay and long-context
+reconciliation remain required before rollout.
+
 The source-backed aggregation runner now builds L2-L5 with per-tier checkpoint
 recovery and no provider call for already-saved valid tiers. A synthetic real-DB
 test proves L3 failure leaves L2 saved, restart preserves IDs, and the eventual

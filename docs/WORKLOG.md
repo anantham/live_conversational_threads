@@ -1,5 +1,32 @@
 # WORKLOG
 
+## 2026-09-07 — Opt-in imported-turn aggregation wiring and privacy proof
+
+- Execution review initially rejected the combined wiring patch over possible
+  private-source external inference. No part of that patch was applied. Read
+  the existing consent/egress contracts and ran 20 existing privacy/envelope
+  tests, then added a targeted aggregation-factory regression. The narrowed
+  factory and subsequent wiring edits were accepted after that evidence.
+  No restriction was bypassed, runtime enabled, private source processed, or
+  external provider contacted. This was an enforcement concern resolved by
+  demonstrating the existing boundary, not new user authority.
+- InterleavedRuntimeConfig now builds the aggregation runner with the same
+  stored-consent filtering, explicit provider capacities and retention gate.
+  Tests prove external routes excluded for private consent, missing consent
+  rejected, and hosted raw retention rejected. Prompt registered through the
+  existing PromptManager/default registry, with template parity coverage.
+- Opt-in persisted-turn extraction now invokes the runner after source passage
+  flush and skips legacy positional hierarchy repair and whole-graph replace.
+  Failing-first integration-unit test proved the earlier path never invoked
+  aggregation; repaired test verifies filtered provider/consent propagation and
+  that neither legacy repair nor replacement persistence runs. Legacy default
+  remains unchanged; no public endpoint supplies the opt-in configuration.
+- Return metadata explicitly says reconciliation_pending, with the global
+  topology scan not run. This is not full pipeline success. Thirty-six focused
+  routing/registration/budget/aggregation tests pass; existing asyncio warnings
+  remain. Real full-import model replay, long-context handling, reconciliation,
+  final review and deployment are still required.
+
 ## 2026-09-07 — Resumable four-tier aggregation runner
 
 - Added `AggregationRunner` over the source-backed checkpoint contract. It
