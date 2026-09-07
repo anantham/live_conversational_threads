@@ -1,5 +1,20 @@
 # WORKLOG
 
+## 2026-09-08 — Broad regression and persisted repair audit verified
+
+- Architecture/config selection: 178 passed, 2161 deselected, 40 existing
+  deprecation warnings. This selection is not the complete repository suite.
+- Read back page 15 partition 1 from Postgres and reproduced its saved repair
+  audit: normalized observation index 5, zero model corrections, receipt digest
+  f9365fa437cdfeea481a32ded12b2195c95d98713a4e02ec870bb7014d63ee8b.
+- Resumed replay session 26742 committed page 15 partition 2 and requested final
+  page index 16 (17 planned pages total). Completion is not yet observed.
+- Post-fix provider reload confirms stored mac_ollama still has no embedding
+  model value; normalization support alone does not supply configuration. The
+  next full-graph harness must explicitly pin the verified local 8b embedder and
+  zero-temperature inspection-compatible route, without silently mutating host
+  defaults or reusing a different policy's receipts.
+
 ## 2026-09-08 — Recover unambiguous displaced observation fields
 
 - Replay 84674 terminated at page 15 partition 1. One object had its explicit
