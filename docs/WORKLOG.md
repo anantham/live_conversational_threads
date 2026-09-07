@@ -1,5 +1,26 @@
 # WORKLOG
 
+## 2026-09-08 — Canonical mapping evidence and next integration boundary
+
+- Read-only inspection of the stopped public diagnostic found three committed
+  focal relation reviews: 11 mappings classified unique_source_ownership, one
+  within_node. Two sampled unique mappings plausibly match their source-backed
+  leaf summaries; this sample does not establish semantic mapping correctness.
+- The actual implementation maps by relation citation utterance-ID containment.
+  Even unique ownership does not establish that the canonical leaf expresses
+  the reviewed observation. No code/production mutation was justified by the
+  two samples alone; the missing semantic adjudication remains architectural debt.
+- Next implementation: include source-overlapping canonical leaf candidates in
+  the existing relation-review context; require explicit endpoint node choice or
+  abstention with rationale. Validate choices against the captured canonical
+  snapshot and all cited source IDs before edge commit. This combines semantic
+  endpoint adjudication with the existing call rather than adding another pass.
+  Do not infer semantic acceptance from a single eligible source owner.
+- Tests needed: ambiguous source ownership resolved by supported explicit choice,
+  unique-but-wrong-meaning abstention, foreign node rejection, changed snapshot
+  rejection, and direction-preserving persistence/export. Actual node selection
+  changes remain unimplemented at this checkpoint; no new model run started.
+
 ## 2026-09-08 — Broad unit regression sweep
 
 - Full unit suite: 2,252 passed, six failed, four skipped (470 warnings). Repaired
