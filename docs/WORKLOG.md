@@ -1,5 +1,37 @@
 # WORKLOG
 
+## 2026-09-07 — Measured full-podcast aggregation budget, offline
+
+- Added `tools/audit_aggregation_budget.py` and three regression tests. The
+  read-only audit uses the real request builder and envelope admission, makes
+  no inference calls, and emits numeric metadata rather than transcript text.
+  Invalid legacy tiers are reported, not repaired or silently omitted.
+- Verified public candidate SHA256
+  `4d67f632007fdf9aec84a60abd0e420bd70c59a5cc3bfd75457c56b0d90d01a0`:
+  1,263 utterances, 74,009 source-text UTF8 bytes, largest utterance 240 bytes.
+  Its 51 L1 moments require 404,449 conservative envelope units including
+  4,096 output plus 512 protocol reserve, against configured 32,768. All 51
+  individual child requests fit (largest 22,289). These are byte estimates,
+  NOT measured model-token counts or a host-capacity claim.
+- The legacy candidate has empty utterance_ids on higher tiers, with source
+  IDs instead in provenance_utterance_ids. An explicitly labelled in-memory
+  projection, never persisted, measured targets L3/L4/L5 at respectively
+  391,761 / 387,228 / 385,207 units. Individual over-budget children: 2/23,
+  7/10, 4/4; largest 55,835 / 92,558 / 134,751 units. This is workload sizing,
+  not acceptance of the old semantic interpretation or a new migration.
+- Consequence: chronological child batching alone cannot solve full-podcast
+  aggregation. Higher-tier children themselves exceed budget. Next implement
+  bounded source inspection with persistent cited evidence and cross-batch
+  reconciliation, keeping source coverage separate from semantic membership.
+  Do not shrink the objective to passing small imports, silently crop sources,
+  or treat omitted evidence as reviewed. Oversized single utterances remain a
+  separate general-input requirement but are not this podcast's immediate issue.
+- Validation: 12 audit/aggregation tests passed; existing pytest-asyncio loop
+  teardown warning remains. Initial diagnostic used incorrect privacy field
+  names and was rejected before inference; corrected to actual owner_private /
+  local_llm_ok contract after source inspection. No provider was called, no
+  private data processed, no runtime activation or deployment.
+
 ## 2026-09-07 — Full persisted-turn import through cited .threads export
 
 - Added a real isolated-Postgres integration test that uses the actual import
