@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-09-08 — Canonical-candidate adversarial commit tests
+
+- Full unit sweep after semantic endpoint integration: 2,258 passed, five failed,
+  four skipped. All five failures match the recorded local dependency/sandbox
+  acceptance gaps; no new mapping/context unit regression appeared.
+- Added real PostgreSQL attacks that change a candidate summary or remove an
+  eligible candidate from the supplied list. Both partial-attempt and final-edge
+  checkpoint boundaries reject these against the current captured node snapshot.
+  Five reconciliation integration tests pass, including direction/restart/export.
+- This validates structural custody, not model semantic accuracy. No real model
+  replay or deployment started, and no environment dependency was changed.
+
 ## 2026-09-08 — Semantic canonical endpoint selection in relation review
 
 - Three failing-first mapping cases reproduced discarded explicit selection and

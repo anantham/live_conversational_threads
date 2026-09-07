@@ -1,9 +1,11 @@
 """Test intent: real canonical edges and review receipts commit atomically,
 retain later-to-earlier direction, survive retry without duplicates, preserve
 human edits and ambiguous ownership, and reject stale source/owner/consent.
+Altered canonical candidate meaning or membership must fail before receipt/edge writes.
 Only random synthetic rows in the opt-in isolated PostgreSQL database are used.
 """
 import json
+import copy
 import os
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -66,6 +68,26 @@ async def test_canonical_relation_atomicity_recovery_and_human_boundaries():
         review = {**validate_relation_review(raw, context), 'policy_fingerprint': 'synthetic-policy'}
         args = {**scope, 'snapshot': snapshot, 'context': context, 'batch_index': 0,
                 'policy_fingerprint': 'synthetic-policy', 'providers': providers, 'review': review}
+        from lct_python_backend.services.transcript.canonical_selection import canonical_candidates
+        from lct_python_backend.services.transcript.relation_attempt_checkpoint import checkpoint_relation_attempt
+        semantic_context = copy.deepcopy(context)
+        for obs in [semantic_context['focal'], *semantic_context['candidates']]:
+            obs['canonical_candidates'] = canonical_candidates(obs, snapshot['nodes'])
+        for fault in ('meaning', 'membership'):
+            altered = copy.deepcopy(semantic_context)
+            if fault == 'meaning':
+                altered['focal']['canonical_candidates'][0]['summary'] = 'An invented resolved question.'
+            else:
+                altered['focal']['canonical_candidates'] = []
+            async with sessions.begin() as db:
+                with pytest.raises(JournalConflict, match='Canonical candidates'):
+                    await checkpoint_relation_review(db, **{**args, 'context': altered})
+            async with sessions.begin() as db:
+                with pytest.raises(JournalConflict, match='Canonical candidates'):
+                    await checkpoint_relation_attempt(db, **scope, snapshot=snapshot,
+                        parent_context=semantic_context, context=altered, attempt=0,
+                        policy_fingerprint='synthetic-policy', providers=providers,
+                        response={'comparisons': []})
         with pytest.raises(PermissionError):
             async with sessions.begin() as db:
                 await checkpoint_relation_review(db, **{**args, 'owner_id': 'wrong-owner'})
