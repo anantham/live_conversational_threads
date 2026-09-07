@@ -104,3 +104,12 @@ def test_transport_deadline_change_preserves_interpretation_identity_and_budget(
     assert short.fingerprint == longer.fingerprint
     assert short.validate("same source") == longer.validate("same source")
     assert longer.providers[0]["timeout_seconds"] == 600
+
+
+def test_new_task_instructions_preserve_routes_and_budget_contract():
+    original = envelope()
+    derived = original.with_system_prompt('Select supporting source IDs only.')
+    assert derived.providers == original.providers
+    assert derived.count_tokens is original.count_tokens
+    assert derived.fingerprint != original.fingerprint
+    assert derived.validate('source') + 2512 <= 12000

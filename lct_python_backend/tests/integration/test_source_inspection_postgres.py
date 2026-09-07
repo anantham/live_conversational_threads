@@ -2,6 +2,7 @@
 preserve exact source, reject stale/foreign-owner results, and create no graph
 nodes. Inspection works before graph creation and survives graph-only changes.
 Real isolated PostgreSQL; synthetic source and provider transport only.
+Correction variant verifies the accepted audit survives a full runner restart.
 """
 import asyncio
 import json
@@ -28,7 +29,8 @@ from lct_python_backend.services.transcript.source_inspection_runner import (
 
 
 @pytest.mark.asyncio
-async def test_long_inspection_restart_and_revision_boundaries(monkeypatch):
+@pytest.mark.parametrize('repair_first_page', [False, True])
+async def test_long_inspection_restart_and_revision_boundaries(monkeypatch, repair_first_page):
     url = os.getenv('PASSAGE_JOURNAL_TEST_DATABASE_URL')
     if not url:
         pytest.skip('Explicit isolated local database URL required')
@@ -40,6 +42,7 @@ async def test_long_inspection_restart_and_revision_boundaries(monkeypatch):
     owner = f'synthetic-inspection-{cid}'
     text = 'Who holds the key? The borrowing rules remain undecided. 🗝️\n' * 400
     calls = []
+    corrections = []
     failure = {'page': 1}
     revocation = {'page': None}
     loop = asyncio.get_running_loop()
@@ -52,6 +55,10 @@ async def test_long_inspection_restart_and_revision_boundaries(monkeypatch):
     def transport(**kwargs):
         assert [p['id'] for p in kwargs['providers']] == ['local']
         page = json.loads(kwargs['messages'][1]['content'])
+        if 'rejected_observation' in page:
+            corrections.append(page['page_index'])
+            return SimpleNamespace(data={'span_ids': [page['spans'][0]['span_id']],
+                                          'rationale': 'The supplied span states the unresolved borrowing question.'})
         calls.append(page['page_index'])
         if page['page_index'] == failure['page']:
             raise RuntimeError('Synthetic interrupted inspection')
@@ -61,7 +68,7 @@ async def test_long_inspection_restart_and_revision_boundaries(monkeypatch):
         return SimpleNamespace(data={'reviewed_span_ids': [s['span_id'] for s in page['spans']],
             'observations': [{'kind': 'question', 'text': 'Borrowing remains unresolved.',
                 'citations': [{'span_id': span['span_id'], 'start': span['start'],
-                    'end': span['end'], 'quote': span['text']}]}]})
+                    'end': span['end'], 'quote': 'Invalid copied quote' if repair_first_page and page['page_index'] == 0 else span['text']}]}]})
     monkeypatch.setattr('lct_python_backend.services.transcript.inference_envelope.chat_with_provider_fallback_sync', transport)
     envelope = InferenceEnvelope(system_prompt=INSPECTION_PROMPT,
         providers=[{'id': 'local', 'model': 'synthetic', 'context_tokens': 9000, 'trust_scope': 'owner_private'},
@@ -105,6 +112,9 @@ async def test_long_inspection_restart_and_revision_boundaries(monkeypatch):
         async with sessions() as db:
             saved = (await db.execute(select(PipelineArtifact).where(PipelineArtifact.conversation_id == cid))).scalars().all()
             assert len(saved) == 1 and saved[0].stage_index == 0
+            if repair_first_page:
+                assert len(saved[0].artifact_json['repair_audit']['corrections']) == 1
+                assert corrections == [0]
             snapshot = await capture_inspection(db, conversation_id=str(cid), owner_id=owner)
         pages = plan_inspection_pages(snapshot['request']['sources'], envelope=envelope)
         failure['page'] = None
@@ -129,6 +139,7 @@ async def test_long_inspection_restart_and_revision_boundaries(monkeypatch):
                 existing_json=[{'id': str(nid), 'semantic_level': 1, 'node_name': 'Borrowing',
                                 'summary': 'Borrowing remains open.', 'utterance_ids': [str(uid)]}])
         assert await runner().run() == result
+        assert corrections == ([0] if repair_first_page else [])
         assert len(calls) == len(pages) + 2
         async with sessions() as db:
             assert (await db.execute(select(Utterance.text).where(Utterance.id == uid))).scalar_one() == text

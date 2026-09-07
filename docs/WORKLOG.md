@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-07 — Source-span selection replaces quote-copying repair
+
+- Superseded experimental correction policy v1 with inspection_span_selection_v2.
+  The model selects supplied span IDs plus rationale; backend attaches exact
+  full-span text/offsets. This preserves observation kind/text and speaker source
+  boundaries without asking the model to copy fragmented speech. Empty selection
+  is an abstention/failure, not a silently deleted observation. IDs must be known,
+  unique and nonempty. Exact evidence still does not establish semantic support.
+- InferenceEnvelope.with_system_prompt derives task-specific instructions while
+  preserving frozen routes, consent, context/output reserves and token counter.
+  Correction requests use this distinct fingerprint, recorded in their audit;
+  original inspection receipts remain under their original policy identity.
+- Twenty tests passed, including a new real-DB corrected-receipt variant: an
+  invalid initial quote is corrected, audit is saved, and restart reuses the
+  original result without another correction request. Two existing asyncio
+  teardown warnings remain. No schema or production changes.
+- Public replay resumed as session 10056, verified original source and skipped
+  pages 0/1. Page 2's initial response came from cache; a new span-selection
+  correction request is in flight. Prior failed diagnostic responses remain
+  untouched. Poll this handle, not the now-terminal prior sessions.
+
+
 ## 2026-09-07 — Bounded citation correction in source inspection
 
 - Added inspection_repair.py and regression tests. A failed observation receives

@@ -2,6 +2,7 @@
 - Repairs retain observation meaning and all original page acknowledgements.
 - Adjacent-span quotes must become individually source-exact citations.
 - Unknown spans, changed meaning, overflow and invalid corrections fail closed.
+- The model selects source IDs; the backend attaches exact full-span evidence.
 """
 import copy
 import json
@@ -34,9 +35,7 @@ def test_split_quote_repair_preserves_meaning_and_original():
     assert len(plans) == 1
     request = plans[0]['request']
     assert len(request['spans']) == 2
-    corrected = copy.deepcopy(payload)
-    corrected['observations'][0]['citations'] = [
-        {'span_id': s['span_id'], 'quote': s['text']} for s in page['spans']]
+    corrected = {'span_ids': [s['span_id'] for s in page['spans']], 'rationale': 'The question crosses both turns.'}
     output = apply_repair(payload, plans[0], corrected)
     assert payload == before
     assert output['observations'][0]['text'] == before['observations'][0]['text']
@@ -44,16 +43,16 @@ def test_split_quote_repair_preserves_meaning_and_original():
     assert not plan_repairs(output, page, envelope=envelope())
 
 
-@pytest.mark.parametrize('fault', ['meaning', 'kind', 'empty', 'invalid_quote'])
+@pytest.mark.parametrize('fault', ['meaning', 'kind', 'empty', 'unknown', 'duplicate'])
 def test_repair_cannot_change_or_drop_observation(fault):
     page, payload = case()
     plan = plan_repairs(payload, page, envelope=envelope())[0]
-    result = copy.deepcopy(payload)
-    result['observations'][0]['citations'] = [{'span_id': s['span_id'], 'quote': s['text']} for s in page['spans']]
-    if fault == 'meaning': result['observations'][0]['text'] = 'The question is resolved.'
-    elif fault == 'kind': result['observations'][0]['kind'] = 'answer'
-    elif fault == 'empty': result['observations'] = []
-    else: result['observations'][0]['citations'][0]['quote'] = 'Invented quote'
+    result = {'span_ids': [s['span_id'] for s in page['spans']], 'rationale': 'Evidence'}
+    if fault == 'meaning': result['text'] = 'The question is resolved.'
+    elif fault == 'kind': result['kind'] = 'answer'
+    elif fault == 'empty': result['span_ids'] = []
+    elif fault == 'unknown': result['span_ids'] = ['invented']
+    else: result['span_ids'] *= 2
     with pytest.raises(ValueError):
         apply_repair(payload, plan, result)
 
@@ -79,14 +78,12 @@ async def test_correction_preserves_audit_and_checks_consent(monkeypatch):
     requests = []
     async def guard():
         requests.append('consent')
-    def transport(prompt):
+    def transport(**kwargs):
         requests.append('inference')
-        request = json.loads(prompt)
-        result = {'reviewed_span_ids': [s['span_id'] for s in request['spans']],
-                  'observations': [{**request['rejected_observation'], 'citations': [
-                      {'span_id': s['span_id'], 'quote': s['text']} for s in request['spans']]}]}
+        request = json.loads(kwargs['messages'][1]['content'])
+        result = {'span_ids': [s['span_id'] for s in request['spans']], 'rationale': 'Both parts support the question.'}
         return SimpleNamespace(data=result)
-    monkeypatch.setattr(contract, 'complete_json', transport)
+    monkeypatch.setattr('lct_python_backend.services.transcript.inference_envelope.chat_with_provider_fallback_sync', transport)
     corrected, audit = await repair_inspection(payload, page, envelope=contract, request_guard=guard)
     assert requests == ['consent', 'inference', 'consent']
     assert audit['original_response'] == payload

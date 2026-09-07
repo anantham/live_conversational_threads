@@ -27,6 +27,7 @@ class InferenceEnvelope:
         if any(type(value) is not int or value <= 0 for value in (output_tokens, headroom_tokens)):
             raise ValueError("Positive output and protocol headroom reserves are required")
         self._providers = copy.deepcopy(allowed)
+        self._privacy = copy.deepcopy(privacy)
         self._system_prompt = str(system_prompt)
         self._output_tokens = output_tokens
         self._headroom_tokens = headroom_tokens
@@ -45,6 +46,13 @@ class InferenceEnvelope:
     @property
     def providers(self):
         return copy.deepcopy(self._providers)
+
+    def with_system_prompt(self, system_prompt):
+        """New task instructions, same frozen routes, consent and capacity limits."""
+        return type(self)(system_prompt=system_prompt, providers=self.providers,
+            privacy=self._privacy, output_tokens=self._output_tokens,
+            headroom_tokens=self._headroom_tokens, temperature=self._temperature,
+            count_tokens=self.count_tokens)
 
     def context_policy(self, *, passage_target_tokens=None):
         return PassageContextPolicy(self.input_token_budget, count_tokens=self.count_tokens,
