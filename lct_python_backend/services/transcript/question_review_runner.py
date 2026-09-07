@@ -12,7 +12,7 @@ from .question_memory import fold_question_memory
 from .question_review import build_question_review, validate_question_review, QUESTION_REVIEW_PROMPT
 from .question_review_projection import project_question_review
 
-STAGE = 'conversation_question_review_v1'
+STAGE = 'qreview_v2'
 
 
 async def capture_question_basis(db, *, conversation_id, owner_id, lock=False):
@@ -62,17 +62,22 @@ class QuestionReviewRunner:
         if current != basis:
             raise JournalConflict('Question source or interpretation changed during review')
         cid = uuid.UUID(self.scope['conversation_id'])
+        identity = {'basis_hash': _hash(basis), 'request_hash': _hash(request),
+                    'policy_fingerprint': self.envelope.fingerprint}
+        # Keep each captured source/interpretation and policy revision immutable.
+        # Fit the existing 50-character stage column without a migration. Full
+        # hashes below still fail closed on a truncated namespace collision.
+        stage = STAGE + '_' + _hash({key: identity[key] for key in
+                                    ('basis_hash', 'policy_fingerprint')})[:39]
         rows = (await db.execute(select(PipelineArtifact).where(
-            PipelineArtifact.conversation_id == cid, PipelineArtifact.stage == STAGE,
+            PipelineArtifact.conversation_id == cid, PipelineArtifact.stage == stage,
             PipelineArtifact.stage_index == index))).scalars().all()
         if len(rows) > 1:
             raise JournalConflict('Multiple question receipts at one index')
-        identity = {'basis_hash': _hash(basis), 'request_hash': _hash(request),
-                    'policy_fingerprint': self.envelope.fingerprint}
         if rows:
             saved = rows[0].artifact_json
             if _hash(saved) != rows[0].content_hash or any(saved.get(k) != v for k, v in identity.items()):
-                raise JournalConflict('Saved question review requires explicit revision')
+                raise JournalConflict('Saved question review revision identity or content differs')
             # Revalidate saved raw judgments, not only their digest.
             if validate_question_review(saved['response'], request) != saved['review']:
                 raise JournalConflict('Question review no longer reproduces')
@@ -81,7 +86,7 @@ class QuestionReviewRunner:
             return None
         review = validate_question_review(response, request)
         saved = {**identity, 'request': copy.deepcopy(request), 'response': copy.deepcopy(response), 'review': review}
-        db.add(PipelineArtifact(conversation_id=cid, stage=STAGE, stage_index=index,
+        db.add(PipelineArtifact(conversation_id=cid, stage=stage, stage_index=index,
             artifact_type='source_reviewed_question', artifact_json=saved, content_hash=_hash(saved)))
         await db.flush()
         return saved

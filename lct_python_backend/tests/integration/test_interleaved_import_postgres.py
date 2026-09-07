@@ -10,6 +10,7 @@ Question source selections and their exact quotes must survive export and restar
 Question review must retain speaker-labelled source and recover without another call.
 Its review-qualified projection must reproduce from persisted receipts on restart.
 The shared import path must run question review, not require a manual second task.
+Fresh interpretation revisions retain old reviews and recover the new review independently.
 Revoked consent must reject a captured review even when a receipt already exists.
 """
 import json
@@ -207,13 +208,26 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
                 await runner.checkpoint(db, basis, 0, request)
         assert len(question_reviews) == 1
         from lct_python_backend.services.deployment_privacy_policy import DeploymentPrivacyError
+        revised_review = await runner.run()
+        assert revised_review['receipts'][0]['basis_hash'] != reviewed['receipts'][0]['basis_hash']
+        assert await runner.run() == revised_review
+        assert len(question_reviews) == 2
+        from sqlalchemy import select
+        from lct_python_backend.models import PipelineArtifact
+        async with sessions() as db:
+            saved_questions = (await db.execute(select(PipelineArtifact).where(
+                PipelineArtifact.conversation_id == cid,
+                PipelineArtifact.artifact_type == 'source_reviewed_question'))).scalars().all()
+            assert len(saved_questions) == 2
+            assert reviewed['receipts'][0] in [row.artifact_json for row in saved_questions]
+            assert revised_review['receipts'][0] in [row.artifact_json for row in saved_questions]
         async with sessions.begin() as db:
             await db.execute(update(Conversation).where(Conversation.id == cid).values(
                 source_metadata={'privacy': {'local_llm_ok': False, 'external_llm_ok': False}}))
         async with sessions.begin() as db:
             with pytest.raises(DeploymentPrivacyError):
                 await runner.checkpoint(db, basis, 0, request)
-        assert len(question_reviews) == 1
+        assert len(question_reviews) == 2
     finally:
         async with sessions.begin() as db:
             await db.execute(delete(Conversation).where(Conversation.id == cid, Conversation.owner_id == owner))

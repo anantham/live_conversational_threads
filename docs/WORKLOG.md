@@ -1,5 +1,22 @@
 # WORKLOG
 
+## 2026-09-08 — Immutable question-review revisions
+
+- Two failing-first PostgreSQL import cases reproduced a stale receipt conflict
+  after a human interpretation edit. Question receipts now use a revision stage
+  derived from the captured source/interpretation basis and inference policy.
+- Prior v1/revision receipts are untouched. The stage fits the existing 50-char
+  column; full saved identity and content hashes still reject collisions or
+  tampering. Source edits during an in-flight call still fail the locked basis
+  recheck; a fresh capture can produce a new immutable review.
+- Twenty tests pass, including two independently recoverable revisions, old
+  receipt retention, no duplicate model call on restart and revoked-consent
+  rejection. This turn proves human-edit recovery, not full appended-turn E2E.
+- Whole-basis invalidation is conservative and can re-review unaffected questions.
+  Incremental reuse requires proving question-specific context sufficiency before
+  narrowing that key. Export/read-model application and global identity remain
+  unfinished. Replay session 50729 remains live and returned another response.
+
 ## 2026-09-08 — Shared import automatically runs question review
 
 - Added runtime factory composition for QuestionReviewRunner under the same
