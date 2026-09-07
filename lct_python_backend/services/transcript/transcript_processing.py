@@ -130,7 +130,7 @@ class TranscriptProcessor:
             if passage_context_policy is None:
                 passage_context_policy = inference_envelope.context_policy()
             elif (passage_context_policy.input_token_budget > inference_envelope.input_token_budget
-                  or passage_context_policy.count_tokens is not inference_envelope.count_tokens):
+                  or passage_context_policy.count_tokens != inference_envelope.user_message_cost):
                 raise ValueError("Planner budget/tokenizer must fit the inference envelope")
         self._passage_context_policy = passage_context_policy
         if semantic_candidates is not None and passage_context_policy is None:

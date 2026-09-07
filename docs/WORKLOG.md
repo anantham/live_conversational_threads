@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Replay exposes outer-message budgeting mismatch
+
+- Session 26316 is terminal (exit 1), not stalled: first response was captured
+  at tmp/public-pipeline/inference-1788817604602455000.json and processing moved
+  past question-evidence validation. A later request failed the final full-message
+  context guard before provider invocation.
+- Synthetic packed-history regression reproduces the same mismatch: the planner
+  counted raw JSON prompt bytes while the envelope included JSON string escaping.
+  Context policy now measures the user-message contribution in the same envelope
+  as final validation. Processor requires that bound accounting method rather
+  than a raw tokenizer. Output/headroom reserves and final guard are unchanged.
+- Initial factory regressions caught the old tokenizer identity check; updated
+  it to require the matching envelope accounting method. All 35 selected
+  envelope/runtime/context tests now pass. Next: database regression and resume
+  from the existing valid passage journal; no public candidate complete yet.
+
 ## 2026-09-08 — Source-reference budget boundary verified
 
 - Added a 100-short-fragment context test: source-line metadata is included in

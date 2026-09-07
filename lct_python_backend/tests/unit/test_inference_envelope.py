@@ -113,3 +113,12 @@ def test_new_task_instructions_preserve_routes_and_budget_contract():
     assert derived.count_tokens is original.count_tokens
     assert derived.fingerprint != original.fingerprint
     assert derived.validate('source') + 2512 <= 12000
+
+
+def test_planner_budget_includes_escaping_inside_message_envelope():
+    """A packed JSON user message must still fit its outer message encoding."""
+    from lct_python_backend.services.transcript.conversation_context import plan_conversation_context
+    contract = envelope()
+    chunks = {str(i): 'A quoted "callback" with \\ paths. ' * 4 for i in range(100)}
+    plan = plan_conversation_context('Returning to the callback.', [], chunks, {}, contract.context_policy())
+    contract.validate(plan.prompt)

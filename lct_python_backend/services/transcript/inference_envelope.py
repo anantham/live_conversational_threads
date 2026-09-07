@@ -55,8 +55,14 @@ class InferenceEnvelope:
             count_tokens=self.count_tokens)
 
     def context_policy(self, *, passage_target_tokens=None):
-        return PassageContextPolicy(self.input_token_budget, count_tokens=self.count_tokens,
+        # Count the user content in the same serialized envelope as validate.
+        # JSON quoting/backslashes add framing cost that raw prompt counting
+        # misses, especially when historical evidence fills the available space.
+        return PassageContextPolicy(self.input_token_budget, count_tokens=self.user_message_cost,
                                     passage_target_tokens=passage_target_tokens)
+
+    def user_message_cost(self, prompt):
+        return self._message_tokens(prompt) - self._message_tokens("")
 
     def _messages(self, prompt):
         return [{"role": "system", "content": self._system_prompt}, {"role": "user", "content": prompt}]
