@@ -20,6 +20,12 @@
   pages 0/1. Page 2's initial response came from cache; a new span-selection
   correction request is in flight. Prior failed diagnostic responses remain
   untouched. Poll this handle, not the now-terminal prior sessions.
+- Subsequent live poll: both corrections passed (13.47s and 25.12s), page 2
+  committed, and session 10056 requested page 3. Read the selected exact text:
+  s178-s180 cover the cosmology question; eleven selected spans across s214-s228
+  cover iteration and inexpensive software-vs-physical experiments. These two
+  observations have plausible source support on direct inspection, not a full
+  semantic quality or recall verdict. No public artifact replacement occurred.
 
 
 ## 2026-09-07 — Bounded citation correction in source inspection
