@@ -1,5 +1,26 @@
 # WORKLOG
 
+## 2026-09-08 — Public scope probe terminal: useful judgment, invalid citations
+
+- Session 23978 completed exit 1, not running. One uncached local response,
+  finish_reason stop, 6,461 prompt tokens and 503 completion tokens. Raw exact
+  request/response retained at tmp/public-pipeline/question-scope-1788825341661293000.json.
+- All seven non-original events received assessments. Event-6, the host's
+  self-taught peer anecdote, was correctly distinguished as related_aside /
+  not_an_answer in the implementing assistant's source-text assessment. This is
+  encouraging on the selected known case, not a broad accuracy score.
+- Validation rejected events 4-7 because they cite only source-1, omitting
+  required original-inquiry source-0. Events 1-3 cite source-0, which contains
+  both their current and original evidence. No fabricated/unknown source IDs or
+  missing events were seen. Do not repair citations by silently inserting IDs.
+- Event-5's explanation broadens the question to both speakers' pre-college lives;
+  this remains a scope caution despite its plausibly relevant guest contribution.
+  No assessment or reviewed state was accepted/persisted to canonical data.
+- Next evidence-led action: make per-event evidence requirements explicit in the
+  structured request, retain code-derived validation, and check a bounded model
+  follow-up rather than weakening the citation gate. Include question-review
+  policy in the passage runtime fingerprint before changing live review prompts.
+
 ## 2026-09-08 — Public question-scope diagnostic running
 
 - Prior turn was progress (6ddf93a pushed), current checkout clean. Added
