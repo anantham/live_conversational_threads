@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — Diagnostic replay terminal on incomplete relation coverage
+
+- Session 50729 is now authoritatively terminal (exit 1), not a slow observation.
+  Final response inference-1788821836329810000.json contains two comparisons for
+  eight supplied candidates: six missing, no duplicate IDs. Validation rejected
+  it with 'Relation review omitted candidates; no implicit unrelated decisions'.
+- Source/passage processing had committed all 1,263 utterances, 19 passages and
+  105 provisional nodes. Reconciliation did not finish; no candidate export or
+  publication occurred. No replacement process has been submitted.
+- Next recovery work must retain checked comparisons and explicitly review the
+  missing candidates under bounded requests, never synthesize unrelated labels.
+  New direction schema and tokenizer policy require a properly versioned run;
+  do not silently resume this old diagnostic as the fair comparison baseline.
+
 ## 2026-09-08 — Relationship direction follows meaning, not retrieval order
 
 - Public diagnostic inference-1788821644360835000 describes a candidate question
