@@ -6,6 +6,14 @@ stopped and retained as diagnostic evidence, not a model-quality baseline.
 
 ## Implementation checkpoint (2026-09-07)
 
+Aggregation initial-tier commit now has owner-scoped snapshot capture and an
+atomic canonical-parent/membership plus request/result receipt transaction.
+Real-DB tests verify rollback, source/speaker and summary races, recapture,
+original-ID retry, and rejection when saved-tier inputs later change. Fourteen
+focused tests pass. Existing-tier reconciliation remains required: this stage
+currently refuses changed saved inputs instead of duplicating/replacing nodes.
+It does not yet activate a full live/import aggregation runner.
+
 Canonical aggregate persistence/export now preserves source citations and
 multi-thread metadata. Source-backed parents emit child-to-parent member_of
 edges so overlapping memberships survive append-only writes without rewriting

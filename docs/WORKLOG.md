@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-07 — Atomic aggregation snapshot and recovery checkpoint
+
+- Added `aggregation_checkpoint.py` using existing PipelineArtifact storage.
+  Owner-filtered capture builds adjacent-tier input from canonical graph and
+  source. Commit takes short conversation/source/node/relationship locks,
+  refreshes ORM rows, and compares the input snapshot before appending parents,
+  canonical memberships and an immutable request/result receipt together.
+- Exact retry recovers original parent IDs. Wrong owner, changed policy,
+  corrupted snapshot, missing saved nodes, changed inputs and unjournaled
+  existing tiers fail visibly. Applied edits to generated output are not
+  overwritten by recovering the original receipt.
+- Expanded the synthetic PostgreSQL roundtrip test for outer rollback,
+  summary/source-speaker changes during inference, recapture, retry and changed
+  inputs after a saved tier. Existing graph/source survives failed commits.
+  The raw request is retained privately in the receipt for reproducible audit;
+  it is not included in browser notifications or the .threads graph export.
+- Fourteen focused DB/journal/aggregation tests pass. Existing asyncio teardown
+  warning remains. Existing-tier reconciliation is NOT implemented by this
+  checkpoint: new inputs to a saved tier fail rather than silently duplicating
+  or destructively replacing nodes. This is a required next stage, not a final
+  product limitation or a claim that live aggregation is fully wired.
+
 ## 2026-09-07 — Aggregate evidence survives canonical and .threads roundtrips
 
 - Failing-first isolated-Postgres test reproduced loss of membership citations

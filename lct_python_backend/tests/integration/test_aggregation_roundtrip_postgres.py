@@ -10,17 +10,20 @@ from urllib.parse import urlparse
 import uuid
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
 from lct_python_backend.models import Conversation, Node, Relationship, Utterance
 from lct_python_backend.services.graph_persistence import persist_graph
 from lct_python_backend.services.conversation_reader import build_graph_data_from_nodes
 from lct_python_backend.services.transcript.source_backed_aggregation import build_aggregation_request, validate_aggregation
+from lct_python_backend.services.transcript.aggregation_checkpoint import capture_aggregation, commit_aggregation
+from lct_python_backend.services.transcript.passage_journal import JournalConflict
 
 
 @pytest.mark.asyncio
-async def test_aggregation_append_export_roundtrip_preserves_evidence():
+@pytest.mark.parametrize("changed_field", ["summary", "speaker"])
+async def test_aggregation_append_export_roundtrip_preserves_evidence(changed_field):
     url = os.getenv("PASSAGE_JOURNAL_TEST_DATABASE_URL")
     if not url:
         pytest.skip("Explicit isolated local database URL required")
@@ -75,9 +78,48 @@ async def test_aggregation_append_export_roundtrip_preserves_evidence():
         async with sessions.begin() as db:
             await persist_graph(db=db, conversation_id=str(cid), owner_id=owner,
                                 existing_json=copy.deepcopy(leaves), append_only=True, commit=False)
+        capture_args = dict(conversation_id=str(cid), owner_id=owner, target_level=2)
+        async with sessions() as db:
+            with pytest.raises(PermissionError):
+                await capture_aggregation(db, **{**capture_args, "owner_id": "wrong-owner"})
+            snapshot = await capture_aggregation(db, **capture_args)
+        commit_args = dict(conversation_id=str(cid), owner_id=owner, snapshot=snapshot,
+                           payload={"nodes": parents}, policy_fingerprint="synthetic-aggregation-v1")
+        # A flushed stage receipt is not success until its graph transaction
+        # commits. A failed outer transaction must leave only the two moments.
+        with pytest.raises(RuntimeError, match="rollback aggregate"):
+            async with sessions.begin() as db:
+                await commit_aggregation(db, **commit_args)
+                raise RuntimeError("rollback aggregate")
+        assert len(await exported()) == 2
         async with sessions.begin() as db:
-            await persist_graph(db=db, conversation_id=str(cid), owner_id=owner,
-                                existing_json=copy.deepcopy(parents), append_only=True, commit=False)
+            if changed_field == "summary":
+                await db.execute(update(Node).where(Node.id == uuid.UUID(leaves[0]["id"])).values(
+                    summary="Applied wording correction."))
+                leaves[0]["summary"] = "Applied wording correction."
+            else:
+                # Synthetic source mutation tests snapshot detection, not the
+                # separately tested speaker-refinement audit mechanism.
+                await db.execute(update(Utterance).where(Utterance.id == uid1).values(
+                    speaker_id="SPEAKER_01", speaker_revision=1))
+        with pytest.raises(JournalConflict, match="changed before commit"):
+            async with sessions.begin() as db:
+                await commit_aggregation(db, **commit_args)
+        assert len(await exported()) == 2
+        async with sessions() as db:
+            commit_args["snapshot"] = await capture_aggregation(db, **capture_args)
+        async with sessions.begin() as db:
+            receipt = await commit_aggregation(db, **commit_args)
+        parents = receipt["nodes"]
+        assert receipt["request"] == commit_args["snapshot"]["request"]
+        # Restart/retry can ignore a newly generated response and recover the
+        # saved IDs. It must not append another tier or overwrite child edits.
+        async with sessions.begin() as db:
+            retried = await commit_aggregation(db, **{**commit_args, "payload": {"nodes": []}})
+            assert retried == receipt
+        with pytest.raises(JournalConflict, match="reconciliation"):
+            async with sessions.begin() as db:
+                await commit_aggregation(db, **{**commit_args, "policy_fingerprint": "changed-policy"})
         first = await exported()
         by_id = {node["id"]: node for node in first}
         for parent in parents:
@@ -95,6 +137,14 @@ async def test_aggregation_append_export_roundtrip_preserves_evidence():
             for field in ("membership_evidence", "thread_ids", "utterance_ids"):
                 assert again[parent["id"]][field] == by_id[parent["id"]][field]
         assert again[leaves[1]["id"]]["memberships"] == by_id[leaves[1]["id"]]["memberships"]
+        # Once inputs change after commit, an old receipt cannot masquerade as
+        # a current successful pass. Keep the saved graph, require reconciliation.
+        async with sessions.begin() as db:
+            await db.execute(update(Node).where(Node.id == uuid.UUID(leaves[0]["id"])).values(
+                summary="A new interpretation after aggregation."))
+        with pytest.raises(JournalConflict, match="inputs changed"):
+            async with sessions.begin() as db:
+                await commit_aggregation(db, **commit_args)
     finally:
         async with sessions.begin() as db:
             await db.execute(delete(Conversation).where(Conversation.id == cid, Conversation.owner_id == owner))
