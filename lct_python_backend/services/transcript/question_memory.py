@@ -37,7 +37,7 @@ def fold_question_memory(nodes, source_chunks):
                 if previous is not None:
                     raise ValueError("Question identity already exists; use an explicit update")
                 memory[identity] = {"question_id": identity, "status": "open",
-                                    "original": event, "latest": event, "update_count": 1}
+                                    "original": event, "latest": event, "intermediate": [], "update_count": 1}
                 continue
             if previous is None:
                 raise ValueError("Question update refers to an unknown question")
@@ -48,6 +48,8 @@ def fold_question_memory(nodes, source_chunks):
             status = {"answer": "answered", "withdraw": "withdrawn", "reopen": "open"}.get(action)
             if status:
                 previous["status"] = status
+            if previous['update_count'] > 1:
+                previous['intermediate'].append(previous['latest'])
             previous["latest"] = event
             previous["update_count"] += 1
     return memory

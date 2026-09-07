@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-09-08 — Preserve intermediate question evidence in working context
+
+- Broad architecture regression before this change: 159 passed, 2168 deselected,
+  32 existing deprecation warnings. Selection covered interleaved/passages,
+  inspection/reconciliation, memberships, question memory and aggregation.
+- Reproduced a projection gap: an intervening partial answer disappeared from
+  question working memory after later clarification. The underlying source event
+  was not deleted, but only original/latest were supplied in the question view.
+- Preserve intermediate source-backed events without duplicating original/latest.
+  Existing full-context budgeting still admits or explicitly omits a whole question;
+  it does not truncate its history into apparent completeness. This can increase
+  context cost for long question histories; bounded history retrieval remains a
+  future improvement. Runtime fingerprint version changes so prior interpretation
+  receipts cannot silently claim the new context contract.
+- Validation: 28 focused tests passed, then 13 question tests passed after adding
+  an assertion on the serialized model context itself. No semantic-quality claim
+  is inferred from synthetic execution tests.
+
 ## 2026-09-08 — Source reconciliation runs in the opt-in import entrypoint
 
 - InterleavedRuntimeConfig now composes source inspection, semantic candidate

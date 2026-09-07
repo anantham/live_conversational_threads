@@ -111,7 +111,7 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
         input_token_budget=budgets.embedding_input_tokens,
         batch_token_budget=budgets.embedding_batch_tokens, count_tokens=count_tokens,
     )
-    identity = {"version": "interleaved_runtime_v1", "inference": envelope.fingerprint,
+    identity = {"version": "interleaved_runtime_v2_question_history", "inference": envelope.fingerprint,
                 "retrieval": retrieval.fingerprint, "budgets": asdict(budgets), "tokenizer_id": tokenizer_id}
     fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     journal = PassageJournalSession(session_factory=session_factory, conversation_id=conversation_id,

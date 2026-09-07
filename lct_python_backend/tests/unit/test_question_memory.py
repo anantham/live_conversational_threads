@@ -4,6 +4,7 @@
 - Partial answers cannot implicitly reopen answered or withdrawn questions.
 """
 import copy
+import json
 
 import pytest
 
@@ -96,3 +97,24 @@ def test_partial_answer_requires_exact_current_source_evidence():
         fold_question_memory([node("a", "open", "Who pays?"),
                               node("b", "partial_answer", "Invented offer")],
                              {"a": "Who pays?", "b": "I do not know."})
+
+
+def test_later_clarification_preserves_intermediate_partial_answer_in_working_memory():
+    """Later wording cannot erase an earlier contribution to an unresolved question."""
+    chunks = {'a': 'Who pays?', 'b': 'I can cover hosting, but not staffing.',
+              'c': 'By staffing I mean a facilitator.', 'd': 'Food is covered too.'}
+    nodes = [node('a', 'open', chunks['a']), node('b', 'partial_answer', chunks['b']),
+             node('c', 'clarify', chunks['c']), node('d', 'partial_answer', chunks['d'])]
+    before = copy.deepcopy(nodes)
+    memory = fold_question_memory(nodes, chunks)['funding']
+    assert memory['status'] == 'open'
+    assert [e['node_id'] for e in memory['intermediate']] == ['b', 'c']
+    assert memory['intermediate'][0]['evidence_quote'] == chunks['b']
+    assert memory['original']['node_id'] == 'a' and memory['latest']['node_id'] == 'd'
+    assert memory['update_count'] == 4
+    assert nodes == before
+    from lct_python_backend.services.transcript.conversation_context import plan_conversation_context, PassageContextPolicy
+    plan = plan_conversation_context('Returning to the funding question.', nodes, chunks,
+        {k: [k] for k in chunks}, PassageContextPolicy(16000))
+    supplied = json.loads(plan.prompt)['question_memory'][0]
+    assert supplied['intermediate'] == memory['intermediate']
