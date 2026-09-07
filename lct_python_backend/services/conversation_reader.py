@@ -426,6 +426,7 @@ def build_graph_data_from_nodes(
             "thread_label": cluster_info.get("thread_label"),
             "thread_state": cluster_info.get("thread_state"),
             "edge_relations": _node_edges,
+            "question_updates": display_preferences.get("question_updates", []),
             # Argument-map role (claim | evidence | question | assumption) —
             # persisted in display_preferences (no column); feeds the frontend
             # rhetoric/debate color mode + the per-card claim-type chip.

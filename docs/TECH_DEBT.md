@@ -1,5 +1,30 @@
 # TECH_DEBT
 
+## 2026-09-07 — Incremental canonical materialization
+
+The existing ~1,500-line graph_persistence.py now supports append-only inserts
+and caller-owned commits so journals and canonical rows can commit together.
+Reuse was necessary to retain its hierarchy, provenance and edge contracts,
+but do not grow another serializer there. Extract transaction policy and node/
+relationship materialization behind parity tests in a follow-up. Prior-node
+lookup is owner-conversation scoped; append mode never deletes old graph rows.
+
+## 2026-09-07 — Shared transcript processor and context rollout
+
+`services/transcript/transcript_processing.py` is now 864 lines. New context
+planning is isolated in the 191-line `conversation_context.py`; the legacy
+classifier and experimental passage path deliberately coexist until acceptance.
+Extract generation/commit from boundary policy before activating the new path,
+then remove obsolete completion-gated orchestration after parity checks. Do not
+grow this facade into the durable-memory implementation.
+
+The initial planner rebuilds lexical candidates from all committed chunks on
+each passage. It is deterministic and has no cross-conversation cache, but its
+scan cost grows with conversation length. Profile long synthetic histories
+before adding a conversation-scoped incremental index. Semantic recall,
+transactional replay, provider-aware budgeting and source-safe oversized-turn
+splitting remain rollout blockers, not claims made by the passing unit tests.
+
 ## 2026-09-06 — Viewer release boundaries
 
 MinimalGraph remains a >2,000-line controller combining graph projection,

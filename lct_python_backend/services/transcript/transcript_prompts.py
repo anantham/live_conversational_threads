@@ -13,6 +13,7 @@ from string import Template
 from typing import Any, Dict, Optional
 
 from lct_python_backend.services.prompt_manager import get_prompt_manager
+from .interleaved_prompt import INTERLEAVED_SYSTEM_PROMPT
 
 logger = logging.getLogger("lct_backend")
 
@@ -21,6 +22,7 @@ PROMPT_ID_ACCUMULATE_TRANSCRIPT_SEGMENT_LOCAL = "accumulate_transcript_segment_l
 PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY = "generate_conversation_hierarchy"
 PROMPT_ID_GENERATE_CONVERSATION_HIERARCHY_LOCAL = "generate_conversation_hierarchy_local"
 PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS = "refine_conversation_subthreads"
+PROMPT_ID_INTERLEAVED_CONVERSATION = "interpret_interleaved_conversation"
 
 _ARGUMENT_ROLE_SPEC = """
 Argument-role contract (required for every node):
@@ -315,6 +317,14 @@ TRANSCRIPT_PROMPT_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "max_tokens": 4000,
         "output_format": "json_object",
         "template": LOCAL_GENERATE_LCT_PROMPT,
+    },
+    PROMPT_ID_INTERLEAVED_CONVERSATION: {
+        "description": "Source-backed interpretation of interleaved conversational passages and open questions.",
+        "model": "configured-provider",
+        "temperature": 0.3,
+        "max_tokens": 4096,
+        "output_format": "json_object",
+        "template": INTERLEAVED_SYSTEM_PROMPT,
     },
     PROMPT_ID_REFINE_CONVERSATION_SUBTHREADS: {
         "description": "Refine a coarse import graph into denser subthreads, tangents, and returns.",

@@ -1,5 +1,26 @@
 # ISSUES
 
+## 2026-09-07 — Interleaved conversation context (OPEN; experimental foundation)
+
+The production processor asks for completed conversational segments and local
+generation sees only the last 40 compact nodes. A failing-first synthetic
+callback after 45 unrelated passages proves that earlier source evidence is
+absent at the model boundary. This confounds local-model quality comparisons.
+
+The explicit `PassageContextPolicy` path now supplies bounded source-backed
+context and skips the semantic-completion classifier; token-target scheduling
+is available. It is not activated by runtime entry points. Lexical candidates
+are not semantic callback resolution. Keep this issue open until source-backed
+reconciliation, total provider budgeting, live backpressure, atomic recovery,
+all ingest entry points and public-podcast acceptance are verified. No automatic
+reprocessing of old/private conversations. See the interleaved-memory plan.
+
+Recovery evidence: the live callback sends a websocket update and only then
+schedules persistence, so success is not a durable commit. Rejected experimental
+updates now roll back in-process memory and retain source for retry. A distinct
+idempotent durable commit plus restart rehydration is still required; notification
+failure after a successful external commit must not trigger fresh node identities.
+
 ## 2026-09-06 — Public viewer independent review findings (REPAIRED LOCALLY)
 
 Claude Sonnet 5 reviewed implementation 7ca2608 and returned two P3 findings;

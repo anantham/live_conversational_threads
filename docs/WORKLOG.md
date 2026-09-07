@@ -1,5 +1,188 @@
 # WORKLOG
 
+## 2026-09-07 — Inference snapshot races and retry receipts
+
+- Revalidated the current local worktree and twelve runtime/context tests,
+  followed by the isolated PostgreSQL recovery test. The previously added
+  capture-before-inference checks were present and passing those checks.
+- Added two real-database snapshot regressions: speaker refinement of pending
+  source and an applied historical summary edit between capture and commit.
+  Both reject stale inference, leave canonical graph/cursor unchanged, and
+  succeed after fresh capture. Only random synthetic conversation rows were
+  created, then removed by exact conversation/owner cleanup.
+- A failing-first notification regression showed `passage_runtime.py` copied
+  internal `inference_sources` and context revision into the client patch.
+  The commit boundary now excludes those fields from notification while
+  preserving internal durable evidence. No production payload was sent.
+- A failing-first DB regression showed `passage_journal.py` rejected an old
+  successful commit retry after audited speaker refinement. Recovery now uses
+  the already-validated source identity and policy, preserving original saved
+  output; a supplied inference snapshot must still match the saved snapshot.
+  Unsupported attribution or immutable-source changes still fail validation.
+- Verification: 31 tests passed across journal/runtime/context/attribution and
+  the isolated PostgreSQL suite. Existing pytest-asyncio event-loop teardown
+  warnings remain. This is local implementation evidence, not deployment or
+  full semantic-quality acceptance. Source-safe splitting, reconciliation,
+  higher-level aggregation, comparison, review and rollout remain outstanding.
+- Broader checkpoint validation: all 86 tests across fifteen new/affected
+  architecture unit files passed; the three isolated PostgreSQL tests passed
+  in the preceding combined run. This checkpoint preserves the off-by-default
+  experimental foundation, not a production-ready completion claim.
+
+## 2026-09-07 — Frozen provider-aware inference envelope
+
+- Traced the actual sync provider request: system/user messages and output
+  limit were separate, with no context-capacity check. Added InferenceEnvelope
+  and connected it to the shared processor's planning and generation seams.
+- Privacy filtering precedes capacity calculations. Every permitted fallback
+  needs an explicit positive configured context_tokens value; unknown limits
+  fail instead of being guessed from a model alias. The smallest permitted
+  capacity governs, with frozen system prompt, output/protocol reserves and
+  a full serialized-message check immediately before calling the provider.
+- Eight new tests cover reserves, fallback filtering, missing consent, unknown
+  capacity, overflow/no network call, immutable request/provider routing, and
+  shared-processor budget consistency. 32 focused context/processor/prompt tests
+  passed together; no full-suite/real-model capacity claim from this run.
+- Read-only local Ollama probes: server reachable, /api/ps returned no loaded
+  models. /api/tags lists qwen3.8:27b-mlx plus existing qwen3 embedding 0.6b/8b
+  models. No inference or model load initiated. Advertised context is NOT yet
+  evidence of usable runtime context; a synthetic serving-host probe is next.
+- Existing embedding_service.py discovered for reuse before introducing semantic
+  retrieval. Runtime entry points, provider setting persistence, tokenizer/
+  capacity verification, semantic reconciliation, replay/review/deployment remain
+  incomplete. No production configuration or private-data processing changed.
+
+## 2026-09-07 — Applied corrections reach restored and next-passage context
+
+- Inspected the current node-edit route: applied title/summary/keywords are
+  canonical Node fields; edit-log entries alone are not proof of application.
+  Added a separate interpretation projection for those three supported fields.
+  It never rewrites checkpoint records, raw chunks, excerpts, IDs or thread
+  structure, and does not label edited content speaker-verified or fact-checked.
+- Journal recovery now loads the owner-filtered projection; each inference
+  passage refreshes source validity and applied edits, rather than adding a DB
+  refresh to every incoming STT turn. An interpretation revision lets the shared
+  processor notice edits even when no new passage revision exists.
+- Failing-first real DB assertions reproduced stale original summaries. Tests
+  now verify corrections before restart and during the same session reach the
+  next model request; checkpoint interpretation remains original. Missing
+  canonical nodes fail closed for structural reconciliation, not resurrection.
+- Fixed a related stale-list seam: if recovery consumes queued source IDs, the
+  processor uses the surviving queue, not the pre-recovery list passed by caller.
+- 137 tests pass across thirteen focused files, including the real isolated
+  Postgres test; synthetic rows cleaned up, existing asyncio warnings remain.
+- Next prioritize provider-aware context budgeting and semantic callback
+  retrieval/reconciliation. Runtime entry points remain unactivated; no real
+  model comparison, independent review, push or deployment is claimed.
+
+## 2026-09-07 — Atomic canonical graph and passage checkpoint
+
+- Read the canonical writer and confirmed replace/delete semantics were unsafe
+  for incremental journal commits. Added explicit append-only mode and caller-
+  owned transaction support while preserving legacy defaults. Append-only
+  requires an existing owned conversation and canonical new UUIDs; it neither
+  replaces source nor deletes prior nodes/relationships/analyses.
+- Journal append now invokes the canonical serializer in that same transaction.
+  Existing node IDs are available to callback/membership/temporal edges, and
+  prior timestamps are available for new aggregate bounds. New nodes cannot
+  replace prior IDs or reference an out-of-conversation parent UUID.
+- Failing-first real Postgres assertion showed journal-only commits had no
+  canonical nodes. The repaired test verifies both rollback together, a later
+  passage retains a human-corrected earlier summary, and its clarifies edge
+  points from the earlier node to the new node. Synthetic rows cleaned up.
+- 135 tests pass across twelve focused files, including graph/hierarchy legacy
+  regressions and real Postgres integration; existing asyncio warnings remain.
+- Important remaining gap: restored processor memory is the immutable journal
+  interpretation, not a projection of approved human corrections. Database
+  preservation alone is insufficient. Next add a correction-aware context/read
+  projection without rewriting historical checkpoint evidence; then continue
+  live/import activation, provider budgeting, semantic reconciliation and replay.
+
+## 2026-09-07 — Processor commit boundary and startup recovery wired locally
+
+- Added `passage_runtime.py`: owner-scoped JournalSession owns transaction
+  completion; PassageCommitBoundary restores committed graph/source state,
+  rejects changed redeliveries, and separates saving from notifying clients.
+- Shared TranscriptProcessor now accepts an explicit journal beside the
+  experimental context policy. Handle/flush/segment-flush recover before work;
+  committed source IDs are not reinterpreted on redelivery. Notification errors
+  no longer roll back a successful save; cancellation preserves committed state.
+- A lost commit acknowledgement marks the real journal session for database
+  reread. Failure-injection tests prove subsequent recovery consumes saved
+  source and restores canonical IDs without another model call.
+- Extended real isolated-Postgres test through the actual processor + journal
+  session: restore first passage, process the second, observe committed data
+  before a simulated browser disconnect, construct a new processor/session,
+  and redeliver without inference or ID drift. Synthetic test rows cleaned up.
+- Combined validation: 74 passed across nine files; existing asyncio warnings.
+- Still no live/import entry-point activation or deployment. Next compose
+  canonical graph materialization with the journal transaction/revision without
+  overwriting human corrections; then wire policy/provider budgets and shared
+  startup through live/Meet/segmented imports. Semantic memory/reconciliation,
+  matched public-podcast comparison and independent review remain required.
+
+## 2026-09-07 — Durable passage journal, verified in isolated Postgres
+
+- Added `passage_journal.py` using the existing PipelineArtifact table, no
+  migration or new service. It appends source cursor + exact source IDs/text/
+  attribution/timing + graph patch in one caller-owned transaction. Conversation
+  row locking serializes writers; owner checks precede checkpoint/source reads.
+- Repeated requests at an already-committed revision return the original patch
+  and node identities, even if a retry generated different output. Changed
+  source/policy, skipped source, corrupt digests and duplicate graph identities
+  fail closed. Recovery detects intervening transcript revisions.
+- Failing-first source-binding tests caught acceptance of foreign IDs,
+  paraphrased chunk text and unbound nodes; these now fail validation.
+- Real Postgres test on the existing isolated loopback 55439/podcast DB passed:
+  flushed-but-rolled-back record absent on reconnect; two concurrent retries
+  produce one record; fresh session restores IDs/cursor; wrong owner and changed
+  source rejected. Only newly created random synthetic conversation rows were
+  written and cleaned up. Existing public-podcast/other conversations untouched.
+- Combined validation: 69 passed across eight focused files, including the real
+  DB test. Existing pytest-asyncio loop warnings remain.
+- Still NOT wired into processor/live/import activation. Next implement the
+  separate durable commit callback and startup rehydration; notification failure
+  after successful commit must not reset durable state or rerun interpretation.
+  Canonical row materialization must share/acknowledge the journal revision;
+  existing persist_graph commits internally and cannot yet compose atomically.
+
+## 2026-09-07 — Recovery seam investigation and failed-update rollback
+
+- Resumed the expanded architecture goal; previous implementation turn was
+  progress, not a wait. Current tree and live/import call sites were inspected.
+- Found live `_processor_update` sends a client update and schedules graph
+  persistence afterwards. The callback is not a durable commit acknowledgement.
+  PipelineArtifact exists for cached stages but has no unique per-passage
+  commit key. These facts rule out claiming exactly-once recovery already works.
+- A failing-first test showed rejected updates remain in processor memory;
+  retries can see and duplicate their own uncommitted source. The experimental
+  path now restores its previous graph/chunks/provenance map on callback failure
+  or cancellation, retaining pending source. Legacy activation stays unchanged.
+- Next: separate a durable idempotent passage commit from client notification,
+  checkpoint against source sequence and conversation ownership, and rehydrate
+  that committed state on restart. In-process rollback alone cannot undo a
+  callback that committed externally and then failed while notifying a client.
+
+## 2026-09-07 — Interleaved conversation-memory foundation
+
+- User requested an architectural rework rather than treating conversations as
+  completed topic partitions. Stopped the old local comparison (exit 130),
+  preserving its source, cache, database and logs; no final local artifact.
+- Fresh architecture worktree starts at origin/main 265fc4a. Reproduced missing
+  callback source after 45 intervening passages before implementation.
+- Added pure bounded source retrieval and a derived thread-anchor register,
+  then an explicit experimental shared-processor policy. It bypasses completion
+  classification and supports token-target passage scheduling. No semantic
+  relationship is inferred deterministically from retrieval similarity.
+- Exact source and utterance references stay separate from current speech;
+  oversized current input fails before inference with pending source retained.
+- 57 focused tests pass across six files; pre-existing asyncio loop warnings.
+  No real inference, private data, production activation, commit, push or deploy.
+- Full rework remains open: semantic retrieval/reconciliation, provider total
+  budgets, live nonblocking scheduling, atomic recovery, entry-point wiring,
+  real-conversation replay and independent review. Detailed checkpoint in
+  docs/plans/2026-09-07-interleaved-conversation-memory.md.
+
 ## 2026-09-07 — Optional-media reading compatibility repair
 
 - Review of 40789f6 completed, retaining one low-severity finding. Initially

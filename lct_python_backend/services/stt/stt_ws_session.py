@@ -133,11 +133,14 @@ class WsSessionContext:
         llm_providers: Optional[List[Dict[str, Any]]],
         load_stt_settings_fn,
         download_token: Optional[str] = None,
+        interleaved_runtime=None,
     ) -> None:
         self.websocket = websocket
         self.session = session
         self.audio_storage = audio_storage
         self.download_token = download_token
+        self._interleaved_runtime = interleaved_runtime
+        self._passage_pump = None
         self._load_stt_settings = load_stt_settings_fn
         self._base_llm_config = copy.deepcopy(llm_config or {})
         self._base_llm_providers = copy.deepcopy(llm_providers or [])
@@ -1142,7 +1145,8 @@ class WsSessionContext:
         )
         await self._flush_pending_speaker_reconciliations_locked()
         if patch_payload and str(patch_payload.get("kind") or "").strip().lower() == "finalized":
-            self._schedule_graph_persistence(reason="finalized_patch")
+            if self._passage_pump is None:
+                self._schedule_graph_persistence(reason="finalized_patch")
 
     async def _processor_status(self, level: str, message: str, context: Dict[str, Any]) -> None:
         context = context or {}
@@ -1489,15 +1493,24 @@ class WsSessionContext:
             # ``persist_transcript_event`` only assigns ``utterance_id`` for
             # ``event_type == "final"`` (partials don't create utterances).
             final_utterance_id = getattr(event, "utterance_id", None)
-            self._track_processor_final_task(
-                asyncio.create_task(
-                    self._run_processor_final(
-                        normalized_text,
-                        speaker_segments=speaker_segments,
-                        utterance_id=final_utterance_id,
+            if self._passage_pump is not None:
+                try:
+                    task = self._passage_pump.notify()
+                    if task not in self.background_tasks:
+                        self._track_background_task(task)
+                except Exception as exc:
+                    await self._processor_status("error", "Speech is saved; interpretation requires recovery.",
+                                                 {"stage": "graph", "error_type": type(exc).__name__})
+            else:
+                self._track_processor_final_task(
+                    asyncio.create_task(
+                        self._run_processor_final(
+                            normalized_text,
+                            speaker_segments=speaker_segments,
+                            utterance_id=final_utterance_id,
+                        )
                     )
                 )
-            )
             # Task #17 — fire-and-forget agenda-query detector. Off behind
             # AGENDA_QUERY_DETECTOR_ENABLED; gated so an unhandled error
             # here never affects the live STT path.
@@ -2505,13 +2518,16 @@ class WsSessionContext:
             )
             self.flush_complete_sent = True
 
+            if self._passage_pump is not None:
+                self._passage_pump.notify()
+                await self._passage_pump.drain()
             if self.pending_processor_final_tasks:
                 await asyncio.gather(
                     *list(self.pending_processor_final_tasks),
                     return_exceptions=True,
                 )
             async with self.processor_lock:
-                if final_text_for_post_flush:
+                if final_text_for_post_flush and self._passage_pump is None:
                     await self._processor_handle_final_text(
                         final_text_for_post_flush,
                         speaker_segments=final_segments_for_post_flush,
@@ -2631,6 +2647,9 @@ class WsSessionContext:
 
     async def handle_session_meta(self, payload: Dict[str, Any]) -> None:
         """Handle ``session_meta`` message — (re-)initialise per-session state."""
+        if self._passage_pump is not None:
+            await self._passage_pump.close()
+            self._passage_pump = None
         self.stt_flush_requested = False
         if self.pending_stt_chunk_tasks:
             for task in list(self.pending_stt_chunk_tasks):
@@ -2867,12 +2886,26 @@ class WsSessionContext:
                 quota_exc,
             )
 
-        await ensure_conversation(self.session, conversation_id, self.state.metadata or {})
+        conversation = await ensure_conversation(self.session, conversation_id, self.state.metadata or {})
         # Segment-and-stitch resume detection: if this conversation already
         # has graph nodes, a prior recording segment was persisted here and
         # this WS session is a RESUME. Freeze that segment so the live
         # graph-persist scopes its destructive delete around it.
-        await self._detect_resume(conversation_id)
+        if self._interleaved_runtime is None:
+            await self._detect_resume(conversation_id)
+        else:
+            from .interleaved_live import prepare_live_passages
+            # The journal's separate transactions must see committed source
+            # and conversation rows before any replay/inference is scheduled.
+            await self.session.commit()
+            await self.session.refresh(conversation)
+            self.processor, self._passage_pump = await prepare_live_passages(
+                config=self._interleaved_runtime, conversation=conversation,
+                owner_id=owner_id, providers=self._runtime_llm_providers,
+                send_update=self._processor_update, send_status=self._processor_status,
+                processor_lock=self.processor_lock,
+            )
+            self.protected_node_ids = None
         # Tell the client the conversation row exists. The participant
         # picker waits for this before opening so its PUT can't 404 on
         # a row that doesn't exist yet.
@@ -3074,6 +3107,8 @@ class WsSessionContext:
         )
         await self.session.commit()
         self.session_started_committed = True
+        if self._passage_pump is not None:
+            self._track_background_task(self._passage_pump.notify())
 
         if runtime_start_error:
             await self._emit_ws_error(
@@ -3331,6 +3366,8 @@ class WsSessionContext:
                 except RuntimeError:
                     pass
         finally:
+            if self._passage_pump is not None:
+                await self._passage_pump.close()
             if self.pending_stt_chunk_tasks:
                 for task in list(self.pending_stt_chunk_tasks):
                     task.cancel()

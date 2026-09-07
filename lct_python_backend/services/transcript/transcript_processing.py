@@ -11,6 +11,7 @@ Sub-modules:
 """
 
 import asyncio
+import copy
 import inspect
 import logging
 import time
@@ -34,6 +35,8 @@ from .transcript_normalizer import (  # noqa: F401
     format_speaker_prefixed_transcript,
 )
 from .transcript_identity import canonicalize_batch_node_ids
+from .conversation_context import PassageContextPolicy, plan_conversation_context
+from .passage_runtime import PassageCommitBoundary
 from lct_python_backend.services.provenance_linking import (
     assign_grounded_leaf_utterance_ids,
     normalize_provenance_text,
@@ -68,6 +71,10 @@ class TranscriptProcessor:
         early_batch_targets: Optional[List[int]] = None,
         llm_config: Optional[Dict[str, Any]] = None,
         providers: Optional[List[Dict[str, Any]]] = None,
+        passage_context_policy: Optional[PassageContextPolicy] = None,
+        passage_journal=None,
+        inference_envelope=None,
+        semantic_candidates=None,
     ) -> None:
         self.accumulator: List[str] = []
         self.accumulator_segments: List[List[Dict[str, Any]]] = []
@@ -113,6 +120,24 @@ class TranscriptProcessor:
         self._send_status = send_status
         self._llm_config = _resolve_llm_config(llm_config)
         self._providers = providers
+        # Explicit experimental opt-in. Runtime entry points remain unchanged
+        # until durable replay, semantic reconciliation and provider-budget
+        # checks are verified. Supplying this policy separates processing
+        # cadence from semantic completion and enables source-backed context.
+        self._inference_envelope = inference_envelope
+        if inference_envelope is not None:
+            if passage_context_policy is None:
+                passage_context_policy = inference_envelope.context_policy()
+            elif (passage_context_policy.input_token_budget > inference_envelope.input_token_budget
+                  or passage_context_policy.count_tokens is not inference_envelope.count_tokens):
+                raise ValueError("Planner budget/tokenizer must fit the inference envelope")
+        self._passage_context_policy = passage_context_policy
+        if semantic_candidates is not None and passage_context_policy is None:
+            raise ValueError("Semantic candidates require an explicit passage context policy")
+        self._semantic_candidates = semantic_candidates
+        if passage_journal is not None and passage_context_policy is None:
+            raise ValueError("A passage journal requires the interleaved context policy")
+        self._passage_commit = PassageCommitBoundary(self, passage_journal) if passage_journal is not None else None
         self._last_llm_backend: Optional[str] = None
         self._graph_update_count = 0
         self._pending_since_perf: Optional[float] = None
@@ -237,6 +262,25 @@ class TranscriptProcessor:
             return
         await self._send_update(self.existing_json, self.chunk_dict)
 
+    async def _publish_passage_update(self, *, patch, prior_state) -> None:
+        """Keep rejected experimental updates out of subsequent model memory.
+
+        This is in-process rollback, not a durable exactly-once guarantee. The
+        runtime callback currently combines notification and persistence
+        scheduling; deployment still requires a distinct durable commit seam.
+        """
+        if self._passage_commit is not None:
+            await self._passage_commit.commit_and_notify(patch, prior_state)
+            return
+        try:
+            await self._emit_graph_update(patch=patch)
+        except BaseException:
+            # Cancellation must leave the same pending evidence as an ordinary
+            # failure. The caller clears the accumulator only after success.
+            if prior_state is not None:
+                self.existing_json, self.chunk_dict, self.chunk_utterance_map = prior_state
+            raise
+
     def _current_queue_wait_ms(self) -> Optional[float]:
         if self._pending_since_perf is None:
             return None
@@ -347,6 +391,10 @@ class TranscriptProcessor:
         if not final_text:
             return
         async with self._state_lock:
+            if self._passage_commit is not None:
+                await self._passage_commit.recover()
+                if not self._passage_commit.should_accept(final_text, utterance_id):
+                    return
             if not self.accumulator:
                 self._pending_since_perf = time.perf_counter()
             self.accumulator.append(final_text)
@@ -368,14 +416,24 @@ class TranscriptProcessor:
                     "max_wait_ms": self._current_graph_wait_budget_ms(),
                 },
             )
-            if len(self.accumulator) >= self._current_batch_size and self._continue_accumulating:
+            policy = self._passage_context_policy
+            passage_ready = (
+                policy.count_tokens(" ".join(self.accumulator)) >= policy.passage_target_tokens
+                if policy is not None and policy.passage_target_tokens is not None
+                else len(self.accumulator) >= self._current_batch_size
+            )
+            if passage_ready and self._continue_accumulating:
                 self._cancel_batch_timer_locked()
-                await self._process_batches_locked(trigger="count_threshold")
+                await self._process_batches_locked(
+                    trigger="passage_budget" if policy and policy.passage_target_tokens else "count_threshold"
+                )
             if self.accumulator and self._continue_accumulating:
                 self._ensure_batch_timer_locked()
 
     async def flush(self) -> None:
         async with self._state_lock:
+            if self._passage_commit is not None:
+                await self._passage_commit.recover()
             self._cancel_batch_timer_locked()
             if not self.accumulator:
                 return
@@ -406,6 +464,8 @@ class TranscriptProcessor:
             Number of nodes in existing_json after flush.
         """
         async with self._state_lock:
+            if self._passage_commit is not None:
+                await self._passage_commit.recover()
             self._cancel_batch_timer_locked()
             if self.accumulator:
                 graph_emitted, _continue_accumulating, _incomplete_seg, _carryover_segments = await self._process_batch(
@@ -472,6 +532,15 @@ class TranscriptProcessor:
         stop_accumulating_flag: bool = False,
         trigger: str = "count_threshold",
     ) -> Tuple[bool, bool, str, List[List[Dict[str, Any]]]]:
+        if self._passage_commit is not None:
+            await self._passage_commit.recover(refresh_context=True)
+            # Recovery may discover another committed writer and consume some
+            # queued IDs. Never interpret the stale pre-recovery list object.
+            text_batch = self.accumulator
+            segment_batch = self.accumulator_segments
+            utterance_ids_batch = self.accumulator_utterance_ids
+            if not text_batch:
+                return False, False, "", []
         input_text = " ".join(text_batch)
         completed_text_batch: List[str] = []
         completed_utterance_ids_batch: List[List[Any]] = []
@@ -485,12 +554,21 @@ class TranscriptProcessor:
         # TEXT fragments (not speaker segments) so this also works on the
         # bulk-import path, which passes no per-utterance diarization. Online
         # (Gemini) keeps the echo path untouched.
-        use_index_mode = (
+        use_index_mode = self._passage_context_policy is not None or (
             str(self._llm_config.get("mode", "")).lower() == "local"
             and bool(text_batch)
         )
 
-        if use_index_mode:
+        if self._passage_context_policy is not None:
+            # A count/timer/flush trigger means "interpret available speech",
+            # not "a thread ended". Keep the indexed source/provenance path,
+            # but do not spend an LLM call classifying semantic completion.
+            accumulated_output = {
+                "decision": "stop_accumulating",
+                "completed_through_index": len(text_batch) - 1,
+            }
+            acc_backend = None
+        elif use_index_mode:
             numbered_input = "\n".join(
                 f"[{i}] {str(frag).strip()}" for i, frag in enumerate(text_batch)
             )
@@ -628,7 +706,20 @@ class TranscriptProcessor:
             completed_utterance_ids_batch = list((utterance_ids_batch or [])[:completed_slot_count])
 
         output_json: List[Dict[str, Any]] = []
+        inference_sources = None
+        inference_context_revision = None
         if segmented_input_chunk.strip():
+            if self._passage_commit is not None:
+                capture = getattr(self._passage_commit.journal, "capture_sources", None)
+                if capture is not None:
+                    identities = [str(uid) for ids in completed_utterance_ids_batch for uid in ids]
+                    inference_sources = await capture(identities)
+                    if " ".join(source["text"] for source in inference_sources) != segmented_input_chunk:
+                        from .passage_journal import JournalConflict
+                        raise JournalConflict("Pending source text changed before inference")
+                    completed_segments = [{"speaker": source["speaker_id"], "text": source["text"]}
+                                          for source in inference_sources]
+                    inference_context_revision = self._passage_commit.interpretation_revision
             transcript_for_llm = format_speaker_prefixed_transcript(
                 segmented_input_chunk,
                 completed_segments if completed_segments else None,
@@ -654,6 +745,22 @@ class TranscriptProcessor:
                 f" {repr(trimmed_context)} "
                 f"\n\n Transcript Input: \n {transcript_for_llm}"
             )
+            if self._passage_context_policy is not None:
+                semantic_scores = None
+                if self._semantic_candidates is not None:
+                    semantic_scores = await self._semantic_candidates.rank(transcript_for_llm, self.chunk_dict)
+                plan = plan_conversation_context(
+                    transcript_for_llm, self.existing_json, self.chunk_dict,
+                    self.chunk_utterance_map, self._passage_context_policy,
+                    semantic_scores=semantic_scores,
+                )
+                mod_input = plan.prompt
+                await self._emit_status(
+                    "info", "Planned source-backed conversation context.",
+                    {"stage": "context", "estimated_input_tokens": plan.estimated_tokens,
+                     "omitted_passages": plan.omitted_passages,
+                     "omitted_threads": plan.omitted_threads, "trigger": trigger},
+                )
             generation_status_messages: List[str] = []
             queue_wait_ms = self._current_queue_wait_ms()
             generation_started_at = time.perf_counter()
@@ -673,7 +780,7 @@ class TranscriptProcessor:
                 },
             )
             output_json, gen_backend = await asyncio.to_thread(
-                generate_lct_json,
+                self._inference_envelope.generate if self._inference_envelope is not None else generate_lct_json,
                 mod_input,
                 llm_config=self._llm_config,
                 providers=self._providers,
@@ -707,6 +814,16 @@ class TranscriptProcessor:
                     2,
                 )
                 chunk_id = str(uuid.uuid4())
+                if self._passage_context_policy is not None:
+                    from .question_memory import fold_question_memory
+                    fold_question_memory(
+                        self.existing_json + [{**item, "chunk_id": chunk_id} for item in output_json],
+                        {**self.chunk_dict, chunk_id: segmented_input_chunk},
+                    )
+                prior_state = (
+                    copy.deepcopy((self.existing_json, self.chunk_dict, self.chunk_utterance_map))
+                    if self._passage_context_policy is not None else None
+                )
                 self.chunk_dict[chunk_id] = segmented_input_chunk
 
                 # Option B: capture which utterance UUIDs flowed into this
@@ -734,9 +851,13 @@ class TranscriptProcessor:
                     item["chunk_id"] = chunk_id
 
                 self.existing_json.extend(output_json)
-                await self._emit_graph_update(
+                await self._publish_passage_update(
+                    prior_state=prior_state,
                     patch={
                         "kind": "finalized",
+                        **({"inference_sources": inference_sources,
+                            "inference_context_revision": inference_context_revision}
+                           if inference_sources is not None else {}),
                         "nodes": output_json,
                         "chunks": {chunk_id: segmented_input_chunk},
                         "node_count": len(self.existing_json),

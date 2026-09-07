@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from sqlalchemy import select
 
-from lct_python_backend.models import SpeakerSegment, Utterance
+from lct_python_backend.models import Conversation, SpeakerSegment, Utterance
 from lct_python_backend.services.coercion_helpers import coerce_float, coerce_str
 
 logger = logging.getLogger("lct_backend")
@@ -213,6 +213,13 @@ async def persist_speaker_refinement(
     from lct_python_backend.db_session import get_async_session_context
 
     async with get_async_session_context() as db:
+        # Serialize with passage commits and other refinement writers. This
+        # avoids lost speaker revisions while retaining the original source.
+        conversation = (await db.execute(select(Conversation.id).where(
+            Conversation.id == conversation_uuid, Conversation.deleted_at.is_(None)
+        ).with_for_update())).scalar_one_or_none()
+        if conversation is None:
+            raise ValueError("Conversation unavailable for speaker refinement")
         utterance_result = await db.execute(
             select(Utterance)
             .where(Utterance.conversation_id == conversation_uuid)
@@ -241,6 +248,7 @@ async def persist_speaker_refinement(
         ]
         for record in persisted_rows:
             db.add(record)
+        await db.flush()
 
         assignment_result = assign_speakers_to_utterances(
             utterances,
@@ -263,10 +271,16 @@ async def persist_speaker_refinement(
                 and (_safe_float(getattr(utterance, "speaker_confidence", None)) == next_confidence)
             ):
                 continue
+            from .transcript.attribution_revisions import attribution_snapshot, record_attribution_change
+            before_attribution = attribution_snapshot(utterance)
             utterance.speaker_id = next_speaker_id
             utterance.speaker_source = next_source
             utterance.speaker_confidence = next_confidence
             utterance.speaker_revision = int(getattr(utterance, "speaker_revision", 0) or 0) + 1
+            utterance.platform_metadata = record_attribution_change(
+                utterance.platform_metadata, before_attribution, attribution_snapshot(utterance),
+                [str(record.id) for record in persisted_rows],
+            )
             updated_count += 1
 
         await db.commit()

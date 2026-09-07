@@ -499,6 +499,8 @@ async def persist_graph(
     utterance_chunk_map: Optional[Dict[str, List[str]]] = None,
     indrasnet_group_id: Optional[str] = None,
     protect_node_ids: Optional[Iterable[uuid.UUID]] = None,
+    append_only: bool = False,
+    commit: bool = True,
 ) -> int:
     """
     Persist LLM-generated graph nodes and relationships to DB. Mode-agnostic:
@@ -519,10 +521,18 @@ async def persist_graph(
     they always are.
 
     Returns the count of nodes written.
+
+    ``append_only`` is the journaled-passage path: require an existing owned
+    conversation, retain every prior node/relationship, and insert new IDs only.
+    ``commit=False`` lets the caller atomically commit these rows with its
+    source checkpoint. Legacy callers retain replace-and-commit behavior.
     """
     from lct_python_backend.models import Node, Relationship
     from sqlalchemy import select, delete
     from lct_python_backend.services.transcript.transcript_normalizer import propagate_flags_upward
+
+    if append_only and (utterances is not None or protect_node_ids or not owner_id):
+        raise ValueError("Append-only requires an explicit owner and cannot replace utterances or protected segments")
 
     if not existing_json and utterances is None:
         return 0
@@ -535,8 +545,13 @@ async def persist_graph(
         propagate_flags_upward(existing_json)
 
     conv_uuid = uuid.UUID(conversation_id)
-    conv_result = await db.execute(select(Conversation).where(Conversation.id == conv_uuid))
+    conv_query = select(Conversation).where(Conversation.id == conv_uuid)
+    if append_only:
+        conv_query = conv_query.where(Conversation.owner_id == owner_id, Conversation.deleted_at.is_(None)).with_for_update()
+    conv_result = await db.execute(conv_query)
     conv = conv_result.scalar_one_or_none()
+    if append_only and conv is None:
+        raise PermissionError("Conversation unavailable to this owner")
     if conv is None:
         fallback_conversation_name = (conversation_name or "").strip() or f"import-{conv_uuid.hex[:8]}"
         conv = Conversation(
@@ -576,7 +591,13 @@ async def persist_graph(
     _analysis_models = (SimulacraAnalysis, BiasAnalysis, FrameAnalysis)
 
     protected_ids = list(protect_node_ids or [])
-    if protected_ids:
+    retained_rows = []
+    if append_only:
+        retained_rows = (await db.execute(select(Node.id, Node.timestamp_start, Node.timestamp_end).where(
+            Node.conversation_id == conv_uuid
+        ))).all()
+        protected_ids = [row[0] for row in retained_rows]
+    elif protected_ids:
         # Resume path (segment-and-stitch): a prior segment's graph already
         # lives under this conversation_id. Freeze it — delete only THIS
         # segment's nodes (everything not protected). Relationships among the
@@ -668,9 +689,16 @@ async def persist_graph(
 
     # Step 1: Assign stable UUIDs; build reference→id map for relationship resolution
     ref_to_id: Dict[str, uuid.UUID] = {}
+    if append_only:
+        ref_to_id.update({str(identity): identity for identity in protected_ids})
     node_records = []
     for item in existing_json:
-        node_id = _coerce_uuid(item.get("id") or item.get("node_id")) or uuid.uuid4()
+        parsed_node_id = _coerce_uuid(item.get("id") or item.get("node_id"))
+        if append_only and parsed_node_id is None:
+            raise ValueError("Append-only passage requires canonical UUID node identities")
+        node_id = parsed_node_id or uuid.uuid4()
+        if append_only and node_id in protected_ids:
+            raise ValueError("Append-only passage cannot replace an existing node")
         name = coerce_str(item.get("node_name") or "")
         raw_id = coerce_str(item.get("id") or item.get("node_id"))
         if name:
@@ -890,6 +918,8 @@ async def persist_graph(
     # First pass: compute the L1 chunk's own ts from its utterance_ids /
     # chunk_id (we already have utterance_timestamps + chunk_to_utt_ids).
     node_ts_cache: Dict[uuid.UUID, Tuple[Optional[float], Optional[float]]] = {}
+    if append_only:
+        node_ts_cache.update({identity: (start, end) for identity, start, end in retained_rows})
 
     def _compute_leaf_ts(node_id: uuid.UUID, item: Dict[str, Any]) -> Tuple[Optional[float], Optional[float]]:
         candidate_utt_ids: List[uuid.UUID] = []
@@ -1003,6 +1033,8 @@ async def persist_graph(
                 return None
             if key in ref_to_id:
                 return ref_to_id[key]
+            if append_only and _coerce_uuid(key) is not None:
+                raise ValueError("Append-only node reference is outside this conversation")
             return _coerce_uuid(key)
 
         parent_id_resolved = _resolve_node_ref(item.get("parent_id"))
@@ -1069,6 +1101,7 @@ async def persist_graph(
             },
             display_preferences={
                 "edge_relations": edge_relations,
+                "question_updates": item.get("question_updates", []),
                 "argument_role": coerce_str(
                     item.get("argument_role") or item.get("claim_type")
                 ) or "context",
@@ -1092,6 +1125,8 @@ async def persist_graph(
     # contextual, and semantic additions still live in compatibility fields.
     # Persist faithful rows first, then fill only missing authored keys.
     node_record_ids = {nid for nid, _ in node_records}
+    if append_only:
+        node_record_ids.update(protected_ids)
     seen_rel_ids: set = set()
     faithful_relation_keys: set = set()
     membership_keys: set = set()
@@ -1365,7 +1400,10 @@ async def persist_graph(
         if timestamp_values:
             conv.duration_seconds = int(max(timestamp_values) - min(timestamp_values))
 
-    await db.commit()
+    if commit:
+        await db.commit()
+    else:
+        await db.flush()
     return len(node_records)
 
 

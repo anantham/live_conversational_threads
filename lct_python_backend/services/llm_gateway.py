@@ -285,6 +285,33 @@ class LlmGateway:
 _LOGGED_EMBED_SUBSTITUTIONS: set = set()
 
 
+def _strict_embedding_vectors(body, requested_model, expected_count):
+    """Validate indexed OpenAI-shaped results for source-bound retrieval."""
+    import math
+
+    if not isinstance(body, dict) or body.get("model") != requested_model:
+        raise ValueError("Unverified embedding model identity")
+    items = body.get("data")
+    if not isinstance(items, list) or len(items) != expected_count:
+        raise ValueError("Embedding result count mismatch")
+    if any(not isinstance(item, dict) or type(item.get("index")) is not int for item in items):
+        raise ValueError("Missing embedding indexes")
+    if sorted(item["index"] for item in items) != list(range(expected_count)):
+        raise ValueError("Embedding indexes are not a complete bijection")
+    vectors = [item.get("embedding") for item in sorted(items, key=lambda item: item["index"])]
+    dimension = None
+    for vector in vectors:
+        if not isinstance(vector, list) or not vector:
+            raise ValueError("Empty or invalid embedding vector")
+        dimension = len(vector) if dimension is None else dimension
+        if len(vector) != dimension or any(type(x) not in (int, float) or not math.isfinite(x) for x in vector):
+            raise ValueError("Incompatible embedding dimensions or values")
+        norm_squared = sum(x * x for x in vector)
+        if not norm_squared or not math.isfinite(norm_squared):
+            raise ValueError("Invalid embedding norm")
+    return vectors
+
+
 async def _embed_with_provider_fallback(
     *,
     text,
@@ -381,12 +408,16 @@ async def _embed_with_provider_fallback(
 
         # Extract embeddings
         try:
-            data_field = body["data"]
-            if isinstance(text, list):
-                vectors = [item["embedding"] for item in data_field]
+            if provider.get("strict_embedding_response"):
+                checked = _strict_embedding_vectors(body, requested_model, len(text) if isinstance(text, list) else 1)
+                vectors = checked if isinstance(text, list) else checked[0]
             else:
-                vectors = data_field[0]["embedding"]
-        except (KeyError, IndexError, TypeError) as exc:
+                data_field = body["data"]
+                if isinstance(text, list):
+                    vectors = [item["embedding"] for item in data_field]
+                else:
+                    vectors = data_field[0]["embedding"]
+        except (KeyError, IndexError, TypeError, ValueError) as exc:
             err = f"malformed embedding response: {exc}"
             logger.warning("[EMBED] %s: %s", provider_id, err)
             errors.append(f"{provider_id}: {err}")

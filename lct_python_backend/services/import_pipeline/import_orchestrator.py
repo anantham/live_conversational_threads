@@ -187,6 +187,7 @@ async def extract_graph_for_conversation(
     conversation_id: Optional[str] = None,
     group_id: Optional[str] = None,
     owner_id: str = "anonymous",
+    interleaved_runtime=None,
 ) -> Dict[str, Any]:
     """Structured RawTurn import — Phase 2: the AUDITABLE extraction pass.
 
@@ -326,10 +327,18 @@ async def extract_graph_for_conversation(
     async def _noop(*_a, **_k):
         return None
 
-    processor = TranscriptProcessor(
-        send_update=_noop, send_status=None,
-        llm_config=llm_config, providers=providers or [],
-    )
+    if interleaved_runtime is None:
+        processor = TranscriptProcessor(
+            send_update=_noop, send_status=None,
+            llm_config=llm_config, providers=providers or [],
+        )
+    else:
+        # Trusted host config only, not a request-body switch. Phase 1 must
+        # have committed the source before journal-owned passage transactions.
+        processor = interleaved_runtime.build(
+            conversation_id=conversation_id, owner_id=owner, providers=providers,
+            privacy=privacy, send_update=_noop, send_status=None,
+        )
 
     # 3. Extract — feed each persisted turn with its EXISTING utterance_id so the
     #    emitted nodes get utterance_ids + chunk_utterance_map (transcript_processing.py).

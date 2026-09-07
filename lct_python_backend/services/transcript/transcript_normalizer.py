@@ -349,7 +349,7 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
         }
         for related_name, relation_text in contextual_relation.items():
             contextual_edge = (related_name, "contextual", relation_text)
-            if contextual_edge in existing_edge_keys:
+            if any(key[0] == related_name and key[2] == relation_text for key in existing_edge_keys):
                 continue
             edge_relations.append(
                 {
@@ -417,6 +417,10 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 "is_action_item": bool(raw.get("is_action_item")),
                 "is_surprise": bool(raw.get("is_surprise")),
                 "chunk_id": raw.get("chunk_id"),
+                # Experimental source-backed question events are validated by
+                # the passage processor against current and committed source.
+                # Preserve malformed values too so validation fails visibly.
+                "question_updates": raw.get("question_updates", []),
                 "speaker_id": _as_clean_str(raw.get("speaker_id")) or None,
             }
         )

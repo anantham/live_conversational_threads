@@ -48,7 +48,8 @@ class _FakeDb:
 
 
 @pytest.mark.asyncio
-async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch):
+@pytest.mark.parametrize("interleaved", [False, True])
+async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch, interleaved):
     conversation_id = uuid.uuid4()
     conversation = SimpleNamespace(
         id=conversation_id,
@@ -138,13 +139,23 @@ async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch):
 
     monkeypatch.setattr(transcript_processing, "TranscriptProcessor", _RecordingProcessor)
 
+    class _Runtime:
+        def build(self, **kwargs):
+            observed["runtime"] = kwargs
+            return _RecordingProcessor(llm_config={"mode": "local"}, providers=kwargs["providers"])
+
     result = await extract_graph_for_conversation(
         _FakeDb(conversation, [utterance]),
         conversation_id=str(conversation_id),
         owner_id="owner",
+        **({"interleaved_runtime": _Runtime()} if interleaved else {}),
     )
 
     assert [provider["id"] for provider in observed["providers"]] == ["m5"]
     assert observed["llm_config"]["mode"] == "local"
     assert result["auditable_node_count"] == 1
+    if interleaved:
+        assert observed["runtime"]["conversation_id"] == str(conversation_id)
+        assert observed["runtime"]["owner_id"] == "owner"
+        assert observed["runtime"]["privacy"]["external_llm_ok"] is False
     persist_graph.assert_awaited_once()
