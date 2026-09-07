@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-09-08 — Preserve custom-tokenizer transport policy
+
+- Traced the real sync client: it sends reasoning_effort=none by default, unlike
+  the previous default-mode synthetic probe. Render-only think=false confirms
+  the empty closing think block. The 20-token/default-mode parity result stands
+  for that probe only; it is not the actual production request setting.
+- Four failing-first synthetic HTTP tests exposed silent 400-format/reasoning
+  downgrade, global legacy capability-cache influence, reasoning fingerprint
+  aliasing, and mixed-reasoning fallback acceptance.
+- Custom-message-counter envelopes now use strict sync transport: always send
+  the specified JSON format, never strip format/reasoning after rejection,
+  preserve strictness across transient retries, and use a distinct result-cache
+  namespace. Explicit reasoning choices affect interpretation identity; mixed
+  protocol/reasoning fallback routes cannot share one message counter.
+- Fifty focused client/envelope/runtime tests pass, including unchanged legacy
+  fallback behavior and identical payload after transient retry. Existing
+  datetime/asyncio deprecation warnings remain. No live replay policy changed.
+- Dependency approval requested asynchronously under H1 for pinned tokenizers;
+  no dependency installed. Adapter activation and semantic review remain pending.
+
 ## 2026-09-08 — Server-rendered tokenizer parity established for synthetic input
 
 - Resumed replay session 50729; authoritative polling confirms it remains live

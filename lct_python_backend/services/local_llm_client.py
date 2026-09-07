@@ -663,6 +663,7 @@ def chat_with_provider_fallback_sync(
     prompt_version: Optional[str] = None,
     skip_cache_read: bool = False,
     _backoff_attempt: int = 0,
+    strict_request_contract: bool = False,
 ) -> ProviderResult:
     """
     Synchronous version of chat_with_provider_fallback.
@@ -692,7 +693,9 @@ def chat_with_provider_fallback_sync(
         _key = _cache.cache_key(
             messages, temperature=temperature, max_tokens=max_tokens,
             require_json=require_json, prompt_name=prompt_name,
-            prompt_version=f"{prompt_version or ''}:json-completion-v3" if require_json else prompt_version,
+            prompt_version=(f"{prompt_version or ''}:strict-request-v1:json={require_json}"
+                            if strict_request_contract else
+                            f"{prompt_version or ''}:json-completion-v3" if require_json else prompt_version),
             models=[str(p.get("model", "")) for p in enabled_providers],
         )
         _hit = None if skip_cache_read else _cache.get(_key)
@@ -761,7 +764,7 @@ def chat_with_provider_fallback_sync(
                 payload["reasoning_effort"] = provider.get("reasoning_effort", "none")
 
             # Add response format if supported
-            supports_json_object = base_url not in _JSON_OBJECT_UNSUPPORTED_BASE_URLS
+            supports_json_object = strict_request_contract or base_url not in _JSON_OBJECT_UNSUPPORTED_BASE_URLS
             if response_format:
                 payload["response_format"] = response_format
             elif require_json and supports_json_object:
@@ -787,7 +790,7 @@ def chat_with_provider_fallback_sync(
                 response = client.post(url, json=payload, headers=headers)
 
                 # Handle json_object not supported - retry without it
-                if response.status_code in (400, 422) and "response_format" in payload:
+                if not strict_request_contract and response.status_code in (400, 422) and "response_format" in payload:
                     logger.warning(
                         "[LLM Fallback Sync] Provider %s rejected response_format; retrying without.",
                         provider_name,
@@ -914,6 +917,7 @@ def chat_with_provider_fallback_sync(
         time.sleep(_delay)
         return chat_with_provider_fallback_sync(
             messages, providers, temperature, max_tokens, response_format,
-            require_json, prompt_name, prompt_version, _backoff_attempt=_backoff_attempt + 1,
+            require_json, prompt_name, prompt_version, skip_cache_read=skip_cache_read,
+            _backoff_attempt=_backoff_attempt + 1, strict_request_contract=strict_request_contract,
         )
     raise RuntimeError(f"All LLM providers failed. Errors: {error_summary}")

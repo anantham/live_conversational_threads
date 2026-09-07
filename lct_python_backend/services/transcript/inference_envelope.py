@@ -26,6 +26,9 @@ class InferenceEnvelope:
         allowed = select_providers_for_privacy(providers, privacy)
         if count_messages is not None and len({(p.get('model'), p.get('model_revision')) for p in allowed}) != 1:
             raise ValueError('A model-specific message counter requires one model revision across fallback routes')
+        if count_messages is not None and len({(p.get('type', 'openai_compatible'), p.get('reasoning_effort', 'none'))
+                                               for p in allowed}) != 1:
+            raise ValueError('A message counter requires the same protocol and reasoning mode across routes')
         capacities = [p.get("context_tokens") for p in allowed]
         if any(type(value) is not int or value <= 0 for value in capacities):
             raise ValueError("Each permitted provider needs an explicit positive context_tokens limit")
@@ -50,6 +53,12 @@ class InferenceEnvelope:
                                   for p in self._providers]}
         if tokenizer_id != 'utf8_bytes_v1':
             identity['tokenizer_id'] = tokenizer_id
+        if count_messages is not None:
+            identity['strict_request_contract'] = 1
+        # Preserve old default-policy recovery, but never alias an explicit
+        # reasoning choice to another setting or to historical implicit policy.
+        if any('reasoning_effort' in p for p in self._providers):
+            identity['reasoning_efforts'] = [p.get('reasoning_effort', 'none') for p in self._providers]
         self.fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
     @property
@@ -98,6 +107,7 @@ class InferenceEnvelope:
             messages=self._messages(prompt), providers=self.providers,
             temperature=self._temperature, max_tokens=self._output_tokens,
             require_json=True, prompt_name="interleaved_conversation", prompt_version=self.fingerprint,
+            strict_request_contract=self.count_messages is not None,
         )
     def generate(self, prompt, **_legacy_kwargs):
         result = self.complete_json(prompt)

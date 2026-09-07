@@ -1,5 +1,14 @@
 # TECH_DEBT
 
+## 2026-09-08 — Sync inference transport composition
+
+local_llm_client.py is over 900 lines and mixes parsing, telemetry, caching,
+provider policy and two transport implementations. The custom-counter guard
+is intentionally confined to the sync entry point used by InferenceEnvelope.
+Extract shared immutable request construction and retry policy before extending
+strict contracts to other clients; retain synthetic HTTP tests proving that
+retry, cache history and fallback cannot silently change the selected protocol.
+
 ## 2026-09-08 — Provider identity normalization boundary
 
 llm_config.py combines defaults, endpoint normalization, credential handling,
