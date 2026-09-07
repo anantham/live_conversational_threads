@@ -11,6 +11,7 @@ Question review must retain speaker-labelled source and recover without another 
 Its review-qualified projection must reproduce from persisted receipts on restart.
 The shared import path must run question review, not require a manual second task.
 Fresh interpretation revisions retain old reviews and recover the new review independently.
+Explicit review export must omit superseded content and reject a different owner.
 Revoked consent must reject a captured review even when a receipt already exists.
 """
 import json
@@ -185,6 +186,15 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         reviewed = await runner.run()
         assert reviewed['accepted_for_projection'] is False
         assert len(reviewed['receipts']) == 1
+        from lct_python_backend.services.transcript.question_review_export import export_question_reviews
+        async with sessions() as db:
+            question_export = await export_question_reviews(db, conversation_id=str(cid), owner_id=owner)
+        assert question_export['status'] == 'current_reviews'
+        assert question_export['policies'][0]['coverage_complete'] is True
+        assert question_export['policies'][0]['questions'] == reviewed['projections']
+        async with sessions() as db:
+            with pytest.raises(PermissionError):
+                await export_question_reviews(db, conversation_id=str(cid), owner_id='unrelated-owner')
         assert reviewed['projections'][0]['reviewed_status'] == 'open'
         assert reviewed['projections'][0]['events'][1]['original']['action'] == 'clarify'
         assert reviewed['projections'][0]['verification'] == 'model_reviewed_not_human_verified'
@@ -208,10 +218,20 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
                 await runner.checkpoint(db, basis, 0, request)
         assert len(question_reviews) == 1
         from lct_python_backend.services.deployment_privacy_policy import DeploymentPrivacyError
+        async with sessions() as db:
+            stale_export = await export_question_reviews(db, conversation_id=str(cid), owner_id=owner)
+        assert stale_export['status'] == 'no_current_review'
+        assert stale_export['policies'] == []
+        assert stale_export['superseded_review_count'] == 1
         revised_review = await runner.run()
         assert revised_review['receipts'][0]['basis_hash'] != reviewed['receipts'][0]['basis_hash']
         assert await runner.run() == revised_review
         assert len(question_reviews) == 2
+        async with sessions() as db:
+            current_export = await export_question_reviews(db, conversation_id=str(cid), owner_id=owner)
+        assert current_export['status'] == 'current_reviews'
+        assert current_export['superseded_review_count'] == 1
+        assert current_export['policies'][0]['questions'] == revised_review['projections']
         from sqlalchemy import select
         from lct_python_backend.models import PipelineArtifact
         async with sessions() as db:

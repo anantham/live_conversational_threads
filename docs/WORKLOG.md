@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-09-08 — Current-only question review export for explicit public candidate
+
+- Added an owner-checked read helper that exports only reviews matching the
+  current source/interpretation basis. Superseded content is omitted with a count;
+  multiple current policies remain distinct rather than choosing by timestamp.
+  Revalidate receipt/request hashes, raw response and derived review before output.
+- Four isolated PostgreSQL import cases pass, including wrong-owner rejection,
+  exclusion after a human edit, and restoration after a new review. Initial helper
+  invocation omitted its required lock argument; corrected to explicit lock=False
+  and reran the real tests. No inference or canonical mutation in this reader.
+- The pinned public replay's candidate-export path now includes question_reviews
+  separately from graph_data. General private share/export routes are unchanged;
+  frontend presentation remains pending. No artifact was generated this turn.
+- Read-only readiness check passes: exact public source SHA, 1,263 utterances,
+  17 source-inspection pages, 313 observations, run_requested=false. This proves
+  source readiness only; it does not make old relation receipts compatible with
+  the new review schema or establish a fair model baseline.
+
 ## 2026-09-08 — Bounded, durable missing-comparison recovery
 
 - Failing-first tests reproduced terminal omission and lack of checkpoint reuse.
