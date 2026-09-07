@@ -683,6 +683,11 @@ class TranscriptProcessor:
                 incomplete_seg = " ".join(
                     str(frag).strip() for frag in text_batch[idx + 1 :]
                 ).strip()
+                if self._passage_context_policy is not None:
+                    # Evidence offsets and journal capture refer to original
+                    # fragments, including boundary whitespace.
+                    segmented_input_chunk = " ".join(text_batch[: idx + 1])
+                    incomplete_seg = " ".join(text_batch[idx + 1 :])
                 # Continue accumulating only if a leftover tail remains.
                 decision = bool(text_batch[idx + 1 :])
                 completed_text_batch = list(text_batch[: idx + 1])
@@ -753,10 +758,12 @@ class TranscriptProcessor:
                     guard_kwargs = {"request_guard": self._inference_guard} if self._inference_guard else {}
                     semantic_scores = await self._semantic_candidates.rank(
                         transcript_for_llm, self.chunk_dict, **guard_kwargs)
+                from .question_evidence import question_source_lines
                 plan = plan_conversation_context(
                     transcript_for_llm, self.existing_json, self.chunk_dict,
                     self.chunk_utterance_map, self._passage_context_policy,
                     semantic_scores=semantic_scores,
+                    evidence_lines=question_source_lines(segmented_input_chunk, completed_text_batch),
                 )
                 mod_input = plan.prompt
                 await self._emit_status(
@@ -804,6 +811,9 @@ class TranscriptProcessor:
                 )
 
             if output_json:
+                if self._passage_context_policy is not None:
+                    from .question_evidence import attach_question_evidence
+                    output_json = attach_question_evidence(output_json, segmented_input_chunk, completed_text_batch)
                 output_json = canonicalize_batch_node_ids(
                     output_json,
                     existing_nodes=self.existing_json,

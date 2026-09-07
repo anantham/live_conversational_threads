@@ -15,6 +15,33 @@ from lct_python_backend.services.transcript.conversation_context import ContextB
 
 
 @pytest.mark.asyncio
+async def test_question_selection_preserves_original_whitespace_through_ingestion(monkeypatch):
+    """Evidence selection must survive batching, normalization and memory folding."""
+    source = "  Who funds this? \n"
+
+    def generate(prompt, **kwargs):
+        payload = json.loads(prompt)
+        assert payload["current_source_lines"][0]["text"] == source
+        return ([{"node_name": "Funding", "semantic_level": 1,
+                  "question_updates": [{"question_id": "funding", "action": "open",
+                      "wording": "Who funds this?", "rationale": "Explicit inquiry",
+                      "evidence_line_ids": ["line-0"]}]}], "local_test")
+
+    monkeypatch.setattr(mod, "generate_lct_json", generate)
+    processor = mod.TranscriptProcessor(
+        send_update=None, batch_size=1, initial_batch_size=1,
+        graph_first_update_max_wait_ms=0, graph_steady_update_max_wait_ms=0,
+        llm_config={"mode": "local"}, providers=[],
+        passage_context_policy=PassageContextPolicy(8000))
+    await processor.handle_final_text(source, utterance_id="question-source")
+    assert list(processor.chunk_dict.values()) == [source]
+    node = processor.existing_json[0]
+    assert node["question_updates"][0]["evidence_quote"] == source
+    from lct_python_backend.services.transcript.question_memory import fold_question_memory
+    assert fold_question_memory(processor.existing_json, processor.chunk_dict)["funding"]["status"] == "open"
+
+
+@pytest.mark.asyncio
 async def test_semantic_retrieval_uses_committed_history_and_failure_keeps_pending_source(monkeypatch):
     requests, retrievals = [], []
 

@@ -17,6 +17,7 @@ import math
 import re
 from typing import Any, Callable, Mapping, Sequence
 from .question_memory import fold_question_memory
+from .question_evidence import question_source_lines
 
 
 class ContextBudgetExceeded(ValueError):
@@ -89,6 +90,7 @@ def plan_conversation_context(
     policy: PassageContextPolicy,
     *,
     semantic_scores: Mapping[str, float] | None = None,
+    evidence_lines=None,
 ) -> ContextPlan:
     """Retrieve across all supplied history, pack whole evidence under a budget.
 
@@ -147,6 +149,7 @@ def plan_conversation_context(
     payload: dict[str, Any] = {
         "context_contract": _CONTRACT,
         "current_passage": current_passage,
+        "current_source_lines": evidence_lines if evidence_lines is not None else question_source_lines(current_passage),
         "earlier_passages": [],
         "thread_memory": [],
         "question_memory": [],

@@ -33,8 +33,9 @@ relation_text explaining the connection. Leave ambiguous referents unlinked;
 describe uncertainty in the summary. Never reference an unseen or invented node.
 
 Question updates are provisional interpretations, not verified truths. An empty
-question_updates array is normal. Each update has exactly these five strings:
-question_id, action, wording, evidence_quote, rationale.
+question_updates array is normal. Each update has question_id, action, wording,
+rationale (strings), and evidence_line_ids (a nonempty list of IDs selected from
+current_source_lines). Do not copy or reconstruct an evidence_quote.
 - open: a genuinely new inquiry; use a new stable question_id.
 - clarify: refine an existing question without changing whether it is open.
 - partial_answer: addresses only part of an OPEN question; keep it open. State
@@ -47,8 +48,9 @@ question_id, action, wording, evidence_quote, rationale.
   Use an explicit reopen update before a partial_answer to a closed question.
 Reuse the exact question_id from question_memory for all non-open actions.
 wording describes the current contribution; original question wording is retained
-separately. evidence_quote must be an exact contiguous quote from CURRENT spoken
-words supporting THIS update, never a paraphrase or a quote from earlier context.
+separately. Select current_source_lines supporting THIS update, including every
+needed continuation and speaker qualification, never lines from earlier context.
+The backend attaches the exact covering source range, retaining intervening text.
 rationale explains why that evidence warrants the update. Do not close questions
 because of silence, elapsed time, a new subject, a summary or a confident tone.
 When a referent is missing/ambiguous, omit the update rather than guessing its ID.

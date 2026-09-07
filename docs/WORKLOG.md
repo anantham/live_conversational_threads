@@ -1,5 +1,20 @@
 # WORKLOG
 
+## 2026-09-08 — Question source selection and raw-fragment preservation
+
+- Added current-source line references to interleaved context and prompt. The
+  backend attaches the exact contiguous covering source range to question
+  updates; it never reconstructs a quotation or inserts ellipses. Old exact
+  quotations remain subject to the existing strict evidence validator.
+- Focused regression exposed whitespace stripping in indexed batching before
+  budget validation. Preserve original fragments in the opt-in interleaved
+  path; leave legacy batching unchanged. A new ingestion regression verifies
+  exact source/evidence preservation and open-question folding.
+- Validation: 35 focused question-memory, evidence, runtime and context tests
+  pass, with eight existing pytest-asyncio teardown warnings. No real-model
+  quality claim, deployment or replacement publication. Next: persisted import
+  integration, evidence-selection audit retention, then public pipeline replay.
+
 ## 2026-09-08 — Full graph run exposes question evidence representation failure
 
 - Import regression selection initially failed because the privacy test double
