@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Full public graph run started through shared import stages
+
+- Inspection replay completed all 17 pages / 74,009 characters. Full index
+  reconstruction verifies all 1,263 original source rows and 313 observations;
+  inspection policy matches the explicitly pinned zero-temperature local route.
+- Extracted run_interleaved_stages from import_orchestrator so controlled replay
+  and opt-in imports use identical passage -> source reconciliation -> hierarchy
+  execution. Legacy path is unchanged. Four end-to-end isolated import/recovery
+  cases pass after extraction, including rejected/repeated grouping handling.
+- Added replay_public_pipeline.py: defaults to readiness validation, hard-pins
+  exact public source and loopback qwen3.8:27b-mlx / qwen3-embedding:8b. No host
+  provider configuration is mutated. Incompatible existing receipts fail closed.
+- Full graph run is active in session 75253. It writes only the isolated public
+  replay graph/checkpoints; any eventual export stays a local candidate and is
+  explicitly not accepted for publication. No graph completion observed yet.
+
 ## 2026-09-08 — Broad regression and persisted repair audit verified
 
 - Architecture/config selection: 178 passed, 2161 deselected, 40 existing

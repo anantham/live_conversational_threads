@@ -327,18 +327,18 @@ async def extract_graph_for_conversation(
     async def _noop(*_a, **_k):
         return None
 
-    if interleaved_runtime is None:
-        processor = TranscriptProcessor(
-            send_update=_noop, send_status=None,
-            llm_config=llm_config, providers=providers or [],
-        )
-    else:
-        # Trusted host config only, not a request-body switch. Phase 1 must
-        # have committed the source before journal-owned passage transactions.
-        processor = interleaved_runtime.build(
+    if interleaved_runtime is not None:
+        from .interleaved_stages import run_interleaved_stages
+        result = await run_interleaved_stages(runtime=interleaved_runtime,
             conversation_id=conversation_id, owner_id=owner, providers=providers,
-            privacy=privacy, send_update=_noop, send_status=None,
-        )
+            privacy=privacy, utterances=utterances)
+        return {**result, 'conversation_id': conversation_id, 'utterance_count': len(utterances),
+            'indrasnet_group_id': conv.indrasnet_group_id, 'executive_summary': None,
+            'conversation_title': None,
+            'argument_topology': _topology_marker([], status='failed', reason='thread_question_reconciliation_pending')}
+
+    processor = TranscriptProcessor(send_update=_noop, send_status=None,
+                                    llm_config=llm_config, providers=providers or [])
 
     # 3. Extract — feed each persisted turn with its EXISTING utterance_id so the
     #    emitted nodes get utterance_ids + chunk_utterance_map (transcript_processing.py).
@@ -350,38 +350,6 @@ async def extract_graph_for_conversation(
         )
     await processor.flush()
     existing = list(processor.existing_json)
-
-    if interleaved_runtime is not None:
-        reconciliation = await interleaved_runtime.build_reconciliation(
-            conversation_id=conversation_id, owner_id=owner, providers=providers, privacy=privacy,
-        ).run()
-        # Both this provider list and the new runner's frozen envelope apply
-        # the stored conversation consent. Private source cannot acquire an
-        # external fallback here; the public API still supplies no opt-in.
-        runner = interleaved_runtime.build_aggregation(
-            conversation_id=conversation_id, owner_id=owner, providers=providers, privacy=privacy,
-        )
-        receipts = await runner.run_through()
-        aggregated = [node for receipt in receipts for node in receipt["nodes"]]
-        # Passage and aggregation transactions already saved the canonical
-        # graph. Do not run positional repair or replacement persistence below.
-        # Source-reviewed edges do not settle thread/question identity. Keep
-        # that remaining semantic work explicit even with a complete hierarchy.
-        return {
-            "conversation_id": conversation_id,
-            "utterance_count": len(utterances),
-            "node_count": len(existing) + len(aggregated),
-            "auditable_node_count": sum(bool(n.get("utterance_ids")) for n in [*existing, *aggregated]),
-            "indrasnet_group_id": conv.indrasnet_group_id,
-            "executive_summary": None,
-            "conversation_title": None,
-            "argument_topology": _topology_marker([], status="failed", reason="thread_question_reconciliation_pending"),
-            "source_review": {key: reconciliation[key] for key in (
-                'review_pass_complete', 'unresolved_mappings', 'abstained_inspection_pages',
-                'abstained_inspection_partitions',
-                'semantic_reconciliation_complete')},
-            "pipeline_status": "reconciliation_pending",
-        }
 
     # Missing L2 parents make complete transcript regions disappear at every
     # zoom level above chunks. Repair the local batch hierarchy before global
