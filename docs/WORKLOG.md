@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-09-08 — Local semantic verification diagnostic started
+
+- Added a public-artifact-pinned diagnostic for the three audited page-0
+  observations. It verifies source fields, receipt identity, local consent and
+  complete request budget; original DB source and observations remain untouched.
+- Prepare-only check passed: all 77 source spans, 3 selected observations,
+  12,368 request bytes. One local model request is active in session 3965;
+  no response or quality verdict yet. Replay session 84674 independently advanced
+  to page 13 partition 0. These runs are not throughput measurements.
+- No denied external code review was retried. Generated diagnostic output stays
+  local and gitignored; only the tool and experiment specification are tracked.
+
 ## 2026-09-08 — First-page semantic audit, not just quote validity
 
 - Read the full public page-0 source and its 11 saved observations. Recorded

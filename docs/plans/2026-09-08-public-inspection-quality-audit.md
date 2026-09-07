@@ -45,3 +45,20 @@ Do not overwrite the source, inferred speaker names, or saved model response.
    retain original output and revision rationale rather than erasing failures.
 4. Verify suspected diarization defects against audio before changing canonical
    source labels. No source repair has been performed by this audit.
+
+## Prepared local verification experiment
+
+`tools/probe_inspection_quality.py` pins the public artifact digest, verifies all
+canonical source fields against it, checks page receipt identity and current
+local consent, and prepares the complete 77-span first page with observations
+4, 6 and 10. Default mode makes no model call; `--run` makes one local request
+and saves a generated diagnostic under gitignored `tmp/public-inspection-quality`.
+It does not publish, mutate canonical rows, or replace the original observations.
+
+Prepared request: 12,368 UTF-8 bytes, hash
+`9a41f7e6199c282e47537e80872f5dd55fd945db6618c3d36a510e6e45ca4095`.
+Full-envelope validation passed at 32,768 conservative capacity units with
+4,096 output reserve and 512 headroom. The fixed model remains qwen3.8:27b-mlx.
+The diagnostic is repair-oriented and selected after manual inspection, not a
+blind baseline or throughput benchmark. Its raw response requires manual source
+assessment before any result can be accepted.
