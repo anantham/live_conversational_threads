@@ -20,6 +20,12 @@
 - Public inspection session 70629 was polled twice, remains live requesting page
   index 6 after corrected parser/cache rollout, and produced no new output during
   these observations. Do not infer a terminal timeout or restart from silence.
+- Subsequent poll: session 70629 exited 1. Corrected parser now rejects an
+  unterminated string at line 380 / character 11,635 rather than returning an
+  inner list. The transport still parses before recording finish_reason/usage,
+  so completion-limit truncation is not yet distinguished from malformed output.
+  Next diagnostic should retain safe completion metadata before parsing and
+  reject length-limited structured output explicitly. No identical blind retry.
 
 
 ## 2026-09-08 — Reject incomplete outer JSON instead of accepting inner fragments
