@@ -1,5 +1,28 @@
 # WORKLOG
 
+## 2026-09-08 — Server-rendered tokenizer parity established for synthetic input
+
+- Resumed replay session 50729; authoritative polling confirms it remains live
+  and returned inference-1788820608739216000.json. No replacement run started.
+- Falsified the proposed OpenAI-adapter default-medium explanation: installed
+  version's public openai.go leaves omitted reasoning effort unset.
+- Used the server's /api/chat _debug_render_only path with synthetic system
+  'Exact instructions' and user 'Reply OK.'. Actual rendering ends with an open
+  think block and contains no xhigh instruction or empty closing think block.
+- Counting that exact rendered string with the pinned tokenizer in the existing
+  mlx-audio environment yields 20 tokens, matching the earlier serving usage of
+  20. This establishes synthetic render/count parity, not large-request parity,
+  effective maximum context, or a dependency/runtime activation decision.
+- No inference generation, model configuration change, installation, private
+  transcript disclosure, or running-replay policy change. Next verify public
+  full-message formatting and use a pinned serving-aware counter for fair replay.
+- Follow-up with the actual interpreter system prompt and compact reserialization
+  of the second public request: server rendering exactly matches trimmed
+  system/user ChatML plus the open assistant think prefix. Pinned tokenizer
+  counts 6,848 tokens versus 25,333 serialized-message bytes. This is render-only
+  full-message evidence, not an inference-usage measurement or maximum-window
+  test. Keep template/version/role restrictions explicit in any runtime adapter.
+
 ## 2026-09-08 — Serving count probe returns; fallback-counter guard
 
 - Synthetic parity retry session 39335 completed: server reports 20 prompt
