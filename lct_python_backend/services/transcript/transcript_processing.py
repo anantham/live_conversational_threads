@@ -76,6 +76,7 @@ class TranscriptProcessor:
         inference_envelope=None,
         semantic_candidates=None,
         inference_guard=None,
+        question_review_loader=None,
     ) -> None:
         self.accumulator: List[str] = []
         self.accumulator_segments: List[List[Dict[str, Any]]] = []
@@ -137,6 +138,9 @@ class TranscriptProcessor:
             raise ValueError("Semantic candidates require an explicit passage context policy")
         self._semantic_candidates = semantic_candidates
         self._inference_guard = inference_guard
+        if question_review_loader is not None and passage_context_policy is None:
+            raise ValueError('Question review requires an explicit passage context policy')
+        self._question_review_loader = question_review_loader
         if passage_journal is not None and passage_context_policy is None:
             raise ValueError("A passage journal requires the interleaved context policy")
         self._passage_commit = PassageCommitBoundary(self, passage_journal) if passage_journal is not None else None
@@ -753,6 +757,10 @@ class TranscriptProcessor:
                 f"\n\n Transcript Input: \n {transcript_for_llm}"
             )
             if self._passage_context_policy is not None:
+                question_reviews = None
+                if self._question_review_loader is not None:
+                    question_reviews = await self._question_review_loader(
+                        self.existing_json, self.chunk_dict, self.chunk_utterance_map)
                 semantic_scores = None
                 if self._semantic_candidates is not None:
                     guard_kwargs = {"request_guard": self._inference_guard} if self._inference_guard else {}
@@ -764,6 +772,7 @@ class TranscriptProcessor:
                     self.chunk_utterance_map, self._passage_context_policy,
                     semantic_scores=semantic_scores,
                     evidence_lines=question_source_lines(segmented_input_chunk, completed_text_batch),
+                    question_reviews=question_reviews,
                 )
                 mod_input = plan.prompt
                 await self._emit_status(

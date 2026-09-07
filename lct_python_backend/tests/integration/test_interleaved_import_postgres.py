@@ -15,6 +15,7 @@ Explicit review export must omit superseded content and reject a different owner
 Revoked consent must reject a captured review even when a receipt already exists.
 Question checkpoints must reject an incorrect slot before saving a duplicate review.
 An unrelated new source must not discard a current question review or regenerate it.
+The live context reader must expose only the current policy and reject stale processor history.
 """
 import json
 import copy
@@ -213,6 +214,16 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         async with sessions.begin() as db:
             basis = await runner.capture(db)
         request = attributed_question_request(basis, 'borrowing', runner.envelope)
+        from lct_python_backend.services.transcript.question_context import QuestionContextReader
+        reader = QuestionContextReader(runner)
+        state = basis['state']
+        context_reviews = await reader(state['nodes'], state['chunks'], state['utterance_chunk_map'])
+        assert context_reviews == {'borrowing': reviewed['projections'][0]}
+        assert len(question_reviews) == 1
+        wrong_nodes = copy.deepcopy(state['nodes'])
+        wrong_nodes[0]['summary'] = 'Stale processor interpretation'
+        with pytest.raises(JournalConflict, match='processor history'):
+            await reader(wrong_nodes, state['chunks'], state['utterance_chunk_map'])
         async with sessions.begin() as db:
             db.add(Utterance(id=uuid.uuid4(), conversation_id=cid, sequence_number=2,
                 text='An unrelated new conversation turn.', speaker_id='SPEAKER_01',

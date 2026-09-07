@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 import json
 import math
 import re
+import copy
 from typing import Any, Callable, Mapping, Sequence
 from .question_memory import fold_question_memory
 from .question_evidence import question_source_lines
@@ -91,6 +92,7 @@ def plan_conversation_context(
     *,
     semantic_scores: Mapping[str, float] | None = None,
     evidence_lines=None,
+    question_reviews=None,
 ) -> ContextPlan:
     """Retrieve across all supplied history, pack whole evidence under a budget.
 
@@ -124,6 +126,10 @@ def plan_conversation_context(
 
     chunk_ids = list(source_chunks)
     questions = fold_question_memory(existing_nodes, source_chunks)
+    for qid, review in (question_reviews or {}).items():
+        if qid not in questions or review.get('question_id') != qid:
+            raise ValueError('Question review refers to unavailable history')
+        questions[qid]['review'] = copy.deepcopy(review)
     documents = [
         _terms(source_chunks[cid] + " " + json.dumps(nodes_by_chunk[cid], ensure_ascii=False))
         for cid in chunk_ids
@@ -155,6 +161,12 @@ def plan_conversation_context(
         "question_memory": [],
         "coverage": {},
     }
+    if question_reviews:
+        payload['context_contract'] += (
+            ' Question review annotations are separate model judgments, not human-verified truth. '
+            'status and original events remain provisional; review.reviewed_status may disagree. '
+            'Use the cited review to notice asides and unresolved scope, not to erase history '
+            'or invent an explicit reopening that the current speaker did not make.')
     selected_chunks: set[str] = set()
     selected_threads: set[str] = set()
     selected_questions: set[str] = set()

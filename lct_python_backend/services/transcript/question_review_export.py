@@ -14,7 +14,7 @@ from .question_review import validate_question_review
 from .question_basis import question_basis
 
 
-async def export_question_reviews(db, *, conversation_id, owner_id):
+async def export_question_reviews(db, *, conversation_id, owner_id, expected_state=None):
     # Authenticate ownership even when there are no reviews to export.
     from .source_inspection_runner import _authorized_conversation
     await _authorized_conversation(db, conversation_id, owner_id, lock=False)
@@ -23,13 +23,17 @@ async def export_question_reviews(db, *, conversation_id, owner_id):
         PipelineArtifact.artifact_type == 'source_reviewed_question'))).scalars().all()
     base = {'schema_version': 1, 'verification': 'model_reviewed_not_human_verified',
             'policies': [], 'superseded_review_count': 0}
-    if not rows:
+    if not rows and expected_state is None:
         return {**base, 'status': 'not_reviewed'}
     try:
         basis = await capture_question_basis(db, conversation_id=conversation_id, owner_id=owner_id)
     except JournalConflict:
+        if expected_state is not None:
+            raise
         return {**base, 'status': 'source_revision_requires_reconciliation',
                 'superseded_review_count': len(rows)}
+    if expected_state is not None and any(basis['state'].get(key) != value for key, value in expected_state.items()):
+        raise JournalConflict('Question context differs from processor history')
     basis_hash = _hash(basis)
     expected = set(fold_question_memory(basis['state']['nodes'], basis['state']['chunks']))
     grouped = {}

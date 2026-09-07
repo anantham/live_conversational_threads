@@ -1,5 +1,15 @@
 # TECH_DEBT
 
+## 2026-09-08 — Passage orchestration and integration fixture boundaries
+
+transcript_processing.py is 976 lines, combining cadence, pending-source capture,
+context retrieval, question review, inference and publication. The new review
+service is separate; extract the remaining context orchestration behind public
+handle_final_text/flush tests rather than expanding this processor further.
+test_interleaved_import_postgres.py is 302 lines and combines tier/restart and
+question review contracts. Share its synthetic setup, then split those scenarios
+while retaining real owner/consent/journal/export boundaries, not mocked internals.
+
 ## 2026-09-08 — Sync inference transport composition
 
 local_llm_client.py is over 900 lines and mixes parsing, telemetry, caching,

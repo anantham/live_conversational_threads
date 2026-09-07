@@ -1,5 +1,33 @@
 # WORKLOG
 
+## 2026-09-08 — Feed current question reviews into passage context
+
+- Previous turn made progress (0d491df pushed); clean checkout verified. Added
+  QuestionContextReader to the shared opt-in runtime: before each passage it
+  reviews committed question events, reuses unchanged question-local receipts,
+  and reads only current question_v1 annotations under the same review policy.
+  It uses the same frozen routes, consent, model counter and output budget.
+- Export's optional expected_state check binds annotations to the processor's
+  committed nodes/chunks/membership, rejecting stale history rather than sending
+  a mixed-context prompt. Source revision conflicts are propagated on this path.
+  The planner carries review judgments separately inside question memory, inside
+  the full serialized budget, and warns that status/events are still provisional.
+- Runtime recovery identity advances to interleaved_runtime_v3_question_reviews;
+  old journals are not silently resumed under new context/inference behavior.
+  This does not activate legacy production endpoints or rewrite existing journals.
+- New public handle_final_text/flush test verifies annotations reach the next
+  actual model request and do not mutate earlier question events. PostgreSQL tests
+  verify current annotation loading, receipt reuse and stale processor rejection.
+  Focused suite: 22 passed, one existing asyncio teardown warning.
+- Full unit sweep: 2,269 passed, five failed, four skipped, 471 warnings. Failing
+  tests are the same egress SDK, two native observability and two OTEL tests already
+  recorded as local environment acceptance gaps. No tests or dependency pins were
+  weakened. Processor/fixture decomposition debt is recorded separately.
+- Still unresolved: a new partial answer against a reviewed-open but provisionally
+  closed question currently conflicts with the historical transition validator.
+  This integration supplies the review but does not fix that event/recovery model.
+  No claim of completed architecture, semantic quality, fair comparison or deploy.
+
 ## 2026-09-08 — Reuse question reviews across unrelated conversation growth
 
 - Previous turn was progress (8a589c0 pushed). The live-memory investigation
