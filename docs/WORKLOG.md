@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Compact attributed question context without dropping speech
+
+- Measured quote-range substitution alone: the 13-update and seven-update
+  requests remained over budget. Attribution metadata was still repeated as
+  verbose per-utterance objects. Encode source order/ranges/speaker as compact
+  rows; canonical UUIDs/revisions/timing remain in the source basis/store.
+- Unique event quotes now reference exact ranges of already supplied full source.
+  Repeated quotes retain literal text; no guessed occurrence. Eleven synthetic
+  review/import tests pass, including exact range reconstruction and ambiguity.
+- At replay sequence 471, five of six question histories fit the pinned envelope,
+  including seven-update history. The 13-update childhood inquiry still does not
+  fit. This disproves duplication as the entire cause; bounded multi-request
+  review is still necessary for that history and longer conversations.
+- No semantic input passage or historical event was truncated, no context limit
+  increased and no review model call made. Replay session 50729 continues.
+
 ## 2026-09-08 — Question review consent and actual-context sizing
 
 - Added stored-consent revocation at the review checkpoint boundary, including

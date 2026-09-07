@@ -62,8 +62,9 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         request = json.loads(kwargs["messages"][1]["content"])
         if 'question_id' in request:
             question_reviews.append(request)
-            assert request['sources'][0]['utterances'][0]['speaker_id'] == 'SPEAKER_00'
-            span = request['sources'][0]['utterances'][0]
+            source = request['sources'][0]
+            span = dict(zip(source['utterance_fields'], source['utterances'][0]))
+            assert span['speaker_id'] == 'SPEAKER_00'
             assert request['sources'][0]['text'][span['start']:span['end']] == text
             assert 'text' not in span
             return Result({'assessments': [{'event_id': 'event-1', 'scope': 'same_question',

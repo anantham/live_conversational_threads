@@ -68,3 +68,15 @@ def test_multiple_updates_share_one_unabridged_source_passage():
     assert request['sources'] == [{'id': 'source-0', 'chunk_id': 'shared', 'text': passage}]
     assert {event['source_id'] for event in request['events']} == {'source-0'}
     assert len(request['events']) == 3
+    for event, node in zip(request['events'], nodes):
+        start, end = event['evidence_range']
+        assert passage[start:end] == node['question_updates'][0]['evidence_quote']
+
+
+def test_repeated_evidence_quote_does_not_guess_an_occurrence():
+    nodes, _ = fixture()
+    node = nodes[0]
+    quote = node['question_updates'][0]['evidence_quote']
+    request = build_question_review([node], {'0': quote + ' ' + quote}, 'studies', envelope=Envelope())
+    assert request['events'][0]['evidence_quote'] == quote
+    assert 'evidence_range' not in request['events'][0]
