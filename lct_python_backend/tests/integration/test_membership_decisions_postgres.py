@@ -1,6 +1,7 @@
 """Test intent: interrupted final membership judgment reuses saved source reviews.
 Use real isolated DB, synthetic transport and unchanged source/child identities.
 Uncertain decisions persist without producing a parent or falsely claiming ready.
+Accepted decisions synthesize and commit one parent; restart preserves its ID.
 """
 import json
 import os
@@ -35,6 +36,11 @@ async def test_decision_failure_resume_and_uncertainty(monkeypatch, disposition)
     failure = [True]
     def transport(**kwargs):
         r = json.loads(kwargs['messages'][1]['content'])
+        if 'members' in r:
+            calls.append('parent')
+            return SimpleNamespace(data={'node_name': 'Borrowing inquiry', 'summary': 'Who may borrow remains unresolved.',
+                'memberships': [{'child_id': m['child']['id'], 'evidence_ids': [m['evidence'][0]['evidence_id']]}
+                                for m in r['members']]})
         if 'reviews' in r:
             calls.append('decision')
             if failure[0]: raise RuntimeError('Synthetic interrupted decision')
@@ -74,8 +80,17 @@ async def test_decision_failure_resume_and_uncertainty(monkeypatch, disposition)
         assert calls == ['review', 'decision', 'decision']
         assert await runner.run_decisions(groups, target_level=2) == result
         assert calls == ['review', 'decision', 'decision']
+        synthesized = await runner.run_synthesis(groups, target_level=2)
+        assert synthesized['status'] == ('tier_committed' if disposition == 'accept' else 'proposal_revision_required')
+        before = list(calls)
+        assert await runner.run_synthesis(groups, target_level=2) == synthesized
+        assert calls == before
         async with sessions() as db:
-            assert (await db.execute(select(Node.id).where(Node.conversation_id == cid))).scalars().all() == [nid]
+            nodes = (await db.execute(select(Node).where(Node.conversation_id == cid))).scalars().all()
+            assert nid in {n.id for n in nodes}
+            assert len(nodes) == (2 if disposition == 'accept' else 1)
+            if disposition == 'accept':
+                assert synthesized['tier']['nodes'][0]['utterance_ids'] == [str(uid)]
             assert (await db.get(Utterance, uid)).text == 'Who can borrow the key?'
     finally:
         async with sessions.begin() as db:

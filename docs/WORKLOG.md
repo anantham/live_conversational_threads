@@ -1,5 +1,31 @@
 # WORKLOG
 
+## 2026-09-08 — Accepted memberships reach canonical parent commit
+
+- Added parent_synthesis.py: accepted, evidenced decisions for every child are
+  required; the model returns title/summary and child-owned evidence IDs only.
+  Backend supplies exact membership quotes. Child snapshot hashes preserve
+  identity while the prompt avoids repeating all ancestry metadata. Full request
+  remains budget-checked without truncation.
+- MembershipReviewRunner.run_synthesis composes review -> decision -> parent
+  synthesis -> existing atomic commit_aggregation. Stage-specific parent receipts
+  support restart. Final canonical validation retains the complete union of child
+  source IDs, not only selected summary evidence. Rejected/uncertain decisions
+  return proposal_revision_required with no parent creation.
+- Five focused tests pass, including all three dispositions through real-DB
+  synthesis/restart and a unit test proving an uncited second source still remains
+  in canonical parent ancestry. Accepted parent IDs survive restart without model
+  calls. Proposal generation/revision, large combined evidence handling, runtime
+  entry-point composition and end-to-end real-model quality remain unfinished.
+- Session 40712 is terminal. Safe provider metadata establishes output truncation:
+  finish_reason=length, completion_tokens=4096, prompt_tokens=10458,
+  output_limit=4096. This is stronger evidence than the earlier parsed list.
+  Six pages remain saved; page 6 did not commit. Next recovery should subdivide
+  the failed processing window with auditable complete source coverage, not retry
+  identical requests or silently raise a byte-budget limit beyond configured
+  capacity. Processing windows must remain distinct from semantic boundaries.
+
+
 ## 2026-09-08 — Check structured completion metadata before parsing/cache
 
 - Added structured_completion.py with sanitized finish reason, numeric token
