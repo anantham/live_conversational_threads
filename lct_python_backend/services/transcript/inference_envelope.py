@@ -24,6 +24,8 @@ class InferenceEnvelope:
         if not tokenizer_id or (count_messages is not None and tokenizer_id == 'utf8_bytes_v1'):
             raise ValueError('Custom message counter requires an explicit tokenizer identity')
         allowed = select_providers_for_privacy(providers, privacy)
+        if count_messages is not None and len({(p.get('model'), p.get('model_revision')) for p in allowed}) != 1:
+            raise ValueError('A model-specific message counter requires one model revision across fallback routes')
         capacities = [p.get("context_tokens") for p in allowed]
         if any(type(value) is not int or value <= 0 for value in capacities):
             raise ValueError("Each permitted provider needs an explicit positive context_tokens limit")

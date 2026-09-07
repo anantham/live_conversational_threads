@@ -1,5 +1,22 @@
 # WORKLOG
 
+## 2026-09-08 — Serving count probe returns; fallback-counter guard
+
+- Synthetic parity retry session 39335 completed: server reports 20 prompt
+  tokens and one completion token (finish_reason length), versus local template
+  22 with thinking disabled and 58 default/enabled. Local disabled rendering
+  includes an empty think block. Do not claim exact server-template parity.
+- First 45-second observation returned no result; this retry was submitted only
+  after that client was terminal, using pipefail/visible curl errors and a longer
+  deadline. No private source, provider config change or external model call.
+- Added failing-first regression for a custom message counter applied to two
+  distinct fallback models. Now reject that configuration unless all admitted
+  routes name the same model/revision. Twenty-eight envelope/runtime tests pass.
+- Latest sampled replay request omitted 18 threads and nine questions under its
+  conservative byte budget. Record the current run as diagnostic, not a fair
+  model-quality baseline. Proper counting remains necessary before comparison.
+  Replay session 50729 is still running and emitted another response.
+
 ## 2026-09-08 — Template-aware counter boundary prepared, not activated
 
 - Local synthetic server probe (one output token) produced no response during

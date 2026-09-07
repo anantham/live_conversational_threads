@@ -146,3 +146,10 @@ def test_custom_message_counter_requires_versioned_identity():
 def test_malformed_message_counts_fail_closed(value):
     with pytest.raises(ValueError, match='count'):
         envelope(count_messages=lambda messages: value, tokenizer_id='invalid-counter-v1')
+
+
+def test_model_specific_counter_cannot_silently_budget_another_fallback_model():
+    """One tokenizer cannot establish safe capacity for an unrelated fallback."""
+    with pytest.raises(ValueError, match='model revision'):
+        envelope([provider(), {**provider('other'), 'model': 'different-model'}],
+                 count_messages=lambda messages: 50, tokenizer_id='model-specific-v1')
