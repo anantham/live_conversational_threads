@@ -11,8 +11,9 @@ from .source_inspection_runner import capture_inspection, check_inference_consen
 from .question_memory import fold_question_memory
 from .question_review import build_question_review, validate_question_review, QUESTION_REVIEW_PROMPT
 from .question_review_projection import project_question_review
+from .question_basis import question_basis
 
-STAGE = 'qreview_v2'
+STAGE = 'qreview_v3'
 
 
 async def capture_question_basis(db, *, conversation_id, owner_id, lock=False):
@@ -59,16 +60,22 @@ class QuestionReviewRunner:
 
     async def checkpoint(self, db, basis, index, request, response=None):
         current = await self.capture(db, lock=True)
-        if current != basis:
-            raise JournalConflict('Question source or interpretation changed during review')
-        question_ids = sorted(fold_question_memory(current['state']['nodes'], current['state']['chunks']))
+        question_ids = sorted(fold_question_memory(basis['state']['nodes'], basis['state']['chunks']))
         if type(index) is not int or not 0 <= index < len(question_ids):
             raise JournalConflict('Invalid question index for captured source revision')
-        expected = attributed_question_request(current, question_ids[index], self.envelope)
+        qid = question_ids[index]
+        try:
+            captured_question = question_basis(basis, qid)
+            current_question = question_basis(current, qid)
+        except ValueError as exc:
+            raise JournalConflict('Question source or interpretation changed during review') from exc
+        if current_question != captured_question:
+            raise JournalConflict('Question source or interpretation changed during review')
+        expected = attributed_question_request(current, qid, self.envelope)
         if request != expected:
             raise JournalConflict('Review request differs from canonical question at this index')
         cid = uuid.UUID(self.scope['conversation_id'])
-        identity = {'basis_hash': _hash(basis), 'request_hash': _hash(request),
+        identity = {'basis_scope': 'question_v1', 'basis_hash': _hash(current_question), 'request_hash': _hash(request),
                     'policy_fingerprint': self.envelope.fingerprint}
         # Keep each captured source/interpretation and policy revision immutable.
         # Fit the existing 50-character stage column without a migration. Full
@@ -77,7 +84,7 @@ class QuestionReviewRunner:
                                     ('basis_hash', 'policy_fingerprint')})[:39]
         rows = (await db.execute(select(PipelineArtifact).where(
             PipelineArtifact.conversation_id == cid, PipelineArtifact.stage == stage,
-            PipelineArtifact.stage_index == index))).scalars().all()
+            PipelineArtifact.stage_index == 0))).scalars().all()
         if len(rows) > 1:
             raise JournalConflict('Multiple question receipts at one index')
         if rows:
@@ -92,7 +99,7 @@ class QuestionReviewRunner:
             return None
         review = validate_question_review(response, request)
         saved = {**identity, 'request': copy.deepcopy(request), 'response': copy.deepcopy(response), 'review': review}
-        db.add(PipelineArtifact(conversation_id=cid, stage=stage, stage_index=index,
+        db.add(PipelineArtifact(conversation_id=cid, stage=stage, stage_index=0,
             artifact_type='source_reviewed_question', artifact_json=saved, content_hash=_hash(saved)))
         await db.flush()
         return saved

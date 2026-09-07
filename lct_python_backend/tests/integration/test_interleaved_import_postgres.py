@@ -14,6 +14,7 @@ Fresh interpretation revisions retain old reviews and recover the new review ind
 Explicit review export must omit superseded content and reject a different owner.
 Revoked consent must reject a captured review even when a receipt already exists.
 Question checkpoints must reject an incorrect slot before saving a duplicate review.
+An unrelated new source must not discard a current question review or regenerate it.
 """
 import json
 import copy
@@ -212,6 +213,16 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         async with sessions.begin() as db:
             basis = await runner.capture(db)
         request = attributed_question_request(basis, 'borrowing', runner.envelope)
+        async with sessions.begin() as db:
+            db.add(Utterance(id=uuid.uuid4(), conversation_id=cid, sequence_number=2,
+                text='An unrelated new conversation turn.', speaker_id='SPEAKER_01',
+                timestamp_start=4, timestamp_end=5))
+        assert await runner.run() == reviewed
+        assert len(question_reviews) == 1
+        async with sessions() as db:
+            appended_export = await export_question_reviews(db, conversation_id=str(cid), owner_id=owner)
+        assert appended_export['status'] == 'current_reviews'
+        assert appended_export['superseded_review_count'] == 0
         for invalid_index in (-1, 1, True):
             async with sessions.begin() as db:
                 with pytest.raises(JournalConflict, match='question index'):
@@ -253,6 +264,20 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
             assert len(saved_questions) == 2
             assert reviewed['receipts'][0] in [row.artifact_json for row in saved_questions]
             assert revised_review['receipts'][0] in [row.artifact_json for row in saved_questions]
+        # Legacy conversation-wide receipts stay explicitly separate, rather
+        # than colliding with or being silently upgraded to the new scope.
+        from lct_python_backend.services.transcript.passage_journal import _hash
+        async with sessions.begin() as db:
+            legacy = copy.deepcopy(revised_review['receipts'][0])
+            legacy.pop('basis_scope')
+            legacy['basis_hash'] = _hash(await runner.capture(db))
+            db.add(PipelineArtifact(conversation_id=cid, stage='synthetic_legacy_qreview',
+                stage_index=0, artifact_type='source_reviewed_question',
+                artifact_json=legacy, content_hash=_hash(legacy)))
+        async with sessions() as db:
+            mixed = await export_question_reviews(db, conversation_id=str(cid), owner_id=owner)
+        assert {p['revision_scope'] for p in mixed['policies']} == {'question_v1', 'conversation_v1'}
+        assert all(p['questions'] == revised_review['projections'] for p in mixed['policies'])
         async with sessions.begin() as db:
             await db.execute(update(Conversation).where(Conversation.id == cid).values(
                 source_metadata={'privacy': {'local_llm_ok': False, 'external_llm_ok': False}}))

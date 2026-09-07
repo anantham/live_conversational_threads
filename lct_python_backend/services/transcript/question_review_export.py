@@ -11,6 +11,7 @@ from .question_memory import fold_question_memory
 from .question_review_runner import capture_question_basis
 from .question_review_projection import project_question_review
 from .question_review import validate_question_review
+from .question_basis import question_basis
 
 
 async def export_question_reviews(db, *, conversation_id, owner_id):
@@ -36,7 +37,13 @@ async def export_question_reviews(db, *, conversation_id, owner_id):
         saved = row.artifact_json
         if _hash(saved) != row.content_hash:
             raise JournalConflict('Question export receipt digest mismatch')
-        if saved['basis_hash'] != basis_hash:
+        qid = saved['request']['question_id']
+        scope = saved.get('basis_scope', 'conversation_v1')
+        if scope not in ('conversation_v1', 'question_v1'):
+            raise JournalConflict('Unknown question review revision scope')
+        current_hash = (_hash(question_basis(basis, qid))
+                        if scope == 'question_v1' and qid in expected else basis_hash)
+        if qid not in expected or saved['basis_hash'] != current_hash:
             base['superseded_review_count'] += 1
             continue
         request = saved['request']
@@ -45,14 +52,14 @@ async def export_question_reviews(db, *, conversation_id, owner_id):
         if validate_question_review(saved['response'], request) != saved['review']:
             raise JournalConflict('Question export review no longer reproduces its response')
         policy = saved['policy_fingerprint']
-        questions = grouped.setdefault(policy, {})
+        questions = grouped.setdefault((policy, scope), {})
         identity = request['question_id']
         if identity in questions:
             raise JournalConflict('Multiple current reviews for one question and policy')
         questions[identity] = project_question_review(request, saved['review'])
-    base['policies'] = [{'policy_fingerprint': policy, 'basis_hash': basis_hash,
+    base['policies'] = [{'policy_fingerprint': policy, 'revision_scope': scope, 'basis_hash': basis_hash,
                         'coverage_complete': set(questions) == expected,
                         'missing_question_ids': sorted(expected - set(questions)),
                         'questions': [questions[qid] for qid in sorted(questions)]}
-                       for policy, questions in sorted(grouped.items())]
+                       for (policy, scope), questions in sorted(grouped.items())]
     return {**base, 'status': 'current_reviews' if grouped else 'no_current_review'}

@@ -1,5 +1,32 @@
 # WORKLOG
 
+## 2026-09-08 — Reuse question reviews across unrelated conversation growth
+
+- Previous turn was progress (8a589c0 pushed). The live-memory investigation
+  exposed global review invalidation: appending an unrelated utterance regenerated
+  the same question request. Added the real PostgreSQL regression first; it
+  failed with identical request hashes but changed whole-conversation basis hashes.
+- Added question_basis.py: revision identity retains contributing nodes, whole
+  source passages, utterance membership and full current source records. It omits
+  unrelated nodes/sources and global interpretation counters. It is a custody
+  projection, not a semantic claim. Missing/duplicate referenced sources fail.
+- qreview_v3 checkpoints use question-local basis plus policy for their namespace,
+  with one fixed storage slot. Caller indices still bind to the captured question
+  ordering and exact current attributed request. An unrelated append during review
+  no longer invalidates it; a contributing-node/source change still does. Existing
+  receipts remain immutable. No migration or production rewrite was performed.
+- Export validates each scoped receipt against its current question basis. Legacy
+  conversation-wide receipts retain their original stricter rule; export labels
+  revision_scope and keeps legacy/new interpretations separate even under the same
+  inference policy. It never picks the newest timestamp or silently upgrades custody.
+- Combined unit/integration validation: 28 passed. Covers unrelated growth/restart,
+  own interpretation invalidation, speaker/revision/timing/unquoted-source identity,
+  missing/duplicate sources, wrong slots/attribution, consent and legacy coexistence.
+- Live planning still consumes the provisional ledger. This removes a prerequisite
+  invalidation problem, but does not yet connect reviewed state or solve corrected
+  status handling for subsequent events. Full model comparison/review/deploy remain
+  incomplete. No inference, dependency install, external disclosure or activation.
+
 ## 2026-09-08 — Bind question review checkpoints to canonical question slots
 
 - Prior goal turn was progress (15a2f83 pushed); current checkout was clean.
