@@ -13,16 +13,29 @@ from .passage_projection import load_interpretation_projection
 
 
 class PassageJournalSession:
-    def __init__(self, *, session_factory, conversation_id: str, owner_id: str, policy_fingerprint: str):
+    def __init__(self, *, session_factory, conversation_id: str, owner_id: str, policy_fingerprint: str,
+                 inference_providers=None):
         if not owner_id.strip() or not policy_fingerprint.strip():
             raise ValueError("Owner and policy fingerprint are required")
         self._sessions = session_factory
         self._conversation_id = conversation_id
         self._owner_id = owner_id
         self._policy = policy_fingerprint
+        self._inference_providers = copy.deepcopy(inference_providers)
         self._records = []
         self._loaded = False
         self._state = None
+
+    async def _check_consent(self, db):
+        if self._inference_providers is not None:
+            from .source_inspection_runner import check_inference_consent
+            await check_inference_consent(db, conversation_id=self._conversation_id,
+                owner_id=self._owner_id, providers=self._inference_providers)
+
+    async def check_consent(self):
+        """Fresh owner-bound consent; no transaction remains open during inference."""
+        async with self._sessions.begin() as db:
+            await self._check_consent(db)
 
     @property
     def sources(self):
@@ -75,6 +88,7 @@ class PassageJournalSession:
         # the transaction back: it may have reached Postgres already.
         self._loaded = False
         async with self._sessions.begin() as db:
+            await self._check_consent(db)
             record = await append_passage(
                 db, conversation_id=self._conversation_id, owner_id=self._owner_id,
                 expected_revision=expected,

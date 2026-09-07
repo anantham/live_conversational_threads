@@ -1,5 +1,32 @@
 # WORKLOG
 
+## 2026-09-07 — Fresh consent in the shared passage runtime
+
+- Final combined validation: 37 tests passed across shared runtime, real-DB
+  passage/import, retrieval and context contracts; 13 existing asyncio warnings.
+
+- The factory now binds its frozen chat and embedding routes to the owner-scoped
+  PassageJournalSession. TranscriptProcessor supplies that guard to each semantic
+  embedding batch and checks it immediately before/after generation; the journal
+  checks again under the commit transaction's conversation lock. Legacy callers
+  without this experimental runtime remain unchanged. No network transaction is
+  held open for the duration of generation.
+- Added real-DB regressions for revocation before generation and during its
+  response. Both prove no canonical nodes/receipts are published, exact source
+  survives, and restoring synthetic consent permits the pending passage to
+  commit once. Initial fixture setup omitted required speaker_id; corrected the
+  fixture, not the schema. Both tests pass; the earlier combined run's other 14
+  import/factory/passage tests passed. Per-batch embedding transport guards have
+  separate tests; a multi-passage real-DB embedding revocation test remains useful.
+- Public inspection session 4618 is now terminal: page 2 returned in 201.26s but
+  failed strict quote validation before checkpoint. The saved diagnostic reveals
+  two quotes that extend before their claimed span: observation 6 at s180:0-98,
+  and observation 11 at s215:0-79. This is a source-boundary citation error, not
+  evidence that all observations are false. Do not edit generated output into a
+  passing receipt. Next step is bounded explicit validation-feedback recovery,
+  preserving the rejected response and requiring exact per-span citations.
+
+
 ## 2026-09-07 — Resume exact public inspection after transport timeout
 
 - Read-only DB inspection verified exactly two saved source-inspection receipts:

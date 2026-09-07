@@ -75,6 +75,7 @@ class TranscriptProcessor:
         passage_journal=None,
         inference_envelope=None,
         semantic_candidates=None,
+        inference_guard=None,
     ) -> None:
         self.accumulator: List[str] = []
         self.accumulator_segments: List[List[Dict[str, Any]]] = []
@@ -135,6 +136,7 @@ class TranscriptProcessor:
         if semantic_candidates is not None and passage_context_policy is None:
             raise ValueError("Semantic candidates require an explicit passage context policy")
         self._semantic_candidates = semantic_candidates
+        self._inference_guard = inference_guard
         if passage_journal is not None and passage_context_policy is None:
             raise ValueError("A passage journal requires the interleaved context policy")
         self._passage_commit = PassageCommitBoundary(self, passage_journal) if passage_journal is not None else None
@@ -748,7 +750,9 @@ class TranscriptProcessor:
             if self._passage_context_policy is not None:
                 semantic_scores = None
                 if self._semantic_candidates is not None:
-                    semantic_scores = await self._semantic_candidates.rank(transcript_for_llm, self.chunk_dict)
+                    guard_kwargs = {"request_guard": self._inference_guard} if self._inference_guard else {}
+                    semantic_scores = await self._semantic_candidates.rank(
+                        transcript_for_llm, self.chunk_dict, **guard_kwargs)
                 plan = plan_conversation_context(
                     transcript_for_llm, self.existing_json, self.chunk_dict,
                     self.chunk_utterance_map, self._passage_context_policy,
@@ -779,6 +783,8 @@ class TranscriptProcessor:
                     "trigger": trigger,
                 },
             )
+            if self._inference_guard is not None:
+                await self._inference_guard()
             output_json, gen_backend = await asyncio.to_thread(
                 self._inference_envelope.generate if self._inference_envelope is not None else generate_lct_json,
                 mod_input,
@@ -786,6 +792,8 @@ class TranscriptProcessor:
                 providers=self._providers,
                 status_messages=generation_status_messages,
             )
+            if self._inference_guard is not None:
+                await self._inference_guard()
             if gen_backend:
                 self._last_llm_backend = gen_backend
             for status_message in generation_status_messages:

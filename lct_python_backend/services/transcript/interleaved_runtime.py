@@ -99,11 +99,13 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
                 "retrieval": retrieval.fingerprint, "budgets": asdict(budgets), "tokenizer_id": tokenizer_id}
     fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     journal = PassageJournalSession(session_factory=session_factory, conversation_id=conversation_id,
-                                    owner_id=owner_id, policy_fingerprint=fingerprint)
+                                    owner_id=owner_id, policy_fingerprint=fingerprint,
+                                    inference_providers=[*envelope.providers, *retrieval.providers])
     processor = TranscriptProcessor(
         send_update=send_update, send_status=send_status,
         inference_envelope=envelope, passage_context_policy=context,
         passage_journal=journal, semantic_candidates=retrieval,
+        inference_guard=journal.check_consent,
     )
     processor.interpretation_policy_fingerprint = fingerprint
     return processor

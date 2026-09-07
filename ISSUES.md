@@ -18,8 +18,11 @@ generation and verify that returned output is not persisted. Reconciliation
 retrieval also checks consent before and after every embedding sub-batch; a
 regression proves revocation stops later batches without publishing partial
 cache results. An in-flight request already sent cannot be recalled by a
-database update. Shared live/passage scheduling still needs the same audit
-before activation. This remaining rollout gate does not block implementation.
+database update. The shared factory now supplies fresh guards before/after
+generation, per embedding batch and inside passage commit. Real-DB tests cover
+revocation before/during generation and source-preserving retry. A multi-passage
+real-DB embedding revocation test and actual entry-point activation audit remain
+before rollout. This remaining gate does not block implementation.
 
 ## 2026-09-07 — Interleaved conversation context (OPEN; experimental foundation)
 
