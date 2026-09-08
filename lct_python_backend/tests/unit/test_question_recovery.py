@@ -120,3 +120,27 @@ async def test_transport_failure_is_not_a_question_retry():
     with pytest.raises(RuntimeError):
         await run(envelope)
     assert len(envelope.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_invalid_historical_state_is_not_sent_to_model_for_repair():
+    history = [{**node('answer'), 'chunk_id': 'old'}]
+    chunks = {'old': 'Who keeps it?'}
+    envelope = Envelope([])
+    before = copy.deepcopy((history, chunks))
+    with pytest.raises(UnknownQuestionUpdate):
+        await generate_with_question_recovery(envelope=envelope, prompt='{}',
+            existing_nodes=history, chunks=chunks, passage='New source', fragments=['New source'])
+    assert envelope.requests == []
+    assert (history, chunks) == before
+
+
+@pytest.mark.asyncio
+async def test_consent_revoked_during_corrective_inference_prevents_return():
+    envelope = Envelope([[node('answer')], [node('open', 'answer')]])
+    async def guard():
+        if len(envelope.requests) == 2:
+            raise PermissionError('Consent revoked during correction')
+    with pytest.raises(PermissionError):
+        await run(envelope, guard=guard)
+    assert len(envelope.requests) == 2

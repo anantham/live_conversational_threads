@@ -1,5 +1,39 @@
 # WORKLOG
 
+## 2026-09-08 — Recovery review challenged and revised local replay started
+
+- Review9899 completed in175.817s, conversation
+  cf05f449-a1ad-4728-9f56-dc2ffd87949b, verdict issues_found. Receipt
+  tmp/question-recovery-review-1fc787c.json. Claims checked against call sites:
+  returning raw nodes does not lose evidence because processor attaches it
+  immediately afterward (covered by the real processor regression); normalizer
+  always supplies semantic_level; derived prompt envelopes serve different
+  question/identity schemas rather than leaf generation. No product fix made
+  for these unsupported failure paths. Verdict is not approval.
+- Context-complete follow-up submitted, session91434. Same source head1fc787c,
+  base6574065; prior six-file inventory plus tracked excerpts from
+  transcript_normalizer.py and question_review_runner.py (services/transcript).
+  Processor attachment/fold context also included. Exact inspected/scanned
+  44010bytes, SHA256909f9592fb1ffc48c8e307f78f411f7b7ce02e446fa4147ba262aed5ffa55d28.
+  Same approved Gemini account, synthetic/source-only exclusions and no-tools
+  instruction. No verdict yet; trajectory audit remains outstanding.
+- Added two synthetic adversarial tests: corrupt historical state is rejected
+  without inference/mutation, and consent revocation during the corrective call
+  prevents its result returning. Focused recovery/envelope suite29pass. Runtime
+  unchanged from1fc787c, so this does not invalidate the reviewed code or runs.
+- Verified both questions-replay database names absent before creating UTF8/C
+  template0 databases on127.0.0.1:55439. Empty-public-schema guard preceded model
+  metadata initialization. New local run local-20260908-questions, session40514,
+  CID7a15f84a-d859-504a-8585-a6f826213b82. Confirmed configuration checked for the
+  same pinned1263 utterances; LCT_LOCAL_ONLY=1, same8192output/32768context/native
+  counter. No old-policy resume, artifact acceptance or publication.
+- Superseded frontier PID36804/create_time1788864241.845464 verified by exact
+  run and database arguments after self-excluding probe. Sent graceful SIGINT
+  to retire old-policy inference before matched replacement. Handle64185 still
+  live awaiting in-flight completion at last poll; do not claim it stopped or
+  launch duplicate replacement until terminal. All evidence retained. New
+  frontier questions DB is prepared but its replay has NOT started.
+
 ## 2026-09-08 — Question recovery independent review submitted
 
 - REVIEW-EGRESS-A1: Gemini 3.1 Pro High through existing Antigravity account,
