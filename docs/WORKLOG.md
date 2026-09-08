@@ -1,5 +1,28 @@
 # WORKLOG
 
+## 2026-09-08 — Explicit host startup configuration with native counting
+
+- Previous turn made authoritative progress via committed/pushed HTTP/WS
+  handoffs. Both comparison handles21360/28949 remain live and returned fresh
+  inference receipts this turn; no restart or semantic completion inferred.
+- Added transcript/host_bootstrap.py and startup invocation. Optional local JSON
+  file selected by LCT_INTERLEAVED_RUNTIME_CONFIG supplies explicit capacity,
+  embedding IDs, budgets, temperature and pinned tokenizer path. Missing path
+  stays off; invalid configured state fails startup. No request configuration,
+  consent changes, automatic installs, inference, or production activation.
+- Only the measured private Qwen/Ollama non-thinking protocol is currently
+  supported by this native bootstrap. Provider IDs resolve against host settings;
+  captured non-secret model/endpoint/protocol contracts reject later drift before
+  stage construction. Full request budgeting and stored-consent checks remain
+  separate. Configured labels are not serving-host parity evidence.
+- Full unit + isolated PG suite2582 passed,6 skipped,523 warnings in17.56s before
+  adding the final startup-state test; focused21 tests then passed in0.51s.
+  Actual approved isolated engine smoke test loaded the pinned tokenizer through
+  the new bootstrap and counted one synthetic system/user pair as25 tokens;
+  counter identity pinned_qwen_7a5515aa7b2fd31e3d8cb4afa717632b1d24e18a1cc228c49029fd346a58d076.
+  No model call or host setting changed. Docs/INTERLEAVED_HOST_RUNTIME.md records
+  activation prerequisites and remaining source-first bulk/diarization work.
+
 ## 2026-09-08 — Connect HTTP extraction and WebSocket host runtime handoffs
 
 - Previous goal turn made progress: both immutable comparison forks started,

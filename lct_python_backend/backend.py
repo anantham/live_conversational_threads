@@ -162,6 +162,11 @@ async def lifespan(app: FastAPI):
         if local_only_enabled():
             raise
 
+    # Explicit host-owned configuration only. Invalid configured tokenization or
+    # routes fail startup; never silently downgrade to legacy processing.
+    from lct_python_backend.services.transcript.host_bootstrap import configure_host_runtime
+    await configure_host_runtime(app)
+
     logger.info("Connecting to database...")
     try:
         await db.connect()
