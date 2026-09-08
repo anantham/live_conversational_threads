@@ -53,6 +53,20 @@ def test_missing_tokenizer_fails_before_any_database(monkeypatch):
                          run_id='local-01'))
 
 
+@pytest.mark.parametrize('options', [
+    {'fork_from_database': 'postgresql+asyncpg://aditya@127.0.0.1:55439/lct_public_replay_origin'},
+    {'previous_reconciliation': 'a'*64},
+    {'resume': True, 'previous_reconciliation': 'a'*64,
+     'fork_from_database': 'postgresql+asyncpg://aditya@127.0.0.1:55439/lct_public_replay_origin'},
+])
+def test_ambiguous_fork_options_reject_before_database(monkeypatch, options):
+    import tools.replay_public_pipeline as module
+    monkeypatch.setattr(module, 'create_async_engine', lambda *a, **k: pytest.fail('database opened'))
+    with pytest.raises(ValueError, match='Fork requires'):
+        asyncio.run(main(database_url='postgresql+asyncpg://aditya@127.0.0.1:55439/lct_public_replay_target',
+                         run_id='synthetic', **options))
+
+
 class EmptyDB:
     def __init__(self, occupied=None):
         self.added = []

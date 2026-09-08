@@ -25,8 +25,13 @@ from tools.public_replay_harness import validate_target, replay_identity, ensure
 
 
 async def main(run=False, *, database_url, run_id, resume=False,
-               count_messages=None, tokenizer_id='utf8_bytes_v1', output_tokens=4096, frontier=False):
+               count_messages=None, tokenizer_id='utf8_bytes_v1', output_tokens=4096, frontier=False,
+               fork_from_database=None, previous_reconciliation=None):
     validate_target(database_url, run_id)
+    if bool(fork_from_database) != bool(previous_reconciliation) or (resume and fork_from_database):
+        raise ValueError('Fork requires source database and prior reconciliation fingerprint, without --resume')
+    if fork_from_database:
+        validate_target(fork_from_database, run_id)
     if run and (not callable(count_messages) or tokenizer_id == 'utf8_bytes_v1' or not tokenizer_id):
         raise ValueError('Fair replay requires an approved accurate message counter; tokenizer installation/host parity is pending')
     source = verified_public_source()
@@ -70,9 +75,15 @@ async def main(run=False, *, database_url, run_id, resume=False,
                   'reconciliation': runtime.build_reconciliation(**scope).fingerprint,
                   'aggregation': runtime.build_aggregation(**scope).envelope.fingerprint,
                   'question_review': runtime.build_question_review(**scope).envelope.fingerprint}
+        fork_receipt = None
+        if fork_from_database:
+            from tools.public_replay_fork import fork_replay
+            fork_receipt = await fork_replay(source_url=fork_from_database, target_url=database_url,
+                run_id=run_id, owner_id=owner, source=source, policy=policy,
+                previous_reconciliation=previous_reconciliation, external_llm_ok=frontier)
         async with sessions.begin() as db:
             await ensure_replay(db, run_id=run_id, owner_id=owner, source=source, policy=policy,
-                                resume=resume, external_llm_ok=frontier)
+                                resume=resume or fork_receipt is not None, external_llm_ok=frontier)
         output = Path(__file__).resolve().parents[1] / 'tmp/public-pipeline' / run_id / str(time.time_ns())
         output.mkdir(parents=True, exist_ok=False)
         manifest = {'run_id': run_id, 'source_sha256': SHA, 'policy': policy,
@@ -83,6 +94,7 @@ async def main(run=False, *, database_url, run_id, resume=False,
                     'comparison_limitations': ['Codex-added instructions', 'CLI decoding defaults',
                         'requested model not independently attested'] if frontier else [],
                     'accepted_for_publication': False}
+        manifest['fork_provenance'] = fork_receipt
         from lct_python_backend.services.transcript.question_review_repair import POLICY as question_repair_policy
         manifest['question_review_recovery'] = question_repair_policy
         from lct_python_backend.services.transcript.thread_identity_repair import POLICY as identity_repair_policy
@@ -129,6 +141,8 @@ if __name__ == '__main__':
     parser.add_argument('--run-id', required=True)
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--resume', action='store_true')
+    parser.add_argument('--fork-from-database', help='Read-only origin; target must be a separate empty replay database')
+    parser.add_argument('--previous-reconciliation', help='Exact prior relation-policy fingerprint for explicit fork')
     parser.add_argument('--frontier', action='store_true',
                         help='Explicit OpenAI public-only arm; external egress policy must separately permit it')
     parser.add_argument('--output-tokens', type=int, default=4096,
@@ -144,4 +158,5 @@ if __name__ == '__main__':
         counter = build_counter(args.tokenizer_path, server_version=server_version)
     asyncio.run(main(args.run, database_url=args.database_url, run_id=args.run_id, resume=args.resume,
                     output_tokens=args.output_tokens, frontier=args.frontier,
+                    fork_from_database=args.fork_from_database, previous_reconciliation=args.previous_reconciliation,
                     count_messages=counter, tokenizer_id=counter.tokenizer_id if counter else 'utf8_bytes_v1'))

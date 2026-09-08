@@ -1,5 +1,34 @@
 # WORKLOG
 
+## 2026-09-08 — Implement non-destructive pre-relation replay fork
+
+- Added tools/public_replay_fork.py and explicit --fork-from-database /
+  --previous-reconciliation options to the public replay CLI. Ordinary resume
+  stays exact-policy-only. Fork reads one repeatable-read, READ ONLY snapshot
+  of the origin; verifies owner/source/policy and complete extraction journal;
+  copies unchanged columns/IDs into a separate empty target in one transaction.
+  Only the reconciliation fingerprint may differ. Original DB is never written.
+- Unknown/downstream artifacts and existing hierarchy reject. Old relation
+  receipts/partial receipts are not copied, and only edges explicitly receipted
+  as created by that pass are excluded. Existing unrelated/reused edges stay.
+  Missing/changed edge provenance rejects. Target receives a source snapshot
+  digest, prior/new policy, excluded artifact hashes/edge IDs and copy counts.
+  This is experiment continuation, not automatic production migration.
+- Node copying uses a single multirow INSERT so forward self-FKs are valid.
+  Occupied targets reject without deletion. An advisory target transaction lock
+  serializes competing fork writers. No schema provisioning or actual fork has
+  been run yet; review and full-target acceptance remain pending.
+- Ten pure projection tests and one real-PG TEMP-table integration test pass.
+  The latter verifies every source/node column, original metadata preservation,
+  changed-owner/runtime/source rejection, same-target rejection, occupied-target
+  rejection and an explicit immediate Node self-FK. Other production FKs and
+  physical target provisioning remain untested. Initial fixture failed because
+  AsyncEngine.dispose is read-only per instance; corrected the fixture at the
+  class boundary, retaining real SQL execution and all postconditions.
+- Full unit + isolated PostgreSQL suite2558 passed,6 skipped,522 warnings in
+  28.68s. Local40514 remains live under the old policy. Neither real arm has been
+  restarted, forked, accepted, uploaded or deployed during this implementation.
+
 ## 2026-09-08 — Identity review findings checked against persistence boundary
 
 - Claude handle51041 completed exit0, provider session
