@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-09-08 — Completed independent Claude component review
+
+- The exact authorized 6285-byte packet completed on retry: Claude Opus5 main
+  model via Claude Code, session d124442c-0bec-4bab-a07d-fe4613febead, end_turn,
+  exit0, approximately157s. CLI reported $0.343326 usage (not independently
+  verified billing), zero web tools/subagents. Packet digest and exclusions are
+  recorded below. This is a two-file review at56df00e, not final-head release review.
+- Accepted finding: synthetic tokenizer ignored artifact bytes, weakening the
+  detachment test. Encoder now closes over artifact data and the test verifies
+  the mutated file differs from the pin before checking unchanged output.
+  Added non-callable factory and malformed-token-ID guard coverage.
+- Whitespace finding is conditional on stock template behavior, contradicted by
+  our recorded0.33.3 render-only measurements. Preserved strip behavior and added
+  measured-contract comment. Hex/engine whitespace normalization suggestions are
+  not required correctness changes; explicit identity differences fail safely.
+- Activation must still verify special-token handling, native engine and serving
+  parity; trusted factory identity is deliberately a host boundary. Counter and
+  envelope suite36 passed, one existing event-loop warning. No activation/deploy.
+
+
 ## 2026-09-08 — Real PostgreSQL replay bootstrap acceptance
 
 - Added a connection-private TEMP-table PostgreSQL test of the new replay helper.

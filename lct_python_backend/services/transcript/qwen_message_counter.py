@@ -38,6 +38,9 @@ class PinnedQwenMessageCounter:
                        or not isinstance(m['content'], str) for m in messages)
                 or [m['role'] for m in messages] != ['system', 'user']):
             raise ValueError('Counter requires exactly system/user text messages without extra features')
+        # Measured Ollama 0.33.3 _debug_render_only output trims both message
+        # boundaries (including empty user content); this is not generic Qwen.
+        # See WORKLOG 2026-09-08 pinned-counter parity evidence. Reverify on upgrade.
         rendered = ''.join('<|im_start|>' + m['role'] + '\n' + m['content'].strip()
                            + '<|im_end|>\n' for m in messages)
         rendered += '<|im_start|>assistant\n<think>\n\n</think>\n\n'

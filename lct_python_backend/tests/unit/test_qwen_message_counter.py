@@ -52,8 +52,21 @@ def test_extra_protocol_features_fail_closed(tmp_path, messages):
 
 
 def test_identity_binds_tokenizer_engine_and_loaded_bytes_are_detached(tmp_path):
-    counter = make(tmp_path)
+    counter = make(tmp_path, tokenizer_factory=lambda data: lambda text: list((data + text).encode('utf-8')))
     before = counter([{'role': 'system', 'content': 's'}, {'role': 'user', 'content': 'u'}])
     (tmp_path / 'tokenizer.json').write_text('changed', encoding='utf-8')
+    assert hashlib.sha256((tmp_path / 'tokenizer.json').read_bytes()).hexdigest() != hashlib.sha256(b'{}').hexdigest()
     assert counter([{'role': 'system', 'content': 's'}, {'role': 'user', 'content': 'u'}]) == before
     assert make(tmp_path, engine_id='different-engine').tokenizer_id != counter.tokenizer_id
+
+
+def test_factory_must_return_callable(tmp_path):
+    with pytest.raises(ValueError, match='encoder'):
+        make(tmp_path, tokenizer_factory=lambda data: None)
+
+
+@pytest.mark.parametrize('ids', [None, '123', [True], [-1], [1.5]])
+def test_malformed_token_ids_fail_closed(tmp_path, ids):
+    counter = make(tmp_path, tokenizer_factory=lambda data: lambda text: ids)
+    with pytest.raises(ValueError, match='token IDs'):
+        counter([{'role': 'system', 'content': 's'}, {'role': 'user', 'content': 'u'}])
