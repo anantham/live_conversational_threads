@@ -67,3 +67,14 @@ def test_explicit_reopening_restores_open_state():
     rows = [judgment('same_question', 'complete_answer'), judgment('same_question', 'explicit_reopening', 'event-2')]
     result = project_question_review(source, validate_question_review({'assessments': rows}, source))
     assert result['reviewed_status'] == 'open'
+
+
+def test_projection_keeps_exact_source_text_for_evidence_offsets():
+    source = request()
+    source['sources'][0]['text'] = '🙂 What did Mira study?'
+    source['events'][0]['evidence_range'] = [2, 22]
+    review = validate_question_review({'assessments': [judgment('related_aside', 'not_an_answer')]}, source)
+    result = project_question_review(source, review)
+    assert result['sources'] == source['sources']
+    result['sources'][0]['text'] = 'Changed copy'
+    assert source['sources'][0]['text'] == '🙂 What did Mira study?'

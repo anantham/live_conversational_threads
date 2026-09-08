@@ -166,7 +166,7 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
     identity_runner = ThreadIdentityRunner(session_factory=session_factory,
         conversation_id=conversation_id, owner_id=owner_id, envelope=envelope,
         candidate_policy_id=CANDIDATE_POLICY)
-    identity = {"version": "interleaved_runtime_v6_thread_identity", "inference": envelope.fingerprint,
+    identity = {"version": "interleaved_runtime_v7_review_sources", "inference": envelope.fingerprint,
                 "thread_identity": identity_runner.fingerprint,
                 "question_review": question_runner.envelope.fingerprint,
                 "retrieval": retrieval.fingerprint, "budgets": asdict(budgets), "tokenizer_id": tokenizer_id}

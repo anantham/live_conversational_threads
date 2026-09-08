@@ -40,4 +40,5 @@ def project_question_review(request, review):
     return {'question_id': request['question_id'], 'request_hash': review['request_hash'],
             'provisional_status': request['provisional_status'], 'reviewed_status': status,
             'events': events, 'unresolved_events': unresolved,
+            'sources': copy.deepcopy(request['sources']),
             'verification': 'model_reviewed_not_human_verified'}

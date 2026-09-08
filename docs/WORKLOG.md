@@ -1,5 +1,18 @@
 # WORKLOG
 
+## 2026-09-08 — Exact question source text retained for review evidence
+
+- Viewer audit found review ranges had no attached source text; ordinary
+  chunk_dict can contain speaker-prefixed/newline rendering with incompatible
+  offsets. Projection now deep-copies exact request sources alongside events.
+  Failing-first source-preservation test failed missing sources, now passes.
+  Runtime v7 binds the changed next-passage context shape and budget footprint.
+- Frontend must validate against these sources, use code-point offsets (not JS
+  UTF16 slice), and retain model-review/policy labels. No viewer display implemented
+  yet. Sources include existing per-passage attribution metadata where supplied.
+  This is not independent proof of semantic accuracy or source authenticity.
+
+
 ## 2026-09-08 — Identity revision guarded through final parent commit
 
 - Optional membership revision guard/identity now checks the fixed proposal basis
