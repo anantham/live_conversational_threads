@@ -64,20 +64,26 @@ def build_record(revision: int, previous_sequence: int, sources: list[dict], pat
 
 def restore_records(records: list[dict]) -> dict:
     """Fold committed patches without running inference or changing identities."""
-    state = {"revision": 0, "committed_through": 0, "nodes": [], "chunks": {},
+    state = {"revision": 0, "committed_through": -1, "nodes": [], "chunks": {},
              "utterance_chunk_map": {}}
     node_ids: set[str] = set()
     for record in records:
         body = {k: v for k, v in record.items() if k != "digest"}
         if _hash(body) != record.get("digest"):
             raise JournalConflict("Checkpoint digest mismatch")
+        # Earlier one-based journals used 0 as their initial predecessor. Keep
+        # those immutable receipts readable, without treating a new zero-based
+        # import's first utterance as already committed.
+        previous = state["committed_through"]
+        if state["revision"] == 0 and record["previous_sequence"] == 0:
+            previous = 0
         if (record["revision"] != state["revision"] + 1
-                or record["previous_sequence"] != state["committed_through"]):
+                or record["previous_sequence"] != previous):
             raise JournalConflict("Checkpoint history is not contiguous")
         sources = record["sources"]
         sequences = [s["sequence_number"] for s in sources]
         if (not sequences or sequences != sorted(set(sequences))
-                or sequences[0] <= state["committed_through"]
+                or sequences[0] <= previous
                 or sequences[-1] != record["committed_through"]):
             raise JournalConflict("Checkpoint source cursor is inconsistent")
         patch = record["patch"]
@@ -181,7 +187,7 @@ async def append_passage(db, *, conversation_id: str, owner_id: str, expected_re
     records = await load_journal(db, conversation_id=conversation_id, owner_id=owner_id)
     if expected_revision < 0 or expected_revision > len(records):
         raise JournalConflict("Unknown predecessor revision")
-    previous = records[expected_revision - 1]["committed_through"] if expected_revision else 0
+    previous = records[expected_revision - 1]["committed_through"] if expected_revision else -1
     if not source_ids or len(source_ids) != len(set(source_ids)):
         raise JournalConflict("Ordered distinct source IDs are required")
     rows = (await db.execute(select(Utterance).where(

@@ -22,6 +22,20 @@ def patch(i):
             "utterance_chunk_map": {f"c-{i}": [f"u-{i}"]}}
 
 
+def test_empty_journal_precedes_zero_based_import_source():
+    assert restore_records([])['committed_through'] == -1
+
+
+def test_zero_based_first_turn_survives_recovery():
+    records = [build_record(1, -1, [source(0)], patch(0)),
+               build_record(2, 0, [source(1)], patch(1))]
+    before = copy.deepcopy(records)
+    state = restore_records(records)
+    assert state['committed_through'] == 1
+    assert [node['id'] for node in state['nodes']] == ['n-0', 'n-1']
+    assert records == before
+
+
 def test_restore_preserves_graph_source_and_cursor_without_reinterpreting():
     records = [build_record(1, 0, [source(1)], patch(1)), build_record(2, 1, [source(2)], patch(2))]
     original = copy.deepcopy(records)

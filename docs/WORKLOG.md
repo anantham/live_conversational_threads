@@ -1,5 +1,28 @@
 # WORKLOG
 
+## 2026-09-08 — Preserve structured-import turn zero in journal/backlog
+
+- RawTurnV1 uses dense zero-based seq and persist_turns writes turn.seq directly.
+  Journal recovery initialized committed_through=0 and fresh append used the same
+  predecessor. Reproduced two failing tests: empty cursor incorrectly treats0 as
+  committed; a valid zero-based record cannot recover as contiguous. A live
+  backlog query using that cursor also excludes turn0 before processing.
+- passage_journal now uses-1 for a new journal/fresh append. Recovery explicitly
+  accepts immutable historical one-based initial predecessor0, with existing
+  source-order validation still requiring its first source >0. No receipt rewrite
+  or inferred source renumbering. Later contiguous predecessor checks unchanged.
+- Added a real-PG test that reads both zero-based source IDs via backlog, commits
+  both and recovers both. Existing one-based history, corruption, restart and
+  notification tests remain unchanged. Full unit + isolated PostgreSQL suite:
+  2561 passed,6 skipped,522 warnings in18.21s. Production route wiring is still
+  pending; this fixes a concrete prerequisite rather than claiming activation.
+- Antigravity fork review completed issues_found, conversation
+  b9d3015c-ff72-45da-989b-ff1fa5e5e8b2. Step audit shows only14/15, bothcomplete,
+  no subtrajectory. No approval inferred. Two findings assume partial reviews
+  create edges or full reviews mutate existing edges; inspected checkpoint writers
+  do neither. Canonical consistency concern is being checked against saved
+  reconciliation basis hashes before any actual fork. Receipt retained.
+
 ## 2026-09-08 — Fork review timeout; bounded Antigravity fallback
 
 - Claude90592 terminated exit1 after the harness's600-second subprocess timeout,
