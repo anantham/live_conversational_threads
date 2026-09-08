@@ -10,7 +10,8 @@ import uuid
 
 from sqlalchemy import select
 from lct_python_backend.models import PipelineArtifact
-from .abstraction_proposals import PROPOSAL_PROMPT, build_proposal_request, validate_proposals
+from .abstraction_proposals import (PROPOSAL_PROMPT, build_proposal_request,
+                                   validate_proposals, proposal_identity_context)
 from .aggregation_checkpoint import capture_aggregation
 from .membership_review import MEMBERSHIP_PROMPT
 from .membership_runner import MembershipReviewRunner
@@ -41,7 +42,9 @@ class BoundedAggregationRunner:
                 'context for grouping, retaining uncertainty and source qualifications. Do not '
                 'merge or rename original thread IDs, infer transitive equivalence, or force '
                 'membership merely because two occurrences share an inquiry. All groupings '
-                'still require the independent source-verification pass.\n')
+                'still require the independent source-verification pass. The audit basis hash '
+                'binds full records omitted from this proposal-only view; all review '
+                'judgments, rationales and quoted citations are included, not full transcripts.\n')
         self.envelope = envelope.with_system_prompt(prompt)
         self.memberships = MembershipReviewRunner(session_factory=session_factory, **self.scope,
                                                   envelope=envelope.with_system_prompt(MEMBERSHIP_PROMPT))
@@ -103,7 +106,7 @@ class BoundedAggregationRunner:
         request = build_proposal_request(children, target_level=target_level,
             source_snapshot_hash=_hash(snapshot['request']['sources']), envelope=self.envelope)
         if self.identity_review_loader is not None:
-            request['thread_identity_reviews'] = copy.deepcopy(snapshot['thread_identity_reviews'])
+            request['thread_identity_reviews'] = proposal_identity_context(snapshot['thread_identity_reviews'])
         previous = None
         seen_proposals = set()
         for generation in range(3):

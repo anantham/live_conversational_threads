@@ -1,6 +1,7 @@
 """Test intent: actual proposal prompts consume current explicitly selected
 identity annotations without ID rewrites or forced memberships. Full annotation
-payload is budgeted; a source/annotation revision during generation cannot save a
+judgments and citations are budgeted without duplicating audit transcripts;
+a source/annotation revision during generation cannot save a
 proposal receipt. Storage/source capture and membership synthesis are doubled.
 Zero selected candidates remain explicitly not reviewed, not a reason to use
 another policy or to prevent source-based grouping.
@@ -69,7 +70,9 @@ async def test_actual_proposal_consumes_selected_review_without_rewriting_ids(mo
     context=prompts[0]['thread_identity_reviews']
     assert context['policy_fingerprint']=='chosen'
     assert context['annotations'][0]['judgment']=='same_inquiry'
-    assert context['annotations'][0]['sources']==[{'text':'Full unabridged evidence.'}]
+    assert 'sources' not in context['annotations'][0]
+    assert context['annotations'][0]['source_bodies_included'] is False
+    assert annotations['policies'][0]['annotations'][0]['sources']==[{'text':'Full unabridged evidence.'}]
     assert snapshot==before and len(stored)==1
 
 
@@ -87,7 +90,7 @@ async def test_revision_during_generation_cannot_save_receipt(monkeypatch,kind):
 @pytest.mark.asyncio
 async def test_full_annotations_must_fit_and_missing_policy_stays_explicitly_unreviewed(monkeypatch):
     runner,_,annotations,stored,prompts=make_runner(monkeypatch)
-    annotations['policies'][0]['annotations'][0]['sources'][0]['text']='evidence '*10000
+    annotations['policies'][0]['annotations'][0]['rationale']='qualification '*10000
     with pytest.raises(ContextBudgetExceeded): await runner.run_level(2)
     assert stored==[] and prompts==[]
     annotations['policies'][0]['policy_fingerprint']='different'
@@ -103,3 +106,18 @@ async def test_unconfigured_legacy_request_unchanged(monkeypatch):
     await runner.run_level(2)
     assert 'thread_identity_reviews' not in prompts[0]
     assert len(stored)==1
+
+@pytest.mark.asyncio
+async def test_large_audit_sources_do_not_duplicate_into_proposal(monkeypatch):
+    runner,_,annotations,_,prompts=make_runner(monkeypatch)
+    review=annotations['policies'][0]['annotations'][0]
+    review['sources'][0]['text']='evidence '*100000
+    review['rationale']='Related, not equivalent.'
+    review['evidence']=[{'quote':'evidence','node_id':'a','source_id':'s'}]
+    before=copy.deepcopy(review)
+    await runner.run_level(2)
+    projection=prompts[0]['thread_identity_reviews']['annotations'][0]
+    assert projection['rationale']==before['rationale']
+    assert projection['evidence']==before['evidence']
+    assert review==before
+    assert len(json.dumps(projection)) < 1000

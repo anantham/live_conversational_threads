@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-09-08 — Actual provenance recovery and proposal budget preflight
+
+- Read-only /private/tmp/verify-public-source-links.py ran the production matcher
+  on copied journal nodes: all 14 of 14 previously unlinked frontier nodes now
+  recover unique source spans (2–4 utterances each). Original DB/journal unchanged.
+- Proposal measurement from four saved passage checkpoints: base 17,450 native
+  reference tokens; adding 12 complete identity annotations yielded 559,723.
+  Root cause is repeated full source audit bodies in a proposal-only overview.
+- Added a proposal projection retaining every judgment, rationale, node context,
+  quote and citation offset. Full source/audit digests remain stored; a complete
+  policy hash binds the view, and existing full-snapshot commit guards remain.
+  Only repeated source bodies and redundant audit identifiers are omitted.
+- Projected request measures 26,792 reference tokens, STILL ABOVE 24,064 input
+  allowance (before extra prompt text). Do not start a final replay claiming this
+  resolves budgeting. Next: lossless shared identifier packing or principled
+  bounded global proposal composition, retaining all children and qualifications.
+  Diagnostic /private/tmp/measure-frontier-proposal.py; no inference or DB writes.
+- Test intent updated for proposal-only projection, oversized judgment rejection,
+  full source preservation and revision detection. No artifacts published.
+
 ## 2026-09-08 — Distinguish recovered frontier reconnects from terminal failure
 
 - Synthetic regression reproduced the exact saved CLI event sequence: reconnect
