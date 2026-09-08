@@ -17,9 +17,17 @@ async def run_interleaved_stages(*, runtime, conversation_id, owner_id, provider
             utterance_id=utterance['id'])
     await processor.flush()
     moments = list(processor.existing_json)
+    return await run_interleaved_final_stages(runtime=runtime, moments=moments,
+        chunks=processor.chunk_dict, **scope)
+
+
+async def run_interleaved_final_stages(*, runtime, conversation_id, owner_id,
+                                     providers, privacy, moments, chunks):
+    """Finalize committed moments identically for persisted imports and live audio."""
+    scope = dict(conversation_id=conversation_id, owner_id=owner_id, providers=providers, privacy=privacy)
     from lct_python_backend.services.transcript.thread_identity_context import identity_candidates
     identity = await runtime.build_thread_identity(**scope).run(
-        identity_candidates(moments, processor.chunk_dict))
+        identity_candidates(moments, chunks))
     reconciliation = await runtime.build_reconciliation(**scope).run()
     receipts = await runtime.build_aggregation(**scope).run_through()
     questions = await runtime.build_question_review(**scope).run()

@@ -167,6 +167,16 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         expected_calls = [1, 2, 2, 3, 4, 5] if revise_first else [1, 2, 3, 4, 5]
         assert calls == expected_calls
         assert stages == ['moment', 'inspection'] + (['proposal', 'review', 'decision'] if revise_first else []) + ['proposal', 'review', 'decision', 'parent'] * 4
+        # Live finalization must recover the same committed graph and reviewed
+        # stages, not replace it or repeat model calls after an import/restart.
+        from lct_python_backend.services.stt.interleaved_live import finalize_live_passages
+        live_processor = config.build(conversation_id=str(cid), owner_id=owner,
+            providers=[local], privacy={'local_llm_ok': True, 'external_llm_ok': False}, send_update=None)
+        await live_processor._passage_commit.recover()
+        live_result = await finalize_live_passages(config=config, processor=live_processor,
+            conversation_id=str(cid), owner_id=owner, providers=[local])
+        assert live_result['node_count'] == 5
+        assert calls == expected_calls
         from lct_python_backend.share_api import export_threads
         async with sessions() as db:
             first = json.loads((await export_threads(str(cid), db=db)).body)

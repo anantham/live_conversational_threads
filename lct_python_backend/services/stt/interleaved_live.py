@@ -23,3 +23,16 @@ async def prepare_live_passages(*, config, conversation, owner_id, providers,
     pump = PassagePump(processor=processor, read_page=read_page,
                        committed_sequence=state["committed_through"], processor_lock=processor_lock)
     return processor, pump
+
+
+async def finalize_live_passages(*, config, processor, conversation_id, owner_id, providers):
+    """Use stored consent and shared reviewed final stages, never legacy replacement."""
+    from lct_python_backend.services.transcript.passage_journal import _authorized_conversation
+    from lct_python_backend.services.import_pipeline.interleaved_stages import run_interleaved_final_stages
+    async with config.session_factory() as db:
+        conversation = await _authorized_conversation(db, conversation_id, owner_id, lock=False)
+        metadata = conversation.source_metadata if isinstance(conversation.source_metadata, dict) else {}
+        privacy = metadata.get('privacy')
+    return await run_interleaved_final_stages(runtime=config, conversation_id=conversation_id,
+        owner_id=owner_id, providers=providers, privacy=privacy,
+        moments=list(processor.existing_json), chunks=dict(processor.chunk_dict))

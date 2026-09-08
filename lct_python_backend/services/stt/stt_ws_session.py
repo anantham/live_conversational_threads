@@ -509,6 +509,9 @@ class WsSessionContext:
             return nodes, chunk_utt_map
 
     async def _run_graph_persist_loop(self, *, reason: str) -> None:
+        if self._interleaved_runtime is not None:
+            self.graph_persist_requested = False
+            return
         async with self.graph_persist_lock:
             current_reason = reason
             while self.graph_persist_requested:
@@ -578,6 +581,8 @@ class WsSessionContext:
                 current_reason = "coalesced_update"
 
     def _schedule_graph_persistence(self, *, reason: str) -> None:
+        if self._interleaved_runtime is not None:
+            return
         if not self.state.conversation_id:
             return
         self.graph_persist_requested = True
@@ -588,6 +593,8 @@ class WsSessionContext:
         )
 
     async def _ensure_graph_persisted(self, *, reason: str) -> None:
+        if self._interleaved_runtime is not None:
+            return
         if not self.state.conversation_id:
             return
         self.graph_persist_requested = True
@@ -1145,7 +1152,7 @@ class WsSessionContext:
         )
         await self._flush_pending_speaker_reconciliations_locked()
         if patch_payload and str(patch_payload.get("kind") or "").strip().lower() == "finalized":
-            if self._passage_pump is None:
+            if self._interleaved_runtime is None:
                 self._schedule_graph_persistence(reason="finalized_patch")
 
     async def _processor_status(self, level: str, message: str, context: Dict[str, Any]) -> None:
@@ -2541,19 +2548,28 @@ class WsSessionContext:
                 # themes (L4), and arcs (L5) so the macro view has content.
                 # Failures are non-fatal — persist proceeds with whatever
                 # tiers did materialize.
-                await self._run_hierarchy_consolidation_locked()
+                if self._interleaved_runtime is None:
+                    await self._run_hierarchy_consolidation_locked()
                 # ADR-032 Part D: semantic edge enrichment via the new
                 # enrich_semantic_edges prompt, with IndrasNet retrieval
                 # injecting cross-conversation context (Part E). Runs after
                 # consolidation so it sees the full 5-tier graph. Failures
                 # are non-fatal — without semantic edges, the conversation
                 # still saves; edges just won't be there to author.
-                await self._run_edge_enrichment_locked()
-            await self._ensure_graph_persisted(reason="final_flush")
+                if self._interleaved_runtime is None:
+                    await self._run_edge_enrichment_locked()
+            if self._interleaved_runtime is not None:
+                from .interleaved_live import finalize_live_passages
+                await finalize_live_passages(config=self._interleaved_runtime,
+                    processor=self.processor, conversation_id=str(self.state.conversation_id),
+                    owner_id=resolve_owner_id(), providers=self._runtime_llm_providers)
+            else:
+                await self._ensure_graph_persisted(reason="final_flush")
             # Live-linkage fix: nodes + utterances are now both persisted but
             # unlinked — reconcile them so speaker rollup / rename / audio-seek
             # work. Runs last; nothing re-persists after this.
-            await self._run_utterance_node_reconciliation()
+            if self._interleaved_runtime is None:
+                await self._run_utterance_node_reconciliation()
             # Single-speaker convenience: if diarization + the participant
             # picker agree there is exactly one person, name the utterances
             # automatically. Independent of the reconciler; neither re-persists.

@@ -1556,3 +1556,17 @@ interleaved-import sequence reproduced two export 404s at share_api.py:509.
 Both loaders now restore sys.modules and the package attribute via monkeypatch.
 Same ordered pair plus pure API units: 51 passed. Full combined unit/PostgreSQL
 suite: 2467 passed, 6 skipped. No production access or export code changed.
+
+2026-09-08 follow-up: after live-finalization parity additions, combined run had
+2480 passes and one test_aggregation_roundtrip_postgres.py summary-case failure
+at graph_data equality, six skips. Isolated file immediately passed both cases.
+This is not the prior export404 signature. Capture detailed differing fields and
+test order before attribution; no oracle change or production workaround.
+
+## 2026-09-08: Journaled live finalization acceptance remains incomplete
+
+Confirmed/fixed legacy snapshot replacement dispatch during journaled final flush.
+Mode guard and shared reviewed finalization now have unit/real-DB coverage.
+Before rollout, verify the actual WS final-flush route and delivery of final
+higher tiers to the connected client, not merely a correct later export. Keep
+explicit source links untouched by legacy heuristic relinking. See WORKLOG.

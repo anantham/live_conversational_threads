@@ -1,5 +1,41 @@
 # WORKLOG
 
+## 2026-09-08 — Live finalization persistence boundary corrected
+
+- Gemini boundary review completed in296.34s, verdict findings, conversation
+  7936455c-0aac-4f47-bb5e-241f9e70122d. Packet receipt above; observed trajectory
+  only14/15, no tool actions. Reviewer owner-None claim falsified: owner_context
+  is a direct configured-owner resolver returning a nonempty string, not DI.
+  Client patch scenario also not established: WS dispatch does not accept a
+  finalized graph patch message as claimed. Do not treat these as reproduced.
+- Independent inspection found a real path: _run_post_flush_processing always
+  called legacy consolidation/enrichment and _ensure_graph_persisted, even with
+  an interleaved runtime. A recorder-backed failing regression reproduced a
+  replacement writer call with protect_node_ids=None, with pump both present
+  and absent. No actual data was deleted in the reproduction. Confidence0.99.
+- A1 fix: guard legacy persistence entry points by configured runtime mode, not
+  pump lifecycle. Live journal mode uses shared run_interleaved_final_stages
+  (extracted unchanged from import) via finalize_live_passages, which reads
+  current owned consent before the existing stage guards. Legacy heuristic
+  utterance relinking is excluded from explicit journal evidence; existing
+  participant-name inference remains. Source diarization is not disabled.
+- New regression also proves legacy mode still writes. PostgreSQL parity test
+  recovers a committed import through live finalization, returns all five tiers,
+  then exports unchanged with no additional model calls. Four import tests and
+  four persistence-mode cases pass. Initial full combined suite2479pass/6skip;
+  final expanded run2480pass/1failure/6skip: aggregation roundtrip summary case
+  graph_data equality differed. Isolated same file immediately2pass. Cause
+  unconfirmed; preserve the failure, do not claim final combined green.
+- Remaining live acceptance: real post-flush WS routing and final higher-tier
+  client notification need end-to-end verification. This is not a deployment
+  approval. Shared stage extraction does not change import prompts, policy or
+  ordering, so current comparison runs need no restart for this live fix.
+- Local handle84358 is now terminal: second response received, then
+  fold_question_memory rejected 'Question update refers to an unknown question'.
+  Preserve raw response and checkpoint; next inspect original question IDs and
+  source before designing bounded recovery. Frontier64185 remains live. No
+  completed new artifacts or publication. Next review must cover this live fix.
+
 ## 2026-09-08 — Boundary review running and rollout preflight
 
 - Fresh git fetch: origin/main remains265fc4ad9c6f0df2e4f15212bb45c3b6e8ed47d9;
