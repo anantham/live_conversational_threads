@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-09-08 — Question recovery independent review submitted
+
+- REVIEW-EGRESS-A1: Gemini 3.1 Pro High through existing Antigravity account,
+  scoped review at 1fc787c, processor/test diff from 6574065. Exact 26124-byte
+  packet SHA256 10702417744bbbf0071aa1e52f690a64019d1bc36d9444d54772a5ebe6d276e2.
+  Full tracked files: services/transcript/question_recovery.py,
+  question_memory.py, inference_envelope.py; tests/unit/test_question_recovery.py.
+  Diff files: services/transcript/transcript_processing.py and
+  tests/unit/test_inference_envelope.py. All paths under lct_python_backend.
+- Exact packet inspected and secret-scanned; source/tests only, synthetic
+  fixtures. Excludes transcripts, recordings, credentials, runtime artifacts and
+  unrelated material. Existing plan/sandbox flags are not hard tool isolation;
+  explicit no-tools instruction and empty temporary cwd used, trajectory audit
+  required on completion. Session9899 running; no verdict or approval yet.
+- Frontier64185 freshly polled with inference receipts and remains live. No
+  terminal-state assumption or duplicate replay launch. New final matched runs
+  wait for recovery review; existing outputs are retained as diagnostic evidence.
+
 ## 2026-09-08 — Bounded question-opening recovery integrated
 
 - A1 implementation follows the successful local correction diagnostic. New
