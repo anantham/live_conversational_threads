@@ -1,5 +1,20 @@
 # WORKLOG
 
+## 2026-09-08 — Parallel full-replay readiness audit
+
+- Resumed at clean 22bb4b9. Delegated read-only replay and export/privacy audits
+  while independently inspecting runtime and shared stage composition.
+- Confirmed a new conversation in the existing DB is insufficient: utterance IDs
+  are global primary keys. Fresh comparison arms need isolated databases retaining
+  exact source IDs. The runner also needs owner preflight and exact usage/message
+  receipts before generation. Recorded implementation/test intent in
+  docs/INTERLEAVED_REPLAY_NEXT_RUN.md.
+- Full stage composition does include aggregation; its completion status remains
+  explicitly reconciliation_pending. No full replay was launched or claimed.
+- Re-presented the outstanding H1 pinned-tokenizer dependency decision with scope
+  and recommendation. No dependency installation or provider activation performed.
+
+
 ## 2026-09-08 — Explicit question-review export through the normal endpoint
 
 - Prior turn was progress (a4fdadb pushed); verified clean checkout. Normal
