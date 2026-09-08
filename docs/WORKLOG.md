@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Antigravity follow-up findings recovered and scoped
+
+- Review session 50452 exited successfully. Saved response
+  tmp/frontend-review-3f4eb6b.json; conversation
+  3ca34727-dc1e-4d7d-98cf-81a1822b373d; Gemini 3.1 Pro High,
+  236.64 seconds, verdict issues_found. Receipt has only completed step types
+  14/15, no tool steps. This is not an approval or a full-branch review.
+- Two low-severity findings: repeated Array.from(row.text) length calculation
+  in sourceIndex, and review index rebuild on desktop drawer close/reopen.
+  Both mechanisms confirmed in current code. Desktop node-to-node switching
+  reuses the selector, but ThreadsViewer conditionally unmounts NodeDetail
+  when selection clears (lines 544 onward). Reopening therefore rebuilds it.
+  Follow-up should retain the selector at viewer scope and reuse the computed
+  Unicode length; retain source validation and replacement invalidation.
+- Reviewer's null-node question is falsified by NodeDetail's existing
+  `if (!safeNode) return null` at line 573 before SourceReviewDetails renders.
+  flattenThreadsGraph accepts flat/one-level nested arrays and the artifact
+  loader validates the graph shape; neither limitation is proof of a bug.
+- Local committed_through values are 301, 637, 957 of 1263 source utterances.
+  This is first-pass source coverage, not total-work percentage or an ETA.
+  Relationship review, aggregation, semantic acceptance and publication remain.
+
 ## 2026-09-08 — Frontend re-review submitted and wider suite rechecked
 
 - Submitted frontend base 265fc4ad9c6f0df2e4f15212bb45c3b6e8ed47d9 to
