@@ -425,6 +425,9 @@ async def run_bulk_processing_worker(
             log=logger,
         )
 
+        if final_source_type == "youtube" and telemetry.get("graph_persist_error"):
+            raise ValueError("YouTube graph could not be saved. The local transcript recovery receipt remains available; import is incomplete.")
+
         artifact_export_payload = await run_import_artifact_export(
             db=db,
             conversation_id=resolved_conversation_id,

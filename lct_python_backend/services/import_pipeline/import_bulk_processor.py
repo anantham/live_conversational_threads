@@ -93,6 +93,13 @@ async def build_process_file_stream(
     async def worker() -> None:
         nonlocal temp_path, content_size
         try:
+            selected_transcriber = transcribe_uploaded_file
+            if source_type == "youtube":
+                from .youtube_transcriber import transcribe_youtube_request
+
+                async def selected_transcriber(**kwargs):
+                    return await transcribe_youtube_request(emit=emit, **kwargs)
+
             if suffix == ".zip":
                 try:
                     transcript_text = await build_whatsapp_transcript_text(Path(temp_path), emit=emit)
@@ -130,7 +137,7 @@ async def build_process_file_stream(
                 load_artifact_export_settings=load_artifact_export_settings,
                 load_llm_config=load_llm_config,
                 load_llm_providers=load_llm_providers,
-                transcribe_uploaded_file=transcribe_uploaded_file,
+                transcribe_uploaded_file=selected_transcriber,
                 transcribe_audio_segmented=transcribe_audio_segmented,
                 chunk_transcript_lines=chunk_transcript_lines,
                 transcript_processor_cls=transcript_processor_cls,

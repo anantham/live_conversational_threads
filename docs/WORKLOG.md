@@ -1,5 +1,33 @@
 # WORKLOG
 
+## 2026-09-08 — Restore YouTube upload backend; scoped guard review complete
+
+- Restored youtube_download/source/transcriber.py byte-for-byte from 8dd2d40,
+  plus its source-specific selection in import_bulk_processor and fatal
+  persistence-failure check in import_bulk_pipeline. No cookies, new install,
+  configuration activation or real download. ENABLE_YOUTUBE_IMPORT remains
+  opt-in; mandatory local whole-recording diarization, timing/unknown-speaker
+  preservation and private recovery behavior are retained.
+- Ported the earlier synthetic boundary tests into the current unit suite;
+  its obsolete export fixture was not copied (current export ownership/source
+  tests cover that contract). Added upload-facade dispatch tests for YouTube
+  versus ordinary text. Focused 40 passed; full unit + isolated PostgreSQL run
+  2525 passed, 6 skipped, 516 warnings in 18.88 seconds. This restores the
+  transcriber path, NOT its pending source-first journal integration or the
+  health/UI activation signal. No frontend source was overwritten.
+- Claude review session d8ca3852-03a1-4101-ab84-3eac4029668e completed successfully
+  for the previously recorded packet at 3bf1b13: verdict approve, scoped only to
+  journal replacement protection. Reported model claude-sonnet-5, with a Haiku
+  auxiliary model entry; no subagents/web requests and no permission denials.
+  Exact response retained in tmp/journal-guard-review-3bf1b13.json.
+- Reviewer correctly identifies missing simultaneous-writer coverage and
+  narrower post-rejection assertions. Its repeated assertion that PostgreSQL
+  tests were skipped is false: the explicit isolated DB URL was supplied and
+  the focused five real-DB cases passed; six skips belong elsewhere. Shared
+  STAGE and append_passage's Conversation FOR UPDATE lock are verified locally
+  in passage_journal.py but were outside the packet. No whole-branch approval
+  or deployment conclusion follows from this scoped approval.
+
 ## 2026-09-08 — Independent guard review submitted; YouTube integration located
 
 - Claude's stated 16:50 Mauritius reset passed; submitted a new scoped review
