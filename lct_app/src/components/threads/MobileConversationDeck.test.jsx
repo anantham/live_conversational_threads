@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,6 +21,28 @@ import MobileConversationDeck from "./MobileConversationDeck";
 
 let container;
 let root;
+
+// A parent beginning with null must receive navigation before the deck unmounts.
+it("restores the visited branch after a null-initialized parent remounts the deck", () => {
+  const { bundle, nodes } = fixture();
+  function Parent() {
+    const [state, setState] = useState(null);
+    const [map, setMap] = useState(false);
+    return map ? <button onClick={() => setMap(false)}>Return to cards</button> : (
+      <MobileConversationDeck bundle={bundle} graphNodes={nodes} deckState={state}
+        onDeckStateChange={setState} onShowMap={() => setMap(true)}
+        onDownloadTranscript={() => {}} onOpenAnother={() => {}} onOpenLibrary={() => {}} />
+    );
+  }
+  act(() => root.render(<Parent />));
+  const click = (selector) => act(() => container.querySelector(selector).click());
+  click('button[aria-label="Drill into a finer level of detail"]');
+  const previous = container.querySelector('[data-testid="mobile-deck-card"]').textContent;
+  const mapButton = [...container.querySelectorAll('button')].find(button => /map/i.test(button.getAttribute('aria-label') || button.textContent));
+  act(() => mapButton.click());
+  click('button');
+  expect(container.querySelector('[data-testid="mobile-deck-card"]').textContent).toBe(previous);
+});
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;

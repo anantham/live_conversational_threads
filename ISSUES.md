@@ -1,6 +1,6 @@
 # ISSUES
 
-## 2026-09-08 — Mobile map return loses selected moment (OPEN)
+## 2026-09-08 — Mobile map return loses selected moment (FIXED ON TASK BRANCH)
 
 Reproduced twice in threads-viewer-mobile-journey.spec.ts:307 on Chromium at
 375px: after map return the deck shows the root arc rather than the previously
@@ -9,6 +9,11 @@ gate; not blocking inference. Investigate ThreadsViewer mobileDeckState and
 MobileConversationDeck remount synchronization. Do not weaken the assertion.
 Done when the existing complete journey test passes and branch selection survives
 map/card round trips, without breaking new-conversation initialization.
+
+Resolved by notifying the parent on navigation even when initial controlled state
+is null. Regression failed before the fix (theme returned as arc); passes after.
+The unchanged full mobile browser journey and both desktop navigation tests pass.
+Not yet merged or deployed.
 
 ## 2026-09-08 — Default single-conversation export ownership audit (OPEN)
 

@@ -1,5 +1,20 @@
 # WORKLOG
 
+## 2026-09-08 — Preserve mobile branch across map/card remount
+
+- Cause isolated in useMobileConversationDeckState: null parent state selected
+  internal mode, which never called onDeckStateChange. Map unmount discarded
+  internal navigation. Added parent-remount regression; observed theme-to-arc
+  failure before fix. Commit now notifies parent in both controlled and internal
+  modes while preserving internal fallback for consumers without a parent.
+- No UI layout, navigation semantics or initialization reset changed. Existing
+  ingest still clears state when another artifact is opened.
+- Fifteen component/model tests passed; all four existing mobile-journey and
+  desktop-provenance browser tests passed, including formerly failing map return.
+  Tests use synthetic fixtures and do not establish real candidate quality.
+- Replay handles 95214 local and 5577 frontier remain live; frontier returns
+  inference receipts. No merge/deployment or public candidate acceptance yet.
+
 ## 2026-09-08 — Lossless speaker dictionary for identity requests
 
 - Local session 67607 exited at thread-identity full-message budget after its

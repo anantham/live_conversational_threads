@@ -32,11 +32,12 @@ export default function useMobileConversationDeckState({
   const deckState = isControlled ? controlledDeckState : internalDeckState;
 
   const commitDeckState = useCallback((nextState) => {
-    if (isControlled) {
-      onDeckStateChange?.(nextState);
-    } else {
+    if (!isControlled) {
       setInternalDeckState(nextState);
     }
+    // A parent may begin with null and retain the first navigation for remount.
+    // Notify it even while this instance is still using its internal state.
+    onDeckStateChange?.(nextState);
   }, [isControlled, onDeckStateChange]);
 
   useEffect(() => {
