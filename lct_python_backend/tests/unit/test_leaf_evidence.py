@@ -86,3 +86,19 @@ def test_checkpoint_recovery_preserves_noncontiguous_support():
     restored = restore_records([json.loads(json.dumps(record))])
     assert restored['nodes'][0]['utterance_ids'] == ['u0', 'u2']
     assert restored['nodes'][0]['source_line_ids'] == ['line-0', 'line-2']
+
+
+@pytest.mark.parametrize('prompt', ['{}', '{"current_source_lines": []}'])
+def test_invalid_source_prompt_does_not_invoke_provider(monkeypatch, prompt):
+    """Reject malformed source contracts before spending any inference call."""
+    from lct_python_backend.services.transcript.inference_envelope import InferenceEnvelope
+    envelope = InferenceEnvelope(system_prompt='Select support',
+        providers=[{'id': 'local', 'model': 'test', 'base_url': 'http://127.0.0.1:11434',
+            'trust_scope': 'owner_private', 'type': 'openai_compatible', 'context_tokens': 12000}],
+        privacy={'local_llm_ok': True, 'external_llm_ok': False},
+        output_tokens=1000, headroom_tokens=512, require_leaf_sources=True)
+    def forbidden_call(_prompt):
+        pytest.fail('Invalid source metadata reached inference')
+    monkeypatch.setattr(envelope, 'complete_json', forbidden_call)
+    with pytest.raises(ValueError, match='requires current source lines'):
+        envelope.generate(prompt)

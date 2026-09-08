@@ -115,15 +115,16 @@ class InferenceEnvelope:
             strict_request_contract=self.count_messages is not None,
         )
     def generate(self, prompt, **_legacy_kwargs):
-        result = self.complete_json(prompt)
-        nodes = _normalize_generated_output(result.data)
-        if not nodes:
-            raise ValueError("Interleaved interpreter returned no valid graph nodes")
         if self.require_leaf_sources:
             source_lines = json.loads(prompt).get('current_source_lines')
             if not isinstance(source_lines, list) or not source_lines:
                 raise ValueError('Leaf selection contract requires current source lines')
             allowed = {line['id'] for line in source_lines}
+        result = self.complete_json(prompt)
+        nodes = _normalize_generated_output(result.data)
+        if not nodes:
+            raise ValueError("Interleaved interpreter returned no valid graph nodes")
+        if self.require_leaf_sources:
             for node in nodes:
                 selection = node.get('source_line_ids')
                 if (node['semantic_level'] != 1 or not isinstance(selection, list) or not selection

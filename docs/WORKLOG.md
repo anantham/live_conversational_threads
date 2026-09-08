@@ -1,5 +1,40 @@
 # WORKLOG
 
+## 2026-09-08 — Leaf contract independent review and fail-fast correction
+
+- A1 scoped Google/Gemini 3.1 Pro High review through Antigravity completed
+  in 134.75 seconds, conversation 85277b3f-a93c-4060-a85c-a436f132cb39.
+  Exact ed2723c..1683ce4 backend packet: 31,426 bytes, SHA256
+  fae7a5028013cfda328cd377f89c72fb31a071c84fd732da71eb4e548f082141.
+  Inventory: prompts.json; services/leaf_evidence.py, provenance_linking.py;
+  services/transcript/{inference_envelope,interleaved_prompt,interleaved_runtime,
+  transcript_normalizer}.py; tests/integration/{test_interleaved_import_postgres,
+  test_passage_consent_postgres}.py; tests/unit/test_leaf_evidence.py.
+  Exact diff inspected and credential-pattern scanned before transmission;
+  only synthetic fixtures, no real transcript, artifact, credentials or private
+  participant data. Receipt: tmp/leaf-contract-review-1683ce4.json.
+- Verdict conditional approval with modifications required, not merge approval.
+  Read-only SQLite trajectory audit showed only steps 14/15, no observed tool
+  actions. CLI plan/sandbox flags are not claimed to enforce hard tool isolation.
+- Confirmed late prompt validation with two regression cases: missing/empty
+  current_source_lines reached inference before rejecting. Moved existing
+  metadata check before complete_json; both tests failed before and pass after.
+  Confidence 0.99; valid prompts, payloads and fingerprints are unchanged, so
+  existing matched running replays do not need replacement for this correction.
+- Other findings are not established defects in the active shared path:
+  transcript_normalizer produces integer levels before binding; source producer
+  question_source_lines explicitly emits line-N. No arbitrary-ID support or
+  unnormalized manual-edit contract was introduced to satisfy hypothetical paths.
+  These reviewer concerns remain recorded rather than erased as consensus.
+- Full unit suite: 2429 passed, 6 skipped, 496 warnings in 12.71s. Initial
+  sandboxed run had two scratch-directory permission failures; authorized
+  rerun resolved those without source changes. git diff --check passed.
+- Both replay handles 79063 and 32717 verified live with new inference receipts.
+  Local DB has seven leaves. Frontier opening callback utterance now belongs to
+  'Opening an AI safety conversation', whose six-turn support includes the
+  hope that the series continues. This verifies the inspected provenance repair,
+  not a completed callback edge or full semantic acceptance. No new URLs yet.
+
 ## 2026-09-08 — New matched leaf-support replays started
 
 - Verified old frontier process terminal (absent from self-excluding probe).
