@@ -1,5 +1,37 @@
 # WORKLOG
 
+## 2026-09-08 — Boundary review running and rollout preflight
+
+- Fresh git fetch: origin/main remains265fc4ad9c6f0df2e4f15212bb45c3b6e8ed47d9;
+  branch e55b0f139e3825eafea4d681d79c2770c2334e8b is zero behind/145 ahead.
+  No PR exists for this head branch. No merge or deployment attempted.
+- A1 independent Google/Gemini3.1ProHigh review via Antigravity launched,
+  session50557, exact above main..head range. Packet65739bytes, SHA256
+  1e44c08a86eb5f0941d8376f85f2d1db97f386114f1f08af31d0418729d391bf.
+  Inventory: services/conversation_access.py, graph_persistence.py;
+  services/import_pipeline/import_orchestrator.py;
+  services/stt/interleaved_live.py, stt_ws_session.py; share_api.py;
+  services/transcript/passage_journal.py, passage_runtime.py,
+  source_inspection_runner.py; tests/integration/test_passage_consent_postgres.py.
+  All under lct_python_backend. Exact source/synthetic-test bytes inspected and
+  credential-pattern scanned. No recordings, real transcripts, generated
+  artifacts, credentials or unrelated files. Explicit no-tool/read-only prompt
+  in empty scratch cwd; audit trajectory after completion. CLI flags do not
+  constitute hard isolation. Verdict still pending, not full-branch approval.
+  Script/private receipt: /private/tmp/review-thread-boundaries.py and
+  tmp/boundary-review-e55b0f1.json (expected on completion).
+- Both matched replay handles84358/64185 live and returned first passage
+  receipts for the same301source lines. Local:19572prompt/4438completion tokens,
+  nine moments, stop. Frontier:25456reported prompt/5653reported completion,
+  32moments, turn.completed. Provider counts differ in conventions; not a
+  throughput comparison or semantic score. No complete exported artifact yet.
+- A0 Asus SSH worked. Tracked deploy checkout has no reported modifications;
+  untracked tmp_pytest_reprocess_port/ retained untouched. Current deploy checkout
+  commit a1520cbf32931941d59a2809b0d4833b8d269695. Port43181 has listening PID24592.
+  A listener is not authenticated application health or proof of loaded source;
+  neither is claimed. No credentials read, files changed, pull or restart issued.
+  This confirms host reachability, not rollout completion.
+
 ## 2026-09-08 — Display-reference probe success, review and matched reruns
 
 - Local failed-passage diagnostic 22441 completed: served qwen3.8:27b-mlx,
