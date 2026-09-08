@@ -15,8 +15,12 @@ and WebSocket acceptance against source-preserving journal output, and a tested
 diarization revision path that cannot replace journal-backed graph/source data
 with the legacy projection. Preserve speaker uncertainty and stable source IDs;
 do not silently migrate existing graphs or use client-supplied runtime authority.
-The YouTube fetch/import entry point is not located in this backend checkout;
-trace the release integration separately before claiming end-to-end parity.
+The missing YouTube backend was located in commit 8dd2d40 on
+codex/youtube-diarized-import-20260906. It selects transcribe_youtube_request
+inside build_process_file_stream for source_type=youtube, through the same
+/process-file endpoint. Those backend files are absent here; account for this
+unmerged implementation before claiming end-to-end parity. Its source documents
+are historical and do not prove current host activation or acquisition health.
 This blocks deployment, not the already-running isolated comparison.
 
 ## 2026-09-08 — Macro overview test assumes obsolete initial zoom (OPEN)

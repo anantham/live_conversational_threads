@@ -1,5 +1,26 @@
 # WORKLOG
 
+## 2026-09-08 — Independent guard review submitted; YouTube integration located
+
+- Claude's stated 16:50 Mauritius reset passed; submitted a new scoped review
+  of 3bf1b13 with its existing subscription, safe mode, no tools, empty MCP,
+  no slash commands and no session persistence in an empty temporary directory.
+  Packet: 22928 bytes, SHA256
+  d9f30dcb3af194558778ba68c735328bb8c420b61cdbf44034753e2769ce9cd4.
+  Only committed journal_write_guard.py, synthetic replacement test and the
+  relevant graph_persistence.py section/diff were sent; inspected and scanned,
+  no transcript/media/credentials or private artifacts. Session 8383 is live;
+  no verdict yet. Receipt target tmp/journal-guard-review-3bf1b13.json.
+- Located missing YouTube backend in 8dd2d40, not this task worktree. Its
+  source_type=youtube branch selects the whole-recording diarized transcriber
+  within /process-file. Need integrate that path with source-first journal
+  processing, not introduce a fictitious standalone YouTube endpoint. No branch
+  merge, source copying, host activation, or dependency installation performed.
+- Fresh replay custody audit: local 35 leaves, 12 identity reviews, 2 question
+  reviews, 7 source inspections; frontier 108 leaves, 12 identity reviews,
+  17 question reviews, 49 inspections. Both cover 1263/1263 source entries with
+  all 11 fields intact. Both handles remain live; higher levels still pending.
+
 ## 2026-09-08 — Protect journal-backed conversations from legacy replacement
 
 - Synthetic isolated-DB probe reproduced silent graph replacement: one journal
