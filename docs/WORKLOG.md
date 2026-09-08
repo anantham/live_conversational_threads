@@ -1,5 +1,35 @@
 # WORKLOG
 
+## 2026-09-08 — Source-review phone browser acceptance
+
+- New isolated Playwright config and synthetic file-import test exercise /view
+  at 375x812: collapsed disclosure, uncertain relationship, exact escaped quotes,
+  no page overflow, no pageerror, and reset when moving to the next moment.
+  Test passes; screenshot inspected with readable evidence inside the card.
+- Initial fixture lacked required edge_schema and was correctly rejected; fixed
+  the fixture, not validation. This is Chromium viewport emulation, not physical
+  Android or desktop routed acceptance. No private data or inference involved.
+- Local loopback Vite server on 43219 is test-only. Full comparison and release
+  gates remain pending. git diff --check passes.
+
+## 2026-09-08 08:06 UTC — Viewer evidence integration and broad frontend check
+
+- Added node-scoped source review selector and collapsed shared disclosure to
+  desktop NodeDetail and mobile deck. Exact quotes are checked against artifact
+  utterances using code-point offsets; policies, uncertainty, and original versus
+  reviewed status remain separate. No graph membership is rewritten.
+- Selector: 11 tests; component: 6 tests, including both detail paths. Production
+  build passes, retaining the documented large-chunk warning. Browser visual QA
+  and full public replay remain pending; this is not deployment evidence.
+- Full frontend suite initially 356/380 passed. Node 26 native localStorage
+  collided with jsdom. Passing NODE_OPTIONS=--no-experimental-webstorage to workers
+  (not just the parent CLI) yields 379/380 passing without source or oracle edits.
+  The remaining googleDriveThreads Blob/Response mismatch is already in ISSUES.
+  This diagnostic invocation is not a permanent runtime change.
+- Test intent preceded UI implementation, but first executable UI test run was
+  after implementation because dependency installation was pending; no claim of
+  failing-first UI coverage. No new dependency added.
+
 ## 2026-09-08 — Exact question source text retained for review evidence
 
 - Viewer audit found review ranges had no attached source text; ordinary

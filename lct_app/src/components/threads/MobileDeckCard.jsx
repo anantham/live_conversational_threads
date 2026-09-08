@@ -4,6 +4,7 @@ import { ExternalLink, GitBranch, MessageSquareText } from "lucide-react";
 
 import { formatDurationCompact } from "../graphProvenance";
 import { buildMediaSeekUrl, mediaOffsetLabel } from "../../services/mediaSeek";
+import SourceReviewDetails from "./SourceReviewDetails";
 
 const TIER_TEXT = {
   1: "text-teal-700",
@@ -78,7 +79,7 @@ function handleCardKeyDown(event) {
   card.scrollTop = next;
 }
 
-function NodeCard({ snapshot, sourceRows }) {
+function NodeCard({ snapshot, sourceRows, reviewBundle }) {
   const headingId = useId();
   const node = snapshot.item;
   const metrics = node?.provenance_metrics || {};
@@ -114,6 +115,7 @@ function NodeCard({ snapshot, sourceRows }) {
       <p className="mt-4 text-[1.05rem] leading-7 text-slate-600">
         {summary}
       </p>
+      <SourceReviewDetails bundle={reviewBundle} nodeId={String(node.id)} />
 
       <div className="mt-auto pt-7">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
@@ -139,6 +141,7 @@ function NodeCard({ snapshot, sourceRows }) {
 }
 
 NodeCard.propTypes = {
+  reviewBundle: PropTypes.object,
   snapshot: PropTypes.object.isRequired,
   sourceRows: PropTypes.arrayOf(PropTypes.object).isRequired,
 };
@@ -212,7 +215,7 @@ UtteranceCard.propTypes = {
   speakerColorMap: PropTypes.objectOf(PropTypes.string).isRequired,
 };
 
-export default function MobileDeckCard({ mediaRef, snapshot, sourceRows, speakerColorMap }) {
+export default function MobileDeckCard({ mediaRef, snapshot, sourceRows, speakerColorMap, reviewBundle }) {
   return snapshot.entry?.kind === "utterance" ? (
     <UtteranceCard
       mediaRef={mediaRef}
@@ -220,11 +223,12 @@ export default function MobileDeckCard({ mediaRef, snapshot, sourceRows, speaker
       speakerColorMap={speakerColorMap}
     />
   ) : (
-    <NodeCard snapshot={snapshot} sourceRows={sourceRows} />
+    <NodeCard snapshot={snapshot} sourceRows={sourceRows} reviewBundle={reviewBundle} />
   );
 }
 
 MobileDeckCard.propTypes = {
+  reviewBundle: PropTypes.object,
   mediaRef: PropTypes.object,
   snapshot: PropTypes.object.isRequired,
   sourceRows: PropTypes.arrayOf(PropTypes.object).isRequired,

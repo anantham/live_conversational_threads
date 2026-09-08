@@ -266,6 +266,7 @@ export default function MobileConversationDeck({
           {snapshot.item ? (
             <div key={`${snapshot.entry.kind}:${snapshot.entry.id}:${motionKey}`} className={`h-full ${motionClass}`}>
               <MobileDeckCard
+                reviewBundle={bundle}
                 mediaRef={mediaRef}
                 snapshot={snapshot}
                 sourceRows={sourceRows}

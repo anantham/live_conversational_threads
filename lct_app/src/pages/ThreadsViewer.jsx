@@ -546,6 +546,7 @@ export default function ThreadsViewer() {
             node={selectedNodeData}
             chunkDict={bundle.chunk_dict || {}}
             artifactUtterances={bundle.utterances || []}
+            reviewBundle={bundle}
             mediaRefs={bundle.media_refs || []}
             contextNodes={flatNodes}
             onSelectNode={setSelectedNode}

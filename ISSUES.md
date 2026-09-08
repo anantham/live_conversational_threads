@@ -134,6 +134,10 @@ values, not an import-duration cap. No production deployment is claimed yet.
   native Response.blob(). Native Chromium transport was checked separately.
   Align the test runtime's Blob/Response pair; do not change product transport
   to accommodate the mismatched harness.
+  On 2026-09-08, native Node storage also caused 23 serverless test failures.
+  Worker-inherited NODE_OPTIONS=--no-experimental-webstorage removed those
+  failures without editing tests; 379/380 pass, with only the Drive mismatch
+  remaining. Pin/align the supported test runtime before release-wide green claims.
 - **Frontend bundle: open, non-blocking.** Viewer release build succeeds but
   emits the existing >500kB chunk warning. Investigate route-level splitting
   after profiling; this release adds no dependency.

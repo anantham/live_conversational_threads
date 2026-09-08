@@ -8,6 +8,7 @@ import {
 import { apiFetch } from "../services/apiClient";
 import { buildMediaSeekUrl, mediaOffsetLabel, selectMediaRef } from "../services/mediaSeek";
 import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
+import SourceReviewDetails from "./threads/SourceReviewDetails";
 
 // ADR-032 Part H — windowed speaker correction. The scope selector lives
 // inline in the rename editor; the last-used choice is sticky per browser.
@@ -106,6 +107,7 @@ export default function NodeDetail({
   onSelectNode = null,
   artifactUtterances = null,
   mediaRefs = [],
+  reviewBundle = null,
 }) {
   const safeNode = node ?? null;
   const isOpen = Boolean(safeNode);
@@ -640,6 +642,8 @@ export default function NodeDetail({
           </div>
         )}
 
+        <SourceReviewDetails bundle={reviewBundle} nodeId={String(safeNode.id)} />
+
         {/* Provenance (P0) — the auditable link from this node back to the exact
             raw turns it covers. The derived provenance_source_ref rolls up
             descendants without overwriting the authored source_ref; either uses
@@ -1147,4 +1151,5 @@ NodeDetail.propTypes = {
   onSelectNode: PropTypes.func,
   artifactUtterances: PropTypes.arrayOf(PropTypes.object),
   mediaRefs: PropTypes.arrayOf(PropTypes.object),
+  reviewBundle: PropTypes.object,
 };
