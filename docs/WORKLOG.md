@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-09-08 — Compact-policy replay and independent review in progress
+
+- Started fresh frontier run frontier-20260908-compact at code 1c6bf9c,
+  isolated UTF8 DB lct_public_replay_frontier_compact_20260908, conversation
+  23d624d1-5cbb-5e9b-9514-21ba1d466944. Session 42294 confirmed live and returned
+  inference_received; output directory 1788855538598726000. Approved pinned public
+  source only, common 8192 output allowance. Local PID 13056 remains an older-policy
+  diagnostic run; final local matched-policy replay still needed.
+- Thirteen real-PostgreSQL integration tests passed on lct_acceptance_20260908:
+  thread identity, question conflicts, reconciliation recovery and share access.
+- REVIEW-EGRESS-A1: inspected source-only diff 757741a..1c6bf9c for five files:
+  tools/public_frontier_transport.py; transcript/{thread_identity_repair,
+  abstraction_proposals,proposal_identifiers,bounded_aggregation_runner}.py.
+  No credentials, transcript, generated artifact, database or participant content
+  in packet; manual exact-byte inspection found no secrets. Anthropic Claude CLI,
+  existing subscription, tools disabled and strict empty MCP. Packet 16,999 bytes,
+  SHA256 df6798bfe264393164971bde11bdb6f0d46d81af09a077e2aa84fb16cedac05e.
+  Session 60912 still live, no verdict yet. This partial review does not satisfy
+  the full branch merge gate. Script /private/tmp/review-thread-compact.py.
+
 ## 2026-09-08 — Reversible proposal child references fit the measured input
 
 - Added request-local child aliases and strict reverse mapping before canonical
