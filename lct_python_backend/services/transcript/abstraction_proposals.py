@@ -38,7 +38,7 @@ def proposal_identity_context(policy):
         # digests do not add meaning to the grouping request.
         for key in ('request_hash', 'state_hash', 'basis_hash', 'policy_fingerprint'):
             annotation.pop(key, None)
-        if annotation.get('occurrence_ids') == annotation.get('pair'):
+        if 'occurrence_ids' in annotation and annotation.get('occurrence_ids') == annotation.get('pair'):
             annotation.pop('occurrence_ids')
         annotation['source_bodies_included'] = False
     return result

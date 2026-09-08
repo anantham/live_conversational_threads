@@ -1,5 +1,33 @@
 # WORKLOG
 
+## 2026-09-08 — Independent review findings verified against full code
+
+- Claude review session 60912 completed (Opus 5 primary; CLI also reports Haiku
+  auxiliary usage), verdict request_changes. Packet scope/identity in previous
+  entry. Provider reports estimated cost $0.745413; existing subscription route,
+  no new billing account/key configured. No tools or subagents used by reviewer.
+- Confirmed: generated rationale could retain request-local aliases. Decoder now
+  restores narrative references with exact token boundaries and rejects unknown
+  ones; input packing handles keyed maps, avoids aliases already present inside
+  prose, validates string IDs, and does not rewrite exact-ID quotations/summaries.
+  Also fixed missing occurrence_ids projection KeyError. Eleven focused tests pass.
+- Not supported by full code: speaker_index describes INPUT source columns, not
+  required output; empty quotations are explicitly rejected by the validator;
+  recovered transport still requires one completed object/usage and rejects tools
+  and terminal errors; copy/_hash imports exist; canonical snapshots are recaptured
+  and compared at commit; changed policy raises explicit JournalConflict rather
+  than silently recovering incompatible proposals. Existing tests cover these.
+- No arbitrary quote cap added: full contiguous citations may be needed. Actual
+  inference envelopes reject over-budget requests; this projection is not a new
+  privacy boundary and does not enable external providers for private data.
+- Legacy identity audit still checks both prompt fingerprints, exact current
+  request/response and strict quotations under the outer receipt digest. Calling
+  the legacy policy cannot make a fabricated quotation valid.
+- Remaining review limits: malformed internal source dictionaries rely on the
+  canonical source constructor; failed generations remain raw replay receipts,
+  not accepted proposal checkpoints. Full-branch adversarial review still required.
+  No merge/deployment performed and partial reviewer findings not called approval.
+
 ## 2026-09-08 — Compact-policy replay and independent review in progress
 
 - Started fresh frontier run frontier-20260908-compact at code 1c6bf9c,
