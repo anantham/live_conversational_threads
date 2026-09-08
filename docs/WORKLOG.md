@@ -1,5 +1,18 @@
 # WORKLOG
 
+## 2026-09-08 — Full unit suite passes in isolated replay environment
+
+- Existing tests/unit suite under the approved isolated dependency set:
+  2350 passed, 6 skipped, 487 warnings,71.40s. No test assertions changed for
+  this run. This resolves the earlier failed unit run in the older backend
+  environment; skipped platform/optional coverage is not claimed as passing.
+- Exact messages in failed attempt1788843103997621000 and resumed attempt
+  1788844065993497000 have the same SHA256
+  2f04c45e16b5b3cb227888f52b53db467ec7da921979019649cebc417e745518
+  and policy234cef067bfbe9ddbb9846123d459249bfdbd617354620e8c7b57ef76c51c5bd.
+  Session43155 still running without first response. Unit tests overlapped this
+  request, so do not present its latency as an isolated hardware benchmark.
+
 ## 2026-09-08 — Timeout diagnosis and bounded transport retry
 
 - Local server log confirms the first request ended at 09:01:45+04:00 with
