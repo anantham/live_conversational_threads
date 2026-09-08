@@ -1,5 +1,34 @@
 # WORKLOG
 
+## 2026-09-08 — Start both corrected relationship continuations
+
+- Antigravity follow-up at6b8552a completed in146.10s, conversation
+  8962eb2d-9baa-41da-9ae3-e0fa9d043ff2, verdict issues_found. Activity audit
+  contains completed steps14/15 only, no subtrajectory. Reviewer withdrew the
+  partial-edge/full-edge-mutation claims. Remaining claimed privacy-toggle bug
+  is contrary to the fork contract: ensure_replay rejects changed consent at
+  the origin before copying, rather than migrating a local run to external.
+  Added real-PG regressions for both consent directions and successful
+  same-consent forks;2 passed in0.33s. No broad review approval inferred.
+- Full unit + isolated PG suite before this test-only extension:2561 passed,
+  6 skipped,522 warnings in20.16s. Both empty continuation DBs had28 tables
+  and114 constraints with exact schema parity. Actual full-schema frontier fork
+  succeeded:1263 utterances,108 leaves,6 retained edges,82 retained artifacts;
+  two receipted old-policy created edges excluded only from the new copy.
+- Frontier handle21360 uses lct_public_replay_frontier_alias_20260908;
+  output tmp/public-pipeline/frontier-20260908-questions/1788876929098281000.
+  Five new full relationship receipts verified committed. Original unchanged.
+- Gracefully interrupted exact old local PID43790/create_time1788867611.994802
+  with SIGINT. Waited for handle40514 to exit130 before replacement; no forced
+  kill. Original retains two full/partial relation receipts and49 inspections.
+  Local continuation handle28949 uses lct_public_replay_local_alias_20260908,
+  same run ID and unchanged local-only setting. Its atomic fork succeeded.
+- Read-only checks of both origins and both targets verify all1263 source rows
+  across11 fields, all four journal receipts, unchanged interpretation policy
+  and respective stored consent. Both new runs remain live; no candidate export,
+  semantic acceptance, public URL, merge or deployment claimed. Production
+  source-first bulk/live runtime composition remains required beyond these runs.
+
 ## 2026-09-08 — Fork follow-up review with checkpoint write context
 
 - REVIEW-EGRESS-A1: exact6b8552a seven-file source/synthetic-test packet sent

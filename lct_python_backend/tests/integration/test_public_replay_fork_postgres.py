@@ -22,7 +22,8 @@ from tools.public_replay_fork import fork_replay, MODELS
 
 
 @pytest.mark.asyncio
-async def test_fork_preserves_original_and_only_changes_relation_policy(monkeypatch):
+@pytest.mark.parametrize('external_llm_ok', [False, True])
+async def test_fork_preserves_original_and_only_changes_relation_policy(monkeypatch, external_llm_ok):
     url = os.getenv('PASSAGE_JOURNAL_TEST_DATABASE_URL')
     if not url:
         pytest.skip('Explicit isolated loopback database required')
@@ -49,7 +50,8 @@ async def test_fork_preserves_original_and_only_changes_relation_policy(monkeypa
                 await conn.execute(text('ALTER TABLE nodes ADD CONSTRAINT synthetic_predecessor '
                                         'FOREIGN KEY(predecessor_id) REFERENCES nodes(id)'))
         async with sessions[0].begin() as db:
-            cid = await ensure_replay(db, run_id=run, owner_id=owner, source=source, policy=old)
+            cid = await ensure_replay(db, run_id=run, owner_id=owner, source=source, policy=old,
+                                      external_llm_ok=external_llm_ok)
             rows = [dict(id=nid, conversation_id=cid, node_name='Synthetic leaf', summary='Original meaning',
                          chunk_ids=[chunk], utterance_ids=[uid], level=1, predecessor_id=other)
                     for nid, other in [(first, second), (second, first)]]
@@ -81,7 +83,14 @@ async def test_fork_preserves_original_and_only_changes_relation_policy(monkeypa
                 await original_dispose(engine, *args, **kwargs)
         monkeypatch.setattr(AsyncEngine, 'dispose', retain_test_connections)
         args = dict(source_url=urls[0], target_url=urls[1], run_id=run, owner_id=owner,
-                    source=source, policy=new, previous_reconciliation=old['reconciliation'])
+                    source=source, policy=new, previous_reconciliation=old['reconciliation'],
+                    external_llm_ok=external_llm_ok)
+        # Privacy is immutable across a relation-policy fork, in either direction.
+        # Rejection occurs at the origin check, before any target rows are written.
+        with pytest.raises(ValueError, match='Resume source, owner, run or policy differs'):
+            await fork_replay(**{**args, 'external_llm_ok': not external_llm_ok})
+        assert await snapshot(sessions[0]) == original
+        assert all(not rows for rows in (await snapshot(sessions[1])).values())
         for wrong in [{'owner_id': 'foreign'}, {'policy': {**new, 'runtime': 'changed'}},
                       {'source': [{**source[0], 'text': 'Altered source'}]}, {'target_url': urls[0]}]:
             with pytest.raises(ValueError):
