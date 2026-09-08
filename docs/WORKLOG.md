@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — Public viewer browser verification
+
+- Isolated loopback Vite at 43229, Chromium one worker, existing synthetic
+  public-drive-opener, youtube-source, source-review-disclosure specs: 15 passed,
+  one opt-in live YouTube test skipped. These prove mocked anonymous transport,
+  source disclosure and seek dispatch, not real Drive ACL or real YouTube playhead.
+- Hierarchy/provenance and mobile journey specs: three passed, one failed.
+  Mobile map-to-card return resets a selected moment to the root arc. Repeated
+  the single failing journey independently; same failure at line 307. Preserved
+  in ISSUES.md; no speculative viewer modification yet. Scratch screenshots and
+  error context live under /private/tmp/threads-public-playwright-results.
+- Replay handles 67607 and 5577 remain live. Local quiet during observation;
+  frontier continues emitting receipts. Neither restarted based on quiet output.
+
 ## 2026-09-08 — Candidate graph integrity and replay checkpoint
 
 - Read-only isolated database checks confirm one persisted local question repair

@@ -1,5 +1,15 @@
 # ISSUES
 
+## 2026-09-08 — Mobile map return loses selected moment (OPEN)
+
+Reproduced twice in threads-viewer-mobile-journey.spec.ts:307 on Chromium at
+375px: after map return the deck shows the root arc rather than the previously
+selected moment "Earlier assumptions were visible". Public comparison usability
+gate; not blocking inference. Investigate ThreadsViewer mobileDeckState and
+MobileConversationDeck remount synchronization. Do not weaken the assertion.
+Done when the existing complete journey test passes and branch selection survives
+map/card round trips, without breaking new-conversation initialization.
+
 ## 2026-09-08 — Default single-conversation export ownership audit (OPEN)
 
 share_api.export_threads defaults to fetch_conversation_bundle, whose query in
