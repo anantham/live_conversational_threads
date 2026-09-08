@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Antigravity review and checkpointed frontier retry
+
+- Corrected reviewer availability assessment: standalone Gemini CLI rejection did
+  not test Antigravity. agy models succeeded after sandbox-only log/listener limits
+  were resolved through host review; lists gemini-3.1-pro-high. Historical repo
+  records also contain successful Antigravity reviews; route should have been
+  checked before describing Google reviewer availability broadly.
+- Same inspected frontend packet (39,673 bytes; SHA256
+  6a6a918dfb60eb14233322c5520838dd0795d029199aefe38f1b9dd590a2c9c6) submitted
+  under REVIEW-EGRESS-A1 to Gemini 3.1 Pro High via agy, empty temporary cwd,
+  plan/sandbox mode, slash commands disabled, explicit no-tool instructions.
+  Session 71386 live; no verdict yet. Tool activity must be checked on return.
+- Frontier 42294 exited with JSONDecodeError: its 6,492-character answer ended
+  without the enclosing JSON closure, despite turn.completed. Saved raw events
+  under codex-146e59140bba45a8812bd43d28c483bb. No synthesized braces/content or
+  partial acceptance. Resumed same isolated run once as 97651, retaining all
+  checkpoints, failed receipt and immutable source/policy checks. Configuration
+  check returned; process live. Local 80878 remains live and produced a receipt.
+
 ## 2026-09-08 — Reviewer availability checked without widening disclosure
 
 - Fresh fetch: origin/main 265fc4ad9c6f0df2e4f15212bb45c3b6e8ed47d9 is fully
