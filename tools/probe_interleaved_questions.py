@@ -35,6 +35,7 @@ def main():
                     "base_url": "http://127.0.0.1:11434", "type": "openai_compatible",
                     "trust_scope": "owner_private", "context_tokens": 32768, "timeout_seconds": 180}],
         privacy={"local_llm_ok": True}, output_tokens=2048, headroom_tokens=512, temperature=0,
+        require_leaf_sources=True,
     )
     nodes, chunks = [], {}
     for index, source in enumerate(passages):

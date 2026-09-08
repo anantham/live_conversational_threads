@@ -1,5 +1,44 @@
 # WORKLOG
 
+## 2026-09-08 — Display-reference probe success, review and matched reruns
+
+- Local failed-passage diagnostic 22441 completed: served qwen3.8:27b-mlx,
+  cache_hit=false, finish_reason=stop, 21756 prompt/4708 completion tokens,
+  six moments, 10465 serialized response characters. Each model-selected display
+  ID belongs to its support. This proves this formerly output-exhausting passage
+  completes under the new contract, not semantic equivalence or whole-run success.
+- Gemini 3.1 Pro High via Antigravity reviewed 1683ce4..595d62d (127.56s),
+  conversation 1c846b63-ee63-47ee-9f69-9a846f41b725. Exact 10631-byte packet SHA256
+  812363f874bae0105518eb2d667f2ac86ddebaa0877042ba567976ef242621f1:
+  services/transcript/{inference_envelope,interleaved_prompt,transcript_normalizer}.py
+  and tests/unit/test_leaf_evidence.py. Source/synthetic test diff inspected and
+  secret-pattern scanned; excluded recordings, real transcripts/artifacts,
+  credentials and unrelated material. Tool audit observed only steps 14/15;
+  CLI flags are not a hard-isolation claim. Receipt:
+  tmp/display-reference-review-595d62d.json. Verdict issues_found, NOT approval.
+- Finding claimed legacy generation now lacks excerpts. Call-site inspection
+  shows production shared factory enables require_leaf_sources=True; legacy
+  generate_lct_json uses separate legacy prompts. Added factory assertion.
+  Found a narrower actual mismatch: tools/probe_interleaved_questions.py uses
+  this prompt but had not enabled validation; fixed its flag. Focused 39 tests
+  pass. Reviewer limitations (internal malformed/duplicate source-line metadata
+  and parse cost) remain noted; no claim they establish a current producer bug.
+- Verified old frontier PID 32083/create_time1788861992.835185/exact run+DB before
+  SIGINT. Handle 32717 then exited130 after its in-flight call unwound. Old local
+  79063 was already terminal from output exhaustion. All prior state retained.
+- Verified display DB names absent, created UTF8/template0 isolated databases,
+  and initialized only after empty-schema assertions. New matched local run:
+  local-20260908-display, session84358,
+  CID0ddbd1c8-c8dc-5cee-aaa9-688a83fe53c7. New frontier:
+  frontier-20260908-display, session64185,
+  CID58a0fe8f-d8f3-57eb-afca-9a938f0f0cc6. Runtime source595d62d; intervening edits
+  are only the diagnostic flag and factory test. No runtime difference between
+  arms. Both returned configuration_checked for the identical pinned1263 source.
+  Same8192 output reserve/32768 context/reference counter; local-only permission
+  on local, process-scoped public-source permission on frontier. No resume or
+  old-policy receipt reuse. Both final artifacts, whole-branch review and rollout
+  remain outstanding. No publication yet.
+
 ## 2026-09-08 — Local output exhaustion and reference-only display evidence
 
 - Local replay 79063 terminated authoritatively with finish_reason=length,

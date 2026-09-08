@@ -64,6 +64,7 @@ def test_factory_composes_shared_policy_and_recovery_identity():
     assert processor._passage_context_policy.passage_target_tokens == 4096
     assert processor._semantic_candidates is not None
     assert processor._inference_envelope is not None
+    assert processor._inference_envelope.require_leaf_sources is True
     assert len(processor.interpretation_policy_fingerprint) == 64
     assert build().interpretation_policy_fingerprint == processor.interpretation_policy_fingerprint
     assert build(budgets=RuntimeBudgets(passage_target_tokens=2048)).interpretation_policy_fingerprint != processor.interpretation_policy_fingerprint
