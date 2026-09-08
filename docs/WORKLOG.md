@@ -1,5 +1,30 @@
 # WORKLOG
 
+## 2026-09-08 — Recovered Antigravity verdict and verified live replay progress
+
+- Recovered task conversation `36cdbcf2-5245-4f28-a585-eb31d120bd82`
+  from Antigravity's read-only SQLite receipt after execution handle 71386
+  disappeared. Final response is **fail**, not an approval. Same frontend
+  packet/head/hash recorded below; no additional review submission occurred.
+  Stored trajectory has two completed steps (types 14 and 15), consistent
+  with user input and model response, and no separate tool steps. This is
+  observed activity, not proof that the harness removed tool capabilities.
+- Findings: repeated whole-artifact indexing/validation in
+  `selectSourceReviews` for each mounted card (reviewer high severity), and
+  effect-based disclosure reset potentially flashing open on desktop node
+  changes (reviewer low severity). Source inspection confirms per-instance
+  memoization still repeats the global work across instances. Actual latency
+  and visible flicker remain unmeasured; do not report the severity as verified.
+  Next: synthetic scale measurement and node-switch regression, then scoped
+  correction and independent re-review. No merge gate has passed.
+- Self-excluding process probe confirmed two live replay processes, PIDs
+  18959 and 23292. Local isolated DB now has 2 passage checkpoints, 11 level-1
+  nodes, 4 identity reviews and 5 question reviews. Frontier isolated DB has
+  4 passage checkpoints, 109 level-1 nodes, 12 identity reviews, 14 question
+  reviews and 30 source-inspection receipts. No higher-level nodes yet.
+  Neither artifact is complete. Different progress makes these counts an
+  invalid quality comparison. No duplicate replay was started.
+
 ## 2026-09-08 — Antigravity review and checkpointed frontier retry
 
 - Corrected reviewer availability assessment: standalone Gemini CLI rejection did
