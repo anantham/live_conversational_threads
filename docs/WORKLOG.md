@@ -1,5 +1,30 @@
 # WORKLOG
 
+## 2026-09-08 — Combined acceptance fixture contamination resolved
+
+- A0 hypothesis: cached consumer retained fake dependencies after unit teardown,
+  rather than a production ownership defect. Minimal conversation-route unit
+  suite followed by interleaved-import PostgreSQL reproduced two export 404s;
+  standalone PostgreSQL passed. Trace points to share_api.py:509 after the live
+  ownership guard, where lazily imported conversations_api returns a fake None.
+- A1 correction is test-only: both test_conversations_api.py and
+  test_conversations_api_routes.py now register the imported consumer in
+  monkeypatch restoration, including its parent-package attribute. Dependencies
+  and consumer are restored, including when no consumer was initially loaded.
+  No production source, auth checks, assertion or acceptance oracle changed.
+- Test intent: fixture execution must not change subsequent real export behavior.
+  Existing ordered unit+real DB integration is the regression. After correction:
+  51 passed in the bounded sequence, then full combined tests/unit plus all
+  tests/integration/test_*postgres.py: 2467 passed, 6 skipped, 496 warnings in
+  17.38s, isolated localhost:55439/lct_acceptance_20260908 only.
+  git diff --check passed. Confidence 0.99; revert scoped fixture edits if a
+  contradictory import-order failure appears rather than weakening export gates.
+- Frontier handle 32717 remains live with fresh inference receipts; local 79063
+  verified live this turn. DB snapshot: frontier 88 leaves/three passages with
+  identity/question reviews underway; local seven leaves/one passage through
+  source sequence 301. Counts are progress, not semantic quality scores. Neither
+  candidate exported or accepted yet. Goal remains active.
+
 ## 2026-09-08 — Leaf contract independent review and fail-fast correction
 
 - A1 scoped Google/Gemini 3.1 Pro High review through Antigravity completed

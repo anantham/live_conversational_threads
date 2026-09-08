@@ -1,5 +1,13 @@
 # TECH_DEBT
 
+## 2026-09-08 — Conversation API unit fixture boundary
+
+The 350+ and 400+ line conversation API test modules duplicate stub loaders and
+mix pure schema checks with route contracts. Their consumer-cache leak is fixed
+with scoped restoration. A future split should share a small isolated loader or
+use real lightweight imports with dependency injection, retaining subsequent
+real export tests; do not broaden this fixture correction into endpoint changes.
+
 ## 2026-09-08 — Export assembly boundary
 
 share_api.py combines token/email authorization, single/combined export, media

@@ -1549,3 +1549,10 @@ Running tests/unit and all test_*postgres.py in one pytest process produced
 state from unit fixtures before changing production authorization. Scope:
 test-run reliability, not evidence of a deployed access defect. Current cause
 unconfirmed; retain separate suite evidence and do not claim combined green.
+
+Resolved 2026-09-08: conversation API unit loaders restored dependency stubs but
+left the imported consumer cached with bound mocks. Minimal route-unit then
+interleaved-import sequence reproduced two export 404s at share_api.py:509.
+Both loaders now restore sys.modules and the package attribute via monkeypatch.
+Same ordered pair plus pure API units: 51 passed. Full combined unit/PostgreSQL
+suite: 2467 passed, 6 skipped. No production access or export code changed.

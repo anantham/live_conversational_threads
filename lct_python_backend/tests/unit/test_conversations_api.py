@@ -96,8 +96,12 @@ def _stub_modules(monkeypatch):
     dummy_schemas.SaveJsonResponseExtended = _StubSaveJsonResponseExtended
     monkeypatch.setitem(sys.modules, "lct_python_backend.schemas", dummy_schemas)
 
-    # Evict stale cached module if any previous test loaded it.
-    sys.modules.pop("lct_python_backend.conversations_api", None)
+    # Restore both import caches after testing the stub-bound consumer, even
+    # when no consumer existed before this test.
+    monkeypatch.setitem(sys.modules, "lct_python_backend.conversations_api", None)
+    del sys.modules["lct_python_backend.conversations_api"]
+    monkeypatch.setattr(importlib.import_module("lct_python_backend"),
+                        "conversations_api", None, raising=False)
 
 
 def _load(monkeypatch):

@@ -102,7 +102,12 @@ def _stub_modules(monkeypatch):
     dummy_schemas.SaveJsonResponseExtended = _StubSaveJsonResponseExtended
     monkeypatch.setitem(sys.modules, "lct_python_backend.schemas", dummy_schemas)
 
-    sys.modules.pop("lct_python_backend.conversations_api", None)
+    # Track the imported consumer too: restoring only its dependencies leaves
+    # bound mocks cached for later real export/integration tests.
+    monkeypatch.setitem(sys.modules, "lct_python_backend.conversations_api", None)
+    del sys.modules["lct_python_backend.conversations_api"]
+    monkeypatch.setattr(importlib.import_module("lct_python_backend"),
+                        "conversations_api", None, raising=False)
 
 
 def _load(monkeypatch):
