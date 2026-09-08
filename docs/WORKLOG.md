@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Audited identity quote regeneration
+
+- Local speakers-policy run passed the prior context boundary and saved two
+  passage checkpoints plus one identity review, then failed strict quote validation.
+  Exact receipt inspection found one valid quote and one quote joining source with
+  an inserted ellipsis (zero exact source matches). No fuzzy matching applied.
+- Added one bounded complete-regeneration attempt for invalid identity reviews.
+  Full source uses existing lossless model rendering, rejected response retained,
+  source/consent guard before and after inference, unchanged exact validator.
+  Accepted repair receipt retains separately fingerprinted correction policy and
+  is revalidated during checkpoint recovery. Existing valid receipts unchanged.
+- Three new tests cover source/audit preservation, tampering, consent rejection
+  and invalid corrected output. Focused 33 passed; full 2,393 passed, six skipped.
+  Harness records supported identity recovery policy for future manifests.
+- Terminal 95214 resumed as session 18777 with same DB/run ID and immutable
+  source/policy checks. Latest output directory ends 1788852479396341000.
+  Frontier 5577 remains live on older implementation, returning receipts.
+  Both candidate publication and final matched-policy comparison remain pending.
+
 ## 2026-09-08 — Fresh branch and real database acceptance checks
 
 - Fresh origin fetch: main has zero commits absent from this branch, branch has

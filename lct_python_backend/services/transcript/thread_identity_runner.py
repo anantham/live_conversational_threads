@@ -15,6 +15,7 @@ from .question_review_runner import capture_question_basis
 from .source_inspection_runner import check_inference_consent
 from .thread_identity_review import (THREAD_IDENTITY_REVIEW_PROMPT, thread_identity_request,
                                       validate_thread_identity_review, render_thread_identity_request)
+from .thread_identity_repair import repair_thread_identity, validate_identity_repair
 
 ARTIFACT_TYPE = 'source_reviewed_thread_identity'
 
@@ -89,7 +90,7 @@ class ThreadIdentityRunner:
         await check_inference_consent(db, **self.scope, providers=self.envelope.providers)
         return await capture_question_basis(db, **self.scope, lock=lock)
 
-    async def checkpoint(self, db, captured, pair, request, response=None):
+    async def checkpoint(self, db, captured, pair, request, response=None, repair_audit=None):
         current = await self.capture(db, lock=True)
         try:
             local = pair_basis(current, pair)
@@ -115,11 +116,16 @@ class ThreadIdentityRunner:
                 raise JournalConflict('Saved thread identity request differs from its receipt identity')
             if validate_thread_identity_review(saved['response'], request) != saved['review']:
                 raise JournalConflict('Saved thread identity review no longer reproduces')
+            if 'repair_audit' in saved:
+                validate_identity_repair(saved['repair_audit'], request, saved['response'], self.envelope)
             return copy.deepcopy(saved)
         if response is None:
             return None
         saved = {**identity, 'request': copy.deepcopy(request), 'response': copy.deepcopy(response),
                  'review': validate_thread_identity_review(response, request)}
+        if repair_audit is not None:
+            validate_identity_repair(repair_audit, request, response, self.envelope)
+            saved['repair_audit'] = copy.deepcopy(repair_audit)
         db.add(PipelineArtifact(conversation_id=uuid.UUID(self.scope['conversation_id']), stage=stage,
             stage_index=0, artifact_type=ARTIFACT_TYPE, artifact_json=saved, content_hash=_hash(saved)))
         await db.flush()
@@ -142,8 +148,17 @@ class ThreadIdentityRunner:
             if saved is None:
                 result = await asyncio.to_thread(self.envelope.complete_json,
                     render_thread_identity_request(request))
+                response, repair_audit = result.data, None
+                try:
+                    validate_thread_identity_review(response, request)
+                except ValueError:
+                    async def guard():
+                        async with self.sessions.begin() as db:
+                            await self.checkpoint(db, basis, pair, request)
+                    response, repair_audit = await repair_thread_identity(request, response,
+                        envelope=self.envelope, request_guard=guard)
                 async with self.sessions.begin() as db:
-                    saved = await self.checkpoint(db, basis, pair, request, result.data)
+                    saved = await self.checkpoint(db, basis, pair, request, response, repair_audit)
             receipts.append(saved)
         total = len(occurrence_ids(basis['state']))
         possible = total * (total - 1) // 2

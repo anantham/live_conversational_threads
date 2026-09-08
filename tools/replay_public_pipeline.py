@@ -85,6 +85,8 @@ async def main(run=False, *, database_url, run_id, resume=False,
                     'accepted_for_publication': False}
         from lct_python_backend.services.transcript.question_review_repair import POLICY as question_repair_policy
         manifest['question_review_recovery'] = question_repair_policy
+        from lct_python_backend.services.transcript.thread_identity_repair import POLICY as identity_repair_policy
+        manifest['thread_identity_recovery'] = identity_repair_policy
         (output / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
         original = InferenceEnvelope.complete_json
         if frontier:
