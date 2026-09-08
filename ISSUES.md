@@ -15,8 +15,9 @@ is null. Regression failed before the fix (theme returned as arc); passes after.
 The unchanged full mobile browser journey and both desktop navigation tests pass.
 Not yet merged or deployed.
 
-## 2026-09-08 — Default single-conversation export ownership audit (OPEN)
+## 2026-09-08 — Default single-conversation export ownership audit (FIXED ON TASK BRANCH)
 
+Original finding:
 share_api.export_threads defaults to fetch_conversation_bundle, whose query in
 services/conversation_reader.py filters conversation ID but not current owner or
 deleted_at. The route is operator-token protected on today's single-owner host;
@@ -27,6 +28,15 @@ No production exploit or cross-user exposure was tested. Audit all caller auth
 boundaries and add foreign/deleted-owner HTTP tests before claiming full export
 isolation or activating a multi-owner deployment. Non-blocking for scoped local
 public-artifact work; blocks a broad privacy/release acceptance claim.
+
+Current verification: export_threads now calls require_live_conversation with
+the configured owner before reading any bundle. Share creation does the same;
+already-authorized public graph/audio capabilities reject deleted conversations.
+The real ASGI HTTP/isolated PostgreSQL suite test_share_export_access_postgres.py
+passes seven cases covering foreign/deleted/absent exports with and without
+reviews, denied capability creation, deletion revocation and bearer requirements.
+This closes the scoped default-export finding, not every multi-owner endpoint
+audit. No production deployment or cross-user production probe is claimed.
 
 ## 2026-09-08 — Local unit acceptance environment gaps (OPEN)
 

@@ -1,5 +1,35 @@
 # WORKLOG
 
+## 2026-09-08 — Review transport limits and export acceptance refresh
+
+- Gemini context review91434 returned CLI timeout for conversation
+  225f5551-0174-499c-a53b-a4fa1f2abc76. Read-only inspection of that task's local
+  conversation database showed two recorded steps (types14/15, status3, no
+  subtrajectory), as did original cf05f449. No tool-type step observed. Attempts
+  to recover structured verdict JSON from the follow-up payload yielded none;
+  no approval inferred and no duplicate Gemini request submitted. Receipt remains
+  tmp/question-recovery-context-review-1fc787c.json. Hard isolation is not claimed.
+- Direct Claude auth looked unavailable inside sandbox, but the authorized
+  host-side status confirmed existing claude.ai Pro authentication. Submitted
+  same inspected eight-file packet with Anthropic recipient wording: 44013bytes,
+  SHA2569a5e825629a7b4c04a48a155f4fc0f588d72e288ac843668a66290ad1b1fb6e2.
+  Built-in tools disabled with --tools empty, MCP empty/strict, --safe-mode,
+  slash commands and session persistence disabled, temporary empty cwd.
+  Session80143 returned429/session limit, reset4:50pm Indian/Mauritius, zero
+  reported model tokens/cost. No new credits purchased or credential changes.
+  Receipt tmp/question-recovery-claude-review-1fc787c.json, provider session
+  ef520a64-1f82-4ccb-a94a-ff0d6b3cc272. This is not a review verdict.
+- Local40514 and frontier1842 confirmed live with new inference receipts. Local
+  database has two committed passages and15leaf nodes, beyond the old failure
+  point. All observed requests so far lack validation_feedback: this full run
+  has NOT exercised recovery yet. Completed local responses finish stop and
+  cache_hit=false. Preserve that distinction from the successful correction probe.
+- Refreshed scoped export/privacy acceptance: seven actual ASGI HTTP/PostgreSQL
+  tests pass in0.42s. Updated stale default-export issue to fixed on task branch
+  after confirming the owner/deleted guard precedes bundle loading. This is
+  scoped evidence, not whole-host privacy or deployment acceptance. Other gates
+  remain open, including full independent review and final artifact acceptance.
+
 ## 2026-09-08 — Recovery review challenged and revised local replay started
 
 - Review9899 completed in175.817s, conversation
