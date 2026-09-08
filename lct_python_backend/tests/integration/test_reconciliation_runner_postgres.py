@@ -37,6 +37,9 @@ async def test_full_review_loop_restart_and_export(monkeypatch, reverse, omit_fi
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     cid, first, second, old, new = [uuid.uuid4() for _ in range(5)]
     owner = f'synthetic-review-loop-{cid}'
+    # Export as this synthetic conversation's owner, not the ambient operator.
+    # Foreign-owner rejection is separately tested by the access-control suite.
+    monkeypatch.setenv('LCT_OWNER_ID', owner)
     texts = ['Who may borrow the key?', 'Returning to borrowing: the question remains open.']
     calls = {'inspection': 0, 'review': 0, 'embedding': 0}
     fail = {'later': True}

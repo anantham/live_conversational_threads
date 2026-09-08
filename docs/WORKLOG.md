@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-09-08 — Fresh branch and real database acceptance checks
+
+- Fresh origin fetch: main has zero commits absent from this branch, branch has
+  116 ahead at bd859ef. No merge/deployment implied. Exact full-head independent
+  review remains required; branch scope is 170 files, not just recent fixes.
+- Provisioned lct_acceptance_20260908 on isolated loopback PostgreSQL 55439,
+  UTF8/C, with empty-schema guard. This separates synthetic cleanup from replay
+  evidence databases. No production database used.
+- Identity and question real-database tests passed initially. Four reconciliation
+  export cases failed because the synthetic owner was not bound as current caller;
+  require_live_conversation correctly rejected the ambient operator. Bound
+  LCT_OWNER_ID to the fixture's random owner using monkeypatch; no runtime access
+  control changed or assertion removed. Rerun including export owner/deleted-source
+  access tests: 13 passed. Tests cover restart/call reuse, source/attribution
+  revision, directed callback export and ownership/consent isolation.
+- Latest polls: both replay sessions 95214 and 5577 returned inference receipts.
+  Earlier stage count observation had local one passage/two question receipts,
+  frontier four passages, 12 identity, 16 question and 28 source-inspection receipts.
+  Counts do not establish semantic completeness; both candidates remain pending.
+
 ## 2026-09-08 — Preserve mobile branch across map/card remount
 
 - Cause isolated in useMobileConversationDeckState: null parent state selected
