@@ -245,13 +245,11 @@ export default function MobileConversationDeck({
 
         <main className="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
         <YouTubeSourcePanel bundle={bundle} node={snapshot.item} nodes={graphNodes} compact onRenameSpeaker={onRenameSpeaker} />
-        <div className="h-5 shrink-0 px-2 text-center">
-          {parentTitle && (
+        {parentTitle && <div className="h-5 shrink-0 px-2 text-center">
             <p className="truncate text-xs text-slate-400" title={parentTitle}>
               within {parentTitle}
             </p>
-          )}
-        </div>
+        </div>}
 
         <div
           data-testid="mobile-deck-stage"

@@ -1,0 +1,64 @@
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import YouTubeSourcePanel from "./YouTubeSourcePanel";
+
+// Test intent: source clicks seek; playback and paused/backward scrubs update
+// the visible highlight without seeking back. Gaps clear the highlight and
+// out-of-node passages remain visible. Unmount stops polling.
+let container, root, options, player, time;
+const utterances = [
+  {id: "a", text: "First sentence", speaker_id: "A", timestamp_start: 10, timestamp_end: 15},
+  {id: "b", text: "Second sentence", speaker_id: "B", timestamp_start: 20, timestamp_end: 25},
+  {id: "c", text: "Another topic", speaker_id: "A", timestamp_start: 50, timestamp_end: 55},
+];
+const bundle = {utterances, media_refs: [{provider: "youtube", video_id: "6HmR9IaqM88", view_url: "https://www.youtube.com/watch?v=6HmR9IaqM88", time_unit: "seconds"}]};
+const node = {id: "n", utterance_ids: ["a", "b"]};
+beforeEach(() => {
+  vi.useFakeTimers();
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  time = 10;
+  player = {getCurrentTime: () => time, seekTo: vi.fn((seconds) => {time = seconds;}), getIframe: () => document.createElement("iframe"), destroy: vi.fn()};
+  window.YT = {Player: function (_host, config) {options = config; return player;}};
+  container = document.createElement("div"); document.body.append(container); root = createRoot(container);
+});
+afterEach(() => {
+  act(() => root.unmount()); container.remove(); delete window.YT;
+  vi.useRealTimers(); globalThis.IS_REACT_ACT_ENVIRONMENT = false;
+});
+const highlight = () => container.querySelector('[aria-current="true"]')?.textContent;
+it.each([true, false])("synchronizes both ways, compact=%s", async (compact) => {
+  await act(async () => root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]} compact={compact} />));
+  await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent.includes("Watch the source")).click());
+  act(() => options.events.onReady());
+  expect(highlight()).toContain("First sentence");
+  const second = [...container.querySelectorAll('button')].find(b => b.textContent.includes("Second sentence"));
+  act(() => second.click());
+  expect(time).toBe(20);
+  expect(highlight()).toContain("Second sentence");
+  const seeks = player.seekTo.mock.calls.length;
+  act(() => {time = 12; vi.advanceTimersByTime(250);});
+  expect(highlight()).toContain("First sentence");
+  act(() => {time = 18; vi.advanceTimersByTime(250);});
+  expect(highlight()).toBeUndefined();
+  act(() => {time = 52; options.events.onStateChange();});
+  expect(highlight()).toContain("Another topic");
+  expect(container.textContent).toContain("Playing elsewhere");
+  expect(container.querySelector('a')).toBeNull();
+  expect(player.seekTo.mock.calls.length).toBe(seeks);
+  act(() => root.unmount());
+  expect(vi.getTimerCount()).toBe(0);
+  root = createRoot(container);
+});
+
+it("offers independent video/transcript collapse and adjustable transcript height", async () => {
+  await act(async () => root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]} compact />));
+  const sections = container.querySelectorAll('aside > details');
+  expect(sections).toHaveLength(2);
+  expect(sections[0].querySelector('summary').textContent).toBe("Video");
+  expect(sections[1].querySelector('summary').textContent).toBe("Transcript");
+  sections[0].open = false;
+  expect(sections[1].open).toBe(true);
+  expect(container.querySelector('[aria-label="Transcript height"]')).not.toBeNull();
+  expect(container.querySelector('[aria-label="Source passages"]').style.maxHeight).toBe("80px");
+});

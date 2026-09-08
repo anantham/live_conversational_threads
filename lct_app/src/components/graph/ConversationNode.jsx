@@ -2,7 +2,7 @@ import { memo } from "react";
 import PropTypes from "prop-types";
 import { Handle, Position } from "reactflow";
 import SpeakerTurnSummary from "./SpeakerTurnSummary";
-import { formatDurationCompact } from "../graphProvenance";
+import { formatSegmentCount, formatSourceDuration } from "../graphProvenance";
 
 /**
  * Custom React Flow node renderer per ADR-030 §D4.
@@ -342,21 +342,15 @@ function ProvenanceMetricStrip({ metrics }) {
   ) || 0;
   const wordCount = Number(metrics?.word_count) || 0;
   const hasTiming = metrics?.duration_seconds != null;
-  const duration = hasTiming
-    ? Number(metrics?.duration_seconds) === 0
-      ? "0s"
-      : formatDurationCompact(metrics?.duration_seconds)
-    : "";
+  const duration = formatSourceDuration(metrics);
   const timingUnavailable = matchedCount > 0 && !hasTiming;
   const parts = [
     wordCount > 0 ? `${wordCount.toLocaleString()} ${wordCount === 1 ? "word" : "words"}` : null,
-    duration ? `${duration} span` : null,
+    duration || null,
     timingUnavailable ? "timing unavailable" : null,
     referencedCount > matchedCount
-      ? `${matchedCount.toLocaleString()} of ${referencedCount.toLocaleString()} turns linked`
-      : matchedCount > 0
-      ? `${matchedCount.toLocaleString()} ${matchedCount === 1 ? "turn" : "turns"}`
-      : null,
+      ? `${matchedCount.toLocaleString()} of ${referencedCount.toLocaleString()} referenced segments linked`
+      : formatSegmentCount(metrics),
   ].filter(Boolean);
   if (parts.length === 0) return null;
   const incomplete = referencedCount > matchedCount;

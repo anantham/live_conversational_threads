@@ -1,5 +1,50 @@
 # WORKLOG
 
+## 2026-09-08 — Arc size and two-way YouTube highlighting
+
+- A1: user explicitly requested summed source duration and denominator-aware
+  segment counts, plus reverse video-to-transcript synchronization. No backend,
+  artifact generation, provider, or private data changes. Isolated task worktree
+  based on freshly fetched origin/main 265fc4a.
+- Confirmed hypotheses: graphProvenance computed max(end)-min(start); the player
+  had seekTo calls but no clock readback. Not an artifact grouping/cache issue.
+- graphProvenance now sums each unique source segment's duration, preserving
+  start/end for timeline positioning. Missing/partial timing stays explicit.
+  Desktop ConversationNode and MobileDeckCard share speech-duration and
+  whole-transcript segment-fraction labels. Segment fraction is not used as a
+  proxy for time; rows vary in length. Overlapping speakers' distinct segments
+  count separately (source speech duration, not recording wall time).
+- YouTubeSourcePanel polls the enabled player every 250ms (skips hidden tabs),
+  including paused scrubs. The current interval highlights and scrolls only the
+  passage list, never seeks back. Gaps clear the highlight; out-of-node playback
+  shows a separate current sentence rather than changing the chosen graph node.
+- Intent/regressions: deduplicated disjoint durations, missing end times,
+  denominator labels, desktop/mobile rendering, forward/backward paused seeks,
+  gaps, out-of-selection playback, and polling cleanup. First focused run:
+  19 tests passed. Production build and targeted lint passed; existing large
+  bundle warning remains. Browser/extra compact-card test verification follows.
+- Not pushed, merged, or deployed. Publication/production remains a separate
+  H1 boundary for this follow-up; local implementation/commit is approved.
+- Follow-up user request: separate native disclosure controls for video and
+  transcript, independent transcript height slider, no standalone YouTube link
+  except embed-error fallback. Speaker naming lives inside the transcript
+  disclosure with reduced spacing. Removed MobileConversationDeck's empty
+  parent-label spacer at the root. At 390x844 the real public artifact rendered
+  corrected metrics, both disclosures collapsed cleanly, and the slider changed
+  the visible transcript height (80 to 88px). No phone hardware claim.
+- 21 focused tests pass, including compact-card metrics and independent
+  disclosures. Actual YouTube reverse seeking is covered through a simulated
+  IFrame API in component tests, not yet a real-player/device acceptance test.
+- Word highlighting remains incomplete: published utterances contain segment
+  start/end only, no word timing array. Needs source-audio forced alignment;
+  do not synthesize equal-duration word slots or claim fine alignment. No source
+  audio found in the release scratch directory during this pass.
+- Style question: PRODUCT.md describes tone; prompts.json has generic source
+  fidelity/structure rules. The frontier demo used /private/tmp/create-lct-demo.py
+  with concrete titles, concise summaries, source attribution and uncertainty.
+  No dedicated summary prose style guide was found in scoped documentation.
+
+
 ## 2026-09-07 — Optional-media reading compatibility repair
 
 - Review of 40789f6 completed, retaining one low-severity finding. Initially
