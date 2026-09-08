@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Provision and verify full-schema continuation targets
+
+- Created previously absent loopback:55439 databases
+  lct_public_replay_frontier_alias_20260908 and
+  lct_public_replay_local_alias_20260908 with template0/UTF8. Imported the fully
+  inspected schema-only dump of the original frontier replay in one transaction
+  per target, stop-on-error, no owners/ACLs or data. Dump uses ordinary tables,
+  indexes and constraints; no functions, triggers, extension install or external
+  services. Original DB not changed. Local dump:
+  /private/tmp/lct-public-alias-schema-20260908.sql.
+- Read-only full-target validation confirms all28 tables empty in both targets
+  and exact column/default/114-constraint parity with origin. Verification:
+  /private/tmp/verify-alias-targets.py. This proves provisioning, not copying,
+  successful replay or semantic quality. No fork/inference launched in targets.
+- Original custody refresh: both1263/1263 utterances across11 fields exact,
+  four verified extraction checkpoints. Local40514 live,36 source inspections;
+  frontier terminal,49 inspections and six old-policy accepted relation batches.
+  Reviewer90592 confirmed live without returned verdict; no approval inferred.
+
 ## 2026-09-08 — Fork review submitted under standing envelope
 
 - REVIEW-EGRESS-A1: exact664442a packet sent to tool-free Claude Sonnet using
