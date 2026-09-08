@@ -14,7 +14,7 @@ from .passage_journal import JournalConflict, _hash, _authorized_conversation
 from .question_review_runner import capture_question_basis
 from .source_inspection_runner import check_inference_consent
 from .thread_identity_review import (THREAD_IDENTITY_REVIEW_PROMPT, thread_identity_request,
-                                      validate_thread_identity_review)
+                                      validate_thread_identity_review, render_thread_identity_request)
 
 ARTIFACT_TYPE = 'source_reviewed_thread_identity'
 
@@ -61,7 +61,7 @@ def pair_request(local_basis, pair, envelope=None):
             source['utterances'].append([row['sequence_number'], offset, offset + len(row['text']), row['speaker_id']])
             offset += len(row['text']) + 1
     if envelope is not None:
-        envelope.validate(json.dumps(request, ensure_ascii=False, separators=(',', ':')))
+        envelope.validate(render_thread_identity_request(request))
     return request
 
 
@@ -81,7 +81,8 @@ class ThreadIdentityRunner:
         self.scope = dict(conversation_id=conversation_id, owner_id=owner_id)
         self.envelope = envelope.with_system_prompt(THREAD_IDENTITY_REVIEW_PROMPT)
         self.candidate_policy_id = candidate_policy_id
-        self.fingerprint = _hash({'version': 1, 'inference': self.envelope.fingerprint,
+        self.fingerprint = _hash({'version': 2, 'rendering': 'source_offsets_without_utterance_uuid_lists',
+                                  'inference': self.envelope.fingerprint,
                                   'candidate_policy_id': candidate_policy_id})
 
     async def capture(self, db, *, lock=False):
@@ -140,7 +141,7 @@ class ThreadIdentityRunner:
                 saved = await self.checkpoint(db, basis, pair, request)
             if saved is None:
                 result = await asyncio.to_thread(self.envelope.complete_json,
-                    json.dumps(request, ensure_ascii=False, separators=(',', ':')))
+                    render_thread_identity_request(request))
                 async with self.sessions.begin() as db:
                     saved = await self.checkpoint(db, basis, pair, request, result.data)
             receipts.append(saved)

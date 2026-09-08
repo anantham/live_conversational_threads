@@ -77,8 +77,28 @@ def thread_identity_request(state, node_ids):
 def build_thread_identity_review(state, node_ids, *, envelope):
     """Keep complete required evidence or fail the full-message budget."""
     request = thread_identity_request(state, node_ids)
-    envelope.validate(json.dumps(request, ensure_ascii=False, separators=(',', ':')))
+    envelope.validate(render_thread_identity_request(request))
     return request
+
+
+def render_thread_identity_request(request):
+    """Keep full text/attribution; UUID membership stays in the audit receipt.
+
+    The model cites source_id and verbatim quotes, never utterance UUIDs.
+    Removing that redundant list avoids spending most context on opaque IDs.
+    Canonical request and exported sources remain unchanged and independently
+    reconstructable from the committed source.
+    """
+    rendered = copy.deepcopy(request)
+    # Corrected-attribution metadata can explicitly refer to utterance IDs.
+    # In that case the membership list is no longer redundant: keep its mapping
+    # to the ordered speaker spans, even if the complete request must fail budget.
+    referenced = {node['source_id'] for node in rendered['nodes']
+                  if node.get('source_attributions')}
+    for source in rendered['sources']:
+        if source['source_id'] not in referenced:
+            source.pop('utterance_ids', None)
+    return json.dumps(rendered, ensure_ascii=False, separators=(',', ':'))
 
 
 def validate_thread_identity_review(payload, request):

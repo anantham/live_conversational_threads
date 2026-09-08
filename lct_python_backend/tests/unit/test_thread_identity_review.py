@@ -7,10 +7,12 @@
   budgeting; source changes invalidate deterministic request/state hashes.
 """
 import copy
+import json
 import pytest
 
 from lct_python_backend.services.transcript.thread_identity_review import (
-    THREAD_IDENTITY_REVIEW_PROMPT, build_thread_identity_review, validate_thread_identity_review)
+    THREAD_IDENTITY_REVIEW_PROMPT, build_thread_identity_review, validate_thread_identity_review,
+    render_thread_identity_request)
 from lct_python_backend.services.transcript.inference_envelope import InferenceEnvelope
 from lct_python_backend.services.transcript.conversation_context import ContextBudgetExceeded
 
@@ -50,6 +52,21 @@ def test_distant_callback_preserves_originals_and_deterministic_identity():
     assert original==before
     changed=copy.deepcopy(original); changed['chunks']['0']+=' Additional context.'
     assert build_thread_identity_review(changed,['0','2'],envelope=envelope())['state_hash']!=request['state_hash']
+
+
+def test_opaque_uuid_membership_does_not_displace_full_source_from_model_context():
+    original = state()
+    original['utterance_chunk_map']['0'] = [f'{i:036d}' for i in range(1000)]
+    request = build_thread_identity_review(original, ['0','2'], envelope=envelope())
+    before = copy.deepcopy(request)
+    rendered = json.loads(render_thread_identity_request(request))
+    assert request == before
+    assert len(request['sources'][0]['utterance_ids']) == 1000
+    assert [s['text'] for s in rendered['sources']] == [s['text'] for s in request['sources']]
+    assert rendered['nodes'] == request['nodes']
+    assert all('utterance_ids' not in s for s in rendered['sources'])
+    review = validate_thread_identity_review(response(rendered), request)
+    assert review['judgment'] == 'same_inquiry'
 
 
 @pytest.mark.parametrize('judgment',['related_distinct','uncertain'])
@@ -101,6 +118,8 @@ def test_same_chunk_retains_two_occurrences_and_attribution_warning():
     assert request['sources'][0]['utterance_ids']==['u0','u2']
     assert request['nodes'][0]['attribution_review_required'] is True
     assert request['nodes'][0]['source_attributions']==original['nodes'][0]['source_attributions']
+    rendered = json.loads(render_thread_identity_request(request))
+    assert rendered['sources'][0]['utterance_ids'] == ['u0', 'u2']
     result=validate_thread_identity_review(response(request,'uncertain'),request)
     assert {e['node_id'] for e in result['evidence']}=={'0','2'}
 
