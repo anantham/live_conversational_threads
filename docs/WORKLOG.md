@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — Real PostgreSQL replay bootstrap acceptance
+
+- Added a connection-private TEMP-table PostgreSQL test of the new replay helper.
+  Verified exact source/speaker/timing preservation across flush/new ORM sessions;
+  occupied fresh target and changed owner/policy/source reject without overwrites.
+  One real-PG test passed. Outer transaction rolled back; no saved podcast rows,
+  durable schemas, models or dependencies touched. TEMP LIKE tables do not copy
+  foreign keys; this is not process-crash durability acceptance.
+- Parent independently reran the new privacy acceptance plus replay unit tests:
+  22 passed. Exact previously authorized Anthropic packet was retried after the
+  first process terminated; longer600s process window, same digest/content and
+  tool-free settings. No result available yet at this checkpoint.
+
+
 ## 2026-09-08 — Fresh isolated replay harness
 
 - Replaced old hard-pinned replay database/conversation with explicit loopback
