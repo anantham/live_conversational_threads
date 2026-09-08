@@ -140,16 +140,18 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
         # The chat tokenizer is not the embedding model's tokenizer.
         batch_token_budget=budgets.embedding_batch_tokens, count_tokens=conservative_tokens,
     )
-    identity = {"version": "interleaved_runtime_v4_question_conflicts", "inference": envelope.fingerprint,
+    from .question_review_runner import QuestionReviewRunner
+    from .question_context import QuestionContextReader
+    question_runner = QuestionReviewRunner(session_factory=session_factory,
+        conversation_id=conversation_id, owner_id=owner_id, envelope=envelope)
+    identity = {"version": "interleaved_runtime_v5_review_policy", "inference": envelope.fingerprint,
+                "question_review": question_runner.envelope.fingerprint,
                 "retrieval": retrieval.fingerprint, "budgets": asdict(budgets), "tokenizer_id": tokenizer_id}
     fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
     journal = PassageJournalSession(session_factory=session_factory, conversation_id=conversation_id,
                                     owner_id=owner_id, policy_fingerprint=fingerprint,
                                     inference_providers=[*envelope.providers, *retrieval.providers])
-    from .question_review_runner import QuestionReviewRunner
-    from .question_context import QuestionContextReader
-    question_context = QuestionContextReader(QuestionReviewRunner(session_factory=session_factory,
-        conversation_id=conversation_id, owner_id=owner_id, envelope=envelope))
+    question_context = QuestionContextReader(question_runner)
     processor = TranscriptProcessor(
         send_update=send_update, send_status=send_status,
         inference_envelope=envelope, passage_context_policy=context,

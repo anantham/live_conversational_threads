@@ -1,5 +1,33 @@
 # WORKLOG
 
+## 2026-09-08 — Explicit evidence requirements pass the public scope follow-up
+
+- Prior turn was evidence progress (a2aa1b1 pushed), clean state verified. Added
+  failing-first tests for per-event required_source_ids and for question review
+  prompt changes affecting passage recovery identity. All three failed before
+  implementation; the weakened-hint rejection test already passed, as intended.
+- Question review requests now explicitly list original/current source IDs per
+  event, deduplicated when both are in one passage. Instructions explain the
+  requirement. The validator still derives its requirement independently and
+  rejects an output even if a caller weakens the hint. No output citations are
+  automatically inserted or changed.
+- Passage runtime fingerprint now includes the actual question-review envelope
+  fingerprint (v5 policy), so changes to review instructions cannot silently
+  change resumed passage context. Focused unit/PostgreSQL imports: 32 passed.
+- Public follow-up session 17714 completed exit 0. Exact same selected eight-event,
+  two-passage case; 19,667 conservative input units. Saved raw output at
+  tmp/public-pipeline/question-scope-1788825607782969000.json, preserving the earlier
+  rejected response. Uncached local qwen3.8:27b-mlx, reasoning none, temperature 0,
+  finish stop, 6,574 prompt tokens / 535 completion tokens.
+- All seven assessments structurally validated, including required original/current
+  citations. Event-6 remains related_aside/not_an_answer; reviewed status stays open.
+  Source-text assessment finds this distinction useful. The earlier event-5 wording
+  broadening the question to both speakers no longer appears. This selected pair
+  of runs is not a blind accuracy estimate or proof of broad model reliability.
+- Offline pinned-tokenizer check on the saved exact messages counted 6,574 tokens,
+  matching server usage with difference zero. No dependency installed or activated.
+  No canonical review applied, public artifact replaced, merge or deployment.
+
 ## 2026-09-08 — Public scope probe terminal: useful judgment, invalid citations
 
 - Session 23978 completed exit 1, not running. One uncached local response,

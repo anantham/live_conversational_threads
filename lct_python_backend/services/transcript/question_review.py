@@ -26,6 +26,8 @@ Each entry has event_id, scope (same_question, related_aside, unrelated, uncerta
 resolution (not_an_answer, partial_answer, complete_answer, explicit_withdrawal,
 explicit_reopening, uncertain), reason and evidence_ids. Cite source-0 and the
 current event's source (these may be the same); cite intervening sources needed for your judgment too.
+Each event lists required_source_ids: include ALL of them in that assessment's
+evidence_ids, even when the original inquiry was quoted in an earlier event.
 Use supplied source IDs only. related_aside/unrelated cannot constitute an answer
 or state transition. Uncertain scope requires uncertain resolution. A complete
 answer means the speaker presents a whole answer, not that the answer is true.
@@ -51,7 +53,8 @@ def build_question_review(nodes, source_chunks, question_id, *, envelope):
             request['sources'].append({'id': source_ids[chunk_id], 'chunk_id': chunk_id,
                                        'text': source_chunks[chunk_id]})
         request['events'].append({**copy.deepcopy(event), 'event_id': f'event-{i}',
-                                  'source_id': source_ids[chunk_id]})
+                                  'source_id': source_ids[chunk_id],
+                                  'required_source_ids': list(dict.fromkeys(['source-0', source_ids[chunk_id]]))})
         quote = event['evidence_quote']
         text = source_chunks[chunk_id]
         start = text.find(quote)

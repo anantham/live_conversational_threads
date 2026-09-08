@@ -70,6 +70,13 @@ def test_factory_composes_shared_policy_and_recovery_identity():
     assert build(system_prompt="changed instructions").interpretation_policy_fingerprint != processor.interpretation_policy_fingerprint
 
 
+def test_review_prompt_change_invalidates_passage_recovery_policy(monkeypatch):
+    original = build().interpretation_policy_fingerprint
+    monkeypatch.setattr('lct_python_backend.services.transcript.question_review_runner.QUESTION_REVIEW_PROMPT',
+                        'Changed source review instructions')
+    assert build().interpretation_policy_fingerprint != original
+
+
 def test_hosted_raw_source_is_rejected_before_processor_creation(monkeypatch):
     monkeypatch.setenv("LCT_DEPLOYMENT_PROFILE", "hosted_shared")
     with pytest.raises(ValueError, match="retention"):

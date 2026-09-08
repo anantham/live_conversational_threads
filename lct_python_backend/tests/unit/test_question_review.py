@@ -2,6 +2,8 @@
 - Review original scope plus every intervening event against exact source.
 - Related asides and uncertainty are distinct from progress or resolution.
 - Invalid references fail; review never mutates the historical question ledger.
+- Required original/current evidence is explicit per event, but validation
+  derives it independently and cannot be weakened by changing that hint.
 """
 import copy
 import pytest
@@ -29,6 +31,8 @@ def test_review_preserves_original_and_aside_without_rewriting_ledger():
     before = copy.deepcopy(nodes)
     request = build_question_review(nodes, chunks, 'studies', envelope=Envelope())
     assert [event['action'] for event in request['events']] == ['open', 'partial_answer', 'partial_answer']
+    assert [event['required_source_ids'] for event in request['events']] == [
+        ['source-0'], ['source-0', 'source-1'], ['source-0', 'source-2']]
     result = validate_question_review({'assessments': [
         {'event_id': 'event-1', 'scope': 'related_aside', 'resolution': 'not_an_answer',
          'reason': 'A different person is the subject.', 'evidence_ids': ['source-0', 'source-1']},
@@ -39,7 +43,7 @@ def test_review_preserves_original_and_aside_without_rewriting_ledger():
     assert nodes == before
 
 
-@pytest.mark.parametrize('change', ['missing', 'foreign', 'contradiction'])
+@pytest.mark.parametrize('change', ['missing', 'foreign', 'contradiction', 'weakened_hint'])
 def test_invalid_review_cannot_be_silently_accepted(change):
     nodes, chunks = fixture()
     request = build_question_review(nodes, {str(k): v for k, v in chunks.items()}, 'studies', envelope=Envelope())
@@ -48,6 +52,9 @@ def test_invalid_review_cannot_be_silently_accepted(change):
     if change == 'missing': rows.pop()
     if change == 'foreign': rows[0]['evidence_ids'] = ['source-0', 'unavailable']
     if change == 'contradiction': rows[0].update(scope='related_aside', resolution='complete_answer')
+    if change == 'weakened_hint':
+        request['events'][1]['required_source_ids'] = ['source-1']
+        rows[0]['evidence_ids'] = ['source-1']
     with pytest.raises(ValueError):
         validate_question_review({'assessments': rows}, request)
 
@@ -67,6 +74,7 @@ def test_multiple_updates_share_one_unabridged_source_passage():
     request = build_question_review(nodes, {'shared': passage}, 'studies', envelope=Envelope())
     assert request['sources'] == [{'id': 'source-0', 'chunk_id': 'shared', 'text': passage}]
     assert {event['source_id'] for event in request['events']} == {'source-0'}
+    assert all(event['required_source_ids'] == ['source-0'] for event in request['events'])
     assert len(request['events']) == 3
     for event, node in zip(request['events'], nodes):
         start, end = event['evidence_range']
