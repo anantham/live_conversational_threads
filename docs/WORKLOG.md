@@ -1,5 +1,33 @@
 # WORKLOG
 
+## 2026-09-08 — Frontier relation hash-copy failure and exact identity transport
+
+- Frontier handle1842 terminated with exit1 in review_inspection_context,
+  before accepting a malformed relation comparison. Saved response
+  inference-8c535758c71742d194ac70cac4b7576c contains all eight comparisons,
+  no duplicate candidate IDs, but the eighth 64-character hash changes `6cca`
+  to `6ffa`. The source request admits eight of714 eligible observations;
+  this is not an omitted-comparison or repeated-candidate failure. Original
+  receipts retained. No fuzzy match, output editing, accepted artifact or restart.
+- Added exact request-local observation aliases o0..oN. Only identity fields
+  are translated back; quotations, utterance IDs, canonical node IDs, meaning,
+  coverage, source validation and durable identities remain untouched. Unknown
+  aliases reject. Checkpoints continue storing canonical contexts/responses;
+  public transport receipts retain actual aliased model requests. Prompt change
+  changes the review envelope/reconciliation fingerprint, so old-policy saved
+  stage receipts cannot silently count as new-policy output.
+- Synthetic tests cover exact mapping, input immutability, source/quote
+  preservation, unknown/case-mistyped IDs and canonical checkpoint/output IDs.
+  Existing recovery tests now assert request-local wire IDs plus unchanged
+  canonical saved/final IDs. No semantic oracle or evidence check was weakened.
+  Full unit + isolated PostgreSQL suite:2532 passed,6 skipped,517 warnings in
+  19.37s, including directed canonical relation export and recovered attempts.
+- Local40514 remained live under its original policy. Do not present old local
+  and new frontier relation protocols as a matched comparison. Need independent
+  review and an explicit checkpoint-preserving matched-stage continuation plan
+  before either accepted artifact is generated. Import source-first integration
+  remains pending; this failure interrupted that work with concrete replay evidence.
+
 ## 2026-09-08 — Restore YouTube upload backend; scoped guard review complete
 
 - Restored youtube_download/source/transcriber.py byte-for-byte from 8dd2d40,

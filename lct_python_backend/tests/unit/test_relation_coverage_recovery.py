@@ -30,8 +30,9 @@ async def test_missing_only_retry_preserves_original_context_and_judgments():
             return SimpleNamespace(data={'comparisons': [comparison(request['candidates'][0]['id'])]})
     original = context()
     result = await review_inspection_context(json.dumps(original), envelope=Envelope())
-    assert [c['id'] for c in calls[1]['candidates']] == ['another']
-    assert calls[1]['focal'] == original['focal']
+    assert [c['id'] for c in calls[1]['candidates']] == ['o1']
+    assert calls[1]['candidates'][0] == {**original['candidates'][1], 'id': 'o1'}
+    assert calls[1]['focal'] == {**original['focal'], 'id': 'o0'}
     assert [c['candidate_id'] for c in result['comparisons']] == ['earlier', 'another']
     assert result['coverage'] == original['coverage']
     assert len(result['coverage_attempts']) == 2
@@ -58,7 +59,9 @@ async def test_interrupted_recovery_reuses_saved_comparisons():
         await review_inspection_context(json.dumps(context()), envelope=envelope, checkpoint=checkpoint)
     envelope.interrupt = False
     result = await review_inspection_context(json.dumps(context()), envelope=envelope, checkpoint=checkpoint)
-    assert calls == [['earlier', 'another'], ['another'], ['another']]
+    assert calls == [['o1', 'o2'], ['o1'], ['o1']]
+    assert [c['candidate_id'] for c in saved[0]['comparisons']] == ['earlier']
+    assert [c['candidate_id'] for c in result['comparisons']] == ['earlier', 'another']
     assert len(result['comparisons']) == 2
 
 

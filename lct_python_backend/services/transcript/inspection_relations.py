@@ -9,8 +9,10 @@ import copy
 import json
 from .passage_journal import _hash
 from .canonical_selection import validate_node_selections
+from .relation_identity_transport import encode_observation_ids, decode_observation_ids
 
 RELATION_PROMPT = '''Review each candidate's relationship to the focal observation.
+Observation IDs are request-local aliases. Copy those IDs exactly as supplied.
 Observations are interpretations; supplied source excerpts are the evidence.
 Similarity, temporal proximity, and being discussed by the same person do not
 establish a semantic relationship. Unrelated is a normal and useful result.
@@ -129,9 +131,10 @@ async def review_inspection_context(prompt, *, envelope, checkpoint=None):
             request['coverage']['previously_reviewed_candidates'] = len(completed)
         response = await checkpoint(attempt, request) if checkpoint is not None else None
         if response is None:
+            wire_request, identity_map = encode_observation_ids(request)
             result = await asyncio.to_thread(envelope.complete_json,
-                json.dumps(request, ensure_ascii=False, separators=(',', ':')))
-            response = result.data
+                json.dumps(wire_request, ensure_ascii=False, separators=(',', ':')))
+            response = decode_observation_ids(result.data, identity_map)
             validate_relation_review(response, request, allow_partial=True)
             if checkpoint is not None:
                 response = await checkpoint(attempt, request, response)
