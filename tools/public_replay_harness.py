@@ -10,6 +10,11 @@ from lct_python_backend.models import Conversation, Utterance, Node, PipelineArt
 from tools.replay_public_source_inspection import SHA, FIELDS, verify_rows
 
 
+def require_unicode_database(encoding):
+    if encoding != 'UTF8':
+        raise ValueError('Public replay requires UTF8 database encoding for Unicode JSON evidence')
+
+
 def validate_target(database_url, run_id):
     url = make_url(database_url)
     if (url.drivername != 'postgresql+asyncpg' or url.host not in {'127.0.0.1', '::1'}
@@ -25,14 +30,16 @@ def replay_identity(run_id):
     return uuid.uuid5(uuid.NAMESPACE_URL, f'lct-public-full-replay:6HmR9IaqM88:{SHA}:{run_id}')
 
 
-async def ensure_replay(db, *, run_id, owner_id, source, policy, resume=False):
+async def ensure_replay(db, *, run_id, owner_id, source, policy, resume=False, external_llm_ok=False):
     """Caller supplies verified pinned source and encloses this in one transaction."""
     if not isinstance(owner_id, str) or not owner_id.strip():
         raise ValueError('Configured owner is required')
+    if type(external_llm_ok) is not bool:
+        raise ValueError('Public replay external consent must be an explicit boolean')
     cid = replay_identity(run_id)
     metadata = {'public_source_sha256': SHA, 'youtube_video_id': '6HmR9IaqM88',
                 'replay_run_id': run_id, 'replay_policy': policy,
-                'privacy': {'local_llm_ok': True, 'external_llm_ok': False}}
+                'privacy': {'local_llm_ok': True, 'external_llm_ok': external_llm_ok}}
     if resume:
         conversation = await db.get(Conversation, cid)
         if (conversation is None or conversation.owner_id != owner_id or conversation.deleted_at is not None
@@ -68,7 +75,8 @@ def inference_receipt(envelope, prompt, response):
             'tokenizer_id': envelope.tokenizer_id,
             'requested_models': [p['model'] for p in envelope.providers],
             'reasoning_efforts': [p.get('reasoning_effort', 'none') for p in envelope.providers],
-            'served_model': response.model, 'cache_hit': response.cache_hit,
+            'served_model': None if getattr(response, 'provider_type', None) == 'codex_cli' else response.model,
+            'cache_hit': response.cache_hit,
             'prompt_tokens': response.prompt_tokens, 'completion_tokens': response.completion_tokens,
             'finish_reason': response.finish_reason}
 

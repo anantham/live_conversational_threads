@@ -1,5 +1,44 @@
 # WORKLOG
 
+## 2026-09-08 — Both replay arms integrated; Unicode database repair
+
+- Added explicit --frontier arm to the same shared stage composition, using
+  OpenAI Codex gpt-6-astra/high and unchanged local embedding model. Source
+  remains SHA-pinned. New explicit external consent is stored only in that
+  isolated conversation; tests prevent local-to-external resume and block
+  startup under local-only policy before DB access. No deployment flags changed.
+- Both arms use Qwen reference units for source planning. Frontier tokenizer_id
+  explicitly says cross_model_reference; this is NOT an OpenAI token estimate
+  or effective context-capacity claim. CLI actual usage/extra instructions and
+  uncontrolled decoding defaults are separately recorded. Visible frontier
+  JSON exceeding the common output allowance is rejected. CLI served-model
+  attestation is unavailable, so inference receipt served_model is null rather
+  than relabeling a requested model as independently verified.
+- First frontier session73403 returned an extraction, then failed writing
+  Unicode JSONB because the prepared database was SQL_ASCII. All four original
+  evaluation DBs were confirmed SQL_ASCII. Added UTF8 preflight before inference.
+  Created lct_public_replay_frontier_utf8_20260908 from template0 with UTF8/C.
+- Stopped only owned local replay PID1117 (session48389 exit143), and observed
+  Ollama context cancellation. Copied its committed database via pg_dump into
+  new lct_public_replay_local_utf8_20260908. Original untouched. Row-count/content
+  MD5s match: utterances1263/8c6813713cb00f562eb44e03129c146a;
+  nodes5/17a5e8fecd9c4845f5a939cf7353fc69;
+  artifacts3/aed488669c5f5d58e7d481122a5ef8de.
+- Local resumed with unchanged policy/CID c41b03d8-1128-529b-af19-832ea5c855f9,
+  session63372. Frontier fresh UTF8 run uses CID71f16519-bb39-5716-aa6c-7cd74af0261d,
+  session13843. Poll those handles; neither artifact accepted yet.
+- Found export dropped YouTube references: share_api only allowed Drive refs.
+  Added canonical URL construction from validated 11-character ASCII video ID,
+  never arbitrary metadata URLs. Tests cover portable timing unit, source link
+  and rejection of malformed IDs/private metadata. This preserves viewer seeking.
+- Targeted integration/parser/media/encoding checks: 42 passed. Production,
+  full semantic acceptance, independent review and two public URLs remain pending.
+- Full unit suite: 2378 passed, 6 skipped, 487 warnings (12.60s).
+  Added a separate structural candidate audit and three passing tests afterward:
+  verifies pinned source fields, distinct threads, authored levels1-5, source/
+  parent references and playback link. A structural pass explicitly does not
+  imply semantic or publication acceptance. Browser/source review is still required.
+
 ## 2026-09-08 — Windowed replay progressed to output-budget boundary
 
 - Session 75372 exited 1 after retrieval succeeded. Chat provider reported

@@ -15,6 +15,18 @@ from tools.public_replay_harness import validate_target, replay_identity, ensure
 from tools.replay_public_pipeline import main
 
 
+@pytest.mark.parametrize('encoding', ['SQL_ASCII', 'LATIN1', None, ''])
+def test_non_unicode_database_is_rejected(encoding):
+    from tools.public_replay_harness import require_unicode_database
+    with pytest.raises(ValueError, match='UTF8'):
+        require_unicode_database(encoding)
+
+
+def test_utf8_database_supported():
+    from tools.public_replay_harness import require_unicode_database
+    require_unicode_database('UTF8')
+
+
 @pytest.mark.parametrize('url', [
     'postgresql+asyncpg://aditya@127.0.0.1:55439/podcast',
     'postgresql+asyncpg://aditya@remote:55439/lct_public_replay_test',
@@ -73,6 +85,36 @@ def test_fresh_refuses_occupied_database_without_writes():
     with pytest.raises(ValueError, match='empty'):
         asyncio.run(ensure_replay(db, run_id='test', owner_id='owner', source=[], policy={}, resume=False))
     assert db.added == []
+
+
+def test_frontier_consent_is_stored_only_when_explicit():
+    db = EmptyDB()
+    asyncio.run(ensure_replay(db, run_id='frontier', owner_id='owner', source=[],
+                             policy={}, external_llm_ok=True))
+    assert db.added[0].source_metadata['privacy']['external_llm_ok'] is True
+
+
+def test_local_replay_cannot_be_resumed_as_external():
+    conversation, rows, source = replay_fixture()
+    db = ResumeDB(conversation, rows)
+    with pytest.raises(ValueError, match='Resume'):
+        asyncio.run(ensure_replay(db, run_id='test', owner_id='owner', source=source,
+                                 policy={'tokenizer_id': 'test-v1'}, resume=True,
+                                 external_llm_ok=True))
+    assert not db.added
+
+
+def test_frontier_run_honors_local_only_before_database(monkeypatch):
+    import tools.replay_public_pipeline as module
+    from lct_python_backend.services.egress_guard import CloudEgressBlocked
+    monkeypatch.setenv('LCT_LOCAL_ONLY', '1')
+    monkeypatch.delenv('LCT_LOCAL_ONLY_ALLOW_HOSTS', raising=False)
+    monkeypatch.setattr(module, 'verified_public_source', lambda: [])
+    monkeypatch.setattr(module, 'create_async_engine', lambda *a, **k: pytest.fail('database opened'))
+    with pytest.raises(CloudEgressBlocked):
+        asyncio.run(main(run=True, frontier=True, count_messages=lambda messages: 1,
+                         tokenizer_id='synthetic', run_id='frontier',
+                         database_url='postgresql+asyncpg://aditya@127.0.0.1:55439/lct_public_replay_test'))
 
 
 def test_receipt_preserves_exact_messages_and_usage():

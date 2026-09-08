@@ -395,6 +395,14 @@ def _export_media_refs(conversation) -> list[dict]:
     metadata = getattr(conversation, "source_metadata", None)
     raw_refs = metadata.get("media_refs") if isinstance(metadata, dict) else None
     refs = []
+    # Public YouTube imports/replays retain a stable video ID independently
+    # of any source URL. Construct the URL; never export arbitrary metadata URLs.
+    video_id = metadata.get("youtube_video_id") if isinstance(metadata, dict) else None
+    if (isinstance(video_id, str) and len(video_id) == 11
+            and all(c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in video_id)):
+        refs.append({"provider": "youtube", "kind": "video", "video_id": video_id,
+                     "view_url": f"https://www.youtube.com/watch?v={video_id}",
+                     "label": "Source video", "time_unit": "seconds"})
     if not isinstance(raw_refs, list):
         return refs
     for raw in raw_refs:
