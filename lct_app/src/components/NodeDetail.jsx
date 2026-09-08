@@ -848,7 +848,8 @@ export default function NodeDetail({
                       {u._hl && !isEditing && (
                         <button
                           type="button"
-                          title="Copy this message — paste into WhatsApp search to jump to it"
+                          title="Copy this message"
+                          aria-label="Copy this message"
                           onClick={() => {
                             try {
                               void navigator.clipboard?.writeText(u.text || "");
@@ -856,9 +857,12 @@ export default function NodeDetail({
                               /* clipboard unavailable (http origin) — no-op */
                             }
                           }}
-                          className="ml-1 rounded border border-amber-200 bg-white/70 px-1 text-[9px] text-amber-700 hover:bg-amber-50"
+                          className="lct-transcript-copy ml-1 inline-flex h-6 w-6 items-center justify-center rounded align-middle text-amber-700/60 hover:bg-amber-50 hover:text-amber-800 focus-visible:outline focus-visible:outline-2"
                         >
-                          copy
+                          <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                            <rect x="8" y="8" width="12" height="12" rx="2" />
+                            <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+                          </svg>
                         </button>
                       )}
 
