@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-09-08 — Native full replay first request timed out
+
+- Session 10035 exited 1 after local provider timeout600s, before first graph
+  commit. Exact request and failure.json are retained in the run directory from
+  the launch note. Failure type RuntimeError; no candidate exported or accepted.
+- First input: 19409 native tokens; system 4150 characters; user 59084 characters.
+  current_passage is 23064 characters, with 301 current_source_lines carrying
+  id/start/end/text. This establishes substantial source annotation overhead,
+  not by itself the timeout cause or an invalid context budget.
+- Do not restart blindly: diagnose serving progress/cancellation and passage
+  payload sizing. No timeout, passage policy or model choice changed this turn.
+
 ## 2026-09-08 — First native full local replay started
 
 - Started local-20260908-native at code c5bf00e in isolated database
