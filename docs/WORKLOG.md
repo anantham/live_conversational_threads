@@ -1,5 +1,31 @@
 # WORKLOG
 
+## 2026-09-08 — Bounded question-review regeneration
+
+- Local public replay reproducibly rejected an extra event-3 where the supplied
+  request contained only event-1/event-2 to assess. A same-policy resume returned
+  the cached invalid answer; stopping/restarting alone cannot repair this case.
+- Added question_review_repair.py: exactly one model regeneration with unchanged
+  source request, rejected output and validation feedback. Full-message budget
+  checks apply; no source truncation, event removal, relaxed validator, provider
+  widening or canonical question mutation. Consent/source guards run before and
+  after inference. Overflow, invalid correction or revision conflict still fail.
+- Runner persists the rejected response and correction policy alongside a valid
+  corrected receipt, and revalidates that audit on recovery. Existing valid
+  receipts remain immutable. This is additive failure recovery, not a changed
+  first-pass inference prompt; correction envelopes have separate fingerprints.
+- Test intent and five regressions cover complete evidence, rejected response
+  retention, audit tampering, overflow, consent denial, invalid correction and
+  refusal to regenerate valid output. Full unit suite: 2,387 passed, six skipped,
+  492 warnings. Live local resume session 67607 is running; success not yet proven.
+- Frontier session 5577 continues on its originally loaded code. Before final
+  comparison acceptance, run both through the final shared implementation and
+  retain manifests/repair receipts; do not describe corrected answers as first-pass
+  quality. Harness now labels the supported recovery policy in future manifests.
+- Identity prompt packing was committed/pushed as cbd28aa; independent review
+  remains incomplete due to Claude session quota (reset 11:50 Mauritius), not a
+  missing operator authorization. No merge, deployment or artifact publication.
+
 ## 2026-09-08 — Both replay arms integrated; Unicode database repair
 
 - Added explicit --frontier arm to the same shared stage composition, using

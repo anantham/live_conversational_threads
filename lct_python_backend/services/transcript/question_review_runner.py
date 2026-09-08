@@ -12,6 +12,7 @@ from .question_memory import fold_question_memory
 from .question_review import build_question_review, validate_question_review, QUESTION_REVIEW_PROMPT
 from .question_review_projection import project_question_review
 from .question_basis import question_basis
+from .question_review_repair import repair_question_review, validate_question_repair
 
 STAGE = 'qreview_v3'
 
@@ -58,7 +59,7 @@ class QuestionReviewRunner:
         await check_inference_consent(db, **self.scope, providers=self.envelope.providers)
         return await capture_question_basis(db, **self.scope, lock=lock)
 
-    async def checkpoint(self, db, basis, index, request, response=None):
+    async def checkpoint(self, db, basis, index, request, response=None, repair_audit=None):
         current = await self.capture(db, lock=True)
         question_ids = sorted(fold_question_memory(basis['state']['nodes'], basis['state']['chunks']))
         if type(index) is not int or not 0 <= index < len(question_ids):
@@ -94,11 +95,16 @@ class QuestionReviewRunner:
             # Revalidate saved raw judgments, not only their digest.
             if validate_question_review(saved['response'], request) != saved['review']:
                 raise JournalConflict('Question review no longer reproduces')
+            if 'repair_audit' in saved:
+                validate_question_repair(saved['repair_audit'], request, saved['response'], self.envelope)
             return copy.deepcopy(saved)
         if response is None:
             return None
         review = validate_question_review(response, request)
         saved = {**identity, 'request': copy.deepcopy(request), 'response': copy.deepcopy(response), 'review': review}
+        if repair_audit is not None:
+            validate_question_repair(repair_audit, request, response, self.envelope)
+            saved['repair_audit'] = copy.deepcopy(repair_audit)
         db.add(PipelineArtifact(conversation_id=cid, stage=stage, stage_index=0,
             artifact_type='source_reviewed_question', artifact_json=saved, content_hash=_hash(saved)))
         await db.flush()
@@ -115,14 +121,23 @@ class QuestionReviewRunner:
             async with self.sessions.begin() as db:
                 saved = await self.checkpoint(db, basis, index, request)
             if saved is None:
+                repair_audit = None
                 if len(request['events']) == 1:
                     response = {'assessments': []}
                 else:
                     result = await asyncio.to_thread(self.envelope.complete_json,
                         json.dumps(request, ensure_ascii=False, separators=(',', ':')))
                     response = result.data
+                    try:
+                        validate_question_review(response, request)
+                    except ValueError:
+                        async def guard():
+                            async with self.sessions.begin() as db:
+                                await self.checkpoint(db, basis, index, request)
+                        response, repair_audit = await repair_question_review(
+                            request, response, envelope=self.envelope, request_guard=guard)
                 async with self.sessions.begin() as db:
-                    saved = await self.checkpoint(db, basis, index, request, response)
+                    saved = await self.checkpoint(db, basis, index, request, response, repair_audit)
             receipts.append(saved)
         return {'receipts': receipts,
                 'projections': [project_question_review(saved['request'], saved['review']) for saved in receipts],

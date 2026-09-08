@@ -83,6 +83,8 @@ async def main(run=False, *, database_url, run_id, resume=False,
                     'comparison_limitations': ['Codex-added instructions', 'CLI decoding defaults',
                         'requested model not independently attested'] if frontier else [],
                     'accepted_for_publication': False}
+        from lct_python_backend.services.transcript.question_review_repair import POLICY as question_repair_policy
+        manifest['question_review_recovery'] = question_repair_policy
         (output / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
         original = InferenceEnvelope.complete_json
         if frontier:
