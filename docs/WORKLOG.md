@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — New matched leaf-support replays started
+
+- Verified old frontier process terminal (absent from self-excluding probe).
+  Verified old local PID 18959 creation time 1788856385.287596 and exact
+  local-20260908-compact command/database before SIGINT. Subsequent probe
+  returned zero replay processes. All old databases and raw receipts retained;
+  no output was repaired or relabelled as a new-policy result.
+- Confirmed new names unused, created UTF8 databases from template0, and
+  initialized schemas only after empty-public-schema/UTF8 assertions:
+  lct_public_replay_local_leaf_20260908 and
+  lct_public_replay_frontier_leaf_20260908. Both on localhost:55439, not production.
+- Started from clean source head 0f4d33d: local run local-20260908-leaf,
+  CID 4fb0c544-55e1-515c-962d-0108aa862282, session 79063; frontier run
+  frontier-20260908-leaf, CID aaedbaed-e406-5909-8996-f0e91dc3d59f,
+  session 32717. Both returned configuration_checked with the same pinned
+  1263-utterance SHA e1c1b6236b3604740d83754823ffbe82dbdc1cd4eee365692b2dcf25f765093f.
+- Same 8192 output reserve, 32768 configured context and approved native Qwen
+  counter; frontier uses it as the documented cross-model reference, not an
+  OpenAI tokenizer claim. Local qwen3.8:27b-mlx remains local-only. Frontier
+  gpt-6-astra/high permission is process-scoped to this approved public source.
+  Neither run is complete or accepted; no new URL/publication/deployment yet.
+
 ## 2026-09-08 — Required versioned leaf-source contract
 
 - InferenceEnvelope has an explicit require_leaf_sources flag, included in
