@@ -1,5 +1,37 @@
 # WORKLOG
 
+## 2026-09-08 — Current-worktree browser and actual YouTube acceptance
+
+- Preflight found port43191 belongs to threads-podcast-release, not this task
+  worktree. Did not test or modify it. Started this branch's Vite on loopback
+  43194, session72035, with absent backend pointed at unused65530; no .env or
+  backend-port file in this frontend. Tests use synthetic fixtures.
+- Source disclosure: both actual desktop and phone tests pass in4.3s, including
+  escaped markup, uncertainty labels, initial collapse and reset on navigation.
+- Wider existing browser run:19pass/1failure/1skip in25.1s. Public Drive opener,
+  phone full journey/map return, touch tablet, dense-tier reorientation and
+  simulated YouTube seek pass. Public Drive responses in these tests are routed
+  fixtures, not proof of the final public files' availability.
+- Failure: old macro initial-scale assertion expects<0.85, actual0.85. Code
+  explicitly applies the existing readability floor. No oracle or production
+  code changed. Independent Center diagnostic first sampled mid-animation, so
+  refined it to wait for target position AND scale. Settled measurement0.85,
+  title15.3px, visible title bounds(52.75,108.2)-(418.25,128.08). Screenshot
+  tmp/recovery-center-diagnostic.png visually inspected. Initial screenshot
+  shows readable central cards with outer cards clipped; recorded in ISSUES.
+- Ran opt-in live YouTube smoke separately using the approved public video:
+  one pass in7.1s. Real iframe playhead reached the later requested4900-second
+  timestamp, beyond the fixture-only simulated seek tests. The default skip is
+  therefore covered by this separate network run, not silently called passed.
+- Test traces/screenshots: tmp/recovery-viewer-acceptance and
+  tmp/recovery-youtube-live; source disclosure images under
+  tmp/source-review-browser-results. The shared JSON reporter path was reused
+  by the one-test live run, so its current JSON is NOT the earlier21-test report;
+  preserve console results and separate failure trace as evidence.
+- Both replay handles40514/1842 freshly confirmed live with receipts. No policy
+  changes, artifact publication, merge or deployment. Claude quota reset remains
+  future at current16:15Mauritius; no quota retries submitted.
+
 ## 2026-09-08 — Source-witness comparison started
 
 - Both40514 and1842 freshly polled live with new inference receipts. Local

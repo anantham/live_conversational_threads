@@ -1,5 +1,20 @@
 # ISSUES
 
+## 2026-09-08 — Macro overview test assumes obsolete initial zoom (OPEN)
+
+Current browser suite fails threads-viewer-responsive.spec.ts's initial
+`viewportScale < 0.85` assertion: actual initial scale is exactly0.85. Existing
+MinimalGraph code deliberately clamps initial desktop fit to MIN_READABLE_ZOOM
+(introduced in42872e2e, not changed by the current pipeline work). The test then
+expects Center to restore at least0.85, but never reaches that part.
+An independent settled-camera diagnostic confirms Center at0.85, effective title
+size15.3px and the first title within the viewport. Before Center the outer
+cards are clipped at the readable fit scale; the map remains pannable.
+Do not weaken the historical assertion just to obtain green. Reconcile the
+test's initial-state assumption with the documented readability contract at the
+appropriate oracle/product review gate. Non-blocking for inference; blocks an
+unqualified claim that the complete viewer browser suite passes.
+
 ## 2026-09-08 — Mobile map return loses selected moment (FIXED ON TASK BRANCH)
 
 Reproduced twice in threads-viewer-mobile-journey.spec.ts:307 on Chromium at
