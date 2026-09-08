@@ -149,6 +149,7 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
         count_tokens=count_tokens,
         count_messages=count_messages, tokenizer_id=tokenizer_id,
         temperature=temperature,
+        require_leaf_sources=True,
     )
     context = envelope.context_policy(passage_target_tokens=budgets.passage_target_tokens)
     retrieval = SemanticCandidates(
@@ -166,7 +167,7 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
     identity_runner = ThreadIdentityRunner(session_factory=session_factory,
         conversation_id=conversation_id, owner_id=owner_id, envelope=envelope,
         candidate_policy_id=CANDIDATE_POLICY)
-    identity = {"version": "interleaved_runtime_v7_review_sources", "inference": envelope.fingerprint,
+    identity = {"version": "interleaved_runtime_v8_leaf_sources", "inference": envelope.fingerprint,
                 "thread_identity": identity_runner.fingerprint,
                 "question_review": question_runner.envelope.fingerprint,
                 "retrieval": retrieval.fingerprint, "budgets": asdict(budgets), "tokenizer_id": tokenizer_id}

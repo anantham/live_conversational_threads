@@ -91,6 +91,7 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
             assert request["current_passage"] == f"[SPEAKER_00]: {text}"
             return Result({"nodes": [{"node_name": "Borrowing remains undecided", "summary": text,
                 "semantic_level": 1, "source_excerpt": text, "thread_id": "borrowing",
+                "source_line_ids": ["line-0"],
                 "thread_label": "Shared key borrowing", "thread_state": "new_thread",
                 "question_updates": [{"question_id": "borrowing", "action": "open",
                     "wording": "Who may borrow?", "rationale": "Explicitly undecided",
@@ -172,6 +173,7 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         assert first["utterances"][0]["text"] == text
         assert first["utterances"][0]["speaker_id"] == "SPEAKER_00"
         leaf = next(n for n in first['graph_data'] if n['semantic_level'] == 1)
+        assert leaf['utterance_ids'] == [str(uid)]
         assert leaf['question_updates'][0]['evidence_quote'] == text
         assert leaf['question_evidence_selections'][0]['line_ids'] == ['line-0']
         assert leaf['question_evidence_selections'][0]['end'] == len(text)

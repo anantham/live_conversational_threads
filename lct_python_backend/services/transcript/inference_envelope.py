@@ -20,7 +20,10 @@ from .transcript_normalizer import _normalize_generated_output
 class InferenceEnvelope:
     def __init__(self, *, system_prompt, providers, privacy, output_tokens, headroom_tokens,
                  temperature=0.3, count_tokens=conservative_tokens,
-                 count_messages=None, tokenizer_id="utf8_bytes_v1"):
+                 count_messages=None, tokenizer_id="utf8_bytes_v1", require_leaf_sources=False):
+        if type(require_leaf_sources) is not bool:
+            raise ValueError('require_leaf_sources must be an explicit boolean')
+        self.require_leaf_sources = require_leaf_sources
         if not tokenizer_id or (count_messages is not None and tokenizer_id == 'utf8_bytes_v1'):
             raise ValueError('Custom message counter requires an explicit tokenizer identity')
         allowed = select_providers_for_privacy(providers, privacy)
@@ -53,6 +56,8 @@ class InferenceEnvelope:
                                   for p in self._providers]}
         if tokenizer_id != 'utf8_bytes_v1':
             identity['tokenizer_id'] = tokenizer_id
+        if require_leaf_sources:
+            identity['leaf_source_contract'] = 'current_line_selection_v1'
         if count_messages is not None:
             identity['strict_request_contract'] = 1
         # Preserve old default-policy recovery, but never alias an explicit
@@ -114,4 +119,15 @@ class InferenceEnvelope:
         nodes = _normalize_generated_output(result.data)
         if not nodes:
             raise ValueError("Interleaved interpreter returned no valid graph nodes")
+        if self.require_leaf_sources:
+            source_lines = json.loads(prompt).get('current_source_lines')
+            if not isinstance(source_lines, list) or not source_lines:
+                raise ValueError('Leaf selection contract requires current source lines')
+            allowed = {line['id'] for line in source_lines}
+            for node in nodes:
+                selection = node.get('source_line_ids')
+                if (node['semantic_level'] != 1 or not isinstance(selection, list) or not selection
+                        or any(not isinstance(identity, str) or identity not in allowed for identity in selection)
+                        or len(selection) != len(set(selection))):
+                    raise ValueError('Every interpreted leaf requires distinct known current source line IDs')
         return nodes, result.backend_label()

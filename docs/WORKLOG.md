@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Required versioned leaf-source contract
+
+- InferenceEnvelope has an explicit require_leaf_sources flag, included in
+  its fingerprint when active. generate rejects missing, duplicate, unknown
+  source lines or non-leaf outputs. Other task envelopes remain unrestricted
+  by this leaf-only output contract. The shared runtime activates it and now
+  identifies interleaved_runtime_v8_leaf_sources. Both bootstrap and registered
+  prompt require complete supporting-line selections, not passage-wide IDs.
+- New envelope and serialized-journal tests cover strict validation, policy
+  separation and noncontiguous evidence recovery. Import and consent synthetic
+  responses now select their actual sole source line. Export asserts its exact
+  UUID; unchanged restart assertions verify canonical recovery without inference.
+- Initial unit run caught unsynchronized registered prompt; corrected that
+  actual template. Initial integration run rejected six old synthetic responses
+  missing source_line_ids; fixtures updated, no validator weakened.
+- Combined unit+PostgreSQL run: 2450 passed, 15 integration failures, 6 skipped.
+  All units passed (2427). Running all PostgreSQL tests independently immediately
+  afterward: 38 passed in 6.17s. Combined-run failures cluster around export/share
+  404 checks; module-state contamination is a hypothesis, not established cause.
+  Track separately; do not claim a clean combined suite. No new replay launched
+  before these contract tests. Old checkpoint policies are not rewritten.
+
 ## 2026-09-08 — Explicit leaf support binder and callback regression
 
 - Added services/leaf_evidence.py: resolves distinct known current `line-N`

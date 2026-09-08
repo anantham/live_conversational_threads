@@ -3,6 +3,7 @@ noncontiguous selections do not claim intervening turns; malformed/future IDs
 and conflicting authored provenance fail before any node changes.
 """
 import copy
+import json
 
 import pytest
 
@@ -49,3 +50,39 @@ def test_legacy_quote_only_localization_is_unchanged():
     nodes = [{'source_excerpt': 'B'}]
     assign_grounded_leaf_utterance_ids(nodes, ['A', 'B'], [['u0'], ['u1']])
     assert nodes[0]['utterance_ids'] == ['u1']
+
+
+@pytest.mark.parametrize('selection', [None, [], ['line-9'], ['line-0', 'line-0'], ['line-0']])
+def test_versioned_envelope_requires_current_selections(monkeypatch, selection):
+    from lct_python_backend.services.transcript.inference_envelope import InferenceEnvelope
+    config = dict(system_prompt='Select support', providers=[{'id': 'local', 'model': 'test',
+        'base_url': 'http://127.0.0.1:11434', 'trust_scope': 'owner_private',
+        'type': 'openai_compatible', 'context_tokens': 12000}],
+        privacy={'local_llm_ok': True, 'external_llm_ok': False}, output_tokens=1000, headroom_tokens=512)
+    envelope = InferenceEnvelope(**config, require_leaf_sources=True)
+    assert envelope.fingerprint != InferenceEnvelope(**config).fingerprint
+    class Result:
+        data = {'nodes': [{'node_name': 'Opening', 'source_line_ids': selection}]}
+        def backend_label(self):
+            return 'synthetic'
+    monkeypatch.setattr(envelope, 'complete_json', lambda prompt: Result())
+    prompt = json.dumps({'current_source_lines': [{'id': 'line-0', 'text': 'Opening'}]})
+    if selection == ['line-0']:
+        assert envelope.generate(prompt)[0][0]['source_line_ids'] == selection
+    else:
+        with pytest.raises(ValueError, match='Every interpreted leaf'):
+            envelope.generate(prompt)
+
+
+def test_checkpoint_recovery_preserves_noncontiguous_support():
+    from lct_python_backend.services.transcript.passage_journal import build_record, restore_records
+    sources = [{'id': f'u{i}', 'text': text, 'sequence_number': i + 1}
+               for i, text in enumerate(['Opening', 'Aside', 'Return'])]
+    nodes = [{'id': 'n', 'chunk_id': 'c', 'source_line_ids': ['line-0', 'line-2']}]
+    assign_grounded_leaf_utterance_ids(nodes, [s['text'] for s in sources], [[s['id']] for s in sources])
+    patch = {'nodes': nodes, 'chunks': {'c': 'Opening Aside Return'},
+             'utterance_chunk_map': {'c': ['u0', 'u1', 'u2']}}
+    record = build_record(1, 0, sources, patch, policy_fingerprint='leaf-selection-test')
+    restored = restore_records([json.loads(json.dumps(record))])
+    assert restored['nodes'][0]['utterance_ids'] == ['u0', 'u2']
+    assert restored['nodes'][0]['source_line_ids'] == ['line-0', 'line-2']

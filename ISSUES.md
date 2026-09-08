@@ -1540,3 +1540,12 @@ explicit source-backed construction. Never attach whole-passage ownership by
 default, fabricate links or silently alter completed model responses. Completion
 requires preserved callback relationships in a traceable playable artifact,
 not merely a large collection of unresolved review receipts.
+# 2026-09-08: Combined unit/PostgreSQL execution differs from isolated suites
+
+Running tests/unit and all test_*postgres.py in one pytest process produced
+15 integration failures (export/share assertions, including unexpected 404s),
+2450 passes and 6 skips. Immediately rerunning all PostgreSQL tests alone passed
+38/38; the combined run had no unit failures. Investigate leaked module/dependency
+state from unit fixtures before changing production authorization. Scope:
+test-run reliability, not evidence of a deployed access defect. Current cause
+unconfirmed; retain separate suite evidence and do not claim combined green.
