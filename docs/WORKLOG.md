@@ -1,5 +1,20 @@
 # WORKLOG
 
+## 2026-09-08 — Isolated comparison databases prepared
+
+- Read-only readiness: Ollama /api/version is 0.33.3; qwen3.8:27b-mlx is listed
+  with digest 5642e97495e1a088883805981563dcdc4a040c2f53388b7a41d1f24d3622cf7e.
+  Local tokenizer blob SHA still matches the pinned 0997f410...9b9f3 artifact.
+  These establish availability/identity, not inference capacity or semantic quality.
+- Port 55439 PostgreSQL accepts connections. Verified no lct_public_replay_*
+  databases existed, then created lct_public_replay_local_20260908 and
+  lct_public_replay_frontier_20260908. Guarded zero-public-table preflight preceded
+  Base.metadata.create_all; each has 28 ORM tables. Existing podcast DB untouched.
+  This is model-schema setup for isolated evaluation, not migration acceptance.
+- No source imported, model called, dependency installed or production activated.
+  Tokenizers 0.23.0rc0 approval remains unanswered; automatic goal continuation
+  is not authorization for that reserved dependency action.
+
 ## 2026-09-08 — Preserve failed public replay requests
 
 - Readiness audit found exact requests were recorded only after successful
