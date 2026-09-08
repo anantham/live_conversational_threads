@@ -1,5 +1,30 @@
 # Public source inspection: semantic quality audit
 
+## Compact-run preliminary comparison (2026-09-08)
+
+Read-only sample from local-20260908-compact and frontier-20260908-compact,
+same pinned source, before either final export. Implementer assessment, unblinded;
+not aggregate accuracy, finished quality evaluation or publication acceptance.
+
+- Source sequences 13–14 describe past participation in the IISC PhD program.
+  Local first-node wording compresses this to "his PhD"; frontier second-node
+  wording explicitly says past participation. The former can imply completion
+  that this source does not establish. Preserve this qualification in evaluation,
+  without rewriting either model's saved output.
+- Local first passage contains five broad nodes spanning several subjects;
+  frontier's earliest nodes distinguish introduction, background, question,
+  self-image and reading. Do not compare total node counts as a quality score:
+  frontier has completed more passages at observation, and granularity alone
+  neither establishes fidelity nor useful organization.
+- Both show an evidence-scope concern to inspect after export: some summaries
+  contain multiple claims while their localized excerpt anchors cover only one
+  or a few utterances. Full passage availability is not proof that selected
+  evidence entails all summary claims. Existing audit checks reference validity,
+  not comprehensive entailment; final manual source review must assess this.
+
+No pipeline/source modifications made from this sample. Later callbacks,
+interleaving, question state and all abstraction tiers remain to be assessed.
+
 ## Scope and limits
 
 Source artifact SHA-256:

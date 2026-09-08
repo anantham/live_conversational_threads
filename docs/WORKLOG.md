@@ -1,5 +1,16 @@
 # WORKLOG
 
+## 2026-09-08 — Compact replay stage counts and first semantic sample
+
+- Both handles 42294/80878 polled live. At DB observation frontier had four
+  passage checkpoints, 12 identity reviews, 14 question reviews, two inspection
+  receipts and 109 level-1 nodes. Local had one passage checkpoint, two question
+  reviews and five level-1 nodes. These are stage counts, not completion percent.
+- Examined first summaries against source sequences 11–15. Recorded qualified
+  PhD wording and evidence-scope concerns in public-inspection-quality-audit.md.
+  Unblinded preliminary assessment; no numerical model-quality verdict, no source
+  or generated-output rewriting, no publication acceptance.
+
 ## 2026-09-08 — Matched local arm started; full PostgreSQL acceptance passes
 
 - Verified superseded local PID 13056 command and creation time, sent SIGINT,
