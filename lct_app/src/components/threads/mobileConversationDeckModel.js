@@ -110,10 +110,18 @@ export function buildMobileConversationDeck(nodes, artifactUtterances = []) {
   });
 
   const childrenByParent = new Map();
-  parentByChild.forEach((parentId, childId) => {
+  const addChild = (parentId, childId) => {
+    if (levelOf(nodeById.get(parentId)) !== levelOf(nodeById.get(childId)) + 1) return;
     const children = childrenByParent.get(parentId) || [];
     children.push(childId);
     childrenByParent.set(parentId, children);
+  };
+  parentByChild.forEach((parentId, childId) => addChild(parentId, childId));
+  // A shared child is reachable from EVERY authored parent. The navigation
+  // trail, not a global primary parent, determines where Up returns.
+  listedParents.forEach((parents, childId) => parents.forEach((parentId) => addChild(parentId, childId)));
+  graphNodes.forEach((node) => {
+    (node.memberships || []).forEach((membership) => addChild(String(membership.parent_id), String(node.id)));
   });
   childrenByParent.forEach((ids, parentId) => {
     childrenByParent.set(parentId, sortIds(ids, nodeById, nodeOrder));

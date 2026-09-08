@@ -13,6 +13,7 @@ import PublicDriveThreadsGate from "../components/threads/PublicDriveThreadsGate
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
 import MobileConversationDeck from "../components/threads/MobileConversationDeck";
 import YouTubeSourcePanel from "../components/threads/YouTubeSourcePanel";
+import ThreadExplorer from "../components/threads/ThreadExplorer";
 import { renameArtifactSpeaker } from "../services/youtubeMedia";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
@@ -81,6 +82,7 @@ export default function ThreadsViewer() {
   // toolbar) so only the nodes remain. Esc exits.
   const [focusMode, setFocusMode] = useState(false);
   const [mobileMapOpen, setMobileMapOpen] = useState(false);
+  const [threadsOpen, setThreadsOpen] = useState(true);
   const [mobileDeckState, setMobileDeckState] = useState(null);
   const consumedRouteState = useRef(false);
   const compactViewer = useMediaQuery(COMPACT_VIEWER_QUERY);
@@ -456,8 +458,14 @@ export default function ThreadsViewer() {
   }
 
   // ---- Loaded state: the map ----------------------------------------------
+  const hasThreads = Array.isArray(bundle.conversation_threads) && bundle.conversation_threads.length > 0;
+  if (hasThreads && threadsOpen) {
+    return <ThreadExplorer bundle={bundle} nodes={flatNodes} onClose={() => setThreadsOpen(false)} />;
+  }
+  const threadButton = hasThreads && <button className="fixed bottom-24 right-3 z-50 rounded-full border bg-white px-4 py-2 shadow" onClick={() => setThreadsOpen(true)}>Threads</button>;
   if (compactViewer && !mobileMapOpen) {
     return (
+      <>{threadButton}
       <MobileConversationDeck
         bundle={bundle}
         deckState={mobileDeckState}
@@ -471,12 +479,14 @@ export default function ThreadsViewer() {
         onShowMap={() => setMobileMapOpen(true)}
         onRenameSpeaker={renameSpeaker}
       />
+      </>
     );
   }
 
   const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
   return (
     <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
+      {threadButton}
       {!viewerFocusMode && (
         <ThreadsViewerHeader
           bundle={bundle}

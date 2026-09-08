@@ -28,6 +28,23 @@ const utterances = [
   { id: "u3", sequence_number: 3, speaker_name: "A", text: "Other branch turn." },
 ];
 
+it("reaches a shared moment through either parent and returns by the actual trail", () => {
+  const model = buildMobileConversationDeck([
+    {id:"a", semantic_level:2, children_ids:["m"]},
+    {id:"b", semantic_level:2, children_ids:["m"]},
+    {id:"m", semantic_level:1, parent_id:"a", memberships:[{parent_id:"a"},{parent_id:"b"}]},
+  ]);
+  let state=initialMobileDeckState(model);
+  state=moveMobileDeck(model,state,"next").state;
+  expect(mobileDeckSnapshot(model,state).item.id).toBe("b");
+  state=moveMobileDeck(model,state,"down").state;
+  expect(mobileDeckSnapshot(model,state).item.id).toBe("m");
+  state=moveMobileDeck(model,state,"up").state;
+  expect(mobileDeckSnapshot(model,state).item.id).toBe("b");
+  expect(model.childrenByParent.get("a")).toEqual(["m"]);
+  expect(model.childrenByParent.get("b")).toEqual(["m"]);
+});
+
 const nodes = [
   { id: "arc-b", semantic_level: 5, timestamp_start: 30, children_ids: ["theme-b"] },
   { id: "arc-a", semantic_level: 5, timestamp_start: 0, children_ids: ["theme-a"] },

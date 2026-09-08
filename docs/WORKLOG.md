@@ -1,5 +1,36 @@
 # WORKLOG
 
+## 2026-09-08 — Overlapping-thread public experiment (local, not deployed)
+
+User approved multi-parent aggregation and independent ordered thread membership,
+with thread coherence judged by inspecting the artifact, not schema validity.
+Kept the original 1263 source segments and 56 moments. A fresh whole-public-source
+gpt-6-astra request (existing Codex transport, high reasoning) excluded old thread
+labels and removed single-parent/dominant-thread constraints. Result: 14 threads,
+24 ideas, 13 topics, 5 themes, 2 arcs, 17 multi-parent nodes, 18 shared-thread moments,
+22 explicit/interpretive return edges. Model request and response receipts are in
+/private/tmp/lct-overlap-demo-20260908; generation entrypoint is
+/private/tmp/lct-generate-overlap.py. This is NOT the general private pipeline.
+
+Compiler: scripts/compile_thread_experiment.mjs. Evidence is set-unioned through
+the DAG. Mobile traversal retains all parents; Up follows the actual trail.
+ThreadExplorer provides ordered rationales, exact evidence, timestamped source
+opening, qualified returns and cross-thread jumps. Original artifact remains intact.
+Local URL: http://127.0.0.1:43219/view?src=/experiments/overlapping.threads
+Generated public/experiments file is a local served artifact, not part of source commit.
+
+Validation: 2 compiler tests and 23 focused viewer/contract/navigation tests pass;
+build passes (existing large-bundle warning). Desktop opening and phone-size thread
+selection/source panel verified in browser. Spot-checked safety resumption,
+open-source interruption/resumption, and notetaker callback against verbatim rows.
+No full human quality acceptance yet; Logo anecdote is a weak/minor strand, and
+belief-to-action connections are explicitly interpretive. Other argument edge types
+were not regenerated and the new artifact marks argument topology partial.
+
+Known limitation: old graph lane/color controls still use the legacy single-thread
+field; use the new Threads view to inspect many-to-many routes. Full spatial
+multi-thread rendering remains follow-up work. No merge/deploy claimed.
+
 ## 2026-09-08 — Word timing explicitly deferred to productionization
 
 User requested recording word timestamps as a future pipeline feature rather

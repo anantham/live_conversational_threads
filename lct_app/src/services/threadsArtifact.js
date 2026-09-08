@@ -49,6 +49,32 @@ export function validateThreadsArtifact(data) {
   }
 
   const nodeCount = flattenThreadsGraph(data.graph_data).length;
+  if (data.conversation_threads != null) {
+    const nodes = new Map(flattenThreadsGraph(data.graph_data).map(n => [n.id, n]));
+    const utteranceIds = new Set((data.utterances || []).map(u => u.id));
+    const ids = new Set();
+    if (!Array.isArray(data.conversation_threads)) throw new Error("Invalid conversation threads.");
+    for (const thread of data.conversation_threads) {
+      if (!thread || typeof thread.id !== "string" || ids.has(thread.id)
+        || typeof thread.title !== "string" || !Array.isArray(thread.steps)
+        || !thread.steps.length || (thread.returns != null && !Array.isArray(thread.returns))) {
+        throw new Error("Invalid thread definition.");
+      }
+      ids.add(thread.id);
+      const steps = new Set();
+      for (const step of thread.steps) {
+        if (!step || !nodes.has(step.moment_id) || steps.has(step.moment_id)
+          || !Array.isArray(step.evidence_utterance_ids)
+          || !step.evidence_utterance_ids.every(id => utteranceIds.has(id))) {
+          throw new Error("Invalid thread step or evidence link.");
+        }
+        steps.add(step.moment_id);
+      }
+      if ((thread.returns || []).some(r => !r || !steps.has(r.from) || !steps.has(r.to))) {
+        throw new Error("Invalid thread return.");
+      }
+    }
+  }
   if (nodeCount > MAX_THREADS_NODES) {
     throw new Error(`Artifact too large (${nodeCount} nodes).`);
   }
