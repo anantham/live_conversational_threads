@@ -1,5 +1,30 @@
 # WORKLOG
 
+## 2026-09-08 — Prepared pinned counter without dependency activation
+
+- Prior turn was evidence progress (369ee51 pushed); current checkout clean.
+  Added PinnedQwenMessageCounter behind the existing optional counter interface.
+  It imports no tokenizer package and performs no network operation. A trusted
+  host-supplied factory constructs an encoder from SHA-verified in-memory JSON,
+  avoiding a second path read. No requirements or runtime configuration changed.
+- Narrow contract: measured qwen3.8:27b-mlx / Ollama 0.33.3 / reasoning none,
+  exactly system/user text messages. Unsupported roles, multimodal/extra fields,
+  unknown serving contract, bad artifact digest and invalid token IDs fail closed.
+  Identity includes artifact, engine, model, server, reasoning and render version.
+- Before implementation, local render-only probes confirmed empty user content
+  remains a message and boundary whitespace is trimmed around Unicode/quoted text.
+  No generation occurred in those probes. Added test intent before the module;
+  initial collection failed because the implementation did not yet exist.
+- Counter/envelope suite: 30 passed, one existing asyncio warning. Offline native
+  tests used the already-installed mlx-audio diagnostic environment, not a backend
+  import or subprocess bridge. Saved public request counts exactly matched server
+  usage: 6,461 and 6,574. Artifact SHA remains
+  0997f410c57a1f4e53b09e4be8f4a172d90edd9564368fb0847030937229b9f3.
+- This prepares the adapter only. Approval for the pinned tokenizer dependency,
+  activation wiring, current serving-host parity/capacity and any Asus-specific
+  model/tokenizer contract remain required. Nothing installed, activated, merged,
+  deployed or published as a comparison result.
+
 ## 2026-09-08 — Full public question-history budget audit
 
 - Previous turn was progress (e8accf4 pushed). Verified clean checkout and exact
