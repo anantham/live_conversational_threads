@@ -33,6 +33,12 @@
   live awaiting in-flight completion at last poll; do not claim it stopped or
   launch duplicate replacement until terminal. All evidence retained. New
   frontier questions DB is prepared but its replay has NOT started.
+- Subsequent verification: old frontier64185 exited130 after its in-flight call
+  unwound. Matching frontier-20260908-questions then started, session1842,
+  CID7fe7a323-e2c0-5acb-b997-2f88d0b31ea1. Configuration checked for identical
+  source hash/count and reference/output limits. Runtime remains1fc787c on both
+  arms; later commits are tests/docs only. Process-scoped LCT_LOCAL_ONLY=0 is
+  limited to this explicitly approved public replay. Local40514 still live.
 
 ## 2026-09-08 — Question recovery independent review submitted
 
