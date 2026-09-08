@@ -75,6 +75,15 @@ class InterleavedRuntimeConfig:
         return QuestionReviewRunner(session_factory=self.session_factory,
             conversation_id=conversation_id, owner_id=owner_id, envelope=base)
 
+    def build_thread_identity(self, *, conversation_id, owner_id, providers, privacy):
+        from .thread_identity_runner import ThreadIdentityRunner
+        from .thread_identity_context import CANDIDATE_POLICY
+        base = self.build_aggregation(conversation_id=conversation_id, owner_id=owner_id,
+                                      providers=providers, privacy=privacy).envelope
+        return ThreadIdentityRunner(session_factory=self.session_factory,
+            conversation_id=conversation_id, owner_id=owner_id, envelope=base,
+            candidate_policy_id=CANDIDATE_POLICY)
+
     def build_aggregation(self, *, conversation_id, owner_id, providers, privacy):
         """Compose an unactivated runner under the existing consent envelope.
 
@@ -144,7 +153,13 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
     from .question_context import QuestionContextReader
     question_runner = QuestionReviewRunner(session_factory=session_factory,
         conversation_id=conversation_id, owner_id=owner_id, envelope=envelope)
-    identity = {"version": "interleaved_runtime_v5_review_policy", "inference": envelope.fingerprint,
+    from .thread_identity_runner import ThreadIdentityRunner
+    from .thread_identity_context import ThreadIdentityContextReader, CANDIDATE_POLICY
+    identity_runner = ThreadIdentityRunner(session_factory=session_factory,
+        conversation_id=conversation_id, owner_id=owner_id, envelope=envelope,
+        candidate_policy_id=CANDIDATE_POLICY)
+    identity = {"version": "interleaved_runtime_v6_thread_identity", "inference": envelope.fingerprint,
+                "thread_identity": identity_runner.fingerprint,
                 "question_review": question_runner.envelope.fingerprint,
                 "retrieval": retrieval.fingerprint, "budgets": asdict(budgets), "tokenizer_id": tokenizer_id}
     fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
@@ -158,6 +173,7 @@ def build_interleaved_processor(*, conversation_id, owner_id, session_factory,
         passage_journal=journal, semantic_candidates=retrieval,
         inference_guard=journal.check_consent,
         question_review_loader=question_context,
+        thread_identity_loader=ThreadIdentityContextReader(identity_runner),
     )
     processor.interpretation_policy_fingerprint = fingerprint
     return processor

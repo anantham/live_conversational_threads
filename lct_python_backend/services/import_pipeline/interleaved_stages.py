@@ -17,11 +17,16 @@ async def run_interleaved_stages(*, runtime, conversation_id, owner_id, provider
             utterance_id=utterance['id'])
     await processor.flush()
     moments = list(processor.existing_json)
+    from lct_python_backend.services.transcript.thread_identity_context import identity_candidates
+    identity = await runtime.build_thread_identity(**scope).run(
+        identity_candidates(moments, processor.chunk_dict))
     reconciliation = await runtime.build_reconciliation(**scope).run()
     receipts = await runtime.build_aggregation(**scope).run_through()
     questions = await runtime.build_question_review(**scope).run()
     nodes = moments + [node for receipt in receipts for node in receipt['nodes']]
     return {'node_count': len(nodes),
+            'thread_identity_review': {key: identity[key] for key in (
+                'candidate_pair_count', 'reviewed_pair_count', 'possible_pair_count', 'coverage_complete')},
             'auditable_node_count': sum(bool(n.get('utterance_ids')) for n in nodes),
             'question_review': {
                 'reviewed_count': len(questions['projections']),

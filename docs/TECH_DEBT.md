@@ -390,3 +390,10 @@ and its regression beside the existing endpoint rather than obscuring the
 reviewed behavior in a refactor. Before adding another engine or preprocessing
 stage, extract a request-lifecycle service that owns the bounded processing
 slot and cleanup, leaving the FastAPI endpoint as validation/response glue.
+# 2026-09-08: identity context integration
+
+TranscriptProcessor and conversation_context remain large; new identity review
+logic lives in separate modules, but context-loader orchestration should eventually
+be extracted together with question review. Preserve one shared serialized budget,
+owner/source revision checks and original IDs during any extraction. This is not
+a reason to delay the end-to-end replay with more cosmetic decomposition.

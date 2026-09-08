@@ -93,6 +93,7 @@ def plan_conversation_context(
     semantic_scores: Mapping[str, float] | None = None,
     evidence_lines=None,
     question_reviews=None,
+    thread_identity_reviews=None,
 ) -> ContextPlan:
     """Retrieve across all supplied history, pack whole evidence under a budget.
 
@@ -102,6 +103,12 @@ def plan_conversation_context(
     explicitly labelled mode, not a side effect of preloading the source store.
     """
     nodes_by_chunk: dict[str, list[dict]] = defaultdict(list)
+    identity_reviews = list(thread_identity_reviews or [])
+    occurrence_ids = {str(node.get('id')) for node in existing_nodes}
+    for review in identity_reviews:
+        pair = review.get('pair', [])
+        if len(pair) != 2 or len(set(pair)) != 2 or any(value not in occurrence_ids for value in pair):
+            raise ValueError('Thread identity review refers to unavailable occurrence')
     threads: dict[str, dict] = {}
     for node in existing_nodes:
         compact = {key: node[key] for key in _NODE_FIELDS if node.get(key) is not None}
@@ -161,6 +168,13 @@ def plan_conversation_context(
         "question_memory": [],
         "coverage": {},
     }
+    if thread_identity_reviews is not None:
+        payload['thread_identity_reviews'] = []
+        payload['context_contract'] += (
+            ' Thread identity reviews are source-backed model judgments between occurrences, '
+            'not changes to original IDs or human-verified truth. Do not infer transitive identity '
+            'from pair judgments. Same-ID occurrences may be distinct; different IDs may refer '
+            'to the same inquiry. Preserve uncertainty and original evidence.')
     if question_reviews:
         payload['context_contract'] += (
             ' Question review annotations are separate model judgments, not human-verified truth. '
@@ -170,6 +184,7 @@ def plan_conversation_context(
     selected_chunks: set[str] = set()
     selected_threads: set[str] = set()
     selected_questions: set[str] = set()
+    selected_identity_reviews: set[str] = set()
 
     def render() -> str:
         payload["coverage"] = {
@@ -179,6 +194,8 @@ def plan_conversation_context(
             "retrieval": ("semantic_lexical_rank_fusion_plus_recent_overlap" if semantic_scores is not None
                           else "lexical_candidates_plus_recent_overlap"),
         }
+        if thread_identity_reviews is not None:
+            payload['coverage']['omitted_identity_reviews'] = len(identity_reviews) - len(selected_identity_reviews)
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     if policy.count_tokens(render()) > policy.input_token_budget:
@@ -205,6 +222,11 @@ def plan_conversation_context(
     def add_thread(tid: str) -> None:
         if tid in threads:
             add("thread_memory", tid, threads[tid], selected_threads)
+
+    # Whole source-cited judgments compete inside the same request budget.
+    # They inform ID reuse but never mutate the original occurrence register.
+    for index, review in enumerate(identity_reviews):
+        add('thread_identity_reviews', str(index), copy.deepcopy(review), selected_identity_reviews)
 
     # Give a distant relevant source first claim on space, not an arbitrary
     # last-N node list. Keep the immediately previous passage as read-only

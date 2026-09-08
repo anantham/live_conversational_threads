@@ -1,5 +1,30 @@
 # WORKLOG
 
+## 2026-09-08 — Source-backed thread occurrence identity review
+
+- Implemented pairwise same_inquiry/related_distinct/uncertain review with full
+  referenced source passages, both occurrence citations and strict quote validation.
+  Same original ID can be questioned; different IDs can be recognized as callbacks.
+  Original IDs/events remain intact; no transitive union or accepted identity rewrite.
+- Pair-local append-only receipts bind raw source/attribution, node interpretation,
+  request and model/candidate policy. Unrelated growth reuses receipts; changed
+  evidence invalidates them. Recovery/export tests use DB doubles, not real-PG
+  identity persistence acceptance yet.
+- Shared runtime now reviews up to four latest-passage vs historical candidates
+  (same-ID then lexical overlap), feeds current annotations into bounded next-passage
+  context, and reviews final-passage candidates after flush. Explicit export flag
+  includes current source-resolvable annotations; replay opts in. Runtime v6 binds
+  this policy. Candidate subset coverage is explicit, not semantic completeness.
+- Failing-first planner tests rejected missing keyword, then passed. Combined
+  review/runner/planner/runtime/real-PG import suite47 passed. Import privacy fixture
+  initially lacked new stage, then updated to assert the same frozen provider/owner
+  envelope reaches identity review;2 passed. Existing asyncio warnings remain.
+- Still needed: real identity receipt DB/recovery acceptance, aggregation and viewer
+  consumption, question cross-ID identity, stronger candidate coverage evaluation,
+  full model comparison and final review. No model call, dependency install,
+  production activation, merge or deployment this turn.
+
+
 ## 2026-09-08 — Completed independent Claude component review
 
 - The exact authorized 6285-byte packet completed on retry: Claude Opus5 main

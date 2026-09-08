@@ -453,6 +453,7 @@ async def export_threads(
     conversation_id: str,
     db: AsyncSession = Depends(get_async_session),
     include_question_reviews: bool = False,
+    include_thread_identity_reviews: bool = False,
 ):
     """Export a conversation as a self-contained ``.threads`` bundle.
 
@@ -548,6 +549,10 @@ async def export_threads(
 
     if question_reviews is not None:
         bundle['question_reviews'] = question_reviews
+    if include_thread_identity_reviews:
+        from lct_python_backend.services.transcript.thread_identity_runner import export_thread_identity_reviews
+        bundle['thread_identity_reviews'] = await export_thread_identity_reviews(
+            db, conversation_id=conversation_id, owner_id=get_current_owner_id())
 
     raw_name = (
         getattr(conversation, "conversation_title", None)

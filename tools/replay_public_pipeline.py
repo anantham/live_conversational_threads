@@ -69,7 +69,8 @@ async def main(run=False, *, database_url, run_id, resume=False,
             result = await run_interleaved_stages(runtime=runtime, utterances=source, **scope)
         from lct_python_backend.share_api import export_threads
         async with sessions() as db:
-            exported = await export_threads(scope['conversation_id'], db=db, include_question_reviews=True)
+            exported = await export_threads(scope['conversation_id'], db=db, include_question_reviews=True,
+                                            include_thread_identity_reviews=True)
             bundle = json.loads(exported.body)
         target = output / 'local-candidate.threads'
         target.write_text(json.dumps(bundle, ensure_ascii=False), encoding='utf-8')

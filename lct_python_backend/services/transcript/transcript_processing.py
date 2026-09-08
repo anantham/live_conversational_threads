@@ -77,6 +77,7 @@ class TranscriptProcessor:
         semantic_candidates=None,
         inference_guard=None,
         question_review_loader=None,
+        thread_identity_loader=None,
     ) -> None:
         self.accumulator: List[str] = []
         self.accumulator_segments: List[List[Dict[str, Any]]] = []
@@ -141,6 +142,9 @@ class TranscriptProcessor:
         if question_review_loader is not None and passage_context_policy is None:
             raise ValueError('Question review requires an explicit passage context policy')
         self._question_review_loader = question_review_loader
+        if thread_identity_loader is not None and passage_context_policy is None:
+            raise ValueError('Thread identity review requires an explicit passage context policy')
+        self._thread_identity_loader = thread_identity_loader
         if passage_journal is not None and passage_context_policy is None:
             raise ValueError("A passage journal requires the interleaved context policy")
         self._passage_commit = PassageCommitBoundary(self, passage_journal) if passage_journal is not None else None
@@ -758,6 +762,10 @@ class TranscriptProcessor:
             )
             if self._passage_context_policy is not None:
                 question_reviews = None
+                identity_reviews = None
+                if self._thread_identity_loader is not None:
+                    identity_reviews = await self._thread_identity_loader(
+                        self.existing_json, self.chunk_dict, self.chunk_utterance_map)
                 if self._question_review_loader is not None:
                     question_reviews = await self._question_review_loader(
                         self.existing_json, self.chunk_dict, self.chunk_utterance_map)
@@ -773,6 +781,7 @@ class TranscriptProcessor:
                     semantic_scores=semantic_scores,
                     evidence_lines=question_source_lines(segmented_input_chunk, completed_text_batch),
                     question_reviews=question_reviews,
+                    thread_identity_reviews=identity_reviews,
                 )
                 mod_input = plan.prompt
                 await self._emit_status(

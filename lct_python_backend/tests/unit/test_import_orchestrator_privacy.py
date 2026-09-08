@@ -113,6 +113,7 @@ async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch, 
             observed["providers"] = providers
             self.existing_json = []
             self.chunk_utterance_map = {}
+            self.chunk_dict = {}
 
         async def handle_final_text(self, _text, *, utterance_id, **_kwargs):
             self.existing_json.extend(
@@ -165,6 +166,12 @@ async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch, 
             observed['question_review'] = kwargs
             return SimpleNamespace(run=AsyncMock(return_value={'receipts': [], 'projections': []}))
 
+        def build_thread_identity(self, **kwargs):
+            observed['thread_identity'] = kwargs
+            return SimpleNamespace(run=AsyncMock(return_value={
+                'candidate_pair_count': 0, 'reviewed_pair_count': 0,
+                'possible_pair_count': 0, 'coverage_complete': True}))
+
     result = await extract_graph_for_conversation(
         _FakeDb(conversation, [utterance]),
         conversation_id=str(conversation_id),
@@ -182,6 +189,8 @@ async def test_extract_graph_enforces_conversation_provider_policy(monkeypatch, 
         assert observed["aggregation"]["privacy"]["external_llm_ok"] is False
         assert observed['reconciliation'] == observed['aggregation']
         assert observed['question_review'] == observed['aggregation']
+        assert observed['thread_identity'] == observed['aggregation']
+        assert result['thread_identity_review']['reviewed_pair_count'] == 0
         assert result['question_review']['reviewed_count'] == 0
         assert result["auditable_node_count"] == 5
         assert result["pipeline_status"] == "reconciliation_pending"
