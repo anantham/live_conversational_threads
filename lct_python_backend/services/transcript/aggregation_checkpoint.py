@@ -37,7 +37,8 @@ async def capture_aggregation(db, *, conversation_id, owner_id, target_level, lo
     return {"request": request, "input_hash": _hash(request)}
 
 
-async def commit_aggregation(db, *, conversation_id, owner_id, snapshot, payload, policy_fingerprint):
+async def commit_aggregation(db, *, conversation_id, owner_id, snapshot, payload, policy_fingerprint,
+                             revision_guard=None):
     """Return saved parent identities only after caller commits this transaction.
 
 An exact retry returns the original receipt, not newly generated identities.
@@ -51,6 +52,10 @@ Current output edits are never overwritten by receipt recovery.
     level = request["target_level"]
     current = await capture_aggregation(db, conversation_id=conversation_id, owner_id=owner_id,
                                         target_level=level, lock=True)
+    # Conversation/source locks also serialize annotation writers. Check the
+    # proposal's auxiliary interpretation basis before recovery or parent writes.
+    if revision_guard is not None:
+        await revision_guard(db)
     cid = uuid.UUID(conversation_id)
     artifacts = (await db.execute(select(PipelineArtifact).where(
         PipelineArtifact.conversation_id == cid, PipelineArtifact.stage == STAGE,

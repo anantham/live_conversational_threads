@@ -17,9 +17,14 @@ from .source_inspection_runner import check_inference_consent
 
 
 class MembershipReviewRunner:
-    def __init__(self, *, session_factory, conversation_id, owner_id, envelope, generation=0):
+    def __init__(self, *, session_factory, conversation_id, owner_id, envelope, generation=0,
+                 revision_guard=None, revision_identity=None):
         if type(generation) is not int or generation < 0:
             raise ValueError('Membership generation must be a nonnegative integer')
+        if (revision_guard is None) != (revision_identity is None):
+            raise ValueError('Membership revision guard requires a matching receipt identity')
+        self.revision_guard = revision_guard
+        self.revision_identity = copy.deepcopy(revision_identity)
         self.generation = generation
         self.sessions = session_factory
         self.scope = {'conversation_id': conversation_id, 'owner_id': owner_id}
@@ -29,7 +34,10 @@ class MembershipReviewRunner:
 
     async def _capture(self, db, level, *, lock=False):
         await check_inference_consent(db, **self.scope, providers=self.envelope.providers)
-        return await capture_aggregation(db, **self.scope, target_level=level, lock=lock)
+        snapshot = await capture_aggregation(db, **self.scope, target_level=level, lock=lock)
+        if self.revision_guard is not None:
+            await self.revision_guard(db)
+        return snapshot
 
     async def _checkpoint(self, db, snapshot, request, index, payload=None, *, decision=False, parent=False):
         level = snapshot['request']['target_level']
@@ -49,6 +57,8 @@ class MembershipReviewRunner:
         identity = {'input_hash': snapshot['input_hash'], 'request': request,
                     'policy_fingerprint': (self.parent_envelope if parent else
                         (self.decision_envelope if decision else self.envelope)).fingerprint}
+        if self.revision_identity is not None:
+            identity['revision_identity'] = copy.deepcopy(self.revision_identity)
         if rows:
             saved = rows[0].artifact_json
             if _hash(saved) != rows[0].content_hash or any(saved.get(k) != v for k, v in identity.items()):
@@ -137,10 +147,14 @@ class MembershipReviewRunner:
                 async with self.sessions.begin() as db:
                     saved = await self._checkpoint(db, snapshot, request, index, result.data, parent=True)
             parents.append(saved)
-        policy = _hash({'review': self.envelope.fingerprint, 'decision': self.decision_envelope.fingerprint,
-                        'synthesis': self.parent_envelope.fingerprint, 'proposals': decisions['proposals']})
+        policy_basis = {'review': self.envelope.fingerprint, 'decision': self.decision_envelope.fingerprint,
+                        'synthesis': self.parent_envelope.fingerprint, 'proposals': decisions['proposals']}
+        if self.revision_identity is not None:
+            policy_basis['revision_identity'] = self.revision_identity
+        policy = _hash(policy_basis)
         async with self.sessions.begin() as db:
             await check_inference_consent(db, **self.scope, providers=self.envelope.providers)
             tier = await commit_aggregation(db, **self.scope, snapshot=snapshot,
-                payload={'nodes': [p['result'] for p in parents]}, policy_fingerprint=policy)
+                payload={'nodes': [p['result'] for p in parents]}, policy_fingerprint=policy,
+                revision_guard=self.revision_guard)
         return {**decisions, 'parents': parents, 'tier': tier, 'status': 'tier_committed'}

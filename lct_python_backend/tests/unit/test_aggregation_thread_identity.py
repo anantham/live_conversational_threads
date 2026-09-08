@@ -53,9 +53,9 @@ def make_runner(monkeypatch, *, capacity=15000, change=None, enabled=True):
     runner=BoundedAggregationRunner(session_factory=SimpleNamespace(begin=begin),
         conversation_id='00000000-0000-0000-0000-000000000001',owner_id='synthetic',envelope=env,
         **({'identity_review_loader':loader,'identity_policy_fingerprint':'chosen'} if enabled else {}))
-    async def synthesis(groups,**kwargs):
+    async def synthesis(self,groups,**kwargs):
         return {'status':'tier_committed','tier':groups}
-    runner.memberships.run_synthesis=synthesis
+    monkeypatch.setattr(module.MembershipReviewRunner,'run_synthesis',synthesis)
     return runner,snapshot,annotations,stored,prompts
 
 

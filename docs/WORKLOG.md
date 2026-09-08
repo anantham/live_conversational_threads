@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Identity revision guarded through final parent commit
+
+- Optional membership revision guard/identity now checks the fixed proposal basis
+  through membership, decision, synthesis, recovery and final parent commit.
+  Final check runs inside commit_aggregation after existing conversation/source
+  locks and before recovery or canonical writes; identity writers take that lock.
+  Receipts/final policy bind the selected annotation hash. No new store.
+- Three failing-first PostgreSQL cases now pass: mutation during parent generation,
+  mutation at final commit (no parents/tier receipt), incompatible identity recovery
+  (no extra inference). Legacy unconfigured behavior preserved.
+- Broad unit run before the final projection edit:2343 passed,5 failed,4 skipped.
+  The five names match existing SDK/httpx, native-observability sandbox and OTEL
+  environment failures; not a green full suite. Combined current focused
+  projection/aggregation/import/final-guard run22 passed,5 existing asyncio warnings.
+
+
 ## 2026-09-08 — Identity persistence and aggregation proposal consumption
 
 - Actual PostgreSQL identity acceptance now covers journal capture, immutable

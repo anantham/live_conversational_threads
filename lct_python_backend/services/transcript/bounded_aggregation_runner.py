@@ -131,9 +131,17 @@ class BoundedAggregationRunner:
                 raise AbstractionNeedsRevision(
                     f'Abstraction tier {target_level} repeated an unsupported proposal; no re-review')
             seen_proposals.add(signature)
-            runner = self.memberships if generation == 0 else MembershipReviewRunner(
+            guard_options = {}
+            if self.identity_review_loader is not None:
+                async def guard(db):
+                    if await self._capture(db, target_level, lock=True) != snapshot:
+                        raise JournalConflict('Proposal source or identity annotations changed during membership synthesis')
+                guard_options = {'revision_guard': guard, 'revision_identity': {
+                    'thread_identity_policy': self.identity_policy_fingerprint,
+                    'thread_identity_basis': _hash(snapshot['thread_identity_reviews'])}}
+            runner = self.memberships if generation == 0 and not guard_options else MembershipReviewRunner(
                 session_factory=self.sessions, **self.scope,
-                envelope=self.memberships.envelope, generation=generation)
+                envelope=self.memberships.envelope, generation=generation, **guard_options)
             previous = await runner.run_synthesis(saved['groups'], target_level=target_level)
             if previous['status'] == 'tier_committed':
                 return previous['tier']
