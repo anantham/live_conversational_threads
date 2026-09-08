@@ -23,16 +23,51 @@ class AbstractionNeedsRevision(ValueError):
 
 
 class BoundedAggregationRunner:
-    def __init__(self, *, session_factory, conversation_id, owner_id, envelope):
+    def __init__(self, *, session_factory, conversation_id, owner_id, envelope,
+                 identity_review_loader=None, identity_policy_fingerprint=None):
+        if (identity_review_loader is None) != (identity_policy_fingerprint is None):
+            raise ValueError('Identity review loader requires an explicit selected policy')
+        if identity_policy_fingerprint is not None and (
+                not isinstance(identity_policy_fingerprint, str) or not identity_policy_fingerprint.strip()):
+            raise ValueError('Selected identity policy must be nonempty')
         self.sessions = session_factory
         self.scope = {'conversation_id': conversation_id, 'owner_id': owner_id}
-        self.envelope = envelope.with_system_prompt(PROPOSAL_PROMPT)
+        self.identity_review_loader = identity_review_loader
+        self.identity_policy_fingerprint = identity_policy_fingerprint
+        prompt = PROPOSAL_PROMPT
+        if identity_review_loader is not None:
+            prompt += ('\nthread_identity_reviews contains source-backed MODEL judgments under an '
+                'explicit policy, not human-accepted identities. Use these pairwise judgments as '
+                'context for grouping, retaining uncertainty and source qualifications. Do not '
+                'merge or rename original thread IDs, infer transitive equivalence, or force '
+                'membership merely because two occurrences share an inquiry. All groupings '
+                'still require the independent source-verification pass.\n')
+        self.envelope = envelope.with_system_prompt(prompt)
         self.memberships = MembershipReviewRunner(session_factory=session_factory, **self.scope,
                                                   envelope=envelope.with_system_prompt(MEMBERSHIP_PROMPT))
 
     async def _capture(self, db, level, *, lock=False):
         await check_inference_consent(db, **self.scope, providers=self.envelope.providers)
-        return await capture_aggregation(db, **self.scope, target_level=level, lock=lock)
+        snapshot = await capture_aggregation(db, **self.scope, target_level=level, lock=lock)
+        if self.identity_review_loader is not None:
+            exported = await self.identity_review_loader(db)
+            if (exported.get('schema_version') != 1
+                    or exported.get('verification') != 'model_reviewed_not_human_verified'):
+                raise JournalConflict('Identity review loader returned an unrecognized source view')
+            selected = [p for p in exported['policies']
+                        if p.get('policy_fingerprint') == self.identity_policy_fingerprint]
+            if not selected:
+                possible = exported.get('possible_pair_count')
+                if type(possible) is not int or possible < 0:
+                    raise JournalConflict('Thread identity view lacks valid coverage counts')
+                selected = [{'policy_fingerprint': self.identity_policy_fingerprint,
+                             'annotations': [], 'coverage_complete': possible == 0,
+                             'reviewed_pair_count': 0, 'possible_pair_count': possible,
+                             'status': 'not_reviewed'}]
+            if len(selected) != 1:
+                raise JournalConflict('Selected thread identity policy is ambiguous')
+            snapshot['thread_identity_reviews'] = copy.deepcopy(selected[0])
+        return snapshot
 
     async def _proposal_checkpoint(self, db, snapshot, request, payload=None, *, generation=0):
         level = snapshot['request']['target_level']
@@ -67,6 +102,8 @@ class BoundedAggregationRunner:
         children = [{**c, 'semantic_level': target_level - 1} for c in snapshot['request']['children']]
         request = build_proposal_request(children, target_level=target_level,
             source_snapshot_hash=_hash(snapshot['request']['sources']), envelope=self.envelope)
+        if self.identity_review_loader is not None:
+            request['thread_identity_reviews'] = copy.deepcopy(snapshot['thread_identity_reviews'])
         previous = None
         seen_proposals = set()
         for generation in range(3):

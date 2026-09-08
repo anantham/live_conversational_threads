@@ -1,5 +1,25 @@
 # WORKLOG
 
+## 2026-09-08 — Identity persistence and aggregation proposal consumption
+
+- Actual PostgreSQL identity acceptance now covers journal capture, immutable
+  review receipts, restart/loader reuse, exact quote attribution, future-source
+  exclusion, wrong-owner rejection, audited speaker-revision invalidation and
+  revoked consent. Only inference is deterministic; synthetic rows cleaned up.
+- Shared runtime wires an explicit identity policy into aggregation. Full current
+  annotations/sources enter proposal prompts and their full-message budget.
+  Proposal checkpoint re-captures both source and annotations; no newest-policy
+  fallback, alias rewrite or automatic membership acceptance.
+- Missing candidate judgments are labelled not_reviewed with zero reviewed pairs
+  and honest possible-pair coverage. Changed initial test intent after identifying
+  legitimate no-lexical-match cases; absence must not break source-only grouping.
+- Parent real-PG import/identity/runtime rerun16 passed; five focused proposal tests
+  passed. Existing default unconfigured aggregation behavior remains unchanged.
+- Remaining revision boundary: membership/final-parent persistence guards source
+  but not annotation-only changes during synthesis. Must address before claiming
+  full revision-safe aggregation. No full comparison, install, merge or deploy.
+
+
 ## 2026-09-08 — Source-backed thread occurrence identity review
 
 - Implemented pairwise same_inquiry/related_distinct/uncertain review with full

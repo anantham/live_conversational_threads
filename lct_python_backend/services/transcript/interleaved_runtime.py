@@ -107,8 +107,16 @@ class InterleavedRuntimeConfig:
             count_tokens=self.count_tokens, count_messages=self.count_messages,
             tokenizer_id=self.tokenizer_id,
         )
+        from .thread_identity_runner import ThreadIdentityRunner, export_thread_identity_reviews
+        from .thread_identity_context import CANDIDATE_POLICY
+        identity_runner = ThreadIdentityRunner(session_factory=self.session_factory,
+            conversation_id=conversation_id, owner_id=owner_id, envelope=envelope,
+            candidate_policy_id=CANDIDATE_POLICY)
+        async def identity_reviews(db):
+            return await export_thread_identity_reviews(db, conversation_id=conversation_id, owner_id=owner_id)
         return BoundedAggregationRunner(session_factory=self.session_factory, conversation_id=conversation_id,
-                                 owner_id=owner_id, envelope=envelope)
+            owner_id=owner_id, envelope=envelope, identity_review_loader=identity_reviews,
+            identity_policy_fingerprint=identity_runner.fingerprint)
 
     def build(self, *, providers, **kwargs):
         chat = [{**p, "context_tokens": self.context_limits[p["id"]]}
