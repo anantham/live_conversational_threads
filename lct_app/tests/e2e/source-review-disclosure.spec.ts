@@ -1,10 +1,12 @@
 import { expect, test } from '@playwright/test';
 
-// Intent: exercise file import and actual phone viewer, not a mounted component.
+// Intent: exercise file import and actual desktop/phone viewer, not a mounted component.
 // Evidence must remain collapsed until requested, render as plain text, retain
 // uncertainty, and close on navigation without changing graph membership.
-test('phone recipient can inspect source-backed model reviews', async ({ page }, testInfo) => {
-  await page.setViewportSize({ width: 375, height: 812 });
+for (const layout of ['phone', 'desktop']) {
+test(`${layout} recipient can inspect source-backed model reviews`, async ({ page }, testInfo) => {
+  const width = layout === 'phone' ? 375 : 1440;
+  await page.setViewportSize({ width, height: 812 });
   const quote = 'Who pays? <b>Still unresolved.</b>';
   const nodes = ['a', 'b'].map((id, index) => ({ id, chunk_id: 'c', thread_id: 't',
     semantic_level: 1, level: 1, semantic_type: 'moment', node_name: `Moment ${id}`,
@@ -24,7 +26,11 @@ test('phone recipient can inspect source-backed model reviews', async ({ page },
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/view');
   await page.locator('input[type="file"]').setInputFiles({ name: 'review.threads', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(artifact)) });
-  const card = page.getByTestId('mobile-deck-card');
+  if (layout === 'desktop') {
+    await page.locator('.react-flow__node').filter({ hasText: 'Moment a' })
+      .getByRole('button', { name: 'Open exact source utterances' }).click();
+  }
+  const card = layout === 'phone' ? page.getByTestId('mobile-deck-card') : page.getByRole('dialog');
   await expect(card).toBeVisible();
   const disclosure = card.getByRole('button', { name: 'Source reviews (1)', exact: true });
   await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
@@ -34,10 +40,13 @@ test('phone recipient can inspect source-backed model reviews', async ({ page },
   await expect(card).toContainText('Thread relationship: uncertain');
   await expect(card.locator('blockquote').first()).toHaveText(quote);
   await expect(card.locator('blockquote b')).toHaveCount(0);
-  await page.screenshot({ path: testInfo.outputPath('phone-source-review.png'), fullPage: true });
-  await expect(page.locator('body')).toHaveJSProperty('scrollWidth', 375);
-  await page.getByRole('button', { name: 'Next moment', exact: true }).click();
-  await expect(card).toContainText('Moment b');
-  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await page.screenshot({ path: testInfo.outputPath(`${layout}-source-review.png`), fullPage: true });
+  await expect(page.locator('body')).toHaveJSProperty('scrollWidth', width);
+  if (layout === 'phone') {
+    await page.getByRole('button', { name: 'Next moment', exact: true }).click();
+    await expect(card).toContainText('Moment b');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  }
   expect(errors).toEqual([]);
 });
+}

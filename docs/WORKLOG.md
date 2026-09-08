@@ -1,5 +1,16 @@
 # WORKLOG
 
+## 2026-09-08 — Desktop source-review browser check
+
+- Extended the same synthetic /view file-import test to 1440px desktop; opens
+  the source-linked graph card via its actual accessible action, then checks the
+  collapsed review, exact escaped quote, uncertainty and absence of page errors.
+  Desktop and phone both pass (2/2); inspected desktop screenshot.
+- Initial test incorrectly expected Open details instead of Open exact source
+  utterances; corrected the selector without product changes. Desktop evidence
+  panel is readable, but the two disconnected same-source fixture cards overlap
+  in the graph. Logged as separate layout debt, not claimed fixed by this test.
+
 ## 2026-09-08 — Source-review phone browser acceptance
 
 - New isolated Playwright config and synthetic file-import test exercise /view

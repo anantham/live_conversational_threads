@@ -129,6 +129,10 @@ values, not an import-duration cap. No production deployment is claimed yet.
   restores a clickable start, and timeline navigation selects distant nodes.
   Investigate static-view auto-follow and readable framing separately; do not
   force-click off-screen cards or claim the initial camera is fixed.
+  The 2026-09-08 source-review browser fixture also shows overlapping disconnected
+  moment cards sharing one source. The details panel remains readable. Reproduce
+  with source-review-disclosure.spec.ts before changing placement; distinguish
+  sparse fixture layout from real exported conversation layout.
 - **Node 26/jsdom private Drive unit harness: open, non-blocking.** The existing
   googleDriveThreads happy-path test receives a jsdom Blob without .text() from
   native Response.blob(). Native Chromium transport was checked separately.
