@@ -23,6 +23,7 @@ def assign_grounded_leaf_utterance_ids(
     nodes: List[Dict[str, Any]],
     text_batch: Sequence[str],
     utterance_ids_batch: Sequence[Sequence[Any]],
+    *, speaker_ids: Sequence[str] = (),
 ) -> Dict[str, int]:
     """Attach precise direct evidence to generated level-one nodes.
 
@@ -74,6 +75,19 @@ def assign_grounded_leaf_utterance_ids(
         start = transcript.find(excerpt, search_cursor)
         if start < 0:
             start = transcript.find(excerpt)
+        if start < 0 and speaker_ids:
+            # The generation prompt inserts these known speaker markers between
+            # source fragments. Remove only that formatting from the comparison,
+            # never the stored excerpt or original transcript.
+            cleaned = str(node.get("source_excerpt") or "")
+            for speaker in speaker_ids:
+                if speaker:
+                    cleaned = cleaned.replace(f"[{speaker}]:", "")
+            candidate = normalize_provenance_text(cleaned)
+            location = transcript.find(candidate) if candidate else -1
+            # A formatting recovery must identify a unique source occurrence.
+            if location >= 0 and transcript.find(candidate, location + 1) < 0:
+                excerpt, start = candidate, location
         if start < 0:
             unmatched_nodes += 1
             continue

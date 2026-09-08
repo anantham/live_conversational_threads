@@ -840,6 +840,7 @@ class TranscriptProcessor:
                     output_json,
                     completed_text_batch,
                     completed_utterance_ids_batch,
+                    speaker_ids=[source['speaker_id'] for source in (inference_sources or [])],
                 )
                 generation_ms = round(
                     max(0.0, (time.perf_counter() - generation_started_at) * 1000.0),

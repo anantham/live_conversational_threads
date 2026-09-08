@@ -1,5 +1,23 @@
 # WORKLOG
 
+## 2026-09-08 — Source-link loss traced to prompt speaker formatting
+
+- All 14 frontier unlinked nodes are already unlinked in immutable journal,
+  excluding persistence loss. Read-only source comparison found all 14 excerpts
+  match their passage after removing known [speaker_id]: prompt markers; none
+  contains an ellipsis. Diagnostic /private/tmp/check-unlinked-public.py.
+- Provenance matcher now accepts optional known speaker IDs from the exact
+  inference source snapshot. Only on failed original match, removes those prompt
+  markers for comparison and requires a unique normalized match. Raw source and
+  excerpt remain unchanged; no guessed neighboring evidence. Eighteen focused
+  tests pass, including unknown-marker, paraphrase and ambiguity rejection.
+- Existing saved graphs/journals were not mutated. Replay/materialization repair
+  still needed before aggregation; implementation alone does not repair old rows.
+- Local session 18777 exited: its one allowed identity regeneration also failed
+  exact quote validation. Do not retry indefinitely or accept fuzzy quotations;
+  a source-span-selection contract is the next candidate for durable correction.
+  Frontier 5577 still live. No validated artifacts or production deployment.
+
 ## 2026-09-08 — Aggregation preflight exposes unlinked frontier nodes
 
 - Both handles 18777/5577 polled live. Distinct source scan coverage at observation:
