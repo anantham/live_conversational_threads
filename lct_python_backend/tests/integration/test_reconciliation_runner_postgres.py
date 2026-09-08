@@ -2,6 +2,7 @@
 edge export with durable restart that skips saved embedding/generation work.
 Both focal-to-candidate and candidate-to-focal directions survive persistence.
 An omitted comparison is checkpointed before an interruption and not regenerated.
+Changed review policy rejects saved batches without new inference or mutation.
 Real isolated PostgreSQL, synthetic source and doubled provider transports.
 """
 import json
@@ -87,9 +88,9 @@ async def test_full_review_loop_restart_and_export(monkeypatch, reverse, omit_fi
     def envelope(prompt):
         return InferenceEnvelope(system_prompt=prompt, providers=[provider], privacy=privacy,
                                  output_tokens=1024, headroom_tokens=256)
-    def runner():
+    def runner(review_prompt=RELATION_PROMPT):
         return ReconciliationRunner(session_factory=sessions, conversation_id=str(cid), owner_id=owner,
-            inspection_envelope=envelope(INSPECTION_PROMPT), review_envelope=envelope(RELATION_PROMPT),
+            inspection_envelope=envelope(INSPECTION_PROMPT), review_envelope=envelope(review_prompt),
             retriever=SemanticCandidates(providers=[provider], privacy=privacy, embed_batch=embed))
     try:
         async with sessions.begin() as db:
@@ -117,6 +118,10 @@ async def test_full_review_loop_restart_and_export(monkeypatch, reverse, omit_fi
         before = dict(calls)
         assert await runner().run() == result
         assert calls == before, 'Restarted saved pass must invoke neither embeddings nor generation'
+        with pytest.raises(ValueError, match='Saved relation batch requires explicit reconciliation'):
+            await runner(RELATION_PROMPT + '\nSynthetic changed review policy.').run()
+        assert calls == before, 'Policy drift must reject before any new provider work'
+        assert await runner().run() == result, 'Rejected policy drift must leave saved receipts intact'
         from lct_python_backend.share_api import export_threads
         async with sessions() as db:
             bundle = json.loads((await export_threads(str(cid), db=db)).body)

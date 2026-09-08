@@ -11,6 +11,19 @@ from lct_python_backend.services.transcript.relation_identity_transport import e
 from lct_python_backend.services.transcript.inspection_relations import review_inspection_context
 
 
+@pytest.mark.parametrize('identities', [
+    ['same', 'same'], ['focal', 'same', 'same'], ['focal', ''],
+    ['', 'candidate'], ['focal', None], ['focal', 1], ['focal', ['candidate']],
+])
+def test_non_bijective_input_rejects_without_mutation(identities):
+    context = {'focal': {'id': identities[0]},
+               'candidates': [{'id': value} for value in identities[1:]]}
+    before = copy.deepcopy(context)
+    with pytest.raises(ValueError, match='distinct nonempty strings'):
+        encode_observation_ids(context)
+    assert context == before
+
+
 def test_exact_transport_does_not_rewrite_quotes_or_source_ids():
     context = {'focal': {'id': 'a'*64, 'source_excerpts': [{'utterance_id': 'o1', 'text': 'o0 is a literal quote'}]},
                'candidates': [{'id': 'b'*64}], 'coverage': {}}

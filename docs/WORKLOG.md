@@ -1,5 +1,32 @@
 # WORKLOG
 
+## 2026-09-08 — Identity review findings checked against persistence boundary
+
+- Claude handle51041 completed exit0, provider session
+  d4f9b996-ae2d-4da2-98f7-40945be354b8, reported claude-sonnet-5 (Haiku auxiliary
+  entry), no tools/web/subagents/permission denials. Verdict issues_found:
+  missing regression coverage, no observed correctness defect. This is NOT
+  approval. Receipt tmp/relation-identity-review-3731bb1.json retained.
+- Added seven invalid-bijection cases (duplicate focal/candidates, empty and
+  non-string identities), verifying no input mutation. Added exact retry
+  coverage assertions. The related endpoint/evidence/node-selection path was
+  already covered by995dfc4 after the reviewed packet was assembled.
+- Canonical selection abstention, wrong-source and overlapping-node behavior
+  already have tests in test_reconciliation_mapping.py, outside the packet.
+  Reviewer claim that omitted endpoint translation could silently ship aliases
+  is too strong: canonical endpoint validation rejects them; added related-path
+  tests also now detect that regression directly.
+- Policy isolation is enforced by checkpoint_relation_review and
+  checkpoint_relation_attempt, not the low-level transport callback. Extended
+  all four real-PG restart/export cases: a changed review prompt rejects saved
+  batches before new provider calls, then the original policy resumes identical
+  receipts. Focused transport/recovery/mapping/real-PG suite38 passed,10 warnings
+  in0.85s. No policy check or evidence validator weakened.
+- The empty-candidate result lacks coverage_attempts, but current code search
+  finds no production consumer assuming that key. This is an optional schema
+  consistency observation, not a reproduced failure; left runtime unchanged.
+  Matching final replay continuation and independent review closure remain open.
+
 ## 2026-09-08 — Revalidate continuation boundary and related-response evidence
 
 - Fresh read-only repeatable-read custody audit still verifies all1263 source

@@ -33,6 +33,10 @@ async def test_missing_only_retry_preserves_original_context_and_judgments():
     assert [c['id'] for c in calls[1]['candidates']] == ['o1']
     assert calls[1]['candidates'][0] == {**original['candidates'][1], 'id': 'o1'}
     assert calls[1]['focal'] == {**original['focal'], 'id': 'o0'}
+    assert calls[0]['coverage'] == original['coverage']
+    assert calls[1]['coverage'] == {**original['coverage'],
+        'omitted_candidates': original['coverage']['omitted_candidates'] + 1,
+        'previously_reviewed_candidates': 1}
     assert [c['candidate_id'] for c in result['comparisons']] == ['earlier', 'another']
     assert result['coverage'] == original['coverage']
     assert len(result['coverage_attempts']) == 2
