@@ -808,17 +808,27 @@ class TranscriptProcessor:
                     "trigger": trigger,
                 },
             )
-            if self._inference_guard is not None:
-                await self._inference_guard()
-            output_json, gen_backend = await asyncio.to_thread(
-                self._inference_envelope.generate if self._inference_envelope is not None else generate_lct_json,
-                mod_input,
-                llm_config=self._llm_config,
-                providers=self._providers,
-                status_messages=generation_status_messages,
-            )
-            if self._inference_guard is not None:
-                await self._inference_guard()
+            if self._inference_envelope is not None:
+                from .question_recovery import generate_with_question_recovery
+                async def report_question_retry():
+                    await self._emit_status('warning',
+                        'Question update rejected; requesting one source-backed correction.',
+                        {'stage': 'question_recovery', 'attempt': 2, 'trigger': trigger})
+                output_json, gen_backend = await generate_with_question_recovery(
+                    envelope=self._inference_envelope, prompt=mod_input,
+                    existing_nodes=self.existing_json, chunks=self.chunk_dict,
+                    passage=segmented_input_chunk, fragments=completed_text_batch,
+                    guard=self._inference_guard, on_retry=report_question_retry,
+                    llm_config=self._llm_config, providers=self._providers,
+                    status_messages=generation_status_messages)
+            else:
+                if self._inference_guard is not None:
+                    await self._inference_guard()
+                output_json, gen_backend = await asyncio.to_thread(
+                    generate_lct_json, mod_input, llm_config=self._llm_config,
+                    providers=self._providers, status_messages=generation_status_messages)
+                if self._inference_guard is not None:
+                    await self._inference_guard()
             if gen_backend:
                 self._last_llm_backend = gen_backend
             for status_message in generation_status_messages:

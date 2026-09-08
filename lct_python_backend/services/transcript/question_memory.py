@@ -10,6 +10,14 @@ _ACTIONS = {"open", "clarify", "partial_answer", "answer", "withdraw", "reopen"}
 _FIELDS = {"question_id", "action", "wording", "evidence_quote", "rationale"}
 
 
+class UnknownQuestionUpdate(ValueError):
+    """A source-backed update has no preceding opening event."""
+
+    def __init__(self, question_id):
+        super().__init__("Question update refers to an unknown question")
+        self.question_id = question_id
+
+
 def fold_question_memory(nodes, source_chunks):
     memory = {}
     for node in nodes:
@@ -40,7 +48,7 @@ def fold_question_memory(nodes, source_chunks):
                                     "original": event, "latest": event, "intermediate": [], "update_count": 1}
                 continue
             if previous is None:
-                raise ValueError("Question update refers to an unknown question")
+                raise UnknownQuestionUpdate(identity)
             if action == "partial_answer" and previous["status"] != "open":
                 event['transition_issue'] = 'partial_answer_after_non_open_state'
                 event['prior_provisional_status'] = previous['status']

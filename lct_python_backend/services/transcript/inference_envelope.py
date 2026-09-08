@@ -54,6 +54,8 @@ class InferenceEnvelope:
                     "headroom_tokens": headroom_tokens, "temperature": temperature,
                     "providers": [{k: p.get(k) for k in ("id", "model", "model_revision", "base_url", "trust_scope", "context_tokens")}
                                   for p in self._providers]}
+        from .question_recovery import RECOVERY_POLICY
+        identity['question_recovery_policy'] = RECOVERY_POLICY
         if tokenizer_id != 'utf8_bytes_v1':
             identity['tokenizer_id'] = tokenizer_id
         if require_leaf_sources:

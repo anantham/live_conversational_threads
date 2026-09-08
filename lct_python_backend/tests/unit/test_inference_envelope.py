@@ -153,3 +153,34 @@ def test_model_specific_counter_cannot_silently_budget_another_fallback_model():
     with pytest.raises(ValueError, match='model revision'):
         envelope([provider(), {**provider('other'), 'model': 'different-model'}],
                  count_messages=lambda messages: 50, tokenizer_id='model-specific-v1')
+
+
+@pytest.mark.asyncio
+async def test_shared_processor_recovers_question_before_publishing(monkeypatch):
+    import json
+    from lct_python_backend.services.transcript.question_memory import fold_question_memory
+    requests = []
+    class Result:
+        def __init__(self, actions):
+            self.data = [{'node_name': 'Custody', 'summary': 'Who keeps it?',
+                'question_updates': [{'question_id': 'custody', 'action': action,
+                    'wording': 'Who keeps it?', 'rationale': 'Explicit question',
+                    'evidence_line_ids': ['line-0']} for action in actions]}]
+        def backend_label(self):
+            return 'synthetic-local'
+    def call(**kwargs):
+        requests.append(kwargs)
+        return Result(['answer'] if len(requests) == 1 else ['open', 'answer'])
+    monkeypatch.setattr('lct_python_backend.services.transcript.inference_envelope.chat_with_provider_fallback_sync', call)
+    processor = TranscriptProcessor(send_update=None, inference_envelope=envelope(),
+        graph_first_update_max_wait_ms=0, graph_steady_update_max_wait_ms=0)
+    await processor.handle_final_text('Who keeps it?', utterance_id='u-1')
+    assert len(requests) == 2
+    original = json.loads(requests[0]['messages'][1]['content'])
+    corrected = json.loads(requests[1]['messages'][1]['content'])
+    assert corrected.pop('validation_feedback')['preserve_question_ids'] == ['custody']
+    assert corrected == original
+    assert len(processor.existing_json) == 1
+    question = fold_question_memory(processor.existing_json, processor.chunk_dict)['custody']
+    assert question['original']['action'] == 'open'
+    assert question['latest']['action'] == 'answer'

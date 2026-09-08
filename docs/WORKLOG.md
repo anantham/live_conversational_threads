@@ -1,5 +1,37 @@
 # WORKLOG
 
+## 2026-09-08 — Bounded question-opening recovery integrated
+
+- A1 implementation follows the successful local correction diagnostic. New
+  question_recovery.py regenerates at most once, and only for the typed
+  UnknownQuestionUpdate condition. It validates historical memory before any
+  inference, retains source/history unchanged, requires all original proposed
+  question identities in the correction, and applies exact evidence/state
+  validation before returning anything to the processor. It never manufactures
+  an opening event, accepts a missing question, or retries transport failures.
+- The same immutable inference envelope handles both requests, validates the
+  full feedback-bearing request without truncation, and uses the existing
+  owner/consent guard before and after each call. Retry status contains no
+  source text. Existing replay request/response recording retains both calls;
+  this change does not introduce private-source logging or artifact publication.
+- Shared TranscriptProcessor uses this path for envelope-based inference, so
+  both import and live get the same behavior; the later canonicalization,
+  provenance and durable commit guards still apply. A public-API processor
+  regression receives invalid answer-only output then source-backed open/answer,
+  and publishes only one valid moment. Synthetic tests cover one-call success,
+  repeated invalidity, deleted identity, invented quote, context overflow,
+  revoked consent and transport failure. Full unit/PostgreSQL suite: 2491 passed,
+  six skipped, 510 warnings, 14.27s; report /private/tmp/threads-question-recovery.xml.
+- Interpretation fingerprint now includes unknown_question_regeneration_once_v1.
+  Existing replay checkpoints cannot silently resume under a changed policy.
+  Current frontier run remains diagnostic; final local/frontier artifacts must
+  both use this policy. No revised full runs started in this checkpoint.
+- Limits: one correction may still fail; semantic adequacy is not established
+  by question identity or exact quotes. Education deferral handling needs
+  semantic audit. Independent review of recovery and live notification remains
+  pending; no merge/deploy or final public URLs. Existing large processor debt
+  remains; recovery mechanics live in a separate bounded module.
+
 ## 2026-09-08 — Canonical live notification and correction probe checkpoint
 
 - A1 continuation: live finalization now reads the authorized committed graph
