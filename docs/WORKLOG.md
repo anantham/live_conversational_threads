@@ -1,5 +1,30 @@
 # WORKLOG
 
+## 2026-09-08 — Full public question-history budget audit
+
+- Previous turn was progress (e8accf4 pushed). Verified clean checkout and exact
+  pinned public artifact/utterance rows before an offline audit of all currently
+  committed question histories. No model call or provider configuration change.
+- Nineteen questions: eighteen fit the configured 32,768 conservative byte policy
+  including 4,096 output and 512 headroom. q_childhood_interests has 13 events over
+  three passages and requires 29,402 input bytes; total reserve-inclusive units
+  34,010, exceeding the configured limit by 1,242. Other input counts span
+  9,151 to 20,117. The measuring envelope used a large offline-only bound to
+  serialize complete requests; it was never used for inference or activation.
+- This predicts a real failure in a full default-policy replay, not a demonstrated
+  model context-window failure. The earlier exact-token parity measurements show
+  why byte budgeting cannot serve as the fair local-model baseline. Do not crop
+  question history or silently raise a serving limit to make this check pass.
+- The previously requested pinned tokenizer dependency remains an H1 decision,
+  non-blocking for other architecture work but blocking the planned token-budgeted
+  fair replay. No approval has been received or inferred from automatic continuation.
+- Read-only reconciliation audit also confirms final relation receipts still use
+  a fixed conversation_relation_review_v1 namespace and reject changed policies.
+  Source inspection uses a fixed revision namespace too. Versioning those receipts
+  alone is insufficient: existing model-produced graph edges would remain active
+  without an explicit revision/provenance projection. Do not create a cosmetic
+  restart fix that leaves the old graph semantics unchanged.
+
 ## 2026-09-08 — Explicit evidence requirements pass the public scope follow-up
 
 - Prior turn was evidence progress (a2aa1b1 pushed), clean state verified. Added
