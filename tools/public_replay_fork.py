@@ -12,6 +12,7 @@ from sqlalchemy import insert, select, text
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from lct_python_backend.models import Conversation, Utterance, Node, Relationship, PipelineArtifact, Cluster
 from lct_python_backend.services.transcript.passage_journal import _hash, load_journal, restore_records
+from lct_python_backend.services.transcript.reconciliation_checkpoint import capture_reconciliation
 from tools.public_replay_harness import ensure_replay, validate_target
 
 MODELS = (Conversation, Utterance, Node, Relationship, PipelineArtifact)
@@ -88,11 +89,17 @@ async def fork_replay(*, source_url, target_url, run_id, owner_id, source, polic
                 condition = table.c.id == cid if model is Conversation else table.c.conversation_id == cid
                 rows[table.name] = [dict(row) for row in (await db.execute(
                     select(table).where(condition).order_by(table.c.id))).mappings()]
+            basis = await capture_reconciliation(db, conversation_id=str(cid), owner_id=owner_id)
+            if any(row['artifact_type'] in REVIEW_TYPES and
+                   row['artifact_json'].get('basis_hash') != basis['basis_hash']
+                   for row in rows['pipeline_artifacts']):
+                raise ValueError('Source or canonical leaves changed since saved relation review')
             projected, excluded = select_pre_relation_rows(rows)
             # Retains a digest of every copied column, including original timestamps.
             digest = hashlib.sha256(json.dumps(rows, sort_keys=True, default=str).encode()).hexdigest()
         projected['conversations'][0]['source_metadata']['replay_policy'] = copy.deepcopy(policy)
         receipt = {'source_database': origin.database, 'source_rows_sha256': digest,
+                   'source_leaf_basis_hash': basis['basis_hash'],
                    'old_policy': old_policy, 'new_policy': policy, **excluded,
                    'copied_counts': {name: len(values) for name, values in projected.items()}}
         async with async_sessionmaker(writer).begin() as db:

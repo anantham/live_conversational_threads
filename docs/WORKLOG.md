@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Bind replay fork to saved relation source/leaf basis
+
+- Read-only frontier audit confirms current source/leaf basis_hash matches all
+  six accepted review receipts, with all digests valid. No out-of-band change in
+  those captured fields was observed. Added the same check to fork_replay for
+  every full/partial review receipt and record the source_leaf_basis_hash in fork
+  provenance. Any disagreement rejects before target writes.
+- Real-PG fork regression changes a synthetic canonical summary after its review
+  receipt, observes rejection/empty target, restores that synthetic row exactly,
+  then verifies the successful fork. Focused11 tests passed in0.22s. The basis
+  definition remains capture_reconciliation's source/semantic leaf fields, not
+  a new claim of comprehensive arbitrary-DB-tamper detection.
+- Pending review follow-up must supply checkpoint writer context: partial
+  attempts only save artifacts; completed reviews append missing edges and
+  preserve existing ones. No actual comparison fork or restart has run yet.
+
 ## 2026-09-08 — Preserve structured-import turn zero in journal/backlog
 
 - RawTurnV1 uses dense zero-based seq and persist_turns writes turn.seq directly.

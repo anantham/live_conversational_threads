@@ -11,10 +11,11 @@ import os
 import uuid
 from urllib.parse import urlparse
 import pytest
-from sqlalchemy import insert, select, text
+from sqlalchemy import insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, async_sessionmaker
 from lct_python_backend.models import Conversation, Utterance, Node, Relationship, PipelineArtifact
 from lct_python_backend.services.transcript.passage_journal import build_record, _source, _hash
+from lct_python_backend.services.transcript.reconciliation_checkpoint import capture_reconciliation
 from tools.public_replay_harness import ensure_replay
 from tools.replay_public_source_inspection import FIELDS
 from tools.public_replay_fork import fork_replay, MODELS
@@ -61,7 +62,8 @@ async def test_fork_preserves_original_and_only_changes_relation_policy(monkeypa
                 artifact_type='passage_checkpoint', artifact_json=record, content_hash=record['digest']))
             db.add(Relationship(id=edge_id, conversation_id=cid, from_node_id=first, to_node_id=second,
                 relationship_type='supports', relationship_subtype='reconciled:source_cited'))
-            body = {'edges': [{'id': str(edge_id), 'from_node_id': str(first), 'to_node_id': str(second),
+            basis = await capture_reconciliation(db, conversation_id=str(cid), owner_id=owner)
+            body = {'basis_hash': basis['basis_hash'], 'edges': [{'id': str(edge_id), 'from_node_id': str(first), 'to_node_id': str(second),
                               'relation_type': 'supports', 'disposition': 'created'}]}
             db.add(PipelineArtifact(conversation_id=cid, stage='conversation_relation_review_v1', stage_index=0,
                 artifact_type='source_reviewed_relations', artifact_json=body, content_hash=_hash(body)))
@@ -86,6 +88,17 @@ async def test_fork_preserves_original_and_only_changes_relation_policy(monkeypa
                 await fork_replay(**{**args, **wrong})
             assert await snapshot(sessions[0]) == original
             assert all(not rows for rows in (await snapshot(sessions[1])).values())
+        original_node = next(row for row in original['nodes'] if row['id'] == first)
+        async with sessions[0].begin() as db:
+            await db.execute(update(Node).where(Node.id == first).values(
+                summary='Changed after relation review', updated_at=original_node['updated_at']))
+        with pytest.raises(ValueError, match='canonical leaves changed'):
+            await fork_replay(**args)
+        assert all(not rows for rows in (await snapshot(sessions[1])).values())
+        async with sessions[0].begin() as db:
+            await db.execute(update(Node).where(Node.id == first).values(
+                summary=original_node['summary'], updated_at=original_node['updated_at']))
+        assert await snapshot(sessions[0]) == original
         receipt = await fork_replay(**args)
         assert await snapshot(sessions[0]) == original
         target = await snapshot(sessions[1])
