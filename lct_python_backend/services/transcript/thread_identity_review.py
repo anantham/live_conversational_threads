@@ -17,6 +17,8 @@ to the same inquiry after an intervening tangent. Do not partition by chronology
 or equate shared vocabulary with identity. Follow the actual subject, purpose,
 qualifications and speaker perspective. An example can serve an earlier inquiry
 without changing its subject; a related but independent inquiry stays distinct.
+Compact utterance rows use utterance_fields. A speaker_index refers to that
+source's speaker_ids list (zero-based), preserving the original speaker identity.
 If attribution_review_required is set, historical summaries may rely on earlier
 speaker labels. Use source_attributions as current attribution evidence and
 abstain where the supplied material cannot settle whose inquiry it is.
@@ -98,6 +100,12 @@ def render_thread_identity_request(request):
     for source in rendered['sources']:
         if source['source_id'] not in referenced:
             source.pop('utterance_ids', None)
+        if source.get('utterance_fields') == ['sequence_number', 'start', 'end', 'speaker_id']:
+            speakers = list(dict.fromkeys(row[3] for row in source['utterances']))
+            source['speaker_ids'] = speakers
+            source['utterance_fields'][3] = 'speaker_index'
+            for row in source['utterances']:
+                row[3] = speakers.index(row[3])
     return json.dumps(rendered, ensure_ascii=False, separators=(',', ':'))
 
 

@@ -69,6 +69,22 @@ def test_opaque_uuid_membership_does_not_displace_full_source_from_model_context
     assert review['judgment'] == 'same_inquiry'
 
 
+def test_speaker_dictionary_exactly_round_trips_rows_without_mutating_canonical_request():
+    request = build_thread_identity_review(state(), ['0', '2'], envelope=envelope())
+    for source in request['sources']:
+        source['utterance_fields'] = ['sequence_number', 'start', 'end', 'speaker_id']
+        source['utterances'] = [[3, 0, 8, 'speaker-A'], [4, 9, 15, None], [5, 16, 22, 'speaker-A'],
+                                [6, 23, 29, 'speaker-B']]
+    before = copy.deepcopy(request)
+    rendered = json.loads(render_thread_identity_request(request))
+    for original, packed in zip(request['sources'], rendered['sources']):
+        assert packed['text'] == original['text']
+        assert packed['utterance_fields'] == ['sequence_number', 'start', 'end', 'speaker_index']
+        restored = [[*row[:3], packed['speaker_ids'][row[3]]] for row in packed['utterances']]
+        assert restored == original['utterances']
+    assert request == before
+
+
 @pytest.mark.parametrize('judgment',['related_distinct','uncertain'])
 def test_same_id_does_not_force_equivalence(judgment):
     original=state(); original['nodes'][1]['thread_id']='key'

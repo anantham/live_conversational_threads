@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Lossless speaker dictionary for identity requests
+
+- Local session 67607 exited at thread-identity full-message budget after its
+  question correction succeeded. Read-only measurement of its four candidate
+  pairs: 24,457/24,467/24,408/23,780 native Qwen input tokens, allowance 24,064.
+  These pairs contain two full passages, 38,070 characters and 637 speaker rows.
+- Dictionary-encoding repeated speaker labels measured
+  20,672/20,682/20,623/19,995 tokens before the small explanatory prompt addition.
+  All source text, sequence numbers, offsets and identities remain exactly
+  reconstructable; canonical audit requests stay unchanged. No output reserve,
+  source coverage or context limit reduction. Runner policy version is now 3.
+- Added round-trip test including repeated and unknown speaker identities.
+  Thirty focused tests pass; full backend suite 2,390 passed, six skipped.
+- Fresh UTF8/C database lct_public_replay_local_speakers_20260908 provisioned
+  only after empty-schema guard; run ID local-20260908-speakers. Earlier DBs
+  preserved. Frontier session 5577 still running old policy, not restarted on
+  observation timeout. Final comparison must use matching versioned policy;
+  old artifacts are diagnostic evidence, not interchangeable accepted results.
+
 ## 2026-09-08 — Public viewer browser verification
 
 - Isolated loopback Vite at 43229, Chromium one worker, existing synthetic

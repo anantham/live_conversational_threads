@@ -81,7 +81,7 @@ class ThreadIdentityRunner:
         self.scope = dict(conversation_id=conversation_id, owner_id=owner_id)
         self.envelope = envelope.with_system_prompt(THREAD_IDENTITY_REVIEW_PROMPT)
         self.candidate_policy_id = candidate_policy_id
-        self.fingerprint = _hash({'version': 2, 'rendering': 'source_offsets_without_utterance_uuid_lists',
+        self.fingerprint = _hash({'version': 3, 'rendering': 'source_offsets_with_speaker_dictionary',
                                   'inference': self.envelope.fingerprint,
                                   'candidate_policy_id': candidate_policy_id})
 
