@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — Fresh isolated replay harness
+
+- Replaced old hard-pinned replay database/conversation with explicit loopback
+  lct_public_replay_* target, configured owner, exact source bootstrap and
+  source/owner/policy-checked resume. Old runs are never overwritten; schemas
+  must already exist. Local-only consent is unchanged.
+- Run-specific manifests and exact message/model/cache/usage receipts now preserve
+  evidence. CLI generation fails before opening the DB unless a trusted accurate
+  counter is supplied; dependency/host parity remains pending.
+- Delegated validation: 26 unit/runtime tests passed, plus offline CLI verified
+  1263 pinned utterances. Parent read implementation. DB bootstrap tests currently
+  use doubles: real-PostgreSQL bootstrap and full model run are still required.
+
+
 ## 2026-09-08 — Export/share access regression fixes and review attempt
 
 - Parallel local audit reproduced four HTTP/PostgreSQL failures before changes:
