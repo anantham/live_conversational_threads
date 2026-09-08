@@ -1,5 +1,26 @@
 # WORKLOG
 
+## 2026-09-08 — Full-source custody verified during active replay
+
+- Read-only REPEATABLE READ audits of both explicit questions-replay databases
+  verify1263rows x11fields against the SHA-pinned original: IDs, exact text,
+  sequence, speaker ID/name/source/confidence/revision and timing/duration.
+  Consent metadata matches local-only versus public-frontier authorization.
+  load_journal/restore_records verify checkpoint digests, contiguous history,
+  source attribution and question history; every checkpoint's policy matches
+  its run's saved runtime fingerprint. No inference or writes in the audit.
+- Local:3passages through957/1263,21leaf nodes,8identity reviews,2question
+  reviews. Frontier:4passages through1263/1263,108leaf nodes,12identity reviews,
+  17question reviews and16source inspections. Frontier is in reconciliation,
+  not yet aggregated. Both40514/1842 confirmed live; no candidate accepted.
+- Checked another existing review route without sending code: Grok's inspect
+  reveals inherited Claude hooks, Vercel plugin and Playwright/Beeper MCP even
+  when empty built-in tools/deny-all/no-memory/no-subagents flags are supplied.
+  Do not equate those flags with a connector-free effective environment. No
+  review payload, new inference, credential change or configuration rewrite
+  sent via that route. The existing tool-disabled Claude route can be retried
+  after its stated quota reset, without new spend. Review remains incomplete.
+
 ## 2026-09-08 — Current-worktree browser and actual YouTube acceptance
 
 - Preflight found port43191 belongs to threads-podcast-release, not this task
