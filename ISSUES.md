@@ -1,5 +1,24 @@
 # ISSUES
 
+## 2026-09-08 — Production import paths bypass journal runtime (OPEN; release gate)
+
+Direct call-site inspection at 27b397e confirms `/turns/extract` omits the
+optional interleaved runtime and `/ws/transcripts` constructs its session
+without that runtime. More importantly, `/process-file` supplies the legacy
+TranscriptProcessor class to import_bulk_pipeline, which constructs it without
+the journal factory and later runs legacy refinement/consolidation/persistence.
+The asynchronous diarization queue independently constructs TranscriptProcessor
+and feeds string chunks. Wiring only the first two routes is insufficient.
+
+Completion requires host-owned provider/counter configuration, real HTTP/upload
+and WebSocket acceptance against source-preserving journal output, and a tested
+diarization revision path that cannot replace journal-backed graph/source data
+with the legacy projection. Preserve speaker uncertainty and stable source IDs;
+do not silently migrate existing graphs or use client-supplied runtime authority.
+The YouTube fetch/import entry point is not located in this backend checkout;
+trace the release integration separately before claiming end-to-end parity.
+This blocks deployment, not the already-running isolated comparison.
+
 ## 2026-09-08 — Macro overview test assumes obsolete initial zoom (OPEN)
 
 Current browser suite fails threads-viewer-responsive.spec.ts's initial

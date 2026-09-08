@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Full transcript passage coverage and entry-point audit
+
+- Both replay handles 40514/1842 returned fresh inference receipts and remain
+  live. Repeated read-only custody audit: both have four passages covering all
+  1263 source rows, all 11 original fields equal, and verified journal history.
+  Local has 35 leaf nodes, 11 identity reviews and 2 question reviews; frontier
+  has 108 leaf nodes, 12 identity reviews, 17 question reviews and 30 source
+  inspections. Neither has higher levels yet or semantic acceptance.
+- Falsified the narrower integration assumption that HTTP turns and WebSocket
+  injection would cover actual imports. import_api.py:605 supplies the legacy
+  processor class; import_bulk_pipeline.py:286 constructs it without the runtime
+  and :410 persists its results. import_diarization_queue.py:499 independently
+  constructs the legacy processor and :520 feeds plain chunks. These are real
+  production paths, separate from the shared replay service.
+- Recorded the deployment gate in ISSUES.md. No production configuration,
+  dependency, source data or active replay policy changed. Next implementation
+  must address bulk parsing/STT and later diarization revisions as well as the
+  direct routes; source-safe staging must precede journal graph extraction.
+
 ## 2026-09-08 — Full-source custody verified during active replay
 
 - Read-only REPEATABLE READ audits of both explicit questions-replay databases
