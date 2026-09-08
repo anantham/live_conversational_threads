@@ -49,3 +49,56 @@ async def test_public_review_sends_aliases_but_checkpoints_canonical_ids():
     result = await review_inspection_context(json.dumps(context), envelope=Envelope(), checkpoint=checkpoint)
     assert result['comparisons'][0]['candidate_id'] == 'b'*64
     assert receipts[0]['comparisons'][0]['candidate_id'] == 'b'*64
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('fault', [None, 'quote', 'source', 'node', 'endpoint'])
+async def test_related_transport_preserves_direction_and_checks_source_before_checkpoint(fault):
+    """A real related response must traverse aliases, evidence and node selection.
+
+    Wrong source, invented quotes, foreign nodes and same-endpoint relations
+    must never become saved comparisons merely because aliases are valid.
+    """
+    from lct_python_backend.tests.unit.test_inspection_relations import fixture
+    context, response = fixture()
+    for observation in [context['focal'], *context['candidates']]:
+        observation['canonical_candidates'] = [{
+            'id': 'node-' + observation['id'],
+            'utterance_ids': [row['utterance_id'] for row in observation['source_excerpts']]}]
+    relation = response['comparisons'][0]['relations'][0]
+    relation['node_selections'] = [
+        {'observation_id': oid, 'node_id': 'node-' + oid, 'rationale': 'Synthetic source and meaning agree.'}
+        for oid in ['later', 'earlier']]
+    canonical = copy.deepcopy(response)
+    relation['from_observation_id'], relation['to_observation_id'] = 'o0', 'o1'
+    response['comparisons'][0]['candidate_id'] = 'o1'
+    for rows in [relation['evidence'], relation['node_selections']]:
+        for row in rows:
+            row['observation_id'] = {'later': 'o0', 'earlier': 'o1'}[row['observation_id']]
+    if fault == 'quote': relation['evidence'][0]['quote'] = 'Invented evidence'
+    elif fault == 'source': relation['evidence'][0]['utterance_id'] = 'foreign-source'
+    elif fault == 'node': relation['node_selections'][0]['node_id'] = 'foreign-node'
+    elif fault == 'endpoint': relation['to_observation_id'] = 'o0'
+    saved = []
+    class Envelope:
+        fingerprint = 'synthetic-related-alias'
+        def complete_json(self, prompt):
+            wire = json.loads(prompt)
+            assert wire['focal']['canonical_candidates'] == context['focal']['canonical_candidates']
+            return SimpleNamespace(data=copy.deepcopy(response))
+    async def checkpoint(attempt, request, result=None):
+        assert request == context
+        if result is not None:
+            saved.append(copy.deepcopy(result))
+        return result
+    if fault:
+        with pytest.raises(ValueError):
+            await review_inspection_context(json.dumps(context), envelope=Envelope(), checkpoint=checkpoint)
+        assert saved == []
+    else:
+        result = await review_inspection_context(json.dumps(context), envelope=Envelope(), checkpoint=checkpoint)
+        assert saved == [canonical]
+        checked = result['comparisons'][0]['relations'][0]
+        assert (checked['from_observation_id'], checked['to_observation_id']) == ('later', 'earlier')
+        assert {row['node_id'] for row in checked['node_selections']} == {'node-later', 'node-earlier'}
+        assert {row['utterance_id'] for row in checked['evidence']} == {'u90', 'u1'}

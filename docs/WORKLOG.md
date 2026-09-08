@@ -1,5 +1,37 @@
 # WORKLOG
 
+## 2026-09-08 — Revalidate continuation boundary and related-response evidence
+
+- Fresh read-only repeatable-read custody audit still verifies all1263 source
+  rows across11 fields and four contiguous extraction checkpoints in both arms.
+  Local40514 is confirmed live, now18 source inspections. Frontier is terminal,
+  with49 inspections and six accepted relation batches0..5 plus six partial
+  receipts. This falsifies the proposed no-accepted-relations transition gate:
+  do NOT rewrite its replay policy in place or silently reuse old-policy reviews.
+- Read-only frontier edge-lineage audit verifies all six relation receipt
+  digests. Of eight canonical edges, two were created by that relation pass;
+  none were reused by it. The other six edges are outside that created set.
+  A matched-policy continuation therefore needs separate isolated targets with
+  unchanged source/extraction/inspection evidence and explicit exclusion of
+  old relation-stage outputs, retaining original DBs and receipts intact.
+  This continuation is not implemented, activated, or claimed ready yet.
+- Added five public-review-operation regressions for related responses through
+  request-local aliases. Valid callbacks retain direction, source IDs, canonical
+  node selections and canonical saved responses. Invented quotes, foreign source,
+  foreign nodes and invalid endpoints reject before saving. Focused28 passed;
+  full unit plus isolated PostgreSQL suite2537 passed,6 skipped,522 warnings in
+  18.35s. No product evidence validator or semantic oracle changed.
+- REVIEW-EGRESS-A1: submitted exact3731bb1 source/synthetic test packet to existing
+  Claude Sonnet subscription, safe mode, no tools, empty MCP, no slash commands,
+  empty temporary cwd. Six committed files: relation_identity_transport,
+  inspection_relations, canonical_selection and their three supplied test files.
+  Packet25562 bytes, SHA256
+  b4dbc87d9a4d99309c7942512e93cd205bc80ec7f7af0f86a87139b8018eb908.
+  Inspected and secret-scanned; no transcript/media/private artifact content.
+  Handle51041 confirmed live; verdict pending. New five regressions above are
+  not in that earlier packet. Receipt target tmp/relation-identity-review-3731bb1.json.
+  Neither final artifact, whole-branch acceptance nor deployment is complete.
+
 ## 2026-09-08 — Frontier relation hash-copy failure and exact identity transport
 
 - Frontier handle1842 terminated with exit1 in review_inspection_context,
