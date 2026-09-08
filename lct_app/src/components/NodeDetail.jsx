@@ -108,6 +108,7 @@ export default function NodeDetail({
   artifactUtterances = null,
   mediaRefs = [],
   reviewBundle = null,
+  reviewSelector,
 }) {
   const safeNode = node ?? null;
   const isOpen = Boolean(safeNode);
@@ -642,7 +643,7 @@ export default function NodeDetail({
           </div>
         )}
 
-        <SourceReviewDetails bundle={reviewBundle} nodeId={String(safeNode.id)} />
+        <SourceReviewDetails bundle={reviewBundle} nodeId={String(safeNode.id)} reviewSelector={reviewSelector} />
 
         {/* Provenance (P0) — the auditable link from this node back to the exact
             raw turns it covers. The derived provenance_source_ref rolls up
@@ -1152,4 +1153,5 @@ NodeDetail.propTypes = {
   artifactUtterances: PropTypes.arrayOf(PropTypes.object),
   mediaRefs: PropTypes.arrayOf(PropTypes.object),
   reviewBundle: PropTypes.object,
+  reviewSelector: PropTypes.func,
 };

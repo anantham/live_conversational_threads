@@ -1,5 +1,26 @@
 # WORKLOG
 
+## 2026-09-08 — Retain source-review snapshot above desktop drawer lifetime
+
+- ThreadsViewer now owns a bundle-scoped selector and supplies it to both
+  NodeDetail and MobileConversationDeck. The deck keeps its own fallback for
+  standalone/live callers. Drawer unmount/remount no longer revalidates the
+  entire bundle; replacing the loaded bundle still creates a new snapshot.
+  No global cache or data mutation, and no backend replay-policy changes.
+- sourceIndex computes each utterance's Unicode codepoint length once per
+  validation instead of twice; offset and speaker checks are unchanged.
+- Targeted component/selector/deck tests: 26 passed. The real-artifact fixture
+  retains its selector across drawer unmount/remount and asserts no additional
+  review collection reads, while still rendering exact evidence. Browser
+  desktop and 375px phone tests: 2 passed in 4.7s, including actual drawer
+  close/reopen with collapsed disclosure and plain-text quote rendering.
+- Existing TECH_DEBT entries already track NodeDetail/ThreadsViewer as large
+  mixed-concern components. This change adds only selector plumbing; do not
+  expand it into an unrelated restructuring while replay work is active.
+- Live replay process probe still confirms PIDs 18959/23292. No final files
+  accepted or deployed. Latest frontend corrective head requires independent
+  review; prior issues_found verdict is not being promoted to an approval.
+
 ## 2026-09-08 — Antigravity follow-up findings recovered and scoped
 
 - Review session 50452 exited successfully. Saved response

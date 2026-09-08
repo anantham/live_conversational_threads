@@ -46,6 +46,14 @@ test(`${layout} recipient can inspect source-backed model reviews`, async ({ pag
     await page.getByRole('button', { name: 'Next moment', exact: true }).click();
     await expect(card).toContainText('Moment b');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  } else {
+    await card.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(card).toHaveCount(0);
+    await page.locator('.react-flow__node').filter({ hasText: 'Moment a' })
+      .getByRole('button', { name: 'Open exact source utterances' }).click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await disclosure.click();
+    await expect(card.locator('blockquote').first()).toHaveText(quote);
   }
   expect(errors).toEqual([]);
 });

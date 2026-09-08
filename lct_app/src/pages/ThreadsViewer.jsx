@@ -22,6 +22,7 @@ import {
   validateThreadsArtifact,
 } from "../services/threadsArtifact";
 import { indexExplicitEdges } from "../services/edgeContract";
+import { createSourceReviewSelector } from "../services/sourceReviews";
 import { enrichGraphNodesWithProvenance } from "../components/graphProvenance";
 import {
   getThreadsLibraryRecord,
@@ -57,6 +58,7 @@ export default function ThreadsViewer() {
   const DriveOpener = new URLSearchParams(location.search).get("public") === "1"
     ? PublicDriveThreadsGate : DriveThreadsGate;
   const [bundle, setBundle] = useState(null);
+  const reviewSelector = useMemo(() => createSourceReviewSelector(bundle), [bundle]);
   const [error, setError] = useState("");
   const [libraryStatus, setLibraryStatus] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -460,6 +462,7 @@ export default function ThreadsViewer() {
     return (
       <MobileConversationDeck
         bundle={bundle}
+        reviewSelector={reviewSelector}
         deckState={mobileDeckState}
         graphNodes={flatNodes}
         libraryStatus={libraryStatus}
@@ -547,6 +550,7 @@ export default function ThreadsViewer() {
             chunkDict={bundle.chunk_dict || {}}
             artifactUtterances={bundle.utterances || []}
             reviewBundle={bundle}
+            reviewSelector={reviewSelector}
             mediaRefs={bundle.media_refs || []}
             contextNodes={flatNodes}
             onSelectNode={setSelectedNode}

@@ -49,9 +49,10 @@ function sourceIndex(sources, context) {
       let offset = 0;
       source.utterances.forEach((entry, index) => {
         const row = rows[index];
+        const length = points(row.text).length;
         check(Array.isArray(entry) && entry.length === 4 && entry[0] === row.sequence_number
-          && entry[1] === offset && entry[2] === offset + points(row.text).length && entry[3] === row.speaker_id);
-        offset += points(row.text).length + 1;
+          && entry[1] === offset && entry[2] === offset + length && entry[3] === row.speaker_id);
+        offset += length + 1;
       });
     }
     result.set(id, { id, chunkId: source.chunk_id, text: source.text, utteranceIds: rows.map((row) => row.id) });

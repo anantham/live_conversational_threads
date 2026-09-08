@@ -43,6 +43,7 @@ function buildSpeakerMap(utterances) {
 
 export default function MobileConversationDeck({
   bundle,
+  reviewSelector: suppliedReviewSelector,
   deckState: controlledDeckState,
   graphNodes,
   libraryStatus,
@@ -55,7 +56,7 @@ export default function MobileConversationDeck({
   onShowMap,
   onRenameSpeaker,
 }) {
-  const reviewSelector = useMemo(() => createSourceReviewSelector(bundle), [bundle]);
+  const reviewSelector = useMemo(() => suppliedReviewSelector || createSourceReviewSelector(bundle), [bundle, suppliedReviewSelector]);
   const model = useMemo(
     () => buildMobileConversationDeck(graphNodes, bundle.utterances || []),
     [bundle.utterances, graphNodes],
@@ -327,6 +328,7 @@ export default function MobileConversationDeck({
 }
 
 MobileConversationDeck.propTypes = {
+  reviewSelector: PropTypes.func,
   bundle: PropTypes.shape({
     conversation_title: PropTypes.string,
     conversation_name: PropTypes.string,

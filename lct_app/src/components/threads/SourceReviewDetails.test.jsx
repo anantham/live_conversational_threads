@@ -9,6 +9,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import SourceReviewDetails from "./SourceReviewDetails";
 import NodeDetail from "../NodeDetail";
 import MobileConversationDeck from "./MobileConversationDeck";
+import { createSourceReviewSelector } from "../../services/sourceReviews";
 
 vi.mock("../../services/sourceReviews", async (importOriginal) => {
   const actual = await importOriginal();
@@ -120,14 +121,26 @@ it.each(["desktop", "mobile"])("renders a real artifact through the selector and
   Object.defineProperty(actualBundle, "thread_identity_reviews", {
     get() { reviewReads += 1; return identityReviews; },
   });
+  const retainedSelector = createSourceReviewSelector(actualBundle);
+  const snapshotReads = reviewReads;
   act(() => root.render(layout === "desktop"
-    ? <NodeDetail node={nodes[0]} reviewBundle={actualBundle} onClose={() => {}} />
-    : <MobileConversationDeck bundle={actualBundle} graphNodes={nodes}
+    ? <NodeDetail node={nodes[0]} reviewBundle={actualBundle} reviewSelector={retainedSelector} onClose={() => {}} />
+    : <MobileConversationDeck bundle={actualBundle} reviewSelector={retainedSelector} graphNodes={nodes}
       onDownloadTranscript={() => {}} onOpenAnother={() => {}} onOpenLibrary={() => {}} onShowMap={() => {}} />));
   toggle();
   expect(container.textContent).toContain("actual-policy");
   expect(container.textContent).toContain(quote);
   expect(container.querySelector("img")).toBeNull();
+  expect(reviewReads).toBe(snapshotReads);
+  if (layout === "desktop") {
+    // Closing unmounts the drawer; the viewer-owned snapshot must survive.
+    act(() => root.render(null));
+    act(() => root.render(<NodeDetail node={nodes[1]} reviewBundle={actualBundle}
+      reviewSelector={retainedSelector} onClose={() => {}} />));
+    toggle();
+    expect(container.textContent).toContain("actual-policy");
+    expect(reviewReads).toBe(snapshotReads);
+  }
   if (layout === "mobile") {
     const readsAfterMount = reviewReads;
     expect(readsAfterMount).toBeGreaterThan(0);
