@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectSourceReviews } from './sourceReviews';
+import { createSourceReviewSelector, selectSourceReviews } from './sourceReviews';
 
 // Intent: optional reviews never break the graph; display only source-bound
 // selected-node annotations, preserve uncertainty/policies and codepoint quotes.
@@ -42,6 +42,25 @@ function fixture() {
 }
 
 describe('source review selector', () => {
+  it('validates once per explicit snapshot and revalidates changed evidence in a new snapshot', () => {
+    // Intent: navigation does not re-read the corpus, while replacement still
+    // rejects forged evidence. Getter counts measure work, not elapsed time.
+    const bundle = fixture();
+    let reads = 0;
+    const rows = bundle.utterances;
+    Object.defineProperty(bundle, 'utterances', { get() { reads += 1; return rows; } });
+    const select = createSourceReviewSelector(bundle);
+    const initialReads = reads;
+    expect(initialReads).toBeGreaterThan(0);
+    for (let i = 0; i < 100; i += 1) {
+      expect(select(i % 2 ? 'n0' : 'n1').threads).toHaveLength(1);
+    }
+    expect(reads).toBe(initialReads);
+    expect(select('unknown').threads).toEqual([]);
+    bundle.thread_identity_reviews.policies[0].annotations[0].evidence[0].quote = 'Forged';
+    expect(createSourceReviewSelector(bundle)('n0').threads).toEqual([]);
+    expect(select('n0').threads[0].evidence[0].quote).toBe('Who pays?');
+  });
   it('uses exact codepoint source ranges and keeps provisional/reviewed states separate', () => {
     const selected = selectSourceReviews(fixture(), 'n0');
     expect(selected.invalidCount).toBe(0);

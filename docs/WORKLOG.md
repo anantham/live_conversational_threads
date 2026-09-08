@@ -1,5 +1,29 @@
 # WORKLOG
 
+## 2026-09-08 — Snapshot-scoped review validation across mobile navigation
+
+- Full MobileConversationDeck source falsifies the reviewer's simultaneous
+  many-card premise: one keyed card mounts at a time. However, navigation
+  remounts it and repeated whole-bundle validation was real.
+- Added explicit createSourceReviewSelector snapshot factory. It validates
+  source bindings, offsets, policies and question/thread evidence once, then
+  indexes normalized reviews by each distinct cited node. Existing one-shot
+  selectSourceReviews remains fresh on every call. No global WeakMap cache.
+- MobileConversationDeck retains the selector outside the keyed card, scoped
+  by bundle identity; MobileDeckCard passes it to SourceReviewDetails. Desktop
+  details also retain their selector across node changes. ThreadsViewer loads
+  and speaker edits replace bundle state, invalidating the snapshot. Callers
+  must likewise replace their bundle for new evidence; this is not a cache
+  that detects arbitrary in-place mutations.
+- Tests count corpus access across 100 selections, verify a newly constructed
+  snapshot rejects subsequently forged evidence, and navigate the actual
+  mobile deck to another node without re-reading review metadata. All 26
+  selector/disclosure/deck tests pass. This is operation-count evidence, not
+  a measured FPS or mobile latency claim. Initial validation still costs a
+  full pass; no claim that arbitrarily large artifacts are now inexpensive.
+- Runtime replay code is unchanged. Antigravity findings have scoped fixes,
+  but exact-head independent re-review and full-branch release review remain.
+
 ## 2026-09-08 — Reproduced and corrected source disclosure selection flash
 
 - Added a layout-effect observer regression: after opening node A and selecting

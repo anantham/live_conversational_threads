@@ -1,6 +1,6 @@
 import { useId, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { selectSourceReviews } from "../../services/sourceReviews";
+import { createSourceReviewSelector } from "../../services/sourceReviews";
 
 const label = (value) => typeof value === "string" ? value.replaceAll("_", " ") : "unavailable";
 
@@ -17,7 +17,7 @@ function Evidence({ rows = [] }) {
 }
 Evidence.propTypes = { rows: PropTypes.arrayOf(PropTypes.object) };
 
-export default function SourceReviewDetails({ bundle, nodeId }) {
+export default function SourceReviewDetails({ bundle, nodeId, reviewSelector }) {
   const [open, setOpen] = useState(false);
   const [selection, setSelection] = useState({ nodeId, bundle });
   const contentId = useId();
@@ -26,7 +26,8 @@ export default function SourceReviewDetails({ bundle, nodeId }) {
     setSelection({ nodeId, bundle });
     setOpen(false);
   }
-  const reviews = useMemo(() => selectSourceReviews(bundle, nodeId), [bundle, nodeId]);
+  const select = useMemo(() => reviewSelector || createSourceReviewSelector(bundle), [bundle, reviewSelector]);
+  const reviews = useMemo(() => select(nodeId), [select, nodeId]);
   const groups = useMemo(() => {
     const policies = new Map();
     for (const [kind, rows] of [["question", reviews.questions], ["thread", reviews.threads]]) {
@@ -79,4 +80,4 @@ export default function SourceReviewDetails({ bundle, nodeId }) {
     </section>
   );
 }
-SourceReviewDetails.propTypes = { bundle: PropTypes.object, nodeId: PropTypes.string };
+SourceReviewDetails.propTypes = { bundle: PropTypes.object, nodeId: PropTypes.string, reviewSelector: PropTypes.func };

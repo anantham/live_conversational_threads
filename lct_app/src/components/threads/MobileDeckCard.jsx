@@ -79,7 +79,7 @@ function handleCardKeyDown(event) {
   card.scrollTop = next;
 }
 
-function NodeCard({ snapshot, sourceRows, reviewBundle }) {
+function NodeCard({ snapshot, sourceRows, reviewBundle, reviewSelector }) {
   const headingId = useId();
   const node = snapshot.item;
   const metrics = node?.provenance_metrics || {};
@@ -115,7 +115,7 @@ function NodeCard({ snapshot, sourceRows, reviewBundle }) {
       <p className="mt-4 text-[1.05rem] leading-7 text-slate-600">
         {summary}
       </p>
-      <SourceReviewDetails bundle={reviewBundle} nodeId={String(node.id)} />
+      <SourceReviewDetails bundle={reviewBundle} nodeId={String(node.id)} reviewSelector={reviewSelector} />
 
       <div className="mt-auto pt-7">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
@@ -141,6 +141,7 @@ function NodeCard({ snapshot, sourceRows, reviewBundle }) {
 }
 
 NodeCard.propTypes = {
+  reviewSelector: PropTypes.func,
   reviewBundle: PropTypes.object,
   snapshot: PropTypes.object.isRequired,
   sourceRows: PropTypes.arrayOf(PropTypes.object).isRequired,
@@ -215,7 +216,7 @@ UtteranceCard.propTypes = {
   speakerColorMap: PropTypes.objectOf(PropTypes.string).isRequired,
 };
 
-export default function MobileDeckCard({ mediaRef, snapshot, sourceRows, speakerColorMap, reviewBundle }) {
+export default function MobileDeckCard({ mediaRef, snapshot, sourceRows, speakerColorMap, reviewBundle, reviewSelector }) {
   return snapshot.entry?.kind === "utterance" ? (
     <UtteranceCard
       mediaRef={mediaRef}
@@ -223,11 +224,12 @@ export default function MobileDeckCard({ mediaRef, snapshot, sourceRows, speaker
       speakerColorMap={speakerColorMap}
     />
   ) : (
-    <NodeCard snapshot={snapshot} sourceRows={sourceRows} reviewBundle={reviewBundle} />
+    <NodeCard snapshot={snapshot} sourceRows={sourceRows} reviewBundle={reviewBundle} reviewSelector={reviewSelector} />
   );
 }
 
 MobileDeckCard.propTypes = {
+  reviewSelector: PropTypes.func,
   reviewBundle: PropTypes.object,
   mediaRef: PropTypes.object,
   snapshot: PropTypes.object.isRequired,

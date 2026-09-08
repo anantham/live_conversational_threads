@@ -148,9 +148,14 @@ function questionReview(review, policyFingerprint, context) {
     policyFingerprint, evidence, events, verification: VERIFICATION };
 }
 
-export function selectSourceReviews(bundle, nodeId) {
+// A selector owns a validated snapshot. Recreate it when the bundle changes;
+// there is deliberately no global object-identity cache for mutable artifacts.
+export function createSourceReviewSelector(bundle) {
   const result = { questions: [], threads: [], invalidCount: 0 };
-  if (!object(bundle)) return result;
+  const byNode = new Map();
+  const select = (nodeId) => ({ questions: [...(byNode.get(nodeId)?.questions || [])],
+    threads: [...(byNode.get(nodeId)?.threads || [])], invalidCount: result.invalidCount });
+  if (!object(bundle)) return select;
   const context = { nodes: uniqueIndex(flattenThreadsGraph(bundle.graph_data), 'id'),
     utterances: uniqueIndex(Array.isArray(bundle.utterances) ? bundle.utterances : [], 'id'),
     sequences: uniqueIndex(Array.isArray(bundle.utterances) ? bundle.utterances : [], 'sequence_number') };
@@ -172,7 +177,10 @@ export function selectSourceReviews(bundle, nodeId) {
       policy[itemsKey].forEach((review) => {
         try {
           const normalized = normalize(review, policy.policy_fingerprint, context);
-          if (normalized.evidence.some((item) => item.nodeId === nodeId)) result[target].push(normalized);
+          for (const id of new Set(normalized.evidence.map((item) => item.nodeId))) {
+            if (!byNode.has(id)) byNode.set(id, { questions: [], threads: [] });
+            byNode.get(id)[target].push(normalized);
+          }
         } catch {
           // Optional untrusted metadata cannot destroy an otherwise readable map.
           result.invalidCount += 1;
@@ -180,5 +188,9 @@ export function selectSourceReviews(bundle, nodeId) {
       });
     });
   }
-  return result;
+  return select;
+}
+
+export function selectSourceReviews(bundle, nodeId) {
+  return createSourceReviewSelector(bundle)(nodeId);
 }

@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 
 import { SPEAKER_COLORS } from "../graphConstants";
 import { selectMediaRef } from "../../services/mediaSeek";
+import { createSourceReviewSelector } from "../../services/sourceReviews";
 import MobileDeckCard from "./MobileDeckCard";
 import YouTubeSourcePanel from "./YouTubeSourcePanel";
 import {
@@ -54,6 +55,7 @@ export default function MobileConversationDeck({
   onShowMap,
   onRenameSpeaker,
 }) {
+  const reviewSelector = useMemo(() => createSourceReviewSelector(bundle), [bundle]);
   const model = useMemo(
     () => buildMobileConversationDeck(graphNodes, bundle.utterances || []),
     [bundle.utterances, graphNodes],
@@ -266,6 +268,7 @@ export default function MobileConversationDeck({
           {snapshot.item ? (
             <div key={`${snapshot.entry.kind}:${snapshot.entry.id}:${motionKey}`} className={`h-full ${motionClass}`}>
               <MobileDeckCard
+                reviewSelector={reviewSelector}
                 reviewBundle={bundle}
                 mediaRef={mediaRef}
                 snapshot={snapshot}

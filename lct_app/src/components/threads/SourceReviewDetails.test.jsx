@@ -12,7 +12,10 @@ import MobileConversationDeck from "./MobileConversationDeck";
 
 vi.mock("../../services/sourceReviews", async (importOriginal) => {
   const actual = await importOriginal();
-  return { selectSourceReviews: (bundle, nodeId) => bundle?.testReviews?.[nodeId] || actual.selectSourceReviews(bundle, nodeId) };
+  return { ...actual, createSourceReviewSelector: (bundle) => {
+    const select = actual.createSourceReviewSelector(bundle);
+    return (nodeId) => bundle?.testReviews?.[nodeId] || select(nodeId);
+  } };
 });
 
 const quote = '<img src=x onerror="alert(1)"> Who may borrow?';
@@ -112,6 +115,11 @@ it.each(["desktop", "mobile"])("renders a real artifact through the selector and
       sources: [{ source_id: "s", chunk_id: "c", utterance_ids: ["u"], text: quote }],
       evidence: nodes.map((n) => ({ node_id: n.id, source_id: "s", quote, start: 0, end: Array.from(quote).length })),
     }] }] } };
+  let reviewReads = 0;
+  const identityReviews = actualBundle.thread_identity_reviews;
+  Object.defineProperty(actualBundle, "thread_identity_reviews", {
+    get() { reviewReads += 1; return identityReviews; },
+  });
   act(() => root.render(layout === "desktop"
     ? <NodeDetail node={nodes[0]} reviewBundle={actualBundle} onClose={() => {}} />
     : <MobileConversationDeck bundle={actualBundle} graphNodes={nodes}
@@ -120,4 +128,14 @@ it.each(["desktop", "mobile"])("renders a real artifact through the selector and
   expect(container.textContent).toContain("actual-policy");
   expect(container.textContent).toContain(quote);
   expect(container.querySelector("img")).toBeNull();
+  if (layout === "mobile") {
+    const readsAfterMount = reviewReads;
+    expect(readsAfterMount).toBeGreaterThan(0);
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" })));
+    expect(container.textContent).toContain("Moment b");
+    expect(reviewReads).toBe(readsAfterMount);
+    toggle();
+    expect(container.textContent).toContain("actual-policy");
+    expect(reviewReads).toBe(readsAfterMount);
+  }
 });
