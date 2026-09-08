@@ -17,6 +17,7 @@ from .membership_review import MEMBERSHIP_PROMPT
 from .membership_runner import MembershipReviewRunner
 from .passage_journal import JournalConflict, _hash
 from .source_inspection_runner import check_inference_consent
+from .proposal_identifiers import pack_proposal, unpack_proposal
 
 
 class AbstractionNeedsRevision(ValueError):
@@ -35,7 +36,8 @@ class BoundedAggregationRunner:
         self.scope = {'conversation_id': conversation_id, 'owner_id': owner_id}
         self.identity_review_loader = identity_review_loader
         self.identity_policy_fingerprint = identity_policy_fingerprint
-        prompt = PROPOSAL_PROMPT
+        prompt = PROPOSAL_PROMPT + ('\nChild IDs use request-local compact references. '
+            'Return these references exactly in children_ids; the backend restores canonical IDs.\n')
         if identity_review_loader is not None:
             prompt += ('\nthread_identity_reviews contains source-backed MODEL judgments under an '
                 'explicit policy, not human-accepted identities. Use these pairwise judgments as '
@@ -118,14 +120,16 @@ class BoundedAggregationRunner:
                         'You may split groups or revise their scope; cover every child.',
                     'previous_groups': previous['proposals'],
                     'membership_feedback': [d['result'] for d in previous['decisions']]}
-            prompt = json.dumps(attempt, ensure_ascii=False, separators=(',', ':'))
+            packed, aliases = pack_proposal(attempt)
+            prompt = json.dumps(packed, ensure_ascii=False, separators=(',', ':'))
             self.envelope.validate(prompt)
             async with self.sessions.begin() as db:
                 saved = await self._proposal_checkpoint(db, snapshot, attempt, generation=generation)
             if saved is None:
                 result = await asyncio.to_thread(self.envelope.complete_json, prompt)
                 async with self.sessions.begin() as db:
-                    saved = await self._proposal_checkpoint(db, snapshot, attempt, result.data, generation=generation)
+                    payload = unpack_proposal(result.data, aliases)
+                    saved = await self._proposal_checkpoint(db, snapshot, attempt, payload, generation=generation)
             # Request hashes change across revisions; compare proposal content
             # itself so unchanged rejected work cannot obtain a fresh verdict.
             signature = _hash(sorted((g['label'].strip(), g['rationale'].strip(),

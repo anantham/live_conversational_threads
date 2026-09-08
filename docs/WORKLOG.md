@@ -1,5 +1,20 @@
 # WORKLOG
 
+## 2026-09-08 — Reversible proposal child references fit the measured input
+
+- Added request-local child aliases and strict reverse mapping before canonical
+  validation/storage. References repeated in identity evidence/revision feedback
+  use the same mapping. Narrative substrings remain untouched; collisions with
+  existing alias-like values are avoided; unknown response references fail closed.
+- Current saved frontier L2 proposal: 21,377 reference tokens versus 26,792 before
+  aliasing, below 24,064 allowance before the small runner prompt addition.
+  No child, judgment, rationale, quotation or qualification removed. The runner
+  continues to validate its actual full message envelope before inference.
+- Full backend unit suite: 2,408 passed, six skipped. Added round-trip/collision
+  tests; actual proposal runner test confirms canonical storage path. Changed
+  system prompt changes policy fingerprint, so older runs remain diagnostics,
+  not final matched-policy artifacts. Local diagnostic PID 13056 still live.
+
 ## 2026-09-08 — Actual provenance recovery and proposal budget preflight
 
 - Read-only /private/tmp/verify-public-source-links.py ran the production matcher

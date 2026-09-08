@@ -45,7 +45,7 @@ def make_runner(monkeypatch, *, capacity=15000, change=None, enabled=True):
         prompts.append(json.loads(kwargs['messages'][1]['content']))
         if change: change(snapshot,annotations)
         return SimpleNamespace(data={'groups':[{'label':'Key access','rationale':'Shared inquiry',
-                                                'children_ids':['a','b']}]})
+                                                'children_ids':[child['id'] for child in prompts[-1]['children']]}]})
     monkeypatch.setattr('lct_python_backend.services.transcript.inference_envelope.chat_with_provider_fallback_sync',generate)
     env=InferenceEnvelope(system_prompt='unused',providers=[{'id':'local','model':'synthetic',
         'enabled':True,'trust_scope':'owner_private','base_url':'http://127.0.0.1:11434',
@@ -118,6 +118,7 @@ async def test_large_audit_sources_do_not_duplicate_into_proposal(monkeypatch):
     await runner.run_level(2)
     projection=prompts[0]['thread_identity_reviews']['annotations'][0]
     assert projection['rationale']==before['rationale']
-    assert projection['evidence']==before['evidence']
+    assert projection['evidence']==[{**before['evidence'][0],
+        'node_id':prompts[0]['children'][0]['id']}]
     assert review==before
     assert len(json.dumps(projection)) < 1000
