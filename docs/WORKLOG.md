@@ -1,5 +1,15 @@
 # WORKLOG
 
+## 2026-09-08 — Fork follow-up review with checkpoint write context
+
+- REVIEW-EGRESS-A1: exact6b8552a seven-file source/synthetic-test packet sent
+  through existing Antigravity Gemini3.1ProHigh, same no-tools/empty-cwd/sandbox
+  restrictions. Added complete full/partial checkpoint writers to test prior
+  mutation claims. Inspected/scanned49768 bytes, SHA256
+  c4e595e1f8e9ef96fd025c03ab595fd912137afaef3a4888f4af6701196f4b44.
+  No real transcripts or private artifacts. Handle44432 live; target
+  tmp/replay-fork-agy-review-6b8552a.json. Verdict and activity audit pending.
+
 ## 2026-09-08 — Bind replay fork to saved relation source/leaf basis
 
 - Read-only frontier audit confirms current source/leaf basis_hash matches all
