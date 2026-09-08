@@ -1,5 +1,29 @@
 # WORKLOG
 
+## 2026-09-08 — OpenAI comparison transport preparation
+
+- Local replay session 75372 still live, with two saved inference responses;
+  do not restart from an observation timeout. LLM FACTS warnings originate in
+  DatabaseLLMCallFactStore: standalone replay configures sessions using its CLI
+  URL but does not bind DATABASE_URL for that separate telemetry adapter. The
+  explicit public inference receipts are unaffected. Follow-up: bind the same
+  isolated DB for telemetry without changing ambient production configuration.
+- Verified installed `codex exec` flags after consulting official developer
+  commands documentation. Synthetic requested-model gpt-6-astra/high probe
+  completed as a JSON object, no tool events, input_tokens7510/output_tokens15.
+  Uses existing login; no API key read or installed package. Source:
+  https://learn.chatgpt.com/docs/developer-commands#codex-exec
+- Added unactivated tools/public_frontier_transport.py: one requested OpenAI
+  model, read-only sandbox, major tool surfaces disabled, no user config,
+  ephemeral isolated cwd, bounded input and timeout, external egress guard,
+  raw events and request receipts. Parser rejects tool events, failed/incomplete
+  turns and non-object/non-JSON output. This is not yet wired into a replay.
+- The CLI adds its own instructions and does not expose identical temperature
+  or output-budget control to the Ollama request. Requested model is not an
+  independently attested served-model response. These differences are recorded,
+  not represented as exact API parity. Fair replay budgeting/integration remains
+  pending, along with both final artifacts, validation and publication.
+
 ## 2026-09-08 — Public replay exposed embedding window boundary
 
 - Recovered terminal session 43155: exit 1, after two successful inference
