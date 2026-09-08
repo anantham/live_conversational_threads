@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Reviewer availability checked without widening disclosure
+
+- Fresh fetch: origin/main 265fc4ad9c6f0df2e4f15212bb45c3b6e8ed47d9 is fully
+  contained; head 65dcfe5 was 128 commits ahead. Complete frontend diff inspected:
+  12 lct_app files, source/tests only, 39,673-byte packet SHA256
+  6a6a918dfb60eb14233322c5520838dd0795d029199aefe38f1b9dd590a2c9c6.
+  Manual exact diff inspection found no credentials, participant data or transcripts.
+  Claude tool-free review session 14654 returned 429 with zero tokens/cost and no
+  verdict; reported reset 16:50 Indian/Mauritius. /private/tmp/review-threads-frontend.py.
+- Gemini installed CLI help works. Read-only local code inspection established
+  tools.core=[], mcp.allowed=[], hooksConfig.enabled=false, skills.enabled=false
+  and context.fileName override. Existing auth type is oauth-personal; no secrets
+  printed or changed. Temporary settings /private/tmp/gemini-review-settings.json.
+- Synthetic READY-only probe session 35884 exited 55 before inference:
+  IneligibleTierError UNSUPPORTED_CLIENT. It also reported untrusted scratch cwd
+  and default approval mode. No source packet sent; no auth migration, trust
+  override, new spend or provider workaround attempted. Reviewer gate unresolved,
+  not a missing human authorization. Both replay handles remain live.
+
 ## 2026-09-08 — Compact replay stage counts and first semantic sample
 
 - Both handles 42294/80878 polled live. At DB observation frontier had four
