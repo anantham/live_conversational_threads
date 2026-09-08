@@ -25,7 +25,7 @@ from lct_python_backend.tests.unit.test_inspection_relations import fixture
 
 
 @pytest.mark.asyncio
-async def test_canonical_relation_atomicity_recovery_and_human_boundaries():
+async def test_canonical_relation_atomicity_recovery_and_human_boundaries(monkeypatch):
     url = os.getenv('PASSAGE_JOURNAL_TEST_DATABASE_URL')
     if not url:
         pytest.skip('Explicit isolated database required')
@@ -35,6 +35,7 @@ async def test_canonical_relation_atomicity_recovery_and_human_boundaries():
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     cid, early, late, old_node, new_node = [uuid.uuid4() for _ in range(5)]
     owner = f'synthetic-reconciliation-{cid}'
+    monkeypatch.setenv('LCT_OWNER_ID', owner)
     scope = {'conversation_id': str(cid), 'owner_id': owner}
     context, raw = fixture()
     replacements = {'u1': str(early), 'u90': str(late)}

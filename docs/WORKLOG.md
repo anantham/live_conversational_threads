@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Matched local arm started; full PostgreSQL acceptance passes
+
+- Verified superseded local PID 13056 command and creation time, sent SIGINT,
+  then confirmed it exited. Reason: its old aggregation policy cannot produce
+  the final comparison, not an observation timeout. Database and receipts retained.
+- Started local-20260908-compact, session 80878, conversation
+  a4ca15b3-00f1-5268-8610-276985565798, new empty UTF8 database
+  lct_public_replay_local_compact_20260908. Output 1788856386358426000. Same pinned
+  public source and 8192 output allowance; local-only provider, no off-device data.
+  Session has returned two inference receipts. Frontier 42294 also live.
+- All 38 opt-in PostgreSQL integration tests pass (6.33 seconds) on disposable
+  lct_acceptance_20260908. Initial run: 37 pass, one fixture-owner 404 in canonical
+  reconciliation export. Bound that test's LCT_OWNER_ID to its random synthetic
+  owner; production authorization unchanged. Tests cover import, passage journals,
+  membership/aggregation, source inspection, reconciliation and export access.
+- Both final exports, semantic acceptance, full-head review and deployment remain
+  pending. Current runtime-head differences must be checked at artifact acceptance;
+  newer reference restoration changes are not silently assumed present in old jobs.
+
 ## 2026-09-08 — Independent review findings verified against full code
 
 - Claude review session 60912 completed (Opus 5 primary; CLI also reports Haiku
