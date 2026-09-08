@@ -31,7 +31,9 @@ async def main(run=False, *, database_url, run_id, resume=False,
     provider = {'id': 'public-local-full-replay', 'model': 'qwen3.8:27b-mlx',
         'embedding_model': 'qwen3-embedding:8b', 'type': 'openai_compatible',
         'base_url': 'http://127.0.0.1:11434', 'trust_scope': 'owner_private',
-        'timeout_seconds': 600, 'reasoning_effort': 'none'}
+        # Batch evaluation may need longer than ten minutes for a 4096-token
+        # completion on this local model. This changes transport patience only.
+        'timeout_seconds': 1800, 'reasoning_effort': 'none'}
     print(json.dumps({'phase': 'configuration_checked', 'source_sha256': SHA,
         'utterances': len(source), 'run_id': run_id, 'conversation_id': str(replay_identity(run_id)),
         'run_requested': run, 'resume': resume, 'counter_configured': callable(count_messages),

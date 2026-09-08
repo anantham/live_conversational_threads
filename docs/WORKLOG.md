@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-09-08 — Timeout diagnosis and bounded transport retry
+
+- Local server log confirms the first request ended at 09:01:45+04:00 with
+  context canceled, matching the client timeout; no duplicate generation started.
+- Exact saved messages, same model/temperature/reasoning/JSON mode, streaming
+  diagnostic capped at 32 output tokens: first content0.57s, complete5.29s,
+  24 content events, finish_reason length. Diagnostic succeeded; prompt cache
+  may be warm, so this is not a cold-prefill or full-completion measurement.
+- Increase public batch replay transport timeout600 to1800 seconds, leaving
+  model messages, 4096 output reserve, context and policy unchanged. Resume the
+  same source/run; preserve failed attempt. No production timeout changed.
+
 ## 2026-09-08 — Native full replay first request timed out
 
 - Session 10035 exited 1 after local provider timeout600s, before first graph
