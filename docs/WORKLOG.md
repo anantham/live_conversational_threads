@@ -1,5 +1,26 @@
 # WORKLOG
 
+## 2026-09-08 — Export/share access regression fixes and review attempt
+
+- Parallel local audit reproduced four HTTP/PostgreSQL failures before changes:
+  foreign-owner default export, foreign/deleted share creation, and public fetch
+  after soft deletion. Added require_live_conversation at owner export/create and
+  public graph/audio capability boundaries. Public recipients do not need to be
+  the configured owner; live public capability access remains tested.
+- Delegated validation: 60 tests passed across new real-PG access tests and existing
+  share/export/interleaved import coverage. Parent inspected the narrow diff.
+  Shared reader semantics unchanged. Share list/revoke and concurrent read/deletion
+  races remain outside this tested slice; not complete privacy acceptance.
+- Exact component review of qwen_message_counter.py and its synthetic unit tests
+  at 56df00e566fcf871ac71794470752d2e5f92c85c was first host-rejected, then explicitly
+  authorized by the user. Anthropic Claude CLI, opus alias, safe-mode, tools empty,
+  no session persistence. Packet 6285 bytes, SHA256
+  eebfdedf34ba0d99ae8016cd19539f1b8a37940c0843200ca0752cc6896b627a.
+  Exact files manually inspected plus credential-pattern scan; no transcripts,
+  runtime artifacts or credentials included. Invocation accepted but terminated
+  after subprocess timeout120s with no verdict. Not a review pass or merge gate.
+
+
 ## 2026-09-08 — Parallel full-replay readiness audit
 
 - Resumed at clean 22bb4b9. Delegated read-only replay and export/privacy audits

@@ -61,6 +61,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from lct_python_backend.config import AUDIO_RECORDINGS_DIR
 from lct_python_backend.db_session import get_async_session
+from lct_python_backend.services.conversation_access import require_live_conversation
+from lct_python_backend.services.owner_context import get_current_owner_id
 from lct_python_backend.services.edge_contract import (
     THREADS_FORMAT_VERSION,
     edge_schema_descriptor,
@@ -296,12 +298,7 @@ async def create_share(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid conversation_id.")
 
-    exists = await db.execute(
-        text("SELECT 1 FROM conversations WHERE id = :id"),
-        {"id": str(conversation_uuid)},
-    )
-    if exists.first() is None:
-        raise HTTPException(status_code=404, detail="Conversation not found.")
+    await require_live_conversation(db, conversation_uuid, owner_id=get_current_owner_id())
 
     token = secrets.token_urlsafe(32)
     allowed_json = _normalize_emails(payload.allowed_emails)
@@ -485,9 +482,9 @@ async def export_threads(
         serialize_utterances,
     )
 
+    await require_live_conversation(db, conversation_id, owner_id=get_current_owner_id())
     question_reviews = None
     if include_question_reviews:
-        from lct_python_backend.services.owner_context import get_current_owner_id
         from lct_python_backend.services.transcript.question_review_export import export_question_reviews
         try:
             question_reviews = await export_question_reviews(db, conversation_id=conversation_id,
@@ -913,6 +910,7 @@ async def fetch_share(
     )
 
     conversation_uuid = uuid.UUID(row.conversation_id)
+    await require_live_conversation(db, conversation_uuid, owner_id=None)
     conversation, nodes, relationships, utterances = await fetch_conversation_bundle(
         db, conversation_uuid
     )
@@ -1034,6 +1032,7 @@ async def fetch_share_audio(
     if row.expires_at is not None and row.expires_at < datetime.utcnow():
         raise HTTPException(status_code=410, detail="Share has expired.")
 
+    await require_live_conversation(db, row.conversation_id, owner_id=None)
     audio = _resolve_audio_file(str(row.conversation_id))
     if audio is None:
         raise HTTPException(status_code=404, detail="Audio recording not found.")
