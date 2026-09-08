@@ -86,6 +86,7 @@ from lct_python_backend.services.stt.stt_health_service import (
     probe_health_url,
 )
 from lct_python_backend.services.transcript.transcript_processing import TranscriptProcessor
+from lct_python_backend.services.transcript.host_runtime import runtime_for_connection
 
 logger = logging.getLogger(__name__)
 
@@ -260,6 +261,7 @@ async def import_from_text(
 async def extract_turns(
     request: ExtractTurnsRequest,
     db: AsyncSession = Depends(get_async_session),
+    http_request: Request = None,
 ):
     """Phase 2 of the structured RawTurn pipeline: build the auditable graph from
     turns already persisted by ``POST /api/import/turns``.
@@ -269,15 +271,17 @@ async def extract_turns(
     conversation (e.g. with a better model) by POSTing its ``conversation_id`` or
     ``group_id`` again. Utterance UUIDs are authored at persist time and threaded
     onto ``node.utterance_ids`` here, so every node is auditable to its raw turns.
-    Owner-scoped (AUTH_TOKEN). Runs synchronously — the graph is destructively
-    re-materialized; the persisted turns are left untouched.
+    Owner-scoped (AUTH_TOKEN). The host's interleaved runtime resumes verified
+    checkpoints. Without it, the legacy extraction path remains in use.
     """
     try:
+        runtime = runtime_for_connection(http_request)
         stats = await extract_graph_for_conversation(
             db,
             conversation_id=request.conversation_id,
             group_id=request.group_id,
             owner_id=resolve_owner_id(request.owner_id),
+            **({'interleaved_runtime': runtime} if runtime is not None else {}),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

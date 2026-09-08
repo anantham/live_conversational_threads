@@ -1,5 +1,14 @@
 # TECH_DEBT
 
+## 2026-09-08 — Host runtime entry-point handoff
+
+import_api.py (614+ lines) and stt_api.py (473+ lines) combine multiple router
+families. Keep this change to passing application-owned runtime configuration;
+the new transcript/host_runtime.py holds the shared validation. Later split
+structured import, bulk import and STT settings routers without changing public
+paths or auth. Do not make request payloads into runtime configuration or treat
+this handoff as host startup composition or bulk source-first activation.
+
 ## 2026-09-08 — Legacy persistence and journal replacement boundary
 
 graph_persistence.py remains a 1560+ line serializer combining source ingest,

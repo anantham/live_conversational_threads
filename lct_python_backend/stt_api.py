@@ -54,6 +54,7 @@ from lct_python_backend.services.thread_observability_service import (
     get_threads_observability_summary,
 )
 from lct_python_backend.services.stt.stt_ws_session import WsSessionContext
+from lct_python_backend.services.transcript.host_runtime import runtime_for_connection
 
 logger = logging.getLogger("lct_backend")
 
@@ -469,5 +470,6 @@ async def transcripts_websocket(websocket: WebSocket):
             llm_providers=llm_providers,
             load_stt_settings_fn=_load_stt_settings,
             download_token=DOWNLOAD_TOKEN,
+            interleaved_runtime=runtime_for_connection(websocket),
         )
         await ctx.run()

@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Connect HTTP extraction and WebSocket host runtime handoffs
+
+- Previous goal turn made progress: both immutable comparison forks started,
+  consent regression committed/pushed08bff60. Current handles21360 (frontier)
+  and28949 (local) remain live and returned more inference receipts; no restart.
+- Confirmed routing gap: extract_turns never forwarded interleaved_runtime and
+  transcripts_websocket never supplied it to WsSessionContext, despite those
+  service entry points already supporting the shared journal stages.
+- Added transcript/host_runtime.py to read only application-owned state, reject
+  invalid configuration types and retain absent-host legacy behavior. HTTP and
+  WS routes now forward that object. No request fields are interpreted as runtime
+  or consent, no host environment/dependency changed, no production activation.
+- Five new tests exercise real HTTP/WS routing with synthetic service adapters:
+  configured and absent host states, hostile payload/query fields, and malformed
+  host state. Full unit + isolated PG suite2567 passed,6 skipped,522 warnings
+  in18.19s. These routing tests do not claim end-to-end live audio validation.
+- Remaining integration is explicit: startup must install verified per-host
+  configuration; bulk worker still constructs legacy graph processing before
+  final source persistence, and async diarization still needs journal-safe
+  integration. Current approved native tokenizer engine is isolated-replay-only;
+  no production dependency installation or unverified context capacity assumed.
+
 ## 2026-09-08 — Start both corrected relationship continuations
 
 - Antigravity follow-up at6b8552a completed in146.10s, conversation
