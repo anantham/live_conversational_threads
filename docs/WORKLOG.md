@@ -1,5 +1,18 @@
 # WORKLOG
 
+## 2026-09-08 — First native full local replay started
+
+- Started local-20260908-native at code c5bf00e in isolated database
+  lct_public_replay_local_20260908, CID 5be4c12d-9e91-5c21-9ec6-247fe585beaa.
+  Source import verified: 1263 utterances, initially zero nodes/checkpoints.
+  Run output: tmp/public-pipeline/local-20260908-native/1788843103997621000.
+- First saved request has 19409 native message tokens. Execution session 10035
+  is still live at this note; no response/failure receipt yet. Poll that same
+  session; do not restart based on lack of output. No candidate accepted/exported.
+- Added dedicated approved evaluation requirements file; native test explicitly
+  skips when the optional engine is absent, and passed in its installed isolated
+  environment. This keeps ordinary backend installs dependency-neutral.
+
 ## 2026-09-08 — Native replay counter wired and live parity checked
 
 - Installed the existing backend requirements in .venv-public-replay, retaining

@@ -9,6 +9,7 @@ from tools.public_replay_counter import build_counter
 
 
 def test_native_counter_and_contract_rejection(tmp_path):
+    pytest.importorskip('tokenizers', reason='Native acceptance requires tools/requirements-public-replay.txt')
     from tokenizers import Tokenizer, models
     path = tmp_path / 'synthetic-tokenizer.json'
     encoder = Tokenizer(models.WordLevel({'[UNK]': 0}, unk_token='[UNK]'))
