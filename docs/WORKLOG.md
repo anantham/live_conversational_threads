@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Callback projection gap found in actual frontier receipts
+
+- Frontier progressed from source inspection into relation review. Read-only
+  snapshot of its first 13 receipts: 16 mappings, one semantic_selection and
+  15 semantic_mapping_unresolved; one graph edge in those receipts. A later
+  reason query counted 23 missing-candidate null selections and one rejected
+  mismatched/non-owning candidate. These snapshots have different windows.
+- Inspected one concrete return_to_thread: closing mention of another
+  discussion returns to opening expectation of a continuing podcast. The
+  model found the relationship but had no canonical candidates at either end.
+  canonical_candidates requires source-ID overlap; mapping requires ownership
+  of all cited source. The guard is correct; underlying coverage needs diagnosis.
+  Added release-quality blocker to ISSUES.md; do not accept the artifact merely
+  because reviews/levels exist. No source links or responses were modified.
+- Frontend head 20c2fe4 re-review submitted via Antigravity Gemini 3.1 Pro High:
+  same 12 tracked frontend files, 47,185 bytes, SHA256
+  09c661e1ddebd2b48055c1acab79686fd0c1e9804eb1367e01773ba05247c0e9.
+  Inspected corrective source/tests plus previously inspected packet; credential
+  scan clear, no transcripts or generated artifacts. Session 63693. Same
+  no-tool instructions, empty temporary cwd, plan/sandbox, no slash commands.
+  Result not yet observed; expected saved stdout tmp/frontend-review-20c2fe4.json.
+
 ## 2026-09-08 — Retain source-review snapshot above desktop drawer lifetime
 
 - ThreadsViewer now owns a bundle-scoped selector and supplies it to both

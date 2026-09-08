@@ -1517,3 +1517,26 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Full proof and branch-by-branch disposition are recorded in
   `docs/plans/2026-08-30-inactive-branch-consolidation.md`. These findings do
   not authorize deleting any branch or dirty worktree.
+# 2026-09-08: Public replay callback endpoints absent from canonical graph
+
+Release-quality blocker for the final comparison artifact, not a reason to
+discard running diagnostics. In frontier compact replay, the first 13 saved
+relation receipts contained 16 relationship mappings: one semantic_selection
+and 15 semantic_mapping_unresolved. Subsequent null-selection reasons included
+23 missing-candidate explanations and one mismatched/non-owning candidate.
+These are different observation windows; do not combine their denominators.
+
+One concrete source-reviewed return from the closing promise of another
+discussion to the opening hope of a continuing podcast had no canonical
+candidate at either endpoint. canonical_selection.py admits candidates only
+through overlap with leaf utterance_ids; reconciliation_mapping.py correctly
+refuses an edge without source-owning endpoints. Do not relax that guard or
+claim the model failed to recognize this callback: its review did recognize it.
+
+Next: inspect leaf construction/provenance and quantify which source-reviewed
+observations have no representative leaf. Determine whether this is missing
+source coverage on an existing semantic leaf or an omitted moment requiring
+explicit source-backed construction. Never attach whole-passage ownership by
+default, fabricate links or silently alter completed model responses. Completion
+requires preserved callback relationships in a traceable playable artifact,
+not merely a large collection of unresolved review receipts.
