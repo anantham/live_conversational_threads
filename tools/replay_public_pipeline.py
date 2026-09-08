@@ -8,13 +8,14 @@ installation, publication or deployment. CLI --run requires the explicit
 import argparse
 import asyncio
 import json
+import os
 import time
 from unittest.mock import patch
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from lct_python_backend.services.owner_context import get_current_owner_id
-from lct_python_backend.services.transcript.interleaved_runtime import InterleavedRuntimeConfig
+from lct_python_backend.services.transcript.interleaved_runtime import InterleavedRuntimeConfig, RuntimeBudgets
 from lct_python_backend.services.transcript.inference_envelope import InferenceEnvelope
 from lct_python_backend.services.import_pipeline.interleaved_stages import run_interleaved_stages
 from tools.replay_public_source_inspection import SHA, verified_public_source
@@ -22,7 +23,7 @@ from tools.public_replay_harness import validate_target, replay_identity, ensure
 
 
 async def main(run=False, *, database_url, run_id, resume=False,
-               count_messages=None, tokenizer_id='utf8_bytes_v1'):
+               count_messages=None, tokenizer_id='utf8_bytes_v1', output_tokens=4096):
     validate_target(database_url, run_id)
     if run and (not callable(count_messages) or tokenizer_id == 'utf8_bytes_v1' or not tokenizer_id):
         raise ValueError('Fair replay requires an approved accurate message counter; tokenizer installation/host parity is pending')
@@ -43,6 +44,7 @@ async def main(run=False, *, database_url, run_id, resume=False,
     engine = create_async_engine(database_url)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     runtime = InterleavedRuntimeConfig(sessions, {provider['id']: 32768}, (provider['id'],),
+                                       budgets=RuntimeBudgets(output_tokens=output_tokens),
                                        temperature=0, count_messages=count_messages, tokenizer_id=tokenizer_id)
     scope = dict(conversation_id=str(replay_identity(run_id)), owner_id=owner,
                  providers=[provider], privacy={'local_llm_ok': True, 'external_llm_ok': False})
@@ -57,6 +59,7 @@ async def main(run=False, *, database_url, run_id, resume=False,
         output.mkdir(parents=True, exist_ok=False)
         manifest = {'run_id': run_id, 'source_sha256': SHA, 'policy': policy,
                     'tokenizer_id': tokenizer_id, 'provider': provider, 'context_limit': 32768,
+                    'output_tokens': output_tokens,
                     'temperature': 0, 'resume': resume, 'accepted_for_publication': False}
         (output / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
         original = InferenceEnvelope.complete_json
@@ -64,7 +67,10 @@ async def main(run=False, *, database_url, run_id, resume=False,
             response = record_inference(output, envelope, prompt, original)
             print(json.dumps({'phase': 'inference_received', 'directory': str(output)}), flush=True)
             return response
-        with patch.object(InferenceEnvelope, 'complete_json', record_response):
+        # Bind the telemetry store to this same isolated target, never an
+        # inherited application DB. Restore ambient environment on exit.
+        with patch.dict(os.environ, {'DATABASE_URL': database_url}), \
+                patch.object(InferenceEnvelope, 'complete_json', record_response):
             result = await run_interleaved_stages(runtime=runtime, utterances=source, **scope)
         from lct_python_backend.share_api import export_threads
         async with sessions() as db:
@@ -85,6 +91,8 @@ if __name__ == '__main__':
     parser.add_argument('--run-id', required=True)
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--resume', action='store_true')
+    parser.add_argument('--output-tokens', type=int, default=4096,
+                        help='Explicit output reserve; changing it requires a new replay policy/database')
     parser.add_argument('--tokenizer-path', type=Path, help='Pinned local Qwen tokenizer JSON; enables approved native counting')
     args = parser.parse_args()
     counter = None
@@ -95,4 +103,5 @@ if __name__ == '__main__':
             server_version = json.load(response)['version']
         counter = build_counter(args.tokenizer_path, server_version=server_version)
     asyncio.run(main(args.run, database_url=args.database_url, run_id=args.run_id, resume=args.resume,
+                    output_tokens=args.output_tokens,
                     count_messages=counter, tokenizer_id=counter.tokenizer_id if counter else 'utf8_bytes_v1'))

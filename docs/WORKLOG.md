@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — Windowed replay progressed to output-budget boundary
+
+- Session 75372 exited 1 after retrieval succeeded. Chat provider reported
+  finish_reason=length, completion_tokens4096, prompt_tokens21441; the strict
+  structured-completion guard refused the incomplete response. No acceptance
+  or candidate export. Prior receipts and database remain intact.
+- Added explicit --output-tokens evaluation knob (default unchanged4096),
+  recorded in manifest and RuntimeBudgets fingerprint. Next trial reserves8192
+  within the same32768 total context, so planning still accounts for output.
+  This changes policy and must use a fresh isolated DB, not overwrite recovery.
+- Bound DATABASE_URL to the selected isolated replay target only within the
+  shared stages, restoring environment afterward, so gateway call-fact telemetry
+  cannot accidentally use an inherited application DB. No production setting changed.
+
 ## 2026-09-08 — OpenAI comparison transport preparation
 
 - Local replay session 75372 still live, with two saved inference responses;
