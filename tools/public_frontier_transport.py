@@ -5,6 +5,7 @@ stored conversation consent. Local-only egress policy still applies. Codex
 adds its own instructions; usage includes that overhead, not just our messages.
 """
 import json
+import re
 import subprocess
 import tempfile
 import time
@@ -22,7 +23,13 @@ def parse_events(stdout):
     for line in stdout.splitlines():
         event = json.loads(line)
         kind = event.get('type')
-        if kind in {'turn.failed', 'error'}:
+        # CLI reports transient reconnects as error events even when the same
+        # turn later completes. Only this known notice is non-terminal; the
+        # completion, single-answer and no-tool checks below still apply.
+        reconnect = (kind == 'error' and isinstance(event.get('message'), str)
+                     and re.fullmatch(r'Reconnecting\.\.\. [1-9]\d*/[1-9]\d* \(request timed out\)',
+                                      event['message']) is not None)
+        if kind == 'turn.failed' or (kind == 'error' and not reconnect):
             raise ValueError('Frontier turn failed')
         if kind in {'item.started', 'item.updated', 'item.completed'}:
             item = event.get('item', {})

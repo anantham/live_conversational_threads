@@ -1,5 +1,16 @@
 # WORKLOG
 
+## 2026-09-08 — Distinguish recovered frontier reconnects from terminal failure
+
+- Synthetic regression reproduced the exact saved CLI event sequence: reconnect
+  timeout notices, one answer, then turn.completed. Parser now tolerates only that
+  known reconnect notice; still requires completed turn, usage and a single JSON
+  object, and rejects terminal failure, unknown errors and all tool activity.
+  This changes no model prompt, recipient or privacy policy. Failure was in our
+  transport parser rather than a failed provider turn (confidence 0.99).
+- Identity selection committed separately as 20a2cb2; eight focused identity tests
+  pass including the explicit legacy receipt validation added after the full run.
+
 ## 2026-09-08 — Source-selected identity correction and replay checkpoint
 
 - Replaced optional identity correction with model-selected utterance endpoints.

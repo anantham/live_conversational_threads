@@ -40,6 +40,17 @@ def test_failure_after_message_rejected():
     with pytest.raises(ValueError):
         parse_events(events() + '\n' + json.dumps({'type': 'turn.failed'}))
 
+def test_recovered_reconnect_notice_requires_completed_answer():
+    notice = json.dumps({'type': 'error', 'message': 'Reconnecting... 2/5 (request timed out)'})
+    assert parse_events(notice + '\n' + events())[0] == {'nodes': []}
+    with pytest.raises(ValueError):
+        parse_events(notice)
+
+@pytest.mark.parametrize('message', ['Authentication failed', 'Unknown error'])
+def test_unknown_error_not_hidden_by_completion(message):
+    with pytest.raises(ValueError):
+        parse_events(json.dumps({'type': 'error', 'message': message}) + '\n' + events())
+
 
 def test_local_only_policy_blocks_transport_before_subprocess_or_file_write(monkeypatch, tmp_path):
     from lct_python_backend.services.egress_guard import CloudEgressBlocked
