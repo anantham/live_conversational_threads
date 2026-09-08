@@ -13,6 +13,26 @@ import math
 from lct_python_backend.services.deployment_privacy_policy import select_providers_for_privacy
 from .conversation_context import ContextBudgetExceeded, conservative_tokens
 
+QUERY_PREFIX = "Instruct: Retrieve the earlier conversation passage relevant to this later remark.\nQuery: "
+
+
+def embedding_windows(text, budget, count_tokens, prefix=""):
+    """Lossless source windows, not semantic/thread boundaries or truncation."""
+    pending, result = [text], []
+    while pending:
+        part = pending.pop()
+        cost = count_tokens(prefix + part)
+        if type(cost) is not int or cost < 0:
+            raise ContextBudgetExceeded("Invalid embedding budget counter")
+        if cost <= budget:
+            result.append(prefix + part)
+        elif len(part) <= 1:
+            raise ContextBudgetExceeded("Embedding budget cannot fit prefix and one character")
+        else:
+            middle = len(part) // 2
+            pending.extend([part[middle:], part[:middle]])
+    return result
+
 
 def normalized_vectors(vectors, expected):
     if len(vectors) != expected or not vectors:
@@ -52,7 +72,8 @@ class SemanticCandidates:
         self._lock = asyncio.Lock()
         identity = {key: self._provider.get(key) for key in
                     ("id", "base_url", "embedding_model", "embedding_model_revision", "trust_scope")}
-        identity.update({"retrieval_version": 1, "input_budget": input_token_budget,
+        identity.update({"retrieval_version": 2, "window_reduction": "max_pair_cosine",
+                         "input_budget": input_token_budget,
                          "batch_budget": batch_token_budget})
         self.fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         if embed_batch is None:
@@ -84,8 +105,11 @@ class SemanticCandidates:
         # Drop withdrawn/changed entries even when the next request fails.
         self._cache = retained
         missing = [cid for cid in identities if cid not in retained]
-        texts = [source_chunks[cid] for cid in missing]
-        texts.append("Instruct: Retrieve the earlier conversation passage relevant to this later remark.\nQuery: " + current_passage)
+        groups = [embedding_windows(source_chunks[cid], self._input_budget, self._count_tokens)
+                  for cid in missing]
+        groups.append(embedding_windows(current_passage, self._input_budget,
+                                        self._count_tokens, QUERY_PREFIX))
+        texts = [text for group in groups for text in group]
         costs = [self._count_tokens(text) for text in texts]
         if any(type(cost) is not int or cost < 0 or cost > self._input_budget for cost in costs):
             raise ContextBudgetExceeded("Embedding input exceeds configured budget; split before retrieval")
@@ -107,11 +131,19 @@ class SemanticCandidates:
                 await request_guard()
             vectors.extend(normalized_vectors(result, len(batch)))
         vectors = normalized_vectors(vectors, len(texts))
-        query = vectors[-1]
-        if any(len(cached[1]) != len(query) for cached in retained.values()):
+        grouped, offset = [], 0
+        for group in groups:
+            grouped.append(vectors[offset:offset + len(group)])
+            offset += len(group)
+        queries = grouped[-1]
+        if any(len(vector) != len(queries[0]) for _, cached_vectors in retained.values()
+               for vector in cached_vectors):
             raise ValueError("Embedding dimension changed against committed cache")
         updated = dict(retained)
-        updated.update({cid: (hashes[cid], vector) for cid, vector in zip(missing, vectors[:-1])})
+        updated.update({cid: (hashes[cid], group) for cid, group in zip(missing, grouped[:-1])})
         self._cache = updated
-        return {identity: sum(a * b for a, b in zip(query, vector))
-                for identity, (_, vector) in updated.items()}
+        # A small callback can matter inside a long passage. Averaging would
+        # dilute it. These scores nominate sources only; they never author edges.
+        return {identity: max(sum(a * b for a, b in zip(query, vector))
+                              for query in queries for vector in group)
+                for identity, (_, group) in updated.items()}

@@ -46,18 +46,51 @@ def test_incremental_reuse_prunes_removed_sources_and_is_instance_local():
     assert calls[-1][0] == "second"
 
 
-def test_embedding_budget_checks_all_inputs_before_any_call():
+def test_embedding_windows_preserve_all_source_and_enforce_input_and_batch_budgets():
+    """Long sources/queries must fit without dropping tails or authoring new IDs."""
     calls = []
     async def embed(texts, **kwargs):
         calls.append(texts)
         return [[1., 0.] for _ in texts]
     retriever = SemanticCandidates(providers=[PROVIDER], privacy={"local_llm_ok": True}, embed_batch=embed,
                                    input_token_budget=200, batch_token_budget=300)
-    with pytest.raises(ValueError, match="budget"):
-        asyncio.run(retriever.rank("q", {"a": "short", "b": "x" * 201}))
-    assert not calls
+    from lct_python_backend.services.transcript.semantic_candidates import QUERY_PREFIX
+    source = "é🪷" * 100
+    scores = asyncio.run(retriever.rank("callback " * 80, {"b": source}))
+    sent = [text for batch in calls for text in batch]
+    assert ''.join(t for t in sent if not t.startswith(QUERY_PREFIX)) == source
+    assert ''.join(t[len(QUERY_PREFIX):] for t in sent if t.startswith(QUERY_PREFIX)) == "callback " * 80
+    assert set(scores) == {"b"}
+    assert all(len(text.encode()) <= 200 for text in sent)
     asyncio.run(retriever.rank("q", {"a": "a" * 180, "b": "b" * 180, "c": "c" * 180}))
     assert all(sum(len(text.encode()) for text in batch) <= 300 for batch in calls)
+
+
+def test_impossible_query_prefix_fails_before_any_embedding_call():
+    calls = []
+    async def embed(texts, **kwargs):
+        calls.append(texts)
+    retriever = SemanticCandidates(providers=[PROVIDER], privacy={"local_llm_ok": True},
+                                   embed_batch=embed, input_token_budget=2, batch_token_budget=2)
+    with pytest.raises(ValueError, match="budget"):
+        asyncio.run(retriever.rank("q", {"a": "x"}))
+    assert not calls
+
+
+def test_long_passage_tail_callback_survives_windowing_and_cached_reuse():
+    calls = []
+    async def embed(texts, **kwargs):
+        calls.extend(texts)
+        return [[1., 0.] if 'funding' in t else [0., 1.] for t in texts]
+    retriever = SemanticCandidates(providers=[PROVIDER], privacy={"local_llm_ok": True},
+                                   embed_batch=embed, input_token_budget=200, batch_token_budget=300)
+    source = 'garden ' * 70 + 'funding'
+    scores = asyncio.run(retriever.rank('funding', {'old': source, 'other': 'lunch'}))
+    assert scores['old'] > scores['other']
+    calls.clear()
+    again = asyncio.run(retriever.rank('funding', {'old': source, 'other': 'lunch'}))
+    assert again == scores
+    assert len(calls) == 1, 'Unchanged source windows should not be embedded again'
 
 
 def test_revocation_between_embedding_batches_stops_calls_and_discards_partial_cache():

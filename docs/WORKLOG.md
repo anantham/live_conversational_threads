@@ -1,5 +1,33 @@
 # WORKLOG
 
+## 2026-09-08 — Public replay exposed embedding window boundary
+
+- Recovered terminal session 43155: exit 1, after two successful inference
+  responses. The next passage failed SemanticCandidates input budget validation,
+  not the chat counter or server timeout. Original run and receipts preserved.
+- Retrieval used a conservative byte counter and an 8192 per-input budget while
+  chat passages used the approved native counter. A passage can legitimately fit
+  chat and exceed the independent embedding input limit.
+- Added lossless recursive embedding windows for both sources and queries,
+  retaining query instructions on each window. Requests still obey original
+  per-input, per-batch and 16-item limits and fresh before/after consent checks.
+  Cache remains conversation-local and commits only after the entire request.
+- Max pairwise cosine nominates an original source if any window matches, rather
+  than diluting a brief callback into a whole-passage mean. No new source IDs,
+  thread boundaries, graph edges or truncation. Retrieval fingerprint version 2
+  explicitly prevents old-policy resume; a fresh isolated replay is required.
+- Added Unicode preservation, prefix-budget refusal and tail-callback/cache tests.
+  Initial targeted suite passed 15 tests; expanded and broad checks follow.
+  No production activation or published artifact replacement.
+- Expanded suite: 16 targeted tests pass. Full unit suite with required scratch
+  access: 2352 passed, 6 skipped, 487 warnings (9.95s). The first restricted run
+  failed two scratch-directory permission checks; isolated rerun confirmed that
+  environment boundary, not a retrieval regression.
+- Created verified-empty lct_public_replay_local_windows_20260908, initialized
+  ORM schema without touching old databases. Started local-20260908-windows,
+  CID 79530a19-1372-591e-84c0-a2bf2b2cae2a, exact 1263-utterance source. Execution
+  session 75372 is the handle to poll; no candidate accepted yet.
+
 ## 2026-09-08 — Full unit suite passes in isolated replay environment
 
 - Existing tests/unit suite under the approved isolated dependency set:
