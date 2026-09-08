@@ -155,7 +155,7 @@ export function buildRibbonLayout(nodes, opts = {}) {
         x = railStart + e.idx * dotSpacing;
       }
 
-      const isReturn =
+      const isReturn = Array.isArray(e.node.thread_ids) ? Boolean(e.node.explicit_thread_return) :
         timeBased &&
         prev != null &&
         Number.isFinite(e.ts) &&
@@ -187,7 +187,7 @@ export function buildRibbonLayout(nodes, opts = {}) {
     const aUng = a.threadId === UNGROUPED_KEY;
     const bUng = b.threadId === UNGROUPED_KEY;
     if (aUng !== bUng) return aUng ? 1 : -1;
-    if (b.count !== a.count) return b.count - a.count;
+    if (!list.some(n=>Array.isArray(n.thread_ids)) && b.count !== a.count) return b.count - a.count;
     const aFirst = a.nodes[0]?.x ?? 0;
     const bFirst = b.nodes[0]?.x ?? 0;
     return aFirst - bFirst;

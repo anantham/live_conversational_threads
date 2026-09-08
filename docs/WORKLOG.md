@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Integrate threads into existing desktop/mobile viewer
+
+User explicitly authorized implementation and remote publication for device testing.
+Retired the separate ThreadExplorer entry point and component (recoverable in df7c057).
+Existing timeline reads all moment home lanes from overlapping memberships; all
+memberships retained and named in source details. Thread rows ordered by first
+appearance; a faint chronological connector crosses rows. Long gaps no longer
+masquerade as explicit callbacks in new artifacts. Mobile path selector supports
+thread or chronological traversal; path and card selection survive map visits.
+Vertical touch scrolling no longer changes abstraction. Explicit graph tiers
+remain visible on mobile and pinch changes scale only in the static viewer.
+Card/map handoff uses exact selected ID and tier; initial framing no longer
+overwrites requested camera targets (observed phone target bounds x48..307,
+y111..610 within a 354x767 viewport after fix).
+
+Cards default to duration only with optional metric controls; aggregate backgrounds
+and speaker-summary color blends are neutral. No inferred phrase ownership added:
+claim-level speaker attribution remains a separate evidence requirement.
+50 focused regressions pass; build passes (pre-existing chunk warning). Generated
+public podcast artifact is included at /experiments/overlapping.threads for testing.
+Independent review and remote release verification must precede a deployed claim.
+
 ## 2026-09-08 — Overlapping-thread public experiment (local, not deployed)
 
 User approved multi-parent aggregation and independent ordered thread membership,

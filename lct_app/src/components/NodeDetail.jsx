@@ -983,7 +983,7 @@ export default function NodeDetail({
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Thread</span>
             <p className="text-gray-700 mt-0.5">
-              {safeNode.thread_id}
+              {safeNode.thread_labels?.join(" · ") || safeNode.thread_label || safeNode.thread_id}
               {safeNode.thread_state && (
                 <span className="ml-2 text-xs text-gray-400">({safeNode.thread_state})</span>
               )}
@@ -992,6 +992,13 @@ export default function NodeDetail({
         )}
 
         {/* Edge relations */}
+        {safeNode.memberships?.length > 0 && <div>
+          <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Part of</span>
+          {safeNode.memberships.map(m=><p key={m.parent_id} className="mt-2 text-xs text-gray-600">
+            <button className="text-amber-700" onClick={()=>onSelectNode?.(m.parent_id)}>{contextNodes?.find(n=>n.id===m.parent_id)?.node_name || m.parent_id}</button>
+            {m.explanation && <span>: {m.explanation}</span>}
+          </p>)}
+        </div>}
         {relations.length > 0 && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Relations</span>

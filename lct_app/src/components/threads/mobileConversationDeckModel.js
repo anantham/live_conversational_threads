@@ -186,6 +186,18 @@ export function initialMobileDeckState(model) {
   };
 }
 
+export function mobileDeckStateForNode(model, id) {
+  const trail = [];
+  const seen = new Set();
+  let current = String(id);
+  while (model.nodeById.has(current) && !seen.has(current)) {
+    seen.add(current);
+    trail.unshift(entry("node", current));
+    current = model.parentByChild.get(current);
+  }
+  return trail.length ? {trail} : initialMobileDeckState(model);
+}
+
 export function initialLiveMobileDeckState(model) {
   const latestId = model?.rootIds?.[model.rootIds.length - 1];
   return {

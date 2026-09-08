@@ -13,7 +13,9 @@ import PublicDriveThreadsGate from "../components/threads/PublicDriveThreadsGate
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
 import MobileConversationDeck from "../components/threads/MobileConversationDeck";
 import YouTubeSourcePanel from "../components/threads/YouTubeSourcePanel";
-import ThreadExplorer from "../components/threads/ThreadExplorer";
+import {CardDisplayProvider,CardDisplaySettings} from "../components/threads/CardDisplaySettings";
+import {withThreadLanes} from "../components/threads/threadPresentation";
+import {buildMobileConversationDeck,mobileDeckStateForNode} from "../components/threads/mobileConversationDeckModel";
 import { renameArtifactSpeaker } from "../services/youtubeMedia";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
@@ -48,6 +50,10 @@ import {
  */
 
 export default function ThreadsViewer() {
+  return <CardDisplayProvider><ThreadsViewerContent /></CardDisplayProvider>;
+}
+
+function ThreadsViewerContent() {
   const dataProvider = useDataProvider();
   const location = useLocation();
   const navigate = useNavigate();
@@ -82,8 +88,9 @@ export default function ThreadsViewer() {
   // toolbar) so only the nodes remain. Esc exits.
   const [focusMode, setFocusMode] = useState(false);
   const [mobileMapOpen, setMobileMapOpen] = useState(false);
-  const [threadsOpen, setThreadsOpen] = useState(true);
+  const [mapTarget, setMapTarget] = useState(null);
   const [mobileDeckState, setMobileDeckState] = useState(null);
+  const [mobileReadingPath,setMobileReadingPath]=useState("");
   const consumedRouteState = useRef(false);
   const compactViewer = useMediaQuery(COMPACT_VIEWER_QUERY);
 
@@ -258,11 +265,11 @@ export default function ThreadsViewer() {
 
   const flatNodes = useMemo(
     () => (bundle
-      ? enrichGraphNodesWithProvenance(indexExplicitEdges(
+      ? withThreadLanes(enrichGraphNodesWithProvenance(indexExplicitEdges(
         flattenThreadsGraph(bundle.graph_data),
         bundle.edges,
         true,
-      ), bundle.utterances || [])
+      ), bundle.utterances || []), bundle.conversation_threads || [])
       : []),
     [bundle],
   );
@@ -459,16 +466,13 @@ export default function ThreadsViewer() {
 
   // ---- Loaded state: the map ----------------------------------------------
   const hasThreads = Array.isArray(bundle.conversation_threads) && bundle.conversation_threads.length > 0;
-  if (hasThreads && threadsOpen) {
-    return <ThreadExplorer bundle={bundle} nodes={flatNodes} onClose={() => setThreadsOpen(false)} />;
-  }
-  const threadButton = hasThreads && <button className="fixed bottom-24 right-3 z-50 rounded-full border bg-white px-4 py-2 shadow" onClick={() => setThreadsOpen(true)}>Threads</button>;
   if (compactViewer && !mobileMapOpen) {
     return (
-      <>{threadButton}
       <MobileConversationDeck
         bundle={bundle}
         deckState={mobileDeckState}
+        readingPath={mobileReadingPath}
+        onReadingPathChange={setMobileReadingPath}
         graphNodes={flatNodes}
         libraryStatus={libraryStatus}
         onDeckStateChange={setMobileDeckState}
@@ -476,17 +480,16 @@ export default function ThreadsViewer() {
         onOpenLibrary={openLibrary}
         onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
         onOpenAnother={openAnother}
-        onShowMap={() => setMobileMapOpen(true)}
+        onShowMap={(id) => {setMapTarget(id);setMobileMapOpen(true);}}
         onRenameSpeaker={renameSpeaker}
       />
-      </>
     );
   }
 
   const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
   return (
     <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
-      {threadButton}
+      {!compactViewer && <CardDisplaySettings />}
       {!viewerFocusMode && (
         <ThreadsViewerHeader
           bundle={bundle}
@@ -506,6 +509,8 @@ export default function ThreadsViewer() {
         <MinimalGraph
           graphData={flatNodes}
           semanticEdges={bundle.edges}
+          focusNode={mapTarget}
+          semanticZoom={false}
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
           onVisibleLevelChange={(view) => {
@@ -516,17 +521,21 @@ export default function ThreadsViewer() {
           }}
           onFocusChange={setFocusNode}
           onActiveNodeChange={setMediaNode}
-          chromeless={viewerFocusMode}
+          chromeless={focusMode}
           argumentTraceFrom={argumentTraceFrom}
           setArgumentTraceFrom={setArgumentTraceFrom}
         />
         {compactViewer && mobileMapOpen && (
           <button
             type="button"
-            onClick={() => setMobileMapOpen(false)}
+            onClick={() => {
+              const target=selectedNode || mediaNode || mapTarget;
+              if(target) setMobileDeckState(mobileDeckStateForNode(buildMobileConversationDeck(flatNodes,bundle.utterances || []),target));
+              setMobileMapOpen(false);
+            }}
             title="Return to conversation cards"
             aria-label="Return to conversation cards"
-            className="absolute right-3 top-3 z-50 inline-flex h-12 items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 text-[11px] font-medium text-slate-600 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            className="absolute right-3 bottom-3 z-50 inline-flex h-12 items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 text-[11px] font-medium text-slate-600 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
           >
             <Rows3 aria-hidden="true" className="h-4 w-4" />
             Cards
@@ -558,7 +567,7 @@ export default function ThreadsViewer() {
             artifactUtterances={bundle.utterances || []}
             mediaRefs={bundle.media_refs || []}
             contextNodes={flatNodes}
-            onSelectNode={setSelectedNode}
+            onSelectNode={(id)=>{setMapTarget(id);setSelectedNode(id);}}
             onClose={() => setSelectedNode(null)}
             onTraceAncestors={setArgumentTraceFrom}
           />
@@ -566,12 +575,12 @@ export default function ThreadsViewer() {
       </div>
       </div>
 
-      {!viewerFocusMode && flatNodes.length > 0 && (
+      {!focusMode && flatNodes.length > 0 && (
         <TimelineRibbon
-          graphData={bundle.graph_data}
-          selectedNode={selectedNode}
-          setSelectedNode={setSelectedNode}
-          semanticLevel={visibleGraphLevel}
+          graphData={flatNodes}
+          selectedNode={selectedNode || mediaNode || mapTarget}
+          setSelectedNode={(id)=>{setMapTarget(id);setSelectedNode(null);}}
+          semanticLevel={hasThreads ? 1 : visibleGraphLevel}
         />
       )}
     </div>

@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { Handle, Position } from "reactflow";
 import SpeakerTurnSummary from "./SpeakerTurnSummary";
 import { formatSegmentCount, formatSourceDuration } from "../graphProvenance";
+import {useCardDisplay} from "../threads/CardDisplaySettings";
 
 /**
  * Custom React Flow node renderer per ADR-030 §D4.
@@ -178,7 +179,7 @@ function ConversationNodeImpl({ data, selected }) {
     : `1px solid ${borderColor}`;
 
   const cardStyle = {
-    background: fillColor,
+    background: Number(data?.fullData?.semantic_level || data?.fullData?.level) > 1 ? "#fff" : fillColor,
     border: borderShorthand,
     borderRadius: "8px",
     padding: "11px 14px",
@@ -214,7 +215,7 @@ function ConversationNodeImpl({ data, selected }) {
     summary && summary.length > summaryMaxLength
       ? `${summary.slice(0, summaryMaxLength).trim()}…`
       : summary || "";
-  const hasVisibleSpeakerTurns = speakerTurns.some(
+  const hasVisibleSpeakerTurns = !(Number(data?.fullData?.semantic_level || data?.fullData?.level) > 1) && speakerTurns.some(
     (turn) => String(turn?.text || "").trim().length > 0
   );
   const matchedSourceCount = Number(
@@ -253,7 +254,7 @@ function ConversationNodeImpl({ data, selected }) {
       <RhetoricStrip argumentRole={argumentRole} flags={rhetoricFlags} />
       {argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
       <ProvenanceMetricStrip metrics={provenanceMetrics} />
-      {!hasVisibleSpeakerTurns && speakerLabel && (
+      {!hasVisibleSpeakerTurns && !(Number(data?.fullData?.semantic_level || data?.fullData?.level)>1) && speakerLabel && (
         <div style={speakerStyle}>{speakerLabel}</div>
       )}
 
@@ -336,6 +337,7 @@ const cardFooterStyle = {
 };
 
 function ProvenanceMetricStrip({ metrics }) {
+  const options=useCardDisplay();
   const referencedCount = Number(metrics?.utterance_count) || 0;
   const matchedCount = Number(
     metrics?.matched_utterance_count ?? metrics?.utterance_count,
@@ -345,12 +347,12 @@ function ProvenanceMetricStrip({ metrics }) {
   const duration = formatSourceDuration(metrics);
   const timingUnavailable = matchedCount > 0 && !hasTiming;
   const parts = [
-    wordCount > 0 ? `${wordCount.toLocaleString()} ${wordCount === 1 ? "word" : "words"}` : null,
-    duration || null,
+    options.words && wordCount > 0 ? `${wordCount.toLocaleString()} ${wordCount === 1 ? "word" : "words"}` : null,
+    options.duration ? duration || null : null,
     timingUnavailable ? "timing unavailable" : null,
     referencedCount > matchedCount
       ? `${matchedCount.toLocaleString()} of ${referencedCount.toLocaleString()} referenced segments linked`
-      : formatSegmentCount(metrics),
+      : options.segments ? formatSegmentCount(metrics) : null,
   ].filter(Boolean);
   if (parts.length === 0) return null;
   const incomplete = referencedCount > matchedCount;
