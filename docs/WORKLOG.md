@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-08 — Fork review timeout; bounded Antigravity fallback
+
+- Claude90592 terminated exit1 after the harness's600-second subprocess timeout,
+  without a verdict. No approval or reviewer findings inferred; source targets
+  remain empty. The temporary harness printed its source-only command packet in
+  the timeout traceback; changed subsequent timeout handling to retain a bounded
+  receipt rather than printing command arguments. No excluded/private input was
+  in that packet.
+- REVIEW-EGRESS-A1: same inspected36264-byte packet at664442a, same SHA256
+  5c18001448805447f5d6d1bbcc84ae81376eaed9b99e4588715692dc17931f4a,
+  submitted to existing Antigravity Gemini3.1ProHigh. Handle77800. Empty temporary
+  cwd, plan/sandbox, slash commands disabled, explicit no-tools instructions,
+  closed stdin; no permission-bypass flags. CLI flags are not claimed as hard
+  tool isolation; audit returned task activity before accepting verdict.
+  Output target tmp/replay-fork-agy-review-664442a.json. No actual fork yet.
+- Rechecked bulk import path while review runs: run_bulk_processing_worker still
+  constructs the legacy processor before transcription, then refines/consolidates
+  and persists source afterwards. Google Meet/raw-turn extraction already has an
+  opt-in interleaved branch for committed source. Runtime host injection and
+  source-first bulk/live integration remain required, not satisfied by replay
+  forking or restored YouTube transcription.
+
 ## 2026-09-08 — Provision and verify full-schema continuation targets
 
 - Created previously absent loopback:55439 databases
