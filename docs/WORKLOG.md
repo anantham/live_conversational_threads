@@ -1,5 +1,22 @@
 # WORKLOG
 
+## 2026-09-08 — Reproduced and corrected source disclosure selection flash
+
+- Added a layout-effect observer regression: after opening node A and selecting
+  B, the old implementation committed aria-expanded=true before its passive
+  reset. The new test failed while the existing six component tests passed.
+  This proves the intermediate committed state, not a measured browser frame.
+- SourceReviewDetails now resets its local disclosure state during a changed
+  node/bundle render. React retries that render before committing descendants;
+  no previous selection's expanded state is committed. No evidence validation,
+  backend pipeline, default disclosure or user-facing copy changed.
+- Component and selector suites: 18/18 passed; git diff --check passed.
+  The test covers both node and bundle replacement before layout observation.
+  Antigravity's separate repeated-indexing finding remains open and requires
+  measurement and scoped correction. Exact-head re-review remains required.
+- Self-excluding probe still confirms replay PIDs 18959 and 23292 live. No
+  additional replay was launched and no partial artifact was published.
+
 ## 2026-09-08 — Recovered Antigravity verdict and verified live replay progress
 
 - Recovered task conversation `36cdbcf2-5245-4f28-a585-eb31d120bd82`

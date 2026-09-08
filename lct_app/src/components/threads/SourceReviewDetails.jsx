@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 import { selectSourceReviews } from "../../services/sourceReviews";
 
@@ -19,8 +19,13 @@ Evidence.propTypes = { rows: PropTypes.arrayOf(PropTypes.object) };
 
 export default function SourceReviewDetails({ bundle, nodeId }) {
   const [open, setOpen] = useState(false);
+  const [selection, setSelection] = useState({ nodeId, bundle });
   const contentId = useId();
-  useEffect(() => setOpen(false), [nodeId, bundle]);
+  // Reset before committing the new selection, not in a post-paint effect.
+  if (selection.nodeId !== nodeId || selection.bundle !== bundle) {
+    setSelection({ nodeId, bundle });
+    setOpen(false);
+  }
   const reviews = useMemo(() => selectSourceReviews(bundle, nodeId), [bundle, nodeId]);
   const groups = useMemo(() => {
     const policies = new Map();

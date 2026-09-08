@@ -3,7 +3,7 @@
  * stay separate, and changing nodes closes the disclosure. The selector itself
  * is covered independently; this fixture doubles only its normalized output.
  */
-import { act } from "react";
+import { act, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import SourceReviewDetails from "./SourceReviewDetails";
@@ -41,6 +41,25 @@ function toggle() {
   act(() => button.click());
   return button;
 }
+
+it("commits a changed node collapsed before layout effects can observe it", () => {
+  // Test intent: no expanded content from a previous selection reaches paint.
+  // act() alone flushes passive effects and would hide this regression.
+  const observed = [];
+  function Observe({ nodeId, currentBundle = bundle }) {
+    useLayoutEffect(() => {
+      observed.push(container.querySelector("button")?.getAttribute("aria-expanded"));
+    });
+    return <SourceReviewDetails bundle={currentBundle} nodeId={nodeId} />;
+  }
+  act(() => root.render(<Observe nodeId="a" />));
+  toggle();
+  act(() => root.render(<Observe nodeId="b" />));
+  expect(observed.at(-1)).toBe("false");
+  toggle();
+  act(() => root.render(<Observe nodeId="b" currentBundle={{ ...bundle }} />));
+  expect(observed.at(-1)).toBe("false");
+});
 
 it("starts collapsed, separates policies/statuses, escapes source text and resets on node change", () => {
   act(() => root.render(<SourceReviewDetails bundle={bundle} nodeId="a" />));
