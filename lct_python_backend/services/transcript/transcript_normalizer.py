@@ -382,6 +382,9 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 "summary": summary,
                 "node_text": summary,
                 "source_excerpt": source_excerpt,
+                # Preserve raw selections, including malformed values, so the
+                # source binder rejects them rather than silently repairing.
+                **({"source_line_ids": raw["source_line_ids"]} if "source_line_ids" in raw else {}),
                 "semantic_level": semantic_level,
                 "semantic_type": semantic_type,
                 "level": semantic_level,

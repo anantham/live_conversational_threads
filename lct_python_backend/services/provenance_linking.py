@@ -9,6 +9,7 @@ every node.  Callers retain their batch-level map separately for accounting.
 from __future__ import annotations
 
 from typing import Any, Dict, List, Sequence, Tuple
+from .leaf_evidence import selected_leaf_sources
 
 
 def normalize_provenance_text(value: Any) -> str:
@@ -31,6 +32,7 @@ def assign_grounded_leaf_utterance_ids(
     from transcript fragments it overlaps.  An unmatched excerpt fails closed
     to no direct evidence so a later persisted-data reconciler can retry.
     """
+    selections = selected_leaf_sources(nodes or [], text_batch, utterance_ids_batch)
     fragment_spans: List[Tuple[int, int, List[str]]] = []
     transcript_parts: List[str] = []
     cursor = 0
@@ -59,8 +61,12 @@ def assign_grounded_leaf_utterance_ids(
     search_cursor = 0
     linked_nodes = 0
     unmatched_nodes = 0
-    for node in nodes or []:
+    for index, node in enumerate(nodes or []):
         if not isinstance(node, dict):
+            continue
+        if index in selections:
+            node['utterance_ids'] = selections[index]
+            linked_nodes += 1
             continue
         try:
             semantic_level = int(node.get("semantic_level") or node.get("level") or 1)

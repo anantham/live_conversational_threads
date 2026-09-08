@@ -397,3 +397,11 @@ logic lives in separate modules, but context-loader orchestration should eventua
 be extracted together with question review. Preserve one shared serialized budget,
 owner/source revision checks and original IDs during any extraction. This is not
 a reason to delay the end-to-end replay with more cosmetic decomposition.
+# 2026-09-08 — Generated-output normalizer still spans multiple contracts
+
+`services/transcript/transcript_normalizer.py` remains above 300 lines and mixes
+legacy aliases, thread defaults, question fields and source-selection transport.
+The leaf-evidence change adds only raw field preservation; strict validation is
+isolated in `services/leaf_evidence.py`. Future decomposition should separate
+legacy schema adaptation from the strict interleaved contract, preserving tests
+that malformed evidence is rejected rather than coerced or silently discarded.

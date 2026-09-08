@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Explicit leaf support binder and callback regression
+
+- Added services/leaf_evidence.py: resolves distinct known current `line-N`
+  selections to source IDs in source order, without claiming intervening
+  utterances. Rejects unknown/duplicate IDs, invalid slots, non-leaf selections
+  and conflicts with existing authored provenance before mutating any node.
+- transcript_normalizer preserves the raw optional source_line_ids field;
+  provenance_linking validates all explicit selections first, then applies
+  them. Legacy quote-only localization is unchanged when the field is absent.
+  Representative source_excerpt is not expanded or rewritten.
+- Ten focused tests pass, including a callback to a selected source outside
+  the display quote, an unrelated intervening turn remaining unowned, and
+  invalid selection atomicity. Full backend units: 2421 passed, 6 skipped,
+  496 warnings in 11.62s. git diff --check passed.
+- This is not yet the activated interpreter contract. Next: require selections
+  in the new prompt/runtime policy, verify serialized checkpoint recovery and
+  canonical persistence, then create new matched replay identities. Do not
+  call old runs fixed or retrofit model selections into their receipts.
+
 ## 2026-09-08 — Representative quote is not complete leaf source ownership
 
 - Read-only frontier compact DB: 109 leaves, all 109 have provenance, but only
