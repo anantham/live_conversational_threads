@@ -27,6 +27,34 @@ afterEach(() => {
   vi.useRealTimers(); globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 });
 const highlight = () => container.querySelector('[aria-current="true"]')?.textContent;
+it("highlights start-only imports without creating measured end times", async()=>{
+ const starts={...bundle,utterances:utterances.map(({timestamp_end,...u})=>u)};
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={starts} node={node} nodes={[node]}/>));
+ await act(async()=>[...container.querySelectorAll('button')].find(b=>b.textContent.includes("Watch the source")).click());
+ act(()=>options.events.onReady());
+ expect(highlight()).toContain("First sentence");
+ act(()=>{time=22;vi.advanceTimersByTime(250);});
+ expect(highlight()).toContain("Second sentence");
+ expect(starts.utterances[0].timestamp_end).toBeUndefined();
+});
+it("does not install a timer when player readiness arrives after unmount",async()=>{
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]}/>));
+ await act(async()=>[...container.querySelectorAll('button')].find(b=>b.textContent.includes("Watch the source")).click());
+ act(()=>root.unmount());
+ const remainingTimers=vi.getTimerCount();
+ act(()=>options.events.onReady());
+ expect(vi.getTimerCount()).toBe(remainingTimers);
+ expect(player.destroy).toHaveBeenCalled();
+ root=createRoot(container);
+});
+it("keeps naming and export outside the collapsible transcript",async()=>{
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]} onRenameSpeaker={()=>{}}/>));
+ const sections=container.querySelectorAll('aside > details');
+ expect(sections).toHaveLength(3);
+ sections[1].open=false;
+ expect(sections[2].querySelector('summary').textContent).toBe("Name the speakers");
+ expect(sections[2].textContent).toContain("Download reviewed");
+});
 it.each([true, false])("synchronizes both ways, compact=%s", async (compact) => {
   await act(async () => root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]} compact={compact} />));
   await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent.includes("Watch the source")).click());

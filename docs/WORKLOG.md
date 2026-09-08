@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — PR 194 review corrections
+
+User authorized fixing findings, re-reviewing and merging/deploying. Corrected
+same-ID focus requests with a request serial; timeline now pins selected details
+and clears stale media selection. Legacy hierarchy traversal permits increasing
+levels (including skipped tiers), while generated experiment validation still
+requires adjacent-level DAGs. Off-route Previous/Next no longer jump to route start.
+Start-only video passages remain selectable; approximate highlighting uses next
+start but duration remains unknown. Source positioning retains latest starts.
+Speaker naming/export is a sibling of collapsed Transcript. Graph size is checked
+before thread validation, with explicit thread/membership/evidence bounds.
+The reported late-ready timer race was disproved by existing canceled guards;
+added a regression exercising readiness after unmount. No private artifact egress.
+
 ## 2026-09-08 — Integrate threads into existing desktop/mobile viewer
 
 User explicitly authorized implementation and remote publication for device testing.

@@ -49,11 +49,17 @@ export function validateThreadsArtifact(data) {
   }
 
   const nodeCount = flattenThreadsGraph(data.graph_data).length;
+  if (nodeCount > MAX_THREADS_NODES) {
+    throw new Error(`Artifact too large (${nodeCount} nodes).`);
+  }
   if (data.conversation_threads != null) {
     const nodes = new Map(flattenThreadsGraph(data.graph_data).map(n => [n.id, n]));
     const utteranceIds = new Set((data.utterances || []).map(u => u.id));
     const ids = new Set();
     if (!Array.isArray(data.conversation_threads)) throw new Error("Invalid conversation threads.");
+    if(data.conversation_threads.length>1000) throw new Error("Too many conversation threads.");
+    let membershipCount=0;
+    let evidenceCount=0;
     for (const thread of data.conversation_threads) {
       if (!thread || typeof thread.id !== "string" || ids.has(thread.id)
         || typeof thread.title !== "string" || !Array.isArray(thread.steps)
@@ -61,8 +67,12 @@ export function validateThreadsArtifact(data) {
         throw new Error("Invalid thread definition.");
       }
       ids.add(thread.id);
+      membershipCount+=thread.steps.length+(thread.returns?.length || 0);
+      if(membershipCount>100000) throw new Error("Too many thread memberships.");
       const steps = new Set();
       for (const step of thread.steps) {
+        evidenceCount+=Array.isArray(step?.evidence_utterance_ids) ? step.evidence_utterance_ids.length : 0;
+        if(evidenceCount>500000) throw new Error("Too much thread evidence.");
         if (!step || !nodes.has(step.moment_id) || steps.has(step.moment_id)
           || !Array.isArray(step.evidence_utterance_ids)
           || !step.evidence_utterance_ids.every(id => utteranceIds.has(id))) {
@@ -74,9 +84,6 @@ export function validateThreadsArtifact(data) {
         throw new Error("Invalid thread return.");
       }
     }
-  }
-  if (nodeCount > MAX_THREADS_NODES) {
-    throw new Error(`Artifact too large (${nodeCount} nodes).`);
   }
   validateExplicitEdgeContract(
     data.edge_schema,

@@ -111,7 +111,7 @@ export function buildMobileConversationDeck(nodes, artifactUtterances = []) {
 
   const childrenByParent = new Map();
   const addChild = (parentId, childId) => {
-    if (levelOf(nodeById.get(parentId)) !== levelOf(nodeById.get(childId)) + 1) return;
+    if (!(levelOf(nodeById.get(parentId)) > levelOf(nodeById.get(childId)))) return;
     const children = childrenByParent.get(parentId) || [];
     children.push(childId);
     childrenByParent.set(parentId, children);

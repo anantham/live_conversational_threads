@@ -27,6 +27,12 @@ const utterances = [
   { id: "u2", sequence_number: 2, speaker_name: "B", text: "Second exact turn." },
   { id: "u3", sequence_number: 3, speaker_name: "A", text: "Other branch turn." },
 ];
+it("retains legacy skipped-level navigation",()=>{
+ const model=buildMobileConversationDeck([{id:"a",semantic_level:5,children_ids:["m"]},{id:"m",semantic_level:1,parent_id:"a"}]);
+ expect(model.childrenByParent.get("a")).toEqual(["m"]);
+ const next=moveMobileDeck(model,initialMobileDeckState(model),"down");
+ expect(mobileDeckSnapshot(model,next.state).item.id).toBe("m");
+});
 
 it("reaches a shared moment through either parent and returns by the actual trail", () => {
   const model = buildMobileConversationDeck([

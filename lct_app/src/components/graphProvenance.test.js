@@ -125,7 +125,14 @@ describe("graph provenance read model", () => {
       {id: "u3", timestamp_start: 200, timestamp_end: 210},
     ]);
     expect(node.provenance_metrics.duration_seconds).toBe(4);
+    expect(node.provenance_metrics.timestamp_end).toBe(100);
     expect(formatSourceDuration(node.provenance_metrics)).toBe("4s of speech (partial timing)");
     expect(formatSegmentCount(node.provenance_metrics)).toBe("2 of 3 segments (67%)");
+  });
+  it("preserves a start-only positioning window without inventing speech duration",()=>{
+    const [node]=enrichGraphNodesWithProvenance([{id:"n",utterance_ids:["a","b"]}],
+      [{id:"a",timestamp_start:10},{id:"b",timestamp_start:40}]);
+    expect(node.provenance_metrics.timestamp_end).toBe(40);
+    expect(node.provenance_metrics.duration_seconds).toBeNull();
   });
 });

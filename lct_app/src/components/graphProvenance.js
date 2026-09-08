@@ -184,7 +184,7 @@ export function enrichGraphNodesWithProvenance(nodes, artifactUtterances = []) {
     });
     const rows = utteranceIds.map((id) => utteranceById.get(id)).filter(Boolean);
     const starts = rows.map(utteranceStart).filter((value) => value != null);
-    const ends = rows.map(utteranceEnd).filter((value) => value != null);
+    const ends = rows.map(row=>utteranceEnd(row) ?? utteranceStart(row)).filter((value) => value != null);
     const descendantNodes = [...collected.descendantIds]
       .map((id) => nodeById.get(id))
       .filter(Boolean);

@@ -103,6 +103,7 @@ function MinimalGraphInner({
   selectedNode,
   setSelectedNode,
   focusNode,
+  focusRequestKey = 0,
   viewportReservationKey,
   onVisibleLevelChange,
   onFocusChange,
@@ -1505,16 +1506,19 @@ function MinimalGraphInner({
   // yanked back when the layout updates.
   const lastFocusedRef = useRef(null);
   const lastRequestedTierRef = useRef(null);
+  const focusToken=`${focusNode}:${focusRequestKey}`;
   useEffect(() => {
-    if (!focusNode || lastRequestedTierRef.current === focusNode) return;
+    if (!focusNode || lastRequestedTierRef.current === focusToken) return;
     const target = normalizedChunk.find(n => n.id === focusNode);
     if (!target) return;
-    lastRequestedTierRef.current = focusNode;
+    const level=Number(target.semantic_level || target.level);
+    if (!Number.isInteger(level) || level<1 || level>5) return;
+    lastRequestedTierRef.current = focusToken;
     setDrilldownPath([]);
-    handleLockedLevelChange(Number(target.semantic_level || target.level));
-  }, [focusNode, normalizedChunk, handleLockedLevelChange]);
+    handleLockedLevelChange(level);
+  }, [focusNode, focusToken, normalizedChunk, handleLockedLevelChange]);
   useEffect(() => {
-    if (focusNode === lastFocusedRef.current) return undefined;
+    if (focusToken === lastFocusedRef.current) return undefined;
     if (!focusNode) return undefined;
     if (!displayNodes.some(n => n.id === focusNode)) return undefined;
     if (neighborhoodView && !neighborhoodView.nodes.some((node) => node.id === focusNode)) {
@@ -1530,11 +1534,11 @@ function MinimalGraphInner({
       setAutoFollow(false);
     }
     const timer = setTimeout(() => {
-      lastFocusedRef.current = focusNode;
+      lastFocusedRef.current = focusToken;
       centerViewportOnNode(focusNode, { zoom: compactViewer ? 0.85 : 1.15, duration: reduceMotion ? 0 : 280 });
     },180);
     return () => clearTimeout(timer);
-  }, [clearNeighborhoodFocus, focusNode, centerViewportOnNode, displayNodes, neighborhoodView, reduceMotion,compactViewer]);
+  }, [clearNeighborhoodFocus, focusNode, focusToken, centerViewportOnNode, displayNodes, neighborhoodView, reduceMotion,compactViewer]);
 
   // Sync ref with state so effects read the latest value
   useEffect(() => {
@@ -2117,6 +2121,7 @@ MinimalGraphInner.propTypes = {
   semanticEdges: PropTypes.array,
   selectedNode: PropTypes.string,
   focusNode: PropTypes.string,
+  focusRequestKey: PropTypes.number,
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
@@ -2144,6 +2149,7 @@ MinimalGraph.propTypes = {
   semanticEdges: PropTypes.array,
   selectedNode: PropTypes.string,
   focusNode: PropTypes.string,
+  focusRequestKey: PropTypes.number,
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,

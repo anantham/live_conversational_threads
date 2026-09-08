@@ -104,8 +104,10 @@ export default function MobileConversationDeck({
     if ((action === "previous" || action === "next") && routeIds.length) {
       const current=deckState.trail.at(-1)?.id;
       const index=routeIds.indexOf(current);
-      const next=index<0 ? 0 : index+(action==="next" ? 1 : -1);
+      if(index<0){showNotice("This card is outside the selected path. Choose a path to resume it.");return;}
+      const next=index+(action==="next" ? 1 : -1);
       if(next<0 || next>=routeIds.length){showNotice("End of this reading path.");return;}
+      setNotice("");setMotion(action);setMotionKey(value=>value+1);
       commitDeckState(mobileDeckStateForNode(model,routeIds[next]));return;
     }
     if(action==="up" || action==="down") setReadingRoute("");

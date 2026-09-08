@@ -139,6 +139,17 @@ function clickByLabel(label) {
 }
 
 describe("MobileConversationDeck", () => {
+  it("does not jump forward when Previous is pressed outside the selected path",()=>{
+    const {bundle,nodes}=fixture();
+    bundle.conversation_threads=[{id:"t",title:"Thread",steps:[{moment_id:"moment-1"}]}];
+    const changed=vi.fn();
+    act(()=>root.render(<MobileConversationDeck bundle={bundle} graphNodes={nodes}
+      deckState={{trail:[{kind:"node",id:"arc-1"}]}} readingPath="t" onDeckStateChange={changed}
+      onDownloadTranscript={()=>{}} onOpenAnother={()=>{}} onOpenLibrary={()=>{}} onShowMap={()=>{}}/>));
+    clickByLabel("Previous arc");
+    expect(changed).not.toHaveBeenCalled();
+    expect(container.textContent).toContain("outside the selected path");
+  });
   it("drills from the highest tier to exact timed evidence and returns to its parent", () => {
     renderDeck();
     expect(container.textContent).toContain("Traceable arc");

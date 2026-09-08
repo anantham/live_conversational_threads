@@ -89,6 +89,8 @@ function ThreadsViewerContent() {
   const [focusMode, setFocusMode] = useState(false);
   const [mobileMapOpen, setMobileMapOpen] = useState(false);
   const [mapTarget, setMapTarget] = useState(null);
+  const [mapRequest,setMapRequest]=useState(0);
+  const requestMapTarget=useCallback((id)=>{setMapTarget(id);setMapRequest(n=>n+1);},[]);
   const [mobileDeckState, setMobileDeckState] = useState(null);
   const [mobileReadingPath,setMobileReadingPath]=useState("");
   const consumedRouteState = useRef(false);
@@ -480,7 +482,7 @@ function ThreadsViewerContent() {
         onOpenLibrary={openLibrary}
         onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
         onOpenAnother={openAnother}
-        onShowMap={(id) => {setMapTarget(id);setMobileMapOpen(true);}}
+        onShowMap={(id) => {requestMapTarget(id);setMobileMapOpen(true);}}
         onRenameSpeaker={renameSpeaker}
       />
     );
@@ -510,6 +512,7 @@ function ThreadsViewerContent() {
           graphData={flatNodes}
           semanticEdges={bundle.edges}
           focusNode={mapTarget}
+          focusRequestKey={mapRequest}
           semanticZoom={false}
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
@@ -567,7 +570,7 @@ function ThreadsViewerContent() {
             artifactUtterances={bundle.utterances || []}
             mediaRefs={bundle.media_refs || []}
             contextNodes={flatNodes}
-            onSelectNode={(id)=>{setMapTarget(id);setSelectedNode(id);}}
+            onSelectNode={(id)=>{requestMapTarget(id);setSelectedNode(id);}}
             onClose={() => setSelectedNode(null)}
             onTraceAncestors={setArgumentTraceFrom}
           />
@@ -579,7 +582,7 @@ function ThreadsViewerContent() {
         <TimelineRibbon
           graphData={flatNodes}
           selectedNode={selectedNode || mediaNode || mapTarget}
-          setSelectedNode={(id)=>{setMapTarget(id);setSelectedNode(null);}}
+          setSelectedNode={(id)=>{requestMapTarget(id);setSelectedNode(id);setMediaNode(id);}}
           semanticLevel={hasThreads ? 1 : visibleGraphLevel}
         />
       )}

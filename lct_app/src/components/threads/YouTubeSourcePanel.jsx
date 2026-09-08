@@ -43,11 +43,16 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const first = passages[0]?.timestamp_start;
   const playbackPassage = useMemo(() => {
     if (active == null) return null;
-    // Prefer the latest starting segment during overlapping speech. Never
-    // highlight a stale sentence in a silence or across a distant callback.
-    return (bundle.utterances || []).filter((u) => validMediaSeconds(u.timestamp_start)
-      && validMediaSeconds(u.timestamp_end) && u.timestamp_start <= active && active < u.timestamp_end)
-      .sort((a, b) => b.timestamp_start - a.timestamp_start)[0] || null;
+    const rows=(bundle.utterances || []).filter(u=>validMediaSeconds(u.timestamp_start))
+      .sort((a,b)=>a.timestamp_start-b.timestamp_start);
+    // Known ends preserve silence gaps. Start-only imports use the next start
+    // as an approximate highlight boundary, never as measured speech duration.
+    return rows.filter((u,i)=>{
+      const end=validMediaSeconds(u.timestamp_end) ? u.timestamp_end
+        : validMediaSeconds(u.duration_seconds ?? u.duration) ? u.timestamp_start+(u.duration_seconds ?? u.duration)
+        : rows.slice(i+1).find(v=>v.timestamp_start>u.timestamp_start)?.timestamp_start ?? Infinity;
+      return u.timestamp_start<=active && active<end;
+    }).at(-1) || null;
   }, [active, bundle.utterances]);
   const outsideSelection = playbackPassage && !passages.some((u) => u.id === playbackPassage.id);
   useEffect(() => {
@@ -158,6 +163,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
         Transcript height
         <input aria-label="Transcript height" type="range" min="48" max="360" step="8" value={transcriptHeight} onChange={(event) => setTranscriptHeight(Number(event.target.value))} className="min-w-0 flex-1 accent-amber-600" />
       </label>}
+      </details>
       {onRenameSpeaker && speakers.length > 0 && <details className="mt-1 text-xs text-slate-500">
         <summary className="cursor-pointer">Name the speakers</summary>
         <form className="mt-2 space-y-2" onSubmit={(e) => { e.preventDefault(); onRenameSpeaker(speakerId || speakers[0], speakerName); setSpeakerName(""); }}>
@@ -174,7 +180,6 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
           window.setTimeout(() => URL.revokeObjectURL(url), 1000);
         }}>Download reviewed .threads</button>
       </details>}
-      </details>
     </aside>
   );
 }
