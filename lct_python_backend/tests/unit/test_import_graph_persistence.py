@@ -10,6 +10,7 @@ os.environ.setdefault("DATABASE_URL", "postgresql://lct_user:lct_password@localh
 
 from lct_python_backend.models import Utterance as DBUtterance
 from lct_python_backend.services.graph_persistence import persist_import_graph
+from tests.persistence_fakes import with_empty_artifact_store
 
 
 CONVERSATION_ID = str(uuid.uuid4())
@@ -82,6 +83,7 @@ def _make_db_mock(conv=None):
     result_mock = MagicMock()
     result_mock.scalar_one_or_none.return_value = conv
     db.execute.return_value = result_mock
+    with_empty_artifact_store(db)
     return db
 
 

@@ -23,6 +23,7 @@ import pytest
 from lct_python_backend import share_api
 from lct_python_backend.services import edge_enrichment
 from lct_python_backend.services.import_pipeline import import_orchestrator
+from tests.persistence_fakes import with_empty_artifact_store
 
 
 def test_managed_edge_prompt_declares_the_bounded_window_contract():
@@ -351,6 +352,7 @@ async def test_semantic_merge_persistence_keeps_temporal_and_contextual_edges():
     result = MagicMock()
     result.scalar_one_or_none.return_value = MagicMock()
     db.execute.return_value = result
+    with_empty_artifact_store(db)
 
     await persist_import_graph(db=db, conversation_id="5953fd1b-2597-408c-916d-f553f8da57f2", existing_json=nodes)
 
@@ -413,6 +415,7 @@ async def test_persistence_preserves_faithful_parallel_edges_and_membership_lens
     result = MagicMock()
     result.scalar_one_or_none.return_value = MagicMock()
     db.execute.return_value = result
+    with_empty_artifact_store(db)
 
     await persist_import_graph(
         db=db,

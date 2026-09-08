@@ -20,6 +20,7 @@ os.environ.setdefault(
 
 from lct_python_backend.models import Relationship
 from lct_python_backend.services.graph_persistence import persist_import_graph
+from tests.persistence_fakes import with_empty_artifact_store
 from lct_python_backend.services.import_pipeline.hierarchy_integrity import (
     synchronize_hierarchy,
 )
@@ -75,6 +76,7 @@ async def test_legacy_hierarchy_persists_membership_temporal_and_semantic_edges(
     result = MagicMock()
     result.scalar_one_or_none.return_value = conversation
     db.execute.return_value = result
+    with_empty_artifact_store(db)
 
     await persist_import_graph(
         db=db,

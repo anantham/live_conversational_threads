@@ -1,5 +1,15 @@
 # TECH_DEBT
 
+## 2026-09-08 — Legacy persistence and journal replacement boundary
+
+graph_persistence.py remains a 1560+ line serializer combining source ingest,
+graph replacement, append-only materialization and artifact writes. This change
+keeps its serializer intact and extracts the new replacement guard into
+transcript/journal_write_guard.py. A later decomposition must retain transaction
+and row-lock ownership across those responsibilities. Unit fake sessions also
+need table-aware results, not one conversation object for every SELECT; the
+legacy fixtures now explicitly represent an empty artifact store.
+
 ## 2026-09-08 — Conversation API unit fixture boundary
 
 The 350+ and 400+ line conversation API test modules duplicate stub loaders and

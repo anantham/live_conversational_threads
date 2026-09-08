@@ -373,7 +373,7 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
     if payload.conversation_id:
         by_id = (
             await db.execute(
-                select(Conversation).where(Conversation.id == uuid.UUID(payload.conversation_id))
+                select(Conversation).where(Conversation.id == uuid.UUID(payload.conversation_id)).with_for_update()
             )
         ).scalar_one_or_none()
         if by_id is not None:
@@ -394,7 +394,7 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
                     Conversation.owner_id == owner_id,
                     Conversation.indrasnet_group_id == payload.group_id,
                     Conversation.deleted_at.is_(None),
-                )
+                ).with_for_update()
             )
         ).scalar_one_or_none()
 
@@ -435,6 +435,8 @@ async def persist_turns(*, db, payload) -> Dict[str, Any]:
         db.add(conv)
         await db.flush()  # assign conv.id for the utterance FK
     else:
+        from lct_python_backend.services.transcript.journal_write_guard import reject_journal_replacement
+        await reject_journal_replacement(db, conv.id)
         from lct_python_backend.models import Node
         from lct_python_backend.models.analysis import (
             BiasAnalysis,
@@ -545,13 +547,16 @@ async def persist_graph(
         propagate_flags_upward(existing_json)
 
     conv_uuid = uuid.UUID(conversation_id)
-    conv_query = select(Conversation).where(Conversation.id == conv_uuid)
+    conv_query = select(Conversation).where(Conversation.id == conv_uuid).with_for_update()
     if append_only:
         conv_query = conv_query.where(Conversation.owner_id == owner_id, Conversation.deleted_at.is_(None)).with_for_update()
     conv_result = await db.execute(conv_query)
     conv = conv_result.scalar_one_or_none()
     if append_only and conv is None:
         raise PermissionError("Conversation unavailable to this owner")
+    if conv is not None and not append_only:
+        from lct_python_backend.services.transcript.journal_write_guard import reject_journal_replacement
+        await reject_journal_replacement(db, conv_uuid)
     if conv is None:
         fallback_conversation_name = (conversation_name or "").strip() or f"import-{conv_uuid.hex[:8]}"
         conv = Conversation(

@@ -1,5 +1,26 @@
 # WORKLOG
 
+## 2026-09-08 — Protect journal-backed conversations from legacy replacement
+
+- Synthetic isolated-DB probe reproduced silent graph replacement: one journal
+  record survived while its original canonical node disappeared. Both public
+  writers (persist_graph and persist_turns) subsequently failed new protection
+  regressions by accepting replacement. The turns fixture initially exercised
+  the wrong configured owner; corrected the fixture through LCT_OWNER_ID, then
+  independently reproduced the overwrite. No real conversation was touched.
+- Added journal_write_guard.py and invoked it before metadata/deletion writes.
+  Both replacement entry points now lock the conversation row, serializing with
+  append_passage, and reject any existing passage checkpoint, including damaged
+  history. Append-only writes remain unchanged. No automatic migration or
+  source revision is introduced. Real journal/replacement tests: 5 passed.
+- Initial wider suite: 21 failures, 2474 passed, 6 skipped. All reported failures
+  were legacy fake sessions returning a conversation for the artifact SELECT.
+  Updated only their query responses through a shared empty-artifact fixture;
+  no behavioral assertion or golden oracle changed. Full rerun: 2495 passed,
+  6 skipped, 512 warnings in 18.59 seconds.
+- This is a protective integration prerequisite, not activation of the remaining
+  bulk/live routes. Active public comparison policy is unchanged; no deployment.
+
 ## 2026-09-08 — Full transcript passage coverage and entry-point audit
 
 - Both replay handles 40514/1842 returned fresh inference receipts and remain

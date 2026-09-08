@@ -19,6 +19,7 @@ import pytest
 from lct_python_backend.models import Conversation, Utterance as DBUtterance
 from lct_python_backend.raw_turn_contract import RawTurnsPayloadV1
 from lct_python_backend.services.graph_persistence import persist_turns
+from tests.persistence_fakes import is_artifact_query
 
 
 def _turn(seq, **kw):
@@ -63,6 +64,8 @@ class FakeDB:
         self.committed = False
 
     async def execute(self, stmt):
+        if is_artifact_query(stmt):
+            return _Result(None)
         if stmt.__class__.__name__ == "Delete":
             self.deletes += 1
             return _Result(None)
