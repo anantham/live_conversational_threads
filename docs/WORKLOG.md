@@ -1,5 +1,22 @@
 # WORKLOG
 
+## 2026-09-08 — Source-selected identity correction and replay checkpoint
+
+- Replaced optional identity correction with model-selected utterance endpoints.
+  Backend copies exact source offsets, then runs the unchanged evidence validator.
+  No fuzzy quote acceptance, source rewriting, or unbounded retry. Both selection
+  and resulting quotation are retained and cross-validated on recovery; legacy
+  v1 audit receipts remain supported. Prediction: valid selections eliminate
+  ellipsis transcription errors without substituting backend semantic judgments.
+- Full backend unit suite: 2,401 passed, six skipped, before the added explicit
+  legacy-receipt regression. Local replay PID 13056 confirmed live by proc_probe.
+- Frontier session 5577 terminated. Exact saved events show two reconnect timeout
+  notices followed by a single answer and turn.completed. Parser currently raises
+  on every error event, including recovered notices. This is a transport parsing
+  defect, not evidence of a rejected model answer; targeted regression next.
+- No comparison artifact uploaded, merged, or deployed. Matched final policy,
+  semantic checks and independent review remain required.
+
 ## 2026-09-08 — Source-link loss traced to prompt speaker formatting
 
 - All 14 frontier unlinked nodes are already unlinked in immutable journal,
