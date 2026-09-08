@@ -1,5 +1,17 @@
 # WORKLOG
 
+## 2026-09-08 — Fork review submitted under standing envelope
+
+- REVIEW-EGRESS-A1: exact664442a packet sent to tool-free Claude Sonnet using
+  existing subscription, safe mode, empty MCP/cwd, no slash commands. Five
+  files: public_replay_fork/harness/pipeline.py and the synthetic unit/PG fork
+  tests. Inspected and scanned36264 bytes, SHA256
+  5c18001448805447f5d6d1bbcc84ae81376eaed9b99e4588715692dc17931f4a.
+  No transcripts/media/private artifacts/credentials. Handle90592 started;
+  receipt target tmp/replay-fork-review-664442a.json. Verdict pending, no
+  approval inferred. Next: review findings, provision isolated empty targets,
+  verify full-schema forking, then resume both arms under matched policy.
+
 ## 2026-09-08 — Implement non-destructive pre-relation replay fork
 
 - Added tools/public_replay_fork.py and explicit --fork-from-database /
