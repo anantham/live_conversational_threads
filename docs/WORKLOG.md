@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — Preserve failed public replay requests
+
+- Readiness audit found exact requests were recorded only after successful
+  inference. The public-only harness now writes request.json before invocation
+  in a unique call directory, then response.json or failure.json. Failures retain
+  their exception type, not potentially secret-bearing exception strings, and
+  propagate unchanged. A terminated call can leave request-only evidence; this
+  does not claim crash-durable filesystem fsync or recover a provider response.
+- Failing-first tests initially failed on missing record_inference; after wiring
+  the normal replay wrapper, 17 recording/bootstrap tests pass. Tests inspect
+  disk from inside invocation and verify unchanged exception propagation.
+- No model run, dependency activation or production change. Backend tokenizers
+  remains absent on current inspection, so accurate-counter replay gate remains.
+
 ## 2026-09-08 — Desktop source-review browser check
 
 - Extended the same synthetic /view file-import test to 1440px desktop; opens

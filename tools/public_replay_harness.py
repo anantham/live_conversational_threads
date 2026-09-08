@@ -1,5 +1,6 @@
 """Public-only replay bootstrap; never creates schemas or overwrites evidence."""
 from datetime import datetime, timezone
+import json
 import re
 import uuid
 
@@ -70,3 +71,23 @@ def inference_receipt(envelope, prompt, response):
             'served_model': response.model, 'cache_hit': response.cache_hit,
             'prompt_tokens': response.prompt_tokens, 'completion_tokens': response.completion_tokens,
             'finish_reason': response.finish_reason}
+
+
+def record_inference(output, envelope, prompt, invoke):
+    """Public replay only: retain a request even if invocation never returns."""
+    call = output / f'inference-{uuid.uuid4().hex}'
+    call.mkdir(exist_ok=False)
+    request = {'messages': envelope._messages(prompt), 'source_sha256': SHA,
+               'policy_fingerprint': envelope.fingerprint, 'tokenizer_id': envelope.tokenizer_id,
+               'requested_models': [p['model'] for p in envelope.providers]}
+    (call / 'request.json').write_text(json.dumps(request, ensure_ascii=False), encoding='utf-8')
+    try:
+        response = invoke(envelope, prompt)
+    except Exception as error:
+        # Provider exception text may include credentials or transport bodies.
+        (call / 'failure.json').write_text(json.dumps(
+            {'status': 'failed', 'error_type': type(error).__name__}), encoding='utf-8')
+        raise
+    (call / 'response.json').write_text(json.dumps(
+        inference_receipt(envelope, prompt, response), ensure_ascii=False), encoding='utf-8')
+    return response

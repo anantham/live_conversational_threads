@@ -18,7 +18,7 @@ from lct_python_backend.services.transcript.interleaved_runtime import Interleav
 from lct_python_backend.services.transcript.inference_envelope import InferenceEnvelope
 from lct_python_backend.services.import_pipeline.interleaved_stages import run_interleaved_stages
 from tools.replay_public_source_inspection import SHA, verified_public_source
-from tools.public_replay_harness import validate_target, replay_identity, ensure_replay, inference_receipt
+from tools.public_replay_harness import validate_target, replay_identity, ensure_replay, record_inference
 
 
 async def main(run=False, *, database_url, run_id, resume=False,
@@ -59,11 +59,8 @@ async def main(run=False, *, database_url, run_id, resume=False,
         (output / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
         original = InferenceEnvelope.complete_json
         def record_response(envelope, prompt):
-            response = original(envelope, prompt)
-            target = output / f'inference-{time.time_ns()}.json'
-            target.write_text(json.dumps(inference_receipt(envelope, prompt, response),
-                                         ensure_ascii=False), encoding='utf-8')
-            print(json.dumps({'phase': 'inference_received', 'path': str(target)}), flush=True)
+            response = record_inference(output, envelope, prompt, original)
+            print(json.dumps({'phase': 'inference_received', 'directory': str(output)}), flush=True)
             return response
         with patch.object(InferenceEnvelope, 'complete_json', record_response):
             result = await run_interleaved_stages(runtime=runtime, utterances=source, **scope)
