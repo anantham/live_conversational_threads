@@ -1,5 +1,34 @@
 # WORKLOG
 
+## 2026-09-08 — Native replay counter wired and live parity checked
+
+- Installed the existing backend requirements in .venv-public-replay, retaining
+  tokenizers==0.23.0rc0; pip check reports no broken requirements. Added exact
+  environment ignore rule; running backend unchanged.
+- Explicit --tokenizer-path enables a native factory pinned to the approved
+  engine version and Qwen artifact digest. CLI reads current loopback server
+  version before constructing the measured protocol counter. No default activation.
+- Failing-first counter test failed on missing helper, then native/counter/replay
+  suite passed 36 tests in this isolated environment. CLI dry-run verifies 1263
+  source utterances with counter_configured=true, without importing source rows.
+- Current synthetic local /v1/chat/completions parity: native count 32, server
+  prompt_tokens 32, qwen3.8:27b-mlx, finish_reason stop. This proves that request's
+  parity, not the effective maximum context or completed public replay.
+
+## 2026-09-08 — Explicit isolated tokenizer approval and installation
+
+- User explicitly approved tokenizers==0.23.0rc0 installation in an isolated
+  replay environment and counter activation for the public-podcast comparison.
+  Created .venv-public-replay in this worktree and installed that exact package
+  with its dependencies. The running backend environment was not modified.
+- Actual native Tokenizer.from_str factory loaded SHA-verified local Qwen JSON
+  with add_special_tokens=False into PinnedQwenMessageCounter. Synthetic two-
+  message check returned 23 tokens; identity is
+  pinned_qwen_a32b652280c94ccd4809af64e943d9ebfd407b01557ab5eabd7ae4d5e08125a0.
+- This removes the dependency authorization blocker. Full backend dependencies
+  in the isolated environment, runner wiring, host parity/capacity and full
+  comparison remain work to do. No production activation or model generation.
+
 ## 2026-09-08 — Fresh-schema pipeline integration acceptance
 
 - Ran identity review, membership revision guard, bootstrap and share-access

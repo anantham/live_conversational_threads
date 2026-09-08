@@ -2,8 +2,8 @@
 
 Default checks configuration offline. --run inserts exact source and runs shared
 stages; --resume verifies immutable owner/source/policy. No schema creation,
-installation, publication or deployment. CLI --run is gated until an approved
-accurate tokenizer is configured by the host.
+installation, publication or deployment. CLI --run requires the explicit
+--tokenizer-path option and approved native engine.
 """
 import argparse
 import asyncio
@@ -83,5 +83,14 @@ if __name__ == '__main__':
     parser.add_argument('--run-id', required=True)
     parser.add_argument('--run', action='store_true')
     parser.add_argument('--resume', action='store_true')
+    parser.add_argument('--tokenizer-path', type=Path, help='Pinned local Qwen tokenizer JSON; enables approved native counting')
     args = parser.parse_args()
-    asyncio.run(main(args.run, database_url=args.database_url, run_id=args.run_id, resume=args.resume))
+    counter = None
+    if args.tokenizer_path:
+        from urllib.request import urlopen
+        from tools.public_replay_counter import build_counter
+        with urlopen('http://127.0.0.1:11434/api/version', timeout=5) as response:
+            server_version = json.load(response)['version']
+        counter = build_counter(args.tokenizer_path, server_version=server_version)
+    asyncio.run(main(args.run, database_url=args.database_url, run_id=args.run_id, resume=args.resume,
+                    count_messages=counter, tokenizer_id=counter.tokenizer_id if counter else 'utf8_bytes_v1'))
