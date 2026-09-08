@@ -1,5 +1,35 @@
 # WORKLOG
 
+## 2026-09-08 — Representative quote is not complete leaf source ownership
+
+- Read-only frontier compact DB: 109 leaves, all 109 have provenance, but only
+  109 distinct source utterances are referenced. The opening leaf explicitly
+  summarizes hoping the podcast will continue; its source_excerpt is instead
+  the single sentence scheduling discussion of AI safety. The closing leaf
+  likewise exists. This falsifies omitted semantic moments as the explanation
+  for the inspected callback and identifies incomplete supporting-source links.
+- Generator: interleaved_prompt requests one exact contiguous source_excerpt;
+  transcript_processing lines 839 onward invoke
+  assign_grounded_leaf_utterance_ids, which localizes only that display quote.
+  canonical_candidates correctly cannot offer leaves for other supporting
+  utterances. Do not change the candidate/ownership guard to hide this mismatch.
+- Next implementation boundary: explicit current-source line selections for
+  each interpreted leaf, resolved to exact utterance IDs by the backend (as
+  question updates already do). Preserve the representative display quote;
+  retain selected support separately and validate known/distinct/current IDs.
+  Noncontiguous support must not imply ownership of intervening turns. Add
+  normalization, checkpoint/recovery and callback-endpoint tests. Prompt and
+  policy changes require new fair replay identities, not mutation of existing
+  receipts. Selection remains model interpretation, not proof of entailment;
+  semantic audit must still check the summary against all selected sources.
+  No product code changed yet for this diagnosis.
+- Frontend review session 63693 finished: conversation
+  27c4e809-681e-4270-b631-ca7b357b8b4e, 249.44 seconds, issues_found.
+  New finding is existing global invalidCount warning on every node when any
+  review is invalid. This behavior predates selector caching. Its UI placement
+  needs disposition without silently suppressing invalid-data disclosure.
+  Saved tmp/frontend-review-20c2fe4.json. No merge approval inferred.
+
 ## 2026-09-08 — Callback projection gap found in actual frontier receipts
 
 - Frontier progressed from source inspection into relation review. Read-only
