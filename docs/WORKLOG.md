@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Candidate graph integrity and replay checkpoint
+
+- Read-only isolated database checks confirm one persisted local question repair
+  among two question receipts, plus one passage checkpoint. Frontier has four
+  passage checkpoints, 12 identity reviews, 16 question reviews and three source
+  inspection receipts at this observation. Base nodes: local five, frontier 112;
+  both only level 1. These counts are progress evidence, not quality scores.
+- Expanded tools/audit_public_candidate.py to reject parent cycles, dangling
+  child references, foreign serialized edge endpoints and foreign edge evidence.
+  Inspected conversation_reader/edge_contract serialization before selecting
+  field names. Five audit tests pass, including valid-reference controls that
+  explicitly retain publication_accepted=false. Semantic source review, actual
+  navigation/seek checks and no-sign-in retrieval remain required.
+- Both live process handles (67607 local, 5577 frontier) were polled successfully;
+  no restart or source change performed in this checkpoint.
+
 ## 2026-09-08 — Bounded question-review regeneration
 
 - Local public replay reproducibly rejected an extra event-3 where the supplied

@@ -27,6 +27,7 @@ def audit(bundle, source):
     if len(threads) < 2:
         problems.append('Fewer than two identified conversation threads')
     source_ids = {u['id'] for u in source}
+    by_id = {n.get('id'): n for n in nodes}
     covered = set()
     for node in nodes:
         evidence = set(node.get('utterance_ids') or [])
@@ -36,6 +37,21 @@ def audit(bundle, source):
             covered.update(evidence)
         if node.get('parent_id') and node['parent_id'] not in ids:
             problems.append(f'Missing parent: {node.get("id")}')
+        path, current = set(), node.get('id')
+        while current in by_id:
+            if current in path:
+                problems.append(f'Parent cycle: {node.get("id")}')
+                break
+            path.add(current)
+            current = by_id[current].get('parent_id')
+        for child in node.get('children_ids') or []:
+            if child not in by_id:
+                problems.append(f'Missing child: {node.get("id")}')
+    for edge in bundle.get('edges', []):
+        if edge.get('from_node_id') not in by_id or edge.get('to_node_id') not in by_id:
+            problems.append(f'Foreign edge endpoint: {edge.get("id")}')
+        if set(edge.get('supporting_utterance_ids') or []) - source_ids:
+            problems.append(f'Foreign edge evidence: {edge.get("id")}')
     expected_video = '6HmR9IaqM88'
     if not any(r.get('provider') == 'youtube' and r.get('video_id') == expected_video
                and r.get('view_url') == f'https://www.youtube.com/watch?v={expected_video}'

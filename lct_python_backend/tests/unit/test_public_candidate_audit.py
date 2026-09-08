@@ -36,3 +36,28 @@ def test_mutated_source_and_foreign_reference_fail():
     result = audit(bundle, source)
     assert any('source fields' in x for x in result['structural_problems'])
     assert any('Foreign' in x for x in result['structural_problems'])
+
+
+def test_cycles_and_dangling_edges_cannot_pass_structural_screen():
+    bundle, source = fixture()
+    bundle['graph_data'][0]['parent_id'] = '2'
+    bundle['graph_data'][1]['parent_id'] = '1'
+    bundle['graph_data'][2]['children_ids'] = ['absent']
+    bundle['edges'] = [{'id': 'bad-edge', 'from_node_id': '1',
+                       'to_node_id': 'missing', 'supporting_utterance_ids': ['foreign']}]
+    problems = audit(bundle, source)['structural_problems']
+    assert any('Parent cycle' in p for p in problems)
+    assert any('Missing child' in p for p in problems)
+    assert any('Foreign edge endpoint' in p for p in problems)
+    assert any('Foreign edge evidence' in p for p in problems)
+
+
+def test_valid_graph_references_do_not_establish_semantic_truth():
+    bundle, source = fixture()
+    bundle['graph_data'][0]['parent_id'] = '2'
+    bundle['graph_data'][1]['children_ids'] = ['1']
+    bundle['edges'] = [{'id': 'edge', 'from_node_id': '1', 'to_node_id': '2',
+                       'supporting_utterance_ids': ['u1']}]
+    result = audit(bundle, source)
+    assert not result['structural_problems']
+    assert result['publication_accepted'] is False
