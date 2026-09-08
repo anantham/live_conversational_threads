@@ -1,5 +1,21 @@
 # WORKLOG
 
+## 2026-09-08 — Independent host bootstrap review started
+
+- REVIEW-EGRESS-A1: sent exact707361c source/synthetic-test packet to existing
+  Antigravity Gemini3.1ProHigh, handle31881. Seven complete files (host_bootstrap,
+  host_runtime, interleaved_runtime, qwen_message_counter, both host test modules,
+  INTERLEAVED_HOST_RUNTIME.md), plus08bff60..707361c routing/startup diff for
+  backend.py/import_api.py/stt_api.py. Inspected and scanned36696 bytes; SHA256
+  4aeb5050095a6f537b4697a8aae17be3d3b5676386db02f5cce4cbcb10d20995.
+  No transcripts/media/private artifacts/credentials. Empty temporary cwd,
+  sandbox, no tools requested, disabled slash commands, closed stdin; actual
+  returned activity still needs audit, flags alone do not prove isolation.
+  Receipt target tmp/host-runtime-agy-review-707361c.json. Verdict pending.
+- Latest read-only comparison snapshot: local5 and frontier33 committed relation
+  batches, not total-completion percentages. Both source/journal checks pass;
+  no higher tiers or accepted final artifacts yet. No restart requested.
+
 ## 2026-09-08 — Explicit host startup configuration with native counting
 
 - Previous turn made authoritative progress via committed/pushed HTTP/WS
