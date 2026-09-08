@@ -16,6 +16,7 @@ Revoked consent must reject a captured review even when a receipt already exists
 Question checkpoints must reject an incorrect slot before saving a duplicate review.
 An unrelated new source must not discard a current question review or regenerate it.
 The live context reader must expose only the current policy and reject stale processor history.
+Normal export must carry review data only by explicit opt-in, enforcing current owner.
 """
 import json
 import copy
@@ -196,6 +197,18 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         assert question_export['status'] == 'current_reviews'
         assert question_export['policies'][0]['coverage_complete'] is True
         assert question_export['policies'][0]['questions'] == reviewed['projections']
+        assert 'question_reviews' not in second
+        async with sessions() as db:
+            with_reviews = json.loads((await export_threads(str(cid), db=db, include_question_reviews=True)).body)
+        assert with_reviews['question_reviews'] == question_export
+        assert with_reviews['graph_data'] == second['graph_data']
+        from fastapi import HTTPException
+        with monkeypatch.context() as other_owner:
+            other_owner.setenv('LCT_OWNER_ID', 'unrelated-owner')
+            async with sessions() as db:
+                with pytest.raises(HTTPException) as denied:
+                    await export_threads(str(cid), db=db, include_question_reviews=True)
+        assert denied.value.status_code == 404
         async with sessions() as db:
             with pytest.raises(PermissionError):
                 await export_question_reviews(db, conversation_id=str(cid), owner_id='unrelated-owner')

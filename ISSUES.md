@@ -1,5 +1,18 @@
 # ISSUES
 
+## 2026-09-08 — Default single-conversation export ownership audit (OPEN)
+
+share_api.export_threads defaults to fetch_conversation_bundle, whose query in
+services/conversation_reader.py filters conversation ID but not current owner or
+deleted_at. The route is operator-token protected on today's single-owner host;
+that is not evidence of row-owner isolation in a mixed-owner store. The new
+include_question_reviews opt-in checks the configured owner before loading any
+review/bundle, but default and other export/share callers remain unchanged.
+No production exploit or cross-user exposure was tested. Audit all caller auth
+boundaries and add foreign/deleted-owner HTTP tests before claiming full export
+isolation or activating a multi-owner deployment. Non-blocking for scoped local
+public-artifact work; blocks a broad privacy/release acceptance claim.
+
 ## 2026-09-08 — Local unit acceptance environment gaps (OPEN)
 
 Broader interleaved-architecture unit run: 2,252 passed, six failed, four skipped.

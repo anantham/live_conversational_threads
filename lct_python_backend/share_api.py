@@ -455,6 +455,7 @@ def _combine_argument_topology(markers: list[Optional[dict]]) -> dict:
 async def export_threads(
     conversation_id: str,
     db: AsyncSession = Depends(get_async_session),
+    include_question_reviews: bool = False,
 ):
     """Export a conversation as a self-contained ``.threads`` bundle.
 
@@ -466,6 +467,11 @@ async def export_threads(
     online-only extra absent from the static artifact. Owner-scoped: this path is
     under /api/conversations/ so it requires AUTH_TOKEN (unlike the public
     /api/share/* fetch).
+
+    include_question_reviews explicitly adds current model-review annotations,
+    including their source-backed reasoning and uncertainty. It is off by default
+    to preserve existing export contents; it never runs inference or accepts a
+    judgment. Current configured ownership is checked before loading this data.
     """
     from lct_python_backend.conversations_api import (
         fetch_conversation_bundle,
@@ -478,6 +484,16 @@ async def export_threads(
         build_coverage_summary,
         serialize_utterances,
     )
+
+    question_reviews = None
+    if include_question_reviews:
+        from lct_python_backend.services.owner_context import get_current_owner_id
+        from lct_python_backend.services.transcript.question_review_export import export_question_reviews
+        try:
+            question_reviews = await export_question_reviews(db, conversation_id=conversation_id,
+                                                            owner_id=get_current_owner_id())
+        except PermissionError as exc:
+            raise HTTPException(status_code=404, detail='Conversation not found.') from exc
 
     conversation_uuid = uuid.UUID(conversation_id)
     conversation, nodes, relationships, utterances = await fetch_conversation_bundle(
@@ -532,6 +548,9 @@ async def export_threads(
         # when unauditable). The viewer's Coverage Report reads this.
         "coverage": build_coverage_summary(graph_data, utterances),
     }
+
+    if question_reviews is not None:
+        bundle['question_reviews'] = question_reviews
 
     raw_name = (
         getattr(conversation, "conversation_title", None)

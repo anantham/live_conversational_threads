@@ -1,5 +1,28 @@
 # WORKLOG
 
+## 2026-09-08 — Explicit question-review export through the normal endpoint
+
+- Prior turn was progress (a4fdadb pushed); verified clean checkout. Normal
+  threads-export omitted question reviews; only the public replay helper appended
+  them manually. Added a failing-first opt-in/owner test; missing keyword failed.
+- Normal export now accepts include_question_reviews (default false). It checks
+  current configured owner through export_question_reviews before loading the
+  bundle, adds current revision-qualified annotations, and performs no inference.
+  Wrong ownership returns 404. Existing private-export contents remain unchanged
+  unless explicitly requested. Public replay now uses this endpoint option rather
+  than manually assembling a second version of the artifact.
+- Fourteen focused integration/review tests passed: unchanged default graph/content,
+  explicit review inclusion equal to the checked reader, wrong-owner rejection,
+  question conflict export, restart/revision and review projection behavior.
+  No public full replay or artifact export was launched this turn.
+- Found a preexisting boundary to audit: default fetch_conversation_bundle has no
+  owner/deleted-row predicate. Current single-owner token protection is not proof
+  of per-row isolation. Recorded in ISSUES.md; no assertion of observed production
+  exposure or complete export privacy. Large share module extraction debt logged.
+- Viewer display and broader export/import roundtrip remain unfinished. This only
+  establishes the owner-requested normal export capability; no private content was
+  shared, inference run, production endpoint activated, merge or deploy performed.
+
 ## 2026-09-08 — Prepared pinned counter without dependency activation
 
 - Prior turn was evidence progress (369ee51 pushed); current checkout clean.

@@ -1,5 +1,15 @@
 # TECH_DEBT
 
+## 2026-09-08 — Export assembly boundary
+
+share_api.py combines token/email authorization, single/combined export, media
+signing and payload construction in a large module. The scoped question-review
+addition delegates validation to its existing service; extract common bundle
+assembly and explicit owner/share capabilities before extending more export
+variants. Keep default contents, opt-in review custody and source/graph roundtrip
+covered through endpoint-level tests. Do not equate the current operator token
+with a row-owner predicate across all callers.
+
 ## 2026-09-08 — Passage orchestration and integration fixture boundaries
 
 transcript_processing.py is 976 lines, combining cadence, pending-source capture,

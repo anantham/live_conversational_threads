@@ -71,12 +71,9 @@ async def main(run=False):
             with patch.object(InferenceEnvelope, 'complete_json', record_response):
                 result = await run_interleaved_stages(runtime=runtime, utterances=source, **scope)
             from lct_python_backend.share_api import export_threads
-            from lct_python_backend.services.transcript.question_review_export import export_question_reviews
             async with sessions() as db:
-                exported = await export_threads(str(REPLAY_ID), db=db)
+                exported = await export_threads(str(REPLAY_ID), db=db, include_question_reviews=True)
                 bundle = json.loads(exported.body)
-                bundle['question_reviews'] = await export_question_reviews(db,
-                    conversation_id=str(REPLAY_ID), owner_id=scope['owner_id'])
             target = output / 'local-candidate.threads'
             target.write_text(json.dumps(bundle, ensure_ascii=False), encoding='utf-8')
             print(json.dumps({'phase': 'candidate_exported', 'path': str(target), 'result': result,
