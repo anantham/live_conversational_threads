@@ -1,5 +1,29 @@
 # WORKLOG
 
+## 2026-09-08 — Frontend re-review submitted and wider suite rechecked
+
+- Submitted frontend base 265fc4ad9c6f0df2e4f15212bb45c3b6e8ed47d9 to
+  head 3f4eb6b to Antigravity Gemini 3.1 Pro High under REVIEW-EGRESS-A1.
+  Twelve tracked frontend source/test files, 44,205 bytes; SHA256
+  2a59aefd7557105116b30f38fa2cde1d19d502b022a26baeb061c16e92eff3d1.
+  Previous inspected packet plus inspected corrective diff; credential-pattern
+  scan clear. No transcripts, artifacts, credentials or unrelated files.
+  Empty temporary cwd, plan/sandbox, disabled slash commands, explicit no-tool
+  instruction. Session 50452 remains live on latest poll; verdict/tool activity
+  not yet verified. Harness now saves final stdout to
+  tmp/frontend-review-3f4eb6b.json to prevent losing a consumed tool result.
+- Full frontend suite: 359 passed, 24 failed out of 383. Existing documented
+  Node 26/jsdom storage and Blob mismatch recurred; those transport/test files
+  are unchanged from main. Repeated suite with worker-inherited
+  NODE_OPTIONS=--no-experimental-webstorage: 382/383 passed, only the existing
+  Drive Blob mismatch failed; receipt saved at
+  /private/tmp/threads-frontend-suite-20260908.json. Do not describe default
+  full-suite execution as passing. Existing ISSUES.md runtime mismatch entry
+  already tracks this class; product transport is unchanged.
+- Frontier source-inspection receipts advanced to 43; local now has 3 passage
+  checkpoints, 18 level-1 nodes, 8 identity and 7 question reviews. No higher
+  levels or accepted comparison artifacts yet. No duplicate replay launched.
+
 ## 2026-09-08 — Snapshot-scoped review validation across mobile navigation
 
 - Full MobileConversationDeck source falsifies the reviewer's simultaneous
