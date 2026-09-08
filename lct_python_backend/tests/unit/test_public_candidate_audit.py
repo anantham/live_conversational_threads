@@ -52,6 +52,12 @@ def test_cycles_and_dangling_edges_cannot_pass_structural_screen():
     assert any('Foreign edge evidence' in p for p in problems)
 
 
+def test_unlinked_node_is_not_accepted_as_traceable():
+    bundle, source = fixture()
+    bundle['graph_data'][0]['utterance_ids'] = []
+    assert any('Missing node source evidence' in p for p in audit(bundle, source)['structural_problems'])
+
+
 def test_valid_graph_references_do_not_establish_semantic_truth():
     bundle, source = fixture()
     bundle['graph_data'][0]['parent_id'] = '2'

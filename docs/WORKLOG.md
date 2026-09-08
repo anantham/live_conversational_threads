@@ -1,5 +1,20 @@
 # WORKLOG
 
+## 2026-09-08 — Aggregation preflight exposes unlinked frontier nodes
+
+- Both handles 18777/5577 polled live. Distinct source scan coverage at observation:
+  1,097/1,263 utterances, 1,097 spans. Forty-two inspection receipts comprise 36
+  partitions plus six whole pages; raw receipt count is not unique coverage.
+- Read-only upcoming L2 capture failed before token measurement: Every child
+  requires distinct source IDs. Direct database probe confirms 14 of 112 frontier
+  level-1 nodes have empty/null utterance_ids. No guess at root cause yet; trace
+  source mapping through passage commit and graph persistence next. Script:
+  /private/tmp/measure-frontier-proposal.py. This is an actual aggregation blocker,
+  not model semantic acceptance. Do not fill links from unrelated nearby text.
+- Candidate audit now explicitly rejects empty node evidence with a regression;
+  previously only foreign nonempty evidence was flagged. Source-link repair and
+  matched-policy full replays remain necessary before publication.
+
 ## 2026-09-08 — Audited identity quote regeneration
 
 - Local speakers-policy run passed the prior context boundary and saved two

@@ -31,6 +31,8 @@ def audit(bundle, source):
     covered = set()
     for node in nodes:
         evidence = set(node.get('utterance_ids') or [])
+        if not evidence:
+            problems.append(f'Missing node source evidence: {node.get("id")}')
         if evidence - source_ids:
             problems.append(f'Foreign utterance reference: {node.get("id")}')
         if node.get('semantic_level') == 1:
