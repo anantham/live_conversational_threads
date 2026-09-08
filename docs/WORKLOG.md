@@ -1,5 +1,22 @@
 # WORKLOG
 
+## 2026-09-08 — Source-witness comparison started
+
+- Both40514 and1842 freshly polled live with new inference receipts. Local
+  committed through637/1263source utterances,15moments; frontier has three
+  passages/78moments. These are progress denominators, not quality rankings.
+- Inspected exact public source304–348 and both committed question-event sets.
+  Local captures the university/education transition in summaries but lacks an
+  explicit question event for it; frontier opens indian-university-improvements.
+  Frontier also opens gpt-models-training while local only summarizes that
+  explanation. Local preserves the broad AI-safety opening and partial answers.
+  These are interim model-quality differences, not proof of final semantic
+  acceptance or a reason to hand-edit either output.
+- Added docs/PUBLIC_PODCAST_COMPARISON.md with matched-policy provenance,
+  remaining transport/counting confounds, source-witness rubric and the observed
+  limitations. Later reviewed projections, distant callbacks, all tiers and
+  actual viewer URLs remain unverified. No runtime policy changes or restarts.
+
 ## 2026-09-08 — Review transport limits and export acceptance refresh
 
 - Gemini context review91434 returned CLI timeout for conversation
