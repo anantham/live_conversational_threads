@@ -57,7 +57,7 @@ class InferenceEnvelope:
         if tokenizer_id != 'utf8_bytes_v1':
             identity['tokenizer_id'] = tokenizer_id
         if require_leaf_sources:
-            identity['leaf_source_contract'] = 'current_line_selection_v1'
+            identity['leaf_source_contract'] = 'current_line_selection_v2_display_reference'
         if count_messages is not None:
             identity['strict_request_contract'] = 1
         # Preserve old default-policy recovery, but never alias an explicit
@@ -120,6 +120,7 @@ class InferenceEnvelope:
             if not isinstance(source_lines, list) or not source_lines:
                 raise ValueError('Leaf selection contract requires current source lines')
             allowed = {line['id'] for line in source_lines}
+            source_text = {line['id']: line['text'] for line in source_lines}
         result = self.complete_json(prompt)
         nodes = _normalize_generated_output(result.data)
         if not nodes:
@@ -131,4 +132,9 @@ class InferenceEnvelope:
                         or any(not isinstance(identity, str) or identity not in allowed for identity in selection)
                         or len(selection) != len(set(selection))):
                     raise ValueError('Every interpreted leaf requires distinct known current source line IDs')
+                display = node.get('display_source_line_id')
+                if (not isinstance(display, str) or display not in selection
+                        or not isinstance(source_text[display], str)):
+                    raise ValueError('Every interpreted leaf requires a display source line from its support')
+                node['source_excerpt'] = source_text[display]
         return nodes, result.backend_label()

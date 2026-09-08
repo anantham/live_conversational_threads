@@ -1,5 +1,40 @@
 # WORKLOG
 
+## 2026-09-08 — Local output exhaustion and reference-only display evidence
+
+- Local replay 79063 terminated authoritatively with finish_reason=length,
+  completion_tokens=8192, prompt_tokens=21729 on its second passage (336 source
+  lines). First checkpoint through 301 remains intact. No truncated completion
+  accepted, source skipped, or same-request retry launched. Frontier 32717 is
+  still live; preserve its diagnostic results rather than cancelling blindly.
+- Completed local first response: seven nodes, 7343 completion tokens, 24802
+  JSON characters. Serialized source_excerpt fields alone total 15535 characters
+  (~63%), including one 4428-character quote. This establishes substantial output
+  duplication; it does not prove the unseen truncated response had the same mix.
+- A1 bounded contract correction: require display_source_line_id selected from
+  source_line_ids instead of generating quote text. Backend attaches the chosen
+  line verbatim; all noncontiguous supporting lines remain selected separately.
+  This preserves model choice of representative source and exact provenance,
+  not a backend guess, summary crop or evidence deletion. Normalization retains
+  the display selection; leaf contract fingerprint is now
+  current_line_selection_v2_display_reference. Registered and bootstrap prompts
+  match. Existing replay policies are not rewritten or resumed under new rules.
+- Regression intent: known supporting display ID attaches exact text even when
+  a model supplies an invented quote; missing or unrelated display selections
+  reject. Combined units/PostgreSQL: 2477 passed, 6 skipped, 496 warnings in
+  15.32s. Both synthetic DB provider fixtures select their real sole line.
+  git diff --check passed. Output-pressure hypothesis confidence 0.85 pending
+  real probe; fallback is further source/output budgeting investigation, never
+  accepting partial JSON or changing models without a matched comparison.
+- One local-only diagnostic is running, session 22441, using the exact failed
+  user prompt and new system/selection contract, same qwen3.8:27b-mlx, temperature
+  zero, 8192 output reserve and native counter. Input is 21756 reference tokens.
+  Receipts: tmp/public-pipeline/display-reference-probe-1788863562209700000.
+  Script /private/tmp/probe-leaf-display-reference.py; no replay DB writes,
+  external disclosure or publication. Not a fair-arm artifact: its historical
+  context comes from the old run. Require probe outcome and matched new identities
+  before calling this a successful replacement pair.
+
 ## 2026-09-08 — Combined acceptance fixture contamination resolved
 
 - A0 hypothesis: cached consumer retained fake dependencies after unit teardown,

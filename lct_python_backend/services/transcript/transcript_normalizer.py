@@ -385,6 +385,7 @@ def _normalize_generated_output(parsed: Any) -> List[Dict[str, Any]]:
                 # Preserve raw selections, including malformed values, so the
                 # source binder rejects them rather than silently repairing.
                 **({"source_line_ids": raw["source_line_ids"]} if "source_line_ids" in raw else {}),
+                **({"display_source_line_id": raw["display_source_line_id"]} if "display_source_line_id" in raw else {}),
                 "semantic_level": semantic_level,
                 "semantic_type": semantic_type,
                 "level": semantic_level,

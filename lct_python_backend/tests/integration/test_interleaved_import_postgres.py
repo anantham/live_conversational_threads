@@ -92,6 +92,7 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
             return Result({"nodes": [{"node_name": "Borrowing remains undecided", "summary": text,
                 "semantic_level": 1, "source_excerpt": text, "thread_id": "borrowing",
                 "source_line_ids": ["line-0"],
+                "display_source_line_id": "line-0",
                 "thread_label": "Shared key borrowing", "thread_state": "new_thread",
                 "question_updates": [{"question_id": "borrowing", "action": "open",
                     "wording": "Who may borrow?", "rationale": "Explicitly undecided",

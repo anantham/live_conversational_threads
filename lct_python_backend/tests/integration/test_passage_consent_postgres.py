@@ -49,6 +49,7 @@ async def test_revocation_preserves_source_without_publishing_graph(monkeypatch,
         return SimpleNamespace(data={'nodes': [{'node_name': 'Borrowing question', 'summary': text,
             'semantic_level': 1, 'source_excerpt': text, 'thread_id': 'borrowing',
             'source_line_ids': ['line-0'],
+            'display_source_line_id': 'line-0',
             'thread_label': 'Borrowing', 'thread_state': 'new_thread'}]},
             backend_label=lambda: 'synthetic')
 

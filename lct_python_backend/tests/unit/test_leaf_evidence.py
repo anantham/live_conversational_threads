@@ -52,8 +52,10 @@ def test_legacy_quote_only_localization_is_unchanged():
     assert nodes[0]['utterance_ids'] == ['u1']
 
 
+@pytest.mark.parametrize('display', ['line-0', 'line-1', None])
 @pytest.mark.parametrize('selection', [None, [], ['line-9'], ['line-0', 'line-0'], ['line-0']])
-def test_versioned_envelope_requires_current_selections(monkeypatch, selection):
+def test_versioned_envelope_requires_current_selections(monkeypatch, selection, display):
+    """Display is a source selection, never model-reconstructed quotation."""
     from lct_python_backend.services.transcript.inference_envelope import InferenceEnvelope
     config = dict(system_prompt='Select support', providers=[{'id': 'local', 'model': 'test',
         'base_url': 'http://127.0.0.1:11434', 'trust_scope': 'owner_private',
@@ -62,13 +64,17 @@ def test_versioned_envelope_requires_current_selections(monkeypatch, selection):
     envelope = InferenceEnvelope(**config, require_leaf_sources=True)
     assert envelope.fingerprint != InferenceEnvelope(**config).fingerprint
     class Result:
-        data = {'nodes': [{'node_name': 'Opening', 'source_line_ids': selection}]}
+        data = {'nodes': [{'node_name': 'Opening', 'source_line_ids': selection,
+                           'display_source_line_id': display, 'source_excerpt': 'Invented quotation'}]}
         def backend_label(self):
             return 'synthetic'
     monkeypatch.setattr(envelope, 'complete_json', lambda prompt: Result())
-    prompt = json.dumps({'current_source_lines': [{'id': 'line-0', 'text': 'Opening'}]})
-    if selection == ['line-0']:
-        assert envelope.generate(prompt)[0][0]['source_line_ids'] == selection
+    prompt = json.dumps({'current_source_lines': [{'id': 'line-0', 'text': 'Opening'},
+                                                  {'id': 'line-1', 'text': 'Unrelated'}]})
+    if selection == ['line-0'] and display == 'line-0':
+        node = envelope.generate(prompt)[0][0]
+        assert node['source_line_ids'] == selection
+        assert node['source_excerpt'] == 'Opening'
     else:
         with pytest.raises(ValueError, match='Every interpreted leaf'):
             envelope.generate(prompt)
