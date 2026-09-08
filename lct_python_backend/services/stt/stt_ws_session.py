@@ -2560,9 +2560,12 @@ class WsSessionContext:
                     await self._run_edge_enrichment_locked()
             if self._interleaved_runtime is not None:
                 from .interleaved_live import finalize_live_passages
+                async def send_final_graph(graph, chunks):
+                    await _send_processor_update_helper(self.websocket, graph, chunks, logger)
                 await finalize_live_passages(config=self._interleaved_runtime,
                     processor=self.processor, conversation_id=str(self.state.conversation_id),
-                    owner_id=resolve_owner_id(), providers=self._runtime_llm_providers)
+                    owner_id=resolve_owner_id(), providers=self._runtime_llm_providers,
+                    send_update=send_final_graph)
             else:
                 await self._ensure_graph_persisted(reason="final_flush")
             # Live-linkage fix: nodes + utterances are now both persisted but

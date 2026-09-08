@@ -1,5 +1,36 @@
 # WORKLOG
 
+## 2026-09-08 — Canonical live notification and correction probe checkpoint
+
+- A1 continuation: live finalization now reads the authorized committed graph
+  after shared final stages and delivers it through the existing WebSocket
+  graph/chunk messages. It does not notify from the leaf-only processor cache.
+  PostgreSQL import/live parity verifies all five tiers and no extra model
+  calls; session dispatch regression verifies the emitted messages and excludes
+  legacy replacement/consolidation paths. This is not browser/network acceptance.
+- Recovered combined report `/private/tmp/threads-combined-live-notify.xml`:
+  2481 passed, one aggregation export equality failure, six skipped. The
+  unit-plus-roundtrip diagnostic then passed 2446 with six skipped. Full rerun
+  `/private/tmp/threads-full-order-diagnostic.xml` passed 2482 with six skipped
+  in 13.781s. No oracle/product change was made to obtain that result. The
+  intermittent mismatch remains unresolved; unordered query results are only
+  a hypothesis, not a verified cause. Preserve the failing report.
+- Local question-opening probe 76348 completed successfully, six moments and
+  four tracked questions. Exact output remains in ignored public-pipeline
+  question-opening-probe-1788865827148754000. Inspection confirms the four
+  generated opening quotes occur in the supplied source, followed by answer
+  updates. This proves bounded corrective feedback can produce valid state,
+  not full semantic acceptance: the education deferral moment has no question
+  update, and answer evidence remains verbose (one quote 5288 characters).
+  No diagnostic output was committed into the replay database or published.
+  Durable budgeted, consent-checked recovery remains to implement and test.
+- Frontier process 64185 was confirmed live with fresh inference receipts.
+  Isolated database has four passage checkpoints, 110 leaf nodes, 12 reviewed
+  thread identity artifacts, 12 reviewed question artifacts and 22 source
+  inspections. No higher-tier nodes yet. Local full replay remains terminal;
+  neither final comparison URL is ready. Independent review and rollout gates
+  remain open; no merge or deployment in this checkpoint.
+
 ## 2026-09-08 — Live finalization persistence boundary corrected
 
 - Gemini boundary review completed in296.34s, verdict findings, conversation

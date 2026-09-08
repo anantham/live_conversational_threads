@@ -25,7 +25,7 @@ async def prepare_live_passages(*, config, conversation, owner_id, providers,
     return processor, pump
 
 
-async def finalize_live_passages(*, config, processor, conversation_id, owner_id, providers):
+async def finalize_live_passages(*, config, processor, conversation_id, owner_id, providers, send_update=None):
     """Use stored consent and shared reviewed final stages, never legacy replacement."""
     from lct_python_backend.services.transcript.passage_journal import _authorized_conversation
     from lct_python_backend.services.import_pipeline.interleaved_stages import run_interleaved_final_stages
@@ -33,6 +33,20 @@ async def finalize_live_passages(*, config, processor, conversation_id, owner_id
         conversation = await _authorized_conversation(db, conversation_id, owner_id, lock=False)
         metadata = conversation.source_metadata if isinstance(conversation.source_metadata, dict) else {}
         privacy = metadata.get('privacy')
-    return await run_interleaved_final_stages(runtime=config, conversation_id=conversation_id,
+    result = await run_interleaved_final_stages(runtime=config, conversation_id=conversation_id,
         owner_id=owner_id, providers=providers, privacy=privacy,
         moments=list(processor.existing_json), chunks=dict(processor.chunk_dict))
+    if send_update is not None:
+        import uuid
+        from lct_python_backend.services.conversation_reader import (
+            fetch_conversation_bundle, build_graph_data_from_nodes, build_chunk_dict_from_utterances)
+        async with config.session_factory() as db:
+            await _authorized_conversation(db, conversation_id, owner_id, lock=False)
+            _, nodes, edges, utterances = await fetch_conversation_bundle(db, uuid.UUID(conversation_id))
+            graph = build_graph_data_from_nodes(nodes, edges, utterances, include_edges_out=True)
+            chunk_ids = [identity for node in nodes for identity in (node.chunk_ids or [])]
+            chunks = build_chunk_dict_from_utterances(utterances, node_chunk_ids=chunk_ids)
+        # Canonical committed snapshot, not the leaf-only processor cache. A
+        # disconnected viewer can reload it without re-running any inference.
+        await send_update(graph, chunks)
+    return result

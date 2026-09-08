@@ -173,9 +173,14 @@ async def test_persisted_turn_to_all_tiers_export_and_restart(monkeypatch, revis
         live_processor = config.build(conversation_id=str(cid), owner_id=owner,
             providers=[local], privacy={'local_llm_ok': True, 'external_llm_ok': False}, send_update=None)
         await live_processor._passage_commit.recover()
+        delivered = []
+        async def receive_final_graph(graph, chunks):
+            delivered.append((graph, chunks))
         live_result = await finalize_live_passages(config=config, processor=live_processor,
-            conversation_id=str(cid), owner_id=owner, providers=[local])
+            conversation_id=str(cid), owner_id=owner, providers=[local], send_update=receive_final_graph)
         assert live_result['node_count'] == 5
+        assert len(delivered) == 1
+        assert sorted(n['semantic_level'] for n in delivered[0][0]) == [1, 2, 3, 4, 5]
         assert calls == expected_calls
         from lct_python_backend.share_api import export_threads
         async with sessions() as db:
