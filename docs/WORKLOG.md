@@ -1,5 +1,19 @@
 # WORKLOG
 
+## 2026-09-08 — Fresh-schema pipeline integration acceptance
+
+- Ran identity review, membership revision guard, bootstrap and share-access
+  PostgreSQL checks on the new local replay database: 12 passed. Confirmed
+  conversations/utterances/nodes/pipeline_artifacts each zero after cleanup.
+- Remaining import/question/aggregation checks initially had 5 failures and 9
+  passes. All five failed at the new export owner guard: older synthetic fixtures
+  created random owners but did not configure LCT_OWNER_ID for authorized export.
+  Bound each fixture's owner via monkeypatch.setenv, restored automatically; no
+  product guard, expected graph, recovery or privacy assertions changed.
+- Reran these paths alongside share wrong-owner/deleted tests: 21 passed. This
+  verifies deterministic synthetic providers and DB persistence, not real-model
+  semantic quality. No public source import, dependency activation or deployment.
+
 ## 2026-09-08 — Isolated comparison databases prepared
 
 - Read-only readiness: Ollama /api/version is 0.33.3; qwen3.8:27b-mlx is listed

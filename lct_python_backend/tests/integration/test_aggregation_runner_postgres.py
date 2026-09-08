@@ -24,7 +24,7 @@ from lct_python_backend.services.transcript.aggregation_runner import Aggregatio
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('revoke_during_generation', [False, True])
-async def test_all_tiers_restart_and_export_without_duplicate_generation(revoke_during_generation):
+async def test_all_tiers_restart_and_export_without_duplicate_generation(revoke_during_generation, monkeypatch):
     url = os.getenv("PASSAGE_JOURNAL_TEST_DATABASE_URL")
     if not url:
         pytest.skip("Explicit isolated local database URL required")
@@ -34,6 +34,8 @@ async def test_all_tiers_restart_and_export_without_duplicate_generation(revoke_
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     cid, uid = uuid.uuid4(), uuid.uuid4()
     owner = f"synthetic-aggregation-runner-{cid}"
+    # Export now enforces the configured owner, including direct function calls.
+    monkeypatch.setenv('LCT_OWNER_ID', owner)
     text = "We still need to decide who may borrow the shared key."
     calls = []
     loop = asyncio.get_running_loop()

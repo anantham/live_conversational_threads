@@ -18,7 +18,7 @@ from lct_python_backend.share_api import export_threads
 
 
 @pytest.mark.asyncio
-async def test_conflicting_contribution_survives_real_commit_restart_and_export():
+async def test_conflicting_contribution_survives_real_commit_restart_and_export(monkeypatch):
     url = os.getenv('PASSAGE_JOURNAL_TEST_DATABASE_URL')
     if not url:
         pytest.skip('Explicit isolated database required')
@@ -28,6 +28,8 @@ async def test_conflicting_contribution_survives_real_commit_restart_and_export(
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     cid = uuid.uuid4()
     owner = f'synthetic-question-conflict-{cid}'
+    # Exercise authorized export, not the separately tested foreign-owner case.
+    monkeypatch.setenv('LCT_OWNER_ID', owner)
     texts = ['Who pays hosting and staffing?', 'A different project was funded.',
              'Hosting is covered, but staffing is undecided.']
     actions = ['open', 'answer', 'partial_answer']

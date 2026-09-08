@@ -23,7 +23,7 @@ from lct_python_backend.services.transcript.passage_journal import JournalConfli
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("changed_field", ["summary", "speaker"])
-async def test_aggregation_append_export_roundtrip_preserves_evidence(changed_field):
+async def test_aggregation_append_export_roundtrip_preserves_evidence(changed_field, monkeypatch):
     url = os.getenv("PASSAGE_JOURNAL_TEST_DATABASE_URL")
     if not url:
         pytest.skip("Explicit isolated local database URL required")
@@ -33,6 +33,8 @@ async def test_aggregation_append_export_roundtrip_preserves_evidence(changed_fi
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     cid, uid1, uid2 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     owner = f"synthetic-aggregation-{cid}"
+    # Keep the real ownership guard enabled; bind this test's synthetic owner.
+    monkeypatch.setenv('LCT_OWNER_ID', owner)
     sources = {str(uid1): {"id": str(uid1), "sequence_number": 1, "text": "The key is shared."},
                str(uid2): {"id": str(uid2), "sequence_number": 2, "text": "Sam keeps the key."}}
     leaves = [{"id": str(uuid.uuid4()), "semantic_level": 1, "node_name": "Sharing",
