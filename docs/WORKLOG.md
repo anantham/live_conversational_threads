@@ -1,5 +1,15 @@
 # WORKLOG
 
+## 2026-09-08 — Word timing explicitly deferred to productionization
+
+User requested recording word timestamps as a future pipeline feature rather
+than extending the demo work now. Added a non-blocking issue in ISSUES.md with
+audio-alignment, artifact preservation, viewer fallback, and acceptance scope.
+This supersedes the earlier description of word highlighting as unfinished
+demo work: it is now an explicitly deferred production feature. No alignment
+job, dependency installation, artifact replacement, or deployment performed.
+
+
 ## 2026-09-08 — Arc size and two-way YouTube highlighting
 
 - A1: user explicitly requested summed source duration and denominator-aware
