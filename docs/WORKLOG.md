@@ -1,5 +1,24 @@
 # WORKLOG
 
+## 2026-09-08 — Operator pivot: park pipeline work, demonstrate one public artifact
+
+- Operator explicitly replaced the production/local-comparison priority with
+  one high-quality public6HmR9IaqM88 demonstration in LCT: interleaved threads,
+  callbacks, abstraction levels, speakers, video timestamps and a no-sign-in URL.
+  Production wiring, local parity and optimization are deferred, not complete.
+- Interruption recovery verified clean worktree and remote branch688bfa8.
+  No merge or deployment performed. Preserve this branch for later work.
+- Local handle28949 already exited1: canonical mapping required two explicit
+  node selections/abstentions. No repair/restart under the deferred objective.
+  Frontier handle21360 remained live. Verified PID61206/create_time1788876927.238342
+  and exact alias-DB command; sent SIGINT and terminated only its current
+  inference descendants67229/67230. Replay then exited130. Saved artifacts and
+  database checkpoints retained; no source/data cleanup.
+- Host review31881 completed, issues_found, receipt
+  tmp/host-runtime-agy-review-707361c.json. Findings are retained for later
+  triage, not approval. No new review requested. Resume artifact-focused work
+  without requiring this unfinished production branch to merge first.
+
 ## 2026-09-08 — Independent host bootstrap review started
 
 - REVIEW-EGRESS-A1: sent exact707361c source/synthetic-test packet to existing
