@@ -98,7 +98,8 @@ test("phone offers source passages beside its readable deck without page overflo
   const transcript = source.getByLabel("Source passages");
   await expect(source).toContainText("Opening passage");
   await expect(source).toContainText("Later passage");
-  await source.getByRole("slider", { name: "Transcript height" }).fill("48");
+  await source.getByRole("slider", { name: "Transcript height" }).focus();
+  await page.keyboard.press("Home");
   expect(await transcript.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
   await transcript.evaluate(el => { el.scrollTop = el.scrollHeight; });
   expect(await transcript.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
