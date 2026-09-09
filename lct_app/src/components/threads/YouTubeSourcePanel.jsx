@@ -32,7 +32,7 @@ function loadPlayerApi() {
   return apiPromise;
 }
 
-export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, seekRequest }) {
+export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, seekRequest, onSeekHandled }) {
   const media = selectYouTubeRef(bundle);
   const videoId = media?.video_id;
   const videoLabel = media?.label || "Conversation recording";
@@ -56,6 +56,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const [transcriptHeight, setTranscriptHeight] = useState(compact ? 80 : 256);
   const passages = useMemo(() => (bundle.utterances || []).filter(u=>validMediaSeconds(u.timestamp_start)).sort((a,b)=>a.timestamp_start-b.timestamp_start), [bundle.utterances]);
   const selectedPassages = useMemo(() => nodeVideoPassages(node, nodes, bundle.utterances || []), [node, nodes, bundle.utterances]);
+  const selectedPassageIds = useMemo(() => new Set(selectedPassages.map(u => u.id)), [selectedPassages]);
   const first = node ? selectedPassages[0]?.timestamp_start : passages[0]?.timestamp_start;
   const playbackRows = useMemo(() => {
     const rows=(bundle.utterances || []).filter(u=>validMediaSeconds(u.timestamp_start))
@@ -111,6 +112,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
 
   useEffect(() => {
     if (!seekRequest || !validMediaSeconds(seekRequest.seconds)) return;
+    if (seekRequest.videoId && seekRequest.videoId !== videoId) { onSeekHandled?.(); return; }
     const seconds = seekRequest.seconds;
     setCollapsed(false);
     if (videoDetails.current) videoDetails.current.open = true;
@@ -120,7 +122,8 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
     setFollowEpoch(value => value + 1);
     setActive(seconds);
     positionPlayer(player.current, videoId, seconds);
-  }, [seekRequest, videoId]);
+    onSeekHandled?.();
+  }, [seekRequest, videoId, onSeekHandled]);
 
   useEffect(() => {
     if (!videoId) return undefined;
@@ -175,11 +178,11 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const href = `${media.view_url}${active == null ? "" : `&t=${Math.floor(active)}s`}`;
 
   return (
-    <aside aria-label="YouTube source" style={compact ? undefined : {width: collapsed ? 40 : panelWidth, maxWidth: "60vw"}} className={`lct-source-panel relative shrink-0 border-slate-200 bg-white p-2 ${compact ? "max-h-[60dvh] overflow-y-auto border-b" : "overflow-y-auto border-r pr-3"}`}>
-      <button type="button" aria-label={collapsed ? "Show source panel" : "Hide source panel"} aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)} className="mb-1 text-xs text-slate-500">
+    <aside aria-label="YouTube source" style={compact ? undefined : {width: collapsed ? 40 : panelWidth, maxWidth: "60vw"}} className={`lct-source-panel relative flex flex-col shrink-0 overflow-hidden border-slate-200 bg-white p-2 ${compact ? "max-h-[60dvh] border-b" : "border-r pr-3"}`}>
+      <button type="button" aria-label={collapsed ? "Show source panel" : "Hide source panel"} aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)} className="mb-1 shrink-0 text-left text-xs text-slate-500">
         {collapsed ? (compact ? "Show source" : "›") : "Hide source"}
       </button>
-      <div className={collapsed ? "hidden" : ""}>
+      <div className={collapsed ? "hidden" : "min-h-0 overflow-y-auto"}>
       <details ref={videoDetails} open className="text-xs text-slate-600">
         <summary className="cursor-pointer py-1">Video</summary>
       <div ref={host} className="min-h-[200px] w-full bg-stone-100" style={{ height: compact ? 200 : 210 }} />
@@ -193,7 +196,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
       {!passages.length && <p className="mt-2 text-xs text-slate-500">No timestamped transcript is available.</p>}
       {passages.length > 0 && (
         <div ref={passageList} aria-label="Source passages" tabIndex={0} onWheel={()=>{followPlayback.current=false;}} onTouchMove={()=>{followPlayback.current=false;}} onKeyDown={e=>{if(["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"].includes(e.key))followPlayback.current=false;}} className="mt-1 space-y-1 overflow-y-auto" style={{maxHeight: transcriptHeight}}>
-          {passages.map((u) => <button key={u.id} type="button" aria-current={playbackPassage?.id === u.id ? "true" : undefined} onClick={() => seek(u.timestamp_start)} className={`block w-full rounded px-2 py-2 text-left text-xs leading-5 ${playbackPassage?.id === u.id ? "bg-amber-50" : "hover:bg-stone-50"}`}>
+          {passages.map((u) => <button key={u.id} type="button" data-node-source={selectedPassageIds.has(u.id) ? "true" : undefined} aria-current={playbackPassage?.id === u.id ? "true" : undefined} onClick={() => seek(u.timestamp_start)} className={`block w-full rounded border-l-2 px-2 py-2 text-left text-xs leading-5 ${selectedPassageIds.has(u.id) ? "border-amber-400" : "border-transparent"} ${playbackPassage?.id === u.id ? "bg-amber-50" : "hover:bg-stone-50"}`}>
             <span className="text-amber-700">{mediaOffsetLabel(u.timestamp_start)}</span>{" · "}
             <span className="font-medium">{u.speaker_name || u.speaker_id || "Unknown"}</span>{" "}{u.text}
           </button>)}
@@ -226,4 +229,4 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   );
 }
 
-YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, seekRequest: PropTypes.object };
+YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, seekRequest: PropTypes.object, onSeekHandled: PropTypes.func };

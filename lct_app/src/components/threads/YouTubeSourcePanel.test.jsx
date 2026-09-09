@@ -146,3 +146,12 @@ it("reopens the source and seeks in place from an evidence request", async () =>
  expect(playerState).toBe(5);
  expect(highlight()).toContain("Another topic");
 });
+
+it("consumes inline requests and marks the selected node's passages",async()=>{
+ const handled=vi.fn();
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]} seekRequest={{seconds:20,videoId:'6HmR9IaqM88'}} onSeekHandled={handled}/>));
+ act(()=>options.events.onReady());
+ expect(handled).toHaveBeenCalledOnce();
+ expect(time).toBe(20);
+ expect(container.querySelectorAll('[data-node-source="true"]')).toHaveLength(2);
+});

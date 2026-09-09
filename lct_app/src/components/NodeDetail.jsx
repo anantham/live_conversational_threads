@@ -806,8 +806,8 @@ export default function NodeDetail({
                       }
                       className={`py-0.5 ${u._hl ? "bg-amber-100 rounded px-0.5" : ""}`}
                     >
-                      {(elapsedClock || wallClock) && (seekUrl && onSeekMedia ? (
-                        <button type="button" onClick={() => onSeekMedia(u.timestamp_start)} className="mr-1 text-[10px] tabular-nums text-blue-600" title="Seek the inline recording">
+                      {(elapsedClock || wallClock) && (elapsedClock && seekUrl && onSeekMedia && mediaRef?.provider === "youtube" ? (
+                        <button type="button" onClick={() => onSeekMedia(u.timestamp_start)} className="mr-1 text-[10px] tabular-nums text-amber-700" title="Seek the inline recording">
                           {elapsedClock}
                         </button>
                       ) : seekUrl ? (
