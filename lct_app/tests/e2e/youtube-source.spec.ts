@@ -74,6 +74,7 @@ test("desktop node selection seeks queued and ready playback; reviewed artifact 
   const oldHeight = Number(await timelineHandle.getAttribute("aria-valuenow"));
   await timelineHandle.press("ArrowUp");
   await expect(timelineHandle).toHaveAttribute("aria-valuenow", String(oldHeight + 24));
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Show all", exact: true }).click();
   await page.getByRole("button", { name: "Later discussion — SPEAKER_01", exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks)).toContain(4900);
