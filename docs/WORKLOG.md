@@ -1,5 +1,16 @@
 # WORKLOG
 
+## 2026-09-09 — Source reading and panel controls (PR 195)
+
+User requested ready-on-open video and a full scrollable transcript, removed
+explanatory filler, then requested desktop source-width/timeline-height resizing,
+whole source collapse, and evidence timestamps seeking the inline player.
+Implemented state-aware cuing (no autoplay), manual-scroll follow suspension,
+pointer/keyboard resize handles, source collapse retaining the player, and inline
+evidence seek requests that reopen the source. Mobile disclosure labels are
+vertically centred in their touch targets. Added source E2E coverage to CI.
+Focused tests/build pass; exact-head review and CI gate deployment separately.
+
 ## 2026-09-08 — PR 194 review corrections
 
 User authorized fixing findings, re-reviewing and merging/deploying. Corrected
@@ -6061,3 +6072,6 @@ Operator clarification: obvious in-scope bug corrections are green/A1 and do not
 User approved fixing all findings. Playback boundaries now precompute once per transcript in O(n log n), with allocation-free O(n) clock lookup; no inferred ends enter duration metrics. Map auto-framing yields only to an unconsumed focus request, and records the focused node set to avoid immediately undoing the jump. Mobile ribbon explicitly uses compact mode. Unprovided card settings retain legacy metrics; the public viewer provider still defaults to duration only. Reading paths use the closest on-path ancestor, while truly off-path selections retain the honest notice. Hoisted ribbon invariant scan; untimed layouts omit the time connector; timing completeness distinguishes missing links; membership buttons cannot submit forms.
 
 Test intent: preserve silence/overlap/start-only highlights, quiet viewer versus legacy metric scope, skipped-level hierarchy and untyped-node baseline, and partial timing semantics. Missing-level hierarchy review claim is not a regression: baseline already filters nodes without valid levels before building links. No invented hierarchy added. Existing large graph/viewer decomposition remains deferred in TECH_DEBT; this is a bounded corrective pass, not a redesign.
+# 2026-09-09 — Ready-to-play source and scrollable transcript
+
+User observed an empty desktop transcript until node selection, with only the current playback row shown outside it. Confirmed cause: passages were derived solely from optional selected node. Full timed transcript now renders on initial open and stays scrollable across node selections; selecting a node still seeks its first source passage. YouTube loads paused without a preparatory click (user requested ready player), never autoplay. Removed explanatory paragraph and outside-selection label/card. Wheel, touch and keyboard browsing pause automatic transcript following until a passage/node is selected. Overview remains unchanged/open. Tests cover initial no-node state, no autoplay, full list, manual scrolling and existing bidirectional playback.

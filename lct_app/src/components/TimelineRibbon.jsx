@@ -1,5 +1,6 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import PropTypes from "prop-types";
+import PanelResizeHandle from "./PanelResizeHandle";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { buildSpeakerColorMap } from "./graphConstants";
 import {
@@ -47,6 +48,7 @@ export default function TimelineRibbon({
   );
   const [labelGutterWidth, setLabelGutterWidth] = useState(DEFAULT_LABEL_GUTTER_W);
   const [hoveredThread, setHoveredThread] = useState(null);
+  const [panelHeight, setPanelHeight] = useState(null);
   const labelResizeRef = useRef(null);
 
   useEffect(() => {
@@ -178,9 +180,10 @@ export default function TimelineRibbon({
 
   return (
     <section
-      className="t-acc w-full border-t border-gray-200 bg-white/90 backdrop-blur-sm"
+      className="t-acc w-full shrink-0 border-t border-gray-200 bg-white/90 backdrop-blur-sm"
       data-open={String(!isCollapsed)}
     >
+      {!compact && !isCollapsed && <PanelResizeHandle label="Thread timeline height" vertical value={panelHeight ?? maxHeight} min={48} max={Math.max(48, Math.round(window.innerHeight * 0.55))} onChange={setPanelHeight} />}
       <div className="flex min-h-11 min-w-0 items-center gap-2 border-b border-gray-100 px-2 text-[10px] text-gray-500 sm:min-h-8">
         <button
           type="button"
@@ -220,7 +223,7 @@ export default function TimelineRibbon({
       <div className="t-acc-panel-inner">
       <div
         className="flex w-full overflow-y-auto"
-        style={{ maxHeight: `${maxHeight}px` }}
+        style={{ height: !compact && panelHeight != null ? panelHeight : undefined, maxHeight: !compact && panelHeight != null ? "55dvh" : `${maxHeight}px` }}
       >
       {/* Thread-label gutter (not horizontally scrolled). Click a label to
           highlight that thread; click again or press Escape to clear. When a

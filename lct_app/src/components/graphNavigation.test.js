@@ -73,8 +73,14 @@ describe("two-axis graph keyboard navigation", () => {
   it("does not steal arrow keys from form and action controls", () => {
     const input = document.createElement("input");
     const card = document.createElement("div");
+    const separator = document.createElement("div");
+    separator.setAttribute("role", "separator");
+    const transcript = document.createElement("div");
+    transcript.setAttribute("aria-label", "Source passages");
     expect(isGraphNavigationKey({ key: "ArrowLeft", target: card })).toBe(true);
     expect(isGraphNavigationKey({ key: "ArrowLeft", target: input })).toBe(false);
+    expect(isGraphNavigationKey({ key: "ArrowLeft", target: separator })).toBe(false);
+    expect(isGraphNavigationKey({ key: "ArrowDown", target: transcript })).toBe(false);
     expect(isGraphNavigationKey({ key: "ArrowLeft", target: card, metaKey: true })).toBe(false);
   });
 });

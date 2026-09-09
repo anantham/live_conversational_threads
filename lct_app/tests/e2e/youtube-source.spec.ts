@@ -23,12 +23,17 @@ async function open(page, mockPlayer = true) {
     window.__youtubeSeeks = [];
     window.YT = { Player: class {
       iframe: HTMLIFrameElement;
+      time = 0;
+      state = -1;
       constructor(host, options) {
         this.iframe = document.createElement("iframe");
         host.replaceWith(this.iframe);
         setTimeout(() => options.events.onReady(), 20);
       }
-      seekTo(seconds) { window.__youtubeSeeks.push(seconds); }
+      cueVideoById({ startSeconds }) { this.time = startSeconds; this.state = 5; window.__youtubeSeeks.push(startSeconds); }
+      seekTo(seconds) { this.time = seconds; if (this.state !== 2) this.state = 1; window.__youtubeSeeks.push(seconds); }
+      getCurrentTime() { return this.time; }
+      getPlayerState() { return this.state; }
       getIframe() { return this.iframe; }
       destroy() { this.iframe.remove(); }
     } };
@@ -49,10 +54,27 @@ test("desktop node selection seeks queued and ready playback; reviewed artifact 
   const source = page.getByRole("complementary", { name: "YouTube source" });
   await page.locator(".react-flow__node").filter({ hasText: "Opening discussion" }).click();
   await expect(source).toContainText("Opening passage");
-  await source.getByRole("button", { name: "Watch the source conversation" }).click();
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks)).toContain(1.25);
-  // Source link remains useful with no embed/API available.
-  await expect(source.getByRole("link")).toHaveAttribute("href", /t=1s$/);
+  await expect(source.getByRole("link")).toHaveCount(0);
+  const widthHandle = source.getByRole("separator", { name: "Source panel width" });
+  const oldWidth = (await source.boundingBox()).width;
+  const grip = await widthHandle.boundingBox();
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + grip.width / 2 + 48, grip.y + 20);
+  await page.mouse.up();
+  await expect.poll(async () => (await source.boundingBox()).width).toBeGreaterThan(oldWidth);
+  await page.getByRole("button", { name: "Open exact source utterances", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await source.getByRole("button", { name: "Hide source panel", exact: true }).click();
+  await expect(source.getByLabel("Source passages")).not.toBeVisible();
+  await page.getByRole("button", { name: "0:01", exact: true }).click();
+  await expect(source.getByLabel("Source passages")).toBeVisible();
+  const timelineHandle = page.getByRole("separator", { name: "Thread timeline height" });
+  const oldHeight = Number(await timelineHandle.getAttribute("aria-valuenow"));
+  await timelineHandle.press("ArrowUp");
+  await expect(timelineHandle).toHaveAttribute("aria-valuenow", String(oldHeight + 24));
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Show all", exact: true }).click();
   await page.getByRole("button", { name: "Later discussion — SPEAKER_01", exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks)).toContain(4900);
@@ -77,8 +99,15 @@ test("phone offers source passages beside its readable deck without page overflo
   await open(page);
   await expect(page.getByTestId("mobile-deck-card")).toBeVisible();
   const source = page.getByRole("complementary", { name: "YouTube source" });
-  await source.getByRole("button", { name: "Watch the source conversation" }).click();
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks.length)).toBeGreaterThan(0);
+  const transcript = source.getByLabel("Source passages");
+  await expect(source).toContainText("Opening passage");
+  await expect(source).toContainText("Later passage");
+  await source.getByRole("slider", { name: "Transcript height" }).focus();
+  await page.keyboard.press("Home");
+  expect(await transcript.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
+  await transcript.evaluate(el => { el.scrollTop = el.scrollHeight; });
+  expect(await transcript.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(390);
   const card = await page.getByTestId("mobile-deck-card").boundingBox();
   expect(card?.height).toBeGreaterThan(180);
@@ -96,7 +125,6 @@ test("blocked YouTube API preserves source text and a usable timestamped link", 
   await open(page, false);
   await page.locator(".react-flow__node").filter({ hasText: "Opening discussion" }).click();
   const source = page.getByRole("complementary", { name: "YouTube source" });
-  await source.getByRole("button", { name: "Watch the source conversation" }).click();
   await expect(source.getByRole("alert")).toContainText("YouTube could not load here");
   await expect(source).toContainText("Opening passage");
   await expect(source.getByRole("link")).toHaveAttribute("href", `${fixture.media_refs[0].view_url}&t=1s`);
@@ -125,19 +153,24 @@ for (const width of [390, 1440]) {
 test("live YouTube iframe reports the requested playhead time", async ({ page }) => {
   test.skip(process.env.YOUTUBE_LIVE_SMOKE !== "1", "Opt-in public network/video test, not a fixture-only check.");
   await page.setViewportSize({ width: 1440, height: 900 });
-  await open(page, false);
-  await page.addScriptTag({ url: "https://www.youtube.com/iframe_api" });
-  await page.waitForFunction(() => Boolean(window.YT?.Player));
-  await page.evaluate(() => {
-    const Original = window.YT.Player;
-    window.YT.Player = function (host, options) {
-      const player = new Original(host, options);
-      window.__actualYouTube = player;
-      return player;
-    };
+  await page.addInitScript(() => {
+    let ready;
+    Object.defineProperty(window, "onYouTubeIframeAPIReady", {
+      configurable: true,
+      get: () => ready,
+      set: callback => { ready = () => {
+        const Original = window.YT.Player;
+        window.YT.Player = function(host, options) {
+          const player = new Original(host, options);
+          window.__actualYouTube = player;
+          return player;
+        };
+        callback();
+      }; },
+    });
   });
+  await open(page, false);
   await page.locator(".react-flow__node").filter({ hasText: "Opening discussion" }).click();
-  await page.getByRole("button", { name: "Watch the source conversation" }).click();
   await expect.poll(() => page.evaluate(() => window.__actualYouTube?.getCurrentTime?.()), { timeout: 30000 }).toBeGreaterThanOrEqual(1);
   await page.getByRole("button", { name: "Show all", exact: true }).click();
   await page.getByRole("button", { name: "Later discussion — SPEAKER_01", exact: true }).click();

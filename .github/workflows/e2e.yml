@@ -120,7 +120,8 @@ jobs:
             d4-color-mode-smoke \
             d6-autosave-smoke \
             fullscreen-button \
-            serverless.spec
+            serverless.spec \
+            youtube-source.spec
 
       - name: Backend log on failure
         if: failure()
