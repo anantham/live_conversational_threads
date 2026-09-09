@@ -56,6 +56,20 @@ test("desktop node selection seeks queued and ready playback; reviewed artifact 
   await expect(source).toContainText("Opening passage");
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks)).toContain(1.25);
   await expect(source.getByRole("link")).toHaveCount(0);
+  const widthHandle = source.getByRole("separator", { name: "Source panel width" });
+  const oldWidth = (await source.boundingBox()).width;
+  await widthHandle.focus();
+  await page.keyboard.press("ArrowRight");
+  expect((await source.boundingBox()).width).toBeGreaterThan(oldWidth);
+  await source.getByRole("button", { name: "Hide source panel", exact: true }).click();
+  await expect(source.getByLabel("Source passages")).not.toBeVisible();
+  await page.getByRole("button", { name: "0:01", exact: true }).click();
+  await expect(source.getByLabel("Source passages")).toBeVisible();
+  const timelineHandle = page.getByRole("separator", { name: "Thread timeline height" });
+  await timelineHandle.focus();
+  const oldHeight = Number(await timelineHandle.getAttribute("aria-valuenow"));
+  await page.keyboard.press("ArrowUp");
+  await expect(timelineHandle).toHaveAttribute("aria-valuenow", String(oldHeight + 24));
   await page.getByRole("button", { name: "Show all", exact: true }).click();
   await page.getByRole("button", { name: "Later discussion — SPEAKER_01", exact: true }).click();
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks)).toContain(4900);
@@ -84,6 +98,7 @@ test("phone offers source passages beside its readable deck without page overflo
   const transcript = source.getByLabel("Source passages");
   await expect(source).toContainText("Opening passage");
   await expect(source).toContainText("Later passage");
+  await source.getByRole("slider", { name: "Transcript height" }).fill("48");
   expect(await transcript.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
   await transcript.evaluate(el => { el.scrollTop = el.scrollHeight; });
   expect(await transcript.evaluate(el => el.scrollTop)).toBeGreaterThan(0);

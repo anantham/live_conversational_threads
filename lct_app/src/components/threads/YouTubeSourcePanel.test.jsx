@@ -94,7 +94,7 @@ it("does not install a timer when player readiness arrives after unmount",async(
 });
 it("keeps naming and export outside the collapsible transcript",async()=>{
  await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]} onRenameSpeaker={()=>{}}/>));
- const sections=container.querySelectorAll('aside > details');
+ const sections=container.querySelectorAll('aside details');
  expect(sections).toHaveLength(3);
  sections[1].open=false;
  expect(sections[2].querySelector('summary').textContent).toBe("Name the speakers");
@@ -125,7 +125,7 @@ it.each([true, false])("synchronizes both ways, compact=%s", async (compact) => 
 
 it("offers independent video/transcript collapse and adjustable transcript height", async () => {
   await act(async () => root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]} compact />));
-  const sections = container.querySelectorAll('aside > details');
+  const sections = container.querySelectorAll('aside details');
   expect(sections).toHaveLength(2);
   expect(sections[0].querySelector('summary').textContent).toBe("Video");
   expect(sections[1].querySelector('summary').textContent).toBe("Transcript");
@@ -133,4 +133,16 @@ it("offers independent video/transcript collapse and adjustable transcript heigh
   expect(sections[1].open).toBe(true);
   expect(container.querySelector('[aria-label="Transcript height"]')).not.toBeNull();
   expect(container.querySelector('[aria-label="Source passages"]').style.maxHeight).toBe("80px");
+});
+
+it("reopens the source and seeks in place from an evidence request", async () => {
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]}/>));
+ act(()=>options.events.onReady());
+ act(()=>container.querySelector('[aria-label="Hide source panel"]').click());
+ expect(container.querySelector('[aria-label="Show source panel"]')).not.toBeNull();
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]} seekRequest={{seconds:50}}/>));
+ expect(container.querySelector('[aria-label="Hide source panel"]')).not.toBeNull();
+ expect(time).toBe(50);
+ expect(playerState).toBe(5);
+ expect(highlight()).toContain("Another topic");
 });

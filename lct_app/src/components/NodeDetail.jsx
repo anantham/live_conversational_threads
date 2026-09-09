@@ -106,6 +106,7 @@ export default function NodeDetail({
   onSelectNode = null,
   artifactUtterances = null,
   mediaRefs = [],
+  onSeekMedia,
 }) {
   const safeNode = node ?? null;
   const isOpen = Boolean(safeNode);
@@ -805,7 +806,11 @@ export default function NodeDetail({
                       }
                       className={`py-0.5 ${u._hl ? "bg-amber-100 rounded px-0.5" : ""}`}
                     >
-                      {(elapsedClock || wallClock) && (seekUrl ? (
+                      {(elapsedClock || wallClock) && (seekUrl && onSeekMedia ? (
+                        <button type="button" onClick={() => onSeekMedia(u.timestamp_start)} className="mr-1 text-[10px] tabular-nums text-blue-600" title="Seek the inline recording">
+                          {elapsedClock}
+                        </button>
+                      ) : seekUrl ? (
                         <a
                           href={seekUrl}
                           target="_blank"
@@ -1158,4 +1163,5 @@ NodeDetail.propTypes = {
   onSelectNode: PropTypes.func,
   artifactUtterances: PropTypes.arrayOf(PropTypes.object),
   mediaRefs: PropTypes.arrayOf(PropTypes.object),
+  onSeekMedia: PropTypes.func,
 };

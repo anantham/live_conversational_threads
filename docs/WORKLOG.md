@@ -1,5 +1,16 @@
 # WORKLOG
 
+## 2026-09-09 — Source reading and panel controls (PR 195)
+
+User requested ready-on-open video and a full scrollable transcript, removed
+explanatory filler, then requested desktop source-width/timeline-height resizing,
+whole source collapse, and evidence timestamps seeking the inline player.
+Implemented state-aware cuing (no autoplay), manual-scroll follow suspension,
+pointer/keyboard resize handles, source collapse retaining the player, and inline
+evidence seek requests that reopen the source. Mobile disclosure labels are
+vertically centred in their touch targets. Added source E2E coverage to CI.
+Focused tests/build pass; exact-head review and CI gate deployment separately.
+
 ## 2026-09-08 — PR 194 review corrections
 
 User authorized fixing findings, re-reviewing and merging/deploying. Corrected

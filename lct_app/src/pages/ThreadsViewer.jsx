@@ -16,7 +16,7 @@ import YouTubeSourcePanel from "../components/threads/YouTubeSourcePanel";
 import {CardDisplayProvider,CardDisplaySettings} from "../components/threads/CardDisplaySettings";
 import {withThreadLanes} from "../components/threads/threadPresentation";
 import {buildMobileConversationDeck,mobileDeckStateForNode} from "../components/threads/mobileConversationDeckModel";
-import { renameArtifactSpeaker } from "../services/youtubeMedia";
+import { renameArtifactSpeaker, selectYouTubeRef } from "../services/youtubeMedia";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import {
@@ -79,6 +79,7 @@ function ThreadsViewerContent() {
   const [driveRefreshRequested, setDriveRefreshRequested] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
   const [mediaNode, setMediaNode] = useState(null);
+  const [sourceSeek, setSourceSeek] = useState(null);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   const [argumentTraceFrom, setArgumentTraceFrom] = useState(null);
   // The part of the conversation currently fanned into (null = whole call). Drives
@@ -506,7 +507,7 @@ function ThreadsViewerContent() {
       )}
 
       <div className="flex min-h-0 flex-1">
-        {!compactViewer && <YouTubeSourcePanel bundle={bundle} node={selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode))} nodes={flatNodes} onRenameSpeaker={renameSpeaker} />}
+        {!compactViewer && <YouTubeSourcePanel bundle={bundle} node={selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode))} nodes={flatNodes} onRenameSpeaker={renameSpeaker} seekRequest={sourceSeek} />}
       <div className="relative min-h-0 min-w-0 flex-1">
         <MinimalGraph
           graphData={flatNodes}
@@ -570,6 +571,7 @@ function ThreadsViewerContent() {
             chunkDict={bundle.chunk_dict || {}}
             artifactUtterances={bundle.utterances || []}
             mediaRefs={bundle.media_refs || []}
+            onSeekMedia={!compactViewer && selectYouTubeRef(bundle) ? seconds => setSourceSeek({seconds}) : undefined}
             contextNodes={flatNodes}
             onSelectNode={(id)=>{requestMapTarget(id);setSelectedNode(id);}}
             onClose={() => setSelectedNode(null)}

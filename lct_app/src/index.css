@@ -209,6 +209,10 @@
    its compact density. The 48px floor covers graph chrome, header, sheet, and
    legend controls without bloating the pointer-fine layout. */
 @media (pointer: coarse) {
+  .lct-source-panel summary {
+    padding-block: 12px;
+    line-height: 24px;
+  }
   button,
   summary,
   [role="button"] {

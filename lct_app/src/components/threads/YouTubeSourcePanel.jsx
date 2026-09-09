@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
+import PanelResizeHandle from "../PanelResizeHandle";
 import { mediaOffsetLabel } from "../../services/mediaSeek";
 import { nodeVideoPassages, selectYouTubeRef, validYouTubeRef, validMediaSeconds } from "../../services/youtubeMedia";
 
@@ -31,11 +32,16 @@ function loadPlayerApi() {
   return apiPromise;
 }
 
-export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker }) {
+export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, seekRequest }) {
   const media = selectYouTubeRef(bundle);
   const videoId = media?.video_id;
   const videoLabel = media?.label || "Conversation recording";
   const host = useRef(null);
+  const videoDetails = useRef(null);
+  const transcriptDetails = useRef(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(360);
+  const maxPanelWidth = Math.max(240, Math.round(window.innerWidth * 0.6));
   const player = useRef(null);
   const pending = useRef(null);
   const passageList = useRef(null);
@@ -104,6 +110,19 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   }, [first, node?.id,videoId]);
 
   useEffect(() => {
+    if (!seekRequest || !validMediaSeconds(seekRequest.seconds)) return;
+    const seconds = seekRequest.seconds;
+    setCollapsed(false);
+    if (videoDetails.current) videoDetails.current.open = true;
+    if (transcriptDetails.current) transcriptDetails.current.open = true;
+    pending.current = seconds;
+    followPlayback.current = true;
+    setFollowEpoch(value => value + 1);
+    setActive(seconds);
+    positionPlayer(player.current, videoId, seconds);
+  }, [seekRequest, videoId]);
+
+  useEffect(() => {
     if (!videoId) return undefined;
     let canceled = false;
     let instance;
@@ -156,8 +175,12 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const href = `${media.view_url}${active == null ? "" : `&t=${Math.floor(active)}s`}`;
 
   return (
-    <aside aria-label="YouTube source" className={`shrink-0 border-slate-200 bg-white p-2 ${compact ? "max-h-[60dvh] overflow-y-auto border-b" : "w-[360px] max-w-[38vw] overflow-y-auto border-r"}`}>
-      <details open className="text-xs text-slate-600">
+    <aside aria-label="YouTube source" style={compact ? undefined : {width: collapsed ? 40 : panelWidth, maxWidth: "60vw"}} className={`lct-source-panel relative shrink-0 border-slate-200 bg-white p-2 ${compact ? "max-h-[60dvh] overflow-y-auto border-b" : "overflow-y-auto border-r pr-3"}`}>
+      <button type="button" aria-label={collapsed ? "Show source panel" : "Hide source panel"} aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)} className="mb-1 text-xs text-slate-500">
+        {collapsed ? (compact ? "Show source" : "›") : "Hide source"}
+      </button>
+      <div className={collapsed ? "hidden" : ""}>
+      <details ref={videoDetails} open className="text-xs text-slate-600">
         <summary className="cursor-pointer py-1">Video</summary>
       <div ref={host} className="min-h-[200px] w-full bg-stone-100" style={{ height: compact ? 200 : 210 }} />
       {error && <p role="alert" className="mt-2 text-xs text-amber-800">{error}</p>}
@@ -165,7 +188,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
         {active == null ? "Open on YouTube" : `Open ${mediaOffsetLabel(active)} on YouTube`}
       </a>}
       </details>
-      <details open className="text-xs text-slate-600">
+      <details ref={transcriptDetails} open className="text-xs text-slate-600">
         <summary className="cursor-pointer py-1">Transcript</summary>
       {!passages.length && <p className="mt-2 text-xs text-slate-500">No timestamped transcript is available.</p>}
       {passages.length > 0 && (
@@ -197,8 +220,10 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
           window.setTimeout(() => URL.revokeObjectURL(url), 1000);
         }}>Download reviewed .threads</button>
       </details>}
+      </div>
+      {!compact && !collapsed && <PanelResizeHandle label="Source panel width" value={Math.min(panelWidth,maxPanelWidth)} min={240} max={maxPanelWidth} onChange={setPanelWidth} />}
     </aside>
   );
 }
 
-YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func };
+YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, seekRequest: PropTypes.object };
