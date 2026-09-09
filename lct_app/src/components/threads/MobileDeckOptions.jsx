@@ -41,9 +41,11 @@ export default function MobileDeckOptions({
   onOpenLibrary,
   onRefreshFromDrive,
   open,
+  cardSettings,
 }) {
   return (
     <MobileDeckSheet open={open} onClose={onClose} title="Conversation options">
+      {cardSettings}
       <div className="mt-4">
         <p className="text-xs font-medium text-slate-500">Structure</p>
         <div className="mt-2 divide-y divide-slate-100 rounded-xl border border-slate-200">
@@ -131,6 +133,7 @@ export default function MobileDeckOptions({
 }
 
 MobileDeckOptions.propTypes = {
+  cardSettings: PropTypes.node,
   bundle: PropTypes.shape({ coverage: PropTypes.object }).isRequired,
   counts: PropTypes.objectOf(PropTypes.number).isRequired,
   libraryStatus: PropTypes.shape({ message: PropTypes.string, state: PropTypes.string }),

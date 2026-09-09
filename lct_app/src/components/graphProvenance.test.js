@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   enrichGraphNodesWithProvenance,
   formatDurationCompact,
+  formatSegmentCount,
+  formatSourceDuration,
 } from "./graphProvenance";
 
 /*
@@ -10,6 +12,7 @@ import {
  * - Secondary memberships may share evidence without multiplying word, turn, or duration counts.
  * - Aggregation metrics are computed from artifact utterances, not summary prose.
  * - Missing timestamp evidence stays explicitly unavailable instead of being invented.
+ * - Duration excludes gaps; segment fractions use the entire transcript as denominator.
  */
 
 const utterances = [
@@ -19,6 +22,9 @@ const utterances = [
 ];
 
 describe("graph provenance read model", () => {
+  it("does not label fully timed linked evidence as partially timed merely because links are missing",()=>{
+    expect(formatSourceDuration({duration_seconds:10,timed_utterance_count:1,matched_utterance_count:1,utterance_count:2})).toBe("10s of speech");
+  });
   it("rolls exact source turns through a many-to-many hierarchy without double counting", () => {
     const nodes = [
       { id: "arc", semantic_level: 5, children_ids: ["theme-a", "theme-b"] },
@@ -64,7 +70,9 @@ describe("graph provenance read model", () => {
       utterance_count: 3,
       matched_utterance_count: 3,
       word_count: 9,
-      duration_seconds: 26,
+      duration_seconds: 15,
+      timed_utterance_count: 3,
+      total_utterance_count: 3,
       complete: true,
     });
     expect(secondaryTheme.provenance_utterance_ids).toEqual(["u1", "u2", "u3"]);
@@ -111,5 +119,23 @@ describe("graph provenance read model", () => {
     expect(formatDurationCompact(125)).toBe("2m 5s");
     expect(formatDurationCompact(3700)).toBe("1h 1m");
     expect(formatDurationCompact(null)).toBe("");
+  });
+
+  it("reports partial timing honestly and does not invent time from a start alone", () => {
+    const [node] = enrichGraphNodesWithProvenance([{id: "a", utterance_ids: ["u1", "u2", "u2"]}], [
+      {id: "u1", timestamp_start: 10, timestamp_end: 14},
+      {id: "u2", timestamp_start: 100},
+      {id: "u3", timestamp_start: 200, timestamp_end: 210},
+    ]);
+    expect(node.provenance_metrics.duration_seconds).toBe(4);
+    expect(node.provenance_metrics.timestamp_end).toBe(100);
+    expect(formatSourceDuration(node.provenance_metrics)).toBe("4s of speech (partial timing)");
+    expect(formatSegmentCount(node.provenance_metrics)).toBe("2 of 3 segments (67%)");
+  });
+  it("preserves a start-only positioning window without inventing speech duration",()=>{
+    const [node]=enrichGraphNodesWithProvenance([{id:"n",utterance_ids:["a","b"]}],
+      [{id:"a",timestamp_start:10},{id:"b",timestamp_start:40}]);
+    expect(node.provenance_metrics.timestamp_end).toBe(40);
+    expect(node.provenance_metrics.duration_seconds).toBeNull();
   });
 });

@@ -53,8 +53,8 @@ export function nodeVideoPassages(node, nodes = [], utterances = []) {
   // Mobile deck may select an actual utterance, not a graph node.
   if (utteranceById.has(String(node.id))) ids.add(String(node.id));
   return [...ids].map((id) => utteranceById.get(id)).filter((u) => u
-    && validMediaSeconds(u.timestamp_start) && validMediaSeconds(u.timestamp_end)
-    && u.timestamp_end > u.timestamp_start)
+    && validMediaSeconds(u.timestamp_start)
+    && (u.timestamp_end == null || (validMediaSeconds(u.timestamp_end) && u.timestamp_end > u.timestamp_start)))
     .sort((a, b) => a.timestamp_start - b.timestamp_start);
 }
 

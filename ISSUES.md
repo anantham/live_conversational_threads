@@ -1,5 +1,27 @@
 # ISSUES
 
+## 2026-09-08 — Production pipeline: word-level audio alignment (DEFERRED)
+
+- **User decision:** implement during productionization, not as a requirement
+  for the current public-conversation demo. Non-blocking for this demo/release.
+- **Outcome:** as the recording plays or is scrubbed, highlight the actual
+  spoken word rather than the whole transcript segment.
+- **Pipeline work:** preserve word timestamps from transcription when supplied;
+  otherwise align the transcript against the source audio. Text-only imports
+  without corresponding audio cannot promise word-accurate timing.
+- **Artifact contract:** carry word text, media-relative start/end seconds and
+  parent utterance identity through export/import without losing speaker labels
+  or source provenance. Keep alignment uncertainty visible; never replace
+  missing timing with evenly spaced, invented word timings.
+- **Viewer work:** consume those timings for word highlighting and bidirectional
+  seeking; retain segment-level fallback for older or unaligned artifacts.
+- **Acceptance:** inspect alignment against actual audio (including pauses and
+  overlapping speech); test export/reopen, forward/backward scrubbing, playback
+  speed changes, and mobile display. Treat missing/uncertain alignment honestly.
+- **Relevant boundaries:** transcription/alignment, .threads serialization,
+  `lct_app/src/services/youtubeMedia.js`, and `YouTubeSourcePanel.jsx`.
+
+
 ## 2026-09-06 — Public viewer independent review findings (REPAIRED LOCALLY)
 
 Claude Sonnet 5 reviewed implementation 7ca2608 and returned two P3 findings;

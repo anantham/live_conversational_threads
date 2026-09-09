@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { mediaOffsetLabel } from "../../services/mediaSeek";
-import { nodeVideoPassages, selectYouTubeRef, validYouTubeRef } from "../../services/youtubeMedia";
+import { nodeVideoPassages, selectYouTubeRef, validYouTubeRef, validMediaSeconds } from "../../services/youtubeMedia";
 
 let apiPromise;
 function loadPlayerApi() {
@@ -32,13 +32,51 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const host = useRef(null);
   const player = useRef(null);
   const pending = useRef(null);
+  const passageList = useRef(null);
   const [enabled, setEnabled] = useState(false);
   const [error, setError] = useState("");
   const [active, setActive] = useState(null);
   const [speakerId, setSpeakerId] = useState("");
   const [speakerName, setSpeakerName] = useState("");
+  const [transcriptHeight, setTranscriptHeight] = useState(compact ? 80 : 256);
   const passages = useMemo(() => nodeVideoPassages(node, nodes, bundle.utterances || []), [node, nodes, bundle.utterances]);
   const first = passages[0]?.timestamp_start;
+  const playbackRows = useMemo(() => {
+    const rows=(bundle.utterances || []).filter(u=>validMediaSeconds(u.timestamp_start))
+      .sort((a,b)=>a.timestamp_start-b.timestamp_start);
+    // Known ends preserve silence gaps. Start-only imports use the next start
+    // as an approximate highlight boundary, never as measured speech duration.
+    let nextStart=Infinity;
+    const indexed=new Array(rows.length);
+    for(let i=rows.length-1;i>=0;i--){
+      const u=rows[i];
+      if(i+1<rows.length && rows[i+1].timestamp_start>u.timestamp_start) nextStart=rows[i+1].timestamp_start;
+      const end=validMediaSeconds(u.timestamp_end) ? u.timestamp_end
+        : validMediaSeconds(u.duration_seconds ?? u.duration) ? u.timestamp_start+(u.duration_seconds ?? u.duration)
+        : nextStart;
+      indexed[i]={utterance:u,end};
+    }
+    return indexed;
+  }, [bundle.utterances]);
+  const playbackPassage = useMemo(() => {
+    if(active==null) return null;
+    for(let i=playbackRows.length-1;i>=0;i--){
+      const {utterance,end}=playbackRows[i];
+      if(utterance.timestamp_start<=active && active<end) return utterance;
+    }
+    return null;
+  }, [active, playbackRows]);
+  const outsideSelection = playbackPassage && !passages.some((u) => u.id === playbackPassage.id);
+  useEffect(() => {
+    const list = passageList.current;
+    const row = list?.querySelector('[aria-current="true"]');
+    if (!row) return;
+    const bounds = list.getBoundingClientRect();
+    const rect = row.getBoundingClientRect();
+    if (rect.top < bounds.top || rect.bottom > bounds.bottom) {
+      list.scrollTop += rect.top - bounds.top - (list.clientHeight - rect.height) / 2;
+    }
+  }, [playbackPassage?.id]);
   const speakers = [...new Set((bundle.utterances || []).map((u) => u.speaker_id).filter((id) => id && id !== "UNKNOWN"))];
 
   useEffect(() => {
@@ -53,6 +91,12 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
     if (!enabled || !videoId) return undefined;
     let canceled = false;
     let instance;
+    let clock;
+    const readClock = () => {
+      if (canceled || document.visibilityState === "hidden") return;
+      const seconds = instance?.getCurrentTime?.();
+      if (validMediaSeconds(seconds)) setActive(seconds);
+    };
     // YT replaces this child; React owns only the stable outer host.
     const child = document.createElement("div");
     host.current.replaceChildren(child);
@@ -68,12 +112,16 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
             player.current = instance;
             instance.getIframe().title = videoLabel;
             if (pending.current != null) instance.seekTo(pending.current, true);
+            // YouTube has no timeupdate event. Poll while enabled (including
+            // paused seeks); observing the clock must never call seekTo.
+            clock = window.setInterval(readClock, 250);
           },
+          onStateChange: readClock,
           onError: () => setError("This video cannot play embedded here. Open the passage on YouTube below."),
         },
       });
     }).catch((e) => { if (!canceled) setError(e.message); });
-    return () => { canceled = true; player.current = null; instance?.destroy(); };
+    return () => { canceled = true; window.clearInterval(clock); player.current = null; instance?.destroy(); };
   }, [enabled, videoId, videoLabel]);
 
   if (!media) {
@@ -91,7 +139,9 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const href = `${media.view_url}${active == null ? "" : `&t=${Math.floor(active)}s`}`;
 
   return (
-    <aside aria-label="YouTube source" className={`shrink-0 border-slate-200 bg-white p-3 ${compact ? "max-h-[50dvh] overflow-y-auto border-b" : "w-[360px] max-w-[38vw] overflow-y-auto border-r"}`}>
+    <aside aria-label="YouTube source" className={`shrink-0 border-slate-200 bg-white p-2 ${compact ? "max-h-[60dvh] overflow-y-auto border-b" : "w-[360px] max-w-[38vw] overflow-y-auto border-r"}`}>
+      <details open className="text-xs text-slate-600">
+        <summary className="cursor-pointer py-1">Video</summary>
       {!enabled ? (
         <button type="button" onClick={() => setEnabled(true)} className="w-full rounded-lg border border-slate-200 bg-stone-50 px-4 py-3 text-sm text-slate-700 hover:bg-amber-50">
           Watch the source conversation
@@ -99,20 +149,34 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
         </button>
       ) : <div ref={host} className="min-h-[200px] w-full bg-stone-100" style={{ height: compact ? 200 : 210 }} />}
       {error && <p role="alert" className="mt-2 text-xs text-amber-800">{error}</p>}
-      <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 block text-xs text-amber-700">
+      {error && <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 block text-xs text-amber-700">
         {active == null ? "Open on YouTube" : `Open ${mediaOffsetLabel(active)} on YouTube`}
-      </a>
+      </a>}
+      </details>
+      <details open className="text-xs text-slate-600">
+        <summary className="cursor-pointer py-1">Transcript</summary>
       {!compact && <p className="mt-3 text-xs leading-5 text-slate-500">Select a node to find its source passages. Speaker labels and speech timings are machine estimates; overlapping speech may need review.</p>}
       {node && !passages.length && <p className="mt-2 text-xs text-slate-500">No timestamped source is bound to this node.</p>}
       {passages.length > 0 && (
-        <div aria-label="Source passages" className={`mt-2 space-y-1 overflow-y-auto ${compact ? "max-h-20" : "max-h-64"}`}>
-          {passages.map((u) => <button key={u.id} type="button" onClick={() => seek(u.timestamp_start)} className={`block w-full rounded px-2 py-2 text-left text-xs leading-5 ${active === u.timestamp_start ? "bg-amber-50" : "hover:bg-stone-50"}`}>
+        <div ref={passageList} aria-label="Source passages" className="mt-1 space-y-1 overflow-y-auto" style={{maxHeight: transcriptHeight}}>
+          {passages.map((u) => <button key={u.id} type="button" aria-current={playbackPassage?.id === u.id ? "true" : undefined} onClick={() => seek(u.timestamp_start)} className={`block w-full rounded px-2 py-2 text-left text-xs leading-5 ${playbackPassage?.id === u.id ? "bg-amber-50" : "hover:bg-stone-50"}`}>
             <span className="text-amber-700">{mediaOffsetLabel(u.timestamp_start)}</span>{" · "}
             <span className="font-medium">{u.speaker_name || u.speaker_id || "Unknown"}</span>{" "}{u.text}
           </button>)}
         </div>
       )}
-      {onRenameSpeaker && speakers.length > 0 && <details className="mt-3 text-xs text-slate-500">
+      {outsideSelection && <div className="mt-2 text-xs text-slate-500">
+        Playing elsewhere in the conversation
+        <button type="button" aria-current="true" onClick={() => seek(playbackPassage.timestamp_start)} className="mt-1 block w-full rounded bg-amber-50 p-2 text-left leading-5">
+          {mediaOffsetLabel(playbackPassage.timestamp_start)} · {playbackPassage.speaker_name || playbackPassage.speaker_id || "Unknown"} · {playbackPassage.text}
+        </button>
+      </div>}
+      {passages.length > 0 && <label className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
+        Transcript height
+        <input aria-label="Transcript height" type="range" min="48" max="360" step="8" value={transcriptHeight} onChange={(event) => setTranscriptHeight(Number(event.target.value))} className="min-w-0 flex-1 accent-amber-600" />
+      </label>}
+      </details>
+      {onRenameSpeaker && speakers.length > 0 && <details className="mt-1 text-xs text-slate-500">
         <summary className="cursor-pointer">Name the speakers</summary>
         <form className="mt-2 space-y-2" onSubmit={(e) => { e.preventDefault(); onRenameSpeaker(speakerId || speakers[0], speakerName); setSpeakerName(""); }}>
           <p>Edits stay in this browser. Download the reviewed file to share them.</p>

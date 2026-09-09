@@ -215,4 +215,10 @@
     min-width: 48px;
     min-height: 48px;
   }
+
+  /* Inline secondary controls must not stretch transcript line spacing. */
+  button.lct-transcript-copy {
+    min-width: 24px;
+    min-height: 24px;
+  }
 }

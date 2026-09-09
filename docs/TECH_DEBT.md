@@ -1,5 +1,12 @@
 # TECH_DEBT
 
+## 2026-09-08 — ConversationNode presentation size
+
+ConversationNode remains ~580 lines of marker, metric, and action rendering.
+This pass changes only the metric strip and shares formatting with mobile.
+Extract the presentational strips in a separate refactor; no graph-controller
+rewrite is needed for source-duration or player-highlight correctness.
+
 ## 2026-09-06 — Viewer release boundaries
 
 MinimalGraph remains a >2,000-line controller combining graph projection,

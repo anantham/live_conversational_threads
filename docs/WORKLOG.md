@@ -1,5 +1,127 @@
 # WORKLOG
 
+## 2026-09-08 — PR 194 review corrections
+
+User authorized fixing findings, re-reviewing and merging/deploying. Corrected
+same-ID focus requests with a request serial; timeline now pins selected details
+and clears stale media selection. Legacy hierarchy traversal permits increasing
+levels (including skipped tiers), while generated experiment validation still
+requires adjacent-level DAGs. Off-route Previous/Next no longer jump to route start.
+Start-only video passages remain selectable; approximate highlighting uses next
+start but duration remains unknown. Source positioning retains latest starts.
+Speaker naming/export is a sibling of collapsed Transcript. Graph size is checked
+before thread validation, with explicit thread/membership/evidence bounds.
+The reported late-ready timer race was disproved by existing canceled guards;
+added a regression exercising readiness after unmount. No private artifact egress.
+
+## 2026-09-08 — Integrate threads into existing desktop/mobile viewer
+
+User explicitly authorized implementation and remote publication for device testing.
+Retired the separate ThreadExplorer entry point and component (recoverable in df7c057).
+Existing timeline reads all moment home lanes from overlapping memberships; all
+memberships retained and named in source details. Thread rows ordered by first
+appearance; a faint chronological connector crosses rows. Long gaps no longer
+masquerade as explicit callbacks in new artifacts. Mobile path selector supports
+thread or chronological traversal; path and card selection survive map visits.
+Vertical touch scrolling no longer changes abstraction. Explicit graph tiers
+remain visible on mobile and pinch changes scale only in the static viewer.
+Card/map handoff uses exact selected ID and tier; initial framing no longer
+overwrites requested camera targets (observed phone target bounds x48..307,
+y111..610 within a 354x767 viewport after fix).
+
+Cards default to duration only with optional metric controls; aggregate backgrounds
+and speaker-summary color blends are neutral. No inferred phrase ownership added:
+claim-level speaker attribution remains a separate evidence requirement.
+50 focused regressions pass; build passes (pre-existing chunk warning). Generated
+public podcast artifact is included at /experiments/overlapping.threads for testing.
+Independent review and remote release verification must precede a deployed claim.
+
+## 2026-09-08 — Overlapping-thread public experiment (local, not deployed)
+
+User approved multi-parent aggregation and independent ordered thread membership,
+with thread coherence judged by inspecting the artifact, not schema validity.
+Kept the original 1263 source segments and 56 moments. A fresh whole-public-source
+gpt-6-astra request (existing Codex transport, high reasoning) excluded old thread
+labels and removed single-parent/dominant-thread constraints. Result: 14 threads,
+24 ideas, 13 topics, 5 themes, 2 arcs, 17 multi-parent nodes, 18 shared-thread moments,
+22 explicit/interpretive return edges. Model request and response receipts are in
+/private/tmp/lct-overlap-demo-20260908; generation entrypoint is
+/private/tmp/lct-generate-overlap.py. This is NOT the general private pipeline.
+
+Compiler: scripts/compile_thread_experiment.mjs. Evidence is set-unioned through
+the DAG. Mobile traversal retains all parents; Up follows the actual trail.
+ThreadExplorer provides ordered rationales, exact evidence, timestamped source
+opening, qualified returns and cross-thread jumps. Original artifact remains intact.
+Local URL: http://127.0.0.1:43219/view?src=/experiments/overlapping.threads
+Generated public/experiments file is a local served artifact, not part of source commit.
+
+Validation: 2 compiler tests and 23 focused viewer/contract/navigation tests pass;
+build passes (existing large-bundle warning). Desktop opening and phone-size thread
+selection/source panel verified in browser. Spot-checked safety resumption,
+open-source interruption/resumption, and notetaker callback against verbatim rows.
+No full human quality acceptance yet; Logo anecdote is a weak/minor strand, and
+belief-to-action connections are explicitly interpretive. Other argument edge types
+were not regenerated and the new artifact marks argument topology partial.
+
+Known limitation: old graph lane/color controls still use the legacy single-thread
+field; use the new Threads view to inspect many-to-many routes. Full spatial
+multi-thread rendering remains follow-up work. No merge/deploy claimed.
+
+## 2026-09-08 — Word timing explicitly deferred to productionization
+
+User requested recording word timestamps as a future pipeline feature rather
+than extending the demo work now. Added a non-blocking issue in ISSUES.md with
+audio-alignment, artifact preservation, viewer fallback, and acceptance scope.
+This supersedes the earlier description of word highlighting as unfinished
+demo work: it is now an explicitly deferred production feature. No alignment
+job, dependency installation, artifact replacement, or deployment performed.
+
+
+## 2026-09-08 — Arc size and two-way YouTube highlighting
+
+- A1: user explicitly requested summed source duration and denominator-aware
+  segment counts, plus reverse video-to-transcript synchronization. No backend,
+  artifact generation, provider, or private data changes. Isolated task worktree
+  based on freshly fetched origin/main 265fc4a.
+- Confirmed hypotheses: graphProvenance computed max(end)-min(start); the player
+  had seekTo calls but no clock readback. Not an artifact grouping/cache issue.
+- graphProvenance now sums each unique source segment's duration, preserving
+  start/end for timeline positioning. Missing/partial timing stays explicit.
+  Desktop ConversationNode and MobileDeckCard share speech-duration and
+  whole-transcript segment-fraction labels. Segment fraction is not used as a
+  proxy for time; rows vary in length. Overlapping speakers' distinct segments
+  count separately (source speech duration, not recording wall time).
+- YouTubeSourcePanel polls the enabled player every 250ms (skips hidden tabs),
+  including paused scrubs. The current interval highlights and scrolls only the
+  passage list, never seeks back. Gaps clear the highlight; out-of-node playback
+  shows a separate current sentence rather than changing the chosen graph node.
+- Intent/regressions: deduplicated disjoint durations, missing end times,
+  denominator labels, desktop/mobile rendering, forward/backward paused seeks,
+  gaps, out-of-selection playback, and polling cleanup. First focused run:
+  19 tests passed. Production build and targeted lint passed; existing large
+  bundle warning remains. Browser/extra compact-card test verification follows.
+- Not pushed, merged, or deployed. Publication/production remains a separate
+  H1 boundary for this follow-up; local implementation/commit is approved.
+- Follow-up user request: separate native disclosure controls for video and
+  transcript, independent transcript height slider, no standalone YouTube link
+  except embed-error fallback. Speaker naming lives inside the transcript
+  disclosure with reduced spacing. Removed MobileConversationDeck's empty
+  parent-label spacer at the root. At 390x844 the real public artifact rendered
+  corrected metrics, both disclosures collapsed cleanly, and the slider changed
+  the visible transcript height (80 to 88px). No phone hardware claim.
+- 21 focused tests pass, including compact-card metrics and independent
+  disclosures. Actual YouTube reverse seeking is covered through a simulated
+  IFrame API in component tests, not yet a real-player/device acceptance test.
+- Word highlighting remains incomplete: published utterances contain segment
+  start/end only, no word timing array. Needs source-audio forced alignment;
+  do not synthesize equal-duration word slots or claim fine alignment. No source
+  audio found in the release scratch directory during this pass.
+- Style question: PRODUCT.md describes tone; prompts.json has generic source
+  fidelity/structure rules. The frontier demo used /private/tmp/create-lct-demo.py
+  with concrete titles, concise summaries, source attribution and uncertainty.
+  No dedicated summary prose style guide was found in scoped documentation.
+
+
 ## 2026-09-07 — Optional-media reading compatibility repair
 
 - Review of 40789f6 completed, retaining one low-severity finding. Initially
@@ -5932,3 +6054,10 @@ Manual testing not run:
   `refresh_in_progress=true` even after a further 12-second wait. This separate
   sibling cache-wedge is recorded in `ISSUES.md`; source-metric correctness is
   not being conflated with UI freshness.
+# 2026-09-09 — Second viewer review corrections (PR194)
+
+Operator clarification: obvious in-scope bug corrections are green/A1 and do not require repeated approval after review findings. Review remains required before merge; continue correcting confirmed bugs within scope. Final two findings fixed: card trails traverse only accepted child links (isolated targets get a truthful singleton position, unknown targets do not teleport); card settings hide with focus-mode chrome. Regression added for malformed hierarchy and unknown targets.
+
+User approved fixing all findings. Playback boundaries now precompute once per transcript in O(n log n), with allocation-free O(n) clock lookup; no inferred ends enter duration metrics. Map auto-framing yields only to an unconsumed focus request, and records the focused node set to avoid immediately undoing the jump. Mobile ribbon explicitly uses compact mode. Unprovided card settings retain legacy metrics; the public viewer provider still defaults to duration only. Reading paths use the closest on-path ancestor, while truly off-path selections retain the honest notice. Hoisted ribbon invariant scan; untimed layouts omit the time connector; timing completeness distinguishes missing links; membership buttons cannot submit forms.
+
+Test intent: preserve silence/overlap/start-only highlights, quiet viewer versus legacy metric scope, skipped-level hierarchy and untyped-node baseline, and partial timing semantics. Missing-level hierarchy review claim is not a regression: baseline already filters nodes without valid levels before building links. No invented hierarchy added. Existing large graph/viewer decomposition remains deferred in TECH_DEBT; this is a bounded corrective pass, not a redesign.

@@ -110,10 +110,18 @@ export function buildMobileConversationDeck(nodes, artifactUtterances = []) {
   });
 
   const childrenByParent = new Map();
-  parentByChild.forEach((parentId, childId) => {
+  const addChild = (parentId, childId) => {
+    if (!(levelOf(nodeById.get(parentId)) > levelOf(nodeById.get(childId)))) return;
     const children = childrenByParent.get(parentId) || [];
     children.push(childId);
     childrenByParent.set(parentId, children);
+  };
+  parentByChild.forEach((parentId, childId) => addChild(parentId, childId));
+  // A shared child is reachable from EVERY authored parent. The navigation
+  // trail, not a global primary parent, determines where Up returns.
+  listedParents.forEach((parents, childId) => parents.forEach((parentId) => addChild(parentId, childId)));
+  graphNodes.forEach((node) => {
+    (node.memberships || []).forEach((membership) => addChild(String(membership.parent_id), String(node.id)));
   });
   childrenByParent.forEach((ids, parentId) => {
     childrenByParent.set(parentId, sortIds(ids, nodeById, nodeOrder));
@@ -178,6 +186,20 @@ export function initialMobileDeckState(model) {
   };
 }
 
+export function mobileDeckStateForNode(model, id) {
+  const trail = [];
+  const seen = new Set();
+  let current = String(id);
+  while (model.nodeById.has(current) && !seen.has(current)) {
+    seen.add(current);
+    trail.unshift(entry("node", current));
+    const parent=model.parentByChild.get(current);
+    if(!(model.childrenByParent.get(parent) || []).includes(current)) break;
+    current = parent;
+  }
+  return trail.length ? {trail} : null;
+}
+
 export function initialLiveMobileDeckState(model) {
   const latestId = model?.rootIds?.[model.rootIds.length - 1];
   return {
@@ -201,6 +223,7 @@ function siblingsFor(model, state) {
     return (model.utterancesByMoment.get(moment?.id) || []).map((id) => entry("utterance", id));
   }
   if (state.trail.length === 1) {
+    if(!model.rootIds.includes(current.id)) return [current];
     return model.rootIds.map((id) => entry("node", id));
   }
   const parent = state.trail[state.trail.length - 2];

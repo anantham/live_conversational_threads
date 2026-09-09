@@ -848,7 +848,8 @@ export default function NodeDetail({
                       {u._hl && !isEditing && (
                         <button
                           type="button"
-                          title="Copy this message — paste into WhatsApp search to jump to it"
+                          title="Copy this message"
+                          aria-label="Copy this message"
                           onClick={() => {
                             try {
                               void navigator.clipboard?.writeText(u.text || "");
@@ -856,9 +857,12 @@ export default function NodeDetail({
                               /* clipboard unavailable (http origin) — no-op */
                             }
                           }}
-                          className="ml-1 rounded border border-amber-200 bg-white/70 px-1 text-[9px] text-amber-700 hover:bg-amber-50"
+                          className="lct-transcript-copy ml-1 inline-flex h-6 w-6 items-center justify-center rounded align-middle text-amber-700/60 hover:bg-amber-50 hover:text-amber-800 focus-visible:outline focus-visible:outline-2"
                         >
-                          copy
+                          <svg aria-hidden="true" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+                            <rect x="8" y="8" width="12" height="12" rx="2" />
+                            <path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3" />
+                          </svg>
                         </button>
                       )}
 
@@ -979,7 +983,7 @@ export default function NodeDetail({
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Thread</span>
             <p className="text-gray-700 mt-0.5">
-              {safeNode.thread_id}
+              {safeNode.thread_labels?.join(" · ") || safeNode.thread_label || safeNode.thread_id}
               {safeNode.thread_state && (
                 <span className="ml-2 text-xs text-gray-400">({safeNode.thread_state})</span>
               )}
@@ -988,6 +992,13 @@ export default function NodeDetail({
         )}
 
         {/* Edge relations */}
+        {safeNode.memberships?.length > 0 && <div>
+          <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Part of</span>
+          {safeNode.memberships.map(m=><p key={m.parent_id} className="mt-2 text-xs text-gray-600">
+            <button type="button" className="text-amber-700" onClick={()=>onSelectNode?.(m.parent_id)}>{contextNodes?.find(n=>n.id===m.parent_id)?.node_name || m.parent_id}</button>
+            {m.explanation && <span>: {m.explanation}</span>}
+          </p>)}
+        </div>}
         {relations.length > 0 && (
           <div>
             <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Relations</span>

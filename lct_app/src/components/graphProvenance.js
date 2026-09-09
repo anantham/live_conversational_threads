@@ -39,7 +39,7 @@ function utteranceEnd(utterance) {
   );
   if (explicit != null) return explicit;
   const duration = finiteNumber(utterance?.duration_seconds, utterance?.duration);
-  return start != null && duration != null ? start + duration : start;
+  return start != null && duration != null ? start + duration : null;
 }
 
 function utteranceText(utterance) {
@@ -184,16 +184,21 @@ export function enrichGraphNodesWithProvenance(nodes, artifactUtterances = []) {
     });
     const rows = utteranceIds.map((id) => utteranceById.get(id)).filter(Boolean);
     const starts = rows.map(utteranceStart).filter((value) => value != null);
-    const ends = rows.map(utteranceEnd).filter((value) => value != null);
+    const ends = rows.map(row=>utteranceEnd(row) ?? utteranceStart(row)).filter((value) => value != null);
     const descendantNodes = [...collected.descendantIds]
       .map((id) => nodeById.get(id))
       .filter(Boolean);
     const fallback = fallbackBounds(node, descendantNodes);
     const timestampStart = starts.length ? Math.min(...starts) : fallback.start;
     const timestampEnd = ends.length ? Math.max(...ends) : fallback.end;
-    const durationSeconds = timestampStart != null && timestampEnd != null
-      ? Math.max(0, timestampEnd - timestampStart)
-      : null;
+    // Arc size is the sum of its unique source segments, not the elapsed
+    // window between distant callbacks. Preserve the window for positioning.
+    const durations = rows.map((row) => {
+      const start = utteranceStart(row);
+      const end = utteranceEnd(row);
+      return start != null && end != null && end >= start ? end - start : null;
+    }).filter((value) => value != null);
+    const durationSeconds = durations.length ? durations.reduce((sum, value) => sum + value, 0) : null;
     const sequences = rows
       .map((row) => finiteNumber(row?.sequence_number, row?.sequence, row?.seq))
       .filter((value) => value != null);
@@ -226,12 +231,30 @@ export function enrichGraphNodesWithProvenance(nodes, artifactUtterances = []) {
         matched_utterance_count: matchedUtteranceCount,
         word_count: wordCount,
         duration_seconds: durationSeconds,
+        timed_utterance_count: durations.length,
+        total_utterance_count: utteranceById.size,
         timestamp_start: timestampStart,
         timestamp_end: timestampEnd,
         complete: utteranceIds.length > 0 && matchedUtteranceCount === utteranceIds.length,
       },
     };
   });
+}
+
+export function formatSegmentCount(metrics) {
+  const count = Number(metrics?.matched_utterance_count ?? metrics?.utterance_count) || 0;
+  const total = Number(metrics?.total_utterance_count) || 0;
+  if (!count) return "";
+  return total >= count
+    ? `${count.toLocaleString()} of ${total.toLocaleString()} segments (${Math.round(count / total * 100)}%)`
+    : `${count.toLocaleString()} ${count === 1 ? "segment" : "segments"}`;
+}
+
+export function formatSourceDuration(metrics) {
+  if (metrics?.duration_seconds == null) return "";
+  const duration = metrics.duration_seconds === 0 ? "0s" : formatDurationCompact(metrics.duration_seconds);
+  const partial = metrics.timed_utterance_count != null && metrics.timed_utterance_count < (metrics.matched_utterance_count ?? metrics.utterance_count);
+  return `${duration} of speech${partial ? " (partial timing)" : ""}`;
 }
 
 export function formatDurationCompact(seconds) {

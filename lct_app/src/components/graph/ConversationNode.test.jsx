@@ -81,13 +81,16 @@ describe("ConversationNode structured-turn fallback", () => {
               matched_utterance_count: 6,
               word_count: 418,
               duration_seconds: 192,
+              total_utterance_count: 12,
             },
             onOpenDetails: () => {},
           }}
         />
       </ReactFlowProvider>,
     );
-    expect(markup).toContain("418 words · 3m 12s span · 6 turns");
+    expect(markup).toContain("3m 12s of speech");
+    expect(markup).toContain("418 words");
+    expect(markup).toContain("6 of 12 segments");
     expect(markup).toContain('aria-label="Open exact source utterances"');
     expect(markup).toContain(">source<");
   });
@@ -112,7 +115,7 @@ describe("ConversationNode structured-turn fallback", () => {
         />
       </ReactFlowProvider>,
     );
-    expect(markup).toContain("0 of 1 turns linked");
+    expect(markup).toContain("0 of 1 referenced segments linked");
     expect(markup).toContain('aria-label="Open details"');
     expect(markup).not.toContain('aria-label="Open exact source utterances"');
   });
@@ -135,7 +138,8 @@ describe("ConversationNode structured-turn fallback", () => {
       </ReactFlowProvider>,
     );
 
-    expect(markup).toContain("18 words · timing unavailable · 2 turns");
+    expect(markup).toContain("timing unavailable");
+    expect(markup).toContain("18 words");
     expect(markup).toContain("this artifact has no aligned timestamps");
   });
 });

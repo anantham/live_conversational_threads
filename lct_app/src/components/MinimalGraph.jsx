@@ -103,11 +103,13 @@ function MinimalGraphInner({
   selectedNode,
   setSelectedNode,
   focusNode,
+  focusRequestKey = 0,
   viewportReservationKey,
   onVisibleLevelChange,
   onFocusChange,
   onActiveNodeChange,
   chromeless = false,
+  semanticZoom = true,
   conversationId,
   initialColorMode,
   initialShowTemporalEdges,
@@ -1304,6 +1306,9 @@ function MinimalGraphInner({
     return layoutDialectic(dimmed, [], { focusNodeId: argumentTraceFrom });
   }, [focusedBaseNodes, traceResult.nodes, weaknessFilter, weaknessSets, argumentTraceFrom, reduceMotion]);
 
+  const lastFocusedRef = useRef(null);
+  const lastRequestedTierRef = useRef(null);
+  const focusToken=`${focusNode}:${focusRequestKey}`;
   // ReactFlow measures nodes over several renders. Debounce until the visible
   // node set settles, then frame the first card at a readable phone zoom. The
   // key is recorded only after the frame commits, so interrupted renders retry
@@ -1312,6 +1317,7 @@ function MinimalGraphInner({
     if (!compactViewer || displayNodes.length === 0) {
       return undefined;
     }
+    if (focusNode && lastFocusedRef.current !== focusToken && displayNodes.some(n=>n.id===focusNode)) return undefined;
     const key = displayNodes.map((node) => node.id).join(",");
     if (mobileFramedNodeSetRef.current === key) return undefined;
     const id = window.setTimeout(() => {
@@ -1331,7 +1337,7 @@ function MinimalGraphInner({
       }
     }, 180);
     return () => window.clearTimeout(id);
-  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion]);
+  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode, focusToken]);
 
   // Re-frame when a relationship neighbourhood or dialectic fan appears. Both
   // projections move nodes without changing the controlled full-layout state.
@@ -1400,6 +1406,11 @@ function MinimalGraphInner({
   useEffect(() => {
     mglog("fitView gate", { willRun: pendingFitViewRef.current && displayNodes.length > 0, pending: pendingFitViewRef.current, displayNodes: displayNodes.length, hasInitiallyFit: hasInitiallyFitRef.current });
     if (!pendingFitViewRef.current || displayNodes.length === 0) return;
+    if (focusNode && lastFocusedRef.current !== focusToken && displayNodes.some(n=>n.id===focusNode)) {
+      hasInitiallyFitRef.current=true;
+      pendingFitViewRef.current=false;
+      return;
+    }
     // NB: do NOT consume pendingFitViewRef here. If the node set changes again
     // before the rAFs fire (e.g. a tier flip on cold open), this effect's
     // cleanup cancels them â€” consuming early would lose the fit entirely and
@@ -1449,7 +1460,7 @@ function MinimalGraphInner({
       cancelAnimationFrame(raf1);
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion]);
+  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode, focusToken]);
 
   const selectedLayoutNode = useMemo(
     () => displayNodes.find((node) => node.id === selectedNode) || null,
@@ -1496,10 +1507,20 @@ function MinimalGraphInner({
   // drawer (which is bound to `selectedNode`). The ribbon "teleports" the camera
   // only; re-centering is keyed on focusNode CHANGING, so a later user pan isn't
   // yanked back when the layout updates.
-  const lastFocusedRef = useRef(null);
   useEffect(() => {
-    if (focusNode === lastFocusedRef.current) return undefined;
+    if (!focusNode || lastRequestedTierRef.current === focusToken) return;
+    const target = normalizedChunk.find(n => n.id === focusNode);
+    if (!target) return;
+    const level=Number(target.semantic_level || target.level);
+    if (!Number.isInteger(level) || level<1 || level>5) return;
+    lastRequestedTierRef.current = focusToken;
+    setDrilldownPath([]);
+    handleLockedLevelChange(level);
+  }, [focusNode, focusToken, normalizedChunk, handleLockedLevelChange]);
+  useEffect(() => {
+    if (focusToken === lastFocusedRef.current) return undefined;
     if (!focusNode) return undefined;
+    if (!displayNodes.some(n => n.id === focusNode)) return undefined;
     if (neighborhoodView && !neighborhoodView.nodes.some((node) => node.id === focusNode)) {
       // A timeline teleport outside the one-hop projection must first restore
       // the complete tier. Leave lastFocusedRef untouched so this same target
@@ -1507,17 +1528,18 @@ function MinimalGraphInner({
       clearNeighborhoodFocus(false);
       return undefined;
     }
-    lastFocusedRef.current = focusNode;
     // user is driving now — stop auto-follow so it doesn't fight the jump
     if (autoFollowRef.current) {
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
-    const raf = requestAnimationFrame(() => {
-      centerViewportOnNode(focusNode, { zoom: 1.15, duration: reduceMotion ? 0 : 280 });
-    });
-    return () => cancelAnimationFrame(raf);
-  }, [clearNeighborhoodFocus, focusNode, centerViewportOnNode, neighborhoodView, reduceMotion]);
+    const timer = setTimeout(() => {
+      lastFocusedRef.current = focusToken;
+      mobileFramedNodeSetRef.current = displayNodes.map(node=>node.id).join(",");
+      centerViewportOnNode(focusNode, { zoom: compactViewer ? 0.85 : 1.15, duration: reduceMotion ? 0 : 280 });
+    },180);
+    return () => clearTimeout(timer);
+  }, [clearNeighborhoodFocus, focusNode, focusToken, centerViewportOnNode, displayNodes, neighborhoodView, reduceMotion,compactViewer]);
 
   // Sync ref with state so effects read the latest value
   useEffect(() => {
@@ -1542,7 +1564,7 @@ function MinimalGraphInner({
     if (programmatic) return;
     const previousViewportZoom = viewportMotion.getSettledZoom();
     viewportMotion.updateSettledZoom(viewportZoom);
-    if (lockedLevel == null && !hasAuthoredHierarchy
+    if (semanticZoom && lockedLevel == null && !hasAuthoredHierarchy
       && Number.isFinite(viewportZoom) && previousViewportZoom != null
       && Math.abs(viewportZoom - previousViewportZoom) > 0.0001) {
       setUnlockedLegacyLevel(viewportZoom < ZOOM_LEVEL_3 ? 3
@@ -1550,7 +1572,7 @@ function MinimalGraphInner({
         : viewportZoom < ZOOM_LEVEL_1 ? 1 : 0);
     }
     userOverrodeTierRef.current = true; // genuine user pan/zoom â€” they're driving now
-    if (lockedLevel == null && hasAuthoredHierarchy) {
+    if (semanticZoom && lockedLevel == null && hasAuthoredHierarchy) {
       setUnlockedSemanticLevel((currentLevel) => semanticLevelAfterViewportMove({
         currentLevel: currentLevel ?? effectiveSemanticLevel,
         viewportZoom,
@@ -1562,7 +1584,7 @@ function MinimalGraphInner({
       autoFollowRef.current = false;
       setAutoFollow(false);
     }
-  }, [effectiveSemanticLevel, handleMove, hasAuthoredHierarchy, lockedLevel, viewportMotion]);
+  }, [effectiveSemanticLevel, handleMove, hasAuthoredHierarchy, lockedLevel, viewportMotion, semanticZoom]);
 
   // Also sync on mount â€” fitView doesn't fire onMoveEnd
   useEffect(() => {
@@ -2100,11 +2122,13 @@ MinimalGraphInner.propTypes = {
   semanticEdges: PropTypes.array,
   selectedNode: PropTypes.string,
   focusNode: PropTypes.string,
+  focusRequestKey: PropTypes.number,
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
   onFocusChange: PropTypes.func,
   chromeless: PropTypes.bool,
+  semanticZoom: PropTypes.bool,
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
   initialShowTemporalEdges: PropTypes.bool,
@@ -2126,11 +2150,13 @@ MinimalGraph.propTypes = {
   semanticEdges: PropTypes.array,
   selectedNode: PropTypes.string,
   focusNode: PropTypes.string,
+  focusRequestKey: PropTypes.number,
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
   onVisibleLevelChange: PropTypes.func,
   onFocusChange: PropTypes.func,
   chromeless: PropTypes.bool,
+  semanticZoom: PropTypes.bool,
   conversationId: PropTypes.string,
   initialColorMode: PropTypes.oneOf(COLOR_MODES),
   initialShowTemporalEdges: PropTypes.bool,
