@@ -99,6 +99,11 @@ export default function MobileConversationDeck({
   }, []);
 
   const closeMore = useCallback(() => setMoreOpen(false), []);
+  const selectNode = useCallback((id)=>{
+    const next=mobileDeckStateForNode(model,id);
+    if(next) commitDeckState(next);
+    else showNotice("This item has no navigable card.");
+  },[model,commitDeckState,showNotice]);
 
   const navigate = useCallback((action) => {
     if ((action === "previous" || action === "next") && routeIds.length) {
@@ -108,7 +113,7 @@ export default function MobileConversationDeck({
       const next=index+(action==="next" ? 1 : -1);
       if(next<0 || next>=routeIds.length){showNotice("End of this reading path.");return;}
       setNotice("");setMotion(action);setMotionKey(value=>value+1);
-      commitDeckState(mobileDeckStateForNode(model,routeIds[next]));return;
+      selectNode(routeIds[next]);return;
     }
     if(action==="up" || action==="down") setReadingRoute("");
     const result = moveMobileDeck(model, deckState, action);
@@ -120,7 +125,7 @@ export default function MobileConversationDeck({
     setMotion(action);
     setMotionKey((value) => value + 1);
     commitDeckState(result.state);
-  }, [commitDeckState, deckState, model, showNotice,routeIds,setReadingRoute]);
+  }, [commitDeckState, deckState, model, showNotice,routeIds,setReadingRoute,selectNode]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -253,13 +258,13 @@ export default function MobileConversationDeck({
               const value=e.target.value;setReadingRoute(value);
               const first=value==="conversation" ? graphNodes.filter(n=>Number(n.semantic_level)===1).sort((a,b)=>a.timestamp_start-b.timestamp_start)[0]?.id
                 : bundle.conversation_threads.find(t=>t.id===value)?.steps[0]?.moment_id;
-              if(first)commitDeckState(mobileDeckStateForNode(model,first));
+              if(first)selectNode(first);
             }}>
               <option value="">This group</option><option value="conversation">Conversation in time</option>
               {bundle.conversation_threads.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}
             </select>
           </label>
-          <TimelineRibbon compact graphData={graphNodes} semanticLevel={1} selectedNode={snapshot.item?.id} setSelectedNode={id=>commitDeckState(mobileDeckStateForNode(model,id))}/>
+          <TimelineRibbon compact graphData={graphNodes} semanticLevel={1} selectedNode={snapshot.item?.id} setSelectedNode={selectNode}/>
         </>}
 
         {liveStatus && (

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildMobileConversationDeck,
+  mobileDeckStateForNode,
   initialLiveMobileDeckState,
   initialMobileDeckState,
   mobileDeckLiveStatus,
@@ -27,6 +28,15 @@ const utterances = [
   { id: "u2", sequence_number: 2, speaker_name: "B", text: "Second exact turn." },
   { id: "u3", sequence_number: 3, speaker_name: "A", text: "Other branch turn." },
 ];
+it("does not construct rejected hierarchy trails or teleport unknown targets",()=>{
+ const model=buildMobileConversationDeck([{id:"root",semantic_level:5},{id:"bad",semantic_level:1},{id:"target",semantic_level:2,parent_id:"bad"}]);
+ const state=mobileDeckStateForNode(model,"target");
+ expect(state.trail).toEqual([{kind:"node",id:"target"}]);
+ const snapshot=mobileDeckSnapshot(model,state);
+ expect(snapshot.position).toBe(1);
+ expect(snapshot.total).toBe(1);
+ expect(mobileDeckStateForNode(model,"missing")).toBeNull();
+});
 it("retains legacy skipped-level navigation",()=>{
  const model=buildMobileConversationDeck([{id:"a",semantic_level:5,children_ids:["m"]},{id:"m",semantic_level:1,parent_id:"a"}]);
  expect(model.childrenByParent.get("a")).toEqual(["m"]);

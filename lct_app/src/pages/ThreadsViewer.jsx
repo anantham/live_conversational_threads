@@ -491,7 +491,7 @@ function ThreadsViewerContent() {
   const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
   return (
     <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
-      {!compactViewer && <CardDisplaySettings />}
+      {!compactViewer && !viewerFocusMode && <CardDisplaySettings />}
       {!viewerFocusMode && (
         <ThreadsViewerHeader
           bundle={bundle}
@@ -533,7 +533,8 @@ function ThreadsViewerContent() {
             type="button"
             onClick={() => {
               const target=selectedNode || mediaNode || mapTarget;
-              if(target) setMobileDeckState(mobileDeckStateForNode(buildMobileConversationDeck(flatNodes,bundle.utterances || []),target));
+              const next=target && mobileDeckStateForNode(buildMobileConversationDeck(flatNodes,bundle.utterances || []),target);
+              if(next) setMobileDeckState(next);
               setMobileMapOpen(false);
             }}
             title="Return to conversation cards"

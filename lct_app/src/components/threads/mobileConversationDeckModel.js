@@ -193,9 +193,11 @@ export function mobileDeckStateForNode(model, id) {
   while (model.nodeById.has(current) && !seen.has(current)) {
     seen.add(current);
     trail.unshift(entry("node", current));
-    current = model.parentByChild.get(current);
+    const parent=model.parentByChild.get(current);
+    if(!(model.childrenByParent.get(parent) || []).includes(current)) break;
+    current = parent;
   }
-  return trail.length ? {trail} : initialMobileDeckState(model);
+  return trail.length ? {trail} : null;
 }
 
 export function initialLiveMobileDeckState(model) {
@@ -221,6 +223,7 @@ function siblingsFor(model, state) {
     return (model.utterancesByMoment.get(moment?.id) || []).map((id) => entry("utterance", id));
   }
   if (state.trail.length === 1) {
+    if(!model.rootIds.includes(current.id)) return [current];
     return model.rootIds.map((id) => entry("node", id));
   }
   const parent = state.trail[state.trail.length - 2];
