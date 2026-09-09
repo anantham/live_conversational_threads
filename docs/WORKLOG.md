@@ -6054,3 +6054,8 @@ Manual testing not run:
   `refresh_in_progress=true` even after a further 12-second wait. This separate
   sibling cache-wedge is recorded in `ISSUES.md`; source-metric correctness is
   not being conflated with UI freshness.
+# 2026-09-09 — Second viewer review corrections (PR194)
+
+User approved fixing all findings. Playback boundaries now precompute once per transcript in O(n log n), with allocation-free O(n) clock lookup; no inferred ends enter duration metrics. Map auto-framing yields only to an unconsumed focus request, and records the focused node set to avoid immediately undoing the jump. Mobile ribbon explicitly uses compact mode. Unprovided card settings retain legacy metrics; the public viewer provider still defaults to duration only. Reading paths use the closest on-path ancestor, while truly off-path selections retain the honest notice. Hoisted ribbon invariant scan; untimed layouts omit the time connector; timing completeness distinguishes missing links; membership buttons cannot submit forms.
+
+Test intent: preserve silence/overlap/start-only highlights, quiet viewer versus legacy metric scope, skipped-level hierarchy and untyped-node baseline, and partial timing semantics. Missing-level hierarchy review claim is not a regression: baseline already filters nodes without valid levels before building links. No invented hierarchy added. Existing large graph/viewer decomposition remains deferred in TECH_DEBT; this is a bounded corrective pass, not a redesign.

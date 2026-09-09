@@ -33,6 +33,10 @@ it("retains legacy skipped-level navigation",()=>{
  const next=moveMobileDeck(model,initialMobileDeckState(model),"down");
  expect(mobileDeckSnapshot(model,next.state).item.id).toBe("m");
 });
+it("does not invent abstraction levels for untyped legacy nodes",()=>{
+ const model=buildMobileConversationDeck([{id:"a",children_ids:["b"]},{id:"b",parent_id:"a"}]);
+ expect(model.nodeById.size).toBe(0);
+});
 
 it("reaches a shared moment through either parent and returns by the actual trail", () => {
   const model = buildMobileConversationDeck([

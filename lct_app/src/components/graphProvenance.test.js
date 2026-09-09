@@ -22,6 +22,9 @@ const utterances = [
 ];
 
 describe("graph provenance read model", () => {
+  it("does not label fully timed linked evidence as partially timed merely because links are missing",()=>{
+    expect(formatSourceDuration({duration_seconds:10,timed_utterance_count:1,matched_utterance_count:1,utterance_count:2})).toBe("10s of speech");
+  });
   it("rolls exact source turns through a many-to-many hierarchy without double counting", () => {
     const nodes = [
       { id: "arc", semantic_level: 5, children_ids: ["theme-a", "theme-b"] },

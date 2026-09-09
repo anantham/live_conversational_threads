@@ -1306,6 +1306,9 @@ function MinimalGraphInner({
     return layoutDialectic(dimmed, [], { focusNodeId: argumentTraceFrom });
   }, [focusedBaseNodes, traceResult.nodes, weaknessFilter, weaknessSets, argumentTraceFrom, reduceMotion]);
 
+  const lastFocusedRef = useRef(null);
+  const lastRequestedTierRef = useRef(null);
+  const focusToken=`${focusNode}:${focusRequestKey}`;
   // ReactFlow measures nodes over several renders. Debounce until the visible
   // node set settles, then frame the first card at a readable phone zoom. The
   // key is recorded only after the frame commits, so interrupted renders retry
@@ -1314,7 +1317,7 @@ function MinimalGraphInner({
     if (!compactViewer || displayNodes.length === 0) {
       return undefined;
     }
-    if (focusNode && displayNodes.some(n=>n.id===focusNode)) return undefined;
+    if (focusNode && lastFocusedRef.current !== focusToken && displayNodes.some(n=>n.id===focusNode)) return undefined;
     const key = displayNodes.map((node) => node.id).join(",");
     if (mobileFramedNodeSetRef.current === key) return undefined;
     const id = window.setTimeout(() => {
@@ -1334,7 +1337,7 @@ function MinimalGraphInner({
       }
     }, 180);
     return () => window.clearTimeout(id);
-  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode]);
+  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode, focusToken]);
 
   // Re-frame when a relationship neighbourhood or dialectic fan appears. Both
   // projections move nodes without changing the controlled full-layout state.
@@ -1403,7 +1406,7 @@ function MinimalGraphInner({
   useEffect(() => {
     mglog("fitView gate", { willRun: pendingFitViewRef.current && displayNodes.length > 0, pending: pendingFitViewRef.current, displayNodes: displayNodes.length, hasInitiallyFit: hasInitiallyFitRef.current });
     if (!pendingFitViewRef.current || displayNodes.length === 0) return;
-    if (focusNode && displayNodes.some(n=>n.id===focusNode)) {
+    if (focusNode && lastFocusedRef.current !== focusToken && displayNodes.some(n=>n.id===focusNode)) {
       hasInitiallyFitRef.current=true;
       pendingFitViewRef.current=false;
       return;
@@ -1457,7 +1460,7 @@ function MinimalGraphInner({
       cancelAnimationFrame(raf1);
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode]);
+  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode, focusToken]);
 
   const selectedLayoutNode = useMemo(
     () => displayNodes.find((node) => node.id === selectedNode) || null,
@@ -1504,9 +1507,6 @@ function MinimalGraphInner({
   // drawer (which is bound to `selectedNode`). The ribbon "teleports" the camera
   // only; re-centering is keyed on focusNode CHANGING, so a later user pan isn't
   // yanked back when the layout updates.
-  const lastFocusedRef = useRef(null);
-  const lastRequestedTierRef = useRef(null);
-  const focusToken=`${focusNode}:${focusRequestKey}`;
   useEffect(() => {
     if (!focusNode || lastRequestedTierRef.current === focusToken) return;
     const target = normalizedChunk.find(n => n.id === focusNode);
@@ -1535,6 +1535,7 @@ function MinimalGraphInner({
     }
     const timer = setTimeout(() => {
       lastFocusedRef.current = focusToken;
+      mobileFramedNodeSetRef.current = displayNodes.map(node=>node.id).join(",");
       centerViewportOnNode(focusNode, { zoom: compactViewer ? 0.85 : 1.15, duration: reduceMotion ? 0 : 280 });
     },180);
     return () => clearTimeout(timer);

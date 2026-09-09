@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
 import MobileDeckCard from "./MobileDeckCard";
+import {CardDisplayProvider} from "./CardDisplaySettings";
 import { enrichGraphNodesWithProvenance } from "../graphProvenance";
 
 // Test intent: compact cards use the same source-duration and denominator
@@ -12,7 +13,7 @@ it("shows only summed speech time by default on mobile", () => {
     {id: "c", timestamp_start: 2000, timestamp_end: 2005, text: "elsewhere"},
   ];
   const [item] = enrichGraphNodesWithProvenance([{id: "arc", node_name: "An arc", utterance_ids: ["a", "b"]}], rows);
-  const html = renderToStaticMarkup(<MobileDeckCard snapshot={{item, level: 5, levelInfo: {singular: "arc"}, position: 1, total: 2}} sourceRows={rows.slice(0, 2)} speakerColorMap={{}} />);
+  const html = renderToStaticMarkup(<CardDisplayProvider><MobileDeckCard snapshot={{item, level: 5, levelInfo: {singular: "arc"}, position: 1, total: 2}} sourceRows={rows.slice(0, 2)} speakerColorMap={{}} /></CardDisplayProvider>);
   expect(html).toContain("30s of speech");
   expect(html).not.toContain("2 of 3 segments (67%)");
   expect(html).not.toContain("17m");

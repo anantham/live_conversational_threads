@@ -89,8 +89,8 @@ describe("ConversationNode structured-turn fallback", () => {
       </ReactFlowProvider>,
     );
     expect(markup).toContain("3m 12s of speech");
-    expect(markup).not.toContain("418 words");
-    expect(markup).not.toContain("6 of 12 segments");
+    expect(markup).toContain("418 words");
+    expect(markup).toContain("6 of 12 segments");
     expect(markup).toContain('aria-label="Open exact source utterances"');
     expect(markup).toContain(">source<");
   });
@@ -139,7 +139,7 @@ describe("ConversationNode structured-turn fallback", () => {
     );
 
     expect(markup).toContain("timing unavailable");
-    expect(markup).not.toContain("18 words");
+    expect(markup).toContain("18 words");
     expect(markup).toContain("this artifact has no aligned timestamps");
   });
 });

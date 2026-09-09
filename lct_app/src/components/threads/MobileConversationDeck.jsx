@@ -102,7 +102,7 @@ export default function MobileConversationDeck({
 
   const navigate = useCallback((action) => {
     if ((action === "previous" || action === "next") && routeIds.length) {
-      const current=deckState.trail.at(-1)?.id;
+      const current=[...deckState.trail].reverse().find(entry=>routeIds.includes(entry.id))?.id;
       const index=routeIds.indexOf(current);
       if(index<0){showNotice("This card is outside the selected path. Choose a path to resume it.");return;}
       const next=index+(action==="next" ? 1 : -1);
@@ -259,7 +259,7 @@ export default function MobileConversationDeck({
               {bundle.conversation_threads.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}
             </select>
           </label>
-          <TimelineRibbon graphData={graphNodes} semanticLevel={1} selectedNode={snapshot.item?.id} setSelectedNode={id=>commitDeckState(mobileDeckStateForNode(model,id))}/>
+          <TimelineRibbon compact graphData={graphNodes} semanticLevel={1} selectedNode={snapshot.item?.id} setSelectedNode={id=>commitDeckState(mobileDeckStateForNode(model,id))}/>
         </>}
 
         {liveStatus && (

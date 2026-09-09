@@ -323,7 +323,7 @@ export default function TimelineRibbon({
         style={{ scrollBehavior: compact ? "auto" : "smooth" }}
       >
         <div className="relative" style={{ width: `${totalWidth}px`, minWidth: "100%", height: `${contentHeight}px` }}>
-          {allNodes.some(n=>n.thread_ids?.length) && <svg aria-hidden="true" className="pointer-events-none absolute inset-0" width={totalWidth} height={stackHeight}>
+          {timeBased && allNodes.some(n=>n.thread_ids?.length) && <svg aria-hidden="true" className="pointer-events-none absolute inset-0" width={totalWidth} height={stackHeight}>
             <polyline fill="none" stroke="#94a3b8" strokeOpacity="0.35" strokeWidth="1" points={rows.flatMap((row,i)=>row.nodes.map(n=>({x:n.x,y:i*rowHeight+rowHeight/2,t:n.ts}))).sort((a,b)=>a.t-b.t).map(p=>`${p.x},${p.y}`).join(" ")}/>
           </svg>}
           {rows.map((row, rowIdx) => {

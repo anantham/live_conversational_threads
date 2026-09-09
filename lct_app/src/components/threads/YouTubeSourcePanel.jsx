@@ -41,19 +41,31 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const [transcriptHeight, setTranscriptHeight] = useState(compact ? 80 : 256);
   const passages = useMemo(() => nodeVideoPassages(node, nodes, bundle.utterances || []), [node, nodes, bundle.utterances]);
   const first = passages[0]?.timestamp_start;
-  const playbackPassage = useMemo(() => {
-    if (active == null) return null;
+  const playbackRows = useMemo(() => {
     const rows=(bundle.utterances || []).filter(u=>validMediaSeconds(u.timestamp_start))
       .sort((a,b)=>a.timestamp_start-b.timestamp_start);
     // Known ends preserve silence gaps. Start-only imports use the next start
     // as an approximate highlight boundary, never as measured speech duration.
-    return rows.filter((u,i)=>{
+    let nextStart=Infinity;
+    const indexed=new Array(rows.length);
+    for(let i=rows.length-1;i>=0;i--){
+      const u=rows[i];
+      if(i+1<rows.length && rows[i+1].timestamp_start>u.timestamp_start) nextStart=rows[i+1].timestamp_start;
       const end=validMediaSeconds(u.timestamp_end) ? u.timestamp_end
         : validMediaSeconds(u.duration_seconds ?? u.duration) ? u.timestamp_start+(u.duration_seconds ?? u.duration)
-        : rows.slice(i+1).find(v=>v.timestamp_start>u.timestamp_start)?.timestamp_start ?? Infinity;
-      return u.timestamp_start<=active && active<end;
-    }).at(-1) || null;
-  }, [active, bundle.utterances]);
+        : nextStart;
+      indexed[i]={utterance:u,end};
+    }
+    return indexed;
+  }, [bundle.utterances]);
+  const playbackPassage = useMemo(() => {
+    if(active==null) return null;
+    for(let i=playbackRows.length-1;i>=0;i--){
+      const {utterance,end}=playbackRows[i];
+      if(utterance.timestamp_start<=active && active<end) return utterance;
+    }
+    return null;
+  }, [active, playbackRows]);
   const outsideSelection = playbackPassage && !passages.some((u) => u.id === playbackPassage.id);
   useEffect(() => {
     const list = passageList.current;

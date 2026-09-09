@@ -995,7 +995,7 @@ export default function NodeDetail({
         {safeNode.memberships?.length > 0 && <div>
           <span className="text-xs font-medium text-gray-400 uppercase tracking-wider">Part of</span>
           {safeNode.memberships.map(m=><p key={m.parent_id} className="mt-2 text-xs text-gray-600">
-            <button className="text-amber-700" onClick={()=>onSelectNode?.(m.parent_id)}>{contextNodes?.find(n=>n.id===m.parent_id)?.node_name || m.parent_id}</button>
+            <button type="button" className="text-amber-700" onClick={()=>onSelectNode?.(m.parent_id)}>{contextNodes?.find(n=>n.id===m.parent_id)?.node_name || m.parent_id}</button>
             {m.explanation && <span>: {m.explanation}</span>}
           </p>)}
         </div>}

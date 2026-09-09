@@ -253,7 +253,7 @@ export function formatSegmentCount(metrics) {
 export function formatSourceDuration(metrics) {
   if (metrics?.duration_seconds == null) return "";
   const duration = metrics.duration_seconds === 0 ? "0s" : formatDurationCompact(metrics.duration_seconds);
-  const partial = metrics.timed_utterance_count != null && metrics.timed_utterance_count < metrics.utterance_count;
+  const partial = metrics.timed_utterance_count != null && metrics.timed_utterance_count < (metrics.matched_utterance_count ?? metrics.utterance_count);
   return `${duration} of speech${partial ? " (partial timing)" : ""}`;
 }
 

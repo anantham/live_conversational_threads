@@ -1,7 +1,7 @@
 import {createContext, useContext, useState} from "react";
 import PropTypes from "prop-types";
 const defaults = {duration:true,words:false,segments:false,voices:false,connections:false};
-const Context = createContext({options:defaults,setOptions:()=>{}});
+const Context = createContext({options:{duration:true,words:true,segments:true,voices:true,connections:true},setOptions:()=>{}});
 export const useCardDisplay = () => useContext(Context).options;
 export function CardDisplayProvider({children}) {
   const [options,setOptions]=useState(defaults);
