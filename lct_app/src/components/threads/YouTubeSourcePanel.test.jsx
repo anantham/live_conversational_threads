@@ -27,10 +27,31 @@ afterEach(() => {
   vi.useRealTimers(); globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 });
 const highlight = () => container.querySelector('[aria-current="true"]')?.textContent;
+it("opens with the full transcript and video ready without a node selection",async()=>{
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]}/>));
+ act(()=>options.events.onReady());
+ expect(options.playerVars.autoplay).toBe(0);
+ expect(player.seekTo).toHaveBeenCalledWith(10,true);
+ expect(highlight()).toContain("First sentence");
+ expect(container.querySelector('[aria-label="Source passages"]').querySelectorAll('button')).toHaveLength(3);
+ expect(container.textContent).not.toContain("Select a node");
+ expect(container.textContent).not.toContain("Watch the source");
+});
+it("allows manual transcript browsing without the playback clock pulling it back",async()=>{
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]}/>));
+ act(()=>options.events.onReady());
+ const list=container.querySelector('[aria-label="Source passages"]');
+ list.getBoundingClientRect=()=>({top:0,bottom:80,height:80});
+ for(const button of list.querySelectorAll('button'))button.getBoundingClientRect=()=>({top:200,bottom:240,height:40});
+ act(()=>list.dispatchEvent(new WheelEvent("wheel",{bubbles:true})));
+ list.scrollTop=100;
+ act(()=>{time=22;vi.advanceTimersByTime(250);});
+ expect(list.scrollTop).toBe(100);
+ expect(highlight()).toContain("Second sentence");
+});
 it("highlights start-only imports without creating measured end times", async()=>{
  const starts={...bundle,utterances:utterances.map(({timestamp_end,...u})=>u)};
  await act(async()=>root.render(<YouTubeSourcePanel bundle={starts} node={node} nodes={[node]}/>));
- await act(async()=>[...container.querySelectorAll('button')].find(b=>b.textContent.includes("Watch the source")).click());
  act(()=>options.events.onReady());
  expect(highlight()).toContain("First sentence");
  act(()=>{time=22;vi.advanceTimersByTime(250);});
@@ -39,7 +60,6 @@ it("highlights start-only imports without creating measured end times", async()=
 });
 it("does not install a timer when player readiness arrives after unmount",async()=>{
  await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]}/>));
- await act(async()=>[...container.querySelectorAll('button')].find(b=>b.textContent.includes("Watch the source")).click());
  act(()=>root.unmount());
  const remainingTimers=vi.getTimerCount();
  act(()=>options.events.onReady());
@@ -57,7 +77,6 @@ it("keeps naming and export outside the collapsible transcript",async()=>{
 });
 it.each([true, false])("synchronizes both ways, compact=%s", async (compact) => {
   await act(async () => root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]} compact={compact} />));
-  await act(async () => [...container.querySelectorAll('button')].find(b => b.textContent.includes("Watch the source")).click());
   act(() => options.events.onReady());
   expect(highlight()).toContain("First sentence");
   const second = [...container.querySelectorAll('button')].find(b => b.textContent.includes("Second sentence"));
@@ -71,7 +90,7 @@ it.each([true, false])("synchronizes both ways, compact=%s", async (compact) => 
   expect(highlight()).toBeUndefined();
   act(() => {time = 52; options.events.onStateChange();});
   expect(highlight()).toContain("Another topic");
-  expect(container.textContent).toContain("Playing elsewhere");
+  expect(container.textContent).not.toContain("Playing elsewhere");
   expect(container.querySelector('a')).toBeNull();
   expect(player.seekTo.mock.calls.length).toBe(seeks);
   act(() => root.unmount());
