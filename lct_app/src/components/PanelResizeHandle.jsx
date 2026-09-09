@@ -26,6 +26,7 @@ export default function PanelResizeHandle({ label, vertical = false, value, min,
       const shrink = vertical ? "ArrowDown" : "ArrowLeft";
       if (![grow, shrink, "Home", "End"].includes(event.key)) return;
       event.preventDefault();
+      event.stopPropagation();
       onChange(event.key === "Home" ? min : event.key === "End" ? max : clamp(value + (event.key === grow ? 24 : -24)));
     }}
     className={`touch-none bg-slate-100 hover:bg-amber-200 focus-visible:bg-amber-200 ${vertical ? "h-2 w-full cursor-row-resize" : "absolute inset-y-0 right-0 w-2 cursor-col-resize"}`}

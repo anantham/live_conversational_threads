@@ -64,6 +64,8 @@ test("desktop node selection seeks queued and ready playback; reviewed artifact 
   await page.mouse.move(grip.x + grip.width / 2 + 48, grip.y + 20);
   await page.mouse.up();
   await expect.poll(async () => (await source.boundingBox()).width).toBeGreaterThan(oldWidth);
+  await page.getByRole("button", { name: "Open exact source utterances", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await source.getByRole("button", { name: "Hide source panel", exact: true }).click();
   await expect(source.getByLabel("Source passages")).not.toBeVisible();
   await page.getByRole("button", { name: "0:01", exact: true }).click();

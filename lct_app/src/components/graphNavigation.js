@@ -139,5 +139,5 @@ export function isGraphNavigationKey(event) {
   if (!event || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return false;
   if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) return false;
   const target = event.target;
-  return !target?.closest?.("input, textarea, select, button, a, [contenteditable='true']");
+  return !target?.closest?.("input, textarea, select, button, a, [role='separator'], [aria-label='Source passages'], [contenteditable='true']");
 }
