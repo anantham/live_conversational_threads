@@ -18,7 +18,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   time = 10;
-  player = {getCurrentTime: () => time, seekTo: vi.fn((seconds) => {time = seconds;}), getIframe: () => document.createElement("iframe"), destroy: vi.fn()};
+  player = {getCurrentTime: () => time, cueVideoById:vi.fn(({startSeconds})=>{time=startSeconds;}), seekTo: vi.fn((seconds) => {time = seconds;}), getIframe: () => document.createElement("iframe"), destroy: vi.fn()};
   window.YT = {Player: function (_host, config) {options = config; return player;}};
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
@@ -27,8 +27,8 @@ afterEach(() => {
   vi.useRealTimers(); globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 });
 const highlight = () => container.querySelector('[aria-current="true"]')?.textContent;
-it("does not rewind when the selected node is cleared",async()=>{
- await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]}/>));
+it.each([node,{id:"untimed",utterance_ids:[]}])("does not rewind when the selected node is cleared (%j)",async(selected)=>{
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} node={selected} nodes={[selected]}/>));
  act(()=>options.events.onReady());
  act(()=>{time=22;vi.advanceTimersByTime(250);});
  const seeks=player.seekTo.mock.calls.length;
@@ -41,7 +41,8 @@ it("opens with the full transcript and video ready without a node selection",asy
  await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]}/>));
  act(()=>options.events.onReady());
  expect(options.playerVars.autoplay).toBe(0);
- expect(player.seekTo).toHaveBeenCalledWith(10,true);
+ expect(player.cueVideoById).toHaveBeenCalledWith({videoId:"6HmR9IaqM88",startSeconds:10});
+ expect(player.seekTo).not.toHaveBeenCalled();
  expect(highlight()).toContain("First sentence");
  expect(container.querySelector('[aria-label="Source passages"]').querySelectorAll('button')).toHaveLength(3);
  expect(container.textContent).not.toContain("Select a node");

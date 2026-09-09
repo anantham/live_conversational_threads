@@ -35,6 +35,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const passageList = useRef(null);
   const followPlayback = useRef(true);
   const positionedVideo = useRef(null);
+  const initializedPosition = useRef(false);
   const [followEpoch,setFollowEpoch] = useState(0);
   const [error, setError] = useState("");
   const [active, setActive] = useState(null);
@@ -84,8 +85,10 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
 
   useEffect(() => {
     const newVideo=positionedVideo.current!==videoId;
-    if(newVideo){positionedVideo.current=videoId;pending.current=null;}
-    if(!node && pending.current!=null) return;
+    if(newVideo){positionedVideo.current=videoId;pending.current=null;initializedPosition.current=false;}
+    const alreadyInitialized=initializedPosition.current;
+    initializedPosition.current=true;
+    if(!node && alreadyInitialized) return;
     if (first == null) return;
     pending.current = first;
     followPlayback.current = true;
@@ -119,7 +122,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
             if (canceled) return;
             player.current = instance;
             instance.getIframe().title = videoLabel;
-            if (pending.current != null) instance.seekTo(pending.current, true);
+            instance.cueVideoById({videoId,startSeconds:pending.current ?? 0});
             // YouTube has no timeupdate event. Poll while enabled (including
             // paused seeks); observing the clock must never call seekTo.
             clock = window.setInterval(readClock, 250);
