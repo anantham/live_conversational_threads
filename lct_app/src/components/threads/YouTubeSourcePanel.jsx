@@ -4,6 +4,12 @@ import { mediaOffsetLabel } from "../../services/mediaSeek";
 import { nodeVideoPassages, selectYouTubeRef, validYouTubeRef, validMediaSeconds } from "../../services/youtubeMedia";
 
 let apiPromise;
+function positionPlayer(player, videoId, seconds) {
+  if (!player) return;
+  // seekTo starts a cued video. Keep it ready until the reader presses play.
+  if ([1, 2, 3].includes(player.getPlayerState())) player.seekTo(seconds, true);
+  else player.cueVideoById({ videoId, startSeconds: seconds });
+}
 function loadPlayerApi() {
   if (window.YT?.Player) return Promise.resolve(window.YT);
   if (apiPromise) return apiPromise;
@@ -94,8 +100,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
     followPlayback.current = true;
     setFollowEpoch(value=>value+1);
     setActive(first);
-    // Seeking does not force playback. A reader can keep the video paused.
-    player.current?.seekTo(first, true);
+    positionPlayer(player.current, videoId, first);
   }, [first, node?.id,videoId]);
 
   useEffect(() => {
@@ -146,7 +151,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
     followPlayback.current = true;
     setFollowEpoch(value=>value+1);
     setActive(seconds);
-    player.current?.seekTo(seconds, true);
+    positionPlayer(player.current, videoId, seconds);
   };
   const href = `${media.view_url}${active == null ? "" : `&t=${Math.floor(active)}s`}`;
 

@@ -6,7 +6,7 @@ import YouTubeSourcePanel from "./YouTubeSourcePanel";
 // Test intent: source clicks seek; playback and paused/backward scrubs update
 // the visible highlight without seeking back. Gaps clear the highlight and
 // out-of-node passages remain visible. Unmount stops polling.
-let container, root, options, player, time;
+let container, root, options, player, time, playerState;
 const utterances = [
   {id: "a", text: "First sentence", speaker_id: "A", timestamp_start: 10, timestamp_end: 15},
   {id: "b", text: "Second sentence", speaker_id: "B", timestamp_start: 20, timestamp_end: 25},
@@ -18,7 +18,8 @@ beforeEach(() => {
   vi.useFakeTimers();
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   time = 10;
-  player = {getCurrentTime: () => time, cueVideoById:vi.fn(({startSeconds})=>{time=startSeconds;}), seekTo: vi.fn((seconds) => {time = seconds;}), getIframe: () => document.createElement("iframe"), destroy: vi.fn()};
+  playerState = -1;
+  player = {getPlayerState:()=>playerState, getCurrentTime: () => time, cueVideoById:vi.fn(({startSeconds})=>{time=startSeconds;playerState=5;}), seekTo: vi.fn((seconds) => {time = seconds;if(playerState!==2)playerState=1;}), getIframe: () => document.createElement("iframe"), destroy: vi.fn()};
   window.YT = {Player: function (_host, config) {options = config; return player;}};
   container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 });
@@ -27,6 +28,17 @@ afterEach(() => {
   vi.useRealTimers(); globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 });
 const highlight = () => container.querySelector('[aria-current="true"]')?.textContent;
+it.each([5,1,2])("preserves playback state %s on passage and node selection",async(state)=>{
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]}/>));
+ act(()=>options.events.onReady());
+ playerState=state;
+ act(()=>[...container.querySelectorAll('button')].find(b=>b.textContent.includes('Second sentence')).click());
+ expect(time).toBe(20);
+ expect(playerState).toBe(state);
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]}/>));
+ expect(time).toBe(10);
+ expect(playerState).toBe(state);
+});
 it.each([node,{id:"untimed",utterance_ids:[]}])("does not rewind when the selected node is cleared (%j)",async(selected)=>{
  await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} node={selected} nodes={[selected]}/>));
  act(()=>options.events.onReady());
