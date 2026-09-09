@@ -34,6 +34,8 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const pending = useRef(null);
   const passageList = useRef(null);
   const followPlayback = useRef(true);
+  const positionedVideo = useRef(null);
+  const [followEpoch,setFollowEpoch] = useState(0);
   const [error, setError] = useState("");
   const [active, setActive] = useState(null);
   const [speakerId, setSpeakerId] = useState("");
@@ -77,17 +79,21 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
     if (rect.top < bounds.top || rect.bottom > bounds.bottom) {
       list.scrollTop += rect.top - bounds.top - (list.clientHeight - rect.height) / 2;
     }
-  }, [playbackPassage?.id]);
+  }, [playbackPassage?.id,followEpoch]);
   const speakers = [...new Set((bundle.utterances || []).map((u) => u.speaker_id).filter((id) => id && id !== "UNKNOWN"))];
 
   useEffect(() => {
-    if (first == null) { pending.current = null; setActive(null); return; }
+    const newVideo=positionedVideo.current!==videoId;
+    if(newVideo){positionedVideo.current=videoId;pending.current=null;}
+    if(!node && pending.current!=null) return;
+    if (first == null) return;
     pending.current = first;
     followPlayback.current = true;
+    setFollowEpoch(value=>value+1);
     setActive(first);
     // Seeking does not force playback. A reader can keep the video paused.
     player.current?.seekTo(first, true);
-  }, [first, node?.id]);
+  }, [first, node?.id,videoId]);
 
   useEffect(() => {
     if (!videoId) return undefined;
@@ -135,6 +141,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const seek = (seconds) => {
     pending.current = seconds;
     followPlayback.current = true;
+    setFollowEpoch(value=>value+1);
     setActive(seconds);
     player.current?.seekTo(seconds, true);
   };

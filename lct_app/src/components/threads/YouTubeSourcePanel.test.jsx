@@ -27,6 +27,16 @@ afterEach(() => {
   vi.useRealTimers(); globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 });
 const highlight = () => container.querySelector('[aria-current="true"]')?.textContent;
+it("does not rewind when the selected node is cleared",async()=>{
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]}/>));
+ act(()=>options.events.onReady());
+ act(()=>{time=22;vi.advanceTimersByTime(250);});
+ const seeks=player.seekTo.mock.calls.length;
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]}/>));
+ expect(time).toBe(22);
+ expect(player.seekTo.mock.calls.length).toBe(seeks);
+ expect(highlight()).toContain("Second sentence");
+});
 it("opens with the full transcript and video ready without a node selection",async()=>{
  await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]}/>));
  act(()=>options.events.onReady());
@@ -48,6 +58,8 @@ it("allows manual transcript browsing without the playback clock pulling it back
  act(()=>{time=22;vi.advanceTimersByTime(250);});
  expect(list.scrollTop).toBe(100);
  expect(highlight()).toContain("Second sentence");
+ act(()=>list.querySelector('[aria-current="true"]').click());
+ expect(list.scrollTop).toBeGreaterThan(100);
 });
 it("highlights start-only imports without creating measured end times", async()=>{
  const starts={...bundle,utterances:utterances.map(({timestamp_end,...u})=>u)};
