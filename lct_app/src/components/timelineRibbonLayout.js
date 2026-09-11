@@ -155,7 +155,7 @@ export function buildRibbonLayout(nodes, opts = {}) {
         x = railStart + e.idx * dotSpacing;
       }
 
-      const isReturn =
+      const isReturn = Array.isArray(e.node.thread_ids) ? Boolean(e.node.explicit_thread_return) :
         timeBased &&
         prev != null &&
         Number.isFinite(e.ts) &&
@@ -183,11 +183,12 @@ export function buildRibbonLayout(nodes, opts = {}) {
 
   // Most-active thread on top (ADR-032 §A); ungrouped sinks to the bottom.
   // Stable tiebreak by the earliest node index so order is deterministic.
+  const hasThreadIds=list.some(n=>Array.isArray(n.thread_ids));
   rows.sort((a, b) => {
     const aUng = a.threadId === UNGROUPED_KEY;
     const bUng = b.threadId === UNGROUPED_KEY;
     if (aUng !== bUng) return aUng ? 1 : -1;
-    if (b.count !== a.count) return b.count - a.count;
+    if (!hasThreadIds && b.count !== a.count) return b.count - a.count;
     const aFirst = a.nodes[0]?.x ?? 0;
     const bFirst = b.nodes[0]?.x ?? 0;
     return aFirst - bFirst;

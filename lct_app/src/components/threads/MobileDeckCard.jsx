@@ -2,8 +2,9 @@ import { useId } from "react";
 import PropTypes from "prop-types";
 import { ExternalLink, GitBranch, MessageSquareText } from "lucide-react";
 
-import { formatDurationCompact } from "../graphProvenance";
+import { formatSegmentCount, formatSourceDuration } from "../graphProvenance";
 import { buildMediaSeekUrl, mediaOffsetLabel } from "../../services/mediaSeek";
+import {useCardDisplay} from "./CardDisplaySettings";
 
 const TIER_TEXT = {
   1: "text-teal-700",
@@ -79,12 +80,13 @@ function handleCardKeyDown(event) {
 }
 
 function NodeCard({ snapshot, sourceRows }) {
+  const options=useCardDisplay();
   const headingId = useId();
   const node = snapshot.item;
   const metrics = node?.provenance_metrics || {};
-  const duration = formatDurationCompact(metrics.duration_seconds);
+  const duration = formatSourceDuration(metrics);
   const wordCount = Number(metrics.word_count) || 0;
-  const turnCount = Number(metrics.matched_utterance_count) || sourceRows.length;
+  const segments = formatSegmentCount(metrics);
   const speakers = [...new Set(sourceRows.map(utteranceSpeaker).filter(Boolean))];
   const connectionCount = nodeConnections(node);
   const title = node?.node_name || node?.title || "Untitled";
@@ -117,16 +119,16 @@ function NodeCard({ snapshot, sourceRows }) {
 
       <div className="mt-auto pt-7">
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 pt-4 text-xs text-slate-500">
-          {wordCount > 0 && <span>{wordCount.toLocaleString()} words</span>}
-          {duration && <span>{duration}</span>}
-          {turnCount > 0 && <span>{turnCount} turn{turnCount === 1 ? "" : "s"}</span>}
-          {speakers.length > 0 && (
+          {options.words && wordCount > 0 && <span>{wordCount.toLocaleString()} words</span>}
+          {options.duration && duration && <span>{duration}</span>}
+          {options.segments && segments && <span>{segments}</span>}
+          {options.voices && speakers.length > 0 && (
             <span className="inline-flex items-center gap-1.5">
               <MessageSquareText aria-hidden="true" className="h-3.5 w-3.5" />
               {speakers.length} voice{speakers.length === 1 ? "" : "s"}
             </span>
           )}
-          {connectionCount > 0 && (
+          {options.connections && connectionCount > 0 && (
             <span className="inline-flex items-center gap-1.5">
               <GitBranch aria-hidden="true" className="h-3.5 w-3.5" />
               {connectionCount} connection{connectionCount === 1 ? "" : "s"}

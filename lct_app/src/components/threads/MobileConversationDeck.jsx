@@ -4,6 +4,9 @@ import PropTypes from "prop-types";
 import { SPEAKER_COLORS } from "../graphConstants";
 import { selectMediaRef } from "../../services/mediaSeek";
 import MobileDeckCard from "./MobileDeckCard";
+import YouTubeSourcePanel from "./YouTubeSourcePanel";
+import TimelineRibbon from "../TimelineRibbon";
+import {CardDisplaySettings} from "./CardDisplaySettings";
 import {
   MobileDeckHeader,
   MobileDeckLiveStatus,
@@ -13,6 +16,7 @@ import MobileDeckOptions from "./MobileDeckOptions";
 import useMobileConversationDeckState from "./useMobileConversationDeckState";
 import {
   buildMobileConversationDeck,
+  mobileDeckStateForNode,
   mobileDeckLiveStatus,
   mobileDeckLevelInfo,
   mobileDeckSnapshot,
@@ -51,6 +55,9 @@ export default function MobileConversationDeck({
   onOpenLibrary,
   onRefreshFromDrive,
   onShowMap,
+  onRenameSpeaker,
+  readingPath,
+  onReadingPathChange,
 }) {
   const model = useMemo(
     () => buildMobileConversationDeck(graphNodes, bundle.utterances || []),
@@ -66,6 +73,13 @@ export default function MobileConversationDeck({
   const [motionKey, setMotionKey] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [localReadingRoute,setLocalReadingRoute]=useState("");
+  const readingRoute=readingPath ?? localReadingRoute;
+  const setReadingRoute=onReadingPathChange || setLocalReadingRoute;
+  const routeIds = useMemo(()=> readingRoute === "conversation"
+    ? graphNodes.filter(n=>Number(n.semantic_level)===1).sort((a,b)=>a.timestamp_start-b.timestamp_start).map(n=>n.id)
+    : (bundle.conversation_threads || []).find(t=>t.id===readingRoute)?.steps.map(s=>s.moment_id) || [],
+    [readingRoute,graphNodes,bundle.conversation_threads]);
   const gesture = useRef(null);
   const touchGesture = useRef(null);
   const noticeTimer = useRef(null);
@@ -85,8 +99,23 @@ export default function MobileConversationDeck({
   }, []);
 
   const closeMore = useCallback(() => setMoreOpen(false), []);
+  const selectNode = useCallback((id)=>{
+    const next=mobileDeckStateForNode(model,id);
+    if(next) commitDeckState(next);
+    else showNotice("This item has no navigable card.");
+  },[model,commitDeckState,showNotice]);
 
   const navigate = useCallback((action) => {
+    if ((action === "previous" || action === "next") && routeIds.length) {
+      const current=[...deckState.trail].reverse().find(entry=>routeIds.includes(entry.id))?.id;
+      const index=routeIds.indexOf(current);
+      if(index<0){showNotice("This card is outside the selected path. Choose a path to resume it.");return;}
+      const next=index+(action==="next" ? 1 : -1);
+      if(next<0 || next>=routeIds.length){showNotice("End of this reading path.");return;}
+      setNotice("");setMotion(action);setMotionKey(value=>value+1);
+      selectNode(routeIds[next]);return;
+    }
+    if(action==="up" || action==="down") setReadingRoute("");
     const result = moveMobileDeck(model, deckState, action);
     if (!result.changed) {
       if (result.notice) showNotice(result.notice);
@@ -96,7 +125,7 @@ export default function MobileConversationDeck({
     setMotion(action);
     setMotionKey((value) => value + 1);
     commitDeckState(result.state);
-  }, [commitDeckState, deckState, model, showNotice]);
+  }, [commitDeckState, deckState, model, showNotice,routeIds,setReadingRoute,selectNode]);
 
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -163,8 +192,6 @@ export default function MobileConversationDeck({
     if (Math.max(absoluteX, absoluteY) < SWIPE_THRESHOLD) return;
     if (absoluteX > absoluteY * DOMINANCE_RATIO) {
       navigate(deltaX < 0 ? "next" : "previous");
-    } else if (event.pointerType !== "touch" && absoluteY > absoluteX * DOMINANCE_RATIO) {
-      navigate(deltaY > 0 ? "down" : "up");
     }
   }, [navigate]);
 
@@ -179,18 +206,10 @@ export default function MobileConversationDeck({
     };
   }, []);
 
-  const handleTouchEnd = useCallback((event) => {
-    const start = touchGesture.current;
+  const handleTouchEnd = useCallback(() => {
+    // Vertical touch movement belongs to reading/scrolling, not abstraction.
     touchGesture.current = null;
-    const touch = event.changedTouches?.[0];
-    if (!start || !touch || start.scrollable) return;
-    const deltaX = touch.clientX - start.x;
-    const deltaY = touch.clientY - start.y;
-    const absoluteX = Math.abs(deltaX);
-    const absoluteY = Math.abs(deltaY);
-    if (absoluteY < SWIPE_THRESHOLD || absoluteY <= absoluteX * DOMINANCE_RATIO) return;
-    navigate(deltaY > 0 ? "down" : "up");
-  }, [navigate]);
+  }, []);
 
   const announceLayer = useCallback((level) => {
     const info = mobileDeckLevelInfo(level);
@@ -227,11 +246,26 @@ export default function MobileConversationDeck({
         <MobileDeckHeader
           levelInfo={snapshot.levelInfo}
           onMore={() => setMoreOpen(true)}
-          onShowMap={onShowMap}
+          onShowMap={() => onShowMap(snapshot.entry?.kind === "node" ? snapshot.item?.id : snapshot.parent?.id)}
           position={snapshot.position || 0}
           title={title}
           total={snapshot.total || 0}
         />
+
+        {(bundle.conversation_threads || []).length > 0 && <>
+          <label className="px-3 py-1 text-xs text-slate-500">Follow
+            <select aria-label="Reading path" className="ml-2 max-w-[78%] rounded border bg-white p-2" value={readingRoute} onChange={e=>{
+              const value=e.target.value;setReadingRoute(value);
+              const first=value==="conversation" ? graphNodes.filter(n=>Number(n.semantic_level)===1).sort((a,b)=>a.timestamp_start-b.timestamp_start)[0]?.id
+                : bundle.conversation_threads.find(t=>t.id===value)?.steps[0]?.moment_id;
+              if(first)selectNode(first);
+            }}>
+              <option value="">This group</option><option value="conversation">Conversation in time</option>
+              {bundle.conversation_threads.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}
+            </select>
+          </label>
+          <TimelineRibbon compact graphData={graphNodes} semanticLevel={1} selectedNode={snapshot.item?.id} setSelectedNode={selectNode}/>
+        </>}
 
         {liveStatus && (
           <MobileDeckLiveStatus
@@ -242,13 +276,12 @@ export default function MobileConversationDeck({
         )}
 
         <main className="flex min-h-0 flex-1 flex-col px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
-        <div className="h-5 shrink-0 px-2 text-center">
-          {parentTitle && (
+        <YouTubeSourcePanel bundle={bundle} node={snapshot.item} nodes={graphNodes} compact onRenameSpeaker={onRenameSpeaker} />
+        {parentTitle && <div className="h-5 shrink-0 px-2 text-center">
             <p className="truncate text-xs text-slate-400" title={parentTitle}>
               within {parentTitle}
             </p>
-          )}
-        </div>
+        </div>}
 
         <div
           data-testid="mobile-deck-stage"
@@ -281,7 +314,7 @@ export default function MobileConversationDeck({
           )}
         </div>
 
-        <MobileDeckNavigation navigate={navigate} snapshot={snapshot} />
+        <MobileDeckNavigation navigate={navigate} snapshot={routeIds.includes(snapshot.item?.id) ? {...snapshot,position:routeIds.indexOf(snapshot.item.id)+1,total:routeIds.length,canPrevious:routeIds.indexOf(snapshot.item.id)>0,canNext:routeIds.indexOf(snapshot.item.id)<routeIds.length-1} : snapshot} />
         </main>
 
       </div>
@@ -314,6 +347,7 @@ export default function MobileConversationDeck({
         onOpenLibrary={onOpenLibrary}
         onRefreshFromDrive={onRefreshFromDrive}
         open={moreOpen}
+        cardSettings={<CardDisplaySettings />}
       />
     </div>
   );
@@ -326,6 +360,7 @@ MobileConversationDeck.propTypes = {
     coverage: PropTypes.object,
     media_refs: PropTypes.arrayOf(PropTypes.object),
     utterances: PropTypes.arrayOf(PropTypes.object),
+    conversation_threads: PropTypes.array,
   }).isRequired,
   deckState: PropTypes.shape({
     trail: PropTypes.arrayOf(PropTypes.shape({
@@ -345,4 +380,7 @@ MobileConversationDeck.propTypes = {
   onOpenLibrary: PropTypes.func.isRequired,
   onRefreshFromDrive: PropTypes.func,
   onShowMap: PropTypes.func.isRequired,
+  onRenameSpeaker: PropTypes.func,
+  readingPath: PropTypes.string,
+  onReadingPathChange: PropTypes.func,
 };

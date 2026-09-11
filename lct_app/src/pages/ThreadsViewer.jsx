@@ -9,8 +9,14 @@ import NodeDetail from "../components/NodeDetail";
 import TimelineRibbon from "../components/TimelineRibbon";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
 import DriveThreadsGate from "../components/threads/DriveThreadsGate";
+import PublicDriveThreadsGate from "../components/threads/PublicDriveThreadsGate";
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
 import MobileConversationDeck from "../components/threads/MobileConversationDeck";
+import YouTubeSourcePanel from "../components/threads/YouTubeSourcePanel";
+import {CardDisplayProvider,CardDisplaySettings} from "../components/threads/CardDisplaySettings";
+import {withThreadLanes} from "../components/threads/threadPresentation";
+import {buildMobileConversationDeck,mobileDeckStateForNode} from "../components/threads/mobileConversationDeckModel";
+import { renameArtifactSpeaker, selectYouTubeRef } from "../services/youtubeMedia";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import {
@@ -30,10 +36,11 @@ import {
  * Static, LCT-backend-free viewer for a `.threads` artifact (ADR-036).
  *
  * The whole point: this renders a self-contained conversation map entirely
- * client-side. It makes ZERO LCT /api/ calls. A local file is a possession
+ * client-side. It makes no private LCT backend calls. A local file is a possession
  * capability; a Drive link instead uses recipient Google authorization solely
  * to fetch the permissioned artifact. (App.jsx exempts /view from the
  * backend-reachability gate.)
+ * Explicit &public=1 links use a credential-free public Drive relay instead.
  *
  * The data comes from a `.threads` file (drag-drop, file-picker, ?src=<url>, or
  * a recipient-authorized Google Drive fetch via ?driveFile=<file-id>).
@@ -43,6 +50,10 @@ import {
  */
 
 export default function ThreadsViewer() {
+  return <CardDisplayProvider><ThreadsViewerContent /></CardDisplayProvider>;
+}
+
+function ThreadsViewerContent() {
   const dataProvider = useDataProvider();
   const location = useLocation();
   const navigate = useNavigate();
@@ -50,6 +61,8 @@ export default function ThreadsViewer() {
   const driveFileId = typeof window === "undefined"
     ? ""
     : new URLSearchParams(location.search).get("driveFile") || "";
+  const DriveOpener = new URLSearchParams(location.search).get("public") === "1"
+    ? PublicDriveThreadsGate : DriveThreadsGate;
   const [bundle, setBundle] = useState(null);
   const [error, setError] = useState("");
   const [libraryStatus, setLibraryStatus] = useState(null);
@@ -65,6 +78,9 @@ export default function ThreadsViewer() {
   );
   const [driveRefreshRequested, setDriveRefreshRequested] = useState(false);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [mediaNode, setMediaNode] = useState(null);
+  const [sourceSeek, setSourceSeek] = useState(null);
+  const sourceSeekHandled = useCallback(() => setSourceSeek(null), []);
   const [visibleGraphLevel, setVisibleGraphLevel] = useState(null);
   const [argumentTraceFrom, setArgumentTraceFrom] = useState(null);
   // The part of the conversation currently fanned into (null = whole call). Drives
@@ -74,7 +90,11 @@ export default function ThreadsViewer() {
   // toolbar) so only the nodes remain. Esc exits.
   const [focusMode, setFocusMode] = useState(false);
   const [mobileMapOpen, setMobileMapOpen] = useState(false);
+  const [mapTarget, setMapTarget] = useState(null);
+  const [mapRequest,setMapRequest]=useState(0);
+  const requestMapTarget=useCallback((id)=>{setMapTarget(id);setMapRequest(n=>n+1);},[]);
   const [mobileDeckState, setMobileDeckState] = useState(null);
+  const [mobileReadingPath,setMobileReadingPath]=useState("");
   const consumedRouteState = useRef(false);
   const compactViewer = useMediaQuery(COMPACT_VIEWER_QUERY);
 
@@ -97,6 +117,7 @@ export default function ThreadsViewer() {
       setBundle(validated);
       setError("");
       setSelectedNode(null);
+      setMediaNode(null);
       setMobileMapOpen(false);
       setMobileDeckState(null);
       if (remember) {
@@ -248,11 +269,11 @@ export default function ThreadsViewer() {
 
   const flatNodes = useMemo(
     () => (bundle
-      ? enrichGraphNodesWithProvenance(indexExplicitEdges(
+      ? withThreadLanes(enrichGraphNodesWithProvenance(indexExplicitEdges(
         flattenThreadsGraph(bundle.graph_data),
         bundle.edges,
         true,
-      ), bundle.utterances || [])
+      ), bundle.utterances || []), bundle.conversation_threads || [])
       : []),
     [bundle],
   );
@@ -346,6 +367,14 @@ export default function ThreadsViewer() {
   }, [bundle, flatNodes]);
 
   const openLibrary = useCallback(() => navigate("/browse"), [navigate]);
+  const renameSpeaker = useCallback((speakerId, name) => {
+    const updated = renameArtifactSpeaker(bundle, speakerId, name);
+    setBundle(updated);
+    setLibraryStatus({ state: "saving", message: "Saving speaker names…" });
+    void rememberThreadsArtifact(updated).then((record) => {
+      setLibraryStatus({ state: "saved", message: "Speaker names saved on this device", recordId: record.id });
+    }).catch(() => setLibraryStatus({ state: "error", message: "Names changed here but could not be saved. Download the reviewed file." }));
+  }, [bundle]);
   const openAnother = useCallback(() => {
     setBundle(null);
     setError("");
@@ -373,7 +402,7 @@ export default function ThreadsViewer() {
   if (!bundle || driveRefreshRequested) {
     if (driveFileId) {
       return (
-        <DriveThreadsGate
+        <DriveOpener
           fileId={driveFileId}
           refreshing={driveRefreshRequested}
           onCancel={driveRefreshRequested ? () => setDriveRefreshRequested(false) : undefined}
@@ -440,11 +469,14 @@ export default function ThreadsViewer() {
   }
 
   // ---- Loaded state: the map ----------------------------------------------
+  const hasThreads = Array.isArray(bundle.conversation_threads) && bundle.conversation_threads.length > 0;
   if (compactViewer && !mobileMapOpen) {
     return (
       <MobileConversationDeck
         bundle={bundle}
         deckState={mobileDeckState}
+        readingPath={mobileReadingPath}
+        onReadingPathChange={setMobileReadingPath}
         graphNodes={flatNodes}
         libraryStatus={libraryStatus}
         onDeckStateChange={setMobileDeckState}
@@ -452,7 +484,8 @@ export default function ThreadsViewer() {
         onOpenLibrary={openLibrary}
         onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
         onOpenAnother={openAnother}
-        onShowMap={() => setMobileMapOpen(true)}
+        onShowMap={(id) => {requestMapTarget(id);setMobileMapOpen(true);}}
+        onRenameSpeaker={renameSpeaker}
       />
     );
   }
@@ -460,6 +493,7 @@ export default function ThreadsViewer() {
   const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
   return (
     <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
+      {!compactViewer && !viewerFocusMode && <CardDisplaySettings />}
       {!viewerFocusMode && (
         <ThreadsViewerHeader
           bundle={bundle}
@@ -473,10 +507,15 @@ export default function ThreadsViewer() {
         />
       )}
 
-      <div className="relative min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1">
+        {!compactViewer && <YouTubeSourcePanel bundle={bundle} node={selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode))} nodes={flatNodes} onRenameSpeaker={renameSpeaker} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} />}
+      <div className="relative min-h-0 min-w-0 flex-1">
         <MinimalGraph
           graphData={flatNodes}
           semanticEdges={bundle.edges}
+          focusNode={mapTarget}
+          focusRequestKey={mapRequest}
+          semanticZoom={false}
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
           onVisibleLevelChange={(view) => {
@@ -486,17 +525,23 @@ export default function ThreadsViewer() {
             setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);
           }}
           onFocusChange={setFocusNode}
-          chromeless={viewerFocusMode}
+          onActiveNodeChange={setMediaNode}
+          chromeless={focusMode}
           argumentTraceFrom={argumentTraceFrom}
           setArgumentTraceFrom={setArgumentTraceFrom}
         />
         {compactViewer && mobileMapOpen && (
           <button
             type="button"
-            onClick={() => setMobileMapOpen(false)}
+            onClick={() => {
+              const target=selectedNode || mediaNode || mapTarget;
+              const next=target && mobileDeckStateForNode(buildMobileConversationDeck(flatNodes,bundle.utterances || []),target);
+              if(next) setMobileDeckState(next);
+              setMobileMapOpen(false);
+            }}
             title="Return to conversation cards"
             aria-label="Return to conversation cards"
-            className="absolute right-3 top-3 z-50 inline-flex h-12 items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 text-[11px] font-medium text-slate-600 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            className="absolute right-3 bottom-3 z-50 inline-flex h-12 items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 text-[11px] font-medium text-slate-600 shadow-sm backdrop-blur hover:bg-white hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
           >
             <Rows3 aria-hidden="true" className="h-4 w-4" />
             Cards
@@ -527,20 +572,22 @@ export default function ThreadsViewer() {
             chunkDict={bundle.chunk_dict || {}}
             artifactUtterances={bundle.utterances || []}
             mediaRefs={bundle.media_refs || []}
+            onSeekMedia={!compactViewer && selectYouTubeRef(bundle) ? seconds => setSourceSeek({seconds,videoId:selectYouTubeRef(bundle).video_id}) : undefined}
             contextNodes={flatNodes}
-            onSelectNode={setSelectedNode}
+            onSelectNode={(id)=>{requestMapTarget(id);setSelectedNode(id);}}
             onClose={() => setSelectedNode(null)}
             onTraceAncestors={setArgumentTraceFrom}
           />
         )}
       </div>
+      </div>
 
-      {!viewerFocusMode && flatNodes.length > 0 && (
+      {!focusMode && flatNodes.length > 0 && (
         <TimelineRibbon
-          graphData={bundle.graph_data}
-          selectedNode={selectedNode}
-          setSelectedNode={setSelectedNode}
-          semanticLevel={visibleGraphLevel}
+          graphData={flatNodes}
+          selectedNode={selectedNode || mediaNode || mapTarget}
+          setSelectedNode={(id)=>{requestMapTarget(id);setSelectedNode(id);setMediaNode(id);}}
+          semanticLevel={hasThreads ? 1 : visibleGraphLevel}
         />
       )}
     </div>

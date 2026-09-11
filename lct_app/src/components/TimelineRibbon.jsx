@@ -1,5 +1,6 @@
 import { useRef, useEffect, useMemo, useState, useCallback } from "react";
 import PropTypes from "prop-types";
+import PanelResizeHandle from "./PanelResizeHandle";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { buildSpeakerColorMap } from "./graphConstants";
 import {
@@ -26,6 +27,7 @@ const MIN_LABEL_GUTTER_W = 112;
 const MAX_LABEL_GUTTER_W = 420;
 const MAX_VISIBLE_ROWS = 6; // beyond this the lane stack scrolls vertically
 const RULER_H = 18; // px band under the lanes for the time-axis ruler (time mode)
+const THREAD_COLORS = ["#64748b", "#a78b6d", "#6b9080", "#8b7da3", "#7394a8", "#b58b80"];
 
 export default function TimelineRibbon({
   graphData,
@@ -46,6 +48,7 @@ export default function TimelineRibbon({
   );
   const [labelGutterWidth, setLabelGutterWidth] = useState(DEFAULT_LABEL_GUTTER_W);
   const [hoveredThread, setHoveredThread] = useState(null);
+  const [panelHeight, setPanelHeight] = useState(null);
   const labelResizeRef = useRef(null);
 
   useEffect(() => {
@@ -173,13 +176,14 @@ export default function TimelineRibbon({
   const rulerH = timeBased && ticks.length > 0 ? RULER_H : 0;
   const contentHeight = stackHeight + rulerH;
   const maxHeight =
-    Math.min(rows.length, MAX_VISIBLE_ROWS) * rowHeight + rulerH + 4;
+    Math.min(rows.length, compact ? 2 : MAX_VISIBLE_ROWS) * rowHeight + rulerH + 4;
 
   return (
     <section
-      className="t-acc w-full border-t border-gray-200 bg-white/90 backdrop-blur-sm"
+      className="t-acc w-full shrink-0 border-t border-gray-200 bg-white/90 backdrop-blur-sm"
       data-open={String(!isCollapsed)}
     >
+      {!compact && !isCollapsed && <PanelResizeHandle label="Thread timeline height" vertical value={panelHeight ?? maxHeight} min={48} max={Math.max(48, Math.round(window.innerHeight * 0.55))} onChange={setPanelHeight} />}
       <div className="flex min-h-11 min-w-0 items-center gap-2 border-b border-gray-100 px-2 text-[10px] text-gray-500 sm:min-h-8">
         <button
           type="button"
@@ -219,7 +223,7 @@ export default function TimelineRibbon({
       <div className="t-acc-panel-inner">
       <div
         className="flex w-full overflow-y-auto"
-        style={{ maxHeight: `${maxHeight}px` }}
+        style={{ height: !compact && panelHeight != null ? panelHeight : undefined, maxHeight: !compact && panelHeight != null ? "55dvh" : `${maxHeight}px` }}
       >
       {/* Thread-label gutter (not horizontally scrolled). Click a label to
           highlight that thread; click again or press Escape to clear. When a
@@ -322,6 +326,9 @@ export default function TimelineRibbon({
         style={{ scrollBehavior: compact ? "auto" : "smooth" }}
       >
         <div className="relative" style={{ width: `${totalWidth}px`, minWidth: "100%", height: `${contentHeight}px` }}>
+          {timeBased && allNodes.some(n=>n.thread_ids?.length) && <svg aria-hidden="true" className="pointer-events-none absolute inset-0" width={totalWidth} height={stackHeight}>
+            <polyline fill="none" stroke="#94a3b8" strokeOpacity="0.35" strokeWidth="1" points={rows.flatMap((row,i)=>row.nodes.map(n=>({x:n.x,y:i*rowHeight+rowHeight/2,t:n.ts}))).sort((a,b)=>a.t-b.t).map(p=>`${p.x},${p.y}`).join(" ")}/>
+          </svg>}
           {rows.map((row, rowIdx) => {
             const dimmed = highlightedThread && highlightedThread !== row.threadId;
             const rowTop = rowIdx * rowHeight;
@@ -358,7 +365,7 @@ export default function TimelineRibbon({
                 {row.nodes.map((node) => {
                   const isSelected = selectedNode === node.id;
                   const isHovered = hoveredId === node.id;
-                  const color = speakerColorMap[node.speaker_id] || "#e2e8f0";
+                  const color = node.thread_ids?.length ? THREAD_COLORS[rowIdx % THREAD_COLORS.length] : speakerColorMap[node.speaker_id] || "#e2e8f0";
                   const timeLabel =
                     timeBased && span && Number.isFinite(node.ts)
                       ? formatSecondsToTimestamp(node.ts - span.min)

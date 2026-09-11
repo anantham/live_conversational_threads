@@ -110,10 +110,18 @@ export function buildMobileConversationDeck(nodes, artifactUtterances = []) {
   });
 
   const childrenByParent = new Map();
-  parentByChild.forEach((parentId, childId) => {
+  const addChild = (parentId, childId) => {
+    if (!(levelOf(nodeById.get(parentId)) > levelOf(nodeById.get(childId)))) return;
     const children = childrenByParent.get(parentId) || [];
     children.push(childId);
     childrenByParent.set(parentId, children);
+  };
+  parentByChild.forEach((parentId, childId) => addChild(parentId, childId));
+  // A shared child is reachable from EVERY authored parent. The navigation
+  // trail, not a global primary parent, determines where Up returns.
+  listedParents.forEach((parents, childId) => parents.forEach((parentId) => addChild(parentId, childId)));
+  graphNodes.forEach((node) => {
+    (node.memberships || []).forEach((membership) => addChild(String(membership.parent_id), String(node.id)));
   });
   childrenByParent.forEach((ids, parentId) => {
     childrenByParent.set(parentId, sortIds(ids, nodeById, nodeOrder));
@@ -146,9 +154,12 @@ export function buildMobileConversationDeck(nodes, artifactUtterances = []) {
         : graphNodes.filter((node) => levelOf(node) === level).length];
     }),
   );
-  const highestLevel = [5, 4, 3, 2, 1].find((level) => counts[level] > 0) || null;
+  const highestLevel = [5, 4, 3, 2, 1].find((level) => counts[level] > 0)
+    ?? (utteranceById.size ? 0 : null);
   const rootIds = highestLevel == null
     ? []
+    : highestLevel === 0
+      ? sortIds([...utteranceById.keys()], utteranceById, utteranceOrder)
     : sortIds(
         graphNodes.filter((node) => levelOf(node) === highestLevel).map((node) => node.id),
         nodeById,
@@ -171,14 +182,28 @@ export function buildMobileConversationDeck(nodes, artifactUtterances = []) {
 export function initialMobileDeckState(model) {
   const firstId = model?.rootIds?.[0];
   return {
-    trail: firstId ? [entry("node", firstId)] : [],
+    trail: firstId ? [entry(model.highestLevel === 0 ? "utterance" : "node", firstId)] : [],
   };
+}
+
+export function mobileDeckStateForNode(model, id) {
+  const trail = [];
+  const seen = new Set();
+  let current = String(id);
+  while (model.nodeById.has(current) && !seen.has(current)) {
+    seen.add(current);
+    trail.unshift(entry("node", current));
+    const parent=model.parentByChild.get(current);
+    if(!(model.childrenByParent.get(parent) || []).includes(current)) break;
+    current = parent;
+  }
+  return trail.length ? {trail} : null;
 }
 
 export function initialLiveMobileDeckState(model) {
   const latestId = model?.rootIds?.[model.rootIds.length - 1];
   return {
-    trail: latestId ? [entry("node", latestId)] : [],
+    trail: latestId ? [entry(model.highestLevel === 0 ? "utterance" : "node", latestId)] : [],
     liveCursor: null,
   };
 }
@@ -191,10 +216,14 @@ function siblingsFor(model, state) {
   const current = currentEntry(state);
   if (!current) return [];
   if (current.kind === "utterance") {
+    if (state.trail.length === 1 && model.highestLevel === 0) {
+      return model.rootIds.map((id) => entry("utterance", id));
+    }
     const moment = state.trail[state.trail.length - 2];
     return (model.utterancesByMoment.get(moment?.id) || []).map((id) => entry("utterance", id));
   }
   if (state.trail.length === 1) {
+    if(!model.rootIds.includes(current.id)) return [current];
     return model.rootIds.map((id) => entry("node", id));
   }
   const parent = state.trail[state.trail.length - 2];
@@ -227,7 +256,7 @@ function latestTrailAtDepth(model, requestedDepth) {
   const latestRoot = model?.rootIds?.[model.rootIds.length - 1];
   if (!latestRoot) return [];
 
-  const trail = [entry("node", latestRoot)];
+  const trail = [entry(model.highestLevel === 0 ? "utterance" : "node", latestRoot)];
   const depth = Math.max(1, Number(requestedDepth) || 1);
   while (trail.length < depth) {
     const children = deeperEntries(model, trail[trail.length - 1]);

@@ -38,6 +38,9 @@ export function validateThreadsArtifact(data) {
   if (data.media_refs != null && !Array.isArray(data.media_refs)) {
     throw new Error("Invalid media_refs.");
   }
+  // Optional unsupported media does not invalidate the conversation itself.
+  // Playback selectors validate identity/units independently; retain original
+  // metadata so opening and re-exporting never silently discards source data.
   if (!Array.isArray(data.graph_data)) {
     throw new Error("Missing or invalid graph_data.");
   }
@@ -48,6 +51,39 @@ export function validateThreadsArtifact(data) {
   const nodeCount = flattenThreadsGraph(data.graph_data).length;
   if (nodeCount > MAX_THREADS_NODES) {
     throw new Error(`Artifact too large (${nodeCount} nodes).`);
+  }
+  if (data.conversation_threads != null) {
+    const nodes = new Map(flattenThreadsGraph(data.graph_data).map(n => [n.id, n]));
+    const utteranceIds = new Set((data.utterances || []).map(u => u.id));
+    const ids = new Set();
+    if (!Array.isArray(data.conversation_threads)) throw new Error("Invalid conversation threads.");
+    if(data.conversation_threads.length>1000) throw new Error("Too many conversation threads.");
+    let membershipCount=0;
+    let evidenceCount=0;
+    for (const thread of data.conversation_threads) {
+      if (!thread || typeof thread.id !== "string" || ids.has(thread.id)
+        || typeof thread.title !== "string" || !Array.isArray(thread.steps)
+        || !thread.steps.length || (thread.returns != null && !Array.isArray(thread.returns))) {
+        throw new Error("Invalid thread definition.");
+      }
+      ids.add(thread.id);
+      membershipCount+=thread.steps.length+(thread.returns?.length || 0);
+      if(membershipCount>100000) throw new Error("Too many thread memberships.");
+      const steps = new Set();
+      for (const step of thread.steps) {
+        evidenceCount+=Array.isArray(step?.evidence_utterance_ids) ? step.evidence_utterance_ids.length : 0;
+        if(evidenceCount>500000) throw new Error("Too much thread evidence.");
+        if (!step || !nodes.has(step.moment_id) || steps.has(step.moment_id)
+          || !Array.isArray(step.evidence_utterance_ids)
+          || !step.evidence_utterance_ids.every(id => utteranceIds.has(id))) {
+          throw new Error("Invalid thread step or evidence link.");
+        }
+        steps.add(step.moment_id);
+      }
+      if ((thread.returns || []).some(r => !r || !steps.has(r.from) || !steps.has(r.to))) {
+        throw new Error("Invalid thread return.");
+      }
+    }
   }
   validateExplicitEdgeContract(
     data.edge_schema,

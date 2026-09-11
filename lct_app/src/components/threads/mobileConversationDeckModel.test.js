@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildMobileConversationDeck,
+  mobileDeckStateForNode,
   initialLiveMobileDeckState,
   initialMobileDeckState,
   mobileDeckLiveStatus,
@@ -27,6 +28,42 @@ const utterances = [
   { id: "u2", sequence_number: 2, speaker_name: "B", text: "Second exact turn." },
   { id: "u3", sequence_number: 3, speaker_name: "A", text: "Other branch turn." },
 ];
+it("does not construct rejected hierarchy trails or teleport unknown targets",()=>{
+ const model=buildMobileConversationDeck([{id:"root",semantic_level:5},{id:"bad",semantic_level:1},{id:"target",semantic_level:2,parent_id:"bad"}]);
+ const state=mobileDeckStateForNode(model,"target");
+ expect(state.trail).toEqual([{kind:"node",id:"target"}]);
+ const snapshot=mobileDeckSnapshot(model,state);
+ expect(snapshot.position).toBe(1);
+ expect(snapshot.total).toBe(1);
+ expect(mobileDeckStateForNode(model,"missing")).toBeNull();
+});
+it("retains legacy skipped-level navigation",()=>{
+ const model=buildMobileConversationDeck([{id:"a",semantic_level:5,children_ids:["m"]},{id:"m",semantic_level:1,parent_id:"a"}]);
+ expect(model.childrenByParent.get("a")).toEqual(["m"]);
+ const next=moveMobileDeck(model,initialMobileDeckState(model),"down");
+ expect(mobileDeckSnapshot(model,next.state).item.id).toBe("m");
+});
+it("does not invent abstraction levels for untyped legacy nodes",()=>{
+ const model=buildMobileConversationDeck([{id:"a",children_ids:["b"]},{id:"b",parent_id:"a"}]);
+ expect(model.nodeById.size).toBe(0);
+});
+
+it("reaches a shared moment through either parent and returns by the actual trail", () => {
+  const model = buildMobileConversationDeck([
+    {id:"a", semantic_level:2, children_ids:["m"]},
+    {id:"b", semantic_level:2, children_ids:["m"]},
+    {id:"m", semantic_level:1, parent_id:"a", memberships:[{parent_id:"a"},{parent_id:"b"}]},
+  ]);
+  let state=initialMobileDeckState(model);
+  state=moveMobileDeck(model,state,"next").state;
+  expect(mobileDeckSnapshot(model,state).item.id).toBe("b");
+  state=moveMobileDeck(model,state,"down").state;
+  expect(mobileDeckSnapshot(model,state).item.id).toBe("m");
+  state=moveMobileDeck(model,state,"up").state;
+  expect(mobileDeckSnapshot(model,state).item.id).toBe("b");
+  expect(model.childrenByParent.get("a")).toEqual(["m"]);
+  expect(model.childrenByParent.get("b")).toEqual(["m"]);
+});
 
 const nodes = [
   { id: "arc-b", semantic_level: 5, timestamp_start: 30, children_ids: ["theme-b"] },

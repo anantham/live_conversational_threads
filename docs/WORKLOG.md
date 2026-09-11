@@ -29,6 +29,280 @@
 - **Test intent:** a stop or health failure must leave no descendant of the
   stopped component running; a launch must clear orphaned runtime processes but
   never reap a component it is about to adopt.
+## 2026-09-09 — Source reading and panel controls (PR 195)
+
+User requested ready-on-open video and a full scrollable transcript, removed
+explanatory filler, then requested desktop source-width/timeline-height resizing,
+whole source collapse, and evidence timestamps seeking the inline player.
+Implemented state-aware cuing (no autoplay), manual-scroll follow suspension,
+pointer/keyboard resize handles, source collapse retaining the player, and inline
+evidence seek requests that reopen the source. Mobile disclosure labels are
+vertically centred in their touch targets. Added source E2E coverage to CI.
+Focused tests/build pass; exact-head review and CI gate deployment separately.
+
+## 2026-09-08 — PR 194 review corrections
+
+User authorized fixing findings, re-reviewing and merging/deploying. Corrected
+same-ID focus requests with a request serial; timeline now pins selected details
+and clears stale media selection. Legacy hierarchy traversal permits increasing
+levels (including skipped tiers), while generated experiment validation still
+requires adjacent-level DAGs. Off-route Previous/Next no longer jump to route start.
+Start-only video passages remain selectable; approximate highlighting uses next
+start but duration remains unknown. Source positioning retains latest starts.
+Speaker naming/export is a sibling of collapsed Transcript. Graph size is checked
+before thread validation, with explicit thread/membership/evidence bounds.
+The reported late-ready timer race was disproved by existing canceled guards;
+added a regression exercising readiness after unmount. No private artifact egress.
+
+## 2026-09-08 — Integrate threads into existing desktop/mobile viewer
+
+User explicitly authorized implementation and remote publication for device testing.
+Retired the separate ThreadExplorer entry point and component (recoverable in df7c057).
+Existing timeline reads all moment home lanes from overlapping memberships; all
+memberships retained and named in source details. Thread rows ordered by first
+appearance; a faint chronological connector crosses rows. Long gaps no longer
+masquerade as explicit callbacks in new artifacts. Mobile path selector supports
+thread or chronological traversal; path and card selection survive map visits.
+Vertical touch scrolling no longer changes abstraction. Explicit graph tiers
+remain visible on mobile and pinch changes scale only in the static viewer.
+Card/map handoff uses exact selected ID and tier; initial framing no longer
+overwrites requested camera targets (observed phone target bounds x48..307,
+y111..610 within a 354x767 viewport after fix).
+
+Cards default to duration only with optional metric controls; aggregate backgrounds
+and speaker-summary color blends are neutral. No inferred phrase ownership added:
+claim-level speaker attribution remains a separate evidence requirement.
+50 focused regressions pass; build passes (pre-existing chunk warning). Generated
+public podcast artifact is included at /experiments/overlapping.threads for testing.
+Independent review and remote release verification must precede a deployed claim.
+
+## 2026-09-08 — Overlapping-thread public experiment (local, not deployed)
+
+User approved multi-parent aggregation and independent ordered thread membership,
+with thread coherence judged by inspecting the artifact, not schema validity.
+Kept the original 1263 source segments and 56 moments. A fresh whole-public-source
+gpt-6-astra request (existing Codex transport, high reasoning) excluded old thread
+labels and removed single-parent/dominant-thread constraints. Result: 14 threads,
+24 ideas, 13 topics, 5 themes, 2 arcs, 17 multi-parent nodes, 18 shared-thread moments,
+22 explicit/interpretive return edges. Model request and response receipts are in
+/private/tmp/lct-overlap-demo-20260908; generation entrypoint is
+/private/tmp/lct-generate-overlap.py. This is NOT the general private pipeline.
+
+Compiler: scripts/compile_thread_experiment.mjs. Evidence is set-unioned through
+the DAG. Mobile traversal retains all parents; Up follows the actual trail.
+ThreadExplorer provides ordered rationales, exact evidence, timestamped source
+opening, qualified returns and cross-thread jumps. Original artifact remains intact.
+Local URL: http://127.0.0.1:43219/view?src=/experiments/overlapping.threads
+Generated public/experiments file is a local served artifact, not part of source commit.
+
+Validation: 2 compiler tests and 23 focused viewer/contract/navigation tests pass;
+build passes (existing large-bundle warning). Desktop opening and phone-size thread
+selection/source panel verified in browser. Spot-checked safety resumption,
+open-source interruption/resumption, and notetaker callback against verbatim rows.
+No full human quality acceptance yet; Logo anecdote is a weak/minor strand, and
+belief-to-action connections are explicitly interpretive. Other argument edge types
+were not regenerated and the new artifact marks argument topology partial.
+
+Known limitation: old graph lane/color controls still use the legacy single-thread
+field; use the new Threads view to inspect many-to-many routes. Full spatial
+multi-thread rendering remains follow-up work. No merge/deploy claimed.
+
+## 2026-09-08 — Word timing explicitly deferred to productionization
+
+User requested recording word timestamps as a future pipeline feature rather
+than extending the demo work now. Added a non-blocking issue in ISSUES.md with
+audio-alignment, artifact preservation, viewer fallback, and acceptance scope.
+This supersedes the earlier description of word highlighting as unfinished
+demo work: it is now an explicitly deferred production feature. No alignment
+job, dependency installation, artifact replacement, or deployment performed.
+
+
+## 2026-09-08 — Arc size and two-way YouTube highlighting
+
+- A1: user explicitly requested summed source duration and denominator-aware
+  segment counts, plus reverse video-to-transcript synchronization. No backend,
+  artifact generation, provider, or private data changes. Isolated task worktree
+  based on freshly fetched origin/main 265fc4a.
+- Confirmed hypotheses: graphProvenance computed max(end)-min(start); the player
+  had seekTo calls but no clock readback. Not an artifact grouping/cache issue.
+- graphProvenance now sums each unique source segment's duration, preserving
+  start/end for timeline positioning. Missing/partial timing stays explicit.
+  Desktop ConversationNode and MobileDeckCard share speech-duration and
+  whole-transcript segment-fraction labels. Segment fraction is not used as a
+  proxy for time; rows vary in length. Overlapping speakers' distinct segments
+  count separately (source speech duration, not recording wall time).
+- YouTubeSourcePanel polls the enabled player every 250ms (skips hidden tabs),
+  including paused scrubs. The current interval highlights and scrolls only the
+  passage list, never seeks back. Gaps clear the highlight; out-of-node playback
+  shows a separate current sentence rather than changing the chosen graph node.
+- Intent/regressions: deduplicated disjoint durations, missing end times,
+  denominator labels, desktop/mobile rendering, forward/backward paused seeks,
+  gaps, out-of-selection playback, and polling cleanup. First focused run:
+  19 tests passed. Production build and targeted lint passed; existing large
+  bundle warning remains. Browser/extra compact-card test verification follows.
+- Not pushed, merged, or deployed. Publication/production remains a separate
+  H1 boundary for this follow-up; local implementation/commit is approved.
+- Follow-up user request: separate native disclosure controls for video and
+  transcript, independent transcript height slider, no standalone YouTube link
+  except embed-error fallback. Speaker naming lives inside the transcript
+  disclosure with reduced spacing. Removed MobileConversationDeck's empty
+  parent-label spacer at the root. At 390x844 the real public artifact rendered
+  corrected metrics, both disclosures collapsed cleanly, and the slider changed
+  the visible transcript height (80 to 88px). No phone hardware claim.
+- 21 focused tests pass, including compact-card metrics and independent
+  disclosures. Actual YouTube reverse seeking is covered through a simulated
+  IFrame API in component tests, not yet a real-player/device acceptance test.
+- Word highlighting remains incomplete: published utterances contain segment
+  start/end only, no word timing array. Needs source-audio forced alignment;
+  do not synthesize equal-duration word slots or claim fine alignment. No source
+  audio found in the release scratch directory during this pass.
+- Style question: PRODUCT.md describes tone; prompts.json has generic source
+  fidelity/structure rules. The frontier demo used /private/tmp/create-lct-demo.py
+  with concrete titles, concise summaries, source attribution and uncertainty.
+  No dedicated summary prose style guide was found in scoped documentation.
+
+
+## 2026-09-07 — Optional-media reading compatibility repair
+
+- Review of 40789f6 completed, retaining one low-severity finding. Initially
+  considered a compatibility suggestion; actual base validator inspection
+  confirmed that this release newly blocked previously readable graph files.
+- Three failing-first regressions showed unsupported optional YouTube metadata
+  rejected otherwise valid conversations. Removed that new whole-file guard,
+  retaining the existing strict selectors and seek builders at every playback
+  boundary. Preserve the raw metadata losslessly; do not create URLs for it.
+- Added a visible source-unavailable warning and desktop/mobile-viewport tests
+  that graphs remain readable with no untrusted link or network request.
+- This restores the pre-release reading contract, not broadening playback or
+  identity/unit inference. Exact prior-review receipt stored in docs/reviews.
+  Device QA and repaired-head review remain pending. No push or deployment.
+- Validation after repair: 14/14 browser tests including live YouTube seek,
+  43/43 focused unit tests across seven files, build passed. Fixed the new
+  observer's false positive on the local youtubeMedia.js module by checking
+  actual destination hostnames; no product behavior was altered for that issue.
+
+## 2026-09-07 — Public viewer readiness goal, local testing only
+
+- User set an explicit desktop + physical Android readiness goal, with no merge
+  or deployment. Added PUBLIC_VIEWER_READINESS.md as a requirement/evidence
+  checklist; device testing and exact-head re-review remain incomplete.
+- A native-fetch real HTTP redirect test contradicts the prior reviewer claim:
+  upstream 302 remains numeric, returns 403/not_public, never follows target.
+  Undici docs and Vercel public Edge fetch implementation corroborate the
+  server/browser distinction. No deployment-runtime proof is claimed.
+- Added browser malformed JSON/graph/edge rejection tests, mobile viewport
+  next/previous seek checks, and blocked-YouTube fallback coverage. Added an
+  isolated Playwright release config to avoid the shared port discovery file.
+- Actual public Drive opened signed out in fresh Chromium at 390/1440 px;
+  real YouTube playhead test passed. These are not physical Android tests.
+- ADB reports no connected device. Asked for reconnection while continuing
+  desktop work. No permissions, dependency, product semantics, or production
+  files changed. Retain local commits: a branch push would deploy a preview.
+
+## 2026-09-06 — Review findings repaired within the approved envelope
+
+- Attention-policy correction: the user confirmed that reversible fixes and
+  retesting are green/A1 within the approved objective. The earlier request
+  incorrectly bundled those mechanics with the failed-review merge gate.
+  No new architecture, privacy, data-sharing or deployment scope was selected.
+- Hypotheses from the first review were reproduced through exported helpers.
+  Regression tests first failed on transcript replacement, manufactured missing
+  transcript, and dropped 12,000-second passage. Repair: preserve original
+  full_transcript via bundle spread, and use the existing media seek/label
+  epoch guard instead of the import pipeline's three-hour duration ceiling.
+  Invalid/non-numeric/negative/infinite times and reversed intervals still fail.
+  The old millisecond-magnitude test intent was corrected: source units are
+  declared by the media reference, not inferred from duration alone.
+- Files: youtubeMedia.js, youtubeMedia.test.js, youtube-source.spec.ts and
+  release documentation. The browser test compares timestamped, CRLF-containing
+  transcript bytes after rename and reviewed-file download before reopening.
+  It also checks that the structured speaker name changed as intended.
+- Validation: 62 focused unit tests and 7 non-opt-in Chromium tests passed;
+  live YouTube smoke remains opt-in. No golden/snapshot was rewritten. No
+  original artifact, backend service or shared checkout was modified.
+- Rerun independent review against the complete final PR head. Attach the
+  exact-head verdict, packet inventory/checksum and capability restrictions as
+  a durable PR review receipt so logging the result does not alter the reviewed
+  code/commit. Merge/deployment remain conditional on a clean review and CI.
+
+## 2026-09-06 — Claude review completed with confirmed findings; merge held
+
+- User explicitly said "try now" after the permission block. The same scanned
+  80,775-byte packet (SHA-256 recorded below) was submitted to Anthropic using
+  the existing account. Empty MCP configuration required the documented
+  mcpServers object; the first CLI invocation failed before review began.
+  Corrected invocation retained safe mode, no tools/hooks/MCP/customizations,
+  no Chrome access, no session persistence, and an explicit system prompt.
+- Reviewer: Claude Sonnet 5 (Anthropic; CLI also reports a Haiku routing call).
+  Implementation target reviewed: 7ca2608126256b237969a73ab69e621c0651f9f5
+  versus a1520cbf32931941d59a2809b0d4833b8d269695. No external tools or
+  subagents were used. Structured verdict: findings, two P3 reports in
+  youtubeMedia.js. No pass is claimed for this or the subsequent receipt-only
+  PR head. A corrected release will require exact-target review again.
+- Both reports reproduced through exported helpers with synthetic inputs:
+  renameArtifactSpeaker overwrote a timestamped full_transcript, dropping its
+  original timestamp; nodeVideoPassages returned zero for one valid bound
+  utterance at 12,000 seconds. Source bytes and original artifacts were not
+  modified. The review did not establish the separate assertion that adding
+  speaker-display metadata to graph nodes is itself invalid.
+- PR #191 exists; Vercel preview, backend unit/integration and Playwright CI
+  passed. Anonymous preview requests hit Vercel SSO protection; no protection
+  settings were changed and no anonymous preview success is claimed. Actual
+  anonymous local viewer checks remain valid. Production is untouched.
+- Per AGENTS independent-review rule, stop before merge and request human
+  authorization to repair the two findings, retest, and rerun exact-head
+  independent review. Recommend preserving immutable full_transcript during
+  display-name edits and accepting finite nonnegative media times rather than
+  imposing the import pipeline's three-hour limit on the generic viewer.
+
+## 2026-09-06 19:06 MUT — Independent review blocked by permission enforcement
+
+- Tested implementation commit: 7ca2608126256b237969a73ab69e621c0651f9f5,
+  base a1520cbf32931941d59a2809b0d4833b8d269695. Review packet includes the
+  exact 26-file source/test/doc diff plus unchanged api/proxy/_shared.js.
+  Byte count: 80,775. SHA-256:
+  685399322be2d9db70fc00187d03aaa9112109bd19d446331332624320587d2a.
+- Packet excluded credentials, environment files, databases, recordings,
+  transcripts, generated artifacts and the actual public Drive file ID.
+  Inspection and credential-pattern scan found no prohibited content.
+- Planned recipient was Anthropic/Claude through the existing subscription,
+  with tools, hooks, MCP, repository context and session persistence disabled.
+  The repository helper permits broader repository access, so a bounded,
+  tool-free CLI packet was selected to preserve REVIEW-EGRESS-A1 restrictions.
+- The platform rejected process creation before transmission, saying this
+  specific payload needed user authorization. This is an enforcement mismatch
+  with the repository's standing review envelope, not a missing implementation
+  decision. No reviewer ran and there is no verdict. No merge or production
+  deployment occurred. Request explicit approval for this exact review packet;
+  do not bypass the denial or independent-review gate.
+
+## 2026-09-06 19:01 MUT — Viewer-only public Drive release preparation
+
+- Authority: user approved public no-sign-in viewing and proceeding with Vercel
+  after clarifying the host split. No Asus runtime/backend change is included.
+  Isolated release worktree starts from origin/main a1520cb; original dirty
+  checkout and unfinished integration branch are preserved.
+- Scope: public-drive edge handler + Vite adapter, explicit public=1 gate,
+  source playback/seek/rename/download, source-only mobile deck, and focused
+  tests. Private Drive links retain Google authorization. No import controls,
+  backend modules, recordings, transcripts or generated artifacts are staged.
+- Actual public Drive download returned 200 and matched local SHA-256;
+  signed-out Chromium 390/1440 checks opened the artifact with zero Google
+  identity requests and zero JS errors. Desktop checks use Center before card
+  selection. This is not physical-device testing or production verification.
+- Camera hypothesis: render-time zoom selected legacy clusters, node-set
+  changes triggered fitView, and fitView changed zoom again. Existing debug
+  instrumentation showed repeated 104/21 replacements. Synthetic valid source
+  fixture reproduced detached clicks; separating discrete legacy tier state
+  from automatic camera telemetry made the regression pass. Confidence 0.95.
+  Authored-tier logic is unchanged; real settled zoom still selects legacy
+  detail and pure panning does not. Fallback is revert the narrow repair.
+- Validation: 60/60 focused unit tests; 7/7 non-opt-in Chromium E2E tests;
+  live YouTube test skipped this run; production build passed. Known initial
+  framing, jsdom Blob mismatch, and bundle warning are recorded in ISSUES.md.
+  No failing harness was represented as a product pass. Broad camera/UI
+  redesign was deferred. Large-file decomposition assessment is in TECH_DEBT.
+- Independent review, push/merge, and production checks are still pending.
 
 ## 2026-09-05 — Guarded shared-core synchronization and cleanup preparation
 
@@ -5820,3 +6094,13 @@ Manual testing not run:
   `refresh_in_progress=true` even after a further 12-second wait. This separate
   sibling cache-wedge is recorded in `ISSUES.md`; source-metric correctness is
   not being conflated with UI freshness.
+# 2026-09-09 — Second viewer review corrections (PR194)
+
+Operator clarification: obvious in-scope bug corrections are green/A1 and do not require repeated approval after review findings. Review remains required before merge; continue correcting confirmed bugs within scope. Final two findings fixed: card trails traverse only accepted child links (isolated targets get a truthful singleton position, unknown targets do not teleport); card settings hide with focus-mode chrome. Regression added for malformed hierarchy and unknown targets.
+
+User approved fixing all findings. Playback boundaries now precompute once per transcript in O(n log n), with allocation-free O(n) clock lookup; no inferred ends enter duration metrics. Map auto-framing yields only to an unconsumed focus request, and records the focused node set to avoid immediately undoing the jump. Mobile ribbon explicitly uses compact mode. Unprovided card settings retain legacy metrics; the public viewer provider still defaults to duration only. Reading paths use the closest on-path ancestor, while truly off-path selections retain the honest notice. Hoisted ribbon invariant scan; untimed layouts omit the time connector; timing completeness distinguishes missing links; membership buttons cannot submit forms.
+
+Test intent: preserve silence/overlap/start-only highlights, quiet viewer versus legacy metric scope, skipped-level hierarchy and untyped-node baseline, and partial timing semantics. Missing-level hierarchy review claim is not a regression: baseline already filters nodes without valid levels before building links. No invented hierarchy added. Existing large graph/viewer decomposition remains deferred in TECH_DEBT; this is a bounded corrective pass, not a redesign.
+# 2026-09-09 — Ready-to-play source and scrollable transcript
+
+User observed an empty desktop transcript until node selection, with only the current playback row shown outside it. Confirmed cause: passages were derived solely from optional selected node. Full timed transcript now renders on initial open and stays scrollable across node selections; selecting a node still seeks its first source passage. YouTube loads paused without a preparatory click (user requested ready player), never autoplay. Removed explanatory paragraph and outside-selection label/card. Wheel, touch and keyboard browsing pause automatic transcript following until a passage/node is selected. Overview remains unchanged/open. Tests cover initial no-node state, no autoplay, full list, manual scrolling and existing bidirectional playback.
