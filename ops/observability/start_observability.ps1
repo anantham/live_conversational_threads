@@ -220,6 +220,96 @@ function Get-ManagedProcess {
     return $process
 }
 
+function Get-DescendantProcessIds {
+    param([int]$RootProcessId)
+
+    $childrenByParent = @{}
+    foreach ($record in Get-CimInstance Win32_Process -ErrorAction SilentlyContinue) {
+        $parentId = [int]$record.ParentProcessId
+        if (-not $childrenByParent.ContainsKey($parentId)) {
+            $childrenByParent[$parentId] = New-Object System.Collections.Generic.List[int]
+        }
+        $childrenByParent[$parentId].Add([int]$record.ProcessId)
+    }
+
+    $descendants = New-Object System.Collections.Generic.List[int]
+    $queue = New-Object System.Collections.Generic.Queue[int]
+    $queue.Enqueue($RootProcessId)
+    while ($queue.Count -gt 0) {
+        $current = $queue.Dequeue()
+        if (-not $childrenByParent.ContainsKey($current)) {
+            continue
+        }
+        foreach ($childId in $childrenByParent[$current]) {
+            if (-not $descendants.Contains($childId)) {
+                $descendants.Add($childId)
+                $queue.Enqueue($childId)
+            }
+        }
+    }
+    return $descendants
+}
+
+function Stop-ProcessTree {
+    param(
+        [int]$ProcessId,
+        [switch]$Force
+    )
+
+    # Snapshot descendants BEFORE stopping the root: once the root exits its
+    # children are reparented and can no longer be found by walking
+    # ParentProcessId. The launcher previously stopped only the root PID, which
+    # orphaned Grafana's datasource plugin processes (gpx_*) on every
+    # health-watchdog restart: ~13 per restart, 741 leaked / ~37 GB commit by
+    # 2026-09-11 (see docs/WORKLOG.md).
+    $descendants = @(Get-DescendantProcessIds -RootProcessId $ProcessId)
+
+    if ($Force) {
+        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+    } else {
+        Stop-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    }
+    Wait-Process -Id $ProcessId -Timeout 20 -ErrorAction SilentlyContinue
+
+    # Reap any child that outlived the root. Force is deliberate: the root failed
+    # to shut them down, and leaving them running is exactly the leak we are
+    # fixing.
+    foreach ($childId in $descendants) {
+        if (Get-Process -Id $childId -ErrorAction SilentlyContinue) {
+            Stop-Process -Id $childId -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Remove-OrphanedRuntimeProcesses {
+    # Reap processes launched from the observability runtime whose parent has
+    # since exited. Stop-ProcessTree prevents new leaks; this clears any left
+    # behind by an unclean shutdown or an earlier launcher revision. Scoped to
+    # the runtime root and to non-root components so it can never touch an
+    # unrelated process or a component we are about to adopt.
+    $runtimeFull = [IO.Path]::GetFullPath($RuntimeRoot).TrimEnd("\") + "\"
+    $managedNames = @(
+        "grafana-server.exe", "grafana.exe", "prometheus.exe",
+        "tempo.exe", "otelcol-contrib.exe"
+    )
+    $liveProcessIds = @{}
+    foreach ($live in Get-Process -ErrorAction SilentlyContinue) {
+        $liveProcessIds[$live.Id] = $true
+    }
+
+    $orphans = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $_.ProcessId -and
+        $_.ExecutablePath -and
+        ([IO.Path]::GetFullPath($_.ExecutablePath)).StartsWith($runtimeFull, [StringComparison]::OrdinalIgnoreCase) -and
+        (-not $liveProcessIds.ContainsKey([int]$_.ParentProcessId)) -and
+        ($managedNames -notcontains $_.Name)
+    })
+    foreach ($orphan in $orphans) {
+        Write-Host "[ORPHAN] Reaping $($orphan.Name) PID $($orphan.ProcessId) (parent $($orphan.ParentProcessId) is gone)"
+        Stop-Process -Id ([int]$orphan.ProcessId) -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Assert-PortAvailable {
     param([string]$Name, [int]$Port)
 
@@ -317,15 +407,10 @@ function Stop-Component {
         return
     }
 
-    Stop-Process -Id $process.Id
-    try {
-        Wait-Process -Id $process.Id -Timeout 20 -ErrorAction Stop
-    } catch {
-        $remaining = Get-Process -Id $process.Id -ErrorAction SilentlyContinue
-        if ($remaining) {
-            Write-Warning "$Name PID $($process.Id) did not stop within 20 seconds; leaving it running"
-            return
-        }
+    Stop-ProcessTree -ProcessId $process.Id
+    if (Get-Process -Id $process.Id -ErrorAction SilentlyContinue) {
+        Write-Warning "$Name PID $($process.Id) did not stop within 20 seconds; leaving it running"
+        return
     }
     Remove-Item -LiteralPath (Join-Path $PidRoot ("{0}.pid" -f $Name.ToLowerInvariant())) -Force
     Write-Host "[STOP] $Name PID $($process.Id)"
@@ -575,6 +660,7 @@ function Invoke-ForegroundComponent {
         Write-Host "[ADOPT] $Name PID $($process.Id) from its ownership-verified PID file"
     } else {
         Assert-PortAvailable -Name $Name -Port $Components[$Name].Port
+        Remove-OrphanedRuntimeProcesses
         $launchId = (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssfffZ")
         $stdoutPath = Join-Path $LogRoot ("{0}.{1}.supervised.stdout.log" -f $Name.ToLowerInvariant(), $launchId)
         $stderrPath = Join-Path $LogRoot ("{0}.{1}.supervised.stderr.log" -f $Name.ToLowerInvariant(), $launchId)
@@ -605,8 +691,7 @@ function Invoke-ForegroundComponent {
             if (-not $currentPath -or -not $currentPath.Equals($Runtime.Executable, [StringComparison]::OrdinalIgnoreCase)) {
                 throw "$Name supervision failed, but PID $($process.Id) no longer matches $($Runtime.Executable); refusing to terminate it. Original failure: $($failure.Exception.Message)"
             }
-            Stop-Process -Id $process.Id -Force -ErrorAction Stop
-            Wait-Process -Id $process.Id -Timeout 20 -ErrorAction SilentlyContinue
+            Stop-ProcessTree -ProcessId $process.Id -Force
         }
         throw $failure
     } finally {
