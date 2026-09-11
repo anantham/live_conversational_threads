@@ -1,7 +1,7 @@
 # ADR-067: Native Operational Observability Stack
 
 - **Date:** 2026-08-30
-- **Status:** Approved
+- **Status:** Approved (supervisor probe policy revised by ADR-069, 2026-09-11 — see amendment)
 - **Group:** Operations / observability / cross-application integration
 - **Related:** ADR-003, TemporalCoordination ADR-051
 
@@ -317,3 +317,19 @@ resolved. If exporter timeouts persist after deployment, measure render duration
 payload size, collector CPU, and disk pressure before reducing process metrics or
 changing cadence. Failure-level logs and Prometheus target health remain the
 acceptance evidence.
+
+## Amendment: supervisor liveness policy revised by ADR-069 (2026-09-11)
+
+The health-watchdog probe policy set in the 2026-09-01 "independent lifecycle"
+amendment (ten-second cadence, three-second probe, six consecutive failures
+before the wrapper terminates the child) is revised by **ADR-069**, on incident
+evidence gathered 2026-09-11. That evidence shows the probe conflated readiness
+latency with liveness while host commit charge was saturated: the same
+"operation has timed out" signature appeared across all four components, almost
+always followed immediately by `[RECOVERED]`, and the restarts fed a process-leak
+feedback loop (fixed in `b5825e9`). ADR-069 separates liveness from readiness and
+*stages* the replacement (Phase 2 signal separation, Phase 3 progress counters)
+pending post-fix re-baselining.
+
+This note is a forward pointer, not a change: the durations and cadences in the
+amendments above remain in force until ADR-069's phases are implemented.

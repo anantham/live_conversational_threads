@@ -1,5 +1,29 @@
 # ISSUES
 
+Last updated: 2026-09-11
+
+## 2026-09-11 — Orphaned Grafana datasource-plugin processes exhausted host commit (RESOLVED IN WORKING TREE; PR PENDING)
+
+**Evidence:** 741 `gpx_grafana-*-datasource_windows_amd64.exe` processes held
+37.15 GB of private commit on the Asus host. 60 of 61 parent PIDs were gone;
+only the live `grafana` PID remained. Host commit charge reached 98.6%, and an
+unrelated RAM watchdog killed IndrasNet processes while the real consumer was
+invisible to it.
+
+**RCA:** On any health-watchdog failure, `start_observability.ps1` stopped only
+Grafana's top-level PID (`Stop-Process -Id $process.Id -Force`), orphaning the
+per-datasource backend plugin children it spawns (~13 per launch). Because
+Grafana was health-killed repeatedly, orphans accumulated; their commit then
+starved the host, prolonging the probe failures that caused the kills.
+
+**Mitigation:** `Stop-ProcessTree` (descendant snapshot, then reap) replaces the
+single-PID stop at both stop sites, and `Remove-OrphanedRuntimeProcesses` sweeps
+dead-parent processes under the runtime root before a new component launches.
+728 orphans were reaped live (13 in-use kept); commit 88.7% -> 57.8%.
+
+**Blocker status:** Resolved in the working tree; pending PR review before it
+reaches `main`. Grafana's underlying health instability (503/timeouts) remains a
+separate open follow-up.
 ## 2026-09-08 — Production pipeline: word-level audio alignment (DEFERRED)
 
 - **User decision:** implement during productionization, not as a requirement
@@ -64,7 +88,6 @@ values, not an import-duration cap. No production deployment is claimed yet.
   emits the existing >500kB chunk warning. Investigate route-level splitting
   after profiling; this release adds no dependency.
 
-Last updated: 2026-09-02
 
 ## 2026-09-02 — Pull exporter stalls and collector log amplification (LOG AMPLIFICATION RESOLVED; BACKPRESSURE OPEN)
 

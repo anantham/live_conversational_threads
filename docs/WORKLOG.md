@@ -1,5 +1,34 @@
 # WORKLOG
 
+## 2026-09-11 — Grafana datasource-plugin processes leaked on health-watchdog restart (RESOLVED)
+
+- **Symptom:** Host commit charge climbed to 98.6% (RAM 98-99%) for days,
+  tripping an unrelated RAM watchdog that killed IndrasNet processes while the
+  real hog was invisible to it.
+- **Root cause:** `start_observability.ps1` force-killed only the top-level
+  Grafana PID when the health watchdog tripped (`Stop-Process -Id $process.Id
+  -Force`). Grafana spawns a backend process for each datasource plugin
+  (`gpx_*`, ~13 per launch); killing only the parent orphaned them. Grafana was
+  restarted repeatedly by the health watchdog, so the orphans accumulated:
+  741 live orphans / 37.15 GB private commit, oldest 2026-09-04, all with dead
+  parents (60 of 61 parent PIDs gone).
+- **Feedback loop:** leaked commit starved the host, made Grafana health probes
+  time out or return 503, which tripped the watchdog again, leaking another set
+  of plugin processes.
+- **Fix:** Added `Stop-ProcessTree` (snapshots descendants before stopping the
+  root, then reaps survivors) and used it at both stop sites (`Stop-Component`
+  and the `Invoke-ForegroundComponent` failure path). Added
+  `Remove-OrphanedRuntimeProcesses`, invoked before launching a component, to
+  reap runtime-root processes whose parent is gone (excludes root executables so
+  it can never touch a component about to be adopted).
+- **Verification:** Syntax validated with the PowerShell AST parser (4453
+  tokens, 0 errors). Reaped 728 orphaned `gpx_*` processes, keeping the 13 whose
+  parent (the live Grafana) was alive. Commit charge 88.7% -> 57.8%; free
+  physical memory 4.3 GB -> 8.8 GB; Grafana `/api/health` returned HTTP 200
+  throughout.
+- **Test intent:** a stop or health failure must leave no descendant of the
+  stopped component running; a launch must clear orphaned runtime processes but
+  never reap a component it is about to adopt.
 ## 2026-09-09 — Source reading and panel controls (PR 195)
 
 User requested ready-on-open video and a full scrollable transcript, removed
