@@ -515,6 +515,31 @@ function Wait-ComponentHealthy {
     throw "$Name PID $($Process.Id) did not become healthy within $TimeoutSeconds seconds. Last evidence: $lastEvidence"
 }
 
+function Write-ProbeEvent {
+    # Timestamped probe events for Phase 1 baselining (ADR-069). The human-readable
+    # Write-Host/Warning lines carried no timestamp, so failure/recovery/kill RATES
+    # over a window were not computable. This appends structured JSONL that is.
+    param(
+        [string]$Name,
+        [string]$Event,
+        [hashtable]$Fields = @{}
+    )
+    try {
+        $record = [ordered]@{
+            timestamp = (Get-Date).ToUniversalTime().ToString("o")
+            component = $Name
+            event = $Event
+        }
+        foreach ($key in $Fields.Keys) {
+            $record[$key] = $Fields[$key]
+        }
+        $path = Join-Path $LogRoot ("{0}.probe.jsonl" -f $Name.ToLowerInvariant())
+        Add-Content -LiteralPath $path -Value ($record | ConvertTo-Json -Compress) -Encoding UTF8
+    } catch {
+        # Telemetry must never break supervision.
+    }
+}
+
 function Watch-ComponentHealth {
     param([string]$Name, [System.Diagnostics.Process]$Process)
 
@@ -532,12 +557,24 @@ function Watch-ComponentHealth {
         if ($health.healthy) {
             if ($consecutiveFailures -gt 0) {
                 Write-Host "[RECOVERED] $Name PID $($Process.Id) after $consecutiveFailures failed health probe(s)"
+                Write-ProbeEvent -Name $Name -Event "recovered" -Fields @{ pid = $Process.Id; failed_probes = $consecutiveFailures }
             }
             $consecutiveFailures = 0
         } else {
             $consecutiveFailures += 1
             Write-Warning "$Name PID $($Process.Id) health probe failed $consecutiveFailures/$HealthFailureThreshold`: $($health.evidence)"
+            Write-ProbeEvent -Name $Name -Event "probe_failed" -Fields @{
+                pid = $Process.Id
+                consecutive_failures = $consecutiveFailures
+                threshold = $HealthFailureThreshold
+                evidence = $health.evidence
+            }
             if ($consecutiveFailures -ge $HealthFailureThreshold) {
+                Write-ProbeEvent -Name $Name -Event "watchdog_kill" -Fields @{
+                    pid = $Process.Id
+                    consecutive_failures = $consecutiveFailures
+                    evidence = $health.evidence
+                }
                 throw "$Name health watchdog failed after $consecutiveFailures consecutive probes for PID $($Process.Id). Last evidence: $($health.evidence)"
             }
         }
