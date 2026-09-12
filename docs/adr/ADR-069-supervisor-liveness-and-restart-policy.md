@@ -1,7 +1,7 @@
 # ADR-069: Supervisor Liveness and Restart Policy
 
 - **Date:** 2026-09-11
-- **Status:** Proposed (staged — see *Decision → Phasing*)
+- **Status:** Approved (staged — see *Decision → Phasing*). Ratified 2026-09-12.
 - **Group:** Operations / process supervision / observability stack
 - **Related:** ADR-067 (native operational observability stack — this ADR revises its
   health-watchdog probe policy), ADR-059 (zombie cleanup). Precondition shipped in
@@ -203,6 +203,31 @@ out of scope and should be noted as such in implementation.
   machinery. Implement regardless of Phase 1 unless it shows near-zero misfires.
 - **Phase 3 — progress-based liveness.** Add counter-based stall detection per
   §2/§3, gated on Phase 1 evidence that Phase 2 is insufficient.
+
+## Phase 1 baseline (recorded 2026-09-12 06:06 local)
+
+Starting point for the Phase 1 re-baseline. Cumulative counts are lifetime
+totals from the existing logs, not rates; the measurement window starts here.
+
+- **Orphaned `gpx_*` processes: 0.** The leak is not recurring. The tree-safe
+  fix was installed in the deploy working tree on 2026-09-11 and merged to
+  `main` (#196).
+- **All four components healthy** at baseline: Grafana, Collector, Tempo, and
+  Prometheus each returned HTTP 200.
+- **The tree-safe stop path has not yet been exercised:** Grafana has not
+  restarted since 2026-09-11T08:32Z, which predates the fix install.
+- Cumulative probe-failure lines in `logs/observability/*.task-output.log`
+  (lifetime): Grafana 1303, Collector 1570, Tempo 657, Prometheus 597.
+  Cumulative `health watchdog failed` lines: 168 / 216 / 102 / 72.
+- **Instrumentation gap — the first Phase 1 task:** the probe-failure lines
+  carry no timestamp and the structured `*.task.jsonl` records only lifecycle
+  events, so a failure/kill *rate* over a window is not computable yet. Phase 1
+  begins by emitting timestamped probe-failure and `[RECOVERED]` events in the
+  structured log, then measuring the window.
+- Observation supporting the Issue: probe-failure warnings continued to be
+  written overnight with **no** orphan accumulation (`gpx_*` = 0) and no host
+  commit saturation, i.e. the liveness/readiness conflation misfires
+  independently of the leak.
 
 ## Considered positions
 
