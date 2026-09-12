@@ -28,6 +28,13 @@ scrape_configs:
     metrics_path: /metrics/
     static_configs:
       - targets: ["127.0.0.1:7777"]
+  - job_name: indrasnet-telemetry
+    # Unified telemetry exporter (Indra's Net agent/angel/unit telemetry). Its
+    # process enumeration is background-cached, so warm scrapes are fast; the
+    # timeout covers a cold start.
+    scrape_timeout: 12s
+    static_configs:
+      - targets: ["127.0.0.1:9109"]
   - job_name: tempo
     static_configs:
       - targets: ["127.0.0.1:3200"]
