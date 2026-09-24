@@ -22,7 +22,7 @@ groups:
           description: "Prometheus has been unable to scrape {{ $labels.instance }} for two minutes. Check the matching LCT-Observability scheduled task before changing any probe timeout."
 
       - alert: IndrasNetErrorWriterMissing
-        expr: absent(error_persistence_writer_running{job="indrasnet"}) == 1
+        expr: absent(error_persistence_writer_running{job="indrasnet"}) == 1 and on(job) (up{job="indrasnet"} == 1)
         for: 2m
         labels:
           severity: critical
