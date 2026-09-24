@@ -6104,3 +6104,21 @@ Test intent: preserve silence/overlap/start-only highlights, quiet viewer versus
 # 2026-09-09 — Ready-to-play source and scrollable transcript
 
 User observed an empty desktop transcript until node selection, with only the current playback row shown outside it. Confirmed cause: passages were derived solely from optional selected node. Full timed transcript now renders on initial open and stays scrollable across node selections; selecting a node still seeks its first source passage. YouTube loads paused without a preparatory click (user requested ready player), never autoplay. Removed explanatory paragraph and outside-selection label/card. Wheel, touch and keyboard browsing pause automatic transcript following until a passage/node is selected. Overview remains unchanged/open. Tests cover initial no-node state, no autoplay, full list, manual scrolling and existing bidirectional playback.
+
+## 2026-09-24 12:21 IST — Observability alert and outage investigation plan
+
+- Approved scope: correct the IndrasNet writer-missing rule when its scrape is down, and record read-only causes for the reported IndrasNet, Grafana, CPU, and Tempo incidents.
+- H1: absent writer telemetry is a false companion during target-down. Prediction: the missing-writer rule fires for up=1 plus absent writer, stays quiet for up=0, and stays quiet for up=1 plus writer=1.
+- H2: IndrasNet outages were forced supervisor restarts after event-loop stalls. Instrumented loop dumps and supervisor journal confirm this; separate CPU samples falsify the later FFmpeg saturation as their common cause.
+- H3: Tempo alert indicates a retention-delete file lock, not a flush failure. Retention log entries confirm locked block deletion; the failed-flush counter did not increase in the investigated alert window.
+- Test intent: evaluate the actual Prometheus alert rule for scrapeable/missing, down/missing, and scrapeable/present writer series. Preserve the independent target-down signal.
+- Reviewer plan: send only the exact two-file rule/test diff and local validation to an authenticated approved independent family, read-only.
+
+## 2026-09-24 13:05 IST — Observability alert correction and incident follow-ups
+
+- Changed `ops/observability/prometheus-alerts.yml:25` so `IndrasNetErrorWriterMissing` requires a successful Indras Net scrape. Added `lct_python_backend/tests/unit/test_observability_alert_rules.py:1-97` with Test Intent and three public rule-behavior cases.
+- Regression was observed failing against the old expression because `up=0` still produced the writer-missing alert; it passes after the gate. Focused tests: 3 passed, 24 deselected. `promtool check rules` found 15 valid rules. Pytest emitted three existing Python 3.9 support warnings; process exit also emitted a temp-directory `PermissionError` at interpreter shutdown after pytest returned 0.
+- Recorded the multi-service incident evidence and follow-ups in `ISSUES.md` starting at line 1446. The three Indras Net exception records lost on 2026-09-22 are confirmed `database is locked` write failures, distinct from the false writer-missing companion. Grafana lock timing, later FFmpeg-led host saturation, and Tempo retention file locks are separately described without asserting unproven shared causes.
+- Latest local Prometheus alert API snapshot during investigation returned zero firing alerts (12:21 IST). No services were restarted or killed. The change is not deployed.
+
+- Independent review remains pending: automatic approval review blocked transmission of the exact two-file (4.1 KB) patch to Anthropic because the private LCT repository is outside the standing external-review grant for TemporalCoordination. No source diff was sent. Secret scan found no common credential patterns, but this does not override the access boundary. Required next step is one-time user authorization for this exact patch and destination, or another already-authorized independent reviewer.
