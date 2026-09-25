@@ -6136,7 +6136,7 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Alert rule and synthetic regression from 8cca8af pass one pytest/promtool
   test containing three scenarios; all 15 rules validate. Existing Python 3.9
   support warnings and pytest temp-cleanup PermissionError are preexisting.
-- Historical review-authorization blocker below is superseded by AGENTS.md's
+- Historical review-authorization blocker above is superseded by AGENTS.md's
   explicit LCT authorization and REVIEW-EGRESS-A1. The current independent
   review must still use a scanned, bounded, tool-free packet and existing credit.
 - Active Meet Angel source remains owned and unpublished until reviewed handoff;
@@ -6168,3 +6168,27 @@ User observed an empty desktop transcript until node selection, with only the cu
   fonts. The temporary Vite server was stopped.
 - Independent review is the next merge gate. The exact outgoing packet will
   exclude all local operational notes and generated/private artifacts.
+
+## 2026-09-25 14:13 IST — Independent review and publication boundary
+
+- Anthropic Claude Opus 5.5 (`claude-opus-5-5`) reviewed exact range
+  0d4285eb89f2c2fab98287cb0f5d4994a06ba1ee..dfc5c8ba4c2cd7ed9685de79145b0d4e215d620d.
+  Verdict: PASS, zero blocking findings. Authenticated first-party subscription;
+  runtime receipt confirms tools=[], mcp_servers=[], one turn, no overage.
+- Packet: 49,811 UTF-8 bytes; SHA256
+  85550ee8ed22f70e2296eb8c53cab848c1011c4f53c433d1e7cccdf40a04e94a.
+  Exact ten-file diff inventoried in the consolidation plan plus unchanged
+  MobileConversationDeck.jsx context. Excluded credentials, databases, .env,
+  raw logs, private notes, media, generated artifacts, and untracked files.
+  Manual inspection and common credential-pattern scan found no secret payload.
+- Reviewer validated the alert's label join and scroll-container touch-action
+  mechanism. Nonblocking notes: Windows-only promtool discovery, no explicit
+  target-down assertion, single-target job assumption, Chromium-only CDP tests.
+  These match the scoped contracts; portability/multi-target expansion remains
+  follow-up, not a product defect. No disputed overclaim or source change.
+- Fixed the supported documentation nits: trailing newlines and above/below
+  reference. This receipt-only update requires final diff confirmation.
+- Automatic approval rejected pushing the prepared branch to public GitHub:
+  exact-payload publication authorization and classification were not accepted.
+  No source push, PR, merge, or deployment occurred. Existing already-public
+  branch retirement succeeded separately with remote recovery tags.
