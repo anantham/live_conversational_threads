@@ -6257,3 +6257,11 @@ User observed an empty desktop transcript until node selection, with only the cu
   not a complete recording/import drain check; activation needs an agreed idle
   window. No runtime restart, bot join, processing backfill or production write
   occurred during this integration. Private owner work remains untouched.
+
+## 2026-09-25 15:20 IST — IndraSNet browse and Discussion view investigation
+
+- Read the LCT Browse, saved conversation, `.threads` viewer, raw-turn import, utterance API, graph projection, ADR-062, and UI design contract; read IndraSNet's Meet raw-turn adapter and audio storage/catalog routes in TemporalCoordination. No product source files changed.
+- Existing LCT `POST /api/import/turns` and `/turns/extract` already provide stable owner/group mirroring and graph extraction. Browse lists browser-local artifacts and saved LCT conversations; IndraSNet has a Meet raw-turn route but no unified browse/search catalog across its `items` and `media_items` audio stores. The proposed catalog needs typed source keys and explicit transcript state.
+- Saved conversations already offer Graph and Transcript tabs; `.threads` uses a separate compact card view. ADR-062 preserves overlapping semantic membership, so a Discussion projection must preserve secondary links and exact utterance provenance rather than derive speaker replies from chronology.
+- `conversations_api.py:451-472` lacks the owner check used at lines 106-114. Logged as a security-sensitive prerequisite in `ISSUES.md`; no participant data, live database, credentials, or recording was accessed. The human architecture choice about semantic hierarchy versus new reply extraction is pending.
+- The Windows sandbox helper still fails before ordinary command launch with OS error 206. Reviewed shell execution works for repository diagnostics; no global sandbox configuration or app binary was changed.
