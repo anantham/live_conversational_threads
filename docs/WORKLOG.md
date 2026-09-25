@@ -6220,3 +6220,21 @@ User observed an empty desktop transcript until node selection, with only the cu
   in docs/reviews/2026-09-25-meet-angel-lct.md. Fresh independent review is required
   for the integration guard. Publication and matching backend activation remain
   separate from local integration; the already-approved first consolidation is live.
+
+## 2026-09-25 14:50 IST — Independent review recovery fix
+
+- Anthropic review of the exact integrated source returned PASS with one supported
+  low-severity audio-retry finding. Receipt, packet inventory/hash and boundaries
+  are in docs/reviews/2026-09-25-meet-angel-lct.md.
+- Instrument: public retry test reproduced currentTime resetting from4.2 to0 after
+  media reload. TranscriptReview.jsx:62-66 now preserves current position without
+  overwriting a pending seek. Two tests in TranscriptReview.test.jsx:105 onward
+  cover recovery and retained pending word seek. The intent document records both.
+  Focused frontend validation is15/15; full frontend suite is408/408 in66files.
+  Scoped lint and production build pass.
+- Actual apiClient catch logic excludes AbortError from the network-failure counter,
+  resolving the reviewer's question without a code change. Existing bearer-only
+  deployment and deferred graph regeneration remain explicit product boundaries.
+- One initial test-edit command used the repo-relative path from the frontend cwd
+  and changed nothing. The corrected path installed the regression; no result from
+  the initial all-skipped run is counted as validation.

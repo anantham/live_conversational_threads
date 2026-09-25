@@ -44,3 +44,13 @@ Hashes refer to reviewed working-tree bytes; Git may normalize line endings on c
 | `lct_python_backend/tests/intent/attendee-retained-source.md` | `9056ae1c4958026efc1bc2b3553204e736fa879e8f7eb30bb453695368e55300` |
 | `lct_python_backend/tests/intent/transcript-review.md` | `d873d1763e705bcb90e9e02ca0693293591918ece840d01db96a76582e1ac4d6` |
 | `lct_app/src/services/transcriptReviewApi.test.js` | `f51289e6b98785c33c8e9d5b43dbd29d6a5955a1a3136fad5dd57b25c9830c0a` |
+
+## Consolidation review and integration fixes
+
+The manifest and twelve-test count above describe the original handoff, not the later integration bytes. Integration base is main `6b2a915069da2fbb03114a554f040fbcaf3fa639`.
+
+Anthropic Claude Opus 5.5 (`claude-opus-5-5`) independently reviewed the exact 24-file range ending at `9acff77199c2a1419148dbb0fbc0e450e5ad25f8`, including the null-alignment guard, with four small unchanged auth/owner/transaction/transport excerpts. The 104,776-byte packet SHA256 was `3797b45b89709f486e17295d1aeefb233981dab05f7a62a2fb398948875ba615`. Common secret-pattern scan returned zero matches; only source, synthetic tests and technical documentation were included. Credentials, runtime values, databases, actual transcripts, participant data, media, screenshots and private/untracked notes were excluded. Existing authenticated subscription; tool-free runtime receipt confirmed tools=[], mcp_servers=[], one turn. Static review only.
+
+Verdict was PASS with one low-severity finding: Retry audio lost the listening position. A public regression reproduced position4.2 resetting to0; retry now records the current position before reloading and preserves an already-pending word seek. Both recovery cases pass. A second independent pass will cover this updated source.
+
+Reviewer questions checked against the actual contract: apiClient excludes AbortError from its network-failure counter; the earlier excerpt omitted that branch. Private source/transcript access deliberately requires an existing bearer token (AUTH_TOKEN preferred, ADMIN_AUTH_TOKEN fallback). The graph-refresh flag remains until a separately authorized processing path clears it. Transcript drafts survive switching; preservation of separate graph detail drafts is outside this slice. No disputed overclaim remains.

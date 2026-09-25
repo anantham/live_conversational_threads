@@ -60,6 +60,11 @@ export default function TranscriptReview({ conversationId, visible, audioUrl, se
   const pauseFollow = useCallback(() => setFollowing(false), []);
   const beginEditing = useCallback(() => { setFollowing(false); audio.current?.pause(); }, []);
   const mediaBusy = (label) => { setAudioStatus(label); setAudioBusyAt(Date.now()); setAudioElapsed(0); };
+  const retryAudio = () => {
+    pendingSeek.current ??= mediaTime(audio.current?.currentTime);
+    audio.current?.load();
+    mediaBusy("Loading audio");
+  };
   const mediaReady = () => { setAudioStatus(""); setAudioBusyAt(null); applySeek(); };
   return <section aria-label="Conversation transcript" className={visible ? "absolute inset-0 flex flex-col bg-[#fdfdfb]" : "absolute inset-x-0 bottom-0"}>
     <div hidden={!visible} className="min-h-0 flex-1 flex-col" style={visible ? { display: "flex" } : undefined}>
@@ -95,7 +100,7 @@ export default function TranscriptReview({ conversationId, visible, audioUrl, se
         : <p className="text-sm text-slate-600">Audio unavailable. You can still read and correct the transcript.</p>}
       {audioUrl && data?.timing_basis === "caption_relative" && <p className="mt-1 text-xs text-slate-600">Caption times are not aligned with this audio. Transcript seeking is unavailable.</p>}
       {audioStatus && <div role="status" className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-600">{audioStatus}{audioBusyAt && ` · ${audioElapsed}s elapsed · Time remaining unknown`}
-        <button type="button" onClick={() => { audio.current?.load(); mediaBusy("Loading audio"); }} className="min-h-11 underline">Retry audio</button>
+        <button type="button" onClick={retryAudio} className="min-h-11 underline">Retry audio</button>
       </div>}
     </div>
   </section>;

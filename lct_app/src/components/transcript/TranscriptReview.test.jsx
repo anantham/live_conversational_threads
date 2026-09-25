@@ -100,3 +100,26 @@ it("keeps malformed stored word alignment readable with segment seeking",async()
   await click(container.querySelector('[aria-label="Play passage at 0:02"]'));
   expect(container.querySelector("audio").currentTime).toBe(2);
 });
+
+it("restores the listening position after retrying stalled audio",async()=>{
+  await mount();
+  const audio=container.querySelector("audio");audio.currentTime=4.2;
+  HTMLMediaElement.prototype.load.mockImplementation(function(){this.currentTime=0;});
+  await act(async()=>audio.dispatchEvent(new Event("stalled")));
+  await click(button("Retry audio"));
+  await act(async()=>audio.dispatchEvent(new Event("loadedmetadata")));
+  expect(audio.currentTime).toBe(4.2);
+});
+
+it("retains a pending word seek when retrying audio",async()=>{
+  const ready=vi.spyOn(HTMLMediaElement.prototype,"readyState","get").mockReturnValue(0);
+  await mount();
+  const audio=container.querySelector("audio");
+  await click(container.querySelector('[aria-label="Play word words at 0:04"]'));
+  await act(async()=>audio.dispatchEvent(new Event("stalled")));
+  HTMLMediaElement.prototype.load.mockImplementation(function(){this.currentTime=0;});
+  await click(button("Retry audio"));
+  ready.mockReturnValue(1);
+  await act(async()=>audio.dispatchEvent(new Event("loadedmetadata")));
+  expect(audio.currentTime).toBe(4);
+});

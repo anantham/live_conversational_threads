@@ -1499,3 +1499,13 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   the regression now proves readable text and segment seek without word buttons.
 - Impact / blocker: affected malformed legacy data; resolved before publication.
   No production data change. Next step: retain this regression in the integrated suite.
+
+## 2026-09-25 — Transcript review recovery observations
+
+- Resolved before publication: Retry audio reset the listening position; the
+  independently reported issue was reproduced and fixed, with two public tests
+  for current position and a pending seek surviving retry.
+- Nonblocking copy follow-up: aborting a read can mention checking whether a change
+  saved, and read errors mention a correction draft even if no edit was started.
+  Impact: confusing recovery wording only. Next step: distinguish load/save status
+  copy in a bounded UX follow-up; persistence and cancellation behavior remain covered.
