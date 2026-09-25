@@ -160,3 +160,11 @@ playwright-report/
 lct_app/scripts/out/
 *.war-snapshot.enc
 *.debate-snapshot.enc
+
+# Local review/recovery artifacts and nested checkouts (never product source)
+/.impeccable/review/
+/.agent-reviews/
+/.lct-worktrees/
+*.stackdump
+# Historical pytest scratch directory with a restricted local ACL
+/tmp_pytest_reprocess_port/

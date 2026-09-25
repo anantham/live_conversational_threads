@@ -6122,3 +6122,23 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Latest local Prometheus alert API snapshot during investigation returned zero firing alerts (12:21 IST). No services were restarted or killed. The change is not deployed.
 
 - Independent review remains pending: automatic approval review blocked transmission of the exact two-file (4.1 KB) patch to Anthropic because the private LCT repository is outside the standing external-review grant for TemporalCoordination. No source diff was sent. Secret scan found no common credential patterns, but this does not override the access boundary. Required next step is one-time user authorization for this exact patch and destination, or another already-authorized independent reviewer.
+
+## 2026-09-25 — Consolidation inventory and recovery preparation
+
+- User authorized review and consolidation of outstanding LCT work into main.
+  Main baseline is 0d4285e. An isolated integration checkout protects the running
+  main checkout. A verified complete local recovery bundle preserves all refs.
+- Added docs/plans/2026-09-25-consolidation.md with branch/tree proof, test intent,
+  artifact disposition, active-owner boundary, and unresolved integration scope.
+- Extended .gitignore for local review images/artifacts, nested worktrees,
+  crash dumps, and the historical inaccessible pytest scratch directory.
+  Files remain intact. Ignore-rule checks substitute for unit tests here.
+- Alert rule and synthetic regression from 8cca8af pass one pytest/promtool
+  test containing three scenarios; all 15 rules validate. Existing Python 3.9
+  support warnings and pytest temp-cleanup PermissionError are preexisting.
+- Historical review-authorization blocker below is superseded by AGENTS.md's
+  explicit LCT authorization and REVIEW-EGRESS-A1. The current independent
+  review must still use a scanned, bounded, tool-free packet and existing credit.
+- Active Meet Angel source remains owned and unpublished until reviewed handoff;
+  local-only study notes and synthetic screenshots are excluded from publication.
+  A larger parked pipeline branch needs scope resolution. No work was discarded.

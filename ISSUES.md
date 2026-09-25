@@ -1457,3 +1457,21 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 **Recommended next steps:** Keep the narrow writer-alert gate. For persistence, inspect SQLite transaction ownership and writer retry/idempotency semantics before choosing a bounded retry or queue policy; retain a regression that verifies durable outcomes under lock contention. For Grafana, identify lock holders and separate process health from DB readiness. Capture FFmpeg parent command/job at the next saturation window. For Tempo, inspect who holds the affected block handle and verify retention recovery after the handle releases. Do not change timeouts or retention policy from these correlations alone.
 
 **Independent-review gate:** Local implementation and tests are complete, but the required independent review is pending. The host approval reviewer blocked sending the exact config/test patch to Anthropic because this is a private LCT repository and the standing external-review authorization covers only TemporalCoordination. No diff was sent and no remote action occurred. Proceed after explicit one-time approval to disclose the bounded patch to Claude, or use a permitted non-OpenAI reviewer already authorized for this repository.
+
+## 2026-09-25 — Consolidation inventory follow-ups (OPEN)
+
+- **Summary:** An explicitly parked pipeline branch still has substantial absent
+  implementation and unresolved review findings; active Meet Angel changes
+  have not yet been handed off. Historical PR #192 vertical-swipe behavior is
+  superseded by current vertical-reading semantics.
+- **Impact:** A literal all-work/single-branch completion cannot be claimed until
+  those boundaries are resolved. These do not block the completed alert fix.
+- **Next step:** follow docs/plans/2026-09-25-consolidation.md, retain recovery
+  references, and validate a narrow native-touch salvage against current intent.
+- **Preexisting tooling:** Windows sandbox setup fails before command launch
+  (error 206); approved explicit execution is required on this host. Pytest may
+  also report an inaccessible historical temp directory at shutdown after tests
+  pass. Do not weaken tests or delete unknown scratch data to hide these issues.
+- **Review authority correction:** the historical September 24 authorization
+  blocker above is superseded by this repository's explicit AGENTS.md grant and
+  REVIEW-EGRESS-A1. Bounded, scanned, tool-free review remains mandatory.
