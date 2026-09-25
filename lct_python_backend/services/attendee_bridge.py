@@ -37,6 +37,7 @@ from typing import Any, Dict, List, Optional, Set
 import websockets
 
 from lct_python_backend.services.env_helpers import env_float, env_str_or_none
+from lct_python_backend.services.attendee_identity import parse_occurrence, source_identity
 from lct_python_backend.services.runtime_paths import (
     get_attendee_session_registry_path,
 )
@@ -104,10 +105,13 @@ def is_terminal_bot_state(state: Any) -> bool:
 class MeetingSession:
     """One live meeting: loopback producer + viewer fan-out + dedupe."""
 
-    def __init__(self, *, conversation_id: str, meeting_url: str, bot_name: str) -> None:
+    def __init__(self, *, conversation_id: str, meeting_url: str, bot_name: str,
+                 calendar_occurrence=None, transcription_mode="unknown") -> None:
         self.conversation_id = conversation_id
         self.meeting_url = meeting_url
         self.bot_name = bot_name
+        self.calendar_occurrence = parse_occurrence(calendar_occurrence)
+        self.transcription_mode = transcription_mode
         self.bot_id: Optional[str] = None
 
         self._ws: Optional[Any] = None  # websockets client connection
@@ -150,7 +154,8 @@ class MeetingSession:
             "metadata": {
                 "conversation_name": _meeting_name(self.meeting_url),
                 "source": "attendee_meeting_bot",
-                "source_metadata": {"meeting_url": self.meeting_url, "bot_name": self.bot_name},
+                "source_metadata": {"meeting_url": self.meeting_url, "bot_name": self.bot_name,
+                                    **source_identity(self.calendar_occurrence, self.transcription_mode)},
             },
         }))
         self._reader_task = asyncio.create_task(self._reader_loop(), name=f"attendee-reader-{self.conversation_id}")
@@ -247,6 +252,9 @@ class MeetingSession:
                 # Raw absolute epoch-ms from Attendee, preserved verbatim
                 # (timestamps.start is the recording-relative seconds derived above).
                 "source_timestamp_ms": timestamp_ms,
+                "source_duration_ms": duration_ms,
+                "source_anchor_epoch_ms": self._rec_anchor_epoch_ms,
+                "source_timing": {"timeline": "caption_relative", **timestamps},
                 "latency": {"e2e_ms": e2e_ms, "attendee_lag_ms": attendee_lag_ms, "pipeline_ms": pipeline_ms},
             },
             "timestamps": timestamps,
@@ -473,6 +481,7 @@ def _persist_session(session: MeetingSession) -> None:
         "meeting_url": session.meeting_url,
         "bot_id": session.bot_id,
         "status": session.status,
+        **source_identity(session.calendar_occurrence, session.transcription_mode),
         "joined_at": registry.get(session.conversation_id, {}).get("joined_at")
         or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "last_status_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),

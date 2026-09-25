@@ -35,10 +35,13 @@ async def _noop_async(*args, **kwargs):
 
 
 class _FakeSession:
-    def __init__(self, *, conversation_id, meeting_url, bot_name):
+    def __init__(self, *, conversation_id, meeting_url, bot_name,
+                 calendar_occurrence=None, transcription_mode="unknown"):
         self.conversation_id = conversation_id
         self.meeting_url = meeting_url
         self.bot_name = bot_name
+        self.calendar_occurrence = calendar_occurrence
+        self.transcription_mode = transcription_mode
         self.bot_id = None
         self.status = "starting"
         self.bot_state = None

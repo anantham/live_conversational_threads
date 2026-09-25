@@ -6192,3 +6192,68 @@ User observed an empty desktop transcript until node selection, with only the cu
   exact-payload publication authorization and classification were not accepted.
   No source push, PR, merge, or deployment occurred. Existing already-public
   branch retirement succeeded separately with remote recovery tags.
+
+## 2026-09-25 14:43 IST — Meet handoff integration and timing boundary
+
+- Integrated only owner-approved source commit 86be63f6587d2726a345f13755af33dd542e90ff
+  onto clean main 6b2a915069da2fbb03114a554f040fbcaf3fa639 in the isolated
+  codex/consolidate-meet-review-20260925 worktree. The 22-file cherry-pick
+  was byte-identical and had no overlap with the preceding consolidation.
+  Owner-private worklogs, screenshots, scratch files and study notes remain excluded.
+- Instrument: synthetic stored word_timings=[null] survives the transcript API
+  serialization and crashed the reader before its segment fallback. A public
+  component regression failed with TypeError before the fix. This confirmed the
+  input-validation order as the cause (confidence 0.99); the predicted repair was
+  readable text plus segment seeking with no invented word timing.
+- Changed transcriptReviewTiming.js:8 to validate entries before dereferencing
+  them in alignment comparison. TranscriptReview.test.jsx:95 covers the failed
+  boundary through rendered text and audio seeking; tests/intent/transcript-review.md
+  records the contract. All paths are under their existing frontend/backend roots.
+- Validation: 83/83 synthetic backend tests, 13/13 focused frontend tests, and
+  the complete frontend suite (406/406 tests in 66 files) pass.
+  New-module ESLint and production build pass (2314 modules); existing large-chunk
+  and Python 3.9 support warnings remain. No live database or participant content
+  was accessed. No new dependencies, migrations, bot policy or processing backfill.
+- The existing ViewConversation decomposition candidate in docs/TECH_DEBT.md:39
+  covers the touched route; transcript behavior is in dedicated small modules.
+- Verified the original Google Gemini 3.1 Pro approval receipt and packet hash
+  in docs/reviews/2026-09-25-meet-angel-lct.md. Fresh independent review is required
+  for the integration guard. Publication and matching backend activation remain
+  separate from local integration; the already-approved first consolidation is live.
+
+## 2026-09-25 14:50 IST — Independent review recovery fix
+
+- Anthropic review of the exact integrated source returned PASS with one supported
+  low-severity audio-retry finding. Receipt, packet inventory/hash and boundaries
+  are in docs/reviews/2026-09-25-meet-angel-lct.md.
+- Instrument: public retry test reproduced currentTime resetting from4.2 to0 after
+  media reload. TranscriptReview.jsx:62-66 now preserves current position without
+  overwriting a pending seek. Two tests in TranscriptReview.test.jsx:105 onward
+  cover recovery and retained pending word seek. The intent document records both.
+  Focused frontend validation is15/15; full frontend suite is408/408 in66files.
+  Scoped lint and production build pass.
+- Actual apiClient catch logic excludes AbortError from the network-failure counter,
+  resolving the reviewer's question without a code change. Existing bearer-only
+  deployment and deferred graph regeneration remain explicit product boundaries.
+- One initial test-edit command used the repo-relative path from the frontend cwd
+  and changed nothing. The corrected path installed the regression; no result from
+  the initial all-skipped run is counted as validation.
+
+## 2026-09-25 14:55 IST — Final source review complete; publication pending
+
+- Anthropic Claude Opus5.5 final source verdict: PASS, zero actionable findings,
+  exact6b2a915..d619119 range. The supported retry issue is fixed; packet hash,
+  outgoing byte count, scan/exclusions and evidence limits are recorded in the
+  tracked review artifact. Coordinator validation: 83/83 backend, 408/408 frontend,
+  15/15 focused frontend, scoped lint and production build pass; reviewer ran no tests.
+- No source changes follow that reviewed commit; this commit records the receipt.
+  Source routing was statically checked against conversations_api.py:37 and the
+  corresponding Attendee router; no competing path appears before either endpoint.
+- The public main checkout is clean and synced at6b2a915. Phase1 PR200 and Vercel
+  production smoke succeeded. The second24-file slice remains local pending its
+  exact-payload publication and backend-interruption authorization. Prior human
+  approval explicitly named phase1's ten-file88e2bab payload.
+- Backend startup is an established non-elevated script. An idle TCP snapshot is
+  not a complete recording/import drain check; activation needs an agreed idle
+  window. No runtime restart, bot join, processing backfill or production write
+  occurred during this integration. Private owner work remains untouched.

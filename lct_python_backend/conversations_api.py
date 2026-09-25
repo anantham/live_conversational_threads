@@ -14,6 +14,7 @@ from sqlalchemy.sql import func
 from lct_python_backend.config import GCS_BUCKET_NAME
 from lct_python_backend.db_session import get_async_session
 from lct_python_backend.schemas import ConversationResponse, SaveJsonResponseExtended
+from lct_python_backend.transcript_review_api import router as transcript_review_router
 from lct_python_backend.services.conversation_reader import (
     build_chunk_dict_from_utterances,
     build_graph_data_from_nodes,
@@ -33,6 +34,7 @@ from lct_python_backend.services.turn_synthesizer import build_turn_graph_from_u
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["conversations"])
+router.include_router(transcript_review_router)
 
 
 def _build_relationship_maps(nodes, relationships):
