@@ -1489,3 +1489,13 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Impeccable context detected existing product/design schema and sidecar drift;
   no design migration was made. Follow up as a separate design-context maintenance
   task. Local Vite junctions also deny some font paths, while build succeeds.
+
+## 2026-09-25 — Malformed retained word alignment (RESOLVED IN INTEGRATION)
+
+- Summary: the handed-off transcript reader dereferenced stored word timing
+  entries before validation; a null entry caused a render failure.
+- Instrument: the backend preserves JSON timing entries, and a synthetic public
+  component test failed with TypeError on [null]. The fix validates before mapping;
+  the regression now proves readable text and segment seek without word buttons.
+- Impact / blocker: affected malformed legacy data; resolved before publication.
+  No production data change. Next step: retain this regression in the integrated suite.

@@ -91,3 +91,12 @@ it("keeps unsaved text when the edit action is invoked again",async()=>{
   expect(container.querySelector("textarea").value).toBe("Keep this draft");
   expect(api.save).not.toHaveBeenCalled();
 });
+
+it("keeps malformed stored word alignment readable with segment seeking",async()=>{
+  api.fetch.mockResolvedValue({...payload,utterances:[{...row,word_timings:[null]}]});
+  await mount();
+  expect(container.querySelector("article p").textContent).toBe("Original words");
+  expect(container.querySelector('[aria-label^="Play word"]')).toBeNull();
+  await click(container.querySelector('[aria-label="Play passage at 0:02"]'));
+  expect(container.querySelector("audio").currentTime).toBe(2);
+});

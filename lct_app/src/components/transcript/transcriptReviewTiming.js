@@ -5,10 +5,10 @@ export function mediaTime(value) {
 export function timedWords(utterance) {
   const words = utterance.word_timings;
   if (!Array.isArray(words) || !words.length) return [];
+  if (words.some((word) => !word || typeof word.word !== "string" || mediaTime(word.start) == null || mediaTime(word.end) == null || word.end <= word.start)) return [];
   const normalized = (text) => String(text || "").replace(/\s+/g, "");
   // Corrected or partly aligned text cannot borrow an older word sequence.
   if (normalized(words.map((word) => word.word).join("")) !== normalized(utterance.text)) return [];
-  if (words.some((word) => typeof word.word !== "string" || mediaTime(word.start) == null || mediaTime(word.end) == null || word.end <= word.start)) return [];
   return words;
 }
 

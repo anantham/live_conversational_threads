@@ -6192,3 +6192,31 @@ User observed an empty desktop transcript until node selection, with only the cu
   exact-payload publication authorization and classification were not accepted.
   No source push, PR, merge, or deployment occurred. Existing already-public
   branch retirement succeeded separately with remote recovery tags.
+
+## 2026-09-25 14:43 IST — Meet handoff integration and timing boundary
+
+- Integrated only owner-approved source commit 86be63f6587d2726a345f13755af33dd542e90ff
+  onto clean main 6b2a915069da2fbb03114a554f040fbcaf3fa639 in the isolated
+  codex/consolidate-meet-review-20260925 worktree. The 22-file cherry-pick
+  was byte-identical and had no overlap with the preceding consolidation.
+  Owner-private worklogs, screenshots, scratch files and study notes remain excluded.
+- Instrument: synthetic stored word_timings=[null] survives the transcript API
+  serialization and crashed the reader before its segment fallback. A public
+  component regression failed with TypeError before the fix. This confirmed the
+  input-validation order as the cause (confidence 0.99); the predicted repair was
+  readable text plus segment seeking with no invented word timing.
+- Changed transcriptReviewTiming.js:8 to validate entries before dereferencing
+  them in alignment comparison. TranscriptReview.test.jsx:95 covers the failed
+  boundary through rendered text and audio seeking; tests/intent/transcript-review.md
+  records the contract. All paths are under their existing frontend/backend roots.
+- Validation: 83/83 synthetic backend tests, 13/13 focused frontend tests, and
+  the complete frontend suite (406/406 tests in 66 files) pass.
+  New-module ESLint and production build pass (2314 modules); existing large-chunk
+  and Python 3.9 support warnings remain. No live database or participant content
+  was accessed. No new dependencies, migrations, bot policy or processing backfill.
+- The existing ViewConversation decomposition candidate in docs/TECH_DEBT.md:39
+  covers the touched route; transcript behavior is in dedicated small modules.
+- Verified the original Google Gemini 3.1 Pro approval receipt and packet hash
+  in docs/reviews/2026-09-25-meet-angel-lct.md. Fresh independent review is required
+  for the integration guard. Publication and matching backend activation remain
+  separate from local integration; the already-approved first consolidation is live.
