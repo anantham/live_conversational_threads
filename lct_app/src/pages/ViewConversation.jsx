@@ -10,6 +10,7 @@ import {
 } from "../components/audio/exportSessionDebug";
 import { fetchConversationObservability } from "../services/conversationDiagnosticsApi";
 
+import TranscriptReview from "../components/transcript/TranscriptReview";
 import MinimalGraph from "../components/MinimalGraph";
 import { indexExplicitEdges } from "../services/edgeContract";
 import MinimalLegend from "../components/MinimalLegend";
@@ -98,6 +99,9 @@ export default function ViewConversation() {
   const dataProvider = useDataProvider();
   const navigate = useNavigate();
 
+  const [viewMode, setViewMode] = useState("graph");
+  const [transcriptRevision, setTranscriptRevision] = useState(0);
+  const onTranscriptCorrected = useCallback(() => setTranscriptRevision((value) => value + 1), []);
   const [graphData, setGraphData] = useState([]);
   const [semanticEdges, setSemanticEdges] = useState(undefined);
   const [chunkDict, setChunkDict] = useState({});
@@ -198,6 +202,7 @@ export default function ViewConversation() {
       setIsLoading(true);
       setLoadError("");
       setSelectedNode(null);
+      setAudioDownloadUrl("");
 
       try {
         // 5-minute TTL: a conversation's graph_data changes rarely (only on
@@ -487,7 +492,7 @@ export default function ViewConversation() {
 
   return (
     <div className="flex h-[100dvh] w-full flex-col overflow-hidden bg-[#f2f1ed] text-slate-800">
-      <header className="flex shrink-0 items-center border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
+      <header className="flex shrink-0 flex-wrap items-center border-b border-slate-200 bg-white/80 px-4 py-3 backdrop-blur">
         <button
           onClick={() => navigate("/browse")}
           className="rounded-md border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
@@ -540,7 +545,7 @@ export default function ViewConversation() {
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="mt-2 flex w-full shrink-0 flex-wrap items-center justify-end gap-3 sm:mt-0 sm:w-auto">
           {allNodes.length > 0 && <AnalyzeMenu conversationId={conversationId} />}
           {audioDownloadUrl && (
             <a
@@ -673,6 +678,11 @@ export default function ViewConversation() {
         </div>
       )}
 
+      <div className="flex shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-4 py-1" role="group" aria-label="Conversation view">
+        {["graph", "transcript"].map((mode) => <button key={mode} type="button" aria-pressed={viewMode === mode}
+          onClick={() => setViewMode(mode)}
+          className={`min-h-11 rounded-md px-4 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700 ${viewMode === mode ? "bg-slate-800 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{mode === "graph" ? "Graph" : "Transcript"}</button>)}
+      </div>
       <main className="relative min-h-0 flex-1">
         {isLoading && (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">
@@ -692,14 +702,14 @@ export default function ViewConversation() {
           </div>
         )}
 
-        {!isLoading && !loadError && allNodes.length === 0 && (
+        {viewMode === "graph" && !isLoading && !loadError && allNodes.length === 0 && (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-slate-500">
             This conversation has no graph nodes yet.
           </div>
         )}
 
         {!isLoading && !loadError && allNodes.length > 0 && (
-          <div className="flex h-full flex-col">
+          <div hidden={viewMode !== "graph"} className="h-full flex-col pb-16" style={viewMode === "graph" ? { display: "flex" } : undefined}>
             <div className="relative min-h-0 flex-1">
               <div
                 className={`absolute inset-0 transition-all duration-200 ${
@@ -734,14 +744,19 @@ export default function ViewConversation() {
           </div>
         )}
 
-        {selectedNodeData && (
+        {!isLoading && !loadError && <TranscriptReview key={conversationId} conversationId={conversationId}
+          visible={viewMode === "transcript"} selectedNode={viewMode === "graph" ? selectedNodeData : null}
+          onCorrected={onTranscriptCorrected}
+          audioUrl={audioDownloadUrl ? (audioDownloadUrl.startsWith("http") ? audioDownloadUrl : `${API_BASE_URL}${audioDownloadUrl}`) : null} />}
+        {viewMode === "graph" && selectedNodeData && (
           <NodeDetail
+            key={`${conversationId}:${transcriptRevision}`}
             node={selectedNodeData}
             chunkDict={chunkDict}
             conversationId={conversationId}
             participantNames={participants.map((p) => p.display_name).filter(Boolean)}
             contextNodes={allNodes}
-            audioUrl={audioDownloadUrl ? (audioDownloadUrl.startsWith("http") ? audioDownloadUrl : `${API_BASE_URL}${audioDownloadUrl}`) : null}
+            audioUrl={null}
             onClose={() => setSelectedNode(null)}
             onTraceAncestors={setArgumentTraceFrom}
             onSpeakerRenamed={(speakerId, newName) => {

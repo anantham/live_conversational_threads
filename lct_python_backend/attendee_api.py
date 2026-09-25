@@ -39,6 +39,8 @@ from pydantic import BaseModel, Field
 from lct_python_backend.auth_policy import ATTENDEE_WEBHOOK_PATH as WEBHOOK_PATH
 from lct_python_backend.middleware import check_ws_auth_message
 from lct_python_backend.services import attendee_bridge, attendee_client
+from lct_python_backend.services.attendee_identity import CalendarOccurrence
+from lct_python_backend.attendee_source_api import require_source_auth, router as source_router
 # attendee_audio_downloader is imported lazily where used (bot.state_change
 # branch below) — it transitively pulls in db_session, which requires a live
 # DATABASE_URL at import time. Importing it here would force that requirement
@@ -49,6 +51,7 @@ from lct_python_backend.services.env_helpers import env_bool, env_int, env_str, 
 logger = logging.getLogger("lct_backend")
 
 router = APIRouter(prefix="/api/attendee", tags=["attendee"])
+router.include_router(source_router)
 ws_router = APIRouter()  # no prefix — viewer WS lives at /ws/meeting/{id}
 
 WEBHOOK_SIGNATURE_HEADER = "X-Webhook-Signature"
@@ -100,6 +103,7 @@ def _auto_leave_settings() -> Dict[str, Any]:
 # --- models -----------------------------------------------------------------
 
 class CreateMeetingRequest(BaseModel):
+    calendar_occurrence: Optional[CalendarOccurrence] = None
     meeting_url: str = Field(..., description="Google Meet / Zoom / Teams URL the bot should join")
     bot_name: Optional[str] = Field(default=None, description="Display name shown in the meeting")
     dry_run: bool = Field(
@@ -186,8 +190,11 @@ async def health() -> Dict[str, Any]:
 
 
 @router.post("/meetings")
-async def create_meeting(req: CreateMeetingRequest):
+async def create_meeting(req: CreateMeetingRequest, request: Request = None):
     """Start a meeting session and dispatch an Attendee bot to join the link."""
+    if req.calendar_occurrence is not None:
+        # Only authenticated joins may establish durable exact occurrence evidence.
+        require_source_auth(request)
     dry_run = bool(req.dry_run) and env_bool("ATTENDEE_ALLOW_DRY_RUN", False)
     if not dry_run and not attendee_client.is_configured():
         return JSONResponse(
@@ -198,11 +205,17 @@ async def create_meeting(req: CreateMeetingRequest):
     if not (meeting_url.startswith("http://") or meeting_url.startswith("https://")):
         return JSONResponse(status_code=422, content={"detail": "meeting_url must be an http(s) URL"})
 
+    occurrence = req.calendar_occurrence.model_dump() if req.calendar_occurrence else None
+
     # Dedup: if a bot is already live for this meeting, return its existing viewer
     # instead of dispatching a second bot into the same room.
     if not dry_run:
         existing = attendee_bridge.get_by_meeting_url(meeting_url)
         if existing is not None:
+            if occurrence is not None and getattr(existing, "calendar_occurrence", None) != occurrence:
+                return JSONResponse(status_code=409, content={
+                    "detail": "Live session has conflicting or unverified calendar occurrence identity"
+                })
             logger.info("[attendee] dedup: reusing live session conv=%s for %s",
                         existing.conversation_id, meeting_url)
             return {
@@ -218,7 +231,8 @@ async def create_meeting(req: CreateMeetingRequest):
     bot_name = req.bot_name or attendee_client.ATTENDEE_BOT_NAME
 
     session = attendee_bridge.MeetingSession(
-        conversation_id=conversation_id, meeting_url=meeting_url, bot_name=bot_name
+        conversation_id=conversation_id, meeting_url=meeting_url, bot_name=bot_name,
+        calendar_occurrence=occurrence, transcription_mode=ATTENDEE_TRANSCRIPTION_MODE,
     )
     try:
         await session.start()  # opens loopback producer + creates the conversation row
