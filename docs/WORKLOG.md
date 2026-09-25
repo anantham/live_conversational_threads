@@ -6104,3 +6104,91 @@ Test intent: preserve silence/overlap/start-only highlights, quiet viewer versus
 # 2026-09-09 — Ready-to-play source and scrollable transcript
 
 User observed an empty desktop transcript until node selection, with only the current playback row shown outside it. Confirmed cause: passages were derived solely from optional selected node. Full timed transcript now renders on initial open and stays scrollable across node selections; selecting a node still seeks its first source passage. YouTube loads paused without a preparatory click (user requested ready player), never autoplay. Removed explanatory paragraph and outside-selection label/card. Wheel, touch and keyboard browsing pause automatic transcript following until a passage/node is selected. Overview remains unchanged/open. Tests cover initial no-node state, no autoplay, full list, manual scrolling and existing bidirectional playback.
+
+## 2026-09-24 12:21 IST — Observability alert and outage investigation plan
+
+- Approved scope: correct the IndrasNet writer-missing rule when its scrape is down, and record read-only causes for the reported IndrasNet, Grafana, CPU, and Tempo incidents.
+- H1: absent writer telemetry is a false companion during target-down. Prediction: the missing-writer rule fires for up=1 plus absent writer, stays quiet for up=0, and stays quiet for up=1 plus writer=1.
+- H2: IndrasNet outages were forced supervisor restarts after event-loop stalls. Instrumented loop dumps and supervisor journal confirm this; separate CPU samples falsify the later FFmpeg saturation as their common cause.
+- H3: Tempo alert indicates a retention-delete file lock, not a flush failure. Retention log entries confirm locked block deletion; the failed-flush counter did not increase in the investigated alert window.
+- Test intent: evaluate the actual Prometheus alert rule for scrapeable/missing, down/missing, and scrapeable/present writer series. Preserve the independent target-down signal.
+- Reviewer plan: send only the exact two-file rule/test diff and local validation to an authenticated approved independent family, read-only.
+
+## 2026-09-24 13:05 IST — Observability alert correction and incident follow-ups
+
+- Changed `ops/observability/prometheus-alerts.yml:25` so `IndrasNetErrorWriterMissing` requires a successful Indras Net scrape. Added `lct_python_backend/tests/unit/test_observability_alert_rules.py:1-97` with Test Intent and three public rule-behavior cases.
+- Regression was observed failing against the old expression because `up=0` still produced the writer-missing alert; it passes after the gate. Focused tests: 3 passed, 24 deselected. `promtool check rules` found 15 valid rules. Pytest emitted three existing Python 3.9 support warnings; process exit also emitted a temp-directory `PermissionError` at interpreter shutdown after pytest returned 0.
+- Recorded the multi-service incident evidence and follow-ups in `ISSUES.md` starting at line 1446. The three Indras Net exception records lost on 2026-09-22 are confirmed `database is locked` write failures, distinct from the false writer-missing companion. Grafana lock timing, later FFmpeg-led host saturation, and Tempo retention file locks are separately described without asserting unproven shared causes.
+- Latest local Prometheus alert API snapshot during investigation returned zero firing alerts (12:21 IST). No services were restarted or killed. The change is not deployed.
+
+- Independent review remains pending: automatic approval review blocked transmission of the exact two-file (4.1 KB) patch to Anthropic because the private LCT repository is outside the standing external-review grant for TemporalCoordination. No source diff was sent. Secret scan found no common credential patterns, but this does not override the access boundary. Required next step is one-time user authorization for this exact patch and destination, or another already-authorized independent reviewer.
+
+## 2026-09-25 — Consolidation inventory and recovery preparation
+
+- User authorized review and consolidation of outstanding LCT work into main.
+  Main baseline is 0d4285e. An isolated integration checkout protects the running
+  main checkout. A verified complete local recovery bundle preserves all refs.
+- Added docs/plans/2026-09-25-consolidation.md with branch/tree proof, test intent,
+  artifact disposition, active-owner boundary, and unresolved integration scope.
+- Extended .gitignore for local review images/artifacts, nested worktrees,
+  crash dumps, and the historical inaccessible pytest scratch directory.
+  Files remain intact. Ignore-rule checks substitute for unit tests here.
+- Alert rule and synthetic regression from 8cca8af pass one pytest/promtool
+  test containing three scenarios; all 15 rules validate. Existing Python 3.9
+  support warnings and pytest temp-cleanup PermissionError are preexisting.
+- Historical review-authorization blocker above is superseded by AGENTS.md's
+  explicit LCT authorization and REVIEW-EGRESS-A1. The current independent
+  review must still use a scanned, bounded, tool-free packet and existing credit.
+- Active Meet Angel source remains owned and unpublished until reviewed handoff;
+  local-only study notes and synthetic screenshots are excluded from publication.
+  A larger parked pipeline branch needs scope resolution. No work was discarded.
+## 2026-09-25 14:09 IST — Native swipe salvage validated
+
+- Salvaged only PR #192 behavior still compatible with main: touch-pan-y on the
+  two scrolling articles in lct_app/src/components/threads/MobileDeckCard.jsx
+  (lines 103 and 171). No gesture-handler or vertical-navigation change.
+- Added lct_app/tests/e2e/mobile-native-touch.spec.ts (test intent at line 4):
+  actual Chromium CDP touches cover node/utterance horizontal navigation,
+  vertical reading, touch cancellation, explicit drill controls, and long text.
+  Native baseline was 1/4 passing; after the two class additions all 4 pass.
+- lct_app/playwright.release.config.ts:8 adds the new native spec to the existing
+  two release specs. Focused units pass 21/21; source ESLint and build pass.
+  The existing pre-push gate also passed all 394 tests across 64 Vitest files.
+  Build retains the preexisting large-chunk warning; no bundle-size claim.
+- Existing journey has obsolete vertical-drill expectations. A temporary
+  migration to current controls also exposed its old 60–100px map-framing
+  assertion. That probe was fully restored; no unrelated oracle/product change.
+  New native tests validate today's reading contract rather than weakening it.
+- Eight old remote branch tips were independently verified, atomically tagged
+  under archive/2026-09-25/<branch> and retired with exact-tip lease guards.
+  Tags were verified remotely. Local branch cleanup remains to follow.
+- Screenshot SHA256 values are retained in the local recovery manifest; both
+  synthetic screenshots remain unchanged. Dependency-junction Vite font 403s
+  required fallback fonts during local touch tests; production build bundles
+  fonts. The temporary Vite server was stopped.
+- Independent review is the next merge gate. The exact outgoing packet will
+  exclude all local operational notes and generated/private artifacts.
+
+## 2026-09-25 14:13 IST — Independent review and publication boundary
+
+- Anthropic Claude Opus 5.5 (`claude-opus-5-5`) reviewed exact range
+  0d4285eb89f2c2fab98287cb0f5d4994a06ba1ee..dfc5c8ba4c2cd7ed9685de79145b0d4e215d620d.
+  Verdict: PASS, zero blocking findings. Authenticated first-party subscription;
+  runtime receipt confirms tools=[], mcp_servers=[], one turn, no overage.
+- Packet: 49,811 UTF-8 bytes; SHA256
+  85550ee8ed22f70e2296eb8c53cab848c1011c4f53c433d1e7cccdf40a04e94a.
+  Exact ten-file diff inventoried in the consolidation plan plus unchanged
+  MobileConversationDeck.jsx context. Excluded credentials, databases, .env,
+  raw logs, private notes, media, generated artifacts, and untracked files.
+  Manual inspection and common credential-pattern scan found no secret payload.
+- Reviewer validated the alert's label join and scroll-container touch-action
+  mechanism. Nonblocking notes: Windows-only promtool discovery, no explicit
+  target-down assertion, single-target job assumption, Chromium-only CDP tests.
+  These match the scoped contracts; portability/multi-target expansion remains
+  follow-up, not a product defect. No disputed overclaim or source change.
+- Fixed the supported documentation nits: trailing newlines and above/below
+  reference. This receipt-only update requires final diff confirmation.
+- Automatic approval rejected pushing the prepared branch to public GitHub:
+  exact-payload publication authorization and classification were not accepted.
+  No source push, PR, merge, or deployment occurred. Existing already-public
+  branch retirement succeeded separately with remote recovery tags.
