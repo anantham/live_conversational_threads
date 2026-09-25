@@ -6244,7 +6244,8 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Anthropic Claude Opus5.5 final source verdict: PASS, zero actionable findings,
   exact6b2a915..d619119 range. The supported retry issue is fixed; packet hash,
   outgoing byte count, scan/exclusions and evidence limits are recorded in the
-  tracked review artifact. All83 backend and408 frontend tests pass; build/lint pass.
+  tracked review artifact. Coordinator validation: 83/83 backend, 408/408 frontend,
+  15/15 focused frontend, scoped lint and production build pass; reviewer ran no tests.
 - No source changes follow that reviewed commit; this commit records the receipt.
   Source routing was statically checked against conversations_api.py:37 and the
   corresponding Attendee router; no competing path appears before either endpoint.
