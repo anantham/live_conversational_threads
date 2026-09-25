@@ -334,3 +334,16 @@ and its regression beside the existing endpoint rather than obscuring the
 reviewed behavior in a refactor. Before adding another engine or preprocessing
 stage, extract a request-lifecycle service that owns the bounded processing
 slot and cleanup, leaving the FastAPI endpoint as validation/response glue.
+
+### 2026-09-25 — Consolidation scope and document growth
+
+MobileDeckCard.jsx remains 234 lines with two cohesive rendering variants;
+adding the two native-touch classes needs no decomposition. Its enclosing
+MobileConversationDeck gesture/navigation monolith remains a previously logged
+candidate; it was not edited in this consolidation. Keep native browser-touch
+regressions when extracting that controller later.
+
+ISSUES.md and WORKLOG.md are long append-only operational ledgers. This task
+adds receipts rather than restructuring history. Archive closed dated entries
+and introduce an index in a dedicated documentation change when navigation
+cost warrants it; do not mix that migration into source consolidation.

@@ -1475,3 +1475,17 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - **Review authority correction:** the historical September 24 authorization
   blocker above is superseded by this repository's explicit AGENTS.md grant and
   REVIEW-EGRESS-A1. Bounded, scanned, tool-free review remains mandatory.
+### Consolidation observations — 2026-09-25
+
+- Existing mobile journey expects vertical swipe drilling removed by PR #194;
+  its map-framing pixel assertion also fails after a temporary controls migration.
+  The experiment was restored. Impact: that optional journey is not a reliable
+  current release oracle. Nonblocking for the four new native-touch regressions.
+  Next step: agree the current framing contract and update that journey separately.
+- PR #192 historically reported Meet import metadata failing to reach the
+  extraction privacy gate (metadata versus source_metadata.privacy). Preserved
+  as an unresolved historical finding, not newly reproduced production evidence.
+  Next step: a synthetic HTTP import/extract test preserving owner/consent checks.
+- Impeccable context detected existing product/design schema and sidecar drift;
+  no design migration was made. Follow up as a separate design-context maintenance
+  task. Local Vite junctions also deny some font paths, while build succeeds.

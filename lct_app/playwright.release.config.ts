@@ -5,7 +5,7 @@ import { defineConfig } from "@playwright/test";
 // explicitly; this configuration only connects to it.
 export default defineConfig({
   testDir: "./tests/e2e",
-  testMatch: ["public-drive-opener.spec.ts", "youtube-source.spec.ts"],
+  testMatch: ["public-drive-opener.spec.ts", "youtube-source.spec.ts", "mobile-native-touch.spec.ts"],
   workers: 2,
   retries: 0,
   timeout: 60000,

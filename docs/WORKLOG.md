@@ -6142,3 +6142,29 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Active Meet Angel source remains owned and unpublished until reviewed handoff;
   local-only study notes and synthetic screenshots are excluded from publication.
   A larger parked pipeline branch needs scope resolution. No work was discarded.
+## 2026-09-25 14:09 IST — Native swipe salvage validated
+
+- Salvaged only PR #192 behavior still compatible with main: touch-pan-y on the
+  two scrolling articles in lct_app/src/components/threads/MobileDeckCard.jsx
+  (lines 103 and 171). No gesture-handler or vertical-navigation change.
+- Added lct_app/tests/e2e/mobile-native-touch.spec.ts (test intent at line 4):
+  actual Chromium CDP touches cover node/utterance horizontal navigation,
+  vertical reading, touch cancellation, explicit drill controls, and long text.
+  Native baseline was 1/4 passing; after the two class additions all 4 pass.
+- lct_app/playwright.release.config.ts:8 adds the new native spec to the existing
+  two release specs. Focused units pass 21/21; source ESLint and build pass.
+  The existing pre-push gate also passed all 394 tests across 64 Vitest files.
+  Build retains the preexisting large-chunk warning; no bundle-size claim.
+- Existing journey has obsolete vertical-drill expectations. A temporary
+  migration to current controls also exposed its old 60–100px map-framing
+  assertion. That probe was fully restored; no unrelated oracle/product change.
+  New native tests validate today's reading contract rather than weakening it.
+- Eight old remote branch tips were independently verified, atomically tagged
+  under archive/2026-09-25/<branch> and retired with exact-tip lease guards.
+  Tags were verified remotely. Local branch cleanup remains to follow.
+- Screenshot SHA256 values are retained in the local recovery manifest; both
+  synthetic screenshots remain unchanged. Dependency-junction Vite font 403s
+  required fallback fonts during local touch tests; production build bundles
+  fonts. The temporary Vite server was stopped.
+- Independent review is the next merge gate. The exact outgoing packet will
+  exclude all local operational notes and generated/private artifacts.
