@@ -455,12 +455,29 @@ async def get_conversation_utterances(
 ):
     """Get all utterances for a conversation ordered by sequence number."""
     try:
+        conversation_uuid = uuid.UUID(conversation_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=404, detail="Conversation not found in database.")
+
+    try:
         from sqlalchemy import select
-        from lct_python_backend.models import Utterance
+        from lct_python_backend.models import Conversation, Utterance
+
+        owner_id = get_current_owner_id()
+        owner_result = await db.execute(
+            select(Conversation).where(
+                Conversation.id == conversation_uuid,
+                Conversation.owner_id == owner_id,
+                Conversation.deleted_at.is_(None),
+            )
+        )
+        conversation = owner_result.scalar_one_or_none()
+        if conversation is None or conversation.owner_id != owner_id:
+            raise HTTPException(status_code=404, detail="Conversation not found in database.")
 
         result = await db.execute(
             select(Utterance)
-            .where(Utterance.conversation_id == uuid.UUID(conversation_id))
+            .where(Utterance.conversation_id == conversation_uuid)
             .order_by(Utterance.sequence_number)
         )
         utterances = result.scalars().all()
@@ -468,6 +485,8 @@ async def get_conversation_utterances(
 
         return {"utterances": utterances_data, "total": len(utterances_data)}
 
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.exception("Failed to get utterances for conversation: %s", conversation_id)
         raise HTTPException(status_code=500, detail=str(exc))

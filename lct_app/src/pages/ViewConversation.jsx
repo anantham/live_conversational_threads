@@ -10,6 +10,7 @@ import {
 } from "../components/audio/exportSessionDebug";
 import { fetchConversationObservability } from "../services/conversationDiagnosticsApi";
 
+import SavedDiscussionView from "../components/discussion/SavedDiscussionView";
 import TranscriptReview from "../components/transcript/TranscriptReview";
 import MinimalGraph from "../components/MinimalGraph";
 import { indexExplicitEdges } from "../services/edgeContract";
@@ -679,9 +680,9 @@ export default function ViewConversation() {
       )}
 
       <div className="flex shrink-0 items-center gap-1 border-b border-slate-200 bg-white px-4 py-1" role="group" aria-label="Conversation view">
-        {["graph", "transcript"].map((mode) => <button key={mode} type="button" aria-pressed={viewMode === mode}
+        {["graph", "discussion", "transcript"].map((mode) => <button key={mode} type="button" aria-pressed={viewMode === mode}
           onClick={() => setViewMode(mode)}
-          className={`min-h-11 rounded-md px-4 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700 ${viewMode === mode ? "bg-slate-800 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{mode === "graph" ? "Graph" : "Transcript"}</button>)}
+          className={`min-h-11 rounded-md px-4 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700 ${viewMode === mode ? "bg-slate-800 text-white" : "text-slate-700 hover:bg-slate-100"}`}>{mode[0].toUpperCase() + mode.slice(1)}</button>)}
       </div>
       <main className="relative min-h-0 flex-1">
         {isLoading && (
@@ -744,6 +745,8 @@ export default function ViewConversation() {
           </div>
         )}
 
+        {viewMode === "discussion" && !isLoading && !loadError && <SavedDiscussionView
+          key={`${conversationId}:${transcriptRevision}`} conversationId={conversationId} nodes={allNodes} speakerColorMap={speakerColorMap} />}
         {!isLoading && !loadError && <TranscriptReview key={conversationId} conversationId={conversationId}
           visible={viewMode === "transcript"} selectedNode={viewMode === "graph" ? selectedNodeData : null}
           onCorrected={onTranscriptCorrected}

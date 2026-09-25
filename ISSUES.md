@@ -1,6 +1,20 @@
 # ISSUES
 
-Last updated: 2026-09-11
+Last updated: 2026-09-25
+
+## 2026-09-25 - Audio library nonblocking follow-ups
+
+- Reopening an already imported recording currently fetches its turns from
+  IndraSNet before the local conversation lookup. Impact: an avoidable transfer
+  and a failed reopen if the sibling service is down. Not a blocker for normal
+  browsing; move the owner/group lookup before the sibling request in a small
+  follow-up.
+- A simultaneous first import from two clients is protected by the existing
+  unique owner/group index, but the losing request may return an error rather
+  than opening the winner's conversation. Follow up if real concurrent use
+  warrants a retry.
+
+
 
 ## 2026-09-11 — Orphaned Grafana datasource-plugin processes exhausted host commit (RESOLVED IN WORKING TREE; PR PENDING)
 
@@ -1515,3 +1529,9 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - **Summary:** `GET /api/conversations/{conversation_id}/utterances` in `lct_python_backend/conversations_api.py:451-472` queries utterances by conversation UUID without the owner check applied by the neighboring saved-conversation read at lines 106-114. The app's bearer middleware still protects the route, and current owner resolution is single-user; this is a missing per-conversation authorization invariant, not evidence of an observed disclosure.
 - **Impact / blocker:** A future per-request identity model, or existing rows belonging to another owner in the same database, could expose utterance text to an authenticated caller who knows a UUID. The proposed Discussion view must not add another caller until this scope is enforced. Security-sensitive prerequisite; no live data was probed.
 - **Recommended next step:** Check `Conversation.owner_id == get_current_owner_id()` before returning utterances, use the same 404 behavior as `GET /conversations/{id}`, and add a public-route regression for a mismatched owner. Recheck all exact-utterance callers after the guard.
+
+## 2026-09-25 — Conversation utterance owner scope resolved locally
+
+- The saved utterance route now checks the conversation owner before returning
+  rows and responds 404 for another owner or missing conversation. Public-route
+  regressions passed (21/21 scoped). Pending independent review and deployment.

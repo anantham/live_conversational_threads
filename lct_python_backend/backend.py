@@ -286,6 +286,7 @@ configure_trusted_hosts(lct_app, environment=os.getenv("ENVIRONMENT", "developme
 # ============================================================================
 
 from lct_python_backend.import_api import router as import_router
+from lct_python_backend.indrasnet_audio_api import router as indrasnet_audio_router
 from lct_python_backend.version_api import router as version_router
 from lct_python_backend.bookmarks_api import router as bookmarks_router
 from lct_python_backend.stt_api import router as stt_router
@@ -318,6 +319,7 @@ from lct_python_backend.reprocess_api import router as reprocess_router
 from lct_python_backend.revisions_api import router as revisions_router
 
 lct_app.include_router(import_router)
+lct_app.include_router(indrasnet_audio_router)
 lct_app.include_router(version_router)
 lct_app.include_router(bookmarks_router)
 lct_app.include_router(stt_router)

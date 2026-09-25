@@ -11,6 +11,7 @@ import ThreadsFileButton from "../components/threads/ThreadsFileButton";
 import DriveThreadsGate from "../components/threads/DriveThreadsGate";
 import PublicDriveThreadsGate from "../components/threads/PublicDriveThreadsGate";
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
+import DiscussionView from "../components/discussion/DiscussionView";
 import MobileConversationDeck from "../components/threads/MobileConversationDeck";
 import YouTubeSourcePanel from "../components/threads/YouTubeSourcePanel";
 import {CardDisplayProvider,CardDisplaySettings} from "../components/threads/CardDisplaySettings";
@@ -64,6 +65,7 @@ function ThreadsViewerContent() {
   const DriveOpener = new URLSearchParams(location.search).get("public") === "1"
     ? PublicDriveThreadsGate : DriveThreadsGate;
   const [bundle, setBundle] = useState(null);
+  const [viewMode, setViewMode] = useState("graph");
   const [error, setError] = useState("");
   const [libraryStatus, setLibraryStatus] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -115,6 +117,7 @@ function ThreadsViewerContent() {
     try {
       const validated = validateThreadsArtifact(data);
       setBundle(validated);
+      setViewMode("graph");
       setError("");
       setSelectedNode(null);
       setMediaNode(null);
@@ -470,9 +473,22 @@ function ThreadsViewerContent() {
 
   // ---- Loaded state: the map ----------------------------------------------
   const hasThreads = Array.isArray(bundle.conversation_threads) && bundle.conversation_threads.length > 0;
-  if (compactViewer && !mobileMapOpen) {
+  const viewControls = <div role="group" aria-label="Conversation view" className="flex shrink-0 gap-1 border-b border-slate-200 bg-white px-3 py-1">
+    {["graph", "discussion", ...(compactViewer ? ["cards"] : [])].map((mode) => <button key={mode} type="button"
+      aria-pressed={viewMode === mode} onClick={() => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
+      className={`min-h-11 rounded-md px-4 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700 ${viewMode === mode ? "bg-slate-800 text-white" : "text-slate-700 hover:bg-slate-100"}`}>
+      {mode[0].toUpperCase() + mode.slice(1)}</button>)}
+  </div>;
+  if (viewMode === "discussion") return <div className="flex h-[100dvh] min-h-0 flex-col">
+    <ThreadsViewerHeader bundle={bundle} libraryStatus={libraryStatus} onDownloadTranscript={downloadTranscript}
+      onEnterFocus={() => { setViewMode("graph"); setFocusMode(true); }} onOpenLibrary={openLibrary} onOpenAnother={openAnother}
+      onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined} />
+    {viewControls}
+    <div className="min-h-0 flex-1"><DiscussionView nodes={flatNodes} utterances={bundle.utterances || []} speakerColorMap={speakerColorMap} /></div>
+  </div>;
+  if (compactViewer && viewMode === "cards") {
     return (
-      <MobileConversationDeck
+      <div className="flex h-[100dvh] min-h-0 flex-col">{viewControls}<div className="min-h-0 flex-1 [&>div]:h-full"><MobileConversationDeck
         bundle={bundle}
         deckState={mobileDeckState}
         readingPath={mobileReadingPath}
@@ -484,9 +500,9 @@ function ThreadsViewerContent() {
         onOpenLibrary={openLibrary}
         onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
         onOpenAnother={openAnother}
-        onShowMap={(id) => {requestMapTarget(id);setMobileMapOpen(true);}}
+        onShowMap={(id) => {requestMapTarget(id);setMobileMapOpen(true);setViewMode("graph");}}
         onRenameSpeaker={renameSpeaker}
-      />
+      /></div></div>
     );
   }
 
@@ -507,6 +523,7 @@ function ThreadsViewerContent() {
         />
       )}
 
+      {!focusMode && viewControls}
       <div className="flex min-h-0 flex-1">
         {!compactViewer && <YouTubeSourcePanel bundle={bundle} node={selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode))} nodes={flatNodes} onRenameSpeaker={renameSpeaker} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} />}
       <div className="relative min-h-0 min-w-0 flex-1">
@@ -538,6 +555,7 @@ function ThreadsViewerContent() {
               const next=target && mobileDeckStateForNode(buildMobileConversationDeck(flatNodes,bundle.utterances || []),target);
               if(next) setMobileDeckState(next);
               setMobileMapOpen(false);
+              setViewMode("cards");
             }}
             title="Return to conversation cards"
             aria-label="Return to conversation cards"
@@ -547,7 +565,7 @@ function ThreadsViewerContent() {
             Cards
           </button>
         )}
-        {!compactViewer && focusMode && (
+        {focusMode && (
           <button
             type="button"
             onClick={() => setFocusMode(false)}

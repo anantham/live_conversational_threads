@@ -37,7 +37,9 @@ vi.mock("../services/conversationDiagnosticsApi", () => ({
   fetchConversationObservability: vi.fn(async () => ({})),
 }));
 vi.mock("../components/graphConstants", () => ({
-  buildSpeakerColorMap: () => new Map(),
+  buildSpeakerColorMap: () => ({}),
+  AUTHORED_LEVELS: [],
+  SPEAKER_COLORS: ["#94a3b8"],
 }));
 vi.mock("../services/apiClient", () => ({
   apiFetch: vi.fn(),
@@ -62,6 +64,8 @@ vi.mock("../services/dataProvider", () => ({
 vi.mock("../services/participantsApi", () => ({
   fetchConversationParticipants: vi.fn(async () => []),
 }));
+
+vi.mock("../services/transcriptReviewApi", () => ({ fetchTranscriptReview: async () => ({ utterances: [] }), correctTranscriptText: vi.fn() }));
 
 function deferred() {
   let resolve;
@@ -130,6 +134,14 @@ describe("ViewConversation progressive loading", () => {
     const graph = container.querySelector('[data-testid="minimal-graph"]');
     expect(graph).not.toBeNull();
     expect(graph.getAttribute("data-edge-count")).toBe("1");
+    const modes = [...container.querySelectorAll('[aria-label="Conversation view"] button')];
+    expect(modes.find((button) => button.textContent === "Graph").getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector('[aria-label="Discussion"]')).toBeNull();
+    await act(async () => modes.find((button) => button.textContent === "Discussion").click());
+    expect(container.querySelector('[aria-label="Discussion"]')).not.toBeNull();
+    expect(graph.closest('[hidden]')).not.toBeNull();
+    await act(async () => modes.find((button) => button.textContent === "Graph").click());
+    expect(container.querySelector('[aria-label="Discussion"]')).toBeNull();
     expect(container.textContent).not.toContain("Loading conversation...");
     expect(apiFetchCachedMock).toHaveBeenCalledWith(
       "/api/conversations/conversation-123/audio/status",

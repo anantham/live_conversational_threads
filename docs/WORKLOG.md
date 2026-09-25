@@ -1,5 +1,46 @@
 # WORKLOG
 
+## 2026-09-25 17:03 IST - Independent audio/Discussion review complete
+
+- Anthropic Claude Opus 5.5 approved the exact LCT staged diff and, under a
+  separate grant, the exact TemporalCoordination diff. Receipt and packet hashes:
+  docs/reviews/2026-09-25-indrasnet-audio-discussion.md. No unresolved overclaim.
+- Final validation: 427/427 frontend tests, 32/32 scoped backend tests,
+  production build, scoped lint with zero errors; three synthetic saved
+  conversation fixtures and Browse flows were exercised at desktop/phone widths.
+- No live private content or source deployment was involved. Nonblocking
+  follow-ups and review proof limits are in the receipt and ISSUES.md.
+
+## 2026-09-25 16:10 IST — IndraSNet audio Browse and Discussion view (local)
+
+- Decision: ADR-070 records the existing semantic hierarchy as the Discussion
+  tree; Graph remains default. Shared memberships link to one branch.
+- LCT backend: conversations_api.py enforces owner scope on saved utterances;
+  indrasnet_audio_api.py exposes metadata/status/process/import and validates
+  RawTurnsPayloadV1 before calling existing turn persistence; backend.py
+  registers the router.
+- LCT frontend: IndrasNetAudioLibrary.jsx adds search, explicit processing,
+  truthful stage/elapsed status, retry and import to Browse; DiscussionView
+  and its model add collapsible hierarchy/utterance reading to saved and
+  artifact viewers. No transcript text enters the catalog list.
+- Intent and tests: tests/intent/discussion-view.md,
+  lct_python_backend/tests/intent/indrasnet-audio-library.md, related UI and
+  route tests. Full frontend 427/427, build pass, backend scoped 32/32;
+  Playwright opened three saved fixture conversations at 1280px and 375px,
+  expanded Discussion and exercised synthetic Browse processing/search.
+- Review repair: repeated import finds the owner's existing conversation and
+  keeps its edited turns and graph intact; graph-free conversations can still
+  extract. The bridge verifies the requested source group and clears any
+  sibling-supplied conversation ID. Saved Discussion distinguishes loading and
+  failed evidence from a genuinely empty branch.
+- Cross-repo IndraSNet audio catalog implementation and its validation are
+  recorded in that repository's WORKLOG. Live private recordings were not
+  read or processed; activation awaits deployment.
+- Existing runner issue: normal Windows sandbox command launch still fails
+  OS206; reviewed escalated shell calls allowed the local validation. Global
+  runner configuration was not changed.
+
+
 ## 2026-09-11 — Grafana datasource-plugin processes leaked on health-watchdog restart (RESOLVED)
 
 - **Symptom:** Host commit charge climbed to 98.6% (RAM 98-99%) for days,
