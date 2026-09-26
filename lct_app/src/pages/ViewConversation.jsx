@@ -15,8 +15,9 @@ import MinimalLegend from "../components/MinimalLegend";
 import NodeDetail from "../components/NodeDetail";
 import SearchDialog from "../components/SearchDialog";
 import TimelineRibbon from "../components/TimelineRibbon";
+import IntentSignalsTray from "../components/conversation/IntentSignalsTray";
 import { buildSpeakerColorMap } from "../components/graphConstants";
-import { apiFetch, apiFetchCached, apiHeaders, API_BASE_URL, invalidateApiCache, readErrorMessage } from "../services/apiClient";
+import { apiFetchCached, apiHeaders, API_BASE_URL, invalidateApiCache, readErrorMessage } from "../services/apiClient";
 import { useDataProvider } from "../services/dataProvider";
 import { fetchConversationParticipants } from "../services/participantsApi";
 
@@ -740,6 +741,9 @@ export default function ViewConversation() {
               setSpeakerRefreshKey((value) => value + 1);
             }}
           />
+        )}
+        {!isLoading && !loadError && (
+          <IntentSignalsTray conversationId={conversationId} />
         )}
       </main>
       <SearchDialog

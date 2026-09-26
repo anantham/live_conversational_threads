@@ -344,6 +344,48 @@ re-entry phrasing (generated or templated).
 
 ---
 
+## Implementation Notes / Amendments
+
+### 2026-07-04 - Phase 1 backend slice and IndrasNet bridge boundary
+
+- Schema, migration, Contract C validation, and persistence helpers are present
+  in the LCT backend.
+- LCT now has a feature-flagged live Contract C detector behind
+  `INTENT_SIGNAL_DETECTION_ENABLED`. It runs after finalized live transcript
+  segments, validates model output, and persists accepted signals/sightings
+  without blocking transcript persistence.
+- Contract C failures and non-empty detection passes are currently recorded in
+  durable `thread_session_events` because the dedicated `analysis_events` table
+  referenced above does not exist in the current schema. The no-silent-failure
+  requirement still stands.
+- The latest IndrasNet `origin/main` bridge inspected on the Asus checkout
+  (`/api/lct/prayers/detect`) is an explicit low-blast Fetch/card bridge:
+  `attention_router.py` recognizes explicit Fetch patterns and returns
+  `decision`/`cards`; non-explicit text is routed as low-confidence/no-prayer.
+  Therefore generic ADR-013 intent-signal detection remains LCT-owned unless a
+  later ADR defines a shared Contract C service.
+- Current roadmap: build query/review APIs and a minimal intent-signal tray
+  before enabling lull resume cards or the formalization bridge.
+
+### 2026-07-05 - Review tray and first lifecycle actions
+
+- LCT now exposes `GET /api/conversations/{conversation_id}/intent-signals`,
+  scoped to the current owner and returning active/accumulating/ready signals by
+  default. The response includes source utterance anchors and recent sightings.
+- The saved conversation view now mounts a minimal intent-signal tray so
+  persisted signals can be inspected and human-reviewed without leaving the
+  conversation.
+- LCT now exposes `PATCH
+  /api/conversations/{conversation_id}/intent-signals/{signal_id}` for the first
+  human lifecycle actions: mark `ready` or `abandoned`. The route is
+  owner-scoped, refuses already-`formalized` signals, sets `human_reviewed`, and
+  leaves immutable evidence fields (`raw_text`, `context_window`, source
+  anchors) untouched.
+- Still pending: annotation/rejection UI, duplicate merge, browser smoke
+  coverage, lull cards, and the formalization bridge.
+
+---
+
 ## Related
 
 - `docs/VISION.md` — mission and four-layer architecture

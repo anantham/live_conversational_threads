@@ -320,6 +320,7 @@ from lct_python_backend.speaker_naming_api import (
     router_conversations as conversation_speakers_router,
 )
 from lct_python_backend.consumption_prayer_api import router as consumption_prayer_router
+from lct_python_backend.intent_signals_api import router as intent_signals_router
 from lct_python_backend.user_identity_api import router as user_identity_router
 from lct_python_backend.share_api import router as share_router
 from lct_python_backend.subject_review_api import router as subject_review_router
@@ -356,6 +357,7 @@ lct_app.include_router(artifact_router)
 lct_app.include_router(voice_library_router)
 lct_app.include_router(conversation_speakers_router)
 lct_app.include_router(consumption_prayer_router)
+lct_app.include_router(intent_signals_router)
 lct_app.include_router(user_identity_router)
 lct_app.include_router(share_router)
 lct_app.include_router(subject_review_router)
