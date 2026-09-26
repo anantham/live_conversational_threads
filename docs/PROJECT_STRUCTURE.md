@@ -1,6 +1,6 @@
 # Project Structure
 
-Last updated: 2026-07-02
+Last updated: 2026-07-04
 
 ## Top Level
 
@@ -9,7 +9,7 @@ live_conversational_threads/
 ├── lct_python_backend/      FastAPI backend (Python)
 ├── lct_app/                 React frontend (Vite, JSX)
 ├── docs/                    ADRs, plans, architecture docs — see docs/README.md for the map
-│   ├── adr/                 Architecture Decision Records (through ADR-060, with gaps; see adr/INDEX.md)
+│   ├── adr/                 Architecture Decision Records (through ADR-061, with gaps; see adr/INDEX.md)
 │   ├── handovers/           Session handover notes (historical)
 │   ├── plans/               Implementation plans
 │   ├── design/, contracts/  Subsystem design docs and cross-system data contracts
@@ -54,6 +54,7 @@ live_conversational_threads/
 | `edit_history_api.py` | `/api/nodes/*`, `/api/conversations/*/edits*` | Per-node edit history |
 | `factcheck_api.py` | `/fact_check_claims/` | Claim fact-checking |
 | `analysis_api.py` | `/api/conversations/*/{simulacra\|biases\|frames\|cruxes}*` | Analysis detectors |
+| `intent_signals_api.py` | `/api/conversations/*/intent-signals` | ADR-013 intent-signal query and review actions |
 | `analytics_api.py` | `/api/analytics/*` | Usage analytics and cost stats |
 | `backend_catalog_api.py` | `/api/backend-catalog*` | Inference backend catalog + live probes (ADR-037) |
 | `revisions_api.py` | `/api/conversations/*/revisions*` | Transcript revision proposals and approval gate (Decision-B) |
@@ -67,7 +68,6 @@ live_conversational_threads/
 | `consumption_prayer_api.py` | `/api/consumption-prayer/*` | Intent/prayer matching + contacts picker (ADR-033) |
 | `graph_api.py` | `/api/graph/*` | Graph queries and persistence |
 | `canvas_api.py` | `/export/obsidian-canvas/*`, `/import/obsidian-canvas/` | Obsidian canvas interop |
-| `cost_api.py` | `/api/cost-tracking/*` | LLM cost aggregation |
 | `user_identity_api.py` | `/api/user-identity` | Self-identity ("which contact is me") |
 | `bookmarks_api.py` | `/api/bookmarks/*` | Node bookmarks |
 | `version_api.py` | `/api/version` | Backend version endpoint |
@@ -86,6 +86,8 @@ live_conversational_threads/
 - `db.py`, `db_session.py`, `db_helpers.py`: sync and async session factories (`SessionLocal`, `get_async_session_context()`).
 - `alembic/versions/`: migration history; run `alembic upgrade head` after pulling new migrations.
 - `schemas.py`, `schemas_edit_history.py`, `import_schemas.py`, `raw_turn_contract.py`: Pydantic request/response models.
+- Current cost dashboard data is served by `/api/cost-tracking/stats` in
+  `factcheck_api.py`, backed by `services/cost_stats_service.py`.
 
 ### Services (`lct_python_backend/services/`)
 
@@ -111,6 +113,10 @@ live_conversational_threads/
 
 **Analysis detectors** (routed through `llm_gateway.py`)
 - `bias_detector.py`, `frame_detector.py`, `simulacra_detector.py`, `crux_detector.py`
+- `intent_signal_detector.py`, `intent_signal_persistence.py` — ADR-013 Contract C
+  prayer / intent-signal detection and persistence
+- `intent_signals_api.py` — review/query surface for persisted intent signals,
+  sightings, and ready/abandon lifecycle actions
 
 **Graph**
 - `graph_generation_service.py`, `graph_query_service.py`, `graph_persistence.py`
@@ -155,7 +161,7 @@ live_conversational_threads/
 - `audio_storage.py` — conversation audio file management (local + MinIO)
 - `artifact_export_service.py`, `artifact_settings_service.py`, `conversation_artifacts.py`
 - `bookmark_service.py`, `edit_logger.py`, `training_data_export.py`
-- `contacts_cache.py`, `consumption_match_runner.py`, `intent_signal_persistence.py`
+- `contacts_cache.py`, `consumption_match_runner.py`
 - `embedding_service.py`, `coercion_helpers.py`, `env_helpers.py`, `text_parsers.py`
 - `tuning_constants.py` — shared numeric thresholds
 
@@ -212,7 +218,7 @@ Feature-specific API wrappers for every backend surface. Base: `apiClient.js`.
 
 Full taxonomy: **`docs/README.md`**. Highlights:
 
-- `adr/` — Architecture Decision Records, ADR-001 through ADR-060 (46 on `main`; numbers 041–055 and 057 are burned, see `adr/INDEX.md`).
+- `adr/` — Architecture Decision Records, ADR-001 through ADR-061 (47 on `main`; numbers 041–055 and 057 are burned, see `adr/INDEX.md`).
 - `handovers/` — Session handover notes (historical context, not active references).
 - `plans/` — Implementation plans linked from ADRs.
 - `archive/` — Dated docs whose useful life has ended (old milestones, superseded decision lists).

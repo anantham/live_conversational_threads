@@ -452,10 +452,10 @@
         "note": "Swift/CoreML, runs on the Apple Neural Engine (~28x realtime). Emits per-segment speaker EMBEDDINGS — the key enabler for voice enrollment / contact auto-labelling. Needs a Swift sidecar process (not yet bundled)."
       },
       "health": { "probe_url": "http://127.0.0.1:5096/health" },
-      "install_hint": "Build the FluidAudio Swift sidecar (planned: lct_python_backend/local_diarization/). CoreML models auto-download on first run.",
-      "start_hint": "Start the FluidAudio sidecar on port 5096 (planned).",
-      "requires": ["fluidaudio-sidecar", "macos-apple-silicon"],
-      "status": "planned",
+      "install_hint": "FluidAudio runs as a LaunchAgent (com.aditya.fluidaudio-stt.plist) on the M5. Configure the URL in Settings → Diarization.",
+      "start_hint": "launchctl load ~/Library/LaunchAgents/com.aditya.fluidaudio-stt.plist",
+      "requires": ["macos-apple-silicon"],
+      "status": "available",
       "tags": ["on-device", "ane", "embeddings", "voice-id", "default"]
     },
     {

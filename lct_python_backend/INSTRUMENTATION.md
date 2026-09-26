@@ -81,25 +81,11 @@ app = FastAPI()
 app.add_middleware(InstrumentationMiddleware, enable_logging=True)
 ```
 
-### 4. Including Cost Tracking API
+### 4. Reading Cost Tracking Stats
 
-Include the cost tracking API endpoints:
-
-```python
-from cost_api import router as cost_router
-
-app.include_router(cost_router)
-
-# Endpoints will be available at:
-# - GET /api/costs/daily
-# - GET /api/costs/weekly
-# - GET /api/costs/monthly
-# - GET /api/costs/conversation/{id}
-# - GET /api/costs/trend
-# - GET /api/costs/top-conversations
-# - GET /api/costs/report/daily
-# - GET /api/costs/report/monthly
-```
+The old `/api/costs/*` router was removed because it was never mounted. The
+current dashboard reads `GET /api/cost-tracking/stats?time_range=...`, mounted
+from `factcheck_api.py` and backed by `services/cost_stats_service.py`.
 
 ---
 
@@ -356,88 +342,26 @@ print(summary)
 
 ## REST API Endpoints
 
-### GET /api/costs/daily
+### GET /api/cost-tracking/stats
 
-Get daily cost aggregation.
+Get cost and counterfactual local-savings stats for the dashboard.
 
 **Query Parameters:**
-- `target_date` (optional): Date in YYYY-MM-DD format (default: today)
+- `time_range`: one of `1d`, `7d`, `30d`, or `all` (default: `7d`)
 
-**Response:**
+**Response shape:**
 ```json
 {
-  "period_start": "2025-11-11T00:00:00",
-  "period_end": "2025-11-11T23:59:59",
-  "total_cost": 45.32,
-  "total_tokens": 234567,
-  "total_calls": 127,
-  "cost_by_model": {
-    "gpt-4": 38.21,
-    "gpt-3.5-turbo": 7.11
-  },
-  "cost_by_endpoint": {
-    "generate_clusters": 25.67,
-    "detect_cognitive_bias": 12.34
-  },
-  "avg_cost_per_call": 0.3568,
-  "avg_tokens_per_call": 1847
+  "total_cost": 0.0,
+  "total_calls": 12,
+  "total_tokens": 34567,
+  "cloud_equivalent_cost": 0.1234,
+  "local_savings": 0.1234,
+  "counterfactual_model": "gpt-4o",
+  "by_feature": {},
+  "by_model": {},
+  "recent_calls": []
 }
-```
-
-### GET /api/costs/conversation/{conversation_id}
-
-Get cost breakdown for a specific conversation.
-
-**Response:**
-```json
-{
-  "conversation_id": "550e8400-e29b-41d4-a716-446655440000",
-  "total_cost": 3.45,
-  "total_tokens": 15234,
-  "total_calls": 8,
-  "cost_by_endpoint": {
-    "generate_clusters": 2.10,
-    "generate_summaries": 1.35
-  },
-  "cost_by_model": {
-    "gpt-4": 3.45
-  },
-  "first_call": "2025-11-11T10:30:00",
-  "last_call": "2025-11-11T10:35:23"
-}
-```
-
-### GET /api/costs/trend
-
-Get daily cost trend.
-
-**Query Parameters:**
-- `days` (optional): Number of days (1-365, default: 30)
-
-**Response:**
-```json
-[
-  {"date": "2025-10-12", "cost": 42.15},
-  {"date": "2025-10-13", "cost": 38.92},
-  {"date": "2025-10-14", "cost": 51.23}
-]
-```
-
-### GET /api/costs/top-conversations
-
-Get most expensive conversations.
-
-**Query Parameters:**
-- `limit` (optional): Number of results (1-100, default: 10)
-- `period_start` (optional): Start date filter
-- `period_end` (optional): End date filter
-
-**Response:**
-```json
-[
-  {"conversation_id": "uuid-1", "total_cost": 12.45},
-  {"conversation_id": "uuid-2", "total_cost": 10.32}
-]
 ```
 
 ---

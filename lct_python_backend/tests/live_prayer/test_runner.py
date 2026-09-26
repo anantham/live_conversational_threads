@@ -20,7 +20,7 @@ def _capture():
 
 
 def _detect(t):
-    async def fake(_text):
+    async def fake(_text, **_kwargs):
         return t
     return fake
 
@@ -40,7 +40,7 @@ class TestRunForSegment:
     async def test_no_trigger_no_card(self):
         sent, send = _capture()
 
-        async def no_trigger(_t):
+        async def no_trigger(_t, **_kwargs):
             return None
         out = await run_for_segment(
             segment_text="hello there", conversation_id="c", session_id="s",
@@ -74,7 +74,7 @@ class TestRunForSegment:
         sent, send = _capture()
         trig = DetectedTrigger("factcheck", "the moon has no atmosphere", 0.8, "fact check that")
 
-        async def fake_fc(query):
+        async def fake_fc(query, **_kwargs):
             return {"claim": query, "verdict": "PARTLY", "confidence": 0.7,
                     "grounding": "model_knowledge", "reason": "thin exosphere", "evidence": []}
         out = await run_for_segment(

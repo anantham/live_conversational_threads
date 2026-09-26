@@ -38,7 +38,6 @@ ATTENDEE_WEBHOOK_PATH: str = "/api/attendee/webhook"
 ADMIN_PATH_PREFIXES: Tuple[str, ...] = (
     "/api/settings",
     "/api/analytics",
-    "/api/costs",
     "/api/cost-tracking",
     "/api/bookmarks",
     "/api/prompts",

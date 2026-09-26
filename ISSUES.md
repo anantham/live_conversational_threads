@@ -1,6 +1,102 @@
 # ISSUES
 
-Last updated: 2026-07-03
+Last updated: 2026-07-06
+
+## 2026-07-06 - Incoming proxy origin guard allows all `*.vercel.app`
+
+**Summary:** Review of fetched `origin/main` (`d2121c0`) found the shared
+serverless proxy guard allows any hostname ending in `.vercel.app` as a browser
+origin (`lct_app/api/proxy/_shared.js`). The stated purpose is to stop other
+websites from driving the proxy, but any unrelated Vercel-hosted site can send
+browser requests that pass CORS. This matters most while the trial path is
+enabled because those requests can burn the capped owner trial key, subject only
+to per-isolate/per-IP rate limits.
+
+**Impact:** Medium security/cost-abuse risk for the serverless trial proxy.
+BYOK callers still supply their own key, but the owner-funded trial route should
+not be browser-callable from arbitrary Vercel projects.
+
+**Blocker status:** Not blocking local ADR-013 work. Should be addressed before
+treating the trial proxy as hardened.
+
+**Recommended next step:** Replace broad `host.endsWith(".vercel.app")` with a
+project/team-specific preview allowlist or env-configured preview-origin regex,
+and add a regression test that rejects an unrelated `evil.vercel.app` origin.
+
+## 2026-07-06 - Incoming zero-DB unit gate does not cover `db.py` import safety
+
+**Summary:** Review of fetched `origin/main` found `db_session.py` is now lazy,
+but `lct_python_backend/db.py` still constructs `databases.Database(DATABASE_URL,
+ssl=False)` at import time. A local probe with `DATABASE_URL` unset raises
+`TypeError: Invalid type for DatabaseURL... got NoneType`. `backend.py` imports
+`from lct_python_backend.db import db` at module import, so importing the backend
+still requires a database URL despite the new `pytest-unit.yml` comments saying
+the no-`DATABASE_URL` unit job protects backend import safety.
+
+**Impact:** Medium CI/reliability risk. The new unit job may pass only because
+the current unit suite avoids importing `backend.py`; future unit tests that do
+import the app will fail collection without a DB URL, recreating the class of
+import pollution the commit is trying to prevent.
+
+**Blocker status:** Not blocking the current local branch pull review. It is a
+follow-up for the incoming lazy-DB-init work.
+
+**Recommended next step:** Make `db.py` lazy as well, or provide a clear
+test-safe placeholder that fails only on `connect()`. Add an explicit
+zero-DB import test for `lct_python_backend.backend`.
+
+## 2026-07-05 - Frontend build blocked by missing @vercel/blob install (FIXED 2026-07-05)
+
+**Summary:** While validating the read-only intent-signal tray slice,
+`npm run build` in `lct_app/` failed before reaching the new code because Vite
+could not resolve `@vercel/blob/client` imported by
+`lct_app/src/services/serverless/sttClient.js`.
+
+**Impact:** Medium release-validation friction. `lct_app/package.json` and
+`package-lock.json` declare `@vercel/blob`, but the local `node_modules` tree
+does not currently contain `node_modules/@vercel/blob`, so local production
+builds fail on this checkout.
+
+**Blocker status:** Fixed in-session by running `npm install` in `lct_app/`.
+`@vercel/blob@2.5.0` is now present and `npm run build` passes.
+
+**Recommended next step:** None for this blocker. If it recurs on another
+checkout, refresh dependencies from the lockfile before investigating code.
+
+## 2026-07-05 - Frontend dependency audit reported unresolved vulnerabilities
+
+**Summary:** `npm install` in `lct_app/` completed but reported 7 audit findings
+(2 low, 1 moderate, 3 high, 1 critical). The detailed advisory lookup was not
+run because it requires sending dependency metadata to the npm registry and that
+external disclosure needs explicit operator approval.
+
+**Impact:** Potential security/dependency risk. Unknown until the advisory
+details are reviewed; do not blindly run `npm audit fix` inside unrelated
+feature work because it can rewrite dependency versions and behavior.
+
+**Blocker status:** Not blocking the ADR-013 lifecycle slice or local build
+validation, but should be triaged before release hardening.
+
+**Recommended next step:** With explicit approval to share dependency metadata
+with npm, run `npm audit --json` from `lct_app/`, classify production vs dev
+exposure, then choose targeted upgrades or documented accepts.
+
+## 2026-07-04 - Live-prayer runner tests had stale provider-injection fakes (FIXED 2026-07-04)
+
+**Summary:** While validating the ADR-013 documentation/backend slice, the
+`lct_python_backend/tests/live_prayer/test_runner.py` suite failed because its
+injected fake detector/fact-check functions did not accept the provider-aware
+`providers=` keyword that `run_for_segment(...)` now passes.
+
+**Impact:** Low product risk, medium validation friction. The production runner
+path already supports provider-aware live-prayer routing; the failing tests were
+stale fakes and made the live-prayer suite unusable as a clean validation gate.
+
+**Blocker status:** Fixed in-session by updating the test fakes to accept
+keyword injection arguments.
+
+**Recommended next step:** None for this specific drift; keep injected async
+test doubles signature-compatible with provider-aware runner call sites.
 
 ## 2026-07-03 - Backend catalog selected/effective LLM unit test is red on dirty checkout
 

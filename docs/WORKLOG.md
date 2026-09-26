@@ -1,5 +1,327 @@
 # WORKLOG
 
+## 2026-07-06T22:28:55+05:30 - Fetched origin/main and reviewed recent commits
+
+- Context: user asked to pull and review recent commits. The local branch
+  `feat/cost-tracking-wire-up` has no upstream and still carries the ADR-013/doc
+  WIP plus the preexisting `lct_python_backend/data/backend_catalog_seed.json`
+  change.
+- Pull status:
+  - `git fetch origin` succeeded with approval. `origin/main` advanced from
+    `8783ff4` to `d2121c0`.
+  - `git pull --rebase --autostash origin main` could not run because the
+    escalation reviewer rejected the write operation due the environment usage
+    limit. No rebase was performed; working tree remains on local `HEAD`
+    `4deac8b`.
+- Review summary:
+  - Incoming commits add serverless trial/BYOK hardening, direct BYOK audio to
+    OpenAI, serverless chat streaming, prod smoke CI, backend unit CI, lazy
+    `db_session.py`, `openai==2.16.0`, and repaired model/test drift.
+  - Logged two review findings in `ISSUES.md`: broad `.vercel.app` proxy origin
+    allowlist and incomplete zero-DB import-safety coverage because `db.py`
+    still constructs `Database(None)` at import when `DATABASE_URL` is unset.
+- Files modified:
+  - `ISSUES.md`: recorded the two incoming-commit review findings.
+- Validation/diagnostics:
+  - Read incoming file contents with `git show origin/main:<path>`; no checkout
+    or rebase was performed.
+  - Local probe confirmed `import lct_python_backend.db` raises when
+    `DATABASE_URL` is unset.
+
+## 2026-07-05T09:48:30+05:30 - ADR-013 lifecycle review actions and build unblock
+
+- Context: user asked why work stopped and confirmed the next slice seemed
+  doable. Continued from the read-only tray into the conservative lifecycle
+  review path: fix the local frontend build dependency, then add ready/abandon
+  actions without implementing formalization, duplicate merge, or lull cards.
+- Assumptions and decision rules:
+  - Marking `ready` / `abandoned` is the approved first mutation surface; full
+    formalization remains future.
+  - Immutable evidence fields (`raw_text`, `context_window`, source anchors)
+    must not be modified by review actions.
+  - Already-`formalized` signals should fail loudly with a conflict rather than
+    being silently reclassified.
+- Files modified:
+  - `lct_python_backend/intent_signals_api.py`: converted the API from
+    read-only to review-capable; added owner-scoped signal filtering, owner-safe
+    sightings, and `PATCH /api/conversations/{conversation_id}/intent-signals/{signal_id}`
+    for `ready` / `abandoned` lifecycle updates.
+  - `lct_python_backend/tests/unit/test_intent_signals_api.py`: expanded Test
+    Intent and added route/helper coverage for ready, abandoned, invalid status,
+    missing signal, evidence preservation, and formalized-signal conflicts.
+  - `lct_app/src/services/intentSignalsApi.js` and
+    `lct_app/src/services/intentSignalsApi.test.js`: added lifecycle update
+    helpers and typed error coverage.
+  - `lct_app/src/components/conversation/IntentSignalsTray.jsx`: added Ready
+    and Abandon controls with per-signal in-flight/error state.
+  - `README.md`, `docs/PROJECT_STRUCTURE.md`,
+    `docs/plans/2026-07-04-adr-013-full-intent-signals-roadmap.md`, and
+    `docs/adr/ADR-013-intent-signals-prayers-schema.md`: updated ADR-013
+    current/future boundaries.
+  - `docs/TECH_DEBT.md`: logged `intent_signals_api.py` and
+    `IntentSignalsTray.jsx` split candidates after the lifecycle slice brought
+    the API over 300 LOC and the tray near the heuristic.
+  - `ISSUES.md`: marked the local `@vercel/blob` build blocker fixed and logged
+    the separate npm audit finding for later approved review.
+- Validation:
+  - `npm install` in `lct_app/` succeeded with network approval; package files
+    did not change and `@vercel/blob@2.5.0` is installed locally.
+  - `npm run build` in `lct_app/` now passes; Vite still emits the existing
+    large-chunk warning.
+  - `uv run python -m py_compile lct_python_backend/intent_signals_api.py
+    lct_python_backend/backend.py
+    lct_python_backend/tests/unit/test_intent_signals_api.py` passed.
+  - Backend route-registration smoke passed with a dummy `DATABASE_URL` (145
+    routes).
+  - `uv run python -m pytest -q
+    lct_python_backend/tests/unit/test_intent_signals_api.py
+    lct_python_backend/tests/unit/test_intent_signal_detector.py
+    lct_python_backend/tests/unit/test_intent_signal_persistence.py
+    lct_python_backend/tests/unit/test_auth_policy.py` passed: 35 passed,
+    existing pytest-asyncio warnings.
+  - `npm test -- --run src/services/intentSignalsApi.test.js
+    src/services/prayerCardsApi.test.js` passed: 12 tests.
+  - Targeted `npx eslint src/services/intentSignalsApi.js
+    src/components/conversation/IntentSignalsTray.jsx
+    src/pages/ViewConversation.jsx` reported 0 errors and 5 preexisting
+    `ViewConversation.jsx` hook dependency warnings.
+  - `git diff --check` passed; conflict-marker scan found none.
+- Out-of-scope issue:
+  - `npm install` reported 7 audit findings (2 low, 1 moderate, 3 high, 1
+    critical). Detailed `npm audit --json` requires sending dependency metadata
+    to the npm registry; the escalation was rejected without explicit operator
+    approval, so the issue is logged but not triaged in this slice.
+
+## 2026-07-05T08:20:35+05:30 - ADR-013 read-only intent-signal tray slice
+
+- Context: user approved proceeding after the remaining-work summary. Chose the
+  recommended next slice: a read-only intent-signal API and minimal saved
+  conversation tray, leaving lifecycle mutations/lull/formalization for later.
+- Files modified:
+  - `lct_python_backend/intent_signals_api.py` (new): owner-scoped
+    `GET /api/conversations/{conversation_id}/intent-signals` endpoint with
+    status filtering, bounded limits, signal/sighting serialization, and 404
+    behavior for missing/non-owner conversations.
+  - `lct_python_backend/backend.py`: mounted the new router.
+  - `lct_python_backend/tests/unit/test_intent_signals_api.py` (new): route and
+    serializer tests for response shape, 404, status validation, and trace
+    anchors/sightings.
+  - `lct_app/src/services/intentSignalsApi.js` and
+    `lct_app/src/services/intentSignalsApi.test.js` (new): frontend fetcher and
+    typed error tests.
+  - `lct_app/src/components/conversation/IntentSignalsTray.jsx` (new): compact
+    read-only saved-conversation tray for persisted signals.
+  - `lct_app/src/pages/ViewConversation.jsx`: mounts the tray in the saved
+    conversation view; removed an unused import surfaced by targeted lint.
+  - `README.md`, `docs/PROJECT_STRUCTURE.md`,
+    `docs/plans/2026-07-04-adr-013-full-intent-signals-roadmap.md`,
+    `docs/adr/ADR-013-intent-signals-prayers-schema.md`: updated docs so the
+    read-only query/tray slice is marked current and lifecycle actions remain
+    roadmap.
+  - `docs/TECH_DEBT.md`: logged `ViewConversation.jsx` regrowth because this
+    slice touched a 759 LOC route component.
+  - `ISSUES.md`: logged the unrelated frontend build blocker caused by missing
+    local `node_modules/@vercel/blob`.
+- Validation:
+  - `uv run python -m py_compile lct_python_backend/intent_signals_api.py
+    lct_python_backend/backend.py` passed.
+  - Backend route registration smoke passed with a dummy `DATABASE_URL` (144
+    routes).
+  - `uv run python -m pytest -q
+    lct_python_backend/tests/unit/test_intent_signals_api.py
+    lct_python_backend/tests/unit/test_intent_signal_detector.py
+    lct_python_backend/tests/unit/test_intent_signal_persistence.py
+    lct_python_backend/tests/unit/test_auth_policy.py` passed: 30 passed,
+    existing pytest-asyncio warnings.
+  - `npm test -- --run src/services/intentSignalsApi.test.js
+    src/services/prayerCardsApi.test.js` passed: 7 tests.
+  - Targeted `npx eslint src/services/intentSignalsApi.js
+    src/components/conversation/IntentSignalsTray.jsx
+    src/pages/ViewConversation.jsx` reported 0 errors and 5 preexisting
+    `ViewConversation.jsx` hook dependency warnings.
+  - `git diff --check` passed; conflict-marker scan found none.
+- Validation blocker:
+  - `npm run build` failed before this slice's modules on unresolved
+    `@vercel/blob/client` from `src/services/serverless/sttClient.js`. The
+    dependency is declared in `package.json`/`package-lock.json`, but local
+    `node_modules/@vercel/blob` is missing on this checkout.
+
+## 2026-07-04T23:58:10+05:30 - IndrasNet latest LCT prayer bridge inspection
+
+- Context: user allowed SSH into the Asus to inspect the latest IndrasNet code
+  while reconciling ADR-013 ownership and roadmap docs.
+- Remote inspection:
+  - Fetched `origin` refs in
+    `C:\Users\adity\Documents\Ongoing Local\TemporalCoordination` without
+    pulling or modifying the dirty working tree. The Asus checkout is on
+    `main`, dirty, and one commit behind `origin/main`.
+  - Latest inspected remote commit:
+    `0db3a4b0 fix(voices): materialize voice_clusters after clustering so the
+    merge UI is populated (#141)`.
+  - Read IndrasNet `origin/main` files:
+    `grimoire/IndrasNet/agents/routes/lct_prayers.py`,
+    `grimoire/IndrasNet/core/attention_router.py`,
+    `grimoire/IndrasNet/tests/test_lct_prayers_route.py`, and route
+    registration in `agents/web_server/app.py`.
+- Finding: IndrasNet's latest LCT bridge is an explicit low-blast Fetch/card
+  path. It returns `decision` and `cards`, builds a card only for explicit Fetch,
+  and routes non-explicit text as low-confidence/no-prayer. It does not replace
+  ADR-013 generic Contract C intent-signal detection.
+- Files modified:
+  - `README.md`: corrected prayer-card wording so Fetch routes through IndrasNet
+    retrieval while fact-check cards are local LCT logic.
+  - `docs/plans/2026-07-04-adr-013-full-intent-signals-roadmap.md`: recorded
+    the ownership decision and the IndrasNet bridge boundary.
+  - `docs/adr/ADR-013-intent-signals-prayers-schema.md`: appended a 2026-07-04
+    implementation note for the Phase 1 backend slice and current event-log
+    reality.
+  - `lct_python_backend/tests/live_prayer/test_runner.py`: fixed stale injected
+    fake signatures so the tests accept the provider-aware kwargs used by the
+    live runner.
+  - `ISSUES.md`: recorded the stale live-prayer test drift as fixed in-session.
+- Validation:
+  - `git diff --check` passed.
+  - Conflict-marker scan over README/docs/backend/frontend/ISSUES found none.
+  - `uv run python -m py_compile lct_python_backend/services/intent_signal_detector.py
+    lct_python_backend/services/intent_signal_persistence.py
+    lct_python_backend/services/stt/stt_ws_session.py
+    lct_python_backend/services/indrasnet_client.py` passed.
+  - `uv run python -m pytest -q
+    lct_python_backend/tests/unit/test_intent_signal_detector.py
+    lct_python_backend/tests/unit/test_intent_signal_persistence.py
+    lct_python_backend/tests/unit/test_auth_policy.py
+    lct_python_backend/tests/unit/test_indrasnet_client.py
+    lct_python_backend/tests/live_prayer/test_runner.py` passed: 64 passed,
+    existing pytest-asyncio warnings.
+
+## 2026-07-04T23:28:19+05:30 - ADR-013 Phase 1 live detector slice
+
+- Context: user asked if there were blockers and whether to proceed after the
+  ADR-013 roadmap. Started the narrow Phase 1 backend slice rather than the full
+  UI/review/lull/formalization workflow.
+- Files modified:
+  - `lct_python_backend/services/intent_signal_detector.py` (new): ADR-013
+    Contract C detector. Calls the configured provider fallback, parses JSON
+    arrays or `{signals: [...]}` wrappers, validates with
+    `validate_contract_c()`, and never raises into the live path.
+  - `lct_python_backend/services/stt/stt_ws_session.py`: added a
+    feature-flagged final-segment hook guarded by
+    `INTENT_SIGNAL_DETECTION_ENABLED`. It runs in a background task with its own
+    async DB session, persists validated intent signals, and records durable
+    `thread_session_events` for errors/non-empty detections.
+  - `lct_python_backend/tests/unit/test_intent_signal_detector.py` (new):
+    covers array output, `{signals: [...]}` output, pregate skip, and LLM
+    failure isolation.
+  - `README.md`, `docs/PROJECT_STRUCTURE.md`,
+    `docs/plans/2026-07-04-adr-013-full-intent-signals-roadmap.md`: updated
+    docs so the backend detector slice is no longer described as missing.
+- Validation:
+  - `uv run python -m py_compile lct_python_backend/services/intent_signal_detector.py
+    lct_python_backend/services/intent_signal_persistence.py
+    lct_python_backend/services/stt/stt_ws_session.py` passed.
+  - `uv run python -m pytest -q
+    lct_python_backend/tests/unit/test_intent_signal_detector.py
+    lct_python_backend/tests/unit/test_intent_signal_persistence.py
+    lct_python_backend/tests/unit/test_auth_policy.py` passed: 26 passed,
+    existing pytest-asyncio warnings.
+  - `git diff --check` passed.
+- Remaining blocker for full ADR-013: no query/review tray yet; no live
+  websocket integration test with `INTENT_SIGNAL_DETECTION_ENABLED=true`; no
+  dedicated `analysis_events` table, though durable `thread_session_events`
+  cover the first slice.
+
+## 2026-07-04T21:15:58+05:30 - Current README split, cost zombie deletion, ADR roadmaps
+
+- Context: user chose a current-state README plus a clearly aspirational section,
+  asked what full ADR-013 would take before deciding implementation depth, selected
+  the full STT backend contract migration path from ADR-061, and approved deleting
+  the obsolete cost-tracking router.
+- Files modified:
+  - `README.md`: kept the "How It Works" inventory current-state only and moved
+    durable prayer lifecycle, lull resume cards, and formalization bridge into an
+    explicit aspirational direction section.
+  - `lct_python_backend/cost_api.py`: deleted the unmounted legacy `/api/costs/*`
+    router. The live dashboard uses `/api/cost-tracking/stats` in `factcheck_api.py`.
+  - `lct_python_backend/auth_policy.py`: removed the stale `/api/costs` admin
+    prefix.
+  - `docs/PROJECT_STRUCTURE.md`, `lct_python_backend/INSTRUMENTATION.md`,
+    `docs/cost-dashboard-counterfactual-scoping.md`, `docs/TECH_DEBT.md`: removed
+    or corrected stale `cost_api.py` / `/api/costs/*` references.
+  - `docs/adr/ADR-061-stt-fallback-as-ordered-engine-list.md`: appended the
+    operator decision selecting Option B, with compatibility and test gates.
+  - `docs/plans/2026-07-04-adr-013-full-intent-signals-roadmap.md`: new roadmap
+    showing what exists today and the phases needed for full ADR-013.
+- Validation:
+  - `uv run python -m py_compile lct_python_backend/auth_policy.py
+    lct_python_backend/factcheck_api.py
+    lct_python_backend/services/cost_stats_service.py` passed.
+  - `uv run python -m pytest -q lct_python_backend/tests/unit/test_auth_policy.py
+    lct_python_backend/tests/unit/test_intent_signal_persistence.py` passed:
+    22 passed, existing pytest-asyncio warnings.
+  - Attempted to include `lct_python_backend/tests/unit/test_models_analysis.py`,
+    but collection failed on a preexisting import drift:
+    `ImportError: cannot import name 'ArgumentTree' from
+    lct_python_backend.models.analysis`.
+  - `git diff --check` passed; conflict-marker scan found none.
+
+## 2026-07-04T21:08:50+05:30 - README status labels and vision/code audit
+
+- Context: user asked whether the README is accurate, then asked to fix docs and
+  audit the vision/ADRs against current code for inconsistencies and reconciliation
+  options. Preserved the ambitious README thesis while separating shipped features
+  from partial substrate and north-star work.
+- Files modified:
+  - `README.md` (Quickstart + How It Works + Built With + Documentation): changed
+    `start.command` wording to "best-effort local STT services"; replaced the
+    unqualified "Core capabilities" list with `Available today`,
+    `Partially built / substrate present`, and `Roadmap / north-star capabilities`;
+    marked lull resume cards and formalization bridge as roadmap; documented
+    intent-signal schema and IndrasNet enrichment as partial/substrate; updated
+    STT wording from Whisper-only to pluggable STT / diarization engines; fixed
+    root-level testing links to `docs/TESTING.md`.
+- Audit notes:
+  - Read `PRODUCT.md`, `DESIGN.md`, `docs/VISION.md`, ADR index, and targeted ADRs
+    ADR-013, ADR-032, ADR-033, ADR-035, ADR-037, ADR-059, ADR-061.
+  - Checked code evidence for formalization, prayer cards, intent signals,
+    IndrasNet retrieval, cost tracking, STT provider/engine terminology, and
+    mounted routers before changing README claims.
+
+## 2026-07-04T20:46:13+05:30 - Remote rebase and contributor-doc reconciliation
+
+- Context: user asked to pull/rebase onto latest remote and inspect what changed
+  after an earlier contributor-doc accuracy pass had been written on a stale
+  divergent branch. Rebased `feat/cost-tracking-wire-up` onto `origin/main`
+  (`8783ff4`) and reconciled the autostash doc conflicts against the newer
+  upstream documentation map.
+- Rebase notes:
+  - Kept `origin/main` deletion of the old sample
+    `prompts_and_transcripts/transcript.txt`.
+  - Skipped duplicate VPS-sync commit `d5ca1ee`; equivalent commit `6785da1`
+    is already represented on `origin/main`, and the remaining delta was only
+    a `.tmp` WAV artifact plus the old sample transcript.
+  - Resolved the STT health-probe conflict by keeping the newer rebased
+    implementation with route timing diagnostics and certifi TLS fallback.
+  - Resolved the final backend middleware conflict by wiring
+    `InstrumentationMiddleware` before the final CORS middleware, preserving
+    the documented "CORS outermost" behavior.
+- Files modified:
+  - `README.md`: points new contributors at the contributor guide, product/design
+    docs, conventions, and current testing docs.
+  - `docs/NEW_CONTRIBUTOR_GUIDE.md`: new contributor reading path and practical
+    run/test pointers.
+  - `docs/PROJECT_STRUCTURE.md`: kept the newer upstream structure map, bumped
+    ADR references through ADR-061, and documented that `cost_api.py` is not
+    mounted while the live dashboard reads `factcheck_api.py`'s
+    `/api/cost-tracking/stats`.
+  - `docs/adr/INDEX.md`: kept the upstream ADR backfill and added ADR-061.
+  - `docs/TESTING.md`, `lct_python_backend/tests/README.md`,
+    `lct_app/README.md`, `lct_app/docs/E2E-TESTING.md`: replace stale template
+    or "zero tests" language with current backend/frontend/E2E testing entry
+    points.
+- Validation:
+  - `rg -n '^(<<<<<<<|=======|>>>>>>>)'` found no remaining conflict markers.
+  - `git diff --check` passed.
+
 ## 2026-07-03T08:30:00+05:30 - LCT route timing diagnostics for supervisor investigation
 
 - Context: continuing the IndrasNet/LCT supervisor root-cause investigation after

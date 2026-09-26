@@ -44,7 +44,10 @@
 - `factcheck_api.py:160` `download_audio` — guarded by `AUDIO_DOWNLOAD_TOKEN` query param, not owner.
 
 ### Correction (shrinks scope)
-- **`cost_api.py` is NOT mounted** (`backend.py` include_router list never adds it; only referenced in INSTRUMENTATION.md). Its ~12 "system-wide cost leakage" endpoints are **not live attack surface** today. Lower priority; verify before relying on this.
+- **`cost_api.py` is gone** (2026-07-04). It was never mounted (`backend.py`
+  did not include its router), and the obsolete `/api/costs/*` surface was
+  deleted. The live dashboard reads `/api/cost-tracking/stats` from
+  `factcheck_api.py`.
 
 ---
 

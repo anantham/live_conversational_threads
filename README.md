@@ -17,7 +17,7 @@
 Two double-clickable files in the project root:
 
 1. **First time only —** double-click **`setup-once.command`**. Installs Postgres + Python/Node deps, creates the local database, writes `lct_python_backend/.env`, and runs migrations.
-2. **Every time —** double-click **`start.command`**. Starts Postgres, the on-device STT server, the backend, and the frontend, then prints the URLs. Open **http://localhost:43173**. Press **Ctrl+C** in that window to stop everything.
+2. **Every time —** double-click **`start.command`**. Starts Postgres, best-effort local STT services, the backend, and the frontend, then prints the URLs. Open **http://localhost:43173**. Press **Ctrl+C** in that window to stop everything.
 
 > **The LLM runs separately.** Make sure **Ollama** (or your configured LM Studio / remote box) is running with a model pulled — `start.command` does not manage it. Settings → Runtime → *Active engines* shows each backend's live status, model, where it runs, and empirical speed/cost.
 >
@@ -76,18 +76,34 @@ Layer 4  FEEDBACK               Verified signals flow back to the conversation.
 
 <img src="docs/assets/formal-informal-overlay.png" alt="Handwritten notes overlaid with Lean theorem syntax and a glowing node graph" width="100%"/>
 
-Threads listens to your conversation and builds a live graph — threads, claims, cruxes, tangents — without interrupting the flow.
+Threads listens to your conversation and builds a live graph — threads, claims, cruxes, tangents — without interrupting the flow. This section is current-state only: things a contributor should expect to find in the running app today.
 
-**Core capabilities:**
+**Available today:**
 
-- **Prayer detection** — identifies pre-formal intentions before they evaporate, preserves them with full conversational context
-- **Thread tracking** — open threads persist across sessions with surrounding context intact
+- **Live capture and graphing** — records or imports a conversation, transcribes it, and builds a navigable graph of threads, claims, cruxes, and tangents
 - **Claim decomposition** — factual, normative, and worldview claims surfaced and distinguished
 - **Crux visibility** — what agreement depends on, where conflict roots are
-- **Retrieval at lulls** — surfaces dormant threads at natural pauses with suggested re-entry phrasing
 - **Speaker analytics** — speaking time, turn-taking balance, bandwidth distribution
 - **Rhetorical pattern detection** — fallacies and rhetorical moves flagged with confidence scores
-- **Formalization bridge** — when a prayer has accumulated enough context, offers a candidate formal statement for human review
+- **Manual/live prayer-card surfaces** — selected transcript text and gated live triggers can produce Fetch cards through IndrasNet retrieval and local fact-check cards
+- **Intent-signal review** — feature-flagged ADR-013 detections can be inspected in a saved conversation tray and marked ready or abandoned
+
+---
+
+## Aspirational Direction
+
+The ambition remains larger than the shipped surface. The vision is a system that
+tracks pre-formal intent across conversations, notices when an old thread is ready
+to re-enter the room, and offers a bridge from gestural conversation to formal
+statement without forcing the jump.
+
+**Substrate already present:** `intent_signals` / `intent_signal_sightings`,
+a feature-flagged Contract C detector, a review tray with ready/abandon actions,
+thread IDs and return-to-thread structure, IndrasNet retrieval for enrichment,
+and manual prayer-card surfaces.
+
+**Still roadmap:** annotation/rejection tools, duplicate merge, user-facing
+lull resume cards, and the formalization bridge.
 
 ---
 
@@ -126,11 +142,11 @@ Threads is part of that governance layer.
 
 ## Built With
 
-**Backend:** FastAPI (Python), PostgreSQL, local-first LLM routing (LM Studio / Ollama), Whisper STT
+**Backend:** FastAPI (Python), PostgreSQL, local-first LLM routing (LM Studio / Ollama), pluggable STT / diarization engines
 
 **Frontend:** React + Vite, React Flow
 
-**AI:** Local-first by default (privacy-preserving), optional cloud LLM fallback
+**AI:** Local-first by default (privacy-preserving), optional cloud LLM / audio fallback where configured
 
 ---
 
@@ -138,10 +154,15 @@ Threads is part of that governance layer.
 
 | Guide | What It's For |
 |-------|---------------|
+| [NEW_CONTRIBUTOR_GUIDE.md](docs/NEW_CONTRIBUTOR_GUIDE.md) | Fast reading path for contributors and agents joining the repo |
 | [LOCAL_SETUP.md](docs/LOCAL_SETUP.md) | How to run the project locally - one-time setup + daily startup |
+| [PRODUCT.md](PRODUCT.md) | Current product register, users, purpose, anti-references, and design principles |
+| [DESIGN.md](DESIGN.md) | Current visual system and UI design doctrine |
 | [VISION.md](docs/VISION.md) | Why we're building this - the philosophy and long-term direction |
 | [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) | High-level codebase organization - what lives where |
+| [CONVENTIONS.md](docs/CONVENTIONS.md) | Naming, API shapes, error-handling, router/service, and file-organization rules |
 | [docs/adr/INDEX.md](docs/adr/INDEX.md) | Architecture Decision Records - why we made specific technical choices |
+| [TESTING.md](docs/TESTING.md) | Current test suites, commands, opt-in smoke tests, and CI status |
 | [docs/plans/](docs/plans/) | Implementation roadmaps - upcoming features and phased approaches |
 | [WORKLOG.md](docs/WORKLOG.md) | Development history - what was built, when, and why |
 | [ISSUES.md](ISSUES.md) | Known issues and technical debt tracking |
@@ -150,8 +171,10 @@ Threads is part of that governance layer.
 
 ### Quick Paths
 
-- **New to the codebase?** Start with [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)
+- **New to the codebase?** Start with [NEW_CONTRIBUTOR_GUIDE.md](docs/NEW_CONTRIBUTOR_GUIDE.md), then [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)
 - **Want to run it?** Follow [LOCAL_SETUP.md](docs/LOCAL_SETUP.md)
+- **Changing UI?** Read [PRODUCT.md](PRODUCT.md) and [DESIGN.md](DESIGN.md) first
+- **Changing tests?** Read [TESTING.md](docs/TESTING.md)
 - **Understanding a feature?** Check the corresponding ADR in `docs/adr/`
 - **Debugging an issue?** Search [WORKLOG.md](docs/WORKLOG.md) for context
 

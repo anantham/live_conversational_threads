@@ -19,7 +19,9 @@ LCT already ships a `CostDashboard.jsx` page + ~11 backend cost endpoints, but t
 - `models/system.py:15-59` `APICallsLog` — full cost schema (prompt/completion/total tokens + costs, model, provider, feature, conversation_id, latency).
 - `instrumentation/cost_calculator.py:27-116` `MODEL_PRICING` — per-1K-token table, but **stale ("as of January 2025") and missing gpt-4o / gpt-4o-mini**.
 - `instrumentation/decorators.py:135-265` `track_api_call` + `cost_tracking_mapper.py:71-133` — the writer, **confirmed dead** (no usages).
-- Readers over the empty table: `cost_api.py` (`/api/costs/*`) + `factcheck_api.py:219-227` `/api/cost-tracking/stats` (what the dashboard calls, `CostDashboard.jsx:28`).
+- Readers over the empty table: `factcheck_api.py:219-227` `/api/cost-tracking/stats`
+  (what the dashboard calls, `CostDashboard.jsx:28`). The legacy `cost_api.py`
+  `/api/costs/*` router was unmounted and later deleted.
 - Frontend `CostDashboard.jsx` (route `/cost-dashboard`, `AppRoutes.jsx:47`) already footnotes "if no data, check api_calls_log exists" — it knows it's empty.
 
 **Must start logging:** per-conversation LLM token totals. Preferred: write `APICallsLog` rows for local calls in `_record_llm_telemetry` (`local_llm_client.py:97`) with `provider="local"`, `total_cost=0`, real token counts, **+ `conversation_id`** (thread it from the call site). ~10 lines; reuses the durable table + existing reader. STT seconds already derivable from `duration_seconds`.

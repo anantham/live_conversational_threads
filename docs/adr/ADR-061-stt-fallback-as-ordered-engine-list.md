@@ -1,7 +1,7 @@
 # ADR-061: STT fallback as an ordered engine list (unify primary + fallback)
 
 **Date:** 2026-07-01
-**Status:** Proposed
+**Status:** Accepted (2026-07-04 amendment; implementation gated)
 **Group:** interaction + integration
 **Supersedes (in part):** ADR-014 (the `live_fallback_priority` route-category vocabulary)
 **Related:** ADR-017 (capability-oriented pipeline), ADR-023, ADR-056
@@ -144,3 +144,30 @@ options:
 
 **Status change:** pending operator decision between A (recommended, low-risk, UI-only) and B (deferred,
 larger). Implementation of either is still gated on a reachable backend for a live smoke test.
+
+## Amendment 2026-07-04 - operator selects Option B
+
+The operator selected **Option B: true backend contract migration to an ordered STT engine list**.
+This intentionally accepts the larger blast radius called out above because the long-term goal is
+one vocabulary across STT, diarization, and LLM selection rather than a UI-only reconciliation.
+
+Implementation is still gated. Treat this as a separate migration project, not as incidental UI
+cleanup:
+
+1. Version the live WebSocket/status contract so existing clients can tolerate both route ids and
+   engine ids during rollout.
+2. Add read-time compatibility: existing `live_fallback_priority` route ids must continue to load
+   and map to engine ids before any write migration.
+3. Update `resolve_live_stt_candidates` and the import STT provider selection path together so live
+   and upload flows do not diverge.
+4. Preserve every ADR-014 guard in tests: local-only short circuit, diarization-required filtering,
+   empty-transcript fallback, endpoint deduping, degraded text-only fallback handling, and background
+   diarization candidate behavior.
+5. Update frontend consumers of `route_id`/fallback status only after the backend emits the dual
+   contract.
+6. Run focused unit tests plus a live smoke on a reachable backend before removing the compatibility
+   layer.
+
+Open risk: `external_http` still has no true engine identity. The migration must decide whether it
+is a synthetic `external` engine or an advanced route outside the ranked engine list before code
+changes begin.
