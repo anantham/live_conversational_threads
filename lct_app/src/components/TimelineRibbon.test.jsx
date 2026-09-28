@@ -181,4 +181,16 @@ describe("TimelineRibbon render", () => {
     });
     expect(gutter.style.width).toBe("230px");
   });
+
+  it("lets the toolbar control the timeline on both desktop and phone", () => {
+    const onExpandedChange = vi.fn();
+    render({ graphData: threadedGraph, selectedNode: null, expanded: false, onExpandedChange });
+    expect(container.querySelector("section")?.dataset.open).toBe("false");
+    act(() => container.querySelector('[aria-label="Show thread timeline"]').click());
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+    render({ graphData: threadedGraph, selectedNode: null, expanded: true, onExpandedChange });
+    expect(container.querySelector("section")?.dataset.open).toBe("true");
+    act(() => container.querySelector('[aria-label="Hide thread timeline"]').click());
+    expect(onExpandedChange).toHaveBeenCalledWith(false);
+  });
 });

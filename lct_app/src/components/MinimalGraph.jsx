@@ -1,5 +1,6 @@
 ﻿/* eslint-disable react-hooks/rules-of-hooks */
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import ReactFlow, { useReactFlow, ReactFlowProvider, applyNodeChanges } from "reactflow";
 import "reactflow/dist/style.css";
@@ -115,6 +116,10 @@ function MinimalGraphInner({
   initialShowTemporalEdges,
   argumentTraceFrom,
   setArgumentTraceFrom,
+  toolbarMode = false,
+  toolbarTarget,
+  toolbarTierTarget,
+  hideWeaknessLenses = false,
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
@@ -1859,13 +1864,44 @@ function MinimalGraphInner({
       );
     }},
   ];
+  const placeGraphTools = (content) => toolbarMode
+    ? (toolbarTarget ? createPortal(content, toolbarTarget) : null)
+    : content;
 
+  const graphHud = (
+    <MinimalGraphHud
+      inToolbar={toolbarMode}
+      zoomLevel={zoomLevel}
+      hideStats={toolbarMode}
+      clusterLevelLabel={clusterLevelLabel}
+      displayMode={displayMode}
+      effectiveSemanticLevel={effectiveSemanticLevel}
+      effectiveClusterLevel={effectiveClusterLevel}
+      displayNodes={displayNodes}
+      displayEdges={focusedDisplayEdges}
+      projectionStats={effectiveView?.projectionStats || null}
+      normalizedChunk={normalizedChunk}
+      lockedLevel={lockedLevel}
+      drilldownPath={drilldownPath}
+      setDrilldownPath={setDrilldownPath}
+      legacyClusterLevel={legacyClusterLevel}
+      autoFollowRef={autoFollowRef}
+      setAutoFollow={setAutoFollow}
+      userOverrodeTierRef={userOverrodeTierRef}
+      setLockedLevel={handleLockedLevelChange}
+      neighborhoodFocus={neighborhoodView ? {
+        title: neighborhoodView.focusNode?.data?.title || "Untitled",
+        directNeighborCount: neighborhoodView.directNeighborCount,
+      } : null}
+      clearNeighborhoodFocus={clearNeighborhoodFocus}
+    />
+  );
   return (
     <div className={`relative w-full h-full${chromeless ? " lct-graph-chromeless" : ""}`}>
       {/* Weakness lenses — one-click "where is the argument weak" filters.
           Dim everything except the matching claims (+ their ancestors so
           coarser tiers stay meaningful). Hidden during argument trace. */}
-      {!argumentTraceFrom && !neighborhoodFocusId && (
+      {!hideWeaknessLenses && !argumentTraceFrom && !neighborhoodFocusId && (
         <div className="absolute bottom-14 left-2 right-2 z-40 flex items-center gap-1 overflow-x-auto pb-1 sm:bottom-12 sm:left-3 sm:right-auto sm:flex-wrap sm:overflow-visible sm:pb-0">
           {[
             { key: "unsupported", label: "unsupported", title: "Claims with no incoming support/evidence" },
@@ -1960,7 +1996,9 @@ function MinimalGraphInner({
           "Display" disclosure so the resting canvas stays calm (ADR-011) â€” a
           first-time recipient sees Center + Display, not a six-control cockpit.
           Native <details> keeps it keyboard-accessible with no extra state. */}
-      <div className="absolute bottom-2 left-2 z-40 flex items-center gap-2 sm:bottom-4 sm:left-4 sm:gap-1">
+      {!chromeless && placeGraphTools(<div className={toolbarMode
+        ? "flex min-w-0 items-center gap-1"
+        : "absolute bottom-2 left-2 z-40 flex items-center gap-2 sm:bottom-4 sm:left-4 sm:gap-1"}>
         {ZOOM_PRESETS.map(({ label, action, hint }) => (
           <button
             key={label}
@@ -1984,7 +2022,9 @@ function MinimalGraphInner({
             </svg>
             Display
           </summary>
-          <div className="absolute bottom-full left-0 mb-2 flex max-w-[calc(100vw-1rem)] flex-wrap items-center gap-1 rounded-lg border border-gray-200 bg-white/95 p-1.5 shadow-md animate-slideIn [&_button]:min-h-11 sm:[&_button]:min-h-0">
+          <div className={toolbarMode
+            ? "absolute left-0 top-full z-[70] mt-2 flex w-64 max-w-[calc(100vw-1rem)] flex-col gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-lg [&_button]:min-h-11 [&_button]:w-full [&_button]:whitespace-nowrap [&_button]:text-left"
+            : "absolute bottom-full left-0 mb-2 flex max-w-[calc(100vw-1rem)] flex-wrap items-center gap-1 rounded-lg border border-gray-200 bg-white/95 p-1.5 shadow-md animate-slideIn [&_button]:min-h-11 sm:[&_button]:min-h-0"}>
             <button
               onClick={() => {
                 setAutoFollow((v) => {
@@ -2074,32 +2114,9 @@ function MinimalGraphInner({
             />
           </div>
         </details>
-      </div>
+      </div>)}
 
-      <MinimalGraphHud
-        zoomLevel={zoomLevel}
-        clusterLevelLabel={clusterLevelLabel}
-        displayMode={displayMode}
-        effectiveSemanticLevel={effectiveSemanticLevel}
-        effectiveClusterLevel={effectiveClusterLevel}
-        displayNodes={displayNodes}
-        displayEdges={focusedDisplayEdges}
-        projectionStats={effectiveView?.projectionStats || null}
-        normalizedChunk={normalizedChunk}
-        lockedLevel={lockedLevel}
-        drilldownPath={drilldownPath}
-        setDrilldownPath={setDrilldownPath}
-        legacyClusterLevel={legacyClusterLevel}
-        autoFollowRef={autoFollowRef}
-        setAutoFollow={setAutoFollow}
-        userOverrodeTierRef={userOverrodeTierRef}
-        setLockedLevel={handleLockedLevelChange}
-        neighborhoodFocus={neighborhoodView ? {
-          title: neighborhoodView.focusNode?.data?.title || "Untitled",
-          directNeighborCount: neighborhoodView.directNeighborCount,
-        } : null}
-        clearNeighborhoodFocus={clearNeighborhoodFocus}
-      />
+      {toolbarMode ? (toolbarTierTarget ? createPortal(graphHud, toolbarTierTarget) : null) : graphHud}
 
       <MinimalGraphPanels
         hoveredEdge={hoveredEdge}
@@ -2134,6 +2151,10 @@ MinimalGraphInner.propTypes = {
   initialShowTemporalEdges: PropTypes.bool,
   argumentTraceFrom: PropTypes.string,
   setArgumentTraceFrom: PropTypes.func,
+  toolbarMode: PropTypes.bool,
+  toolbarTarget: PropTypes.object,
+  toolbarTierTarget: PropTypes.object,
+  hideWeaknessLenses: PropTypes.bool,
 };
 
 export default function MinimalGraph(props) {
@@ -2162,4 +2183,8 @@ MinimalGraph.propTypes = {
   initialShowTemporalEdges: PropTypes.bool,
   argumentTraceFrom: PropTypes.string,
   setArgumentTraceFrom: PropTypes.func,
+  toolbarMode: PropTypes.bool,
+  toolbarTarget: PropTypes.object,
+  toolbarTierTarget: PropTypes.object,
+  hideWeaknessLenses: PropTypes.bool,
 };

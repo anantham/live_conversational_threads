@@ -1,5 +1,80 @@
 # WORKLOG
 
+## 2026-09-29 00:30 IST — Discussion link review follow-up
+
+- Independent xAI Grok review found a selected-button color conflict and four
+  Discussion link issues. Removed the conflicting utility in
+  ThreadsViewerToolbar.jsx:4-22. DiscussionView.jsx:24-136 now shows full
+  numbered tier names, processes each link or Find request once, announces
+  repeated copy feedback, and exposes the URL when clipboard access fails.
+  ThreadsViewer.jsx:119-127 and ViewConversation.jsx:104-111 now follow links
+  added while the page is open.
+- Test intent expanded after review to cover in-page navigation, focus stability,
+  and copy recovery. DiscussionView.test.jsx, ThreadsViewer.discussion.test.jsx,
+  and ViewConversation.loading.test.jsx exercise these behaviors with synthetic
+  data. Full frontend suite: 441 of 441; production build passes. Scoped lint
+  has zero errors and six preexisting hook warnings.
+- A second shell review found four supported edge cases. ThreadsViewer.jsx now
+  reveals the compact overview, retains focused summaries in Discussion,
+  returns Cards to Graph on viewport widening, and clears Focus when a branch
+  link arrives. ViewerFindMenu.jsx bounds and scrolls long results. Synthetic
+  route tests cover those transitions; a 390×500 browser check scrolled the
+  final Find result into view. Full frontend suite: 444 of 444; production
+  build passes; scoped lint has zero errors. Updated independent review remains
+  pending.
+- A third shell review identified compact Focus retaining the Overview header,
+  menu clipping at short heights, Source sharing the narrow canvas width, and
+  differing fallback timeline behavior. ThreadsViewer.jsx now hides the header
+  and Source during Focus, stacks Source above narrow views, and uses the same
+  timeline level and selection rule in both views. ViewerFindMenu.jsx and
+  ThreadsViewerToolbar.jsx use scrollable viewport-bound popovers with explicit
+  Close controls. Synthetic route tests cover Source, Focus, and timeline
+  parity. Browser checks reached the last More item at 390×300 and showed
+  Find, Center, and Display fully visible at 320px. The reviewer's separate
+  graph-tools clipping claim was not reproduced by that smallest check.
+- Final local validation after these changes: 446 of 446 frontend tests pass,
+  production build passes, scoped lint has zero errors (five existing
+  ViewConversation dependency warnings), and git diff --check passes.
+- Independent xAI Grok review found and prompted the supported fixes above,
+  but its included balance was exhausted before a verdict on this final diff.
+  Anthropic Claude is temporarily at its subscription session limit; Gemini
+  CLI requires unconfigured project setup. Final cross-family approval remains
+  pending. No source push, PR, merge, or deployment occurred.
+
+## 2026-09-28 23:40 IST — Conversation viewer navigation and Discussion references
+
+- The screenshot's weakness pills used missing authored argument links, not
+  factual verification. In the bundled example 47 of 47 claim branches lack
+  authored support and rebuttal links; both top arcs still match, so the
+  visual dimming looked inert. The Time order control wrapped in a narrow
+  flex menu.
+- The artifact viewer now starts Overview, Source, and Threads collapsed.
+  ThreadsViewerHeader keeps title, optional summary, and errors. The shared
+  ThreadsViewerToolbar groups Graph/Discussion, Find, Center/Display, semantic
+  tier controls, panel disclosures, and secondary file/card actions.
+  MinimalGraphHud no longer overlays graph cards or shows redundant zoom and
+  projection statistics in this viewer.
+- ViewerFindMenu and viewerFindModel offer navigable questions and selective
+  authored-link categories; a result opens the specific Discussion branch.
+  DiscussionView adds tier references, speaker tint on exact words, and stable
+  node links. Fresh artifact and saved-conversation links open Discussion at
+  the referenced branch; the existing semantic hierarchy is unchanged.
+  TimelineRibbon now accepts controlled expansion. Test intent and ADR-070
+  record the behavior.
+- Relevant changes: lct_app/src/pages/ThreadsViewer.jsx:70-129,295-312,505-662;
+  lct_app/src/pages/ViewConversation.jsx:103;
+  lct_app/src/components/MinimalGraph.jsx:1865-2130;
+  lct_app/src/components/graph/MinimalGraphHud.jsx:15-245;
+  lct_app/src/components/discussion/DiscussionView.jsx:25-255;
+  lct_app/src/components/threads/ThreadsViewerHeader.jsx:1-28,
+  ThreadsViewerToolbar.jsx:1-75, ViewerFindMenu.jsx:1-37,
+  viewerFindModel.js:1-31, YouTubeSourcePanel.jsx:1-145;
+  lct_app/src/components/TimelineRibbon.jsx:66-211 and focused tests.
+- Validation: 439 of 439 frontend tests, production build, scoped lint with
+  zero errors, and browser checks at 1280px and 390px. Find reached a
+  specific branch; a fresh linked page reopened it. There were no page
+  errors or horizontal overflow. Independent AI review pending.
+
 ## 2026-09-28 22:45 IST — Discussion speaker clarity and overlap check
 
 - User observation: the earlier Discussion view hid speaker color inside expanded

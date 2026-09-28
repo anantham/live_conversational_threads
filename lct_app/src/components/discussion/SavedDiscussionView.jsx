@@ -13,6 +13,7 @@ export default function SavedDiscussionView({ conversationId, nodes, speakerColo
       <button type="button" onClick={() => void reload()} className="ml-2 min-h-11 underline">Retry transcript</button>
     </div>}
     <div className="min-h-0 flex-1"><DiscussionView nodes={nodes} utterances={data?.utterances} speakerColorMap={speakerColorMap}
+      linkBase={typeof window === "undefined" ? undefined : window.location.href}
       evidenceStatus={error ? "error" : data ? "ready" : "loading"} /></div>
   </div>;
 }

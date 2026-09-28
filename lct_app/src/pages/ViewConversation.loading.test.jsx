@@ -142,6 +142,12 @@ describe("ViewConversation progressive loading", () => {
     expect(graph.closest('[hidden]')).not.toBeNull();
     await act(async () => modes.find((button) => button.textContent === "Graph").click());
     expect(container.querySelector('[aria-label="Discussion"]')).toBeNull();
+    await act(async () => {
+      window.history.replaceState(null, "", "#discussion=node-1");
+      window.dispatchEvent(new Event("hashchange"));
+    });
+    expect(container.querySelector('[aria-label="Discussion"]')).not.toBeNull();
+    window.history.replaceState(null, "", window.location.pathname);
     expect(container.textContent).not.toContain("Loading conversation...");
     expect(apiFetchCachedMock).toHaveBeenCalledWith(
       "/api/conversations/conversation-123/audio/status",

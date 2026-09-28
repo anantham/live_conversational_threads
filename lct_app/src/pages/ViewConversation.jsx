@@ -100,7 +100,14 @@ export default function ViewConversation() {
   const dataProvider = useDataProvider();
   const navigate = useNavigate();
 
-  const [viewMode, setViewMode] = useState("graph");
+  const [viewMode, setViewMode] = useState(() => typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
+  useEffect(() => {
+    const showLinkedDiscussion = () => {
+      if (window.location.hash.startsWith("#discussion=")) setViewMode("discussion");
+    };
+    window.addEventListener("hashchange", showLinkedDiscussion);
+    return () => window.removeEventListener("hashchange", showLinkedDiscussion);
+  }, []);
   const [transcriptRevision, setTranscriptRevision] = useState(0);
   const onTranscriptCorrected = useCallback(() => setTranscriptRevision((value) => value + 1), []);
   const [graphData, setGraphData] = useState([]);

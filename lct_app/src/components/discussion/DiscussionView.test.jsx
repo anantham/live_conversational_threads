@@ -109,4 +109,56 @@ describe("Discussion semantic hierarchy", () => {
     act(() => root.render(<DiscussionView nodes={[]} />));
     expect(host.textContent).toContain("No discussion structure or retained utterances yet.");
   });
+
+  it("labels each semantic branch and opens a deep-linked branch", () => {
+    const previousHash = window.location.hash;
+    window.location.hash = "#discussion=moment";
+    try {
+      act(() => root.render(<DiscussionView nodes={straightTree} utterances={utterances} />));
+      expect(button("Topic A").textContent).toContain("Topic 1");
+      expect(button("Idea A").textContent).toContain("Idea 1");
+      expect(button("Moment A").textContent).toContain("Moment 1");
+      expect(button("Topic A").getAttribute("aria-expanded")).toBe("true");
+      expect(button("Idea A").getAttribute("aria-expanded")).toBe("true");
+      expect(host.querySelector('[data-utterance-id="u1"]')).not.toBeNull();
+    } finally {
+      window.location.hash = previousHash;
+    }
+  });
+
+  it("copies a stable branch link and tints exact words by speaker", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
+    act(() => root.render(<DiscussionView nodes={straightTree} utterances={utterances}
+      speakerColorMap={{ "speaker-a": "#7dd3fc" }}
+      linkBase="https://example.test/view?src=synthetic.threads" />));
+    const link = host.querySelector('button[aria-label^="Copy link to Topic 1"]');
+    expect(link).not.toBeNull();
+    await act(async () => { link.click(); await Promise.resolve(); });
+    expect(writeText).toHaveBeenCalledWith("https://example.test/view?src=synthetic.threads#discussion=topic");
+    click("Topic A"); click("Idea A"); click("Moment A");
+    expect(host.querySelector('[data-utterance-id="u1"]').style.backgroundColor).toBe("rgba(125, 211, 252, 0.1)");
+    expect(host.querySelector('[role="status"]').textContent).toContain("link copied");
+    await act(async () => { link.click(); await Promise.resolve(); });
+    expect(host.querySelector('[role="status"]').textContent).toContain("again (2 copies)");
+    writeText.mockRejectedValueOnce(new Error("Clipboard blocked"));
+    await act(async () => { link.click(); await Promise.resolve(); });
+    expect(host.querySelector('[role="status"]').textContent).toContain("https://example.test/view?src=synthetic.threads#discussion=topic");
+    vi.unstubAllGlobals();
+  });
+
+  it("does not steal focus again when the linked model or unchanged request rerenders", () => {
+    const previousHash = window.location.hash;
+    window.history.replaceState(null, "", "#discussion=moment");
+    try {
+      act(() => root.render(<DiscussionView nodes={straightTree} utterances={utterances} focusRequest={{ id: "moment", requestKey: 1 }} />));
+      const other = button("Topic A");
+      act(() => other.focus());
+      act(() => root.render(<DiscussionView nodes={straightTree.map((node) => ({ ...node }))}
+        utterances={[...utterances]} focusRequest={{ id: "moment", requestKey: 1 }} />));
+      expect(document.activeElement).toBe(other);
+    } finally {
+      window.history.replaceState(null, "", previousHash || window.location.pathname);
+    }
+  });
 });

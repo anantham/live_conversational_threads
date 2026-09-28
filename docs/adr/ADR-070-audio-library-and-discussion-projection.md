@@ -68,3 +68,28 @@ One moment can be linked to more than one idea through the existing authored
 memberships, while its exact utterances remain one passage. This view does not
 split a single utterance into multiple idea claims. That finer attribution would
 need extraction evidence and a separate product decision.
+
+## 2026-09-28 amendment — Viewer navigation and branch references
+
+The artifact viewer opens with Overview, Source, and Threads timeline collapsed.
+Graph and Discussion share a centered view switch and a single toolbar. Graph
+tier controls sit in that toolbar so they do not cover graph cards. Transcript
+download, Library, opening another file, Drive refresh, card display options,
+and file status are in More. Save failures remain visible immediately.
+Find and More open scrollable popovers that stay reachable on short screens;
+Source stacks above the reader on narrow screens and closes in graph Focus.
+
+The old graph weakness pills counted missing *authored argument links*; they
+did not verify whether a claim was true. At a coarse tier a matching descendant
+made the whole arc appear unchanged. The viewer now uses Find to list specific
+branches. It omits unsupported/uncontested categories when no stance links
+exist or every claim matches; Open questions remain navigable. Selecting a
+result opens its exact branch in Discussion.
+
+Discussion keeps the authored hierarchy and shared membership behavior.
+It adds numbered tier references (Arc 1, Theme 1, Topic 1, Idea 1, Moment 1),
+speaker-tinted exact utterances, and links to a stable node ID. Fresh links and
+links opened while viewing a conversation select Discussion at that branch.
+The visible references are reading aids,
+not persistent identifiers; links require recipient access to the artifact.
+No new extraction or per-utterance idea assignment is inferred.
