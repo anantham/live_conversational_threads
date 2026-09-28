@@ -1,6 +1,6 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DiscussionView from "./DiscussionView";
 import { straightTree, sharedTree, sparseTree, utterances } from "./discussionFixtures";
 
@@ -31,11 +31,24 @@ describe("Discussion semantic hierarchy", () => {
   });
   it("opens a shared branch at its canonical location without duplicating its subtree", () => {
     act(() => root.render(<DiscussionView nodes={sharedTree} utterances={utterances} />));
+    expect(button("Right branch").querySelector(".sr-only").textContent).toBe("Speakers: Speaker Alpha");
     click("Right branch"); click("shared branch");
     expect(host.querySelectorAll('[data-discussion-node="shared"]')).toHaveLength(1);
     expect(host.querySelectorAll('[data-utterance-id="u1"]')).toHaveLength(1);
     expect(document.activeElement).toBe(button("Shared moment"));
     expect(button("Left branch").getAttribute("aria-expanded")).toBe("true");
+  });
+  it("makes one exchange reachable from three authored ideas", () => {
+    const ideas = ["First idea", "Second idea", "Third idea"].map((name, index) => ({
+      id: `idea-${index}`, semantic_level: 2, node_name: name, children_ids: ["one-moment"],
+    }));
+    const moment = { id: "one-moment", semantic_level: 1, node_name: "One exchange", parent_id: "idea-0",
+      memberships: ideas.map((idea, index) => ({ parent_id: idea.id, role: index ? "secondary" : "primary" })), utterance_ids: ["u1"] };
+    act(() => root.render(<DiscussionView nodes={[...ideas, moment]} utterances={utterances} />));
+    ideas.forEach((idea) => expect(button(idea.node_name).querySelector(".sr-only").textContent).toBe("Speakers: Speaker Alpha"));
+    click("Third idea"); click("shared branch");
+    expect(host.querySelectorAll('[data-discussion-node="one-moment"]')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-utterance-id="u1"]')).toHaveLength(1);
   });
   it("keeps disconnected tiers and unlinked rows while explaining absent exact words", () => {
     act(() => root.render(<DiscussionView nodes={sparseTree} utterances={[...utterances, { id: "empty", speaker_id: "speaker-b", text: "" }]} />));
@@ -50,6 +63,44 @@ describe("Discussion semantic hierarchy", () => {
     act(() => root.render(<DiscussionView nodes={[]} utterances={[{ id: "numeric", speaker_id: 42, text: "Synthetic line" }]} />));
     act(() => host.querySelector("summary").click());
     expect(host.querySelector('[data-utterance-id="numeric"]').textContent).toContain("42");
+  });
+  it("shows speaker identities on collapsed branches and lets an artifact owner name them", () => {
+    const rows = [
+      { id: "first", speaker_id: "SPEAKER_00", text: "First synthetic line" },
+      { id: "second", speaker_id: "SPEAKER_01", text: "Second synthetic line" },
+    ];
+    const tree = [{ id: "exchange", semantic_level: 1, node_name: "Shared exchange", utterance_ids: ["first", "second"] }];
+    const rename = vi.fn();
+    act(() => root.render(<DiscussionView nodes={tree} utterances={rows} onRenameSpeaker={rename} />));
+    const legend = host.querySelector('[aria-label="Speaker colors"]');
+    expect(legend.textContent).toContain("Speaker 1");
+    expect(legend.textContent).toContain("Speaker 2");
+    expect(legend.textContent).not.toContain("SPEAKER_00");
+    expect(legend.querySelectorAll('[aria-hidden="true"]')[0].style.backgroundColor)
+      .not.toBe(legend.querySelectorAll('[aria-hidden="true"]')[1].style.backgroundColor);
+    act(() => root.render(<DiscussionView nodes={tree} utterances={rows} speakerColorMap={{ SPEAKER_01: "#7dd3fc" }} onRenameSpeaker={rename} />));
+    expect(legend.querySelectorAll('[aria-hidden="true"]')[0].style.backgroundColor)
+      .not.toBe(legend.querySelectorAll('[aria-hidden="true"]')[1].style.backgroundColor);
+    expect(button("Shared exchange").querySelector(".sr-only").textContent).toBe("Speakers: Speaker 1, Speaker 2");
+    click("Shared exchange");
+    expect(host.querySelector('[data-utterance-id="first"]').textContent).toContain("Speaker 1");
+    act(() => host.querySelector("summary").click());
+    const input = host.querySelector("input");
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "Example Person");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => host.querySelector("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(rename).toHaveBeenCalledWith("SPEAKER_00", "Example Person");
+    act(() => root.render(<DiscussionView nodes={tree} utterances={[{ ...rows[0], speaker_name: "Example Person" }, rows[1]]} onRenameSpeaker={rename} />));
+    expect(host.querySelector('[aria-label="Speaker colors"]').textContent).toContain("Example Person");
+    expect(host.querySelector('[data-utterance-id="first"]').textContent).toContain("Example Person");
+  });
+  it("keeps an explicit speaker name when the transcript has no diarization ID", () => {
+    act(() => root.render(<DiscussionView nodes={[]} utterances={[{ id: "named", speaker_name: "Example Person", text: "Named line" }]} />));
+    act(() => host.querySelector("summary").click());
+    expect(host.querySelector('[data-utterance-id="named"]').textContent).toContain("Example Person");
+    expect(host.querySelector('[data-utterance-id="named"] [aria-hidden="true"]').textContent).toBe("EP");
   });
   it("does not invent structure for transcript-only or empty conversations", () => {
     act(() => root.render(<DiscussionView nodes={[]} utterances={utterances} />));

@@ -56,3 +56,15 @@ readiness, process deduplication and import. Exercise the Discussion projection
 on at least three saved conversation fixtures at desktop and phone widths,
 including shared and sparse branches. Verify loading, polling, retry and stop
 checking states without asserting invented completion estimates.
+
+## 2026-09-28 amendment — Speaker presentation and overlap limit
+
+Discussion now shows a labeled speaker color key and contributor avatars on
+collapsed branches. Raw diarization IDs are displayed as readable placeholders;
+an artifact owner can apply a name through the existing local speaker correction
+path. No person's identity or photo is inferred from a raw speaker ID.
+
+One moment can be linked to more than one idea through the existing authored
+memberships, while its exact utterances remain one passage. This view does not
+split a single utterance into multiple idea claims. That finer attribution would
+need extraction evidence and a separate product decision.

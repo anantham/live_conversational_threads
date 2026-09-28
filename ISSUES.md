@@ -1,6 +1,16 @@
 # ISSUES
 
-Last updated: 2026-09-25
+Last updated: 2026-09-28
+
+## 2026-09-28 - Per-utterance idea attribution is not available
+
+- The inspected bundled conversation has 56 moments; 11 belong to two authored
+  idea parents, while each of its 1,263 utterances is linked to one moment.
+  Impact: the Discussion tree can revisit an exchange under several ideas, but
+  cannot show which phrase within that exchange advances each idea. This is not
+  a blocker for the existing hierarchy view. If users need phrase-level overlap,
+  validate an extraction contract with exact provenance before adding UI or
+  inventing attribution from neighboring text.
 
 ## 2026-09-25 - Audio library nonblocking follow-ups
 

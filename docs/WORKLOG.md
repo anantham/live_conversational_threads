@@ -1,5 +1,39 @@
 # WORKLOG
 
+## 2026-09-28 22:45 IST — Discussion speaker clarity and overlap check
+
+- User observation: the earlier Discussion view hid speaker color inside expanded
+  utterances and exposed raw `SPEAKER_00/01` labels. Hypothesis: a visible key,
+  contributor avatars, and the existing name correction path would make speaker
+  identity readable without changing semantic extraction. The synthetic UI test
+  and live browser check supported that hypothesis.
+- Inspected only metadata and links of the bundled conversation, without copying
+  transcript text: 56 moments, 11 with two idea parents, 37 containing both
+  speakers, and 1,263 of 1,263 utterances attached to exactly one moment.
+  One exchange can therefore appear in multiple idea branches, but the current
+  artifact does not encode per-utterance multi-idea attribution.
+- `lct_app/src/components/discussion/DiscussionView.jsx:11-169` now shows a
+  labeled speaker key, contributor avatars and accessible names on collapsed
+  branches, readable diarization placeholders, and an artifact name form.
+  `lct_app/src/pages/ThreadsViewer.jsx:487` wires the existing local rename
+  callback. `DiscussionView.test.jsx` checks collapsed cues, naming, named
+  rows without IDs, and one exchange shared by three ideas; test intent and
+  ADR-070 document the presentation contract. `ISSUES.md` tracks finer
+  attribution as a nonblocking extraction question.
+- Final validation: 8/8 focused UI tests, scoped ESLint, production build,
+  and desktop/phone browser checks passed. A fresh 375px browser session
+  submitted a name through the actual artifact viewer; both the key and an
+  exact utterance five levels deep updated. No page error, raw diarization ID,
+  or horizontal overflow appeared.
+- Anthropic Claude Opus read-only second-pass verdict: PASS. The first review
+  identified missing-ID name fallback and inaccessible branch labeling; both
+  were fixed and tested. Its rename concern was falsified by the actual browser
+  path, and the proposed cycle concern by the existing strict descending-level
+  link rule. The final review accepted both counterchecks. Exact reviewed packet
+  SHA256: 240D91821CF805FEA910B1AE5D768B464FBC785C61CE9D2153CB291E267E9BEF.
+  This entry's validation update followed the reviewer request; source code is
+  unchanged after its PASS.
+
 ## 2026-09-25 17:03 IST - Independent audio/Discussion review complete
 
 - Anthropic Claude Opus 5.5 approved the exact LCT staged diff and, under a

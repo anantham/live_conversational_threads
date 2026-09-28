@@ -484,7 +484,7 @@ function ThreadsViewerContent() {
       onEnterFocus={() => { setViewMode("graph"); setFocusMode(true); }} onOpenLibrary={openLibrary} onOpenAnother={openAnother}
       onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined} />
     {viewControls}
-    <div className="min-h-0 flex-1"><DiscussionView nodes={flatNodes} utterances={bundle.utterances || []} speakerColorMap={speakerColorMap} /></div>
+    <div className="min-h-0 flex-1"><DiscussionView nodes={flatNodes} utterances={bundle.utterances || []} speakerColorMap={speakerColorMap} onRenameSpeaker={renameSpeaker} /></div>
   </div>;
   if (compactViewer && viewMode === "cards") {
     return (
