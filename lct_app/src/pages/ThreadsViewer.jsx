@@ -528,7 +528,7 @@ function ThreadsViewerContent() {
     onViewModeChange={(mode) => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
     graphToolsRef={setGraphToolsHost} graphTierRef={setGraphTierHost} findGroups={findGroups} onFindNode={onFindNode}
     overviewAvailable={Boolean(bundle.executive_summary || focusNode?.summary)} overviewOpen={overviewOpen} onToggleOverview={() => setOverviewOpen((value) => !value)}
-    sourceAvailable={Boolean(selectYouTubeRef(bundle))} sourceOpen={sourceOpen} onToggleSource={() => setSourceOpen((value) => !value)}
+    sourceAvailable={Boolean(selectYouTubeRef(bundle) || bundle.media_refs?.some((ref) => ref?.provider === "youtube"))} sourceOpen={sourceOpen} onToggleSource={() => setSourceOpen((value) => !value)}
     timelineAvailable={flatNodes.length > 0} timelineOpen={timelineOpen} onToggleTimeline={() => setTimelineOpen((value) => !value)}
     onDownloadTranscript={downloadTranscript}
     onEnterFocus={() => { if (renderedViewMode === "discussion") setViewMode("graph"); setSourceOpen(false); setMobileMapOpen(false); setFocusMode(true); }}

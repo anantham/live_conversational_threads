@@ -1,5 +1,30 @@
 # WORKLOG
 
+## 2026-09-29 14:03 IST — PR 202 Tailnet release gate
+
+- User asked for a usable Tailnet viewer, then main merge and deployment. A
+  production frontend build is served privately through Tailscale Serve on
+  port 43192; the example viewer and artifact both returned HTTP 200. This
+  preview is tied to the running Asus session until the release is complete.
+- CI's Playwright smoke failed in five YouTube scenarios because it assumed
+  Source, the timeline, and phone Cards opened by default. The user's new
+  graph-first toolbar deliberately collapses those surfaces. A separate
+  reachable-warning defect was confirmed: invalid YouTube metadata hid the
+  Source button, so the existing explanation could not be opened.
+- `lct_app/src/pages/ThreadsViewer.jsx:531` offers Source when a YouTube media
+  reference is present, including malformed optional metadata. The existing
+  source panel then explains why playback is unavailable without loading an
+  untrusted URL. `lct_app/tests/e2e/youtube-source.spec.ts:1-160` now opens
+  Source and the timeline explicitly and tests the graph-first phone route.
+  Updated test intent reflects that behavior.
+- Local validation: five YouTube Chromium scenarios passed, one opt-in live
+  network scenario skipped; frontend production build and `git diff --check`
+  passed. Claude's dedicated ultrareview refused to start because free review
+  credits were exhausted. A read-only, tools-disabled Claude Sonnet review of
+  the exact prior PR diff returned pass with zero findings; final-head review
+  and CI must still pass before merge. The shared deploy checkout remains
+  untouched because its four unrelated files are dirty.
+
 ## 2026-09-29 00:30 IST — Discussion link review follow-up
 
 - Independent xAI Grok review found a selected-button color conflict and four
