@@ -12,6 +12,10 @@ Covers:
   empty body → 200 with empty lists; conversation_name → persisted list;
   other allowed keys → deferred list.
 - GET   /api/conversations/{id}/utterances: returns {utterances, total}.
+
+Test Intent for exact utterance reads:
+- The current owner sees ordered utterances and an empty owned conversation stays readable.
+- A missing or other-owner conversation returns 404 without serializing utterance text.
 """
 
 import importlib
@@ -74,6 +78,7 @@ def _stub_modules(monkeypatch):
         stub.build_chunk_dict_from_utterances = MagicMock(return_value={})
         stub.build_graph_data_from_nodes = MagicMock(return_value=[])
         stub.build_relationship_maps = MagicMock(return_value={})
+        stub.TEMPORAL_RELATIONSHIP_TYPES = {"temporal", "leads_to", "next", "follows"}
         stub.fetch_conversation_bundle = AsyncMock(return_value=(None, [], [], []))
         stub.serialize_utterances = MagicMock(return_value=[])
         stub.wrap_graph_data_chunks = MagicMock(return_value=[])
@@ -412,7 +417,7 @@ class TestGetConversationUtterances:
             {"id": "u1", "text": "Hello"},
             {"id": "u2", "text": "World"},
         ])
-        client = _build_client(module, _session_with([]))
+        client = _build_client(module, _session_with([MagicMock(owner_id="owner-123")]))
         cid = str(uuid.uuid4())
         resp = client.get(f"/api/conversations/{cid}/utterances")
         assert resp.status_code == 200
@@ -423,8 +428,34 @@ class TestGetConversationUtterances:
     def test_empty_conversation_returns_zero_total(self, monkeypatch):
         module = _load(monkeypatch)
         module.serialize_utterances = MagicMock(return_value=[])
-        client = _build_client(module, _session_with([]))
+        client = _build_client(module, _session_with([MagicMock(owner_id="owner-123")]))
         cid = str(uuid.uuid4())
         resp = client.get(f"/api/conversations/{cid}/utterances")
         assert resp.status_code == 200
         assert resp.json()["total"] == 0
+
+    def test_other_owner_returns_404_without_serializing(self, monkeypatch):
+        module = _load(monkeypatch)
+        module.serialize_utterances = MagicMock(return_value=[{"text": "private"}])
+        client = _build_client(module, _session_with([MagicMock(owner_id="someone-else")]))
+        resp = client.get(f"/api/conversations/{uuid.uuid4()}/utterances")
+        assert resp.status_code == 404
+        assert "private" not in resp.text
+        module.serialize_utterances.assert_not_called()
+
+    def test_missing_conversation_returns_404(self, monkeypatch):
+        module = _load(monkeypatch)
+        module.serialize_utterances = MagicMock(return_value=[{"text": "private"}])
+        client = _build_client(module, _session_with([]))
+        resp = client.get(f"/api/conversations/{uuid.uuid4()}/utterances")
+        assert resp.status_code == 404
+        module.serialize_utterances.assert_not_called()
+
+    def test_invalid_utterance_conversation_id_returns_404(self, monkeypatch):
+        module = _load(monkeypatch)
+        module.serialize_utterances = MagicMock(return_value=[{"text": "private"}])
+        client = _build_client(module, _session_with([]))
+        resp = client.get("/api/conversations/not-a-uuid/utterances")
+        assert resp.status_code == 404
+        assert "private" not in resp.text
+        module.serialize_utterances.assert_not_called()

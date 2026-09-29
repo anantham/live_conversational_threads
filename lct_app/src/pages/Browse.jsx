@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileText, HardDrive, Trash2 } from "lucide-react";
 import ThreadsFileButton from "../components/threads/ThreadsFileButton";
+import IndrasNetAudioLibrary from "../components/browse/IndrasNetAudioLibrary";
 import { apiFetch, API_BASE_URL } from "../services/apiClient";
 import { useDataProvider } from "../services/dataProvider";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
@@ -428,6 +429,8 @@ export default function Browse() {
             </div>
           )}
         </section>
+
+        <IndrasNetAudioLibrary />
 
         <section className="mx-auto mt-10 max-w-2xl border-t border-slate-200 pt-7">
           <div className="mb-3">

@@ -1,6 +1,30 @@
 # ISSUES
 
-Last updated: 2026-09-11
+Last updated: 2026-09-28
+
+## 2026-09-28 - Per-utterance idea attribution is not available
+
+- The inspected bundled conversation has 56 moments; 11 belong to two authored
+  idea parents, while each of its 1,263 utterances is linked to one moment.
+  Impact: the Discussion tree can revisit an exchange under several ideas, but
+  cannot show which phrase within that exchange advances each idea. This is not
+  a blocker for the existing hierarchy view. If users need phrase-level overlap,
+  validate an extraction contract with exact provenance before adding UI or
+  inventing attribution from neighboring text.
+
+## 2026-09-25 - Audio library nonblocking follow-ups
+
+- Reopening an already imported recording currently fetches its turns from
+  IndraSNet before the local conversation lookup. Impact: an avoidable transfer
+  and a failed reopen if the sibling service is down. Not a blocker for normal
+  browsing; move the owner/group lookup before the sibling request in a small
+  follow-up.
+- A simultaneous first import from two clients is protected by the existing
+  unique owner/group index, but the losing request may return an error rather
+  than opening the winner's conversation. Follow up if real concurrent use
+  warrants a retry.
+
+
 
 ## 2026-09-11 — Orphaned Grafana datasource-plugin processes exhausted host commit (RESOLVED IN WORKING TREE; PR PENDING)
 
@@ -1509,3 +1533,15 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   saved, and read errors mention a correction draft even if no edit was started.
   Impact: confusing recovery wording only. Next step: distinguish load/save status
   copy in a bounded UX follow-up; persistence and cancellation behavior remain covered.
+
+## 2026-09-25 — Conversation utterance owner scope
+
+- **Summary:** `GET /api/conversations/{conversation_id}/utterances` in `lct_python_backend/conversations_api.py:451-472` queries utterances by conversation UUID without the owner check applied by the neighboring saved-conversation read at lines 106-114. The app's bearer middleware still protects the route, and current owner resolution is single-user; this is a missing per-conversation authorization invariant, not evidence of an observed disclosure.
+- **Impact / blocker:** A future per-request identity model, or existing rows belonging to another owner in the same database, could expose utterance text to an authenticated caller who knows a UUID. The proposed Discussion view must not add another caller until this scope is enforced. Security-sensitive prerequisite; no live data was probed.
+- **Recommended next step:** Check `Conversation.owner_id == get_current_owner_id()` before returning utterances, use the same 404 behavior as `GET /conversations/{id}`, and add a public-route regression for a mismatched owner. Recheck all exact-utterance callers after the guard.
+
+## 2026-09-25 — Conversation utterance owner scope resolved locally
+
+- The saved utterance route now checks the conversation owner before returning
+  rows and responds 404 for another owner or missing conversation. Public-route
+  regressions passed (21/21 scoped). Pending independent review and deployment.

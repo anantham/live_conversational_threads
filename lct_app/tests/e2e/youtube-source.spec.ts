@@ -1,6 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
+// Test intent:
+// - The source and timeline start collapsed, then remain usable when opened.
+// - Source passages, playback seeking, speaker edits, and downloads survive the toolbar flow.
+// - Invalid YouTube metadata offers an explanation without loading an untrusted URL.
+
 // Synthetic timing contract, explicitly not evidence of transcription quality.
 const fixture = {
   format: "lct.threads", format_version: 2, conversation_id: "youtube-ui-test",
@@ -40,6 +45,7 @@ async function open(page, mockPlayer = true) {
   });
   await page.goto("/view");
   await page.locator('input[type="file"]').setInputFiles({ name: "youtube-test.threads", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(fixture)) });
+  await page.getByRole("button", { name: "Source", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "YouTube source" })).toBeVisible();
   // Wide time-based graphs retain the existing Center recovery control.
   // Exercise that real control rather than force-clicking an off-screen node.
@@ -67,9 +73,11 @@ test("desktop node selection seeks queued and ready playback; reviewed artifact 
   await page.getByRole("button", { name: "Open exact source utterances", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await source.getByRole("button", { name: "Hide source panel", exact: true }).click();
-  await expect(source.getByLabel("Source passages")).not.toBeVisible();
-  await page.getByRole("button", { name: "0:01", exact: true }).click();
+  await expect(source).toHaveCount(0);
+  await page.getByRole("button", { name: "Source", exact: true }).click();
+  await source.getByRole("button", { name: /^0:01 / }).click();
   await expect(source.getByLabel("Source passages")).toBeVisible();
+  await page.getByRole("button", { name: "Show thread timeline" }).click();
   const timelineHandle = page.getByRole("separator", { name: "Thread timeline height" });
   const oldHeight = Number(await timelineHandle.getAttribute("aria-valuenow"));
   await timelineHandle.press("ArrowUp");
@@ -89,15 +97,16 @@ test("desktop node selection seeks queued and ready playback; reviewed artifact 
   expect(reviewed.utterances[0].speaker_name).toBe("Aditya");
   await page.goto("/view");
   await page.locator('input[type="file"]').setInputFiles(await download.path());
+  await page.getByRole("button", { name: "Source", exact: true }).click();
   await page.getByRole("button", { name: "Center", exact: true }).click();
   await page.locator(".react-flow__node").filter({ hasText: "Opening discussion" }).click();
   await expect(page.getByRole("complementary", { name: "YouTube source" })).toContainText("Aditya");
 });
 
-test("phone offers source passages beside its readable deck without page overflow", async ({ page }) => {
+test("phone offers source passages beside its graph without page overflow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await open(page);
-  await expect(page.getByTestId("mobile-deck-card")).toBeVisible();
+  await expect(page.locator(".react-flow__node")).toHaveCount(2);
   const source = page.getByRole("complementary", { name: "YouTube source" });
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks.length)).toBeGreaterThan(0);
   const transcript = source.getByLabel("Source passages");
@@ -109,12 +118,10 @@ test("phone offers source passages beside its readable deck without page overflo
   await transcript.evaluate(el => { el.scrollTop = el.scrollHeight; });
   expect(await transcript.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
   expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(390);
-  const card = await page.getByTestId("mobile-deck-card").boundingBox();
-  expect(card?.height).toBeGreaterThan(180);
-  await page.getByRole("button", { name: /^Next / }).click();
+  await source.getByRole("button", { name: /Later passage/ }).click();
   await expect(source).toContainText("Later passage");
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks.at(-1))).toBe(4900);
-  await page.getByRole("button", { name: /^Previous / }).click();
+  await source.getByRole("button", { name: /Opening passage/ }).click();
   await expect(source).toContainText("Opening passage");
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks.at(-1))).toBe(1.25);
 });
@@ -141,9 +148,9 @@ for (const width of [390, 1440]) {
     await page.goto("/view");
     const bundle = { ...fixture, media_refs: [{ ...fixture.media_refs[0], view_url: "https://evil.test/watch?v=6HmR9IaqM88" }] };
     await page.locator('input[type="file"]').setInputFiles({ name: "unsupported-media.threads", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(bundle)) });
+    await page.getByRole("button", { name: "Source", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "YouTube source unavailable" })).toBeVisible();
-    if (width === 390) await expect(page.getByTestId("mobile-deck-card")).toBeVisible();
-    else await expect(page.locator(".react-flow__node")).toHaveCount(2);
+    await expect(page.locator(".react-flow__node")).toHaveCount(2);
     await expect(page.getByRole("button", { name: "Watch the source conversation" })).toHaveCount(0);
     await expect(page.locator('a[href*="evil.test"]')).toHaveCount(0);
     expect(sourceRequests).toEqual([]);

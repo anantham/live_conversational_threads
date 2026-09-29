@@ -34,6 +34,8 @@ export default function TimelineRibbon({
   selectedNode,
   setSelectedNode,
   semanticLevel,
+  expanded,
+  onExpandedChange,
 }) {
   const compact = useMediaQuery(COMPACT_VIEWER_QUERY);
   const readerChangedCollapsed = useRef(false);
@@ -43,17 +45,18 @@ export default function TimelineRibbon({
   const [isFollowingLive, setIsFollowingLive] = useState(true);
   const [hoveredId, setHoveredId] = useState(null);
   const [highlightedThread, setHighlightedThread] = useState(null);
-  const [isCollapsed, setIsCollapsed] = useState(() =>
+  const [localCollapsed, setLocalCollapsed] = useState(() =>
     mediaQueryMatches(COMPACT_VIEWER_QUERY),
   );
+  const isCollapsed = expanded == null ? localCollapsed : !expanded;
   const [labelGutterWidth, setLabelGutterWidth] = useState(DEFAULT_LABEL_GUTTER_W);
   const [hoveredThread, setHoveredThread] = useState(null);
   const [panelHeight, setPanelHeight] = useState(null);
   const labelResizeRef = useRef(null);
 
   useEffect(() => {
-    if (!readerChangedCollapsed.current) setIsCollapsed(compact);
-  }, [compact]);
+    if (expanded == null && !readerChangedCollapsed.current) setLocalCollapsed(compact);
+  }, [compact, expanded]);
 
   const allNodes = useMemo(() => {
     const nodes = (graphData || []).flat().filter(Boolean);
@@ -190,7 +193,8 @@ export default function TimelineRibbon({
           aria-label={isCollapsed ? "Show thread timeline" : "Hide thread timeline"}
           onClick={() => {
             readerChangedCollapsed.current = true;
-            setIsCollapsed((collapsed) => !collapsed);
+            if (onExpandedChange) onExpandedChange(isCollapsed);
+            else setLocalCollapsed((collapsed) => !collapsed);
             setHoveredThread(null);
           }}
           title={isCollapsed ? "Show the thread timeline" : "Minimize the thread timeline"}
@@ -471,4 +475,6 @@ TimelineRibbon.propTypes = {
   selectedNode: PropTypes.string,
   setSelectedNode: PropTypes.func.isRequired,
   semanticLevel: PropTypes.number,
+  expanded: PropTypes.bool,
+  onExpandedChange: PropTypes.func,
 };

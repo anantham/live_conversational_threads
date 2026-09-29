@@ -347,3 +347,11 @@ ISSUES.md and WORKLOG.md are long append-only operational ledgers. This task
 adds receipts rather than restructuring history. Archive closed dated entries
 and introduce an index in a dedicated documentation change when navigation
 cost warrants it; do not mix that migration into source consolidation.
+
+## 2026-09-25 — Audio library component size
+
+IndrasNetAudioLibrary.jsx is 345 lines because listing, polling, import, and
+rendering live together. Its action state is still local to one Browse section
+and the tested flow is small. If more source types or actions are added,
+extract a useAudioSourceAction hook and keep rendering in the component;
+do not create a second processing state machine for the current feature.

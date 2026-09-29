@@ -13,6 +13,8 @@ const LEGACY_TIER_SPECS = [
 
 export default function MinimalGraphHud({
   zoomLevel,
+  hideStats = false,
+  inToolbar = false,
   clusterLevelLabel,
   displayMode,
   effectiveSemanticLevel,
@@ -61,8 +63,10 @@ export default function MinimalGraphHud({
   // padded icon at top-3 left-3, z-50) so it no longer covers the zoom % chip /
   // tier controls (#6).
   return (
-    <div className="absolute left-2 right-2 top-2 z-40 flex select-none flex-col items-stretch gap-1 whitespace-nowrap sm:left-16 sm:right-3 sm:top-3 sm:flex-row sm:items-center sm:gap-2 sm:overflow-x-auto">
-      <div className="flex min-h-11 flex-shrink-0 items-center gap-1.5 rounded-md border border-gray-200 bg-white/95 px-2.5 py-1.5 shadow-sm sm:min-h-0">
+    <div className={inToolbar
+      ? "flex min-w-0 items-center gap-2 whitespace-nowrap"
+      : "absolute left-2 right-2 top-2 z-40 flex select-none flex-col items-stretch gap-1 whitespace-nowrap sm:left-16 sm:right-3 sm:top-3 sm:flex-row sm:items-center sm:gap-2 sm:overflow-x-auto"}>
+      {!hideStats && <div className="flex min-h-11 flex-shrink-0 items-center gap-1.5 rounded-md border border-gray-200 bg-white/95 px-2.5 py-1.5 shadow-sm sm:min-h-0">
         <span className="text-[10px] font-mono text-gray-500">{Math.round(zoomLevel * 100)}%</span>
         <span className="text-[9px] text-gray-300">|</span>
         {clusterLevelLabel ? (
@@ -110,7 +114,7 @@ export default function MinimalGraphHud({
             )}
           </span>
         )}
-      </div>
+      </div>}
 
       {drilldownPath.length > 0 && (
         <div className="flex-shrink-0 flex items-center gap-1.5 text-[11px] text-gray-600 bg-white/95 border border-gray-200 shadow-sm rounded-md px-2 py-1">
@@ -237,6 +241,8 @@ export default function MinimalGraphHud({
 
 MinimalGraphHud.propTypes = {
   zoomLevel: PropTypes.number.isRequired,
+  hideStats: PropTypes.bool,
+  inToolbar: PropTypes.bool,
   clusterLevelLabel: PropTypes.string,
   displayMode: PropTypes.string.isRequired,
   effectiveSemanticLevel: PropTypes.number,

@@ -32,7 +32,7 @@ function loadPlayerApi() {
   return apiPromise;
 }
 
-export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, seekRequest, onSeekHandled }) {
+export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, seekRequest, onSeekHandled, onClose }) {
   const media = selectYouTubeRef(bundle);
   const videoId = media?.video_id;
   const videoLabel = media?.label || "Conversation recording";
@@ -179,7 +179,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
 
   return (
     <aside aria-label="YouTube source" style={compact ? undefined : {width: collapsed ? 40 : panelWidth, maxWidth: "60vw"}} className={`lct-source-panel relative flex flex-col shrink-0 overflow-hidden border-slate-200 bg-white p-2 ${compact ? "max-h-[60dvh] border-b" : "border-r pr-3"}`}>
-      <button type="button" aria-label={collapsed ? "Show source panel" : "Hide source panel"} aria-expanded={!collapsed} onClick={() => setCollapsed(value => !value)} className="mb-1 shrink-0 text-left text-xs text-slate-500">
+      <button type="button" aria-label={collapsed ? "Show source panel" : "Hide source panel"} aria-expanded={!collapsed} onClick={() => onClose ? onClose() : setCollapsed(value => !value)} className="mb-1 shrink-0 text-left text-xs text-slate-500">
         {collapsed ? (compact ? "Show source" : "›") : "Hide source"}
       </button>
       <div className={collapsed ? "hidden" : "min-h-0 overflow-y-auto"}>
@@ -229,4 +229,4 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   );
 }
 
-YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, seekRequest: PropTypes.object, onSeekHandled: PropTypes.func };
+YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, seekRequest: PropTypes.object, onSeekHandled: PropTypes.func, onClose: PropTypes.func };

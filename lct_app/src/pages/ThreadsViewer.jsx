@@ -11,6 +11,9 @@ import ThreadsFileButton from "../components/threads/ThreadsFileButton";
 import DriveThreadsGate from "../components/threads/DriveThreadsGate";
 import PublicDriveThreadsGate from "../components/threads/PublicDriveThreadsGate";
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
+import ThreadsViewerToolbar from "../components/threads/ThreadsViewerToolbar";
+import { buildViewerFindGroups } from "../components/threads/viewerFindModel";
+import DiscussionView from "../components/discussion/DiscussionView";
 import MobileConversationDeck from "../components/threads/MobileConversationDeck";
 import YouTubeSourcePanel from "../components/threads/YouTubeSourcePanel";
 import {CardDisplayProvider,CardDisplaySettings} from "../components/threads/CardDisplaySettings";
@@ -64,6 +67,13 @@ function ThreadsViewerContent() {
   const DriveOpener = new URLSearchParams(location.search).get("public") === "1"
     ? PublicDriveThreadsGate : DriveThreadsGate;
   const [bundle, setBundle] = useState(null);
+  const [viewMode, setViewMode] = useState(() => typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
+  const [overviewOpen, setOverviewOpen] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const [timelineOpen, setTimelineOpen] = useState(false);
+  const [graphToolsHost, setGraphToolsHost] = useState(null);
+  const [graphTierHost, setGraphTierHost] = useState(null);
+  const [discussionFocus, setDiscussionFocus] = useState(null);
   const [error, setError] = useState("");
   const [libraryStatus, setLibraryStatus] = useState(null);
   const [dragging, setDragging] = useState(false);
@@ -97,6 +107,26 @@ function ThreadsViewerContent() {
   const [mobileReadingPath,setMobileReadingPath]=useState("");
   const consumedRouteState = useRef(false);
   const compactViewer = useMediaQuery(COMPACT_VIEWER_QUERY);
+  const narrowViewer = useMediaQuery("(max-width: 639px)");
+
+  useEffect(() => {
+    if (!compactViewer && viewMode === "cards") {
+      setViewMode("graph");
+      setMobileMapOpen(false);
+    }
+  }, [compactViewer, viewMode]);
+
+  useEffect(() => {
+    const showLinkedDiscussion = () => {
+      if (window.location.hash.startsWith("#discussion=")) {
+        setFocusMode(false);
+        setMobileMapOpen(false);
+        setViewMode("discussion");
+      }
+    };
+    window.addEventListener("hashchange", showLinkedDiscussion);
+    return () => window.removeEventListener("hashchange", showLinkedDiscussion);
+  }, []);
 
   useEffect(() => {
     if (!focusMode) return undefined;
@@ -115,6 +145,11 @@ function ThreadsViewerContent() {
     try {
       const validated = validateThreadsArtifact(data);
       setBundle(validated);
+      setViewMode(typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
+      setOverviewOpen(false);
+      setSourceOpen(false);
+      setTimelineOpen(false);
+      setDiscussionFocus(null);
       setError("");
       setSelectedNode(null);
       setMediaNode(null);
@@ -278,6 +313,22 @@ function ThreadsViewerContent() {
     [bundle],
   );
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(flatNodes), [flatNodes]);
+  const findGroups = useMemo(() => buildViewerFindGroups(flatNodes), [flatNodes]);
+  const onFindNode = useCallback((id) => {
+    setViewMode("discussion");
+    setMobileMapOpen(false);
+    setDiscussionFocus((previous) => ({ id, requestKey: (previous?.requestKey || 0) + 1 }));
+  }, []);
+  const discussionLinkBase = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const url = new URL(location.pathname + location.search, window.location.origin);
+    if (artifactId || url.searchParams.has("src") || url.searchParams.has("driveFile")) return url.href;
+    if (!libraryStatus?.recordId) return null;
+    url.pathname = `/view/${encodeURIComponent(libraryStatus.recordId)}`;
+    url.search = "";
+    url.hash = "";
+    return url.href;
+  }, [artifactId, libraryStatus?.recordId, location.pathname, location.search]);
   // Diagnostic (cold-open blank-graph investigation): confirms MinimalGraph
   // mounts only AFTER the .threads bundle is present, with a non-empty node
   // count — distinguishes the data-ready path (blank => camera) from a
@@ -470,9 +521,43 @@ function ThreadsViewerContent() {
 
   // ---- Loaded state: the map ----------------------------------------------
   const hasThreads = Array.isArray(bundle.conversation_threads) && bundle.conversation_threads.length > 0;
-  if (compactViewer && !mobileMapOpen) {
+  const refreshFromDrive = driveFileId ? () => setDriveRefreshRequested(true) : undefined;
+  const renderedViewMode = !compactViewer && viewMode === "cards" ? "graph" : viewMode;
+  const toolbar = <ThreadsViewerToolbar
+    viewMode={renderedViewMode} modes={["graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
+    onViewModeChange={(mode) => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
+    graphToolsRef={setGraphToolsHost} graphTierRef={setGraphTierHost} findGroups={findGroups} onFindNode={onFindNode}
+    overviewAvailable={Boolean(bundle.executive_summary || focusNode?.summary)} overviewOpen={overviewOpen} onToggleOverview={() => setOverviewOpen((value) => !value)}
+    sourceAvailable={Boolean(selectYouTubeRef(bundle) || bundle.media_refs?.some((ref) => ref?.provider === "youtube"))} sourceOpen={sourceOpen} onToggleSource={() => setSourceOpen((value) => !value)}
+    timelineAvailable={flatNodes.length > 0} timelineOpen={timelineOpen} onToggleTimeline={() => setTimelineOpen((value) => !value)}
+    onDownloadTranscript={downloadTranscript}
+    onEnterFocus={() => { if (renderedViewMode === "discussion") setViewMode("graph"); setSourceOpen(false); setMobileMapOpen(false); setFocusMode(true); }}
+    onOpenLibrary={openLibrary} onOpenAnother={openAnother} onRefreshFromDrive={refreshFromDrive}
+    cardSettings={<CardDisplaySettings />} libraryStatus={libraryStatus} coverage={bundle.coverage}
+  />;
+  const viewControls = <div role="group" aria-label="Conversation view" className="flex shrink-0 gap-1 border-b border-slate-200 bg-white px-3 py-1">
+    {["graph", "discussion", ...(compactViewer ? ["cards"] : [])].map((mode) => <button key={mode} type="button"
+      aria-pressed={viewMode === mode} onClick={() => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
+      className={`min-h-11 rounded-md px-4 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700 ${viewMode === mode ? "bg-slate-800 text-white" : "text-slate-700 hover:bg-slate-100"}`}>
+      {mode[0].toUpperCase() + mode.slice(1)}</button>)}
+  </div>;
+  if (viewMode === "discussion") return <div className="flex h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden">
+    <ThreadsViewerHeader bundle={bundle} focusNode={focusNode} libraryStatus={libraryStatus} overviewOpen={overviewOpen} />
+    {toolbar}
+    <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
+      {sourceOpen && <YouTubeSourcePanel bundle={bundle} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} onClose={() => setSourceOpen(false)} />}
+      <div className="min-h-0 min-w-0 flex-1"><DiscussionView nodes={flatNodes} utterances={bundle.utterances || []} speakerColorMap={speakerColorMap} onRenameSpeaker={renameSpeaker} focusRequest={discussionFocus} linkBase={discussionLinkBase} /></div>
+    </div>
+    {flatNodes.length > 0 && <TimelineRibbon graphData={flatNodes} selectedNode={discussionFocus?.id}
+      setSelectedNode={(value) => setDiscussionFocus((previous) => {
+        const id = typeof value === "function" ? value(previous?.id) : value;
+        return id ? { id, requestKey: (previous?.requestKey || 0) + 1 } : previous;
+      })}
+      semanticLevel={hasThreads ? 1 : visibleGraphLevel} expanded={timelineOpen} onExpandedChange={setTimelineOpen} />}
+  </div>;
+  if (compactViewer && viewMode === "cards") {
     return (
-      <MobileConversationDeck
+      <div className="flex h-[100dvh] min-h-0 flex-col">{viewControls}<div className="min-h-0 flex-1 [&>div]:h-full"><MobileConversationDeck
         bundle={bundle}
         deckState={mobileDeckState}
         readingPath={mobileReadingPath}
@@ -484,31 +569,27 @@ function ThreadsViewerContent() {
         onOpenLibrary={openLibrary}
         onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
         onOpenAnother={openAnother}
-        onShowMap={(id) => {requestMapTarget(id);setMobileMapOpen(true);}}
+        onShowMap={(id) => {requestMapTarget(id);setMobileMapOpen(true);setViewMode("graph");}}
         onRenameSpeaker={renameSpeaker}
-      />
+      /></div></div>
     );
   }
 
   const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
   return (
     <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
-      {!compactViewer && !viewerFocusMode && <CardDisplaySettings />}
-      {!viewerFocusMode && (
+      {!focusMode && (!compactViewer || !mobileMapOpen || overviewOpen) && (
         <ThreadsViewerHeader
           bundle={bundle}
           focusNode={focusNode}
           libraryStatus={libraryStatus}
-          onDownloadTranscript={downloadTranscript}
-          onEnterFocus={() => setFocusMode(true)}
-          onOpenLibrary={openLibrary}
-          onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
-          onOpenAnother={openAnother}
+          overviewOpen={overviewOpen}
         />
       )}
 
-      <div className="flex min-h-0 flex-1">
-        {!compactViewer && <YouTubeSourcePanel bundle={bundle} node={selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode))} nodes={flatNodes} onRenameSpeaker={renameSpeaker} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} />}
+      {!focusMode && toolbar}
+      <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
+        {sourceOpen && <YouTubeSourcePanel bundle={bundle} node={selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode))} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onClose={() => setSourceOpen(false)} />}
       <div className="relative min-h-0 min-w-0 flex-1">
         <MinimalGraph
           graphData={flatNodes}
@@ -529,6 +610,10 @@ function ThreadsViewerContent() {
           chromeless={focusMode}
           argumentTraceFrom={argumentTraceFrom}
           setArgumentTraceFrom={setArgumentTraceFrom}
+          toolbarTarget={graphToolsHost}
+          toolbarTierTarget={graphTierHost}
+          toolbarMode
+          hideWeaknessLenses
         />
         {compactViewer && mobileMapOpen && (
           <button
@@ -538,6 +623,7 @@ function ThreadsViewerContent() {
               const next=target && mobileDeckStateForNode(buildMobileConversationDeck(flatNodes,bundle.utterances || []),target);
               if(next) setMobileDeckState(next);
               setMobileMapOpen(false);
+              setViewMode("cards");
             }}
             title="Return to conversation cards"
             aria-label="Return to conversation cards"
@@ -547,7 +633,7 @@ function ThreadsViewerContent() {
             Cards
           </button>
         )}
-        {!compactViewer && focusMode && (
+        {focusMode && (
           <button
             type="button"
             onClick={() => setFocusMode(false)}
@@ -586,8 +672,14 @@ function ThreadsViewerContent() {
         <TimelineRibbon
           graphData={flatNodes}
           selectedNode={selectedNode || mediaNode || mapTarget}
-          setSelectedNode={(id)=>{requestMapTarget(id);setSelectedNode(id);setMediaNode(id);}}
+          setSelectedNode={(value)=>{
+            const id = typeof value === "function" ? value(selectedNode || mediaNode || mapTarget) : value;
+            if (!id) return;
+            requestMapTarget(id); setSelectedNode(id); setMediaNode(id);
+          }}
           semanticLevel={hasThreads ? 1 : visibleGraphLevel}
+          expanded={timelineOpen}
+          onExpandedChange={setTimelineOpen}
         />
       )}
     </div>

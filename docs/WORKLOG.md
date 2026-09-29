@@ -1,5 +1,180 @@
 # WORKLOG
 
+## 2026-09-29 14:03 IST — PR 202 Tailnet release gate
+
+- User asked for a usable Tailnet viewer, then main merge and deployment. A
+  production frontend build is served privately through Tailscale Serve on
+  port 43192; the example viewer and artifact both returned HTTP 200. This
+  preview is tied to the running Asus session until the release is complete.
+- CI's Playwright smoke failed in five YouTube scenarios because it assumed
+  Source, the timeline, and phone Cards opened by default. The user's new
+  graph-first toolbar deliberately collapses those surfaces. A separate
+  reachable-warning defect was confirmed: invalid YouTube metadata hid the
+  Source button, so the existing explanation could not be opened.
+- `lct_app/src/pages/ThreadsViewer.jsx:531` offers Source when a YouTube media
+  reference is present, including malformed optional metadata. The existing
+  source panel then explains why playback is unavailable without loading an
+  untrusted URL. `lct_app/tests/e2e/youtube-source.spec.ts:1-160` now opens
+  Source and the timeline explicitly and tests the graph-first phone route.
+  Updated test intent reflects that behavior.
+- Local validation: five YouTube Chromium scenarios passed, one opt-in live
+  network scenario skipped; frontend production build and `git diff --check`
+  passed. Claude's dedicated ultrareview refused to start because free review
+  credits were exhausted. A read-only, tools-disabled Claude Sonnet review of
+  the exact prior PR diff returned pass with zero findings; final-head review
+  and CI must still pass before merge. The shared deploy checkout remains
+  untouched because its four unrelated files are dirty.
+
+## 2026-09-29 00:30 IST — Discussion link review follow-up
+
+- Independent xAI Grok review found a selected-button color conflict and four
+  Discussion link issues. Removed the conflicting utility in
+  ThreadsViewerToolbar.jsx:4-22. DiscussionView.jsx:24-136 now shows full
+  numbered tier names, processes each link or Find request once, announces
+  repeated copy feedback, and exposes the URL when clipboard access fails.
+  ThreadsViewer.jsx:119-127 and ViewConversation.jsx:104-111 now follow links
+  added while the page is open.
+- Test intent expanded after review to cover in-page navigation, focus stability,
+  and copy recovery. DiscussionView.test.jsx, ThreadsViewer.discussion.test.jsx,
+  and ViewConversation.loading.test.jsx exercise these behaviors with synthetic
+  data. Full frontend suite: 441 of 441; production build passes. Scoped lint
+  has zero errors and six preexisting hook warnings.
+- A second shell review found four supported edge cases. ThreadsViewer.jsx now
+  reveals the compact overview, retains focused summaries in Discussion,
+  returns Cards to Graph on viewport widening, and clears Focus when a branch
+  link arrives. ViewerFindMenu.jsx bounds and scrolls long results. Synthetic
+  route tests cover those transitions; a 390×500 browser check scrolled the
+  final Find result into view. Full frontend suite: 444 of 444; production
+  build passes; scoped lint has zero errors. Updated independent review remains
+  pending.
+- A third shell review identified compact Focus retaining the Overview header,
+  menu clipping at short heights, Source sharing the narrow canvas width, and
+  differing fallback timeline behavior. ThreadsViewer.jsx now hides the header
+  and Source during Focus, stacks Source above narrow views, and uses the same
+  timeline level and selection rule in both views. ViewerFindMenu.jsx and
+  ThreadsViewerToolbar.jsx use scrollable viewport-bound popovers with explicit
+  Close controls. Synthetic route tests cover Source, Focus, and timeline
+  parity. Browser checks reached the last More item at 390×300 and showed
+  Find, Center, and Display fully visible at 320px. The reviewer's separate
+  graph-tools clipping claim was not reproduced by that smallest check.
+- Final local validation after these changes: 446 of 446 frontend tests pass,
+  production build passes, scoped lint has zero errors (five existing
+  ViewConversation dependency warnings), and git diff --check passes.
+- Independent xAI Grok review found and prompted the supported fixes above,
+  but its included balance was exhausted before a verdict on this final diff.
+  Anthropic Claude is temporarily at its subscription session limit; Gemini
+  CLI requires unconfigured project setup. Final cross-family approval remains
+  pending. No source push, PR, merge, or deployment occurred.
+
+## 2026-09-28 23:40 IST — Conversation viewer navigation and Discussion references
+
+- The screenshot's weakness pills used missing authored argument links, not
+  factual verification. In the bundled example 47 of 47 claim branches lack
+  authored support and rebuttal links; both top arcs still match, so the
+  visual dimming looked inert. The Time order control wrapped in a narrow
+  flex menu.
+- The artifact viewer now starts Overview, Source, and Threads collapsed.
+  ThreadsViewerHeader keeps title, optional summary, and errors. The shared
+  ThreadsViewerToolbar groups Graph/Discussion, Find, Center/Display, semantic
+  tier controls, panel disclosures, and secondary file/card actions.
+  MinimalGraphHud no longer overlays graph cards or shows redundant zoom and
+  projection statistics in this viewer.
+- ViewerFindMenu and viewerFindModel offer navigable questions and selective
+  authored-link categories; a result opens the specific Discussion branch.
+  DiscussionView adds tier references, speaker tint on exact words, and stable
+  node links. Fresh artifact and saved-conversation links open Discussion at
+  the referenced branch; the existing semantic hierarchy is unchanged.
+  TimelineRibbon now accepts controlled expansion. Test intent and ADR-070
+  record the behavior.
+- Relevant changes: lct_app/src/pages/ThreadsViewer.jsx:70-129,295-312,505-662;
+  lct_app/src/pages/ViewConversation.jsx:103;
+  lct_app/src/components/MinimalGraph.jsx:1865-2130;
+  lct_app/src/components/graph/MinimalGraphHud.jsx:15-245;
+  lct_app/src/components/discussion/DiscussionView.jsx:25-255;
+  lct_app/src/components/threads/ThreadsViewerHeader.jsx:1-28,
+  ThreadsViewerToolbar.jsx:1-75, ViewerFindMenu.jsx:1-37,
+  viewerFindModel.js:1-31, YouTubeSourcePanel.jsx:1-145;
+  lct_app/src/components/TimelineRibbon.jsx:66-211 and focused tests.
+- Validation: 439 of 439 frontend tests, production build, scoped lint with
+  zero errors, and browser checks at 1280px and 390px. Find reached a
+  specific branch; a fresh linked page reopened it. There were no page
+  errors or horizontal overflow. Independent AI review pending.
+
+## 2026-09-28 22:45 IST — Discussion speaker clarity and overlap check
+
+- User observation: the earlier Discussion view hid speaker color inside expanded
+  utterances and exposed raw `SPEAKER_00/01` labels. Hypothesis: a visible key,
+  contributor avatars, and the existing name correction path would make speaker
+  identity readable without changing semantic extraction. The synthetic UI test
+  and live browser check supported that hypothesis.
+- Inspected only metadata and links of the bundled conversation, without copying
+  transcript text: 56 moments, 11 with two idea parents, 37 containing both
+  speakers, and 1,263 of 1,263 utterances attached to exactly one moment.
+  One exchange can therefore appear in multiple idea branches, but the current
+  artifact does not encode per-utterance multi-idea attribution.
+- `lct_app/src/components/discussion/DiscussionView.jsx:11-169` now shows a
+  labeled speaker key, contributor avatars and accessible names on collapsed
+  branches, readable diarization placeholders, and an artifact name form.
+  `lct_app/src/pages/ThreadsViewer.jsx:487` wires the existing local rename
+  callback. `DiscussionView.test.jsx` checks collapsed cues, naming, named
+  rows without IDs, and one exchange shared by three ideas; test intent and
+  ADR-070 document the presentation contract. `ISSUES.md` tracks finer
+  attribution as a nonblocking extraction question.
+- Final validation: 8/8 focused UI tests, scoped ESLint, production build,
+  and desktop/phone browser checks passed. A fresh 375px browser session
+  submitted a name through the actual artifact viewer; both the key and an
+  exact utterance five levels deep updated. No page error, raw diarization ID,
+  or horizontal overflow appeared.
+- Anthropic Claude Opus read-only second-pass verdict: PASS. The first review
+  identified missing-ID name fallback and inaccessible branch labeling; both
+  were fixed and tested. Its rename concern was falsified by the actual browser
+  path, and the proposed cycle concern by the existing strict descending-level
+  link rule. The final review accepted both counterchecks. Exact reviewed packet
+  SHA256: 240D91821CF805FEA910B1AE5D768B464FBC785C61CE9D2153CB291E267E9BEF.
+  This entry's validation update followed the reviewer request; source code is
+  unchanged after its PASS.
+
+## 2026-09-25 17:03 IST - Independent audio/Discussion review complete
+
+- Anthropic Claude Opus 5.5 approved the exact LCT staged diff and, under a
+  separate grant, the exact TemporalCoordination diff. Receipt and packet hashes:
+  docs/reviews/2026-09-25-indrasnet-audio-discussion.md. No unresolved overclaim.
+- Final validation: 427/427 frontend tests, 32/32 scoped backend tests,
+  production build, scoped lint with zero errors; three synthetic saved
+  conversation fixtures and Browse flows were exercised at desktop/phone widths.
+- No live private content or source deployment was involved. Nonblocking
+  follow-ups and review proof limits are in the receipt and ISSUES.md.
+
+## 2026-09-25 16:10 IST — IndraSNet audio Browse and Discussion view (local)
+
+- Decision: ADR-070 records the existing semantic hierarchy as the Discussion
+  tree; Graph remains default. Shared memberships link to one branch.
+- LCT backend: conversations_api.py enforces owner scope on saved utterances;
+  indrasnet_audio_api.py exposes metadata/status/process/import and validates
+  RawTurnsPayloadV1 before calling existing turn persistence; backend.py
+  registers the router.
+- LCT frontend: IndrasNetAudioLibrary.jsx adds search, explicit processing,
+  truthful stage/elapsed status, retry and import to Browse; DiscussionView
+  and its model add collapsible hierarchy/utterance reading to saved and
+  artifact viewers. No transcript text enters the catalog list.
+- Intent and tests: tests/intent/discussion-view.md,
+  lct_python_backend/tests/intent/indrasnet-audio-library.md, related UI and
+  route tests. Full frontend 427/427, build pass, backend scoped 32/32;
+  Playwright opened three saved fixture conversations at 1280px and 375px,
+  expanded Discussion and exercised synthetic Browse processing/search.
+- Review repair: repeated import finds the owner's existing conversation and
+  keeps its edited turns and graph intact; graph-free conversations can still
+  extract. The bridge verifies the requested source group and clears any
+  sibling-supplied conversation ID. Saved Discussion distinguishes loading and
+  failed evidence from a genuinely empty branch.
+- Cross-repo IndraSNet audio catalog implementation and its validation are
+  recorded in that repository's WORKLOG. Live private recordings were not
+  read or processed; activation awaits deployment.
+- Existing runner issue: normal Windows sandbox command launch still fails
+  OS206; reviewed escalated shell calls allowed the local validation. Global
+  runner configuration was not changed.
+
+
 ## 2026-09-11 — Grafana datasource-plugin processes leaked on health-watchdog restart (RESOLVED)
 
 - **Symptom:** Host commit charge climbed to 98.6% (RAM 98-99%) for days,
@@ -6257,3 +6432,11 @@ User observed an empty desktop transcript until node selection, with only the cu
   not a complete recording/import drain check; activation needs an agreed idle
   window. No runtime restart, bot join, processing backfill or production write
   occurred during this integration. Private owner work remains untouched.
+
+## 2026-09-25 15:20 IST — IndraSNet browse and Discussion view investigation
+
+- Read the LCT Browse, saved conversation, `.threads` viewer, raw-turn import, utterance API, graph projection, ADR-062, and UI design contract; read IndraSNet's Meet raw-turn adapter and audio storage/catalog routes in TemporalCoordination. No product source files changed.
+- Existing LCT `POST /api/import/turns` and `/turns/extract` already provide stable owner/group mirroring and graph extraction. Browse lists browser-local artifacts and saved LCT conversations; IndraSNet has a Meet raw-turn route but no unified browse/search catalog across its `items` and `media_items` audio stores. The proposed catalog needs typed source keys and explicit transcript state.
+- Saved conversations already offer Graph and Transcript tabs; `.threads` uses a separate compact card view. ADR-062 preserves overlapping semantic membership, so a Discussion projection must preserve secondary links and exact utterance provenance rather than derive speaker replies from chronology.
+- `conversations_api.py:451-472` lacks the owner check used at lines 106-114. Logged as a security-sensitive prerequisite in `ISSUES.md`; no participant data, live database, credentials, or recording was accessed. The human architecture choice about semantic hierarchy versus new reply extraction is pending.
+- The Windows sandbox helper still fails before ordinary command launch with OS error 206. Reviewed shell execution works for repository diagnostics; no global sandbox configuration or app binary was changed.
