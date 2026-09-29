@@ -8,7 +8,7 @@ import { fileURLToPath } from 'url';
  * Test Intent
  * - Keep `/browse` a stable local-first library even when no backend answers.
  * - Open `.threads` from Browse without a mobile-hostile `accept` filter.
- * - Remember a valid artifact on this device and reopen it by stable `/view/:id` URL.
+ * - Remember a valid artifact in Browse and reopen it by stable `/view/:id` URL.
  * - Preserve visible Library metadata in each conversation button's accessible name.
  * - Keep `/view` as the recoverable standalone opener for drag-drop and bad files.
  * - Accept a `.threads` drop anywhere on `/browse`, not only in the standalone opener.
@@ -17,7 +17,8 @@ import { fileURLToPath } from 'url';
  *   while retaining names in the speaker-colour legend.
  * - Keep the conversation overview and thread timeline independently collapsible.
  * - Route Drive-backed links to a Google authorization gate rather than the upload prompt.
- * - Reopen a previously validated Drive artifact without another Google prompt.
+ * - Reopen a previously validated Drive artifact without another Google prompt;
+ *   its refresh action remains available under More.
  */
 //
 // Included in BOTH configs: the default (local) run blocks /api/* to force the
@@ -63,7 +64,8 @@ test.describe('.threads opener (public recipient path)', () => {
     await page.goto('/browse', { waitUntil: 'domcontentloaded' });
     await page.locator('input[type="file"]').setInputFiles(FIXTURE);
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText('Saved on this device')).toBeVisible();
+    await page.goto('/browse', { waitUntil: 'domcontentloaded' });
+    await expect(page.getByRole('button', { name: /E2E fixture conversation.*3 nodes/ })).toBeVisible();
 
     await page.evaluate(async () => {
       const request = indexedDB.open('lct_threads_library', 1);
@@ -90,7 +92,8 @@ test.describe('.threads opener (public recipient path)', () => {
     await page.goto('/view?driveFile=abc_DEF-123456', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole('heading', { name: 'Open this conversation in Threads' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: /Refresh/ })).toBeVisible();
+    await page.getByText('More', { exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Refresh from Drive' })).toBeVisible();
     expect(googleRequests).toBe(0);
   });
 
@@ -124,10 +127,16 @@ test.describe('.threads opener (public recipient path)', () => {
     await expect(input).toHaveCount(1);
     expect(await input.getAttribute('accept')).toBeNull();
 
-    await input.setInputFiles(FIXTURE);
+    const summary = 'Synthetic overview for the collapsed-panel test.';
+    await input.setInputFiles({
+      name: 'sample.threads',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({ ...JSON.parse(FIXTURE_JSON), executive_summary: summary })),
+    });
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByRole('button', { name: /Transcript/ })).toBeVisible();
-    await expect(page.getByText('Saved on this device')).toBeVisible();
+    await page.getByText('More', { exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Download transcript' })).toBeVisible();
+    await page.getByRole('button', { name: 'Close', exact: true }).click();
     const conversationCards = page.locator('.lct-conversation-node');
     await expect(conversationCards).toHaveCount(3);
     await expect(conversationCards.getByText('Hello, this is a synthetic fixture.')).toBeVisible();
@@ -138,14 +147,13 @@ test.describe('.threads opener (public recipient path)', () => {
     ).toHaveCount(0);
     await expect(conversationCards.locator('[data-speaker-id="Speaker One"]')).toHaveCount(1);
 
-    await page.getByRole('button', { name: 'Hide conversation overview' }).click();
-    await expect(page.locator('header.t-acc')).toHaveAttribute('data-open', 'false');
-    await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Show conversation overview' })).toBeVisible();
-    await page.getByRole('button', { name: 'Show conversation overview' }).click();
+    await expect(page.getByText(summary)).toHaveCount(0);
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await expect(page.getByText(summary)).toBeVisible();
+    await page.getByRole('button', { name: 'Overview', exact: true }).click();
+    await expect(page.getByText(summary)).toHaveCount(0);
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible();
 
-    await page.getByRole('button', { name: 'Hide thread timeline' }).click();
     await expect(page.locator('section.t-acc')).toHaveAttribute('data-open', 'false');
     const timelinePanel = page.locator('section.t-acc .t-acc-panel');
     await expect(timelinePanel).toHaveAttribute('inert', '');
@@ -154,6 +162,8 @@ test.describe('.threads opener (public recipient path)', () => {
     await expect(page.getByRole('button', { name: 'Show thread timeline' })).toBeVisible();
     await page.getByRole('button', { name: 'Show thread timeline' }).click();
     await expect(page.locator('[data-testid="thread-label-gutter"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Hide thread timeline' }).click();
+    await expect(page.locator('section.t-acc')).toHaveAttribute('data-open', 'false');
 
     await page.goto('/browse', { waitUntil: 'domcontentloaded' });
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
@@ -169,7 +179,6 @@ test.describe('.threads opener (public recipient path)', () => {
     await page.goto('/browse', { waitUntil: 'domcontentloaded' });
     await page.locator('input[type="file"]').setInputFiles(FIXTURE);
     await expect(page.getByRole('heading', { name: LOADED_TITLE })).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText('Saved on this device')).toBeVisible({ timeout: 15000 });
 
     await page.goto('/browse', { waitUntil: 'domcontentloaded' });
     await expect(

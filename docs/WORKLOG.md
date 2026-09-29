@@ -1,5 +1,27 @@
 # WORKLOG
 
+## 2026-09-29 14:14 IST — Post-deploy opener smoke after PR 202
+
+- PR 202 merged to main as `8e056e5`; Vercel production served the new viewer,
+  and the Tailnet example viewer and artifact returned HTTP 200. The public
+  post-deploy smoke then failed three tests that still required the deliberately
+  removed “Saved on this device” header message. Hypothesis H1 (0.95): these
+  checks describe the old viewer chrome, while IndexedDB and Browse still work;
+  predicted a synthetic file would reappear as a Browse button after navigation.
+  H2 (0.05): local persistence broke; predicted no such Browse button.
+- The live Chromium replay confirmed H1: Browse showed the saved fixture and
+  its stable deep link reopened. `lct_app/tests/e2e/prod-threads-opener.spec.js`
+  now verifies Browse persistence, opens Download transcript and Refresh from
+  Drive through More, and checks Overview/Threads start collapsed and expand
+  through their current controls. The first replay found one more old Refresh
+  assertion; after adjusting it, all eight opener scenarios passed against the
+  deployed production URL. The full nine-test production suite passed.
+- `ISSUES.md` updates the already-tracked frontend dependency audit: this
+  worktree's `npm ci` reported 12 advisories; dependency changes are outside
+  this browser-smoke repair. No production source change or backend restart was
+  made in this follow-up. The four unrelated dirty files in the shared deploy
+  checkout were preserved.
+
 ## 2026-09-29 14:03 IST — PR 202 Tailnet release gate
 
 - User asked for a usable Tailnet viewer, then main merge and deployment. A
