@@ -1327,6 +1327,9 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - `npm ci` reports 10 dependency vulnerabilities (1 low, 8 high, 1 critical).
   This work did not run an unreviewed `npm audit fix`; triage direct versus
   transitive exposure and upgrade through a separate dependency PR.
+- 2026-09-29 follow-up: a fresh `npm ci` reports 12 (1 low, 2 moderate,
+  8 high, 1 critical). Impact and recommendation remain the same; this
+  smoke-test repair does not change the dependency graph.
 - The production build reports a ~1.15 MB JavaScript chunk (>500 KB warning).
   No regression was introduced by the small label-only viewer change, but route
   or feature-level dynamic imports should be evaluated separately.
