@@ -1,6 +1,6 @@
 # Parallel Site build and identity endpoint — independent review
 
-Status: source independently approved; native publication and actual ChatGPT sign-in verification are still pending. This is milestone 1 infrastructure for the staged migration, not completion of private recordings, Soniox, cloud intelligence or the public-domain cutover.
+Status: source independently approved and the parallel Site is published. The browser has passed ChatGPT sign-in and reached the app; authenticated identity response verification is pending. This is milestone 1 infrastructure for the staged migration, not completion of private recordings, Soniox, cloud intelligence or the custom-domain cutover.
 
 ## Exact source scope
 
@@ -35,6 +35,18 @@ No findings were fixed or rejected, and no disputed finding requires arbitration
 
 ## Remaining native evidence
 
-- Publish the exact approved standalone source and verify terminal deployment success.
+- Published standalone source commit `1b4fe21847a5c29787b60a69197ac05a104131aa`: deployment `appgdep_6abe9d6fe3a481919aa28d05b9f6e334` returned terminal succeeded at the parallel Site URL. Its archive contained compiled app assets, Worker, favicon and hosting metadata only; no owner artifacts or history.
 - Verify actual managed sign-in, the resulting identity response and caller identity-header stripping. Anonymous and service access cannot stand in for a signed-in user.
 - Reforecast milestone 1 after this checkpoint. Storage, Soniox, private-network-independent creation/exploration and spending gates remain subsequent work.
+
+## Follow-up: check both build outputs
+
+The initial output check covered the client only. The standalone export had already limited public files to favicon, so the published archive contained no unrelated artifacts. The canonical Worker configuration nevertheless inherited Vite's public-directory copy. Disabled that copy and made the build refuse unexpected entries in either client or Worker output; added the contract to test intent.
+
+Exact three-file packet: 7,972 bytes, SHA256 `57ce694f40c2a1a7cccbfd07ea69d59937b30dfe80a027989070bb527921c990`. Google Gemini 3.1 Pro (`gemini-3.1-pro-low`) through authenticated AGY returned **PASS**, no findings, one turn in 6.5 seconds, zero tool calls. The checked all-tool denial hook remained active. No credentials or private artifacts were sent; existing credits only. No findings were fixed or rejected.
+
+Validation: complete client/Worker build passed the new both-output gate (client 22.40 seconds, Worker 39 ms); compiled Worker/ambient-marker smoke, scoped lint and whitespace passed. Required full-suite pre-push validation is recorded in the worklog after completion. This follow-up has not yet been republished at this note's checkpoint.
+
+## User-directed public access checkpoint
+
+The user explicitly clarified public app access with opt-in ChatGPT identity for private storage. Native access mode was changed from custom to public (revision 2). Anonymous HTTP checks returned root 200, session 401/authenticated false, and forged caller identity 401/authenticated false. Browser login reached the app, but navigation to the raw JSON session endpoint was blocked by the browser client; a product session indicator will verify identity without relying on that navigation. No public save route, real data, paid provider or domain cutover is enabled.

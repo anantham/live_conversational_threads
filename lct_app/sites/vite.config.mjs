@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 export default defineConfig({
   // This artifact never consumes local environment files or browser secrets.
   envDir: false,
+  publicDir: false,
   build: {
     outDir: 'dist/server',
     target: 'es2022',
