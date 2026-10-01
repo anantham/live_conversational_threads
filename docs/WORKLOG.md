@@ -6565,3 +6565,18 @@ User observed an empty desktop transcript until node selection, with only the cu
   unavailable for the previously recorded capacity/project reasons. No source
   packet was sent; no independent verdict or findings exist. Preserve PR205 as
   a draft; no merge, production deployment, or review waiver is authorized here.
+
+## 2026-10-02 01:23 IST — Corrected Source preserved for review
+
+- Source commit d3fc09a is pushed on codex/viewer-source-and-controls in draft
+  PR205. Required push gate passed 494/494 frontend tests in 79 files. The final
+  production build includes the pending-Play guard and passes; regular browser
+  regressions are 8/8 plus a separate real YouTube test 1/1. Scoped lint is clear.
+- Prepared the updated, unsent review packet for 59dea4c..d3fc09a: 46 tracked
+  code/test/spec/dependency files, 263283 bytes, SHA-256
+  6605a2a465ffd845994efa77d13ebf35ab8c8926515c1490416a401944863a75.
+  Scan found no common credential-pattern matches; recordings/transcripts,
+  screenshots, network diagnostics, credentials and operational logs excluded.
+  Exact inventory and release-blocked status are in the review receipt.
+- Reviewer access has not changed, no review packet was transmitted, and no
+  non-OpenAI verdict exists. Public production remains on the previous release.

@@ -2,7 +2,8 @@
 
 Date: 2026-10-02
 Base: `59dea4c`
-Source commit: `d78fe83`
+Initial source commit: `d78fe83`
+Latest source commit: `d3fc09ae27f2fc7727de9f803095672f28ef5310`
 Verdict: **Not reviewed; release blocked.**
 
 ## Prepared source boundary
@@ -41,3 +42,36 @@ There are no independent findings to accept, fix, reject, or arbitrate. A projec
 selection or restored subscription capacity is required before an eligible family
 can review this exact snapshot. No new project, credential change, or paid API
 spend was introduced. Draft preservation is not a merge or production release.
+
+## Latest snapshot — blank-player correction
+
+The latest local review packet supersedes the original packet above. Its exact
+range is `59dea4c..d3fc09a`, 46 tracked files, 263,283 UTF-8 bytes, SHA-256
+`6605a2a465ffd845994efa77d13ebf35ab8c8926515c1490416a401944863a75`.
+Its inventory is reproducible with `git diff --name-only 59dea4c..d3fc09a --
+lct_app/src lct_app/tests lct_app/package.json lct_app/package-lock.json
+tests/intent/viewer-exploration.md
+docs/adr/ADR-071-viewer-local-search-and-readable-thread-navigation.md`.
+The exact local inventory is retained beside the ignored packet. No common
+credential-pattern matches were found. The original data exclusions still apply;
+this packet has not been transmitted and there is no independent review verdict.
+
+The latest correction adds visible app Play/Pause, loading/failure inside the
+video area, blocked-playback recovery, retained retry cues, and late-readiness
+rejection. It restores unverified-recording status in the text fallback. Tests
+exercise the public Source behavior rather than a private lifecycle helper.
+
+Final validation of the latest source:
+
+- Required frontend push gate: 494/494 tests, 79 files.
+- Regular Chromium Source/reading browser regressions: 8/8.
+- Separately enabled real YouTube browser regression: 1/1.
+- Scoped lint: zero errors; production build passes (2330 modules).
+- Actual local public-artifact interaction: app Play at 37:52 advanced to
+  2272.478175s with paused=false and readyState=4; app Pause worked. Blocking
+  the embed produced an error, Retry, and the t=2272s fallback instead of an
+  unexplained blank. Both runs had zero page errors. Screenshots remain local.
+
+Anthropic/xAI capacity and Google's project-selection requirements still block
+the independent gate. No finding has been approved, fixed, rejected, or disputed
+by an independent reviewer. PR205 remains a draft; this is not a release receipt.
