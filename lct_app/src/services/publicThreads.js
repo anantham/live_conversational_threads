@@ -51,5 +51,8 @@ export async function publicRequest(path, { method = "GET", capability, payload,
 export function downloadRemovalKey(capability) {
   const blob = new Blob([JSON.stringify({ site: window.location.origin, ...capability }, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob), anchor = document.createElement("a");
-  anchor.href = url; anchor.download = "threads-removal-key.json"; anchor.click(); URL.revokeObjectURL(url);
+  anchor.href = url; anchor.download = "threads-removal-key.json";
+  document.body.appendChild(anchor); anchor.click(); anchor.remove();
+  // Let the browser consume the URL before releasing this small local blob.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

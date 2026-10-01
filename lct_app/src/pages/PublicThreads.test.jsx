@@ -133,4 +133,27 @@ describe("Guest public library", () => {
     expect(fetch.mock.calls.filter(([, options]) => options.method === "POST")).toHaveLength(0);
     store.mockRestore();
   });
+
+  it("offers exact recoverable key details and exports a complete local file with a usable object URL", async () => {
+    await mount(); await choose(); await permit(); await click("Publish public copy");
+    const capability = JSON.parse(localStorage.getItem("lct.public_removal_keys.v1"))[0];
+    const disclosure = [...host.querySelectorAll("summary")].find(node => node.textContent === "View removal details");
+    await act(async () => disclosure.click());
+    const idInput = host.querySelector('input[id^="saved-id-"]'), keyInput = host.querySelector('input[id^="saved-key-"]');
+    expect(idInput.value).toBe(capability.id); expect(keyInput.value).toBe(capability.key);
+    expect(keyInput.type).toBe("password");
+    await click("Show removal key"); expect(keyInput.type).toBe("text");
+    await click("Hide removal key"); expect(keyInput.type).toBe("password");
+    vi.useFakeTimers();
+    let blob, connected;
+    vi.stubGlobal("URL", class extends URL { static createObjectURL(value) { blob = value; return "blob:synthetic-removal"; } static revokeObjectURL = vi.fn(); });
+    const anchor = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function () { connected = this.isConnected; });
+    await click("Download removal key");
+    const fileText = new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsText(blob); });
+    expect(connected).toBe(true); expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    // FileReader delivery is also scheduled by the fake clock.
+    await act(async () => vi.advanceTimersByTimeAsync(1000)); expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:synthetic-removal");
+    expect(JSON.parse(await fileText)).toEqual({ site: window.location.origin, ...capability });
+    anchor.mockRestore();
+  });
 });
