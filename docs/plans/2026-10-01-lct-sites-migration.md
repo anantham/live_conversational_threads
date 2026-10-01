@@ -1,5 +1,50 @@
 # LCT Sites migration — staged delivery
 
+## Progress tracker — updated 2026-10-01 22:45 IST
+
+**Current stage:** Worker compatibility complete; managed Sites identity and a runnable parallel Site are next. Nothing has been deployed or connected to real recording data. Source and review evidence are pushed on `codex/lct-sites-serverless`.
+
+**Tentative ETA for the core cloud beta:** 24–64 hours of remaining active engineering effort, or approximately **3–8 focused workdays** at eight active hours per day. This is a planning range based on the remaining integration work, not a measured forecast or a promise of a calendar date. Pauses between work sessions and waits for access, funding decisions, platform eligibility, DNS or certificates are additional. Reforecast after milestone 1 proves the real hosting and identity path; no comparable delivery timing history exists yet.
+
+The beta means a visitor can sign in, record with Soniox, save private audio/transcripts/graphs, reopen and explore their own conversations, and export or delete them while the owner's computers are off. A consent/retention policy, usage limits and recovery behavior are part of that gate. Attendee meeting bots, old-recording migration and ChatGPT-subscription inference are tracked separately.
+
+| Milestone | Status | Planning effort remaining | Completion evidence |
+| --- | --- | --- | --- |
+| 0. Sites Worker adapter | **Done** | — | Streaming proxy, runtime build and public-interface tests pass; AGY Gemini independent review PASS, no findings. |
+| 1. Runnable parallel Site and sign-in | **Next** | 3–8 active hours | Complete frontend/Worker asset bundle runs at a private parallel URL. Verify managed identity and intended audience/custom-domain support; anonymous recording API requests fail. No credentials or owner history in the source package. |
+| 2. Private recording storage | Planned | 6–16 active hours | D1 metadata and private R2 audio are associated with the trusted signed-in owner. Upload/list/playback/transcript/graph/export/delete enforce ownership. Anonymous and second-user access are denied. Consent, retention and deletion are defined and tested with synthetic data. |
+| 3. Soniox live transcription | Planned | 4–10 active hours | Browser microphone streams using authenticated, bounded temporary keys. Long-lived key stays server-side; session duration, per-user quotas and global budget are enforced before real billable traffic. Stop, failure and reconnect paths are observable. |
+| 4. Cloud conversation intelligence and exploration | Planned | 6–16 active hours | Text extraction uses a supported cloud inference route. New graphs/transcripts save, reopen and render from authorized cloud storage. The core journey makes no private/Tailscale/local backend calls. Live status, retry and cancellation work. |
+| 5. Release checks and domain cutover | Planned | 5–14 active hours | Full signed-in journey passes with private-network access blocked, including cross-user denial, refresh/reopen, slow/failure/retry/cancel and narrow-screen checks. Each changed source slice has independent non-OpenAI approval. Controlled billable smoke stays within agreed limits. Verify custom domain/certificate and rollback before replacing the working deployment. |
+
+These milestone ranges sum to 24–64 active hours; they overlap neither each other nor external waiting time. Review and proportionate validation are included. No percentage complete is assigned because the milestones differ substantially in size and risk.
+
+### Next checkpoint
+
+Finish milestone 1 first and show the parallel URL, verified sign-in behavior and any access constraints. Then replace the broad beta ETA with the evidence from that checkpoint. Prepare synthetic storage and transcription work while any external access decision is pending; do not activate paid public use before its limits are agreed.
+
+### Decisions and waits that affect the calendar
+
+- Confirm native Sites sign-in works for the intended public audience and custom domain in the actual deployment. This is unverified, not a confirmed failure. If it fails, present a supported identity/hosting alternative before changing architecture.
+- Choose the owner's global Soniox spending cap, per-user/session limits, recording retention and the allowed audience before activation. The discovered local key is not yet configured as a server secret.
+- Use the supported API-key/BYOK text inference path for the first beta. An owner-funded public API path needs an agreed spending cap; ChatGPT-plan usage must not hold up the first release while eligibility remains unresolved.
+- Allow for non-OpenAI reviewer availability. AGY successfully reviewed the foundation through existing credits; approval of future diffs still needs an available eligible reviewer.
+- Verify custom-domain support and the existing DNS control before cutover; keep the working deployment available for recovery.
+
+### Follow-on work
+
+| Item | Status | Estimate / next evidence |
+| --- | --- | --- |
+| Hosted Attendee meeting bots | Deferred from core beta | Tentatively 2–5 additional focused workdays for a hosted-provider integration after provider/access selection. Self-hosting is not included in this range. Verify bot lifecycle, webhook identity, audio export and recovery before committing to a date. |
+| ChatGPT-account-funded text intelligence | Eligibility-dependent | Calendar ETA unknown until the hosted application's supported access is confirmed. Measure implementation scope after approval. The documented plan flow excludes audio/transcription. |
+| Existing recordings/history migration | Deferred | ETA unknown until an explicitly selected dataset, authorization and compatibility/export audit establish the scope. No private history has been inspected. |
+
+### How progress will be maintained
+
+During active migration work, update this tracker when a milestone starts, passes its completion gate, becomes blocked or changes the ETA. Each update will state the last completed gate, current work, next check, remaining effort range and any external wait. Keep an append-only note in `docs/WORKLOG.md` and link validation/review evidence. The latest estimate lives here; the earlier planning sections below preserve context.
+
+For live/import UI waits, show the current stage and elapsed time; use measured history for remaining-time estimates and show "Time remaining unknown" when no credible estimate exists. Record bounded, payload-free timings and outcomes so later estimates can improve. This roadmap does not schedule unattended work or notifications.
+
 ## Objective and evidence
 
 The public Threads domain should let visitors create and explore new conversations while the owner's computers are off. Existing owner recordings and history are outside the first migration slice.
