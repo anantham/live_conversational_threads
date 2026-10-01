@@ -3,9 +3,11 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import YouTubeSourcePanel from "./YouTubeSourcePanel";
 
-// Test intent: source clicks seek; playback and paused/backward scrubs update
-// the visible highlight without seeking back. Gaps clear the highlight and
-// out-of-node passages remain visible. Unmount stops polling.
+// Test intent:
+// - Source clicks seek; playback and paused/backward scrubs update highlights without seeking back.
+// - Speaker names appear beside timestamped context, save by stable speaker ID, and export the reviewed bundle.
+// - Transcript passages size and scroll automatically without a height slider; YouTube fallback stays visible.
+// - Video and transcript disclosures remain independent; unmount stops polling.
 let container, root, options, player, time, playerState;
 const utterances = [
   {id: "a", text: "First sentence", speaker_id: "A", timestamp_start: 10, timestamp_end: 15},
@@ -57,6 +59,7 @@ it("opens with the full transcript and video ready without a node selection",asy
  expect(player.seekTo).not.toHaveBeenCalled();
  expect(highlight()).toContain("First sentence");
  expect(container.querySelector('[aria-label="Source passages"]').querySelectorAll('button')).toHaveLength(3);
+ expect(container.querySelector('a[href$="&t=10s"]')?.textContent).toContain("Open on YouTube at");
  expect(container.textContent).not.toContain("Select a node");
  expect(container.textContent).not.toContain("Watch the source");
 });
@@ -116,14 +119,14 @@ it.each([true, false])("synchronizes both ways, compact=%s", async (compact) => 
   act(() => {time = 52; options.events.onStateChange();});
   expect(highlight()).toContain("Another topic");
   expect(container.textContent).not.toContain("Playing elsewhere");
-  expect(container.querySelector('a')).toBeNull();
+  expect(container.querySelector('a[href*="&t="]')).not.toBeNull();
   expect(player.seekTo.mock.calls.length).toBe(seeks);
   act(() => root.unmount());
   expect(vi.getTimerCount()).toBe(0);
   root = createRoot(container);
 });
 
-it("offers independent video/transcript collapse and adjustable transcript height", async () => {
+it("offers independent video/transcript collapse and automatically sized passage scrolling", async () => {
   await act(async () => root.render(<YouTubeSourcePanel bundle={bundle} node={node} nodes={[node]} compact />));
   const sections = container.querySelectorAll('aside details');
   expect(sections).toHaveLength(2);
@@ -131,8 +134,9 @@ it("offers independent video/transcript collapse and adjustable transcript heigh
   expect(sections[1].querySelector('summary').textContent).toBe("Transcript");
   sections[0].open = false;
   expect(sections[1].open).toBe(true);
-  expect(container.querySelector('[aria-label="Transcript height"]')).not.toBeNull();
-  expect(container.querySelector('[aria-label="Source passages"]').style.maxHeight).toBe("80px");
+  expect(container.querySelector('[aria-label="Transcript height"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Source passages"]').className).toContain("overflow-y-auto");
+  expect(container.querySelector('[aria-label="Source passages"]').style.maxHeight).toBe("");
 });
 
 it("reopens the source and seeks in place from an evidence request", async () => {
@@ -154,4 +158,44 @@ it("consumes inline requests and marks the selected node's passages",async()=>{
  expect(handled).toHaveBeenCalledOnce();
  expect(time).toBe(20);
  expect(container.querySelectorAll('[data-node-source="true"]')).toHaveLength(2);
+});
+
+it("explains a stalled player, retries at the retained passage, and clears wait timers", async () => {
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]} seekRequest={{seconds:50}}/>));
+ expect(container.querySelector('[role="status"]').textContent).toContain("Preparing the video player");
+ expect(container.textContent).toContain("Time remaining unknown");
+ act(()=>vi.advanceTimersByTime(20000));
+ expect(container.querySelector('[role="alert"]').textContent).toContain("did not become ready");
+ await act(async()=>[...container.querySelectorAll('button')].find(button=>button.textContent==="Retry video").click());
+ act(()=>options.events.onReady());
+ expect(time).toBe(50);
+ expect(container.querySelector('[role="alert"]')).toBeNull();
+ expect(container.textContent).toContain("Press Play");
+ act(()=>root.unmount());
+ // JSDOM queues native details toggle events; flush them before checking application timers.
+ act(()=>vi.advanceTimersByTime(1));
+ expect(vi.getTimerCount()).toBe(0);
+ root=createRoot(container);
+});
+
+it("cancels SDK loading when Source closes", async () => {
+ delete window.YT;
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]}/>));
+ expect(container.querySelector('[role="status"]').textContent).toContain("Loading YouTube");
+ expect(document.querySelector('script[src="https://www.youtube.com/iframe_api"]')).not.toBeNull();
+ act(()=>root.unmount());
+ expect(document.querySelector('script[src="https://www.youtube.com/iframe_api"]')).toBeNull();
+ act(()=>vi.advanceTimersByTime(0));
+ expect(vi.getTimerCount()).toBe(0);
+ root=createRoot(container);
+});
+
+it("retains the observed playback position when retrying an embed failure", async () => {
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]}/>));
+ act(()=>options.events.onReady());
+ act(()=>{time=22;vi.advanceTimersByTime(250);options.events.onError();});
+ await act(async()=>[...container.querySelectorAll('button')].find(button=>button.textContent==="Retry video").click());
+ act(()=>options.events.onReady());
+ expect(time).toBe(22);
+ expect(highlight()).toContain("Second sentence");
 });

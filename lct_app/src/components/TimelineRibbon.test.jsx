@@ -10,6 +10,7 @@ import TimelineRibbon from "./TimelineRibbon";
  * - Keep the resting header free of persistent instructional copy.
  * - Make long thread names discoverable on hover and let readers widen the label gutter.
  * - Preserve return markers, time ticks, selection, and within-thread navigation.
+ * - Publish the selected thread's chronological authored node IDs for graph reading controls.
  */
 
 let container;
@@ -134,6 +135,23 @@ describe("TimelineRibbon render", () => {
     expect(setSelectedNode).toHaveBeenCalledTimes(1);
     const updater = setSelectedNode.mock.calls[0][0];
     expect(updater(null)).toBe("a1");
+  });
+
+  it("publishes the chosen thread path and clears it on a second click", () => {
+    const onReadingPathChange = vi.fn();
+    render({ graphData: threadedGraph, selectedNode: null, onReadingPathChange });
+    const visionLabel = [...container.querySelectorAll("button")].find(
+      (button) => !button.getAttribute("aria-label") && button.textContent.includes("vision"),
+    );
+    act(() => visionLabel.click());
+    expect(onReadingPathChange).toHaveBeenLastCalledWith({
+      threadId: "thread::vision", nodeIds: ["a1", "a2", "a3"],
+    });
+    act(() => visionLabel.click());
+    expect(onReadingPathChange).toHaveBeenLastCalledWith({ threadId: null, nodeIds: [] });
+    act(() => visionLabel.click());
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })));
+    expect(onReadingPathChange).toHaveBeenLastCalledWith({ threadId: null, nodeIds: [] });
   });
 
   it("collapses to a compact bar and expands without losing its rows", () => {

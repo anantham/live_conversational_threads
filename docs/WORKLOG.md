@@ -6462,3 +6462,64 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Saved conversations already offer Graph and Transcript tabs; `.threads` uses a separate compact card view. ADR-062 preserves overlapping semantic membership, so a Discussion projection must preserve secondary links and exact utterance provenance rather than derive speaker replies from chronology.
 - `conversations_api.py:451-472` lacks the owner check used at lines 106-114. Logged as a security-sensitive prerequisite in `ISSUES.md`; no participant data, live database, credentials, or recording was accessed. The human architecture choice about semantic hierarchy versus new reply extraction is pending.
 - The Windows sandbox helper still fails before ordinary command launch with OS error 206. Reviewed shell execution works for repository diagnostics; no global sandbox configuration or app binary was changed.
+
+## 2026-10-02 00:45 IST — Public viewer reading and local search
+
+- Worked in isolated codex/viewer-source-and-controls from origin/main 59dea4c;
+  preserved the running checkout and other worktrees. Applied Impeccable to extend
+  the current interface. User selected unique-passage speaking time and device-local
+  semantic search. ADR-071 and tests/intent/viewer-exploration.md record intent.
+- Instrument: reproduced a closed Source retaining a seek without opening;
+  key navigation was suppressed with node details open; measured card boxes
+  collided because timestamp positions did not reserve card width; speaker fills
+  divided unique IDs equally rather than measured duration. Earlier manual video
+  Play evidence did not establish the complete evidence-to-Source interaction.
+- speakerContributions.js:1-116 computes unique linked durations, completeness,
+  and percentages totaling 100. colorModes.js:430-475 uses proportional horizontal
+  bands and a single fill at >=90% dominance. DiscussionView.jsx:25-238 presents
+  shares on the existing branches and removes speaker-edit forms.
+- MinimalGraph.jsx:105-112, 750-820, 1760-1795, 2045-2055 and graphLayout.js add
+  bounded reading cards, collision packing, reserved drawer space, and visible/key
+  navigation. ConversationNode.jsx adds compact previews. TimelineRibbon.jsx and
+  graphNavigation.js carry the chosen reading path and clear it on Escape.
+  NodeDetail.jsx uses that path for Nearby moments with keyboard-accessible jumps.
+  Authored nodes, memberships, timestamps, and original transcript remain intact.
+- ThreadsViewerToolbar.jsx and CardDisplaySettings.jsx restore icons, aligned
+  disclosures, and one shared view-cycle control (also used in the compact deck).
+  ThreadsViewer.jsx:315-345, 553-582, 648-700 integrates local results and opens Source
+  for evidence seeks. SourceSpeakerEditor.jsx presents actual samples and local
+  name/export controls; TextSourcePanel.jsx retains untimed/full-transcript access.
+  YouTubeSourcePanel.jsx:15-205, 229-274 removes transcript-height adjustment and
+  handles observable loading, timeout/retry, cancellation, and safe external fallback.
+  Source sections now keep natural height and scroll without overlapping on phones.
+- conversationSearch.js and conversationSearch.worker.js:1 onward index all nodes,
+  utterances and complete source text, retaining original character ranges. The
+  on-demand worker uses pinned quantized MiniLM through Transformers.js 4.3.0.
+  ViewerFindMenu.jsx and useConversationSearch.js provide immediate lexical results,
+  explicit meaning search, stages/counts/elapsed time, cancellation, and retry.
+  searchTiming.js and sourceLoadTiming.js retain bounded operational timings only.
+- Validation: final frontend suite 488/488 in 79 files; new Playwright reading-flow
+  regressions 2/2 (desktop seven-moment navigation/evidence handoff, phone source
+  geometry); scoped ESLint zero errors (one preexisting fast-refresh warning);
+  production build passes. Focused regressions exist beside each changed component
+  and service. New e2e fixture validation failures were corrected against the actual
+  thread/edge schema before counting the successful run. A fake-timer diagnostic
+  identified a native zero-delay JSDOM toggle event; application timers still clear.
+- Actual Chromium interaction with the public artifact visited 7/7 distinct selected
+  moments; 56 rendered moment boxes had zero overlaps. An earlier player probe
+  showed the matching 37:52 seek advancing at 2273.56 seconds with readyState 4.
+  A later near-end probe observed buffering at 2.5 seconds, so it is not counted as
+  successful playback evidence. Source links and pending cues were verified separately.
+- Actual browser semantic inference returned the advertiser-incentives branches
+  for a paraphrased query. One cold run indexed 1601 chunks in ~82 seconds including
+  downloads; a second exercised failure/cancel/retry and a ~102ms warm query. These
+  are observations on this desktop, not general timing promises. Model/runtime
+  requests were GET-only with no bodies; YouTube's own playback/analytics traffic
+  was classified separately. Desktop and 390px screens had no horizontal overflow.
+  Screenshots/network diagnostics remain ignored local evidence and are excluded
+  from source publication and independent review.
+- Review probes: Anthropic weekly limit; xAI usage exhausted; Google cached OAuth
+  requires an existing project. No source packet was transmitted; review is pending,
+  no findings have been independently approved or rejected, and release remains
+  blocked by this mandatory gate. No reviewer spend, new cloud project, or credential
+  change was introduced. Nonblocking baseline warnings are logged in ISSUES.md.

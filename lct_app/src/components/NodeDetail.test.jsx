@@ -15,6 +15,7 @@ import NodeDetail from "./NodeDetail";
  * - Elapsed timestamps distinguish an unlinked conversation from a recording deep link.
  * - A source_ref-only aggregate still reveals and highlights its exact raw turns.
  * - Semantic relationships disclose whether they cite exact raw turns.
+ * - Nearby moments follow an active authored reading path and offer keyboard buttons.
  */
 
 let container;
@@ -260,5 +261,25 @@ describe("NodeDetail dialog behavior", () => {
 
     expect(container.textContent).toContain("2 cited turns");
     expect(container.textContent).toContain("no direct turn citation");
+  });
+
+  it("follows the selected thread in Nearby moments and falls back outside it", () => {
+    const onSelectNode = vi.fn();
+    const nodes = [
+      { id: "a", semantic_level: 1, node_name: "First moment" },
+      { id: "other", semantic_level: 1, node_name: "Interleaved moment" },
+      { id: "b", semantic_level: 1, node_name: "Second moment" },
+    ];
+    act(() => root.render(<NodeDetail node={nodes[0]} contextNodes={nodes} readingPathNodeIds={["a", "b"]} onSelectNode={onSelectNode} onClose={vi.fn()} />));
+    expect(container.textContent).toContain("Second moment");
+    expect(container.textContent).not.toContain("Interleaved moment");
+    const nearbyButton = container.querySelector('button[aria-label="Open nearby moment: Second moment"]');
+    expect(nearbyButton).not.toBeNull();
+    act(() => nearbyButton.click());
+    expect(onSelectNode).toHaveBeenCalledWith("b");
+
+    act(() => root.render(<NodeDetail node={nodes[1]} contextNodes={nodes} readingPathNodeIds={["a", "b"]} onSelectNode={onSelectNode} onClose={vi.fn()} />));
+    expect(container.textContent).toContain("First moment");
+    expect(container.textContent).toContain("Second moment");
   });
 });

@@ -36,6 +36,7 @@ export default function TimelineRibbon({
   semanticLevel,
   expanded,
   onExpandedChange,
+  onReadingPathChange,
 }) {
   const compact = useMediaQuery(COMPACT_VIEWER_QUERY);
   const readerChangedCollapsed = useRef(false);
@@ -113,11 +114,14 @@ export default function TimelineRibbon({
   useEffect(() => {
     if (!highlightedThread) return undefined;
     const onKey = (e) => {
-      if (e.key === "Escape") setHighlightedThread(null);
+      if (e.key === "Escape") {
+        setHighlightedThread(null);
+        onReadingPathChange?.({ threadId: null, nodeIds: [] });
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [highlightedThread]);
+  }, [highlightedThread, onReadingPathChange]);
 
   useEffect(() => {
     const onPointerMove = (event) => {
@@ -150,8 +154,11 @@ export default function TimelineRibbon({
   };
 
   const toggleThread = useCallback((threadId) => {
-    setHighlightedThread((prev) => (prev === threadId ? null : threadId));
-  }, []);
+    const next = highlightedThread === threadId ? null : threadId;
+    setHighlightedThread(next);
+    const row = next ? rows.find((candidate) => candidate.threadId === next) : null;
+    onReadingPathChange?.({ threadId: next, nodeIds: row ? row.nodes.map((node) => String(node.id)) : [] });
+  }, [highlightedThread, onReadingPathChange, rows]);
 
   // Step selection through a thread's nodes in time order, wrapping around. The
   // scroll-to-selected effect then centres the new pick. With nothing selected,
@@ -477,4 +484,5 @@ TimelineRibbon.propTypes = {
   semanticLevel: PropTypes.number,
   expanded: PropTypes.bool,
   onExpandedChange: PropTypes.func,
+  onReadingPathChange: PropTypes.func,
 };

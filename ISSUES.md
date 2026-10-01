@@ -1548,3 +1548,22 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - The saved utterance route now checks the conversation owner before returning
   rows and responds 404 for another owner or missing conversation. Public-route
   regressions passed (21/21 scoped). Pending independent review and deployment.
+
+## 2026-10-02 — Viewer validation and release prerequisites
+
+- Baseline dependency installation reports 12 vulnerabilities (1 low, 2 moderate,
+  8 high, 1 critical), both before and after adding the local search runtime.
+  This extends the existing dependency-triage entry; it is not attributed to this
+  feature. Impact: dependency maintenance risk. Nonblocking for local validation;
+  recommended next step is a separately reviewed direct/transitive dependency
+  triage rather than a blanket automatic upgrade.
+- Existing React test act-environment warnings, a CardDisplaySettings fast-refresh
+  warning, and the Vite large-chunk warning remain. All targeted lint has zero
+  errors. Impact: test/developer noise and bundle-size maintenance. Nonblocking;
+  address through the existing component and bundle decomposition work.
+- Required independent review is blocked by available reviewer access. Anthropic
+  returns a weekly limit; xAI returns exhausted usage balance; Google CLI returns
+  ProjectIdRequiredError. No implementation packet was sent to a reviewer, no
+  review verdict exists, and the viewer changes are not merged or released.
+  Recommended next step: an authorized existing Google Cloud project for the
+  cached Gemini account, or waiting for eligible subscription capacity.

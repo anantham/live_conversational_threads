@@ -103,6 +103,7 @@ export default function NodeDetail({
   onTraceAncestors,
   participantNames = [],
   contextNodes = null,
+  readingPathNodeIds = [],
   onSelectNode = null,
   artifactUtterances = null,
   mediaRefs = [],
@@ -298,15 +299,20 @@ export default function NodeDetail({
   // "In context" — for a chunk-level moment, reconstruct a mini-transcript from
   // the neighboring chunks (who said what just before/after). Used in the static
   // .threads viewer, where there's no backend/utterance feed but every chunk
-  // (with speaker + source_excerpt) is present in the graph. ±4 in graph order.
+  // (with speaker + source_excerpt) is present in the graph. Follow the
+  // selected thread when this moment belongs to it; otherwise use graph order.
   const CONTEXT_WINDOW = 4;
   const contextWindow = useMemo(() => {
     if (!Array.isArray(contextNodes) || contextNodes.length === 0 || !safeNode) return null;
     const lvl = Number(safeNode.semantic_level || safeNode.level || 0);
     if (lvl !== 1) return null; // moments only
-    const chunks = contextNodes.filter(
+    const allMoments = contextNodes.filter(
       (n) => Number(n.semantic_level || n.level || 0) === 1
     );
+    const byId = new Map(allMoments.map((moment) => [String(moment.id), moment]));
+    const threadMoments = readingPathNodeIds.map((id) => byId.get(String(id))).filter(Boolean);
+    const chunks = threadMoments.some((moment) => String(moment.id) === String(safeNode.id))
+      ? threadMoments : allMoments;
     const idx = chunks.findIndex((n) => String(n.id) === String(safeNode.id));
     if (idx === -1) return null;
     const from = Math.max(0, idx - CONTEXT_WINDOW);
@@ -316,7 +322,7 @@ export default function NodeDetail({
       currentId: String(safeNode.id),
       truncated: from > 0 || to < chunks.length,
     };
-  }, [contextNodes, safeNode]);
+  }, [contextNodes, readingPathNodeIds, safeNode]);
 
   // Raw transcript for this node's chunk. NOTE: for live-recorded
   // conversations the backend (conversation_reader.build_chunk_dict...)
@@ -735,17 +741,18 @@ export default function NodeDetail({
                 const text = n.source_excerpt || n.summary || n.node_name || "";
                 const isCur = String(n.id) === contextWindow.currentId;
                 const clickable = !isCur && typeof onSelectNode === "function";
+                const content = <>
+                  {speaker && <span className="font-medium text-gray-500">{speaker}</span>}
+                  {speaker && <span className="text-gray-300">: </span>}
+                  <span className={isCur ? "text-gray-800" : "text-gray-600"}>{text}</span>
+                </>;
                 return (
-                  <div
-                    key={n.id}
-                    onClick={clickable ? () => onSelectNode(n.id) : undefined}
-                    className={`py-0.5 ${isCur ? "bg-amber-100 rounded px-0.5" : ""} ${
-                      clickable ? "cursor-pointer hover:bg-gray-100 rounded px-0.5" : ""
-                    }`}
-                  >
-                    {speaker && <span className="font-medium text-gray-500">{speaker}</span>}
-                    {speaker && <span className="text-gray-300">: </span>}
-                    <span className={isCur ? "text-gray-800" : "text-gray-600"}>{text}</span>
+                  <div key={n.id} className={`py-0.5 ${isCur ? "bg-amber-100 rounded px-0.5" : ""}`}>
+                    {clickable ? (
+                      <button type="button" onClick={() => onSelectNode(n.id)} className="w-full rounded px-0.5 text-left hover:bg-gray-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-500" aria-label={`Open nearby moment: ${n.node_name || text}`}>
+                        {content}
+                      </button>
+                    ) : content}
                   </div>
                 );
               })}
@@ -1160,6 +1167,7 @@ NodeDetail.propTypes = {
   onTraceAncestors: PropTypes.func,
   participantNames: PropTypes.arrayOf(PropTypes.string),
   contextNodes: PropTypes.arrayOf(PropTypes.object),
+  readingPathNodeIds: PropTypes.arrayOf(PropTypes.string),
   onSelectNode: PropTypes.func,
   artifactUtterances: PropTypes.arrayOf(PropTypes.object),
   mediaRefs: PropTypes.arrayOf(PropTypes.object),

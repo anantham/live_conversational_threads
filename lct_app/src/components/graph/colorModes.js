@@ -88,6 +88,7 @@ export function buildSpeakerColorMapForNodes(nodes) {
       ...(Array.isArray(n.source_turns)
         ? n.source_turns.map((turn) => turn?.speaker_id || "")
         : []),
+      ...(n.speaker_contributions?.speakers || []).map((speaker) => speaker.id || ""),
     ]).filter(Boolean)),
   ];
   const map = {};
@@ -417,6 +418,7 @@ export function resolveNodeColors({
   dateColorMap,
   threadColorMap,
   speakerOwnershipMap,
+  requireMeasuredSpeakerShares = false,
 }) {
   if (!node) return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
 
@@ -426,30 +428,47 @@ export function resolveNodeColors({
   }
 
   if (mode === "speaker") {
-    const directSpeakerIds = [
-      node.speaker_id || "",
-      ...(Array.isArray(node.source_turns)
-        ? node.source_turns.map((turn) => turn?.speaker_id || "")
-        : []),
-    ].filter(Boolean);
-    const uniqueSpeakerIds = speakerOwnershipMap?.[node.id]
-      || [...new Set(directSpeakerIds)];
-    if (uniqueSpeakerIds.length === 1) {
-      const fill = speakerColorMap?.[uniqueSpeakerIds[0]] || NEUTRAL_FILL;
+    const contribution = node.speaker_contributions;
+    if (!contribution && !requireMeasuredSpeakerShares) {
+      const ids = speakerOwnershipMap?.[node.id]
+        || [...new Set([
+          node.speaker_id,
+          ...(Array.isArray(node.source_turns) ? node.source_turns.map((turn) => turn?.speaker_id) : []),
+        ].filter(Boolean))];
+      if (ids.length === 1) {
+        const fill = speakerColorMap?.[ids[0]] || NEUTRAL_FILL;
+        return { fill, border: deriveBorder(fill) };
+      }
+      if (ids.length > 1) {
+        const stops = ids.map((id, index) => {
+          const color = speakerColorMap?.[id] || NEUTRAL_FILL;
+          const start = Math.round(index / ids.length * 100);
+          const end = Math.round((index + 1) / ids.length * 100);
+          return `${color} ${start}%, ${color} ${end}%`;
+        }).join(", ");
+        return { fill: `linear-gradient(135deg, ${stops})`, border: NEUTRAL_BORDER };
+      }
+      return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
+    }
+    if (!contribution?.complete || !Array.isArray(contribution.speakers)
+      || contribution.speakers.length === 0 || !(contribution.totalSeconds > 0)) {
+      return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
+    }
+    const speakers = contribution.speakers.filter((speaker) => speaker.fraction > 0);
+    if (speakers.length === 0) return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
+    if (speakers.length === 1 || speakers[0].fraction >= 0.9) {
+      const fill = speakerColorMap?.[speakers[0].id] || NEUTRAL_FILL;
       return { fill, border: deriveBorder(fill) };
     }
-    if (uniqueSpeakerIds.length > 1) {
-      const stops = uniqueSpeakerIds
-        .map((id) => speakerColorMap?.[id] || NEUTRAL_FILL)
-        .map((color, index, colors) => {
-          const start = Math.round((index / colors.length) * 100);
-          const end = Math.round(((index + 1) / colors.length) * 100);
-          return `${color} ${start}%, ${color} ${end}%`;
-        })
-        .join(", ");
-      return { fill: `linear-gradient(135deg, ${stops})`, border: NEUTRAL_BORDER };
-    }
-    return { fill: NEUTRAL_FILL, border: NEUTRAL_BORDER };
+    let offset = 0;
+    const stops = speakers.map(({ id, fraction }) => {
+      const color = speakerColorMap?.[id] || NEUTRAL_FILL;
+      const start = offset * 100;
+      offset += fraction;
+      return `${color} ${start}%, ${color} ${Math.min(100, offset * 100)}%`;
+    }).join(", ");
+    // Horizontal bands preserve the speaking-time fraction of card area.
+    return { fill: `linear-gradient(90deg, ${stops})`, border: NEUTRAL_BORDER };
   }
 
   if (mode === "temporal") {

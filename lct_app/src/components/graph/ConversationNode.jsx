@@ -161,6 +161,8 @@ function ConversationNodeImpl({ data, selected }) {
     isNeighborhoodFocus = false,
     showSummary = true,
     summaryMaxLength = 500,
+    compactReading = false,
+    speakerContributionLabel = "",
   } = data || {};
 
   // Single border shorthand only — combining `border` (shorthand) with
@@ -179,7 +181,7 @@ function ConversationNodeImpl({ data, selected }) {
     : `1px solid ${borderColor}`;
 
   const cardStyle = {
-    background: Number(data?.fullData?.semantic_level || data?.fullData?.level) > 1 ? "#fff" : fillColor,
+    background: compactReading || !(Number(data?.fullData?.semantic_level || data?.fullData?.level) > 1) ? fillColor : "#fff",
     border: borderShorthand,
     borderRadius: "8px",
     padding: "11px 14px",
@@ -193,10 +195,16 @@ function ConversationNodeImpl({ data, selected }) {
     // Grow with viewport on phones (92vw) but cap at 460px on tablets+ so the
     // full LLM summary (arc/theme/topic run ~320-426 chars) is readable without
     // the "…" clip. Old 360px + 220-char cap forced the truncation the user hit.
-    maxWidth: "min(92vw, 460px)",
-    minWidth: "220px",
+    maxWidth: compactReading ? "min(82vw, 300px)" : "min(92vw, 460px)",
+    minWidth: compactReading ? "min(82vw, 300px)" : "220px",
+    width: compactReading ? "min(82vw, 300px)" : undefined,
+    height: compactReading ? "210px" : undefined,
+    boxSizing: "border-box",
+    overflow: compactReading ? "hidden" : undefined,
+    display: compactReading ? "flex" : undefined,
+    flexDirection: compactReading ? "column" : undefined,
     wordBreak: "break-word",
-    transform: isTangent ? "rotate(8deg)" : undefined,
+    transform: isTangent && !compactReading ? "rotate(8deg)" : undefined,
     // Crux glow: cruxes (load-bearing pivots) get an amber halo so they pop out
     // of the colored debate-clusters at overview zoom — the user can spot the
     // nodes worth drilling into without reading text. Selection still wins (it
@@ -211,9 +219,10 @@ function ConversationNodeImpl({ data, selected }) {
     animation: isDraft ? "lctDraftPulse 1.6s ease-in-out infinite" : undefined,
   };
 
+  const previewLength = compactReading ? Math.min(summaryMaxLength, 100) : summaryMaxLength;
   const truncatedSummary =
-    summary && summary.length > summaryMaxLength
-      ? `${summary.slice(0, summaryMaxLength).trim()}…`
+    summary && summary.length > previewLength
+      ? `${summary.slice(0, previewLength).trim()}…`
       : summary || "";
   const hasVisibleSpeakerTurns = !(Number(data?.fullData?.semantic_level || data?.fullData?.level) > 1) && speakerTurns.some(
     (turn) => String(turn?.text || "").trim().length > 0
@@ -236,30 +245,31 @@ function ConversationNodeImpl({ data, selected }) {
 
       {isBookmark && <BookmarkCorner />}
 
-      <div style={titleStyle} title={fullTitle || title || undefined}>
+      <div style={compactReading ? compactTitleStyle : titleStyle} title={fullTitle || title || undefined}>
         {isCrux && <CruxDot />}
         {title || "Untitled"}
       </div>
       {showSummary && hasVisibleSpeakerTurns && (
         <SpeakerTurnSummary
-          turns={speakerTurns}
+          turns={compactReading ? speakerTurns.filter((turn) => String(turn?.text || "").trim()).slice(0, 1) : speakerTurns}
           speakerColorMap={speakerColorMap}
-          maxLength={summaryMaxLength}
+          maxLength={previewLength}
         />
       )}
       {showSummary && !hasVisibleSpeakerTurns && truncatedSummary && (
-        <div style={summaryStyle}>{truncatedSummary}</div>
+        <div style={compactReading ? compactSummaryStyle : summaryStyle}>{truncatedSummary}</div>
       )}
-      <MarkerStrip markers={dimensionMarkers} />
-      <RhetoricStrip argumentRole={argumentRole} flags={rhetoricFlags} />
-      {argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
-      <ProvenanceMetricStrip metrics={provenanceMetrics} />
+      {!compactReading && <MarkerStrip markers={dimensionMarkers} />}
+      {!compactReading && <RhetoricStrip argumentRole={argumentRole} flags={rhetoricFlags} />}
+      {!compactReading && argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
+      {!compactReading && <ProvenanceMetricStrip metrics={provenanceMetrics} />}
+      {compactReading && speakerContributionLabel && <div style={compactContributionStyle}>{speakerContributionLabel}</div>}
       {!hasVisibleSpeakerTurns && !(Number(data?.fullData?.semantic_level || data?.fullData?.level)>1) && speakerLabel && (
         <div style={speakerStyle}>{speakerLabel}</div>
       )}
 
       {(canExpand || onOpenDetails) && (
-        <div style={cardFooterStyle}>
+        <div style={compactReading ? compactCardFooterStyle : cardFooterStyle}>
           {canExpand && <ExpandButton count={expandCount} onExpand={onExpand} />}
           {onOpenDetails && (
             <DetailsButton
@@ -458,6 +468,35 @@ const summaryStyle = {
   lineHeight: 1.55,
 };
 
+const compactTitleStyle = {
+  ...titleStyle,
+  display: "-webkit-box",
+  WebkitBoxOrient: "vertical",
+  WebkitLineClamp: 2,
+  overflow: "hidden",
+  fontSize: "16px",
+  flexShrink: 0,
+};
+
+const compactSummaryStyle = {
+  ...summaryStyle,
+  fontSize: "13px",
+  lineHeight: 1.4,
+  overflow: "hidden",
+};
+
+const compactContributionStyle = {
+  fontSize: "10px",
+  color: "#334155",
+  fontVariantNumeric: "tabular-nums",
+  marginTop: "5px",
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const compactCardFooterStyle = { ...cardFooterStyle, marginTop: "auto", flexShrink: 0 };
+
 const speakerStyle = {
   fontSize: "12px",
   color: "#64748b",
@@ -576,6 +615,9 @@ ConversationNodeImpl.propTypes = {
     isNeighborhoodFocus: PropTypes.bool,
     showSummary: PropTypes.bool,
     summaryMaxLength: PropTypes.number,
+    compactReading: PropTypes.bool,
+    speakerContributionLabel: PropTypes.string,
+    fullData: PropTypes.shape({ semantic_level: PropTypes.number, level: PropTypes.number }),
   }),
   selected: PropTypes.bool,
 };
