@@ -4,39 +4,41 @@ import AppRoutes from "./routes/AppRoutes";
 import { ByokProvider } from "./contexts/ByokContext.jsx";
 import { UploadProvider } from "./contexts/UploadContext";
 import UploadToast from "./components/upload/UploadToast";
-import BetaGate from "./components/BetaGate";
 import ServerlessGate from "./components/ServerlessGate";
 import { apiFetch } from "./services/apiClient";
 import { DataProviderContext } from "./services/dataProvider";
 import { BackendDataProvider } from "./services/BackendDataProvider";
 import { ServerlessDataProvider } from "./services/ServerlessDataProvider";
+import SitesAccessPanel from "./components/SitesAccessPanel";
 import { isTrialActive, startTrial, trialMsRemaining } from "./services/serverless/serverlessAuth";
 
 export default function App() {
+  const sitesMode = import.meta.env.VITE_SITES_MODE === "true";
   // Backend reachability gate. The frontend is public (Vercel) but the
   // backend is served over a private Tailscale network — off-network
   // visitors can load the page but can't reach the API. Probe the health
   // endpoint once on load; show a private-beta message instead of a
   // broken app full of fetch errors.
   const [backendState, setBackendState] = useState("checking");
-  const [serverlessKey, setServerlessKey] = useState(() => localStorage.getItem("lct_serverless_key") || "");
-  const [serverlessForced, setServerlessForced] = useState(() => localStorage.getItem("lct_serverless_mode_enabled") === "true");
+  const [serverlessKey, setServerlessKey] = useState(() => sitesMode ? "" : localStorage.getItem("lct_serverless_key") || "");
+  const [serverlessForced, setServerlessForced] = useState(() => !sitesMode && localStorage.getItem("lct_serverless_mode_enabled") === "true");
   // Free "taste" trial: run on the owner's capped key for a short window before
   // asking for the visitor's own key. Gated on VITE_TRIAL_ENABLED so it only
   // appears once the owner has provisioned a capped OPENAI_TRIAL_KEY in the
   // Vercel proxy env — otherwise trial calls would 401. Active when enabled and
   // the window hasn't elapsed.
-  const trialEnabled = import.meta.env.VITE_TRIAL_ENABLED === "true";
+  const trialEnabled = !sitesMode && import.meta.env.VITE_TRIAL_ENABLED === "true";
   const [trialActive, setTrialActive] = useState(() => trialEnabled && isTrialActive());
 
   const activeDataProvider = useMemo(() => {
+    if (sitesMode) return new ServerlessDataProvider("");
     const isOffline = backendState === "offline" || backendState === "unreachable";
     // Serverless is active with a real key OR during an in-window free trial.
     if ((serverlessKey || trialActive) && (serverlessForced || isOffline)) {
       return new ServerlessDataProvider(serverlessKey);
     }
     return new BackendDataProvider();
-  }, [serverlessKey, trialActive, serverlessForced, backendState]);
+  }, [serverlessKey, trialActive, serverlessForced, backendState, sitesMode]);
 
   // The .threads viewer (/view) is independent of the LCT backend: it renders a
   // self-contained artifact client-side and must work with the backend down. It
@@ -95,9 +97,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (isStaticViewer) return;
+    if (sitesMode || isStaticViewer) return;
     void probeBackend();
-  }, [probeBackend, isStaticViewer]);
+  }, [probeBackend, isStaticViewer, sitesMode]);
 
   // When a keyless free trial runs out, drop back to the key gate.
   useEffect(() => {
@@ -111,7 +113,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [trialActive, serverlessKey]);
 
-  if (!isStaticViewer && backendState === "checking") {
+  if (!sitesMode && !isStaticViewer && backendState === "checking") {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
@@ -121,7 +123,7 @@ export default function App() {
 
   const serverlessEligible =
     serverlessForced || backendState === "offline" || backendState === "unreachable";
-  if (!isStaticViewer && serverlessEligible && !serverlessKey && !trialActive) {
+  if (!sitesMode && !isStaticViewer && serverlessEligible && !serverlessKey && !trialActive) {
     return (
       <ServerlessGate
         onEnableServerless={(key) => {
@@ -146,6 +148,7 @@ export default function App() {
         <ByokProvider>
           <UploadProvider>
             <AppRoutes />
+            {sitesMode && <SitesAccessPanel />}
             <UploadToast />
           </UploadProvider>
         </ByokProvider>

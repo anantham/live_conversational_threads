@@ -18,7 +18,7 @@ No new packages, database, storage bucket, credentials, public access, or paid i
 
 ## Parallel Site build and identity checkpoint
 
-`npm run build:sites` builds the unchanged React frontend into `dist/client` and the Worker into `dist/server/index.js`. The dedicated frontend config reads no environment files or ambient VITE variables, copies no public directory, and adds only the existing favicon. This prevents unrelated public experiments/ciphertexts and owner configuration from entering the artifact. Existing local/Vercel builds are preserved.
+`npm run build:sites` builds the React frontend into `dist/client` and the Worker into `dist/server/index.js`. The dedicated frontend config reads no environment files or ambient VITE variables, copies no public directory, and adds only the existing favicon. Both output directories are checked before publication. This prevents unrelated public experiments/ciphertexts and owner configuration from entering the artifact. Existing local/Vercel builds are preserved.
 
 `node sites/export-source.mjs ABSOLUTE_EMPTY_DIRECTORY` exports a bounded technical source tree for the standalone Sites source repository. It excludes Git history, environment files, operational documents, tests/fixtures and unrelated static artifacts; symlinks and nonempty destinations are rejected. Initialize the retained template using the Sites project setup helper, then register once and persist the returned project ID. The canonical identity is in `../.openai/hosting.json`; reuse it on continuation.
 
@@ -26,4 +26,6 @@ No new packages, database, storage bucket, credentials, public access, or paid i
 
 Browser HTML navigation to an unrecognized asset path falls back to the app shell for React Router deep links. Missing asset files and unsupported backend API routes preserve errors. Sites dispatch owns sign-in, sign-out and callback routes; no app-owned OAuth implementation is added.
 
-This checkpoint is a private parallel preview. Live recording, private storage, Soniox and cloud graph reads still require the subsequent roadmap stages; do not change the public custom domain or enable owner-funded traffic from this artifact alone.
+The user selected public access for this parallel preview. The Sites build defines its own literal mode flag: Home and browser-local browsing load without a backend health probe, key prompt or login. An optional session panel uses the actual Worker response contract; sign-in/sign-out use top-level dispatch links. Session checking never blocks public content, records at most eight payload-free timing samples, shows elapsed time with unknown remaining time, and supports timeout/retry/cancellation. It neither displays nor persists the user ID.
+
+Public cloud sharing and private cloud storage remain unimplemented; opening a browser-local file does not publish it. Future public saves must label visibility explicitly, while every private storage route must authorize the trusted signed-in owner server-side. Live recording, Soniox and cloud graph reads still require subsequent roadmap stages; do not change the public custom domain or enable owner-funded traffic from this artifact alone.

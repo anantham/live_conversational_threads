@@ -6,6 +6,7 @@ export default defineConfig({
   // Never embed owner environment values or copy unrelated public artifacts.
   envDir: false,
   envPrefix: [],
+  define: { 'import.meta.env.VITE_SITES_MODE': JSON.stringify('true') },
   publicDir: false,
   plugins: [react(), tailwindcss()],
   esbuild: {

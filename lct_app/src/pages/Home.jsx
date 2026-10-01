@@ -148,9 +148,11 @@ export default function Home() {
       </div>
 
       {/* Service Status Indicators */}
-      <div className="absolute bottom-8 left-8">
-        <ServiceStatus />
-      </div>
+      {import.meta.env.VITE_SITES_MODE !== "true" && (
+        <div className="absolute bottom-8 left-8">
+          <ServiceStatus />
+        </div>
+      )}
 
       {pendingFeatureToast && (
         <div className="pointer-events-none absolute bottom-8 right-8 z-20">
