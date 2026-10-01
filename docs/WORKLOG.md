@@ -6504,3 +6504,13 @@ User observed an empty desktop transcript until node selection, with only the cu
   renders; waiting for the actual IndexedDB record made a synthetic reopen pass.
   Recorded this separate existing save/navigation race in ISSUES.md without
   changing frontend code or weakening its tests. Independent source review pending.
+- First tool-free Anthropic Claude Sonnet5 source review reported one supported
+  low-severity race: the old recovery timer could restart the server between
+  installer stop and its occupied-port check. Disable the owned task before
+  stopping it, then explicitly enable the new registration. Updated test intent;
+  reinstallation validation and final exact-diff review pending.
+- The repaired installer reinstalled the existing task, returned readiness,
+  left it enabled/running, and restored Tailnet HTTP 200. Source syntax passed.
+  The review CLI returned an event array rather than a single result object;
+  its completed review was recovered from the final result event without
+  repeating that review. The final review packet will use that observed envelope.

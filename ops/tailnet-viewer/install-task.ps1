@@ -24,6 +24,7 @@ if ($existing) {
     $owner = $existing.Principal.UserId
     $ownerSid = if ($owner -like 'S-1-*') { $owner } else { ([System.Security.Principal.NTAccount]::new($owner).Translate([System.Security.Principal.SecurityIdentifier])).Value }
     if ($ownerSid -ne $identity.User.Value) { throw "Refusing to replace another user's task: $taskName" }
+    Disable-ScheduledTask -TaskName $taskName | Out-Null
     Stop-ScheduledTask -TaskName $taskName
     Start-Sleep -Seconds 2
 }
@@ -46,6 +47,7 @@ $recovery = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -Repetit
 $principal = New-ScheduledTaskPrincipal -UserId $identity.Name -LogonType Interactive -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -ExecutionTimeLimit (New-TimeSpan -Seconds 0) -MultipleInstances IgnoreNew -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
 Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($trigger, $recovery) -Principal $principal -Settings $settings -Description 'Loopback LCT viewer for the existing Tailnet-only route.' -Force | Out-Null
+Enable-ScheduledTask -TaskName $taskName | Out-Null
 Start-ScheduledTask -TaskName $taskName
 
 $started = Get-Date

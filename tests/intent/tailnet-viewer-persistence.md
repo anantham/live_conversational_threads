@@ -5,6 +5,8 @@
 - Registration uses only the current user's logon trigger, runs on battery, and
   imposes no execution time limit. It does not require elevation.
 - An exited serving process recovers; restarting the task reloads the deployment.
+- Reinstallation pauses the recovery trigger before stopping the old server,
+  then reenables the installed task so the timer cannot race the replacement.
 - Missing startup dependencies produce an actionable log and a nonzero exit,
   while a one-minute trigger relaunches a stopped task without duplicating it.
 - The actual Tailnet conversation opens in Chromium, switches to Discussion,
