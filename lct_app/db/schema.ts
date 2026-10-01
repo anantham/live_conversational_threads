@@ -21,3 +21,9 @@ export const cloudFiles = sqliteTable('lct_cloud_files', {
   check('lct_cloud_files_state_check', sql`${table.state} in ('staging', 'ready', 'deleting')`),
   check('lct_cloud_files_byte_size_check', sql`${table.byteSize} > 0`),
 ]);
+
+// Anonymous write fences retain only random object keys; never identity or file metadata.
+export const fileFences = sqliteTable('lct_cloud_file_fences', {
+  objectKey: text('object_key').primaryKey(),
+  createdAt: integer('created_at').notNull(),
+});

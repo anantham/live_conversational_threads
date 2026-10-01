@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mic, FolderOpen, FileAudio, Bookmark, BarChart3, Settings, Video } from "lucide-react";
+import { Mic, FolderOpen, FileAudio, Bookmark, BarChart3, Settings, Video, Cloud } from "lucide-react";
 import ServiceStatus from "../components/ServiceStatus";
 import { loadLatestDraft, summarizeLocalDraft } from "../services/localDraftStore";
 import { getAutostartOnNew } from "../utils/homeBehavior";
@@ -99,6 +99,7 @@ export default function Home() {
 
       {/* Secondary actions */}
       <div className="relative flex items-center gap-5">
+        {import.meta.env.VITE_SITES_MODE === "true" && <button type="button" onClick={() => navigate("/private-files")} className="flex flex-col items-center gap-1.5 group"><span className="w-9 h-9 flex items-center justify-center rounded-full bg-white/80 border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition"><Cloud size={16} /></span><span className="text-[10px] font-medium text-gray-500 group-hover:text-gray-700 transition">Private files</span></button>}
         {/* Import / Upload entry point. Routes to /new without ?autostart
             so FileUpload remains visible on arrival (the autostart path
             hides it — see NewConversation.jsx). */}

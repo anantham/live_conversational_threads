@@ -3,5 +3,11 @@
 - Exercise the public Worker API against real SQLite running the generated migration and an in-memory R2-compatible byte store; verify uploaded bytes, metadata and ownership.
 - Private list/read/delete require the trusted Sites identity. A service credential, request owner field, anonymous visitor or another user cannot access the file. Writes require the exact same origin and custom write header.
 - Enforce byte/count reservations atomically, including unfinished uploads and deletions. Concurrent reservations cannot exceed limits; oversized bodies and malformed .threads data never reserve space.
-- A failed upload is never ready. Failed blob deletion retains a hidden/accounted record and supports owner cleanup retries. In-progress uploads cannot be deleted concurrently.
+- A failed upload is never ready. Failed blob deletion retains a hidden/accounted record and supports owner cleanup retries. The recovery amendment below replaces the original in-progress deletion restriction with safe conditional writes and erasure fences.
 - The default deployment keeps writes disabled pending the activation/retention decision. Public app entry and optional sign-in remain unchanged; no owner history or paid provider is used.
+
+## Recovery and native synthetic mode (2026-10-02)
+
+- Recover committed staging bytes without racing upload completion; deleting staging can cancel a late conditional write. Persist zero-byte fences before releasing reservations; retain no personal data in their bounded ledger.
+- Run controlled interleavings through the Worker with real SQLite: recover/finalize, cancel/late put, repeated cleanup, failed fence and metadata cleanup. Assert erased bytes and no resurrection, not helper call counts.
+- Synthetic mode accepts only the fixed nonpersonal fixture. Its deletion exercises R2 conditional writes against the fence before cleanup; generic files remain rejected.

@@ -8,6 +8,13 @@
       "when": 1790882124805,
       "tag": "0000_mysterious_patriot",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790884994120,
+      "tag": "0001_new_dragon_man",
+      "breakpoints": true
     }
   ]
 }

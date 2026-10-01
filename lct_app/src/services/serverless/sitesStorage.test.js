@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import worker from '../../../sites/worker.js';
-import { STORAGE_LIMITS } from '../../../sites/storagePolicy.js';
+import { STORAGE_LIMITS, STORAGE_FIXTURE } from '../../../sites/storagePolicy.js';
 
 const SITE = 'https://fixture-lct.example.chatgpt.site';
 let sqlite, env, objects, failures;
@@ -33,7 +33,11 @@ beforeEach(() => {
   objects = new Map(); failures = { put: false, remove: false, finalize: false };
   env = {
     LCT_PRIVATE_STORAGE_ENABLED: 'true',
-    DB: { prepare(sql) {
+    DB: { async batch(statements) {
+      sqlite.exec('BEGIN');
+      try { const results = statements.map(statement => statement.runSync()); sqlite.exec('COMMIT'); return results; }
+      catch (error) { sqlite.exec('ROLLBACK'); throw error; }
+    }, prepare(sql) {
       let values = [];
       function statement() {
         if (failures.finalize && sql.includes("SET state = 'ready'")) { failures.finalize = false; throw new Error('fixture finalize failure'); }
@@ -42,11 +46,20 @@ beforeEach(() => {
       return { bind(...args) { values = args; return this; },
         async first() { return statement().get(...values) || null; },
         async all() { return { results: statement().all(...values) }; },
-        async run() { return { success: true, meta: statement().run(...values) }; },
+        runSync() { return { success: true, meta: statement().run(...values) }; },
+        async run() { return this.runSync(); },
       };
     } },
     BUCKET: {
-      async put(key, bytes) { objects.set(key, new Uint8Array(bytes)); if (failures.put) throw new Error('fixture uncertain put failure'); return { key, size: bytes.length }; },
+      async put(key, bytes, options = {}) {
+        if (options.onlyIf?.get('If-None-Match') === '*' && objects.has(key)) return null;
+        if (bytes === null && failures.remove) throw new Error('fixture erasure failure');
+        const data = bytes === null ? new Uint8Array() : typeof bytes === 'string' ? new TextEncoder().encode(bytes) : new Uint8Array(bytes);
+        objects.set(key, data);
+        if (bytes !== null && failures.put) throw new Error('fixture uncertain put failure');
+        return { key, size: data.length };
+      },
+      async head(key) { const bytes = objects.get(key); return bytes ? { size: bytes.length } : null; },
       async get(key) { const bytes = objects.get(key); return bytes ? { size: bytes.length, body: new Response(bytes).body } : null; },
       async delete(key) { if (failures.remove) throw new Error('fixture delete failure'); objects.delete(key); },
     },
@@ -171,18 +184,18 @@ describe('Sites private storage through the Worker API and generated SQLite sche
     expect((await worker.fetch(request(`/api/cloud/files/${row.id}`, { owner: 'fixture-bob', method: 'DELETE' }), env)).status).toBe(404);
     failures.remove = false;
     expect((await worker.fetch(request(`/api/cloud/files/${row.id}`, { method: 'DELETE' }), env)).status).toBe(200);
-    expect(objects.size).toBe(0);
+    expect([...objects.values()].every(bytes => bytes.length === 0)).toBe(true);
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(0);
   });
 
   it('removes persisted bytes when final metadata persistence fails', async () => {
     failures.finalize = true;
     expect((await upload()).response.status).toBe(503);
-    expect(objects.size).toBe(0);
+    expect([...objects.values()].every(bytes => bytes.length === 0)).toBe(true);
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(0);
   });
 
-  it('hides a failed deletion until cleanup is retried and refuses to race a staging upload', async () => {
+  it('hides failed deletion until cleanup is retried and safely discards a staging upload', async () => {
     const { data } = await upload();
     failures.remove = true;
     expect((await worker.fetch(request(`/api/cloud/files/${data.file.id}`, { method: 'DELETE' }), env)).status).toBe(503);
@@ -191,8 +204,9 @@ describe('Sites private storage through the Worker API and generated SQLite sche
     failures.remove = false;
     expect((await worker.fetch(request(`/api/cloud/files/${data.file.id}`, { method: 'DELETE' }), env)).status).toBe(200);
     const pending = seedReservation(13, 'fixture-alice');
-    expect((await worker.fetch(request(`/api/cloud/files/${pending}`, { method: 'DELETE' }), env)).status).toBe(409);
-    expect(sqlite.prepare('SELECT state FROM lct_cloud_files WHERE id=?').get(pending).state).toBe('staging');
+    expect((await worker.fetch(request(`/api/cloud/files/${pending}`, { method: 'DELETE' }), env)).status).toBe(200);
+    expect(sqlite.prepare('SELECT state FROM lct_cloud_files WHERE id=?').get(pending)).toBeUndefined();
+    expect([...objects.values()].every(bytes => bytes.length === 0)).toBe(true);
   });
 
   it('returns descriptive sanitized binding errors without leaking raw storage failures', async () => {
@@ -203,5 +217,89 @@ describe('Sites private storage through the Worker API and generated SQLite sche
     const response = await worker.fetch(request(), env);
     expect(response.status).toBe(503);
     expect(JSON.stringify(await response.json())).not.toContain('sensitive');
+  });
+
+  it('recovers committed staging bytes only for their owner without erasing a recovered upload', async () => {
+    let resume;
+    let persisted;
+    const didPersist = new Promise(resolve => { persisted = resolve; });
+    const waiting = new Promise(resolve => { resume = resolve; });
+    const put = env.BUCKET.put;
+    env.BUCKET.put = async (...args) => { const result = await put(...args); if (args[1] !== null) { persisted(); await waiting; } return result; };
+    const pending = upload();
+    await didPersist;
+    const row = sqlite.prepare('SELECT * FROM lct_cloud_files').get();
+    expect((await worker.fetch(request(`/api/cloud/files/${row.id}/reconcile`, { owner: 'fixture-bob', method: 'POST' }), env)).status).toBe(404);
+    expect((await worker.fetch(request(`/api/cloud/files/${row.id}/reconcile`, { method: 'POST' }), env)).status).toBe(200);
+    expect((await worker.fetch(request(`/api/cloud/files/${row.id}/reconcile`), env)).status).toBe(405);
+    resume();
+    expect((await pending).response.status).toBe(201);
+    expect(await (await worker.fetch(request(`/api/cloud/files/${row.id}/content`), env)).text()).toBe('fixture bytes');
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_file_fences').get().n).toBe(0);
+  });
+
+  it('fences a deleted staging upload before a delayed blob write can create bytes', async () => {
+    let resume;
+    let arrived;
+    const didArrive = new Promise(resolve => { arrived = resolve; });
+    const waiting = new Promise(resolve => { resume = resolve; });
+    const put = env.BUCKET.put;
+    env.BUCKET.put = async (...args) => { if (args[1] !== null) { arrived(); await waiting; } return put(...args); };
+    const pending = upload();
+    await didArrive;
+    const row = sqlite.prepare('SELECT * FROM lct_cloud_files').get();
+    expect((await worker.fetch(request(`/api/cloud/files/${row.id}`, { method: 'DELETE' }), env)).status).toBe(200);
+    resume();
+    expect((await pending).response.status).toBe(503);
+    expect(objects.get(row.object_key).length).toBe(0);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(0);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_file_fences').get().n).toBe(1);
+  });
+
+  it('keeps missing staging bytes unavailable and supports repeated concurrent cleanup', async () => {
+    const id = seedReservation(13, 'fixture-alice');
+    expect((await worker.fetch(request(`/api/cloud/files/${id}/reconcile`, { method: 'POST' }), env)).status).toBe(409);
+    const deletes = await Promise.all([worker.fetch(request(`/api/cloud/files/${id}`, { method: 'DELETE' }), env), worker.fetch(request(`/api/cloud/files/${id}`, { method: 'DELETE' }), env)]);
+    expect(deletes.map(result => result.status)).toEqual([200, 200]);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(0);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_file_fences').get().n).toBe(1);
+  });
+
+  it('retains the reservation when the erasure ledger transaction fails', async () => {
+    const { data } = await upload();
+    const batch = env.DB.batch;
+    env.DB.batch = async () => { throw new Error('fixture ledger failure'); };
+    expect((await worker.fetch(request(`/api/cloud/files/${data.file.id}`, { method: 'DELETE' }), env)).status).toBe(503);
+    expect(sqlite.prepare('SELECT state FROM lct_cloud_files').get().state).toBe('deleting');
+    expect([...objects.values()].every(bytes => bytes.length === 0)).toBe(true);
+    env.DB.batch = batch;
+    expect((await worker.fetch(request(`/api/cloud/files/${data.file.id}`, { method: 'DELETE' }), env)).status).toBe(200);
+  });
+
+  it('bounds lifetime preview creations including retained empty fences', async () => {
+    for (let n = 0; n < STORAGE_LIMITS.maxSiteKeys - 1; n++) sqlite.prepare('INSERT INTO lct_cloud_file_fences VALUES (?, 1)').run('fixture-empty-' + n);
+    const { data } = await upload();
+    expect((await worker.fetch(request(`/api/cloud/files/${data.file.id}`, { method: 'DELETE' }), env)).status).toBe(200);
+    expect((await upload()).response.status).toBe(507);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(0);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_file_fences').get().n).toBe(STORAGE_LIMITS.maxSiteKeys);
+  });
+
+  it('accepts only the fixed synthetic fixture and verifies the native conditional fence contract', async () => {
+    env.LCT_PRIVATE_STORAGE_ENABLED = 'synthetic';
+    expect(await (await worker.fetch(request('/api/cloud/files/status'), env)).json()).toMatchObject({ enabled: true, synthetic_only: true });
+    const options = { body: STORAGE_FIXTURE.text, headers: { 'x-lct-filename': STORAGE_FIXTURE.filename, 'content-type': STORAGE_FIXTURE.contentType } };
+    expect((await upload()).response.status).toBe(403);
+    expect((await upload({ ...options, body: 'personal' })).response.status).toBe(403);
+    expect((await upload({ ...options, headers: { ...options.headers, 'content-length': '1000' } })).response.status).toBe(413);
+    const { response, data } = await upload(options);
+    expect(response.status).toBe(201);
+    expect((await worker.fetch(request(`/api/cloud/files/${data.file.id}`, { method: 'DELETE' }), env)).status).toBe(200);
+    const created = await upload(options);
+    const put = env.BUCKET.put;
+    env.BUCKET.put = (key, bytes, configuration) => put(key, bytes, bytes === null ? configuration : {});
+    expect((await worker.fetch(request(`/api/cloud/files/${created.data.file.id}`, { method: 'DELETE' }), env)).status).toBe(503);
+    expect(sqlite.prepare('SELECT state FROM lct_cloud_files').get().state).toBe('deleting');
+    expect([...objects.values()].every(bytes => bytes.length === 0)).toBe(true);
   });
 });

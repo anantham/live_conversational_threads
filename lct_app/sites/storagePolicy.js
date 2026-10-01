@@ -6,7 +6,10 @@ export const STORAGE_LIMITS = Object.freeze({
   maxSiteBytes: 20 * 1024 * 1024,
   maxOwnerFiles: 50,
   maxSiteFiles: 200,
+  maxSiteKeys: 200,
 });
+export const STORAGE_FIXTURE = Object.freeze({ filename: 'lct-storage-check.txt', contentType: 'text/plain',
+  text: 'LCT synthetic private storage fixture.\nNo personal data.\n' });
 export const FILE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class StorageError extends Error {
@@ -26,10 +29,11 @@ export function requireWriteOrigin(request) {
   }
 }
 
-export async function readUpload(request) {
+export async function readUpload(request, syntheticOnly = false) {
+  const maximum = syntheticOnly ? new TextEncoder().encode(STORAGE_FIXTURE.text).byteLength : STORAGE_LIMITS.maxFileBytes;
   const declared = request.headers.get('content-length');
-  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > STORAGE_LIMITS.maxFileBytes)) {
-    throw new StorageError(413, 'file_too_large', 'Private preview files must be at most 2 MiB.');
+  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > maximum)) {
+    throw new StorageError(413, 'file_too_large', syntheticOnly ? 'Only the fixed synthetic storage check is accepted.' : 'Private preview files must be at most 2 MiB.');
   }
   let filename;
   try { filename = decodeURIComponent(request.headers.get('x-lct-filename') || '').trim(); } catch { filename = ''; }
@@ -39,6 +43,9 @@ export async function readUpload(request) {
   const contentType = (request.headers.get('content-type') || 'application/octet-stream').split(';')[0].trim().toLowerCase();
   const safeTypes = new Set(['application/octet-stream', 'application/json', 'application/pdf', 'text/plain', 'audio/wav', 'audio/x-wav', 'audio/mpeg', 'audio/mp4', 'audio/webm', 'audio/ogg']);
   if (!safeTypes.has(contentType)) throw new StorageError(415, 'file_type', 'This file type is not supported by private preview storage.');
+  if (syntheticOnly && (filename !== STORAGE_FIXTURE.filename || contentType !== STORAGE_FIXTURE.contentType)) {
+    throw new StorageError(403, 'synthetic_only', 'This preview accepts only its fixed synthetic storage check. Personal uploads are not activated.');
+  }
   const reader = request.body?.getReader();
   if (!reader) throw new StorageError(400, 'empty_file', 'Select a nonempty file to upload.');
   let deadlineTimer;
@@ -57,7 +64,7 @@ export async function readUpload(request) {
       const part = await Promise.race([reader.read(), interrupted]);
       if (part.done) break;
       size += part.value.byteLength;
-      if (size > STORAGE_LIMITS.maxFileBytes) throw new StorageError(413, 'file_too_large', 'Private preview files must be at most 2 MiB.');
+      if (size > maximum) throw new StorageError(413, 'file_too_large', syntheticOnly ? 'Only the fixed synthetic storage check is accepted.' : 'Private preview files must be at most 2 MiB.');
       chunks.push(part.value);
     }
   } catch (error) { void reader.cancel().catch(() => {}); throw error; }
@@ -66,6 +73,9 @@ export async function readUpload(request) {
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  if (syntheticOnly && new TextDecoder().decode(bytes) !== STORAGE_FIXTURE.text) {
+    throw new StorageError(403, 'synthetic_only', 'This preview accepts only its fixed synthetic storage check. Personal uploads are not activated.');
+  }
   const kind = /\.threads$/i.test(filename) ? 'threads' : contentType.startsWith('audio/') ? 'audio' : 'file';
   if (kind === 'threads') {
     try { validateThreadsArtifact(JSON.parse(new TextDecoder().decode(bytes))); }
