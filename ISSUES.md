@@ -1554,3 +1554,9 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Summary: AudioInput starts useTranscriptSockets even in serverless mode; the browser OpenAI realtime client is unused. The serverless gate advertises live recording despite this dependency. Some saved-conversation reads also bypass ServerlessDataProvider.
 - Impact / blocker: visitors cannot rely on the advertised live journey when the owner's computers are off. This blocks the public always-available milestone, but does not block preparing a Worker-compatible proxy artifact.
 - Recommended next step: integrate and test the browser live path with every private-network request blocked, and route newly saved serverless graphs through browser-local persistence/viewing. Keep current owner history out of the initial migration.
+
+## 2026-10-01 — Existing frontend test harness warnings
+
+- Summary: the required full-suite pre-push run emits React act-environment warnings in existing UI tests including ThreadsViewerToolbar, NodeDetail and graph controls.
+- Impact / blocker: noisy test output;456/456tests in73files pass. Not a blocker for the proxy adapter and not evidence of a production regression.
+- Recommended next step: align the shared React test-environment setup in a separate scoped task. No UI or test-harness code changed in this migration slice.
