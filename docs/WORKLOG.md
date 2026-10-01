@@ -6514,3 +6514,11 @@ User observed an empty desktop transcript until node selection, with only the cu
   The review CLI returned an event array rather than a single result object;
   its completed review was recovered from the final result event without
   repeating that review. The final review packet will use that observed envelope.
+- Review receipt: docs/reviews/2026-10-01-tailnet-viewer-persistence.md records
+  exact heads, four-file inventory, byte counts, hashes, scan/exclusions and
+  tool restrictions. Claude Sonnet5's supported race is fixed; its final review
+  hit a weekly limit. Grok is unauthenticated; Gemini's cached OAuth requires an
+  approved Cloud project that is not configured. Asked for that existing project
+  without creating resources or new paid usage. Final source approval remains
+  blocked, and PR204 is a draft. No independent approval or reboot verification
+  is claimed. Mandatory pre-push frontend tests passed446/446in72files.
