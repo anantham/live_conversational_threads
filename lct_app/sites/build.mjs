@@ -1,9 +1,11 @@
 import { copyFile, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
+import { copySiteStorageMetadata, storageMetadataFiles } from './storage-packaging.mjs';
 
 // Paths are relative to the source tree, independent of the caller's cwd.
 const root = fileURLToPath(new URL('../', import.meta.url));
+storageMetadataFiles(root);
 await build({ root, configFile: fileURLToPath(new URL('./frontend.config.mjs', import.meta.url)) });
 await copyFile(new URL('../public/favicon.svg', import.meta.url), new URL('../dist/client/favicon.svg', import.meta.url));
 await build({ root, configFile: fileURLToPath(new URL('./vite.config.mjs', import.meta.url)) });
@@ -18,3 +20,4 @@ for (const [directory, expected] of [
     throw new Error('Unexpected files in ' + directory + '; refuse to publish this Site build.');
   }
 }
+await copySiteStorageMetadata(root, fileURLToPath(new URL('../dist/', import.meta.url)));

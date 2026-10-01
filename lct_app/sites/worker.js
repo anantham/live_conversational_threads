@@ -1,5 +1,6 @@
 import { handleChatRequest } from '../api/proxy/chat.js';
 import { handleRealtimeTokenRequest } from '../api/proxy/realtime-token.js';
+import { handleStorage } from './storage.js';
 
 // BYOK-only first migration slice. Never read an owner key or log requests,
 // headers, upstream errors, or token responses. NO_LOG_BYOK_KEY_ASSERTION
@@ -30,6 +31,8 @@ function isShellRedirect(response, url) {
 export default {
   async fetch(request, env = {}) {
     const url = new URL(request.url);
+    const storage = await handleStorage(request, env);
+    if (storage) return storage;
     if (url.pathname === '/api/auth/session') {
       if (request.method !== 'GET') return jsonResponse(405, 'Use GET to check the signed-in session.');
       // Sites dispatch supplies this trusted, Site-specific identity. A service

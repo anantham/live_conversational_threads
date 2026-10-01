@@ -1,11 +1,14 @@
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { storageMetadataFiles } from './storage-packaging.mjs';
 
 const requiredFiles = [
   'index.html', 'package-lock.json', 'public/favicon.svg',
   'api/proxy/_shared.js', 'api/proxy/chat.js', 'api/proxy/realtime-token.js',
   'sites/worker.js', 'sites/vite.config.mjs', 'sites/frontend.config.mjs', 'sites/build.mjs',
+  'sites/storage-packaging.mjs', 'sites/storage.js', 'sites/storagePolicy.js',
+  'db/schema.ts', 'drizzle.config.ts',
 ];
 
 // Public build tool: export only the technical source needed by the Site.
@@ -20,7 +23,7 @@ export function exportSiteSource(sourceRoot, destination) {
   if (existsSync(output) && (!lstatSync(output).isDirectory() || lstatSync(output).isSymbolicLink() || readdirSync(output).length)) {
     throw new Error('Export destination must be empty; existing files were not changed.');
   }
-  const files = [...requiredFiles];
+  const files = [...requiredFiles, ...storageMetadataFiles(source)];
   function collect(directory, prefix = 'src') {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
       const name = prefix + '/' + entry.name;
