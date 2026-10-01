@@ -4,9 +4,9 @@ export const config = {
   runtime: 'edge',
 };
 
-export default async function handler(req) {
+export async function handleChatRequest(req, { trialKey, ...guardOptions } = {}) {
   // 1. Origin allowlist + preflight + method + rate limit (shared).
-  const blocked = guardRequest(req, { maxPerMin: 30 });
+  const blocked = guardRequest(req, { ...guardOptions, maxPerMin: 30 });
   if (blocked) return blocked;
   const origin = req.headers.get('origin');
   const cors = corsHeaders(origin);
@@ -16,8 +16,8 @@ export default async function handler(req) {
   // opts in via x-lct-trial and the owner has provisioned the env var.
   // ADR-060: do NOT use 'Authorization' to avoid CDN log leakage.
   const byokKey = req.headers.get('x-lct-byok-key');
-  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!process.env.OPENAI_TRIAL_KEY;
-  const apiKey = byokKey || (usingTrial ? process.env.OPENAI_TRIAL_KEY : null);
+  const usingTrial = !byokKey && req.headers.get('x-lct-trial') === '1' && !!trialKey;
+  const apiKey = byokKey || (usingTrial ? trialKey : null);
   if (!apiKey) {
     return new Response('Missing x-lct-byok-key header', {
       status: 401,
@@ -62,11 +62,16 @@ export default async function handler(req) {
       headers: responseHeaders
     });
 
-  } catch (err) {
+  } catch {
     // ADR-060: Do not log the error object, it could contain the request or the key.
     return new Response('Proxy Error', {
       status: 502,
       headers: cors
     });
   }
+}
+
+// Vercel owns this environment. Other runtimes supply their inputs explicitly.
+export default function handler(req) {
+  return handleChatRequest(req, { trialKey: process.env.OPENAI_TRIAL_KEY });
 }

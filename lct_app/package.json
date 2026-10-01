@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:sites-worker": "vite build --config sites/vite.config.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

@@ -1548,3 +1548,9 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - The saved utterance route now checks the conversation owner before returning
   rows and responds 404 for another owner or missing conversation. Public-route
   regressions passed (21/21 scoped). Pending independent review and deployment.
+
+## 2026-10-01 — Serverless live recording still requires the local backend
+
+- Summary: AudioInput starts useTranscriptSockets even in serverless mode; the browser OpenAI realtime client is unused. The serverless gate advertises live recording despite this dependency. Some saved-conversation reads also bypass ServerlessDataProvider.
+- Impact / blocker: visitors cannot rely on the advertised live journey when the owner's computers are off. This blocks the public always-available milestone, but does not block preparing a Worker-compatible proxy artifact.
+- Recommended next step: integrate and test the browser live path with every private-network request blocked, and route newly saved serverless graphs through browser-local persistence/viewing. Keep current owner history out of the initial migration.
