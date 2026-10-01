@@ -1,6 +1,6 @@
-# Sites proxy runtime slice — validation and review blocker
+# Sites proxy runtime slice — validation and independent review
 
-Status on 2026-10-01: locally validated, independent review unavailable. This is a compatibility artifact; it is not ready for deployment or merge approval.
+Status on 2026-10-01: locally validated and independently approved by Google Gemini 3.1 Pro through AGY. This completes the bounded proxy compatibility slice; it does not package a complete Site or establish deployment readiness.
 
 ## Exact review scope
 
@@ -28,7 +28,7 @@ Final packet: 32,391 bytes, SHA256 `bf404718e4c0fcfc076fe4ddab95df11c984668755b2
 - `git diff --check` and staged whitespace check: passed.
 - Repository pre-push gate: full frontend suite456/456 in73files passed. Existing React act-environment warnings appeared in UI tests; no source in those flows changed.
 
-Source commit `c708564d9df87db499db416d5f73b76199937e20` is pushed to `codex/lct-sites-serverless`; the upstream ref matches. SSH publication initially failed DNS resolution; the same bounded branch pushed successfully through the existing authenticated HTTPS transport. No pull request, merge or deployment was performed. The independent review status remains pending.
+Source commit `c708564d9df87db499db416d5f73b76199937e20` is pushed to `codex/lct-sites-serverless`; the upstream ref matches. SSH publication initially failed DNS resolution; the same bounded branch pushed successfully through the existing authenticated HTTPS transport. No pull request, merge or deployment was performed. The independent review result is recorded below.
 
 ## Independent reviewer attempts
 
@@ -36,4 +36,13 @@ Source commit `c708564d9df87db499db416d5f73b76199937e20` is pushed to `codex/lct
 2. xAI Grok 4.7: authenticated grok.com account, exact packet, verbatim mode, built-in tools/web/subagents disabled. Returned HTTP 402 because the existing Grok Build balance is exhausted; no verdict. The CLI also attempted startup of a configured localhost MCP connection, which was refused. Do not call this a verified MCP-free runtime; future use requires verified MCP exclusion.
 3. Google Gemini 3.1 Pro: existing OAuth-personal configuration, isolated cwd and verified system settings disabling all core tools, hooks, MCP and extensions, with a unique context filename. Authentication returned UNSUPPORTED_CLIENT for the installed Gemini CLI, and the isolated directory also lacked trust. No inference or verdict. Updating the user's reviewer installation or credentials is outside this slice.
 
-No family approved the diff, no findings were received or rejected, and no paid API fallback was used. The independent-review requirement is still a blocker. Resume with an eligible authenticated non-OpenAI coding reviewer and the same bounded source scope before claiming completion, requesting merge, or deploying.
+These initial attempts produced no verdict. They did not establish that every installed reviewer runtime was unavailable: the user identified existing AGY credits, and the installed AGY runtime succeeded using its existing authentication. Future availability audits must check AGY separately from the legacy Gemini CLI before reporting this blocker.
+
+## Final independent review — 2026-10-01 22:34 IST
+
+- Reviewer: Google Gemini 3.1 Pro (`gemini-3.1-pro-high`) through the installed AGY CLI, using the existing access and credits explicitly authorized by the user.
+- Exact scope: the nine files above, matching source commit `c708564d9df87db499db416d5f73b76199937e20` and the final 32,391-byte packet/hash above. The runner verified the current bounded source diff still matched the packet before sending it.
+- Isolation: fresh reviewer directory, static-review main agent, no plugins/MCP/skills, and all tool actions denied by a verified PreToolUse hook. AGY still advertised tools despite an empty tools list; an empirical synthetic file-read probe confirmed the hook denied execution before the source packet was sent. The actual review made zero tool calls.
+- Verdict: **PASS, no actionable findings**. One review turn completed in 62.9 seconds. No findings required fixes or rejection, and no independent-review overclaim remains unresolved.
+- Validation remains the final-source evidence above: 43 focused tests, 456 full frontend tests, lint, both builds, compiled Worker smoke and whitespace checks passed. Source did not change during this review.
+- Temporary packet, tool-gate probe and raw AGY receipts remain ignored in `.agent-reviews/`; no credentials, recordings, transcripts or private artifacts were included. Neither discovered `key.txt` file was opened. No paid API fallback, Site registration, secret configuration or deployment occurred.
