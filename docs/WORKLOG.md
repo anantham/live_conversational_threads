@@ -6489,7 +6489,7 @@ User observed an empty desktop transcript until node selection, with only the cu
   ThreadsViewer.jsx:315-345, 553-582, 648-700 integrates local results and opens Source
   for evidence seeks. SourceSpeakerEditor.jsx presents actual samples and local
   name/export controls; TextSourcePanel.jsx retains untimed/full-transcript access.
-  YouTubeSourcePanel.jsx:15-205, 229-274 removes transcript-height adjustment and
+  YouTubeSourcePanel.jsx:15-205, 229-247 removes transcript-height adjustment and
   handles observable loading, timeout/retry, cancellation, and safe external fallback.
   Source sections now keep natural height and scroll without overlapping on phones.
 - conversationSearch.js and conversationSearch.worker.js:1 onward index all nodes,

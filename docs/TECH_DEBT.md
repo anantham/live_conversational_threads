@@ -359,7 +359,7 @@ do not create a second processing state machine for the current feature.
 ## 2026-10-02 — Static viewer exploration
 
 MinimalGraph.jsx (~2,260 lines), ThreadsViewer.jsx (~730 lines), and
-NodeDetail.jsx (~850 lines) combine several concerns. The current changes stay
+NodeDetail.jsx (~1,175 lines) combine several concerns. The current changes stay
 within the existing viewer and add small search, contribution, and Source modules.
 Future work should extract authored layout/viewport motion and reading navigation
 from MinimalGraph, separate artifact loading/media state from ThreadsViewer, and
@@ -367,7 +367,7 @@ extract evidence and nearby-navigation sections from NodeDetail. Preserve the
 public interaction regressions during those extractions; no broad refactor was
 included in this feature.
 
-YouTubeSourcePanel.jsx (~290 lines) is still one source interaction boundary.
+YouTubeSourcePanel.jsx (~247 lines) is still one source interaction boundary.
 Extract its SDK lifecycle/status hook if another provider or loading policy is
 added. Keep player ownership, pending seeks, cancellation, and measured waits
 under one lifecycle rather than separate competing timers.

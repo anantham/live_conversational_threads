@@ -2,6 +2,7 @@
 
 Date: 2026-10-02
 Base: `59dea4c`
+Source commit: `d78fe83`
 Verdict: **Not reviewed; release blocked.**
 
 ## Prepared source boundary
