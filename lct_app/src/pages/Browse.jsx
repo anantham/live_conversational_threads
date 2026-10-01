@@ -57,6 +57,7 @@ function chipClass(active) {
 }
 
 export default function Browse() {
+  const sitesMode = import.meta.env.VITE_SITES_MODE === "true";
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -242,6 +243,7 @@ export default function Browse() {
   };
 
   useEffect(() => {
+    if (sitesMode) return;
     const fetchConversations = async () => {
       // 6s timeout so an off-network visitor (backend on a private Tailscale
       // host they can't reach) gets a clear section-level result instead of a
@@ -289,7 +291,7 @@ export default function Browse() {
       }
     };
     fetchConversations();
-  }, [dataProvider]);
+  }, [dataProvider, sitesMode]);
 
   // Distinct contacts across all conversations (MVP contact picker), sorted by
   // name. Derived from the participants now carried on the list response.
@@ -430,7 +432,13 @@ export default function Browse() {
           )}
         </section>
 
-        <IndrasNetAudioLibrary />
+        {sitesMode ? (
+          <p className="mx-auto mt-8 max-w-2xl text-xs leading-relaxed text-slate-600">
+            Public cloud catalog and private cloud library are coming later. Files opened here stay in this browser.
+          </p>
+        ) : (
+          <>
+            <IndrasNetAudioLibrary />
 
         <section className="mx-auto mt-10 max-w-2xl border-t border-slate-200 pt-7">
           <div className="mb-3">
@@ -601,10 +609,12 @@ export default function Browse() {
           </>
         )}
         </section>
+          </>
+        )}
       </div>
 
       {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
+      {!sitesMode && deleteConfirm && (
         <div
           className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
           onClick={() => setDeleteConfirm(null)}

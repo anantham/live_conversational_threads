@@ -83,6 +83,32 @@ describe('Sites Worker public fetch interface', () => {
     }
   });
 
+  it('preserves a browser deep link when managed assets canonicalize the shell to root', async () => {
+    const assets = { fetch: async req => new URL(req.url).pathname === '/'
+      ? new Response('fixture-shell') : Response.redirect(SITE + '/', 307) };
+    const response = await worker.fetch(request('/browse', { method: 'GET', headers: { accept: 'text/html' } }), { ASSETS: assets });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('fixture-shell');
+    expect(response.headers.has('Location')).toBe(false);
+  });
+
+  it('preserves auth, external, query and non-navigation redirects', async () => {
+    for (const location of [SITE + '/signin-with-chatgpt', 'https://fixture-auth.invalid/', SITE + '/?auth=fixture']) {
+      const assets = { fetch: async () => Response.redirect(location, 307) };
+      const response = await worker.fetch(request('/browse', { method: 'GET', headers: { accept: 'text/html' } }), { ASSETS: assets });
+      expect(response.status).toBe(307);
+      expect(response.headers.get('Location')).toBe(location);
+    }
+    const assets = { fetch: async () => Response.redirect(SITE + '/', 307) };
+    for (const [path, method, accept] of [['/assets/missing.js', 'GET', 'text/html'], ['/browse', 'GET', 'application/json'], ['/browse', 'POST', 'text/html']]) {
+      const response = await worker.fetch(request(path, { method, headers: { accept } }), { ASSETS: assets });
+      expect(response.status).toBe(307);
+      expect(response.headers.get('Location')).toBe(SITE + '/');
+    }
+    const protectedApi = await worker.fetch(request('/api/auth/session', { method: 'GET', headers: { accept: 'text/html' } }), { ASSETS: assets });
+    expect(protectedApi.status).toBe(401);
+  });
+
   it('forwards BYOK chat and exposes tokens before the upstream stream closes', async () => {
     let controller;
     upstream.mockResolvedValueOnce(new Response(new ReadableStream({

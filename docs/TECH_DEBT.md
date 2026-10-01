@@ -355,3 +355,7 @@ rendering live together. Its action state is still local to one Browse section
 and the tested flow is small. If more source types or actions are added,
 extract a useAudioSourceAction hook and keep rendering in the component;
 do not create a second processing state machine for the current feature.
+
+## 2026-10-02 — Browse source boundaries
+
+Browse.jsx is639lines after the scoped Sites exclusions. It mixes browser-local file/draft rendering with legacy server listing, contact filtering, export/delete controls and owner-audio entry. The Sites guard avoids mounting the owner sections without changing local/Vercel behavior. Future work should extract a browser-local library and a server-history component with separately owned loading/actions; preserve current public-behavior tests. This is a refactor candidate, not part of the public-entry slice.

@@ -16,6 +16,17 @@ function jsonResponse(status, error) {
   });
 }
 
+function isShellRedirect(response, url) {
+  if (![301, 302, 303, 307, 308].includes(response.status)) return false;
+  const location = response.headers.get('Location');
+  if (!location) return false;
+  try {
+    const destination = new URL(location, url);
+    return destination.origin === url.origin && !destination.search && !destination.hash &&
+      ['/', '/index.html'].includes(destination.pathname);
+  } catch { return false; }
+}
+
 export default {
   async fetch(request, env = {}) {
     const url = new URL(request.url);
@@ -55,11 +66,17 @@ export default {
     const response = await env.ASSETS.fetch(request);
     // BrowserRouter deep links need the app shell. Missing files and API routes
     // must keep their real error response rather than receiving HTML.
-    if (response.status === 404 && ['GET', 'HEAD'].includes(request.method) &&
+    if ((response.status === 404 || isShellRedirect(response, url)) && ['GET', 'HEAD'].includes(request.method) &&
       request.headers.get('accept')?.includes('text/html') &&
       !/\.[^/]+$/.test(url.pathname)) {
       const index = new URL('/index.html', url);
-      return env.ASSETS.fetch(new Request(index, request));
+      const shell = await env.ASSETS.fetch(new Request(index, request));
+      // Managed assets may canonicalize index.html to /. Fetch the canonical
+      // shell internally so browser navigation keeps its client-side route.
+      if (isShellRedirect(shell, url)) {
+        return env.ASSETS.fetch(new Request(new URL('/', url), request));
+      }
+      return shell;
     }
     return response;
   },
