@@ -1,6 +1,18 @@
 # ISSUES
 
-Last updated: 2026-09-28
+Last updated: 2026-10-01
+
+## 2026-10-01 — Immediate navigation can outrun device-library saving
+
+- Two of nine Tailnet browser smoke cases found an empty Library after a full
+  navigation immediately following a synthetic artifact's rendered title.
+  Waiting for the IndexedDB record before navigating made the same reopen pass.
+  The title therefore does not establish that asynchronous remembering finished.
+- Impact: an immediate reload/navigation after opening a file can lose that
+  device-library entry. Not a blocker for opening the existing Tailnet URL and
+  its Discussion view. Follow up at ThreadsViewer.jsx's fire-and-forget
+  rememberThreadsArtifact call and the opener's navigation/save-completion
+  contract. Do not hide the failure by adding an arbitrary test sleep.
 
 ## 2026-09-28 - Per-utterance idea attribution is not available
 

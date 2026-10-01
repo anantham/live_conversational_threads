@@ -6462,3 +6462,45 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Saved conversations already offer Graph and Transcript tabs; `.threads` uses a separate compact card view. ADR-062 preserves overlapping semantic membership, so a Discussion projection must preserve secondary links and exact utterance provenance rather than derive speaker replies from chronology.
 - `conversations_api.py:451-472` lacks the owner check used at lines 106-114. Logged as a security-sensitive prerequisite in `ISSUES.md`; no participant data, live database, credentials, or recording was accessed. The human architecture choice about semantic hierarchy versus new reply extraction is pending.
 - The Windows sandbox helper still fails before ordinary command launch with OS error 206. Reviewed shell execution works for repository diagnostics; no global sandbox configuration or app binary was changed.
+## 2026-10-01 20:15 IST — Tailnet viewer persistence correction
+
+- User reported the same viewer link failing again. Direct Tailnet GET returned
+  502; loopback 43191 had no listener; the self-excluding process probe found no
+  launcher. Its last log was September 29, before the September 30 host reboot.
+- Instrument: a scheduled diagnostic under the same user reported the previous
+  AppData release directory and launcher absent, while the installed Vite CLI
+  remained visible. The agent session could read both. This falsifies the prior
+  assumption that creating those files made them available to Windows startup.
+- A current-user logon trigger registers without elevation. The earlier trigger
+  had targeted all logons. An actual scheduled launch now reads a Documents
+  release and serves the Tailnet route, independently of the agent shell.
+- Before source edits, wrote tests/intent/tailnet-viewer-persistence.md. Added
+  ops/tailnet-viewer/serve-viewer.mjs, install-task.ps1 and README.md to make the
+  launch reproducible and require a real scheduled readiness check. No changes
+  to the frontend, recordings, backend, or other Tailscale routes. Source work is
+  isolated on codex/tailnet-viewer-persistence; the dirty deploy checkout is untouched.
+- Initial Chromium check of the actual Tailnet URL loaded the graph and switched
+  to Discussion with no uncaught JavaScript errors or failing origin responses.
+  Screenshots remain local and excluded from review/publication. Final source
+  validation, recovery check and independent review are pending. A real reboot
+  or sign-in is deliberately untested and will not be claimed as verified.
+- Stopping the scheduled PowerShell wrapper left its Volta-spawned Node child
+  serving. The installer correctly refused to kill the occupied port. Removed
+  this wrapper and made the actual installed Node runtime the task's root
+  process, with the existing Vite preview API in a small logged launcher.
+- The forced-exit regression falsified reliance on RestartOnFailure: Windows
+  recorded a completed action with exit -1 but did not restart it within one
+  minute. Replaced that setting with an indefinite one-minute trigger plus
+  IgnoreNew, so stopped instances recover and healthy instances remain running.
+- Final local validation: JavaScript and PowerShell syntax checks pass; a
+  missing Vite module exits 1 and writes ERR_MODULE_NOT_FOUND to its diagnostic
+  log. Task stop releases the port without an orphan; task start restores HTTP
+  200. After a forced server exit at 20:25:23 IST, the periodic trigger launched
+  a new root process at 20:25:59 (36 seconds). Healthy ticks retain the same PID.
+- Chromium loaded the exact Tailnet conversation, switched to Discussion, and
+  expanded an arc with zero page errors or failing origin responses. The broader
+  nine-case browser suite had six passes, two failures, one skip (35.9 seconds,
+  one worker, no retries). Both failures navigate immediately after a title
+  renders; waiting for the actual IndexedDB record made a synthetic reopen pass.
+  Recorded this separate existing save/navigation race in ISSUES.md without
+  changing frontend code or weakening its tests. Independent source review pending.
