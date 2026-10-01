@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:sites-worker": "vite build --config sites/vite.config.mjs",
+    "build:sites": "node sites/build.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",

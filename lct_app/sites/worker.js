@@ -19,6 +19,19 @@ function jsonResponse(status, error) {
 export default {
   async fetch(request, env = {}) {
     const url = new URL(request.url);
+    if (url.pathname === '/api/auth/session') {
+      if (request.method !== 'GET') return jsonResponse(405, 'Use GET to check the signed-in session.');
+      // Sites dispatch supplies this trusted, Site-specific identity. A service
+      // bypass token does not identify a visitor and cannot substitute for it.
+      const id = request.headers.get('oai-authenticated-user-id')?.trim();
+      const response = id
+        ? { authenticated: true, user: { id } }
+        : { authenticated: false, sign_in: '/signin-with-chatgpt?return_to=%2F' };
+      return new Response(JSON.stringify(response), {
+        status: id ? 200 : 401,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', Vary: 'Cookie' },
+      });
+    }
     const handler = routes.get(url.pathname);
     if (handler) {
       const response = await handler(request, {
@@ -39,6 +52,15 @@ export default {
     if (!env.ASSETS?.fetch) {
       return jsonResponse(503, 'The Site asset binding is not configured. Build and bind the frontend before publishing.');
     }
-    return env.ASSETS.fetch(request);
+    const response = await env.ASSETS.fetch(request);
+    // BrowserRouter deep links need the app shell. Missing files and API routes
+    // must keep their real error response rather than receiving HTML.
+    if (response.status === 404 && ['GET', 'HEAD'].includes(request.method) &&
+      request.headers.get('accept')?.includes('text/html') &&
+      !/\.[^/]+$/.test(url.pathname)) {
+      const index = new URL('/index.html', url);
+      return env.ASSETS.fetch(new Request(index, request));
+    }
+    return response;
   },
 };

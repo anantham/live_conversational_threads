@@ -35,6 +35,54 @@ afterEach(() => {
 });
 
 describe('Sites Worker public fetch interface', () => {
+  it('returns only dispatch identity and never caches the signed-in session', async () => {
+    const response = await worker.fetch(request('/api/auth/session', {
+      method: 'GET', headers: {
+        'oai-authenticated-user-id': 'fixture-alice',
+        'oai-authenticated-user-email': 'fixture@example.invalid',
+        'x-owner-id': 'fixture-mallory',
+      },
+    }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('Vary')).toBe('Cookie');
+    expect(await response.json()).toEqual({ authenticated: true, user: { id: 'fixture-alice' } });
+    expect(upstream.mock.calls).toHaveLength(0);
+  });
+
+  it('rejects absent or empty identity even with a service credential or owner field', async () => {
+    for (const id of ['', '   ']) {
+      const response = await worker.fetch(request('/api/auth/session', {
+        method: 'GET', headers: {
+          'oai-authenticated-user-id': id,
+          'OAI-Sites-Authorization': 'Bearer fixture-service-token',
+          'x-owner-id': 'fixture-alice',
+        },
+      }));
+      expect(response.status).toBe(401);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(await response.json()).toEqual({ authenticated: false, sign_in: '/signin-with-chatgpt?return_to=%2F' });
+    }
+    expect((await worker.fetch(request('/api/auth/session'))).status).toBe(405);
+    expect(upstream.mock.calls).toHaveLength(0);
+  });
+
+  it('serves the app shell for browser deep links while preserving missing-file and API errors', async () => {
+    const assets = { fetch: vi.fn(async (req) => new Response(
+      new URL(req.url).pathname === '/index.html' ? 'fixture-shell' : 'missing',
+      { status: new URL(req.url).pathname === '/index.html' ? 200 : 404 },
+    )) };
+    const navigation = request('/view/fixture-graph', { method: 'GET', headers: { accept: 'text/html' } });
+    const response = await worker.fetch(navigation, { ASSETS: assets });
+    expect(await response.text()).toBe('fixture-shell');
+    expect(assets.fetch.mock.calls.map(([req]) => new URL(req.url).pathname)).toEqual(['/view/fixture-graph', '/index.html']);
+    for (const path of ['/assets/missing.js', '/api/missing', '/browse']) {
+      const accept = path === '/browse' ? 'application/json' : 'text/html';
+      const missing = await worker.fetch(request(path, { method: 'GET', headers: { accept } }), { ASSETS: assets });
+      expect(missing.status).toBe(404);
+    }
+  });
+
   it('forwards BYOK chat and exposes tokens before the upstream stream closes', async () => {
     let controller;
     upstream.mockResolvedValueOnce(new Response(new ReadableStream({

@@ -2,7 +2,7 @@
 
 ## Progress tracker — updated 2026-10-01 22:45 IST
 
-**Current stage:** Worker compatibility complete; managed Sites identity and a runnable parallel Site are next. Nothing has been deployed or connected to real recording data. Source and review evidence are pushed on `codex/lct-sites-serverless`.
+**Current stage:** Worker compatibility complete; the parallel build and session endpoint are implemented, locally validated and independently approved. The new Site is registered owner-private with a native sign-in client; source publication and actual signed-in verification are in progress. No real recording data or paid provider has been connected. Source and review evidence are preserved on `codex/lct-sites-serverless`.
 
 **Tentative ETA for the core cloud beta:** 24–64 hours of remaining active engineering effort, or approximately **3–8 focused workdays** at eight active hours per day. This is a planning range based on the remaining integration work, not a measured forecast or a promise of a calendar date. Pauses between work sessions and waits for access, funding decisions, platform eligibility, DNS or certificates are additional. Reforecast after milestone 1 proves the real hosting and identity path; no comparable delivery timing history exists yet.
 
@@ -11,7 +11,7 @@ The beta means a visitor can sign in, record with Soniox, save private audio/tra
 | Milestone | Status | Planning effort remaining | Completion evidence |
 | --- | --- | --- | --- |
 | 0. Sites Worker adapter | **Done** | — | Streaming proxy, runtime build and public-interface tests pass; AGY Gemini independent review PASS, no findings. |
-| 1. Runnable parallel Site and sign-in | **Next** | 3–8 active hours | Complete frontend/Worker asset bundle runs at a private parallel URL. Verify managed identity and intended audience/custom-domain support; anonymous recording API requests fail. No credentials or owner history in the source package. |
+| 1. Runnable parallel Site and sign-in | **In progress: local checks + review pass; native verification pending** | Initial planning allocation 3–8 active hours; reforecast at deployment | Complete frontend/Worker asset bundle runs at a private parallel URL. Verify managed identity and intended audience/custom-domain support; anonymous recording API requests fail. No credentials or owner history in the source package. |
 | 2. Private recording storage | Planned | 6–16 active hours | D1 metadata and private R2 audio are associated with the trusted signed-in owner. Upload/list/playback/transcript/graph/export/delete enforce ownership. Anonymous and second-user access are denied. Consent, retention and deletion are defined and tested with synthetic data. |
 | 3. Soniox live transcription | Planned | 4–10 active hours | Browser microphone streams using authenticated, bounded temporary keys. Long-lived key stays server-side; session duration, per-user quotas and global budget are enforced before real billable traffic. Stop, failure and reconnect paths are observable. |
 | 4. Cloud conversation intelligence and exploration | Planned | 6–16 active hours | Text extraction uses a supported cloud inference route. New graphs/transcripts save, reopen and render from authorized cloud storage. The core journey makes no private/Tailscale/local backend calls. Live status, retry and cancellation work. |

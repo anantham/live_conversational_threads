@@ -1560,3 +1560,10 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Summary: the required full-suite pre-push run emits React act-environment warnings in existing UI tests including ThreadsViewerToolbar, NodeDetail and graph controls.
 - Impact / blocker: noisy test output;456/456tests in73files pass. Not a blocker for the proxy adapter and not evidence of a production regression.
 - Recommended next step: align the shared React test-environment setup in a separate scoped task. No UI or test-harness code changed in this migration slice.
+
+## 2026-10-01 — Parallel Site packaging and inherited readiness gaps
+
+- Summary: the ordinary Vite build copies the entire public directory, including unrelated experiment/ciphertext artifacts. The Sites migration must not carry these into its new source repository or asset bundle. A dedicated no-public-copy Sites build and bounded exporter now exclude them; this mitigation is scoped to the new parallel Site. No artifact contents were read or moved.
+- Summary: App.jsx still probes the Python health endpoint and shows an unlabeled spinner while checking before offering the legacy BYOK gate. The parallel Worker correctly returns404 for that unsupported route. This is an inherited readiness/observable-wait gap, not evidence that native cloud recording is implemented.
+- Impact / blocker: the packaging risk is mitigated for the parallel preview. The old health gate and local recording/storage path still block the full public cloud journey, but do not block verifying the private hosting/identity checkpoint.
+- Recommended next step: add cloud capability/session readiness and shared elapsed/status presentation with the Soniox/cloud-provider integration; test initial, slow, failed and cancelled setup without private-network calls. Preserve the existing local/Vercel flow.
