@@ -371,3 +371,9 @@ YouTubeSourcePanel.jsx (~247 lines) is still one source interaction boundary.
 Extract its SDK lifecycle/status hook if another provider or loading policy is
 added. Keep player ownership, pending seeks, cancellation, and measured waits
 under one lifecycle rather than separate competing timers.
+
+The blank-player follow-up keeps the Source panel below 300 lines and extracts
+the visible Play/Pause interaction into SourcePlaybackControls.jsx. Readiness
+and playback waits are separate phases; each timer has one owner and is cleaned
+up on completion, failure, retry, or unmount. Extract the SDK lifecycle only when
+the existing provider boundary grows; no broad Source rewrite is warranted here.

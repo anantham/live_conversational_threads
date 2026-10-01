@@ -5,6 +5,7 @@ import TextSourcePanel from "./TextSourcePanel";
 
 // Test intent: untimed source results reveal original bytes and scroll the
 // selected exact transcript range or utterance into view without external work.
+// Unverified recording metadata explains why text is shown and never becomes a link.
 let host, root, scroll;
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -35,4 +36,12 @@ it("reveals an untimed utterance in its original passage list", () => {
   const selected = host.querySelector('[aria-current="true"]');
   expect(selected.textContent).toContain("First line\nSecond  line");
   expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+});
+
+it("explains an unverified recording while retaining the original text",()=>{
+ const text="Synthetic original source";
+ act(()=>root.render(<TextSourcePanel bundle={{full_transcript:text,media_refs:[{provider:"youtube",video_id:"ABCDEFGHIJK",view_url:"https://invalid.example",time_unit:"seconds"}]}}/>));
+ expect(host.querySelector('[role="status"]').textContent).toContain("YouTube source unavailable");
+ expect(host.querySelector('pre').textContent).toBe(text);
+ expect(host.querySelector('a')).toBeNull();
 });

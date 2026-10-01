@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import PanelResizeHandle from "../PanelResizeHandle";
 import SourceSpeakerEditor from "./SourceSpeakerEditor";
+import SourcePlaybackControls from "./SourcePlaybackControls";
 import { mediaOffsetLabel } from "../../services/mediaSeek";
 import { recordSourceLoadTiming } from "../../services/sourceLoadTiming";
 import { nodeVideoPassages, selectYouTubeRef, validYouTubeRef, validMediaSeconds } from "../../services/youtubeMedia";
@@ -57,6 +58,8 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const [elapsed, setElapsed] = useState(0);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [active, setActive] = useState(null);
+  const [playbackState, setPlaybackState] = useState(-1);
+  const [blockedMessage, setBlockedMessage] = useState("");
   const passages = useMemo(() => (bundle.utterances || []).filter(u=>validMediaSeconds(u.timestamp_start)).sort((a,b)=>a.timestamp_start-b.timestamp_start), [bundle.utterances]);
   const selectedPassages = useMemo(() => nodeVideoPassages(node, nodes, bundle.utterances || []), [node, nodes, bundle.utterances]);
   const selectedPassageIds = useMemo(() => new Set(selectedPassages.map(u => u.id)), [selectedPassages]);
@@ -130,6 +133,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   useEffect(() => {
     if (!videoId) return undefined;
     let canceled = false;
+    let failed = false;
     let instance;
     let clock;
     let readinessTimer;
@@ -146,17 +150,25 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
       recordSourceLoadTiming({ outcome, retries: loadAttempt, apiMs: apiMs ?? null, elapsedMs: performance.now() - started });
     };
     const fail = message => {
-      if (canceled) return;
+      if (canceled || failed) return;
+      failed = true;
       finish("error");
       window.clearInterval(clock);
+      player.current = null;
+      const abandoned = instance;
+      instance = undefined;
+      abandoned?.destroy();
       setLoadStage("error"); setError(message);
     };
-    setError(""); setElapsed(0); setLoadStage("api");
+    setError(""); setBlockedMessage(""); setPlaybackState(-1); setElapsed(0); setLoadStage("api");
     elapsedTimer = window.setInterval(() => setElapsed(Math.floor((performance.now() - started) / 1000)), 1000);
     const readClock = () => {
-      if (canceled || document.visibilityState === "hidden") return;
+      if (canceled || failed || document.visibilityState === "hidden") return;
       const seconds = instance?.getCurrentTime?.();
       if (validMediaSeconds(seconds)) setActive(seconds);
+      const state = instance?.getPlayerState?.();
+      if (typeof state === "number") setPlaybackState(state);
+      if (state === 1) setBlockedMessage("");
     };
     // YT replaces this child; React owns only the stable outer host.
     const child = document.createElement("div");
@@ -169,10 +181,10 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
       instance = new YT.Player(child, {
         width: "100%", height: "100%", videoId,
         host: "https://www.youtube-nocookie.com",
-        playerVars: { playsinline: 1, autoplay: 0, origin: window.location.origin, rel: 0 },
+        playerVars: { playsinline: 1, controls: 1, autoplay: 0, origin: window.location.origin, rel: 0 },
         events: {
           onReady: () => {
-            if (canceled) return;
+            if (canceled || failed) return;
             finish("success"); setError(""); setLoadStage("ready");
             player.current = instance;
             instance.getIframe().title = videoLabel;
@@ -182,7 +194,8 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
             clock = window.setInterval(readClock, 250);
           },
           onStateChange: readClock,
-          onError: () => fail("This video cannot play embedded here. Retry or open the passage on YouTube below."),
+          onAutoplayBlocked: () => { if (!canceled && !failed) setBlockedMessage("Your browser blocked playback here. Open this passage on YouTube below."); },
+          onError: ({ data } = {}) => fail(`This video cannot play embedded here${Number.isFinite(data) ? ` (YouTube error ${data})` : ""}. Retry or open the passage on YouTube below.`),
         },
       });
     }).catch((e) => { if (!canceled) fail(e.message); });
@@ -213,13 +226,16 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
       <div className={collapsed ? "hidden" : "flex min-h-0 flex-1 flex-col overflow-y-auto"}>
       <details ref={videoDetails} open className="shrink-0 text-xs text-slate-600">
         <summary className="cursor-pointer py-1">Video</summary>
-      <div ref={host} className="min-h-[200px] w-full bg-stone-100" style={{ height: compact ? 200 : 210 }} />
-      {["api", "player"].includes(loadStage) && <div className="mt-2 text-xs text-slate-600">
-        <p role="status">{loadStage === "api" ? "Loading YouTube" : "Preparing the video player"}</p>
-        <p aria-hidden="true" className="mt-1 tabular-nums">{elapsed}s elapsed · Time remaining unknown</p>
-      </div>}
-      {loadStage === "ready" && <p className="mt-2 text-xs text-slate-600">Passage cued. Press Play in the video to watch.</p>}
-      {error && <p role="alert" className="mt-2 text-xs text-amber-800">{error}</p>}
+      <div aria-busy={["api", "player"].includes(loadStage)} className="relative min-h-[200px] w-full bg-stone-100" style={{ height: compact ? 200 : 210 }}>
+        <div ref={host} className={error ? "hidden" : "h-full w-full"} />
+        {loadStage !== "ready" && <div className="absolute inset-0 flex flex-col justify-center bg-stone-100 px-4 text-sm text-slate-700">
+          {error ? <p role="alert">{error}</p> : <>
+            <p role="status">{loadStage === "player" ? "Preparing the video player" : "Loading YouTube"}</p>
+            <p aria-hidden="true" className="mt-2 text-xs tabular-nums">{elapsed}s elapsed · Time remaining unknown</p>
+          </>}
+        </div>}
+      </div>
+      {loadStage === "ready" && player.current && <SourcePlaybackControls player={player.current} playbackState={playbackState} blockedMessage={blockedMessage} onDismissBlocked={() => setBlockedMessage("")} />}
       {error && <button type="button" className="min-h-11 text-xs text-amber-800 underline" onClick={() => { pending.current = active ?? pending.current; setLoadAttempt(value => value + 1); }}>Retry video</button>}
       <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 block min-h-11 py-3 text-xs text-amber-700 underline">
         Open on YouTube at {mediaOffsetLabel(linkSeconds)}

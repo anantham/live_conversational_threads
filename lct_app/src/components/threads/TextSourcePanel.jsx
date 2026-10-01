@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import SourceSpeakerEditor from "./SourceSpeakerEditor";
+import { validYouTubeRef } from "../../services/youtubeMedia";
 
 export default function TextSourcePanel({ bundle, selection = null, compact = false, onClose, onRenameSpeaker }) {
   const transcript = typeof bundle.full_transcript === "string" ? bundle.full_transcript : "";
   const utterances = Array.isArray(bundle.utterances) ? bundle.utterances : [];
+  const unsupportedRecording = (bundle.media_refs || []).some(ref => ref?.provider === "youtube" && !validYouTubeRef(ref));
   const [mode, setMode] = useState(() => selection?.kind === "utterance" || !transcript ? "utterances" : "transcript");
   const selectedRef = useRef(null);
   useEffect(() => {
@@ -26,6 +28,7 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
       <h2 className="font-medium text-slate-800">Original source text</h2>
       <button type="button" onClick={onClose} className="min-h-11 rounded px-2 text-slate-600 hover:bg-slate-100">Hide source</button>
     </div>
+    {unsupportedRecording && <p role="status" className="mb-2 shrink-0 text-amber-800">YouTube source unavailable. The recording link or timing information could not be verified. You can still read the transcript below.</p>}
     {transcript && utterances.length > 0 && <div role="group" aria-label="Text source section" className="mb-2 flex gap-2">
       <button type="button" aria-pressed={mode === "transcript"} onClick={() => setMode("transcript")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Full transcript</button>
       <button type="button" aria-pressed={mode === "utterances"} onClick={() => setMode("utterances")} className="min-h-11 rounded px-2 aria-pressed:bg-amber-100">Passages</button>

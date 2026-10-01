@@ -6523,3 +6523,45 @@ User observed an empty desktop transcript until node selection, with only the cu
   no findings have been independently approved or rejected, and release remains
   blocked by this mandatory gate. No reviewer spend, new cloud project, or credential
   change was introduced. Nonblocking baseline warnings are logged in ISSUES.md.
+
+## 2026-10-02 01:18 IST — Blank player and visible Play correction
+
+- The user's new screenshot has an empty video host and no Play. A successful
+  manual-play run cannot establish visible controls for a failed load. Compared
+  normal and blocked-embed loads on the released public viewer: after 22s the
+  blocked request left one iframe, zero alerts/statuses/fallbacks, reproducing
+  the screenshot. The normal request displayed a thumbnail and native Play.
+  Evidence class: instrument. Specific cause in the user's browser remains
+  unknown; confidence in the reproduced missing-readiness failure class is 0.95.
+- YouTubeSourcePanel.jsx:59-62, 134-203, 227-241 now renders loading/failure in
+  the video area, uses explicit native controls, exposes Play/Pause beside a
+  ready player, reports blocked playback and provider error codes, and destroys
+  timed-out attempts. Late readiness cannot revive a failed attempt. Retry and
+  persistent timestamped YouTube fallback retain the selected source position.
+- SourcePlaybackControls.jsx:1-70 owns visible actions and bounded playback
+  waits, reports stage/elapsed/unknown remaining time, prevents repeated pending
+  Play actions, follows actual player state, and cancels timers on exit. Timing
+  history uses a separate bounded operational key via sourceLoadTiming.js:1-26;
+  no recording identity, URL, source text, or query is stored.
+- TextSourcePanel.jsx:6-31 restores the missing unverified-recording explanation
+  found by the old invalid-metadata browser tests. Updated adjacent component
+  and timing tests, youtube-source.spec.ts, ADR-071, and the test intent. Existing
+  source tests had stale slider/link/navigation expectations; corrected them
+  against the already selected UX. A preexisting unused destructuring variable
+  in a touched test was removed. Tech debt records the small playback extraction.
+- Validation: 28/28 focused frontend tests; eight regular Chromium Source/reading
+  regressions plus one separately enabled real YouTube test passed. Scoped lint
+  has zero errors. Production build passes (2330 modules, existing chunk warning).
+  Real local page: app Play at 37:52 advanced to 2272.478175 seconds, paused=false,
+  readyState=4; app Pause returned the visible Play button. Blocked embed showed
+  an error, removed the iframe, offered Retry, and retained t=2272s. Both runs had
+  zero page errors. Desktop/phone and blocked-state screenshots inspected once.
+- Browser UI connector has no available browser surface; its in-app browser
+  creation reported unavailable. The user's explicitly requested E2E validation
+  used the project's existing Playwright runtime. No browser setting or protection
+  was changed. Raw images/diagnostics remain ignored local evidence.
+- Logged the nonblocking phone legend/passage-following observations in ISSUES.md
+  without extending this correction. The required non-OpenAI review remains
+  unavailable for the previously recorded capacity/project reasons. No source
+  packet was sent; no independent verdict or findings exist. Preserve PR205 as
+  a draft; no merge, production deployment, or review waiver is authorized here.

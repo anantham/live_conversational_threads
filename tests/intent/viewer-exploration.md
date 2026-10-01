@@ -14,6 +14,26 @@
   download/indexing stages, elapsed time, measured completed work, cancellation,
   retry, no-history timing, and narrow-screen status presentation.
 
-Public source playback itself worked when Play was pressed. The reproduced
-failure is the hidden Source panel after an evidence seek. Preserve deliberate
-playback: selecting a passage cues it; the reader presses Play to listen.
+Public source playback worked on a successful load. That observation does not
+establish that a player is visible on every load. Preserve deliberate playback:
+selecting a passage cues it; the reader presses Play to listen.
+
+## 2026-10-02 — Blank video correction
+
+- Reproduce a blocked embed after the YouTube API loads. Loading must show its
+  stage and elapsed time inside the video area, then a clear error and Retry;
+  a timestamped YouTube link stays available without waiting for success.
+- Once the player is ready, provide a visible Play video control outside the
+  embedded frame. Confirm that it starts at the selected passage, becomes Pause
+  on actual playback, and responds to the native player's state changes.
+- A player that reports readiness after a timeout must not revive a failed
+  attempt. Retry preserves the selected passage; closing Source cancels timers.
+- Exercise browser-blocked playback and show the external recording fallback.
+
+Hypothesis: an embed can remain blank after SDK success without emitting an
+error. Prediction: blocking the embed request on the released viewer leaves
+one iframe, zero alerts/statuses/recovery links after 22 seconds. This was
+observed; a normal load showed a thumbnail and native Play. The user's specific
+blocking cause remains unknown. Confidence in this failure class: 0.95.
+The bounded correction exposes state and controls; if embedding still fails,
+the reader can open the exact passage on YouTube.

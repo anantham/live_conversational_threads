@@ -1567,3 +1567,18 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   review verdict exists, and the viewer changes are not merged or released.
   Recommended next step: an authorized existing Google Cloud project for the
   cached Gemini account, or waiting for eligible subscription capacity.
+
+## 2026-10-02 — Source follow-up validation
+
+- The legacy Source browser tests still expected the removed height slider,
+  hidden recovery links, and a retired Show all path. Corrected within the viewer
+  change to test the selected current behavior, retaining seek, rename/export,
+  resizing, and invalid-metadata checks. Those checks also found that the new
+  text fallback omitted the unverified-recording explanation; restored it without
+  creating an untrusted link. Resolved locally; release still awaits review.
+- A phone screenshot shows the existing floating graph Legend over the lower
+  Source region, and resizing an already-open Source can leave its current
+  passage outside the transcript viewport. Impact: minor reading obstruction;
+  neither blocks video actions. Nonblocking and outside this correction's scope.
+  Recommended next step: make the legend respect pane reservations and recheck
+  automatic passage following on viewport changes in a bounded responsive pass.

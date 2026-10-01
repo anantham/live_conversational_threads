@@ -1,7 +1,14 @@
 // Bounded operational timing only: no video IDs, URLs, names or passages.
 export function recordSourceLoadTiming(timing) {
+  recordTiming('threads.source-load-timing.v1', timing);
+}
+
+export function recordSourcePlaybackTiming(timing) {
+  recordTiming('threads.source-playback-timing.v1', timing);
+}
+
+function recordTiming(key, timing) {
   try {
-    const key = 'threads.source-load-timing.v1';
     const previous = JSON.parse(localStorage.getItem(key) || '[]');
     const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
     const operational = row => ({ at: row.at, outcome: row.outcome,

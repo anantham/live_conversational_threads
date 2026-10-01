@@ -49,3 +49,18 @@ Validation includes real thread exploration and source playback, a real local
 semantic inference, public-API regressions, and independent review of the final
 bounded source diff. Raw artifacts, transcripts and browser screenshots are
 excluded from external code review.
+
+## 2026-10-02 amendment — A visible recording action
+
+The user's screenshot shows a blank video host with no Play control. A blocked
+embed probe on the released viewer reproduced this: the SDK loaded and inserted
+an iframe, but no readiness/error arrived and no recovery appeared after 22s.
+The ordinary load succeeded. This confirms an unhandled failure class, not the
+specific cause in the user's browser.
+
+Keep the existing bounded readiness timeout, but render loading and failure in
+the video area itself. Keep the timestamped external recording link available.
+Provide an explicit Play/Pause control alongside a ready player, driven by actual
+player events, and explain browser-blocked playback. A timed-out attempt cannot
+later become ready; Retry starts a fresh attempt at the retained passage.
+No automatic playback, new media provider, or browser settings change is added.
