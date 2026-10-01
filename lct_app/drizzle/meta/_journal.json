@@ -15,6 +15,13 @@
       "when": 1790884994120,
       "tag": "0001_new_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790888966237,
+      "tag": "0002_square_surge",
+      "breakpoints": true
     }
   ]
 }

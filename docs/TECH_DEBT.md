@@ -359,3 +359,7 @@ do not create a second processing state machine for the current feature.
 ## 2026-10-02 — Browse source boundaries
 
 Browse.jsx is639lines after the scoped Sites exclusions. It mixes browser-local file/draft rendering with legacy server listing, contact filtering, export/delete controls and owner-audio entry. The Sites guard avoids mounting the owner sections without changing local/Vercel behavior. Future work should extract a browser-local library and a server-history component with separately owned loading/actions; preserve current public-behavior tests. This is a refactor candidate, not part of the public-entry slice.
+
+## 2026-10-02 — Public viewer boundaries
+
+ThreadsViewer.jsx (~744lines) mixes ingestion sources, local remembering, speaker editing and three presentation modes. The new public loader/task presentation lives in separate modules and the existing viewer receives only a bounded public-ID/no-remember branch. Future extraction should centralize source ingestion and persistence policy while keeping public reads/edits separate from local history. Browse's previously logged monolith is only changed to link to the separate public library. No broad refactor in this feature.

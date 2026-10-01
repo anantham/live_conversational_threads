@@ -105,7 +105,7 @@ export default function SitesAccessPanel() {
         {status === "error" && <span role="alert" className="text-xs text-rose-700">Sign-in check failed</span>}
       </div>
       <p className="mt-2 text-xs leading-relaxed text-slate-600">
-        Sign-in is optional for private storage and history. Cloud recording, public sharing and private storage are coming next. Opening browser-local files does not publish them.
+        Sign-in is optional for private files and history. Browse public conversations without an account. Cloud recording and personal uploads are still being connected. Opening browser-local files does not publish them.
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium">
         {status !== "signed-in" && (

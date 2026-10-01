@@ -1,6 +1,7 @@
 import { handleChatRequest } from '../api/proxy/chat.js';
 import { handleRealtimeTokenRequest } from '../api/proxy/realtime-token.js';
 import { handleStorage } from './storage.js';
+import { handlePublicThreads } from './publicThreads.js';
 
 // BYOK-only first migration slice. Never read an owner key or log requests,
 // headers, upstream errors, or token responses. NO_LOG_BYOK_KEY_ASSERTION
@@ -31,6 +32,8 @@ function isShellRedirect(response, url) {
 export default {
   async fetch(request, env = {}) {
     const url = new URL(request.url);
+    const publicThreads = await handlePublicThreads(request, env);
+    if (publicThreads) return publicThreads;
     const storage = await handleStorage(request, env);
     if (storage) return storage;
     if (url.pathname === '/api/auth/session') {

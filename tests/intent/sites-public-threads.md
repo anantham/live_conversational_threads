@@ -1,0 +1,7 @@
+# Guest public conversation library
+
+- Opening the app, listing public conversations and following a public deep link work without identity. Private API requests retain their existing owner checks; opening a local file never publishes it.
+- Publish only a validated version2 .threads artifact after explicit whole-file public consent. Bound body bytes, graph size, body-read time, concurrent uploads, shared capacity and persistent global publication rate. Store the bounded JSON atomically; no partial public object or private-table content enters the catalog.
+- Client-generated random publication ID/removal key is saved before sending. Same ID/key/content retry is idempotent, cannot replace another item, and cannot resurrect a removed item. Only the matching key removes the public payload; keys/hashes stay out of public responses, URLs and telemetry.
+- Public viewing and speaker edits do not overwrite device-local history. Public discussion links retain their server URL. Publish, list, prepare, load and remove show stage/elapsed/unknown remaining, support cancellation/timeout/retry and clean up on navigation/StrictMode.
+- Verify real generated SQLite schema/API concurrency/capacity, guest UI consent/recovery, viewer isolation, packaging boundary, and disposable anonymous native publish/read/download/remove. Real audio/provider activation and second-account private isolation remain separate.

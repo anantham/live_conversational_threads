@@ -14,6 +14,7 @@ import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
 import ThreadsViewerToolbar from "../components/threads/ThreadsViewerToolbar";
 import { buildViewerFindGroups } from "../components/threads/viewerFindModel";
 import DiscussionView from "../components/discussion/DiscussionView";
+import PublicThreadsLoader from "./PublicThreadsLoader";
 import MobileConversationDeck from "../components/threads/MobileConversationDeck";
 import YouTubeSourcePanel from "../components/threads/YouTubeSourcePanel";
 import {CardDisplayProvider,CardDisplaySettings} from "../components/threads/CardDisplaySettings";
@@ -60,7 +61,7 @@ function ThreadsViewerContent() {
   const dataProvider = useDataProvider();
   const location = useLocation();
   const navigate = useNavigate();
-  const { artifactId } = useParams();
+  const { artifactId, publicId } = useParams();
   const driveFileId = typeof window === "undefined"
     ? ""
     : new URLSearchParams(location.search).get("driveFile") || "";
@@ -182,12 +183,19 @@ function ThreadsViewerContent() {
     }
   }, []);
 
+  const ingestPublic = useCallback((data) => {
+    ingest(data, { remember: false });
+    setSrcLoading(false);
+    setLibraryStatus({ state: "public", message: "Public copy · edits stay in this view" });
+  }, [ingest]);
+  useEffect(() => { if (publicId) { setBundle(null); setError(""); setLibraryStatus(null); } }, [publicId]);
+
   // A Drive link is stable, while its short-lived OAuth token is deliberately
   // not. Reopen the validated artifact already saved for this exact Drive file
   // before mounting Google authorization. Explicit Refresh remains the only
   // operation that contacts Drive again.
   useEffect(() => {
-    if (!driveFileId || artifactId || location.state?.threadsBundle || driveRefreshRequested) return;
+    if (publicId || !driveFileId || artifactId || location.state?.threadsBundle || driveRefreshRequested) return;
     let cancelled = false;
     setSrcLoading(true);
     void getThreadsLibraryRecordByDriveFileId(driveFileId)
@@ -211,7 +219,7 @@ function ThreadsViewerContent() {
     return () => {
       cancelled = true;
     };
-  }, [artifactId, driveFileId, driveRefreshRequested, ingest, location.state]);
+  }, [artifactId, publicId, driveFileId, driveRefreshRequested, ingest, location.state]);
 
   const handleFile = useCallback(
     async (file) => {
@@ -232,11 +240,11 @@ function ThreadsViewerContent() {
   // the one shared remember step and reports its result honestly in the header.
   useEffect(() => {
     const routedBundle = location.state?.threadsBundle;
-    if (!routedBundle || consumedRouteState.current) return;
+    if (publicId || !routedBundle || consumedRouteState.current) return;
     consumedRouteState.current = true;
     ingest(routedBundle, { sourceName: location.state?.sourceName || "" });
     setSrcLoading(false);
-  }, [ingest, location.state]);
+  }, [ingest, publicId, location.state]);
 
   // Stable browser-local deep link used by Browse's "On this device" rows.
   useEffect(() => {
@@ -270,7 +278,7 @@ function ThreadsViewerContent() {
   // share be a plain link to a hosted file without any backend.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (artifactId || location.state?.threadsBundle) return;
+    if (publicId || artifactId || location.state?.threadsBundle) return;
     const src = new URLSearchParams(window.location.search).get("src");
     if (!src) return;
     let cancelled = false;
@@ -290,7 +298,7 @@ function ThreadsViewerContent() {
     return () => {
       cancelled = true;
     };
-  }, [artifactId, dataProvider, ingest, location.state]);
+  }, [artifactId, publicId, dataProvider, ingest, location.state]);
 
   const onDrop = useCallback(
     (e) => {
@@ -322,13 +330,13 @@ function ThreadsViewerContent() {
   const discussionLinkBase = useMemo(() => {
     if (typeof window === "undefined") return null;
     const url = new URL(location.pathname + location.search, window.location.origin);
-    if (artifactId || url.searchParams.has("src") || url.searchParams.has("driveFile")) return url.href;
+    if (publicId || artifactId || url.searchParams.has("src") || url.searchParams.has("driveFile")) return url.href;
     if (!libraryStatus?.recordId) return null;
     url.pathname = `/view/${encodeURIComponent(libraryStatus.recordId)}`;
     url.search = "";
     url.hash = "";
     return url.href;
-  }, [artifactId, libraryStatus?.recordId, location.pathname, location.search]);
+  }, [artifactId, publicId, libraryStatus?.recordId, location.pathname, location.search]);
   // Diagnostic (cold-open blank-graph investigation): confirms MinimalGraph
   // mounts only AFTER the .threads bundle is present, with a non-empty node
   // count — distinguishes the data-ready path (blank => camera) from a
@@ -417,15 +425,16 @@ function ThreadsViewerContent() {
     triggerDownload(lines.join("\n"));
   }, [bundle, flatNodes]);
 
-  const openLibrary = useCallback(() => navigate("/browse"), [navigate]);
+  const openLibrary = useCallback(() => navigate(publicId ? "/public" : "/browse"), [navigate, publicId]);
   const renameSpeaker = useCallback((speakerId, name) => {
     const updated = renameArtifactSpeaker(bundle, speakerId, name);
     setBundle(updated);
+    if (publicId) { setLibraryStatus({ state: "public", message: "Speaker names changed in this view only" }); return; }
     setLibraryStatus({ state: "saving", message: "Saving speaker names…" });
     void rememberThreadsArtifact(updated).then((record) => {
       setLibraryStatus({ state: "saved", message: "Speaker names saved on this device", recordId: record.id });
     }).catch(() => setLibraryStatus({ state: "error", message: "Names changed here but could not be saved. Download the reviewed file." }));
-  }, [bundle]);
+  }, [bundle, publicId]);
   const openAnother = useCallback(() => {
     setBundle(null);
     setError("");
@@ -433,6 +442,8 @@ function ThreadsViewerContent() {
     setMobileMapOpen(false);
     navigate("/view");
   }, [navigate]);
+
+  if (publicId && !bundle) return <PublicThreadsLoader key={publicId} id={publicId} onArtifact={ingestPublic} />;
 
   // ---- Loading state: fetching a hosted ?src= artifact --------------------
   if (!bundle && srcLoading && !error) {
@@ -521,7 +532,8 @@ function ThreadsViewerContent() {
 
   // ---- Loaded state: the map ----------------------------------------------
   const hasThreads = Array.isArray(bundle.conversation_threads) && bundle.conversation_threads.length > 0;
-  const refreshFromDrive = driveFileId ? () => setDriveRefreshRequested(true) : undefined;
+  const refreshFromDrive = !publicId && driveFileId ? () => setDriveRefreshRequested(true) : undefined;
+  const publicNotice = publicId && <div className="shrink-0 border-b border-slate-200 bg-amber-50 px-4 py-2 text-xs text-slate-700">Public copy · visible to everyone · edits stay in this view</div>;
   const renderedViewMode = !compactViewer && viewMode === "cards" ? "graph" : viewMode;
   const toolbar = <ThreadsViewerToolbar
     viewMode={renderedViewMode} modes={["graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
@@ -542,6 +554,7 @@ function ThreadsViewerContent() {
       {mode[0].toUpperCase() + mode.slice(1)}</button>)}
   </div>;
   if (viewMode === "discussion") return <div className="flex h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden">
+    {publicNotice}
     <ThreadsViewerHeader bundle={bundle} focusNode={focusNode} libraryStatus={libraryStatus} overviewOpen={overviewOpen} />
     {toolbar}
     <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
@@ -557,7 +570,7 @@ function ThreadsViewerContent() {
   </div>;
   if (compactViewer && viewMode === "cards") {
     return (
-      <div className="flex h-[100dvh] min-h-0 flex-col">{viewControls}<div className="min-h-0 flex-1 [&>div]:h-full"><MobileConversationDeck
+      <div className="flex h-[100dvh] min-h-0 flex-col">{publicNotice}{viewControls}<div className="min-h-0 flex-1 [&>div]:h-full"><MobileConversationDeck
         bundle={bundle}
         deckState={mobileDeckState}
         readingPath={mobileReadingPath}
@@ -567,7 +580,7 @@ function ThreadsViewerContent() {
         onDeckStateChange={setMobileDeckState}
         onDownloadTranscript={downloadTranscript}
         onOpenLibrary={openLibrary}
-        onRefreshFromDrive={driveFileId ? () => setDriveRefreshRequested(true) : undefined}
+        onRefreshFromDrive={refreshFromDrive}
         onOpenAnother={openAnother}
         onShowMap={(id) => {requestMapTarget(id);setMobileMapOpen(true);setViewMode("graph");}}
         onRenameSpeaker={renameSpeaker}
@@ -578,6 +591,7 @@ function ThreadsViewerContent() {
   const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
   return (
     <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
+      {publicNotice}
       {!focusMode && (!compactViewer || !mobileMapOpen || overviewOpen) && (
         <ThreadsViewerHeader
           bundle={bundle}

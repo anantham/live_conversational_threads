@@ -9,6 +9,7 @@ import SubjectReview from "../pages/SubjectReview";
 import ThreadsViewer from "../pages/ThreadsViewer";
 import Browse from "../pages/Browse";
 import PrivateFiles from "../pages/PrivateFiles";
+import PublicThreads from "../pages/PublicThreads";
 import Import from "../pages/Import";
 import Analytics from "../pages/Analytics";
 import EditHistory from "../pages/EditHistory";
@@ -35,6 +36,8 @@ export default function AppRoutes() {
       <Route path="/meeting/:conversationId" element={<MeetingView />} />
       <Route path="/browse" element={<Browse />} />
       {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/private-files" element={<PrivateFiles />} />}
+      {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/public" element={<PublicThreads />} />}
+      {import.meta.env.VITE_SITES_MODE === "true" && <Route path="/public/:publicId" element={<ThreadsViewer />} />}
       <Route path="/import" element={<Import />} />
       <Route path="/conversation/:conversationId" element={<ViewConversation />} />
       {/* Public read-only share. AUTH_TOKEN does not apply to recipients;

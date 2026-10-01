@@ -1,0 +1,15 @@
+# Guest public .threads library
+
+2026-10-02 02:40 IST. Status: implementing the user's approved public-default/private-opt-in direction in the parallel preview.
+
+Visitors may browse and explicitly publish a public conversation without signing in. Native ChatGPT identity continues to own private files. Separate endpoints/table/route prevent public visibility from becoming a client override of private authorization. Opening browser-local files is never publication. "Public" means visible/downloadable to everyone; it does not assign a legal license.
+
+For the bounded preview, store validated .threads JSON and public metadata in one atomic D1 row (maximum512KiB;2000nodes/8000edges). This avoids a two-store partial-write/recovery protocol for small artifacts. D1's documented2,000,000-byte row limit comfortably exceeds this cap: https://developers.cloudflare.com/d1/platform/limits/. Audio/large/private files retain the existing D1 metadata/R2-byte design. Expansion to larger public files is a separate decision; no audio is migrated here.
+
+Use a client-generated UUID and256-bit removal capability saved on the device before upload. The server stores only SHA256 of the key plus a content digest. Retries of the same ID/key/content return the existing immutable item. Removal clears content/title/counts but keeps a bounded anonymous ID/hash/time tombstone to reject resurrection. The key is never in a share URL/public response; a visitor can download it for recovery on another device. Losing all copies of it requires owner support. Removed copies already downloaded cannot be recalled; provider backups may outlive live removal.
+
+The existing shared preview ceiling remains20MiB and200 lifetime creations, counting private active reservations/fences plus public rows/tombstones. Enforce20publications per rolling24hours and10seconds between Site-wide publications with the same atomic insertion, plus four body readers per isolate and30-second read deadline. These conservative global controls bound stored abuse; they do not guarantee per-person fairness, prevent malicious clients, or establish a monetary cap. The UI explains the preview limits; broader moderation/rate/retention policy is required for a large audience.
+
+Public viewer loads use remember:false; speaker renames remain session-only. Local viewer behavior is preserved. Content may include transcript, participant names, source links and file metadata: show a complete file review and require explicit permission to publish the whole file. No local/private copy is selected or sent automatically.
+
+Hypothesis: atomic JSON rows eliminate partial public uploads and allow exact retry/revocation semantics while preserving private capacity. Confidence0.9. Predicted: concurrent near-capacity writes admit only the available budget; public reads cannot return private metadata; removed payloads never reappear after retry. Fallback: disable the public-write flag, preserve the public shell/private synthetic checkpoint and inspect the smallest failing public-interface test before activation.

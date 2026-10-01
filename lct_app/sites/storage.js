@@ -30,9 +30,9 @@ async function upload(request, env, owner) {
     const row = await env.DB.prepare(`INSERT INTO lct_cloud_files
       (id, owner_user_id, object_key, kind, title, filename, content_type, byte_size, state, created_at, updated_at)
       SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'staging', ?, ?
-      WHERE (SELECT COALESCE(SUM(byte_size), 0) FROM lct_cloud_files) + ? <= ?
+      WHERE (SELECT COALESCE(SUM(byte_size), 0) FROM lct_cloud_files) + (SELECT COALESCE(SUM(byte_size), 0) FROM lct_public_threads) + ? <= ?
         AND (SELECT COUNT(*) FROM lct_cloud_files) < ?
-        AND (SELECT COUNT(*) FROM lct_cloud_files) + (SELECT COUNT(*) FROM lct_cloud_file_fences) < ?
+        AND (SELECT COUNT(*) FROM lct_cloud_files) + (SELECT COUNT(*) FROM lct_cloud_file_fences) + (SELECT COUNT(*) FROM lct_public_threads) < ?
         AND (SELECT COALESCE(SUM(byte_size), 0) FROM lct_cloud_files WHERE owner_user_id = ?) + ? <= ?
         AND (SELECT COUNT(*) FROM lct_cloud_files WHERE owner_user_id = ?) < ?
       RETURNING *`).bind(id, owner, key, input.kind, input.filename, input.filename, input.contentType, input.size, now, now,

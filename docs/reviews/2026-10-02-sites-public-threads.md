@@ -1,0 +1,9 @@
+# Independent guest public-library source review
+
+2026-10-02. Authenticated AGY Google Gemini3.1Pro-low reviewed the exact26-path diff/spec/test packet,130,365bytes/SHA256612a2ef590817bfe1e40f84ddc58a6efed71d48beee1a4850178b024763694df. Verdict PASS; no findings reported, none fixed/rejected or awaiting arbitration. Duration26.03seconds, one turn, zero tool calls. Isolated reviewer deny-all hook verified; no credentials/real recordings/transcripts/identities/operational history or private artifacts sent. Existing credits only.
+
+Initial Pro-high attempt requested an internal manage_task/list tool. The runner stopped it without an eligible verdict; it was not treated as approval. The direct stateless review above explicitly forbade internal workflow tools and passed the same unchanged staged source. Raw receipts remain in ignored review evidence.
+
+Scope: separate anonymous public .threads table/API/page/viewer, whole-file public consent, client-persisted removal capability with server hash, immutable idempotent retry/live payload removal, shared capacity and global rate, appended0002migration only, safe viewer/no-local-history write, optional sign-in copy and tests. Private owner authorization and synthetic-only activation remain intact. Public-source approval does not establish personal-recording readiness, second-account isolation, moderation for a large audience or provider budgets.
+
+Validation before review:74/74 focused tests across11files; real generated SQLite API admission/race/rate/retry/removal/body timeout; client consent/pre-write-key/cancel/retry/navigation/StrictMode; local collision isolation; existing private/access/legacy behavior. Scoped source ESLint zero errors/warnings, guarded build client15.39s/Worker120ms43.61kB, complete artifact/compiled no-process/no-network smoke and whitespace pass. Existing client chunk-size warning remains. Native guest proof and mandatory full-suite push gate follow separately.

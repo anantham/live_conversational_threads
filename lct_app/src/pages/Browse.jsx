@@ -433,9 +433,7 @@ export default function Browse() {
         </section>
 
         {sitesMode ? (
-          <p className="mx-auto mt-8 max-w-2xl text-xs leading-relaxed text-slate-600">
-            Public cloud catalog and private cloud library are coming later. Files opened here stay in this browser.
-          </p>
+          <div className="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-slate-600"><button type="button" className="min-h-11 rounded-lg bg-slate-800 px-4 py-2 font-medium text-white" onClick={() => navigate("/public")}>Explore public conversations</button><p className="mt-3 text-xs">Files opened here stay in this browser. Publishing a public copy is a separate choice in the public library.</p></div>
         ) : (
           <>
             <IndrasNetAudioLibrary />

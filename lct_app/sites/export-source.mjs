@@ -8,6 +8,7 @@ const requiredFiles = [
   'api/proxy/_shared.js', 'api/proxy/chat.js', 'api/proxy/realtime-token.js',
   'sites/worker.js', 'sites/vite.config.mjs', 'sites/frontend.config.mjs', 'sites/build.mjs',
   'sites/storage-packaging.mjs', 'sites/storage.js', 'sites/storagePolicy.js', 'sites/storageRecovery.js',
+  'sites/publicThreads.js', 'sites/publicThreadsPolicy.js',
   'db/schema.ts', 'drizzle.config.ts',
 ];
 

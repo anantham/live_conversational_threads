@@ -27,3 +27,21 @@ export const fileFences = sqliteTable('lct_cloud_file_fences', {
   objectKey: text('object_key').primaryKey(),
   createdAt: integer('created_at').notNull(),
 });
+
+// Explicit guest publications only; never populated from private or local files.
+export const publicThreads = sqliteTable('lct_public_threads', {
+  id: text('id').primaryKey(),
+  title: text('title').notNull(),
+  payload: text('payload'),
+  byteSize: integer('byte_size').notNull(),
+  nodeCount: integer('node_count').notNull(),
+  deleteHash: text('delete_hash').notNull(),
+  payloadHash: text('payload_hash'),
+  state: text('state', { enum: ['ready', 'removed'] }).notNull(),
+  createdAt: integer('created_at').notNull(),
+}, (table) => [
+  index('lct_public_threads_state_created_id_idx').on(table.state, table.createdAt, table.id),
+  index('lct_public_threads_created_idx').on(table.createdAt),
+  check('lct_public_threads_state_check', sql`${table.state} in ('ready', 'removed')`),
+  check('lct_public_threads_payload_check', sql`(${table.state} = 'ready' and ${table.payload} is not null and ${table.payloadHash} is not null and ${table.byteSize} > 0 and ${table.byteSize} <= 524288) or (${table.state} = 'removed' and ${table.payload} is null and ${table.payloadHash} is null and ${table.byteSize} = 0 and ${table.nodeCount} = 0 and ${table.title} = '')`),
+]);

@@ -87,7 +87,7 @@ export default function Home() {
         </button>
 
         <button
-          onClick={() => navigate("/browse")}
+          onClick={() => navigate(import.meta.env.VITE_SITES_MODE === "true" ? "/public" : "/browse")}
           className="flex flex-col items-center gap-2 group"
         >
           <span className="w-14 h-14 flex items-center justify-center rounded-full bg-white/80 backdrop-blur-sm border border-gray-200 text-gray-500 group-hover:text-gray-700 group-hover:border-gray-300 transition">
