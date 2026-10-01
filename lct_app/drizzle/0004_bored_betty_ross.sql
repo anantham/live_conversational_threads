@@ -1,0 +1,1 @@
+ALTER TABLE `lct_soniox_sessions` ADD `lease_until` integer;

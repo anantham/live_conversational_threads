@@ -363,3 +363,7 @@ Browse.jsx is639lines after the scoped Sites exclusions. It mixes browser-local 
 ## 2026-10-02 — Public viewer boundaries
 
 ThreadsViewer.jsx (~744lines) mixes ingestion sources, local remembering, speaker editing and three presentation modes. The new public loader/task presentation lives in separate modules and the existing viewer receives only a bounded public-ID/no-remember branch. Future extraction should centralize source ingestion and persistence policy while keeping public reads/edits separate from local history. Browse's previously logged monolith is only changed to link to the separate public library. No broad refactor in this feature.
+
+## 2026-10-02 — Hosted recording lifecycle
+
+The new recordingSession.js is slightly over300lines. It owns one capture lifecycle, including bounded authorization, microphone teardown and final-chunk handling; Soniox transport and timing receipts are already separate. Keep these state transitions together for this first slice. If another capture source is added, extract the setup/response bounds without duplicating cancellation ownership. SitesNewConversation.jsx separates this flow from the large legacy NewConversation page; the latter is unchanged. The new page's capability check and private-save task handling are candidates for the existing shared task hook after live behavior is established. No broad refactor is needed to verify guest access.

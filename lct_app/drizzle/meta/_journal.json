@@ -22,6 +22,20 @@
       "when": 1790888966237,
       "tag": "0002_square_surge",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790893200380,
+      "tag": "0003_smart_genesis",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790894246197,
+      "tag": "0004_bored_betty_ross",
+      "breakpoints": true
     }
   ]
 }

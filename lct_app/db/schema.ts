@@ -28,6 +28,17 @@ export const fileFences = sqliteTable('lct_cloud_file_fences', {
   createdAt: integer('created_at').notNull(),
 });
 
+// Bounded anonymous admission receipts only; no key, identity, transcript or audio.
+export const sonioxSessions = sqliteTable('lct_soniox_sessions', {
+  id: text('id').primaryKey(),
+  createdAt: integer('created_at').notNull(),
+  maxSessionSeconds: integer('max_session_seconds').notNull(),
+  leaseUntil: integer('lease_until'),
+}, (table) => [
+  index('lct_soniox_sessions_created_idx').on(table.createdAt),
+  check('lct_soniox_sessions_duration_check', sql`${table.maxSessionSeconds} >= 15 and ${table.maxSessionSeconds} <= 900`),
+]);
+
 // Explicit guest publications only; never populated from private or local files.
 export const publicThreads = sqliteTable('lct_public_threads', {
   id: text('id').primaryKey(),

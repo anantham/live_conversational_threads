@@ -9,6 +9,7 @@ const requiredFiles = [
   'sites/worker.js', 'sites/vite.config.mjs', 'sites/frontend.config.mjs', 'sites/build.mjs',
   'sites/storage-packaging.mjs', 'sites/storage.js', 'sites/storagePolicy.js', 'sites/storageRecovery.js',
   'sites/publicThreads.js', 'sites/publicThreadsPolicy.js',
+  'sites/soniox.js', 'sites/sonioxPolicy.js',
   'db/schema.ts', 'drizzle.config.ts',
 ];
 

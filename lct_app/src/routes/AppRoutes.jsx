@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import Home from "../pages/Home";
 import NewConversation from "../pages/NewConversation";
+import SitesNewConversation from "../pages/SitesNewConversation";
 import JoinMeeting from "../pages/JoinMeeting";
 import MeetingView from "../pages/MeetingView";
 import ViewConversation from "../pages/ViewConversation";
@@ -30,7 +31,7 @@ export default function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
-      <Route path="/new" element={<NewConversation />} />
+      <Route path="/new" element={import.meta.env.VITE_SITES_MODE === "true" ? <SitesNewConversation /> : <NewConversation />} />
       {/* Attendee meeting bot: paste a Meet link, then watch the live graph. */}
       <Route path="/meeting" element={<JoinMeeting />} />
       <Route path="/meeting/:conversationId" element={<MeetingView />} />
