@@ -41,6 +41,13 @@ async function connected(options = {}) {
 }
 
 describe('SonioxStream', () => {
+  it.each([{ speaker: 'x'.repeat(129) }, { start_ms: 10, end_ms: 9 }])('bounds token metadata before retaining or exporting it', async metadata => {
+    const { socket, onFailure, onTranscript } = await connected();
+    socket.receive({ tokens: [{ text: 'synthetic words', is_final: true, ...metadata }] });
+    expect(onTranscript).not.toHaveBeenCalled();
+    expect(onFailure.mock.lastCall[0].message).toBe('Live transcription received an invalid token.');
+    expect(socket.readyState).toBe(3);
+  });
   it('configures the fixed STT endpoint and sends bounded binary audio then EOF', async () => {
     const { stream, socket, onFinished } = await connected();
     expect(socket.url).toBe('wss://stt-rt.soniox.com/transcribe-websocket');

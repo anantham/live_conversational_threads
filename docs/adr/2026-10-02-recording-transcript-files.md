@@ -1,0 +1,13 @@
+# Recording transcript artifacts for the cloud journey
+
+Date: 2026-10-02. Status: a companion artifact within the approved recording/private-storage migration; paid inference and real uploads remain inactive.
+
+The hosted recording path currently retains finalized text/tokens in memory but can save only audio. Preserve the corresponding transcript as a separate local JSON file and, after real private storage activation, an explicitly chosen private upload through the existing file API. Use the same opaque recording ID for audio and transcript filenames. This supplies source text and timing for later graph extraction without presenting the transcript as an intelligent conversation map.
+
+Contract: lct.recording-transcript/version1, recording ID/time, transcription_complete, exact final full_transcript, normalized source tokens and deterministic utterances. Soniox token times are milliseconds; utterance timestamps/durations use seconds to match the existing graph provenance contract. Speaker labels are provider labels, not account identities. Missing attribution/times remain unknown. Cap source tokens, metadata and serialized file bytes; reject oversized/unreadable artifacts without dropping the visible final text. Provisional output is excluded and interrupted output is marked partial.
+
+No automatic upload/publication or browser credential persistence. Public .threads publication stays a separate whole-file-consent route. Private saves keep the existing Site identity boundary, synthetic-mode activation gate and bounded/cancellable task presentation. Local Blob URLs are released; visible readonly JSON provides a local fallback when generated downloads are unsupported.
+
+Hypothesis: a pure token adapter plus a separate file section closes the transcript-loss gap without selecting or activating a cloud inference provider. Prediction: synthetic exact-content/timestamp/partial/bounds/API/cancel/navigation checks pass; the native page preserves guest entry and inactive paid/private flags. Confidence0.85. Fallback: keep final-text copying/local audio available and leave transcript/private/provider activation disconnected if validation contradicts the contract.
+
+Cloud intelligence remains required, not replaced by this artifact. Official OpenAI docs read today require separate authorization/approval for ChatGPT-plan use in remotely hosted apps; existing Chat Completions BYOK code does not establish that entitlement. Current sign-in identity alone is insufficient. References: [plan usage](https://developers.openai.com/siwc/token-sharing-open-source), [preview limits](https://developers.openai.com/siwc/token-sharing-open-source/preview-limitations). No paid inference or OAuth credential handling is added here.

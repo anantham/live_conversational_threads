@@ -367,3 +367,7 @@ ThreadsViewer.jsx (~744lines) mixes ingestion sources, local remembering, speake
 ## 2026-10-02 — Hosted recording lifecycle
 
 The new recordingSession.js is slightly over300lines. It owns one capture lifecycle, including bounded authorization, microphone teardown and final-chunk handling; Soniox transport and timing receipts are already separate. Keep these state transitions together for this first slice. If another capture source is added, extract the setup/response bounds without duplicating cancellation ownership. SitesNewConversation.jsx separates this flow from the large legacy NewConversation page; the latter is unchanged. The new page's capability check and private-save task handling are candidates for the existing shared task hook after live behavior is established. No broad refactor is needed to verify guest access.
+
+## 2026-10-02 — Transcript companion boundaries
+
+The transcript adapter (~106lines), file section (~46lines), and hosted recording page (~147lines) keep token normalization, local file presentation, and capture/save lifecycle separate. Stream validation remains within its cohesive ~215line transport. Reuse the existing private-save task for both audio and transcript; a broader shared-task extraction is still a later candidate, not a reason to rewrite capture or change the legacy page during this slice.

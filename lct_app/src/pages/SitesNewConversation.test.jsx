@@ -1,4 +1,4 @@
-// Test Intent: tests/intent/sites-soniox.md; browser UI wiring with synthetic audio only.
+// Test Intent: tests/intent/sites-soniox.md and sites-recording-transcript.md; synthetic audio/tokens only.
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
@@ -28,6 +28,27 @@ const button = name => [...container.querySelectorAll('button')].find(element =>
 async function click(name) { await act(async () => button(name).click()); }
 async function mount() { await act(async () => root.render(<MemoryRouter initialEntries={['/new?autostart=true']}><SitesNewConversation /></MemoryRouter>)); }
 async function consent() { await act(async () => container.querySelector('input[type=checkbox]').click()); }
+const transcript = {
+  finalText: 'Hello there. Again.', partialText: ' provisional',
+  finalTokens: [
+    { text: 'Hello there.', speaker: 'S1', startMs: 1250, endMs: 2250 },
+    { text: ' Again.', speaker: 'S2', startMs: 2500, endMs: 3000 },
+  ],
+  partialTokens: [{ text: ' provisional', speaker: 'S2', startMs: 3100, endMs: null }],
+};
+async function deliverTranscript(value = transcript) {
+  await act(async () => fixture.sessions.at(-1).callbacks.onTranscript(value));
+}
+async function failWithoutAudio() {
+  await act(async () => fixture.sessions.at(-1).callbacks.onStage({ stage: 'error', message: 'Capture failed.', startedAt: Date.now() }));
+}
+function transcriptJSON() { return JSON.parse(container.querySelector('#recording-transcript-json').value); }
+function readFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+}
 
 describe('Sites recording page', () => {
   it('opens publicly without auto microphone/start or legacy backend requests', async () => {
@@ -113,5 +134,103 @@ describe('Sites recording page', () => {
     const receipts = JSON.parse(localStorage.getItem('lct.recording_timing.v1'));
     expect(receipts.length).toBeLessThanOrEqual(12);
     expect(Object.keys(receipts[0]).sort()).toEqual(['durationMs', 'mode', 'outcome', 'retryCount', 'stage']);
+  });
+
+  it('offers one matching audio and finalized transcript pair only after stopping, without publishing', async () => {
+    transcribe = true; await mount(); await consent(); await click('Record and transcribe');
+    await deliverTranscript();
+    expect(container.querySelector('[aria-label="Transcript file"]')).toBeNull();
+    expect(createURL).not.toHaveBeenCalled();
+    await click('Stop recording');
+    const audioName = container.querySelector('a[download$=".webm"]').getAttribute('download');
+    const transcriptName = container.querySelector('a[download$=".transcript.json"]').getAttribute('download');
+    const recordingId = audioName.match(/^recording-(.+)\.webm$/)?.[1];
+    expect(recordingId).toBeTruthy();
+    expect(transcriptName).toBe(`recording-${recordingId}.transcript.json`);
+    expect(transcriptJSON()).toMatchObject({
+      recording_id: recordingId, transcription_complete: true, full_transcript: 'Hello there. Again.',
+      utterances: [
+        { speaker_id: 'S1', text: 'Hello there.', timestamp_start: 1.25, timestamp_end: 2.25, duration_seconds: 1 },
+        { speaker_id: 'S2', text: ' Again.', timestamp_start: 2.5, timestamp_end: 3, duration_seconds: 0.5 },
+      ],
+    });
+    expect(transcriptJSON().source_tokens.map(token => token.text)).toEqual(['Hello there.', ' Again.']);
+    expect(fetch.mock.calls.map(call => call[1]?.method).filter(Boolean)).not.toContain('POST');
+  });
+
+  it('sends the actual JSON File through the same-origin private API only on explicit save', async () => {
+    transcribe = true; privateUploads = true; await mount(); await consent(); await click('Record and transcribe');
+    await deliverTranscript(); await click('Stop recording');
+    const expected = transcriptJSON();
+    expect(fetch.mock.calls).toHaveLength(2);
+    fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ file: { id: 'synthetic-transcript' } }), { status: 201 }));
+    await click('Save transcript privately');
+    const [path, options] = fetch.mock.lastCall;
+    expect(path).toBe('/api/cloud/files');
+    expect(options).toMatchObject({ method: 'POST', credentials: 'same-origin' });
+    expect(options.headers).toMatchObject({ 'Content-Type': 'application/json', 'X-LCT-Storage-Write': '1' });
+    expect(options.body).toBeInstanceOf(File);
+    expect(options.body.name).toBe(`recording-${expected.recording_id}.transcript.json`);
+    expect(options.body.type).toBe('application/json');
+    expect(JSON.parse(await readFile(options.body))).toEqual(expected);
+    expect(container.textContent).toContain('Transcript saved to your private cloud files');
+  });
+
+  it('keeps transcript download available while synthetic storage disables private save', async () => {
+    transcribe = true; await mount(); await consent(); await click('Record and transcribe');
+    await deliverTranscript(); await click('Stop recording');
+    expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
+    expect(button('Save transcript privately').disabled).toBe(true);
+    expect(fetch.mock.calls).toHaveLength(2);
+  });
+
+  it('retains partial transcript JSON without audio after cancelling a private save', async () => {
+    transcribe = true; privateUploads = true; await mount(); await consent(); await click('Record and transcribe');
+    await deliverTranscript(); await failWithoutAudio();
+    expect(container.querySelector('audio')).toBeNull();
+    expect(transcriptJSON().transcription_complete).toBe(false);
+    fetch.mockImplementationOnce(() => new Promise(() => {}));
+    await click('Save transcript privately');
+    expect(container.textContent).toContain('Saving transcript to your private files');
+    await click('Cancel private save');
+    expect(container.textContent).toContain('check your private files before retrying');
+    expect(transcriptJSON().full_transcript).toBe('Hello there. Again.');
+    expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
+    expect(button('Save transcript privately').disabled).toBe(false);
+  });
+
+  it('bounds a transcript-only private save and preserves its local download', async () => {
+    transcribe = true; privateUploads = true; await mount(); await consent(); await click('Record and transcribe');
+    await deliverTranscript(); await failWithoutAudio();
+    vi.useFakeTimers(); fetch.mockImplementationOnce(() => new Promise(() => {}));
+    await click('Save transcript privately');
+    await act(async () => vi.advanceTimersByTimeAsync(30_000));
+    expect(container.textContent).toContain('check your private files before retrying');
+    expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
+    expect(button('Save transcript privately').disabled).toBe(false);
+  });
+
+  it('confirms replacement after transcript-only failure and releases both artifact URLs on navigation', async () => {
+    transcribe = true; privateUploads = true;
+    createURL.mockImplementationOnce(() => 'blob:transcript-old').mockImplementationOnce(() => 'blob:transcript-new');
+    await mount(); await consent(); await click('Record and transcribe'); await deliverTranscript(); await failWithoutAudio();
+    const oldName = container.querySelector('a[download$=".transcript.json"]').getAttribute('download');
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    await click('Record and transcribe');
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('a[download$=".transcript.json"]').getAttribute('download')).toBe(oldName);
+    expect(fixture.sessions).toHaveLength(1);
+    await click('Record and transcribe');
+    expect(fixture.sessions).toHaveLength(2);
+    expect(container.querySelector('[aria-label="Transcript file"]')).toBeNull();
+    expect(revokeURL).toHaveBeenCalledWith('blob:transcript-old');
+    await deliverTranscript(); await failWithoutAudio();
+    expect(container.querySelector('a[download$=".transcript.json"]').getAttribute('download')).not.toBe(oldName);
+    fetch.mockImplementationOnce(() => new Promise(() => {}));
+    await click('Save transcript privately');
+    const uploadSignal = fetch.mock.lastCall[1].signal;
+    await act(async () => root.unmount()); root = null;
+    expect(uploadSignal.aborted).toBe(true);
+    expect(revokeURL).toHaveBeenCalledWith('blob:transcript-new');
   });
 });

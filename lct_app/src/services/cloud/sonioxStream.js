@@ -13,10 +13,11 @@ function normalizeToken(token) {
   if (!token || typeof token !== 'object' || Array.isArray(token) || typeof token.text !== 'string' || typeof token.is_final !== 'boolean') {
     throw fail('received an invalid token.');
   }
-  if (token.text.length > MAX_RESPONSE_BYTES || (token.speaker != null && typeof token.speaker !== 'string')) throw fail('received an invalid token.');
+  if (token.text.length > MAX_RESPONSE_BYTES || (token.speaker != null && (typeof token.speaker !== 'string' || token.speaker.length > 128))) throw fail('received an invalid token.');
   for (const field of ['start_ms', 'end_ms']) {
     if (token[field] != null && (!Number.isFinite(token[field]) || token[field] < 0)) throw fail('received an invalid token.');
   }
+  if (token.start_ms != null && token.end_ms != null && token.end_ms < token.start_ms) throw fail('received an invalid token.');
   return {
     text: token.text,
     speaker: token.speaker ?? null,
