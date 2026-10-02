@@ -1673,3 +1673,19 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   remote checks pass, revised at the review checkpoint. Provider wait is complete;
   deployment duration is not yet measured. Public runtime is still unchanged;
   independent approval does not establish a served or accepted journey.
+
+### 2026-10-02 — Post-release verification checkpoint
+
+- PR207 is merged as a8a793f; Production deployment 6807268191 succeeds for that
+  exact SHA. The public desktop thread/history/scroll, final lane and native video
+  evidence paths pass. Phone checks and the full served acceptance are still open.
+- The production smoke used the retired separate Overview button. Test intent and
+  assertions now follow the accepted title disclosure, retaining summary, timeline,
+  persistence and reopen behavior. All 9 production smoke/opener tests pass locally
+  against the public deployment. Independent review and merge of this test-only
+  correction remain; runtime source is unchanged.
+- Preexisting nonblocking follow-up: Legend's bottom-right button is covered by an
+  open detail drawer. Close details to access it. Impact: color-key access requires
+  one extra step while reading. Recommended future step: expose the key beside the
+  reading controls or reserve space for it after a product/layout decision. This
+  does not block Source, timeline, title, history or the selected-thread controls.

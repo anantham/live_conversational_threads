@@ -6798,3 +6798,32 @@ User observed an empty desktop transcript until node selection, with only the cu
 - ETA checkpoint communicated: remaining 15–25 minutes assuming remote checks
   pass, including merge/deploy and actual desktop/phone checks. New supported
   findings or a failed required gate would require a refreshed forecast.
+
+## 2026-10-02 17:03 IST — Source served; production smoke contract correction
+
+- PR207 merged at 16:51:55 IST as a8a793f99844d6f8356696d34ee9a1612475134a.
+  Production deployment 6807268191 reports success at 16:52:23 IST for that SHA.
+  Final PR head 71f51e2 adds only mechanical review/milestone documentation; source,
+  tests and ADR match reviewed 7354564. Required final hook again passes 512/512.
+- Actual public-link desktop instruments pass final timeline lane alignment/click,
+  title disclosure, all seven selected-thread moments, Back/Forward and 160px
+  reading-scroll restoration below the toolbar. Native playback advances at the
+  evidence cue 4399s and pauses. Source naming updates visible source/card/detail
+  labels and preserves original downloaded transcript bytes. Phone checks follow.
+- The broader public smoke workflow 37000639428 failed only on its old Overview
+  button selector (8/9 pass). The user's selected title entry point supersedes it.
+  Read prod-threads-opener.spec.js fully; update intent, assert the old button is
+  absent, assert title aria-expanded false/true/false, and retain summary, timeline,
+  library persistence and reopen checks. Focused live test passes; all nine current
+  production smoke/opener checks pass in 28.6s, scoped spec lint clean.
+- This test-only repair is in the same authoritative worktree on a fresh branch
+  codex/viewer-continuity-smoke based on served main. Runtime source remains
+  unchanged. It requires independent review before merge; no test gate is waived.
+- Bounded the extended live probe after three different boundary failures: Legend
+  was covered by an open drawer; card body was incorrectly expected to open details
+  although its established action is relationship focus; an optional off-screen
+  details action then required viewport recovery. None is counted as a full passing
+  probe. Retain the verified primary steps and run a narrower phone journey without
+  those optional detours. No forced clicks or product changes to satisfy the probe.
+- Capture the preexisting Legend/drawer occlusion as a nonblocking follow-up in
+  ISSUES.md. It is reachable after closing details; no runtime expansion selected.
