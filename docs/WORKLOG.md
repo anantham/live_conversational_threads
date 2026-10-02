@@ -6658,3 +6658,28 @@ User observed an empty desktop transcript until node selection, with only the cu
 - The user already approved the release and its end-to-end verification. This
   correction repairs a blocking interaction discovered by that verification;
   proceed through normal checks and recheck the affected phone flow after shipping.
+
+## 2026-10-02 09:59 IST — Viewer journey closed; hook follow-up captured
+
+- Delivered and accepted within the user's explicit release authorization. Exact
+  reviewed source heads: d3fc09ae27f2fc7727de9f803095672f28ef5310 (initial viewer)
+  and 62478701a6c148bfaa6430a23426a5637defcf34 (phone correction). Google Gemini
+  3.1 Pro through Antigravity approved both with no findings, tools denied; receipts
+  remain in docs/reviews. No source or viewer behavior was rebuilt in this closure.
+- PR205 merge: 0e9fdc313820a99290d21dcf63bd54bb7c6ed5ba. PR206/final runtime merge:
+  11dda97d2f28b0dc580cff69792a4a3a98f48073. Production deployment 6800409768 reports
+  success for that SHA; live smoke workflow 36959228508 passed. Rechecked these
+  remote records and merged PR states without rerunning accepted browser evidence.
+- Live Chromium verification completed at 08:44 IST: phone Source naming with
+  timeline+selection works, detail sheet suspends/restores the same moment, all
+  three views cycle, subsequent naming works, and Source/navigation do not overlap.
+  Zero page errors, HTTP5xx and horizontal overflow. Prior actual public checks
+  covered real Play/Pause, timestamp handoff, seven-moment navigation, speaker
+  shares/name export and local meaning search. 494 frontend tests passed.
+- Updated ISSUES.md release status and recorded the separate push-range-aware
+  documentation-gate proposal with source/rename/deletion/unknown-ref controls,
+  behavioral regression intent and required independent review. scripts/ci_local.sh
+  and the installed hook remain unchanged; their full test cost is not bypassed.
+- PR204, Fix Tailnet viewer persistence on Windows, remains OPEN/DRAFT and is
+  explicitly separate from this delivered public viewer outcome. No private
+  persistence code, deployment or release claim was included in this closure.

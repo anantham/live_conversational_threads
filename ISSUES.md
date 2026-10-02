@@ -1577,7 +1577,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   resizing, and invalid-metadata checks. Those checks also found that the new
   text fallback omitted the unverified-recording explanation; restored it without
   creating an untrusted link. Resolved locally and independently approved in the
-  final Antigravity review; release still awaits merge/deployment authorization.
+  final Antigravity review. Published in PR205/PR206 and verified on the public site.
 - A phone screenshot shows the existing floating graph Legend over the lower
   Source region, and resizing an already-open Source can leave its current
   passage outside the transcript viewport. Impact: minor reading obstruction;
@@ -1585,7 +1585,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   Recommended next step: make the legend respect pane reservations and recheck
   automatic passage following on viewport changes in a bounded responsive pass.
 
-## 2026-10-02 — Phone Source blocked by graph overlays
+## 2026-10-02 — Phone Source blocked by graph overlays (RESOLVED LIVE)
 
 - Instrument: after live thread/search/view cycling at 390x844 with timeline and
   selection retained, the Source naming summary click was intercepted by graph
@@ -1595,5 +1595,23 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   reserves graph space using available pane height. A regression failed before
   the change and passed after it, including name application/detail restoration.
   Google Gemini through Antigravity approved the exact correction with no findings;
-  live publication/recheck pending. Desktop behavior stays
+  published in PR206 as 11dda97 and verified live at 08:44 IST. Ordinary naming,
+  detail restoration and three-view cycling passed at 390x844 with zero page
+  errors, HTTP5xx, horizontal overflow or Source/navigation overlap. Desktop behavior stays
   covered by the existing browser suite; no recording or transcript data changed.
+
+## 2026-10-02 — Push-range-aware documentation gate (PROPOSED FOLLOW-UP)
+
+- Instrument: the installed pre-push hook always invokes scripts/ci_local.sh,
+  which runs the full frontend Vitest suite, including for documentation-only
+  pushes. Impact: avoidable verification cost; not a viewer delivery blocker.
+- Bounded scope: classify the actual incoming push ranges for every ref, permitting
+  a documentation-only path solely for explicitly allowlisted documentation changes.
+  Source/dependency/config/build/test changes, renames, deletions, multiple mixed
+  refs, new or unknown/unresolvable remote refs must retain the full gate until
+  conservative handling is proven. Do not classify from a clean working tree alone.
+- Before implementation/merge, write behavioral test intent and exercise temporary
+  Git repositories covering pure documentation, source modification, source renamed
+  into docs, source deletion, mixed multi-ref pushes and unknown/new refs; verify
+  gate execution and exit status. Obtain mandatory non-OpenAI independent review.
+  This is a separately scoped proposal; the existing hook was not bypassed or changed.
