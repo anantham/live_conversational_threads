@@ -7132,3 +7132,28 @@ User observed an empty desktop transcript until node selection, with only the cu
   consequences, finite evidence, recommendation and deferred scope. No product
   implementation was inferred from the Legend approval. Next checkpoint: commit,
   tool-free Google review, mandatory full gate and served behavior.
+
+### 2026-10-03 — Legend independent approval and mechanical integration
+
+- Google Gemini3.1 Pro High via authenticated AGY APPROVED exact d37f507f2ff9ff1ad5b08db4112cde888d9061ec,
+  findings[], tool attempts0. Eight-file diff plus tracked TextSourcePanel context:
+  32373bytes, SHA2564ad13aefe99220bb5e58dde8550b055d57451e0bfae8accd534e7eff441fb021.
+  Egress inventory/scan inspected exact bytes; no artifacts, transcripts, participants,
+  credentials, product-feedback notes or unrelated files. Existing subscription,
+  neutral cwd, pinned Google model, plan+sandbox and verified deny-all PreToolUse.
+  Reviewer did not rerun validation. AGY uses the bounded adapter because the older
+  repo convenience wrapper accepts only Grok/Claude; no independence gate waived.
+- Mandatory first pre-push gate520/520 passed. PR212 created and attached; preview
+  build passed. GitHub found conflict from branch/squash ancestry. Inspected exact
+  differences: branch already contains current main runtime plus only this repair.
+  Merge2001ba7efac72e32357fa143c9d3537eac069218 preserves reviewed source and closure
+  records. git diff d37f507..2001ba7 across all eight reviewed files is empty.
+  No source/test/coverage change; no duplicate unchanged AI review needed.
+- Actual bundled-example local layout interactions completed at1440/390/320 and
+  generated local screenshots, but the stricter console assertion failed with four
+  YouTube warnings (two web-share feature notices, two postMessage origin mismatch
+  while using localhost and closing panels). Do not call that overall probe passed
+  or infer a playback failure. Source SDK source was unchanged. Separate issue
+  records this evidence; preserve warning capture in served verification.
+- Final release dependency: second mandatory push gate, remote checks, main merge,
+  exact production identity and public layout acceptance. Runtime is not yet served.

@@ -1863,6 +1863,11 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   scrolling for controls. Legend's open space is bounded by the workspace.
   This is finite repair evidence, not a complete viewer UX audit.
   Next checkpoint: exact committed diff, independent review and release gates.
+- Review checkpoint: Google Gemini3.1 Pro High through authenticated AGY approved
+  d37f507 with findings[],0tool attempts; tracked receipt records exact32373byte
+  packet/hash. Full pre-push520/520 passed; PR212 preview successful. Mechanical
+  main reconciliation2001ba7 retains exactly identical reviewed source/tests.
+  Remaining: required checks and served verification; no new human decision needed.
 
 ## 2026-10-03 — Viewer product decision space (DEFERRED; no proposal selected)
 
@@ -1897,3 +1902,19 @@ assuming the primary job is reading/retrieving a conversation. Fallback: retain
 current defaults if a preview reduces comprehension or adds navigation friction.
 Remaining dependency: the smallest selected product slice; no deadline claimed.
 Next checkpoint: a concrete preview plus reader/task evidence for that selection.
+
+## 2026-10-03 — YouTube warnings in rapid localhost panel walkthrough (OPEN)
+
+- The actual bundled-example Legend probe completed its geometry/navigation
+  checks at1440/390/320px, then failed its strict console assertion: two web-share
+  notices and two postMessage target/recipient origin mismatch warnings involving
+  youtube-nocookie and localhost. Page errors/5xx were not the failing boundary.
+  YouTubeSourcePanel source is unchanged by the Legend slice. Exact cause and
+  whether the same sequence reproduces on the public origin remain unknown.
+- Impact: no overall clean-console pass for that local probe; do not describe this
+  as verified playback breakage or fix it through the Legend layout. Nonblocking
+  for finite geometry acceptance; public follow-up retains all warnings and fails
+  its strict console assertion rather than filtering them. Evidence: local screenshots
+  tmp/legend-local-source-*.png and captured probe failure in this task.
+  Next checkpoint: public-origin walkthrough; dedicated SDK lifecycle work only
+  if reproduced and selected. Owner unassigned.
