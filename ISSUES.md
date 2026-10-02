@@ -1746,3 +1746,22 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
  15–25-minute release estimate was revised after the phone race; the refreshed
  20–40 and then15–25-minute ranges covered the repair/review/release. Latest
  5–10-minute publication checkpoint is satisfied. Detailed receipt in docs/reviews.
+
+## 2026-10-02 — Compact readable Back/Forward controls (IN PROGRESS)
+
+- Human-approved outcome: the toolbar's space before Find reads as navigation,
+  with visible disabled arrows and compact desktop spacing.
+- Owner Codex; authoritative viewer-source-and-controls worktree, branch
+  codex/viewer-history-controls based on served970f49d. No backend/data changes.
+- Public instrument: text-button padding squeezes desktop arrows16→4px inside
+ 28px targets; disabled opacity0.3 makes both states look like blank space.
+- Finite checks: disabled arrows>=16px and opacity1; desktop group<=52px;
+  phone targets>=44px; enabling navigation does not move Find; Back/Forward and
+  keyboard history still work. Independent eligible AI review before release.
+- Remaining dependency: implementation, focused browser/unit checks, review,
+  release gates and actual public toolbar confirmation. Next evidence checkpoint:
+  regression and paired desktop/phone screenshots. No time forecast requested.
+- 18:13 IST checkpoint: dedicated18px icons restore visibility; desktop group50px,
+  phone44×44px targets. Browser2/2, toolbar4/4, scoped lint/build pass. Paired
+  screenshots accepted locally. Remaining: independent review, mandatory release
+  gates and served public check. Source edited, not yet committed/pushed/served.

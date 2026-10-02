@@ -6940,3 +6940,48 @@ User observed an empty desktop transcript until node selection, with only the cu
   AGENTS.md remains preserved. No new product work or optional test sweep opened.
 - Forecast reconciled in ISSUES.md: refreshed phone repair/review/release estimate
   was met. The actual source landed17:35 and public acceptance completed17:37.
+
+## 2026-10-02 18:04 IST — Visible history controls repair approved
+
+- Human asked why the gap before Find, then explicitly said fix it after the
+  compact/visible disabled-arrow proposal. Existing bounded frontend publication
+  authorization persists. Owner Codex, same authoritative worktree, fresh branch
+  codex/viewer-history-controls based on served970f49d; dirty AGENTS.md preserved.
+- Instrument: public desktop arrows have28px buttons with12px padding on each
+  side, shrinking16px SVGs to4px. Both use opacity0.3. Phone44px targets retain
+ 16px SVGs but remain faint. H1 padding conflict plus disabled opacity confirmed;
+  alternative empty spacer rejected by DOM. Confidence0.99, predicted dedicated
+  icon controls restore18px arrows at opacity1 and shrink desktop group56→50px.
+- Test intent before product changes: populated synthetic desktop/phone first
+  load, disabled icon geometry/readability, desktop group<=52px, phone targets
+ >=44px, stable group width after navigation, normal Back/Forward actions.
+- Finite slice: change only history-control presentation, preserve navigation,
+  verify initial/enabled/keyboard/touch layout, eligible read-only independent
+  review and release, then check exact public toolbar. Fallback if geometry or
+  navigation fails: retain decisive probe and diagnose within this small scope.
+  No broader toolbar or graph redesign selected. Next checkpoint: failing/passing
+  browser regression and desktop/phone screenshots. Source not yet changed here.
+- Carried the owned9f9ec36 prior closure documentation into this main-based
+  branch as85c6645; no runtime change. The first multi-file patch rejected stale
+  worklog context atomically, leaving no partial edits. Verified current tails
+  before applying the repair/test-intent checkpoint. No unrelated work staged.
+
+### 2026-10-02 18:13 IST — Readable history arrows validated locally
+
+- The baseline regression failed for the reported class: desktop group56px>
+ 52px and phone disabled opacity0.3. An earlier connection refusal was an owned
+  dev-server readiness issue; restarted on43917 and confirmed HTTP200 first.
+- ThreadsViewerToolbar.jsx:7,45–47 now uses dedicated zero-padding icon buttons,
+  non-shrinking18px arrows and muted disabled text. Desktop group50px; phone
+  group90px with44×44px targets. Both icons18×18px, opacity1. Paired actual-example
+  screenshots inspected; no wrap/collision or further visual edits selected.
+- viewer-continuity.spec.ts:71 adds populated1440/390 regressions. A test-only
+  assumption that one Back would close details was unsupported; replaced with
+  explicit two-card Back/Forward/Alt+Left outcomes. Geometry assertions retained.
+  Final2/2 browser checks pass7.8s. Toolbar unit4/4; scoped ESLint and production
+  build pass. Existing large-bundle notice remains unchanged.
+- Impeccable scoped layout scan before/after returned no findings. No monolith
+  touched or new dependency introduced. Existing navigation implementation and
+  native controls remain unchanged; prior served adjacent evidence is reusable.
+- Next checkpoint: exact two-file read-only Google Gemini/AGY review, mandatory
+  full frontend push gate, release checks and public desktop/phone confirmation.

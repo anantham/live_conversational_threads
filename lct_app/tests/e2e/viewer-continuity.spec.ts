@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test';
 // Intent: populated synthetic hierarchy + 14 authored threads + an unassigned
 // lane; prove lower plots, overlapping membership, history, aliases and pane bounds
 // through normal interactions. The SDK fixture proves seek wiring, not live playback.
+// History arrows retain readable icon geometry while disabled, stay compact on
+// desktop, keep phone touch targets, and hold their position when enabled.
 function artifact(video = false) {
   const utterances = Array.from({length:21}, (_, i) => [
     {id:`u${i}a`,speaker_id:'SPEAKER_00',text:`Synthetic explanation ${i+1}. `.repeat(8),timestamp_start:i*15,timestamp_end:i*15+9},
@@ -65,6 +67,34 @@ async function selectFirst(page) {
   await label.locator('..').getByRole('button',{name:/Next node/}).click();
   await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 1');
 }
+
+for (const width of [1440,390]) test(`history arrows stay readable and compact at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:900});const evidence=await open(page);
+  const navigation=page.getByRole('navigation',{name:'Exploration history'});
+  const back=navigation.getByRole('button',{name:'Back',exact:true});
+  const forward=navigation.getByRole('button',{name:'Forward',exact:true});
+  await expect(back).toBeDisabled();await expect(forward).toBeDisabled();
+  const firstBounds=await navigation.boundingBox();
+  if(width>=640) expect(firstBounds.width).toBeLessThanOrEqual(52);
+  for(const button of [back,forward]){
+    const geometry=await button.evaluate(el=>{
+      const icon=el.querySelector('svg').getBoundingClientRect(),box=el.getBoundingClientRect();
+      return {iconWidth:icon.width,iconHeight:icon.height,opacity:Number(getComputedStyle(el).opacity),width:box.width,height:box.height};
+    });
+    expect(geometry.iconWidth).toBeGreaterThanOrEqual(16);
+    expect(geometry.iconHeight).toBeGreaterThanOrEqual(16);
+    expect(geometry.opacity).toBe(1);
+    if(width<640){expect(geometry.width).toBeGreaterThanOrEqual(44);expect(geometry.height).toBeGreaterThanOrEqual(44);}
+  }
+  await page.screenshot({path:test.info().outputPath('disabled-history-arrows.png')});
+  await selectFirst(page);await expect(back).toBeEnabled();
+  expect((await navigation.boundingBox()).width).toBe(firstBounds.width);
+  await page.keyboard.press('ArrowRight');await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 2');
+  await back.click();await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 1');
+  await forward.click();await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 2');
+  await page.keyboard.press('Alt+ArrowLeft');await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 1');
+  expect(evidence.errors).toEqual([]);expect(evidence.backend).toEqual([]);
+});
 
 for (const width of [1440,390]) test(`last timeline lane remains aligned and clickable at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:900});const evidence=await open(page);
