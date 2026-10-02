@@ -371,3 +371,7 @@ The new recordingSession.js is slightly over300lines. It owns one capture lifecy
 ## 2026-10-02 — Transcript companion boundaries
 
 The transcript adapter (~106lines), file section (~46lines), and hosted recording page (~147lines) keep token normalization, local file presentation, and capture/save lifecycle separate. Stream validation remains within its cohesive ~215line transport. Reuse the existing private-save task for both audio and transcript; a broader shared-task extraction is still a later candidate, not a reason to rewrite capture or change the legacy page during this slice.
+
+## 2026-10-02 — Private viewer source and diagnostic boundaries
+
+ThreadsViewer (~720lines) now supports an explicit private in-memory bundle in addition to public/local/Drive sources. Loading remains isolated in PrivateConversation and privateThreads; centralizing viewer source/persistence policy is still a later extraction candidate. MinimalGraph (~2200lines) mixes layout, camera, interaction and HUD wiring; this slice adds only stable per-instance diagnostic guards. Separate diagnostic context from camera/state hooks when decomposing that existing monolith. No broad refactor or new graph state machine is required for private reopening. PublicTaskStatus now accepts a private load label; a neutral component name can follow a future shared task presentation cleanup, preserving public callers.

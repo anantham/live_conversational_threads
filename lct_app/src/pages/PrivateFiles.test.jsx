@@ -3,6 +3,8 @@ import { act, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { PRIVATE_CONVERSATION_FIXTURE } from "../services/cloud/privateConversationFixture";
+vi.mock("./PrivateConversation", () => ({ default: ({ file, onClose }) => <section>Opened private copy: {file.filename}<button type="button" onClick={onClose}>Close private conversation</button></section> }));
 import PrivateFiles from "./PrivateFiles";
 
 const limits = { maxFileBytes: 2097152 };
@@ -167,5 +169,34 @@ describe("PrivateFiles", () => {
     root = null;
     expect(signal.aborted).toBe(true);
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("saves only the exact fixed conversation when explicitly selected in synthetic mode", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(json({ ...status, synthetic_only: true }))
+      .mockResolvedValueOnce(json({ files: [], next: null })).mockResolvedValueOnce(json({ file: fileRow }, 201))
+      .mockResolvedValueOnce(json({ files: [fileRow], next: null }));
+    vi.stubGlobal("fetch", fetchMock); await mount();
+    expect(host.querySelector('input[type="file"]')).toBeNull(); expect(fetchMock).toHaveBeenCalledTimes(2);
+    await click("Save a test conversation");
+    const request = fetchMock.mock.calls[2][1];
+    expect(request).toMatchObject({ method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json", "X-LCT-Filename": PRIVATE_CONVERSATION_FIXTURE.filename, "X-LCT-Storage-Write": "1" } });
+    const content = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsText(request.body); });
+    expect(content).toBe(PRIVATE_CONVERSATION_FIXTURE.text);
+    expect(request.body.size).toBe(new TextEncoder().encode(content).length);
+    expect(JSON.parse(content).format_version).toBe(2);
+    expect(fetchMock.mock.calls.filter(([, options]) => options.method === "POST")).toHaveLength(1);
+  });
+
+  it("opens only ready threads files in memory and closes back to the same private list", async () => {
+    const row = { ...fileRow, filename: PRIVATE_CONVERSATION_FIXTURE.filename, kind: "threads" };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(json(status)).mockResolvedValueOnce(json({ files: [row, { ...row, id: "00000000-0000-4000-8000-000000000002", state: "staging" }, { ...fileRow, id: "00000000-0000-4000-8000-000000000003" }], next: null })));
+    const originalUrl = window.location.href; await mount();
+    expect([...host.querySelectorAll("button")].filter(button => button.textContent === "Open conversation")).toHaveLength(1);
+    await click("Open conversation");
+    expect(host.textContent).toContain(`Opened private copy: ${PRIVATE_CONVERSATION_FIXTURE.filename}`);
+    expect(window.location.href).toBe(originalUrl);
+    await click("Close private conversation");
+    expect(host.textContent).toContain("Your files"); expect(fetch).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem("lct.private_files_timing.v1")).not.toContain(PRIVATE_CONVERSATION_FIXTURE.filename);
   });
 });

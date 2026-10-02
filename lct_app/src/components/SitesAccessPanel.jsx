@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 const SESSION_TIMEOUT_MS = 10_000;
 const TIMING_KEY = "lct.sites_session_check_timing.v1";
@@ -28,6 +29,8 @@ function recordTiming(durationMs, outcome, retryCount) {
 }
 
 export default function SitesAccessPanel() {
+  const { pathname } = useLocation();
+  const inPrivateFiles = pathname === "/private-files" || pathname === "/private-files/";
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState("checking");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -92,7 +95,7 @@ export default function SitesAccessPanel() {
   }, [attempt]);
 
   return (
-    <aside className="fixed bottom-4 right-4 z-50 max-h-[45dvh] w-[min(22rem,calc(100vw-2rem))] overflow-y-auto rounded-xl bg-white px-4 py-3 text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]" aria-label="Site access">
+    <aside className={`${inPrivateFiles ? "mx-auto my-4" : "fixed bottom-4 right-4 z-50 max-h-[45dvh] overflow-y-auto"} w-[min(22rem,calc(100vw-2rem))] rounded-xl bg-white px-4 py-3 text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold text-slate-800">Public access</p>
         {status === "checking" && (

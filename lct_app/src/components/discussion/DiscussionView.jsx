@@ -17,7 +17,7 @@ const namedSpeaker = (row, id) => [row?.speaker_name, row?.speaker_display]
 const initialsOf = (label) => String(label).split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
 const referencePrefix = { 5: "Arc", 4: "Theme", 3: "Topic", 2: "Idea", 1: "Moment" };
 
-export default function DiscussionView({ nodes, utterances = EMPTY, speakerColorMap = {}, evidenceStatus = "ready", onRenameSpeaker, focusRequest, linkBase }) {
+export default function DiscussionView({ nodes, utterances = EMPTY, speakerColorMap = {}, evidenceStatus = "ready", onRenameSpeaker, focusRequest, linkBase, namesStayInView = false }) {
   const model = useMemo(() => buildDiscussionModel(nodes, utterances), [nodes, utterances]);
   const [expanded, setExpanded] = useState(() => new Set());
   const [focusTarget, setFocusTarget] = useState(null);
@@ -208,7 +208,7 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
   };
   return <section aria-label="Discussion" className="h-full min-h-0 overflow-y-auto bg-[#fdfdfb] px-3 py-5 sm:px-6">
     <div className="mx-auto max-w-[75ch]">
-      <p className="mb-3 text-sm leading-6 text-slate-600">Open a branch to follow its ideas and exact words. A moment can belong to several ideas; shared links lead to the same passage.</p>
+      <p className="mb-3 text-sm leading-6 text-slate-600">Open a branch to follow its ideas and exact words. A moment can belong to several ideas{linkBase ? "; shared links lead to the same passage." : "."}</p>
       <p role={linkStatus ? "status" : undefined} aria-live="polite" aria-atomic="true"
         className={linkStatus ? "mb-3 text-xs text-slate-700" : "sr-only"}>{linkStatus}</p>
       {speakers.size > 0 && <div role="group" className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="Speaker colors">
@@ -232,7 +232,7 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
           </label>
           <button type="submit" className="min-h-11 rounded bg-slate-800 px-3 text-white hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700">Save name</button>
         </form>
-        <p className="text-xs text-slate-600">Names save on this device. Download the reviewed file to share them.</p>
+        <p className="text-xs text-slate-600">{namesStayInView ? "Names change in this view only. The stored copy stays the same." : "Names save on this device. Download the reviewed file to share them."}</p>
       </details>}
       <ul className="divide-y divide-slate-200">{model.rootIds.map(renderBranch)}</ul>
       {model.unlinkedUtteranceIds.length > 0 && <details className="mt-4 border-t border-slate-200 pt-2">
@@ -251,4 +251,5 @@ DiscussionView.propTypes = {
   onRenameSpeaker: PropTypes.func,
   focusRequest: PropTypes.shape({ id: PropTypes.string, requestKey: PropTypes.number }),
   linkBase: PropTypes.string,
+  namesStayInView: PropTypes.bool,
 };

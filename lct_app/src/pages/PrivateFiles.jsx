@@ -3,10 +3,12 @@ import { Link } from "react-router-dom";
 import { ArrowDownToLine, ArrowLeft, CloudUpload, RotateCw, Trash2 } from "lucide-react";
 import { usePrivateFiles } from "../hooks/usePrivateFiles";
 import { formatBytes, validatePrivateFile } from "../services/privateFiles";
+import { PRIVATE_CONVERSATION_FIXTURE } from "../services/cloud/privateConversationFixture";
+import PrivateConversation from "./PrivateConversation";
 
 const button = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700 disabled:cursor-not-allowed disabled:opacity-50";
 const primary = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700 disabled:cursor-not-allowed disabled:opacity-50";
-const SYNTHETIC_TEXT = "LCT synthetic private storage fixture.\nNo personal data.\n";
+const SYNTHETIC_FILE = { filename: "lct-storage-check.txt", contentType: "text/plain", text: "LCT synthetic private storage fixture.\nNo personal data.\n" };
 
 function dateLabel(value) {
   const date = new Date(value);
@@ -18,6 +20,7 @@ export default function PrivateFiles() {
   const [selected, setSelected] = useState(null);
   const [notice, setNotice] = useState("");
   const [confirmId, setConfirmId] = useState(null);
+  const [openFile, setOpenFile] = useState(null);
   const input = useRef(null);
   const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -28,9 +31,9 @@ export default function PrivateFiles() {
     if (alive.current) await list(null, false, preserveError);
   }
 
-  async function upload(synthetic = false) {
-    const file = synthetic ? new File([SYNTHETIC_TEXT], "lct-storage-check.txt", { type: "text/plain" }) : selected;
-    if (!file || (!synthetic && selectedError) || activity) return;
+  async function upload(fixture = null) {
+    const file = fixture ? new File([fixture.text], fixture.filename, { type: fixture.contentType }) : selected;
+    if (!file || (!fixture && selectedError) || activity) return;
     setNotice("");
     setError("");
     const result = await run("upload", "/api/cloud/files", { method: "POST", file });
@@ -70,6 +73,7 @@ export default function PrivateFiles() {
   }
 
   const canWrite = available && listed && !guest && !activity;
+  if (openFile) return <PrivateConversation key={openFile.id} file={openFile} onClose={() => setOpenFile(null)} />;
   return (
     <main className="min-h-dvh bg-[linear-gradient(180deg,#fdfdfb_0%,#f4f2ee_100%)] px-4 pb-40 pt-8 font-sans text-slate-800 sm:px-8 sm:pt-12">
       <div className="mx-auto max-w-3xl">
@@ -91,8 +95,8 @@ export default function PrivateFiles() {
         {available && listed && !guest && <>
           <section className="mt-8 rounded-xl bg-white p-5 shadow-[0_8px_28px_rgba(15,23,42,0.08)] sm:p-6" aria-labelledby="upload-heading">
             <div className="flex items-center gap-3"><CloudUpload size={21} aria-hidden="true" /><h2 id="upload-heading" className="text-lg font-semibold">Upload a private file</h2></div>
-            {status.synthetic_only ? <p className="mt-2 text-sm leading-6 text-slate-600">This storage check saves a known text fixture with no personal data. You can download and delete it after the check.</p> : <p className="mt-2 text-sm leading-6 text-slate-600">Choose a file up to {formatBytes(status.limits.maxFileBytes)}. Uploading stores a separate cloud copy for this account.</p>}
-            {status.synthetic_only ? <button type="button" onClick={() => upload(true)} disabled={!canWrite} className={`${primary} mt-5`}>Run private storage check</button> : <>
+            {status.synthetic_only ? <p className="mt-2 text-sm leading-6 text-slate-600">These checks save fixed files with no personal data. The test conversation opens as a map. Personal uploads are not active yet.</p> : <p className="mt-2 text-sm leading-6 text-slate-600">Choose a file up to {formatBytes(status.limits.maxFileBytes)}. Uploading stores a separate cloud copy for this account.</p>}
+            {status.synthetic_only ? <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => upload(SYNTHETIC_FILE)} disabled={!canWrite} className={primary}>Run private storage check</button><button type="button" onClick={() => upload(PRIVATE_CONVERSATION_FIXTURE)} disabled={!canWrite} className={button}>Save a test conversation</button></div> : <>
             <label htmlFor="private-file" className="mt-5 block text-sm font-medium">File to upload</label>
             <input id="private-file" ref={input} type="file" disabled={Boolean(activity)} onChange={(event) => { setSelected(event.target.files?.[0] || null); setError(""); }} className="mt-2 block w-full max-w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:border-0 file:bg-transparent file:font-medium file:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" />
             {selectedError && <p role="alert" className="mt-2 text-sm text-rose-700">{selectedError}</p>}
@@ -103,7 +107,7 @@ export default function PrivateFiles() {
             <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="files-heading" className="text-xl font-semibold">Your files</h2><button type="button" className={button} onClick={() => list()} disabled={Boolean(activity)}><RotateCw size={16} aria-hidden="true" /> Refresh list</button></div>
             {!activity && files.length === 0 && <p className="mt-5 text-sm text-slate-600">No private cloud files here yet.</p>}
             <ul className="mt-4 divide-y divide-slate-200 border-y border-slate-200">
-              {files.map((file) => <li key={file.id} className="py-5"><div className="flex flex-wrap items-start justify-between gap-4"><div className="min-w-0 flex-1"><p className="break-words font-medium">{file.title || file.filename}</p><p className="mt-1 text-xs text-slate-600">{file.kind} · {formatBytes(file.byte_size)} · {dateLabel(file.created_at)} · Private · {file.state}</p></div><div className="flex flex-wrap gap-2">{file.state === "ready" && <a className={button} href={`/api/cloud/files/${encodeURIComponent(file.id)}/content`} download><ArrowDownToLine size={16} aria-hidden="true" /> Download</a>}{file.state === "staging" && <button className={button} type="button" disabled={Boolean(activity)} onClick={() => recover(file.id)}>Recover unfinished upload</button>}<button className={button} type="button" disabled={Boolean(activity)} onClick={() => setConfirmId(file.id)}><Trash2 size={16} aria-hidden="true" /> Delete</button></div></div>{confirmId === file.id && <div className="mt-4 rounded-lg bg-rose-50 p-4 text-sm text-rose-900"><p>Permanently delete “{file.filename}”? This cannot be undone.</p><div className="mt-3 flex flex-wrap gap-2"><button className={primary} type="button" disabled={Boolean(activity)} onClick={() => remove(file.id)}>Delete permanently</button><button className={button} type="button" onClick={() => setConfirmId(null)}>Keep file</button></div></div>}</li>)}
+              {files.map((file) => <li key={file.id} className="py-5"><div className="flex flex-wrap items-start justify-between gap-4"><div className="min-w-0 flex-1"><p className="break-words font-medium">{file.title || file.filename}</p><p className="mt-1 text-xs text-slate-600">{file.kind} · {formatBytes(file.byte_size)} · {dateLabel(file.created_at)} · Private · {file.state}</p></div><div className="flex flex-wrap gap-2">{file.state === "ready" && file.kind === "threads" && <button type="button" className={button} disabled={Boolean(activity)} onClick={() => setOpenFile(file)}>Open conversation</button>}{file.state === "ready" && <a className={button} href={`/api/cloud/files/${encodeURIComponent(file.id)}/content`} download><ArrowDownToLine size={16} aria-hidden="true" /> Download</a>}{file.state === "staging" && <button className={button} type="button" disabled={Boolean(activity)} onClick={() => recover(file.id)}>Recover unfinished upload</button>}<button className={button} type="button" disabled={Boolean(activity)} onClick={() => setConfirmId(file.id)}><Trash2 size={16} aria-hidden="true" /> Delete</button></div></div>{confirmId === file.id && <div className="mt-4 rounded-lg bg-rose-50 p-4 text-sm text-rose-900"><p>Permanently delete “{file.filename}”? This cannot be undone.</p><div className="mt-3 flex flex-wrap gap-2"><button className={primary} type="button" disabled={Boolean(activity)} onClick={() => remove(file.id)}>Delete permanently</button><button className={button} type="button" onClick={() => setConfirmId(null)}>Keep file</button></div></div>}</li>)}
             </ul>
             {next && <button type="button" className={`${button} mt-5`} disabled={Boolean(activity)} onClick={() => list(next, true)}>Load more files</button>}
           </section>

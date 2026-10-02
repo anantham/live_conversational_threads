@@ -1,27 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const HISTORY_KEY = "lct.public_tasks_timing.v1";
+const HISTORY_KEYS = { public: "lct.public_tasks_timing.v1", "private-conversation": "lct.private_conversation_timing.v1" };
 const STAGES = ["list", "prepare", "publish", "remove", "load"];
 
-function record(stage, durationMs, outcome, retryCount) {
+function record(historyKey, stage, durationMs, outcome, retryCount) {
   try {
-    const saved = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
+    const saved = JSON.parse(localStorage.getItem(historyKey) || "[]");
     const previous = Array.isArray(saved) ? saved.filter(item => STAGES.includes(item?.stage) && Number.isFinite(item?.durationMs) && ["success", "error", "timeout", "cancelled"].includes(item?.outcome) && Number.isInteger(item?.retryCount)).map(({ stage: name, durationMs: duration, outcome: result, retryCount: retries }) => ({ stage: name, durationMs: duration, outcome: result, retryCount: retries })) : [];
-    localStorage.setItem(HISTORY_KEY, JSON.stringify([...previous, { stage, durationMs: Math.max(0, Math.round(durationMs)), outcome, retryCount }].slice(-12)));
+    localStorage.setItem(historyKey, JSON.stringify([...previous, { stage, durationMs: Math.max(0, Math.round(durationMs)), outcome, retryCount }].slice(-12)));
   } catch { /* Payload-free timing is optional. */ }
 }
 
-export function useCloudTask() {
+export function useCloudTask(scope = "public") {
+  const historyKey = HISTORY_KEYS[scope];
+  if (!historyKey) throw new Error("Unknown cloud task scope.");
   const [activity, setActivity] = useState(null);
   const [elapsed, setElapsed] = useState(0);
   const current = useRef(null), alive = useRef(true), retries = useRef({});
   const cancel = useCallback(() => current.current?.controller.abort(), []);
   useEffect(() => {
     alive.current = true;
+    retries.current = {};
     return () => { alive.current = false; cancel(); current.current = null; };
-  }, [cancel]);
+  }, [cancel, historyKey]);
   const run = useCallback(async (stage, work) => {
-    if (!STAGES.includes(stage) || current.current) return { error: new Error("Another public library operation is in progress.") };
+    if (!STAGES.includes(stage) || current.current) return { error: new Error("Another cloud operation is in progress.") };
     const controller = new AbortController(), started = Date.now(), task = { controller };
     let outcome = "error", timeout = false, onAbort;
     const retryCount = retries.current[stage] || 0;
@@ -45,9 +48,9 @@ export function useCloudTask() {
     } finally {
       window.clearInterval(interval); window.clearTimeout(deadline);
       controller.signal.removeEventListener("abort", onAbort);
-      record(stage, Date.now() - started, outcome, retryCount);
+      record(historyKey, stage, Date.now() - started, outcome, retryCount);
       if (current.current === task) { current.current = null; if (alive.current) setActivity(null); }
     }
-  }, []);
+  }, [historyKey]);
   return { run, cancel, activity, elapsed };
 }

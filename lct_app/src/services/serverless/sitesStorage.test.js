@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import worker from '../../../sites/worker.js';
-import { STORAGE_LIMITS, STORAGE_FIXTURE } from '../../../sites/storagePolicy.js';
+import { STORAGE_LIMITS, STORAGE_FIXTURE, PRIVATE_CONVERSATION_FIXTURE } from '../../../sites/storagePolicy.js';
 
 const SITE = 'https://fixture-lct.example.chatgpt.site';
 let sqlite, env, objects, failures;
@@ -301,5 +301,40 @@ describe('Sites private storage through the Worker API and generated SQLite sche
     expect((await worker.fetch(request(`/api/cloud/files/${created.data.file.id}`, { method: 'DELETE' }), env)).status).toBe(503);
     expect(sqlite.prepare('SELECT state FROM lct_cloud_files').get().state).toBe('deleting');
     expect([...objects.values()].every(bytes => bytes.length === 0)).toBe(true);
+  });
+
+  it('stores and reopens only the exact synthetic conversation for its owner', async () => {
+    env.LCT_PRIVATE_STORAGE_ENABLED = 'synthetic';
+    const fixture = PRIVATE_CONVERSATION_FIXTURE;
+    const headers = { 'x-lct-filename': fixture.filename, 'content-type': fixture.contentType };
+    const exactBytes = new TextEncoder().encode(fixture.text);
+    const modified = new Uint8Array(exactBytes);
+    modified[modified.length - 1] = modified[modified.length - 1] === 125 ? 32 : 125;
+    for (const options of [
+      { body: modified, headers },
+      { body: fixture.text, headers: { ...headers, 'x-lct-filename': 'other.threads' } },
+      { body: fixture.text, headers: { ...headers, 'content-type': 'text/plain' } },
+    ]) expect((await upload(options)).response.status).toBe(403);
+    expect((await upload({ body: fixture.text + ' ', headers })).response.status).toBe(413);
+    expect((await upload({ body: fixture.text, headers: { ...headers, 'content-length': String(exactBytes.length + 1) } })).response.status).toBe(413);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(0);
+
+    const { response, data } = await upload({ body: exactBytes, headers });
+    expect(response.status).toBe(201);
+    expect(data.file).toMatchObject({ filename: fixture.filename, content_type: fixture.contentType,
+      kind: 'threads', state: 'ready', visibility: 'private', byte_size: exactBytes.length });
+    expect(await (await worker.fetch(request('/api/cloud/files'), env)).json()).toEqual({ files: [data.file], next: null });
+    expect(await (await worker.fetch(request('/api/cloud/files', { owner: 'fixture-bob' }), env)).json()).toEqual({ files: [], next: null });
+    const contentPath = `/api/cloud/files/${data.file.id}/content`;
+    const blobRead = vi.spyOn(env.BUCKET, 'get');
+    expect((await worker.fetch(request(contentPath, { owner: null }), env)).status).toBe(401);
+    expect((await worker.fetch(request(contentPath, { owner: 'fixture-bob' }), env)).status).toBe(404);
+    expect(blobRead).not.toHaveBeenCalled();
+    const content = await worker.fetch(request(contentPath), env);
+    expect(content.status).toBe(200);
+    expect(content.headers.get('content-type')).toContain('application/json');
+    expect(new Uint8Array(await content.arrayBuffer())).toEqual(exactBytes);
+    expect(JSON.parse(fixture.text)).toMatchObject({ format: 'lct.threads', format_version: 2,
+      conversation_title: 'Synthetic private conversation check' });
   });
 });

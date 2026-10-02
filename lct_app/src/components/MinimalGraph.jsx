@@ -120,6 +120,7 @@ function MinimalGraphInner({
   toolbarTarget,
   toolbarTierTarget,
   hideWeaknessLenses = false,
+  diagnosticsEnabled = true,
 }) {
   const reactFlow = useReactFlow();
   const autoFollowRef = useRef(true);
@@ -256,7 +257,7 @@ function MinimalGraphInner({
       .filter(Boolean);
     return indexExplicitEdges(normalized, semanticEdges, Array.isArray(semanticEdges));
   }, [allNodes, semanticEdges]);
-  mglog("normalizedChunk", { allNodes: allNodes.length, normalized: normalizedChunk.length, graphDataLen: (graphData || []).length });
+  if (diagnosticsEnabled) mglog("normalizedChunk", { allNodes: allNodes.length, normalized: normalizedChunk.length, graphDataLen: (graphData || []).length });
 
   // Default landing tier: the TOPMOST populated tier so the canvas opens on
   // the macro view (1-5 arcs / themes), not 100+ chunks. User can step down
@@ -302,10 +303,10 @@ function MinimalGraphInner({
   useEffect(() => {
     if (initialLockedAppliedRef.current) return;
     if (initialLandingLevel == null) return;
-    mglog("auto-landing setLockedLevel", { chosen: initialLandingLevel });
+    if (diagnosticsEnabled) mglog("auto-landing setLockedLevel", { chosen: initialLandingLevel });
     setLockedLevel(initialLandingLevel);
     initialLockedAppliedRef.current = true;
-  }, [initialLandingLevel]);
+  }, [diagnosticsEnabled, initialLandingLevel]);
 
   // ADR-030 §D4: build all three color maps; the active mode picks among them.
   // No more auto-switching based on speaker count â€” user controls via toggle.
@@ -1047,8 +1048,8 @@ function MinimalGraphInner({
   const displayEdges = effectiveView?.edges || activeCluster?.edges || rfEdges;
   const structuralDisplayEdges = effectiveView?.structuralEdges || activeCluster?.edges || structuralRfEdges;
   const clusterLevelLabel = effectiveView?.label || activeCluster?.label || null;
-  mglog("view-select", { lockedLevel, zoomLevel, requestedSemanticLevel, effectiveSemanticLevel, hasAuthoredHierarchy, authoredLevels: authoredSemanticLevels, displayMode, src: effectiveView ? "effectiveView" : (activeCluster ? "activeCluster" : "layoutedNodes(chunk)"), nodeCount: layoutedDisplayNodes.length });
-  mglog("layoutedDisplayNodes", { count: layoutedDisplayNodes.length, firstY: layoutedDisplayNodes[0]?.position?.y, lastY: layoutedDisplayNodes[layoutedDisplayNodes.length - 1]?.position?.y });
+  if (diagnosticsEnabled) mglog("view-select", { lockedLevel, zoomLevel, requestedSemanticLevel, effectiveSemanticLevel, hasAuthoredHierarchy, authoredLevels: authoredSemanticLevels, displayMode, src: effectiveView ? "effectiveView" : (activeCluster ? "activeCluster" : "layoutedNodes(chunk)"), nodeCount: layoutedDisplayNodes.length });
+  if (diagnosticsEnabled) mglog("layoutedDisplayNodes", { count: layoutedDisplayNodes.length, firstY: layoutedDisplayNodes[0]?.position?.y, lastY: layoutedDisplayNodes[layoutedDisplayNodes.length - 1]?.position?.y });
 
   useEffect(() => {
     if (!onVisibleLevelChange) return;
@@ -1113,7 +1114,7 @@ function MinimalGraphInner({
     const tierKey = displayMode === "semantic" ? `s${effectiveSemanticLevel}` : null;
     if (tierKey == null) return;
     const key = `${tierKey}|${drillKey}`;
-    mglog("tier-change fit", { tierKey, drillKey, prev: lastFittedSemanticLevelRef.current, willFit: lastFittedSemanticLevelRef.current !== key });
+    if (diagnosticsEnabled) mglog("tier-change fit", { tierKey, drillKey, prev: lastFittedSemanticLevelRef.current, willFit: lastFittedSemanticLevelRef.current !== key });
     if (lastFittedSemanticLevelRef.current === key) return;
     lastFittedSemanticLevelRef.current = key;
     const id = setTimeout(() => {
@@ -1125,7 +1126,7 @@ function MinimalGraphInner({
       );
     }, 50);
     return () => clearTimeout(id);
-  }, [compactViewer, displayMode, effectiveSemanticLevel, drilldownPath, layoutedDisplayNodes, reactFlow, reduceMotion, viewportMotion]);
+  }, [compactViewer, diagnosticsEnabled, displayMode, effectiveSemanticLevel, drilldownPath, layoutedDisplayNodes, reactFlow, reduceMotion, viewportMotion]);
 
   // Controlled node state â€” layout provides initial positions, drags persist
   const [interactiveNodes, setInteractiveNodes] = useState([]);
@@ -1142,7 +1143,7 @@ function MinimalGraphInner({
     // Generate a key from node IDs to detect when the node set changes
     const key = layoutedDisplayNodes.map((n) => n.id).join(",");
     if (key !== layoutKeyRef.current) {
-      mglog("layout re-key -> arm fitView", { count: layoutedDisplayNodes.length, key: key.slice(0, 60), prevKey: layoutKeyRef.current.slice(0, 60) });
+      if (diagnosticsEnabled) mglog("layout re-key -> arm fitView", { count: layoutedDisplayNodes.length, key: key.slice(0, 60), prevKey: layoutKeyRef.current.slice(0, 60) });
       layoutKeyRef.current = key;
       setInteractiveNodes(layoutedDisplayNodes.map((n) => ({ ...n, draggable: true })));
       pendingFitViewRef.current = true;
@@ -1164,7 +1165,7 @@ function MinimalGraphInner({
         };
       })
     );
-  }, [layoutedDisplayNodes]);
+  }, [diagnosticsEnabled, layoutedDisplayNodes]);
 
   const onNodesChange = useCallback((changes) => {
     setInteractiveNodes((nds) => applyNodeChanges(changes, nds));
@@ -1409,7 +1410,7 @@ function MinimalGraphInner({
   // readable scale on compact screens and clamps desktop fit to the same
   // effective-type floor.
   useEffect(() => {
-    mglog("fitView gate", { willRun: pendingFitViewRef.current && displayNodes.length > 0, pending: pendingFitViewRef.current, displayNodes: displayNodes.length, hasInitiallyFit: hasInitiallyFitRef.current });
+    if (diagnosticsEnabled) mglog("fitView gate", { willRun: pendingFitViewRef.current && displayNodes.length > 0, pending: pendingFitViewRef.current, displayNodes: displayNodes.length, hasInitiallyFit: hasInitiallyFitRef.current });
     if (!pendingFitViewRef.current || displayNodes.length === 0) return;
     if (focusNode && lastFocusedRef.current !== focusToken && displayNodes.some(n=>n.id===focusNode)) {
       hasInitiallyFitRef.current=true;
@@ -1458,14 +1459,14 @@ function MinimalGraphInner({
         // initial fit has run (prevents the cold-open off-screen camera).
         hasInitiallyFitRef.current = true;
         pendingFitViewRef.current = false; // consume only now that the fit committed
-        mglog("initial fitView COMMITTED", { displayNodes: displayNodes.length, isCompact });
+        if (diagnosticsEnabled) mglog("initial fitView COMMITTED", { displayNodes: displayNodes.length, isCompact });
       });
     });
     return () => {
       cancelAnimationFrame(raf1);
       if (raf2) cancelAnimationFrame(raf2);
     };
-  }, [compactViewer, compactViewerTopInset, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode, focusToken]);
+  }, [compactViewer, compactViewerTopInset, diagnosticsEnabled, displayNodes, reactFlow, reduceMotion, viewportMotion, focusNode, focusToken]);
 
   const selectedLayoutNode = useMemo(
     () => displayNodes.find((node) => node.id === selectedNode) || null,
@@ -1605,7 +1606,7 @@ function MinimalGraphInner({
   // Auto-pan to latest nodes (only when auto-follow is active)
   const lastNodeId = layoutedDisplayNodes[layoutedDisplayNodes.length - 1]?.id ?? null;
   useEffect(() => {
-    mglog("auto-pan attempt", { autoFollow, selectedNode, hasInitiallyFit: hasInitiallyFitRef.current, lastNodeId, lastY: layoutedDisplayNodes[layoutedDisplayNodes.length - 1]?.position?.y });
+    if (diagnosticsEnabled) mglog("auto-pan attempt", { autoFollow, selectedNode, hasInitiallyFit: hasInitiallyFitRef.current, lastNodeId, lastY: layoutedDisplayNodes[layoutedDisplayNodes.length - 1]?.position?.y });
     if (!autoFollow || selectedNode || layoutedDisplayNodes.length === 0) return;
     // Cold-open guard: autoFollow defaults true, so without this the mount
     // auto-pan fires before the initial fitView and parks the camera ~17000px
@@ -1620,11 +1621,11 @@ function MinimalGraphInner({
       zoom: 1,
       duration: reduceMotion ? 0 : 400,
     });
-  }, [autoFollow, centerViewportOnNode, lastNodeId, layoutedDisplayNodes, reduceMotion, selectedNode]);
+  }, [autoFollow, centerViewportOnNode, diagnosticsEnabled, lastNodeId, layoutedDisplayNodes, reduceMotion, selectedNode]);
 
   // Center selected node when chosen from timeline or graph.
   useEffect(() => {
-    mglog("center-on-selected (ribbon/click)", { selectedNode, hasLayoutNode: !!selectedLayoutNode, pos: selectedLayoutNode?.position });
+    if (diagnosticsEnabled) mglog("center-on-selected (ribbon/click)", { selectedNode, hasLayoutNode: !!selectedLayoutNode, pos: selectedLayoutNode?.position });
     if (selectedNode && neighborhoodView && !neighborhoodView.nodes.some((node) => node.id === selectedNode)) {
       // Timeline/detail navigation owns the next camera move. Do not restore
       // the pre-focus viewport and briefly point at unrelated focused nodes.
@@ -1640,7 +1641,7 @@ function MinimalGraphInner({
       });
     });
     return () => cancelAnimationFrame(raf);
-  }, [centerViewportOnNode, clearNeighborhoodFocus, neighborhoodView, reduceMotion, selectedLayoutNode, selectedNode, viewportReservationKey]);
+  }, [centerViewportOnNode, clearNeighborhoodFocus, diagnosticsEnabled, neighborhoodView, reduceMotion, selectedLayoutNode, selectedNode, viewportReservationKey]);
 
   // Cluster detail panel state
   const [selectedCluster, setSelectedCluster] = useState(null);
@@ -1870,6 +1871,7 @@ function MinimalGraphInner({
 
   const graphHud = (
     <MinimalGraphHud
+      diagnosticsEnabled={diagnosticsEnabled}
       inToolbar={toolbarMode}
       zoomLevel={zoomLevel}
       hideStats={toolbarMode}
@@ -2155,6 +2157,7 @@ MinimalGraphInner.propTypes = {
   toolbarTarget: PropTypes.object,
   toolbarTierTarget: PropTypes.object,
   hideWeaknessLenses: PropTypes.bool,
+  diagnosticsEnabled: PropTypes.bool,
 };
 
 export default function MinimalGraph(props) {
@@ -2187,4 +2190,5 @@ MinimalGraph.propTypes = {
   toolbarTarget: PropTypes.object,
   toolbarTierTarget: PropTypes.object,
   hideWeaknessLenses: PropTypes.bool,
+  diagnosticsEnabled: PropTypes.bool,
 };

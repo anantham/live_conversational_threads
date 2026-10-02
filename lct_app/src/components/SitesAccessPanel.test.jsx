@@ -1,18 +1,25 @@
 // @vitest-environment jsdom
 import { act } from "react";
 import { createRoot } from "react-dom/client";
+import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import sitesWorker from "../../sites/worker.js";
 import SitesAccessPanel from "./SitesAccessPanel";
 
 let root;
 let container;
+let navigate;
 
-async function mount() {
+function NavigationCapture() {
+  navigate = useNavigate();
+  return null;
+}
+
+async function mount(initialPath = "/") {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  await act(async () => { root.render(<SitesAccessPanel />); });
+  await act(async () => { root.render(<MemoryRouter initialEntries={[initialPath]}><NavigationCapture /><SitesAccessPanel /></MemoryRouter>); });
 }
 
 async function settle() {
@@ -30,11 +37,34 @@ afterEach(async () => {
   container?.remove();
   root = null;
   container = null;
+  navigate = null;
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("SitesAccessPanel", () => {
+  it("uses document flow on private files and floats elsewhere without repeating the session check", async () => {
+    fetch.mockResolvedValue({ status: 200, json: async () => ({ authenticated: true, user: { id: "private-id" } }) });
+    await mount("/private-files");
+    const panel = container.querySelector('aside[aria-label="Site access"]');
+    expect(panel.classList.contains("fixed")).toBe(false);
+    expect(panel.classList.contains("overflow-y-auto")).toBe(false);
+    expect(panel.classList.contains("max-h-[45dvh]")).toBe(false);
+    expect(panel.textContent).toContain("Signed in");
+    expect([...panel.querySelectorAll("a")].some((link) => link.textContent === "Sign out" && link.getAttribute("href") === "/signout-with-chatgpt?return_to=%2F")).toBe(true);
+
+    await act(async () => navigate("/private-files/"));
+    expect(container.querySelector("aside")).toBe(panel);
+    expect(panel.classList.contains("fixed")).toBe(false);
+
+    await act(async () => navigate("/"));
+    expect(container.querySelector("aside")).toBe(panel);
+    expect(panel.classList.contains("fixed")).toBe(true);
+    expect(panel.classList.contains("overflow-y-auto")).toBe(true);
+    expect(panel.textContent).toContain("Signed in");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("shows a guest on 401, keeps public browsing, and uses same-origin no-store session checks", async () => {
     fetch.mockResolvedValue({ status: 401 });
     await mount();
