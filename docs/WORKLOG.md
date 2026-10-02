@@ -6985,3 +6985,14 @@ User observed an empty desktop transcript until node selection, with only the cu
   native controls remain unchanged; prior served adjacent evidence is reusable.
 - Next checkpoint: exact two-file read-only Google Gemini/AGY review, mandatory
   full frontend push gate, release checks and public desktop/phone confirmation.
+
+### 2026-10-02 18:16 IST — History controls independently approved
+
+- Source committed82d14ec and pushed on codex/viewer-history-controls; PR210
+  attached. Required full frontend gate513/513 passes in84files,29.42s.
+- Google Gemini3.1 Pro High via AGY independently approves exact two-file diff,
+  no findings/disputes. Tool-free, zero attempted tools, eligible family and
+  authorized exclusions verified. Receipt:docs/reviews/2026-10-02-viewer-history-controls-agy.md.
+- This checkpoint/receipt changes documentation only. Next: confirm unchanged
+  source packet at final head; CI/Vercel checks, bounded approved release and
+  public1440/390 navigation/geometry evidence. Source not yet merged or served.
