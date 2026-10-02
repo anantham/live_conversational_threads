@@ -83,6 +83,18 @@ describe('Sites Worker public fetch interface', () => {
     }
   });
 
+  it('serves the privacy route to a guest as a direct HTML navigation', async () => {
+    const assets = { fetch: vi.fn(async req => new Response(
+      new URL(req.url).pathname === '/index.html' ? 'fixture-shell' : 'missing',
+      { status: new URL(req.url).pathname === '/index.html' ? 200 : 404 },
+    )) };
+    const response = await worker.fetch(request('/privacy', { method: 'GET', headers: { accept: 'text/html' } }), { ASSETS: assets });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('fixture-shell');
+    expect(assets.fetch.mock.calls.map(([req]) => new URL(req.url).pathname)).toEqual(['/privacy', '/index.html']);
+    expect(upstream).not.toHaveBeenCalled();
+  });
+
   it('preserves a browser deep link when managed assets canonicalize the shell to root', async () => {
     const assets = { fetch: async req => new URL(req.url).pathname === '/'
       ? new Response('fixture-shell') : Response.redirect(SITE + '/', 307) };

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useMemo } from "react";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
 import AppRoutes from "./routes/AppRoutes";
 import { ByokProvider } from "./contexts/ByokContext.jsx";
 import { UploadProvider } from "./contexts/UploadContext";
@@ -148,7 +148,10 @@ export default function App() {
         <ByokProvider>
           <UploadProvider>
             <AppRoutes />
-            {sitesMode && <SitesAccessPanel />}
+            {sitesMode && <Routes>
+              <Route path="/privacy" element={null} />
+              <Route path="*" element={<SitesAccessPanel />} />
+            </Routes>}
             <UploadToast />
           </UploadProvider>
         </ByokProvider>

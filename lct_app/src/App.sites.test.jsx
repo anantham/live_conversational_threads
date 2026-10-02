@@ -26,20 +26,40 @@ beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
+  window.history.replaceState({}, "", "/");
 });
 afterEach(async () => {
   await act(async () => root.unmount());
   container.remove();
+  window.history.replaceState({}, "", "/");
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
 describe("Sites public shell", () => {
+  it("keeps /privacy readable without a sign-in request and restores the panel on Home", async () => {
+    window.history.replaceState({}, "", "/privacy");
+    await act(async () => root.render(<App />));
+    expect(container.textContent).toContain("Public route");
+    expect(container.querySelector("#site-access")).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      window.history.pushState({}, "", "/");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(container.querySelector("#site-access")).not.toBeNull();
+    expect(container.textContent).toContain("Checking sign-in");
+    expect(fetch).toHaveBeenCalledWith("/api/auth/session", expect.any(Object));
+  });
+
   it("renders immediately with keyless browser-local data and no legacy backend health request", async () => {
     const readStorage = vi.spyOn(Storage.prototype, "getItem");
     await act(async () => root.render(<App />));
     expect(container.textContent).toContain("Public route");
     expect(container.textContent).toContain("Checking sign-in");
+    expect(container.querySelector('a[href="/privacy"]')?.textContent).toBe("Privacy and data use");
     expect(container.textContent).not.toContain("Enter your API key");
     expect(providerKeys).toContain("");
     expect(apiFetch).not.toHaveBeenCalled();

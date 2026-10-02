@@ -54,6 +54,7 @@ describe("SitesAccessPanel", () => {
       { ok: true, json: async () => ({ google: { enabled: true, configured: false } }) }));
     await mount();
     expect(container.textContent).toContain("Browsing as guest");
+    expect(container.querySelector('a[href="/privacy"]')?.textContent).toBe("Privacy and data use");
     expect(container.textContent).not.toContain("Sign in with Google");
     expect(fetch).toHaveBeenCalledWith("/api/auth/config", expect.objectContaining({ credentials: "same-origin", cache: "no-store" }));
     const history = JSON.parse(localStorage.getItem("lct.sites_auth_ui_timing.v1"));
@@ -290,6 +291,7 @@ describe("SitesAccessPanel", () => {
       .mockResolvedValueOnce({ status: 401 });
     await mount();
     expect(container.textContent).toContain("Sign-in check failed");
+    expect(container.querySelector('a[href="/privacy"]')?.textContent).toBe("Privacy and data use");
     await act(async () => container.querySelector("button").click());
     expect(container.textContent).toContain("Browsing as guest");
     expect(fetch).toHaveBeenCalledTimes(3);

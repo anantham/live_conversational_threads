@@ -182,6 +182,7 @@ export default function SitesAccessPanel() {
       <p className="mt-2 text-xs leading-relaxed text-slate-600">
         Sign-in is optional for private files and history. Browse public conversations without an account. Cloud recording and personal uploads are still being connected. Opening browser-local files does not publish them.
       </p>
+      <a className="mt-2 inline-flex min-h-8 items-center text-xs font-medium text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" href="/privacy">Privacy and data use</a>
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium">
         {status !== "signed-in" && (
           <a className="text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" href="/signin-with-chatgpt?return_to=%2F" target="_top">Sign in with ChatGPT</a>
