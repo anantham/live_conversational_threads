@@ -64,3 +64,16 @@ Provide an explicit Play/Pause control alongside a ready player, driven by actua
 player events, and explain browser-blocked playback. A timed-out attempt cannot
 later become ready; Retry starts a fresh attempt at the retained passage.
 No automatic playback, new media provider, or browser settings change is added.
+
+## 2026-10-02 amendment — Phone Source interaction space
+
+Post-deployment interaction found that an expanded timeline could leave no graph
+height after Source consumed the remaining pane. Floating graph actions escaped
+into Source, and the selected-node phone sheet remained over it. Source naming
+was blocked by another control despite the form existing in the DOM.
+
+Keep the selected moment, but suspend its phone detail sheet while Source is open;
+closing Source restores the same detail. Desktop details remain beside Source.
+Bound the compact video Source to 60% of its available parent pane, capped at
+60dvh, and contain floating graph actions within the graph pane. This keeps the
+existing layout and recording behavior while making the visible controls reachable.

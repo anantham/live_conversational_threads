@@ -608,6 +608,7 @@ function ThreadsViewerContent() {
   }
 
   const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
+  const nodeDetailsVisible = Boolean(selectedNodeData) && (!narrowViewer || !sourceOpen);
   return (
     <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
       {!focusMode && (!compactViewer || !mobileMapOpen || overviewOpen) && (
@@ -622,7 +623,7 @@ function ThreadsViewerContent() {
       {!focusMode && toolbar}
       <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
         {sourceOpen && renderSourcePanel(selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode)))}
-      <div className="relative min-h-0 min-w-0 flex-1">
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
         <MinimalGraph
           graphData={flatNodes}
           semanticEdges={bundle.edges}
@@ -681,7 +682,7 @@ function ThreadsViewerContent() {
           </button>
         )}
         {!viewerFocusMode && <MinimalLegend speakerColorMap={speakerColorMap} />}
-        {selectedNodeData && (
+        {nodeDetailsVisible && (
           <button
             type="button"
             aria-label="Close node details"
@@ -689,7 +690,7 @@ function ThreadsViewerContent() {
             onClick={() => setSelectedNode(null)}
           />
         )}
-        {selectedNodeData && (
+        {nodeDetailsVisible && (
           <NodeDetail
             node={selectedNodeData}
             chunkDict={bundle.chunk_dict || {}}

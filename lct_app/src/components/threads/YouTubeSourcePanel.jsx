@@ -219,7 +219,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const href = `${media.view_url}&t=${Math.floor(linkSeconds)}s`;
 
   return (
-    <aside aria-label="YouTube source" style={compact ? {maxHeight: "min(60dvh, 100%)"} : {width: collapsed ? 40 : panelWidth, maxWidth: "60vw"}} className={`lct-source-panel relative flex flex-col shrink-0 overflow-hidden border-slate-200 bg-white p-2 ${compact ? "border-b" : "border-r pr-3"}`}>
+    <aside aria-label="YouTube source" style={compact ? {maxHeight: "min(60dvh, 60%)"} : {width: collapsed ? 40 : panelWidth, maxWidth: "60vw"}} className={`lct-source-panel relative flex flex-col shrink-0 overflow-hidden border-slate-200 bg-white p-2 ${compact ? "border-b" : "border-r pr-3"}`}>
       <button type="button" aria-label={collapsed ? "Show source panel" : "Hide source panel"} aria-expanded={!collapsed} onClick={() => onClose ? onClose() : setCollapsed(value => !value)} className="mb-1 shrink-0 text-left text-xs text-slate-500">
         {collapsed ? (compact ? "Show source" : "›") : "Hide source"}
       </button>

@@ -6606,3 +6606,41 @@ User observed an empty desktop transcript until node selection, with only the cu
   Marked the earlier pending receipt as superseded and resolved the reviewer
   capacity entry in ISSUES.md. No source changed after the approved d3fc09a scope.
   PR205 remains draft; no merge or production deployment was authorized or run.
+
+## 2026-10-02 08:27 IST — Approved release and live verification correction
+
+- User explicitly approved merge/deployment and live end-to-end verification.
+  PR205 merged as 0e9fdc313820a99290d21dcf63bd54bb7c6ed5ba. GitHub deployment
+  6800066064 reports successful Production deployment of that exact SHA; the
+  associated live production workflow 36957085679 passed. The deploy checkout
+  was not edited or restarted; this change is the git-connected public frontend.
+- Public Chromium interaction: seven distinct selected moments, 56 cards and
+  zero overlap pairs, keyboard and visible navigation; evidence opened a closed
+  Source at 4399s, actual playback advanced from 4400.545097 to 4400.978425s
+  with paused=false and readyState=4, then Pause worked. Blocked embedding showed
+  an error, removed the failed iframe, and Retry restored readiness at retained
+  2272s. Source sample naming/export preserved the original full transcript.
+- Actual on-device meaning search returned 12 results after an 80362ms cold
+  preparation/index and a 229ms warm query. These are measured observations for
+  one desktop run, not general estimates. Twelve model requests were GET-only
+  without bodies; exact-word results opened Source. Icons/view cycling and
+  Discussion naming removal passed. Two arcs, five themes and twenty expanded
+  indicators had rounded totals of 100%; an initial harness read concatenated
+  numeric avatar initials, so its apparent percentage failure was rejected.
+- Public opener/library suite: eight pass, homepage smoke passed on retry after
+  an initial navigation timeout. No source change was made to hide that timeout.
+  The first custom playback probe had a browser-evaluation argument bug; fixed
+  the harness and retained the first failure as local evidence before rerunning.
+- Live phone interaction did fail: Source naming was intercepted by the reading
+  strip and a selected-node sheet remained above Source. Instrument, not inference.
+  Added a synthetic regression before the fix; it failed because the dialog was
+  still rendered. ThreadsViewer.jsx now suspends the narrow-screen detail sheet
+  only while Source is open, retains selection, and contains graph overlays.
+  YouTubeSourcePanel.jsx caps compact Source by available parent height so the
+  graph retains space. ADR-071 and test intent record this bounded interaction.
+- Local correction validation: 9/9 regular Source/reading Chromium tests pass,
+  including normal-click naming with timeline+selection and detail restoration;
+  the opt-in real network test was skipped here because actual public playback
+  was already directly verified. Scoped lint/build and independent review follow.
+  All recordings/transcripts/screenshots/raw network evidence remain local and
+  excluded from code review. Continue within the user's approved release scope.

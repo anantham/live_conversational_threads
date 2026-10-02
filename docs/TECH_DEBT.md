@@ -377,3 +377,8 @@ the visible Play/Pause interaction into SourcePlaybackControls.jsx. Readiness
 and playback waits are separate phases; each timer has one owner and is cleaned
 up on completion, failure, retry, or unmount. Extract the SDK lifecycle only when
 the existing provider boundary grows; no broad Source rewrite is warranted here.
+
+The live phone follow-up adds only a detail-sheet visibility condition and pane
+containment to ThreadsViewer. Keep narrow-screen pane reservation and modal
+visibility together when extracting its layout boundary; treating each panel's
+viewport-height cap independently caused the Source interaction obstruction.

@@ -37,3 +37,21 @@ observed; a normal load showed a thumbnail and native Play. The user's specific
 blocking cause remains unknown. Confidence in this failure class: 0.95.
 The bounded correction exposes state and controls; if embedding still fails,
 the reader can open the exact passage on YouTube.
+
+## 2026-10-02 — Live phone Source obstruction
+
+- With the timeline expanded and a moment selected, opening Source on a phone
+  temporarily hides the selected-node sheet while preserving the selected moment.
+  Closing Source restores that detail; desktop details remain available beside Source.
+- Source uses a bounded share of its available pane height, retaining space for
+  the graph. Floating graph actions cannot escape into Source. Naming a speaker
+  must succeed by an ordinary click and keyboard input, without a forced click.
+
+Instrument: the live 390x844 flow reached Source but its naming click was intercepted
+by the graph's reading control, while a selected-node sheet also covered Source.
+Hypothesis: the Source cap used the full remaining height and graph actions escaped
+their zero-height pane; the phone detail sheet remained rendered over Source.
+Prediction: containing the graph and suspending the phone sheet while Source is open
+makes naming reachable, with navigation below Source and the same detail restored.
+Confidence: 0.95. Fallback: retain the current deployed desktop behavior and report
+the phone correction incomplete if the focused browser interaction does not pass.
