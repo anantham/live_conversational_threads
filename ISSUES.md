@@ -1830,7 +1830,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   not a current release blocker. If it recurs, investigate observable readiness
   under suite load without weakening the required camera restoration assertion.
 
-## 2026-10-03 — Legend spacing and pane isolation (APPROVED; IMPLEMENTING)
+## 2026-10-03 — Legend spacing and pane isolation (SERVED; finite geometry accepted)
 
 - Outcome: reach the Legend and read its key without blank clearance or Source/
   details collisions. Owner Codex; authoritative checkout viewer-source-and-controls,
@@ -1868,6 +1868,24 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   packet/hash. Full pre-push520/520 passed; PR212 preview successful. Mechanical
   main reconciliation2001ba7 retains exactly identical reviewed source/tests.
   Remaining: required checks and served verification; no new human decision needed.
+- Served checkpoint: PR212 exact head6b8a074dce0dfd2f9cbcf4b7fa27e34eb7504fea
+  merged as b98435538216e0ec3171f3faf2473747a58bc099 at2026-10-02T20:33:28Z.
+  Production deployment6817714804 succeeded20:34:01Z; public asset
+  index-9PRobkul.js. All eight reviewed source/test files remain byte-identical
+  to d37f507. Required second full push gate520/520, remote CI/preview and
+  production smoke7/7 passed. Focus entry/exit2/2 passed locally at1440/390px.
+- Public bundled-example geometry/reachability3/3 at1440x900,390x844,320x640:
+  gap12px, Source/details/key do not overlap, final edge reachable, scoped Escape
+  preserves selected moment. Short combined panes need scrolling. This proves
+  the finite presentation repair. The stricter walkthrough failed its console
+  assertion with five YouTube warnings; a settled public Back camera probe also
+  failed (separate entries below). No complete integrated UX pass is claimed.
+- Integration owner Codex; authoritative checkout remains
+  C:/Users/adity/.codex/worktrees/viewer-source-and-controls/live_conversational_threads.
+  Closure records branch codex/viewer-legend-closure starts at served main to avoid
+  prior squash ancestry drift. Remaining engineering evidence: separate camera/
+  SDK lifecycle investigations. No product choice blocks the served Legend repair;
+  next presentation checkpoint is human use, with deferred choices below.
 
 ## 2026-10-03 — Viewer product decision space (DEFERRED; no proposal selected)
 
@@ -1903,7 +1921,7 @@ current defaults if a preview reduces comprehension or adds navigation friction.
 Remaining dependency: the smallest selected product slice; no deadline claimed.
 Next checkpoint: a concrete preview plus reader/task evidence for that selection.
 
-## 2026-10-03 — YouTube warnings in rapid localhost panel walkthrough (OPEN)
+## 2026-10-03 — YouTube warnings in rapid Source panel walkthrough (OPEN)
 
 - The actual bundled-example Legend probe completed its geometry/navigation
   checks at1440/390/320px, then failed its strict console assertion: two web-share
@@ -1918,3 +1936,34 @@ Next checkpoint: a concrete preview plus reader/task evidence for that selection
   tmp/legend-local-source-*.png and captured probe failure in this task.
   Next checkpoint: public-origin walkthrough; dedicated SDK lifecycle work only
   if reproduced and selected. Owner unassigned.
+- Public follow-up reproduced five warnings across three widths: three web-share
+  notices and two youtube-nocookie/public-origin postMessage mismatches. Geometry
+  and reading-position checks completed3/3; errors/5xx were zero, but the preserved
+  strict-console assertion failed. Source was closed while loading; playback was
+  not tested by this probe. Evidence tmp/legend-live-report.json and paired local
+  screenshots; these runtime artifacts are excluded from review egress.
+  Cause remains unknown. Next checkpoint: bound the SDK loading/teardown lifecycle
+  with observable readiness, retaining warnings rather than filtering them.
+
+## 2026-10-03 — Public Back restores reading position but loses card visibility (OPEN)
+
+- Instrumented bundled-example desktop sequence: select first thread moment,
+  open/close key, open Source/key and close Source, Next, Back; sample after600ms.
+  Initial camera translate(387.5,-3233.35),scale1.15 shows selected card. After Back,
+  count returns1of4 but camera translate(550,220),scale1 places selected card at
+  y3245.5; zero nodes are visible. Evidence tmp/legend-camera-report.json and
+  tmp/legend-camera-settled.png. This is a settled failure, not an animation sample.
+- Counter-evidence: local Vite with identical served source restores visible card
+  with both key toggles and no key toggles. Key reflow alone is falsified as cause.
+  Read-only local peer traced stored graphNavigation and the measured-node restore
+  gate; stale/missing saved camera, an incomplete gate, or a later writer remain
+  alternatives. No root cause, introduction date or release attribution established.
+- A separate baseline-server launch was rejected by automatic approval review,
+  returning only 'blocked by policy'. That method stopped; no alternate launch
+  bypassed it. This is an enforcement mismatch, not missing human product approval.
+- Impact: public Back may leave the reader offscreen; finite Legend geometry passes
+  do not establish camera acceptance. No unconditional recenter patch is justified
+  because it could discard manual pan. Next decisive evidence: capture the saved
+  viewport before Next, restore target and node measurement gate on Back, viewport
+  application and any subsequent camera writer. Owner Codex for evidence handoff;
+  separate repair remains unimplemented, with no full UX audit claimed.

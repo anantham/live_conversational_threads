@@ -6,7 +6,12 @@
   "reviewedSourceCommit": "d37f507f2ff9ff1ad5b08db4112cde888d9061ec",
   "baseCommit": "011259fcd21620c4ad6982a8519816dbed722539",
   "mechanicalIntegrationCommit": "2001ba7efac72e32357fa143c9d3537eac069218",
-  "sourceEquivalence": "git diff reviewedSourceCommit..mechanicalIntegrationCommit over all eight reviewed files is empty; no source/test/coverage change",
+  "sourceEquivalence": "git diff reviewedSourceCommit..mechanicalIntegrationCommit and reviewedSourceCommit..servedCommit over all eight reviewed files is empty; no source/test/coverage change",
+  "pullRequest": "https://github.com/anantham/live_conversational_threads/pull/212",
+  "pullRequestHead": "6b8a074dce0dfd2f9cbcf4b7fa27e34eb7504fea",
+  "servedCommit": "b98435538216e0ec3171f3faf2473747a58bc099",
+  "productionDeployment": "6817714804",
+  "productionAsset": "index-9PRobkul.js",
   "files": [
     "lct_app/src/components/MinimalLegend.jsx",
     "lct_app/src/components/MinimalLegend.test.jsx",
@@ -32,6 +37,16 @@
     "firstRequiredPushGate": "520/520",
     "lint": "changed JSX clean",
     "productionBuild": "passed",
-    "layoutDetector": "no findings"
-  }
+    "layoutDetector": "no findings",
+    "secondRequiredPushGate": "520/520",
+    "productionSmoke": "7/7; workflow37061405967; exact served SHA",
+    "publicLegendGeometry": "3/3 at1440/390/320px;12px clearance; Source/details/key do not overlap; edge key reachable",
+    "localFocusMode": "2/2 at1440/390px"
+  },
+  "postReviewLimits": [
+    "Actual-example strict console walkthrough failed with five YouTube warnings on public origin; page errors/5xx zero. No playback acceptance from this probe.",
+    "Separate settled public Back probe restored reading count but left selected card offscreen; identical-source local controls passed with and without key toggles. Cause and release attribution unknown.",
+    "No full integrated UX/a11y/performance audit claimed. Tiny combined panes require scrolling.",
+    "Automatic approval review rejected separate baseline server launch with only blocked by policy; method stopped without bypass."
+  ]
 }

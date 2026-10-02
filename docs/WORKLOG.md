@@ -7157,3 +7157,42 @@ User observed an empty desktop transcript until node selection, with only the cu
   records this evidence; preserve warning capture in served verification.
 - Final release dependency: second mandatory push gate, remote checks, main merge,
   exact production identity and public layout acceptance. Runtime is not yet served.
+
+### 2026-10-03 02:23 IST — Legend served checkpoint and bounded follow-up evidence
+
+- PR212 exact head6b8a074dce0dfd2f9cbcf4b7fa27e34eb7504fea merged as
+  b98435538216e0ec3171f3faf2473747a58bc099 at2026-10-02T20:33:28Z; production
+  deployment6817714804 succeeded20:34:01Z, immutable lct-g8hqa6bnr-adityas-projects-9c03351d.vercel.app,
+  public asset index-9PRobkul.js. All eight reviewed files match d37f507 exactly.
+  Required second push520/520 and exact-head remote CI/preview passed;
+  post-deploy live smoke37061405967 passed7/7 (38.0s).
+- Real public interactions at1440x900,390x844,320x640 completed finite geometry/
+  reachability3/3:12px gap, no key collision with Source/details, complete edge
+  scroll, pointer/keyboard close, selected moment preserved and reading count
+  restored after Next/Back. Local focus entry/exit2/2 at1440/390 hides utilities
+  while focused and restores Legend. No source edits followed independent review.
+- Strict public console check failed with five YouTube warnings (three web-share,
+  two postMessage origin mismatch); page errors/5xx zero. Local actual-example
+  console check previously failed with four. Do not label these overall passed or
+  claim playback acceptance: panels closed during SDK loading. Updated ISSUES
+  with public reproduction and separate loading/teardown evidence checkpoint.
+- Screenshot follow-up found public Back count1of4 with card offscreen after600ms:
+  camera translate(550,220),scale1, selected card y3245.5, visible nodes0. Local
+  same-source controls with/without key toggles both restore the camera. Bounded
+  gpt-6-sol read-only peer confirms reflow alone is falsified; saved camera, restore
+  measurement gate and later camera writer remain distinguishable hypotheses.
+  No root cause/regression attribution or speculative source repair selected.
+- Automatic approval review rejected the separate baseline-server launch with
+  only 'blocked by policy'. Stopped that method without another launch route;
+  recorded enforcement mismatch, not a human authorization gap. Next safe
+  decisive boundary is saved/restored camera and writer evidence in public timing.
+- Evidence scripts/reports/screenshots remain ignored tmp, excluded from external
+  review. Technical receipt/ISSUES add exact release metadata and honest limits.
+  Product options remain H1/deferred; engineering follow-ups are not blocked on
+  those choices. No full integrated UX/a11y/performance acceptance claimed.
+- Closure-only branch codex/viewer-legend-closure starts at served origin/main;
+  owner Codex and authoritative checkout unchanged, personal dirty AGENTS.md
+  preserved. No deploy-checkout/backend/data change. Owned Vite PID91784 cleanup
+  is limited to the verified task command on51081; no baseline process launched.
+  Next checkpoint: human product ruling for wording/passages, separate camera/SDK
+  evidence follow-up. Broader design/regeneration/layout work remains deferred.
