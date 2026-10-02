@@ -1,17 +1,28 @@
-import { act, useRef, useState } from "react";
+import { act, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { useViewerHistory } from "./useViewerHistory";
 
 // Intent: replay public browser navigation, preserve edits, replace camera-only
 // movement, truncate a forward branch, and isolate a newly opened artifact.
+// Content-change scroll anchoring before a new entry must not overwrite the
+// outgoing entry's reading position; replay restores both positions exactly.
 let container, root;
 function Harness() {
   const rootRef = useRef(null);
   const [session, setSession] = useState(0);
   const [name, setName] = useState("Original");
+  const [simulateScrollAnchoring, setSimulateScrollAnchoring] = useState(false);
   const [state, setState] = useState({ node: null, viewMode: "graph", graphRevision: 0, graphNavigation: null });
   const history = useViewerHistory({ enabled: true, sessionKey: session, state, onRestore: setState, rootRef });
+  useLayoutEffect(() => {
+    if (!simulateScrollAnchoring || state.node !== "B") return;
+    // Model the browser's scroll adjustment during a content-changing commit,
+    // before the history effect records the next navigation entry.
+    const scroller = rootRef.current.querySelector("[data-viewer-scroll]");
+    scroller.scrollTop = 183;
+    scroller.dispatchEvent(new Event("scroll"));
+  }, [simulateScrollAnchoring, state.node]);
   return <div ref={rootRef}>
     <output>{`${state.node || "start"}:${state.viewMode}:${name}:${state.graphNavigation?.viewport?.x ?? 0}`}</output>
     <button onClick={() => setState((s) => ({ ...s, node: "A" }))}>A</button>
@@ -19,6 +30,7 @@ function Harness() {
     <button onClick={() => setState((s) => ({ ...s, node: "C" }))}>C</button>
     <button onClick={() => setState((s) => ({ ...s, graphNavigation: { viewport: { x: 125, y: 0, zoom: 1 } } }))}>Pan</button>
     <button onClick={() => setName("Reviewed name")}>Rename</button>
+    <button onClick={() => setSimulateScrollAnchoring(true)}>Scroll anchoring</button>
     <button disabled={!history.canBack} onClick={history.goBack}>Back</button>
     <button disabled={!history.canForward} onClick={history.goForward}>Forward</button>
     <button onClick={() => { setSession((s) => s + 1); setState({ node: null, viewMode: "graph", graphRevision: 0, graphNavigation: null }); }}>Another</button>
@@ -58,6 +70,24 @@ it("discards the forward exploration when a different jump follows Back", async 
   expect(button("Forward").disabled).toBe(true);
   await click("Back");
   expect(container.querySelector("output").textContent).toBe("A:graph:Original:0");
+});
+
+it("preserves the outgoing reading position when new content scrolls before navigation is recorded", async () => {
+  await click("Scroll anchoring");
+  await click("A");
+  const scroller = container.querySelector("[data-viewer-scroll]");
+  await act(async () => {
+    scroller.scrollTop = 160;
+    scroller.dispatchEvent(new Event("scroll"));
+  });
+  await click("B");
+  expect(scroller.scrollTop).toBe(183);
+  await click("Back");
+  expect(container.querySelector("output").textContent).toBe("A:graph:Original:0");
+  await expect.poll(async () => { await act(flush); return scroller.scrollTop; }).toBe(160);
+  await click("Forward");
+  expect(container.querySelector("output").textContent).toBe("B:discussion:Original:0");
+  await expect.poll(async () => { await act(flush); return scroller.scrollTop; }).toBe(183);
 });
 
 it("starts a separate history for another artifact and refuses stale pointers", async () => {

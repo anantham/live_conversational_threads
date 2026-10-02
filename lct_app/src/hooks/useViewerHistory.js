@@ -106,6 +106,9 @@ export function useViewerHistory({ enabled, sessionKey, state, onRestore, rootRe
       const current = session.current;
       if (!current || replaying.current) return;
       const entry = current.entries[current.cursor];
+      // New content may scroll before the coalesced navigation entry is pushed.
+      // Save that position with the new entry, not over the outgoing one.
+      if (signature(entry.state) !== signature(latest.current.state)) return;
       entry.scroll = { ...entry.scroll, ...readScroll(root) };
     };
     root?.addEventListener("scroll", rememberScroll, true);

@@ -6827,3 +6827,83 @@ User observed an empty desktop transcript until node selection, with only the cu
   those optional detours. No forced clicks or product changes to satisfy the probe.
 - Capture the preexisting Legend/drawer occlusion as a nonblocking follow-up in
   ISSUES.md. It is reachable after closing details; no runtime expansion selected.
+
+## 2026-10-02 17:17 IST — Phone reading-history race isolated
+
+- Instrument: two read-only public 390x900 runs set the first detail body to
+  160px, stable for 200ms. Changing to the next moment triggered a browser content
+  scroll adjustment to 183px while history still pointed to the first moment;
+  pushState recorded the next cursor 25ms later. Back restored the corrupted
+  183px. The corresponding local regression fails with exactly expected160 /
+  received183 before the repair; correct node replay alone was insufficient.
+- Hypothesis confirmed: rememberScroll records a content-change event against
+  the outgoing entry during the coalesced navigation delay. Confidence0.95;
+  predicted repair preserves160 on Back and183 on Forward. The hook now ignores
+  scroll recording while the rendered semantic state differs from the current
+  entry. The next snapshot still captures the incoming position. Camera-only
+  replacement and post-replay scroll remain unchanged. Fallback: retain the
+  instrumented boundary and investigate another cause if the exact test fails;
+  no tolerance relaxation or NodeDetail layout edit is selected.
+- Test intent expanded in the hook test and tests/intent/viewer-exploration-history.md.
+  Integration owner Codex; authoritative worktree unchanged, now branch
+  codex/viewer-phone-history based on main355fdf2. Dirty AGENTS.md preserved.
+  Local repair is not independently reviewed, committed or served at this point.
+- PR208's test-only title correction is independently approved by Google Gemini
+  through AGY at exact42aa3c8, no findings and zero tools. All remote required
+  checks passed; merged17:14:48 IST as355fdf2. Full hook passed512/512 and the
+  corrected nine production smoke checks passed locally before merge. No runtime
+  source changed in that PR. The exact review receipt is recorded in docs/reviews.
+- Next evidence checkpoint: failing/passing regression, local actual-example phone
+  reproduction and adjacent browser history, bounded independent review, release,
+  then actual public phone source/playback/naming/history acceptance. Remaining
+  estimate communicated20–40 minutes; engineering and validation precede review/
+  CI/deploy waits, with a refreshed range if another supported finding appears.
+
+## 2026-10-02 17:29 IST — Phone repair local acceptance passed
+
+- Actual example on the owned local server restores 160px on Back and remains
+  there at 60/310/910ms, despite the next card's automatic 183px scroll event
+  occurring before its history push. Original served code restored 183px.
+- Hook tests pass 4/4, including the new content-change race. An immediate
+  post-Back sample initially ran before the two-frame replay settled; the test
+  now polls the exact position through observable DOM, without relaxing equality.
+  Hook/test scoped ESLint is clean; TS browser spec is outside ESLint config and
+  compiles/runs through Playwright. Production build passes (2332 modules, existing
+  large-chunk notice). No runtime Source or timeline source was changed.
+- Browser runtime identity check found the normal config reads a saved port ahead
+  of the environment. Its initial six passing checks are not attributed to this
+  repair. A scratch config explicitly targets the owned 43917 server. That run
+  passed five checks and caught one transient timeline measurement (5.625px);
+  settled screenshot shows alignment. The geometry assertion now samples both
+  centers in one frame and polls the unchanged <2px condition; all six desktop/
+  phone continuity journeys pass (19.7s), including camera and name preservation.
+- A root-directory lint command resolved cached ESLint10 instead of bundled9 and
+  failed on plugin API compatibility. The app-directory --no-install command
+  succeeds. No dependency/config changes made. Record command-target mistakes
+  in the shared ledger; use explicit runtime/tool identity for subsequent gates.
+- Production smoke workflow37002783367 succeeds at merged355fdf2. Remaining
+  dependency is read-only independent review of the phone source/test/intention
+  diff, mandatory full push gate and CI, then public phone source/playback/naming/
+  Back acceptance. Updated estimate15–25 minutes from this checkpoint; prior
+ 20–40-minute range is preserved above. Core source is live, this repair is local.
+
+## 2026-10-02 17:29 IST — Phone repair reviewed; release pending
+
+- Exact source b4fe577 is committed/pushed in PR209; required full frontend gate
+  passes 513/513 in 84 files. Google Gemini 3.1 Pro High via AGY approves the
+  exact 4-file source/test/intention packet plus committed hook context, no
+  findings, zero tool attempts, 73 seconds. Receipt records exact SHA/hash and
+  excluded content in docs/reviews/2026-10-02-viewer-phone-history-agy.md.
+- The complete narrow local 390x900 journey passes: title and final lane, seven
+  distinct thread moments, exact160 Back/Forward, native video clock advance and
+  pause at cue4399s, immediate Source/cards/details/Discussion name propagation,
+  alias retention through Back and original downloaded transcript bytes preserved.
+  Zero page errors/HTTP5xx/app backend requests/horizontal overflow. Report URL is
+  explicitly the owned local server; it is not claimed as served acceptance.
+- PR209 remote gates and production release remain. Existing release approval
+  persists; no backend/persistence changes or new disclosure/spend authority.
+  This follow-up adds only receipt/checkpoint documentation; reviewed runtime/
+  tests/intention remain unchanged. Preserve the exact packet digest at handoff.
+- Next evidence checkpoint: required CI, merged/deployed exact source and the
+  public phone journey. Remaining estimate15–25 minutes from the local checkpoint,
+  assuming gates pass. No new product fix selected after independent approval.

@@ -1,6 +1,7 @@
 # Viewer exploration continuity
 
 - Record meaningful node, thread, hierarchy, view and source-passage jumps in browser history. Back/Forward restores those choices and the camera/scroll position; panning replaces position without creating a navigation step.
+- Preserve the outgoing reading position when new card content triggers browser scroll anchoring before the next history entry is recorded. Back and Forward must restore the two positions exactly.
 - Keep artifact contents and speaker edits outside history. Renaming remains visible after replay, and no transcript or participant information is written into history markers or URLs.
 - Bind detail panels to the graph's allocated area below chrome. Exercise normal clicks and keyboard navigation with Source and timeline open on desktop and phone.
 - Make the conversation title disclose its overview, put the quiet view cycle beside graph tools, and use the Source icon and timeline header for their respective disclosures.

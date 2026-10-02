@@ -77,8 +77,13 @@ for (const width of [1440,390]) test(`last timeline lane remains aligned and cli
   const label=viewport.getByTestId('thread-label-gutter').getByRole('button',{name:/ungrouped/});
   const last=viewport.getByRole('button',{name:/Fixture moment 21/});
   await expect(last).toBeVisible();
-  const a=await label.boundingBox(), b=await last.boundingBox(), v=await viewport.boundingBox();
-  expect(Math.abs(a.y+a.height/2-b.y-b.height/2)).toBeLessThan(2);
+  // Sample both centers in one layout frame and wait for the allocated pane to settle.
+  await expect.poll(()=>label.evaluate(el=>{
+    const a=el.getBoundingClientRect();
+    const b=el.closest('[data-testid="timeline-lane-viewport"]').querySelector('button[aria-label*="Fixture moment 21"]').getBoundingClientRect();
+    return Math.abs(a.y+a.height/2-b.y-b.height/2);
+  })).toBeLessThan(2);
+  const b=await last.boundingBox(), v=await viewport.boundingBox();
   expect(b.y).toBeGreaterThanOrEqual(v.y-1);expect(b.y+b.height).toBeLessThanOrEqual(v.y+v.height+1);
   await last.click();await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 21');
   await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();

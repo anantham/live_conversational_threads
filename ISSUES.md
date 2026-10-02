@@ -1689,3 +1689,34 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   one extra step while reading. Recommended future step: expose the key beside the
   reading controls or reserve space for it after a product/layout decision. This
   does not block Source, timeline, title, history or the selected-thread controls.
+
+### 2026-10-02 17:17 IST — Phone history acceptance repair in progress
+
+- Main presentation/source/timeline fixes are served from PR207. PR208's stale
+  smoke selector correction is reviewed and merged as355fdf2. Final phone
+  acceptance remains open; exact reading-position restoration is the dependency.
+- Owner Codex, viewer-source-and-controls worktree, codex/viewer-phone-history.
+  Public instrument confirms a content-scroll event overwrites the outgoing
+  position before pushState. Hook regression fails160 expected /183 received;
+  bounded semantic-state guard is implemented locally, with validation/review open.
+- Finite remaining checks: Back restores160 and Forward restores the incoming
+  position; node/view/thread/camera replay and name preservation still pass;
+  native public phone evidence seek/play/pause, Source naming and Discussion/Back
+  pass without app errors or panel overlap. Do not count the local edit as served.
+- Forecast20–40 minutes from the diagnosis checkpoint. Next checkpoint is local
+  regression and actual-example evidence, then eligible independent review and
+  production release. Prior15–25-minute forecast missed because public phone
+  verification found this race after the synthetic scroll test had passed.
+
+### 2026-10-02 17:29 IST — Phone repair review approved
+
+- PR209 exact source b4fe577 passes hook4/4, six explicit owned-server desktop/
+  phone continuity journeys, production build and full push gate513/513. Google
+  Gemini through AGY approves the bounded source/test/intent packet with no
+  findings, zero tool attempts; tracked receipt records identity and scope.
+- The complete local actual-example phone journey now passes exact reading
+  position160 on Back, all seven moments, native evidence cue/play/pause and
+  immediate cross-view naming retained through Back with source bytes preserved.
+- Owner and checkout unchanged. Remaining dependency: CI/release plus exact
+  public phone verification. Estimate15–25 minutes from local acceptance;
+  next evidence checkpoint is served identity and successful public journey.
