@@ -1689,3 +1689,21 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   one extra step while reading. Recommended future step: expose the key beside the
   reading controls or reserve space for it after a product/layout decision. This
   does not block Source, timeline, title, history or the selected-thread controls.
+
+### 2026-10-02 17:17 IST — Phone history acceptance repair in progress
+
+- Main presentation/source/timeline fixes are served from PR207. PR208's stale
+  smoke selector correction is reviewed and merged as355fdf2. Final phone
+  acceptance remains open; exact reading-position restoration is the dependency.
+- Owner Codex, viewer-source-and-controls worktree, codex/viewer-phone-history.
+  Public instrument confirms a content-scroll event overwrites the outgoing
+  position before pushState. Hook regression fails160 expected /183 received;
+  bounded semantic-state guard is implemented locally, with validation/review open.
+- Finite remaining checks: Back restores160 and Forward restores the incoming
+  position; node/view/thread/camera replay and name preservation still pass;
+  native public phone evidence seek/play/pause, Source naming and Discussion/Back
+  pass without app errors or panel overlap. Do not count the local edit as served.
+- Forecast20–40 minutes from the diagnosis checkpoint. Next checkpoint is local
+  regression and actual-example evidence, then eligible independent review and
+  production release. Prior15–25-minute forecast missed because public phone
+  verification found this race after the synthetic scroll test had passed.
