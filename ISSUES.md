@@ -1615,3 +1615,50 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   into docs, source deletion, mixed multi-ref pushes and unknown/new refs; verify
   gate execution and exit status. Obtain mandatory non-OpenAI independent review.
   This is a separately scoped proposal; the existing hook was not bypassed or changed.
+
+## 2026-10-02 — Viewer exploration continuity (DIAGNOSED; FIX PLAN PROPOSED)
+
+- Outcome: explore a thread, read its source and details, and return to a previous
+  place without losing context. Integration owner: Codex. Authoritative checkout:
+  the viewer-source-and-controls worktree, branch codex/viewer-closure-record,
+  source based on the served 11dda97 release. No product repair is implemented here.
+- Instrument: public Chromium at 1440x900 reproduces the toolbar painting over
+  the desktop detail panel (toolbar z=50; fixed detail panel top=0, z=40).
+  Two distinct node selections leave browser history length unchanged at 2.
+- Instrument: the timeline has 468px of row content in a 202px viewport. Its
+  horizontal plot scroller is stretched to 202px and hides vertical overflow;
+  scrolling the outer container by 266px moves that clipped plot above the lower
+  labels, leaving their plotted rows blank. This is a clipping defect in addition
+  to the default six-row viewport, not missing source data.
+- The public example has 14 authored threads plus an ungrouped lane; the current
+  header counts these as 15 threads. Each moment is plotted in one home lane,
+  although thread_ids retains additional memberships. The gray cross-lane line
+  represents chronological movement; it does not establish semantic relationships.
+- Code confirms a naming gap: MinimalGraph.jsx:440-443 prints raw speaker IDs
+  in contribution labels; TextSourcePanel.jsx:38 displays original transcript
+  labels. Passage and Discussion rendering already resolve updated names.
+  Preserve original transcript bytes and offsets while applying aliases in UI.
+- Proposed repairs: allocate desktop details beneath the measured header/toolbar;
+  add Back/Forward for meaningful exploration steps with position restoration;
+  make the title toggle Overview; place a quiet cycling view button by Center and
+  Display; use a Source icon and the timeline's own toggle; use native ready-player
+  controls while retaining loading/error/retry/fallback behavior; fix the full-height
+  timeline plot and display counts honestly; resolve all visible speaker labels
+  from a shared identity map. These are presentation/navigation changes.
+- Finite acceptance: (1) desktop and phone panels never obscure their headings or
+  actions; (2) first and last timeline rows have visible, clickable plots aligned
+  with labels after vertical/horizontal scrolling and resize; (3) Back/Forward
+  restores node, thread, level, view and position without reverting name edits;
+  (4) Apply name updates Source, cards, percentages, details and Discussion before
+  persistence finishes, with original source bytes and text offsets preserved;
+  (5) native recording play/pause and transcript seeks work, with blocked-player
+  retry/cancel/fallback retained; (6) selected-thread navigation includes its full
+  authored membership, and chronological links are distinguished from argument links.
+- Remaining design decisions: history entries for manual pan/zoom, topics versus
+  arcs as the default, and shared timeline scrolling/expansion versus showing all
+  rows together. Short, plain topic labels and time replay are separately proposed;
+  no regeneration, hierarchy replacement or physics layout is selected here.
+- Next evidence checkpoint: resolve those choices, write failing public-behavior
+  regressions for clipping and rename propagation, then implement one coherent slice.
+  Implementation effort is not yet estimated; integration/review and live verification
+  are separate dependencies. Required independent source review still applies.

@@ -6683,3 +6683,29 @@ User observed an empty desktop transcript until node selection, with only the cu
 - PR204, Fix Tailnet viewer persistence on Windows, remains OPEN/DRAFT and is
   explicitly separate from this delivered public viewer outcome. No private
   persistence code, deployment or release claim was included in this closure.
+
+## 2026-10-02 14:28 IST — Viewer feedback gathered and decisive boundaries reproduced
+
+- User requested a concrete UX repair plan. Read the supplied feedback locally;
+  private conversation text, participant details and attachment images are excluded
+  from repository notes and external review. Product code remains unchanged.
+- Used one bounded read-only peer for timeline/name propagation tracing against
+  the authoritative viewer worktree. The primary checkout is stale at 7b33b6e;
+  served viewer source is 11dda97, present in the d4eebbc viewer worktree.
+  Preserved dirty AGENTS.md and unrelated primary-checkout peer edits.
+- Live Chromium instruments at 1440x900 confirm desktop detail/toolbar overlap,
+  unchanged browser history across distinct selections, and clipped lower plots
+  after scrolling the complete timeline. The first diagnostic reached the clipping
+  boundary but then incorrectly requested Next on a one-node row and timed out;
+  the corrected probe used a known multi-node row and waited for layout settlement.
+  Do not count that first partial attempt as a passing journey.
+- Source schema/count probe confirms 14 authored threads, all represented, plus
+  one ungrouped lane. Timeline height alone cannot repair the nested plot clipping.
+  Source aliases reach passages/Discussion but raw IDs remain in graph percentage
+  labels and the full-text transcript display. Existing tests do not cover these
+  cross-surface outcomes. Prior delivery evidence did not establish them.
+- ISSUES.md:1619 onward records the proposed bounded outcome, owner/checkout,
+  concrete repairs, acceptance boundaries, remaining choices and next checkpoint.
+  Three optional design questions were presented; unanswered choices remain proposed.
+  Local screenshots are ignored diagnostic evidence under tmp/viewer-feedback-20261002-*.
+  No new test, source repair, independent verdict, merge or deployment is claimed.
