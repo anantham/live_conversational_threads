@@ -6907,3 +6907,36 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Next evidence checkpoint: required CI, merged/deployed exact source and the
   public phone journey. Remaining estimate15–25 minutes from the local checkpoint,
   assuming gates pass. No new product fix selected after independent approval.
+
+## 2026-10-02 17:39 IST — Public viewer journey delivered
+
+- PR209 final head641924e contained only mechanical receipt/checkpoint changes
+  after approved source b4fe577; reviewed source/test/intent were byte-identical.
+  Final push gate513/513 passed. Remote Python/browser/preview gates all passed.
+  Merged17:34:19 IST as970f49d637024e3a179ced3f2f47ec7af110bc08. Production
+  deployment6807963520 succeeded17:34:56 IST and is still the latest production
+  identity after verification. Backend and primary deploy checkout untouched.
+- Actual requested public URL passes complete desktop1440x900 and phone390x900
+  journeys from17:36:43 to17:37:17 IST: title disclosure; all15 lanes reachable,
+  final-label/dot alignment0px; seven distinct selected-thread moments; Back/
+  Forward and exact160px reading position; native evidence cue4399s/play/clock
+  advance/pause; immediate alias propagation through Source/cards/details/
+  Discussion and Back; downloaded original transcript bytes preserved. Zero
+  page errors/HTTP5xx/app backend requests/horizontal overflow. Captured report's
+  URL is the actual public origin. Ignored evidence: tmp/viewer-continuity-public-
+ 970f49d-run.txt, tmp/viewer-continuity-public-report.json and1440/390 screenshots.
+- Served production smoke workflow37004595816 succeeds9/9 (15.3s). Existing
+  validated desktop/phone synthetic history/camera/source/error/recovery checks
+  remain passing and are reused for unchanged code. No mock is counted as native
+  playback proof. Google Gemini/AGY approves both substantive source packets with
+  no findings, rejection or unresolved arbitration; receipts identify exact heads.
+- Local example raw SHA differed solely because Windows checkout uses CRLF:
+  normalizedLF SHA equals public386ef09b..., parsed canonical data matches exactly
+  (canonicalSHAea02f9f7...). This was verified without printing source content.
+- Existing milestone board now records served acceptance and no remaining delivery
+  dependency. Optional Legend placement, shorter labels and time replay remain
+  deferred. Closure evidence is mechanical documentation on the existing worktree
+  branch; commit/push it without changing the reviewed served source. Dirty
+  AGENTS.md remains preserved. No new product work or optional test sweep opened.
+- Forecast reconciled in ISSUES.md: refreshed phone repair/review/release estimate
+  was met. The actual source landed17:35 and public acceptance completed17:37.

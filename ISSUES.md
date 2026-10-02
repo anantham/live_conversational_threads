@@ -1616,7 +1616,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   gate execution and exit status. Obtain mandatory non-OpenAI independent review.
   This is a separately scoped proposal; the existing hook was not bypassed or changed.
 
-## 2026-10-02 — Viewer exploration continuity (REVIEW APPROVED; RELEASE/PUBLIC ACCEPTANCE OPEN)
+## 2026-10-02 — Viewer exploration continuity (DELIVERED; SERVED ACCEPTANCE PASSED)
 
 - Outcome: explore a thread, read its source and details, and return to a previous
   place without losing context. Integration owner: Codex. Authoritative checkout:
@@ -1720,3 +1720,29 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Owner and checkout unchanged. Remaining dependency: CI/release plus exact
   public phone verification. Estimate15–25 minutes from local acceptance;
   next evidence checkpoint is served identity and successful public journey.
+
+### 2026-10-02 17:39 IST — Served acceptance complete
+
+- Integration owner Codex; authoritative checkout remains viewer-source-and-controls,
+  branch codex/viewer-phone-history. PR207/208/209 merged. Production source
+ 970f49d637024e3a179ced3f2f47ec7af110bc08, deployment6807963520 success at
+ 17:34:56 IST; latest production identity confirmed after public verification.
+- Public Chromium1440x900 and390x900 journeys pass at the requested URL: title
+  overview, final lane aligned/clickable, all seven selected-thread moments,
+  exact160px Back restoration and Forward, headings/actions below toolbar,
+  native evidence cue4399s/play/clock advance/pause, immediate naming in Source/
+  cards/details/Discussion and retained through Back, original transcript bytes
+  preserved. Zero page errors, HTTP5xx, app backend requests or horizontal overflow.
+- Finite acceptance above is met with combined served evidence and unchanged
+  local adjacent coverage: camera/hierarchy restoration, multiple memberships,
+  text prefix/name mapping, readiness/error/retry/cancellation. Eligible Google
+  Gemini via AGY approved both substantive viewer diffs, no findings or disputes.
+  Final required hook513/513; production smoke workflow37004595816 passes9/9.
+- Remaining delivery dependency: none. Next evidence checkpoint: any reported
+  regression. Optional Legend placement, shorter topic labels and time replay
+  remain separate captured follow-ups, without a selected implementation or ETA.
+- Forecast closure: core presentation/source/timeline shipped16:52, title smoke
+  correction17:15, phone history repair17:35, public acceptance17:37. The earlier
+ 15–25-minute release estimate was revised after the phone race; the refreshed
+ 20–40 and then15–25-minute ranges covered the repair/review/release. Latest
+ 5–10-minute publication checkpoint is satisfied. Detailed receipt in docs/reviews.
