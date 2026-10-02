@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
 import worker from '../../../sites/worker.js';
 import { PUBLIC_LIMITS, digest } from '../../../sites/publicThreadsPolicy.js';
 import { STORAGE_LIMITS } from '../../../sites/storagePolicy.js';
@@ -26,7 +27,7 @@ beforeEach(() => {
 afterEach(() => { sqlite.close(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 function reservePrivate(size) {
-  sqlite.prepare("INSERT INTO lct_cloud_files VALUES (?, 'fixture-other-owner', ?, 'file', 'PRIVATE FIXTURE', 'private.txt', 'text/plain', ?, 'staging', 1, 1)").run(crypto.randomUUID(), crypto.randomUUID(), size);
+  sqlite.prepare("INSERT INTO lct_cloud_files (id, owner_user_id, object_key, kind, title, filename, content_type, byte_size, state, created_at, updated_at) VALUES (?, 'fixture-other-owner', ?, 'file', 'PRIVATE FIXTURE', 'private.txt', 'text/plain', ?, 'staging', 1, 1)").run(crypto.randomUUID(), crypto.randomUUID(), size);
 }
 function seedPublic(count, removed = false) {
   const payload = JSON.stringify(fixture);
