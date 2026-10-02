@@ -7025,3 +7025,26 @@ User observed an empty desktop transcript until node selection, with only the cu
   source remains main3671f86. Dirty preexisting AGENTS.md preserved. No backend
   restart, recording/transcript mutation or optional UI scope opened. Remaining
   delivery dependency:none; next checkpoint:any reported regression.
+
+### 2026-10-02 18:38 IST — Legend spacing question verified on public viewer
+
+- User question only; read-only A0 diagnostic, no runtime/source edit or release.
+  Hypothesis fixed bottom offset confirmed; alternate extra timeline reservation
+  rejected by source parent structure and direct DOM geometry. Public source3671f86.
+- MinimalLegend.jsx:141 uses bottom-14 (=56px), relative to graph container;
+  ThreadsViewer.jsx places TimelineRibbon below that container in its own flex
+  row. Repeated exact gap56px at1440/390, Legend closed/open and timeline closed/
+  open. Open/close controls actually exercised, screenshots and bounds recorded
+  tmp/legend-gap-report.json (13:07:24–13:07:31UTC), no page errors/warnings/5xx.
+- An initial open-panel screenshot caught its slide-in transition; repeated
+  bounds after animation completion falsify permanent offscreen clipping. No
+  clipping finding asserted from that transient image. Actual settled phone
+  popup fits viewport (left0,right374 at390px); broader pane checks not run.
+- Honest review scope: previous releases completed bounded functional/visual
+  verification, not a complete integrated UX audit. Existing Legend placement/
+  drawer-occlusion follow-up was explicitly deferred; this gap remains open.
+  UX-audit completeness gates not met, so no full-audit Pass claimed. Impeccable
+  layout context used for diagnosis; no unrelated redesign selected.
+- Captured concrete recommendation/assumptions/confidence/predicted checks and
+  fallback in ISSUES.md. Diagnostic outcome complete; repair not implemented.
+  These are technical issue/worklog notes only, no source/test/config changes.
