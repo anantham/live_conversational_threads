@@ -5,6 +5,7 @@ import ViewerFindMenu from "./ViewerFindMenu";
 
 const buttonClass = "min-h-11 rounded px-3 text-sm hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700";
 const secondaryButtonClass = `${buttonClass} text-slate-700`;
+const historyButtonClass = "inline-flex h-11 w-11 shrink-0 items-center justify-center p-0 text-slate-700 enabled:hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700 disabled:cursor-default disabled:text-slate-500 sm:h-8 sm:w-6";
 const viewIcons = { graph: Network, discussion: MessageSquare, cards: Layers };
 const actionItems = [
   ["Download transcript", "download", Download],
@@ -41,9 +42,9 @@ export default function ThreadsViewerToolbar({
   const moreMenu = useRef(null);
   return <div role="toolbar" aria-label="Conversation tools" className="relative z-50 flex shrink-0 flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-2 py-1 sm:px-4">
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-      {history && <nav aria-label="Exploration history" className="flex shrink-0 items-center">
-        <button type="button" aria-label="Back" title="Back through exploration (Alt + Left)" disabled={!history.canBack} onClick={history.goBack} className={`${secondaryButtonClass} flex w-11 items-center justify-center px-0 disabled:opacity-30 sm:min-h-0 sm:w-7 sm:py-1`}><ArrowLeft aria-hidden="true" size={16} /></button>
-        <button type="button" aria-label="Forward" title="Forward through exploration (Alt + Right)" disabled={!history.canForward} onClick={history.goForward} className={`${secondaryButtonClass} flex w-11 items-center justify-center px-0 disabled:opacity-30 sm:min-h-0 sm:w-7 sm:py-1`}><ArrowRight aria-hidden="true" size={16} /></button>
+      {history && <nav aria-label="Exploration history" className="flex shrink-0 items-center rounded-md border border-slate-200 bg-slate-50">
+        <button type="button" aria-label="Back" title="Back through exploration (Alt + Left)" disabled={!history.canBack} onClick={history.goBack} className={`${historyButtonClass} rounded-l border-r border-slate-200`}><ArrowLeft aria-hidden="true" className="shrink-0" size={18} /></button>
+        <button type="button" aria-label="Forward" title="Forward through exploration (Alt + Right)" disabled={!history.canForward} onClick={history.goForward} className={`${historyButtonClass} rounded-r`}><ArrowRight aria-hidden="true" className="shrink-0" size={18} /></button>
       </nav>}
       <ViewerFindMenu groups={findGroups} onSelect={onFindNode} documents={searchDocuments} onResult={onSearchResult} />
       <div ref={graphToolsRef} className="flex min-w-0 items-center gap-1" />

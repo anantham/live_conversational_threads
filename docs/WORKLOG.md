@@ -6907,3 +6907,92 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Next evidence checkpoint: required CI, merged/deployed exact source and the
   public phone journey. Remaining estimate15–25 minutes from the local checkpoint,
   assuming gates pass. No new product fix selected after independent approval.
+
+## 2026-10-02 17:39 IST — Public viewer journey delivered
+
+- PR209 final head641924e contained only mechanical receipt/checkpoint changes
+  after approved source b4fe577; reviewed source/test/intent were byte-identical.
+  Final push gate513/513 passed. Remote Python/browser/preview gates all passed.
+  Merged17:34:19 IST as970f49d637024e3a179ced3f2f47ec7af110bc08. Production
+  deployment6807963520 succeeded17:34:56 IST and is still the latest production
+  identity after verification. Backend and primary deploy checkout untouched.
+- Actual requested public URL passes complete desktop1440x900 and phone390x900
+  journeys from17:36:43 to17:37:17 IST: title disclosure; all15 lanes reachable,
+  final-label/dot alignment0px; seven distinct selected-thread moments; Back/
+  Forward and exact160px reading position; native evidence cue4399s/play/clock
+  advance/pause; immediate alias propagation through Source/cards/details/
+  Discussion and Back; downloaded original transcript bytes preserved. Zero
+  page errors/HTTP5xx/app backend requests/horizontal overflow. Captured report's
+  URL is the actual public origin. Ignored evidence: tmp/viewer-continuity-public-
+ 970f49d-run.txt, tmp/viewer-continuity-public-report.json and1440/390 screenshots.
+- Served production smoke workflow37004595816 succeeds9/9 (15.3s). Existing
+  validated desktop/phone synthetic history/camera/source/error/recovery checks
+  remain passing and are reused for unchanged code. No mock is counted as native
+  playback proof. Google Gemini/AGY approves both substantive source packets with
+  no findings, rejection or unresolved arbitration; receipts identify exact heads.
+- Local example raw SHA differed solely because Windows checkout uses CRLF:
+  normalizedLF SHA equals public386ef09b..., parsed canonical data matches exactly
+  (canonicalSHAea02f9f7...). This was verified without printing source content.
+- Existing milestone board now records served acceptance and no remaining delivery
+  dependency. Optional Legend placement, shorter labels and time replay remain
+  deferred. Closure evidence is mechanical documentation on the existing worktree
+  branch; commit/push it without changing the reviewed served source. Dirty
+  AGENTS.md remains preserved. No new product work or optional test sweep opened.
+- Forecast reconciled in ISSUES.md: refreshed phone repair/review/release estimate
+  was met. The actual source landed17:35 and public acceptance completed17:37.
+
+## 2026-10-02 18:04 IST — Visible history controls repair approved
+
+- Human asked why the gap before Find, then explicitly said fix it after the
+  compact/visible disabled-arrow proposal. Existing bounded frontend publication
+  authorization persists. Owner Codex, same authoritative worktree, fresh branch
+  codex/viewer-history-controls based on served970f49d; dirty AGENTS.md preserved.
+- Instrument: public desktop arrows have28px buttons with12px padding on each
+  side, shrinking16px SVGs to4px. Both use opacity0.3. Phone44px targets retain
+ 16px SVGs but remain faint. H1 padding conflict plus disabled opacity confirmed;
+  alternative empty spacer rejected by DOM. Confidence0.99, predicted dedicated
+  icon controls restore18px arrows at opacity1 and shrink desktop group56→50px.
+- Test intent before product changes: populated synthetic desktop/phone first
+  load, disabled icon geometry/readability, desktop group<=52px, phone targets
+ >=44px, stable group width after navigation, normal Back/Forward actions.
+- Finite slice: change only history-control presentation, preserve navigation,
+  verify initial/enabled/keyboard/touch layout, eligible read-only independent
+  review and release, then check exact public toolbar. Fallback if geometry or
+  navigation fails: retain decisive probe and diagnose within this small scope.
+  No broader toolbar or graph redesign selected. Next checkpoint: failing/passing
+  browser regression and desktop/phone screenshots. Source not yet changed here.
+- Carried the owned9f9ec36 prior closure documentation into this main-based
+  branch as85c6645; no runtime change. The first multi-file patch rejected stale
+  worklog context atomically, leaving no partial edits. Verified current tails
+  before applying the repair/test-intent checkpoint. No unrelated work staged.
+
+### 2026-10-02 18:13 IST — Readable history arrows validated locally
+
+- The baseline regression failed for the reported class: desktop group56px>
+ 52px and phone disabled opacity0.3. An earlier connection refusal was an owned
+  dev-server readiness issue; restarted on43917 and confirmed HTTP200 first.
+- ThreadsViewerToolbar.jsx:7,45–47 now uses dedicated zero-padding icon buttons,
+  non-shrinking18px arrows and muted disabled text. Desktop group50px; phone
+  group90px with44×44px targets. Both icons18×18px, opacity1. Paired actual-example
+  screenshots inspected; no wrap/collision or further visual edits selected.
+- viewer-continuity.spec.ts:71 adds populated1440/390 regressions. A test-only
+  assumption that one Back would close details was unsupported; replaced with
+  explicit two-card Back/Forward/Alt+Left outcomes. Geometry assertions retained.
+  Final2/2 browser checks pass7.8s. Toolbar unit4/4; scoped ESLint and production
+  build pass. Existing large-bundle notice remains unchanged.
+- Impeccable scoped layout scan before/after returned no findings. No monolith
+  touched or new dependency introduced. Existing navigation implementation and
+  native controls remain unchanged; prior served adjacent evidence is reusable.
+- Next checkpoint: exact two-file read-only Google Gemini/AGY review, mandatory
+  full frontend push gate, release checks and public desktop/phone confirmation.
+
+### 2026-10-02 18:16 IST — History controls independently approved
+
+- Source committed82d14ec and pushed on codex/viewer-history-controls; PR210
+  attached. Required full frontend gate513/513 passes in84files,29.42s.
+- Google Gemini3.1 Pro High via AGY independently approves exact two-file diff,
+  no findings/disputes. Tool-free, zero attempted tools, eligible family and
+  authorized exclusions verified. Receipt:docs/reviews/2026-10-02-viewer-history-controls-agy.md.
+- This checkpoint/receipt changes documentation only. Next: confirm unchanged
+  source packet at final head; CI/Vercel checks, bounded approved release and
+  public1440/390 navigation/geometry evidence. Source not yet merged or served.
