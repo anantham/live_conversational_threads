@@ -1594,5 +1594,6 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   selection, the graph contains its floating controls, and compact video Source
   reserves graph space using available pane height. A regression failed before
   the change and passed after it, including name application/detail restoration.
-  Independent review and live publication/recheck pending. Desktop behavior stays
+  Google Gemini through Antigravity approved the exact correction with no findings;
+  live publication/recheck pending. Desktop behavior stays
   covered by the existing browser suite; no recording or transcript data changed.
