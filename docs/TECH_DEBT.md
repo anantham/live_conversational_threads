@@ -397,3 +397,12 @@ Native video controls supersede the additional SourcePlaybackControls in the
 public viewer. That unused component and its isolated tests are a removal
 candidate for a separate cleanup; the SDK readiness, retry and cancellation
 lifecycle remains active and tested in YouTubeSourcePanel.
+
+### 2026-10-02 — Reading-control extraction boundary
+
+The center reading-control markup now lives in `GraphReadingControls.jsx`, but
+`MinimalGraph.jsx` still owns path filtering, keyboard handling, and stepping
+amid its camera and graph state. If reading navigation gains more behavior,
+extract that state and its event lifecycle together; keep graph tier selection
+and viewport effects in the current owner until their separate coordinator
+refactor. Preserve the existing selected-thread and conversation path tests.

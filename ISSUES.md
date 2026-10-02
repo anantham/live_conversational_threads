@@ -1806,3 +1806,11 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - Finite diagnostic checks complete. Remaining dependency: selected repair or
   separately authorized full viewer UX audit. Next evidence checkpoint:
   complete pane-combination walkthrough after a layout change.
+
+## 2026-10-02 — Navigation arrow explanations (IN PROGRESS)
+
+- Human outcome: distinguish history arrows from moment navigation on hover and keyboard focus, including disabled controls. Owner Codex; authoritative viewer-source-and-controls worktree, branch codex/viewer-navigation-tooltips, origin/main3671f86; dirty AGENTS.md preserved.
+- Finite checks: truthful history/moment/thread copy; hover/focus/Escape/leave behavior; disabled help without activation; tooltip viewport bounds in combined pane states; unchanged arrows/callbacks/control sizing. Test intent stored before product edits.
+- One bounded peer owns existing graph reading controls extraction/tests; root owns shared tooltip, toolbar, browser verification/integration/release. MinimalGraph reading logic remains in parent. Existing frontend release and review authority persist; no backend/data change.
+- Remaining dependencies: implementation, focused local evidence, eligible independent family review, required release gates and served public verification. Next checkpoint: populated browser hover/focus and pane bounds. Legend repair and complete UX audit remain separate open work.
+- Local checkpoint19:20IST: implemented, unit9/9 plus adjacent17/17, browser5/5 desktop/tablet/phone, lint/build clean. Corrected existing thread label after closing details using the same predicate as its actual reading path (red7-versus21 fixture regression then green). Independent review and publication remain pending; next evidence checkpoint exact source diff verdict.

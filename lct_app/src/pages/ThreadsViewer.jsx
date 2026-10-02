@@ -389,12 +389,13 @@ function ThreadsViewerContent() {
         : null,
     [flatNodes, selectedNode],
   );
+  const useSelectedThreadPath = !selectedNode || readingPath.nodeIds.includes(String(selectedNode));
   const graphNavigationNodeIds = useMemo(() => {
-    if (!selectedNode || readingPath.nodeIds.includes(String(selectedNode))) return readingPath.nodeIds;
+    if (useSelectedThreadPath) return readingPath.nodeIds;
     const moments = flatNodes.filter((node) => Number(node.semantic_level || node.level || 0) === 1);
     if (!moments.some((node) => String(node.id) === String(selectedNode))) return [];
     return moments.map((node) => String(node.id));
-  }, [flatNodes, readingPath.nodeIds, selectedNode]);
+  }, [flatNodes, readingPath.nodeIds, selectedNode, useSelectedThreadPath]);
 
   // Download the raw transcript reconstructed from the artifact's chunk
   // source-excerpts (the verbatim words the map was built from) — so a reader
@@ -708,7 +709,7 @@ function ThreadsViewerContent() {
           hideWeaknessLenses
           readingMode
           navigationNodeIds={graphNavigationNodeIds}
-          navigationScope={readingPath.nodeIds.includes(String(selectedNode)) ? "selected thread" : "conversation"}
+          navigationScope={useSelectedThreadPath && readingPath.nodeIds.length > 0 ? "selected thread" : "conversation"}
           sidebarWidth={selectedNodeData && !narrowViewer ? 320 : 0}
           viewportReservationKey={`${sourceOpen}:${Boolean(selectedNodeData)}`}
         />
