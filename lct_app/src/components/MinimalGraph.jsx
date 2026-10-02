@@ -50,6 +50,7 @@ import ColorModeToggle from "./graph/ColorModeToggle";
 import ModeLegend from "./graph/ModeLegend";
 import MinimalGraphHud from "./graph/MinimalGraphHud";
 import MinimalGraphPanels from "./graph/MinimalGraphPanels";
+import GraphReadingControls from "./graph/GraphReadingControls";
 import { mglog } from "./graph/minimalGraphDebug";
 import { MIN_READABLE_ZOOM, repackSubset } from "./graphSimilarityLayout";
 import {
@@ -2156,11 +2157,13 @@ function MinimalGraphInner({
         proOptions={{ hideAttribution: true }}
       />
       {readingPathIds.length > 1 && (
-        <nav aria-label={`${navigationScope === "selected thread" ? "Selected thread" : "Conversation"} reading controls`} className="absolute bottom-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-slate-200 bg-white/95 p-1.5 text-xs text-slate-700 shadow-sm">
-          <button type="button" aria-label={`Previous moment in ${navigationScope}`} disabled={readingIndex === 0} onClick={() => stepReadingPath("left")} className="min-h-11 rounded px-2 hover:bg-slate-100 disabled:opacity-40">← Previous</button>
-          <span aria-live="polite" className="min-w-12 text-center tabular-nums">{readingIndex < 0 ? `${readingPathIds.length} moments` : `${readingIndex + 1} of ${readingPathIds.length}`}</span>
-          <button type="button" aria-label={`Next moment in ${navigationScope}`} disabled={readingIndex === readingPathIds.length - 1} onClick={() => stepReadingPath("right")} className="min-h-11 rounded px-2 hover:bg-slate-100 disabled:opacity-40">Next →</button>
-        </nav>
+        <GraphReadingControls
+          navigationScope={navigationScope}
+          readingIndex={readingIndex}
+          readingPathLength={readingPathIds.length}
+          onPrevious={() => stepReadingPath("left")}
+          onNext={() => stepReadingPath("right")}
+        />
       )}
 
       {/* Zoom preset + graph display controls. Center stays out front (the

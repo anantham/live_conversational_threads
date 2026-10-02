@@ -6996,3 +6996,79 @@ User observed an empty desktop transcript until node selection, with only the cu
 - This checkpoint/receipt changes documentation only. Next: confirm unchanged
   source packet at final head; CI/Vercel checks, bounded approved release and
   public1440/390 navigation/geometry evidence. Source not yet merged or served.
+
+### 2026-10-02 18:25 IST — History-control repair served and accepted
+
+- Reviewed source packet remained byte-identical at final PR head93296bcc:
+ 6431bytes, SHA25669860c4411459d8cb3a69fa8ff0509a1d27b0ccb7e696778290a390368c53b68.
+  Mechanical review receipt/board changes only. Final mandatory gate513/513
+  passes29.51s; CI browser14/14 passes55.0s, both Python checks and Vercel pass.
+- Approved release: PR210 merged12:51:41UTC as3671f86f21838ab056a2cc778ca60d89c7e39763.
+  Production deployment6808810464 success12:52:13UTC; immutable deployment
+  https://lct-mhar5a7i3-adityas-projects-9c03351d.vercel.app. Existing public alias
+  https://threads.adityaarpitha.com/view?src=%2Fexperiments%2Foverlapping.threads
+  verified against real1440/390 Chromium interactions12:54:48–12:55:02UTC.
+- Direct public values: desktop group50px,24×32px targets; phone group90px,
+ 44×44px targets; every disabled arrow18×18px, padding0, opacity1. Back/Forward,
+  Alt+Left and Alt+Right restore Overview in both viewports. Find's horizontal
+  position and group width stable after enabling. Zero page errors. Live paired
+  screenshots inspected:tmp/viewer-controls-live-1440.png and390.png; detailed
+  numeric record:tmp/viewer-controls-live-report.json. No broader audit claimed.
+- Initial public probe incorrectly sought Find as a button; existing Find is a
+  native summary. Corrected scratch-only selector to the actual toolbar summary;
+  exact assertions unchanged and final public probe passes. No product edit.
+- Production workflow37009320370 passes9/9 in14.2s against source3671f86.
+  All finite slice checks delivered. Independent Google Gemini/AGY approved final
+  source, no findings fixed/rejected/disputed. Existing unrelated unit act/bundle
+  warnings remain; no new runtime warning or source change introduced here.
+- Final closure documentation committed/pushed on the task branch; deployed
+  source remains main3671f86. Dirty preexisting AGENTS.md preserved. No backend
+  restart, recording/transcript mutation or optional UI scope opened. Remaining
+  delivery dependency:none; next checkpoint:any reported regression.
+
+### 2026-10-02 18:38 IST — Legend spacing question verified on public viewer
+
+- User question only; read-only A0 diagnostic, no runtime/source edit or release.
+  Hypothesis fixed bottom offset confirmed; alternate extra timeline reservation
+  rejected by source parent structure and direct DOM geometry. Public source3671f86.
+- MinimalLegend.jsx:141 uses bottom-14 (=56px), relative to graph container;
+  ThreadsViewer.jsx places TimelineRibbon below that container in its own flex
+  row. Repeated exact gap56px at1440/390, Legend closed/open and timeline closed/
+  open. Open/close controls actually exercised, screenshots and bounds recorded
+  tmp/legend-gap-report.json (13:07:24–13:07:31UTC), no page errors/warnings/5xx.
+- An initial open-panel screenshot caught its slide-in transition; repeated
+  bounds after animation completion falsify permanent offscreen clipping. No
+  clipping finding asserted from that transient image. Actual settled phone
+  popup fits viewport (left0,right374 at390px); broader pane checks not run.
+- Honest review scope: previous releases completed bounded functional/visual
+  verification, not a complete integrated UX audit. Existing Legend placement/
+  drawer-occlusion follow-up was explicitly deferred; this gap remains open.
+  UX-audit completeness gates not met, so no full-audit Pass claimed. Impeccable
+  layout context used for diagnosis; no unrelated redesign selected.
+- Captured concrete recommendation/assumptions/confidence/predicted checks and
+  fallback in ISSUES.md. Diagnostic outcome complete; repair not implemented.
+  These are technical issue/worklog notes only, no source/test/config changes.
+
+### 2026-10-02 18:58 IST — Navigation tooltip slice approved by request
+
+- User requests hover explanations for history arrows versus center Previous/Next. A1 bounded presentation enhancement under existing frontend envelope; no new architecture/data/provider choice. Base origin/main3671f86, fresh codex/viewer-navigation-tooltips in same attached worktree. Owned closure/diagnostic documentation carried as a4ddfa7/6224df1; no runtime scope in those commits. Dirty AGENTS.md preserved.
+- Verified semantic boundary: history retraces viewer exploration snapshots; center controls step readingPathIds in current conversation/thread. Previous/Next labels already encode scope but have no hover explanations. Existing native history titles don't provide consistent disabled/focus help.
+- Hypothesis: shared accessible tooltip button plus dynamic scope copy makes the distinction clear without altering navigation. Confidence0.96; predicted hover/focus shows the correct description, Escape dismisses, disabled controls remain inactive, callbacks/geometry unchanged. Fallback: retain exact failing boundary and simplify presentation rather than alter navigation to satisfy tests.
+- Test intent written tests/intent/viewer-navigation-tooltips.md before product edits. Finite acceptance and ownership recorded in ISSUES.md. One bounded gpt-6-sol peer reads the large graph module and extracts only its presentational reading nav; root integrates the shared component and browser checks. Eligible independent non-OpenAI review remains required.
+- Impeccable clarify context and transitions-dev tooltip guidance applied; instantaneous hint content needs no wait estimate. No unrelated Legend repair or exhaustive UX audit opened.
+
+### 2026-10-02 19:20 IST — Navigation hints validated locally
+
+- Shared TooltipButton.jsx: native disabled/activation semantics, keyboard-readable disabled wrappers, hoverable portal, Escape/blur/click dismissal, viewport clamping, resize/scroll and timer cleanup. Toolbar history copy retraces exploration; extracted GraphReadingControls.jsx describes conversation/thread reading order and first/last boundaries. Root integration owner remains Codex in codex/viewer-navigation-tooltips.
+- Confirmed adjacent scope-label defect: after closing details, the actual seven-node thread path remained active while its accessible label said Conversation (populated fixture has21 moments). Three width variants failed at that same expected regression boundary. ThreadsViewer.jsx now shares its existing path predicate with the label; navigation IDs, ordering and handlers unchanged. Test intent amended for this discovered scope requirement before the final browser run.
+- Local evidence: shared/toolbar/reading unit9/9, peer graph/viewer adjacent17/17, Chromium populated browser5/5 at1440/390/1024px (including existing geometry/history regressions), changed JSX ESLint clean, production build success. Screenshots inspected for desktop history help with Source/details/timeline and phone thread-reading help; no browser page errors or backend calls in these synthetic journeys. Manual Impeccable detector returned[]; design-context schema/sidecar drift captured for a separate optional refresh.
+- Extraction measurements: MinimalGraph2378→2381 lines (+0.13%), extracted reading component47 lines; ESLint cyclomatic complexity MinimalGraphInner100→98, GraphReadingControls7; JavaScript any-types removed0. Coverage percentage and comparative latency unknown (no coverage provider/baseline measurement); current main JS1356.12KB, gzip403.77KB, prior build size not retained. Existing large-chunk notice persists; no dependency added. TECH_DEBT records graph state coordinator as a separate candidate.
+- Changed source locations: TooltipButton1, GraphReadingControls5, MinimalGraph51/2157, ThreadsViewer390/712, ThreadsViewerToolbar47/48; tests TooltipButton11, GraphReadingControls52, viewer-continuity71. Remaining dependencies: eligible read-only independent review, mandatory full frontend push gate, remote checks and served verification. Next checkpoint: exact committed source diff and reviewer verdict.
+
+### 2026-10-02 19:34 IST — Independent review repairs and counter-evidence
+
+- Google Gemini3.1 Pro High via authenticated AGY reviewed exact0e33e3a, packet27109bytes SHA256b582589a693ae290cfd144e9d768cd1fd979baaa28f2f003f526d75dabb6cb14; tool-free neutral checkout, plan+sandbox and verified deny-all hook,0tool attempts. Verdict CHANGES_REQUESTED with three findings. Full frontend pre-push518/518 and initial remote Python/browser/Vercel checks passed; release still pending.
+- F2 supported: global Escape swallowing was reproduced through an unrelated focused input's observable cancellation handler (expected1, actual0). TooltipButton now consumes Escape only when its trigger owns focus. Added behavioral unit and browser coverage. F3 supported: identical scroll coordinates allocated new React state; functional equality bailout avoids redundant updates without changing positioning. No private-state test added; existing viewport bounds checks reused.
+- F1 independent-review overclaim: reviewer said disabled keyboard focus was invisible after CSS reset. Instrumented Chromium Tab navigation falsified that claim: wrapper actually focused, :focus-visible true, outline auto1px rgb(16,16,16). Added real browser focus-outline checks at1440/390/1024; native outline retained. Counter-evidence returns to reviewer; no speculative styling repair or waiver. Human arbitration only if the claim remains disputed after review of these facts.
+- Updated test intent before repairs. First integrated rerun exposed a harness assumption: app Escape clears graph selection as before, whereas explicit details Close retains the thread. Browser flow now verifies Escape closes details/clears selection, then re-enters the thread through normal controls and separately checks explicit Close's retained path. No navigation implementation altered to satisfy that test.
+- Final focused unit10/10, browser5/5, scoped ESLint clean, rebuilt production success (main JS1356.25KB/gzip403.81KB; large-chunk notice preexisting). Remaining dependencies: review updated committed diff, mandatory push gate519tests, remote checks and served evidence. Next checkpoint final eligible verdict.

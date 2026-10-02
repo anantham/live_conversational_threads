@@ -68,6 +68,65 @@ async function selectFirst(page) {
   await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 1');
 }
 
+for (const width of [1440,390,1024]) test(`navigation hints explain history and reading scope at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:900});const evidence=await open(page);
+  const back=page.getByRole('button',{name:'Back',exact:true});
+  const historyHelp=back.locator('..');
+  await historyHelp.hover();
+  let hint=page.getByRole('tooltip').filter({hasText:'exploration history'});
+  await expect(hint).toContainText('No earlier exploration yet.');
+  await hint.hover();await expect(hint).toBeVisible();
+  await page.keyboard.press('Escape');await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await page.mouse.move(0,0);await historyHelp.focus();
+  await expect(page.getByRole('tooltip')).toContainText('Alt + Left');
+  const focusOutline=await historyHelp.evaluate(el=>{const style=getComputedStyle(el);return {visible:el.matches(':focus-visible'),style:style.outlineStyle,width:parseFloat(style.outlineWidth)};});
+  expect(focusOutline.visible).toBe(true);expect(focusOutline.style).not.toBe('none');expect(focusOutline.width).toBeGreaterThan(0);
+  await page.keyboard.press('Enter');await expect(back).toBeDisabled();
+  await page.keyboard.press('Escape');await page.getByRole('button',{name:/^Conversation overview:/}).focus();
+  await selectFirst(page);
+  await page.getByRole('button',{name:'Source',exact:true}).click();
+  await back.hover();hint=page.getByRole('tooltip').filter({hasText:'exploration history'});await expect(hint).toBeVisible();
+  const box=await hint.boundingBox();expect(box.x).toBeGreaterThanOrEqual(8);expect(box.x+box.width).toBeLessThanOrEqual(width-8);
+  expect(box.y).toBeGreaterThanOrEqual(8);expect(box.y+box.height).toBeLessThanOrEqual(892);
+  await page.screenshot({path:test.info().outputPath('history-help-with-source-and-timeline.png')});
+  await page.keyboard.press('Escape');await page.getByRole('button',{name:'Source',exact:true}).click();
+  await back.hover();await expect(page.getByRole('tooltip')).toBeVisible();
+  // Source has focus while history help is hovered: Escape still closes details.
+  await page.keyboard.press('Escape');await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('navigation',{name:/reading controls/})).toHaveCount(0);
+  // Escape clears exploration selection as before. Re-enter the thread, then
+  // use its explicit Close button to check the distinct retained-path behavior.
+  const label=firstThread(page);await label.click();
+  await label.locator('..').getByRole('button',{name:/Next node/}).click();
+  await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
+  // Closing details keeps the seven-node thread path active; it must not claim
+  // conversation scope when the populated conversation has twenty-one moments.
+  const reading=page.getByRole('navigation',{name:'Selected thread reading controls'});
+  await expect(reading).toContainText('7 moments');
+  const next=reading.getByRole('button',{name:'Next moment in selected thread'});
+  await next.hover();hint=page.getByRole('tooltip').filter({hasText:'Next moment in this thread.'});await expect(hint).toBeVisible();
+  const readingBox=await hint.boundingBox();expect(readingBox.x).toBeGreaterThanOrEqual(8);expect(readingBox.x+readingBox.width).toBeLessThanOrEqual(width-8);
+  await page.screenshot({path:test.info().outputPath('thread-reading-help.png')});
+  await next.click();await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 1');
+  await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await page.keyboard.press('ArrowRight');await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 2');
+  await back.click();await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 1');
+  const timeline=page.getByTestId('timeline-lane-viewport');
+  await timeline.evaluate(el=>{el.scrollTop=el.scrollHeight;el.scrollLeft=el.scrollWidth;});
+  await timeline.getByRole('button',{name:/Fixture moment 21/}).click();
+  await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 21');
+  const conversation=page.getByRole('navigation',{name:'Conversation reading controls'});
+  await expect(conversation).toContainText('21 of 21');
+  const last=conversation.getByRole('button',{name:'Next moment in conversation'});await expect(last).toBeDisabled();
+  await last.locator('..').focus();
+  await expect(page.getByRole('tooltip')).toContainText('Next moment in this conversation.');
+  await expect(page.getByRole('tooltip')).toContainText('You’re at the last moment.');
+  await page.keyboard.press('Escape');await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 21');
+  expect(evidence.errors).toEqual([]);expect(evidence.backend).toEqual([]);
+});
+
 for (const width of [1440,390]) test(`history arrows stay readable and compact at ${width}px`,async({page})=>{
   await page.setViewportSize({width,height:900});const evidence=await open(page);
   const navigation=page.getByRole('navigation',{name:'Exploration history'});

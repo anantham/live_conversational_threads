@@ -1747,7 +1747,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
  20–40 and then15–25-minute ranges covered the repair/review/release. Latest
  5–10-minute publication checkpoint is satisfied. Detailed receipt in docs/reviews.
 
-## 2026-10-02 — Compact readable Back/Forward controls (IN PROGRESS)
+## 2026-10-02 — Compact readable Back/Forward controls (DELIVERED)
 
 - Human-approved outcome: the toolbar's space before Find reads as navigation,
   with visible disabled arrows and compact desktop spacing.
@@ -1768,3 +1768,49 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - 18:16 IST: source82d14ec committed/pushed; PR210 attached. Full gate513/513.
   Eligible Google Gemini/AGY independent review APPROVED, no findings. Remaining:
   remote checks, deployment, actual public desktop/phone acceptance.
+- 18:25 IST delivery: PR210 merged18:21:41; main3671f86 production deployment
+ 6808810464 succeeded18:22:13. Public1440/390 actual interactions confirm18px
+  arrows, opacity1, desktop50px group, phone44×44px targets; Back/Forward and
+  Alt+Left/Right restore Overview; enabling history preserves Find's horizontal
+  position. Paired live screenshots inspected, zero page errors. CI browser14/14
+  and live production9/9 pass. Reviewed source packet unchanged at final PR head.
+- All finite acceptance checks met. Remaining delivery dependency:none. Next
+  evidence checkpoint:any reported regression. Final closure record is pushed
+  on the task branch; served product source is main3671f86.
+
+## 2026-10-02 — Legend gap and UX-review scope (DIAGNOSED; REPAIR OPEN)
+
+- User asks why there is blank space below Legend and whether UX analysis was
+  complete. A0 explanation/diagnostics only; no new product layout selected.
+  Owner Codex; authoritative viewer-source-and-controls worktree, task branch
+  codex/viewer-history-controls. Public source3671f86.
+- Instrument: MinimalLegend.jsx:141 fixes bottom at56px. Public Chromium1440/390
+  reproduces exactly56px to the graph boundary with Legend closed/open and
+  timeline collapsed/expanded. Timeline occupies its own separate row below
+  graph (ThreadsViewer.jsx:773 onward); the extra56px clearance is redundant.
+- Actual interaction evidence: Legend open/close, timeline open/close; settled
+  popup animation checked before bounds. Zero page errors/console warnings/HTTP
+ 5xx in this focused inspection. Evidence:tmp/legend-gap-report.json and paired
+  screenshots. This is not a full-app UX audit or complete pane matrix.
+- Prior release evidence covered finite source/navigation/timeline journeys,
+  not exhaustive layout/accessibility/performance review. Legend placement and
+  detail-drawer occlusion were already captured above and left unresolved.
+- Recommended repair:12–16px inset above actual available graph boundary;
+  respect Source/detail pane reservations in the same bounded layout slice.
+  Assumptions: current graph/timeline structure remains; no intentional56px
+  reserved control region. Confidence0.99 for cause,0.9 for bounded repair.
+  Predicted checks: gap12–16px, readable popup/trigger without pane collisions
+  at phone/tablet/desktop, normal open/close/keyboard operation. Fallback:
+  if pane constraints still hide the key, prepare an adjacent-control placement
+  decision with measured evidence; don't claim the bottom inset alone fixes it.
+- Finite diagnostic checks complete. Remaining dependency: selected repair or
+  separately authorized full viewer UX audit. Next evidence checkpoint:
+  complete pane-combination walkthrough after a layout change.
+
+## 2026-10-02 — Navigation arrow explanations (IN PROGRESS)
+
+- Human outcome: distinguish history arrows from moment navigation on hover and keyboard focus, including disabled controls. Owner Codex; authoritative viewer-source-and-controls worktree, branch codex/viewer-navigation-tooltips, origin/main3671f86; dirty AGENTS.md preserved.
+- Finite checks: truthful history/moment/thread copy; hover/focus/Escape/leave behavior; disabled help without activation; tooltip viewport bounds in combined pane states; unchanged arrows/callbacks/control sizing. Test intent stored before product edits.
+- One bounded peer owns existing graph reading controls extraction/tests; root owns shared tooltip, toolbar, browser verification/integration/release. MinimalGraph reading logic remains in parent. Existing frontend release and review authority persist; no backend/data change.
+- Remaining dependencies: implementation, focused local evidence, eligible independent family review, required release gates and served public verification. Next checkpoint: populated browser hover/focus and pane bounds. Legend repair and complete UX audit remain separate open work.
+- Local checkpoint19:20IST: implemented, unit9/9 plus adjacent17/17, browser5/5 desktop/tablet/phone, lint/build clean. Corrected existing thread label after closing details using the same predicate as its actual reading path (red7-versus21 fixture regression then green). Independent review and publication remain pending; next evidence checkpoint exact source diff verdict.

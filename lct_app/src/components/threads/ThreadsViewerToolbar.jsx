@@ -2,6 +2,7 @@ import { useRef } from "react";
 import PropTypes from "prop-types";
 import { ArrowLeft, ArrowRight, ChevronRight, Download, Focus, FolderOpen, Network, MessageSquare, Layers, FilePlus2, RefreshCw, FileVideo } from "lucide-react";
 import ViewerFindMenu from "./ViewerFindMenu";
+import TooltipButton from "../TooltipButton";
 
 const buttonClass = "min-h-11 rounded px-3 text-sm hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700";
 const secondaryButtonClass = `${buttonClass} text-slate-700`;
@@ -43,8 +44,8 @@ export default function ThreadsViewerToolbar({
   return <div role="toolbar" aria-label="Conversation tools" className="relative z-50 flex shrink-0 flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-2 py-1 sm:px-4">
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
       {history && <nav aria-label="Exploration history" className="flex shrink-0 items-center rounded-md border border-slate-200 bg-slate-50">
-        <button type="button" aria-label="Back" title="Back through exploration (Alt + Left)" disabled={!history.canBack} onClick={history.goBack} className={`${historyButtonClass} rounded-l border-r border-slate-200`}><ArrowLeft aria-hidden="true" className="shrink-0" size={18} /></button>
-        <button type="button" aria-label="Forward" title="Forward through exploration (Alt + Right)" disabled={!history.canForward} onClick={history.goForward} className={`${historyButtonClass} rounded-r`}><ArrowRight aria-hidden="true" className="shrink-0" size={18} /></button>
+        <TooltipButton aria-label="Back" tooltip={`Back through your exploration history. Return to the previous node, thread or view you visited. Alt + Left.${!history.canBack ? " No earlier exploration yet." : ""}`} disabled={!history.canBack} onClick={history.goBack} className={`${historyButtonClass} rounded-l border-r border-slate-200`}><ArrowLeft aria-hidden="true" className="shrink-0" size={18} /></TooltipButton>
+        <TooltipButton aria-label="Forward" tooltip={`Forward through your exploration history. Return to a view you left with Back. Alt + Right.${!history.canForward ? " No later exploration to return to." : ""}`} disabled={!history.canForward} onClick={history.goForward} className={`${historyButtonClass} rounded-r`}><ArrowRight aria-hidden="true" className="shrink-0" size={18} /></TooltipButton>
       </nav>}
       <ViewerFindMenu groups={findGroups} onSelect={onFindNode} documents={searchDocuments} onResult={onSearchResult} />
       <div ref={graphToolsRef} className="flex min-w-0 items-center gap-1" />
