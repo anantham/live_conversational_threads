@@ -4,6 +4,7 @@ import { ArrowDownToLine, ArrowLeft, CloudUpload, RotateCw, Trash2 } from "lucid
 import { usePrivateFiles } from "../hooks/usePrivateFiles";
 import { formatBytes, validatePrivateFile } from "../services/privateFiles";
 import { PRIVATE_CONVERSATION_FIXTURE } from "../services/cloud/privateConversationFixture";
+import PrivateRetentionNotice from "../components/PrivateRetentionNotice";
 import PrivateConversation from "./PrivateConversation";
 
 const button = "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700 disabled:cursor-not-allowed disabled:opacity-50";
@@ -96,11 +97,12 @@ export default function PrivateFiles() {
           <section className="mt-8 rounded-xl bg-white p-5 shadow-[0_8px_28px_rgba(15,23,42,0.08)] sm:p-6" aria-labelledby="upload-heading">
             <div className="flex items-center gap-3"><CloudUpload size={21} aria-hidden="true" /><h2 id="upload-heading" className="text-lg font-semibold">Upload a private file</h2></div>
             {status.synthetic_only ? <p className="mt-2 text-sm leading-6 text-slate-600">These checks save fixed files with no personal data. The test conversation opens as a map. Personal uploads are not active yet.</p> : <p className="mt-2 text-sm leading-6 text-slate-600">Choose a file up to {formatBytes(status.limits.maxFileBytes)}. Uploading stores a separate cloud copy for this account.</p>}
-            {status.synthetic_only ? <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => upload(SYNTHETIC_FILE)} disabled={!canWrite} className={primary}>Run private storage check</button><button type="button" onClick={() => upload(PRIVATE_CONVERSATION_FIXTURE)} disabled={!canWrite} className={button}>Save a test conversation</button></div> : <>
+            <PrivateRetentionNotice id="private-file-retention" />
+            {status.synthetic_only ? <div className="mt-5 flex flex-wrap gap-3"><button type="button" onClick={() => upload(SYNTHETIC_FILE)} disabled={!canWrite} aria-describedby="private-file-retention" className={primary}>Run private storage check</button><button type="button" onClick={() => upload(PRIVATE_CONVERSATION_FIXTURE)} disabled={!canWrite} aria-describedby="private-file-retention" className={button}>Save a test conversation</button></div> : <>
             <label htmlFor="private-file" className="mt-5 block text-sm font-medium">File to upload</label>
             <input id="private-file" ref={input} type="file" disabled={Boolean(activity)} onChange={(event) => { setSelected(event.target.files?.[0] || null); setError(""); }} className="mt-2 block w-full max-w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm file:mr-3 file:border-0 file:bg-transparent file:font-medium file:text-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" />
             {selectedError && <p role="alert" className="mt-2 text-sm text-rose-700">{selectedError}</p>}
-            <button type="button" onClick={() => upload()} disabled={!selected || Boolean(selectedError) || !canWrite} className={`${primary} mt-4`}>Upload file</button></>}
+            <button type="button" onClick={() => upload()} disabled={!selected || Boolean(selectedError) || !canWrite} aria-describedby="private-file-retention" className={`${primary} mt-4`}>Save file privately</button></>}
           </section>
 
           <section className="mt-10" aria-labelledby="files-heading">

@@ -1,4 +1,4 @@
-// Test Intent: tests/intent/sites-soniox.md and sites-recording-transcript.md; synthetic audio/tokens only.
+// Test Intent: tests/intent/sites-soniox.md, sites-recording-transcript.md and sites-private-retention.md; synthetic audio/tokens only.
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter } from 'react-router-dom';
@@ -84,6 +84,9 @@ describe('Sites recording page', () => {
 
   it('saves audio through the existing authenticated private-file API only after a deliberate choice', async () => {
     privateUploads = true; await mount(); await consent(); await click('Record audio locally'); await click('Stop recording');
+    const describedBy = button('Save audio privately').getAttribute('aria-describedby');
+    expect(container.querySelector(`#${describedBy}`)?.textContent).toBe('Private cloud copies stay until you delete them. Saving privately does not publish them.');
+    expect(fetch.mock.calls.map(call => call[1]?.method).filter(Boolean)).not.toContain('POST');
     fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ file: { id: 'synthetic-private' } }), { status: 201 }));
     await click('Save audio privately');
     const [path, options] = fetch.mock.lastCall;
@@ -155,6 +158,11 @@ describe('Sites recording page', () => {
       ],
     });
     expect(transcriptJSON().source_tokens.map(token => token.text)).toEqual(['Hello there.', ' Again.']);
+    const audioDescription = button('Save audio privately').getAttribute('aria-describedby');
+    const transcriptDescription = button('Save transcript privately').getAttribute('aria-describedby');
+    expect(audioDescription).not.toBe(transcriptDescription);
+    expect(container.querySelector(`#${audioDescription}`)?.textContent).toContain('stay until you delete them');
+    expect(container.querySelector(`#${transcriptDescription}`)?.textContent).toContain('Saving privately does not publish them');
     expect(fetch.mock.calls.map(call => call[1]?.method).filter(Boolean)).not.toContain('POST');
   });
 
@@ -163,6 +171,8 @@ describe('Sites recording page', () => {
     await deliverTranscript(); await click('Stop recording');
     const expected = transcriptJSON();
     expect(fetch.mock.calls).toHaveLength(2);
+    const describedBy = button('Save transcript privately').getAttribute('aria-describedby');
+    expect(container.querySelector(`#${describedBy}`)?.textContent).toBe('Private cloud copies stay until you delete them. Saving privately does not publish them.');
     fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ file: { id: 'synthetic-transcript' } }), { status: 201 }));
     await click('Save transcript privately');
     const [path, options] = fetch.mock.lastCall;

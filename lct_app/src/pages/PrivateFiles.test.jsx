@@ -71,6 +71,7 @@ describe("PrivateFiles", () => {
     expect(fetch.mock.calls[0][0]).toBe("/api/cloud/files/status");
     expect(host.textContent).toContain("Private storage is inactive");
     expect(host.querySelector('input[type="file"]')).toBeNull();
+    expect(host.textContent).not.toContain("Save file privately");
     expect(host.querySelector('a[href="/browse"]')).toBeTruthy();
   });
 
@@ -80,6 +81,7 @@ describe("PrivateFiles", () => {
     expect(host.textContent).toContain("Sign in to see your files");
     expect([...host.querySelectorAll("a")].find((link) => link.textContent === "Sign in with ChatGPT")?.target).toBe("_top");
     expect(host.querySelector('input[type="file"]')).toBeNull();
+    expect(host.textContent).not.toContain("Save file privately");
     expect(host.querySelector('a[href="/"]')).toBeTruthy();
   });
 
@@ -97,7 +99,13 @@ describe("PrivateFiles", () => {
     const input = host.querySelector('input[type="file"]');
     Object.defineProperty(input, "files", { configurable: true, value: [chosen] });
     await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
-    await click("Upload file");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.filter(([, options]) => options.method === "POST")).toHaveLength(0);
+    const action = [...host.querySelectorAll("button")].find((node) => node.textContent === "Save file privately");
+    const retention = host.querySelector("#private-file-retention");
+    expect(retention?.textContent).toBe("Private cloud copies stay until you delete them. Saving privately does not publish them.");
+    expect(action?.getAttribute("aria-describedby")).toBe(retention.id);
+    await click("Save file privately");
     expect(fetchMock.mock.calls[2][0]).toBe("/api/cloud/files");
     expect(fetchMock.mock.calls[2][1]).toEqual(expect.objectContaining({ method: "POST", body: chosen, credentials: "same-origin", headers: { "Content-Type": "text/plain", "X-LCT-Filename": "notes.txt", "X-LCT-Storage-Write": "1" } }));
     expect(host.querySelector(`a[href="/api/cloud/files/${fileRow.id}/content"]`)).toBeTruthy();
@@ -126,7 +134,7 @@ describe("PrivateFiles", () => {
     Object.defineProperty(input, "files", { configurable: true, value: [chosen] });
     await act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
     let pending;
-    await act(async () => { pending = [...host.querySelectorAll("button")].find((node) => node.textContent === "Upload file").click(); });
+    await act(async () => { pending = [...host.querySelectorAll("button")].find((node) => node.textContent === "Save file privately").click(); });
     await act(async () => vi.advanceTimersByTime(2000));
     expect(host.textContent).toContain("2s elapsed · Time remaining unknown");
     await click("Cancel");
@@ -146,6 +154,12 @@ describe("PrivateFiles", () => {
     vi.stubGlobal("fetch", fetchMock);
     await mount();
     expect(host.querySelector('input[type="file"]')).toBeNull();
+    const retention = host.querySelector("#private-file-retention");
+    expect(retention?.textContent).toBe("Private cloud copies stay until you delete them. Saving privately does not publish them.");
+    for (const label of ["Run private storage check", "Save a test conversation"]) {
+      const action = [...host.querySelectorAll("button")].find((node) => node.textContent === label);
+      expect(action?.getAttribute("aria-describedby")).toBe(retention.id);
+    }
     await click("Run private storage check");
     const request = fetchMock.mock.calls[2][1];
     expect(request.method).toBe("POST");
