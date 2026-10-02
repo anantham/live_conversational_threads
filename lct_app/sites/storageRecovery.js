@@ -18,7 +18,7 @@ export async function eraseFile(env, row, owner) {
   }
   await env.DB.batch([
     env.DB.prepare('INSERT OR IGNORE INTO lct_cloud_file_fences (object_key, created_at) VALUES (?, ?)').bind(row.object_key, Date.now()),
-    env.DB.prepare("DELETE FROM lct_cloud_files WHERE id = ? AND owner_user_id = ? AND state = 'deleting'").bind(row.id, owner),
+    env.DB.prepare("DELETE FROM lct_cloud_files WHERE id = ? AND owner_user_id = ? AND owner_provider = ? AND state = 'deleting'").bind(row.id, owner.id, owner.provider),
   ]);
 }
 
@@ -27,8 +27,8 @@ export async function recoverFile(env, row, owner) {
   if (row.state !== 'staging') throw new StorageError(409, 'cleanup_pending', 'This file is being deleted. Retry cleanup instead of recovery.');
   const object = await env.BUCKET.head(row.object_key);
   if (!object || object.size !== row.byte_size) throw new StorageError(409, 'upload_pending', 'Complete file bytes are not available. Wait for the upload or discard this unfinished file.');
-  const restored = await env.DB.prepare("UPDATE lct_cloud_files SET state = 'ready', updated_at = ? WHERE id = ? AND owner_user_id = ? AND state = 'staging' RETURNING *")
-    .bind(Date.now(), row.id, owner).first();
+  const restored = await env.DB.prepare("UPDATE lct_cloud_files SET state = 'ready', updated_at = ? WHERE id = ? AND owner_user_id = ? AND owner_provider = ? AND state = 'staging' RETURNING *")
+    .bind(Date.now(), row.id, owner.id, owner.provider).first();
   if (!restored) throw new StorageError(409, 'file_changed', 'The file changed during recovery. Refresh your private files.');
   return storageJSON(200, { file: fileSummary(restored) });
 }

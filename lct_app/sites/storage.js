@@ -1,5 +1,6 @@
 import { FILE_ID, STORAGE_LIMITS, StorageError, fileSummary, readUpload, requireWriteOrigin, storageJSON } from './storagePolicy.js';
 import { createOnly, eraseFile, recoverFile } from './storageRecovery.js';
+import { resolveIdentity } from './auth.js';
 
 let activeUploads = 0;
 const PREFIX = '/api/cloud/files';
@@ -12,7 +13,7 @@ function ready(env) {
 }
 
 async function ownedFile(env, id, owner) {
-  const row = await env.DB.prepare('SELECT * FROM lct_cloud_files WHERE id = ? AND owner_user_id = ?').bind(id, owner).first();
+  const row = await env.DB.prepare('SELECT * FROM lct_cloud_files WHERE id = ? AND owner_user_id = ? AND owner_provider = ?').bind(id, owner.id, owner.provider).first();
   if (!row) throw new StorageError(404, 'file_missing', 'That private file is unavailable to this account.');
   return row;
 }
@@ -28,21 +29,21 @@ async function upload(request, env, owner) {
     const now = Date.now();
     const limits = STORAGE_LIMITS;
     const row = await env.DB.prepare(`INSERT INTO lct_cloud_files
-      (id, owner_user_id, object_key, kind, title, filename, content_type, byte_size, state, created_at, updated_at)
-      SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'staging', ?, ?
+      (id, owner_user_id, owner_provider, object_key, kind, title, filename, content_type, byte_size, state, created_at, updated_at)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staging', ?, ?
       WHERE (SELECT COALESCE(SUM(byte_size), 0) FROM lct_cloud_files) + (SELECT COALESCE(SUM(byte_size), 0) FROM lct_public_threads) + ? <= ?
         AND (SELECT COUNT(*) FROM lct_cloud_files) < ?
         AND (SELECT COUNT(*) FROM lct_cloud_files) + (SELECT COUNT(*) FROM lct_cloud_file_fences) + (SELECT COUNT(*) FROM lct_public_threads) < ?
-        AND (SELECT COALESCE(SUM(byte_size), 0) FROM lct_cloud_files WHERE owner_user_id = ?) + ? <= ?
-        AND (SELECT COUNT(*) FROM lct_cloud_files WHERE owner_user_id = ?) < ?
-      RETURNING *`).bind(id, owner, key, input.kind, input.filename, input.filename, input.contentType, input.size, now, now,
-      input.size, limits.maxSiteBytes, limits.maxSiteFiles, limits.maxSiteKeys, owner, input.size, limits.maxOwnerBytes, owner, limits.maxOwnerFiles).first();
+        AND (SELECT COALESCE(SUM(byte_size), 0) FROM lct_cloud_files WHERE owner_user_id = ? AND owner_provider = ?) + ? <= ?
+        AND (SELECT COUNT(*) FROM lct_cloud_files WHERE owner_user_id = ? AND owner_provider = ?) < ?
+      RETURNING *`).bind(id, owner.id, owner.provider, key, input.kind, input.filename, input.filename, input.contentType, input.size, now, now,
+      input.size, limits.maxSiteBytes, limits.maxSiteFiles, limits.maxSiteKeys, owner.id, owner.provider, input.size, limits.maxOwnerBytes, owner.id, owner.provider, limits.maxOwnerFiles).first();
     if (!row) throw new StorageError(507, 'storage_capacity', 'Private preview storage has reached an account, capacity or lifetime creation limit. Delete unused files or ask the owner to review the preview limits.');
     try {
       const stored = await env.BUCKET.put(key, input.bytes, { onlyIf: createOnly(), httpMetadata: { contentType: input.contentType } });
       if (!stored) throw new Error('Blob persistence did not confirm success');
-      const saved = await env.DB.prepare("UPDATE lct_cloud_files SET state = 'ready', updated_at = ? WHERE id = ? AND owner_user_id = ? AND state = 'staging' RETURNING *")
-        .bind(Date.now(), id, owner).first();
+      const saved = await env.DB.prepare("UPDATE lct_cloud_files SET state = 'ready', updated_at = ? WHERE id = ? AND owner_user_id = ? AND owner_provider = ? AND state = 'staging' RETURNING *")
+        .bind(Date.now(), id, owner.id, owner.provider).first();
       if (!saved) {
         const recovered = await ownedFile(env, id, owner);
         if (recovered.state === 'ready') return storageJSON(201, { file: fileSummary(recovered) });
@@ -53,8 +54,8 @@ async function upload(request, env, owner) {
       // Keep the reservation if either cleanup step is uncertain. Never report
       // the upload ready, log its content, or delete another visitor's record.
       try {
-        const pending = await env.DB.prepare("UPDATE lct_cloud_files SET state = 'deleting', updated_at = ? WHERE id = ? AND owner_user_id = ? AND state = 'staging' RETURNING *")
-          .bind(Date.now(), id, owner).first();
+        const pending = await env.DB.prepare("UPDATE lct_cloud_files SET state = 'deleting', updated_at = ? WHERE id = ? AND owner_user_id = ? AND owner_provider = ? AND state = 'staging' RETURNING *")
+          .bind(Date.now(), id, owner.id, owner.provider).first();
         if (!pending) {
           const current = await ownedFile(env, id, owner);
           if (current.state === 'ready') return storageJSON(201, { file: fileSummary(current) });
@@ -75,8 +76,8 @@ async function listFiles(url, env, owner) {
   }
   if (before === null && beforeId !== null) throw new StorageError(400, 'cursor', 'The private files page cursor is invalid.');
   const cursorSQL = before === null ? '' : ' AND (created_at < ? OR (created_at = ? AND id < ?))';
-  const query = env.DB.prepare(`SELECT * FROM lct_cloud_files WHERE owner_user_id = ?${cursorSQL} ORDER BY created_at DESC, id DESC LIMIT 21`);
-  const result = await (before === null ? query.bind(owner) : query.bind(owner, Number(before), Number(before), beforeId)).all();
+  const query = env.DB.prepare(`SELECT * FROM lct_cloud_files WHERE owner_user_id = ? AND owner_provider = ?${cursorSQL} ORDER BY created_at DESC, id DESC LIMIT 21`);
+  const result = await (before === null ? query.bind(owner.id, owner.provider) : query.bind(owner.id, owner.provider, Number(before), Number(before), beforeId)).all();
   const rows = result.results;
   if (!Array.isArray(rows)) throw new Error('Private storage returned no row collection');
   const visible = rows.slice(0, 20);
@@ -93,8 +94,8 @@ export async function handleStorage(request, env) {
         configured: Boolean(env.DB?.prepare && env.DB?.batch && env.BUCKET?.put && env.BUCKET?.get && env.BUCKET?.head),
         visibility: 'private', limits: STORAGE_LIMITS });
     }
-    const owner = request.headers.get('oai-authenticated-user-id')?.trim();
-    if (!owner) throw new StorageError(401, 'sign_in', 'Sign in with ChatGPT to access your private cloud files.');
+    const owner = await resolveIdentity(request, env);
+    if (!owner) throw new StorageError(401, 'sign_in', 'Sign in to access your private cloud files.');
     if (!['GET', 'POST', 'DELETE'].includes(request.method)) throw new StorageError(405, 'method', 'Use GET, POST or DELETE for private files.');
     if (['POST', 'DELETE'].includes(request.method)) requireWriteOrigin(request);
     ready(env);
@@ -109,8 +110,8 @@ export async function handleStorage(request, env) {
     if (request.method === 'POST' && match[2] === '/reconcile') return await recoverFile(env, row, owner);
     if (match[2] === '/reconcile') throw new StorageError(405, 'method', 'Use POST to recover this private file.');
     if (request.method === 'DELETE' && !match[2]) {
-      await env.DB.prepare("UPDATE lct_cloud_files SET state = 'deleting', updated_at = ? WHERE id = ? AND owner_user_id = ?")
-        .bind(Date.now(), row.id, owner).run();
+      await env.DB.prepare("UPDATE lct_cloud_files SET state = 'deleting', updated_at = ? WHERE id = ? AND owner_user_id = ? AND owner_provider = ?")
+        .bind(Date.now(), row.id, owner.id, owner.provider).run();
       try { await eraseFile(env, row, owner); }
       catch { throw new StorageError(503, 'delete_pending', 'File access is hidden, but cleanup is unfinished. Retry deleting it to release storage.'); }
       return storageJSON(200, { deleted: true });

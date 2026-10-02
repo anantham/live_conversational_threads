@@ -79,7 +79,7 @@ describe("PrivateFiles", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(json(status)).mockResolvedValueOnce(json({ code: "sign_in", error: "Sign in" }, 401)));
     await mount();
     expect(host.textContent).toContain("Sign in to see your files");
-    expect([...host.querySelectorAll("a")].find((link) => link.textContent === "Sign in with ChatGPT")?.target).toBe("_top");
+    expect([...host.querySelectorAll("a")].find((link) => link.textContent === "Choose how to sign in")?.getAttribute("href")).toBe("#site-access");
     expect(host.querySelector('input[type="file"]')).toBeNull();
     expect(host.textContent).not.toContain("Save file privately");
     expect(host.querySelector('a[href="/"]')).toBeTruthy();

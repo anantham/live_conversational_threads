@@ -27,7 +27,7 @@ export default function RecordingTranscriptFiles({ recording, finalTokens, ready
       {url && <a className={button} href={url} download={artifact.filename}>Download transcript</a>}
       <button className={button} aria-describedby="transcript-private-retention" disabled={!privateEnabled || saving} onClick={() => onPrivateSave(artifact.file, 'Transcript')}>Save transcript privately</button>
     </div>
-    {!privateEnabled && <p className="mt-3 text-sm text-slate-600">Personal cloud uploads are still being connected. Private saving will require ChatGPT sign-in.</p>}
+    {!privateEnabled && <p className="mt-3 text-sm text-slate-600">Personal cloud uploads are still being connected. Private saving will require sign-in.</p>}
     <details className="mt-4 text-sm"><summary className="cursor-pointer">Copy recording data if download is unavailable</summary>
       <label className="mt-3 block" htmlFor="recording-transcript-json">Recording transcript JSON</label>
       <textarea id="recording-transcript-json" readOnly value={artifact.json} rows={5} className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-sm" />

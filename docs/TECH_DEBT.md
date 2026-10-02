@@ -375,3 +375,7 @@ The transcript adapter (~106lines), file section (~46lines), and hosted recordin
 ## 2026-10-02 — Private viewer source and diagnostic boundaries
 
 ThreadsViewer (~720lines) now supports an explicit private in-memory bundle in addition to public/local/Drive sources. Loading remains isolated in PrivateConversation and privateThreads; centralizing viewer source/persistence policy is still a later extraction candidate. MinimalGraph (~2200lines) mixes layout, camera, interaction and HUD wiring; this slice adds only stable per-instance diagnostic guards. Separate diagnostic context from camera/state hooks when decomposing that existing monolith. No broad refactor or new graph state machine is required for private reopening. PublicTaskStatus now accepts a private load label; a neutral component name can follow a future shared task presentation cleanup, preserving public callers.
+
+## 2026-10-02 — Google identity fixture boundaries
+
+The private-storage public API test file now exceeds300lines because it exercises real generated SQLite, byte effects and recovery interleavings as well as provider-qualified identities. Its cohesive harness is retained for this slice; a later shared synthetic D1/JWKS fixture can remove duplication with the separate auth suite without coupling tests to private helpers. Auth policy, verifier, storage and recovery remain separate small production modules; no broader refactor is needed here.

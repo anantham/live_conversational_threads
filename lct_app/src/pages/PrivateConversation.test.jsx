@@ -51,9 +51,9 @@ it("recovers from expired identity only through explicit same-site sign-in or sa
   await mount();
   expect(host.textContent).toContain("Sign in to open this private conversation");
   expect(host.textContent).not.toContain("sensitive upstream body");
-  const signIn = [...host.querySelectorAll("a")].find(link => link.textContent === "Sign in with ChatGPT");
-  expect(signIn.getAttribute("href")).toBe("/signin-with-chatgpt?return_to=%2Fprivate-files");
-  expect(signIn.target).toBe("_top"); expect(signIn.href).not.toContain(id);
+  const signIn = [...host.querySelectorAll("a")].find(link => link.textContent === "Choose how to sign in");
+  expect(signIn.getAttribute("href")).toBe("#site-access");
+  expect(signIn.target).toBe(""); expect(signIn.href).not.toContain(id);
   await click("Retry loading");
   expect(host.textContent).toContain("Synthetic private conversation check");
   expect(fetch.mock.calls.map(([path]) => path)).toEqual([`/api/cloud/files/${id}/content`, `/api/cloud/files/${id}/content`]);

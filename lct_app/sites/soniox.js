@@ -1,4 +1,5 @@
 import { SonioxError, sonioxJSON, sonioxPolicy, readSonioxJSON } from './sonioxPolicy.js';
+import { resolveIdentity } from './auth.js';
 
 const PREFIX = '/api/cloud/soniox';
 
@@ -6,8 +7,8 @@ async function mint(request, env, policy) {
   if (request.headers.get('origin') !== new URL(request.url).origin || request.headers.get('x-lct-soniox-consent') !== 'transcribe-v1') {
     throw new SonioxError(403, 'consent', 'Start transcription from this Site after confirming permission to send the audio to Soniox.');
   }
-  if (policy.audience === 'authenticated' && !request.headers.get('oai-authenticated-user-id')?.trim()) {
-    throw new SonioxError(401, 'sign_in', 'Sign in with ChatGPT for the current transcription test. Public browsing is still available.');
+  if (policy.audience === 'authenticated' && !await resolveIdentity(request, env)) {
+    throw new SonioxError(401, 'sign_in', 'Sign in for the current transcription test. Public browsing is still available.');
   }
   if (!policy.enabled) throw new SonioxError(503, 'transcription_inactive', 'Live transcription is waiting for confirmed spending limits and provider setup. No session key was issued.');
   if (request.signal.aborted) throw new SonioxError(408, 'cancelled', 'Transcription setup was cancelled before a key was requested.');

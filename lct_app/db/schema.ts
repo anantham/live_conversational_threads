@@ -5,6 +5,7 @@ import { check, index, integer, sqliteTable, text, uniqueIndex } from 'drizzle-o
 export const cloudFiles = sqliteTable('lct_cloud_files', {
   id: text('id').primaryKey(),
   ownerUserId: text('owner_user_id').notNull(),
+  ownerProvider: text('owner_provider', { enum: ['chatgpt', 'google'] }).notNull().default('chatgpt'),
   objectKey: text('object_key').notNull(),
   kind: text('kind', { enum: ['file', 'threads', 'audio'] }).notNull(),
   title: text('title').notNull(),
@@ -17,9 +18,25 @@ export const cloudFiles = sqliteTable('lct_cloud_files', {
 }, (table) => [
   uniqueIndex('lct_cloud_files_object_key_unique').on(table.objectKey),
   index('lct_cloud_files_owner_state_created_id_idx').on(table.ownerUserId, table.state, table.createdAt, table.id),
+  index('lct_cloud_files_provider_owner_idx').on(table.ownerProvider, table.ownerUserId),
   check('lct_cloud_files_kind_check', sql`${table.kind} in ('file', 'threads', 'audio')`),
   check('lct_cloud_files_state_check', sql`${table.state} in ('staging', 'ready', 'deleting')`),
   check('lct_cloud_files_byte_size_check', sql`${table.byteSize} > 0`),
+]);
+
+// Revocable Google sessions; only stable subjects and random-token/nonce hashes.
+// Used challenges remain until expiry, including after sign-out, to refuse replay.
+export const googleSessions = sqliteTable('lct_google_sessions', {
+  jtiHash: text('jti_hash').primaryKey(),
+  googleSub: text('google_sub').notNull(),
+  challengeHash: text('challenge_hash').notNull(),
+  createdAt: integer('created_at').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+  revokedAt: integer('revoked_at'),
+}, (table) => [
+  uniqueIndex('lct_google_sessions_challenge_unique').on(table.challengeHash),
+  index('lct_google_sessions_sub_idx').on(table.googleSub),
+  index('lct_google_sessions_expiry_idx').on(table.expiresAt),
 ]);
 
 // Anonymous write fences retain only random object keys; never identity or file metadata.

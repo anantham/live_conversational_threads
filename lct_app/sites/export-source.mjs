@@ -10,6 +10,7 @@ const requiredFiles = [
   'sites/storage-packaging.mjs', 'sites/storage.js', 'sites/storagePolicy.js', 'sites/storageRecovery.js',
   'sites/publicThreads.js', 'sites/publicThreadsPolicy.js',
   'sites/soniox.js', 'sites/sonioxPolicy.js',
+  'sites/auth.js', 'sites/authPolicy.js',
   'db/schema.ts', 'drizzle.config.ts',
 ];
 

@@ -3,11 +3,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
-import worker from '../../../sites/worker.js';
+import { generateKeyPairSync, sign } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 import { STORAGE_LIMITS, STORAGE_FIXTURE, PRIVATE_CONVERSATION_FIXTURE } from '../../../sites/storagePolicy.js';
 
 const SITE = 'https://fixture-lct.example.chatgpt.site';
 let sqlite, env, objects, failures;
+let worker;
+const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const publicJwk = { ...publicKey.export({ format: 'jwk' }), kid: 'storage-fixture', alg: 'RS256', use: 'sig' };
+const CLIENT = '1234567890-storage.apps.googleusercontent.com';
 
 function request(path = '/api/cloud/files', { method = 'GET', owner = 'fixture-alice', headers = {}, body = 'fixture bytes' } = {}) {
   return new Request(SITE + path, { method, headers: {
@@ -15,10 +20,11 @@ function request(path = '/api/cloud/files', { method = 'GET', owner = 'fixture-a
     'x-lct-storage-write': '1', 'x-lct-filename': 'fixture.txt', 'content-type': 'text/plain', ...headers,
   }, ...(['POST', 'PUT'].includes(method) ? { body } : {}) });
 }
-function seedReservation(size, owner = 'fixture-other', state = 'staging') {
+function seedReservation(size, owner = 'fixture-other', state = 'staging', provider = 'chatgpt') {
   const id = crypto.randomUUID();
-  sqlite.prepare(`INSERT INTO lct_cloud_files VALUES (?, ?, ?, 'file', 'fixture', 'fixture.txt', 'text/plain', ?, ?, 1, 1)`)
-    .run(id, owner, 'fixture-' + id, size, state);
+  sqlite.prepare(`INSERT INTO lct_cloud_files (id, owner_user_id, object_key, kind, title, filename, content_type, byte_size, state, created_at, updated_at, owner_provider)
+    VALUES (?, ?, ?, 'file', 'fixture', 'fixture.txt', 'text/plain', ?, ?, 1, 1, ?)`)
+    .run(id, owner, 'fixture-' + id, size, state, provider);
   return id;
 }
 async function upload(options = {}) {
@@ -26,7 +32,25 @@ async function upload(options = {}) {
   return { response, data: await response.json() };
 }
 
-beforeEach(() => {
+async function googleSession(sub) {
+  env.LCT_GOOGLE_AUTH_ENABLED = 'true'; env.LCT_GOOGLE_CLIENT_ID = CLIENT;
+  env.LCT_GOOGLE_SESSION_SECRET = 'synthetic-storage-signing-secret-at-least-32-characters';
+  const challenge = await worker.fetch(request('/api/auth/google/challenge', { owner: null }), env);
+  expect(challenge.status).toBe(200);
+  const { nonce } = await challenge.json();
+  const now = Math.floor(Date.now() / 1000);
+  const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url');
+  const message = encode({ alg: 'RS256', kid: 'storage-fixture' }) + '.' +
+    encode({ iss: 'https://accounts.google.com', aud: CLIENT, sub, iat: now, exp: now + 300, nonce });
+  const credential = message + '.' + sign('RSA-SHA256', Buffer.from(message), privateKey).toString('base64url');
+  const response = await worker.fetch(request('/api/auth/google', { method: 'POST', owner: null,
+    headers: { cookie: challenge.headers.getSetCookie()[0].split(';')[0], 'content-type': 'application/json', 'x-lct-auth-write': '1' },
+    body: JSON.stringify({ credential }) }), env);
+  expect(response.status).toBe(200);
+  return response.headers.getSetCookie().find(value => value.startsWith('__Host-lct-session=')).split(';')[0];
+}
+
+beforeEach(async () => {
   sqlite = new DatabaseSync(':memory:');
   const migrations = JSON.parse(readFileSync(new URL('../../../drizzle/meta/_journal.json', import.meta.url), 'utf8'));
   for (const entry of migrations.entries) sqlite.exec(readFileSync(new URL(`../../../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'));
@@ -64,10 +88,97 @@ beforeEach(() => {
       async delete(key) { if (failures.remove) throw new Error('fixture delete failure'); objects.delete(key); },
     },
   };
+  vi.stubGlobal('fetch', async input => {
+    const url = typeof input === 'string' ? input : input.url;
+    if (url !== 'https://www.googleapis.com/oauth2/v3/certs') throw new Error('Unexpected storage fixture network request');
+    return new Response(JSON.stringify({ keys: [publicJwk] }), { headers: { 'content-type': 'application/json' } });
+  });
+  vi.resetModules(); worker = (await import('../../../sites/worker.js')).default;
 });
-afterEach(() => { sqlite.close(); vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { sqlite.close(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('Sites private storage through the Worker API and generated SQLite schema', () => {
+  it('adds Google ownership without changing a pre-migration legacy file or erasure fence', () => {
+    const legacy = new DatabaseSync(':memory:');
+    try {
+      const entries = JSON.parse(readFileSync(new URL('../../../drizzle/meta/_journal.json', import.meta.url), 'utf8')).entries;
+      for (const entry of entries.slice(0, -1)) legacy.exec(readFileSync(new URL(`../../../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'));
+      legacy.exec("INSERT INTO lct_cloud_files VALUES ('fixture-legacy', 'fixture-alice', 'fixture-existing-key', 'file', 'fixture', 'fixture.txt', 'text/plain', 13, 'ready', 1, 2)");
+      legacy.exec("INSERT INTO lct_cloud_file_fences VALUES ('fixture-existing-fence', 1)");
+      const previous = legacy.prepare('SELECT * FROM lct_cloud_files').get();
+      expect(Object.keys(previous)).not.toContain('owner_provider');
+      legacy.exec(readFileSync(new URL(`../../../drizzle/${entries.at(-1).tag}.sql`, import.meta.url), 'utf8'));
+      expect(legacy.prepare('SELECT * FROM lct_cloud_files').get()).toEqual({ ...previous, owner_provider: 'chatgpt' });
+      expect(legacy.prepare('SELECT * FROM lct_cloud_file_fences').all()).toEqual([{ object_key: 'fixture-existing-fence', created_at: 1 }]);
+    } finally { legacy.close(); }
+  });
+
+  it('separates Google A/B and the legacy ChatGPT account even with identical raw subject IDs', async () => {
+    const alice = await googleSession('fixture-alice'), bob = await googleSession('fixture-bob');
+    const a = (await upload({ headers: { cookie: alice } })).data.file;
+    const b = (await upload({ headers: { cookie: bob }, body: 'bob fixture' })).data.file;
+    const legacy = (await upload({ body: 'legacy fixture' })).data.file;
+    for (const [cookie, owned, text] of [[alice, a, 'fixture bytes'], [bob, b, 'bob fixture'], [null, legacy, 'legacy fixture']]) {
+      const options = cookie ? { headers: { cookie } } : {};
+      const listing = await (await worker.fetch(request('/api/cloud/files', options), env)).json();
+      expect(listing.files.map(file => file.id)).toEqual([owned.id]);
+      expect(await (await worker.fetch(request(`/api/cloud/files/${owned.id}/content`, options), env)).text()).toBe(text);
+      for (const foreign of [a, b, legacy].filter(file => file.id !== owned.id)) {
+        const get = vi.spyOn(env.BUCKET, 'get'), put = vi.spyOn(env.BUCKET, 'put'), head = vi.spyOn(env.BUCKET, 'head');
+        for (const suffix of ['', '/content', '/reconcile']) {
+          expect((await worker.fetch(request(`/api/cloud/files/${foreign.id}${suffix}`, {
+            ...options, method: suffix === '/reconcile' ? 'POST' : 'GET',
+          }), env)).status).toBe(404);
+        }
+        expect((await worker.fetch(request(`/api/cloud/files/${foreign.id}`, { ...options, method: 'DELETE' }), env)).status).toBe(404);
+        expect(get).not.toHaveBeenCalled(); expect(put).not.toHaveBeenCalled(); expect(head).not.toHaveBeenCalled();
+        get.mockRestore(); put.mockRestore(); head.mockRestore();
+      }
+    }
+    expect(sqlite.prepare('SELECT owner_provider, owner_user_id FROM lct_cloud_files ORDER BY owner_provider, owner_user_id').all())
+      .toEqual([{ owner_provider: 'chatgpt', owner_user_id: 'fixture-alice' },
+        { owner_provider: 'google', owner_user_id: 'fixture-alice' }, { owner_provider: 'google', owner_user_id: 'fixture-bob' }]);
+    expect((await worker.fetch(request(`/api/cloud/files/${a.id}`, { method: 'DELETE', headers: { cookie: alice } }), env)).status).toBe(200);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(2);
+  });
+
+  it('uses provider-qualified quotas and recovery, and refuses revoked cookies before storage', async () => {
+    const cookie = await googleSession('fixture-alice');
+    seedReservation(STORAGE_LIMITS.maxOwnerBytes, 'fixture-alice', 'deleting');
+    const uploaded = await upload({ headers: { cookie } });
+    expect(uploaded.response.status).toBe(201);
+    expect((await upload()).response.status).toBe(507);
+    const staged = seedReservation(13, 'fixture-alice', 'staging', 'google');
+    const row = sqlite.prepare('SELECT * FROM lct_cloud_files WHERE id = ?').get(staged);
+    objects.set(row.object_key, new TextEncoder().encode('fixture bytes'));
+    expect((await worker.fetch(request(`/api/cloud/files/${staged}/reconcile`, { method: 'POST' }), env)).status).toBe(404);
+    expect((await worker.fetch(request(`/api/cloud/files/${staged}/reconcile`, { method: 'POST', headers: { cookie } }), env)).status).toBe(200);
+    const logout = await worker.fetch(request('/api/auth/logout', { method: 'POST', headers: { cookie, 'x-lct-auth-write': '1' }, body: '{}' }), env);
+    expect(logout.status).toBe(200);
+    const beforeRows = sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n, beforeObjects = objects.size;
+    expect((await upload({ headers: { cookie } })).response.status).toBe(401);
+    for (const path of ['/api/cloud/files', `/api/cloud/files/${staged}/content`]) {
+      expect((await worker.fetch(request(path, { headers: { cookie } }), env)).status).toBe(401);
+    }
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(beforeRows);
+    expect(objects.size).toBe(beforeObjects);
+  });
+
+  it('admits verified Google identity to authenticated transcription while keeping funding inactive', async () => {
+    const cookie = await googleSession('fixture-google-stt');
+    env.LCT_SONIOX_AUDIENCE = 'authenticated';
+    const headers = { cookie, 'x-lct-soniox-consent': 'transcribe-v1' };
+    const response = await worker.fetch(request('/api/cloud/soniox/session', { method: 'POST', owner: null, headers }), env);
+    expect(response.status).toBe(503);
+    expect((await response.json()).code).toBe('transcription_inactive');
+    expect((await worker.fetch(request('/api/cloud/soniox/session', { method: 'POST', owner: null,
+      headers: { 'x-lct-soniox-consent': 'transcribe-v1' } }), env)).status).toBe(401);
+    await worker.fetch(request('/api/auth/logout', { method: 'POST', owner: null,
+      headers: { cookie, 'x-lct-auth-write': '1' } }), env);
+    expect((await worker.fetch(request('/api/cloud/soniox/session', { method: 'POST', headers }), env)).status).toBe(401);
+    expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_soniox_sessions').get().n).toBe(0);
+  });
+
   it('stays inactive by default without gating public app entry', async () => {
     delete env.LCT_PRIVATE_STORAGE_ENABLED;
     const status = await worker.fetch(request('/api/cloud/files/status', { owner: null }), env);

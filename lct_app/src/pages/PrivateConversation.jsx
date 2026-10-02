@@ -33,7 +33,7 @@ export default function PrivateConversation({ file, onClose }) {
       <p className="mt-3 max-w-[65ch] text-sm leading-6 text-slate-600">Opening a cloud copy for this account. The map stays in this view.</p>
       <PublicTaskStatus {...task} loadingLabel="Loading private conversation" />
       {failure && <p role="alert" className="my-5 text-sm leading-6 text-rose-800">{failure.message}</p>}
-      {failure?.status === 401 && <a href="/signin-with-chatgpt?return_to=%2Fprivate-files" target="_top" className={`${control} mr-3`}>Sign in with ChatGPT</a>}
+      {failure?.status === 401 && <a href="#site-access" className={`${control} mr-3`}>Choose how to sign in</a>}
       {!task.activity && <button type="button" className={control} onClick={() => setAttempt(value => value + 1)}>Retry loading</button>}
     </div>
   </main>;
