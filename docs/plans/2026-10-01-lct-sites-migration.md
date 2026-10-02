@@ -1,6 +1,6 @@
 # LCT Sites migration — staged delivery
 
-## Progress tracker — updated 2026-10-02 16:27 IST
+## Progress tracker — updated 2026-10-02 17:12 IST
 
 **Active goal:** Make threads.adityaarpitha.com work while the owner's computers are off, with public guest access, optional Google sign-in for private recordings and files, Soniox transcription, and OpenRouter intelligence. Deliver in verified stages with spending limits. The human selected Google/OpenRouter after reporting OpenAI's application acknowledgement: access may expand in early Q4 and OpenAI will contact them if the product fits. This is a user-reported acknowledgement, not verified access approval or a launch date. ChatGPT identity/plan integration is future optional work; its approval is no longer a dependency for the selected launch route. The native goal tool currently reports blocked; the human's new library approval authorizes progress on this slice. Goal resumption is controlled by the user interface, and the full objective is not achieved.
 
@@ -28,6 +28,8 @@ The **23–64 active-hour / 3–8 focused-day** range is a planning estimate, no
 ### Next checkpoint
 
 Next evidence checkpoint: the pending public Google Web-client-ID and registered exact preview origin, followed by runtime configuration and actual two-account hosted isolation. Packaging recovery is complete under explicit human guidance; source/build/archive/native save/deploy identity is recorded in the review receipt. Existing Drive access does not confer Site identity. Preserve the prior23–64active-hour/3–8focused-day range as unmeasured; the prior Windows delay is resolved by the3.16s corrected-path packaging run, while Google registration/account/provider/DNS effort and waits remain unknown. No calendar ETA is promised. Source review is complete; actual account, provider funding and DNS waits remain separate.
+
+2026-10-02 17:12 IST concrete access checkpoint: the human reconfirmed retry/continuation; that authority is retained and the already successful version15 publication is not repeated. The goal getter still reports blocked; available goal tools cannot resume it, and official lifecycle guidance reserves resumption to the user/system. Root opened the Google Cloud credentials page read-only in the current browser; it redirected to the work-account “Verify it’s you” screen. The tab is visible and retained for handoff. No project/client inventory or existing OAuth client can yet be inspected. Human reauthentication is a mechanical access requirement, not a repeated request for product/retry approval. A single sign-in-completion question is pending. After reauthentication, inspect the intended project/client and make the minimal identity-only setup concrete; do not infer authority for extra scopes, account/security changes or paid resources from the login page. Current source/served identity and retention/provider choices remain unchanged.
 
 Finite acceptance checks for this one journey:
 
