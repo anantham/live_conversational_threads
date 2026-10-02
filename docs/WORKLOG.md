@@ -6886,3 +6886,24 @@ User observed an empty desktop transcript until node selection, with only the cu
   diff, mandatory full push gate and CI, then public phone source/playback/naming/
   Back acceptance. Updated estimate15–25 minutes from this checkpoint; prior
  20–40-minute range is preserved above. Core source is live, this repair is local.
+
+## 2026-10-02 17:29 IST — Phone repair reviewed; release pending
+
+- Exact source b4fe577 is committed/pushed in PR209; required full frontend gate
+  passes 513/513 in 84 files. Google Gemini 3.1 Pro High via AGY approves the
+  exact 4-file source/test/intention packet plus committed hook context, no
+  findings, zero tool attempts, 73 seconds. Receipt records exact SHA/hash and
+  excluded content in docs/reviews/2026-10-02-viewer-phone-history-agy.md.
+- The complete narrow local 390x900 journey passes: title and final lane, seven
+  distinct thread moments, exact160 Back/Forward, native video clock advance and
+  pause at cue4399s, immediate Source/cards/details/Discussion name propagation,
+  alias retention through Back and original downloaded transcript bytes preserved.
+  Zero page errors/HTTP5xx/app backend requests/horizontal overflow. Report URL is
+  explicitly the owned local server; it is not claimed as served acceptance.
+- PR209 remote gates and production release remain. Existing release approval
+  persists; no backend/persistence changes or new disclosure/spend authority.
+  This follow-up adds only receipt/checkpoint documentation; reviewed runtime/
+  tests/intention remain unchanged. Preserve the exact packet digest at handoff.
+- Next evidence checkpoint: required CI, merged/deployed exact source and the
+  public phone journey. Remaining estimate15–25 minutes from the local checkpoint,
+  assuming gates pass. No new product fix selected after independent approval.
