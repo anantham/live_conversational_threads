@@ -1616,7 +1616,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   gate execution and exit status. Obtain mandatory non-OpenAI independent review.
   This is a separately scoped proposal; the existing hook was not bypassed or changed.
 
-## 2026-10-02 — Viewer exploration continuity (LOCAL ACCEPTANCE PASSED; REVIEW/RELEASE OPEN)
+## 2026-10-02 — Viewer exploration continuity (REVIEW APPROVED; RELEASE/PUBLIC ACCEPTANCE OPEN)
 
 - Outcome: explore a thread, read its source and details, and return to a previous
   place without losing context. Integration owner: Codex. Authoritative checkout:
@@ -1665,10 +1665,11 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   pan restoration, immediate aliases, source seeks and seven-moment reading.
   Separate actual native YouTube play/pause/seek checks pass at 1440px and 390px.
   Affected unit tests pass 106/106; scoped lint is clean and the build passes.
-- Next evidence checkpoint: required full frontend push gate and independent
-  review of the exact committed source/test/spec packet, then public verification
-  of the served release. Remaining integration/release engineering estimate is
-  0.5–1 hour if review approves, revised from the earlier 1–3 hour repair range
-  after the camera race was resolved. Independent provider and deployment waits
-  are separate dependencies with no measured duration estimate. Public runtime
-  is still unchanged; no independent approval or release is claimed yet.
+- Source head 7354564 is pushed in PR207. Full frontend gate passes 512/512;
+  Google Gemini 3.1 Pro via AGY approves the exact source/test/spec packet with
+  no findings (135 seconds for this one review). Receipt is in docs/reviews.
+- Next evidence checkpoint: remote browser gate, merge/deployment and public
+  desktop/phone verification. Remaining estimate is 15–25 minutes if the required
+  remote checks pass, revised at the review checkpoint. Provider wait is complete;
+  deployment duration is not yet measured. Public runtime is still unchanged;
+  independent approval does not establish a served or accepted journey.
