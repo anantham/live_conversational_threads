@@ -44,3 +44,15 @@ Back/Forward/Alt+Left outcomes. Existing unrelated unit act warnings persist.
 This receipt and milestone checkpoint are mechanical documentation. Verify
 reviewed two-file packet is byte-identical at final PR head before merge.
 Remote CI, deployment and public desktop/phone confirmation remain pending.
+
+## Served acceptance — 2026-10-02 18:25 IST
+
+Final PR head93296bcc7fe749c92e45a0d8524457cacf63b77c retains the reviewed two-file
+packet exactly (6431bytes, same SHA256). Mechanical receipt/checkpoint only.
+PR210 merged3671f86f21838ab056a2cc778ca60d89c7e39763 at12:51:41UTC; production
+6808810464 succeeded12:52:13UTC. Actual public1440/390 first-load geometry and
+Back/Forward/Alt+Left/Alt+Right interactions pass; Find horizontal position and
+control width remain stable when enabled. Paired live screenshots inspected;
+zero page errors. Final mandatory513/513, CI browser14/14, live production9/9
+workflow37009320370. Scope complete; no unresolved independent-review overclaim.
+Final closure documentation is pushed on the task branch; public source3671f86.

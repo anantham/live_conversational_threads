@@ -1747,7 +1747,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
  20–40 and then15–25-minute ranges covered the repair/review/release. Latest
  5–10-minute publication checkpoint is satisfied. Detailed receipt in docs/reviews.
 
-## 2026-10-02 — Compact readable Back/Forward controls (IN PROGRESS)
+## 2026-10-02 — Compact readable Back/Forward controls (DELIVERED)
 
 - Human-approved outcome: the toolbar's space before Find reads as navigation,
   with visible disabled arrows and compact desktop spacing.
@@ -1768,3 +1768,12 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - 18:16 IST: source82d14ec committed/pushed; PR210 attached. Full gate513/513.
   Eligible Google Gemini/AGY independent review APPROVED, no findings. Remaining:
   remote checks, deployment, actual public desktop/phone acceptance.
+- 18:25 IST delivery: PR210 merged18:21:41; main3671f86 production deployment
+ 6808810464 succeeded18:22:13. Public1440/390 actual interactions confirm18px
+  arrows, opacity1, desktop50px group, phone44×44px targets; Back/Forward and
+  Alt+Left/Right restore Overview; enabling history preserves Find's horizontal
+  position. Paired live screenshots inspected, zero page errors. CI browser14/14
+  and live production9/9 pass. Reviewed source packet unchanged at final PR head.
+- All finite acceptance checks met. Remaining delivery dependency:none. Next
+  evidence checkpoint:any reported regression. Final closure record is pushed
+  on the task branch; served product source is main3671f86.

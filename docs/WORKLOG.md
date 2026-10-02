@@ -6996,3 +6996,32 @@ User observed an empty desktop transcript until node selection, with only the cu
 - This checkpoint/receipt changes documentation only. Next: confirm unchanged
   source packet at final head; CI/Vercel checks, bounded approved release and
   public1440/390 navigation/geometry evidence. Source not yet merged or served.
+
+### 2026-10-02 18:25 IST — History-control repair served and accepted
+
+- Reviewed source packet remained byte-identical at final PR head93296bcc:
+ 6431bytes, SHA25669860c4411459d8cb3a69fa8ff0509a1d27b0ccb7e696778290a390368c53b68.
+  Mechanical review receipt/board changes only. Final mandatory gate513/513
+  passes29.51s; CI browser14/14 passes55.0s, both Python checks and Vercel pass.
+- Approved release: PR210 merged12:51:41UTC as3671f86f21838ab056a2cc778ca60d89c7e39763.
+  Production deployment6808810464 success12:52:13UTC; immutable deployment
+  https://lct-mhar5a7i3-adityas-projects-9c03351d.vercel.app. Existing public alias
+  https://threads.adityaarpitha.com/view?src=%2Fexperiments%2Foverlapping.threads
+  verified against real1440/390 Chromium interactions12:54:48–12:55:02UTC.
+- Direct public values: desktop group50px,24×32px targets; phone group90px,
+ 44×44px targets; every disabled arrow18×18px, padding0, opacity1. Back/Forward,
+  Alt+Left and Alt+Right restore Overview in both viewports. Find's horizontal
+  position and group width stable after enabling. Zero page errors. Live paired
+  screenshots inspected:tmp/viewer-controls-live-1440.png and390.png; detailed
+  numeric record:tmp/viewer-controls-live-report.json. No broader audit claimed.
+- Initial public probe incorrectly sought Find as a button; existing Find is a
+  native summary. Corrected scratch-only selector to the actual toolbar summary;
+  exact assertions unchanged and final public probe passes. No product edit.
+- Production workflow37009320370 passes9/9 in14.2s against source3671f86.
+  All finite slice checks delivered. Independent Google Gemini/AGY approved final
+  source, no findings fixed/rejected/disputed. Existing unrelated unit act/bundle
+  warnings remain; no new runtime warning or source change introduced here.
+- Final closure documentation committed/pushed on the task branch; deployed
+  source remains main3671f86. Dirty preexisting AGENTS.md preserved. No backend
+  restart, recording/transcript mutation or optional UI scope opened. Remaining
+  delivery dependency:none; next checkpoint:any reported regression.
