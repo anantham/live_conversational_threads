@@ -50,4 +50,22 @@ describe("TooltipButton", () => {
     act(() => document.dispatchEvent(new KeyboardEvent("keydown", {key:"Escape",bubbles:true})));
     expect(container.textContent).toBe("");
   });
+
+  it("dismisses hover help without consuming Escape from another focused control", () => {
+    let cancelled = 0;
+    act(() => root.render(<><TooltipButton aria-label="Back" tooltip="Exploration history.">←</TooltipButton><input aria-label="Unrelated input" /></>));
+    const input = container.querySelector("input");
+    input.addEventListener("keydown", event => { if (event.key === "Escape") cancelled++; });
+    act(() => {
+      input.focus();
+      container.querySelector("span").dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
+    expect(document.querySelector('[role="tooltip"]')).not.toBeNull();
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    act(() => input.dispatchEvent(escape));
+    expect(cancelled).toBe(1);
+    expect(escape.defaultPrevented).toBe(false);
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
+    expect(document.activeElement).toBe(input);
+  });
 });

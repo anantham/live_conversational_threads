@@ -35,12 +35,14 @@ export default function TooltipButton({ tooltip, placement = "bottom", align = "
       const alternate = placement === "top" ? below : above;
       const fits = (top) => top >= 8 && top + hint.height <= window.innerHeight - 8;
       const top = fits(preferred) ? preferred : fits(alternate) ? alternate : Math.max(8, Math.min(preferred, window.innerHeight - hint.height - 8));
-      setPosition({ left, top });
+      setPosition(previous => previous?.left === left && previous?.top === top ? previous : { left, top });
     };
     const escape = (event) => {
       if (event.key !== "Escape") return;
-      event.preventDefault();
-      event.stopPropagation();
+      if (trigger.current?.contains(document.activeElement)) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       setOpen(false);
     };
     update();

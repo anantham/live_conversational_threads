@@ -79,6 +79,8 @@ for (const width of [1440,390,1024]) test(`navigation hints explain history and 
   await page.keyboard.press('Escape');await expect(page.getByRole('tooltip')).toHaveCount(0);
   await page.mouse.move(0,0);await historyHelp.focus();
   await expect(page.getByRole('tooltip')).toContainText('Alt + Left');
+  const focusOutline=await historyHelp.evaluate(el=>{const style=getComputedStyle(el);return {visible:el.matches(':focus-visible'),style:style.outlineStyle,width:parseFloat(style.outlineWidth)};});
+  expect(focusOutline.visible).toBe(true);expect(focusOutline.style).not.toBe('none');expect(focusOutline.width).toBeGreaterThan(0);
   await page.keyboard.press('Enter');await expect(back).toBeDisabled();
   await page.keyboard.press('Escape');await page.getByRole('button',{name:/^Conversation overview:/}).focus();
   await selectFirst(page);
@@ -88,6 +90,15 @@ for (const width of [1440,390,1024]) test(`navigation hints explain history and 
   expect(box.y).toBeGreaterThanOrEqual(8);expect(box.y+box.height).toBeLessThanOrEqual(892);
   await page.screenshot({path:test.info().outputPath('history-help-with-source-and-timeline.png')});
   await page.keyboard.press('Escape');await page.getByRole('button',{name:'Source',exact:true}).click();
+  await back.hover();await expect(page.getByRole('tooltip')).toBeVisible();
+  // Source has focus while history help is hovered: Escape still closes details.
+  await page.keyboard.press('Escape');await expect(page.getByRole('tooltip')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('navigation',{name:/reading controls/})).toHaveCount(0);
+  // Escape clears exploration selection as before. Re-enter the thread, then
+  // use its explicit Close button to check the distinct retained-path behavior.
+  const label=firstThread(page);await label.click();
+  await label.locator('..').getByRole('button',{name:/Next node/}).click();
   await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
   // Closing details keeps the seven-node thread path active; it must not claim
   // conversation scope when the populated conversation has twenty-one moments.
