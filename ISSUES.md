@@ -1584,3 +1584,16 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   neither blocks video actions. Nonblocking and outside this correction's scope.
   Recommended next step: make the legend respect pane reservations and recheck
   automatic passage following on viewport changes in a bounded responsive pass.
+
+## 2026-10-02 — Phone Source blocked by graph overlays
+
+- Instrument: after live thread/search/view cycling at 390x844 with timeline and
+  selection retained, the Source naming summary click was intercepted by graph
+  reading controls and a selected-node sheet covered Source. Blocks phone naming.
+- Corrected locally: Source temporarily suspends the phone sheet without losing
+  selection, the graph contains its floating controls, and compact video Source
+  reserves graph space using available pane height. A regression failed before
+  the change and passed after it, including name application/detail restoration.
+  Google Gemini through Antigravity approved the exact correction with no findings;
+  live publication/recheck pending. Desktop behavior stays
+  covered by the existing browser suite; no recording or transcript data changed.

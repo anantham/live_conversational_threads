@@ -95,3 +95,40 @@ test('keeps the phone transcript and speaker editor in separate readable section
   expect(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await expect(source.getByLabel('Selected speaker passages').getByRole('button')).toHaveCount(3);
 });
+
+// Intent: opening Source on a phone suspends the selected-node sheet, keeps the
+// graph's floating controls inside its remaining space, and permits a real name edit
+// while the timeline is expanded. Closing Source restores the selected detail.
+test('keeps phone Source interactive with a selected moment and the timeline open', async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(() => {
+    window.__MG_DEBUG__=false;
+    window.YT={Player:function(host,config){
+      const iframe=document.createElement('iframe');host.replaceWith(iframe);
+      queueMicrotask(()=>config.events.onReady());
+      return {getPlayerState:()=>5,getCurrentTime:()=>0,cueVideoById:()=>{},getIframe:()=>iframe,destroy:()=>iframe.remove()};
+    }};
+  });
+  await page.goto('/view');
+  await page.locator('input[type="file"]').setInputFiles({name:'synthetic.threads',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(artifact()))});
+  await page.getByRole('button',{name:'Show thread timeline'}).click();
+  const label=page.getByTestId('thread-label-gutter').getByRole('button',{name:/Synthetic seven-moment thread/}).first();
+  await label.click();
+  await label.locator('..').getByRole('button',{name:/Next node/}).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.getByRole('button',{name:'Source',exact:true}).click();
+  const source=page.getByRole('complementary',{name:'YouTube source'});
+  await expect(source).toBeVisible();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await source.getByText('Name the speakers',{exact:true}).click();
+  await source.getByLabel('Speaker name',{exact:true}).fill('Phone example');
+  await source.getByRole('button',{name:'Apply name',exact:true}).click();
+  await expect(source.getByLabel('Speaker to name').locator('option:checked')).toHaveText('Phone example');
+  const sourceBox=await source.boundingBox();
+  const navigationBox=await page.getByRole('navigation',{name:'Selected thread reading controls'}).boundingBox();
+  expect(navigationBox.y).toBeGreaterThanOrEqual(sourceBox.y+sourceBox.height-1);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
+  await source.getByRole('button',{name:'Hide source panel'}).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog').locator('h2')).toHaveText('Fixture moment 1');
+});
