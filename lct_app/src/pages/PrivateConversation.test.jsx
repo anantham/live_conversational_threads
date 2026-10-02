@@ -122,4 +122,3 @@ it("restarts the initial cancelled read in StrictMode without stale state", asyn
   expect(fetch.mock.calls[0][1].signal.aborted).toBe(true);
   expect(fetch.mock.calls.at(-1)[1].signal.aborted).toBe(false);
 });
-
