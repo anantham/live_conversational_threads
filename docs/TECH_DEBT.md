@@ -382,3 +382,18 @@ The live phone follow-up adds only a detail-sheet visibility condition and pane
 containment to ThreadsViewer. Keep narrow-screen pane reservation and modal
 visibility together when extracting its layout boundary; treating each panel's
 viewport-height cap independently caused the Source interaction obstruction.
+
+### 2026-10-02 — Exploration continuity follow-up
+
+Session history is extracted into useViewerHistory.js and graph snapshot
+validation into graphNavigationSnapshot.js. MinimalGraph still owns multiple
+camera effects; restoration must suppress every automatic fit/center path.
+Extract a single viewport coordinator in a dedicated future refactor, retaining
+the actual-browser manual-pan/Back regression. ThreadsViewer still mixes artifact
+loading and pane navigation; its explicit snapshot boundary should guide a later
+split. NodeDetail's evidence/navigation sections remain prior candidates.
+
+Native video controls supersede the additional SourcePlaybackControls in the
+public viewer. That unused component and its isolated tests are a removal
+candidate for a separate cleanup; the SDK readiness, retry and cancellation
+lifecycle remains active and tested in YouTubeSourcePanel.

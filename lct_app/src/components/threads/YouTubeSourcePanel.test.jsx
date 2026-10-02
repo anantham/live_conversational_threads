@@ -8,7 +8,7 @@ import YouTubeSourcePanel from "./YouTubeSourcePanel";
 // - Speaker names appear beside timestamped context, save by stable speaker ID, and export the reviewed bundle.
 // - Transcript passages size and scroll automatically without a height slider; YouTube fallback stays visible.
 // - Video and transcript disclosures remain independent; unmount stops polling.
-// - Play/Pause is visible outside a ready embed; blocked/stalled embeds never leave an unexplained blank host.
+// - Ready embeds use native controls; blocked/stalled embeds explain failure and preserve retry position.
 let container, root, options, player, time, playerState;
 const utterances = [
   {id: "a", text: "First sentence", speaker_id: "A", timestamp_start: 10, timestamp_end: 15},
@@ -171,7 +171,8 @@ it("explains a stalled player, retries at the retained passage, and clears wait 
  act(()=>options.events.onReady());
  expect(time).toBe(50);
  expect(container.querySelector('[role="alert"]')).toBeNull();
- expect([...container.querySelectorAll('button')].some(button=>button.textContent==="Play video")).toBe(true);
+ expect(options.playerVars.controls).toBe(1);
+ expect(container.querySelector('[aria-busy="true"]')).toBeNull();
  act(()=>root.unmount());
  // JSDOM queues native details toggle events; flush them before checking application timers.
  act(()=>vi.advanceTimersByTime(1));
@@ -201,21 +202,19 @@ it("retains the observed playback position when retrying an embed failure", asyn
  expect(highlight()).toContain("Second sentence");
 });
 
-it("provides visible Play and Pause at the cued passage, following native state changes",async()=>{
+it("uses native controls at the cued passage and follows native playback state",async()=>{
  await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]} seekRequest={{seconds:50}}/>));
  expect([...container.querySelectorAll('button')].some(b=>b.textContent==="Play video")).toBe(false);
  act(()=>options.events.onReady());
- const button=()=>[...container.querySelectorAll('button')].find(b=>/^(Play|Pause) video$/.test(b.textContent));
- expect(button().textContent).toBe("Play video");
- act(()=>button().click());
+ expect(options.playerVars.controls).toBe(1);
+ expect([...container.querySelectorAll('button')].some(b=>/^(Play|Pause) video$/.test(b.textContent))).toBe(false);
+ act(()=>player.playVideo());
  expect(time).toBe(50);
  expect(playerState).toBe(1);
- expect(button().textContent).toBe("Pause video");
- act(()=>button().click());
+ act(()=>player.pauseVideo());
  expect(playerState).toBe(2);
- expect(button().textContent).toBe("Play video");
- act(()=>{playerState=1;options.events.onStateChange();});
- expect(button().textContent).toBe("Pause video");
+ act(()=>{time=22;playerState=1;options.events.onStateChange();});
+ expect(highlight()).toContain("Second sentence");
 });
 
 it("keeps a timed-out embed failed even if it reports late readiness",async()=>{
@@ -239,21 +238,14 @@ it("explains blocked playback with a usable recording link",async()=>{
  expect(container.querySelector('[role="alert"]')).toBeNull();
 });
 
-it("shows elapsed time when Play stalls, stops waiting, and cleans up on close",async()=>{
- player.playVideo=()=>{};
- await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]}/>));
+it("reports a passage jump for history without issuing a duplicate local seek",async()=>{
+ const navigate=vi.fn();
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]} onNavigatePassage={navigate}/>));
  act(()=>options.events.onReady());
- act(()=>[...container.querySelectorAll('button')].find(b=>b.textContent==="Play video").click());
- expect([...container.querySelectorAll('button')].find(b=>b.textContent==="Play video").disabled).toBe(true);
- expect(container.querySelector('[role="status"]').textContent).toBe("Starting playback");
- act(()=>vi.advanceTimersByTime(2000));
- expect(container.textContent).toContain("2s elapsed · Time remaining unknown");
- act(()=>vi.advanceTimersByTime(18000));
- expect(container.querySelector('[role="alert"]').textContent).toContain("taking longer than expected");
- expect(container.querySelector('[role="status"]')).toBeNull();
- expect([...container.querySelectorAll('button')].find(b=>b.textContent==="Play video").disabled).toBe(false);
- act(()=>root.unmount());
- act(()=>vi.advanceTimersByTime(1));
- expect(vi.getTimerCount()).toBe(0);
- root=createRoot(container);
+ player.cueVideoById.mockClear();
+ act(()=>[...container.querySelectorAll('button')].find(b=>b.textContent.includes("Second sentence")).click());
+ expect(navigate).toHaveBeenCalledExactlyOnceWith(20);
+ expect(player.cueVideoById).not.toHaveBeenCalled();
+ await act(async()=>root.render(<YouTubeSourcePanel bundle={bundle} nodes={[node]} onNavigatePassage={navigate} seekRequest={{seconds:20}}/>));
+ expect(time).toBe(20); expect(player.cueVideoById).toHaveBeenCalledOnce();
 });

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import { ChevronDown, ChevronRight, CornerDownRight, Link2 } from "lucide-react";
 import { AUTHORED_LEVELS, SPEAKER_COLORS } from "../graphConstants";
 import { buildDiscussionModel } from "./discussionModel";
 import { buildSpeakerContributions } from "../graph/speakerContributions";
+import { mediaOffsetLabel } from "../../services/mediaSeek";
 
 const EMPTY = [];
 const control = "min-h-11 rounded px-2 text-sm hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700";
@@ -18,9 +19,17 @@ const namedSpeaker = (row, id) => [row?.speaker_name, row?.speaker_display]
 const initialsOf = (label) => String(label).split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
 const referencePrefix = { 5: "Arc", 4: "Theme", 3: "Topic", 2: "Idea", 1: "Moment" };
 
-export default function DiscussionView({ nodes, utterances = EMPTY, speakerColorMap = {}, evidenceStatus = "ready", focusRequest, linkBase }) {
+export default function DiscussionView({ nodes, utterances = EMPTY, speakerColorMap = {}, evidenceStatus = "ready", focusRequest, linkBase, expandedIds, onExpandedChange, navigationRestoreKey = 0, onOpenPassage }) {
   const model = useMemo(() => buildDiscussionModel(nodes, utterances), [nodes, utterances]);
-  const [expanded, setExpanded] = useState(() => new Set());
+  const [localExpanded, setLocalExpanded] = useState(() => new Set());
+  const expanded = useMemo(() => expandedIds ? new Set(expandedIds) : localExpanded, [expandedIds, localExpanded]);
+  const expandedRef = useRef(expanded);
+  expandedRef.current = expanded;
+  const setExpanded = useCallback((update) => {
+    const next = typeof update === "function" ? update(expandedRef.current) : update;
+    expandedRef.current = next;
+    if (onExpandedChange) onExpandedChange([...next]); else setLocalExpanded(next);
+  }, [onExpandedChange]);
   const [focusTarget, setFocusTarget] = useState(null);
   const contributions = useMemo(() => buildSpeakerContributions(nodes, utterances), [nodes, utterances]);
   const [linkStatus, setLinkStatus] = useState("");
@@ -31,6 +40,12 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
   const handledHash = useRef(null);
   const copyCount = useRef(0);
   const prefix = useId();
+  useLayoutEffect(() => {
+    if (!navigationRestoreKey) return;
+    handledFocusRequest.current = requestedNodeId ? `${requestedNodeId}:${requestKey ?? ""}` : null;
+    try { handledHash.current = window.location.hash.startsWith("#discussion=") ? decodeURIComponent(window.location.hash.slice(12)) : null; }
+    catch { handledHash.current = null; }
+  }, [navigationRestoreKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const speakers = useMemo(() => {
     const labels = new Map();
     model.utteranceById.forEach((row) => {
@@ -102,7 +117,7 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
       return next;
     });
     setFocusTarget(id);
-  }, [model]);
+  }, [model, setExpanded]);
   useEffect(() => {
     if (!requestedNodeId) {
       handledFocusRequest.current = null;
@@ -155,6 +170,7 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
       style={speakerId ? { backgroundColor: `${colors[speakerId] || SPEAKER_COLORS[0]}1a` } : undefined}>
       {speakerId ? avatar(speakerId, "h-8 w-8") : <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[11px] font-semibold text-slate-900">{initialsOf(speaker)}</span>}
       <div className="min-w-0 flex-1">
+        {onOpenPassage && <button type="button" onClick={() => onOpenPassage({ id: row.id, seconds: row.timestamp_start })} className="min-h-11 rounded px-1 text-xs text-amber-800 underline underline-offset-2" aria-label={`Open source passage${mediaOffsetLabel(row.timestamp_start) ? ` at ${mediaOffsetLabel(row.timestamp_start)}` : ""}`}>{mediaOffsetLabel(row.timestamp_start) || "Source"}</button>}
         <p className="text-xs font-medium text-slate-600">{speaker}</p>
         <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-7 text-slate-800">{typeof row.text === "string" && row.text.length ? row.text : "Exact utterance text unavailable."}</p>
       </div>
@@ -215,7 +231,7 @@ export default function DiscussionView({ nodes, utterances = EMPTY, speakerColor
       </div>}
     </li>;
   };
-  return <section aria-label="Discussion" className="h-full min-h-0 overflow-y-auto bg-[#fdfdfb] px-3 py-5 sm:px-6">
+  return <section data-viewer-scroll="discussion" aria-label="Discussion" className="h-full min-h-0 overflow-y-auto bg-[#fdfdfb] px-3 py-5 sm:px-6">
     <div className="mx-auto max-w-[75ch]">
       <p className="mb-3 text-sm leading-6 text-slate-600">Open a branch to follow its ideas and exact words. A moment can belong to several ideas; shared links lead to the same passage.</p>
       <p role={linkStatus ? "status" : undefined} aria-live="polite" aria-atomic="true"
@@ -239,4 +255,8 @@ DiscussionView.propTypes = {
   evidenceStatus: PropTypes.oneOf(["ready", "loading", "error"]),
   focusRequest: PropTypes.shape({ id: PropTypes.string, requestKey: PropTypes.number }),
   linkBase: PropTypes.string,
+  expandedIds: PropTypes.arrayOf(PropTypes.string),
+  onExpandedChange: PropTypes.func,
+  navigationRestoreKey: PropTypes.number,
+  onOpenPassage: PropTypes.func,
 };

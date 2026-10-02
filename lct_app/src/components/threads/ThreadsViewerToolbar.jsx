@@ -1,6 +1,6 @@
 import { useRef } from "react";
 import PropTypes from "prop-types";
-import { ChevronRight, Download, Focus, FolderOpen, Network, MessageSquare, Layers, FilePlus2, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronRight, Download, Focus, FolderOpen, Network, MessageSquare, Layers, FilePlus2, RefreshCw, FileVideo } from "lucide-react";
 import ViewerFindMenu from "./ViewerFindMenu";
 
 const buttonClass = "min-h-11 rounded px-3 text-sm hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700";
@@ -18,10 +18,11 @@ const titleCase = (value) => value[0].toUpperCase() + value.slice(1);
 export function ViewerModeButton({ viewMode, modes, onViewModeChange }) {
   const nextMode = modes[(modes.indexOf(viewMode) + 1) % modes.length];
   const CurrentViewIcon = viewIcons[viewMode] || Layers;
-  return <div role="group" aria-label="Conversation view" className="flex justify-center gap-1">
+  return <div role="group" aria-label="Conversation view" className="flex gap-1">
     <button type="button" aria-label={`Current view: ${titleCase(viewMode)}. Switch to ${titleCase(nextMode)} view.`}
       onClick={() => onViewModeChange(nextMode)}
-      className={`${buttonClass} inline-flex items-center gap-2 bg-slate-800 text-white hover:bg-slate-700`}>
+      title={`Switch to ${titleCase(nextMode)} view`}
+      className="inline-flex min-h-11 items-center gap-1 rounded border border-slate-200 bg-white px-3 py-1 text-[10px] font-medium text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-700 sm:min-h-0 sm:px-2">
       <CurrentViewIcon aria-hidden="true" size={16} />
       <span>{titleCase(viewMode)}</span>
       <span className="sr-only">Switch to {titleCase(nextMode)} view</span>
@@ -32,23 +33,24 @@ ViewerModeButton.propTypes = { viewMode: PropTypes.string.isRequired, modes: Pro
 
 export default function ThreadsViewerToolbar({
   viewMode, modes, onViewModeChange, graphToolsRef, graphTierRef, findGroups, onFindNode, searchDocuments, onSearchResult,
-  overviewAvailable, overviewOpen, onToggleOverview,
+  history,
   sourceAvailable, sourceOpen, onToggleSource,
-  timelineAvailable, timelineOpen, onToggleTimeline,
   onDownloadTranscript, onEnterFocus, onOpenLibrary, onOpenAnother, onRefreshFromDrive,
   cardSettings, libraryStatus, coverage,
 }) {
   const moreMenu = useRef(null);
-  return <div role="toolbar" aria-label="Conversation tools" className="relative z-50 grid shrink-0 grid-cols-1 gap-1 border-b border-slate-200 bg-white px-2 py-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center sm:px-4">
-    <div className="flex min-w-0 flex-wrap items-center gap-1">
+  return <div role="toolbar" aria-label="Conversation tools" className="relative z-50 flex shrink-0 flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-2 py-1 sm:px-4">
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+      {history && <nav aria-label="Exploration history" className="flex shrink-0 items-center">
+        <button type="button" aria-label="Back" title="Back through exploration (Alt + Left)" disabled={!history.canBack} onClick={history.goBack} className={`${secondaryButtonClass} flex w-11 items-center justify-center px-0 disabled:opacity-30 sm:min-h-0 sm:w-7 sm:py-1`}><ArrowLeft aria-hidden="true" size={16} /></button>
+        <button type="button" aria-label="Forward" title="Forward through exploration (Alt + Right)" disabled={!history.canForward} onClick={history.goForward} className={`${secondaryButtonClass} flex w-11 items-center justify-center px-0 disabled:opacity-30 sm:min-h-0 sm:w-7 sm:py-1`}><ArrowRight aria-hidden="true" size={16} /></button>
+      </nav>}
       <ViewerFindMenu groups={findGroups} onSelect={onFindNode} documents={searchDocuments} onResult={onSearchResult} />
       <div ref={graphToolsRef} className="flex min-w-0 items-center gap-1" />
+      <ViewerModeButton viewMode={viewMode} modes={modes} onViewModeChange={onViewModeChange} />
     </div>
-    <ViewerModeButton viewMode={viewMode} modes={modes} onViewModeChange={onViewModeChange} />
-    <div className="flex flex-wrap items-center justify-end gap-1">
-      {overviewAvailable && <button type="button" className={secondaryButtonClass} aria-pressed={overviewOpen} onClick={onToggleOverview}>Overview</button>}
-      {sourceAvailable && <button type="button" className={secondaryButtonClass} aria-pressed={sourceOpen} onClick={onToggleSource}>Source</button>}
-      {timelineAvailable && <button type="button" className={secondaryButtonClass} aria-pressed={timelineOpen} onClick={onToggleTimeline}>Threads</button>}
+    <div className="flex shrink-0 items-center justify-end gap-1">
+      {sourceAvailable && <button type="button" className={`${secondaryButtonClass} flex w-11 items-center justify-center px-0`} aria-label="Source" title={sourceOpen ? "Hide source" : "Show source"} aria-pressed={sourceOpen} onClick={onToggleSource}><FileVideo aria-hidden="true" size={18} /></button>}
       <details key={viewMode} ref={moreMenu} className="group relative">
         <summary className={`${secondaryButtonClass} flex min-h-11 cursor-pointer list-none items-center gap-2`}><ChevronRight aria-hidden="true" size={16} className="transition-transform group-open:rotate-90" />More</summary>
         <div className="fixed right-3 top-3 z-[70] max-h-[calc(100dvh-1.5rem)] w-[min(15rem,calc(100vw-1.5rem))] overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-lg">
@@ -70,7 +72,7 @@ export default function ThreadsViewerToolbar({
         </div>
       </details>
     </div>
-    {viewMode === "graph" && <div ref={graphTierRef} className="min-w-0 overflow-x-auto sm:col-span-3" />}
+    {viewMode === "graph" && <div ref={graphTierRef} className="w-full min-w-0 overflow-x-auto" />}
   </div>;
 }
 
@@ -84,15 +86,10 @@ ThreadsViewerToolbar.propTypes = {
   onFindNode: PropTypes.func.isRequired,
   searchDocuments: PropTypes.array,
   onSearchResult: PropTypes.func,
-  overviewAvailable: PropTypes.bool,
-  overviewOpen: PropTypes.bool,
-  onToggleOverview: PropTypes.func.isRequired,
+  history: PropTypes.shape({canBack: PropTypes.bool, canForward: PropTypes.bool, goBack: PropTypes.func, goForward: PropTypes.func}),
   sourceAvailable: PropTypes.bool,
   sourceOpen: PropTypes.bool,
   onToggleSource: PropTypes.func.isRequired,
-  timelineAvailable: PropTypes.bool,
-  timelineOpen: PropTypes.bool,
-  onToggleTimeline: PropTypes.func.isRequired,
   onDownloadTranscript: PropTypes.func.isRequired,
   onEnterFocus: PropTypes.func.isRequired,
   onOpenLibrary: PropTypes.func.isRequired,

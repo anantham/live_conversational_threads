@@ -10,6 +10,7 @@ import {
 } from "../hooks/useMediaQuery";
 import {
   buildRibbonLayout,
+  buildChronologicalPath,
   buildTimeAxisTicks,
   formatSecondsToTimestamp,
   UNGROUPED_KEY,
@@ -26,6 +27,8 @@ const DEFAULT_LABEL_GUTTER_W = 160; // px for the sticky thread-label column
 const MIN_LABEL_GUTTER_W = 112;
 const MAX_LABEL_GUTTER_W = 420;
 const MAX_VISIBLE_ROWS = 6; // beyond this the lane stack scrolls vertically
+const EXPANDED_DESKTOP_HEIGHT = "55dvh";
+const EXPANDED_COMPACT_HEIGHT = "40dvh";
 const RULER_H = 18; // px band under the lanes for the time-axis ruler (time mode)
 const THREAD_COLORS = ["#64748b", "#a78b6d", "#6b9080", "#8b7da3", "#7394a8", "#b58b80"];
 
@@ -37,6 +40,7 @@ export default function TimelineRibbon({
   expanded,
   onExpandedChange,
   onReadingPathChange,
+  activeThreadId,
 }) {
   const compact = useMediaQuery(COMPACT_VIEWER_QUERY);
   const readerChangedCollapsed = useRef(false);
@@ -53,7 +57,14 @@ export default function TimelineRibbon({
   const [labelGutterWidth, setLabelGutterWidth] = useState(DEFAULT_LABEL_GUTTER_W);
   const [hoveredThread, setHoveredThread] = useState(null);
   const [panelHeight, setPanelHeight] = useState(null);
+  const [showMoreLanes, setShowMoreLanes] = useState(false);
   const labelResizeRef = useRef(null);
+
+  // Parent navigation can restore a reading path without replaying a lane click.
+  // Undefined leaves existing locally managed timeline behavior intact.
+  useEffect(() => {
+    if (activeThreadId !== undefined) setHighlightedThread(activeThreadId);
+  }, [activeThreadId]);
 
   useEffect(() => {
     if (expanded == null && !readerChangedCollapsed.current) setLocalCollapsed(compact);
@@ -69,6 +80,12 @@ export default function TimelineRibbon({
 
   const layout = useMemo(() => buildRibbonLayout(allNodes), [allNodes]);
   const { rows, totalWidth, timeBased, span, pixelsPerSecond } = layout;
+  const authoredCount = rows.filter((row) => row.threadId !== UNGROUPED_KEY).length;
+  const unassignedCount = rows.find((row) => row.threadId === UNGROUPED_KEY)?.count || 0;
+  const chronologicalPath = useMemo(
+    () => buildChronologicalPath(rows, allNodes),
+    [rows, allNodes],
+  );
   const totalDurationLabel =
     timeBased && span ? formatSecondsToTimestamp(span.max - span.min) : null;
 
@@ -81,7 +98,9 @@ export default function TimelineRibbon({
   // Flat id -> {x, ts} lookup for scroll-to-selected.
   const placedById = useMemo(() => {
     const m = new Map();
-    for (const row of rows) for (const n of row.nodes) m.set(n.id, n);
+    for (const row of rows) for (const n of row.nodes) {
+      if (!m.has(n.id) || n.thread_id === row.threadId) m.set(n.id, n);
+    }
     return m;
   }, [rows]);
 
@@ -157,7 +176,7 @@ export default function TimelineRibbon({
     const next = highlightedThread === threadId ? null : threadId;
     setHighlightedThread(next);
     const row = next ? rows.find((candidate) => candidate.threadId === next) : null;
-    onReadingPathChange?.({ threadId: next, nodeIds: row ? row.nodes.map((node) => String(node.id)) : [] });
+    onReadingPathChange?.({ threadId: next, nodeIds: row ? [...new Set(row.nodes.map((node) => String(node.id)))] : [] });
   }, [highlightedThread, onReadingPathChange, rows]);
 
   // Step selection through a thread's nodes in time order, wrapping around. The
@@ -167,7 +186,7 @@ export default function TimelineRibbon({
     (threadId, dir) => {
       const row = rows.find((r) => r.threadId === threadId);
       if (!row || row.nodes.length === 0) return;
-      const ids = row.nodes.map((n) => n.id);
+      const ids = [...new Set(row.nodes.map((n) => n.id))];
       const cur = ids.indexOf(selectedNode);
       const nextIdx =
         cur === -1
@@ -187,6 +206,10 @@ export default function TimelineRibbon({
   const contentHeight = stackHeight + rulerH;
   const maxHeight =
     Math.min(rows.length, compact ? 2 : MAX_VISIBLE_ROWS) * rowHeight + rulerH + 4;
+  const expandedHeight = compact ? EXPANDED_COMPACT_HEIGHT : EXPANDED_DESKTOP_HEIGHT;
+  const laneViewportStyle = !compact && panelHeight != null
+    ? { height: panelHeight, maxHeight: expandedHeight }
+    : { maxHeight: showMoreLanes ? expandedHeight : `${maxHeight}px` };
 
   return (
     <section
@@ -213,8 +236,20 @@ export default function TimelineRibbon({
           Threads timeline
         </button>
         <span className="shrink-0 text-gray-400">
-          {rows.length} thread{rows.length === 1 ? "" : "s"}
+          {authoredCount} thread{authoredCount === 1 ? "" : "s"}
+          {unassignedCount > 0 ? ` · ${unassignedCount} unassigned` : ""}
         </span>
+        {!isCollapsed && rows.length > (compact ? 2 : MAX_VISIBLE_ROWS) && (
+          <button
+            type="button"
+            onClick={() => { setShowMoreLanes((value) => !value); setPanelHeight(null); }}
+            aria-expanded={showMoreLanes}
+            aria-controls="thread-timeline-lanes"
+            className="ml-auto shrink-0 rounded px-2 py-1 font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-800"
+          >
+            {showMoreLanes ? "Reduce lanes" : "Expand lanes"}
+          </button>
+        )}
         {hoveredThread && !isCollapsed ? (
           <span
             data-testid="thread-hover-label"
@@ -233,8 +268,11 @@ export default function TimelineRibbon({
       >
       <div className="t-acc-panel-inner">
       <div
+        id="thread-timeline-lanes"
+        data-testid="timeline-lane-viewport"
+        data-viewer-scroll="timeline"
         className="flex w-full overflow-y-auto"
-        style={{ height: !compact && panelHeight != null ? panelHeight : undefined, maxHeight: !compact && panelHeight != null ? "55dvh" : `${maxHeight}px` }}
+        style={laneViewportStyle}
       >
       {/* Thread-label gutter (not horizontally scrolled). Click a label to
           highlight that thread; click again or press Escape to clear. When a
@@ -332,13 +370,14 @@ export default function TimelineRibbon({
       {/* Dots region — scrolls horizontally along the (time or index) axis. */}
       <div
         ref={scrollRef}
+        data-viewer-scroll="timeline-x"
         onScroll={handleScroll}
-        className="flex-1 overflow-x-auto overflow-y-hidden"
-        style={{ scrollBehavior: compact ? "auto" : "smooth" }}
+        className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+        style={{ height: `${contentHeight}px`, minHeight: `${contentHeight}px`, scrollBehavior: compact ? "auto" : "smooth" }}
       >
         <div className="relative" style={{ width: `${totalWidth}px`, minWidth: "100%", height: `${contentHeight}px` }}>
           {timeBased && allNodes.some(n=>n.thread_ids?.length) && <svg aria-hidden="true" className="pointer-events-none absolute inset-0" width={totalWidth} height={stackHeight}>
-            <polyline fill="none" stroke="#94a3b8" strokeOpacity="0.35" strokeWidth="1" points={rows.flatMap((row,i)=>row.nodes.map(n=>({x:n.x,y:i*rowHeight+rowHeight/2,t:n.ts}))).sort((a,b)=>a.t-b.t).map(p=>`${p.x},${p.y}`).join(" ")}/>
+            <polyline fill="none" stroke="#94a3b8" strokeOpacity="0.35" strokeWidth="1" points={chronologicalPath.map((point)=>`${point.x},${point.rowIndex*rowHeight+rowHeight/2}`).join(" ")}/>
           </svg>}
           {rows.map((row, rowIdx) => {
             const dimmed = highlightedThread && highlightedThread !== row.threadId;
@@ -485,4 +524,5 @@ TimelineRibbon.propTypes = {
   expanded: PropTypes.bool,
   onExpandedChange: PropTypes.func,
   onReadingPathChange: PropTypes.func,
+  activeThreadId: PropTypes.string,
 };

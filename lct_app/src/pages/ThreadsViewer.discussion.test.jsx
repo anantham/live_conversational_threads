@@ -3,13 +3,14 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { straightTree, utterances } from "../components/discussion/discussionFixtures";
 
-const context = vi.hoisted(() => ({ compact: false, bundle: null }));
+const context = vi.hoisted(() => ({ compact: false, bundle: null, holdSave: false }));
 vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn(), useParams: () => ({}), useLocation: () => ({ pathname: "/view", search: "", state: { threadsBundle: context.bundle } }) }));
 vi.mock("../services/dataProvider", () => ({ useDataProvider: () => ({ conversations: {} }) }));
 vi.mock("../hooks/useMediaQuery", () => ({ COMPACT_VIEWER_QUERY: "", mediaQueryMatches: () => context.compact, useMediaQuery: () => context.compact }));
 vi.mock("../services/threadsArtifact", () => ({ validateThreadsArtifact: (value) => value, flattenThreadsGraph: (value) => value.flat(), readThreadsFile: vi.fn() }));
-vi.mock("../services/threadsLibraryStore", () => ({ rememberThreadsArtifact: async () => ({ id: "fixture" }), getThreadsLibraryRecord: vi.fn(), getThreadsLibraryRecordByDriveFileId: vi.fn() }));
-vi.mock("../components/MinimalGraph", () => ({ default: ({ onFocusChange, onVisibleLevelChange, setSelectedNode, navigationNodeIds }) => <div data-testid="graph" data-navigation={navigationNodeIds.join(",")}>Graph fixture
+vi.mock("../services/threadsLibraryStore", () => ({ rememberThreadsArtifact: () => context.holdSave ? new Promise(()=>{}) : Promise.resolve({id:"fixture"}), getThreadsLibraryRecord: vi.fn(), getThreadsLibraryRecordByDriveFileId: vi.fn() }));
+vi.mock("../components/MinimalGraph", () => ({ default: ({ onFocusChange, onVisibleLevelChange, setSelectedNode, navigationNodeIds, speakerDisplayNames }) => <div data-testid="graph" data-navigation={navigationNodeIds.join(",")}>Graph fixture
+  <span data-testid="graph-speaker-name">{speakerDisplayNames?.get("speaker-a")}</span>
   <button type="button" onClick={() => onFocusChange({ node_name: "Focused idea", summary: "Focused summary" })}>Focus idea</button>
   <button type="button" onClick={() => onVisibleLevelChange({ mode: "semantic", level: 3 })}>Show topics</button>
   <button type="button" onClick={() => setSelectedNode("moment")}>Open moment</button>
@@ -23,7 +24,9 @@ vi.mock("../components/TimelineRibbon", () => ({ default: ({ semanticLevel, sele
   <button type="button" onClick={() => onReadingPathChange({ threadId: "thread", nodeIds: ["moment"] })}>Select reading path</button>
 </div> }));
 vi.mock("../components/threads/YouTubeSourcePanel", () => ({ default: ({ compact, seekRequest }) => <aside data-testid="source" data-compact={String(compact)} data-seek={seekRequest?.seconds ?? ""}>Source fixture</aside> }));
-vi.mock("../components/threads/TextSourcePanel", () => ({ default: ({ selection }) => <aside data-testid="text-source" data-kind={selection?.kind || "default"} data-start={selection?.start ?? ""} data-utterance={selection?.utteranceId || ""}>Text source fixture</aside> }));
+vi.mock("../components/threads/TextSourcePanel", () => ({ default: ({ selection, bundle, onRenameSpeaker }) => <aside data-testid="text-source" data-kind={selection?.kind || "default"} data-start={selection?.start ?? ""} data-utterance={selection?.utteranceId || ""}>Text source fixture
+  <span>{bundle.utterances[0]?.speaker_name}</span><button onClick={()=>onRenameSpeaker("speaker-a","Reviewed alias")}>Apply fixture name</button>
+</aside> }));
 vi.mock("../components/threads/ViewerFindMenu", () => ({ default: ({ onResult }) => <div>
   <button type="button" onClick={() => onResult({ kind: "utterance", utteranceId: "u1", seconds: 12 })}>Find timed passage</button>
   <button type="button" onClick={() => onResult({ kind: "utterance", utteranceId: "u1" })}>Find untimed passage</button>
@@ -38,6 +41,7 @@ import ThreadsViewer from "./ThreadsViewer";
 let host, root;
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true; window.__MG_DEBUG__ = false; window.location.hash = "";
+  context.holdSave = false;
   context.bundle = { version: 1, conversation_title: "Synthetic conversation", graph_data: [straightTree], utterances, edges: [] };
   host = document.createElement("div"); document.body.appendChild(host); root = createRoot(host);
 });
@@ -89,7 +93,7 @@ it("reveals Overview from the compact graph and returns Cards to Graph after wid
   context.bundle.executive_summary = "Synthetic overview";
   await act(async () => root.render(<ThreadsViewer />));
   expect(host.textContent).not.toContain("Synthetic overview");
-  await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Overview").click());
+  await act(async () => host.querySelector('button[aria-label^="Conversation overview:"]').click());
   expect(host.textContent).toContain("Synthetic overview");
   await act(async () => host.querySelector('[aria-label="Conversation view"] button').click());
   await act(async () => host.querySelector('[aria-label="Conversation view"] button').click());
@@ -105,7 +109,7 @@ it("keeps a focused node overview available when switching to Discussion", async
   await act(async () => root.render(<ThreadsViewer />));
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Focus idea").click());
   await act(async () => host.querySelector('[aria-label="Conversation view"] button').click());
-  await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Overview").click());
+  await act(async () => host.querySelector('button[aria-label^="Conversation overview:"]').click());
   expect(host.textContent).toContain("Focused summary");
 });
 
@@ -155,9 +159,9 @@ it("opens Source for text-only artifacts and clears a previous search selection 
   await act(async () => root.render(<ThreadsViewer />));
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Find transcript passage").click());
   expect(host.querySelector('[data-testid="text-source"]')?.getAttribute("data-kind")).toBe("transcript");
-  await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Source").click());
+  await act(async () => host.querySelector('button[aria-label="Source"]').click());
   expect(host.querySelector('[data-testid="text-source"]')).toBeNull();
-  await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Source").click());
+  await act(async () => host.querySelector('button[aria-label="Source"]').click());
   expect(host.querySelector('[data-testid="text-source"]')?.getAttribute("data-kind")).toBe("default");
 });
 
@@ -175,7 +179,7 @@ it("keeps Source stacked on a narrow screen and closes it for graph Focus", asyn
   context.compact = true;
   context.bundle.media_refs = [{ provider: "youtube", video_id: "ABCDEFGHIJK", view_url: "https://www.youtube.com/watch?v=ABCDEFGHIJK", time_unit: "seconds" }];
   await act(async () => root.render(<ThreadsViewer />));
-  await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Source").click());
+  await act(async () => host.querySelector('button[aria-label="Source"]').click());
   expect(host.querySelector('[data-testid="source"]').getAttribute("data-compact")).toBe("true");
   expect(host.querySelector('[data-testid="source"]').parentElement.className).toContain("flex-col");
   await act(async () => [...host.querySelectorAll("summary")].find((item) => item.textContent === "More").click());
@@ -195,4 +199,17 @@ it("uses the same fallback timeline level in Graph and Discussion", async () => 
   expect(host.querySelector('[data-testid="timeline"]').getAttribute("data-selected")).toBe("topic");
   await act(async () => [...host.querySelectorAll("button")].find((button) => button.textContent === "Pick topic").click());
   expect(host.querySelector('[data-testid="timeline"]').getAttribute("data-selected")).toBe("topic");
+});
+
+it("propagates a Source rename to the graph and Discussion before persistence finishes", async () => {
+  context.compact=false;
+  await act(async()=>root.render(<ThreadsViewer/>));
+  await act(async()=>host.querySelector('button[aria-label="Source"]').click());
+  context.holdSave=true;
+  await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==="Apply fixture name").click());
+  expect(host.querySelector('[data-testid="graph-speaker-name"]').textContent).toBe("Reviewed alias");
+  expect(host.querySelector('[data-testid="text-source"]').textContent).toContain("Reviewed alias");
+  expect(context.bundle.utterances[0].speaker_name).toBe("Speaker Alpha");
+  await act(async()=>host.querySelector('[aria-label="Conversation view"] button').click());
+  expect(host.querySelector('[aria-label="Speaker colors"]').textContent).toContain("Reviewed alias");
 });

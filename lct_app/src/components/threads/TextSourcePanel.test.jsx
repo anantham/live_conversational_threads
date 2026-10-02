@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import TextSourcePanel from "./TextSourcePanel";
+import { renameArtifactSpeaker } from "../../services/youtubeMedia";
 
 // Test intent: untimed source results reveal original bytes and scroll the
 // selected exact transcript range or utterance into view without external work.
@@ -44,4 +45,36 @@ it("explains an unverified recording while retaining the original text",()=>{
  expect(host.querySelector('[role="status"]').textContent).toContain("YouTube source unavailable");
  expect(host.querySelector('pre').textContent).toBe(text);
  expect(host.querySelector('a')).toBeNull();
+});
+
+it("updates recognized speaker labels twice while selection and source bytes remain exact", () => {
+  const full = "[SPEAKER_00] First  phrase\r\n[SPEAKER_01] SPEAKER_00 appears in speech\n[00:00:03.000] SPEAKER_00: Final phrase\n[UNKNOWN] Unmapped";
+  const original = {
+    full_transcript: full,
+    utterances: [
+      { id: "u0", speaker_id: "SPEAKER_00", text: "First  phrase", timestamp_start: 1 },
+      { id: "u1", speaker_id: "SPEAKER_01", text: "SPEAKER_00 appears in speech", timestamp_start: 2 },
+    ],
+    graph_data: [[{ id: "n0", speaker_id: "SPEAKER_00" }]],
+  };
+  const selected = "SPEAKER_00 appears in speech";
+  const start = full.indexOf(selected);
+  const selection = { kind: "transcript", start, end: start + selected.length };
+  const render = (bundle) => act(() => root.render(<TextSourcePanel bundle={bundle} selection={selection} onClose={vi.fn()} />));
+  render(original);
+  expect(host.querySelector("pre").textContent).toBe(full);
+  const first = renameArtifactSpeaker(original, "SPEAKER_00", "Ada");
+  render(first);
+  expect(host.querySelector("pre").textContent).toBe("[Ada] First  phrase\r\n[SPEAKER_01] SPEAKER_00 appears in speech\n[00:00:03.000] Ada: Final phrase\n[UNKNOWN] Unmapped");
+  expect(host.querySelector("mark").textContent).toBe(full.slice(start, selection.end));
+  const second = renameArtifactSpeaker(first, "SPEAKER_00", "A. Rao");
+  render(second);
+  expect(host.querySelector("pre").textContent).toContain("[A. Rao] First  phrase");
+  expect(host.querySelector("pre").textContent).toContain("[00:00:03.000] A. Rao: Final phrase");
+  expect(host.querySelector("mark").textContent).toBe(selected);
+  expect(second.full_transcript).toBe(full);
+  expect(second.utterances.map(({ speaker_id }) => speaker_id)).toEqual(["SPEAKER_00", "SPEAKER_01"]);
+  expect(second.utterances.map(({ timestamp_start }) => timestamp_start)).toEqual([1, 2]);
+  act(() => host.querySelector('button[aria-pressed="false"]').click());
+  expect(host.querySelector("[aria-label='Original source passages']").textContent).toContain("A. RaoFirst  phrase");
 });

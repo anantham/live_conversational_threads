@@ -6658,3 +6658,143 @@ User observed an empty desktop transcript until node selection, with only the cu
 - The user already approved the release and its end-to-end verification. This
   correction repairs a blocking interaction discovered by that verification;
   proceed through normal checks and recheck the affected phone flow after shipping.
+
+## 2026-10-02 09:59 IST — Viewer journey closed; hook follow-up captured
+
+- Delivered and accepted within the user's explicit release authorization. Exact
+  reviewed source heads: d3fc09ae27f2fc7727de9f803095672f28ef5310 (initial viewer)
+  and 62478701a6c148bfaa6430a23426a5637defcf34 (phone correction). Google Gemini
+  3.1 Pro through Antigravity approved both with no findings, tools denied; receipts
+  remain in docs/reviews. No source or viewer behavior was rebuilt in this closure.
+- PR205 merge: 0e9fdc313820a99290d21dcf63bd54bb7c6ed5ba. PR206/final runtime merge:
+  11dda97d2f28b0dc580cff69792a4a3a98f48073. Production deployment 6800409768 reports
+  success for that SHA; live smoke workflow 36959228508 passed. Rechecked these
+  remote records and merged PR states without rerunning accepted browser evidence.
+- Live Chromium verification completed at 08:44 IST: phone Source naming with
+  timeline+selection works, detail sheet suspends/restores the same moment, all
+  three views cycle, subsequent naming works, and Source/navigation do not overlap.
+  Zero page errors, HTTP5xx and horizontal overflow. Prior actual public checks
+  covered real Play/Pause, timestamp handoff, seven-moment navigation, speaker
+  shares/name export and local meaning search. 494 frontend tests passed.
+- Updated ISSUES.md release status and recorded the separate push-range-aware
+  documentation-gate proposal with source/rename/deletion/unknown-ref controls,
+  behavioral regression intent and required independent review. scripts/ci_local.sh
+  and the installed hook remain unchanged; their full test cost is not bypassed.
+- PR204, Fix Tailnet viewer persistence on Windows, remains OPEN/DRAFT and is
+  explicitly separate from this delivered public viewer outcome. No private
+  persistence code, deployment or release claim was included in this closure.
+
+## 2026-10-02 14:28 IST — Viewer feedback gathered and decisive boundaries reproduced
+
+- User requested a concrete UX repair plan. Read the supplied feedback locally;
+  private conversation text, participant details and attachment images are excluded
+  from repository notes and external review. Product code remains unchanged.
+- Used one bounded read-only peer for timeline/name propagation tracing against
+  the authoritative viewer worktree. The primary checkout is stale at 7b33b6e;
+  served viewer source is 11dda97, present in the d4eebbc viewer worktree.
+  Preserved dirty AGENTS.md and unrelated primary-checkout peer edits.
+- Live Chromium instruments at 1440x900 confirm desktop detail/toolbar overlap,
+  unchanged browser history across distinct selections, and clipped lower plots
+  after scrolling the complete timeline. The first diagnostic reached the clipping
+  boundary but then incorrectly requested Next on a one-node row and timed out;
+  the corrected probe used a known multi-node row and waited for layout settlement.
+  Do not count that first partial attempt as a passing journey.
+- Source schema/count probe confirms 14 authored threads, all represented, plus
+  one ungrouped lane. Timeline height alone cannot repair the nested plot clipping.
+  Source aliases reach passages/Discussion but raw IDs remain in graph percentage
+  labels and the full-text transcript display. Existing tests do not cover these
+  cross-surface outcomes. Prior delivery evidence did not establish them.
+- ISSUES.md:1619 onward records the proposed bounded outcome, owner/checkout,
+  concrete repairs, acceptance boundaries, remaining choices and next checkpoint.
+  Three optional design questions were presented; unanswered choices remain proposed.
+  Local screenshots are ignored diagnostic evidence under tmp/viewer-feedback-20261002-*.
+  No new test, source repair, independent verdict, merge or deployment is claimed.
+
+## 2026-10-02 16:24 IST — Exploration continuity implementation checkpoint
+
+- The active goal authorizes the bounded repairs in ISSUES.md:1619. Integration
+  owner remains Codex in the viewer-source-and-controls worktree on
+  codex/viewer-closure-record, based on served source 11dda97. Preserved dirty
+  AGENTS.md and the primary checkout. This checkpoint is edited/local, not served.
+- Added session history (useViewerHistory.js), parent navigation/scroll snapshots
+  (ThreadsViewer.jsx), graph snapshot validation/restore and alias labels
+  (MinimalGraph.jsx, graphNavigationSnapshot.js), controlled Discussion/Source
+  disclosure state, and embedded detail containment. The toolbar now has Back/
+  Forward, a quiet left-side view cycle and Source icon; the title opens Overview.
+- TimelineRibbon and timelineRibbonLayout share the full-height vertical plot
+  with labels, preserve multiple memberships, distinguish authored threads from
+  unassigned moments, and offer Expand lanes. Source aliases propagate through
+  recognized transcript prefixes without changing original bytes or offsets;
+  cards and legend resolve the current alias map. Native video controls replace
+  the extra app controls while readiness/error/retry/cancellation remain intact.
+- Relevant paths were read before changes; extracted history and display helpers
+  bound the additions. ADR-072/test-intent files document the accepted interaction
+  contract; TECH_DEBT records the remaining camera/layout monolith candidates.
+- Focused checks: 44/44 initial history/toolbar/Source/Discussion tests, 34/34
+  adjacent integration tests, then 37/37 current detail/text/history/HUD tests.
+  Existing three reading/phone journeys pass. New browser journeys pass 5/6,
+  including final-lane geometry on desktop/phone, browser Back/Forward, exact
+  source handoff and immediate cross-view naming. The initial synthetic fixture
+  omitted semantic_type/thread_ids and failed preconditions; corrected the
+  fixture rather than claiming those runs as product failures or passing evidence.
+- The actual manual-pan/hierarchy regression fails: Back restores the theme but
+  the viewport returns to an automatic fit rather than the captured pan. A bounded
+  peer is tracing snapshot vs replay using the actual browser. Hierarchy ascent
+  now says Up one level after a normal click exposed two competing Back labels.
+- Native Source integration checks pass 6/6; real network playback is running
+  separately on desktop and phone. No mock is counted as proof of real playback.
+  Next checkpoint: resolve the camera boundary, combined browser/unit/build gates,
+  independent read-only review of the exact source/test/spec packet, then release
+  under the existing approval. Remaining engineering estimate stays 1–3 hours
+  dependent on findings; provider/release waits and public verification are separate
+  and not yet measured. The independent review and deployment are still open.
+
+## 2026-10-02 16:36 IST — Local viewer acceptance passed
+
+- Instrument found that React Flow reported drag end only after the next history
+  restoration began. MinimalGraph.jsx:1672 now replaces camera snapshots during
+  user movement and freezes an animated fit when a drag starts. The exact browser
+  transform now returns through Back; no parent history workaround was needed.
+- Integration points: ThreadsViewer.jsx:487/513 snapshot and replay; NodeDetail.jsx:
+  613/800 detail/evidence scroll; TimelineRibbon.jsx:272/373 shared Y/full-height X
+  plot; MinimalGraphHud.jsx:129 unambiguous Up one level. Source/editor and toolbar
+  contracts are documented in ADR-072 and four focused test-intent files.
+- Final affected checks: 106/106 unit tests in 13 changed test files; 28 changed
+  source/test files have clean scoped ESLint; production build passes (2330 modules,
+  existing large-chunk notice). A lint inventory command initially ran from the
+  wrong relative path and invoked whole-repo lint, exposing the already recorded
+  unrelated backlog; corrected the inventory and did not repair unrelated files.
+- Combined Chromium: 15/15 regular journeys pass, 2 network opt-ins skipped in
+  that run. Separately enabled real native-control tests pass 2/2 at 1440px and
+  390px, using iframe clicks and the actual YouTube clock/state. The first network
+  harness missed the native Play video label; screenshot/DOM evidence identified
+  that selector error, corrected without changing the player. The mock is still
+  only wiring evidence. Screenshot inspection confirms expanded timeline alignment
+  on desktop and phone; scroll restoration is asserted through normal navigation.
+- Default git diff --check passes. A diagnostic with autocrlf disabled falsely
+  treated CRLF working files as entirely changed; discarded that diagnostic and
+  retained normal repository line-ending handling. No source was rewritten for it.
+- Next: commit/push this coherent slice with the mandatory full frontend hook,
+  then the bounded read-only Google/Gemini review. Public verification follows
+  release under the existing approval. Edits and local evidence are not a served
+  or independently approved result. Updated the milestone forecast at this boundary.
+
+## 2026-10-02 16:44 IST — Full gate and independent review approved
+
+- Source 73545641d9cb0c5ba38932a3f4d9739c1fed366e committed and pushed in PR207.
+  Required frontend hook passes 512/512 tests in 84 files. Preview deployment
+  6807065804 reports success for that exact head; production is still unchanged.
+- Google Gemini 3.1 Pro High through AGY approves the exact 35-file bounded
+  source/test/spec diff with no findings, terminal SUCCESS/exit0, zero tool
+  attempts. Packet 175443 bytes, SHA256 0388d29bfb3c0db80030d57fa47cef5bf88d405695e0543c6ec031f23a55d634.
+  Receipt: docs/reviews/2026-10-02-viewer-continuity-agy.md. No finding fixed,
+  rejected or awaiting arbitration. Operational/private artifacts excluded.
+- Review elapsed 135 seconds for this one packet. Remote Python unit/integration
+  checks pass; the browser check is still running. Existing user authorization
+  covers this bounded release and exact public-link verification.
+- This follow-up changes only receipt/milestone documentation, not source or tests.
+  Verify the reviewed source packet digest remains identical at the final PR head;
+  do not re-review unchanged receipts as a substitute for runtime evidence.
+- ETA checkpoint communicated: remaining 15–25 minutes assuming remote checks
+  pass, including merge/deploy and actual desktop/phone checks. New supported
+  findings or a failed required gate would require a refreshed forecast.

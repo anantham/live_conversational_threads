@@ -11,7 +11,7 @@ import ThreadsFileButton from "../components/threads/ThreadsFileButton";
 import DriveThreadsGate from "../components/threads/DriveThreadsGate";
 import PublicDriveThreadsGate from "../components/threads/PublicDriveThreadsGate";
 import ThreadsViewerHeader from "../components/threads/ThreadsViewerHeader";
-import ThreadsViewerToolbar, { ViewerModeButton } from "../components/threads/ThreadsViewerToolbar";
+import ThreadsViewerToolbar from "../components/threads/ThreadsViewerToolbar";
 import { buildViewerFindGroups } from "../components/threads/viewerFindModel";
 import { buildConversationSearchDocuments } from "../services/conversationSearch";
 import { buildSpeakerContributions } from "../components/graph/speakerContributions";
@@ -25,6 +25,8 @@ import {buildMobileConversationDeck,mobileDeckStateForNode} from "../components/
 import { renameArtifactSpeaker, selectYouTubeRef, validMediaSeconds } from "../services/youtubeMedia";
 import { buildSpeakerColorMap } from "../components/graphConstants";
 import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
+import { useViewerHistory } from "../hooks/useViewerHistory";
+import { buildSpeakerDisplayNames } from "../services/speakerDisplay";
 import {
   flattenThreadsGraph,
   readThreadsFile,
@@ -70,6 +72,13 @@ function ThreadsViewerContent() {
   const DriveOpener = new URLSearchParams(location.search).get("public") === "1"
     ? PublicDriveThreadsGate : DriveThreadsGate;
   const [bundle, setBundle] = useState(null);
+  const [historySession, setHistorySession] = useState(0);
+  const viewerRoot = useRef(null);
+  const [graphNavigation, setGraphNavigation] = useState(null);
+  const [graphRevision, setGraphRevision] = useState(0);
+  const [discussionExpanded, setDiscussionExpanded] = useState([]);
+  const [sourcePosition, setSourcePosition] = useState(null);
+  const [textSourceMode, setTextSourceMode] = useState("transcript");
   const [viewMode, setViewMode] = useState(() => typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
   const [overviewOpen, setOverviewOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
@@ -150,6 +159,13 @@ function ThreadsViewerContent() {
     try {
       const validated = validateThreadsArtifact(data);
       setBundle(validated);
+      setHistorySession((value) => value + 1);
+      setGraphNavigation(null);
+      setGraphRevision(0);
+      setDiscussionExpanded([]);
+      setSourcePosition(null);
+      setTextSourceMode("transcript");
+      setSourceSeek(null);
       setViewMode(typeof window !== "undefined" && window.location.hash.startsWith("#discussion=") ? "discussion" : "graph");
       setOverviewOpen(false);
       setSourceOpen(false);
@@ -325,6 +341,7 @@ function ThreadsViewerContent() {
   }, [baseNodes, bundle?.utterances]);
   const searchDocuments = useMemo(() => buildConversationSearchDocuments(flatNodes, bundle?.utterances || [], bundle?.full_transcript), [flatNodes, bundle]);
   const speakerColorMap = useMemo(() => buildSpeakerColorMap(flatNodes), [flatNodes]);
+  const speakerDisplayNames = useMemo(() => buildSpeakerDisplayNames(bundle || {}), [bundle]);
   const findGroups = useMemo(() => buildViewerFindGroups(flatNodes), [flatNodes]);
   const onFindNode = useCallback((id) => {
     setViewMode("discussion");
@@ -339,9 +356,11 @@ function ThreadsViewerContent() {
     if (item.kind === "utterance" && video && validMediaSeconds(item.seconds)) {
       setSourceTextSelection(null);
       setSourceSeek({seconds: item.seconds, videoId: video.video_id});
+      setSourcePosition({seconds: item.seconds, videoId: video.video_id});
     } else {
       setSourceSeek(null);
-      setSourceTextSelection(item);
+      setSourceTextSelection({kind: item.kind, utteranceId: item.utteranceId, start: item.start, end: item.end});
+      setTextSourceMode(item.kind === "utterance" ? "utterances" : "transcript");
     }
   }, [bundle, onFindNode]);
   const discussionLinkBase = useMemo(() => {
@@ -465,6 +484,45 @@ function ThreadsViewerContent() {
     navigate("/view");
   }, [navigate]);
 
+  const onGraphNavigationChange = useCallback((snapshot, { replace = false } = {}) => {
+    setGraphNavigation(snapshot);
+    if (!replace) setGraphRevision((value) => value + 1);
+  }, []);
+  const exploration = useMemo(() => ({
+    viewMode, overviewOpen, sourceOpen, timelineOpen, selectedNode, mediaNode,
+    readingPath, discussionFocus, discussionExpanded, sourceTextSelection, sourcePosition, textSourceMode,
+    graphNavigation, graphRevision, argumentTraceFrom, focusMode, mobileMapOpen,
+    mapTarget, mobileDeckState, mobileReadingPath,
+  }), [viewMode, overviewOpen, sourceOpen, timelineOpen, selectedNode, mediaNode,
+    readingPath, discussionFocus, discussionExpanded, sourceTextSelection, sourcePosition, textSourceMode,
+    graphNavigation, graphRevision, argumentTraceFrom, focusMode, mobileMapOpen,
+    mapTarget, mobileDeckState, mobileReadingPath]);
+  const restoreExploration = useCallback((saved) => {
+    setViewMode(saved.viewMode); setOverviewOpen(saved.overviewOpen);
+    setSourceOpen(saved.sourceOpen); setTimelineOpen(saved.timelineOpen);
+    setSelectedNode(saved.selectedNode); setMediaNode(saved.mediaNode);
+    setReadingPath(saved.readingPath); setDiscussionFocus(saved.discussionFocus);
+    setDiscussionExpanded(saved.discussionExpanded); setSourceTextSelection(saved.sourceTextSelection);
+    setTextSourceMode(saved.textSourceMode);
+    setSourcePosition(saved.sourcePosition); setSourceSeek(saved.sourceOpen ? saved.sourcePosition : null);
+    setGraphNavigation(saved.graphNavigation); setGraphRevision(saved.graphRevision);
+    setArgumentTraceFrom(saved.argumentTraceFrom); setFocusMode(saved.focusMode);
+    setMobileMapOpen(saved.mobileMapOpen); setMapTarget(saved.mapTarget);
+    setMobileDeckState(saved.mobileDeckState); setMobileReadingPath(saved.mobileReadingPath);
+  }, []);
+  const history = useViewerHistory({ enabled: Boolean(bundle), sessionKey: historySession,
+    state: exploration, onRestore: restoreExploration, rootRef: viewerRoot });
+  const seekSourcePassage = useCallback((seconds) => {
+    const video = selectYouTubeRef(bundle);
+    if (!video || !validMediaSeconds(seconds)) return;
+    const position = { seconds, videoId: video.video_id };
+    setSourceTextSelection(null); setSourceOpen(true); setSourcePosition(position); setSourceSeek(position);
+  }, [bundle]);
+  const openSourcePassage = useCallback(({ id, seconds }) => {
+    if (selectYouTubeRef(bundle) && validMediaSeconds(seconds)) { seekSourcePassage(seconds); return; }
+    setSourceSeek(null); setSourceTextSelection({kind: "utterance", utteranceId: String(id)}); setTextSourceMode("utterances"); setSourceOpen(true);
+  }, [bundle, seekSourcePassage]);
+
   // ---- Loading state: fetching a hosted ?src= artifact --------------------
   if (!bundle && srcLoading && !error) {
     return (
@@ -555,41 +613,37 @@ function ThreadsViewerContent() {
   const refreshFromDrive = driveFileId ? () => setDriveRefreshRequested(true) : undefined;
   const renderedViewMode = !compactViewer && viewMode === "cards" ? "graph" : viewMode;
   const renderSourcePanel = (node) => sourceTextSelection || !selectYouTubeRef(bundle)
-    ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} onClose={() => setSourceOpen(false)} />
-    : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onClose={() => setSourceOpen(false)} />;
+    ? <TextSourcePanel bundle={bundle} selection={sourceTextSelection} compact={narrowViewer} onRenameSpeaker={renameSpeaker} onClose={() => setSourceOpen(false)} sectionMode={textSourceMode} onSectionChange={setTextSourceMode} />
+    : <YouTubeSourcePanel bundle={bundle} node={node} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onNavigatePassage={seekSourcePassage} onClose={() => setSourceOpen(false)} />;
   const toolbar = <ThreadsViewerToolbar
     viewMode={renderedViewMode} modes={["graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
     onViewModeChange={(mode) => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }}
     graphToolsRef={setGraphToolsHost} graphTierRef={setGraphTierHost} findGroups={findGroups} onFindNode={onFindNode} searchDocuments={searchDocuments} onSearchResult={onSearchResult}
-    overviewAvailable={Boolean(bundle.executive_summary || focusNode?.summary)} overviewOpen={overviewOpen} onToggleOverview={() => setOverviewOpen((value) => !value)}
+    history={history}
     sourceAvailable={Boolean(selectYouTubeRef(bundle) || bundle.media_refs?.some((ref) => ref?.provider === "youtube") || bundle.full_transcript || bundle.utterances?.length)} sourceOpen={sourceOpen} onToggleSource={() => { setSourceTextSelection(null); setSourceSeek(null); setSourceOpen((value) => !value); }}
-    timelineAvailable={flatNodes.length > 0} timelineOpen={timelineOpen} onToggleTimeline={() => setTimelineOpen((value) => !value)}
     onDownloadTranscript={downloadTranscript}
     onEnterFocus={() => { if (renderedViewMode === "discussion") setViewMode("graph"); setSourceOpen(false); setMobileMapOpen(false); setFocusMode(true); }}
     onOpenLibrary={openLibrary} onOpenAnother={openAnother} onRefreshFromDrive={refreshFromDrive}
     cardSettings={<CardDisplaySettings />} libraryStatus={libraryStatus} coverage={bundle.coverage}
   />;
-  const viewControls = <div className="shrink-0 border-b border-slate-200 bg-white px-3 py-1">
-    <ViewerModeButton viewMode={viewMode} modes={["graph", "discussion", "cards"]}
-      onViewModeChange={(mode) => { setViewMode(mode); setMobileMapOpen(mode === "graph"); }} />
-  </div>;
-  if (viewMode === "discussion") return <div className="flex h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden">
-    <ThreadsViewerHeader bundle={bundle} focusNode={focusNode} libraryStatus={libraryStatus} overviewOpen={overviewOpen} />
+  const header = <ThreadsViewerHeader bundle={bundle} focusNode={focusNode} libraryStatus={libraryStatus} overviewOpen={overviewOpen} onToggleOverview={() => setOverviewOpen((value) => !value)} />;
+  if (viewMode === "discussion") return <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full min-h-0 flex-col overflow-hidden">
+    {header}
     {toolbar}
     <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
       {sourceOpen && renderSourcePanel(null)}
-      <div className="min-h-0 min-w-0 flex-1"><DiscussionView nodes={flatNodes} utterances={bundle.utterances || []} speakerColorMap={speakerColorMap} focusRequest={discussionFocus} linkBase={discussionLinkBase} /></div>
+      <div className="min-h-0 min-w-0 flex-1"><DiscussionView nodes={flatNodes} utterances={bundle.utterances || []} speakerColorMap={speakerColorMap} focusRequest={discussionFocus} linkBase={discussionLinkBase} expandedIds={discussionExpanded} onExpandedChange={setDiscussionExpanded} navigationRestoreKey={history.restoreKey} onOpenPassage={openSourcePassage} /></div>
     </div>
     {flatNodes.length > 0 && <TimelineRibbon graphData={flatNodes} selectedNode={discussionFocus?.id}
       setSelectedNode={(value) => setDiscussionFocus((previous) => {
         const id = typeof value === "function" ? value(previous?.id) : value;
         return id ? { id, requestKey: (previous?.requestKey || 0) + 1 } : previous;
       })}
-      semanticLevel={hasThreads ? 1 : visibleGraphLevel} expanded={timelineOpen} onExpandedChange={setTimelineOpen} />}
+      semanticLevel={hasThreads ? 1 : visibleGraphLevel} expanded={timelineOpen} onExpandedChange={setTimelineOpen} activeThreadId={readingPath.threadId} onReadingPathChange={setReadingPath} />}
   </div>;
   if (compactViewer && viewMode === "cards") {
     return (
-      <div className="flex h-[100dvh] min-h-0 flex-col">{viewControls}<div className="min-h-0 flex-1 [&>div]:h-full"><MobileConversationDeck
+      <div ref={viewerRoot} className="flex h-[100dvh] min-h-0 flex-col">{header}{toolbar}<div className="min-h-0 flex-1 [&>div]:h-full"><MobileConversationDeck
         bundle={bundle}
         deckState={mobileDeckState}
         readingPath={mobileReadingPath}
@@ -610,13 +664,14 @@ function ThreadsViewerContent() {
   const viewerFocusMode = focusMode || (compactViewer && mobileMapOpen);
   const nodeDetailsVisible = Boolean(selectedNodeData) && (!narrowViewer || !sourceOpen);
   return (
-    <div className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
+    <div ref={viewerRoot} className="flex h-[100dvh] w-full max-w-full flex-col overflow-hidden bg-[#fafafa] font-sans">
       {!focusMode && (!compactViewer || !mobileMapOpen || overviewOpen) && (
         <ThreadsViewerHeader
           bundle={bundle}
           focusNode={focusNode}
           libraryStatus={libraryStatus}
           overviewOpen={overviewOpen}
+          onToggleOverview={() => setOverviewOpen((value) => !value)}
         />
       )}
 
@@ -626,6 +681,10 @@ function ThreadsViewerContent() {
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
         <MinimalGraph
           graphData={flatNodes}
+          speakerDisplayNames={speakerDisplayNames}
+          navigationState={graphNavigation}
+          navigationRestoreKey={history.restoreKey}
+          onNavigationStateChange={onGraphNavigationChange}
           semanticEdges={bundle.edges}
           focusNode={mapTarget}
           focusRequestKey={mapRequest}
@@ -681,22 +740,24 @@ function ThreadsViewerContent() {
             ✕ Exit focus
           </button>
         )}
-        {!viewerFocusMode && <MinimalLegend speakerColorMap={speakerColorMap} />}
+        {!viewerFocusMode && <MinimalLegend speakerColorMap={speakerColorMap} speakerDisplayNames={speakerDisplayNames} />}
         {nodeDetailsVisible && (
           <button
             type="button"
             aria-label="Close node details"
-            className="fixed inset-0 z-[35] bg-slate-950/20 backdrop-blur-[1px] sm:hidden"
+            className="absolute inset-0 z-[35] bg-slate-950/20 backdrop-blur-[1px] sm:hidden"
             onClick={() => setSelectedNode(null)}
           />
         )}
         {nodeDetailsVisible && (
           <NodeDetail
+            embedded
             node={selectedNodeData}
             chunkDict={bundle.chunk_dict || {}}
             artifactUtterances={bundle.utterances || []}
             mediaRefs={bundle.media_refs || []}
-            onSeekMedia={selectYouTubeRef(bundle) ? seconds => {setSourceTextSelection(null);setSourceOpen(true);setSourceSeek({seconds,videoId:selectYouTubeRef(bundle).video_id});} : undefined}
+            onSeekMedia={selectYouTubeRef(bundle) ? seekSourcePassage : undefined}
+            onOpenPassage={openSourcePassage}
             contextNodes={flatNodes}
             readingPathNodeIds={readingPath.nodeIds}
             onSelectNode={(id)=>{requestMapTarget(id);setSelectedNode(id);}}
@@ -720,6 +781,7 @@ function ThreadsViewerContent() {
           expanded={timelineOpen}
           onExpandedChange={setTimelineOpen}
           onReadingPathChange={setReadingPath}
+          activeThreadId={readingPath.threadId}
         />
       )}
     </div>

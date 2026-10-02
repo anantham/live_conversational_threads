@@ -1577,7 +1577,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   resizing, and invalid-metadata checks. Those checks also found that the new
   text fallback omitted the unverified-recording explanation; restored it without
   creating an untrusted link. Resolved locally and independently approved in the
-  final Antigravity review; release still awaits merge/deployment authorization.
+  final Antigravity review. Published in PR205/PR206 and verified on the public site.
 - A phone screenshot shows the existing floating graph Legend over the lower
   Source region, and resizing an already-open Source can leave its current
   passage outside the transcript viewport. Impact: minor reading obstruction;
@@ -1585,7 +1585,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   Recommended next step: make the legend respect pane reservations and recheck
   automatic passage following on viewport changes in a bounded responsive pass.
 
-## 2026-10-02 — Phone Source blocked by graph overlays
+## 2026-10-02 — Phone Source blocked by graph overlays (RESOLVED LIVE)
 
 - Instrument: after live thread/search/view cycling at 390x844 with timeline and
   selection retained, the Source naming summary click was intercepted by graph
@@ -1595,5 +1595,81 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   reserves graph space using available pane height. A regression failed before
   the change and passed after it, including name application/detail restoration.
   Google Gemini through Antigravity approved the exact correction with no findings;
-  live publication/recheck pending. Desktop behavior stays
+  published in PR206 as 11dda97 and verified live at 08:44 IST. Ordinary naming,
+  detail restoration and three-view cycling passed at 390x844 with zero page
+  errors, HTTP5xx, horizontal overflow or Source/navigation overlap. Desktop behavior stays
   covered by the existing browser suite; no recording or transcript data changed.
+
+## 2026-10-02 — Push-range-aware documentation gate (PROPOSED FOLLOW-UP)
+
+- Instrument: the installed pre-push hook always invokes scripts/ci_local.sh,
+  which runs the full frontend Vitest suite, including for documentation-only
+  pushes. Impact: avoidable verification cost; not a viewer delivery blocker.
+- Bounded scope: classify the actual incoming push ranges for every ref, permitting
+  a documentation-only path solely for explicitly allowlisted documentation changes.
+  Source/dependency/config/build/test changes, renames, deletions, multiple mixed
+  refs, new or unknown/unresolvable remote refs must retain the full gate until
+  conservative handling is proven. Do not classify from a clean working tree alone.
+- Before implementation/merge, write behavioral test intent and exercise temporary
+  Git repositories covering pure documentation, source modification, source renamed
+  into docs, source deletion, mixed multi-ref pushes and unknown/new refs; verify
+  gate execution and exit status. Obtain mandatory non-OpenAI independent review.
+  This is a separately scoped proposal; the existing hook was not bypassed or changed.
+
+## 2026-10-02 — Viewer exploration continuity (REVIEW APPROVED; RELEASE/PUBLIC ACCEPTANCE OPEN)
+
+- Outcome: explore a thread, read its source and details, and return to a previous
+  place without losing context. Integration owner: Codex. Authoritative checkout:
+  the viewer-source-and-controls worktree, branch codex/viewer-closure-record,
+  source based on the served 11dda97 release. The active user goal authorizes the
+  bounded repair. Product edits are in this worktree; the public runtime is unchanged.
+- Instrument: public Chromium at 1440x900 reproduces the toolbar painting over
+  the desktop detail panel (toolbar z=50; fixed detail panel top=0, z=40).
+  Two distinct node selections leave browser history length unchanged at 2.
+- Instrument: the timeline has 468px of row content in a 202px viewport. Its
+  horizontal plot scroller is stretched to 202px and hides vertical overflow;
+  scrolling the outer container by 266px moves that clipped plot above the lower
+  labels, leaving their plotted rows blank. This is a clipping defect in addition
+  to the default six-row viewport, not missing source data.
+- The public example has 14 authored threads plus an ungrouped lane; the current
+  header counts these as 15 threads. Each moment is plotted in one home lane,
+  although thread_ids retains additional memberships. The gray cross-lane line
+  represents chronological movement; it does not establish semantic relationships.
+- Code confirms a naming gap: MinimalGraph.jsx:440-443 prints raw speaker IDs
+  in contribution labels; TextSourcePanel.jsx:38 displays original transcript
+  labels. Passage and Discussion rendering already resolve updated names.
+  Preserve original transcript bytes and offsets while applying aliases in UI.
+- Proposed repairs: allocate desktop details beneath the measured header/toolbar;
+  add Back/Forward for meaningful exploration steps with position restoration;
+  make the title toggle Overview; place a quiet cycling view button by Center and
+  Display; use a Source icon and the timeline's own toggle; use native ready-player
+  controls while retaining loading/error/retry/fallback behavior; fix the full-height
+  timeline plot and display counts honestly; resolve all visible speaker labels
+  from a shared identity map. These are presentation/navigation changes.
+- Finite acceptance: (1) desktop and phone panels never obscure their headings or
+  actions; (2) first and last timeline rows have visible, clickable plots aligned
+  with labels after vertical/horizontal scrolling and resize; (3) Back/Forward
+  restores node, thread, level, view and position without reverting name edits;
+  (4) Apply name updates Source, cards, percentages, details and Discussion before
+  persistence finishes, with original source bytes and text offsets preserved;
+  (5) native recording play/pause and transcript seeks work, with blocked-player
+  retry/cancel/fallback retained; (6) selected-thread navigation includes its full
+  authored membership, and chronological links are distinguished from argument links.
+- Implementation assumptions announced after optional questions had no answer:
+  meaningful navigation creates history entries; manual pan/zoom replaces camera
+  position; preserve the existing default tier; use shared scrolling plus expansion.
+  Short, plain topic labels and time replay are separately proposed;
+  no regeneration, hierarchy replacement or physics layout is selected here.
+- Local evidence: 15/15 regular Chromium journeys pass on populated synthetic
+  artifacts, including final-lane geometry, scroll restoration, hierarchy/manual
+  pan restoration, immediate aliases, source seeks and seven-moment reading.
+  Separate actual native YouTube play/pause/seek checks pass at 1440px and 390px.
+  Affected unit tests pass 106/106; scoped lint is clean and the build passes.
+- Source head 7354564 is pushed in PR207. Full frontend gate passes 512/512;
+  Google Gemini 3.1 Pro via AGY approves the exact source/test/spec packet with
+  no findings (135 seconds for this one review). Receipt is in docs/reviews.
+- Next evidence checkpoint: remote browser gate, merge/deployment and public
+  desktop/phone verification. Remaining estimate is 15–25 minutes if the required
+  remote checks pass, revised at the review checkpoint. Provider wait is complete;
+  deployment duration is not yet measured. Public runtime is still unchanged;
+  independent approval does not establish a served or accepted journey.

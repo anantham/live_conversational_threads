@@ -1,18 +1,19 @@
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ThreadsViewerHeader from "./ThreadsViewerHeader";
 
 /* Test intent:
  * - The title remains visible while the overview starts closed.
- * - The toolbar can reveal the summary in either view.
+ * - Clicking the conversation title reveals its overview in either view.
  * - Save errors remain visible without opening artifact details.
  */
 let container;
 let root;
 
 beforeEach(() => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -21,6 +22,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 });
 
 const bundle = {
@@ -37,10 +39,14 @@ describe("ThreadsViewerHeader", () => {
     expect(container.textContent).not.toContain("read-only");
   });
 
-  it("reveals the current focus summary on request", () => {
-    act(() => root.render(<ThreadsViewerHeader bundle={bundle} focusNode={{ title: "Focused idea", summary: "Focused summary." }} overviewOpen />));
-    expect(container.querySelector("h1")?.textContent).toBe("Focused idea");
-    expect(container.textContent).toContain("Focused summary.");
+  it("uses the conversation title to request its overview while preserving the title when drilling", () => {
+    const toggle = vi.fn();
+    act(() => root.render(<ThreadsViewerHeader bundle={bundle} focusNode={{ title: "Focused idea", summary: "Focused summary." }} overviewOpen onToggleOverview={toggle} />));
+    expect(container.querySelector("h1")?.textContent).toBe("Synthetic conversation");
+    expect(container.textContent).toContain("Synthetic overview text.");
+    expect(container.querySelector("button").getAttribute("aria-expanded")).toBe("true");
+    act(() => container.querySelector("button").click());
+    expect(toggle).toHaveBeenCalledOnce();
   });
 
   it("keeps a save error visible", () => {
