@@ -1,10 +1,16 @@
 # Viewer exploration: independent review pending
 
+**Superseded status:** Google Gemini through Antigravity approved the latest exact
+source diff on 2026-10-02 with no findings. See
+[the final review receipt](2026-10-02-viewer-exploration-agy.md). The historical
+preparation and failed-client probes below are retained; they did not establish
+that every eligible reviewer route was unavailable.
+
 Date: 2026-10-02
 Base: `59dea4c`
 Initial source commit: `d78fe83`
 Latest source commit: `d3fc09ae27f2fc7727de9f803095672f28ef5310`
-Verdict: **Not reviewed; release blocked.**
+Historical verdict before the Antigravity run: **Not reviewed; release blocked.**
 
 ## Prepared source boundary
 

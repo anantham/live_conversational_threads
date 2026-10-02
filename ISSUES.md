@@ -1561,12 +1561,13 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   warning, and the Vite large-chunk warning remain. All targeted lint has zero
   errors. Impact: test/developer noise and bundle-size maintenance. Nonblocking;
   address through the existing component and bundle decomposition work.
-- Required independent review is blocked by available reviewer access. Anthropic
-  returns a weekly limit; xAI returns exhausted usage balance; Google CLI returns
-  ProjectIdRequiredError. No implementation packet was sent to a reviewer, no
-  review verdict exists, and the viewer changes are not merged or released.
-  Recommended next step: an authorized existing Google Cloud project for the
-  cached Gemini account, or waiting for eligible subscription capacity.
+- Initial reviewer probes encountered an Anthropic weekly limit, exhausted xAI
+  balance, and standalone Gemini's ProjectIdRequiredError. The installed
+  Antigravity route had been omitted. **Resolved:** Google Gemini 3.1 Pro (High)
+  through `agy` approved the exact `59dea4c..d3fc09a` bounded diff with no findings
+  on 2026-10-02. The verified deny-all tool guard preserved REVIEW-EGRESS-A1.
+  See docs/reviews/2026-10-02-viewer-exploration-agy.md. Source review is satisfied;
+  the draft changes remain unmerged and production remains on its previous release.
 
 ## 2026-10-02 — Source follow-up validation
 
@@ -1575,7 +1576,8 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   change to test the selected current behavior, retaining seek, rename/export,
   resizing, and invalid-metadata checks. Those checks also found that the new
   text fallback omitted the unverified-recording explanation; restored it without
-  creating an untrusted link. Resolved locally; release still awaits review.
+  creating an untrusted link. Resolved locally and independently approved in the
+  final Antigravity review; release still awaits merge/deployment authorization.
 - A phone screenshot shows the existing floating graph Legend over the lower
   Source region, and resizing an already-open Source can leave its current
   passage outside the transcript viewport. Impact: minor reading obstruction;

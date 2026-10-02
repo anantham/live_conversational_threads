@@ -6580,3 +6580,29 @@ User observed an empty desktop transcript until node selection, with only the cu
   Exact inventory and release-blocked status are in the review receipt.
 - Reviewer access has not changed, no review packet was transmitted, and no
   non-OpenAI verdict exists. Public production remains on the previous release.
+
+## 2026-10-02 07:33 IST — Antigravity independent review approved
+
+- User identified the omitted installed `agy` route. The earlier capacity claim
+  had checked three clients, not every available eligible route. Authenticated
+  Antigravity model discovery listed Google Gemini 3.1 Pro (High); no Cloud project
+  selection or new paid API access was needed. Logged the omission in the shared
+  mistakes ledger and retained the reproducible client/guard recipe in the receipt.
+- Verified a deny-all PreToolUse hook in a fresh neutral temporary Git directory
+  before disclosure: a harmless view_file probe was denied. Sent only the exact
+  existing authorized 46-file source/test/spec/dependency packet for
+  59dea4c..d3fc09a, 263283 bytes, SHA-256
+  6605a2a465ffd845994efa77d13ebf35ab8c8926515c1490416a401944863a75.
+  Plan+sandbox, explicitly pinned gemini-3.1-pro-high, no permission bypass;
+  excluded source artifacts/transcripts, credentials, images, network diagnostics,
+  operational logs and private reasoning. Existing REVIEW-EGRESS-A1 applies.
+- Instrument: terminal SUCCESS, exit 0, pinned model confirmed, zero tool attempts,
+  response scope SHA matches d3fc09a. Final verdict APPROVED, no findings; nothing
+  to fix, reject or arbitrate. The reviewer performed diff-only inspection and
+  did not rerun the supplied 494 frontend, 8 regular browser and 1 real YouTube
+  validations. Raw review reasoning remains ignored local data.
+- Added docs/reviews/2026-10-02-viewer-exploration-agy.md:1 onward with the final
+  response, hashes, guard probe, validation and remaining release boundary.
+  Marked the earlier pending receipt as superseded and resolved the reviewer
+  capacity entry in ISSUES.md. No source changed after the approved d3fc09a scope.
+  PR205 remains draft; no merge or production deployment was authorized or run.
