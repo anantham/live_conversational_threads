@@ -355,3 +355,25 @@ rendering live together. Its action state is still local to one Browse section
 and the tested flow is small. If more source types or actions are added,
 extract a useAudioSourceAction hook and keep rendering in the component;
 do not create a second processing state machine for the current feature.
+
+## 2026-10-02 — Static viewer exploration
+
+MinimalGraph.jsx (~2,260 lines), ThreadsViewer.jsx (~730 lines), and
+NodeDetail.jsx (~1,175 lines) combine several concerns. The current changes stay
+within the existing viewer and add small search, contribution, and Source modules.
+Future work should extract authored layout/viewport motion and reading navigation
+from MinimalGraph, separate artifact loading/media state from ThreadsViewer, and
+extract evidence and nearby-navigation sections from NodeDetail. Preserve the
+public interaction regressions during those extractions; no broad refactor was
+included in this feature.
+
+YouTubeSourcePanel.jsx (~247 lines) is still one source interaction boundary.
+Extract its SDK lifecycle/status hook if another provider or loading policy is
+added. Keep player ownership, pending seeks, cancellation, and measured waits
+under one lifecycle rather than separate competing timers.
+
+The blank-player follow-up keeps the Source panel below 300 lines and extracts
+the visible Play/Pause interaction into SourcePlaybackControls.jsx. Readiness
+and playback waits are separate phases; each timer has one owner and is cleaned
+up on completion, failure, retry, or unmount. Extract the SDK lifecycle only when
+the existing provider boundary grows; no broad Source rewrite is warranted here.

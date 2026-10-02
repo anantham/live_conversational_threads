@@ -1548,3 +1548,39 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - The saved utterance route now checks the conversation owner before returning
   rows and responds 404 for another owner or missing conversation. Public-route
   regressions passed (21/21 scoped). Pending independent review and deployment.
+
+## 2026-10-02 — Viewer validation and release prerequisites
+
+- Baseline dependency installation reports 12 vulnerabilities (1 low, 2 moderate,
+  8 high, 1 critical), both before and after adding the local search runtime.
+  This extends the existing dependency-triage entry; it is not attributed to this
+  feature. Impact: dependency maintenance risk. Nonblocking for local validation;
+  recommended next step is a separately reviewed direct/transitive dependency
+  triage rather than a blanket automatic upgrade.
+- Existing React test act-environment warnings, a CardDisplaySettings fast-refresh
+  warning, and the Vite large-chunk warning remain. All targeted lint has zero
+  errors. Impact: test/developer noise and bundle-size maintenance. Nonblocking;
+  address through the existing component and bundle decomposition work.
+- Initial reviewer probes encountered an Anthropic weekly limit, exhausted xAI
+  balance, and standalone Gemini's ProjectIdRequiredError. The installed
+  Antigravity route had been omitted. **Resolved:** Google Gemini 3.1 Pro (High)
+  through `agy` approved the exact `59dea4c..d3fc09a` bounded diff with no findings
+  on 2026-10-02. The verified deny-all tool guard preserved REVIEW-EGRESS-A1.
+  See docs/reviews/2026-10-02-viewer-exploration-agy.md. Source review is satisfied;
+  the draft changes remain unmerged and production remains on its previous release.
+
+## 2026-10-02 — Source follow-up validation
+
+- The legacy Source browser tests still expected the removed height slider,
+  hidden recovery links, and a retired Show all path. Corrected within the viewer
+  change to test the selected current behavior, retaining seek, rename/export,
+  resizing, and invalid-metadata checks. Those checks also found that the new
+  text fallback omitted the unverified-recording explanation; restored it without
+  creating an untrusted link. Resolved locally and independently approved in the
+  final Antigravity review; release still awaits merge/deployment authorization.
+- A phone screenshot shows the existing floating graph Legend over the lower
+  Source region, and resizing an already-open Source can leave its current
+  passage outside the transcript viewport. Impact: minor reading obstruction;
+  neither blocks video actions. Nonblocking and outside this correction's scope.
+  Recommended next step: make the legend respect pane reservations and recheck
+  automatic passage following on viewport changes in a bounded responsive pass.

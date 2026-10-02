@@ -11,6 +11,7 @@ import ConversationNode from "./ConversationNode";
  * - The neighborhood root is marked without replacing its speaker fill.
  * - Auditable nodes expose aggregate transcript metrics and an exact-source action.
  * - Linked-but-untimed source turns say timing is unavailable instead of hiding it.
+ * - Moment cards stay compact while their existing detail action remains available.
  */
 describe("ConversationNode structured-turn fallback", () => {
   it("shows the summary when every structured turn is empty", () => {
@@ -141,5 +142,31 @@ describe("ConversationNode structured-turn fallback", () => {
     expect(markup).toContain("timing unavailable");
     expect(markup).toContain("18 words");
     expect(markup).toContain("this artifact has no aligned timestamps");
+  });
+
+  it("shows one short exact turn, measured shares, and the detail action in compact reading", () => {
+    const markup = renderToStaticMarkup(
+      <ReactFlowProvider>
+        <ConversationNode
+          selected={false}
+          data={{
+            title: "A specific moment",
+            fullData: { semantic_level: 1 },
+            compactReading: true,
+            speakerTurns: [
+              { utterance_id: "u1", speaker_id: "A", text: "First exact passage." },
+              { utterance_id: "u2", speaker_id: "B", text: "Second passage stays in detail." },
+            ],
+            speakerContributionLabel: "A 90% · B 10%",
+            onOpenDetails: () => {},
+          }}
+        />
+      </ReactFlowProvider>,
+    );
+    expect(markup).toContain("First exact passage.");
+    expect(markup).not.toContain("Second passage stays in detail.");
+    expect(markup).toContain("A 90% · B 10%");
+    expect(markup).toContain('aria-label="Open details"');
+    expect(markup).toContain("height:210px");
   });
 });

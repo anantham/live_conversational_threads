@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ThreadsViewerToolbar from "./ThreadsViewerToolbar";
 
 /* Test intent:
- * - Graph and Discussion share one centered view switch and one set of actions.
+ * - One centered view switch cycles through every available view and names the next action accessibly.
  * - Overview, source and timeline can be disclosed independently.
  * - Secondary actions and card settings stay behind More.
  * - Find results open an actual branch instead of merely dimming the canvas.
@@ -48,11 +48,17 @@ function renderToolbar(overrides = {}) {
 const byText = (text) => [...container.querySelectorAll("button")].find((button) => button.textContent === text);
 
 describe("ThreadsViewerToolbar", () => {
-  it("switches views and toggles the three optional panels", () => {
+  it("cycles through views with one button and toggles the three optional panels", () => {
     const handlers = renderToolbar();
     expect(container.querySelector('[role="group"][aria-label="Conversation view"]')).not.toBeNull();
-    expect(byText("Graph").getAttribute("aria-pressed")).toBe("true");
-    act(() => byText("Discussion").click());
+    const switcher = container.querySelector('[aria-label="Current view: Graph. Switch to Discussion view."]');
+    expect(switcher).not.toBeNull();
+    expect(switcher.textContent).toContain("Graph");
+    act(() => switcher.click());
+    expect(handlers.onViewModeChange).toHaveBeenCalledWith("discussion");
+    act(() => root.render(<ThreadsViewerToolbar viewMode="discussion" modes={["graph", "discussion"]} findGroups={[]} onFindNode={vi.fn()} onViewModeChange={handlers.onViewModeChange} onToggleOverview={handlers.onToggleOverview} onToggleSource={handlers.onToggleSource} onToggleTimeline={handlers.onToggleTimeline} onDownloadTranscript={handlers.onDownloadTranscript} onEnterFocus={handlers.onEnterFocus} onOpenLibrary={handlers.onOpenLibrary} onOpenAnother={handlers.onOpenAnother} overviewAvailable sourceAvailable timelineAvailable />));
+    act(() => container.querySelector('[aria-label="Current view: Discussion. Switch to Graph view."]').click());
+    expect(handlers.onViewModeChange).toHaveBeenLastCalledWith("graph");
     act(() => byText("Overview").click());
     act(() => byText("Source").click());
     act(() => byText("Threads").click());
@@ -68,6 +74,7 @@ describe("ThreadsViewerToolbar", () => {
     expect(more).not.toBeNull();
     expect(more.closest("details").open).toBe(false);
     expect(byText("Download transcript").closest("details")).toBe(more.closest("details"));
+    expect(more.closest("details").querySelectorAll("button svg").length).toBeGreaterThanOrEqual(4);
     expect(container.textContent).toContain("Card details");
     act(() => byText("Download transcript").click());
     expect(handlers.onDownloadTranscript).toHaveBeenCalledOnce();

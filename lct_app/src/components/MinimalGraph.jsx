@@ -58,7 +58,7 @@ import {
   useMediaQuery,
 } from "../hooks/useMediaQuery";
 import { buildFocusedNeighborhood } from "./graphNeighborhoodFocus";
-import { isGraphNavigationKey, navigateGraphNode } from "./graphNavigation";
+import { isGraphNavigationKey, isReadingNavigationKey, navigateGraphNode, nextReadingPathNode } from "./graphNavigation";
 import { semanticLevelAfterViewportMove } from "./semanticTierControl";
 import { createViewportMotionTracker } from "./viewportMotionTracker";
 
@@ -106,6 +106,10 @@ function MinimalGraphInner({
   focusNode,
   focusRequestKey = 0,
   viewportReservationKey,
+  sidebarWidth = 0,
+  navigationNodeIds = [],
+  navigationScope = "selected thread",
+  readingMode = false,
   onVisibleLevelChange,
   onFocusChange,
   onActiveNodeChange,
@@ -409,6 +413,7 @@ function MinimalGraphInner({
         dateColorMap,
         threadColorMap,
         speakerOwnershipMap,
+        requireMeasuredSpeakerShares: readingMode,
       });
       // Non-color cue for the argument view: the actual support/rebut counts.
       let argStatusLabel = null;
@@ -432,6 +437,10 @@ function MinimalGraphInner({
       // Recipient artifacts carry structured moment turns so speaker identity
       // can be shown by stable color markers without repeating names in prose.
       const speakerTurns = Array.isArray(item.source_turns) ? item.source_turns : [];
+      const contribution = item.speaker_contributions;
+      const speakerContributionLabel = contribution?.complete
+        ? contribution.speakers.map(({ id, percent }) => `${id} ${percent}%`).join(" · ")
+        : "Speaking time unknown";
 
       // Speaker badge (prefer renamed display name over raw id)
       const speaker = item.speaker_display || item.speaker_id || "";
@@ -475,6 +484,8 @@ function MinimalGraphInner({
           speakerTurns,
           speakerColorMap,
           speakerLabel,
+          speakerContributionLabel,
+          compactReading: readingMode && Number(item.semantic_level || item.level) >= 1,
           fillColor: fill,
           borderColor: border,
           isDraft: isDraftNode,
@@ -505,7 +516,7 @@ function MinimalGraphInner({
         },
       };
     });
-  }, [colorMode, speakerColorMap, speakerOwnershipMap, temporalColorMap, argumentStatusMap, dateColorMap, threadColorMap, handleExpand, handleOpenDetails]);
+  }, [colorMode, speakerColorMap, speakerOwnershipMap, temporalColorMap, argumentStatusMap, dateColorMap, threadColorMap, handleExpand, handleOpenDetails, readingMode]);
 
   const buildRfEdgesForSource = useCallback((sourceNodes, { ignoreHidden = false } = {}) => {
     if (hideEdges && !ignoreHidden) return [];
@@ -747,6 +758,7 @@ function MinimalGraphInner({
         return acc;
       }
       const isMacroTier = spec.level >= 3;
+      const compactTier = readingMode;
       const quotient = isMacroTier && Array.isArray(semanticEdges)
         ? projectSemanticEdgesToLevel(normalizedChunk, semanticEdges, spec.level)
         : null;
@@ -769,12 +781,12 @@ function MinimalGraphInner({
           ? rfLevelNodes
           : isMacroTier
             ? layoutMacroGraph(rfLevelNodes, structuralLevelEdges, {
-                nodeWidth: 480,
-                // Macro summaries use the same full-prose card renderer as
-                // lower tiers; reserve its measured worst-case footprint.
-                nodeHeight: 360,
-                nodesep: 90,
-                ranksep: 170,
+                nodeWidth: compactTier ? 300 : 480,
+                // Compact reading cards reserve their actual bounded footprint;
+                // other Graph views keep the established full-prose geometry.
+                nodeHeight: compactTier ? 210 : 360,
+                nodesep: compactTier ? 48 : 90,
+                ranksep: compactTier ? 72 : 170,
               })
             : layoutByThread(
                 rfLevelNodes,
@@ -782,11 +794,14 @@ function MinimalGraphInner({
                 {
                   // Moments and ideas retain ADR-032's temporal swim lanes:
                   // X=time, Y=thread. Macro tiers use the quotient graph above.
-                  nodeWidth: 480,
-                  nodeHeight: 360,
+                  nodeWidth: compactTier ? 300 : 480,
+                  nodeHeight: compactTier ? 210 : 360,
+                  nodesep: compactTier ? 24 : 50,
+                  ranksep: compactTier ? 32 : 100,
                   timeBased: timeBasedLayout,
                   pixelsPerSecond,
-                  minNodeWidth: 320,
+                  minNodeWidth: compactTier ? 300 : 320,
+                  avoidOverlap: compactTier,
                 }
               ),
         edges: visibleLevelEdges,
@@ -801,6 +816,7 @@ function MinimalGraphInner({
     hasAuthoredHierarchy,
     hideEdges,
     normalizedChunk,
+    readingMode,
     semanticEdges,
   ]);
 
@@ -1494,10 +1510,12 @@ function MinimalGraphInner({
 
       const width = targetNode?.width ?? targetNode?.measured?.width ?? 180;
       const height = targetNode?.height ?? targetNode?.measured?.height ?? 96;
+      const zoom = options.zoom ?? reactFlow.getZoom?.() ?? 1;
+      const reserved = Number.isFinite(sidebarWidth) ? Math.max(0, sidebarWidth) : 0;
 
       viewportMotion.run(
         () => reactFlow.setCenter(
-          targetPosition.x + width / 2,
+          targetPosition.x + width / 2 + reserved / (2 * zoom),
           targetPosition.y + height / 2,
           options,
         ),
@@ -1505,7 +1523,7 @@ function MinimalGraphInner({
       );
       return undefined;
     },
-    [displayNodes, reactFlow, viewportMotion]
+    [displayNodes, reactFlow, sidebarWidth, viewportMotion]
   );
 
   // Center on a node chosen from the TIMELINE RIBBON without opening the detail
@@ -1739,6 +1757,41 @@ function MinimalGraphInner({
     pendingKeyboardFocusRef.current = null;
     if (targetVisible) setNeighborhoodFocusId(pending.targetId);
   }, [baseDisplayNodes, effectiveSemanticLevel]);
+
+  const readingPathIds = useMemo(() => {
+    if (!readingMode || !Array.isArray(navigationNodeIds)) return [];
+    const known = new Set(normalizedChunk.map((node) => String(node.id)));
+    return [...new Set(navigationNodeIds.map(String).filter((id) => known.has(id)))];
+  }, [navigationNodeIds, normalizedChunk, readingMode]);
+  const readingIndex = readingPathIds.indexOf(String(selectedNode || ""));
+  const stepReadingPath = useCallback((direction) => {
+    const targetId = nextReadingPathNode(readingPathIds, selectedNode, direction);
+    if (!targetId) return;
+    const target = normalizedChunk.find((node) => String(node.id) === targetId);
+    const targetLevel = Number(target?.semantic_level);
+    autoFollowRef.current = false;
+    setAutoFollow(false);
+    clearNeighborhoodFocus(false);
+    setDrilldownPath([]);
+    if (Number.isInteger(targetLevel) && targetLevel !== effectiveSemanticLevel) {
+      handleLockedLevelChange(targetLevel);
+    }
+    setSelectedNode(targetId);
+  }, [clearNeighborhoodFocus, effectiveSemanticLevel, handleLockedLevelChange, normalizedChunk, readingPathIds, selectedNode, setSelectedNode]);
+
+  useEffect(() => {
+    if (readingPathIds.length < 2) return undefined;
+    const onReadingKey = (event) => {
+      if (!isReadingNavigationKey(event)) return;
+      const direction = event.key === "ArrowRight" ? "right" : "left";
+      if (!nextReadingPathNode(readingPathIds, selectedNode, direction)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      stepReadingPath(direction);
+    };
+    window.addEventListener("keydown", onReadingKey, { capture: true });
+    return () => window.removeEventListener("keydown", onReadingKey, { capture: true });
+  }, [readingPathIds, selectedNode, stepReadingPath]);
 
   useEffect(() => {
     if (selectedNode || !hasAuthoredHierarchy) return undefined;
@@ -1990,6 +2043,13 @@ function MinimalGraphInner({
         maxZoom={2.5}
         proOptions={{ hideAttribution: true }}
       />
+      {readingPathIds.length > 1 && (
+        <nav aria-label={`${navigationScope === "selected thread" ? "Selected thread" : "Conversation"} reading controls`} className="absolute bottom-3 left-1/2 z-50 flex -translate-x-1/2 items-center gap-2 rounded-lg border border-slate-200 bg-white/95 p-1.5 text-xs text-slate-700 shadow-sm">
+          <button type="button" aria-label={`Previous moment in ${navigationScope}`} disabled={readingIndex === 0} onClick={() => stepReadingPath("left")} className="min-h-11 rounded px-2 hover:bg-slate-100 disabled:opacity-40">← Previous</button>
+          <span aria-live="polite" className="min-w-12 text-center tabular-nums">{readingIndex < 0 ? `${readingPathIds.length} moments` : `${readingIndex + 1} of ${readingPathIds.length}`}</span>
+          <button type="button" aria-label={`Next moment in ${navigationScope}`} disabled={readingIndex === readingPathIds.length - 1} onClick={() => stepReadingPath("right")} className="min-h-11 rounded px-2 hover:bg-slate-100 disabled:opacity-40">Next →</button>
+        </nav>
+      )}
 
       {/* Zoom preset + graph display controls. Center stays out front (the
           recovery action); the secondary view toggles collapse behind a
@@ -2142,6 +2202,10 @@ MinimalGraphInner.propTypes = {
   focusRequestKey: PropTypes.number,
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
+  sidebarWidth: PropTypes.number,
+  navigationNodeIds: PropTypes.arrayOf(PropTypes.string),
+  navigationScope: PropTypes.string,
+  readingMode: PropTypes.bool,
   onVisibleLevelChange: PropTypes.func,
   onFocusChange: PropTypes.func,
   chromeless: PropTypes.bool,
@@ -2174,6 +2238,10 @@ MinimalGraph.propTypes = {
   focusRequestKey: PropTypes.number,
   setSelectedNode: PropTypes.func.isRequired,
   viewportReservationKey: PropTypes.string,
+  sidebarWidth: PropTypes.number,
+  navigationNodeIds: PropTypes.arrayOf(PropTypes.string),
+  navigationScope: PropTypes.string,
+  readingMode: PropTypes.bool,
   onVisibleLevelChange: PropTypes.func,
   onFocusChange: PropTypes.func,
   chromeless: PropTypes.bool,

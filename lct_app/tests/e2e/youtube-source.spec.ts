@@ -5,6 +5,8 @@ import { readFile } from "node:fs/promises";
 // - The source and timeline start collapsed, then remain usable when opened.
 // - Source passages, playback seeking, speaker edits, and downloads survive the toolbar flow.
 // - Invalid YouTube metadata offers an explanation without loading an untrusted URL.
+// - A visible app Play/Pause control follows actual player state; a stalled embed
+//   shows loading/error/retry rather than a silent blank box, retaining its cue.
 
 // Synthetic timing contract, explicitly not evidence of transcription quality.
 const fixture = {
@@ -23,14 +25,16 @@ const fixture = {
   ],
 };
 
-async function open(page, mockPlayer = true) {
+async function open(page, mockPlayer = true, testBundle = fixture) {
   if (mockPlayer) await page.addInitScript(() => {
     window.__youtubeSeeks = [];
     window.YT = { Player: class {
       iframe: HTMLIFrameElement;
       time = 0;
       state = -1;
+      options;
       constructor(host, options) {
+        this.options = options;
         this.iframe = document.createElement("iframe");
         host.replaceWith(this.iframe);
         setTimeout(() => options.events.onReady(), 20);
@@ -39,12 +43,14 @@ async function open(page, mockPlayer = true) {
       seekTo(seconds) { this.time = seconds; if (this.state !== 2) this.state = 1; window.__youtubeSeeks.push(seconds); }
       getCurrentTime() { return this.time; }
       getPlayerState() { return this.state; }
+      playVideo() { this.state = 1; this.options.events.onStateChange(); }
+      pauseVideo() { this.state = 2; this.options.events.onStateChange(); }
       getIframe() { return this.iframe; }
       destroy() { this.iframe.remove(); }
     } };
   });
   await page.goto("/view");
-  await page.locator('input[type="file"]').setInputFiles({ name: "youtube-test.threads", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(fixture)) });
+  await page.locator('input[type="file"]').setInputFiles({ name: "youtube-test.threads", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(testBundle)) });
   await page.getByRole("button", { name: "Source", exact: true }).click();
   await expect(page.getByRole("complementary", { name: "YouTube source" })).toBeVisible();
   // Wide time-based graphs retain the existing Center recovery control.
@@ -61,7 +67,10 @@ test("desktop node selection seeks queued and ready playback; reviewed artifact 
   await page.locator(".react-flow__node").filter({ hasText: "Opening discussion" }).click();
   await expect(source).toContainText("Opening passage");
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks)).toContain(1.25);
-  await expect(source.getByRole("link")).toHaveCount(0);
+  await expect(source.getByRole("link", { name: /Open on YouTube at/ })).toHaveAttribute("href", /&t=1s$/);
+  await source.getByRole("button", { name: "Play video", exact: true }).click();
+  await expect(source.getByRole("button", { name: "Pause video", exact: true })).toBeVisible();
+  await source.getByRole("button", { name: "Pause video", exact: true }).click();
   const widthHandle = source.getByRole("separator", { name: "Source panel width" });
   const oldWidth = (await source.boundingBox()).width;
   const grip = await widthHandle.boundingBox();
@@ -83,8 +92,7 @@ test("desktop node selection seeks queued and ready playback; reviewed artifact 
   await timelineHandle.press("ArrowUp");
   await expect(timelineHandle).toHaveAttribute("aria-valuenow", String(oldHeight + 24));
   await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
-  await page.getByRole("button", { name: "Show all", exact: true }).click();
-  await page.getByRole("button", { name: "Later discussion — SPEAKER_01", exact: true }).click();
+  await source.getByRole("button", { name: /Later passage/ }).click();
   await expect.poll(() => page.evaluate(() => window.__youtubeSeeks)).toContain(4900);
   await source.getByText("Name the speakers").click();
   await source.getByRole("textbox", { name: "Speaker name" }).fill("Aditya");
@@ -112,11 +120,9 @@ test("phone offers source passages beside its graph without page overflow", asyn
   const transcript = source.getByLabel("Source passages");
   await expect(source).toContainText("Opening passage");
   await expect(source).toContainText("Later passage");
-  await source.getByRole("slider", { name: "Transcript height" }).focus();
-  await page.keyboard.press("Home");
-  expect(await transcript.evaluate(el => el.scrollHeight > el.clientHeight)).toBe(true);
-  await transcript.evaluate(el => { el.scrollTop = el.scrollHeight; });
-  expect(await transcript.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+  await expect(source.getByRole("slider", { name: "Transcript height" })).toHaveCount(0);
+  await expect(source.getByRole("button", { name: "Play video", exact: true })).toBeVisible();
+  expect(await transcript.evaluate(el => getComputedStyle(el).overflowY)).toBe("auto");
   expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(390);
   await source.getByRole("button", { name: /Later passage/ }).click();
   await expect(source).toContainText("Later passage");
@@ -135,6 +141,44 @@ test("blocked YouTube API preserves source text and a usable timestamped link", 
   await expect(source.getByRole("alert")).toContainText("YouTube could not load here");
   await expect(source).toContainText("Opening passage");
   await expect(source.getByRole("link")).toHaveAttribute("href", `${fixture.media_refs[0].view_url}&t=1s`);
+});
+
+test("stalled embed becomes an explained failure and retries at the selected passage", async ({page}) => {
+  await page.setViewportSize({width:390,height:844});
+  await page.clock.install();
+  await page.route("https://www.youtube.com/iframe_api", route => route.fulfill({
+    contentType:"text/javascript", body:`
+      window.YT = {Player: class {
+        constructor(host, options) {
+          this.options=options; this.time=0; this.state=-1;
+          this.iframe=document.createElement('iframe'); host.replaceWith(this.iframe);
+          window.__sourceAttempts=(window.__sourceAttempts||0)+1;
+          if(window.__sourceAttempts>1) queueMicrotask(()=>options.events.onReady());
+        }
+        cueVideoById({startSeconds}){this.time=startSeconds;this.state=5;window.__retainedCue=startSeconds;}
+        getCurrentTime(){return this.time;}
+        getPlayerState(){return this.state;}
+        getIframe(){return this.iframe;}
+        playVideo(){this.state=1;this.options.events.onStateChange();}
+        pauseVideo(){this.state=2;this.options.events.onStateChange();}
+        destroy(){this.iframe.remove();}
+      }};
+      window.onYouTubeIframeAPIReady();`
+  }));
+  await open(page,false);
+  const source=page.getByRole("complementary",{name:"YouTube source"});
+  await expect(source.getByRole("status")).toHaveText("Preparing the video player");
+  await source.getByRole("button",{name:/Later passage/}).click();
+  await expect(source.getByRole("link")).toHaveAttribute("href",/&t=4900s$/);
+  await page.clock.runFor(20001);
+  await expect(source.getByRole("alert")).toContainText("did not become ready");
+  await expect(source.getByRole("button",{name:"Play video",exact:true})).toHaveCount(0);
+  await source.getByRole("button",{name:"Retry video",exact:true}).click();
+  await expect(source.getByRole("button",{name:"Play video",exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>window.__retainedCue)).toBe(4900);
+  await source.getByRole("button",{name:"Play video",exact:true}).click();
+  await expect(source.getByRole("button",{name:"Pause video",exact:true})).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)).toBe(false);
 });
 
 for (const width of [390, 1440]) {
@@ -176,10 +220,14 @@ test("live YouTube iframe reports the requested playhead time", async ({ page })
       }; },
     });
   });
-  await open(page, false);
-  await page.locator(".react-flow__node").filter({ hasText: "Opening discussion" }).click();
-  await expect.poll(() => page.evaluate(() => window.__actualYouTube?.getCurrentTime?.()), { timeout: 30000 }).toBeGreaterThanOrEqual(1);
-  await page.getByRole("button", { name: "Show all", exact: true }).click();
-  await page.getByRole("button", { name: "Later discussion — SPEAKER_01", exact: true }).click();
-  await expect.poll(() => page.evaluate(() => Math.floor(window.__actualYouTube?.getCurrentTime?.() || 0)), { timeout: 30000 }).toBe(4900);
+  const liveFixture={...fixture,utterances:fixture.utterances.map(row=>row.id==="u2" ? {...row,timestamp_start:20,timestamp_end:25} : row)};
+  await open(page, false, liveFixture);
+  const source=page.getByRole("complementary",{name:"YouTube source"});
+  await source.getByRole("button",{name:"Play video",exact:true}).click();
+  await expect.poll(() => page.evaluate(() => ({seconds:window.__actualYouTube?.getCurrentTime?.(),state:window.__actualYouTube?.getPlayerState?.()})), { timeout: 30000 }).toMatchObject({state:1,seconds:expect.any(Number)});
+  await expect.poll(() => page.evaluate(() => window.__actualYouTube?.getCurrentTime?.()), { timeout: 30000 }).toBeGreaterThan(1.25);
+  await source.getByRole("button",{name:"Pause video",exact:true}).click();
+  await source.getByRole("button",{name:/Later passage/}).click();
+  await source.getByRole("button",{name:"Play video",exact:true}).click();
+  await expect.poll(() => page.evaluate(() => window.__actualYouTube?.getCurrentTime?.()), { timeout: 30000 }).toBeGreaterThan(20);
 });

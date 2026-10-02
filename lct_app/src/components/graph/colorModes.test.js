@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+// Test intent: speaker fills must reflect complete measured contribution shares;
+// incomplete timing stays neutral and legacy IDs never imply equal speaking time.
 import {
   COLOR_MODES,
   DEFAULT_COLOR_MODE,
@@ -27,16 +29,53 @@ describe("speaker color mode", () => {
     expect(colors.Aditya).not.toBe(colors.Sai);
   });
 
-  it("uses a mixed-speaker gradient instead of falsely assigning one owner", () => {
+  it("uses measured proportions for a mixed-speaker gradient", () => {
     const node = {
       id: "topic-1",
-      source_turns: [{ speaker_id: "Aditya" }, { speaker_id: "Sai" }],
+      speaker_contributions: {
+        complete: true,
+        totalSeconds: 10,
+        speakers: [
+          { id: "Aditya", seconds: 8, fraction: 0.8, percent: 80 },
+          { id: "Sai", seconds: 2, fraction: 0.2, percent: 20 },
+        ],
+      },
     };
     const speakerColorMap = buildSpeakerColorMapForNodes([node]);
     const colors = resolveNodeColors({ mode: "speaker", node, speakerColorMap });
     expect(colors.fill).toContain("linear-gradient");
     expect(colors.fill).toContain(speakerColorMap.Aditya);
     expect(colors.fill).toContain(speakerColorMap.Sai);
+    expect(colors.fill).toContain("80%");
+    expect(colors.fill).toContain("90deg");
+  });
+
+  it("uses the dominant color at 90% while retaining minority share metadata", () => {
+    const node = {
+      id: "moment",
+      speaker_contributions: {
+        complete: true,
+        totalSeconds: 10,
+        speakers: [
+          { id: "Aditya", seconds: 9, fraction: 0.9, percent: 90 },
+          { id: "Sai", seconds: 1, fraction: 0.1, percent: 10 },
+        ],
+      },
+    };
+    const speakerColorMap = buildSpeakerColorMapForNodes([node]);
+    expect(resolveNodeColors({ mode: "speaker", node, speakerColorMap }).fill).toBe(speakerColorMap.Aditya);
+    expect(node.speaker_contributions.speakers[1].percent).toBe(10);
+  });
+
+  it("stays neutral if source timing is incomplete or absent", () => {
+    const speakerColorMap = { Aditya: "#111111", Sai: "#eeeeee" };
+    const incomplete = {
+      id: "partial", speaker_id: "Aditya",
+      speaker_contributions: { complete: false, totalSeconds: 9, speakers: [{ id: "Aditya", seconds: 9, fraction: null }] },
+    };
+    expect(resolveNodeColors({ mode: "speaker", node: incomplete, speakerColorMap }).fill).toBe("#f1f5f9");
+    expect(resolveNodeColors({ mode: "speaker", node: { id: "legacy", speaker_id: "Sai" }, speakerColorMap, requireMeasuredSpeakerShares: true }).fill).toBe("#f1f5f9");
+    expect(resolveNodeColors({ mode: "speaker", node: { id: "legacy", speaker_id: "Sai" }, speakerColorMap }).fill).toBe(speakerColorMap.Sai);
   });
 
   it("derives mixed ownership for an aggregate from all hierarchy memberships", () => {

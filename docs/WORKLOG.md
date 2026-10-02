@@ -6462,3 +6462,147 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Saved conversations already offer Graph and Transcript tabs; `.threads` uses a separate compact card view. ADR-062 preserves overlapping semantic membership, so a Discussion projection must preserve secondary links and exact utterance provenance rather than derive speaker replies from chronology.
 - `conversations_api.py:451-472` lacks the owner check used at lines 106-114. Logged as a security-sensitive prerequisite in `ISSUES.md`; no participant data, live database, credentials, or recording was accessed. The human architecture choice about semantic hierarchy versus new reply extraction is pending.
 - The Windows sandbox helper still fails before ordinary command launch with OS error 206. Reviewed shell execution works for repository diagnostics; no global sandbox configuration or app binary was changed.
+
+## 2026-10-02 00:45 IST — Public viewer reading and local search
+
+- Worked in isolated codex/viewer-source-and-controls from origin/main 59dea4c;
+  preserved the running checkout and other worktrees. Applied Impeccable to extend
+  the current interface. User selected unique-passage speaking time and device-local
+  semantic search. ADR-071 and tests/intent/viewer-exploration.md record intent.
+- Instrument: reproduced a closed Source retaining a seek without opening;
+  key navigation was suppressed with node details open; measured card boxes
+  collided because timestamp positions did not reserve card width; speaker fills
+  divided unique IDs equally rather than measured duration. Earlier manual video
+  Play evidence did not establish the complete evidence-to-Source interaction.
+- speakerContributions.js:1-116 computes unique linked durations, completeness,
+  and percentages totaling 100. colorModes.js:430-475 uses proportional horizontal
+  bands and a single fill at >=90% dominance. DiscussionView.jsx:25-238 presents
+  shares on the existing branches and removes speaker-edit forms.
+- MinimalGraph.jsx:105-112, 750-820, 1760-1795, 2045-2055 and graphLayout.js add
+  bounded reading cards, collision packing, reserved drawer space, and visible/key
+  navigation. ConversationNode.jsx adds compact previews. TimelineRibbon.jsx and
+  graphNavigation.js carry the chosen reading path and clear it on Escape.
+  NodeDetail.jsx uses that path for Nearby moments with keyboard-accessible jumps.
+  Authored nodes, memberships, timestamps, and original transcript remain intact.
+- ThreadsViewerToolbar.jsx and CardDisplaySettings.jsx restore icons, aligned
+  disclosures, and one shared view-cycle control (also used in the compact deck).
+  ThreadsViewer.jsx:315-345, 553-582, 648-700 integrates local results and opens Source
+  for evidence seeks. SourceSpeakerEditor.jsx presents actual samples and local
+  name/export controls; TextSourcePanel.jsx retains untimed/full-transcript access.
+  YouTubeSourcePanel.jsx:15-205, 229-247 removes transcript-height adjustment and
+  handles observable loading, timeout/retry, cancellation, and safe external fallback.
+  Source sections now keep natural height and scroll without overlapping on phones.
+- conversationSearch.js and conversationSearch.worker.js:1 onward index all nodes,
+  utterances and complete source text, retaining original character ranges. The
+  on-demand worker uses pinned quantized MiniLM through Transformers.js 4.3.0.
+  ViewerFindMenu.jsx and useConversationSearch.js provide immediate lexical results,
+  explicit meaning search, stages/counts/elapsed time, cancellation, and retry.
+  searchTiming.js and sourceLoadTiming.js retain bounded operational timings only.
+- Validation: final frontend suite 488/488 in 79 files; new Playwright reading-flow
+  regressions 2/2 (desktop seven-moment navigation/evidence handoff, phone source
+  geometry); scoped ESLint zero errors (one preexisting fast-refresh warning);
+  production build passes. Focused regressions exist beside each changed component
+  and service. New e2e fixture validation failures were corrected against the actual
+  thread/edge schema before counting the successful run. A fake-timer diagnostic
+  identified a native zero-delay JSDOM toggle event; application timers still clear.
+- Actual Chromium interaction with the public artifact visited 7/7 distinct selected
+  moments; 56 rendered moment boxes had zero overlaps. An earlier player probe
+  showed the matching 37:52 seek advancing at 2273.56 seconds with readyState 4.
+  A later near-end probe observed buffering at 2.5 seconds, so it is not counted as
+  successful playback evidence. Source links and pending cues were verified separately.
+- Actual browser semantic inference returned the advertiser-incentives branches
+  for a paraphrased query. One cold run indexed 1601 chunks in ~82 seconds including
+  downloads; a second exercised failure/cancel/retry and a ~102ms warm query. These
+  are observations on this desktop, not general timing promises. Model/runtime
+  requests were GET-only with no bodies; YouTube's own playback/analytics traffic
+  was classified separately. Desktop and 390px screens had no horizontal overflow.
+  Screenshots/network diagnostics remain ignored local evidence and are excluded
+  from source publication and independent review.
+- Review probes: Anthropic weekly limit; xAI usage exhausted; Google cached OAuth
+  requires an existing project. No source packet was transmitted; review is pending,
+  no findings have been independently approved or rejected, and release remains
+  blocked by this mandatory gate. No reviewer spend, new cloud project, or credential
+  change was introduced. Nonblocking baseline warnings are logged in ISSUES.md.
+
+## 2026-10-02 01:18 IST — Blank player and visible Play correction
+
+- The user's new screenshot has an empty video host and no Play. A successful
+  manual-play run cannot establish visible controls for a failed load. Compared
+  normal and blocked-embed loads on the released public viewer: after 22s the
+  blocked request left one iframe, zero alerts/statuses/fallbacks, reproducing
+  the screenshot. The normal request displayed a thumbnail and native Play.
+  Evidence class: instrument. Specific cause in the user's browser remains
+  unknown; confidence in the reproduced missing-readiness failure class is 0.95.
+- YouTubeSourcePanel.jsx:59-62, 134-203, 227-241 now renders loading/failure in
+  the video area, uses explicit native controls, exposes Play/Pause beside a
+  ready player, reports blocked playback and provider error codes, and destroys
+  timed-out attempts. Late readiness cannot revive a failed attempt. Retry and
+  persistent timestamped YouTube fallback retain the selected source position.
+- SourcePlaybackControls.jsx:1-70 owns visible actions and bounded playback
+  waits, reports stage/elapsed/unknown remaining time, prevents repeated pending
+  Play actions, follows actual player state, and cancels timers on exit. Timing
+  history uses a separate bounded operational key via sourceLoadTiming.js:1-26;
+  no recording identity, URL, source text, or query is stored.
+- TextSourcePanel.jsx:6-31 restores the missing unverified-recording explanation
+  found by the old invalid-metadata browser tests. Updated adjacent component
+  and timing tests, youtube-source.spec.ts, ADR-071, and the test intent. Existing
+  source tests had stale slider/link/navigation expectations; corrected them
+  against the already selected UX. A preexisting unused destructuring variable
+  in a touched test was removed. Tech debt records the small playback extraction.
+- Validation: 28/28 focused frontend tests; eight regular Chromium Source/reading
+  regressions plus one separately enabled real YouTube test passed. Scoped lint
+  has zero errors. Production build passes (2330 modules, existing chunk warning).
+  Real local page: app Play at 37:52 advanced to 2272.478175 seconds, paused=false,
+  readyState=4; app Pause returned the visible Play button. Blocked embed showed
+  an error, removed the iframe, offered Retry, and retained t=2272s. Both runs had
+  zero page errors. Desktop/phone and blocked-state screenshots inspected once.
+- Browser UI connector has no available browser surface; its in-app browser
+  creation reported unavailable. The user's explicitly requested E2E validation
+  used the project's existing Playwright runtime. No browser setting or protection
+  was changed. Raw images/diagnostics remain ignored local evidence.
+- Logged the nonblocking phone legend/passage-following observations in ISSUES.md
+  without extending this correction. The required non-OpenAI review remains
+  unavailable for the previously recorded capacity/project reasons. No source
+  packet was sent; no independent verdict or findings exist. Preserve PR205 as
+  a draft; no merge, production deployment, or review waiver is authorized here.
+
+## 2026-10-02 01:23 IST — Corrected Source preserved for review
+
+- Source commit d3fc09a is pushed on codex/viewer-source-and-controls in draft
+  PR205. Required push gate passed 494/494 frontend tests in 79 files. The final
+  production build includes the pending-Play guard and passes; regular browser
+  regressions are 8/8 plus a separate real YouTube test 1/1. Scoped lint is clear.
+- Prepared the updated, unsent review packet for 59dea4c..d3fc09a: 46 tracked
+  code/test/spec/dependency files, 263283 bytes, SHA-256
+  6605a2a465ffd845994efa77d13ebf35ab8c8926515c1490416a401944863a75.
+  Scan found no common credential-pattern matches; recordings/transcripts,
+  screenshots, network diagnostics, credentials and operational logs excluded.
+  Exact inventory and release-blocked status are in the review receipt.
+- Reviewer access has not changed, no review packet was transmitted, and no
+  non-OpenAI verdict exists. Public production remains on the previous release.
+
+## 2026-10-02 07:33 IST — Antigravity independent review approved
+
+- User identified the omitted installed `agy` route. The earlier capacity claim
+  had checked three clients, not every available eligible route. Authenticated
+  Antigravity model discovery listed Google Gemini 3.1 Pro (High); no Cloud project
+  selection or new paid API access was needed. Logged the omission in the shared
+  mistakes ledger and retained the reproducible client/guard recipe in the receipt.
+- Verified a deny-all PreToolUse hook in a fresh neutral temporary Git directory
+  before disclosure: a harmless view_file probe was denied. Sent only the exact
+  existing authorized 46-file source/test/spec/dependency packet for
+  59dea4c..d3fc09a, 263283 bytes, SHA-256
+  6605a2a465ffd845994efa77d13ebf35ab8c8926515c1490416a401944863a75.
+  Plan+sandbox, explicitly pinned gemini-3.1-pro-high, no permission bypass;
+  excluded source artifacts/transcripts, credentials, images, network diagnostics,
+  operational logs and private reasoning. Existing REVIEW-EGRESS-A1 applies.
+- Instrument: terminal SUCCESS, exit 0, pinned model confirmed, zero tool attempts,
+  response scope SHA matches d3fc09a. Final verdict APPROVED, no findings; nothing
+  to fix, reject or arbitrate. The reviewer performed diff-only inspection and
+  did not rerun the supplied 494 frontend, 8 regular browser and 1 real YouTube
+  validations. Raw review reasoning remains ignored local data.
+- Added docs/reviews/2026-10-02-viewer-exploration-agy.md:1 onward with the final
+  response, hashes, guard probe, validation and remaining release boundary.
+  Marked the earlier pending receipt as superseded and resolved the reviewer
+  capacity entry in ISSUES.md. No source changed after the approved d3fc09a scope.
+  PR205 remains draft; no merge or production deployment was authorized or run.
