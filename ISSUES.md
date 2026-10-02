@@ -1777,3 +1777,32 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 - All finite acceptance checks met. Remaining delivery dependency:none. Next
   evidence checkpoint:any reported regression. Final closure record is pushed
   on the task branch; served product source is main3671f86.
+
+## 2026-10-02 — Legend gap and UX-review scope (DIAGNOSED; REPAIR OPEN)
+
+- User asks why there is blank space below Legend and whether UX analysis was
+  complete. A0 explanation/diagnostics only; no new product layout selected.
+  Owner Codex; authoritative viewer-source-and-controls worktree, task branch
+  codex/viewer-history-controls. Public source3671f86.
+- Instrument: MinimalLegend.jsx:141 fixes bottom at56px. Public Chromium1440/390
+  reproduces exactly56px to the graph boundary with Legend closed/open and
+  timeline collapsed/expanded. Timeline occupies its own separate row below
+  graph (ThreadsViewer.jsx:773 onward); the extra56px clearance is redundant.
+- Actual interaction evidence: Legend open/close, timeline open/close; settled
+  popup animation checked before bounds. Zero page errors/console warnings/HTTP
+ 5xx in this focused inspection. Evidence:tmp/legend-gap-report.json and paired
+  screenshots. This is not a full-app UX audit or complete pane matrix.
+- Prior release evidence covered finite source/navigation/timeline journeys,
+  not exhaustive layout/accessibility/performance review. Legend placement and
+  detail-drawer occlusion were already captured above and left unresolved.
+- Recommended repair:12–16px inset above actual available graph boundary;
+  respect Source/detail pane reservations in the same bounded layout slice.
+  Assumptions: current graph/timeline structure remains; no intentional56px
+  reserved control region. Confidence0.99 for cause,0.9 for bounded repair.
+  Predicted checks: gap12–16px, readable popup/trigger without pane collisions
+  at phone/tablet/desktop, normal open/close/keyboard operation. Fallback:
+  if pane constraints still hide the key, prepare an adjacent-control placement
+  decision with measured evidence; don't claim the bottom inset alone fixes it.
+- Finite diagnostic checks complete. Remaining dependency: selected repair or
+  separately authorized full viewer UX audit. Next evidence checkpoint:
+  complete pane-combination walkthrough after a layout change.
