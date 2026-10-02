@@ -7072,3 +7072,88 @@ User observed an empty desktop transcript until node selection, with only the cu
 - F1 independent-review overclaim: reviewer said disabled keyboard focus was invisible after CSS reset. Instrumented Chromium Tab navigation falsified that claim: wrapper actually focused, :focus-visible true, outline auto1px rgb(16,16,16). Added real browser focus-outline checks at1440/390/1024; native outline retained. Counter-evidence returns to reviewer; no speculative styling repair or waiver. Human arbitration only if the claim remains disputed after review of these facts.
 - Updated test intent before repairs. First integrated rerun exposed a harness assumption: app Escape clears graph selection as before, whereas explicit details Close retains the thread. Browser flow now verifies Escape closes details/clears selection, then re-enters the thread through normal controls and separately checks explicit Close's retained path. No navigation implementation altered to satisfy that test.
 - Final focused unit10/10, browser5/5, scoped ESLint clean, rebuilt production success (main JS1356.25KB/gzip403.81KB; large-chunk notice preexisting). Remaining dependencies: review updated committed diff, mandatory push gate519tests, remote checks and served evidence. Next checkpoint final eligible verdict.
+
+### 2026-10-02 19:47 IST — Navigation hints served and bounded acceptance complete
+
+- Google Gemini3.1 Pro High via authenticated AGY APPROVED exact255da62b323e8095eb10d87835771e8b601b1922, nine-file packet29685bytes SHA2561c6b6b3a01fcd7feca7b3244bbe1787a756d331f446a8c11827603a13a677f20;0tool attempts. F2/F3 repaired, F1 focus overclaim rejected by instrumented three-width outlines, final findings[]. No unresolved review arbitration. Reviewer did not rerun validation. Required push gate519/519, final remote Python integration/unit and Playwright smoke checks passed; PR211 exact-head squash merged011259fcd21620c4ad6982a8519816dbed722539 at14:08:35UTC.
+- GitHub Production deployment6810317638 reports exact merge SHA and successful14:09:12UTC, immutable URL lct-pftwzhdqj-adityas-projects-9c03351d.vercel.app. Public custom domain serves assets/index-BZUBIbn9.js; direct bounded bundle probe confirms final focus-scoped Escape and coordinate equality bailout. Immutable HTML comparison was unavailable because that URL redirects to Vercel login; no equivalence claim made from the login200. Public viewer remains accessible, tested directly.
+- Served actual-example journeys2/2 at1440/390px: four descriptions, unavailable reasons, keyboard focus, hoverable help/Escape dismissal, viewport bounds, Next stepping1→2of4, Back/Forward restoring both positions, explicit Close retains selected-thread description. Screenshots inspected; page errors0, console warnings/errors0, network5xx0. Production smoke on exact merged release run37017870304 passed9/9 (14.3s), completed14:10:50UTC.
+- Extra broader public Escape-close check failed after tooltips let the key through. A materially different fresh control probe confirmed identical actual drawer response with tooltip hidden/hovered:1 remaining dialog, unchanged title,1 Escape bubble,0tooltips. Recorded separately in ISSUES; exact root cause unknown, explicit Close works, no drawer source modified. Preserve the failed extra evidence; do not describe it as a passed integrated UX audit or change required tests to hide it.
+- Durable review receipt adds technical metadata only; runtime screenshots/control probes remain ignored locally and were excluded from review egress. Mistake ledger records shared scope predicate and scoped Escape regression guards. Codex owner/checkout unchanged, personal dirty AGENTS.md preserved; no backend/data deployment. This finite tooltip journey is served; human acceptance pending. Legend/full audit and drawer keyboard follow-up remain open. Next checkpoint human hover/focus use; closure-only documentation commit cannot alter reviewed source/coverage.
+
+### 2026-10-02 19:56 IST — Closure push gate diagnostic
+
+- c322b46 contains only ISSUES/WORKLOG/technical review receipt. Exact nine-file source packet still matches reviewed255da62 and SHA2561c6b6b3a01fcd7feca7b3244bbe1787a756d331f446a8c11827603a13a677f20; verification-only runner made no file changes. Owned local Vite server51080 stopped after local checks; no shared services touched.
+- Mandatory closure push blocked with518/519 passing: unchanged MinimalGraph.navigation.test.jsx camera restoration assertion saw0 setViewport calls after existing70ms wait. Previously full519/519 passed on exactly the same source; isolated unchanged test passed1/1 immediately after failure. Frame/suite timing suspected, cause unconfirmed; recorded separate ISSUES entry. No assertion, timeout, test coverage or required gate weakened.
+- Retry combined gate once after this diagnostic; if failure persists, retain committed closure and report the concrete push blocker instead of bypassing the hook. Source release remains merged/served and production9/9 smoke passed. Next evidence checkpoint combined gate result and remote closure branch SHA.
+
+## 2026-10-03 — Approved Legend repair and product decision brief
+
+- User approved reducing Legend bottom spacing and keeping it clear of Source/
+  details. Reuse the authoritative viewer worktree; new branch
+  codex/viewer-legend-spacing. Preserve the preexisting dirty AGENTS.md.
+- Existing board and test intent record hypotheses, 12px allocated utility-row
+  direction, finite acceptance and review/release dependencies before product edits.
+  Prior closure-only retry passed519/519 and ee7f131 is pushed; its initial camera
+  test failure remains recorded, not an active publication blocker.
+- One bounded read-only gpt-6-sol peer scoped deferred product decisions from local
+  product/ADR context and private supplied feedback. No transcript/participant
+  content will enter technical notes or external review; no product choice selected.
+
+### 2026-10-03 — Legend finite local acceptance
+
+- Instrumented red regression: populated14-thread artifact measured the old56px
+  gap before source edits. The first fixture omitted memberships and was rejected
+  by a new explicit14-thread readiness assertion; it did not count as product proof.
+- Shared utility row initially centered Legend beside taller reading controls,
+  giving25px desktop/45px phone clearance. Bottom alignment and compact phone
+  arrow labels corrected that generator. A second matrix exposed text Source's
+  viewport-only cap: settled384px Source in117px parent, overlapping Legend.
+  Matched the already-approved video cap to available pane height; controls can
+  scroll on short screens. Workspace bounds open-key allocation as well as panes.
+  Text/video Hide source wording differed; browser selector now matches both
+  actual public labels, with no behavior assertion removed.
+- Final Legend browser4/4 at1440x900,1024x768,390x844,320x640, plus resize100px
+  shorter and320→390. Verified gap12px, zero rectangle overlap, long aliases,
+  complete edge-key scroll, pointer/Enter/Escape/focus return, selected moment
+  preservation, reading/history, no horizontal overflow/page errors/API calls/5xx.
+  Video fixture proves layout, not real playback. Paired screenshots inspected;
+  smallest combined viewport requires scrolling, not simultaneous full-pane reading.
+- Adjacent populated hint/history journeys5/5, focused unit23/23, changed JSX
+  ESLint clean, production build success (2334modules; main JS1357.75KB,
+  gzip404.32KB; existing large-chunk notice). Manual layout detector returned[].
+  No claim of full UX/a11y/performance audit. Existing Source follow-resize and
+  real-example details Escape remain separate open issues.
+- Changed source: MinimalLegend inline layout/keyboard close; GraphReadingControls
+  optional inline presentation; MinimalGraph portal placement only; ThreadsViewer
+  workspace/utility allocation; TextSourcePanel compact cap/scroll containment.
+  Existing monolith candidates in TECH_DEBT unchanged; no broad refactor.
+- Six-axis decision packet captured in existing ISSUES with H1 status, alternatives,
+  consequences, finite evidence, recommendation and deferred scope. No product
+  implementation was inferred from the Legend approval. Next checkpoint: commit,
+  tool-free Google review, mandatory full gate and served behavior.
+
+### 2026-10-03 — Legend independent approval and mechanical integration
+
+- Google Gemini3.1 Pro High via authenticated AGY APPROVED exact d37f507f2ff9ff1ad5b08db4112cde888d9061ec,
+  findings[], tool attempts0. Eight-file diff plus tracked TextSourcePanel context:
+  32373bytes, SHA2564ad13aefe99220bb5e58dde8550b055d57451e0bfae8accd534e7eff441fb021.
+  Egress inventory/scan inspected exact bytes; no artifacts, transcripts, participants,
+  credentials, product-feedback notes or unrelated files. Existing subscription,
+  neutral cwd, pinned Google model, plan+sandbox and verified deny-all PreToolUse.
+  Reviewer did not rerun validation. AGY uses the bounded adapter because the older
+  repo convenience wrapper accepts only Grok/Claude; no independence gate waived.
+- Mandatory first pre-push gate520/520 passed. PR212 created and attached; preview
+  build passed. GitHub found conflict from branch/squash ancestry. Inspected exact
+  differences: branch already contains current main runtime plus only this repair.
+  Merge2001ba7efac72e32357fa143c9d3537eac069218 preserves reviewed source and closure
+  records. git diff d37f507..2001ba7 across all eight reviewed files is empty.
+  No source/test/coverage change; no duplicate unchanged AI review needed.
+- Actual bundled-example local layout interactions completed at1440/390/320 and
+  generated local screenshots, but the stricter console assertion failed with four
+  YouTube warnings (two web-share feature notices, two postMessage origin mismatch
+  while using localhost and closing panels). Do not call that overall probe passed
+  or infer a playback failure. Source SDK source was unchanged. Separate issue
+  records this evidence; preserve warning capture in served verification.
+- Final release dependency: second mandatory push gate, remote checks, main merge,
+  exact production identity and public layout acceptance. Runtime is not yet served.

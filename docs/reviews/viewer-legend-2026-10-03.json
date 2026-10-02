@@ -1,0 +1,37 @@
+{
+  "implementerFamily": "OpenAI",
+  "reviewerProvider": "Google",
+  "reviewerModel": "gemini-3.1-pro-high",
+  "runner": "authenticated AGY existing subscription; neutral working directory; plan+sandbox; verified deny-all PreToolUse hook",
+  "reviewedSourceCommit": "d37f507f2ff9ff1ad5b08db4112cde888d9061ec",
+  "baseCommit": "011259fcd21620c4ad6982a8519816dbed722539",
+  "mechanicalIntegrationCommit": "2001ba7efac72e32357fa143c9d3537eac069218",
+  "sourceEquivalence": "git diff reviewedSourceCommit..mechanicalIntegrationCommit over all eight reviewed files is empty; no source/test/coverage change",
+  "files": [
+    "lct_app/src/components/MinimalLegend.jsx",
+    "lct_app/src/components/MinimalLegend.test.jsx",
+    "lct_app/src/components/MinimalGraph.jsx",
+    "lct_app/src/components/graph/GraphReadingControls.jsx",
+    "lct_app/src/components/threads/TextSourcePanel.jsx",
+    "lct_app/src/pages/ThreadsViewer.jsx",
+    "lct_app/tests/e2e/viewer-legend.spec.ts",
+    "tests/intent/viewer-legend-space.md"
+  ],
+  "contextFiles": ["lct_app/src/components/threads/TextSourcePanel.jsx"],
+  "packetBytes": 32373,
+  "packetSha256": "4ad13aefe99220bb5e58dde8550b055d57451e0bfae8accd534e7eff441fb021",
+  "scan": "Exact bytes inspected and scanned. Synthetic fixture labels only. Credentials, artifacts, transcripts, participants, screenshots, private reasoning, product-feedback notes and unrelated files excluded.",
+  "verdict": "APPROVED",
+  "findings": [],
+  "toolAttempts": 0,
+  "limitations": "Supplied source review; reviewer did not rerun validation.",
+  "validation": {
+    "legendBrowser": "4/4 populated journeys at320/390/1024/1440px plus resize",
+    "adjacentBrowser": "5/5 history/navigation journeys",
+    "focusedUnit": "23/23",
+    "firstRequiredPushGate": "520/520",
+    "lint": "changed JSX clean",
+    "productionBuild": "passed",
+    "layoutDetector": "no findings"
+  }
+}

@@ -49,7 +49,7 @@ export default function TextSourcePanel({ bundle, selection = null, compact = fa
   });
   renderedTranscript.push(<span key="raw-last">{renderRaw(cursor, transcript.length)}</span>);
 
-  return <aside aria-label="Text source" className={`lct-source-panel flex shrink-0 flex-col overflow-hidden border-slate-200 bg-white p-3 text-xs text-slate-700 ${compact ? "max-h-[60dvh] border-b" : "w-[360px] max-w-[38vw] border-r"}`}>
+  return <aside aria-label="Text source" style={compact ? { maxHeight: "min(60dvh, 60%)" } : undefined} className={`lct-source-panel flex min-h-0 shrink-0 flex-col border-slate-200 bg-white p-3 text-xs text-slate-700 ${compact ? "overflow-y-auto border-b" : "overflow-hidden w-[360px] max-w-[38vw] border-r"}`}>
     <div className="flex shrink-0 items-center justify-between gap-2">
       <h2 className="font-medium text-slate-800">Original source text</h2>
       <button type="button" onClick={onClose} className="min-h-11 rounded px-2 text-slate-600 hover:bg-slate-100">Hide source</button>

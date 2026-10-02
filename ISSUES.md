@@ -1807,10 +1807,114 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   separately authorized full viewer UX audit. Next evidence checkpoint:
   complete pane-combination walkthrough after a layout change.
 
-## 2026-10-02 — Navigation arrow explanations (IN PROGRESS)
+## 2026-10-02 — Navigation arrow explanations (SERVED; human acceptance pending)
 
 - Human outcome: distinguish history arrows from moment navigation on hover and keyboard focus, including disabled controls. Owner Codex; authoritative viewer-source-and-controls worktree, branch codex/viewer-navigation-tooltips, origin/main3671f86; dirty AGENTS.md preserved.
 - Finite checks: truthful history/moment/thread copy; hover/focus/Escape/leave behavior; disabled help without activation; tooltip viewport bounds in combined pane states; unchanged arrows/callbacks/control sizing. Test intent stored before product edits.
 - One bounded peer owns existing graph reading controls extraction/tests; root owns shared tooltip, toolbar, browser verification/integration/release. MinimalGraph reading logic remains in parent. Existing frontend release and review authority persist; no backend/data change.
 - Remaining dependencies: implementation, focused local evidence, eligible independent family review, required release gates and served public verification. Next checkpoint: populated browser hover/focus and pane bounds. Legend repair and complete UX audit remain separate open work.
 - Local checkpoint19:20IST: implemented, unit9/9 plus adjacent17/17, browser5/5 desktop/tablet/phone, lint/build clean. Corrected existing thread label after closing details using the same predicate as its actual reading path (red7-versus21 fixture regression then green). Independent review and publication remain pending; next evidence checkpoint exact source diff verdict.
+- Delivered checkpoint19:47IST: final focused unit10/10, browser5/5, required full frontend519/519; Google Gemini via AGY approved exact255da62 (fixed Escape interception/scroll update findings, focus overclaim falsified). PR211 merged011259fcd21620c4ad6982a8519816dbed722539 at14:08:35UTC; Production6810317638 successful14:09:12UTC. Public arrow journeys2/2 desktop/phone and automatic production smoke9/9 passed. Owner Codex, same authoritative worktree; source/hash/reviewer receipt in docs/reviews/viewer-navigation-tooltips-2026-10-02.json. No remaining dependency for these tooltips; next evidence checkpoint human use. Legend repair/full UX audit and the drawer Escape issue below remain separate.
+
+## 2026-10-02 — Details Escape response on the bundled example (OPEN)
+
+- Instrumented extra public check: Source button focused, Escape reached a window listener once but details remained visible. Controlled fresh desktop journeys with history tooltip hidden and hovered produced identical results:1 remaining dialog, unchanged title,0 tooltips,1 Escape bubble event. This rules out active tooltip interception; exact drawer cause unconfirmed. Explicit Close still works.
+- Synthetic fixture's app Escape close/selection-clear check passes at three widths. Bundled example behavior differs; do not generalize that fixture to the real drawer. NodeDetail source was unchanged in PR211. Impact: keyboard users may need explicit Close in this state. Nonblocking for requested history/reading explanations; no source repair opened in this slice.
+- Evidence: tmp/navigation-escape-control.json; failed extra public probe output retained by this chat, normal arrow proof tmp/navigation-tooltips-live-report.json. Recommended next step: dedicated drawer keyboard investigation using the real artifact's relevant shape and synthetic reproduction, including focus/history combinations, without disclosing transcript content. Owner unassigned; next checkpoint reproduce why Escape listener does not close the real drawer.
+
+## 2026-10-02 — Camera restoration test instability during closure push (OPEN)
+
+- Closure-only pre-push gate failed1/519 at MinimalGraph.navigation.test.jsx:91: mocked setViewport not observed after the existing70ms wait. Same reviewed runtime/source bytes previously passed full519/519 and public Back/Forward; isolated unchanged test immediately passed1/1. Timing is a hypothesis, not a confirmed cause; no test timeout/assertion/source changed.
+- Impact: documentation push initially blocked; one combined retry passed519/519
+  and closure ee7f131 was pushed. This is an observed intermittent test concern,
+  not a current release blocker. If it recurs, investigate observable readiness
+  under suite load without weakening the required camera restoration assertion.
+
+## 2026-10-03 — Legend spacing and pane isolation (APPROVED; IMPLEMENTING)
+
+- Outcome: reach the Legend and read its key without blank clearance or Source/
+  details collisions. Owner Codex; authoritative checkout viewer-source-and-controls,
+  branch codex/viewer-legend-spacing. User explicitly approved this repair.
+- Instrumented prior public diagnosis: fixed bottom-14 gives a redundant 56px
+  gap; the timeline is already a separate flex row. Raising z-index cannot reserve
+  room and would cover another pane. Confidence 0.99 in the spacing cause.
+- Spatial thesis: exact evidence/details are primary; Legend and reading controls
+  are supporting utilities. Allocate a compact shared bottom row below the pane
+  area, with 12px padding. The open key uses bounded, scrollable allocated space.
+  Existing floating behavior stays available to other graph consumers.
+- Predicted acceptance: collapsed gap 12px; reachable controls and no pane overlap
+  at 320/390/1024/1440px, short screens and resized combinations; unchanged
+  moment/history/alias behavior. Confidence 0.9; fallback is a measured layout
+  revision if the finite pane matrix disproves the allocation, never a z-index patch.
+- Relevant files: MinimalLegend, ThreadsViewer, MinimalGraph, GraphReadingControls,
+  TextSourcePanel, focused browser tests and tests/intent/viewer-legend-space.md. Existing graph/viewer
+  monolith decomposition candidates remain separate in TECH_DEBT.
+- Remaining dependency: local evidence, independent Google-family review, release
+  gates and served verification under existing frontend publication authority.
+  Next checkpoint: failing spacing boundary, then combined pane walkthrough.
+- Product decision brief is separately informational; no deferred label generation,
+  replay, hierarchy, physics layout or intent lens is selected by this approval.
+- Local checkpoint: populated browser4/4 at320/390/1024/1440, adjacent history/
+  navigation5/5, focused unit23/23, scoped ESLint and production build pass.
+  Open-key Escape restores trigger focus without changing the selected moment;
+  long names wrap and the entire key can be scrolled. Gap is12px. Short-screen
+  text Source had384px height inside117px; its compact cap now follows the
+  existing video rule (60% of the available pane, capped at60dvh), with outer
+  scrolling for controls. Legend's open space is bounded by the workspace.
+  This is finite repair evidence, not a complete viewer UX audit.
+  Next checkpoint: exact committed diff, independent review and release gates.
+- Review checkpoint: Google Gemini3.1 Pro High through authenticated AGY approved
+  d37f507 with findings[],0tool attempts; tracked receipt records exact32373byte
+  packet/hash. Full pre-push520/520 passed; PR212 preview successful. Mechanical
+  main reconciliation2001ba7 retains exactly identical reviewed source/tests.
+  Remaining: required checks and served verification; no new human decision needed.
+
+## 2026-10-03 — Viewer product decision space (DEFERRED; no proposal selected)
+
+**Attention status:** H1; a product ruling is required before the next product
+slice, not for the approved Legend repair. Reason: these options change what a
+card means, where exploration begins, or how time/intent changes the map.
+Grey area: No. Smallest next ruling: choose card wording/attribution and whether
+the next slice keeps existing node boundaries. Other axes can remain deferred.
+Owner for this brief: Codex; integration owner/check-out unchanged. No new
+architecture, inference provider, hierarchy or artifact format is approved here.
+
+| Decision | Options and real tradeoffs | Recommendation and acceptance evidence |
+| --- | --- | --- |
+| Card wording and voice | Keep authored titles (stable but can be abstract); add short presentation labels plus explicit speaker chips (clearer, requires reviewed labels); regenerate attributed speaker-verb claims (more natural but can misattribute mixed speech and adds model/content review). | Trial short labels with explicit identities, full wording and exact evidence on demand. A dominant color never proves sole authorship. Readers must identify topic and voices correctly; mixed/unknown voices remain honest; original source bytes/IDs stay unchanged. |
+| Smaller reading units | Compact preview of each existing node (small presentation scope); split evidence into navigable passages inside the same node (more steps, preserves semantic identity); repartition authored nodes (potentially clearer boundaries, but changes memberships, search, provenance and history migration). | Passage stepping inside existing nodes before resegmentation. Verify every passage is reachable in order, maps to exact evidence and returns to the same node/thread/history position. |
+| Entry and density | Keep highest-tier entry (orientation but abstract); topic-first entry (recognizable subjects, hides the macro story initially); moments-first entry (concrete, more visual load); resume last place (fast return, needs a persistence/privacy decision). | Compare an opt-in topic entry with current entry before changing the default. Use populated long conversations: first-time readers find a known passage and explain the surrounding topic; phone and keyboard navigation retain access to every tier. |
+| Time exploration | Focus an existing final-map moment at T (small, final interpretation remains visible); cumulatively reveal source/moments up to T (clearer progression, must handle nodes spanning T); regenerate historical summaries from each prefix (true historical knowledge boundary, much larger processing/storage and model/data decision). | Start with focus/scrub using verified timestamps, explicitly a final map. Do not present a final summary as something known at T. Verify deterministic forward/back seeks, untimed evidence and partial-node labels; historical rebuilding stays separate. |
+| Spatial layout | Keep deterministic chronological packing (stable but broad); free physics (organic, may jitter/collide and obscure time); constrained physics with a fixed time axis (compromise, more tuning/performance/persistence). | Keep deterministic layout unless a bounded comparison improves retrieval. Test stable reload positions, no collisions, chronology and provenance, reduced motion and phone behavior. No physics dependency selected. |
+| Intent-aware exploration | Existing local search/filtering (predictable); session-local intent lens that ranks/emphasizes existing nodes (more useful focus, adds state and explanation); regenerate hierarchy/summaries for each intent (tailored but unstable meanings, larger compute/privacy and identity consequences). | A reversible session lens is the first experiment if chosen. IDs, memberships and source bytes must remain unchanged; turning it off restores the map; explain why a result is emphasized. Any new inference/egress needs its own decision. |
+
+Relative scope: presentation labels and entry experiments are small; passage
+stepping and a reversible intent lens are medium; historical regeneration,
+semantic resegmentation and physics are large/unknown until their data contracts
+are chosen. These are scope comparisons, not measured hour/calendar forecasts.
+Keep all defaults is a valid no-action choice. A preview comparison is reversible;
+rewriting artifacts would need a separate migration and recovery plan.
+
+Suggested sequence after the Legend release: (1) card wording/voice and passage
+reading; (2) compare entry/density; (3) choose time behavior; (4) evaluate layout
+and intent only against a concrete retrieval task. Confidence0.85 in this order,
+assuming the primary job is reading/retrieving a conversation. Fallback: retain
+current defaults if a preview reduces comprehension or adds navigation friction.
+Remaining dependency: the smallest selected product slice; no deadline claimed.
+Next checkpoint: a concrete preview plus reader/task evidence for that selection.
+
+## 2026-10-03 — YouTube warnings in rapid localhost panel walkthrough (OPEN)
+
+- The actual bundled-example Legend probe completed its geometry/navigation
+  checks at1440/390/320px, then failed its strict console assertion: two web-share
+  notices and two postMessage target/recipient origin mismatch warnings involving
+  youtube-nocookie and localhost. Page errors/5xx were not the failing boundary.
+  YouTubeSourcePanel source is unchanged by the Legend slice. Exact cause and
+  whether the same sequence reproduces on the public origin remain unknown.
+- Impact: no overall clean-console pass for that local probe; do not describe this
+  as verified playback breakage or fix it through the Legend layout. Nonblocking
+  for finite geometry acceptance; public follow-up retains all warnings and fails
+  its strict console assertion rather than filtering them. Evidence: local screenshots
+  tmp/legend-local-source-*.png and captured probe failure in this task.
+  Next checkpoint: public-origin walkthrough; dedicated SDK lifecycle work only
+  if reproduced and selected. Owner unassigned.
