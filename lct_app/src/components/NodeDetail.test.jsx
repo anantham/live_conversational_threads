@@ -25,6 +25,7 @@ let navigationControl;
 let originalScrollTo;
 
 beforeEach(() => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   originalScrollTo = HTMLElement.prototype.scrollTo;
   HTMLElement.prototype.scrollTo = vi.fn();
   opener = document.createElement("button");
@@ -48,9 +49,26 @@ afterEach(() => {
     delete HTMLElement.prototype.scrollTo;
   }
   vi.unstubAllGlobals();
+  globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 });
 
 describe("NodeDetail dialog behavior", () => {
+  it("keeps an embedded phone panel bounded and leaves toolbar navigation available", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({matches:true,addEventListener:()=>{},removeEventListener:()=>{}}));
+    act(() => root.render(<NodeDetail embedded node={{id:"m",node_name:"Embedded moment"}} onClose={vi.fn()} />));
+    const dialog=container.querySelector('[role="dialog"]');
+    expect(dialog.getAttribute("aria-modal")).toBeNull();
+    expect(dialog.className).toContain("absolute max-h-full");
+    const event=new KeyboardEvent("keydown",{key:"Tab",shiftKey:true,bubbles:true,cancelable:true});
+    act(()=>dialog.dispatchEvent(event));expect(event.defaultPrevented).toBe(false);
+    expect(container.querySelector('[data-viewer-scroll="node-detail"]')).not.toBeNull();
+  });
+  it("opens the exact artifact passage even when no verified recording exists", () => {
+    const onOpenPassage=vi.fn();
+    act(()=>root.render(<NodeDetail node={{id:"m",node_name:"Text moment",utterance_ids:["u"]}} artifactUtterances={[{id:"u",text:"Synthetic original words",speaker_id:"S",timestamp_start:12}]} onClose={vi.fn()} onOpenPassage={onOpenPassage}/>));
+    const source=container.querySelector('button[title="Open original source passage"]');
+    act(()=>source.click());expect(onOpenPassage).toHaveBeenCalledExactlyOnceWith({id:"u",seconds:12});
+  });
   it("focuses the named dialog, closes on Escape, and restores focus", () => {
     const onClose = vi.fn();
     act(() => {

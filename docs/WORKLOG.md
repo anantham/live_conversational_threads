@@ -6709,3 +6709,72 @@ User observed an empty desktop transcript until node selection, with only the cu
   Three optional design questions were presented; unanswered choices remain proposed.
   Local screenshots are ignored diagnostic evidence under tmp/viewer-feedback-20261002-*.
   No new test, source repair, independent verdict, merge or deployment is claimed.
+
+## 2026-10-02 16:24 IST — Exploration continuity implementation checkpoint
+
+- The active goal authorizes the bounded repairs in ISSUES.md:1619. Integration
+  owner remains Codex in the viewer-source-and-controls worktree on
+  codex/viewer-closure-record, based on served source 11dda97. Preserved dirty
+  AGENTS.md and the primary checkout. This checkpoint is edited/local, not served.
+- Added session history (useViewerHistory.js), parent navigation/scroll snapshots
+  (ThreadsViewer.jsx), graph snapshot validation/restore and alias labels
+  (MinimalGraph.jsx, graphNavigationSnapshot.js), controlled Discussion/Source
+  disclosure state, and embedded detail containment. The toolbar now has Back/
+  Forward, a quiet left-side view cycle and Source icon; the title opens Overview.
+- TimelineRibbon and timelineRibbonLayout share the full-height vertical plot
+  with labels, preserve multiple memberships, distinguish authored threads from
+  unassigned moments, and offer Expand lanes. Source aliases propagate through
+  recognized transcript prefixes without changing original bytes or offsets;
+  cards and legend resolve the current alias map. Native video controls replace
+  the extra app controls while readiness/error/retry/cancellation remain intact.
+- Relevant paths were read before changes; extracted history and display helpers
+  bound the additions. ADR-072/test-intent files document the accepted interaction
+  contract; TECH_DEBT records the remaining camera/layout monolith candidates.
+- Focused checks: 44/44 initial history/toolbar/Source/Discussion tests, 34/34
+  adjacent integration tests, then 37/37 current detail/text/history/HUD tests.
+  Existing three reading/phone journeys pass. New browser journeys pass 5/6,
+  including final-lane geometry on desktop/phone, browser Back/Forward, exact
+  source handoff and immediate cross-view naming. The initial synthetic fixture
+  omitted semantic_type/thread_ids and failed preconditions; corrected the
+  fixture rather than claiming those runs as product failures or passing evidence.
+- The actual manual-pan/hierarchy regression fails: Back restores the theme but
+  the viewport returns to an automatic fit rather than the captured pan. A bounded
+  peer is tracing snapshot vs replay using the actual browser. Hierarchy ascent
+  now says Up one level after a normal click exposed two competing Back labels.
+- Native Source integration checks pass 6/6; real network playback is running
+  separately on desktop and phone. No mock is counted as proof of real playback.
+  Next checkpoint: resolve the camera boundary, combined browser/unit/build gates,
+  independent read-only review of the exact source/test/spec packet, then release
+  under the existing approval. Remaining engineering estimate stays 1–3 hours
+  dependent on findings; provider/release waits and public verification are separate
+  and not yet measured. The independent review and deployment are still open.
+
+## 2026-10-02 16:36 IST — Local viewer acceptance passed
+
+- Instrument found that React Flow reported drag end only after the next history
+  restoration began. MinimalGraph.jsx:1672 now replaces camera snapshots during
+  user movement and freezes an animated fit when a drag starts. The exact browser
+  transform now returns through Back; no parent history workaround was needed.
+- Integration points: ThreadsViewer.jsx:487/513 snapshot and replay; NodeDetail.jsx:
+  613/800 detail/evidence scroll; TimelineRibbon.jsx:272/373 shared Y/full-height X
+  plot; MinimalGraphHud.jsx:129 unambiguous Up one level. Source/editor and toolbar
+  contracts are documented in ADR-072 and four focused test-intent files.
+- Final affected checks: 106/106 unit tests in 13 changed test files; 28 changed
+  source/test files have clean scoped ESLint; production build passes (2330 modules,
+  existing large-chunk notice). A lint inventory command initially ran from the
+  wrong relative path and invoked whole-repo lint, exposing the already recorded
+  unrelated backlog; corrected the inventory and did not repair unrelated files.
+- Combined Chromium: 15/15 regular journeys pass, 2 network opt-ins skipped in
+  that run. Separately enabled real native-control tests pass 2/2 at 1440px and
+  390px, using iframe clicks and the actual YouTube clock/state. The first network
+  harness missed the native Play video label; screenshot/DOM evidence identified
+  that selector error, corrected without changing the player. The mock is still
+  only wiring evidence. Screenshot inspection confirms expanded timeline alignment
+  on desktop and phone; scroll restoration is asserted through normal navigation.
+- Default git diff --check passes. A diagnostic with autocrlf disabled falsely
+  treated CRLF working files as entirely changed; discarded that diagnostic and
+  retained normal repository line-ending handling. No source was rewritten for it.
+- Next: commit/push this coherent slice with the mandatory full frontend hook,
+  then the bounded read-only Google/Gemini review. Public verification follows
+  release under the existing approval. Edits and local evidence are not a served
+  or independently approved result. Updated the milestone forecast at this boundary.

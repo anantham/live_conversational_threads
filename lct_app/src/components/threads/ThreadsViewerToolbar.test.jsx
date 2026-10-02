@@ -4,14 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ThreadsViewerToolbar from "./ThreadsViewerToolbar";
 
 /* Test intent:
- * - One centered view switch cycles through every available view and names the next action accessibly.
- * - Overview, source and timeline can be disclosed independently.
+ * - One quiet view switch cycles through available views and names the next action accessibly.
+ * - Source has an accessible icon; overview and timeline have their own entry points.
  * - Secondary actions and card settings stay behind More.
  * - Find results open an actual branch instead of merely dimming the canvas.
  */
 let container;
 let root;
 beforeEach(() => {
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -19,6 +20,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => root.unmount());
   container.remove();
+  globalThis.IS_REACT_ACT_ENVIRONMENT = false;
 });
 
 function renderToolbar(overrides = {}) {
@@ -48,7 +50,7 @@ function renderToolbar(overrides = {}) {
 const byText = (text) => [...container.querySelectorAll("button")].find((button) => button.textContent === text);
 
 describe("ThreadsViewerToolbar", () => {
-  it("cycles through views with one button and toggles the three optional panels", () => {
+  it("cycles through views with one quiet button and discloses Source through its icon", () => {
     const handlers = renderToolbar();
     expect(container.querySelector('[role="group"][aria-label="Conversation view"]')).not.toBeNull();
     const switcher = container.querySelector('[aria-label="Current view: Graph. Switch to Discussion view."]');
@@ -59,13 +61,25 @@ describe("ThreadsViewerToolbar", () => {
     act(() => root.render(<ThreadsViewerToolbar viewMode="discussion" modes={["graph", "discussion"]} findGroups={[]} onFindNode={vi.fn()} onViewModeChange={handlers.onViewModeChange} onToggleOverview={handlers.onToggleOverview} onToggleSource={handlers.onToggleSource} onToggleTimeline={handlers.onToggleTimeline} onDownloadTranscript={handlers.onDownloadTranscript} onEnterFocus={handlers.onEnterFocus} onOpenLibrary={handlers.onOpenLibrary} onOpenAnother={handlers.onOpenAnother} overviewAvailable sourceAvailable timelineAvailable />));
     act(() => container.querySelector('[aria-label="Current view: Discussion. Switch to Graph view."]').click());
     expect(handlers.onViewModeChange).toHaveBeenLastCalledWith("graph");
-    act(() => byText("Overview").click());
-    act(() => byText("Source").click());
-    act(() => byText("Threads").click());
+    expect(switcher.className).not.toContain("bg-slate-800");
+    expect(byText("Overview")).toBeUndefined();
+    expect(byText("Threads")).toBeUndefined();
+    const source = container.querySelector('button[aria-label="Source"]');
+    expect(source.textContent).toBe("");
+    expect(source.querySelector("svg")).not.toBeNull();
+    act(() => source.click());
     expect(handlers.onViewModeChange).toHaveBeenCalledWith("discussion");
-    expect(handlers.onToggleOverview).toHaveBeenCalledOnce();
+    expect(handlers.onToggleOverview).not.toHaveBeenCalled();
     expect(handlers.onToggleSource).toHaveBeenCalledOnce();
-    expect(handlers.onToggleTimeline).toHaveBeenCalledOnce();
+    expect(handlers.onToggleTimeline).not.toHaveBeenCalled();
+  });
+
+  it("exposes enabled Back and disabled Forward without invoking a disabled action", () => {
+    const goBack = vi.fn(), goForward = vi.fn();
+    renderToolbar({history: {canBack: true, canForward: false, goBack, goForward}});
+    act(() => container.querySelector('[aria-label="Back"]').click());
+    act(() => container.querySelector('[aria-label="Forward"]').click());
+    expect(goBack).toHaveBeenCalledOnce(); expect(goForward).not.toHaveBeenCalled();
   });
 
   it("keeps secondary actions and settings inside More", () => {

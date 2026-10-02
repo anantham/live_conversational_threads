@@ -1,9 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   buildRibbonLayout,
+  buildChronologicalPath,
   buildTimeAxisTicks,
   getNodeTimestamp,
   threadKey,
+  threadKeys,
   threadLabel,
   UNGROUPED_KEY,
   DEFAULT_RAIL_START,
@@ -38,6 +40,26 @@ describe("threadKey / threadLabel", () => {
   });
   it("ignores blank explicit labels and falls back to de-slugified thread_id", () => {
     expect(threadLabel("thread::vision", "   ")).toBe("vision");
+  });
+});
+
+describe("authored thread membership", () => {
+  it("retains home and secondary memberships without creating a duplicate chronology point", () => {
+    const nodes = [
+      { id: "shared", thread_id: "alpha", thread_ids: ["alpha", "beta", "beta"], timestamp_start: 10, source_text: "original" },
+      { id: "beta-later", thread_id: "beta", thread_ids: ["beta"], timestamp_start: 20, explicit_thread_return: true },
+      { id: "unassigned", timestamp_start: 30 },
+    ];
+    expect(threadKeys(nodes[0])).toEqual(["alpha", "beta"]);
+    const layout = buildRibbonLayout(nodes);
+    const byThread = Object.fromEntries(layout.rows.map((row) => [row.threadId, row]));
+    expect(byThread.alpha.nodes.map((node) => node.id)).toEqual(["shared"]);
+    expect(byThread.beta.nodes.map((node) => node.id)).toEqual(["shared", "beta-later"]);
+    expect(byThread[UNGROUPED_KEY].nodes.map((node) => node.id)).toEqual(["unassigned"]);
+    expect(byThread.beta.nodes[0].source_text).toBe("original");
+    expect(byThread.beta.nodes[1].isReturn).toBe(true);
+    expect(buildChronologicalPath(layout.rows, nodes).map((point) => point.id)).toEqual(["shared", "beta-later", "unassigned"]);
+    expect(buildChronologicalPath(layout.rows, nodes)[0].rowIndex).toBe(layout.rows.findIndex((row) => row.threadId === "alpha"));
   });
 });
 

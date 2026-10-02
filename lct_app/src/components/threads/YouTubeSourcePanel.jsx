@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import PropTypes from "prop-types";
 import PanelResizeHandle from "../PanelResizeHandle";
 import SourceSpeakerEditor from "./SourceSpeakerEditor";
-import SourcePlaybackControls from "./SourcePlaybackControls";
 import { mediaOffsetLabel } from "../../services/mediaSeek";
 import { recordSourceLoadTiming } from "../../services/sourceLoadTiming";
 import { nodeVideoPassages, selectYouTubeRef, validYouTubeRef, validMediaSeconds } from "../../services/youtubeMedia";
@@ -36,7 +35,7 @@ function loadPlayerApi(signal) {
   });
 }
 
-export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, seekRequest, onSeekHandled, onClose }) {
+export default function YouTubeSourcePanel({ bundle, node, nodes, compact = false, onRenameSpeaker, seekRequest, onSeekHandled, onNavigatePassage, onClose }) {
   const media = selectYouTubeRef(bundle);
   const videoId = media?.video_id;
   const videoLabel = media?.label || "Conversation recording";
@@ -58,7 +57,6 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   const [elapsed, setElapsed] = useState(0);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [active, setActive] = useState(null);
-  const [playbackState, setPlaybackState] = useState(-1);
   const [blockedMessage, setBlockedMessage] = useState("");
   const passages = useMemo(() => (bundle.utterances || []).filter(u=>validMediaSeconds(u.timestamp_start)).sort((a,b)=>a.timestamp_start-b.timestamp_start), [bundle.utterances]);
   const selectedPassages = useMemo(() => nodeVideoPassages(node, nodes, bundle.utterances || []), [node, nodes, bundle.utterances]);
@@ -160,14 +158,13 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
       abandoned?.destroy();
       setLoadStage("error"); setError(message);
     };
-    setError(""); setBlockedMessage(""); setPlaybackState(-1); setElapsed(0); setLoadStage("api");
+    setError(""); setBlockedMessage(""); setElapsed(0); setLoadStage("api");
     elapsedTimer = window.setInterval(() => setElapsed(Math.floor((performance.now() - started) / 1000)), 1000);
     const readClock = () => {
       if (canceled || failed || document.visibilityState === "hidden") return;
       const seconds = instance?.getCurrentTime?.();
       if (validMediaSeconds(seconds)) setActive(seconds);
       const state = instance?.getPlayerState?.();
-      if (typeof state === "number") setPlaybackState(state);
       if (state === 1) setBlockedMessage("");
     };
     // YT replaces this child; React owns only the stable outer host.
@@ -209,6 +206,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
     </aside> : null;
   }
   const seek = (seconds) => {
+    if (onNavigatePassage) { onNavigatePassage(seconds); return; }
     pending.current = seconds;
     followPlayback.current = true;
     setFollowEpoch(value=>value+1);
@@ -223,7 +221,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
       <button type="button" aria-label={collapsed ? "Show source panel" : "Hide source panel"} aria-expanded={!collapsed} onClick={() => onClose ? onClose() : setCollapsed(value => !value)} className="mb-1 shrink-0 text-left text-xs text-slate-500">
         {collapsed ? (compact ? "Show source" : "›") : "Hide source"}
       </button>
-      <div className={collapsed ? "hidden" : "flex min-h-0 flex-1 flex-col overflow-y-auto"}>
+      <div data-viewer-scroll="source" className={collapsed ? "hidden" : "flex min-h-0 flex-1 flex-col overflow-y-auto"}>
       <details ref={videoDetails} open className="shrink-0 text-xs text-slate-600">
         <summary className="cursor-pointer py-1">Video</summary>
       <div aria-busy={["api", "player"].includes(loadStage)} className="relative min-h-[200px] w-full bg-stone-100" style={{ height: compact ? 200 : 210 }}>
@@ -235,7 +233,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
           </>}
         </div>}
       </div>
-      {loadStage === "ready" && player.current && <SourcePlaybackControls player={player.current} playbackState={playbackState} blockedMessage={blockedMessage} onDismissBlocked={() => setBlockedMessage("")} />}
+      {blockedMessage && <p role="alert" className="mt-2 text-xs text-amber-800">{blockedMessage}</p>}
       {error && <button type="button" className="min-h-11 text-xs text-amber-800 underline" onClick={() => { pending.current = active ?? pending.current; setLoadAttempt(value => value + 1); }}>Retry video</button>}
       <a href={href} target="_blank" rel="noopener noreferrer" className="mt-2 block min-h-11 py-3 text-xs text-amber-700 underline">
         Open on YouTube at {mediaOffsetLabel(linkSeconds)}
@@ -245,7 +243,7 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
         <summary className="cursor-pointer py-1">Transcript</summary>
       {!passages.length && <p className="mt-2 text-xs text-slate-500">No timestamped transcript is available.</p>}
       {passages.length > 0 && (
-        <div ref={passageList} aria-label="Source passages" tabIndex={0} onWheel={()=>{followPlayback.current=false;}} onTouchMove={()=>{followPlayback.current=false;}} onKeyDown={e=>{if(["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"].includes(e.key))followPlayback.current=false;}} className={`mt-1 space-y-1 overflow-y-auto ${compact ? "max-h-[35dvh]" : "max-h-[48dvh]"}`}>
+        <div ref={passageList} data-viewer-scroll="source-passages" aria-label="Source passages" tabIndex={0} onWheel={()=>{followPlayback.current=false;}} onTouchMove={()=>{followPlayback.current=false;}} onKeyDown={e=>{if(["ArrowUp","ArrowDown","PageUp","PageDown","Home","End"].includes(e.key))followPlayback.current=false;}} className={`mt-1 space-y-1 overflow-y-auto ${compact ? "max-h-[35dvh]" : "max-h-[48dvh]"}`}>
           {passages.map((u) => <button key={u.id} type="button" data-node-source={selectedPassageIds.has(u.id) ? "true" : undefined} aria-current={playbackPassage?.id === u.id ? "true" : undefined} onClick={() => seek(u.timestamp_start)} className={`block w-full rounded border-l-2 px-2 py-2 text-left text-xs leading-5 ${selectedPassageIds.has(u.id) ? "border-amber-400" : "border-transparent"} ${playbackPassage?.id === u.id ? "bg-amber-50" : "hover:bg-stone-50"}`}>
             <span className="text-amber-700">{mediaOffsetLabel(u.timestamp_start)}</span>{" · "}
             <span className="font-medium">{u.speaker_name || u.speaker_id || "Unknown"}</span>{" "}{u.text}
@@ -260,4 +258,4 @@ export default function YouTubeSourcePanel({ bundle, node, nodes, compact = fals
   );
 }
 
-YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, seekRequest: PropTypes.object, onSeekHandled: PropTypes.func, onClose: PropTypes.func };
+YouTubeSourcePanel.propTypes = { bundle: PropTypes.object.isRequired, node: PropTypes.object, nodes: PropTypes.array.isRequired, compact: PropTypes.bool, onRenameSpeaker: PropTypes.func, seekRequest: PropTypes.object, onSeekHandled: PropTypes.func, onNavigatePassage: PropTypes.func, onClose: PropTypes.func };

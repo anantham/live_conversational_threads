@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
 
 import { EDGE_COLORS } from "./graphConstants";
+import { speakerDisplayName } from "../services/speakerDisplay";
 import { rerouteConversationArtifacts } from "../services/artifactSettingsApi";
 import {
   fetchConversationSpeakers,
@@ -38,7 +39,7 @@ function buildDraftMap(rows) {
   return next;
 }
 
-export default function MinimalLegend({ speakerColorMap, conversationId, refreshKey }) {
+export default function MinimalLegend({ speakerColorMap, speakerDisplayNames, conversationId, refreshKey }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [savingSpeakerId, setSavingSpeakerId] = useState("");
@@ -172,7 +173,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
                         />
                         <div className="min-w-0 flex-1">
                           <div className="text-gray-700 font-medium truncate">
-                            {speaker.display_name || speakerId}
+                            {speakerDisplayNames ? speakerDisplayName(speakerDisplayNames, speakerId) : speaker.display_name || speakerId}
                           </div>
                           <div className="text-[10px] text-gray-500">
                             {speakerId}
@@ -181,7 +182,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
                           </div>
                         </div>
                       </div>
-                      <div className="flex gap-2">
+                      {conversationId && <div className="flex gap-2">
                         <input
                           type="text"
                           value={draftValue}
@@ -197,7 +198,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
                         >
                           {savingSpeakerId === speakerId ? "Saving..." : "Save"}
                         </button>
-                      </div>
+                      </div>}
                     </div>
                   );
                 })}
@@ -256,6 +257,7 @@ export default function MinimalLegend({ speakerColorMap, conversationId, refresh
 
 MinimalLegend.propTypes = {
   speakerColorMap: PropTypes.object,
+  speakerDisplayNames: PropTypes.instanceOf(Map),
   conversationId: PropTypes.string,
   refreshKey: PropTypes.number,
 };

@@ -48,6 +48,15 @@ export function threadKey(node) {
   return s === "" ? UNGROUPED_KEY : s;
 }
 
+/** Display every authored membership while retaining the node's home lane. */
+export function threadKeys(node) {
+  const authored = Array.isArray(node?.thread_ids) ? node.thread_ids : [];
+  const keys = [node?.thread_id, ...authored]
+    .filter((id) => id != null && String(id).trim() !== "")
+    .map((id) => String(id).trim());
+  return keys.length ? [...new Set(keys)] : [UNGROUPED_KEY];
+}
+
 /** Human label for a thread row. ADR-032 §G uses path-style ids like
  *  "thread::vision" or "discussion-of-AI/sub-thread-on-privacy"; show the most
  *  specific segment, de-slugified. If a node-level `thread_label` exists, that
@@ -109,26 +118,29 @@ export function buildRibbonLayout(nodes, opts = {}) {
   // Preserve original order as a stable tiebreak / index-mode position.
   const indexed = list.map((node, idx) => ({ node, idx, ts: getNodeTimestamp(node) }));
 
-  // Group into threads.
+  // Group by all authored memberships. The home lane remains thread_id;
+  // secondary membership does not manufacture another source moment.
   const groups = new Map();
   for (const entry of indexed) {
-    const key = threadKey(entry.node);
-    if (!groups.has(key)) {
-      groups.set(key, {
-        nodes: [],
-        thread_label: "",
-      });
+    for (const key of threadKeys(entry.node)) {
+      if (!groups.has(key)) {
+        groups.set(key, { nodes: [], thread_label: "" });
+      }
+      const bucket = groups.get(key);
+      if (!bucket.thread_label) {
+        const membershipIndex = Array.isArray(entry.node.thread_ids)
+          ? entry.node.thread_ids.findIndex((id) => String(id).trim() === key)
+          : -1;
+        const rawLabel =
+          (threadKey(entry.node) === key && typeof entry.node?.thread_label === "string" && entry.node.thread_label.trim()) ||
+          (membershipIndex >= 0 && typeof entry.node?.thread_labels?.[membershipIndex] === "string" && entry.node.thread_labels[membershipIndex].trim()) ||
+          (typeof entry.node?.metadata?.cluster_info?.thread_label === "string" &&
+            threadKey(entry.node) === key && entry.node.metadata.cluster_info.thread_label.trim()) ||
+          "";
+        bucket.thread_label = rawLabel;
+      }
+      bucket.nodes.push(entry);
     }
-    const bucket = groups.get(key);
-    if (!bucket.thread_label) {
-      const rawLabel =
-        (typeof entry.node?.thread_label === "string" && entry.node.thread_label.trim()) ||
-        (typeof entry.node?.metadata?.cluster_info?.thread_label === "string" &&
-          entry.node.metadata.cluster_info.thread_label.trim()) ||
-        "";
-      bucket.thread_label = rawLabel;
-    }
-    bucket.nodes.push(entry);
   }
 
   const rows = [];
@@ -203,6 +215,21 @@ export function buildRibbonLayout(nodes, opts = {}) {
   totalWidth += railStart;
 
   return { rows, totalWidth, timeBased, span, pixelsPerSecond };
+}
+
+/** One point per source moment for the cross-lane chronology, anchored at its home lane. */
+export function buildChronologicalPath(rows, sourceNodes) {
+  const laneByKey = new Map(rows.map((row, index) => [row.threadId, { row, index }]));
+  const seen = new Set();
+  const points = sourceNodes.flatMap((node, sourceIndex) => {
+    if (seen.has(node.id)) return [];
+    seen.add(node.id);
+    const home = laneByKey.get(threadKeys(node)[0]);
+    const placed = home?.row.nodes.find((candidate) => candidate.id === node.id);
+    return placed ? [{ id: node.id, x: placed.x, rowIndex: home.index, ts: getNodeTimestamp(node), sourceIndex }] : [];
+  });
+  const allTimed = points.every((point) => Number.isFinite(point.ts));
+  return points.sort((a, b) => allTimed ? a.ts - b.ts || a.sourceIndex - b.sourceIndex : a.sourceIndex - b.sourceIndex);
 }
 
 /** Format seconds as m:ss or h:mm:ss (shared with the component). */

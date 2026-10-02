@@ -1616,12 +1616,13 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   gate execution and exit status. Obtain mandatory non-OpenAI independent review.
   This is a separately scoped proposal; the existing hook was not bypassed or changed.
 
-## 2026-10-02 — Viewer exploration continuity (DIAGNOSED; FIX PLAN PROPOSED)
+## 2026-10-02 — Viewer exploration continuity (LOCAL ACCEPTANCE PASSED; REVIEW/RELEASE OPEN)
 
 - Outcome: explore a thread, read its source and details, and return to a previous
   place without losing context. Integration owner: Codex. Authoritative checkout:
   the viewer-source-and-controls worktree, branch codex/viewer-closure-record,
-  source based on the served 11dda97 release. No product repair is implemented here.
+  source based on the served 11dda97 release. The active user goal authorizes the
+  bounded repair. Product edits are in this worktree; the public runtime is unchanged.
 - Instrument: public Chromium at 1440x900 reproduces the toolbar painting over
   the desktop detail panel (toolbar z=50; fixed detail panel top=0, z=40).
   Two distinct node selections leave browser history length unchanged at 2.
@@ -1654,11 +1655,20 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   (5) native recording play/pause and transcript seeks work, with blocked-player
   retry/cancel/fallback retained; (6) selected-thread navigation includes its full
   authored membership, and chronological links are distinguished from argument links.
-- Remaining design decisions: history entries for manual pan/zoom, topics versus
-  arcs as the default, and shared timeline scrolling/expansion versus showing all
-  rows together. Short, plain topic labels and time replay are separately proposed;
+- Implementation assumptions announced after optional questions had no answer:
+  meaningful navigation creates history entries; manual pan/zoom replaces camera
+  position; preserve the existing default tier; use shared scrolling plus expansion.
+  Short, plain topic labels and time replay are separately proposed;
   no regeneration, hierarchy replacement or physics layout is selected here.
-- Next evidence checkpoint: resolve those choices, write failing public-behavior
-  regressions for clipping and rename propagation, then implement one coherent slice.
-  Implementation effort is not yet estimated; integration/review and live verification
-  are separate dependencies. Required independent source review still applies.
+- Local evidence: 15/15 regular Chromium journeys pass on populated synthetic
+  artifacts, including final-lane geometry, scroll restoration, hierarchy/manual
+  pan restoration, immediate aliases, source seeks and seven-moment reading.
+  Separate actual native YouTube play/pause/seek checks pass at 1440px and 390px.
+  Affected unit tests pass 106/106; scoped lint is clean and the build passes.
+- Next evidence checkpoint: required full frontend push gate and independent
+  review of the exact committed source/test/spec packet, then public verification
+  of the served release. Remaining integration/release engineering estimate is
+  0.5–1 hour if review approves, revised from the earlier 1–3 hour repair range
+  after the camera race was resolved. Independent provider and deployment waits
+  are separate dependencies with no measured duration estimate. Public runtime
+  is still unchanged; no independent approval or release is claimed yet.
