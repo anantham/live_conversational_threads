@@ -1825,4 +1825,75 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
 ## 2026-10-02 — Camera restoration test instability during closure push (OPEN)
 
 - Closure-only pre-push gate failed1/519 at MinimalGraph.navigation.test.jsx:91: mocked setViewport not observed after the existing70ms wait. Same reviewed runtime/source bytes previously passed full519/519 and public Back/Forward; isolated unchanged test immediately passed1/1. Timing is a hypothesis, not a confirmed cause; no test timeout/assertion/source changed.
-- Impact: documentation branch push was blocked; served tooltip release remains reviewed and production smoke passed. Recommended next step if combined retry fails: investigate frame scheduling/readiness under suite load and replace fixed waits with public observable completion in a separately reviewed test repair. Current finite checkpoint: one bounded combined retry, preserve failure evidence and required gate.
+- Impact: documentation push initially blocked; one combined retry passed519/519
+  and closure ee7f131 was pushed. This is an observed intermittent test concern,
+  not a current release blocker. If it recurs, investigate observable readiness
+  under suite load without weakening the required camera restoration assertion.
+
+## 2026-10-03 — Legend spacing and pane isolation (APPROVED; IMPLEMENTING)
+
+- Outcome: reach the Legend and read its key without blank clearance or Source/
+  details collisions. Owner Codex; authoritative checkout viewer-source-and-controls,
+  branch codex/viewer-legend-spacing. User explicitly approved this repair.
+- Instrumented prior public diagnosis: fixed bottom-14 gives a redundant 56px
+  gap; the timeline is already a separate flex row. Raising z-index cannot reserve
+  room and would cover another pane. Confidence 0.99 in the spacing cause.
+- Spatial thesis: exact evidence/details are primary; Legend and reading controls
+  are supporting utilities. Allocate a compact shared bottom row below the pane
+  area, with 12px padding. The open key uses bounded, scrollable allocated space.
+  Existing floating behavior stays available to other graph consumers.
+- Predicted acceptance: collapsed gap 12px; reachable controls and no pane overlap
+  at 320/390/1024/1440px, short screens and resized combinations; unchanged
+  moment/history/alias behavior. Confidence 0.9; fallback is a measured layout
+  revision if the finite pane matrix disproves the allocation, never a z-index patch.
+- Relevant files: MinimalLegend, ThreadsViewer, MinimalGraph, GraphReadingControls,
+  TextSourcePanel, focused browser tests and tests/intent/viewer-legend-space.md. Existing graph/viewer
+  monolith decomposition candidates remain separate in TECH_DEBT.
+- Remaining dependency: local evidence, independent Google-family review, release
+  gates and served verification under existing frontend publication authority.
+  Next checkpoint: failing spacing boundary, then combined pane walkthrough.
+- Product decision brief is separately informational; no deferred label generation,
+  replay, hierarchy, physics layout or intent lens is selected by this approval.
+- Local checkpoint: populated browser4/4 at320/390/1024/1440, adjacent history/
+  navigation5/5, focused unit23/23, scoped ESLint and production build pass.
+  Open-key Escape restores trigger focus without changing the selected moment;
+  long names wrap and the entire key can be scrolled. Gap is12px. Short-screen
+  text Source had384px height inside117px; its compact cap now follows the
+  existing video rule (60% of the available pane, capped at60dvh), with outer
+  scrolling for controls. Legend's open space is bounded by the workspace.
+  This is finite repair evidence, not a complete viewer UX audit.
+  Next checkpoint: exact committed diff, independent review and release gates.
+
+## 2026-10-03 — Viewer product decision space (DEFERRED; no proposal selected)
+
+**Attention status:** H1; a product ruling is required before the next product
+slice, not for the approved Legend repair. Reason: these options change what a
+card means, where exploration begins, or how time/intent changes the map.
+Grey area: No. Smallest next ruling: choose card wording/attribution and whether
+the next slice keeps existing node boundaries. Other axes can remain deferred.
+Owner for this brief: Codex; integration owner/check-out unchanged. No new
+architecture, inference provider, hierarchy or artifact format is approved here.
+
+| Decision | Options and real tradeoffs | Recommendation and acceptance evidence |
+| --- | --- | --- |
+| Card wording and voice | Keep authored titles (stable but can be abstract); add short presentation labels plus explicit speaker chips (clearer, requires reviewed labels); regenerate attributed speaker-verb claims (more natural but can misattribute mixed speech and adds model/content review). | Trial short labels with explicit identities, full wording and exact evidence on demand. A dominant color never proves sole authorship. Readers must identify topic and voices correctly; mixed/unknown voices remain honest; original source bytes/IDs stay unchanged. |
+| Smaller reading units | Compact preview of each existing node (small presentation scope); split evidence into navigable passages inside the same node (more steps, preserves semantic identity); repartition authored nodes (potentially clearer boundaries, but changes memberships, search, provenance and history migration). | Passage stepping inside existing nodes before resegmentation. Verify every passage is reachable in order, maps to exact evidence and returns to the same node/thread/history position. |
+| Entry and density | Keep highest-tier entry (orientation but abstract); topic-first entry (recognizable subjects, hides the macro story initially); moments-first entry (concrete, more visual load); resume last place (fast return, needs a persistence/privacy decision). | Compare an opt-in topic entry with current entry before changing the default. Use populated long conversations: first-time readers find a known passage and explain the surrounding topic; phone and keyboard navigation retain access to every tier. |
+| Time exploration | Focus an existing final-map moment at T (small, final interpretation remains visible); cumulatively reveal source/moments up to T (clearer progression, must handle nodes spanning T); regenerate historical summaries from each prefix (true historical knowledge boundary, much larger processing/storage and model/data decision). | Start with focus/scrub using verified timestamps, explicitly a final map. Do not present a final summary as something known at T. Verify deterministic forward/back seeks, untimed evidence and partial-node labels; historical rebuilding stays separate. |
+| Spatial layout | Keep deterministic chronological packing (stable but broad); free physics (organic, may jitter/collide and obscure time); constrained physics with a fixed time axis (compromise, more tuning/performance/persistence). | Keep deterministic layout unless a bounded comparison improves retrieval. Test stable reload positions, no collisions, chronology and provenance, reduced motion and phone behavior. No physics dependency selected. |
+| Intent-aware exploration | Existing local search/filtering (predictable); session-local intent lens that ranks/emphasizes existing nodes (more useful focus, adds state and explanation); regenerate hierarchy/summaries for each intent (tailored but unstable meanings, larger compute/privacy and identity consequences). | A reversible session lens is the first experiment if chosen. IDs, memberships and source bytes must remain unchanged; turning it off restores the map; explain why a result is emphasized. Any new inference/egress needs its own decision. |
+
+Relative scope: presentation labels and entry experiments are small; passage
+stepping and a reversible intent lens are medium; historical regeneration,
+semantic resegmentation and physics are large/unknown until their data contracts
+are chosen. These are scope comparisons, not measured hour/calendar forecasts.
+Keep all defaults is a valid no-action choice. A preview comparison is reversible;
+rewriting artifacts would need a separate migration and recovery plan.
+
+Suggested sequence after the Legend release: (1) card wording/voice and passage
+reading; (2) compare entry/density; (3) choose time behavior; (4) evaluate layout
+and intent only against a concrete retrieval task. Confidence0.85 in this order,
+assuming the primary job is reading/retrieving a conversation. Fallback: retain
+current defaults if a preview reduces comprehension or adds navigation friction.
+Remaining dependency: the smallest selected product slice; no deadline claimed.
+Next checkpoint: a concrete preview plus reader/task evidence for that selection.

@@ -85,6 +85,7 @@ function ThreadsViewerContent() {
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [graphToolsHost, setGraphToolsHost] = useState(null);
   const [graphTierHost, setGraphTierHost] = useState(null);
+  const [graphReadingHost, setGraphReadingHost] = useState(null);
   const [discussionFocus, setDiscussionFocus] = useState(null);
   const [error, setError] = useState("");
   const [libraryStatus, setLibraryStatus] = useState(null);
@@ -677,6 +678,7 @@ function ThreadsViewerContent() {
       )}
 
       {!focusMode && toolbar}
+      <div className="flex min-h-0 flex-1 flex-col">
       <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
         {sourceOpen && renderSourcePanel(selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode)))}
       <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -708,6 +710,7 @@ function ThreadsViewerContent() {
           toolbarMode
           hideWeaknessLenses
           readingMode
+          readingControlsTarget={viewerFocusMode ? undefined : graphReadingHost}
           navigationNodeIds={graphNavigationNodeIds}
           navigationScope={useSelectedThreadPath && readingPath.nodeIds.length > 0 ? "selected thread" : "conversation"}
           sidebarWidth={selectedNodeData && !narrowViewer ? 320 : 0}
@@ -741,7 +744,6 @@ function ThreadsViewerContent() {
             ✕ Exit focus
           </button>
         )}
-        {!viewerFocusMode && <MinimalLegend speakerColorMap={speakerColorMap} speakerDisplayNames={speakerDisplayNames} />}
         {nodeDetailsVisible && (
           <button
             type="button"
@@ -767,6 +769,14 @@ function ThreadsViewerContent() {
           />
         )}
       </div>
+      </div>
+
+      {!viewerFocusMode && <MinimalLegend
+        inline
+        speakerColorMap={speakerColorMap}
+        speakerDisplayNames={speakerDisplayNames}
+        controls={<div ref={setGraphReadingHost} className="flex min-w-0 flex-1 justify-center empty:hidden" />}
+      />}
       </div>
 
       {!focusMode && flatNodes.length > 0 && (

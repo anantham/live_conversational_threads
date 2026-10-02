@@ -7086,3 +7086,49 @@ User observed an empty desktop transcript until node selection, with only the cu
 - c322b46 contains only ISSUES/WORKLOG/technical review receipt. Exact nine-file source packet still matches reviewed255da62 and SHA2561c6b6b3a01fcd7feca7b3244bbe1787a756d331f446a8c11827603a13a677f20; verification-only runner made no file changes. Owned local Vite server51080 stopped after local checks; no shared services touched.
 - Mandatory closure push blocked with518/519 passing: unchanged MinimalGraph.navigation.test.jsx camera restoration assertion saw0 setViewport calls after existing70ms wait. Previously full519/519 passed on exactly the same source; isolated unchanged test passed1/1 immediately after failure. Frame/suite timing suspected, cause unconfirmed; recorded separate ISSUES entry. No assertion, timeout, test coverage or required gate weakened.
 - Retry combined gate once after this diagnostic; if failure persists, retain committed closure and report the concrete push blocker instead of bypassing the hook. Source release remains merged/served and production9/9 smoke passed. Next evidence checkpoint combined gate result and remote closure branch SHA.
+
+## 2026-10-03 — Approved Legend repair and product decision brief
+
+- User approved reducing Legend bottom spacing and keeping it clear of Source/
+  details. Reuse the authoritative viewer worktree; new branch
+  codex/viewer-legend-spacing. Preserve the preexisting dirty AGENTS.md.
+- Existing board and test intent record hypotheses, 12px allocated utility-row
+  direction, finite acceptance and review/release dependencies before product edits.
+  Prior closure-only retry passed519/519 and ee7f131 is pushed; its initial camera
+  test failure remains recorded, not an active publication blocker.
+- One bounded read-only gpt-6-sol peer scoped deferred product decisions from local
+  product/ADR context and private supplied feedback. No transcript/participant
+  content will enter technical notes or external review; no product choice selected.
+
+### 2026-10-03 — Legend finite local acceptance
+
+- Instrumented red regression: populated14-thread artifact measured the old56px
+  gap before source edits. The first fixture omitted memberships and was rejected
+  by a new explicit14-thread readiness assertion; it did not count as product proof.
+- Shared utility row initially centered Legend beside taller reading controls,
+  giving25px desktop/45px phone clearance. Bottom alignment and compact phone
+  arrow labels corrected that generator. A second matrix exposed text Source's
+  viewport-only cap: settled384px Source in117px parent, overlapping Legend.
+  Matched the already-approved video cap to available pane height; controls can
+  scroll on short screens. Workspace bounds open-key allocation as well as panes.
+  Text/video Hide source wording differed; browser selector now matches both
+  actual public labels, with no behavior assertion removed.
+- Final Legend browser4/4 at1440x900,1024x768,390x844,320x640, plus resize100px
+  shorter and320→390. Verified gap12px, zero rectangle overlap, long aliases,
+  complete edge-key scroll, pointer/Enter/Escape/focus return, selected moment
+  preservation, reading/history, no horizontal overflow/page errors/API calls/5xx.
+  Video fixture proves layout, not real playback. Paired screenshots inspected;
+  smallest combined viewport requires scrolling, not simultaneous full-pane reading.
+- Adjacent populated hint/history journeys5/5, focused unit23/23, changed JSX
+  ESLint clean, production build success (2334modules; main JS1357.75KB,
+  gzip404.32KB; existing large-chunk notice). Manual layout detector returned[].
+  No claim of full UX/a11y/performance audit. Existing Source follow-resize and
+  real-example details Escape remain separate open issues.
+- Changed source: MinimalLegend inline layout/keyboard close; GraphReadingControls
+  optional inline presentation; MinimalGraph portal placement only; ThreadsViewer
+  workspace/utility allocation; TextSourcePanel compact cap/scroll containment.
+  Existing monolith candidates in TECH_DEBT unchanged; no broad refactor.
+- Six-axis decision packet captured in existing ISSUES with H1 status, alternatives,
+  consequences, finite evidence, recommendation and deferred scope. No product
+  implementation was inferred from the Legend approval. Next checkpoint: commit,
+  tool-free Google review, mandatory full gate and served behavior.

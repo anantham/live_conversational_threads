@@ -113,6 +113,7 @@ function MinimalGraphInner({
   navigationNodeIds = [],
   navigationScope = "selected thread",
   readingMode = false,
+  readingControlsTarget,
   onVisibleLevelChange,
   onFocusChange,
   onActiveNodeChange,
@@ -2033,6 +2034,18 @@ function MinimalGraphInner({
   const placeGraphTools = (content) => toolbarMode
     ? (toolbarTarget ? createPortal(content, toolbarTarget) : null)
     : content;
+  // Public viewer utilities occupy their own row; other graph consumers keep
+  // floating reading controls. A null target waits for the viewer's host mount.
+  const readingControls = readingPathIds.length > 1 ? (
+    <GraphReadingControls
+      inline={Boolean(readingControlsTarget)}
+      navigationScope={navigationScope}
+      readingIndex={readingIndex}
+      readingPathLength={readingPathIds.length}
+      onPrevious={() => stepReadingPath("left")}
+      onNext={() => stepReadingPath("right")}
+    />
+  ) : null;
 
   const graphHud = (
     <MinimalGraphHud
@@ -2156,15 +2169,8 @@ function MinimalGraphInner({
         maxZoom={2.5}
         proOptions={{ hideAttribution: true }}
       />
-      {readingPathIds.length > 1 && (
-        <GraphReadingControls
-          navigationScope={navigationScope}
-          readingIndex={readingIndex}
-          readingPathLength={readingPathIds.length}
-          onPrevious={() => stepReadingPath("left")}
-          onNext={() => stepReadingPath("right")}
-        />
-      )}
+      {readingControlsTarget ? createPortal(readingControls, readingControlsTarget)
+        : readingControlsTarget === undefined ? readingControls : null}
 
       {/* Zoom preset + graph display controls. Center stays out front (the
           recovery action); the secondary view toggles collapse behind a
@@ -2321,6 +2327,7 @@ MinimalGraphInner.propTypes = {
   navigationNodeIds: PropTypes.arrayOf(PropTypes.string),
   navigationScope: PropTypes.string,
   readingMode: PropTypes.bool,
+  readingControlsTarget: PropTypes.object,
   onVisibleLevelChange: PropTypes.func,
   onFocusChange: PropTypes.func,
   chromeless: PropTypes.bool,
@@ -2361,6 +2368,7 @@ MinimalGraph.propTypes = {
   navigationNodeIds: PropTypes.arrayOf(PropTypes.string),
   navigationScope: PropTypes.string,
   readingMode: PropTypes.bool,
+  readingControlsTarget: PropTypes.object,
   onVisibleLevelChange: PropTypes.func,
   onFocusChange: PropTypes.func,
   chromeless: PropTypes.bool,
