@@ -1,6 +1,12 @@
 # LCT Sites migration — staged delivery
 
-## Progress tracker — updated 2026-10-04 00:45 IST
+## Progress tracker — updated 2026-10-04 01:09 IST
+
+## Custom hostname preparation — 2026-10-04
+
+Outcome: original-host rollback deployment identity and source/preview identity boundaries are checked without changing routing. Integration owner:root, canonical `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads` / `codex/lct-sites-serverless`, startingHEAD56ececa. Finite checks:relative client APIs/request-derived Origin/JWT audience, host-only cookie implications, authenticated exact Vercel target project and READY production deployment `dpl_3BVxH36JNMbjvFoNkDG41Gg4NC2x` from main`bda16e5`, original hostname alias/no error, no native custom domains, currentpreview2/2anonymous session refusals including a synthetic identity-header attempt at19:37:34UTC, unchanged public16/environment2. Receipt:docs/reviews/2026-10-04-custom-host-readiness.md. No new source or runtime configuration is edited.
+
+Remaining dependency:actual DNS configuration backup/owner access, exact native custom-host registration/validation and Google-origin authority, followed by real-host certificate/guest/identity/provider/storage acceptance and production-to-Sites viewer comparison. Successful connector reads distinguish authenticated Vercel access from its get_project argument mismatch; dashboard reaches account choice without a selection. Current production includes newer peer viewer work; no backport, deployment or domain change is inferred/authorized. Next evidence checkpoint:actual affected DNS-record backup and bounded cutover packet after hosted core gates, retaining the captured production deployment for recovery. The prepared inactive-preview publication question remains separate/pending; no duplicate request is sent. Prior23–64active-hour/3–8focused-day unmeasured forecast and unknown external waits are retained. Full goal remains active/incomplete.
 
 ## Inactive cloud package — locally prepared 2026-10-04
 
