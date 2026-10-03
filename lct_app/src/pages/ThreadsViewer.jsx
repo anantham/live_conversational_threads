@@ -64,6 +64,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { artifactId, publicId } = useParams();
+  const ephemeral = !privateMode && !publicId && location.state?.remember === false && Boolean(location.state?.threadsBundle);
   const driveFileId = privateMode || typeof window === "undefined"
     ? ""
     : new URLSearchParams(location.search).get("driveFile") || "";
@@ -246,19 +247,20 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   );
 
   // Browse passes a parsed bundle through router state so the file opens even
-  // when persistent browser storage is unavailable. The viewer then attempts
-  // the one shared remember step and reports its result honestly in the header.
+  // when persistent browser storage is unavailable. Generated results explicitly
+  // opt out of remembering; ordinary imported files keep the shared remember step.
   useEffect(() => {
     const routedBundle = location.state?.threadsBundle;
     if (privateMode || publicId || !routedBundle || consumedRouteState.current) return;
     consumedRouteState.current = true;
-    ingest(routedBundle, { sourceName: location.state?.sourceName || "" });
+    ingest(routedBundle, { sourceName: location.state?.sourceName || "", remember: !ephemeral });
+    if (ephemeral) setLibraryStatus({ state: "memory", message: "Generated map · not saved" });
     setSrcLoading(false);
-  }, [ingest, privateMode, publicId, location.state]);
+  }, [ingest, privateMode, publicId, ephemeral, location.state]);
 
   // Stable browser-local deep link used by Browse's "On this device" rows.
   useEffect(() => {
-    if (privateMode || !artifactId) return;
+    if (privateMode || ephemeral || !artifactId) return;
     let cancelled = false;
     setSrcLoading(true);
     void getThreadsLibraryRecord(artifactId)
@@ -282,7 +284,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     return () => {
       cancelled = true;
     };
-  }, [privateMode, artifactId, ingest]);
+  }, [privateMode, ephemeral, artifactId, ingest]);
 
   // Optional ?src=<url> — fetch a hosted .threads (NOT an /api/ call). Lets a
   // share be a plain link to a hosted file without any backend.
@@ -338,7 +340,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     setDiscussionFocus((previous) => ({ id, requestKey: (previous?.requestKey || 0) + 1 }));
   }, []);
   const discussionLinkBase = useMemo(() => {
-    if (privateMode || typeof window === "undefined") return null;
+    if (privateMode || ephemeral || typeof window === "undefined") return null;
     const url = new URL(location.pathname + location.search, window.location.origin);
     if (publicId || artifactId || url.searchParams.has("src") || url.searchParams.has("driveFile")) return url.href;
     if (!libraryStatus?.recordId) return null;
@@ -346,16 +348,16 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     url.search = "";
     url.hash = "";
     return url.href;
-  }, [privateMode, artifactId, publicId, libraryStatus?.recordId, location.pathname, location.search]);
+  }, [privateMode, ephemeral, artifactId, publicId, libraryStatus?.recordId, location.pathname, location.search]);
   // Diagnostic (cold-open blank-graph investigation): confirms MinimalGraph
   // mounts only AFTER the .threads bundle is present, with a non-empty node
   // count — distinguishes the data-ready path (blank => camera) from a
   // data-arrival race. Toggle off with window.__MG_DEBUG__ = false.
   useEffect(() => {
-    if (!privateMode && typeof window !== "undefined" && (window.__MG_DEBUG__ ?? true)) {
+    if (!privateMode && !ephemeral && typeof window !== "undefined" && (window.__MG_DEBUG__ ?? true)) {
       console.log("[ThreadsViewer] bundle ready -> MinimalGraph", { graphDataLen: (bundle?.graph_data || []).length, flatNodes: flatNodes.length });
     }
-  }, [privateMode, bundle, flatNodes.length]);
+  }, [privateMode, ephemeral, bundle, flatNodes.length]);
   const selectedNodeData = useMemo(
     () =>
       selectedNode
@@ -435,17 +437,27 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     triggerDownload(lines.join("\n"));
   }, [bundle, flatNodes]);
 
+  const downloadMap = useCallback(() => {
+    if (!bundle) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(bundle)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `recording-${String(bundle.conversation_id || "map").replace(/[^a-z0-9_-]/gi, "-").slice(0, 80)}.threads`;
+    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+  }, [bundle]);
+
   const openLibrary = useCallback(() => privateMode ? onPrivateClose() : navigate(publicId ? "/public" : "/browse"), [privateMode, onPrivateClose, navigate, publicId]);
   const renameSpeaker = useCallback((speakerId, name) => {
     const updated = renameArtifactSpeaker(bundle, speakerId, name);
     setBundle(updated);
     if (privateMode) { setLibraryStatus({ state: "private", message: "Speaker names changed in this view only" }); return; }
     if (publicId) { setLibraryStatus({ state: "public", message: "Speaker names changed in this view only" }); return; }
+    if (ephemeral) { setLibraryStatus({ state: "memory", message: "Speaker names changed in this view only · not saved" }); return; }
     setLibraryStatus({ state: "saving", message: "Saving speaker names…" });
     void rememberThreadsArtifact(updated).then((record) => {
       setLibraryStatus({ state: "saved", message: "Speaker names saved on this device", recordId: record.id });
     }).catch(() => setLibraryStatus({ state: "error", message: "Names changed here but could not be saved. Download the reviewed file." }));
-  }, [bundle, publicId, privateMode]);
+  }, [bundle, publicId, privateMode, ephemeral]);
   const openAnother = useCallback(() => {
     if (privateMode) { onPrivateClose(); return; }
     setBundle(null);
@@ -548,7 +560,8 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const refreshFromDrive = !publicId && driveFileId ? () => setDriveRefreshRequested(true) : undefined;
   const sourceNotice = privateMode
     ? <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 border-b border-slate-200 bg-slate-100 px-4 text-sm text-slate-700"><span>Private cloud copy · edits stay in this view</span><button type="button" onClick={onPrivateClose} className="min-h-11 font-medium underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700">Close private conversation</button></div>
-    : publicId && <div className="shrink-0 border-b border-slate-200 bg-amber-50 px-4 py-2 text-xs text-slate-700">Public copy · visible to everyone · edits stay in this view</div>;
+    : ephemeral ? <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 border-b border-slate-200 bg-slate-100 px-4 text-sm text-slate-700"><span>Generated map · kept in this view · not saved</span><button type="button" className="min-h-11 font-medium underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={downloadMap}>Download map</button></div>
+      : publicId && <div className="shrink-0 border-b border-slate-200 bg-amber-50 px-4 py-2 text-xs text-slate-700">Public copy · visible to everyone · edits stay in this view</div>;
   const renderedViewMode = !compactViewer && viewMode === "cards" ? "graph" : viewMode;
   const toolbar = <ThreadsViewerToolbar
     viewMode={renderedViewMode} modes={["graph", "discussion", ...(compactViewer ? ["cards"] : [])]}
@@ -574,7 +587,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
     {toolbar}
     <div className={`flex min-h-0 min-w-0 flex-1 ${narrowViewer ? "flex-col" : ""}`}>
       {sourceOpen && <YouTubeSourcePanel bundle={bundle} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} onClose={() => setSourceOpen(false)} />}
-      <div className="min-h-0 min-w-0 flex-1"><DiscussionView nodes={flatNodes} utterances={bundle.utterances || []} speakerColorMap={speakerColorMap} onRenameSpeaker={renameSpeaker} focusRequest={discussionFocus} linkBase={discussionLinkBase} namesStayInView={privateMode || Boolean(publicId)} /></div>
+      <div className="min-h-0 min-w-0 flex-1"><DiscussionView nodes={flatNodes} utterances={bundle.utterances || []} speakerColorMap={speakerColorMap} onRenameSpeaker={renameSpeaker} focusRequest={discussionFocus} linkBase={discussionLinkBase} namesStayInView={privateMode || ephemeral || Boolean(publicId)} /></div>
     </div>
     {flatNodes.length > 0 && <TimelineRibbon graphData={flatNodes} selectedNode={discussionFocus?.id}
       setSelectedNode={(value) => setDiscussionFocus((previous) => {
@@ -621,7 +634,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
         {sourceOpen && <YouTubeSourcePanel bundle={bundle} node={selectedNodeData || flatNodes.find((n) => String(n.id) === String(mediaNode))} nodes={flatNodes} compact={narrowViewer} onRenameSpeaker={renameSpeaker} seekRequest={sourceSeek} onSeekHandled={sourceSeekHandled} onClose={() => setSourceOpen(false)} />}
       <div className="relative min-h-0 min-w-0 flex-1">
         <MinimalGraph
-          diagnosticsEnabled={!privateMode}
+          diagnosticsEnabled={!privateMode && !ephemeral}
           graphData={flatNodes}
           semanticEdges={bundle.edges}
           focusNode={mapTarget}
@@ -630,7 +643,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
           selectedNode={selectedNode}
           setSelectedNode={setSelectedNode}
           onVisibleLevelChange={(view) => {
-            if (!privateMode && typeof window !== "undefined" && (window.__MG_DEBUG__ ?? true)) {
+            if (!privateMode && !ephemeral && typeof window !== "undefined" && (window.__MG_DEBUG__ ?? true)) {
               console.log("[ThreadsViewer] onVisibleLevelChange", { mode: view?.mode, level: view?.level, label: view?.label, ribbonLevel: view?.mode === "semantic" ? view.level : null });
             }
             setVisibleGraphLevel(view?.mode === "semantic" ? view.level : null);

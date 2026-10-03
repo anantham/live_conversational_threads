@@ -1,7 +1,7 @@
-// Test Intent: tests/intent/sites-soniox.md, sites-recording-transcript.md and sites-private-retention.md; synthetic audio/tokens only.
+// Test Intent: tests/intent/sites-soniox.md, sites-recording-transcript.md, sites-private-retention.md and sites-recording-map.md; synthetic audio/tokens only.
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const fixture = vi.hoisted(() => ({ sessions: [] }));
 vi.mock('../services/cloud/recordingSession.js', () => ({ RecordingSession: class {
@@ -11,14 +11,26 @@ vi.mock('../services/cloud/recordingSession.js', () => ({ RecordingSession: clas
   cancel() { this.cancelled = true; }
 } }));
 import SitesNewConversation from './SitesNewConversation.jsx';
+import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
 
-let root, container, transcribe, privateUploads, createURL, revokeURL;
+let root, container, transcribe, privateUploads, generation, createURL, revokeURL;
+const jsonResponse = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
+function generated(source) {
+  return createRecordingThreads({ ...source, graph: { metadata: { conversation_title: 'Synthetic generated recording' }, nodes: [
+    { id: 'synthetic-moment', semantic_level: 1, semantic_type: 'chunk', node_name: 'Synthetic recorded moment',
+      source_ref: { utterance_ids: ['utterance-0001'] }, source_excerpt: 'Hello there.' },
+  ], edges: [] } });
+}
+function LocationProbe() { return <output data-testid="location">{JSON.stringify(useLocation().state)}</output>; }
 beforeEach(() => {
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true; fixture.sessions = []; transcribe = false; privateUploads = false;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true; fixture.sessions = []; transcribe = false; privateUploads = false; generation = false;
   localStorage.clear(); createURL = vi.fn(() => 'blob:synthetic-audio'); revokeURL = vi.fn();
   vi.stubGlobal('URL', { createObjectURL: createURL, revokeObjectURL: revokeURL });
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } }); vi.stubGlobal('MediaRecorder', class {});
-  vi.stubGlobal('fetch', vi.fn(async path => new Response(JSON.stringify(path.includes('soniox')
+  vi.stubGlobal('fetch', vi.fn(async (path, options) => path === '/api/cloud/openrouter/status' ? jsonResponse({ enabled: generation, available: generation,
+    configured: generation, schema_ready: generation, audience: 'public', model: 'fixture/model', provider: 'Fixture provider' })
+    : path === '/api/cloud/openrouter/generate' ? jsonResponse({ request_id: '00000000-0000-4000-8000-000000000001', artifact: generated(JSON.parse(options.body).source).bundle })
+    : new Response(JSON.stringify(path.includes('soniox')
     ? { enabled: transcribe, audience: 'public', max_session_seconds: 300 }
     : { enabled: true, configured: true, synthetic_only: !privateUploads }), { status: 200 })));
   container = document.createElement('div'); document.body.appendChild(container); root = createRoot(container);
@@ -26,7 +38,7 @@ beforeEach(() => {
 afterEach(async () => { if (root) await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 const button = name => [...container.querySelectorAll('button')].find(element => element.textContent === name);
 async function click(name) { await act(async () => button(name).click()); }
-async function mount() { await act(async () => root.render(<MemoryRouter initialEntries={['/new?autostart=true']}><SitesNewConversation /></MemoryRouter>)); }
+async function mount() { await act(async () => root.render(<MemoryRouter initialEntries={['/new?autostart=true']}><SitesNewConversation /><LocationProbe /></MemoryRouter>)); }
 async function consent() { await act(async () => container.querySelector('input[type=checkbox]').click()); }
 const transcript = {
   finalText: 'Hello there. Again.', partialText: ' provisional',
@@ -79,7 +91,7 @@ describe('Sites recording page', () => {
     await act(async () => fixture.sessions[0].callbacks.onTranscript({ finalText: 'Final words.', partialText: ' tentative', finalTokens: [], partialTokens: [] }));
     expect(container.textContent).toContain('Final words. tentative');
     expect(container.querySelector('#final-transcript').value).toBe('Final words.');
-    expect(fetch.mock.calls).toHaveLength(2);
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/soniox/status', '/api/cloud/files/status']);
   });
 
   it('saves audio through the existing authenticated private-file API only after a deliberate choice', async () => {
@@ -170,7 +182,7 @@ describe('Sites recording page', () => {
     transcribe = true; privateUploads = true; await mount(); await consent(); await click('Record and transcribe');
     await deliverTranscript(); await click('Stop recording');
     const expected = transcriptJSON();
-    expect(fetch.mock.calls).toHaveLength(2);
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/soniox/status', '/api/cloud/files/status', '/api/cloud/openrouter/status']);
     const describedBy = button('Save transcript privately').getAttribute('aria-describedby');
     expect(container.querySelector(`#${describedBy}`)?.textContent).toBe('Private cloud copies stay until you delete them. Saving privately does not publish them.');
     fetch.mockImplementationOnce(async () => new Response(JSON.stringify({ file: { id: 'synthetic-transcript' } }), { status: 201 }));
@@ -191,7 +203,7 @@ describe('Sites recording page', () => {
     await deliverTranscript(); await click('Stop recording');
     expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
     expect(button('Save transcript privately').disabled).toBe(true);
-    expect(fetch.mock.calls).toHaveLength(2);
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/soniox/status', '/api/cloud/files/status', '/api/cloud/openrouter/status']);
   });
 
   it('retains partial transcript JSON without audio after cancelling a private save', async () => {
@@ -242,5 +254,114 @@ describe('Sites recording page', () => {
     await act(async () => root.unmount()); root = null;
     expect(uploadSignal.aborted).toBe(true);
     expect(revokeURL).toHaveBeenCalledWith('blob:transcript-new');
+  });
+
+  async function readyMap(partial = false) {
+    transcribe = true; generation = true;
+    await mount(); await consent(); await click('Record and transcribe'); await deliverTranscript();
+    expect(container.querySelector('[aria-label="Conversation map"]')).toBeNull();
+    if (partial) await failWithoutAudio(); else await click('Stop recording');
+  }
+  async function permitMap() { await act(async () => container.querySelector('[aria-label="Conversation map"] input').click()); }
+  const generationCalls = () => fetch.mock.calls.filter(call => call[0] === '/api/cloud/openrouter/generate');
+
+  it('requires separate map processing consent and verifies exact finalized source before offering an unsaved result', async () => {
+    await readyMap();
+    expect(button('Generate conversation map').disabled).toBe(true);
+    await click('Generate conversation map'); expect(generationCalls()).toHaveLength(0);
+    await permitMap(); await click('Generate conversation map');
+    const [path, options] = generationCalls()[0];
+    expect(path).toBe('/api/cloud/openrouter/generate');
+    expect(options).toMatchObject({ method: 'POST', credentials: 'same-origin', redirect: 'error',
+      headers: { 'Content-Type': 'application/json', 'X-LCT-OpenRouter-Consent': 'generate-v1' } });
+    const source = JSON.parse(options.body).source;
+    expect(source.complete).toBe(true); expect(source.finalTokens).toEqual(transcript.finalTokens);
+    expect(JSON.parse(container.querySelector('#recording-map-json').value)).toEqual(generated(source).bundle);
+    expect(container.textContent).toContain('Your map is ready in this tab');
+    expect(container.querySelector('a[download$=".threads"]').getAttribute('download')).toBe(`recording-${source.recordingId}.threads`);
+    expect(button('Save map privately').disabled).toBe(true);
+    expect(fetch.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(1);
+    await click('Explore map');
+    expect(JSON.parse(container.querySelector('[data-testid="location"]').textContent)).toMatchObject({ remember: false, threadsBundle: generated(source).bundle });
+  });
+
+  it('keeps partial source explicit and saves only the actual generated map file on deliberate private save', async () => {
+    privateUploads = true; await readyMap(true);
+    expect(container.textContent).toContain('partial transcript; unfinished words are excluded');
+    await permitMap(); await click('Generate conversation map');
+    const expected = JSON.parse(container.querySelector('#recording-map-json').value);
+    expect(expected.transcription_complete).toBe(false);
+    expect(fetch.mock.calls.filter(call => call[0] === '/api/cloud/files' && call[1]?.method === 'POST')).toHaveLength(0);
+    fetch.mockImplementationOnce(async () => jsonResponse({ file: { id: 'synthetic-map' } }, 201));
+    await click('Save map privately');
+    const [path, options] = fetch.mock.lastCall;
+    expect(path).toBe('/api/cloud/files'); expect(options.body).toBeInstanceOf(File);
+    expect(options.body.name).toBe(`recording-${expected.conversation_id}.threads`);
+    expect(JSON.parse(await readFile(options.body))).toEqual(expected);
+    expect(container.textContent).toContain('Map saved to your private cloud files');
+  });
+
+  it.each([401, 429, 503])('keeps recording downloads and makes no automatic retry after generation HTTP %s', async status => {
+    await readyMap(); await permitMap();
+    fetch.mockImplementationOnce(async () => jsonResponse({ error: 'fixture upstream detail' }, status));
+    await click('Generate conversation map');
+    expect(generationCalls()).toHaveLength(1);
+    expect(container.querySelector('#recording-map-json')).toBeNull();
+    expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
+    expect(container.textContent).not.toContain('fixture upstream detail');
+    await click('Generate conversation map');
+    expect(generationCalls()).toHaveLength(2); expect(container.querySelector('#recording-map-json')).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem('lct.recording_map_timing.v1')).at(-1)).toMatchObject({ stage: 'generate', outcome: 'success', retryCount: 1 });
+  });
+
+  it('keeps audio/transcript usable when map status fails and refuses an inactive map without a POST', async () => {
+    transcribe = true; await mount(); await consent(); await click('Record and transcribe'); await deliverTranscript();
+    fetch.mockImplementationOnce(async () => jsonResponse({ error: 'fixture unavailable' }, 503)); await click('Stop recording');
+    expect(container.textContent).toContain('Generation setup is unavailable');
+    expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
+    expect(button('Record audio locally').disabled).toBe(false);
+    await click('Retry generation setup');
+    expect(button('Generate conversation map').disabled).toBe(true);
+    await click('Generate conversation map'); expect(generationCalls()).toHaveLength(0);
+  });
+
+  it.each(['cancel', 'timeout', 'navigation'])('settles stalled generation on %s without accepting a late result or automatic retry', async mode => {
+    privateUploads = true; await readyMap(); await permitMap(); vi.useFakeTimers();
+    let finish; fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await click('Generate conversation map');
+    const source = JSON.parse(generationCalls()[0][1].body).source;
+    const signal = generationCalls()[0][1].signal;
+    await act(async () => vi.advanceTimersByTimeAsync(31_000));
+    expect(container.textContent).toContain('Generating conversation map · 31s elapsed · Time remaining unknown');
+    expect(button('Record audio locally').disabled).toBe(true);
+    expect(button('Save audio privately').disabled).toBe(true);
+    expect(button('Save transcript privately').disabled).toBe(true);
+    if (mode === 'navigation') { await act(async () => root.unmount()); root = null; }
+    else if (mode === 'timeout') await act(async () => vi.advanceTimersByTimeAsync(64_000));
+    else await click('Cancel');
+    expect(signal.aborted).toBe(true);
+    await act(async () => finish(jsonResponse({ request_id: '00000000-0000-4000-8000-000000000001', artifact: generated(source).bundle })));
+    expect(generationCalls()).toHaveLength(1); expect(container.querySelector('#recording-map-json')).toBeNull();
+    const timings = JSON.parse(localStorage.getItem('lct.recording_map_timing.v1'));
+    expect(timings.at(-1)).toMatchObject({ stage: 'generate', outcome: mode === 'timeout' ? 'timeout' : 'cancelled' });
+    expect(Object.keys(timings.at(-1)).sort()).toEqual(['durationMs', 'outcome', 'retryCount', 'stage']);
+    expect(timings.length).toBeLessThanOrEqual(12);
+    if (mode !== 'navigation') {
+      expect(container.textContent).toContain('does not confirm billing stopped');
+      expect(container.querySelector('a[download$=".transcript.json"]')).toBeTruthy();
+    }
+    // Drain immediate tasks (nested zero-delay timers fire at least1ms later in the fake clock).
+    // App elapsed intervals/deadlines are >=1000ms and would still count as leaks.
+    await act(async () => vi.advanceTimersByTimeAsync(1));
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('retains a prior valid map after a deliberately requested replacement fails', async () => {
+    await readyMap(); await permitMap(); await click('Generate conversation map');
+    const original = container.querySelector('#recording-map-json').value;
+    fetch.mockImplementationOnce(async () => jsonResponse({ error: 'fixture failure' }, 502));
+    await click('Generate another map');
+    expect(container.querySelector('#recording-map-json').value).toBe(original);
+    expect(generationCalls()).toHaveLength(2); expect(button('Explore map')).toBeTruthy();
   });
 });

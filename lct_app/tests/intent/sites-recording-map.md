@@ -1,0 +1,7 @@
+# Recording to generated map
+
+- Use one validated finalized recording source for transcript export and generation; empty/live/invalid source and missing distinct processing consent make no generation request. OpenRouter readiness failure leaves audio/transcript controls usable.
+- Send one same-origin bounded source request with the explicit consent header and no browser model/key/provider override. Refuse malformed, oversized, wrong-source or invalid map results; preserve source ownership through actual .threads reading and Discussion.
+- Show accessible setup/generation stage, elapsed time and unknown remaining time. Respect the server's60-second provider window; cancel/deadline/navigation settle even if fetch ignores abort, release readers/URLs/timers, retain source for deliberate retry and record only12payload-free timing receipts.
+- Keep successful maps in memory. Download and private upload use the actual generated .threads file only on deliberate action; public publication still requires the separate existing whole-file consent. Opening the map or renaming a speaker never writes IndexedDB or private/public storage.
+- Verify inactive/refusal/retry, partial source, success, cancel/timeout/late result, explicit save and generated viewer desktop/compact behavior using isolated synthetic content; real provider quality/billing and native disconnect remain later acceptance, never inferred from these fixtures.
