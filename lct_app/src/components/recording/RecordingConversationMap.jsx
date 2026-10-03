@@ -5,6 +5,7 @@ import { getRecordingMapStatus, generateRecordingMap } from '../../services/clou
 import { useCloudTask } from '../../hooks/useCloudTask.js';
 import PublicTaskStatus from '../PublicTaskStatus.jsx';
 import PrivateRetentionNotice from '../PrivateRetentionNotice.jsx';
+import { stageGeneratedMap } from '../../services/cloud/generatedMapHandoff.js';
 
 const button = 'inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50';
 const interrupted = 'Waiting stopped. The attempt may still be running or counted; stopping this view does not confirm billing stopped. Keep your transcript and check setup before a deliberate retry.';
@@ -57,7 +58,7 @@ export default function RecordingConversationMap({ source, privateEnabled, savin
     {result && <div className="mt-6">
       <p role="status" className="text-sm leading-6">Your map is ready in this tab. Download audio, transcript and map before leaving the recording page.</p>
       <PrivateRetentionNotice id="map-private-retention" />
-      <div className="mt-4 flex flex-wrap gap-3"><button className={button} disabled={Boolean(activity) || saving} onClick={() => navigate('/view', { state: { threadsBundle: result.bundle, sourceName: result.filename, remember: false } })}>Explore map</button>{url && <a className={button} href={url} download={result.filename}>Download map</a>}<button className={button} aria-describedby="map-private-retention" disabled={!privateEnabled || Boolean(activity) || saving} onClick={() => onPrivateSave(result.file, 'Map')}>Save map privately</button></div>
+      <div className="mt-4 flex flex-wrap gap-3"><button className={button} disabled={Boolean(activity) || saving} onClick={() => navigate('/view', { state: { generatedMapId: stageGeneratedMap(result.bundle), remember: false } })}>Explore map</button>{url && <a className={button} href={url} download={result.filename}>Download map</a>}<button className={button} aria-describedby="map-private-retention" disabled={!privateEnabled || Boolean(activity) || saving} onClick={() => onPrivateSave(result.file, 'Map')}>Save map privately</button></div>
       {!privateEnabled && <p className="mt-3 text-sm text-slate-600">Private saving needs sign-in and enabled personal storage. You can download this map now.</p>}
       <p className="mt-3 text-sm leading-6 text-slate-600">To share a public copy, download the map and use <Link className="underline underline-offset-4" to="/public">Public conversations</Link>. That step has separate confirmation and file limits.</p>
       <details className="mt-4 text-sm"><summary className="cursor-pointer">Copy map data if download is unavailable</summary><label htmlFor="recording-map-json" className="mt-3 block">Conversation map JSON</label><textarea id="recording-map-json" readOnly value={result.json} rows={5} className="mt-2 w-full rounded-lg border border-slate-300 p-3 text-sm" /></details>

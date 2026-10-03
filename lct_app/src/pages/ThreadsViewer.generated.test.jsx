@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 // Intent: tests/intent/sites-recording-map.md; exact synthetic recording output, no personal history.
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
+import { stageGeneratedMap, readGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
 
-const context = vi.hoisted(() => ({ bundle: null, compact: false, remember: false, local: { id: 'fixture-existing', title: 'Existing fixture' } }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useParams: () => ({}), useLocation: () => ({ pathname: '/view', search: '', state: { threadsBundle: context.bundle, remember: context.remember, sourceName: 'fixture-generated.threads' } }) }));
+const context = vi.hoisted(() => ({ bundle: null, generatedMapId: null, compact: false, remember: false, local: { id: 'fixture-existing', title: 'Existing fixture' } }));
+vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useParams: () => ({}), useLocation: () => ({ pathname: '/view', search: '', state: context.remember
+  ? { threadsBundle: context.bundle, remember: true, sourceName: 'fixture-generated.threads' }
+  : { generatedMapId: context.generatedMapId, remember: false } }) }));
 vi.mock('../services/dataProvider', () => ({ useDataProvider: () => ({ conversations: {} }) }));
 vi.mock('../hooks/useMediaQuery', () => ({ COMPACT_VIEWER_QUERY: 'fixture-compact', useMediaQuery: () => context.compact }));
 vi.mock('../services/threadsLibraryStore', () => ({ rememberThreadsArtifact: async bundle => { context.local = bundle; return { id: 'fixture-generated' }; },
@@ -26,6 +29,7 @@ let host, root;
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true; window.__MG_DEBUG__ = true; window.history.replaceState(null, '', '/view'); localStorage.clear();
   context.bundle = createRecordingThreads({ ...source, graph }).bundle; context.local = { id: 'fixture-existing', title: 'Existing fixture' }; context.remember = false;
+  context.generatedMapId = stageGeneratedMap(context.bundle);
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('No generated viewer network request is allowed'); }));
   host = document.createElement('div'); document.body.appendChild(host); root = createRoot(host);
 });
@@ -35,7 +39,7 @@ const click = label => act(async () => [...host.querySelectorAll('button')].find
 it.each([false, true])('opens the actual generated source in Graph/Discussion without remembering or saving speaker edits (compact=%s)', async compact => {
   context.compact = compact;
   const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-  await act(async () => root.render(<ThreadsViewer />));
+  await act(async () => root.render(<StrictMode><ThreadsViewer /></StrictMode>));
   expect(host.textContent).toContain('Synthetic generated moment');
   expect(host.textContent).toContain('Generated map · kept in this view · not saved');
   expect(host.querySelector('[data-testid="graph"]').dataset.diagnostics).toBe('false');
@@ -51,6 +55,17 @@ it.each([false, true])('opens the actual generated source in Graph/Discussion wi
   expect(context.local).toEqual({ id: 'fixture-existing', title: 'Existing fixture' });
   expect(context.bundle.utterances[0].speaker_display).toBeUndefined();
   expect(fetch).not.toHaveBeenCalled(); expect(log).not.toHaveBeenCalled(); expect(localStorage.length).toBe(0);
+  expect(readGeneratedMap(context.generatedMapId)).toBeNull();
+});
+it('refuses an expired handoff without recovering the transcript from storage or making a request', async () => {
+  await act(async () => root.render(<ThreadsViewer />));
+  expect(host.textContent).toContain('Synthetic generated moment');
+  await act(async () => root.unmount()); root = createRoot(host);
+  await act(async () => root.render(<ThreadsViewer />));
+  expect(host.textContent).toContain('This generated map is no longer available');
+  expect(host.textContent).not.toContain('Exact synthetic recorded words.');
+  expect(fetch).not.toHaveBeenCalled(); expect(localStorage.length).toBe(0);
+  expect(context.local).toEqual({ id: 'fixture-existing', title: 'Existing fixture' });
 });
 it('downloads the current portable graph only on explicit action and retains ordinary imported-file remembering', async () => {
   context.compact = false;

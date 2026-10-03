@@ -30,6 +30,7 @@ import {
   validateThreadsArtifact,
 } from "../services/threadsArtifact";
 import { indexExplicitEdges } from "../services/edgeContract";
+import { readGeneratedMap, releaseGeneratedMap } from "../services/cloud/generatedMapHandoff.js";
 import { enrichGraphNodesWithProvenance } from "../components/graphProvenance";
 import {
   getThreadsLibraryRecord,
@@ -64,7 +65,9 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { artifactId, publicId } = useParams();
-  const ephemeral = !privateMode && !publicId && location.state?.remember === false && Boolean(location.state?.threadsBundle);
+  const generatedMapId = !privateMode && !publicId && location.state?.remember === false ? location.state?.generatedMapId : null;
+  const generatedBundle = useMemo(() => readGeneratedMap(generatedMapId), [generatedMapId]);
+  const ephemeral = !privateMode && !publicId && location.state?.remember === false && Boolean(generatedMapId || location.state?.threadsBundle);
   const driveFileId = privateMode || typeof window === "undefined"
     ? ""
     : new URLSearchParams(location.search).get("driveFile") || "";
@@ -86,7 +89,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   // map arrives. Seeded from the URL so the very first render is already loading.
   const [srcLoading, setSrcLoading] = useState(
     () =>
-      privateMode || Boolean(artifactId || location.state?.threadsBundle) ||
+      privateMode || Boolean(artifactId || generatedMapId || location.state?.threadsBundle) ||
       (typeof window !== "undefined"
         && ["src", "driveFile"].some((key) => new URLSearchParams(window.location.search).has(key))),
   );
@@ -250,13 +253,19 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
   // when persistent browser storage is unavailable. Generated results explicitly
   // opt out of remembering; ordinary imported files keep the shared remember step.
   useEffect(() => {
-    const routedBundle = location.state?.threadsBundle;
-    if (privateMode || publicId || !routedBundle || consumedRouteState.current) return;
+    const routedBundle = generatedBundle || location.state?.threadsBundle;
+    if (privateMode || publicId || consumedRouteState.current || (!routedBundle && !generatedMapId)) return;
     consumedRouteState.current = true;
+    if (!routedBundle) {
+      setError("This generated map is no longer available in this page. Open a downloaded .threads copy or generate another map.");
+      setSrcLoading(false);
+      return;
+    }
     ingest(routedBundle, { sourceName: location.state?.sourceName || "", remember: !ephemeral });
+    releaseGeneratedMap(generatedMapId);
     if (ephemeral) setLibraryStatus({ state: "memory", message: "Generated map · not saved" });
     setSrcLoading(false);
-  }, [ingest, privateMode, publicId, ephemeral, location.state]);
+  }, [ingest, privateMode, publicId, ephemeral, generatedMapId, generatedBundle, location.state]);
 
   // Stable browser-local deep link used by Browse's "On this device" rows.
   useEffect(() => {

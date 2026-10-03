@@ -1,7 +1,7 @@
 // Test Intent: tests/intent/sites-soniox.md, sites-recording-transcript.md, sites-private-retention.md and sites-recording-map.md; synthetic audio/tokens only.
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const fixture = vi.hoisted(() => ({ sessions: [] }));
 vi.mock('../services/cloud/recordingSession.js', () => ({ RecordingSession: class {
@@ -12,6 +12,7 @@ vi.mock('../services/cloud/recordingSession.js', () => ({ RecordingSession: clas
 } }));
 import SitesNewConversation from './SitesNewConversation.jsx';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
+import { readGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
 
 let root, container, transcribe, privateUploads, generation, createURL, revokeURL;
 const jsonResponse = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
@@ -25,7 +26,9 @@ function LocationProbe() { return <output data-testid="location">{JSON.stringify
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true; fixture.sessions = []; transcribe = false; privateUploads = false; generation = false;
   localStorage.clear(); createURL = vi.fn(() => 'blob:synthetic-audio'); revokeURL = vi.fn();
-  vi.stubGlobal('URL', { createObjectURL: createURL, revokeObjectURL: revokeURL });
+  const NativeURL = globalThis.URL;
+  vi.stubGlobal('URL', class extends NativeURL { static createObjectURL = createURL; static revokeObjectURL = revokeURL; });
+  window.history.replaceState(null, '', '/new?autostart=true');
   vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn() } }); vi.stubGlobal('MediaRecorder', class {});
   vi.stubGlobal('fetch', vi.fn(async (path, options) => path === '/api/cloud/openrouter/status' ? jsonResponse({ enabled: generation, available: generation,
     configured: generation, schema_ready: generation, audience: 'public', model: 'fixture/model', provider: 'Fixture provider' })
@@ -38,7 +41,10 @@ beforeEach(() => {
 afterEach(async () => { if (root) await act(async () => root.unmount()); container.remove(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 const button = name => [...container.querySelectorAll('button')].find(element => element.textContent === name);
 async function click(name) { await act(async () => button(name).click()); }
-async function mount() { await act(async () => root.render(<MemoryRouter initialEntries={['/new?autostart=true']}><SitesNewConversation /><LocationProbe /></MemoryRouter>)); }
+async function mount(browser = false) {
+  const Router = browser ? BrowserRouter : MemoryRouter;
+  await act(async () => root.render(<Router {...(browser ? {} : { initialEntries: ['/new?autostart=true'] })}><SitesNewConversation /><LocationProbe /></Router>));
+}
 async function consent() { await act(async () => container.querySelector('input[type=checkbox]').click()); }
 const transcript = {
   finalText: 'Hello there. Again.', partialText: ' provisional',
@@ -256,9 +262,9 @@ describe('Sites recording page', () => {
     expect(revokeURL).toHaveBeenCalledWith('blob:transcript-new');
   });
 
-  async function readyMap(partial = false) {
+  async function readyMap(partial = false, browser = false) {
     transcribe = true; generation = true;
-    await mount(); await consent(); await click('Record and transcribe'); await deliverTranscript();
+    await mount(browser); await consent(); await click('Record and transcribe'); await deliverTranscript();
     expect(container.querySelector('[aria-label="Conversation map"]')).toBeNull();
     if (partial) await failWithoutAudio(); else await click('Stop recording');
   }
@@ -266,7 +272,7 @@ describe('Sites recording page', () => {
   const generationCalls = () => fetch.mock.calls.filter(call => call[0] === '/api/cloud/openrouter/generate');
 
   it('requires separate map processing consent and verifies exact finalized source before offering an unsaved result', async () => {
-    await readyMap();
+    await readyMap(false, true);
     expect(button('Generate conversation map').disabled).toBe(true);
     await click('Generate conversation map'); expect(generationCalls()).toHaveLength(0);
     await permitMap(); await click('Generate conversation map');
@@ -282,7 +288,11 @@ describe('Sites recording page', () => {
     expect(button('Save map privately').disabled).toBe(true);
     expect(fetch.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(1);
     await click('Explore map');
-    expect(JSON.parse(container.querySelector('[data-testid="location"]').textContent)).toMatchObject({ remember: false, threadsBundle: generated(source).bundle });
+    const handoff = JSON.parse(container.querySelector('[data-testid="location"]').textContent);
+    expect(handoff).toEqual({ remember: false, generatedMapId: expect.any(String) });
+    expect(readGeneratedMap(handoff.generatedMapId)).toEqual(generated(source).bundle);
+    expect(window.history.state.usr).toEqual(handoff);
+    expect(JSON.stringify(window.history.state)).not.toContain('Hello there.');
   });
 
   it('keeps partial source explicit and saves only the actual generated map file on deliberate private save', async () => {
