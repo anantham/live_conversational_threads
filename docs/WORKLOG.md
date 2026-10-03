@@ -7303,3 +7303,58 @@ User observed an empty desktop transcript until node selection, with only the cu
  unchanged2-file diagnostic passed5/5 (5.73s). No assertions, timers or product
  code weakened/edited; one bounded full-hook retry follows with AGY finished.
  If it fails again, report this gate as a concrete blocker instead of looping.
+
+### 2026-10-03 — Served presentation and source-only speaker-key gap
+
+- Required retry passed523/523; exact-head CI passed; reviewed files unchanged
+  through mechanical docs headc2affde. PR213 merged7cbc115 at13:19:05Z.
+  Production6828076060 succeeded13:19:46Z; Vercel metadata confirms READY,
+  main SHA7cbc115 and custom alias. Authenticated fetch and custom-domain HTML
+  both serve index-BeDjbPsk.js. Anonymous immutable URL instead returns a
+  sign-in page; initial local-hash/anonymous comparison was an invalid identity
+  oracle, not evidence of stale production. Tool-supported authenticated read
+  resolved it; no protection/permissions changed. Production smoke9/9 passed,
+  workflow37125799621. Deploy checkout/backend never touched.
+- Stopped the public assertion script after three distinct harness assumptions:
+  local bundle hash instead of exact deployed hash; conversation Next before
+  a reading path exists; a speaker-label assertion on an actually empty key.
+  Materially different read-only DOM/control inventory completed1440/390:
+ 56/56 moment alternatives clipped at1px yet accessible,30 mixed fills,
+  no horizontal overflow, no console warnings/pageerrors/5xx. This proves the
+  served presentation, not Source playback or Back-camera recovery.
+- The inventory exposed a real adjacent acceptance failure: actual source-linked
+  artifact Legend lists edge types but no speakers. Direct trace: ThreadsViewer
+  uses old buildSpeakerColorMap (node.speaker_id only); MinimalGraph already
+  uses buildSpeakerColorMapForNodes (source turns/contributions too). Shared
+  graph normalization preserves these fields/order. Synthetic fixture wrongly
+  duplicated speaker_id on moments, masking the public source-only case.
+- A1 repair inside approved identity journey: reuse existing graph color builder
+  in ThreadsViewer; retain the exact card palette, aliases, timing and all source
+  data. Confidence0.98; predict existing fixture without redundant node speaker
+  IDs fails visible Legend naming before edit and passes after, with key swatch
+  equal to its card fill. Fallback stop if shared palette identity changes.
+  Finite regression amended before runtime edit. New branch
+  codex/viewer-source-speaker-legend from served main, same authoritative checkout,
+  owner Codex; personal AGENTS preserved. Remaining review/full gate/CI/deploy and
+  actual key proof; no new human product ruling required.
+- Six-card wording pilot prepared locally under tmp/conversation-label-pilot.html
+  and JSON, original artifact SHA2567088642ac9d6fd7a5bae6bfa5e7c1c5ac4c994e579610d613b7001b69e763fed
+  unchanged. Manual title/summary-only selection; no raw transcript dump,
+  provider call, public rewrite or regrouping. Desktop/phone2/2 comparison toggles,
+  keyboard activation and all six original contexts passed; screenshots inspected,
+  no external request/pageerror/overflow. Preview queued in Codex. Content
+  acceptance belongs after this concrete pilot; broader authoring remains deferred.
+- Source-only expected-red failed exactly at the missing named Legend row after
+  successful graph colors and Source rename, desktop1failed/phone1not run under
+  max-failures1. No product assertion weakened. Reused existing contribution-aware
+  builder in the viewer import and memo (two lines), matching MinimalGraph's
+  normalization-preserved ordering/fields. Existing ThreadsViewer ingestion/
+  presentation decomposition candidate in TECH_DEBT assessed; no extraction
+  expands this repair. Next green checks require visible key and matching swatch.
+- Final source-only synthetic browser2/2 passed (11.0s), including Source alias,
+  exact key-to-card swatch, assistive shares,90%/unknown timing, Back and alternate
+  color. Focused contribution/color/Legend20/20 passed; scoped viewer ESLint clean;
+  build passed2334 modules14.26s, existing large-chunk warning. Actual unchanged
+  public artifact opened locally at1440/390:56 clipped alternatives,30 mixed
+  fills, both speaker keys visible and first key color matches card; no browser
+  warnings/errors/5xx/overflow. Public artifact itself is not sent for review.

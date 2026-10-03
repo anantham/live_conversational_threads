@@ -12,6 +12,9 @@ Source/Legend. This slice precedes the separate conversational-label pilot.
   accessible speaker text retains exact shares or unknown timing.
 - Rename through Source updates Source, Legend and accessible card text
   immediately; Back must not undo the rename. Other color modes still work.
+- The populated fixture identifies speakers through linked utterances, without
+  a redundant node-level speaker_id. The visible Legend swatch must match the
+  same speaker's card fill; an empty key cannot pass merely because cards paint.
 - Desktop and phone walkthroughs retain keyboard navigation and bounded panes;
   screenshots verify appearance. Noncompact graph consumers retain their badge.
 

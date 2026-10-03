@@ -2077,3 +2077,17 @@ Impact: gate/release uncertainty; blocker until required hook passes. Suspected
 short fixed waits are a hypothesis, not a confirmed cause. Next: one full-hook
 retry after reviewer process completes; diagnose scheduling/observable completion
 in a separate test-reliability slice if repeated. No weakening or bypass.
+
+### 2026-10-03 — Source-linked artifact speaker key (IN-SCOPE REPAIR)
+
+Actual served1440/390 DOM proves clipped card text and speaker fills, but Legend
+has only edge meanings. Graph uses contribution-aware color builder; viewer key
+uses node-speaker-only builder. Existing synthetic fixture repeated speaker IDs
+on nodes and missed this case. Owner Codex, authoritative viewer worktree,
+branch codex/viewer-source-speaker-legend from served7cbc115. Outcome: actual key
+identifies the colors already painted, including immediate Source alias updates.
+Reuse existing builder; preserve timing/source/palette. Acceptance: source-only
+fixture red then desktop/phone rename/color-key match/history green, required
+gate, independent review and actual served key. Next checkpoint expected-red.
+Remaining dependency engineering validation/review/deploy; no user decision.
+Additional effort estimate30-60 active minutes; review/CI/deploy waits separate.
