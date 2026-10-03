@@ -406,3 +406,12 @@ amid its camera and graph state. If reading navigation gains more behavior,
 extract that state and its event lifecycle together; keep graph tier selection
 and viewport effects in the current owner until their separate coordinator
 refactor. Preserve the existing selected-thread and conversation path tests.
+<!-- viewer-color-only-cards:2026-10-03 -->
+
+## ConversationNode presentation decomposition candidate (2026-10-03)
+
+ConversationNode.jsx is approximately625 lines, mixing card layout, speaker
+presentation, provenance metrics, dimension/rhetoric chips and control styles.
+A future split can extract metric/chip presentation from the card renderer.
+The approved color-only change is a small visibility repair; extracting those
+concerns now would enlarge review and legacy-consumer risk without improving it.

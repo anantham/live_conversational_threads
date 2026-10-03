@@ -1,0 +1,50 @@
+{
+  "provider": "Google",
+  "family": "Gemini",
+  "model": "gemini-3.1-pro-high",
+  "entryPoint": "authenticated AGY subscription",
+  "purpose": "Read-only independent review of public color-only card presentation",
+  "sourceHead": "82d8a6152bb288d4a9751de4ac835968073f0df8",
+  "base": "b98435538216e0ec3171f3faf2473747a58bc099",
+  "packet": {
+    "files": [
+      "lct_app/src/components/graph/ConversationNode.jsx",
+      "lct_app/src/components/graph/ConversationNode.test.jsx",
+      "lct_app/tests/e2e/viewer-color-only.spec.ts",
+      "tests/intent/viewer-color-only-cards.md"
+    ],
+    "bytes": 16154,
+    "sha256": "464fc8d52a32470dde2350706a377dbc7c1df9b718cde985f13053368bccc219",
+    "exclusions": "personal AGENTS edits, ISSUES/WORKLOG, product feedback, TECH_DEBT, artifacts, transcripts, participants, screenshots, credentials, private reasoning and unrelated content",
+    "scan": "Exact bytes inventoried, inspected and secret/participant-scanned before invocation"
+  },
+  "transport": {
+    "bytes": 19591,
+    "sha256": "9f3ba52e14ba044513c45581db4c50f2c2bad870df0efd5a5a3e76503fb89505"
+  },
+  "capabilities": "Plan + sandbox with verified deny-all PreToolUse guard; no permission bypass",
+  "toolAttempts": 0,
+  "completed": "2026-10-03T13:11:53.214Z",
+  "conversation": "de0c67a3-f151-4ced-8df9-b05a76aba1be",
+  "report": {
+    "verdict": "APPROVED",
+    "scope_sha": "82d8a6152bb288d4a9751de4ac835968073f0df8",
+    "findings": [],
+    "coverage": [
+      "lct_app/src/components/graph/ConversationNode.jsx",
+      "lct_app/src/components/graph/ConversationNode.test.jsx",
+      "lct_app/tests/e2e/viewer-color-only.spec.ts",
+      "tests/intent/viewer-color-only-cards.md"
+    ],
+    "limitations": "supplied source review; validation not rerun"
+  },
+  "validation": {
+    "focusedUnits": "30/30",
+    "requiredPrePush": "523/523,86 files; existing React act warnings",
+    "newBrowser": "2/2 desktop/phone",
+    "adjacentBrowser": "1/1 manually panned camera/hierarchy",
+    "lint": "scoped JSX clean",
+    "build": "pass; existing chunk-size warning"
+  },
+  "limitations": "Reviewer assessed supplied bounded diff; did not rerun tests. Not a full UX, playback, performance or accessibility audit. Separate public Back-camera and YouTube lifecycle findings remain unresolved."
+}

@@ -263,8 +263,10 @@ function ConversationNodeImpl({ data, selected }) {
       {!compactReading && <RhetoricStrip argumentRole={argumentRole} flags={rhetoricFlags} />}
       {!compactReading && argStatusLabel && <div style={argStatusStyle}>{argStatusLabel}</div>}
       {!compactReading && <ProvenanceMetricStrip metrics={provenanceMetrics} />}
-      {compactReading && speakerContributionLabel && <div style={compactContributionStyle}>{speakerContributionLabel}</div>}
-      {!hasVisibleSpeakerTurns && !(Number(data?.fullData?.semantic_level || data?.fullData?.level)>1) && speakerLabel && (
+      {compactReading && (speakerContributionLabel || speakerLabel) && (
+        <span className="sr-only">{speakerContributionLabel || speakerLabel}</span>
+      )}
+      {!compactReading && !hasVisibleSpeakerTurns && !(Number(data?.fullData?.semantic_level || data?.fullData?.level)>1) && speakerLabel && (
         <div style={speakerStyle}>{speakerLabel}</div>
       )}
 
@@ -483,16 +485,6 @@ const compactSummaryStyle = {
   fontSize: "13px",
   lineHeight: 1.4,
   overflow: "hidden",
-};
-
-const compactContributionStyle = {
-  fontSize: "10px",
-  color: "#334155",
-  fontVariantNumeric: "tabular-nums",
-  marginTop: "5px",
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
 };
 
 const compactCardFooterStyle = { ...cardFooterStyle, marginTop: "auto", flexShrink: 0 };

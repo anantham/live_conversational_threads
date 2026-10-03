@@ -7157,3 +7157,149 @@ User observed an empty desktop transcript until node selection, with only the cu
   records this evidence; preserve warning capture in served verification.
 - Final release dependency: second mandatory push gate, remote checks, main merge,
   exact production identity and public layout acceptance. Runtime is not yet served.
+
+### 2026-10-03 02:23 IST — Legend served checkpoint and bounded follow-up evidence
+
+- PR212 exact head6b8a074dce0dfd2f9cbcf4b7fa27e34eb7504fea merged as
+  b98435538216e0ec3171f3faf2473747a58bc099 at2026-10-02T20:33:28Z; production
+  deployment6817714804 succeeded20:34:01Z, immutable lct-g8hqa6bnr-adityas-projects-9c03351d.vercel.app,
+  public asset index-9PRobkul.js. All eight reviewed files match d37f507 exactly.
+  Required second push520/520 and exact-head remote CI/preview passed;
+  post-deploy live smoke37061405967 passed7/7 (38.0s).
+- Real public interactions at1440x900,390x844,320x640 completed finite geometry/
+  reachability3/3:12px gap, no key collision with Source/details, complete edge
+  scroll, pointer/keyboard close, selected moment preserved and reading count
+  restored after Next/Back. Local focus entry/exit2/2 at1440/390 hides utilities
+  while focused and restores Legend. No source edits followed independent review.
+- Strict public console check failed with five YouTube warnings (three web-share,
+  two postMessage origin mismatch); page errors/5xx zero. Local actual-example
+  console check previously failed with four. Do not label these overall passed or
+  claim playback acceptance: panels closed during SDK loading. Updated ISSUES
+  with public reproduction and separate loading/teardown evidence checkpoint.
+- Screenshot follow-up found public Back count1of4 with card offscreen after600ms:
+  camera translate(550,220),scale1, selected card y3245.5, visible nodes0. Local
+  same-source controls with/without key toggles both restore the camera. Bounded
+  gpt-6-sol read-only peer confirms reflow alone is falsified; saved camera, restore
+  measurement gate and later camera writer remain distinguishable hypotheses.
+  No root cause/regression attribution or speculative source repair selected.
+- Automatic approval review rejected the separate baseline-server launch with
+  only 'blocked by policy'. Stopped that method without another launch route;
+  recorded enforcement mismatch, not a human authorization gap. Next safe
+  decisive boundary is saved/restored camera and writer evidence in public timing.
+- Evidence scripts/reports/screenshots remain ignored tmp, excluded from external
+  review. Technical receipt/ISSUES add exact release metadata and honest limits.
+  Product options remain H1/deferred; engineering follow-ups are not blocked on
+  those choices. No full integrated UX/a11y/performance acceptance claimed.
+- Closure-only branch codex/viewer-legend-closure starts at served origin/main;
+  owner Codex and authoritative checkout unchanged, personal dirty AGENTS.md
+  preserved. No deploy-checkout/backend/data change. Owned Vite PID91784 cleanup
+  is limited to the verified task command on51081; no baseline process launched.
+  Next checkpoint: human product ruling for wording/passages, separate camera/SDK
+  evidence follow-up. Broader design/regeneration/layout work remains deferred.
+
+### 2026-10-03 17:31 IST — Selected label/color direction and incremental roadmap
+
+- User chose short neutral labels with a conversational voice, rejected explicit
+  speakers on cards, and asked for small changes ranked by effort toward emergent,
+  overlapping themes and progressive disclosure. Supersedes the earlier proposed
+  speaker-chip recommendation; no hierarchy replacement or artifact regeneration
+  inferred. Impeccable shape used for planning only, with existing context retained.
+- Read current card/contribution rendering, thread presentation, default prompts,
+  hierarchy consolidator and ADR-062. Direct evidence: default fixed ranges and
+  complete coverage plus nearest-parent adoption constrain active tiers; optional
+  global tiers and canonical many-to-many membership already exist. Active runtime
+  prompt overrides were not inspected, so no claim these defaults authored the
+  shared example. Current source supports a small presentation slice independently
+  of larger coverage/projection changes. Existing artifacts won't update from a
+  future prompt edit alone.
+- One bounded read-only peer launch stayed pending initialization; interrupted
+  rather than repeatedly waiting. Root completed focused reads. No external model
+  review/inference or transcript disclosure. Ranked finite milestones, estimates,
+  dependencies and acceptance in ISSUES; ranges are judgment, not measured ETA.
+- Plan first:2-4h color-only card presentation;4-8h bounded wording pilot;4-8h
+  disclosure;6-12h existing overlap disclosure;1-2days passage navigation;
+  2-5days conditional-depth prototype, production effort unknown. Review/CI/
+  content acceptance/deployment waits separate; refresh at first working preview.
+  Back/camera and Source SDK diagnosis remain independent engineering follow-ups.
+- Changed only ISSUES/WORKLOG with abstract product requirements; no private
+  participant text/artifacts or new architecture contract. Owner Codex, same
+  authoritative checkout, personal dirty AGENTS preserved. No runtime changes or
+  delivered behavior claimed. Next checkpoint small public-card preview, then
+  reviewed label examples; later projection/data decisions require their own slice.
+
+### 2026-10-03 — Approved color-only cards, preflight and test intent
+
+- User approved recommendation: ship small card presentation, then bounded label
+  pilot. Branch codex/viewer-color-only-cards from durable planning HEAD; fetched
+  origin/main remains b984355. Same authoritative checkout; personal AGENTS dirty
+  work preserved. No optional hierarchy/navigation repair added to this slice.
+- Read ConversationNode and its tests, compact renderer boundaries, Source naming,
+  Legend aliases and color contribution behavior. Public readingMode uses compact
+  cards; other consumers retain their existing appearance. Existing card dimensions,
+  speaking-time calculations and source content remain outside presentation edits.
+- Hypothesis/test intent recorded before source edit; new regression covers hidden
+  assistive shares, fallback badge, unknown time and noncompact compatibility.
+  Browser fixture will be fully populated and use actual UI naming/history/colors.
+  No external transcript/inference or new dependency. Next checkpoint expected-red,
+  presentation repair, focused validation and tool-free Google-family review.
+
+- Expected-red unit3/10 failed on the old visible contribution row/fallback badge
+  and missing text alternative; after the four-line presentation change all
+  focused30/30 passed. No contribution/color/camera code changed. First browser
+  attempt rejected a harness assumption: installed Tailwind uses clip-path
+  inset(50%), not legacy clip rect. A direct disposable element probe measured
+  absolute position,1x1px,overflow hidden,clip-path inset(50%); screenshot confirms
+  no painted names. Corrected the CSS assertion to that observed paint contract,
+  retaining clipping/size/source-action checks. This is not a product pass from
+  the failed run or a reduced invisibility requirement; next matrix reuses it.
+- Second browser matrix passed source/rename/Legend/Back, measured80/20 and90/10,
+  unknown timing, then timed out on the new alternate-color selector. Actual
+  accessible name includes '(click to cycle)' (instrumented failure snapshot
+  and ColorModeToggle source agree). Corrected the exact public label; no source
+  change or acceptance assertion removed. Third bounded matrix is the checkpoint.
+- Third matrix passed3/3 (10.5s): desktop/phone source/rename/Legend/history/
+  speaking colors, plus unchanged hierarchy and manually panned-camera return.
+  Focused units30/30; scoped ESLint clean; production build passed2334 modules,
+  JS1357.63KB/gzip404.30KB; existing large-chunk notice retained. Layout detector[].
+  Added a direct accessibility-tree check to support the assistive-text claim and
+  highest-tier unknown-time readiness; final rerun verifies this concrete gap.
+  ConversationNode's existing ~625-line mixed presentation candidate is noted
+  in TECH_DEBT; no unrelated extraction undertaken. Remaining review/CI waits
+  are unmeasured; first preview shows no source/color/camera behavior changes.
+- Final accessibility/highest-tier browser2/2 passed (10.0s): clipped name/share
+  text is retained in the accessibility tree, and an untimed aggregate also has
+  a text alternative. Desktop/phone screenshots inspected after completion.
+  Initial screenshot lookup occurred before the phone run wrote its output;
+  corrected by waiting for completion, not by claiming absent evidence.
+
+### 2026-10-03 — Color-only card independent review and publication checkpoint
+
+- Source82d8a6152bb288d4a9751de4ac835968073f0df8 committed and pushed to
+  codex/viewer-color-only-cards; PR213 attached. Mandatory pre-push gate passed
+  523/523 across86 files (26.63s); existing React act warnings remain, not a
+  warning-free full suite. Only personal AGENTS remained dirty before this
+  review-receipt amendment and is excluded from all staging/publication.
+- Independent Google Gemini3.1ProHigh through authenticated AGY approved the
+  exact source diff at2026-10-03T13:11:53Z, no findings, zero tool attempts;
+  reviewer did not rerun tests. Verified deny-all PreToolUse guard, plan+sandbox,
+  neutral directory, no permission bypass/new paid API use. Exact bounded packet
+  four files/16154bytes/SHA256464fc8d52a32470dde2350706a377dbc7c1df9b718cde985f13053368bccc219;
+  inventoried, inspected and scanned before invocation. Credentials, transcripts,
+  participants, generated artifacts, screenshots, personal AGENTS, product notes,
+  unrelated files and private reasoning excluded. Receipt in
+  docs/reviews/viewer-color-only-2026-10-03.json.
+- Repository convenience merge script cannot select Google and builds a broader
+  packet. Reused the previously verified bounded AGY adapter; exact reviewed
+  source/test equivalence, remote head and all required checks will be checked
+  before merge. This amendment records evidence only; no runtime/test change.
+- Remaining dependency: exact-head CI, merge and served desktop/phone appearance.
+  No delivery/production acceptance claim yet. Public Back-camera/YouTube findings
+  remain separate. Label pilot next after the presentation journey is closed.
+- The mandatory hook on the docs-receipt push failed2/523 after the first full
+ 523/523 pass: MinimalGraph.navigation saved-camera assertion and
+ useViewerHistory forward-branch assertion. Source/test diff from reviewed82d8
+ remains empty and initial remote source CI passed. Inspected both tests: fixed
+ 70ms/30ms waits create a timing hypothesis, not yet a proved root cause. Focused
+ unchanged2-file diagnostic passed5/5 (5.73s). No assertions, timers or product
+ code weakened/edited; one bounded full-hook retry follows with AGY finished.
+ If it fails again, report this gate as a concrete blocker instead of looping.

@@ -1830,7 +1830,7 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   not a current release blocker. If it recurs, investigate observable readiness
   under suite load without weakening the required camera restoration assertion.
 
-## 2026-10-03 — Legend spacing and pane isolation (APPROVED; IMPLEMENTING)
+## 2026-10-03 — Legend spacing and pane isolation (SERVED; finite geometry accepted)
 
 - Outcome: reach the Legend and read its key without blank clearance or Source/
   details collisions. Owner Codex; authoritative checkout viewer-source-and-controls,
@@ -1868,6 +1868,24 @@ Operational note: deployed IndrasNet flapped under sustained load this session (
   packet/hash. Full pre-push520/520 passed; PR212 preview successful. Mechanical
   main reconciliation2001ba7 retains exactly identical reviewed source/tests.
   Remaining: required checks and served verification; no new human decision needed.
+- Served checkpoint: PR212 exact head6b8a074dce0dfd2f9cbcf4b7fa27e34eb7504fea
+  merged as b98435538216e0ec3171f3faf2473747a58bc099 at2026-10-02T20:33:28Z.
+  Production deployment6817714804 succeeded20:34:01Z; public asset
+  index-9PRobkul.js. All eight reviewed source/test files remain byte-identical
+  to d37f507. Required second full push gate520/520, remote CI/preview and
+  production smoke7/7 passed. Focus entry/exit2/2 passed locally at1440/390px.
+- Public bundled-example geometry/reachability3/3 at1440x900,390x844,320x640:
+  gap12px, Source/details/key do not overlap, final edge reachable, scoped Escape
+  preserves selected moment. Short combined panes need scrolling. This proves
+  the finite presentation repair. The stricter walkthrough failed its console
+  assertion with five YouTube warnings; a settled public Back camera probe also
+  failed (separate entries below). No complete integrated UX pass is claimed.
+- Integration owner Codex; authoritative checkout remains
+  C:/Users/adity/.codex/worktrees/viewer-source-and-controls/live_conversational_threads.
+  Closure records branch codex/viewer-legend-closure starts at served main to avoid
+  prior squash ancestry drift. Remaining engineering evidence: separate camera/
+  SDK lifecycle investigations. No product choice blocks the served Legend repair;
+  next presentation checkpoint is human use, with deferred choices below.
 
 ## 2026-10-03 — Viewer product decision space (DEFERRED; no proposal selected)
 
@@ -1903,7 +1921,7 @@ current defaults if a preview reduces comprehension or adds navigation friction.
 Remaining dependency: the smallest selected product slice; no deadline claimed.
 Next checkpoint: a concrete preview plus reader/task evidence for that selection.
 
-## 2026-10-03 — YouTube warnings in rapid localhost panel walkthrough (OPEN)
+## 2026-10-03 — YouTube warnings in rapid Source panel walkthrough (OPEN)
 
 - The actual bundled-example Legend probe completed its geometry/navigation
   checks at1440/390/320px, then failed its strict console assertion: two web-share
@@ -1918,3 +1936,144 @@ Next checkpoint: a concrete preview plus reader/task evidence for that selection
   tmp/legend-local-source-*.png and captured probe failure in this task.
   Next checkpoint: public-origin walkthrough; dedicated SDK lifecycle work only
   if reproduced and selected. Owner unassigned.
+- Public follow-up reproduced five warnings across three widths: three web-share
+  notices and two youtube-nocookie/public-origin postMessage mismatches. Geometry
+  and reading-position checks completed3/3; errors/5xx were zero, but the preserved
+  strict-console assertion failed. Source was closed while loading; playback was
+  not tested by this probe. Evidence tmp/legend-live-report.json and paired local
+  screenshots; these runtime artifacts are excluded from review egress.
+  Cause remains unknown. Next checkpoint: bound the SDK loading/teardown lifecycle
+  with observable readiness, retaining warnings rather than filtering them.
+
+## 2026-10-03 — Public Back restores reading position but loses card visibility (OPEN)
+
+- Instrumented bundled-example desktop sequence: select first thread moment,
+  open/close key, open Source/key and close Source, Next, Back; sample after600ms.
+  Initial camera translate(387.5,-3233.35),scale1.15 shows selected card. After Back,
+  count returns1of4 but camera translate(550,220),scale1 places selected card at
+  y3245.5; zero nodes are visible. Evidence tmp/legend-camera-report.json and
+  tmp/legend-camera-settled.png. This is a settled failure, not an animation sample.
+- Counter-evidence: local Vite with identical served source restores visible card
+  with both key toggles and no key toggles. Key reflow alone is falsified as cause.
+  Read-only local peer traced stored graphNavigation and the measured-node restore
+  gate; stale/missing saved camera, an incomplete gate, or a later writer remain
+  alternatives. No root cause, introduction date or release attribution established.
+- A separate baseline-server launch was rejected by automatic approval review,
+  returning only 'blocked by policy'. That method stopped; no alternate launch
+  bypassed it. This is an enforcement mismatch, not missing human product approval.
+- Impact: public Back may leave the reader offscreen; finite Legend geometry passes
+  do not establish camera acceptance. No unconditional recenter patch is justified
+  because it could discard manual pan. Next decisive evidence: capture the saved
+  viewport before Next, restore target and node measurement gate on Back, viewport
+  application and any subsequent camera writer. Owner Codex for evidence handoff;
+  separate repair remains unimplemented, with no full UX audit claimed.
+
+## 2026-10-03 — Incremental path toward emergent conversation structure (DIRECTION SELECTED; ranked plan)
+
+**Attention status:** A1 for recording the selected direction and this ranked
+plan; no further human ruling requested for the plan. The user selected short,
+plain, conversational labels and rejected explicit speaker names/chips on cards.
+Speaker contribution remains visually encoded by the existing speaking-time
+color view; names and exact shares remain inspectable through Source/Legend or
+an accessible equivalent. Do not infer sole authorship from dominant color.
+Grey area: No. Detailed regrouping/projection and new inference/data contracts
+remain H1 before their later implementation; current feedback is not approval to
+regenerate existing artifacts or replace the hierarchy in production.
+
+Selected outcome: readers can orient around what was said, follow recurring
+threads, and request deeper context without seeing every layer or membership at
+once. A joke, aside, distraction or logistics can stay small. A passage may
+genuinely participate in several themes; never force a count of five. Recurrence,
+coherence and duration provide evidence, not universal minute thresholds.
+Transcript chronology remains the evidence spine; tree-shaped navigation is a
+local disclosure view of overlapping meaning rather than the semantic truth.
+
+Repository evidence, not a claim about currently active runtime prompt overrides:
+- Default prompts.json:103/111/119 requests topic/theme/arc ranges, noun-phrase
+  names and complete child coverage. Upper tiers can be absent globally, while
+  all children must be covered if a tier is active (ADR-062). The named ranges
+  exert grouping pressure; current defaults do not implement per-branch depth.
+- hierarchy_consolidator.py:208-252 assigns an unclaimed child to the nearest
+  claimed sibling's parent; each upper consolidator invokes it. Removing this
+  without changing coverage/rendering could make evidence disappear.
+- Canonical overlapping memberships are already supported by ADR-062; the default
+  zoom projection chooses a primary parent. Thread memberships likewise survive
+  in thread_ids/thread_labels. This is an existing foundation to expose on demand.
+- MinimalGraph.jsx:466/477 passes full node_name and builds the named percentage
+  row; ConversationNode.jsx:266 displays that row. Presentation is separate from
+  label authoring. Prompt edits alone cannot relabel the already hosted artifact.
+
+Owner/integration: Codex; authoritative checkout remains
+C:/Users/adity/.codex/worktrees/viewer-source-and-controls/live_conversational_threads,
+planning branch codex/viewer-legend-closure. Runtime remains served b984355;
+this amendment changes no source, artifact, model call or deployment.
+
+| Rank by active effort | Bounded milestone | Change size / initial planning range | Dependency and finite acceptance |
+| --- | --- | --- | --- |
+| 1 | Color carries speaker identity on public cards; remove visible named percentage/badge rows | Small;2-4 active hours | Preserve speaking-time fractions and dominant-color rounding, other color modes, unknown-time honesty and Source/Legend identity access. Desktop/phone rendering and rename/history remain correct. No model/data change. |
+| 2 | Short conversational label pilot | Small;4-8 active hours for a bounded pilot | Review a small label set before broad authoring changes; concrete language, preserve uncertainty/questions, no invented emotion or claims. Full original wording and source stay reachable. Existing shared artifacts need reviewed display labels or a separate re-export. |
+| 3 | Progressive disclosure of card context | Small-medium;4-8 active hours | Main card offers label/brief context; details, evidence and memberships requested explicitly. Every control keyboard/touch reachable; no nested pane collision or lost history. Prototype existing cards before changing entry default. |
+| 4 | Reveal existing overlap on demand | Medium;6-12 active hours | A related-threads/groups disclosure uses actual memberships, without extra chips in the default view. One source passage in multiple groups remains traceable and deduplicated; entering a related group and returning restores place. Camera reliability first. |
+| 5 | Smaller readable passage steps inside a node | Medium;1-2 active workdays | Keep node IDs/memberships; next/previous covers every ordered passage, exact timestamp and history restored, no skipped evidence or overlapping giant cards. Depends on reliable Back/camera and an agreed passage contract. |
+| 6 | Let weak/brief branches stop at a lower level; broader patterns only when supported | Large relative to above;2-5 active workdays for a prototype, production ETA unknown | Change coverage/orphan/projection rules together, preserve ungrouped reachability and memberships, distinguish empty/partial tiers from failures, round-trip old/new artifacts, verify no evidence disappears. Do not start with a prompt-only orphan removal or full regeneration. |
+
+Ranges are engineering judgment from touched boundaries, not measured comparable
+implementation timings or promised ship dates. They include focused validation
+and review preparation; CI, independent-review availability, deployment and
+human content review waits are separate and unmeasured. Re-estimate at each
+milestone's first working preview, keeping the initial range in this record.
+Sequence may overlap small copy/disclosure pilots, but finish one journey at a
+time. Recommended first delivery is rank1, followed by the label pilot; confidence
+0.85 in this order under the reading/retrieval objective. Fallback: preserve
+current meaning/defaults if the pilot loses specificity or navigation clarity.
+
+Existing engineering lane: the public Back camera and YouTube loading/teardown
+findings above still need decisive diagnosis. No repair ETA is credible until
+saved/restored viewport and SDK lifecycle evidence are obtained; do not block
+the product plan on another human approval or represent those findings fixed.
+Physics layout, historical regeneration and intent-generated maps are deferred.
+Next evidence checkpoint: small public-card presentation preview, then a bounded
+  label comparison; later architecture decisions stay separate.
+
+## 2026-10-03 — Public card color-only identity (APPROVED; IMPLEMENTING)
+
+- User approved the recommended first delivery, followed by a small label pilot.
+  Outcome: public cards focus on speech; speaker names/exact shares are available
+  through Source/Legend and assistive text rather than painted metadata rows.
+  Integration owner Codex; authoritative viewer worktree unchanged; branch
+  codex/viewer-color-only-cards. Source base b984355; earlier closure/plan records
+  retained. Personal dirty AGENTS.md is excluded from staging.
+- Hypothesis: ConversationNode's compact contribution row and fallback legacy
+  badge cause the redundant visual identity. Color resolution is independently
+  computed upstream. Predicted regression: unit/browser visibility red before
+  presentation edits; 80/20, >=90% and unknown fills unchanged afterward. Confidence
+  0.95; fallback narrow the presentation change if legacy consumers regress.
+- Finite checks in tests/intent/viewer-color-only-cards.md. Relevant source:
+  ConversationNode only; existing color calculations/alias services unchanged.
+  Validate Source rename + Legend + assistive text + Back on desktop/phone,
+  fallback, unknown timing, alternate color mode and legacy noncompact badge.
+- Remaining dependency: implementation evidence, eligible independent review,
+  required gates and served public verification. Next checkpoint expected-red
+  visual identity assertion, then complete the small presentation journey before
+  the bounded label pilot. Forecast2-4 active hours; review/CI waits separate.
+- Local checkpoint: expected-red3 unit assertions, final focused30/30; browser
+  desktop/phone2/2 plus adjacent manual camera/hierarchy1/1. Accessible-name tree,
+  computed clipping, proportions, unknown timing, Source/Legend rename and Back
+  verified; screenshots inspected. Scoped ESLint/build pass, layout detector[].
+  Sole runtime change4 lines added/12 removed in ConversationNode; canonical
+  source, names, fractions, memberships and camera code unchanged. Remaining
+  dependency independent review, full gate and exact served appearance.
+- Review/publication checkpoint: source82d8a61 pushed, PR213 open and attached;
+  required gate523/523 passed with existing React act warnings. AGY Google
+  Gemini3.1ProHigh approved exact source diff, no findings, zero tool attempts;
+  bounded receipt docs/reviews/viewer-color-only-2026-10-03.json. Remaining
+  dependency remote CI and served appearance; no further product ruling needed.
+
+### 2026-10-03 — Full-suite navigation timing variability (OPEN)
+
+Mandatory hook first passed523/523, then unchanged source/test failed2/523 on
+saved-camera and forward-branch assertions. Focused same two files passed5/5.
+Impact: gate/release uncertainty; blocker until required hook passes. Suspected
+short fixed waits are a hypothesis, not a confirmed cause. Next: one full-hook
+retry after reviewer process completes; diagnose scheduling/observable completion
+in a separate test-reliability slice if repeated. No weakening or bypass.
