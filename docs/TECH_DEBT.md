@@ -379,3 +379,7 @@ ThreadsViewer (~720lines) now supports an explicit private in-memory bundle in a
 ## 2026-10-02 — Google identity fixture boundaries
 
 The private-storage public API test file now exceeds300lines because it exercises real generated SQLite, byte effects and recovery interleavings as well as provider-qualified identities. Its cohesive harness is retained for this slice; a later shared synthetic D1/JWKS fixture can remove duplication with the separate auth suite without coupling tests to private helpers. Auth policy, verifier, storage and recovery remain separate small production modules; no broader refactor is needed here.
+
+### 2026-10-03 — Generated recording viewer keeps handoff separate
+
+ThreadsViewer's existing ingestion/persistence/presentation monolith remains the same extraction candidate. The generated-map handoff is a separate small module with one bounded page-memory slot; no source payload enters generated BrowserRouter state. SitesNewConversation.test.jsx now exceeds300lines while covering the complete synthetic recording/transcript/generation boundary. Retain its cohesive public-behavior checks for this slice; later extract shared capture/status fixtures, preserving actual BrowserRouter history and source/file-byte assertions rather than testing private helpers. No broad refactor is included.
