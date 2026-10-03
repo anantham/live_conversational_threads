@@ -2077,3 +2077,32 @@ Impact: gate/release uncertainty; blocker until required hook passes. Suspected
 short fixed waits are a hypothesis, not a confirmed cause. Next: one full-hook
 retry after reviewer process completes; diagnose scheduling/observable completion
 in a separate test-reliability slice if repeated. No weakening or bypass.
+
+### 2026-10-03 — Source-linked artifact speaker key (IN-SCOPE REPAIR)
+
+Actual served1440/390 DOM proves clipped card text and speaker fills, but Legend
+has only edge meanings. Graph uses contribution-aware color builder; viewer key
+uses node-speaker-only builder. Existing synthetic fixture repeated speaker IDs
+on nodes and missed this case. Owner Codex, authoritative viewer worktree,
+branch codex/viewer-source-speaker-legend from served7cbc115. Outcome: actual key
+identifies the colors already painted, including immediate Source alias updates.
+Reuse existing builder; preserve timing/source/palette. Acceptance: source-only
+fixture red then desktop/phone rename/color-key match/history green, required
+gate, independent review and actual served key. Next checkpoint expected-red.
+Remaining dependency engineering validation/review/deploy; no user decision.
+Additional effort estimate30-60 active minutes; review/CI/deploy waits separate.
+- Checkpoint: expected-red reproduced missing key; final synthetic2/2, focused
+ 20/20, actual artifact local2/2 and required gate523/523 pass. AGY Google
+ Gemini3.1ProHigh approved exact sourceb1c7ac3, no findings; receipt recorded.
+ Remaining dependency exact-head CI and served speaker-key proof; original
+ presentation/source is already served7cbc115. Pilot6examples ready locally;
+content feedback precedes a broad label rollout. Other hierarchy work deferred.
+- Required docs hook repeated Forward failure; release stopped rather than
+  retried again. Controlled-frame Harness confirms an actual replay race: C
+  selected during Back's frames is skipped by recorder, and stale A scroll can
+  overwrite C. Minimal in-scope continuity repair adds replay-settled recording
+  and rejects stale scroll; preserves all existing assertions and adds deterministic
+  A/C Back/Forward with scroll proof. Reclassifies earlier "timing variability"
+  for this Forward failure; separate camera timing uncertainty remains open.
+
+- Final combined checkpoint19:30IST: source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; required gate524/524 and final AGY Google Gemini3.1ProHigh APPROVED/no findings/zero tools. Receipt docs/reviews/viewer-key-replay-2026-10-03.json. The deterministic Forward/scroll race is repaired and locally verified; unrelated public offscreen-camera remains open. Remaining dependency exact-head CI, deploy and served key/card identity at1440/390. Owner/checkout unchanged; next checkpoint exact served runtime. Initial30-60-minute additional-effort range extended by the reproduced history race and second review; remaining integration10-20 active minutes, CI/deploy waits separate. No human ruling is blocking this slice.

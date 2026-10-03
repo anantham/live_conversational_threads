@@ -14,7 +14,7 @@ function artifact() {
   const moments = [0,1,2].map(i=>({
     id:`m${i}`,semantic_level:1,semantic_type:'chunk',parent_id:'idea',
     node_name:`Synthetic thought ${i+1}`,summary:`Synthetic summary ${i+1}`,
-    source_excerpt:utterances[i*2].text,speaker_id:'SPEAKER_00',
+    source_excerpt:utterances[i*2].text,
     utterance_ids:[`a${i}`,`b${i}`],thread_ids:['thread'],thread_id:'thread',
   }));
   return {
@@ -79,7 +79,9 @@ for (const width of [1440,390]) test(`colors carry identity without a painted sp
   await source.getByRole('button',{name:'Hide source',exact:true}).click();
   await page.getByRole('button',{name:'Show legend: speakers and edge colors'}).click();
   const legend=page.getByRole('region',{name:'Speaker colors and edge key'});
-  await expect(legend.getByText('Synthetic named voice',{exact:true})).toBeVisible();
+  const speakerKey=legend.getByText('Synthetic named voice',{exact:true});
+  await expect(speakerKey).toBeVisible();
+  expect(await speakerKey.evaluate(el=>getComputedStyle(el.parentElement.previousElementSibling).backgroundColor)).toBe(dominant);
   await legend.getByRole('button',{name:'Close legend',exact:true}).click();
   await page.screenshot({path:test.info().outputPath('mixed-colors-no-speaker-row.png')});
   await page.keyboard.press('ArrowRight');

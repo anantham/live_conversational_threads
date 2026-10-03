@@ -23,7 +23,7 @@ import {CardDisplayProvider,CardDisplaySettings} from "../components/threads/Car
 import {withThreadLanes} from "../components/threads/threadPresentation";
 import {buildMobileConversationDeck,mobileDeckStateForNode} from "../components/threads/mobileConversationDeckModel";
 import { renameArtifactSpeaker, selectYouTubeRef, validMediaSeconds } from "../services/youtubeMedia";
-import { buildSpeakerColorMap } from "../components/graphConstants";
+import { buildSpeakerColorMapForNodes } from "../components/graph/colorModes";
 import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import { useViewerHistory } from "../hooks/useViewerHistory";
 import { buildSpeakerDisplayNames } from "../services/speakerDisplay";
@@ -341,7 +341,7 @@ function ThreadsViewerContent() {
     return baseNodes.map(node => ({ ...node, speaker_contributions: contributions.get(String(node.id)) }));
   }, [baseNodes, bundle?.utterances]);
   const searchDocuments = useMemo(() => buildConversationSearchDocuments(flatNodes, bundle?.utterances || [], bundle?.full_transcript), [flatNodes, bundle]);
-  const speakerColorMap = useMemo(() => buildSpeakerColorMap(flatNodes), [flatNodes]);
+  const speakerColorMap = useMemo(() => buildSpeakerColorMapForNodes(flatNodes), [flatNodes]);
   const speakerDisplayNames = useMemo(() => buildSpeakerDisplayNames(bundle || {}), [bundle]);
   const findGroups = useMemo(() => buildViewerFindGroups(flatNodes), [flatNodes]);
   const onFindNode = useCallback((id) => {

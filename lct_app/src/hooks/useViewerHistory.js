@@ -18,6 +18,7 @@ export function useViewerHistory({ enabled, sessionKey, state, onRestore, rootRe
   const replaying = useRef(false);
   const [position, setPosition] = useState({ cursor: 0, count: 1 });
   const [restoreKey, setRestoreKey] = useState(0);
+  const [replayRevision, setReplayRevision] = useState(0);
 
   useEffect(() => {
     if (!enabled) { session.current = null; return undefined; }
@@ -44,11 +45,14 @@ export function useViewerHistory({ enabled, sessionKey, state, onRestore, rootRe
       cancelAnimationFrame(settleFrame);
       frame = requestAnimationFrame(() => {
         settleFrame = requestAnimationFrame(() => {
-          rootRef.current?.querySelectorAll("[data-viewer-scroll]").forEach((element) => {
-            const saved = entry.scroll[element.dataset.viewerScroll];
-            if (saved) { element.scrollTop = saved.top; element.scrollLeft = saved.left; }
-          });
+          if (signature(entry.state) === signature(latest.current.state)) {
+            rootRef.current?.querySelectorAll("[data-viewer-scroll]").forEach((element) => {
+              const saved = entry.scroll[element.dataset.viewerScroll];
+              if (saved) { element.scrollTop = saved.top; element.scrollLeft = saved.left; }
+            });
+          }
           replaying.current = false;
+          setReplayRevision((revision) => revision + 1);
         });
       });
     };
@@ -97,7 +101,7 @@ export function useViewerHistory({ enabled, sessionKey, state, onRestore, rootRe
       setPosition({ cursor: current.cursor, count: current.entries.length });
     }, 0);
     return () => clearTimeout(timer);
-  }, [enabled, sessionKey, state, rootRef]);
+  }, [enabled, sessionKey, state, rootRef, replayRevision]);
 
   useEffect(() => {
     if (!enabled) return undefined;

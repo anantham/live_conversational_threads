@@ -1,0 +1,63 @@
+{
+  "implementerFamily": "OpenAI",
+  "reviewerProvider": "Google",
+  "reviewerFamily": "Gemini",
+  "model": "gemini-3.1-pro-high",
+  "entryPoint": "authenticated AGY existing subscription",
+  "purpose": "Read-only combined source-linked speaker key and Back replay continuity review",
+  "sourceHead": "51daa38a3dbfed7836d6e36251f2db933f67e311",
+  "base": "7cbc115fdf2a9f10e1f0879e8490783a57d720c8",
+  "packet": {
+    "files": [
+      "lct_app/src/pages/ThreadsViewer.jsx",
+      "lct_app/src/hooks/useViewerHistory.js",
+      "lct_app/src/hooks/useViewerHistory.test.jsx",
+      "lct_app/tests/e2e/viewer-color-only.spec.ts",
+      "tests/intent/viewer-color-only-cards.md"
+    ],
+    "contextFiles": [
+      "lct_app/src/components/graph/colorModes.js:buildSpeakerColorMapForNodes only",
+      "lct_app/src/hooks/useViewerHistory.js:complete final hook"
+    ],
+    "bytes": 20471,
+    "sha256": "703a8f18c5f282686bbf1c5bf2fd3b4ec81797210bc681d7235f7833875afb40",
+    "scan": "Exact bytes inventoried, inspected and scanned before invocation",
+    "exclusions": "AGENTS,ISSUES,WORKLOG,TECH_DEBT,artifacts,pilot,transcripts,participants,screenshots,credentials,private reasoning and unrelated content"
+  },
+  "transport": {
+    "bytes": 24492,
+    "sha256": "798541ce13ba45f0ddab69d4b09d00415e7fcedadf9f8ea1d789bc3a23a51b4a"
+  },
+  "capabilities": "Plan+sandbox, verified deny-all PreToolUse, no permission bypass",
+  "toolAttempts": 0,
+  "completed": "2026-10-03T13:58:24.081Z",
+  "conversation": "e0314bc1-3e74-4874-86f2-67b607ee0c07",
+  "report": {
+    "verdict": "APPROVED",
+    "scope_sha": "51daa38a3dbfed7836d6e36251f2db933f67e311",
+    "findings": [],
+    "coverage": [
+      "lct_app/src/hooks/useViewerHistory.js",
+      "lct_app/src/hooks/useViewerHistory.test.jsx",
+      "lct_app/src/pages/ThreadsViewer.jsx",
+      "lct_app/tests/e2e/viewer-color-only.spec.ts",
+      "tests/intent/viewer-color-only-cards.md",
+      "history race frame settling behavior",
+      "scroll restoration preservation",
+      "contribution-aware color map reuse for source-only artifacts",
+      "legend speaker fill validation"
+    ],
+    "limitations": "supplied source review; validation not rerun"
+  },
+  "validation": {
+    "expectedRed": "Source-only key regression and deterministic action-during-Back dropped-action regression",
+    "focusedUnits": "history/camera6/6; unchanged color/contribution/Legend20/20 reused",
+    "browser": "6/6: desktop/phone source-only identity and view/source/thread history, alias persistence, manual camera/hierarchy Back/Forward",
+    "actualArtifactLocal": "2/2 at1440/390;56 clipped alternatives,30 mixed fills,both keys and card/key color match; zero warnings/pageerrors/5xx/overflow",
+    "requiredPrePush": "524/524 in86files;32.87s; existing React act warnings",
+    "lint": "scoped hook/test/viewer clean",
+    "build": "2334modules pass; existing chunk warning"
+  },
+  "harnessLimitation": "Repository convenience review/merge scripts support Grok/Claude and a broader packet. Bounded AGY adapter used with verified deny-all guard, exact-source/test equivalence and exact-head CI.",
+  "limitations": "Supplied source review; reviewer did not rerun tests. Public offscreen-camera and YouTube lifecycle issues remain separate; no full UX/playback/a11y/performance audit claimed."
+}
