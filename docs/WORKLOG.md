@@ -7295,3 +7295,11 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Remaining dependency: exact-head CI, merge and served desktop/phone appearance.
   No delivery/production acceptance claim yet. Public Back-camera/YouTube findings
   remain separate. Label pilot next after the presentation journey is closed.
+- The mandatory hook on the docs-receipt push failed2/523 after the first full
+ 523/523 pass: MinimalGraph.navigation saved-camera assertion and
+ useViewerHistory forward-branch assertion. Source/test diff from reviewed82d8
+ remains empty and initial remote source CI passed. Inspected both tests: fixed
+ 70ms/30ms waits create a timing hypothesis, not yet a proved root cause. Focused
+ unchanged2-file diagnostic passed5/5 (5.73s). No assertions, timers or product
+ code weakened/edited; one bounded full-hook retry follows with AGY finished.
+ If it fails again, report this gate as a concrete blocker instead of looping.

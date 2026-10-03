@@ -2068,3 +2068,12 @@ Next evidence checkpoint: small public-card presentation preview, then a bounded
   Gemini3.1ProHigh approved exact source diff, no findings, zero tool attempts;
   bounded receipt docs/reviews/viewer-color-only-2026-10-03.json. Remaining
   dependency remote CI and served appearance; no further product ruling needed.
+
+### 2026-10-03 — Full-suite navigation timing variability (OPEN)
+
+Mandatory hook first passed523/523, then unchanged source/test failed2/523 on
+saved-camera and forward-branch assertions. Focused same two files passed5/5.
+Impact: gate/release uncertainty; blocker until required hook passes. Suspected
+short fixed waits are a hypothesis, not a confirmed cause. Next: one full-hook
+retry after reviewer process completes; diagnose scheduling/observable completion
+in a separate test-reliability slice if repeated. No weakening or bypass.
