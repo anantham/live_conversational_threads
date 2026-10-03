@@ -59,5 +59,63 @@
     "build": "2334modules pass; existing chunk warning"
   },
   "harnessLimitation": "Repository convenience review/merge scripts support Grok/Claude and a broader packet. Bounded AGY adapter used with verified deny-all guard, exact-source/test equivalence and exact-head CI.",
-  "limitations": "Supplied source review; reviewer did not rerun tests. Public offscreen-camera and YouTube lifecycle issues remain separate; no full UX/playback/a11y/performance audit claimed."
+  "limitations": "Supplied source review; reviewer did not rerun tests. Public offscreen-camera and YouTube lifecycle issues remain separate; no full UX/playback/a11y/performance audit claimed.",
+  "delivery": {
+    "pr": "https://github.com/anantham/live_conversational_threads/pull/214",
+    "finalPrHead": "e0c3f767b582e95e4207fc6d58ea146223068818",
+    "merge": "bda16e5d1644b2817efc8cd63fa26c00d5fbf0a4",
+    "mergedAt": "2026-10-03T14:06:34Z",
+    "sourceTestEquivalence": "Reviewed51daa38 to finalPRhead and squash merge verified byte-equivalent",
+    "mandatoryReceiptPush": "524/524 in86files;30.93s",
+    "ci": "Exact PR head Playwright/Python unit/real Postgres/Vercel green; expected same-family Codex and preview prod-smoke skips",
+    "production": {
+      "id": "dpl_3BVxH36JNMbjvFoNkDG41Gg4NC2x",
+      "sha": "bda16e5d1644b2817efc8cd63fa26c00d5fbf0a4",
+      "url": "https://lct-n9u4s8wpe-adityas-projects-9c03351d.vercel.app",
+      "state": "READY",
+      "target": "production",
+      "aliases": [
+        "lctapp-psi.vercel.app",
+        "threads.adityaarpitha.com",
+        "lctapp-adityas-projects-9c03351d.vercel.app",
+        "lctapp-git-main-adityas-projects-9c03351d.vercel.app"
+      ],
+      "assets": [
+        "/assets/index-D2eSzSMs.js"
+      ],
+      "observedAt": "Sat, 03 Oct 2026 14:08:57 GMT",
+      "method": "Authenticated Vercel metadata and deployment HTML; custom-domain asset checked by public browser",
+      "githubDeployment": 6828579462,
+      "githubStatus": "success2026-10-03T14:07:12Z"
+    },
+    "publicAppearance": {
+      "completed": "2026-10-03T14:09:51.713Z",
+      "widths": [
+        {
+          "width": 1440,
+          "clippedAlternatives": 56,
+          "mixedFills": 30,
+          "keyColorMatchesCard": true,
+          "horizontalOverflow": false
+        },
+        {
+          "width": 390,
+          "clippedAlternatives": 56,
+          "mixedFills": 30,
+          "keyColorMatchesCard": true,
+          "horizontalOverflow": false
+        }
+      ],
+      "warnings": 0,
+      "pageerrors": 0,
+      "network5xx": 0,
+      "screenshots": "Local tmp/public-color-dom-1440.png and390.png inspected, excluded from review and publication"
+    },
+    "productionSmoke": {
+      "run": 37128523539,
+      "url": "https://github.com/anantham/live_conversational_threads/actions/runs/37128523539",
+      "result": "9/9 in15.6s, completed14:08:25Z"
+    },
+    "limitations": "Public check proves rendered color/assistive clipping/key identity, not complete reading or camera recovery. Phone moment-tier screenshot still has cards offscreen; existing camera lane remains open. YouTube lifecycle warnings not repaired. No full UX/a11y/performance audit."
+  }
 }
