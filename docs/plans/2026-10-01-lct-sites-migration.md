@@ -1,6 +1,12 @@
 # LCT Sites migration — staged delivery
 
-## Progress tracker — updated 2026-10-04 03:14 IST
+## Progress tracker — updated 2026-10-04 03:23 IST
+
+## Current checkpoint — compiled guest-creation boundary verified
+
+The previous turn delivered reviewed source `27c92f8` and evidence checkpoint `2e06038`, pushed with upstream equal; mandatory 772/772 tests across 100 files passed in 34.60s (start03:14:41IST). This turn verifies the remaining public-creation auth boundary without changing source. Root owns integration in the canonical Sites worktree/branch below. Finite checks pass through the actual compiled candidate and disposable seven-migration SQLite: anonymous public Soniox setup201, public generation200, exact source-linked artifact reopened by the actual reader, consent403, authenticated guest401, lifetime allowance429, zero artifact persistence and zero real provider calls. Existing separate source tests/reviews are reused; this combined compiled path is distinct. Receipt: [guest creation boundary](../reviews/2026-10-04-guest-creation-boundary.md).
+
+Fresh native state remains public/active version16, environment2, two original nonsecret flags and no secrets. No accidental mandatory identity gate is found in prepared public creation; public audience must be selected for the final public rollout. Remaining dependency: the existing inactive-preview publication ruling and actual hosted acceptance, followed by the separate provider/model/privacy/audience/numerical-funding and Google/private-account/domain gates. Next evidence checkpoint is live publication identity and guest/inactive acceptance after authority, not another unchanged build. Full goal remains active/incomplete; prior forecast and unknown external waits retained. The final task-branch preservation log for this diagnostic checkpoint is `.agent-reviews/guest-creation-checkpoint-push.log`; earlier checkpoints below are historical.
 
 ## Current checkpoint — guest reader repair and inactive package prepared
 
