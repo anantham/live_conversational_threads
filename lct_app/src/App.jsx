@@ -150,6 +150,9 @@ export default function App() {
             <AppRoutes />
             {sitesMode && <Routes>
               <Route path="/privacy" element={null} />
+              <Route path="/view" element={null} />
+              <Route path="/view/:artifactId" element={null} />
+              <Route path="/public/:publicId" element={null} />
               <Route path="*" element={<SitesAccessPanel />} />
             </Routes>}
             <UploadToast />
