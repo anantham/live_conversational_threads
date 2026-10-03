@@ -1,5 +1,7 @@
 # Inactive cloud-preview package — prepared 2026-10-04 00:45 IST
 
+2026-10-04 01:53 IST supersession: use [the updated inactive package](2026-10-04-updated-inactive-site-package.md) for the next release. It includes final reviewed speaker sourcecec22f3. This original archive/receipt is preserved as historical evidence; it no longer identifies the current release candidate.
+
 Outcome: a locally built, verified package for the reviewed recording-to-map client and inactive OpenRouter Worker. It has not been pushed to the native Site repository, saved as a Site version, migrated or deployed.
 
 Integration owner: root Codex. Authoritative checkout: `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads`, branch `codex/lct-sites-serverless`, preparation HEAD `1309d96aceeb60806e293b674ac29f76191c8740`. Final reviewed client source is `0280da2a7f70363b286c143afe5b6dd3d00a3572`; reviewed Worker source is `8ab35a39d2e38a9b923d9a45eb7ec669f8353b05`; reviewed pure adapter is `15a31299d3575cbf245298d2331011f621f64741`. Native checkout `tmp/lct-sites-google-source` remains clean at `ff75f6a1869c940eb6f115e857c5bfcb50db1860`.

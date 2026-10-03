@@ -1,6 +1,12 @@
 # LCT Sites migration — staged delivery
 
-## Progress tracker — updated 2026-10-04 01:40 IST
+## Progress tracker — updated 2026-10-04 01:53 IST
+
+## Updated inactive package — locally verified 2026-10-04 01:53 IST
+
+Outcome:the public cloud release candidate includes the final reviewed source-speaker repair, preserving previous migration bytes and inactive provider/account settings. Integration owner:root, canonical Sites worktree/branch above, startinge7622f9/sourcecec22f3. Finite acceptance:fresh bounded301-file export, exact reviewed Git source projection with native unchangedff75, unchanged manifest/dependencies/applied migrations, actual guarded candidate build, official archive identity and compiled inactive/refusal checks against disposable real schema. Previous goal turn is progress:reviewed repair pushed,769/769/99 mandatory gate passes35.93s/start01:43:36IST; final branch/upstream e7622f9match. Remaining dependency:already pending one-time inactive-preview publication authority; Google/provider/funding/domain acceptance remains separate. Next evidence checkpoint:replacement archive/source/runtime receipt, no duplicate approval question. Latest read-only Site/environment remains publicactive16/revision2/two original nonsecret flags; no native mutation. Prior unmeasured forecast retained.
+
+Delivered local evidence:301files/19native deltas, exact source/appended migration checks, candidate build, official27-file/seven-migration archive SHA256a8a9c11b8011b7aa3a37a87425beeaf0b02cba53d00ce30dab7a8a456065ff38,11compiled API checks with real disposable schema/zero upstream/empty tables. Worker bytes unchanged; JavaScript differs only in six CR template whitespace sequences from validated Windows build; candidate CSS unchanged from earlier package. Exact eligible Gemini reviews and769-test source evidence reused. Receipt:docs/reviews/2026-10-04-updated-inactive-site-package.md. This replacement archive supersedes the earlier package, which remains preserved. Next checkpoint:actual native source/version/guest inactive acceptance after the existing publication ruling; do not open optional features or activate providers to simulate progress. Full goal remains active/incomplete.
 
 ## Generated speaker ownership — local delivery verified 2026-10-04 01:43 IST
 
