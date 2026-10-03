@@ -102,12 +102,15 @@ describe('Sites private storage through the Worker API and generated SQLite sche
     const legacy = new DatabaseSync(':memory:');
     try {
       const entries = JSON.parse(readFileSync(new URL('../../../drizzle/meta/_journal.json', import.meta.url), 'utf8')).entries;
-      for (const entry of entries.slice(0, -1)) legacy.exec(readFileSync(new URL(`../../../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'));
+      // This historical transition stays at Google ownership even as later migrations are appended.
+      const googleIndex = entries.findIndex(entry => entry.tag === '0005_pale_vermin');
+      expect(googleIndex).toBe(5);
+      for (const entry of entries.slice(0, googleIndex)) legacy.exec(readFileSync(new URL(`../../../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'));
       legacy.exec("INSERT INTO lct_cloud_files VALUES ('fixture-legacy', 'fixture-alice', 'fixture-existing-key', 'file', 'fixture', 'fixture.txt', 'text/plain', 13, 'ready', 1, 2)");
       legacy.exec("INSERT INTO lct_cloud_file_fences VALUES ('fixture-existing-fence', 1)");
       const previous = legacy.prepare('SELECT * FROM lct_cloud_files').get();
       expect(Object.keys(previous)).not.toContain('owner_provider');
-      legacy.exec(readFileSync(new URL(`../../../drizzle/${entries.at(-1).tag}.sql`, import.meta.url), 'utf8'));
+      legacy.exec(readFileSync(new URL(`../../../drizzle/${entries[googleIndex].tag}.sql`, import.meta.url), 'utf8'));
       expect(legacy.prepare('SELECT * FROM lct_cloud_files').get()).toEqual({ ...previous, owner_provider: 'chatgpt' });
       expect(legacy.prepare('SELECT * FROM lct_cloud_file_fences').all()).toEqual([{ object_key: 'fixture-existing-fence', created_at: 1 }]);
     } finally { legacy.close(); }

@@ -43,6 +43,13 @@
       "when": 1790934266054,
       "tag": "0005_pale_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791046815745,
+      "tag": "0006_simple_paladin",
+      "breakpoints": true
     }
   ]
 }

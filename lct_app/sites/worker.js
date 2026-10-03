@@ -3,10 +3,11 @@ import { handleRealtimeTokenRequest } from '../api/proxy/realtime-token.js';
 import { handleStorage } from './storage.js';
 import { handlePublicThreads } from './publicThreads.js';
 import { handleSoniox } from './soniox.js';
+import { handleOpenRouter } from './openRouter.js';
 import { handleAuth } from './auth.js';
 
-// BYOK-only first migration slice. Never read an owner key or log requests,
-// headers, upstream errors, or token responses. NO_LOG_BYOK_KEY_ASSERTION
+// The original proxy routes remain BYOK. Cloud handlers enforce separate admission.
+// Never log keys, request headers/payloads or upstream errors. NO_LOG_BYOK_KEY_ASSERTION
 const routes = new Map([
   ['/api/proxy/chat', handleChatRequest],
   ['/api/proxy/realtime-token', handleRealtimeTokenRequest],
@@ -38,6 +39,8 @@ export default {
     if (auth) return auth;
     const soniox = await handleSoniox(request, env);
     if (soniox) return soniox;
+    const openRouter = await handleOpenRouter(request, env);
+    if (openRouter) return openRouter;
     const publicThreads = await handlePublicThreads(request, env);
     if (publicThreads) return publicThreads;
     const storage = await handleStorage(request, env);

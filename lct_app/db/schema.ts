@@ -56,6 +56,17 @@ export const sonioxSessions = sqliteTable('lct_soniox_sessions', {
   check('lct_soniox_sessions_duration_check', sql`${table.maxSessionSeconds} >= 15 and ${table.maxSessionSeconds} <= 900`),
 ]);
 
+// Provider admission metadata only; unknown completion retains its concurrency slot.
+export const openRouterAttempts = sqliteTable('lct_openrouter_attempts', {
+  id: text('id').primaryKey(),
+  createdAt: integer('created_at').notNull(),
+  maxOutputTokens: integer('max_output_tokens').notNull(),
+  completedAt: integer('completed_at'),
+}, (table) => [
+  index('lct_openrouter_attempts_created_idx').on(table.createdAt),
+  check('lct_openrouter_attempts_tokens_check', sql`${table.maxOutputTokens} >= 1 and ${table.maxOutputTokens} <= 8192`),
+]);
+
 // Explicit guest publications only; never populated from private or local files.
 export const publicThreads = sqliteTable('lct_public_threads', {
   id: text('id').primaryKey(),
