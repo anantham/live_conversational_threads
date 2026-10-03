@@ -7271,3 +7271,27 @@ User observed an empty desktop transcript until node selection, with only the cu
   a text alternative. Desktop/phone screenshots inspected after completion.
   Initial screenshot lookup occurred before the phone run wrote its output;
   corrected by waiting for completion, not by claiming absent evidence.
+
+### 2026-10-03 — Color-only card independent review and publication checkpoint
+
+- Source82d8a6152bb288d4a9751de4ac835968073f0df8 committed and pushed to
+  codex/viewer-color-only-cards; PR213 attached. Mandatory pre-push gate passed
+  523/523 across86 files (26.63s); existing React act warnings remain, not a
+  warning-free full suite. Only personal AGENTS remained dirty before this
+  review-receipt amendment and is excluded from all staging/publication.
+- Independent Google Gemini3.1ProHigh through authenticated AGY approved the
+  exact source diff at2026-10-03T13:11:53Z, no findings, zero tool attempts;
+  reviewer did not rerun tests. Verified deny-all PreToolUse guard, plan+sandbox,
+  neutral directory, no permission bypass/new paid API use. Exact bounded packet
+  four files/16154bytes/SHA256464fc8d52a32470dde2350706a377dbc7c1df9b718cde985f13053368bccc219;
+  inventoried, inspected and scanned before invocation. Credentials, transcripts,
+  participants, generated artifacts, screenshots, personal AGENTS, product notes,
+  unrelated files and private reasoning excluded. Receipt in
+  docs/reviews/viewer-color-only-2026-10-03.json.
+- Repository convenience merge script cannot select Google and builds a broader
+  packet. Reused the previously verified bounded AGY adapter; exact reviewed
+  source/test equivalence, remote head and all required checks will be checked
+  before merge. This amendment records evidence only; no runtime/test change.
+- Remaining dependency: exact-head CI, merge and served desktop/phone appearance.
+  No delivery/production acceptance claim yet. Public Back-camera/YouTube findings
+  remain separate. Label pilot next after the presentation journey is closed.
