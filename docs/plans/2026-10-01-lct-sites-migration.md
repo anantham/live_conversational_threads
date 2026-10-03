@@ -1,6 +1,14 @@
 # LCT Sites migration — staged delivery
 
-## Progress tracker — updated 2026-10-04 01:09 IST
+## Progress tracker — updated 2026-10-04 01:40 IST
+
+## Generated speaker ownership — local delivery verified 2026-10-04 01:43 IST
+
+Outcome: source-linked generated maps show consistent single/mixed speaker colors in Graph, legend and Discussion. Integration owner:root, authoritative canonical worktree/branch above, starting9375b6d. Scope:existing provenance read model and shared speaker palette; no model schema, artifact persistence, provider, identity, hosting or exploration-history expansion. Finite acceptance:real strict output shape through adapter/file reader/normalizer, all five tiers and secondary membership, unknown/legacy source, unchanged artifact bytes, desktop/compact viewer without persistence, focused/adjacent checks, guarded build, eligible independent review and mandatory combined push gate. Next evidence checkpoint:the real-output regression before choosing the bounded repair. Native publication and live provider/account/domain acceptance remain separate pending dependencies; prior unmeasured forecast retained.
+
+Sourcecec22f3:decisive regression failed before repair and now passes;82/82focused/adjacent checks, scoped lint, guarded build/compiled smoke and actual synthetic desktop/compact graph/legend/transcript color agreement pass. Google Gemini final exact9-path review PASS/no findings. Evidence:docs/reviews/2026-10-04-generated-speaker-source.md. Combined preservation gate follows; earlier inactive package needs this new client projection before publication. Next evidence checkpoint:source push/full gate and superseded inactive archive; runtime16/environment2/nativeff75 and all pending publication/activation/funding/domain boundaries remain unchanged. No optional exploration-history feature is opened.
+
+Combined769/769tests/99files pass34.58s/start01:41:57IST; exact reviewed source is committedcec22f3. Final task-branch preservation retains unchanged mandatory pre-push hook; root checks its returned result and branch/upstream identity at handoff. This finishes the source-color journey; next local checkpoint is superseded inactive archive, before any separately approved native release. No whole-goal delivery or live account/provider validation is implied.
 
 ## Custom hostname preparation — 2026-10-04
 

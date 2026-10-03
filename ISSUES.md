@@ -1,5 +1,9 @@
 # ISSUES
 
+## 2026-10-04 — Generated source-speaker gap repaired locally
+
+Strict model output references utterance IDs and omits node speaker fields. An actual adapter/file/normalizer/color regression demonstrates empty palette despite canonical two-speaker transcript (22other contracts pass). Impact:generated moments/legend lost who-said-what color agreement; blocker:no for inactive packaging. Repaired in sourcecec22f3 using existing provenance traversal/shared palette,82focused/adjacent checks and actual synthetic browser proof; independent Google Gemini PASS. The old generated viewer fixture had an explicit node speaker field the strict model cannot return; fixture now exercises the real shape. Native16 is unchanged. Next:project reviewed repair into the inactive candidate before its separately authorized publication; actual provider quality/account/domain acceptance remains later.
+
 Last updated: 2026-09-28
 
 ## 2026-09-28 - Per-utterance idea attribution is not available

@@ -382,4 +382,6 @@ The private-storage public API test file now exceeds300lines because it exercise
 
 ### 2026-10-03 — Generated recording viewer keeps handoff separate
 
+2026-10-04 note:graphProvenance.js (~310lines) cohesively derives source IDs, ownership and evidence metrics across the hierarchy. Keep its shared traversal intact for this bounded repair. colorModes.js (~500lines) holds several independent palettes; a later extraction can move speaker ownership/palette and other lenses into separate pure modules, retaining public color API regression checks. ThreadsViewer remains the existing ingestion/presentation extraction candidate; this change only chooses the shared palette, with no graph/viewer monolith rewrite.
+
 ThreadsViewer's existing ingestion/persistence/presentation monolith remains the same extraction candidate. The generated-map handoff is a separate small module with one bounded page-memory slot; no source payload enters generated BrowserRouter state. SitesNewConversation.test.jsx now exceeds300lines while covering the complete synthetic recording/transcript/generation boundary. Retain its cohesive public-behavior checks for this slice; later extract shared capture/status fixtures, preserving actual BrowserRouter history and source/file-byte assertions rather than testing private helpers. No broad refactor is included.

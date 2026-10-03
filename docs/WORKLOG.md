@@ -1,5 +1,20 @@
 # WORKLOG
 
+## 2026-10-04 01:28 IST — Generated speaker ownership investigation
+
+### 2026-10-04 01:40 IST — Repair verified and independently reviewed
+
+01:43 IST combined acceptance:769/769tests/99files pass34.58s/start01:41:57on sourcecec22f3. Actual browser tab closed/viewport reset; retained synthetic Vite session22511stopped after build/browser checks. Operational docs now retain exact reviewed source and result; intentional task-branch preservation uses the unchanged mandatory pre-push hook, with final upstream equality checked at handoff. No native push or runtime change.
+
+- Instrument:strict synthetic output→actual adapter/file reader/normalizer→shared coloring fails palette[] before implementation, while22other provider-contract checks pass. Disconfirms legend-only explanation. Implemented narrow provenance_speaker_ids read model and shared palette use, sourcecec22f3; exact artifact bytes/legacy paths retained. Three production files/four tests/intent/ADR only; monolith candidates logged without broad refactor. An initial test selector targeted an invented button title; source confirms avatar span and corrected assertion passes. Failed scratch patches were atomic/no-op, with no peer work lost.
+-82/82tests/8files, scoped ESLint, guarded Sites build/compiled smoke pass. Worker hash remains5ff7a69; clientindex-D9wwIuE9sha a07581ac. Actual CUA fixture generation/Explore/moments/legend/Discussion proves distinct consistent speaker colors and exact synthetic text, five-tier drill-down; requested390x844observes391px client==scrollwidth, warnings/errors0. No microphone/provider/storage/payment, tab closed/viewport reset. No new native/customer-data assertion.
+- Google Gemini authenticated AGY gemini-3.1-pro-low final9-path source diff PASS/no findings,15.6477982s/1turn/0tools under verified deny-all hook, existing credits. Packet80765bytes/SHA256b236df8cc9e9e0d7c364a6c46ba61884bc8a31a7848ca00abd33abed03af8bdd, inventory/disclosure scan pass. Technical/test context only, fixed nonpersonal synthetic fixtures; credentials/env/account/project/private artifacts/actual media/transcripts/participants/operational metadata/AGENTS excluded. No disputed finding. Receipt docs/reviews/2026-10-04-generated-speaker-source.md. Full unchanged pre-push gate follows.
+- Peer AGENTS preserved unstaged; its preexisting trailing whitespace is excluded from scoped whitespace check/staging/review. Nativeff75 clean; no deployment/native/source push/migration/environment/domain/provider activation. Earlier local inactive archive needs new-client supersession; pending H1 is not repeated. Milestone/source/runtime boundaries and prior unmeasured forecast retained. Full goal remains active/incomplete; this is meaningful source behavior progress.
+
+- Root continues the approved recording-map journey while public inactive-preview publication and live activation/funding remain pending. Canonical9375b6d; peer AGENTS/nativeff75/deploy checkout preserved. Read-only Sol/luna test guidance is not independent review.
+- H1:strict model nodes only carry utterance IDs; current shared graph coloring cannot resolve canonical transcript speakers (prior0.9). H2:normalization drops identities (0.05); disconfirmed by spread-preserving normalizer. H3:only legend helper is wrong (0.05); decisive adapter/file/normalization/color regression will disconfirm if actual graph palette is empty. Fixed synthetic two-speaker source, no provider/persistence/native calls. Prediction:existing adapter passes but palette/ownership fails; then deriving read-model speakers and sharing existing palette restores all tiers without changing artifact bytes. Confidence0.9; fallback keep neutral unknown source and old imported speaker paths, defer any disputed semantics.
+- Test intent updated before implementation; actual strict-output round-trip regression added. Source repair is not yet claimed.
+
 ## 2026-09-29 14:14 IST — Post-deploy opener smoke after PR 202
 
 - PR 202 merged to main as `8e056e5`; Vercel production served the new viewer,
