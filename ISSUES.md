@@ -1967,3 +1967,70 @@ Next checkpoint: a concrete preview plus reader/task evidence for that selection
   viewport before Next, restore target and node measurement gate on Back, viewport
   application and any subsequent camera writer. Owner Codex for evidence handoff;
   separate repair remains unimplemented, with no full UX audit claimed.
+
+## 2026-10-03 — Incremental path toward emergent conversation structure (DIRECTION SELECTED; ranked plan)
+
+**Attention status:** A1 for recording the selected direction and this ranked
+plan; no further human ruling requested for the plan. The user selected short,
+plain, conversational labels and rejected explicit speaker names/chips on cards.
+Speaker contribution remains visually encoded by the existing speaking-time
+color view; names and exact shares remain inspectable through Source/Legend or
+an accessible equivalent. Do not infer sole authorship from dominant color.
+Grey area: No. Detailed regrouping/projection and new inference/data contracts
+remain H1 before their later implementation; current feedback is not approval to
+regenerate existing artifacts or replace the hierarchy in production.
+
+Selected outcome: readers can orient around what was said, follow recurring
+threads, and request deeper context without seeing every layer or membership at
+once. A joke, aside, distraction or logistics can stay small. A passage may
+genuinely participate in several themes; never force a count of five. Recurrence,
+coherence and duration provide evidence, not universal minute thresholds.
+Transcript chronology remains the evidence spine; tree-shaped navigation is a
+local disclosure view of overlapping meaning rather than the semantic truth.
+
+Repository evidence, not a claim about currently active runtime prompt overrides:
+- Default prompts.json:103/111/119 requests topic/theme/arc ranges, noun-phrase
+  names and complete child coverage. Upper tiers can be absent globally, while
+  all children must be covered if a tier is active (ADR-062). The named ranges
+  exert grouping pressure; current defaults do not implement per-branch depth.
+- hierarchy_consolidator.py:208-252 assigns an unclaimed child to the nearest
+  claimed sibling's parent; each upper consolidator invokes it. Removing this
+  without changing coverage/rendering could make evidence disappear.
+- Canonical overlapping memberships are already supported by ADR-062; the default
+  zoom projection chooses a primary parent. Thread memberships likewise survive
+  in thread_ids/thread_labels. This is an existing foundation to expose on demand.
+- MinimalGraph.jsx:466/477 passes full node_name and builds the named percentage
+  row; ConversationNode.jsx:266 displays that row. Presentation is separate from
+  label authoring. Prompt edits alone cannot relabel the already hosted artifact.
+
+Owner/integration: Codex; authoritative checkout remains
+C:/Users/adity/.codex/worktrees/viewer-source-and-controls/live_conversational_threads,
+planning branch codex/viewer-legend-closure. Runtime remains served b984355;
+this amendment changes no source, artifact, model call or deployment.
+
+| Rank by active effort | Bounded milestone | Change size / initial planning range | Dependency and finite acceptance |
+| --- | --- | --- | --- |
+| 1 | Color carries speaker identity on public cards; remove visible named percentage/badge rows | Small;2-4 active hours | Preserve speaking-time fractions and dominant-color rounding, other color modes, unknown-time honesty and Source/Legend identity access. Desktop/phone rendering and rename/history remain correct. No model/data change. |
+| 2 | Short conversational label pilot | Small;4-8 active hours for a bounded pilot | Review a small label set before broad authoring changes; concrete language, preserve uncertainty/questions, no invented emotion or claims. Full original wording and source stay reachable. Existing shared artifacts need reviewed display labels or a separate re-export. |
+| 3 | Progressive disclosure of card context | Small-medium;4-8 active hours | Main card offers label/brief context; details, evidence and memberships requested explicitly. Every control keyboard/touch reachable; no nested pane collision or lost history. Prototype existing cards before changing entry default. |
+| 4 | Reveal existing overlap on demand | Medium;6-12 active hours | A related-threads/groups disclosure uses actual memberships, without extra chips in the default view. One source passage in multiple groups remains traceable and deduplicated; entering a related group and returning restores place. Camera reliability first. |
+| 5 | Smaller readable passage steps inside a node | Medium;1-2 active workdays | Keep node IDs/memberships; next/previous covers every ordered passage, exact timestamp and history restored, no skipped evidence or overlapping giant cards. Depends on reliable Back/camera and an agreed passage contract. |
+| 6 | Let weak/brief branches stop at a lower level; broader patterns only when supported | Large relative to above;2-5 active workdays for a prototype, production ETA unknown | Change coverage/orphan/projection rules together, preserve ungrouped reachability and memberships, distinguish empty/partial tiers from failures, round-trip old/new artifacts, verify no evidence disappears. Do not start with a prompt-only orphan removal or full regeneration. |
+
+Ranges are engineering judgment from touched boundaries, not measured comparable
+implementation timings or promised ship dates. They include focused validation
+and review preparation; CI, independent-review availability, deployment and
+human content review waits are separate and unmeasured. Re-estimate at each
+milestone's first working preview, keeping the initial range in this record.
+Sequence may overlap small copy/disclosure pilots, but finish one journey at a
+time. Recommended first delivery is rank1, followed by the label pilot; confidence
+0.85 in this order under the reading/retrieval objective. Fallback: preserve
+current meaning/defaults if the pilot loses specificity or navigation clarity.
+
+Existing engineering lane: the public Back camera and YouTube loading/teardown
+findings above still need decisive diagnosis. No repair ETA is credible until
+saved/restored viewport and SDK lifecycle evidence are obtained; do not block
+the product plan on another human approval or represent those findings fixed.
+Physics layout, historical regeneration and intent-generated maps are deferred.
+Next evidence checkpoint: small public-card presentation preview, then a bounded
+label comparison; later architecture decisions stay separate.

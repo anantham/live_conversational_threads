@@ -7196,3 +7196,33 @@ User observed an empty desktop transcript until node selection, with only the cu
   is limited to the verified task command on51081; no baseline process launched.
   Next checkpoint: human product ruling for wording/passages, separate camera/SDK
   evidence follow-up. Broader design/regeneration/layout work remains deferred.
+
+### 2026-10-03 17:31 IST — Selected label/color direction and incremental roadmap
+
+- User chose short neutral labels with a conversational voice, rejected explicit
+  speakers on cards, and asked for small changes ranked by effort toward emergent,
+  overlapping themes and progressive disclosure. Supersedes the earlier proposed
+  speaker-chip recommendation; no hierarchy replacement or artifact regeneration
+  inferred. Impeccable shape used for planning only, with existing context retained.
+- Read current card/contribution rendering, thread presentation, default prompts,
+  hierarchy consolidator and ADR-062. Direct evidence: default fixed ranges and
+  complete coverage plus nearest-parent adoption constrain active tiers; optional
+  global tiers and canonical many-to-many membership already exist. Active runtime
+  prompt overrides were not inspected, so no claim these defaults authored the
+  shared example. Current source supports a small presentation slice independently
+  of larger coverage/projection changes. Existing artifacts won't update from a
+  future prompt edit alone.
+- One bounded read-only peer launch stayed pending initialization; interrupted
+  rather than repeatedly waiting. Root completed focused reads. No external model
+  review/inference or transcript disclosure. Ranked finite milestones, estimates,
+  dependencies and acceptance in ISSUES; ranges are judgment, not measured ETA.
+- Plan first:2-4h color-only card presentation;4-8h bounded wording pilot;4-8h
+  disclosure;6-12h existing overlap disclosure;1-2days passage navigation;
+  2-5days conditional-depth prototype, production effort unknown. Review/CI/
+  content acceptance/deployment waits separate; refresh at first working preview.
+  Back/camera and Source SDK diagnosis remain independent engineering follow-ups.
+- Changed only ISSUES/WORKLOG with abstract product requirements; no private
+  participant text/artifacts or new architecture contract. Owner Codex, same
+  authoritative checkout, personal dirty AGENTS preserved. No runtime changes or
+  delivered behavior claimed. Next checkpoint small public-card preview, then
+  reviewed label examples; later projection/data decisions require their own slice.
