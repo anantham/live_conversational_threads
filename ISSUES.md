@@ -2033,4 +2033,33 @@ saved/restored viewport and SDK lifecycle evidence are obtained; do not block
 the product plan on another human approval or represent those findings fixed.
 Physics layout, historical regeneration and intent-generated maps are deferred.
 Next evidence checkpoint: small public-card presentation preview, then a bounded
-label comparison; later architecture decisions stay separate.
+  label comparison; later architecture decisions stay separate.
+
+## 2026-10-03 — Public card color-only identity (APPROVED; IMPLEMENTING)
+
+- User approved the recommended first delivery, followed by a small label pilot.
+  Outcome: public cards focus on speech; speaker names/exact shares are available
+  through Source/Legend and assistive text rather than painted metadata rows.
+  Integration owner Codex; authoritative viewer worktree unchanged; branch
+  codex/viewer-color-only-cards. Source base b984355; earlier closure/plan records
+  retained. Personal dirty AGENTS.md is excluded from staging.
+- Hypothesis: ConversationNode's compact contribution row and fallback legacy
+  badge cause the redundant visual identity. Color resolution is independently
+  computed upstream. Predicted regression: unit/browser visibility red before
+  presentation edits; 80/20, >=90% and unknown fills unchanged afterward. Confidence
+  0.95; fallback narrow the presentation change if legacy consumers regress.
+- Finite checks in tests/intent/viewer-color-only-cards.md. Relevant source:
+  ConversationNode only; existing color calculations/alias services unchanged.
+  Validate Source rename + Legend + assistive text + Back on desktop/phone,
+  fallback, unknown timing, alternate color mode and legacy noncompact badge.
+- Remaining dependency: implementation evidence, eligible independent review,
+  required gates and served public verification. Next checkpoint expected-red
+  visual identity assertion, then complete the small presentation journey before
+  the bounded label pilot. Forecast2-4 active hours; review/CI waits separate.
+- Local checkpoint: expected-red3 unit assertions, final focused30/30; browser
+  desktop/phone2/2 plus adjacent manual camera/hierarchy1/1. Accessible-name tree,
+  computed clipping, proportions, unknown timing, Source/Legend rename and Back
+  verified; screenshots inspected. Scoped ESLint/build pass, layout detector[].
+  Sole runtime change4 lines added/12 removed in ConversationNode; canonical
+  source, names, fractions, memberships and camera code unchanged. Remaining
+  dependency independent review, full gate and exact served appearance.

@@ -12,6 +12,8 @@ import ConversationNode from "./ConversationNode";
  * - Auditable nodes expose aggregate transcript metrics and an exact-source action.
  * - Linked-but-untimed source turns say timing is unavailable instead of hiding it.
  * - Moment cards stay compact while their existing detail action remains available.
+ * - Compact cards retain speaker information for assistive readers without a
+ *   painted name/percentage row; fallback cards cannot leak a legacy badge.
  */
 describe("ConversationNode structured-turn fallback", () => {
   it("shows the summary when every structured turn is empty", () => {
@@ -144,7 +146,7 @@ describe("ConversationNode structured-turn fallback", () => {
     expect(markup).toContain("this artifact has no aligned timestamps");
   });
 
-  it("shows one short exact turn, measured shares, and the detail action in compact reading", () => {
+  it("keeps one exact turn, accessible shares, and the detail action in compact reading", () => {
     const markup = renderToStaticMarkup(
       <ReactFlowProvider>
         <ConversationNode
@@ -166,7 +168,41 @@ describe("ConversationNode structured-turn fallback", () => {
     expect(markup).toContain("First exact passage.");
     expect(markup).not.toContain("Second passage stays in detail.");
     expect(markup).toContain("A 90% · B 10%");
+    const card = new DOMParser().parseFromString(markup, "text/html");
+    const shares = [...card.querySelectorAll("span")].find(el => el.textContent === "A 90% · B 10%");
+    expect(shares?.classList.contains("sr-only")).toBe(true);
     expect(markup).toContain('aria-label="Open details"');
     expect(markup).toContain("height:210px");
+  });
+
+  it("hides the compact fallback's speaker badge while keeping its text alternative", () => {
+    const markup = renderToStaticMarkup(<ReactFlowProvider><ConversationNode
+      data={{title: "Fallback thought", compactReading: true, speakerLabel: "Synthetic voice", summary: "Readable fallback."}}
+    /></ReactFlowProvider>);
+    const card = new DOMParser().parseFromString(markup, "text/html");
+    const mentions = [...card.querySelectorAll("span, div")].filter(el => el.textContent === "Synthetic voice");
+    expect(mentions).toHaveLength(1);
+    expect(mentions[0].classList.contains("sr-only")).toBe(true);
+    expect(markup).toContain("Readable fallback.");
+  });
+
+  it("retains an unknown-time text alternative without a measured percentage", () => {
+    const markup = renderToStaticMarkup(<ReactFlowProvider><ConversationNode
+      data={{title: "Untimed thought", compactReading: true, speakerContributionLabel: "Speaking time unknown", fillColor: "#f1f5f9"}}
+    /></ReactFlowProvider>);
+    const card = new DOMParser().parseFromString(markup, "text/html");
+    expect(card.querySelector(".sr-only")?.textContent).toBe("Speaking time unknown");
+    expect(markup).toContain("background:#f1f5f9");
+    expect(markup).not.toContain("100%");
+  });
+
+  it("keeps the existing speaker badge in noncompact graph consumers", () => {
+    const markup = renderToStaticMarkup(<ReactFlowProvider><ConversationNode
+      data={{title: "Live thought", speakerLabel: "Synthetic voice", summary: "Still recording."}}
+    /></ReactFlowProvider>);
+    const card = new DOMParser().parseFromString(markup, "text/html");
+    const badge = [...card.querySelectorAll("div")].find(el => el.textContent === "Synthetic voice");
+    expect(badge).toBeTruthy();
+    expect(badge.classList.contains("sr-only")).toBe(false);
   });
 });

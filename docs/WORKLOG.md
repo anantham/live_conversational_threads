@@ -7226,3 +7226,48 @@ User observed an empty desktop transcript until node selection, with only the cu
   authoritative checkout, personal dirty AGENTS preserved. No runtime changes or
   delivered behavior claimed. Next checkpoint small public-card preview, then
   reviewed label examples; later projection/data decisions require their own slice.
+
+### 2026-10-03 — Approved color-only cards, preflight and test intent
+
+- User approved recommendation: ship small card presentation, then bounded label
+  pilot. Branch codex/viewer-color-only-cards from durable planning HEAD; fetched
+  origin/main remains b984355. Same authoritative checkout; personal AGENTS dirty
+  work preserved. No optional hierarchy/navigation repair added to this slice.
+- Read ConversationNode and its tests, compact renderer boundaries, Source naming,
+  Legend aliases and color contribution behavior. Public readingMode uses compact
+  cards; other consumers retain their existing appearance. Existing card dimensions,
+  speaking-time calculations and source content remain outside presentation edits.
+- Hypothesis/test intent recorded before source edit; new regression covers hidden
+  assistive shares, fallback badge, unknown time and noncompact compatibility.
+  Browser fixture will be fully populated and use actual UI naming/history/colors.
+  No external transcript/inference or new dependency. Next checkpoint expected-red,
+  presentation repair, focused validation and tool-free Google-family review.
+
+- Expected-red unit3/10 failed on the old visible contribution row/fallback badge
+  and missing text alternative; after the four-line presentation change all
+  focused30/30 passed. No contribution/color/camera code changed. First browser
+  attempt rejected a harness assumption: installed Tailwind uses clip-path
+  inset(50%), not legacy clip rect. A direct disposable element probe measured
+  absolute position,1x1px,overflow hidden,clip-path inset(50%); screenshot confirms
+  no painted names. Corrected the CSS assertion to that observed paint contract,
+  retaining clipping/size/source-action checks. This is not a product pass from
+  the failed run or a reduced invisibility requirement; next matrix reuses it.
+- Second browser matrix passed source/rename/Legend/Back, measured80/20 and90/10,
+  unknown timing, then timed out on the new alternate-color selector. Actual
+  accessible name includes '(click to cycle)' (instrumented failure snapshot
+  and ColorModeToggle source agree). Corrected the exact public label; no source
+  change or acceptance assertion removed. Third bounded matrix is the checkpoint.
+- Third matrix passed3/3 (10.5s): desktop/phone source/rename/Legend/history/
+  speaking colors, plus unchanged hierarchy and manually panned-camera return.
+  Focused units30/30; scoped ESLint clean; production build passed2334 modules,
+  JS1357.63KB/gzip404.30KB; existing large-chunk notice retained. Layout detector[].
+  Added a direct accessibility-tree check to support the assistive-text claim and
+  highest-tier unknown-time readiness; final rerun verifies this concrete gap.
+  ConversationNode's existing ~625-line mixed presentation candidate is noted
+  in TECH_DEBT; no unrelated extraction undertaken. Remaining review/CI waits
+  are unmeasured; first preview shows no source/color/camera behavior changes.
+- Final accessibility/highest-tier browser2/2 passed (10.0s): clipped name/share
+  text is retained in the accessibility tree, and an untimed aggregate also has
+  a text alternative. Desktop/phone screenshots inspected after completion.
+  Initial screenshot lookup occurred before the phone run wrote its output;
+  corrected by waiting for completion, not by claiming absent evidence.
