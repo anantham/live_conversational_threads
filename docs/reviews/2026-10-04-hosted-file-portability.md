@@ -1,0 +1,30 @@
+# Hosted `.threads` portability — 2026-10-04
+
+Core import and source fidelity are verified on the actual original website and live cloud preview. Full renderer parity is not accepted.
+
+Root owns this finite read-only acceptance slice in `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads`, branch `codex/lct-sites-serverless`, starting source `74c5ebf40a3cb782a95402e7156f69dd2d1a7daf`. No product source, dependency, schema, runtime configuration, native checkout, deployment or domain is changed.
+
+The actual reviewed `recordingThreadsFromOpenRouterResponse` adapter produces a uniquely identified synthetic artifact from two finalized speaker tokens and a strict completion-shaped authored graph. A middleware-only Vite resolver loads the real modules without a listener or environment files; no model/provider is called. The actual file reader validates the resulting bytes. Preconditions assert two canonical utterances, six graph nodes across all five tiers, one explicit semantic edge, one authored path with two valid steps, no model-authored node speaker aliases, and exact joined source text. A separate version99 artifact must be rejected before use.
+
+The valid file is 3,178 bytes, SHA256 `7e6d7886c2e7bd611d676211537ea57c8b455a4e0b1549204bc2f32c4036216a`. Its synthetic ID is `synthetic-portability-0a634901-6e15-45f9-81e0-31a58762ed5b`. Ignored fixture and probe receipts are retained under `.agent-reviews/` and `tmp/portability-84ad8c66-0068-47c1-8043-268c5a31c9c8/`; they contain no real recording, account, token or participant data.
+
+| Actual browser check | Original website | Cloud preview version16 |
+| --- | --- | --- |
+| Invalid file then valid retry | Explicit unsupported-version error, then valid map | Same refusal and recovery; browsing as guest |
+| Graph | All six nodes/five tiers and `responds_to` edge | Same nodes/tiers/edge |
+| Discussion | Arc→theme→topic→idea→both moments→exact utterances | Same hierarchy, speaker IDs and exact utterances |
+| Source export | Actual 150-byte UI download matches exact transcript plus headers | Identical actual 150-byte UI download |
+| Generated-speaker colors | Distinct S1/S2 colors with matching legend | Neutral cards; known reviewed repair awaits publication |
+| Authored path in desktop timeline | Two ungrouped moments; zero authored threads | Two ungrouped moments; old counter says one thread |
+
+Transcript export SHA256 is `c8bd9453f26d60ea3b56a6518a19d7af17ecae8fe4537d98e832bcb70f590681` on both hosts. The source retains the leading space in speaker2's utterance. Export files in Downloads are synthetic copies created at `2026-10-03T20:41:41.8512469Z` and `20:47:23.9147025Z`, after fixture creation. Actual files, not an empty result or a click alone, establish download success. The original browser download-event observer timed out; focused filesystem inspection of the known synthetic filename provides the decisive artifact evidence. No warning/error entries were observed in either tab's captured console logs.
+
+Fresh Vercel read confirms the original hostname aliases READY production `dpl_3BVxH36JNMbjvFoNkDG41Gg4NC2x`, main `bda16e5d1644b2817efc8cd63fa26c00d5fbf0a4`, with no alias error. Fresh Sites read confirms public/active version16 at the existing cloud URL. Native source remains clean `ff75f6a1869c940eb6f115e857c5bfcb50db1860`; the reviewed updated package is a separate, unpublished candidate.
+
+The differing thread counts initially suggested different path support. Actual expanded lane contents disconfirm that inference. A read-only probe imports each exact committed pure `withThreadLanes` implementation, checks realistic fixture preconditions and source preservation, and finds both path steps lack lane membership after projection. Both functions consume top-level threads for labels/returns but derive membership only from node `thread_id`/`thread_ids`. Production's newer counter distinguishes authored lanes from unassigned moments; the older cloud counts the unassigned lane. This is a display projection gap, not lost artifact data. The compact reading-route contract is separate and was not exercised by this desktop check. Do not automatically conflate reading paths with lane membership or backport peer history; resolve that contract and verify actual named-path behavior before claiming final parity.
+
+The ordinary file picker deliberately remembers this unique synthetic artifact in each origin's local browser library. No preexisting library entry is changed or deleted, and no private/public cloud save is performed. The synthetic source/export copies remain recoverable. Temporary test tabs are closed at handoff; existing user tabs are preserved.
+
+No new product diff needs an independent review. The prior exact Google Gemini source verdict, source validation and769-test evidence remain unchanged; a docs push still runs the repository's unchanged mandatory hook. One bounded helper independently traced the timeline count/projection distinction, but is not the required different-family code reviewer.
+
+Remaining release dependencies are the existing inactive-preview publication ruling, separate Google/provider/privacy/audience/key/funding authority and hosted acceptance, native cancellation/capacity, and custom-host/DNS/certificate/rollback checks. The original website remains unchanged. The prior23–64active-hour/3–8focused-day planning range remains unmeasured and external waits remain unknown; these local browser checks do not establish a full-goal ETA or paid model quality.
