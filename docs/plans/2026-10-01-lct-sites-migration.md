@@ -1,6 +1,10 @@
 # LCT Sites migration — staged delivery
 
-## Progress tracker — updated 2026-10-03 22:07 IST
+## Progress tracker — updated 2026-10-03 22:59 IST
+
+## OpenRouter Worker integration — 2026-10-03
+
+Outcome:prepared hosted generation endpoint using the reviewed adapter and durable bounded admission, with no storage/publication or funded call. Root owns C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads / codex/lct-sites-serverless. Source8ab35a39d2e38a9b923d9a45eb7ec669f8353b05 is committed and independently reviewed; branch push follows the unchanged mandatory hook. Finite acceptance passes:real generated in-memory schema, disabled/readiness/consent/identity refusal, strict fixed upstream contract, source-to-reader success, concurrent/lifetime admission, provider/body/provenance failure and delivered cancellation/deadline behavior; scoped lint, guarded build/export/migration consistency, final Google Gemini PASS/no findings and combined737/737tests/97files. Historical Google migration fixture is explicitly anchored; existing preservation assertions/SQL are unchanged. Receipt:docs/reviews/2026-10-03-openrouter-worker.md. Current stage:local slice reviewed/committed; preservation pending. Remaining local dependency:push gate. Next independent journey:recording transcript→consented generation→in-memory viewer and explicit save/download, with observable waits and cancellation. Live model/provider/data policy/audience/key/capped allowance and Google account acceptance remain independent dependencies; native disconnect delivery remains unproved. Fresh served state is public/active version16/environment2, only synthetic-private/public flags. No full-goal completion or deployment is claimed; earlier23–64active-hour planning range remains unmeasured, external waits additional.
 
 ## Unblocked generation-contract slice — 2026-10-03
 
@@ -34,6 +38,8 @@ The beta means a visitor can open the app without signing in, create and explore
 The **23–64 active-hour / 3–8 focused-day** range is a planning estimate, not measured timing. Review and proportionate validation are included; external waits are additional. No percentage complete is assigned because the milestones differ substantially in size and risk.
 
 ### Next checkpoint
+
+2026-10-03 current engineering checkpoint:preserve reviewed Worker source8ab35a3 with the unchanged combined push gate, then connect recording source to consented generation and explicit result exploration/download. Google browser/activation dependencies below do not block that source work. The active Site remains16/environment2; the full computers-off journey still needs actual provider/account/runtime and original-domain acceptance.
 
 Next evidence checkpoint: separate Google identity activation approval, then save the prepared exact branding/privacy URL/domain, apply the independently reviewed three-key runtime configuration and verify guest entry plus real two-account synthetic isolation. Privacy-only publication is complete as version16/native source ff75f6a1869c940eb6f115e857c5bfcb50db1860/deployment appgdep_6ac00c438f3881919c2b4aad094fc6f4/environment2. Canonical17ee208 privacy production files match native committed Git objects. Gemini PASS, earlier699/699tests/95files, fresh guarded build and exact runtime/migration archive proof apply. Google project/policy/client approvals remain satisfied. Existing personal-upload/provider/domain restrictions and prior23–64active-hour/3–8focused-day estimate remain, with account/provider/DNS external waits unknown.
 
