@@ -7358,3 +7358,22 @@ User observed an empty desktop transcript until node selection, with only the cu
   public artifact opened locally at1440/390:56 clipped alternatives,30 mixed
   fills, both speaker keys visible and first key color matches card; no browser
   warnings/errors/5xx/overflow. Public artifact itself is not sent for review.
+- Source b1c7ac37f94afe75bfe907011c489f1831c5d932 pushed; required hook523/523
+  passed28.10s with existing React act warnings. Final source-key diff independently
+  approved by authenticated AGY Google Gemini3.1ProHigh at13:36:38Z, no findings,
+  zero tool attempts. Exact three-file diff plus one unchanged shared-helper
+  subset:6894bytes/SHA256edb7c3cbfaae54a93442610a8d908405cc6c0c70c68ad6629d96588d4c758078,
+  inventoried/inspected/scanned. No artifacts, pilot, transcripts, participant
+  data, credentials, personal AGENTS, product notes, private reasoning or unrelated
+  files sent. Same verified tool-free guard/account, no new paid API use. Reviewer
+  report is recognized JSON within a Markdown fence, extracted/validated for exact
+  head/APPROVED/empty findings. Receipt docs/reviews/viewer-source-key-2026-10-03.json;
+  supplied source reviewed, tests not rerun. Documentation-only receipt follows;
+  reviewed source/test bytes must remain identical through exact-head CI/merge.
+- Docs-receipt hook again failed the same forward-branch timing assertion1/523,
+  while source push passed523/523. No source/test changed. This strengthens the
+  recorded variability issue, not a root-cause claim. Stopped only verified owned
+  Vite51264/51081 after completed local/browser evidence, leaving deploy/backend
+  untouched. One bounded full-hook retry without concurrent browser/reviewer
+  tasks; do not modify assertions or bypass the hook. If repeated, stop release
+  at this concrete gate and preserve the already-pushed reviewed source.

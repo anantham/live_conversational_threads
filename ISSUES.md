@@ -2091,3 +2091,9 @@ fixture red then desktop/phone rename/color-key match/history green, required
 gate, independent review and actual served key. Next checkpoint expected-red.
 Remaining dependency engineering validation/review/deploy; no user decision.
 Additional effort estimate30-60 active minutes; review/CI/deploy waits separate.
+- Checkpoint: expected-red reproduced missing key; final synthetic2/2, focused
+ 20/20, actual artifact local2/2 and required gate523/523 pass. AGY Google
+ Gemini3.1ProHigh approved exact sourceb1c7ac3, no findings; receipt recorded.
+ Remaining dependency exact-head CI and served speaker-key proof; original
+ presentation/source is already served7cbc115. Pilot6examples ready locally;
+ content feedback precedes a broad label rollout. Other hierarchy work deferred.
