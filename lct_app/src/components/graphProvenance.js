@@ -225,6 +225,9 @@ export function enrichGraphNodesWithProvenance(nodes, artifactUtterances = []) {
     return {
       ...node,
       provenance_utterance_ids: utteranceIds,
+      // Generated graphs reference source IDs; speaker identity belongs to the
+      // transcript. Keep this derived union in the view, not the artifact.
+      provenance_speaker_ids: [...new Set(rows.map(row => nonEmptyId(row.speaker_id)).filter(Boolean))],
       provenance_source_ref: sourceRef,
       provenance_metrics: {
         utterance_count: utteranceIds.length,

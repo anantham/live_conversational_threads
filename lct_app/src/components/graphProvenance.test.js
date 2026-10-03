@@ -22,6 +22,22 @@ const utterances = [
 ];
 
 describe("graph provenance read model", () => {
+  it("derives deduplicated source speakers across secondary memberships without mutating source", () => {
+    const nodes = [
+      { id: "primary", children_ids: ["a", "b"] },
+      { id: "secondary" },
+      { id: "a", parent_id: "primary", source_ref: { utterance_ids: ["u1", "u1"] } },
+      { id: "b", parent_id: "primary", memberships: [{ parent_id: "secondary", role: "secondary" }],
+        source_ref: { utterance_ids: ["u2"] } },
+    ];
+    const source = [{ id: "u1", speaker_id: "S1", text: "First turn" }, { id: "u2", speaker_id: "S2", text: "Second turn" }];
+    const before = JSON.stringify({ nodes, source });
+    const byId = Object.fromEntries(enrichGraphNodesWithProvenance(nodes, source).map(node => [node.id, node]));
+    expect(byId.primary.provenance_speaker_ids).toEqual(["S1", "S2"]);
+    expect(byId.secondary.provenance_speaker_ids).toEqual(["S2"]);
+    expect(byId.a.provenance_speaker_ids).toEqual(["S1"]);
+    expect(JSON.stringify({ nodes, source })).toBe(before);
+  });
   it("does not label fully timed linked evidence as partially timed merely because links are missing",()=>{
     expect(formatSourceDuration({duration_seconds:10,timed_utterance_count:1,matched_utterance_count:1,utterance_count:2})).toBe("10s of speech");
   });

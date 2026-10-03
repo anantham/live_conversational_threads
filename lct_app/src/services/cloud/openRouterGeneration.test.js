@@ -7,6 +7,9 @@ import { describe, expect, it } from 'vitest';
 import { buildOpenRouterGenerationRequest, recordingThreadsFromOpenRouterResponse } from './openRouterGeneration.js';
 import { readThreadsFile } from '../threadsArtifact.js';
 import { buildDiscussionModel } from '../../components/discussion/discussionModel.js';
+import { enrichGraphNodesWithProvenance } from '../../components/graphProvenance.js';
+import { normalizeGraphNode } from '../../components/graphNormalization.js';
+import { buildSpeakerColorMapForNodes, buildSpeakerOwnershipMapForNodes, resolveNodeColors } from '../../components/graph/colorModes.js';
 
 const source = {
   recordingId: 'synthetic-1', startedAt: Date.UTC(2026, 9, 3), complete: true,
@@ -41,6 +44,30 @@ const responseFor = (graph) => ({
 });
 
 describe('pure OpenRouter recording generation contract', () => {
+  it('colors source-linked generated moments and mixed aggregates after actual file reading and graph normalization', async () => {
+    const graph = generatedGraph();
+    expect(graph.nodes.every(node => !('speaker_id' in node) && !('source_turns' in node))).toBe(true);
+    const result = recordingThreadsFromOpenRouterResponse({ source, response: responseFor(graph) });
+    const opened = await readThreadsFile(result.file);
+    const before = JSON.stringify(opened);
+    const nodes = enrichGraphNodesWithProvenance(opened.graph_data, opened.utterances).map(normalizeGraphNode);
+    const palette = buildSpeakerColorMapForNodes(nodes);
+    const ownership = buildSpeakerOwnershipMapForNodes(nodes);
+    expect(Object.keys(palette)).toEqual(['S1', 'S2']);
+    expect(palette.S1).not.toBe(palette.S2);
+    expect(ownership['moment-a']).toEqual(['S1']);
+    expect(ownership['moment-b']).toEqual(['S2']);
+    for (const id of ['idea', 'topic', 'theme', 'arc']) expect(ownership[id]).toEqual(['S1', 'S2']);
+    const colors = id => resolveNodeColors({ mode: 'speaker', node: nodes.find(node => node.id === id),
+      speakerColorMap: palette, speakerOwnershipMap: ownership }).fill;
+    expect(colors('moment-a')).toBe(palette.S1);
+    expect(colors('moment-b')).toBe(palette.S2);
+    expect(colors('arc')).toContain('linear-gradient');
+    expect(colors('arc')).toContain(palette.S1);
+    expect(colors('arc')).toContain(palette.S2);
+    expect(JSON.stringify(opened)).toBe(before);
+    expect(JSON.parse(result.json)).toEqual(opened);
+  });
   it('sends only normalized source evidence with explicit model, cap and strict routing', () => {
     const before = JSON.stringify(source);
     const request = buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 2048 });

@@ -76,19 +76,20 @@ export const TIER_LEGEND_COLORS = Object.freeze(
   )
 );
 
-/**
- * Build a speaker color map. Same shape as `buildSpeakerColorMap` in
- * graphConstants but defensive against nodes lacking speaker_id (assigns
- * a neutral fallback).
- */
+// Source-linked generated maps carry derived ownership; older imports carry
+// direct speakers or structured source turns. All surfaces use this union.
+function speakerIdsOf(node) {
+  return [
+    node?.speaker_id || "",
+    ...(Array.isArray(node?.source_turns) ? node.source_turns.map(turn => turn?.speaker_id || "") : []),
+    ...(Array.isArray(node?.provenance_speaker_ids) ? node.provenance_speaker_ids : []),
+  ].filter(Boolean);
+}
+
+/** Build the shared palette from every represented source speaker. */
 export function buildSpeakerColorMapForNodes(nodes) {
   const speakers = [
-    ...new Set((nodes || []).flatMap((n) => [
-      n.speaker_id || "",
-      ...(Array.isArray(n.source_turns)
-        ? n.source_turns.map((turn) => turn?.speaker_id || "")
-        : []),
-    ]).filter(Boolean)),
+    ...new Set((nodes || []).flatMap(speakerIdsOf)),
   ];
   const map = {};
   speakers.forEach((s, i) => {
@@ -129,12 +130,7 @@ export function buildSpeakerOwnershipMapForNodes(nodes) {
     if (visiting.has(key)) return new Set();
     visiting.add(key);
     const node = byId.get(key);
-    const speakers = new Set([
-      node?.speaker_id || "",
-      ...(Array.isArray(node?.source_turns)
-        ? node.source_turns.map((turn) => turn?.speaker_id || "")
-        : []),
-    ].filter(Boolean));
+    const speakers = new Set(speakerIdsOf(node));
     (childrenByParent.get(key) || []).forEach((childId) => {
       speakersFor(childId).forEach((speakerId) => speakers.add(speakerId));
     });
@@ -426,12 +422,7 @@ export function resolveNodeColors({
   }
 
   if (mode === "speaker") {
-    const directSpeakerIds = [
-      node.speaker_id || "",
-      ...(Array.isArray(node.source_turns)
-        ? node.source_turns.map((turn) => turn?.speaker_id || "")
-        : []),
-    ].filter(Boolean);
+    const directSpeakerIds = speakerIdsOf(node);
     const uniqueSpeakerIds = speakerOwnershipMap?.[node.id]
       || [...new Set(directSpeakerIds)];
     if (uniqueSpeakerIds.length === 1) {

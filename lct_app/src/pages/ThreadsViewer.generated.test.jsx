@@ -5,6 +5,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createRecordingThreads } from '../services/cloud/recordingThreads.js';
 import { stageGeneratedMap, readGeneratedMap } from '../services/cloud/generatedMapHandoff.js';
+import { buildSpeakerColorMapForNodes, buildSpeakerOwnershipMapForNodes, resolveNodeColors } from '../components/graph/colorModes.js';
 
 const context = vi.hoisted(() => ({ bundle: null, generatedMapId: null, compact: false, remember: false, local: { id: 'fixture-existing', title: 'Existing fixture' } }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn(), useParams: () => ({}), useLocation: () => ({ pathname: '/view', search: '', state: context.remember
@@ -14,8 +15,13 @@ vi.mock('../services/dataProvider', () => ({ useDataProvider: () => ({ conversat
 vi.mock('../hooks/useMediaQuery', () => ({ COMPACT_VIEWER_QUERY: 'fixture-compact', useMediaQuery: () => context.compact }));
 vi.mock('../services/threadsLibraryStore', () => ({ rememberThreadsArtifact: async bundle => { context.local = bundle; return { id: 'fixture-generated' }; },
   getThreadsLibraryRecord: () => { throw new Error('No stored source should be read'); }, getThreadsLibraryRecordByDriveFileId: () => { throw new Error('No Drive source should be read'); } }));
-vi.mock('../components/MinimalGraph', () => ({ default: ({ graphData, diagnosticsEnabled }) => <div data-testid="graph" data-diagnostics={String(diagnosticsEnabled)}>{graphData.map(node => node.node_name).join(' ')}</div> }));
-vi.mock('../components/MinimalLegend', () => ({ default: () => null }));
+vi.mock('../components/MinimalGraph', () => ({ default: ({ graphData, diagnosticsEnabled }) => {
+  const palette = buildSpeakerColorMapForNodes(graphData), ownership = buildSpeakerOwnershipMapForNodes(graphData);
+  return <div data-testid="graph" data-diagnostics={String(diagnosticsEnabled)}>{graphData.map(node => <span key={node.id}
+    data-node-id={node.id} style={{ background: resolveNodeColors({ mode: 'speaker', node,
+      speakerColorMap: palette, speakerOwnershipMap: ownership }).fill }}>{node.node_name}</span>)}</div>;
+} }));
+vi.mock('../components/MinimalLegend', () => ({ default: ({ speakerColorMap }) => <div data-testid="legend">{Object.entries(speakerColorMap).map(([id, color]) => <span key={id} data-speaker-id={id} style={{ backgroundColor: color }}>{id}</span>)}</div> }));
 vi.mock('../components/NodeDetail', () => ({ default: () => null }));
 vi.mock('../components/TimelineRibbon', () => ({ default: () => null }));
 vi.mock('../components/threads/YouTubeSourcePanel', () => ({ default: () => null }));
@@ -24,7 +30,7 @@ import ThreadsViewer from './ThreadsViewer.jsx';
 const source = { recordingId: 'fixture-generated', startedAt: 1_790_000_000_000, complete: true,
   finalTokens: [{ text: 'Exact synthetic recorded words.', speaker: 'fixture-speaker', startMs: 1000, endMs: 2000 }] };
 const graph = { nodes: [{ id: 'fixture-moment', node_name: 'Synthetic generated moment', semantic_type: 'chunk', semantic_level: 1,
-  source_ref: { utterance_ids: ['utterance-0001'] }, speaker_id: 'fixture-speaker' }], edges: [] };
+  source_ref: { utterance_ids: ['utterance-0001'] } }], edges: [] };
 let host, root;
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true; window.__MG_DEBUG__ = true; window.history.replaceState(null, '', '/view'); localStorage.clear();
@@ -43,9 +49,12 @@ it.each([false, true])('opens the actual generated source in Graph/Discussion wi
   expect(host.textContent).toContain('Synthetic generated moment');
   expect(host.textContent).toContain('Generated map · kept in this view · not saved');
   expect(host.querySelector('[data-testid="graph"]').dataset.diagnostics).toBe('false');
+  const graphColor = host.querySelector('[data-node-id="fixture-moment"]').style.background;
+  expect(graphColor).toBe(host.querySelector('[data-testid="legend"] [data-speaker-id="fixture-speaker"]').style.backgroundColor);
   await click('Discussion');
   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent.includes('Synthetic generated moment')).click());
   expect(host.querySelector('[data-utterance-id="utterance-0001"]').textContent).toContain('Exact synthetic recorded words.');
+  expect(host.querySelector('[data-utterance-id="utterance-0001"] > span[aria-hidden="true"]').style.backgroundColor).toBe(graphColor);
   expect(host.querySelector('button[aria-label^="Copy link"]')).toBeNull();
   expect(host.textContent).toContain('Names change in this view only');
   const input = host.querySelector('form input');

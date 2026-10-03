@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { enrichGraphNodesWithProvenance } from "../graphProvenance";
 import {
   COLOR_MODES,
   DEFAULT_COLOR_MODE,
@@ -10,6 +11,23 @@ import {
 } from "./colorModes";
 
 describe("speaker color mode", () => {
+  it("keeps unresolved or unnamed source neutral and retains legacy direct/structured speakers", () => {
+    const nodes = enrichGraphNodesWithProvenance([
+      { id: "missing", source_ref: { utterance_ids: ["missing"] } },
+      { id: "unnamed", source_ref: { utterance_ids: ["u"] } },
+      { id: "legacy", speaker_id: "Legacy" },
+      { id: "structured", source_turns: [{ speaker_id: "Structured" }] },
+    ], [{ id: "u", text: "Unnamed exact source", speaker_id: null }]);
+    const palette = buildSpeakerColorMapForNodes(nodes);
+    const ownership = buildSpeakerOwnershipMapForNodes(nodes);
+    expect(Object.keys(palette)).toEqual(["Legacy", "Structured"]);
+    const colors = node => resolveNodeColors({ mode: "speaker", node, speakerColorMap: palette,
+      speakerOwnershipMap: ownership }).fill;
+    expect(ownership.missing).toEqual([]); expect(ownership.unnamed).toEqual([]);
+    expect(colors(nodes[0])).toBe(colors(nodes[1]));
+    expect(colors(nodes[2])).toBe(palette.Legacy); expect(colors(nodes[3])).toBe(palette.Structured);
+    expect(colors(nodes[0])).not.toBe(palette.Legacy);
+  });
   it("is the default color mode", () => {
     expect(DEFAULT_COLOR_MODE).toBe("speaker");
   });

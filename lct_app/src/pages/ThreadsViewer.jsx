@@ -22,7 +22,7 @@ import {CardDisplayProvider,CardDisplaySettings} from "../components/threads/Car
 import {withThreadLanes} from "../components/threads/threadPresentation";
 import {buildMobileConversationDeck,mobileDeckStateForNode} from "../components/threads/mobileConversationDeckModel";
 import { renameArtifactSpeaker, selectYouTubeRef } from "../services/youtubeMedia";
-import { buildSpeakerColorMap } from "../components/graphConstants";
+import { buildSpeakerColorMapForNodes } from "../components/graph/colorModes";
 import { COMPACT_VIEWER_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import {
   flattenThreadsGraph,
@@ -341,7 +341,7 @@ function ThreadsViewerContent({ privateBundle, onPrivateClose }) {
       : []),
     [bundle],
   );
-  const speakerColorMap = useMemo(() => buildSpeakerColorMap(flatNodes), [flatNodes]);
+  const speakerColorMap = useMemo(() => buildSpeakerColorMapForNodes(flatNodes), [flatNodes]);
   const findGroups = useMemo(() => buildViewerFindGroups(flatNodes), [flatNodes]);
   const onFindNode = useCallback((id) => {
     setViewMode("discussion");
