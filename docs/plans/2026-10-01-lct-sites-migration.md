@@ -1,6 +1,12 @@
 # LCT Sites migration — staged delivery
 
-## Progress tracker — updated 2026-10-04 00:07 IST
+## Progress tracker — updated 2026-10-04 00:45 IST
+
+## Inactive cloud package — locally prepared 2026-10-04
+
+Outcome: exact reviewed recording-to-map/Worker source is projected and packaged for the existing public preview; no native publication is claimed. Integration owner: root Codex, canonical `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads` / `codex/lct-sites-serverless`, preparationHEAD1309d96. Native checkout remains clean at ff75f6a. Finite acceptance passes:301technical files/17expected substantive deltas, all applied migration bytes and five existing table definitions preserved, unchanged manifest/dependencies, guarded build, official27-file/7migration package and exact archive/runtime identity,11actual compiled Worker checks against disposable real schema, zero upstream calls/persistence. Google Gemini's final source reviews and766/766tests/99files are reused without substantive edits. Receipt:docs/reviews/2026-10-04-inactive-site-package.md.
+
+Remaining dependency for this finite slice:one-time H1 publication of the prepared inactive update to the existing public cloud preview, including native source push and append-only tracking-table migration. Repository policy reserves new publication/deployment scope; prior privacy-only approval is complete. Provider/Google/personal-upload activation and original-domain switch remain separate. Next evidence checkpoint after authority:exact pushed native source/version/archive/deployment identity plus actual guest/inactive hosted acceptance. Fresh state stays public/active16/environment2 with the two original flags. Full goal stays active/incomplete. Prior23–64active-hour/3–8focused-day forecast remains unmeasured; external waits are additional. No whole-goal ETA is inferred from local packaging duration.
 
 ## Recording to map — locally delivered 2026-10-04
 
