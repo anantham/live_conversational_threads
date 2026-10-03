@@ -2104,3 +2104,5 @@ content feedback precedes a broad label rollout. Other hierarchy work deferred.
   and rejects stale scroll; preserves all existing assertions and adds deterministic
   A/C Back/Forward with scroll proof. Reclassifies earlier "timing variability"
   for this Forward failure; separate camera timing uncertainty remains open.
+
+- Final combined checkpoint19:30IST: source51daa38a3dbfed7836d6e36251f2db933f67e311 pushed; required gate524/524 and final AGY Google Gemini3.1ProHigh APPROVED/no findings/zero tools. Receipt docs/reviews/viewer-key-replay-2026-10-03.json. The deterministic Forward/scroll race is repaired and locally verified; unrelated public offscreen-camera remains open. Remaining dependency exact-head CI, deploy and served key/card identity at1440/390. Owner/checkout unchanged; next checkpoint exact served runtime. Initial30-60-minute additional-effort range extended by the reproduced history race and second review; remaining integration10-20 active minutes, CI/deploy waits separate. No human ruling is blocking this slice.
