@@ -7372,8 +7372,40 @@ User observed an empty desktop transcript until node selection, with only the cu
   reviewed source/test bytes must remain identical through exact-head CI/merge.
 - Docs-receipt hook again failed the same forward-branch timing assertion1/523,
   while source push passed523/523. No source/test changed. This strengthens the
-  recorded variability issue, not a root-cause claim. Stopped only verified owned
-  Vite51264/51081 after completed local/browser evidence, leaving deploy/backend
-  untouched. One bounded full-hook retry without concurrent browser/reviewer
-  tasks; do not modify assertions or bypass the hook. If repeated, stop release
+  recorded variability issue, not a root-cause claim. Stop guard refused the saved
+  Vite51264 identity; port51081 now reports29744, with no matching CIM process
+  returned. No process killed or permission bypass; do not infer who owns the
+  current listener. Deploy/backend untouched. One bounded full-hook retry without
+  concurrent browser/reviewer tasks; do not modify assertions or bypass the hook.
+  If repeated, stop release
   at this concrete gate and preserve the already-pushed reviewed source.
+- Bounded retry again failed the same forward-branch assertion1/523; stopped the
+  release attempt and did not repeat the failed push method. Read-only hook trace
+  suggests a real replay race: state changes during two restoration frames skip
+  recording, then replaying clears without scheduling another state effect.
+  This is a hypothesis until controlled-frame evidence, not merely a flaky-test
+  label. Added public Harness regression before source edit: hold browser rAF,
+  Back restores A, user jumps C before settle, release frames, then require no
+  Forward branch and Back/Forward round-trip A/C. Synthetic isolated browser state
+  only; no snapshot oracle, sleep or assertion weakened. Existing Source/Legend
+  identity acceptance includes Back, so a supported required-gate repair stays
+  within the approved continuity contract. Next diagnostic expected-red, then
+  minimal replay-settled notification if confirmed; review substantive changes.
+- Controlled-frame expected-red failed1/1 at Forward still available after C,
+  proving a dropped action independent of scheduling load. Inspected old settle
+  callback also reapplies A's saved scroll to C's current content. Added the
+  corresponding observable333px C/0px A round-trip check. Minimal repair: skip old
+  scroll when navigation meaning changed, and notify the coalesced recorder when
+  replay completes. Existing browser/history/opaque-pointer contracts remain;
+  frames/timers canceled as before, no new persistence or waits. This is a
+  corrective refinement of the timing hypothesis (now instrumented race), not
+  a test-relaxation. Added one regression; independent review must cover the
+  substantive hook/test change together with the source-key repair.
+- Final focused history/camera6/6 and browser6/6 passed23.3s: source-only color
+  identity1440/390, thread/view/source history1440/390, alias persistence and
+  manual camera/hierarchy Back/Forward. Controlled-frame drain is bounded and
+  follows queued platform frames rather than assuming exactly two frames, so
+  the regression observes outcomes instead of private helper order. Scoped lint
+  clean; rebuilt2334modules25.22s, existing bundle notice. Earlier unchanged
+  color/contribution/Legend20/20 reused. No production offscreen-camera recovery,
+  real YouTube warning fix or full UX audit claimed. Final combined review next.

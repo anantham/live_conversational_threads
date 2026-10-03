@@ -1,12 +1,14 @@
 import { act, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useViewerHistory } from "./useViewerHistory";
 
 // Intent: replay public browser navigation, preserve edits, replace camera-only
 // movement, truncate a forward branch, and isolate a newly opened artifact.
 // Content-change scroll anchoring before a new entry must not overwrite the
 // outgoing entry's reading position; replay restores both positions exactly.
+// A user jump while Back's animation frames are settling must be recorded once
+// after settling, truncate Forward, and remain reachable through Back/Forward.
 let container, root;
 function Harness() {
   const rootRef = useRef(null);
@@ -47,7 +49,7 @@ beforeEach(async () => {
   await act(async () => { root.render(<Harness />); });
   await act(flush);
 });
-afterEach(() => { act(() => root.unmount()); container.remove(); globalThis.IS_REACT_ACT_ENVIRONMENT = false; });
+afterEach(() => { act(() => root.unmount()); container.remove(); vi.unstubAllGlobals(); globalThis.IS_REACT_ACT_ENVIRONMENT = false; });
 
 it("restores node/view/camera with browser Back and Forward without reverting a name edit", async () => {
   expect(button("Back").disabled).toBe(true);
@@ -70,6 +72,39 @@ it("discards the forward exploration when a different jump follows Back", async 
   expect(button("Forward").disabled).toBe(true);
   await click("Back");
   expect(container.querySelector("output").textContent).toBe("A:graph:Original:0");
+});
+
+it("records a new jump made while Back is still settling its animation frames", async () => {
+  const frames = new Map();
+  let frameId = 0;
+  vi.stubGlobal("requestAnimationFrame", (callback) => { frames.set(++frameId, callback); return frameId; });
+  vi.stubGlobal("cancelAnimationFrame", (id) => frames.delete(id));
+  const settleFrames = async () => {
+    for (let frame = 0; frames.size && frame < 10; frame += 1) {
+      const pending = [...frames.values()]; frames.clear();
+      await act(async () => { pending.forEach((callback) => callback(performance.now())); });
+    }
+    expect(frames.size).toBe(0);
+    await act(flush);
+  };
+  await click("A"); await click("B"); await click("Back");
+  await expect.poll(() => container.querySelector("output").textContent).toBe("A:graph:Original:0");
+  expect(frames.size).toBeGreaterThan(0); // Back genuinely has not settled yet.
+  await click("C");
+  expect(container.querySelector("output").textContent).toBe("C:graph:Original:0");
+  const scroller = container.querySelector("[data-viewer-scroll]");
+  scroller.scrollTop = 333;
+  await settleFrames();
+  expect(scroller.scrollTop).toBe(333);
+  await expect.poll(() => button("Forward").disabled).toBe(true);
+  await click("Back");
+  await expect.poll(() => container.querySelector("output").textContent).toBe("A:graph:Original:0");
+  await settleFrames();
+  expect(scroller.scrollTop).toBe(0);
+  await click("Forward");
+  await expect.poll(() => container.querySelector("output").textContent).toBe("C:graph:Original:0");
+  await settleFrames();
+  expect(scroller.scrollTop).toBe(333);
 });
 
 it("preserves the outgoing reading position when new content scrolls before navigation is recorded", async () => {

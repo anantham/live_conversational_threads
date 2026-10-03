@@ -2096,4 +2096,11 @@ Additional effort estimate30-60 active minutes; review/CI/deploy waits separate.
  Gemini3.1ProHigh approved exact sourceb1c7ac3, no findings; receipt recorded.
  Remaining dependency exact-head CI and served speaker-key proof; original
  presentation/source is already served7cbc115. Pilot6examples ready locally;
- content feedback precedes a broad label rollout. Other hierarchy work deferred.
+content feedback precedes a broad label rollout. Other hierarchy work deferred.
+- Required docs hook repeated Forward failure; release stopped rather than
+  retried again. Controlled-frame Harness confirms an actual replay race: C
+  selected during Back's frames is skipped by recorder, and stale A scroll can
+  overwrite C. Minimal in-scope continuity repair adds replay-settled recording
+  and rejects stale scroll; preserves all existing assertions and adds deterministic
+  A/C Back/Forward with scroll proof. Reclassifies earlier "timing variability"
+  for this Forward failure; separate camera timing uncertainty remains open.
