@@ -7424,7 +7424,7 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Six-label local pilot tmp/conversation-label-pilot.html prepared and verified1200/390:6 comparisons, click/keyboard toggle, all original titles/summaries reachable, zero external requests/errors/overflow. Latest screenshots re-inspected after preserving 'research' specificity in conditional open-model example. Original overlapping artifact unchanged SHA2567088642ac9d6fd7a5bae6bfa5e7c1c5ac4c994e579610d613b7001b69e763fed; no public label or membership rewrite, inference or participant disclosure.
 - Integration owner Codex; same authoritative viewer-source-and-controls checkout, closure branch codex/viewer-card-label-delivery-20261003 from served main. Personal dirty AGENTS preserved. Presentation/Legend/history journey has no remaining engineering delivery dependency; bounded pilot ready for human content feedback before any broader wording rollout. Optional hierarchy/overlap/progressive-disclosure implementation remains ranked/deferred. Next evidence checkpoint human use of served cards and six-label comparison; separate camera/SDK diagnosis needed before credible repair ETA. Closure records only are committed/pushed, no new runtime release.
 
-### 2026-10-05 12:30 IST — Full public semantic-link data audit
+### 2026-10-05 — Full public semantic-link data audit
 
 - User reports repeated empty relationship focus and requests checking all data.
   A0 read-only investigation in authoritative viewer-source-and-controls checkout;

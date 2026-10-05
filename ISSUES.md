@@ -2114,7 +2114,7 @@ content feedback precedes a broad label rollout. Other hierarchy work deferred.
 - Six-label comparison at tmp/conversation-label-pilot.html is ready locally;1200/390 toggle/context checks2/2 and screenshots inspected. Artifact hash and memberships unchanged; no public wording rollout. No human ruling blocks completed presentation mechanics. Broader wording awaits concrete pilot feedback; later hierarchy/tangent/overlap decisions remain deferred.
 - Remaining engineering: previously recorded public offscreen-camera behavior (still present in the phone moment-tier capture), YouTube SDK lifecycle and full integrated UX audit. This slice does not establish those repairs; no credible repair ETA without decisive diagnosis. Initial30-60-minute key-follow-up estimate missed after a deterministic history race required additional implementation/review. Served checkpoint19:42 follows the refreshed10-20 active-minute planning range; the actual active-versus-CI/deploy wait split was not measured. Next evidence checkpoint human use/pilot content, and diagnostic viewport/SDK measurements in their own bounded lane.
 
-## 2026-10-05 12:30 IST — Semantic link coverage on the public experiment (AUDIT COMPLETE; REPAIR NOT IMPLEMENTED)
+## 2026-10-05 — Semantic link coverage on the public experiment (AUDIT COMPLETE; REPAIR NOT IMPLEMENTED)
 
 - Outcome: explain repeated empty relationship focus from the actual served data,
   covering all100nodes/22edges/14threads/1263utterances and all five viewer tiers.
