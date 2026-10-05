@@ -1,5 +1,11 @@
 # ISSUES
 
+## 2026-10-05 23:33 IST — Preview repair served; browser file recheck pending
+
+Version17 now serves the reviewed reader/account-overlay and generated-speaker repairs. Live320px `/view` has no account panel or overflow; exact served client matches the locally accepted build. Full hosted fixture import, authored-path pointer/source and saved reload recheck is blocked by this Chrome session's file-URL permission; the old IAB session is unavailable and Codex handoff queued. This is a verification limitation, not evidence of a product failure. No browser permission was changed. Recommendation: continue the remaining synthetic hosted recheck in the supported in-app browser or after the human enables the extension's bounded file access. The publication approval is fulfilled. Historical locally-repaired status entries below are superseded for deployment status, with their original evidence retained.
+
+Captured browser warnings originate in another Chrome extension (24 entries); site warning/error entries0. Impact: verification noise only; no LCT source fix or extension setting change proposed. Full provider/account/domain rollout remains separately gated.
+
 ## 2026-10-04 03:04 IST — Served cloud mobile reader account overlay (REPAIRED LOCALLY)
 
 At an observed320px viewport on served Sites v16, the fixed213px account panel covers the center of Next moment. `elementFromPoint` resolves to Reset sign-in; an actual pointer click resets guest sign-in and reloads the reader, while keyboard Enter advances the authored path. Impact: public guest pointer navigation is interrupted on narrow screens. Blocker: yes for the affected served guest reader, not for local synthetic path verification. The bounded App route repair and three-route regression are committed locally as `27c92f8389aa9d9fa400711e1fb99577dc53b5b9`; pre-fix3/3fail, post-fix focused/adjacent79/79pass, scoped lint/build, actual local320px pointer acceptance and full772/772tests/100files pass. Independent Gemini3.1Pro-low PASS/no concrete findings on the exact bounded packet. Native v16 remains unchanged; refreshed package, branch preservation and separately authorized publication are next. The account panel remains reachable from Library/private files in local acceptance.
