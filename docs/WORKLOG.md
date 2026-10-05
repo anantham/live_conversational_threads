@@ -7423,3 +7423,46 @@ User observed an empty desktop transcript until node selection, with only the cu
 - Actual public1440/390 interaction: moments tier56 nodes,56 assistive alternatives clipped,30 mixed fills, both speaker keys visible and key/card fill matches; no warnings/pageerrors/5xx/horizontal overflow. Screenshots tmp/public-color-dom-1440.png and390.png inspected locally. This is bounded rendered-identity proof; phone moment-tier screenshot still has cards offscreen. Public offscreen-camera and YouTube lifecycle issues remain open, not attributed or declared solved by this repair. Post-deploy run37128523539 passed9/9 in15.6s,14:08:25Z; no full UX/playback/a11y/performance audit claim.
 - Six-label local pilot tmp/conversation-label-pilot.html prepared and verified1200/390:6 comparisons, click/keyboard toggle, all original titles/summaries reachable, zero external requests/errors/overflow. Latest screenshots re-inspected after preserving 'research' specificity in conditional open-model example. Original overlapping artifact unchanged SHA2567088642ac9d6fd7a5bae6bfa5e7c1c5ac4c994e579610d613b7001b69e763fed; no public label or membership rewrite, inference or participant disclosure.
 - Integration owner Codex; same authoritative viewer-source-and-controls checkout, closure branch codex/viewer-card-label-delivery-20261003 from served main. Personal dirty AGENTS preserved. Presentation/Legend/history journey has no remaining engineering delivery dependency; bounded pilot ready for human content feedback before any broader wording rollout. Optional hierarchy/overlap/progressive-disclosure implementation remains ranked/deferred. Next evidence checkpoint human use of served cards and six-label comparison; separate camera/SDK diagnosis needed before credible repair ETA. Closure records only are committed/pushed, no new runtime release.
+
+### 2026-10-05 12:30 IST — Full public semantic-link data audit
+
+- User reports repeated empty relationship focus and requests checking all data.
+  A0 read-only investigation in authoritative viewer-source-and-controls checkout;
+  root audits actual artifact; bounded gpt-6-sol peer traces only code, no artifact
+  access/edits/external actions. Current public source still bda16e5, actual browser
+  asset index-D2eSzSMs.js. Personal dirty AGENTS preserved; primary checkout untouched.
+- Hypotheses: incomplete authoring, tier projection/scoping, edge-loader loss,
+  and public/local artifact mismatch. Initial strict raw-hash guard rejected
+  equality. A different diagnostic found200/valid JSON, then proved CRLF-only
+  differences with independently equal parsed JSON/LF bytes; no stale-public claim.
+  One one-line Node eval failed module syntax; explicit module mode corrected the
+  probe. Final audit uses fetched public JSON and guards verified LF equivalence.
+- Complete100node/22edge/14thread/1263utterance audit uses actual validation,
+  indexing, projection and focus functions compiled locally with existing esbuild.
+  All22edges preserved twice in in/out indexes;115membership/child references,
+  7099provenance IDs in each of two fields, source-turn/source-ref IDs, all thread
+  and edge evidence IDs valid. No duplicate pairs/dangling references; computed
+ 1263/1263utterance coverage. Source text was not sent to another model or service.
+- Authored edges12return_to_thread+10contextual, only moment endpoints. No argument
+  support/rebuttal/clarification/causal classes; topology explicitly partial and
+  non-exhaustive. Compiler:66-76 constructs returns-only edges and replaces base
+  relationships. Code trace: MinimalGraph:798 projects only levels3-5; focus helper
+  counts non-temporal neighbors in visible tier. Screenshot i02has zero authored
+  links; child contextual return exists but existing overlap projector treats it
+  internal to another shared idea. No hierarchy corruption/projection cap/unmapped
+  path here. Other ideas could gain12projected pairs, i02would remain zero under
+  that conservative rule; do not promise that idea rollup fixes this exact card.
+- Real public traversal of all five buttons confirms moments56/22edges, ideas24/0,
+  topics13/8, themes5/3, arcs2/1, every node ID matches artifact, zero warnings/
+  pageerrors/5xx. Current-tier zero-neighbor counts24/24/5/1/0 respectively,54/100
+  across global tiers. Read-only evidence tmp/semantic-links-audit-20261005.json
+  contains all nodes/edges; UI evidence tmp/semantic-link-tier-ui-20261005.json.
+  Both generated private reports are excluded from review/publication. No UI or
+  canonical artifact changed; no regeneration or paid inference invoked.
+- ISSUES records the causal generator, impact and proposed next scopes. Audit
+  journey complete; rendering partial status, idea-level derived links and full
+  semantic authoring remain unimplemented, not silently folded into this request.
+  Owner Codex; technical record branch codex/viewer-semantic-link-audit-20261005.
+  Documentation-only commit/push under standing durable-work rule; installed
+  mandatory hook retained. No source/config/build/tests changed, so independent
+  code-review gate is not triggered by this technical logging checkpoint.

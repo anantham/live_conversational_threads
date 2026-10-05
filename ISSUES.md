@@ -2113,3 +2113,57 @@ content feedback precedes a broad label rollout. Other hierarchy work deferred.
 - Integration owner Codex; authoritative viewer-source-and-controls worktree; closure branch codex/viewer-card-label-delivery-20261003 from served main. Finite acceptance: expected-red source-only key and action-during-Back regressions, local focused6/6 plus reused20/20, browser6/6, mandatory524/524, exact-head CI, exact Vercel/main identity and served1440/390 key/card checks2/2. Actual56 alternatives clipped/30 mixed fills; zero browser warnings/pageerrors/5xx/overflow. Production smoke9/9. Sanitized exact-source/runtime evidence docs/reviews/viewer-key-replay-2026-10-03.json.
 - Six-label comparison at tmp/conversation-label-pilot.html is ready locally;1200/390 toggle/context checks2/2 and screenshots inspected. Artifact hash and memberships unchanged; no public wording rollout. No human ruling blocks completed presentation mechanics. Broader wording awaits concrete pilot feedback; later hierarchy/tangent/overlap decisions remain deferred.
 - Remaining engineering: previously recorded public offscreen-camera behavior (still present in the phone moment-tier capture), YouTube SDK lifecycle and full integrated UX audit. This slice does not establish those repairs; no credible repair ETA without decisive diagnosis. Initial30-60-minute key-follow-up estimate missed after a deterministic history race required additional implementation/review. Served checkpoint19:42 follows the refreshed10-20 active-minute planning range; the actual active-versus-CI/deploy wait split was not measured. Next evidence checkpoint human use/pilot content, and diagnostic viewport/SDK measurements in their own bounded lane.
+
+## 2026-10-05 12:30 IST — Semantic link coverage on the public experiment (AUDIT COMPLETE; REPAIR NOT IMPLEMENTED)
+
+- Outcome: explain repeated empty relationship focus from the actual served data,
+  covering all100nodes/22edges/14threads/1263utterances and all five viewer tiers.
+  Owner Codex; authoritative viewer-source-and-controls checkout; record branch
+  codex/viewer-semantic-link-audit-20261005. A0 investigation and required technical
+  logging only; no artifact regeneration, source/UI edit, model request or release.
+- Public artifact contains22semantic edges:12return_to_thread and10contextual,
+  all between moments. No support/rebuttal/clarification/causal relation classes
+  are present. argument_topology is partial/exhaustive=false and explicitly says
+  thread returns only; other relations not regenerated. Compiler generator at
+  scripts/compile_thread_experiment.mjs:66-76 constructs edges only from returns
+  and replaces the base edge list; this experiment did not run a full relation pass.
+- Entire explicit contract passes;22incoming/22outgoing rows survive indexing.
+  All115hierarchy memberships/child references and all evidence IDs checked,
+  including7099provenance references in each of two fields,1263source-turn IDs,
+  578thread-step evidence references and133return evidence references. No dangling
+  IDs/duplicate edge pairs found. Computed source coverage1263/1263 matches metadata;
+  full source coverage is separate from relationship coverage.
+
+| Global tier | Nodes | Rendered semantic edge rows | Nodes with no current-tier neighbor |
+| --- | ---: | ---: | ---: |
+| moments | 56 | 22 | 24 |
+| ideas | 24 | 0 | 24 |
+| topics | 13 | 8 | 5 |
+| themes | 5 | 3 | 1 |
+| arcs | 2 | 1 | 0 |
+
+-54/100nodes have no global displayed-tier neighbor;68/100have no authored
+  incident edge. Higher-tier links are derived from the same22moment edges.
+  Actual public button traversal matches every node ID and22/0/8/3/1edge counts;
+  zero warnings/pageerrors/5xx. Drill scopes can remove additional neighbors.
+- Screenshot node i02 is an idea with two moments and no authored incident edge.
+  Its descendant has one contextual relation to another moment. Ideas do not
+  currently roll up moment relations (MinimalGraph.jsx:798); topics/themes/arcs do.
+  Even the existing conservative projector gives i02zero links because both
+  endpoints share another idea, treating that relation as internal. General
+  idea projection would yield12pairs elsewhere, not guarantee a link for i02.
+- Impact: repeated empty focus is a real coverage/representation gap; absence
+  cannot establish that the content has no meaningful relation. Recommended next
+  scope: expose partial topology honestly, then decide the existing-link idea
+  rollup and evidence-backed full relationship pass separately. Do not force a
+  relationship on every card or reclassify thread callbacks as argument support.
+  Future content-changing authoring/provider/disclosure/publication needs its
+  applicable selected scope; no human input blocked this completed audit.
+- Evidence is local-only under tmp/semantic-links-audit-20261005.json (all nodes
+  and edge metadata) and tmp/semantic-link-tier-ui-20261005.json (real public UI).
+  Served SHA256386ef09b3b517e061de1c6499080ec81216cc2f5c5e320ebc6225d40558b7d19;
+  Windows local raw SHA differs solely by CRLF, independently verified equal
+  parsed data and equal LF-normalized bytes. Renderer index-D2eSzSMs.js matches
+  served bda16e5. No transcript/artifact/private report sent for external AI review.
+  Next evidence checkpoint: a bounded selected repair and source-backed edge
+  review. This was a structural/link audit, not exhaustive inference of relations.
