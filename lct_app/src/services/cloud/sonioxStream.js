@@ -56,12 +56,11 @@ export class SonioxStream {
     this.transcriptBytes = 0;
     this.state = 'connecting';
     let socket;
-    try { socket = new this.WebSocketClass(URL); }
+    try { socket = new this.WebSocketClass(URL, ['soniox-api-key', apiKey]); }
     catch { this.state = 'closed'; throw fail('could not open a connection.'); }
+    apiKey = null;
     this.socket = socket;
     return new Promise((resolve, reject) => {
-      let pendingKey = apiKey;
-      apiKey = null;
       this.connectReject = reject;
       const current = () => this.serial === serial;
       const onOpen = () => {
@@ -69,10 +68,8 @@ export class SonioxStream {
         clearTimeout(this.connectTimer);
         this.connectTimer = null;
         try {
-          socket.send(JSON.stringify({ api_key: pendingKey, model: 'stt-rt-v5', audio_format: 'auto', enable_speaker_diarization: true, enable_endpoint_detection: true }));
-          pendingKey = null;
+          socket.send(JSON.stringify({ model: 'stt-rt-v5', audio_format: 'auto', enable_speaker_diarization: true, enable_endpoint_detection: true }));
         } catch {
-          pendingKey = null;
           this.terminate(fail('could not configure the session.'));
           return;
         }
@@ -95,7 +92,6 @@ export class SonioxStream {
       socket.addEventListener('error', onError);
       signal?.addEventListener('abort', onAbort, { once: true });
       this.detach = () => {
-        pendingKey = null;
         socket.removeEventListener('open', onOpen);
         socket.removeEventListener('message', onMessage);
         socket.removeEventListener('close', onClose);

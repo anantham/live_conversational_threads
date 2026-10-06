@@ -11,9 +11,10 @@ class FakeSocket extends EventTarget {
   static instances = [];
   static OPEN = 1;
   static CONNECTING = 0;
-  constructor(url) {
+  constructor(url, protocols) {
     super();
     this.url = url;
+    this.protocols = protocols;
     this.readyState = 0;
     this.bufferedAmount = 0;
     this.sent = [];
@@ -33,7 +34,7 @@ async function connected(options = {}) {
   const onFailure = vi.fn();
   const onFinished = vi.fn();
   const stream = new SonioxStream({ onTranscript, onFailure, onFinished, WebSocketClass: FakeSocket });
-  const promise = stream.connect({ apiKey: 'secret-test-key', expiresAt: new Date(Date.now() + 60000).toISOString(), maxSessionSeconds: 60, ...options });
+  const promise = stream.connect({ apiKey: 'snx_temp_test_key', expiresAt: new Date(Date.now() + 60000).toISOString(), maxSessionSeconds: 60, ...options });
   const socket = FakeSocket.instances.at(-1);
   socket.open();
   await promise;
@@ -51,7 +52,9 @@ describe('SonioxStream', () => {
   it('configures the fixed STT endpoint and sends bounded binary audio then EOF', async () => {
     const { stream, socket, onFinished } = await connected();
     expect(socket.url).toBe('wss://stt-rt.soniox.com/transcribe-websocket');
-    expect(JSON.parse(socket.sent[0])).toEqual({ api_key: 'secret-test-key', model: 'stt-rt-v5', audio_format: 'auto', enable_speaker_diarization: true, enable_endpoint_detection: true });
+    expect(socket.protocols).toEqual(['soniox-api-key', 'snx_temp_test_key']);
+    expect(JSON.parse(socket.sent[0])).toEqual({ model: 'stt-rt-v5', audio_format: 'auto', enable_speaker_diarization: true, enable_endpoint_detection: true });
+    expect(socket.sent[0]).not.toContain('snx_temp_test_key');
     stream.sendAudio(new Uint8Array([1, 2]).buffer);
     expect(socket.sent[1]).toBeInstanceOf(ArrayBuffer);
     const finish = stream.finish();
@@ -101,6 +104,46 @@ describe('SonioxStream', () => {
     const third = await connected();
     third.socket.close();
     expect(third.onFailure.mock.lastCall[0].message).toMatch(/closed/i);
+  });
+
+  it('reports authentication refusal after open and does not retry automatically', async () => {
+    const { stream, socket, onFailure, onFinished } = await connected();
+    socket.receive({ error_code: 401, error_type: 'unauthenticated', error_message: 'private key data' });
+    expect(onFailure).toHaveBeenCalledOnce();
+    expect(onFailure.mock.lastCall[0].message).toBe('Live transcription provider error (unauthenticated).');
+    expect(onFailure.mock.lastCall[0].message).not.toContain('private key data');
+    expect(onFinished).not.toHaveBeenCalled();
+    expect(stream.state).toBe('closed');
+    expect(socket.readyState).toBe(3);
+    expect(FakeSocket.instances).toHaveLength(1);
+    await Promise.resolve();
+    expect(FakeSocket.instances).toHaveLength(1);
+  });
+
+  it('drops late open after cancellation and uses only a new key on explicit retry', async () => {
+    const onFailure = vi.fn();
+    const stream = new SonioxStream({ onFailure, WebSocketClass: FakeSocket });
+    const controller = new AbortController();
+    const pending = stream.connect({ apiKey: 'snx_temp_old', expiresAt: Date.now() + 60000, maxSessionSeconds: 60, signal: controller.signal });
+    const oldSocket = FakeSocket.instances.at(-1);
+    expect(oldSocket.protocols).toEqual(['soniox-api-key', 'snx_temp_old']);
+    const canceled = expect(pending).rejects.toThrow(/canceled/i);
+    controller.abort();
+    await canceled;
+    oldSocket.open();
+    expect(oldSocket.sent).toEqual([]);
+    expect(onFailure).toHaveBeenCalledOnce();
+
+    const retry = stream.connect({ apiKey: 'snx_temp_new', expiresAt: Date.now() + 60000, maxSessionSeconds: 60 });
+    const newSocket = FakeSocket.instances.at(-1);
+    expect(newSocket.protocols).toEqual(['soniox-api-key', 'snx_temp_new']);
+    oldSocket.open();
+    expect(oldSocket.sent).toEqual([]);
+    newSocket.open();
+    await retry;
+    expect(JSON.parse(newSocket.sent[0])).not.toHaveProperty('api_key');
+    expect(onFailure).toHaveBeenCalledOnce();
+    stream.cancel();
   });
 
   it('bounds connect and finish waits and honors abort', async () => {

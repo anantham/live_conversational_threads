@@ -1,5 +1,9 @@
 # ISSUES
 
+## 2026-10-06 22:36 IST — Soniox auth compatibility repair served; pilot remains inactive
+
+The deprecation item below is repaired in the exact independently reviewed source slice: browser authentication now uses the documented protocol list, with a key-free start configuration. Google Gemini PASS/no findings and 27/27 focused/adjacent tests precede native source `53f8a6bed36060cf0ba319344af040e8d3801c70`, public Site version18/deployment `appgdep_6ac52a3ddc708191ad32470b8e0bbb21`. Served client bytes match the build; both provider status endpoints still report disabled. Actual provider handshake, funded smoke and hosted import/path/source/reload remain unverified. Blocker:no for the delivered compatibility repair; pending action-time restricted-key approval and supported browser file selection for pilot acceptance. Recommended next step: complete the prepared credentials inside the approved small-pilot envelope, then synthetic live acceptance. No purchase, recharge or paid call occurred.
+
 ## 2026-10-06 22:04 IST — Soniox WebSocket authentication deprecation
 
 `lct_app/src/services/cloud/sonioxStream.js` opens an unauthenticated socket and sends `api_key` in its first configuration message. Current [Soniox migration documentation](https://soniox.com/docs/guides/migrate-websocket-authentication) deprecates this method in favor of the browser WebSocket protocols list, while explicitly retaining the old method until retirement. Impact: medium future compatibility risk for live transcription; no retirement date or present provider failure is demonstrated. Blocker: no for the inactive preview or this read-only account preflight. Recommended next step before funded activation: migrate the existing adapter's authentication transport with synthetic success/refusal/cancellation tests and eligible independent review, preserving provider duration, consent, audience and funding gates. No repair or paid smoke is performed in this slice.
