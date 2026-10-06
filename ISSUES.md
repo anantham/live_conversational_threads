@@ -1,5 +1,11 @@
 # ISSUES
 
+## 2026-10-06 22:04 IST — Soniox WebSocket authentication deprecation
+
+`lct_app/src/services/cloud/sonioxStream.js` opens an unauthenticated socket and sends `api_key` in its first configuration message. Current [Soniox migration documentation](https://soniox.com/docs/guides/migrate-websocket-authentication) deprecates this method in favor of the browser WebSocket protocols list, while explicitly retaining the old method until retirement. Impact: medium future compatibility risk for live transcription; no retirement date or present provider failure is demonstrated. Blocker: no for the inactive preview or this read-only account preflight. Recommended next step before funded activation: migrate the existing adapter's authentication transport with synthetic success/refusal/cancellation tests and eligible independent review, preserving provider duration, consent, audience and funding gates. No repair or paid smoke is performed in this slice.
+
+The [temporary-key API](https://soniox.com/docs/api-reference/auth/create_temporary_api_key) separately confirms the issuer's existing `max_session_duration_seconds` is provider-enforced. The key's start expiry and browser timers do not substitute for that bound. Monthly spending-limit enforcement can be delayed; exact dollar settlement and real stream cutoff remain funded-acceptance checks.
+
 ## 2026-10-05 23:33 IST — Preview repair served; browser file recheck pending
 
 Version17 now serves the reviewed reader/account-overlay and generated-speaker repairs. Live320px `/view` has no account panel or overflow; exact served client matches the locally accepted build. Full hosted fixture import, authored-path pointer/source and saved reload recheck is blocked by this Chrome session's file-URL permission; the old IAB session is unavailable and Codex handoff queued. This is a verification limitation, not evidence of a product failure. No browser permission was changed. Recommendation: continue the remaining synthetic hosted recheck in the supported in-app browser or after the human enables the extension's bounded file access. The publication approval is fulfilled. Historical locally-repaired status entries below are superseded for deployment status, with their original evidence retained.
