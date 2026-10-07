@@ -2,6 +2,8 @@
 
 ## Current checkpoint — one-time recovery fulfilled 2026-10-07 11:24 IST
 
+Preserved11:28IST: coherent source/receipt commitfede21b is committed/pushed/upstream-matched; unchanged mandatory gate790/790tests/101files passes46.65seconds/start11:27:19IST. Google Gemini final reviewed blobs match that commit, PASS/no findings/11.9442761seconds/zero tools. This operational receipt update cannot alter behavior or coverage; required push-hook enforcement remains unchanged. Served identity stays native21/sourcebadbd71/environment15 below. Peer AGENTS is preserved.
+
 Outcome: release only the two failed synthetic reservations and make one controlled diagnostic retry, preserving their history and every existing limit. Integration owner/root and authoritative canonical checkout `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads`, branch `codex/lct-sites-serverless`, remain unchanged. User approval “go with your recommendation” is fulfilled; no repeat key/account/budget/recovery approval is pending.
 
 Finite acceptance: independently reviewed append-only custom0007; unchanged applied migration history/schema; exact same two old300second unknown rows and providersoff before publication; exactly two lease-field changes/allotherfields and lifetime2 retained afterward; no second live request; actual guest/private/consent/inactive/client boundaries restored. All pass except failure-log capture, which remains unavailable. Focused34/34 tests/threefiles and Google Gemini exact five-path PASS/no findings/zero tools precede publication; unchanged mandatory combined push checks are the final preservation checkpoint.
