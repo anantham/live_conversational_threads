@@ -2,6 +2,10 @@
 
 ## Current checkpoint — no-provider log capture proved; repair awaiting review — 2026-10-07 21:23 IST
 
+21:27 IST preservation: source/evidence commit `2f5696f27a156f08ab6b0d177d5e3d3774e12f67` is pushed/upstream-matched. The unchanged required push gate passes794/794tests across102files in39.17seconds/start21:26:02IST. Committed implementation/intent bytes exactly match the bounded review packet; review is still unaccepted and repair unserved. This receipt-only update cannot alter behavior or coverage and reuses those checks; its mandatory push hook remains enabled. Peer AGENTS remains untouched.
+
+
+
 Outcome: retrieve a harmless status marker before changing its deployment, test fake Soniox failure boundaries, and repair only a demonstrated logging defect. Root owns the canonical checkout `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads`, branch `codex/lct-sites-serverless`, starting HEAD `80a9fe0e89c5022e2e9a2312ae969eb9e781aed5`. This slice is task-branch preservation; it is not a main merge or cloud repair publication.
 
 Delivered evidence: the providers-off GET returned200; a later bounded query retrieved its fixed custom marker about87seconds after request start, before rollback. A wider180minute query after rollback did not return that marker. This proves capture while current and an observed retrieval boundary, not a deletion/retention mechanism or the Soniox mint cause. All three Soniox attempt rows remain exactly unchanged, including one unknown lease; inference attempts remain0. No paid request, recording, inference, lease recovery or new key occurred.
