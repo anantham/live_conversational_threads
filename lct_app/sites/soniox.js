@@ -129,7 +129,8 @@ export async function handleSoniox(request, env) {
       const details = { phase: diagnostic.phase, errorClass: safeErrorClass(error) };
       if (diagnostic.providerStatus !== null) details.providerStatus = diagnostic.providerStatus;
       if (diagnostic.transportMessage) details.transportMessage = diagnostic.transportMessage;
-      console.error('[soniox] session setup failed', details);
+      try { console.error('[soniox] session setup failed', details); }
+      catch { /* Diagnostics must not replace the public failure response. */ }
     }
     return sonioxJSON(503, { error: 'Transcription setup could not finish. Any reserved attempt remains counted. Check session limits before retrying.', code: 'session_failed' });
   }

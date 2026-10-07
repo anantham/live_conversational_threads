@@ -1,5 +1,19 @@
 # LCT Sites migration — staged delivery
 
+## Current checkpoint — no-provider log capture proved; repair awaiting review — 2026-10-07 21:23 IST
+
+Outcome: retrieve a harmless status marker before changing its deployment, test fake Soniox failure boundaries, and repair only a demonstrated logging defect. Root owns the canonical checkout `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads`, branch `codex/lct-sites-serverless`, starting HEAD `80a9fe0e89c5022e2e9a2312ae969eb9e781aed5`. This slice is task-branch preservation; it is not a main merge or cloud repair publication.
+
+Delivered evidence: the providers-off GET returned200; a later bounded query retrieved its fixed custom marker about87seconds after request start, before rollback. A wider180minute query after rollback did not return that marker. This proves capture while current and an observed retrieval boundary, not a deletion/retention mechanism or the Soniox mint cause. All three Soniox attempt rows remain exactly unchanged, including one unknown lease; inference attempts remain0. No paid request, recording, inference, lease recovery or new key occurred.
+
+The guarded diagnostic write is edited and staged with four isolated publicWorker regression cases. Baseline21/22 checks exposed one logger exception replacing the intended503; after repair32/32 focused checks and scopedESLint pass. Finite checks passed: in-memory schema verified before import; request-setup failure/no provider; never-settling fake fetch/timeout/no retry; definitive refusal preserves row and closes lease; throwing log sink preserves503 and uncertain lease; exact native row/flag preservation. Required full push gate remains enforced at task-branch handoff.
+
+Independent review/publication is BLOCKED: Google Gemini returned PASS twice but omitted the mandatory findings array, including under schema enforcement; both responses were rejected. Alternate authenticated Claude via AGY stopped at deny-hook safety verification before diff disclosure. Direct Claude CLI reports signed out. Three failed review attempts reach the repository stop condition; no accepted independent verdict, native source projection or repair publication is claimed. No findings were fixed/rejected or overclaim arbitrated.
+
+Fresh native handoff21:22IST: Site21/source`badbd71c4f3cfa9a62a9efc39610a1beead08362`, environment17/deployment`appgdep_6ac666efd39c8191a212051b643691aa` remains public and active, BOTH providers/budget flags and debug OFF. Native303-file source checkout remains clean. Earlier approvals persist; no renewed key/account/budget/recovery permission is requested. The next dependency is a valid independent read-only review, then one-path native publication inactive and hosted acceptance. A real captured mint is a later separately bounded decision; do not reuse the completed recovery ruling.
+
+Forecast: review-access/host waits and real mint diagnosis are unknown. Once review is available, projection/build/publish/refusal handoff is one bounded slice; no calendar ETA is supported. Historical full23–64active-hour/3–8day forecast remains unmeasured and is not a current promise. Google/private/original-domain/Attendee remain deferred. [Detailed evidence and stop report](../reviews/2026-10-07-soniox-observability.md).
+
 ## Current checkpoint — one-time recovery fulfilled 2026-10-07 11:24 IST
 
 Preserved11:28IST: coherent source/receipt commitfede21b is committed/pushed/upstream-matched; unchanged mandatory gate790/790tests/101files passes46.65seconds/start11:27:19IST. Google Gemini final reviewed blobs match that commit, PASS/no findings/11.9442761seconds/zero tools. This operational receipt update cannot alter behavior or coverage; required push-hook enforcement remains unchanged. Served identity stays native21/sourcebadbd71/environment15 below. Peer AGENTS is preserved.
