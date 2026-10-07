@@ -1,5 +1,15 @@
 # LCT Sites migration — staged delivery
 
+## Current checkpoint — reviewed logging repair served — 2026-10-07 21:53 IST
+
+Outcome delivered: recover a read-only reviewer route, independently review the already-tested log-sink repair and publish it with providers inactive. Integration owner root; authoritative checkout `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads`, branch `codex/lct-sites-serverless`. Committed/pushed source2f5696f is unchanged; native served source`e055f88345fdc37622308cd8192854fb6b627e7d`, Site22/environment17/deployment`appgdep_6ac670a6c81c81918ecd713a913df539` succeeds21:48:08IST. Publicaudience, guestaccess and all existing limits/keys/identity remain unchanged.
+
+Finite acceptance passed: current enabled deny-all reviewerhook; complete schema-valid AnthropicClaudeSonnet5.5-low PASS/findings[]/zero tools of exact committed three-path packet; unchanged32focused+ESLint/full794tests102files; exact one-path native projection/all302others and eightappliedmigrations preserved; build/package/clientidentity; hosted status/anonymousprivate401/consent403/providerinactive503; exactall18env entries/providersbudgetsdebugOFF; all3Sonioxrows/1unknown/inference0 exactunchanged. Browserwebview handoff timed out, so no renderedUI claim. Nativedeployment/API/client evidence proves the bounded server repair.
+
+The earlier independent-review blocker is resolved. Two output-contract changes were bounded and no validator or safetyhook was weakened: align static agent JSON contract and remove CLI schema-retry aggregation, retaining strict final validation. No finding required a source change; no overclaim. Currentreceipt-only branch preservation retains the unchanged push gate; main/originaldomain is not merged or cut over. [Review/runtime evidence](../reviews/2026-10-07-soniox-observability.md).
+
+Remaining dependency: actual Soniox keyissuance failure still unknown. Next evidence checkpoint is a new bounded real mint captured before rollback; not authorized by this reviewer-only continuation or the already-fulfilled one-time recovery. Do not clear unknownleases or make extra requests. No further user action is required for delivered review/publication. Diagnosis/externalwait and eventual integration ETA unknown; historical full23–64activehours/3–8days remains unmeasured/historical. Googleprivate/Attendee/originaldomain work deferred; overall liveSTT/map goal incomplete.
+
 ## Current checkpoint — no-provider log capture proved; repair awaiting review — 2026-10-07 21:23 IST
 
 21:27 IST preservation: source/evidence commit `2f5696f27a156f08ab6b0d177d5e3d3774e12f67` is pushed/upstream-matched. The unchanged required push gate passes794/794tests across102files in39.17seconds/start21:26:02IST. Committed implementation/intent bytes exactly match the bounded review packet; review is still unaccepted and repair unserved. This receipt-only update cannot alter behavior or coverage and reuses those checks; its mandatory push hook remains enabled. Peer AGENTS remains untouched.

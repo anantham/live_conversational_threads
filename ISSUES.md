@@ -2,6 +2,9 @@
 
 ## 2026-10-07 08:43 IST — Keys ready; actual Soniox mint stops after reservation
 
+21:53 IST review/publication amendment: priorreviewblockerRESOLVED. Freshhooksverified and fullAnthropicClaudeSonnet5.5-low exactcommitteddiff review PASS/findings[]/zero tools, strictvalidator retained. Supportedlog-sinkrepair is nowservedSite22/sourcee055f88345fdc37622308cd8192854fb6b627e7d/env17; publicguest/private401/consent403/providerinactive503/clienthash and exact3attemptrows1unknown/inference0 acceptance pass. Providers/budgets/debug remainOFF; no paid call or cleanup. ActualSonioxmintcause stillunknown and liveSTT/map remainsblocked. Next: separatelyboundedcapturedrealrequestafterlaterauthority, not another reviewer/account approval for the deliveredrepair. docs/reviews/2026-10-07-soniox-observability.md appends fullproof; browserwebviewhandoff unavailable does not invalidateAPIdeployment evidence.
+
+
 21:23 IST no-provider amendment: harmless status marker capture is proved before rollback after about87seconds; a180minute post-rollback query omits it. No deletion/retention mechanism or live mint cause is established. Four isolated Worker tests expose a separate logger exception overriding503; guarded source passes32/32+ESLint but is unserved. Independent review is BLOCKED: two Gemini responses omit required findings; alternate Claude/AGY fails read-only hook verification before disclosure; directClaudeCLI is signed out. Three failed review attempts trigger stop. Site21/sourcebadbd71/env17 remains publicactive with providers/budgets/debugoff, exact3attemptrows/1unknown unchanged and inference0. Blocker: accepted independent review then inactive publication; real mint diagnosis remains unknown. No renewed approval or paid retry under this checkpoint. Evidence: docs/reviews/2026-10-07-soniox-observability.md.
 
 
