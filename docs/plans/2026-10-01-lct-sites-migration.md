@@ -2,6 +2,8 @@
 
 ## Current checkpoint — reviewed logging repair served — 2026-10-07 21:53 IST
 
+21:55 IST preservation: review/deployment receipts are committed and pushed as eab765d; required unchanged push gate passes794/794tests/102files25.06seconds/start21:54:27IST. The remaining EOF-whitespace correction changes no behavior or coverage; checks are reused and its mandatory hook remains enabled.
+
 Outcome delivered: recover a read-only reviewer route, independently review the already-tested log-sink repair and publish it with providers inactive. Integration owner root; authoritative checkout `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads`, branch `codex/lct-sites-serverless`. Committed/pushed source2f5696f is unchanged; native served source`e055f88345fdc37622308cd8192854fb6b627e7d`, Site22/environment17/deployment`appgdep_6ac670a6c81c81918ecd713a913df539` succeeds21:48:08IST. Publicaudience, guestaccess and all existing limits/keys/identity remain unchanged.
 
 Finite acceptance passed: current enabled deny-all reviewerhook; complete schema-valid AnthropicClaudeSonnet5.5-low PASS/findings[]/zero tools of exact committed three-path packet; unchanged32focused+ESLint/full794tests102files; exact one-path native projection/all302others and eightappliedmigrations preserved; build/package/clientidentity; hosted status/anonymousprivate401/consent403/providerinactive503; exactall18env entries/providersbudgetsdebugOFF; all3Sonioxrows/1unknown/inference0 exactunchanged. Browserwebview handoff timed out, so no renderedUI claim. Nativedeployment/API/client evidence proves the bounded server repair.
