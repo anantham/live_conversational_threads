@@ -22,6 +22,30 @@ beforeEach(() => {
 afterEach(() => { sqlite.close(); vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('Soniox issuer Worker API with real generated SQLite schema', () => {
+  it('keeps disabled status unchanged while debug reports only static signal capability types', async () => {
+    env.LCT_SONIOX_ENABLED = 'false';
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const baseline = await worker.fetch(req('/status', { method: 'GET' }), env);
+    const baselineBody = await baseline.json();
+    expect(baseline.status).toBe(200);
+    expect(baselineBody.enabled).toBe(false);
+    expect(log).not.toHaveBeenCalled();
+    env.LCT_SONIOX_DEBUG = 'true';
+    const diagnostic = await worker.fetch(req('/status', { method: 'GET' }), env);
+    expect(diagnostic.status).toBe(200);
+    expect(await diagnostic.json()).toEqual(baselineBody);
+    expect(log.mock.calls).toEqual([['[soniox] status capabilities', {
+      requestSignalPresent: true, requestAddListener: 'function', requestRemoveListener: 'function',
+      abortController: 'function', localAddListener: 'function', localRemoveListener: 'function',
+    }]]);
+    log.mockImplementation(() => { throw new Error('synthetic log failure'); });
+    const withoutLogs = await worker.fetch(req('/status', { method: 'GET' }), env);
+    expect(withoutLogs.status).toBe(200);
+    expect(await withoutLogs.json()).toEqual(baselineBody);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(reserveCount()).toBe(0);
+  });
+
   it('leaves missing, disabled and unconfirmed policies inactive with no upstream access', async () => {
     for (const name of ['LCT_SONIOX_ENABLED', 'LCT_SONIOX_PROJECT_BUDGET_CONFIRMED', 'LCT_SONIOX_MAX_SESSIONS', 'LCT_SONIOX_MAX_SESSION_SECONDS', 'LCT_SONIOX_AUDIENCE', 'SONIOX_API_KEY', 'DB']) {
       const value = env[name]; delete env[name];
@@ -118,5 +142,78 @@ describe('Soniox issuer Worker API with real generated SQLite schema', () => {
     await began; controller.abort(); const response = await pending;
     expect(response.status).toBe(408); expect(reserveCount()).toBe(1);
     expect((await worker.fetch(req(), env)).status).toBe(429);
+  });
+
+  it('keeps transport diagnostics off by default and the uncertain lease reserved', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fetch.mockRejectedValueOnce(new TypeError(`transport ${MAIN}`));
+    const response = await worker.fetch(req(), env);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'session_failed' });
+    expect(log).not.toHaveBeenCalled();
+    expect(sqlite.prepare('SELECT lease_until FROM lct_soniox_sessions').get()).toEqual({ lease_until: null });
+  });
+
+  it('logs only a bounded sanitized transport message when debug is enabled', async () => {
+    env.LCT_SONIOX_DEBUG = 'true';
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const error = new Error(`network failure ${MAIN} snx_temp_hidden sk-private ${'z'.repeat(45)}\nretry`);
+    error.name = 'private-class';
+    fetch.mockRejectedValueOnce(error);
+    const response = await worker.fetch(req(), env);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'session_failed' });
+    expect(log).toHaveBeenCalledTimes(1);
+    const [label, details] = log.mock.calls[0];
+    expect(label).toBe('[soniox] session setup failed');
+    expect(details).toMatchObject({ phase: 'provider_fetch', errorClass: 'UnknownError' });
+    expect(details).not.toHaveProperty('providerStatus');
+    expect(details.transportMessage).toContain('network failure');
+    expect(details.transportMessage.length).toBeLessThanOrEqual(180);
+    expect(JSON.stringify(details)).not.toMatch(/synthetic-main-key|snx_temp_hidden|sk-private|z{24}|private-class|\n/);
+    expect(sqlite.prepare('SELECT lease_until FROM lct_soniox_sessions').get()).toEqual({ lease_until: null });
+  });
+
+  it('identifies a malformed provider body without logging contents', async () => {
+    env.LCT_SONIOX_DEBUG = 'true';
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fetch.mockResolvedValueOnce(new Response(`invalid ${MAIN}`, { status: 201 }));
+    const malformed = await worker.fetch(req(), env);
+    expect(malformed.status).toBe(503);
+    expect(log.mock.calls[0][1]).toMatchObject({ phase: 'response_body', errorClass: 'SyntaxError', providerStatus: 201 });
+    expect(log.mock.calls[0][1]).not.toHaveProperty('transportMessage');
+    expect(JSON.stringify(log.mock.calls[0])).not.toContain(MAIN);
+    expect(sqlite.prepare('SELECT lease_until FROM lct_soniox_sessions').get()).toEqual({ lease_until: null });
+  });
+
+  it('identifies a failed D1 acknowledgement without logging its error message', async () => {
+    env.LCT_SONIOX_DEBUG = 'true';
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const originalPrepare = env.DB.prepare;
+    env.DB.prepare = sql => sql.startsWith('UPDATE lct_soniox_sessions')
+      ? { bind() { return { first: async () => { throw new Error(`private ${MAIN}`); } }; } }
+      : originalPrepare(sql);
+    const failedAck = await worker.fetch(req(), env);
+    expect(failedAck.status).toBe(503);
+    expect(log.mock.calls[0][1]).toMatchObject({ phase: 'acknowledged_lease_update', errorClass: 'Error', providerStatus: 201 });
+    expect(log.mock.calls[0][1]).not.toHaveProperty('transportMessage');
+    expect(JSON.stringify(log.mock.calls[0])).not.toContain(MAIN);
+    expect(sqlite.prepare('SELECT lease_until FROM lct_soniox_sessions').get()).toEqual({ lease_until: null });
+  });
+
+  it('identifies a failed definitive-refusal lease update without exposing the provider response', async () => {
+    env.LCT_SONIOX_DEBUG = 'true';
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    fetch.mockResolvedValueOnce(new Response(`denied ${MAIN}`, { status: 403 }));
+    const originalPrepare = env.DB.prepare;
+    env.DB.prepare = sql => sql.startsWith('UPDATE lct_soniox_sessions')
+      ? { bind() { return { first: async () => { throw new TypeError('private provider body'); } }; } }
+      : originalPrepare(sql);
+    const response = await worker.fetch(req(), env);
+    expect(response.status).toBe(503);
+    expect(log.mock.calls[0][1]).toMatchObject({ phase: 'refusal_lease_update', errorClass: 'TypeError', providerStatus: 403 });
+    expect(log.mock.calls[0][1]).not.toHaveProperty('transportMessage');
+    expect(JSON.stringify(log.mock.calls[0])).not.toMatch(/synthetic-main-key|private provider body/);
+    expect(sqlite.prepare('SELECT lease_until FROM lct_soniox_sessions').get()).toEqual({ lease_until: null });
   });
 });
