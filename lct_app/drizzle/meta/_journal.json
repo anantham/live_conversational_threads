@@ -57,6 +57,13 @@
       "when": 1791351733025,
       "tag": "0007_soniox_pilot_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791497166323,
+      "tag": "0008_openrouter_pilot_recovery",
+      "breakpoints": true
     }
   ]
 }

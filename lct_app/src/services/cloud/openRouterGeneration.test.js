@@ -44,6 +44,24 @@ const responseFor = (graph) => ({
 });
 
 describe('pure OpenRouter recording generation contract', () => {
+  it('requests source links with empty optional quotes while preserving all exact speech and valid authored quotations', () => {
+    const request = buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 2048 });
+    expect(request.response_format.json_schema.schema.properties.nodes.items.properties.source_excerpt)
+      .toEqual({ type: 'string', enum: [''] });
+    expect(request.messages[0].content).toContain('Keep source_excerpt empty');
+    expect(JSON.parse(request.messages[1].content).utterances.map(row => row.text))
+      .toEqual(['A careful idea.', ' A response.']);
+    request.response_format.json_schema.schema.properties.nodes.items.properties.source_excerpt.enum.push('caller mutation');
+    const next = buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 2048 });
+    expect(next.response_format.json_schema.schema.properties.nodes.items.properties.source_excerpt.enum).toEqual(['']);
+    const authored = generatedGraph(); authored.nodes[0].source_excerpt = 'careful idea';
+    expect(recordingThreadsFromOpenRouterResponse({ source, response: responseFor(authored) }).bundle.graph_data[0].source_excerpt)
+      .toBe('careful idea');
+    authored.nodes[0].source_excerpt = 'invented quotation';
+    expect(() => recordingThreadsFromOpenRouterResponse({ source, response: responseFor(authored) }))
+      .toThrow('Invalid generated conversation graph.');
+  });
+
   it('colors source-linked generated moments and mixed aggregates after actual file reading and graph normalization', async () => {
     const graph = generatedGraph();
     expect(graph.nodes.every(node => !('speaker_id' in node) && !('source_turns' in node))).toBe(true);

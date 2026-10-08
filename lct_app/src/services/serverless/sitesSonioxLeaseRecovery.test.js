@@ -13,8 +13,8 @@ let sqlite, now;
 
 beforeEach(() => {
   sqlite = new DatabaseSync(':memory:');
-  expect(journal.entries.at(-1).tag).toBe(tag);
-  for (const entry of journal.entries.slice(0, -1)) {
+  expect(journal.entries.filter(entry => entry.tag === tag)).toHaveLength(1);
+  for (const entry of journal.entries.filter(entry => entry.tag !== tag)) {
     sqlite.exec(readFileSync(new URL(`../../../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'));
   }
   now = Date.now();

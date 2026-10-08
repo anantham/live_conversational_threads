@@ -44,7 +44,8 @@ async function generate(request, env, policy) {
   const admitted = await env.DB.prepare(`INSERT INTO lct_openrouter_attempts (id, created_at, max_output_tokens)
     SELECT ?, ?, ? WHERE (SELECT COUNT(*) FROM lct_openrouter_attempts) < ?
       AND NOT EXISTS (SELECT 1 FROM lct_openrouter_attempts WHERE created_at > ?)
-      AND (SELECT COUNT(*) FROM lct_openrouter_attempts WHERE completed_at IS NULL) < ?
+      AND (SELECT COUNT(*) FROM lct_openrouter_attempts
+           WHERE completed_at IS NULL AND recovery_released_at IS NULL) < ?
     RETURNING id`).bind(id, now, policy.maxTokens, policy.maxRequests, now - policy.admissionIntervalMs, policy.maxConcurrent).first();
   if (!admitted) throw new OpenRouterError(429, 'attempt_limit', 'The shared generation limit is reached or another attempt is starting. Wait before retrying; unresolved attempts and the lifetime cap need owner review.');
 

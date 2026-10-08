@@ -62,6 +62,7 @@ export const openRouterAttempts = sqliteTable('lct_openrouter_attempts', {
   createdAt: integer('created_at').notNull(),
   maxOutputTokens: integer('max_output_tokens').notNull(),
   completedAt: integer('completed_at'),
+  recoveryReleasedAt: integer('recovery_released_at'),
 }, (table) => [
   index('lct_openrouter_attempts_created_idx').on(table.createdAt),
   check('lct_openrouter_attempts_tokens_check', sql`${table.maxOutputTokens} >= 1 and ${table.maxOutputTokens} <= 8192`),

@@ -13,7 +13,7 @@ const source = { recordingId: 'synthetic-source', startedAt: Date.UTC(2026, 9, 3
   finalTokens: [{ text: 'An exact synthetic turn.', speaker: 'S1', startMs: 1000, endMs: 2000 }] };
 const graph = () => ({ metadata: { conversation_title: 'Synthetic map', executive_summary: 'One turn.' },
   nodes: [{ id: 'moment', semantic_level: 1, semantic_type: 'chunk', node_name: 'A moment', summary: 'A synthetic turn.',
-    source_ref: { utterance_ids: ['utterance-0001'] }, source_excerpt: 'synthetic turn', parent_id: null,
+    source_ref: { utterance_ids: ['utterance-0001'] }, source_excerpt: '', parent_id: null,
     children_ids: [], thread_id: null, memberships: [] }], edges: [], conversation_threads: [] });
 const completion = (data = graph()) => ({ choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(data) } }] });
 const req = (path = '/generate', { method = 'POST', headers = {}, signal, body = { source } } = {}) =>
@@ -83,13 +83,16 @@ describe('OpenRouter Worker API with actual generated SQLite schema', () => {
     expect(options.headers.Authorization).toBe(`Bearer ${KEY}`);
     expect(sent).toMatchObject({ model: 'provider/selected-model', max_tokens: 2048, stream: false,
       provider: { only: ['selected-provider'], data_collection: 'deny', require_parameters: true, allow_fallbacks: false } });
+    expect(sent.response_format.json_schema.schema.properties.nodes.items.properties.source_excerpt)
+      .toEqual({ type: 'string', enum: [''] });
     expect(options.body).not.toMatch(/synthetic-source|S1|startMs|untrusted\/model|untrusted-key/);
     expect(JSON.stringify(result)).not.toContain(KEY);
     const opened = await readThreadsFile(new File([JSON.stringify(result.artifact)], 'synthetic.threads'));
     expect(opened.full_transcript).toBe('An exact synthetic turn.');
     expect(buildDiscussionModel(opened.graph_data, opened.utterances).utterancesByMoment.get('moment')).toEqual(['utterance-0001']);
     expect(row()).toMatchObject({ id: result.request_id, max_output_tokens: 2048 }); expect(row().completed_at).toBeGreaterThan(0);
-    expect(Object.keys(row()).sort()).toEqual(['completed_at', 'created_at', 'id', 'max_output_tokens']);
+    expect(Object.keys(row()).sort()).toEqual(['completed_at', 'created_at', 'id', 'max_output_tokens', 'recovery_released_at']);
+    expect(row().recovery_released_at).toBeNull();
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_public_threads').get().n).toBe(0);
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(0);
   });

@@ -33,11 +33,12 @@ export function openRouterPolicy(env) {
 }
 
 export async function readOpenRouterAdmission(env) {
-  const row = await env.DB.prepare(`SELECT COUNT(*) AS attempts, COUNT(completed_at) AS completed,
+  const row = await env.DB.prepare(`SELECT COUNT(*) AS attempts,
+    COALESCE(SUM(CASE WHEN completed_at IS NULL AND recovery_released_at IS NULL THEN 1 ELSE 0 END), 0) AS unresolved,
     MAX(max_output_tokens) AS token_cap, MAX(created_at) AS latest FROM lct_openrouter_attempts`).first();
   if (!row || !Number.isSafeInteger(row.attempts) || row.attempts < 0
-    || !Number.isSafeInteger(row.completed) || row.completed < 0 || row.completed > row.attempts) {
+    || !Number.isSafeInteger(row.unresolved) || row.unresolved < 0 || row.unresolved > row.attempts) {
     throw new OpenRouterError(503, 'schema_unavailable', 'Generation admission storage is not ready. No provider request was made.');
   }
-  return { attempts: row.attempts, unresolved: row.attempts - row.completed, latest: row.latest };
+  return { attempts: row.attempts, unresolved: row.unresolved, latest: row.latest };
 }

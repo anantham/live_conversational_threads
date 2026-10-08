@@ -21,7 +21,7 @@ beforeEach(async () => {
   const journal = JSON.parse(readFileSync(new URL('../../../drizzle/meta/_journal.json', import.meta.url), 'utf8'));
   for (const entry of journal.entries) sqlite.exec(readFileSync(new URL(`../../../drizzle/${entry.tag}.sql`, import.meta.url), 'utf8'));
   expect(sqlite.prepare('PRAGMA table_info(lct_openrouter_attempts)').all().map(column => column.name))
-    .toEqual(['id', 'created_at', 'max_output_tokens', 'completed_at']);
+    .toEqual(['id', 'created_at', 'max_output_tokens', 'completed_at', 'recovery_released_at']);
   env = { LCT_OPENROUTER_ENABLED: 'true', LCT_OPENROUTER_PROJECT_BUDGET_CONFIRMED: 'true',
     LCT_OPENROUTER_MODEL: 'provider/synthetic-model', LCT_OPENROUTER_PROVIDER: 'synthetic-provider',
     LCT_OPENROUTER_DATA_COLLECTION: 'deny', LCT_OPENROUTER_AUDIENCE: 'public', LCT_OPENROUTER_DEBUG: 'true',
