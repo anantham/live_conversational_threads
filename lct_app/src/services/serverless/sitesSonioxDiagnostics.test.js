@@ -46,6 +46,34 @@ afterEach(() => {
 });
 
 describe('Soniox post-admission failures through the Worker API', () => {
+  it('issues a bounded key when the edge transport accepts only follow or manual redirect modes', async () => {
+    fetch.mockImplementationOnce(async (_url, options) => {
+      if (!['follow', 'manual'].includes(options.redirect)) throw new TypeError('Invalid redirect value, must be follow or manual');
+      return new Response(JSON.stringify({ api_key: TEMP, expires_at: new Date(Date.now() + 60_000).toISOString() }), { status: 201 });
+    });
+    const response = await worker.fetch(request(), env);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ api_key: TEMP, max_session_seconds: 300 });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].lease_until).toBeGreaterThan(Date.now());
+  });
+
+  it.each([301, 302, 303, 307, 308])('refuses an upstream redirect without following or exposing its destination (%s)', async status => {
+    const destination = 'https://untrusted-redirect.example.invalid/temporary-key';
+    fetch.mockResolvedValueOnce(new Response('untrusted redirect body', { status, headers: { Location: destination } }));
+    const response = await worker.fetch(request(), env);
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body.code).toBe('provider_refused');
+    expect(JSON.stringify(body)).not.toMatch(/untrusted|snx_temp|synthetic-main-key/);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1].redirect).toBe('manual');
+    expect(rows()).toHaveLength(1);
+    expect(rows()[0].lease_until).toBeLessThanOrEqual(Date.now());
+    expect(rows()[0].lease_until).not.toBeNull();
+  });
+
   it('reports a request setup exception without leaking it or releasing the reservation', async () => {
     const incoming = request();
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});

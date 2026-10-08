@@ -72,7 +72,8 @@ async function mint(request, env, policy, diagnostic) {
           headers: { Authorization: `Bearer ${env.SONIOX_API_KEY.trim()}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ usage_type: 'transcribe_websocket', expires_in_seconds: policy.startExpirySeconds,
             single_use: true, max_session_duration_seconds: policy.maxSessionSeconds, client_reference_id: id }),
-          signal: controller.signal, redirect: 'error' });
+          // Edge fetch supports manual; every non-201 response below is refused.
+          signal: controller.signal, redirect: 'manual' });
       } catch (error) {
         if (env.LCT_SONIOX_DEBUG === 'true') diagnostic.transportMessage = transportMessage(error, env.SONIOX_API_KEY.trim());
         throw error;

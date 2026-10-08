@@ -1,5 +1,9 @@
 # ISSUES
 
+## 2026-10-09 — Adjacent OpenRouter edge redirect incompatibility
+
+Read-only scan after the captured Soniox failure finds the same unsupported `redirect:'error'` in `lct_app/sites/openRouter.js:42`. Cloudflare workerd accepts follow/manual; native Soniox instrument evidence rejects error before an HTTP response. Impact: the existing OpenRouter server call is expected to fail at its fetch boundary when activated, despite Node tests accepting the standard mode. No OpenRouter request was made; this is a static same-class prediction, not observed provider failure. Blocker: no for the current Soniox capture/repair slice; later live inference acceptance needs the same minimal manual/no-follow repair with its existing strict200 status gate and focused regression checks. Browser fetch uses of error are valid in their different runtime and are outside this defect. Next step: finish independently reviewed inactive Soniox repair, then repair the bounded OpenRouter server call. No automatic scope expansion, provider call or new spend.
+
 ## 2026-10-07 08:43 IST — Keys ready; actual Soniox mint stops after reservation
 
 21:53 IST review/publication amendment: priorreviewblockerRESOLVED. Freshhooksverified and fullAnthropicClaudeSonnet5.5-low exactcommitteddiff review PASS/findings[]/zero tools, strictvalidator retained. Supportedlog-sinkrepair is nowservedSite22/sourcee055f88345fdc37622308cd8192854fb6b627e7d/env17; publicguest/private401/consent403/providerinactive503/clienthash and exact3attemptrows1unknown/inference0 acceptance pass. Providers/budgets/debug remainOFF; no paid call or cleanup. ActualSonioxmintcause stillunknown and liveSTT/map remainsblocked. Next: separatelyboundedcapturedrealrequestafterlaterauthority, not another reviewer/account approval for the deliveredrepair. docs/reviews/2026-10-07-soniox-observability.md appends fullproof; browserwebviewhandoff unavailable does not invalidateAPIdeployment evidence.

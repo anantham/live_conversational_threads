@@ -1,5 +1,17 @@
 # LCT Sites migration — staged delivery
 
+## Current slice — capture the native Soniox failure within the approved pilot — 2026-10-09
+
+Root owns the canonical checkout `C:/Users/adity/.codex/worktrees/lct-sites-serverless/live_conversational_threads`, branch `codex/lct-sites-serverless`, starting `0c237022fa0256839e3064626d8c7e022c8d31f0`. Outcome: identify the native mint failure from one controlled setup attempt with its log captured before rollback. Fresh preflight: public active Site22, environment17, both providers/budgets/debug off, three Soniox rows with one unknown lease, zero inference rows, unchanged limits and secrets. Peer-owned AGENTS and deployment checkout remain untouched.
+
+Authority amendment: earlier entries limiting *all* later mint diagnostics to a fresh ruling were the agent's overly broad interpretation. The original small funded pilot, restricted-key approvals, unchanged budget envelope and the user's resumed goal cover this bounded diagnostic (A1). The fulfilled one-time two-lease recovery remains separate: no further recovery, count reset, key, budget, identity, private-data or domain change is authorized here.
+
+Prospective runtime change: only `LCT_SONIOX_ENABLED`, `LCT_SONIOX_PROJECT_BUDGET_CONFIRMED` and `LCT_SONIOX_DEBUG` false→true; deploy the existing saved22; issue exactly one consented temporary-key setup POST, with no audio/WebSocket/inference or retry; retrieve current-deployment logs for at most180seconds; restore the same three flags false and deploy saved22 again. All other entries and source remain unchanged. The public pilot's existing admission limits apply to every request; no lease is released by this operation.
+
+Hypotheses/predictions: unexpected setup failure → request_setup/no provider status; transport rejection → provider_fetch/no status; body failure → response_body/201; database failure → refusal_lease_update/non201 or acknowledged_lease_update/201. A normal provider refusal or invalid key response should instead return502. Static method presence and Node fake-provider checks do not prove native listener registration or transport. Confidence in choosing the capture diagnostic0.9; root cause unknown. Fallback is rollback and offline repair from captured evidence, never another automatic mint or lease cleanup.
+
+Finite acceptance: independent read-only review of the exact three-toggle proposal with unchanged handler context; fresh admission/identity/env preconditions; exactly one POST with temporary key excluded from evidence; safe static diagnostic fields retrieved before rollback or explicit capture failure; flags actually served off; every prior row unchanged and row delta at most one; inference remains zero. Remaining dependency: actual native phase evidence. Next checkpoint: captured phase and rollback identity, followed by a proportionate causal repair if supported. Diagnosis effort/calendar ETA remains unknown; the capture wait itself is bounded. Full STT/map/private/domain goal remains incomplete.
+
 ## Current checkpoint — reviewed logging repair served — 2026-10-07 21:53 IST
 
 21:55 IST preservation: review/deployment receipts are committed and pushed as eab765d; required unchanged push gate passes794/794tests/102files25.06seconds/start21:54:27IST. The remaining EOF-whitespace correction changes no behavior or coverage; checks are reused and its mandatory hook remains enabled.

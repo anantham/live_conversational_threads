@@ -1,5 +1,19 @@
 # Soniox no-provider observability and local log-sink repair
 
+## 2026-10-09 — Native fetch incompatibility captured; minimal repair reviewed
+
+Root/canonical task branch starts0c23702. The original approved small funded pilot and resumed goal cover the unchanged-limit diagnostic; earlier agent requirements for a fresh ruling for every mint were overly broad. The fulfilled two-lease recovery remains separate. Fresh public Site22/nativee055f883/env17 has all18entries unchanged, three Soniox attempts/one unknown lease and inference0; schema and complete rows verified.
+
+The prospective three-toggle configuration receives eligible AGY/Anthropic ClaudeSonnet5.5-low strictPASS/findings[]/zero tools with verified deny-all hook:25112bytes SHA256`ca26d4b3f831beda903857572b467ad8b7d5331903775ad3b1896df6c7707c2a`. Packet contains bounded tracked source/test/technical specification, excluding keys, raw logs, live rows, media/private artifacts; existing credits only.
+
+Saved22/env18/deployment`appgdep_6ac804a45ef4819191175abdd33bd266` serves only the three reviewed Soniox flags. Exactly one consented POST2026-10-08T21:02:14.430Z–21:02:17.900Z returns503/session_failed/3469ms, no usable key/audio/inference. Initial errors-only5min25 returns0; wider all-events5min100 returns8events before rollback. Safe marker21:02:17.806Z is provider_fetch/TypeError/no providerStatus, with the bounded runtime message rejecting redirect:error and accepting follow/manual. The [primary workerd constructor and parser](https://github.com/cloudflare/workerd/blob/main/src/workerd/api/http.c%2B%2B) independently reject this mode before HTTP. This falsifies setup/body/database failure for this attempt; key validity/billing/live issuance remain untested.
+
+Rollback same saved22/env19/deployment`appgdep_6ac8051a05108191ada2e83bd263a64d` succeeds and hostedstatus200/disabled proves it served. Native4rows/all3prior rows exactly preserved/delta1/two unknown leases; inference0/no truncation. No retry, lease cleanup or limit expansion.
+
+Six synthetic regressions written first reproduce edge-mode503 and five incompatible redirect checks on baseline (4pass/6fail). Source selects manual while retaining strict201/no-follow refusal and every admission/consent/timeout contract. After repair38/38focused issuer/diagnostics/recovery pass1.76s/start02:36:05IST; scopedESLint/diffcheck pass. Fixtures are fully migrated in-memory state/fake fetch before import. Tests do not establish live issuance. Adjacent OpenRouter server incompatibility is recorded separately in ISSUES; browser error mode is valid in its runtime.
+
+Final exact three-path working diff against0c23702 receives the same eligible AGY/Anthropic review, strictPASS/findings[]/zero tools:29750bytes SHA256`98e808554b89c29647fda3321068bc2d4fcc7cfa90535e113940ce1473bc70da`, diffhash`a2747f8a9cf8af7fc958a627f11f044fe1cae5f95cfaf3240ae0d216fba0b9ec`. Inventory: soniox.js, diagnostic test, intent, with unchanged policy context. No findings fixed/rejected or overclaim. Repair reviewed, not yet served; next checkpoint exact projection/build/package/inactive publication and hosted preservation checks. Two unknown leases occupy admission, so no next live mint here. Full goal remains incomplete.
+
 2026-10-07 21:23 IST. Integration owner root; canonical task branch codex/lct-sites-serverless starts at80a9fe0. User approved this bounded investigation/repair; no new paid request is authorized.
 
 ## Changed behavior and evidence
