@@ -4,6 +4,18 @@ import { OpenRouterError, openRouterJSON, openRouterPolicy, readOpenRouterAdmiss
 import { openRouterWait, readOpenRouterJSON } from './openRouterIO.js';
 
 const PREFIX = '/api/cloud/openrouter';
+const VALIDATION_STAGES = new Set(['response_envelope', 'choice_error', 'choice_finish', 'choice_message',
+  'choice_refusal', 'choice_tools_empty', 'choice_tools_present', 'choice_content', 'content_size', 'content_json',
+  'required_shape', 'graph_shape', 'metadata', 'node_shape', 'node_evidence', 'node_excerpt', 'node_speaker',
+  'node_provenance', 'memberships', 'hierarchy', 'edges', 'threads', 'bundle_validation', 'bundle_json', 'bundle_size']);
+
+function logFailure(env, code, validationStage) {
+  if (env.LCT_OPENROUTER_DEBUG !== 'true') return;
+  try {
+    console.error('[openrouter] generation failed', { code,
+      validationStage: VALIDATION_STAGES.has(validationStage) ? validationStage : 'unknown' });
+  } catch { /* Diagnostics must never replace the public result or release an attempt. */ }
+}
 
 async function generate(request, env, policy) {
   if (request.headers.get('origin') !== new URL(request.url).origin
@@ -48,7 +60,10 @@ async function generate(request, env, policy) {
     }
     const completion = await readOpenRouterJSON(response, signal, 2 * 1024 * 1024, true);
     try { return recordingThreadsFromOpenRouterResponse({ source: input.source, response: completion }).bundle; }
-    catch { throw new OpenRouterError(502, 'invalid_completion', 'OpenRouter did not return a complete source-linked map. The attempt remains counted; no map was saved.'); }
+    catch (error) {
+      logFailure(env, 'invalid_completion', error?.validationStage);
+      throw new OpenRouterError(502, 'invalid_completion', 'OpenRouter did not return a complete source-linked map. The attempt remains counted; no map was saved.');
+    }
   });
   if (request.signal.aborted) throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.');
   const acknowledged = await env.DB.prepare('UPDATE lct_openrouter_attempts SET completed_at = ? WHERE id = ? RETURNING id').bind(Date.now(), id).first();
@@ -78,7 +93,7 @@ export async function handleOpenRouter(request, env) {
     return await generate(request, env, policy);
   } catch (error) {
     if (error instanceof OpenRouterError) return openRouterJSON(error.status, { error: error.message, code: error.code });
-    if (env.LCT_OPENROUTER_DEBUG === 'true') console.error('[openrouter] generation failed', { errorClass: error?.name || 'UnknownError' });
+    logFailure(env, 'generation_failed');
     return openRouterJSON(503, { error: 'Generation could not finish. Any reserved attempt remains counted; no map was saved. Check admission storage and provider setup before retrying.', code: 'generation_failed' });
   }
 }

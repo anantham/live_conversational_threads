@@ -1,5 +1,9 @@
 # ISSUES
 
+## 2026-10-09 — First real OpenRouter completion rejected by validation
+
+The independently reviewed edge-redirect repair is pushed03f8862 and served native43ead51c/saved24. One synthetic request returned502/invalid_completion after upstream200 and bounded JSON read; no completion content was retained, so carrier versus JSON/graph validation remains unknown. No usable map/save/publication/retry. Both providers are actually served off in env21; one counted inference attempt remains unresolved and four Soniox rows/two unknown leases are preserved. Impact: actual cloud generation/public reopen is unaccepted. Blocker on human: no for adding/testing/reviewing static diagnostics inside the approved pilot. Next step: classify validation with allowlisted off-by-default labels, prove unchanged refusals and no content leakage in isolated public-Worker fixtures, then independently review before inactive publication. No validator relaxation, lease cleanup, cap reset or new provider/model/spend.
+
 ## 2026-10-09 — Approved pilot model retirement after the current key expiry
 
 Read-only provider preflight finds that the [official Gemini Flash Lite model page](https://openrouter.ai/google/gemini-2.5-flash-lite) announces retirement on2026-10-20. The existing restricted pilot key expiresOct14, before that date. Impact: current pinned-model pilot can proceed, but a lasting production deployment needs a supported replacement before retirement. Blocker: no for this generation slice; yes for claiming long-term model availability. Next step: after actual current-pilot acceptance, prepare a measured replacement comparison and the reserved model/provider/cost ruling. No model change or new spend is inferred here. Specific Google Vertex acceptance of the current strict schema and deny policy still requires the bounded live test.

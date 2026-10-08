@@ -7,8 +7,8 @@ const MAX_OUTPUT_TOKENS = 8192;
 const MODEL_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const encoder = new TextEncoder();
 
-function invalid(message) {
-  return new Error(`OpenRouter generation rejected: ${message}`);
+function invalid(message, validationStage = 'request') {
+  return Object.assign(new Error(`OpenRouter generation rejected: ${message}`), { validationStage });
 }
 
 function object(value) {
@@ -126,24 +126,28 @@ export function recordingThreadsFromOpenRouterResponse({ source, response } = {}
   createRecordingTranscript(source);
   if (!object(response) || response.error != null || !Array.isArray(response.choices)
     || response.choices.length !== 1 || !object(response.choices[0])) {
-    throw invalid('the completion response is missing or contains an error.');
+    throw invalid('the completion response is missing or contains an error.', 'response_envelope');
   }
   const choice = response.choices[0];
-  if (choice.error != null || choice.finish_reason !== 'stop' || !object(choice.message)
-    || choice.message.role !== 'assistant' || choice.message.refusal != null
-    || choice.message.tool_calls != null || typeof choice.message.content !== 'string'
-    || !choice.message.content.trim()) {
-    throw invalid('the completion was refused, interrupted, or incomplete.');
+  const message = choice.message;
+  const rejectedStage = choice.error != null ? 'choice_error'
+    : choice.finish_reason !== 'stop' ? 'choice_finish'
+      : !object(message) || message.role !== 'assistant' ? 'choice_message'
+        : message.refusal != null ? 'choice_refusal'
+          : message.tool_calls != null ? (Array.isArray(message.tool_calls) && !message.tool_calls.length ? 'choice_tools_empty' : 'choice_tools_present')
+            : typeof message.content !== 'string' || !message.content.trim() ? 'choice_content' : null;
+  if (rejectedStage) {
+    throw invalid('the completion was refused, interrupted, or incomplete.', rejectedStage);
   }
   if (encoder.encode(choice.message.content).byteLength > MAX_CONTENT_BYTES) {
-    throw invalid('the completion exceeds the bounded output size.');
+    throw invalid('the completion exceeds the bounded output size.', 'content_size');
   }
   let graph;
   try { graph = JSON.parse(choice.message.content); }
-  catch { throw invalid('the completion is not valid JSON.'); }
+  catch { throw invalid('the completion is not valid JSON.', 'content_json'); }
   if (!object(graph) || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)
     || !object(graph.metadata) || !Array.isArray(graph.conversation_threads)) {
-    throw invalid('the completion lacks the required graph fields.');
+    throw invalid('the completion lacks the required graph fields.', 'required_shape');
   }
   return createRecordingThreads({ ...source, graph });
 }
