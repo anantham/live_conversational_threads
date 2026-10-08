@@ -1,5 +1,9 @@
 # ISSUES
 
+## 2026-10-09 — Approved pilot model retirement after the current key expiry
+
+Read-only provider preflight finds that the [official Gemini Flash Lite model page](https://openrouter.ai/google/gemini-2.5-flash-lite) announces retirement on2026-10-20. The existing restricted pilot key expiresOct14, before that date. Impact: current pinned-model pilot can proceed, but a lasting production deployment needs a supported replacement before retirement. Blocker: no for this generation slice; yes for claiming long-term model availability. Next step: after actual current-pilot acceptance, prepare a measured replacement comparison and the reserved model/provider/cost ruling. No model change or new spend is inferred here. Specific Google Vertex acceptance of the current strict schema and deny policy still requires the bounded live test.
+
 ## 2026-10-09 — Adjacent OpenRouter edge redirect incompatibility
 
 Read-only scan after the captured Soniox failure finds the same unsupported `redirect:'error'` in `lct_app/sites/openRouter.js:42`. Cloudflare workerd accepts follow/manual; native Soniox instrument evidence rejects error before an HTTP response. Impact: the existing OpenRouter server call is expected to fail at its fetch boundary when activated, despite Node tests accepting the standard mode. No OpenRouter request was made; this is a static same-class prediction, not observed provider failure. Blocker: no for the current Soniox capture/repair slice; later live inference acceptance needs the same minimal manual/no-follow repair with its existing strict200 status gate and focused regression checks. Browser fetch uses of error are valid in their different runtime and are outside this defect. Next step: finish independently reviewed inactive Soniox repair, then repair the bounded OpenRouter server call. No automatic scope expansion, provider call or new spend.

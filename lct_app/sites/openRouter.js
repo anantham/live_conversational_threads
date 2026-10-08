@@ -39,7 +39,8 @@ async function generate(request, env, policy) {
   const artifact = await openRouterWait(request.signal, 60_000, async signal => {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST',
       headers: { Authorization: `Bearer ${env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(wire), signal, redirect: 'error' });
+      // Edge fetch supports manual; the exact-200 gate below refuses redirects.
+      body: JSON.stringify(wire), signal, redirect: 'manual' });
     if (signal.aborted) { void response.body?.cancel().catch(() => {}); throw new OpenRouterError(408, 'cancelled', 'Generation was interrupted. The attempt remains counted.'); }
     if (response.status !== 200) {
       void response.body?.cancel().catch(() => {});

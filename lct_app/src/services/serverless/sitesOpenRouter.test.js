@@ -70,11 +70,16 @@ describe('OpenRouter Worker API with actual generated SQLite schema', () => {
   });
 
   it('uses only server policy and returns a portable source-linked map without storing content', async () => {
+    fetch.mockImplementationOnce(async (url, options) => {
+      if (!['follow', 'manual'].includes(options.redirect)) throw new TypeError('Invalid edge redirect mode');
+      requests.push({ url, options });
+      return new Response(JSON.stringify(completion()), { status: 200 });
+    });
     const response = await worker.fetch(req('/generate', { body: { source, model: 'untrusted/model', maxTokens: 8192, apiKey: 'untrusted-key' } }), env);
     const result = await response.json();
     expect(response.status).toBe(200); expect(response.headers.get('cache-control')).toBe('no-store');
     const { url, options } = requests[0], sent = JSON.parse(options.body);
-    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions'); expect(options.redirect).toBe('error');
+    expect(url).toBe('https://openrouter.ai/api/v1/chat/completions'); expect(options.redirect).toBe('manual');
     expect(options.headers.Authorization).toBe(`Bearer ${KEY}`);
     expect(sent).toMatchObject({ model: 'provider/selected-model', max_tokens: 2048, stream: false,
       provider: { only: ['selected-provider'], data_collection: 'deny', require_parameters: true, allow_fallbacks: false } });
@@ -87,6 +92,21 @@ describe('OpenRouter Worker API with actual generated SQLite schema', () => {
     expect(Object.keys(row()).sort()).toEqual(['completed_at', 'created_at', 'id', 'max_output_tokens']);
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_public_threads').get().n).toBe(0);
     expect(sqlite.prepare('SELECT COUNT(*) AS n FROM lct_cloud_files').get().n).toBe(0);
+  });
+
+  it('refuses an upstream redirect without following or exposing its destination', async () => {
+    fetch.mockResolvedValueOnce(new Response('untrusted redirect body', {
+      status: 307, headers: { Location: 'https://untrusted-redirect.example.invalid/completion' },
+    }));
+    const response = await worker.fetch(req(), env);
+    expect(response.status).toBe(502);
+    const body = await response.json();
+    expect(body.code).toBe('provider_refused');
+    expect(JSON.stringify(body)).not.toMatch(/untrusted|synthetic-owner-key/);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1].redirect).toBe('manual');
+    expect(count()).toBe(1);
+    expect(row().completed_at).toBeNull();
   });
 
   it('rejects invalid, oversized and wrong-content input before admission', async () => {
