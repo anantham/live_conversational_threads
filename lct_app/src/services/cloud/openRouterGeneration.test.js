@@ -42,6 +42,17 @@ const generatedGraph = () => ({
       { moment_id: 'moment-b', evidence_utterance_ids: ['utterance-0002'] },
     ] }],
 });
+const overlappingGraph = () => {
+  const graph = generatedGraph();
+  const idea = graph.nodes.find(item => item.id === 'idea');
+  idea.memberships = [
+    { parent_id: 'topic', role: 'primary' },
+    { parent_id: 'topic-alt', role: 'secondary' },
+  ];
+  graph.nodes.find(item => item.id === 'theme').children_ids.push('topic-alt');
+  graph.nodes.push(node('topic-alt', 3, ['idea'], [], 'theme'));
+  return graph;
+};
 const responseFor = (graph) => ({
   choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: JSON.stringify(graph) } }],
 });
@@ -127,6 +138,20 @@ describe('pure OpenRouter recording generation contract', () => {
     expect(prompt).toContain('conversation_threads array when no path is defensible');
   });
 
+  it('requests reciprocal authored-node hierarchy and evidence-supported primary and secondary memberships', () => {
+    const prompt = buildOpenRouterGenerationRequest({ source, model: 'provider/selected-model', maxTokens: 2048 })
+      .messages[0].content;
+    expect(prompt).toContain('exact authored node IDs');
+    expect(prompt).toContain('primary membership');
+    expect(prompt).toContain('matches parent_id');
+    expect(prompt).toContain('secondary membership');
+    expect(prompt).toContain('distinct higher-tier parent');
+    expect(prompt).toContain('different from parent_id');
+    expect(prompt).toContain('children_ids');
+    expect(prompt).toContain('memberships empty');
+    expect(prompt).toContain('evidence supports an overlapping parent');
+  });
+
   it('keeps partial transcription explicit and rejects missing model, cap and oversized input', () => {
     const request = buildOpenRouterGenerationRequest({ source: { ...source, complete: false },
       model: 'provider/selected-model', maxTokens: 1 });
@@ -187,6 +212,28 @@ describe('pure OpenRouter recording generation contract', () => {
     const graph = generatedGraph(); mutate(graph);
     expect(() => recordingThreadsFromOpenRouterResponse({ source, response: responseFor(graph) }))
       .toThrow(expect.objectContaining({ validationStage: 'threads' }));
+  });
+
+  it('round-trips an authored secondary branch through the portable reader and Discussion', async () => {
+    const graph = overlappingGraph();
+    const { file } = recordingThreadsFromOpenRouterResponse({ source, response: responseFor(graph) });
+    const opened = await readThreadsFile(file);
+    const discussion = buildDiscussionModel(opened.graph_data, opened.utterances);
+    expect(opened.graph_data.find(item => item.id === 'idea').memberships).toEqual(graph.nodes.find(item => item.id === 'idea').memberships);
+    expect(discussion.parentByChild.get('idea')).toBe('topic');
+    expect(discussion.childrenByParent.get('topic-alt')).toContain('idea');
+    expect(opened.conversation_threads).toEqual(graph.conversation_threads);
+  });
+
+  it.each([
+    (graph) => { graph.nodes.find(item => item.id === 'idea').memberships[0].parent_id = 'theme'; },
+    (graph) => { graph.nodes.find(item => item.id === 'idea').memberships = [{ parent_id: 'topic', role: 'secondary' }]; },
+    (graph) => { graph.nodes.find(item => item.id === 'topic-alt').children_ids = []; },
+    (graph) => { graph.nodes.find(item => item.id === 'topic-alt').children_ids.push('moment-b'); },
+  ])('rejects contradictory hierarchy relationships at the existing boundary', (mutate) => {
+    const graph = overlappingGraph(); mutate(graph);
+    expect(() => recordingThreadsFromOpenRouterResponse({ source, response: responseFor(graph) }))
+      .toThrow(expect.objectContaining({ validationStage: 'hierarchy' }));
   });
 
   it.each([
