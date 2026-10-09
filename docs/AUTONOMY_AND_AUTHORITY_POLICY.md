@@ -178,6 +178,40 @@ data, granting tools or repository access, creating new paid usage, or expanding
 recipient, payload, repository, or action scope. Use S1 if preflight discovers
 a credible secret or unauthorized-disclosure risk.
 
+## `PILOT-RECOVERY-A1` — bounded failed-request reservation recovery
+
+**Recorded:** 2026-10-09 (Asia/Kolkata), following Aditya's explicit approval
+of the exact reviewed green/A1 recovery operation.
+
+This envelope covers only the exact currently approved recovery. Migration
+`0008` adds `recovery_released_at` and releases exactly the two reviewed
+OpenRouter pilot reservations that are older than 15 minutes, each capped at
+8192 tokens and still uncompleted (`completed_at IS NULL`). Both requests are
+confirmed failed and no longer running. They are known synthetic public-pilot
+requests within the already approved provider, credential/key, budget, and
+numeric caps. This does not authorize another paid retry or generation, or
+any broader or future automatic recovery operation.
+Retain every request and lifetime-usage record and the original budget. Do not
+reset quotas or impose automatic expiry/cleanup.
+
+For this recovery, require the exact reviewed operation and its
+local proof, then confirm the live preflight matches the recorded row count,
+age, token cap, provider-off state, and uncompleted status. Afterward, verify
+the exact two reservations carry recovery metadata, completed status remains
+null, request and lifetime records/counts remain retained, budgets/caps and
+provider state are unchanged, and no provider request was made. Preserve the
+audit counts and fields needed to establish those checks. Any unexpected row,
+still-running or unknown request, count/age/token/state drift, missing schema,
+or failed pre/postflight invalidates this A1 envelope: leave it untouched and
+classify the disputed action H1 or S1 as applicable.
+
+This authority is limited to synthetic public-pilot reservation recovery.
+Private data, identity or access changes, domain changes, new spend, model,
+provider, key/credential, privacy, audience, or budget/cap expansion remain
+outside the envelope and require their applicable human ruling. It grants no
+automatic future paid retries. This exact approved operation does not require
+duplicate permission; record its evidence at the next useful checkpoint.
+
 ## Human decision packets
 
 Do not ask only “may I implement my recommendation?” For an H1 decision,
