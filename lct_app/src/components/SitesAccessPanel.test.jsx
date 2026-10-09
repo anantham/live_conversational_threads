@@ -43,6 +43,20 @@ afterEach(async () => {
 });
 
 describe("SitesAccessPanel", () => {
+  it('anchors recording-page access above the bottom toolbar and preserves placement on other pages', async () => {
+    fetch.mockResolvedValue({ status: 401 }); await mount('/new');
+    const panel = container.querySelector('#site-access');
+    expect(panel.classList.contains('top-14')).toBe(true);
+    expect(panel.classList.contains('bottom-4')).toBe(false);
+    await act(async () => container.querySelector('[aria-label="Close site access"]').click());
+    expect(panel.classList.contains('top-3')).toBe(true);
+    await act(async () => navigate('/public'));
+    expect(panel.classList.contains('bottom-4')).toBe(true);
+    await act(async () => navigate('/private-files'));
+    expect(panel.classList.contains('fixed')).toBe(false);
+    expect(fetch.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false);
+  });
+
   // Test intent: Google remains unavailable until runtime configuration; failures and cancellation
   // leave public browsing usable; sign-out revokes the app session before platform navigation.
   // Dismissal only changes local presentation; private-page access links reopen the same panel.

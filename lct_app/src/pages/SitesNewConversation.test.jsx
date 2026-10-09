@@ -1,4 +1,4 @@
-// Test Intent: tests/intent/sites-soniox.md, sites-recording-transcript.md, sites-private-retention.md, sites-recording-map.md and sites-compact-recording.md; synthetic audio/tokens only.
+// Test Intent: tests/intent/sites-soniox.md, sites-recording-transcript.md, sites-private-retention.md, sites-recording-map.md, sites-compact-recording.md and sites-recording-layout.md; synthetic audio/tokens only.
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, MemoryRouter, useLocation } from 'react-router-dom';
@@ -49,13 +49,13 @@ afterEach(async () => {
   }
   vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers();
 });
-const button = name => [...container.querySelectorAll('button')].find(element => element.textContent === name);
+const button = name => [...container.querySelectorAll('button')].find(element => (element.getAttribute('aria-label') || element.textContent) === name);
 async function click(name) { await act(async () => button(name).click()); }
 async function mount(browser = false) {
   const Router = browser ? BrowserRouter : MemoryRouter;
   await act(async () => root.render(<Router {...(browser ? {} : { initialEntries: ['/new?autostart=true'] })}><SitesNewConversation /><LocationProbe /></Router>));
 }
-async function consent() { await act(async () => container.querySelector('input[type=checkbox]').click()); }
+async function consent() { await act(async () => container.querySelector('dialog input[type=checkbox]').click()); }
 async function record(name = 'Record audio locally') {
   await click(name); await consent(); await click(name === 'Record and transcribe' ? 'Start transcription' : 'Start recording');
 }
@@ -82,12 +82,50 @@ function readFile(file) {
 }
 
 describe('Sites recording page', () => {
+  it('keeps the recording toolbar outside the scrolling canvas across idle, capture and local results', async () => {
+    await mount();
+    const canvas = container.querySelector('[aria-label="Conversation canvas"]');
+    const controls = container.querySelector('[aria-label="Recording controls"]');
+    expect(canvas).toBeTruthy();
+    expect(canvas.tabIndex).toBe(0);
+    expect(canvas.contains(controls)).toBe(false);
+    expect(container.querySelector('footer').contains(controls)).toBe(true);
+    expect(canvas.textContent).toContain('Tap the mic below');
+    expect(controls.textContent).toContain('Start');
+    expect(button('Record audio locally').querySelector('svg')).toBeTruthy();
+    expect(container.querySelector('h1').textContent).toBe('New conversation');
+    await record();
+    expect(container.querySelector('footer').contains(button('Stop recording'))).toBe(true);
+    expect(canvas.textContent).toContain('Your conversation is recording');
+    await click('Stop recording');
+    expect(canvas.contains(container.querySelector('audio'))).toBe(true);
+    expect(canvas.contains(container.querySelector('a[download$=".webm"]'))).toBe(true);
+    expect(container.querySelector('footer').contains(button('Record audio locally'))).toBe(true);
+    expect(container.querySelector('dialog')).toBeNull();
+  });
+
+  it('keeps stalled setup and recovery within the scrolling canvas, outside the control bar', async () => {
+    vi.useFakeTimers(); fetch.mockImplementation(() => new Promise(() => {})); await mount();
+    const canvas = container.querySelector('[aria-label="Conversation canvas"]');
+    const footer = container.querySelector('footer');
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(canvas.textContent).toContain('2 s elapsed');
+    expect(canvas.contains(button('Cancel setup'))).toBe(true);
+    expect(footer.textContent).not.toContain('Time remaining unknown');
+    expect(footer.textContent).not.toContain('Live transcription is not available');
+    await click('Cancel setup');
+    expect(canvas.contains(button('Retry cloud setup'))).toBe(true);
+    expect(button('Retry cloud setup').closest('details')).toBeNull();
+    expect(footer.contains(button('Record audio locally'))).toBe(true);
+  });
+
   it('opens publicly without auto microphone/start or legacy backend requests', async () => {
     await mount();
     expect(container.textContent).toContain('without signing in');
     expect(container.textContent).toContain('Nothing is published automatically');
     expect(button('Record audio locally').disabled).toBe(false);
     expect(button('Record and transcribe').disabled).toBe(true);
+    expect(button('Retry cloud setup').closest('details')).toBeNull();
     expect(fixture.sessions).toHaveLength(0);
     expect(fetch.mock.calls.map(call => call[0])).toEqual(['/api/cloud/soniox/status', '/api/cloud/files/status']);
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
@@ -223,12 +261,14 @@ describe('Sites recording page', () => {
   });
 
   it('keeps local audio and warns about uncertain private-save outcome after cancellation', async () => {
-    privateUploads = true; await mount(); await record(); await click('Stop recording');
+    transcribe = true; privateUploads = true; await mount(); await record(); await click('Stop recording');
     fetch.mockImplementationOnce(() => new Promise(() => {}));
     await click('Save audio privately'); expect(container.textContent).toContain('Saving audio to your private files');
     await click('Cancel private save');
     expect(container.textContent).toContain('check your private files before retrying');
     expect(container.querySelector('audio')).toBeTruthy(); expect(button('Save audio privately').disabled).toBe(false);
+    expect(button('Retry cloud setup').closest('details')).toBeNull();
+    expect(button('Save audio privately').textContent).toBe('Save audio privately');
   });
 
   it('cancels on navigation and releases local playback URLs without late callback leakage', async () => {

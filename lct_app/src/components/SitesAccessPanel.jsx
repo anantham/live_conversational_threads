@@ -42,6 +42,7 @@ function recordTiming(durationMs, outcome, retryCount) {
 export default function SitesAccessPanel() {
   const { pathname, search, hash } = useLocation();
   const inPrivateFiles = pathname === "/private-files" || pathname === "/private-files/";
+  const inRecording = pathname === "/new" || pathname === "/new/";
   const [expanded, setExpanded] = useState(() => !wasDismissed() || hash === "#site-access");
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
@@ -225,7 +226,7 @@ export default function SitesAccessPanel() {
   }, [attempt]);
 
   return (
-    <aside ref={panelRef} id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : "fixed bottom-4 right-4 z-50"} ${expanded && !inPrivateFiles ? "max-h-[45dvh] overflow-y-auto" : ""} ${expanded ? "w-[min(22rem,calc(100vw-2rem))] px-4 py-3" : "w-fit px-3 py-2"} rounded-xl bg-white text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
+    <aside ref={panelRef} id="site-access" tabIndex={-1} className={`${inPrivateFiles ? "mx-auto my-4" : inRecording ? `fixed ${expanded ? "top-14" : "top-3"} right-3 z-50` : "fixed bottom-4 right-4 z-50"} ${expanded && !inPrivateFiles ? "max-h-[45dvh] overflow-y-auto" : ""} ${expanded ? "w-[min(22rem,calc(100vw-2rem))] px-4 py-3" : "w-fit px-3 py-2"} rounded-xl bg-white text-sm text-slate-700 shadow-[0_8px_28px_rgba(15,23,42,0.16)]`} aria-label="Site access">
       {!expanded ? <button type="button" className="text-sm font-medium text-slate-800 underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-700" onClick={openPanel}>{status === "guest" ? "Sign in" : "Account"}</button> : <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="font-semibold text-slate-800">Public access</p>

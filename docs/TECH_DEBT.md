@@ -2,6 +2,8 @@
 
 ## 2026-10-09 — Sites UI regression suite boundaries
 
+The original-layout restoration keeps production controller under200lines and extracts the81-line pure toolbar. Recording/access tests remain mixed journey suites (>400/>300lines); existing test-only split candidate still applies. Incumbent NewConversation/AudioInput controllers were read for presentation evidence and deliberately not coupled to the cloud lifecycle. No broader refactor belongs to this visual repair.
+
 SitesNewConversation.test.jsx combines consent, recording, private file and generated-map journeys (>400lines); SitesAccessPanel.test.jsx combines presentation, session and sign-out journeys (>300lines). The compact-controls slice extracts the production permission dialog while preserving focused behavioral coverage. Consider a separate test-only split into journey files with a small shared synthetic setup; no backend/runtime refactor is needed here.
 
 ## 2026-09-08 — ConversationNode presentation size
